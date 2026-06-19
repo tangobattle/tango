@@ -346,24 +346,36 @@ fn roster_row<'a>(p: &Player, zebra: usize) -> Element<'a, Message> {
         .into()
 }
 
-/// A player's row identity: avatar, then name over (while in a match) what
-/// they're playing — in a fixed-height slot so the second line
-/// appearing/disappearing never reflows the row.
-fn identity_lines<'a>(p: &Player) -> Element<'a, Message> {
-    const IDENTITY_H: f32 = 32.0;
+/// Name (nickname, or the monospaced code when unnamed) stacked over an
+/// optional caption line, in a fixed-height slot. Every roster row — plain,
+/// in-match, and incoming-challenge — routes through this one fixed height, so
+/// the second line (or a challenge's accept/decline pair) appearing never
+/// reflows the row. Keep it at this height; both row builders rely on it.
+fn name_slot<'a>(p: &Player, secondary: Option<Element<'a, Message>>) -> Element<'a, Message> {
+    const SLOT_H: f32 = 32.0;
     let primary = match &p.nickname {
         Some(n) => text(n.clone()).size(TEXT_BODY),
         None => text(p.code_str.clone()).size(TEXT_BODY).font(style::MONOSPACE_FONT),
     };
     let mut info = column![primary].spacing(1).width(Fill);
-    if let (Status::InMatch, Some(playing)) = (p.status, &p.now_playing_label) {
-        info = info.push(clipped_line(playing.clone()));
+    if let Some(sub) = secondary {
+        info = info.push(sub);
     }
-    let info = container(info)
-        .height(Length::Fixed(IDENTITY_H))
+    container(info)
+        .height(Length::Fixed(SLOT_H))
         .width(Fill)
-        .align_y(iced::alignment::Vertical::Center);
-    row![avatar(&p.code_str, pip_of(p.status), 26.0), info]
+        .align_y(iced::alignment::Vertical::Center)
+        .into()
+}
+
+/// A player's row identity: avatar, then the name slot — with what they're
+/// playing beneath the name while they're in a match.
+fn identity_lines<'a>(p: &Player) -> Element<'a, Message> {
+    let secondary = match (p.status, &p.now_playing_label) {
+        (Status::InMatch, Some(playing)) => Some(clipped_line(playing.clone())),
+        _ => None,
+    };
+    row![avatar(&p.code_str, pip_of(p.status), 26.0), name_slot(p, secondary)]
         .spacing(8)
         .width(Fill)
         .align_y(Alignment::Center)
@@ -395,17 +407,8 @@ fn incoming_row<'a>(ctx: &Ctx<'a>, p: &Player, incompatible: &BTreeSet<FriendCod
         STANDARD_PADDING,
         widgets::primary_button,
     );
-    let name: Element<'a, Message> = match &p.nickname {
-        Some(n) => text(n.clone()).size(TEXT_BODY).into(),
-        None => text(p.code_str.clone())
-            .size(TEXT_BODY)
-            .font(style::MONOSPACE_FONT)
-            .into(),
-    };
     let label = p.incoming_label.clone().unwrap_or_default();
-    let info = column![name, challenge_line(lang, label, p.incoming_blind)]
-        .spacing(2)
-        .width(Fill);
+    let info = name_slot(p, Some(challenge_line(lang, label, p.incoming_blind)));
 
     button(
         row![avatar(&p.code_str, pip_of(p.status), 26.0), info, reject, accept]
@@ -941,6 +944,12 @@ fn clipped_line<'a>(label: String) -> Element<'a, Message> {
 /// Logical width a caption-sized run of `s` occupies, measured by the real
 /// shaping engine (the global font system) so truncation matches the rendered
 /// glyphs rather than assuming a fixed per-character width.
+///
+/// Crucially this measures in `DEFAULT_FONT`, the same font the caption renders
+/// in: an unstyled `text(..)` falls back to the renderer's default font, not to
+/// `Font::default()` (a bare `SansSerif` that resolves to a different system
+/// face with different metrics) — measuring in the latter under/over-shoots the
+/// real width and the ellipsis lands in the wrong place.
 fn caption_width(s: &str) -> f32 {
     use iced::advanced::text::Paragraph as _;
     let para = iced_graphics::text::Paragraph::with_text(iced::advanced::text::Text {
@@ -948,7 +957,7 @@ fn caption_width(s: &str) -> f32 {
         bounds: iced::Size::INFINITE,
         size: iced::Pixels(TEXT_CAPTION),
         line_height: iced::advanced::text::LineHeight::default(),
-        font: iced::Font::default(),
+        font: style::DEFAULT_FONT,
         align_x: iced::advanced::text::Alignment::Default,
         align_y: iced::alignment::Vertical::Top,
         shaping: iced::advanced::text::Shaping::default(),
