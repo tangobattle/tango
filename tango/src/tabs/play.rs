@@ -916,7 +916,12 @@ impl State {
             .align_y(Alignment::Center)
             .into(),
             SaveAction::Duplicating { draft } => row![
-                save_name_input(lang, draft, Message::SaveDuplicateDraftChanged, Message::SaveDuplicateConfirm),
+                save_name_input(
+                    lang,
+                    draft,
+                    Message::SaveDuplicateDraftChanged,
+                    Message::SaveDuplicateConfirm
+                ),
                 save_action_cancel_button(lang),
                 widgets::labeled_icon_button(
                     Icon::Files,
@@ -1099,7 +1104,6 @@ impl State {
         )
         .map(Message::SaveViewAction)
     }
-
 }
 
 // ---------- Save-action form helpers ----------
@@ -1464,55 +1468,4 @@ pub fn create_new_save(
     let sram = save.to_sram_dump();
     std::fs::write(&dst, sram)?;
     Ok(dst)
-}
-
-// ---------- Direct-command parsing ----------
-
-/// Recognise the direct-TCP `/host`·`/connect` commands:
-///
-/// - `/host`            — listen on [`crate::net::DEFAULT_LOCAL_PORT`]
-/// - `/host <port>`     — listen on the given port
-/// - `/connect <addr>`  — dial `<addr>`, appending the default
-///                        port if the user didn't specify one
-///
-/// Dormant: internet play now goes through the lobby roster, so there's
-/// no UI that feeds this yet. Kept as the parsing primitive for a future
-/// re-expose of the signaling-free direct path (see [`crate::net::direct_rtc`]
-/// and [`crate::netplay::Netplay::connect_direct`]).
-#[allow(dead_code)]
-fn parse_direct_command(input: &str) -> Option<crate::netplay::DirectRole> {
-    // The leading slash is the disambiguator.
-    if !input.starts_with('/') {
-        return None;
-    }
-    let mut parts = input.splitn(2, char::is_whitespace);
-    let cmd = parts.next().unwrap_or("");
-    let arg = parts.next().map(str::trim).unwrap_or("");
-    match cmd {
-        "/host" => {
-            let port = if arg.is_empty() {
-                crate::net::DEFAULT_LOCAL_PORT
-            } else {
-                arg.parse::<u16>().ok()?
-            };
-            Some(crate::netplay::DirectRole::Host { port })
-        }
-        "/connect" => {
-            if arg.is_empty() {
-                return None;
-            }
-            // Heuristic: if the user gave no colon (bare IP) or
-            // their input ends with the IPv6 closing bracket
-            // without a trailing colon, append the default port.
-            // We deliberately don't try to validate the address
-            // itself — TcpStream::connect's error surfaces well.
-            let addr = if arg.contains(':') && !arg.ends_with(']') {
-                arg.to_string()
-            } else {
-                format!("{arg}:{}", crate::net::DEFAULT_LOCAL_PORT)
-            };
-            Some(crate::netplay::DirectRole::Connect { addr })
-        }
-        _ => None,
-    }
 }
