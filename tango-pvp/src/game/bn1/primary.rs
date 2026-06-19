@@ -66,6 +66,12 @@ pub(super) fn traps(
             let match_ = match_.clone();
             Box::new(move |core| {
                 let Some(match_) = match_.get() else { return };
+                // Seed the RNG once, at the start of the match. The match is
+                // deterministic, so rounds 2+ inherit the game's carried-over
+                // rng_state rather than getting re-seeded each round.
+                if match_.current_local_round_idx() != 0 {
+                    return;
+                }
                 let mut rng = match_.lock_rng();
                 let rng_state = pick_rng_state(&mut *rng, match_.is_offerer());
                 munger.set_rng_state(core, rng_state);

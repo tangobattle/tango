@@ -115,6 +115,13 @@ impl TrapMatch {
         self.0.is_offerer()
     }
 
+    /// How many rounds the live match has locally ended — 0 until the first
+    /// round closes. Per-game traps that seed RNG once at match start (bn1)
+    /// gate on this being 0 at `round_start_entry`.
+    pub(crate) fn current_local_round_idx(&self) -> u32 {
+        self.0.current_local_round_idx()
+    }
+
     pub(crate) fn record_first_commit(
         &self,
         round: &mut crate::battle::Round,

@@ -1,7 +1,7 @@
 use crate::hooks::Trap;
 use crate::stepper::BattleOutcome;
 
-use crate::game::shared::rng::{generate_rng2_state, pick_rng_states};
+use crate::game::shared::rng::generate_rng2_state;
 
 pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) -> Vec<Trap> {
     // Both player-index sites answer the same way: r0 = the replay's local
@@ -97,12 +97,6 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 }
                 // Replay-mode-only first-commit hook; never fires in FF mode.
                 if state.needs_replay_first_commit() {
-                    let is_offerer = state.replay_is_offerer();
-                    if let Some(rng) = state.replay_rng_mut() {
-                        let (rng1_state, rng2_state) = pick_rng_states(rng, is_offerer);
-                        munger.set_rng1_state(core, rng1_state);
-                        munger.set_rng2_state(core, rng2_state);
-                    }
                     state.set_local_packet(munger.tx_packet(core).to_vec());
                     state.on_first_commit();
                 }

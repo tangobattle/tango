@@ -17,6 +17,11 @@ pub(crate) struct Shared {
     /// table trap fudges link input once this is in.)
     pub(crate) result_is_in: bool,
     pub(crate) rng: rand_pcg::Mcg128Xsl64,
+    /// How many rounds this shadow has started (incremented by
+    /// [`State::start_round`]). Per-game traps that seed RNG once at match
+    /// start (bn1) gate on this being 0 at `round_start_entry`, which fires
+    /// before `start_round` bumps it.
+    pub(crate) rounds_started: u32,
     /// Signal that the pending shadow input has been consumed and the core
     /// has run forward to the next tick's `main_read_joyflags`, where the
     /// per-game trap raises this and calls `end_run_loop` (which parks the
@@ -53,6 +58,7 @@ impl State {
                 round: None,
                 result_is_in: false,
                 rng,
+                rounds_started: 0,
                 input_applied: false,
             }),
             error: Mutex::new(None),
@@ -85,6 +91,7 @@ impl State {
         let mut shared = self.lock();
         shared.round = Some(Round::new(local_player_index));
         shared.result_is_in = false;
+        shared.rounds_started += 1;
     }
 
     pub fn end_round(&self) {

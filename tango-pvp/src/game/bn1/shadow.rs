@@ -61,6 +61,11 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let shadow_state = shadow_state.clone();
             Box::new(move |core| {
                 let mut state = shadow_state.lock();
+                // Seed once, on the match's first round; rounds 2+ inherit the
+                // carried-over rng_state (the match is deterministic).
+                if state.rounds_started != 0 {
+                    return;
+                }
                 let rng_state = pick_rng_state(&mut state.rng, !shadow_state.is_offerer());
                 munger.set_rng_state(core, rng_state);
                 munger.set_frame_counter(core, rng_state as u16);

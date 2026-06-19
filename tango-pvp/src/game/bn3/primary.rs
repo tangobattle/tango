@@ -139,12 +139,6 @@ pub(super) fn traps(
                 }
 
                 if !round.has_settled_snapshot() {
-                    let mut rng = match_.lock_rng();
-
-                    // rng2 is the shared rng, it must be synced.
-                    let rng2_state = generate_rng2_state(&mut *rng);
-                    munger.set_rng2_state(core, rng2_state);
-
                     if let Err(e) = match_.record_first_commit(round, core, &munger.tx_packet(core)) {
                         log::error!("record first commit failed: {e:#}");
                         match_.cancel();

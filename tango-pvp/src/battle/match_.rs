@@ -224,7 +224,7 @@ impl Match {
     }
 
     /// The local round counter a [`Round`] created right now belongs to.
-    pub(super) fn current_local_round_idx(&self) -> u32 {
+    pub(crate) fn current_local_round_idx(&self) -> u32 {
         self.local_round_idx.load(Ordering::Acquire)
     }
 

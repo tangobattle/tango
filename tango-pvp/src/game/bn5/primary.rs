@@ -1,6 +1,6 @@
 use crate::hooks::{CompletionToken, MatchHandle, Trap};
 
-use crate::game::shared::rng::{generate_rng2_state, pick_rng_states};
+use crate::game::shared::rng::generate_rng2_state;
 
 pub(super) fn traps(
     hooks: &super::Hooks,
@@ -126,15 +126,6 @@ pub(super) fn traps(
                 }
 
                 if !round.has_settled_snapshot() {
-                    let mut rng = match_.lock_rng();
-
-                    // rng1 is the local rng, it should not be synced.
-                    // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
-                    // rng2 is the shared rng, it must be synced.
-                    let (rng1_state, rng2_state) = pick_rng_states(&mut *rng, round.local_player_index() == 0);
-                    munger.set_rng1_state(core, rng1_state);
-                    munger.set_rng2_state(core, rng2_state);
-
                     if let Err(e) = match_.record_first_commit(round, core, &munger.tx_packet(core)) {
                         log::error!("record first commit failed: {e:#}");
                         match_.cancel();

@@ -153,10 +153,6 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 }
                 // Replay-mode-only first-commit hook; never fires in FF mode.
                 if state.needs_replay_first_commit() {
-                    if let Some(rng) = state.replay_rng_mut() {
-                        let rng2_state = generate_rng2_state(rng);
-                        munger.set_rng2_state(core, rng2_state);
-                    }
                     state.set_local_packet(munger.tx_packet(core).to_vec());
                     state.on_first_commit();
                 }

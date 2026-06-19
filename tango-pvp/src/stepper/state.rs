@@ -47,7 +47,7 @@ enum PlaybackPhase {
     /// animations) return early on this.
     AwaitingRoundStart,
     /// Round started; waiting for `current_tick` to reach the commit
-    /// frontier so the first-commit hook can seed RNG and anchor tick 0.
+    /// frontier so the first-commit hook can anchor tick 0.
     AwaitingFirstCommit,
     InRound,
     RoundEnding,
@@ -388,8 +388,8 @@ impl InnerState {
     /// True iff this is a replay whose current round is active but hasn't
     /// committed yet, and `current_tick` has reached the round's commit
     /// frontier. Per-game `main_read_joyflags` traps gate the first-commit
-    /// hook (game RNG seeding + [`Self::on_first_commit`]) on this. Always
-    /// false in Fastforwarder mode.
+    /// hook ([`Self::on_first_commit`]) on this. Always false in
+    /// Fastforwarder mode.
     pub fn needs_replay_first_commit(&self) -> bool {
         self.replay().is_some_and(|replay| {
             replay.phase == PlaybackPhase::AwaitingFirstCommit && self.current_tick == replay.commit_frontier
@@ -435,6 +435,17 @@ impl InnerState {
     /// Fastforwarder mode.
     pub fn current_round_index(&self) -> u32 {
         self.replay().map_or(0, |r| r.current_round_index)
+    }
+
+    /// True iff this is a replay still awaiting its very first round's start
+    /// (the initial `AwaitingRoundStart` phase, before `round_start_ret`).
+    /// This is the only round where the phase is `AwaitingRoundStart`, so the
+    /// bn1 `round_start_entry` RNG seed gates on it to fire once per match —
+    /// rounds 2+ inherit the game's carried-over rng. Always false in
+    /// Fastforwarder mode.
+    pub fn is_awaiting_round_start(&self) -> bool {
+        self.replay()
+            .is_some_and(|replay| replay.phase == PlaybackPhase::AwaitingRoundStart)
     }
 
     // ----- input pair queue -----

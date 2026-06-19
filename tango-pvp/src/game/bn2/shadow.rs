@@ -108,8 +108,6 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                 };
 
                 if !munger.is_linking(core) && !round.has_first_committed_state() {
-                    let shared_rng_state = generate_rng_state(&mut state.rng);
-                    munger.set_rng_state(core, shared_rng_state);
                     return;
                 }
 

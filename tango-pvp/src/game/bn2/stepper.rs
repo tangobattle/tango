@@ -159,14 +159,6 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
 
                 // Replay-mode-only first-commit hook; never fires in FF mode.
                 if state.needs_replay_first_commit() {
-                    // Mirror primary: re-seed rng_state at first commit. Primary
-                    // sets it once at comm_menu_init_ret (used during init) and
-                    // again here (used in-battle). Without this second seed in
-                    // replay, the in-battle shared rng diverges from recording.
-                    if let Some(rng) = state.replay_rng_mut() {
-                        let shared_rng_state = generate_rng_state(rng);
-                        munger.set_rng_state(core, shared_rng_state);
-                    }
                     // v0x18 replay stores joyflags only; seed local_packet
                     // from the game's tx_packet (set by the comm-menu bg-gen
                     // path) so the upcoming send/receive trap has a value to

@@ -128,10 +128,6 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                 }
 
                 if !round.has_first_committed_state() {
-                    // rng2 is the shared rng, it must be synced.
-                    let rng2_state = generate_rng2_state(&mut state.rng);
-                    munger.set_rng2_state(core, rng2_state);
-
                     round.set_first_committed(&munger.tx_packet(core));
                     // Halt run_loop at the first committed tick so it can't over-run it.
                     core.end_run_loop();

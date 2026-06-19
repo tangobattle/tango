@@ -26,6 +26,7 @@ pub struct ShadowSnapshot {
     pub rng: rand_pcg::Mcg128Xsl64,
     pub round: Option<Round>,
     pub result_is_in: bool,
+    pub rounds_started: u32,
 }
 
 use crate::input::{Input, PartialInput};
@@ -144,6 +145,7 @@ impl Shadow {
             rng: shared.rng.clone(),
             round: shared.round.clone(),
             result_is_in: shared.result_is_in,
+            rounds_started: shared.rounds_started,
         })
     }
 
@@ -153,6 +155,7 @@ impl Shadow {
         shared.rng = snapshot.rng.clone();
         shared.round = snapshot.round.clone();
         shared.result_is_in = snapshot.result_is_in;
+        shared.rounds_started = snapshot.rounds_started;
         // input_applied and error are per-run scratch; clear so the next
         // apply_input / round-end run doesn't pick up stale values that don't
         // correspond to the just-restored core state.

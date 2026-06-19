@@ -75,6 +75,13 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
             let stepper_state = stepper_state.clone();
             Box::new(move |core| {
                 let mut state = stepper_state.lock_inner();
+                // Seed once, on the match's first round (replay mode only);
+                // rounds 2+ inherit the carried-over rng_state. Mirrors the
+                // primary's `current_local_round_idx() == 0` gate so the
+                // replay rng advances in lockstep with the recording.
+                if !state.is_awaiting_round_start() {
+                    return;
+                }
                 let is_offerer = state.replay_is_offerer();
                 let Some(rng) = state.replay_rng_mut() else {
                     return;
