@@ -332,7 +332,7 @@ pub fn scan(path: &std::path::Path) -> std::io::Result<PatchMap> {
                     let Ok(revision) = captures[2].parse::<u8>() else {
                         continue;
                     };
-                    let Some(game) = tango_gamedb::find_by_rom_info(&rom_code, revision) else {
+                    let Some(game) = crate::game::find_by_rom_info(&rom_code, revision) else {
                         continue;
                     };
                     supported_games.insert(game);
@@ -344,7 +344,7 @@ pub fn scan(path: &std::path::Path) -> std::io::Result<PatchMap> {
                     let Ok(revision) = captures[2].parse::<u8>() else {
                         continue;
                     };
-                    let Some(game) = tango_gamedb::find_by_rom_info(&rom_code, revision) else {
+                    let Some(game) = crate::game::find_by_rom_info(&rom_code, revision) else {
                         continue;
                     };
                     let template_name = captures.get(3).map(|m| m.as_str().to_string()).unwrap_or_default();

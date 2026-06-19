@@ -8,7 +8,7 @@ use discord_ipc as rpc;
 
 pub use rpc::activity;
 
-use crate::i18n::{self, t_opt};
+use crate::i18n;
 
 const APP_ID: u64 = 974089681333534750;
 
@@ -18,16 +18,17 @@ pub struct GameInfo {
 }
 
 pub fn make_game_info(
-    game: &'static (dyn tango_gamedb::Game + Send + Sync),
+    game: crate::rom::GameRef,
     patch: Option<(&str, &semver::Version)>,
     language: &unic_langid::LanguageIdentifier,
 ) -> GameInfo {
-    // Play tab stores `&dyn tango_gamedb::Game` directly so we
+    // Play tab stores `&dyn tango_gamesupport::Game` directly so we
     // read `family_and_variant` straight off the gamedb trait.
     let family = game.family_and_variant().0.to_string();
-    // Dynamic lookup keyed by the gamedb family — bypass the
-    // literal-only t! macro and hit the Fluent loader directly.
-    let mut title = t_opt(language, &format!("game-{}", family)).unwrap_or_else(|| format!("⟦game-{family}⟧"));
+    // Game-name localization goes through the per-family path, not the
+    // app's general i18n loader.
+    let mut title =
+        crate::game::family_str(&family, language, "name").unwrap_or_else(|| format!("⟦game-{family}⟧"));
     if let Some((patch_name, patch_version)) = patch.as_ref() {
         title.push_str(&format!(" + {} v{}", patch_name, patch_version));
     }
@@ -77,7 +78,7 @@ pub fn make_looking_activity(
 fn party_id(ident: &crate::netplay::LinkIdent) -> Option<String> {
     match ident {
         crate::netplay::LinkIdent::Matchmaking(code) => Some(format!("party:{code}")),
-        crate::netplay::LinkIdent::Direct(_) => None,
+        crate::netplay::LinkIdent::Direct(_) | crate::netplay::LinkIdent::Lobby => None,
     }
 }
 

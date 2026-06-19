@@ -1,5 +1,5 @@
 use crate::app::Scanners;
-use crate::i18n::{t, t_opt};
+use crate::i18n::t;
 use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::widgets;
 use crate::{config, replays, save_view};
@@ -460,7 +460,7 @@ impl ReplaysState {
         let local_gi = md.local_side.as_ref().and_then(|s| s.game_info.as_ref());
         let game_label = local_gi
             .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
-            .and_then(|(family, variant)| tango_gamedb::find_by_family_and_variant(family, variant))
+            .and_then(|(family, variant)| crate::game::find_by_family_and_variant(family, variant))
             .map(|g| crate::game::short_name(lang, g))
             .or_else(|| local_gi.map(|g| g.rom_family.clone()))
             .unwrap_or_default();
@@ -627,7 +627,7 @@ fn replay_detail<'a>(
         .as_ref()
         .and_then(|s| s.game_info.as_ref())
         .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
-        .and_then(|(family, variant)| tango_gamedb::find_by_family_and_variant(family, variant))
+        .and_then(|(family, variant)| crate::game::find_by_family_and_variant(family, variant))
         .map(|g| scanners.roms.read().contains_key(&g))
         .unwrap_or(false);
     let md = &r.metadata;
@@ -676,7 +676,7 @@ fn replay_detail<'a>(
         .as_ref()
         .and_then(|s| s.game_info.as_ref())
         .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
-        .and_then(|(family, variant)| tango_gamedb::find_by_family_and_variant(family, variant))
+        .and_then(|(family, variant)| crate::game::find_by_family_and_variant(family, variant))
         .map(|g| crate::game::short_name(lang, g))
         .unwrap_or_else(|| "?".to_string());
     let title = format!("{game_short} @ {}", link_code_display(lang, &md.link_code));
@@ -874,7 +874,7 @@ fn replay_detail<'a>(
 /// how the lobby renders the game line. Falls back to "{family}
 /// v{variant}" for unrecognized families.
 fn family_display_name(lang: &LanguageIdentifier, family: &str, variant: u32) -> String {
-    t_opt(lang, &format!("game-{family}")).unwrap_or_else(|| format!("{family} v{variant}"))
+    crate::game::family_str(family, lang, "name").unwrap_or_else(|| format!("{family} v{variant}"))
 }
 
 /// `tick_count` → `"M:SS"` (or `"H:MM:SS"` past an hour). 60

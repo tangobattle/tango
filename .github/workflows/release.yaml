@@ -45,9 +45,14 @@ jobs:
       CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
     steps:
+      # `gamesupport` is a private submodule; the PAT authenticates its
+      # checkout (the public mgba / libdatachannel submodules don't need
+      # it). The token is used over HTTPS, so the submodule URLs are
+      # HTTPS — see .gitmodules.
       - uses: actions/checkout@v2
         with:
           submodules: recursive
+          token: ${{ secrets.GAMESUPPORT_REPO_PAT }}
 
       - run: git fetch --tags --force
 
@@ -96,9 +101,14 @@ jobs:
       CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
     steps:
+      # `gamesupport` is a private submodule; the PAT authenticates its
+      # checkout (the public mgba / libdatachannel submodules don't need
+      # it). The token is used over HTTPS, so the submodule URLs are
+      # HTTPS — see .gitmodules.
       - uses: actions/checkout@v2
         with:
           submodules: recursive
+          token: ${{ secrets.GAMESUPPORT_REPO_PAT }}
 
       - run: git fetch --tags --force
 
@@ -141,9 +151,14 @@ jobs:
       CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
     steps:
+      # `gamesupport` is a private submodule; the PAT authenticates its
+      # checkout (the public mgba / libdatachannel submodules don't need
+      # it). The token is used over HTTPS, so the submodule URLs are
+      # HTTPS — see .gitmodules.
       - uses: actions/checkout@v2
         with:
           submodules: recursive
+          token: ${{ secrets.GAMESUPPORT_REPO_PAT }}
 
       - run: git fetch --tags --force
 

@@ -59,14 +59,19 @@ impl MatchHandle {
     /// — the tick-invariant panics in the per-game traps would fire on
     /// state that's no longer expected to be consistent. Going inert at
     /// `cancel` instead of `clear` closes that window.
-    pub(crate) fn get(&self) -> Option<TrapMatch> {
-        self.0.read().unwrap().clone().filter(|m| !m.is_cancelled()).map(TrapMatch)
+    pub fn get(&self) -> Option<TrapMatch> {
+        self.0
+            .read()
+            .unwrap()
+            .clone()
+            .filter(|m| !m.is_cancelled())
+            .map(TrapMatch)
     }
 
     /// True iff a match is installed (and not cancelled — see
     /// [`get`](Self::get)). Cheaper than `get` for the per-frame traps that
     /// only test presence (no `Arc` clone+drop).
-    pub(crate) fn is_set(&self) -> bool {
+    pub fn is_set(&self) -> bool {
         self.0.read().unwrap().as_ref().is_some_and(|m| !m.is_cancelled())
     }
 
@@ -90,39 +95,32 @@ impl MatchHandle {
 /// `Match::new`, ...). Only [`MatchHandle::get`] — itself crate-private —
 /// produces one, so the host crate can't reach this surface at all, and
 /// trap code can't reach the host's.
-pub(crate) struct TrapMatch(std::sync::Arc<crate::battle::Match>);
+pub struct TrapMatch(std::sync::Arc<crate::battle::Match>);
 
 impl TrapMatch {
-    pub(crate) fn lock_round_state(&self) -> std::sync::MutexGuard<'_, Option<crate::battle::Round>> {
+    pub fn lock_round_state(&self) -> std::sync::MutexGuard<'_, Option<crate::battle::Round>> {
         self.0.lock_round_state()
     }
 
-    pub(crate) fn lock_rng(&self) -> std::sync::MutexGuard<'_, rand_pcg::Mcg128Xsl64> {
+    pub fn lock_rng(&self) -> std::sync::MutexGuard<'_, rand_pcg::Mcg128Xsl64> {
         self.0.lock_rng()
     }
 
     /// The match's outbound network channel, for
     /// [`Round::add_local_input_and_fastforward`](crate::battle::Round::add_local_input_and_fastforward).
-    pub(crate) fn sender(&self) -> &crate::battle::SenderMutex {
+    pub fn sender(&self) -> &crate::battle::SenderMutex {
         self.0.sender()
     }
 
-    pub(crate) fn match_type(&self) -> (u8, u8) {
+    pub fn match_type(&self) -> (u8, u8) {
         self.0.match_type()
     }
 
-    pub(crate) fn is_offerer(&self) -> bool {
+    pub fn is_offerer(&self) -> bool {
         self.0.is_offerer()
     }
 
-    /// How many rounds the live match has locally ended — 0 until the first
-    /// round closes. Per-game traps that seed RNG once at match start (bn1)
-    /// gate on this being 0 at `round_start_entry`.
-    pub(crate) fn current_local_round_idx(&self) -> u32 {
-        self.0.current_local_round_idx()
-    }
-
-    pub(crate) fn record_first_commit(
+    pub fn record_first_commit(
         &self,
         round: &mut crate::battle::Round,
         core: mgba::core::CoreMutRef,
@@ -131,86 +129,41 @@ impl TrapMatch {
         self.0.record_first_commit(round, core, first_packet)
     }
 
-    pub(crate) fn end_round_or_cancel(&self) {
+    pub fn end_round_or_cancel(&self) {
         self.0.end_round_or_cancel()
     }
 
-    pub(crate) fn start_round_or_cancel(&self) {
+    pub fn start_round_or_cancel(&self) {
         self.0.start_round_or_cancel()
     }
 
-    pub(crate) fn cancel(&self) {
+    pub fn cancel(&self) {
         self.0.cancel()
     }
 }
 
-pub trait Hooks {
-    fn patch(&self, _core: mgba::core::CoreMutRef) {}
-
-    fn common_traps(&self) -> Vec<Trap>;
-
-    fn stepper_traps(&self, stepper_state: crate::stepper::State) -> Vec<Trap>;
-
-    fn shadow_traps(&self, shadow_state: crate::shadow::State) -> Vec<Trap>;
-
-    /// `disable_bgm` arms the battle-start play-music trap (same one the
-    /// stepper installs, switched by its stepper state instead): when set,
-    /// battle BGM never starts; sound effects are unaffected.
-    fn primary_traps(
-        &self,
-        joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
-        match_: MatchHandle,
-        completion_token: CompletionToken,
-        disable_bgm: bool,
-    ) -> Vec<Trap>;
-
-    fn prepare_for_fastforward(&self, core: mgba::core::CoreMutRef);
-
-    /// Prime `core`'s local-joyflags register (r4) from `joyflags` after a
-    /// fastforwarder snapshot is loaded into the live primary core. The snapshot
-    /// is captured poised at the start of its tick with r4 left unset (the
-    /// boundary input is no longer baked in), so the live core — which resumes
-    /// straight from the captured PC, past `main_read_joyflags` — must inject the
-    /// displayed tick's local joyflags itself before stepping. (A fastforwarder
-    /// run doesn't need this: `prepare_for_fastforward` rewinds its PC to
-    /// `main_read_joyflags`, which re-primes r4 from the input window.)
-    fn inject_joyflags_on_primary_snapshot(&self, core: mgba::core::CoreMutRef, joyflags: u16);
+/// The live-primary install parameters, bundled like
+/// [`shadow::State`](crate::shadow::State) /
+/// [`stepper::State`](crate::stepper::State): the shared local-joyflags cell the
+/// primary trap reads each frame, the [`MatchHandle`] the traps drive the
+/// running match through, the [`CompletionToken`] they flip when the match
+/// completes, and whether battle BGM is muted.
+#[derive(Clone)]
+pub struct PrimaryState {
+    pub joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
+    pub match_: MatchHandle,
+    pub completion_token: CompletionToken,
+    pub disable_bgm: bool,
 }
 
-pub fn hooks_for_gamedb_entry(
-    entry: &(dyn tango_gamedb::Game + Send + Sync),
-) -> Option<&'static (dyn Hooks + Send + Sync)> {
-    Some(match entry.rom_code_and_revision() {
-        (b"AREJ", 0x00) => &crate::game::bn1::AREJ_00,
-        (b"AREE", 0x00) => &crate::game::bn1::AREE_00,
+pub trait Hooks {
+    fn install_on_primary(&self, core: &mut mgba::core::Core, primary_state: PrimaryState);
 
-        (b"AE2J", 0x00) => &crate::game::bn2::AE2J_00_AC,
-        (b"AE2E", 0x00) => &crate::game::bn2::AE2E_00,
+    fn install_on_shadow(&self, core: &mut mgba::core::Core, shadow_state: crate::shadow::State);
 
-        (b"A6BJ", 0x01) => &crate::game::bn3::A6BJ_01,
-        (b"A3XJ", 0x01) => &crate::game::bn3::A3XJ_01,
-        (b"A6BE", 0x00) => &crate::game::bn3::A6BE_00,
-        (b"A3XE", 0x00) => &crate::game::bn3::A3XE_00,
+    fn install_on_stepper(&self, core: &mut mgba::core::Core, stepper_state: crate::stepper::State);
 
-        (b"B4WJ", 0x01) => &crate::game::bn4::B4WJ_01,
-        (b"B4BJ", 0x01) => &crate::game::bn4::B4BJ_01,
-        (b"B4WE", 0x00) => &crate::game::bn4::B4WE_00,
-        (b"B4BE", 0x00) => &crate::game::bn4::B4BE_00,
+    fn prepare_for_next_input(&self, core: mgba::core::CoreMutRef);
 
-        (b"BRBJ", 0x00) => &crate::game::bn5::BRBJ_00,
-        (b"BRKJ", 0x00) => &crate::game::bn5::BRKJ_00,
-        (b"BRBE", 0x00) => &crate::game::bn5::BRBE_00,
-        (b"BRKE", 0x00) => &crate::game::bn5::BRKE_00,
-
-        (b"BR5J", 0x00) => &crate::game::bn6::BR5J_00,
-        (b"BR6J", 0x00) => &crate::game::bn6::BR6J_00,
-        (b"BR5E", 0x00) => &crate::game::bn6::BR5E_00,
-        (b"BR6E", 0x00) => &crate::game::bn6::BR6E_00,
-
-        (b"BR4J", 0x00) => &crate::game::exe45::BR4J_00,
-
-        _ => {
-            return None;
-        }
-    })
+    fn inject_joyflags_on_primary(&self, core: mgba::core::CoreMutRef, joyflags: u16);
 }

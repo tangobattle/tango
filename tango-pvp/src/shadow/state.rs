@@ -9,26 +9,21 @@ use super::round::Round;
 /// `'static` and need shared ownership of the state they poke. Traps that
 /// touch several fields take the lock once and split-borrow
 /// (`let state = &mut *state;`).
-pub(crate) struct Shared {
+pub struct Shared {
     /// The in-progress shadow round, if any. Allocated by
     /// [`State::start_round`], dropped by [`State::end_round`].
-    pub(crate) round: Option<Round>,
+    pub round: Option<Round>,
     /// Set when the game's round-end traps report a result. (BN3's jump
     /// table trap fudges link input once this is in.)
-    pub(crate) result_is_in: bool,
-    pub(crate) rng: rand_pcg::Mcg128Xsl64,
-    /// How many rounds this shadow has started (incremented by
-    /// [`State::start_round`]). Per-game traps that seed RNG once at match
-    /// start (bn1) gate on this being 0 at `round_start_entry`, which fires
-    /// before `start_round` bumps it.
-    pub(crate) rounds_started: u32,
+    pub result_is_in: bool,
+    pub rng: rand_pcg::Mcg128Xsl64,
     /// Signal that the pending shadow input has been consumed and the core
     /// has run forward to the next tick's `main_read_joyflags`, where the
     /// per-game trap raises this and calls `end_run_loop` (which parks the
     /// core at that tick boundary).
     /// [`Shadow::apply_input`](super::Shadow::apply_input) polls it via
     /// [`State::take_input_applied`] to know its run is done.
-    pub(crate) input_applied: bool,
+    pub input_applied: bool,
 }
 
 pub(super) struct InnerState {
@@ -58,7 +53,6 @@ impl State {
                 round: None,
                 result_is_in: false,
                 rng,
-                rounds_started: 0,
                 input_applied: false,
             }),
             error: Mutex::new(None),
@@ -77,7 +71,7 @@ impl State {
         self.0.local_player_index
     }
 
-    pub(crate) fn lock(&self) -> MutexGuard<'_, Shared> {
+    pub fn lock(&self) -> MutexGuard<'_, Shared> {
         self.0.shared.lock().unwrap()
     }
 
@@ -91,7 +85,6 @@ impl State {
         let mut shared = self.lock();
         shared.round = Some(Round::new(local_player_index));
         shared.result_is_in = false;
-        shared.rounds_started += 1;
     }
 
     pub fn end_round(&self) {
@@ -109,7 +102,7 @@ impl State {
     /// [`super::Shadow::apply_input`] polls this to know its run is done —
     /// no snapshot needed, since `end_run_loop` already parked the core at
     /// the tick boundary.
-    pub(crate) fn take_input_applied(&self) -> bool {
+    pub fn take_input_applied(&self) -> bool {
         std::mem::take(&mut self.lock().input_applied)
     }
 }

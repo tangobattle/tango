@@ -44,7 +44,7 @@ pub fn scan_saves(path: &std::path::Path) -> std::collections::HashMap<GameRef, 
         };
 
         let mut matched = false;
-        for game in tango_gamedb::GAMES.iter().copied() {
+        for game in crate::game::GAMES.iter().copied() {
             match game.parse_save(&buf) {
                 Ok(save) => {
                     log::info!("save scan: {}: {:?}", p.display(), game.family_and_variant());

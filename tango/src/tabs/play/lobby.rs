@@ -15,7 +15,7 @@
 
 use crate::app::Scanners;
 use crate::game;
-use crate::i18n::{t, t_opt};
+use crate::i18n::t;
 use crate::net::protocol::Settings;
 use crate::netplay::{self, Phase};
 use crate::rom;
@@ -228,6 +228,7 @@ impl<'a> Lobby<'a> {
                         t!(lang, "lobby-direct-connect", target = addr.clone()),
                         None,
                     ),
+                    LinkIdent::Lobby => (Icon::Link, t!(lang, "lobby-connecting"), None),
                 }
             }
             _ => return None,
@@ -829,9 +830,8 @@ fn side_card_subline(lang: &LanguageIdentifier, settings: &Settings) -> String {
         .as_ref()
         .map(|gi| {
             let family = gi.family_and_variant.0.as_str();
-            // Dynamic key (one per gamedb family) — bypass the
-            // literal-only macro and hit the Fluent loader directly.
-            t_opt(lang, &format!("game-{family}"))
+            // Game-name localization goes through the per-family path.
+            game::family_str(family, lang, "name")
                 .unwrap_or_else(|| format!("{} v{}", gi.family_and_variant.0, gi.family_and_variant.1))
         })
         .unwrap_or_else(|| t!(lang, "lobby-no-game"));

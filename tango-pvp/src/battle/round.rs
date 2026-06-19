@@ -41,7 +41,7 @@ pub struct Round {
     local_player_index: u8,
     /// Per-game hooks for the running ROM. Held so the live render path can
     /// prime the loaded snapshot's local-joyflags register (r4) via
-    /// [`inject_joyflags_on_primary_snapshot`](crate::hooks::Hooks::inject_joyflags_on_primary_snapshot).
+    /// [`inject_joyflags_on_primary`](crate::hooks::Hooks::inject_joyflags_on_primary).
     hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     /// This side's live frame delay, owned by `PvpSession` and adjustable via
     /// the footer slider. Re-read into the engine each frame so a mid-round
@@ -139,7 +139,7 @@ impl Round {
         self.session.as_ref().map(|s| &s.settled_state().shadow_snapshot)
     }
 
-    pub(crate) fn local_player_index(&self) -> u8 {
+    pub fn local_player_index(&self) -> u8 {
         self.local_player_index
     }
 
@@ -152,13 +152,13 @@ impl Round {
     /// Tick of the last `present_state` loaded into the live core (0 before any
     /// load). Per-game `round_post_increment_tick` traps compare the game's
     /// tick against this.
-    pub(crate) fn last_loaded_tick(&self) -> u32 {
+    pub fn last_loaded_tick(&self) -> u32 {
         self.last_loaded_tick
     }
 
     /// Whether the round has reached its first commit and the rollback session
     /// is live. Until then the round is armed but not yet running.
-    pub(crate) fn has_settled_snapshot(&self) -> bool {
+    pub fn has_settled_snapshot(&self) -> bool {
         self.session.is_some()
     }
 
@@ -180,7 +180,7 @@ impl Round {
     /// engine's frame advantage attached — the engine itself never sends),
     /// then advances the rollback engine one displayed frame, loading the
     /// chosen state into `core`.
-    pub(crate) async fn add_local_input_and_fastforward(
+    pub async fn add_local_input_and_fastforward(
         &mut self,
         sender: &super::SenderMutex,
         mut core: mgba::core::CoreMutRef<'_>,
@@ -240,7 +240,7 @@ impl Round {
         // frame instead of baking it in. Prime it now so the live core resumes
         // the displayed tick with the right local input.
         let (local, _) = frame.input;
-        self.hooks.inject_joyflags_on_primary_snapshot(core, local.joyflags);
+        self.hooks.inject_joyflags_on_primary(core, local.joyflags);
         self.last_loaded_tick = frame.tick;
         // `frame`'s borrow of `session` ends here, freeing it to be re-queried.
 

@@ -13,6 +13,7 @@ mod identity;
 mod input;
 mod input_capture;
 mod loadout;
+mod lobby;
 mod net;
 mod netplay;
 mod patch;

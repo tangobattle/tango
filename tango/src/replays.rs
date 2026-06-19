@@ -22,6 +22,19 @@ pub struct ReplayStats {
 
 pub type Scanner = scanner::Scanner<Vec<ScannedReplay>>;
 
+/// Whether the replay's local-side game is registered with the app. A
+/// replay with no recorded local game info can't be filtered on, so it's
+/// kept; one that names a game we don't have compiled in is hidden.
+fn local_game_registered(metadata: &tango_pvp::replay::Metadata) -> bool {
+    match metadata.local_side.as_ref().and_then(|s| s.game_info.as_ref()) {
+        None => true,
+        Some(gi) => u8::try_from(gi.rom_variant)
+            .ok()
+            .and_then(|variant| crate::game::find_by_family_and_variant(&gi.rom_family, variant))
+            .is_some(),
+    }
+}
+
 /// Walks `path` and reads the metadata header from each file,
 /// skipping anything that doesn't parse. The heavier per-replay
 /// stats (length, round count, completion) are intentionally NOT
@@ -55,6 +68,12 @@ pub fn scan_replays(path: &std::path::Path) -> Vec<ScannedReplay> {
             Ok(m) => m,
             Err(_) => continue,
         };
+        // Hide replays whose game isn't registered (its
+        // `gamesupport-<game>` feature is disabled / its crate isn't
+        // compiled in) — there's no way to view or export them.
+        if !local_game_registered(&metadata) {
+            continue;
+        }
         out.push(ScannedReplay {
             path: p.to_path_buf(),
             metadata,

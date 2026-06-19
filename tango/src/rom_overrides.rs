@@ -1,7 +1,7 @@
 //! Patch-driven overrides for chip / navicust / patch-card names + effects.
 //! Port of the relevant bits of `tango/src/rom.rs`. The wrapper layers on
 //! top of any `tango_dataview::rom::Assets` impl (i.e. the per-game
-//! assets returned by `tango_gamedb::Game::load_rom_assets`).
+//! assets returned by `tango_gamesupport::Game::load_rom_assets`).
 
 use serde::Deserialize;
 

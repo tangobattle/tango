@@ -20,6 +20,7 @@ struct ThreadImpl {
     _logger: Box<super::log::Logger>,
     raw: mgba_sys::mCoreThread,
     frame_callback: Option<Box<dyn Fn(core::CoreMutRef, &[u8], InThreadHandle) + Send + 'static>>,
+    start_callback: Option<Box<dyn FnOnce() + Send + 'static>>,
     current_callback: std::cell::RefCell<Option<Box<dyn Fn(crate::core::CoreMutRef<'_>) + Send + Sync>>>,
 }
 
@@ -39,6 +40,16 @@ unsafe extern "C" fn c_frame_callback(ptr: *mut mgba_sys::mCoreThread) {
                 _lifetime: std::marker::PhantomData::<&'_ ()>,
             },
         );
+    }
+}
+
+// Fires once on the emulator thread, before its run loop, so a caller can do
+// per-thread setup (e.g. entering an async runtime so the per-game traps that
+// run on this thread can reach it).
+unsafe extern "C" fn c_start_callback(ptr: *mut mgba_sys::mCoreThread) {
+    let t = &mut *((*ptr).userData as *mut ThreadImpl);
+    if let Some(cb) = t.start_callback.take() {
+        cb();
     }
 }
 
@@ -88,6 +99,7 @@ impl Thread {
             core,
             raw: unsafe { std::mem::zeroed::<mgba_sys::mCoreThread>() },
             frame_callback: None,
+            start_callback: None,
             current_callback: std::cell::RefCell::new(None),
             _logger: logger,
         });
@@ -95,11 +107,18 @@ impl Thread {
         t.raw.logger.logger = logger_ptr as *mut _;
         t.raw.userData = &mut *t as *mut _ as *mut std::os::raw::c_void;
         t.raw.frameCallback = Some(c_frame_callback);
+        t.raw.startCallback = Some(c_start_callback);
         Thread(std::sync::Arc::new(std::sync::Mutex::new(t)))
     }
 
     pub fn set_frame_callback(&self, f: impl Fn(core::CoreMutRef, &[u8], InThreadHandle) + Send + 'static) {
         self.0.lock().unwrap().frame_callback = Some(Box::new(f));
+    }
+
+    /// Set a callback to run once on the emulator thread before its run loop
+    /// starts. Must be set before [`start`](Self::start).
+    pub fn set_start_callback(&self, f: impl FnOnce() + Send + 'static) {
+        self.0.lock().unwrap().start_callback = Some(Box::new(f));
     }
 
     pub fn handle(&self) -> Handle {

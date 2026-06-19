@@ -144,7 +144,6 @@ impl ReplaySession {
             .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()))?;
 
         let hooks = game.hooks;
-        hooks.patch(core.as_mut());
 
         let completion_token = tango_pvp::hooks::CompletionToken::new();
         if replay.rounds.is_empty() {
@@ -163,9 +162,7 @@ impl ReplaySession {
             }),
         )?;
 
-        let mut traps = hooks.common_traps();
-        traps.extend(hooks.stepper_traps(stepper_state.clone()));
-        core.set_traps(traps);
+        hooks.install_on_stepper(&mut core, stepper_state.clone());
 
         let thread = mgba::thread::Thread::new(core);
         // Wipe the shared framebuffer so the previous session's

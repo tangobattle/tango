@@ -51,6 +51,9 @@ impl App {
                         identity: self.identity.clone(),
                     },
                     netplay::LinkIdent::Direct(role) => netplay::Message::ConnectDirect { role },
+                    // Lobby matches are started from the roster sidebar
+                    // (handle_lobby_event), never the link-code Connect button.
+                    netplay::LinkIdent::Lobby => return iced::Task::none(),
                 };
                 let task = self.netplay.update(msg).map(Message::Netplay);
                 // Connect wipes lobby state — re-apply the
@@ -477,12 +480,11 @@ impl App {
                     .and_then(|s| s.game_info.as_ref())
                     .ok_or_else(|| anyhow::anyhow!("replay side missing game info"))?;
                 let variant = u8::try_from(gi.rom_variant)?;
-                let entry = tango_gamedb::find_by_family_and_variant(&gi.rom_family, variant)
+                let entry = crate::game::find_by_family_and_variant(&gi.rom_family, variant)
                     .ok_or_else(|| {
                         anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, variant)
                     })?;
-                let hooks = tango_pvp::hooks::hooks_for_gamedb_entry(entry)
-                    .ok_or_else(|| anyhow::anyhow!("no hooks for {:?}", entry.family_and_variant()))?;
+                let hooks = entry.hooks;
                 let rom = self
                     .scanners
                     .roms

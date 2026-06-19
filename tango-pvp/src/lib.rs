@@ -18,18 +18,20 @@
 //!   skip past round boundaries.
 //!
 //! - [`stepper`]: the per-frame battle simulator that replays inputs through the
-//!   per-game `stepper_traps`. A single re-sim core (`Stepper`) advances one tick
-//!   at a time, capturing a snapshot each tick; it resumes forward in steady
-//!   state and only reloads (`restore`) when the rollback engine rewinds to
-//!   re-simulate a mispredicted tail. `State` drives replay-mode playback from
-//!   boot. All share `InnerState` and the `stepper_traps` set.
+//!   per-game stepper traps (`install_on_stepper`). A single re-sim core
+//!   (`Stepper`) advances one tick at a time, capturing a snapshot each tick; it
+//!   resumes forward in steady state and only reloads (`restore`) when the
+//!   rollback engine rewinds to re-simulate a mispredicted tail. `State` drives
+//!   replay-mode playback from boot. All share `InnerState` and the stepper trap
+//!   set.
 //!
 //! - [`hooks`]: the trap framework. ROM PCs are registered with closures
 //!   (`Trap`) that fire on hit.
 //!
-//! - [`game`]: per-game (bn1..bn6, exe45) trap registrations. Each game has
-//!   `common`/`primary`/`shadow`/`stepper` submodules that supply the trap
-//!   sets the framework needs.
+//! Per-game trap registrations (bn1..bn6, exe45) live outside this crate,
+//! in the `tango-gamesupport-<game>::pvp_hooks` modules. Each game supplies
+//! `common`/`primary`/`shadow`/`stepper` trap sets via the [`hooks::Hooks`]
+//! trait this crate defines.
 //!
 //! - [`input`]: input plumbing. Confirmed input pairs are plain
 //!   `(local, remote)` tuples — both same-typed (two
@@ -62,7 +64,6 @@
 
 pub mod battle;
 pub mod eval;
-pub mod game;
 pub mod hooks;
 pub mod input;
 pub mod net;

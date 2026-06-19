@@ -54,6 +54,7 @@ rennet = { path = "../rennet" }
 tango-pvp = { path = "../tango-pvp" }
 tango-filesync = { path = "../tango-filesync" }
 tango-signaling = { path = "../tango-signaling" }
+tango-lobby = { path = "../tango-lobby" }
 datachannel-wrapper = { path = "../datachannel-wrapper" }
 bincode = "1"
 async-trait = "0.1"
@@ -101,7 +102,14 @@ tokio-util = { version = "0.7", features = ["io", "rt"] }
 futures = "0.3"
 fluent-templates = "0.14"
 unic-langid = { version = "0.9", features = ["likelysubtags"] }
-tango-gamedb = { path = "../tango-gamedb" }
+tango-gamesupport = { path = "../tango-gamesupport" }
+tango-gamesupport-bn1 = { path = "../gamesupport/tango-gamesupport-bn1", optional = true }
+tango-gamesupport-bn2 = { path = "../gamesupport/tango-gamesupport-bn2", optional = true }
+tango-gamesupport-bn3 = { path = "../gamesupport/tango-gamesupport-bn3", optional = true }
+tango-gamesupport-bn4 = { path = "../gamesupport/tango-gamesupport-bn4", optional = true }
+tango-gamesupport-bn5 = { path = "../gamesupport/tango-gamesupport-bn5", optional = true }
+tango-gamesupport-bn6 = { path = "../gamesupport/tango-gamesupport-bn6", optional = true }
+tango-gamesupport-exe45 = { path = "../gamesupport/tango-gamesupport-exe45", optional = true }
 tango-dataview = { path = "../tango-dataview" }
 walkdir = "2"
 directories-next = "2"
@@ -123,6 +131,29 @@ anyhow = "1"
 crash-handler = "0.6"
 indexmap = "2"
 clap = { version = "4", features = ["derive"] }
+
+[features]
+# Each game's support (dataview + PvP hooks + saves + logos) is an
+# optional dependency gated behind its own feature. No games are
+# compiled in by default; `gamesupport-all` enables every game. Shipped
+# builds pass `--features gamesupport-all`.
+default = []
+gamesupport-bn1 = ["dep:tango-gamesupport-bn1"]
+gamesupport-bn2 = ["dep:tango-gamesupport-bn2"]
+gamesupport-bn3 = ["dep:tango-gamesupport-bn3"]
+gamesupport-bn4 = ["dep:tango-gamesupport-bn4"]
+gamesupport-bn5 = ["dep:tango-gamesupport-bn5"]
+gamesupport-bn6 = ["dep:tango-gamesupport-bn6"]
+gamesupport-exe45 = ["dep:tango-gamesupport-exe45"]
+gamesupport-all = [
+    "gamesupport-bn1",
+    "gamesupport-bn2",
+    "gamesupport-bn3",
+    "gamesupport-bn4",
+    "gamesupport-bn5",
+    "gamesupport-bn6",
+    "gamesupport-exe45",
+]
 
 [lints]
 workspace = true

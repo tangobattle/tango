@@ -21,6 +21,7 @@ pub mod channel;
 pub mod control;
 pub mod data;
 pub mod direct_rtc;
+pub mod lobby_rtc;
 
 pub use control::protocol;
 pub use control::{negotiate, NegotiationError, PacketSink, PacketStream, Receiver, Sender};

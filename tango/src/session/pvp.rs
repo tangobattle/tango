@@ -177,12 +177,10 @@ impl PvpSession {
         // by the Shadow constructor (its primary trap needs
         // remote_save.as_raw_wram()).
         let remote_save = remote_game
-            .gamedb_entry
             .parse_save(&pre_match.remote_save_data)
             .map_err(|e| anyhow::anyhow!("parse remote save: {e:?}"))?;
         // Local save is whatever we committed; same path.
         let local_save = local_game
-            .gamedb_entry
             .parse_save(&pre_match.local_save_data)
             .map_err(|e| anyhow::anyhow!("parse local save: {e:?}"))?;
 
@@ -197,43 +195,29 @@ impl PvpSession {
 
         let joyflags = Arc::new(AtomicU32::new(0));
         let local_hooks = local_game.hooks;
-        local_hooks.patch(core.as_mut());
 
         let match_handle = tango_pvp::hooks::MatchHandle::new();
         let completion_token = tango_pvp::hooks::CompletionToken::new();
 
-        // Hooks talk to the live Match via these traps —
-        // common_traps + primary_traps wired with joyflags +
-        // match_handle + completion_token. Each trap closure is
-        // called from the mgba CPU thread, so we wrap it in a
-        // tokio Handle::enter so the trap can spawn / await
-        // (start_round / record_first_commit / end_round all
-        // need an async runtime to do their work).
-        let mut traps = local_hooks.common_traps();
-        traps.extend(local_hooks.primary_traps(
-            joyflags.clone(),
-            match_handle.clone(),
-            completion_token.clone(),
-            disable_bgm,
-        ));
-        let rt_handle = tokio::runtime::Handle::current();
-        core.set_traps(
-            traps
-                .into_iter()
-                .map(|(addr, f)| {
-                    let rt = rt_handle.clone();
-                    (
-                        addr,
-                        Box::new(move |core: mgba::core::CoreMutRef<'_>| {
-                            let _guard = rt.enter();
-                            f(core)
-                        }) as Box<dyn Fn(mgba::core::CoreMutRef<'_>)>,
-                    )
-                })
-                .collect(),
+        // Install the live-primary trap set (common + primary), wired to the
+        // running Match through the shared joyflags / handle / completion token.
+        local_hooks.install_on_primary(
+            &mut core,
+            tango_pvp::hooks::PrimaryState {
+                joyflags: joyflags.clone(),
+                match_: match_handle.clone(),
+                completion_token: completion_token.clone(),
+                disable_bgm,
+            },
         );
 
         let thread = mgba::thread::Thread::new(core);
+        // Those primary traps call `tango_pvp::sync::block_on` to drive async
+        // Match work (start_round / record_first_commit / end_round), but they
+        // run on this mgba CPU thread, which has no ambient tokio runtime. Enter
+        // the current runtime on that thread at start so `Handle::current()`
+        // resolves there for the thread's lifetime.
+        thread.set_start_callback(tango_pvp::sync::enter_runtime_on_emulator_thread());
 
         // RNG seeded from the XOR'd nonces. Match::new clones the
         // Mcg into its own state; we also need a clone for the

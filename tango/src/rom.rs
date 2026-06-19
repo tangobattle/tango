@@ -2,7 +2,7 @@ use crate::bnlc;
 use crate::scanner;
 use std::io::Read;
 
-pub type GameRef = &'static (dyn tango_gamedb::Game + Send + Sync);
+pub type GameRef = tango_gamesupport::GameRef;
 pub type Scanner = scanner::Scanner<std::collections::HashMap<GameRef, Vec<u8>>>;
 
 /// Discover ROMs from both the local data path and any Steam-installed
@@ -38,7 +38,7 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<GameR
                 continue;
             }
         };
-        let Some(game) = tango_gamedb::detect(&buf) else {
+        let Some(game) = crate::game::detect(&buf) else {
             log::debug!("rom scan: {}: not a recognized rom", path.display());
             continue;
         };
@@ -100,7 +100,7 @@ fn scan_bnlc_rom_archive(path: &std::path::Path) -> std::collections::HashMap<Ga
             log::warn!("bnlc: {}/{}: {e}", path.display(), entry_path.display());
             continue;
         }
-        let Some(game) = tango_gamedb::detect(&rom) else {
+        let Some(game) = crate::game::detect(&rom) else {
             log::warn!("bnlc: {}/{}: not recognized", path.display(), entry_path.display());
             continue;
         };

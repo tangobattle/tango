@@ -19,7 +19,6 @@ serde_repr = "0.1"
 getgud = { path = "../getgud" }
 shell-words = "1"
 tango-dataview = { path = "../tango-dataview" }
-tango-gamedb = { path = "../tango-gamedb" }
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
@@ -27,16 +26,6 @@ zstd = "0.11"
 
 [build-dependencies]
 prost-build = "0.14"
-
-[dev-dependencies]
-sha2 = "0.10"
-
-# The `golden.rs -> golden/mod.rs` mod-convention refactor orphaned this target
-# (cargo only auto-discovers `tests/*.rs` or `tests/<dir>/main.rs`). Name it
-# explicitly so the determinism suite stays runnable.
-[[test]]
-name = "golden"
-path = "tests/golden/mod.rs"
 
 [lints]
 workspace = true

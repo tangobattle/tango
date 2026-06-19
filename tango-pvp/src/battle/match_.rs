@@ -143,7 +143,7 @@ pub struct Match {
     frame_delay: Arc<AtomicU32>,
     /// Whether this side mutes battle BGM. Reaches the game through the
     /// battle-start play-music traps on both cores that execute ticks: the
-    /// live primary's (via `primary_traps`) and each round's re-sim
+    /// live primary's (via `install_on_primary`) and each round's re-sim
     /// [`Stepper`](crate::stepper::Stepper)'s — the stepper's matters most,
     /// since its snapshots (carrying the sound driver's RAM) are loaded into
     /// the live core every frame. Local-only, like `frame_delay`.

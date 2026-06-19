@@ -26,7 +26,6 @@ pub struct ShadowSnapshot {
     pub rng: rand_pcg::Mcg128Xsl64,
     pub round: Option<Round>,
     pub result_is_in: bool,
-    pub rounds_started: u32,
 }
 
 use crate::input::{Input, PartialInput};
@@ -114,11 +113,7 @@ impl Shadow {
 
         let state = State::new(match_type, is_offerer, local_player_index, rng);
 
-        hooks.patch(core.as_mut());
-
-        let mut traps = hooks.common_traps();
-        traps.extend(hooks.shadow_traps(state.clone()));
-        core.set_traps(traps);
+        hooks.install_on_shadow(&mut core, state.clone());
         core.as_mut().reset();
         // The shadow only derives the remote side's packets (game logic); its
         // pixels are never shown, so skip rasterization. Set after reset() (which
@@ -145,7 +140,6 @@ impl Shadow {
             rng: shared.rng.clone(),
             round: shared.round.clone(),
             result_is_in: shared.result_is_in,
-            rounds_started: shared.rounds_started,
         })
     }
 
@@ -155,7 +149,6 @@ impl Shadow {
         shared.rng = snapshot.rng.clone();
         shared.round = snapshot.round.clone();
         shared.result_is_in = snapshot.result_is_in;
-        shared.rounds_started = snapshot.rounds_started;
         // input_applied and error are per-run scratch; clear so the next
         // apply_input / round-end run doesn't pick up stale values that don't
         // correspond to the just-restored core state.
@@ -204,7 +197,7 @@ impl Shadow {
     /// nothing to load back.
     pub fn advance_until_round_end(&mut self) -> anyhow::Result<()> {
         log::info!("advancing shadow until round end");
-        self.hooks.prepare_for_fastforward(self.core.as_mut());
+        self.hooks.prepare_for_next_input(self.core.as_mut());
         self.run_core_until(|state| state.lock().round.is_none())
     }
 
@@ -260,7 +253,7 @@ impl Shadow {
     /// input queued by [`begin_apply_input`](Self::begin_apply_input) was
     /// applied, parking the core at the next tick's boundary.
     pub fn finish_apply_input(&mut self) -> anyhow::Result<()> {
-        self.hooks.prepare_for_fastforward(self.core.as_mut());
+        self.hooks.prepare_for_next_input(self.core.as_mut());
         self.run_core_until(|state| state.take_input_applied())
     }
 }

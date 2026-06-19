@@ -1000,19 +1000,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "console"
-version = "0.15.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "054ccb5b10f9f2cbf51eb355ca1d05c2d279ce1804688d0db74b4733a5aeafd8"
-dependencies = [
- "encode_unicode",
- "libc",
- "once_cell",
- "unicode-width",
- "windows-sys 0.59.0",
-]
-
-[[package]]
 name = "constant_time_eq"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1439,12 +1426,6 @@ dependencies = [
  "vswhom",
  "winreg 0.10.1",
 ]
-
-[[package]]
-name = "encode_unicode"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
 name = "encoding_rs"
@@ -2739,19 +2720,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "indicatif"
-version = "0.17.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "183b3088984b400f4cfac3620d5e076c84da5364016b4f49473de574b2586235"
-dependencies = [
- "console",
- "number_prefix",
- "portable-atomic",
- "unicode-width",
- "web-time",
-]
-
-[[package]]
 name = "inout"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3652,12 +3620,6 @@ dependencies = [
  "quote",
  "syn",
 ]
-
-[[package]]
-name = "number_prefix"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3"
 
 [[package]]
 name = "objc"
@@ -5763,7 +5725,15 @@ dependencies = [
  "sweeten",
  "tango-dataview",
  "tango-filesync",
- "tango-gamedb",
+ "tango-gamesupport",
+ "tango-gamesupport-bn1",
+ "tango-gamesupport-bn2",
+ "tango-gamesupport-bn3",
+ "tango-gamesupport-bn4",
+ "tango-gamesupport-bn5",
+ "tango-gamesupport-bn6",
+ "tango-gamesupport-exe45",
+ "tango-lobby",
  "tango-pvp",
  "tango-signaling",
  "thiserror 1.0.69",
@@ -5808,12 +5778,221 @@ dependencies = [
 ]
 
 [[package]]
-name = "tango-gamedb"
+name = "tango-gamesupport"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "crc32fast",
+ "image",
+ "mgba",
+ "sha2",
  "tango-dataview",
+ "tango-pvp",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tango-gamesupport-bn1"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bitvec",
+ "bytemuck",
+ "byteorder",
+ "c2rust-bitfields",
+ "image",
+ "itertools 0.6.5",
+ "log",
+ "mgba",
+ "ndarray",
+ "num-derive",
+ "num-traits",
+ "patricia_tree",
+ "rand",
+ "rand_pcg",
+ "serde",
+ "serde_repr",
+ "tango-dataview",
+ "tango-gamesupport",
+ "tango-pvp",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tango-gamesupport-bn2"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bitvec",
+ "bytemuck",
+ "byteorder",
+ "c2rust-bitfields",
+ "image",
+ "itertools 0.6.5",
+ "log",
+ "mgba",
+ "ndarray",
+ "num-derive",
+ "num-traits",
+ "patricia_tree",
+ "rand",
+ "rand_pcg",
+ "serde",
+ "serde_repr",
+ "tango-dataview",
+ "tango-gamesupport",
+ "tango-pvp",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tango-gamesupport-bn3"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bitvec",
+ "bytemuck",
+ "byteorder",
+ "c2rust-bitfields",
+ "image",
+ "itertools 0.6.5",
+ "log",
+ "mgba",
+ "ndarray",
+ "num-derive",
+ "num-traits",
+ "patricia_tree",
+ "rand",
+ "rand_pcg",
+ "serde",
+ "serde_repr",
+ "tango-dataview",
+ "tango-gamesupport",
+ "tango-pvp",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tango-gamesupport-bn4"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bitvec",
+ "bytemuck",
+ "byteorder",
+ "c2rust-bitfields",
+ "image",
+ "itertools 0.6.5",
+ "log",
+ "mgba",
+ "ndarray",
+ "num-derive",
+ "num-traits",
+ "patricia_tree",
+ "rand",
+ "rand_pcg",
+ "serde",
+ "serde_repr",
+ "tango-dataview",
+ "tango-gamesupport",
+ "tango-pvp",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tango-gamesupport-bn5"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bitvec",
+ "bytemuck",
+ "byteorder",
+ "c2rust-bitfields",
+ "image",
+ "itertools 0.6.5",
+ "log",
+ "mgba",
+ "ndarray",
+ "num-derive",
+ "num-traits",
+ "patricia_tree",
+ "rand",
+ "rand_pcg",
+ "serde",
+ "serde_repr",
+ "tango-dataview",
+ "tango-gamesupport",
+ "tango-pvp",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tango-gamesupport-bn6"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bitvec",
+ "bytemuck",
+ "byteorder",
+ "c2rust-bitfields",
+ "image",
+ "itertools 0.6.5",
+ "log",
+ "mgba",
+ "ndarray",
+ "num-derive",
+ "num-traits",
+ "patricia_tree",
+ "rand",
+ "rand_pcg",
+ "serde",
+ "serde_repr",
+ "tango-dataview",
+ "tango-gamesupport",
+ "tango-pvp",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tango-gamesupport-exe45"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bitvec",
+ "bytemuck",
+ "byteorder",
+ "c2rust-bitfields",
+ "image",
+ "itertools 0.6.5",
+ "log",
+ "mgba",
+ "ndarray",
+ "num-derive",
+ "num-traits",
+ "patricia_tree",
+ "rand",
+ "rand_pcg",
+ "serde",
+ "serde_repr",
+ "tango-dataview",
+ "tango-gamesupport",
+ "tango-pvp",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tango-lobby"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "log",
+ "prost",
+ "prost-build",
+ "rustls",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-tungstenite",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -5834,27 +6013,12 @@ dependencies = [
  "rand_pcg",
  "serde",
  "serde_repr",
- "sha2",
  "shell-words",
  "tango-dataview",
- "tango-gamedb",
  "tempfile",
  "tokio",
  "tokio-util",
  "zstd 0.11.2+zstd.1.5.2",
-]
-
-[[package]]
-name = "tango-replaytool"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "indicatif",
- "serde_json",
- "tango-gamedb",
- "tango-pvp",
- "tokio",
 ]
 
 [[package]]

@@ -382,7 +382,7 @@ impl std::fmt::Display for SaveOption {
 pub fn family_options(lang: &LanguageIdentifier, scanners: &Scanners) -> Vec<FamilyOption> {
     let roms = scanners.roms.read();
     let mut families: Vec<&'static str> = Vec::new();
-    for g in tango_gamedb::GAMES.iter() {
+    for g in crate::game::GAMES.iter() {
         let fam = g.family_and_variant().0;
         if !families.contains(&fam) {
             families.push(fam);

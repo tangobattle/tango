@@ -15,22 +15,11 @@ use std::sync::LazyLock;
 
 use std::sync::Mutex;
 
-/// Which BNLC volume — Vol 1 (BN1-3) or Vol 2 (BN4-6). The enum also
-/// carries the corresponding Steam app id.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub enum Volume {
-    Vol1,
-    Vol2,
-}
-
-impl Volume {
-    pub fn steam_app_id(self) -> u32 {
-        match self {
-            Volume::Vol1 => 1798010,
-            Volume::Vol2 => 1798020,
-        }
-    }
-}
+/// Which BNLC volume — Vol 1 (BN1-3) or Vol 2 (BN4-6). Defined in
+/// `tango-gamesupport` so per-game `BackgroundRef`s can name their volume
+/// without depending on the GUI crate; re-exported here since the runtime
+/// discovery below is GUI-side.
+pub use tango_gamesupport::Volume;
 
 /// Open BNLC volume install + cached shared-archive handle. Held in
 /// a process-lifetime `LazyLock` per volume so each shared-file read

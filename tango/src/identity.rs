@@ -42,7 +42,17 @@ pub fn load() -> Option<tango_signaling::ClientIdentity> {
 /// when either file is missing. Returns the identity plus its lowercase-hex
 /// SHA-256 fingerprint (of the DER certificate) for logging.
 fn load_or_create() -> anyhow::Result<(tango_signaling::ClientIdentity, String)> {
-    let dir = crate::config::config_dir().ok_or_else(|| anyhow::anyhow!("no config dir"))?;
+    // `TANGO_IDENTITY_DIR` overrides where the identity files live, so a second
+    // instance on the same machine can run a distinct identity (= a distinct
+    // friend code) for local testing: `TANGO_IDENTITY_DIR=/tmp/tango-id2 cargo run`.
+    let dir = match std::env::var_os("TANGO_IDENTITY_DIR") {
+        Some(d) => {
+            let dir = std::path::PathBuf::from(d);
+            log::info!("using identity dir override: {}", dir.display());
+            dir
+        }
+        None => crate::config::config_dir().ok_or_else(|| anyhow::anyhow!("no config dir"))?,
+    };
     let cert_path = dir.join(CERT_FILE);
     let key_path = dir.join(KEY_FILE);
 

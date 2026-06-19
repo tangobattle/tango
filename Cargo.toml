@@ -11,10 +11,10 @@ members = [
     "tango",
     "tango-dataview",
     "tango-filesync",
-    "tango-gamedb",
+    "tango-gamesupport",
     "tango-pvp",
-    "tango-replaytool",
     "tango-signaling",
+    "tango-lobby",
 ]
 
 # `release` keeps Cargo's defaults (lto = false, codegen-units = 16) so

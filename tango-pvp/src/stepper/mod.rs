@@ -2,8 +2,8 @@ pub use crate::input::{Input, PartialInput};
 
 mod state;
 
-pub use state::{CapturedBoundary, ReplayCheckpoint, ReplaySnapshot, SharedShadow, State};
 pub(crate) use state::InnerState;
+pub use state::{CapturedBoundary, ReplayCheckpoint, ReplaySnapshot, SharedShadow, State};
 
 /// Source of the remote peer's link packet for one tick of simulation.
 ///
@@ -70,9 +70,9 @@ pub struct StepperResult {
     /// demand via [`Stepper::save`], so a rollback that re-steps a whole tail only
     /// saves the one state it keeps. r4 is supplied by the consumer: the live core
     /// via
-    /// [`Hooks::inject_joyflags_on_primary_snapshot`](crate::hooks::Hooks::inject_joyflags_on_primary_snapshot)
+    /// [`Hooks::inject_joyflags_on_primary`](crate::hooks::Hooks::inject_joyflags_on_primary)
     /// after loading the snapshot, and the next run by re-priming r4 at its first
-    /// `main_read_joyflags` (its PC is rewound there by `prepare_for_fastforward`).
+    /// `main_read_joyflags` (its PC is rewound there by `prepare_for_next_input`).
     pub boundary: CapturedBoundary,
     pub round_result: Option<RoundResult>,
 }
@@ -125,13 +125,10 @@ impl Stepper {
         let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
         let rom_vf = mgba::vfile::VFile::from_vec(rom.to_vec());
         core.as_mut().load_rom(rom_vf)?;
-        hooks.patch(core.as_mut());
 
         let state = State(std::sync::Arc::new(std::sync::Mutex::new(None)));
 
-        let mut traps = hooks.common_traps();
-        traps.extend(hooks.stepper_traps(state.clone()));
-        core.set_traps(traps);
+        hooks.install_on_stepper(&mut core, state.clone());
         core.as_mut().reset();
         // Headless re-sim core: never rasterize. Its pixels are never shown, so
         // skipping drawScanline cuts a large constant off the dominant cost. Set
@@ -184,7 +181,7 @@ impl Stepper {
         input: (PartialInput, PartialInput),
         last_local_packet: &[u8],
     ) -> anyhow::Result<StepperResult> {
-        self.hooks.prepare_for_fastforward(self.core.as_mut());
+        self.hooks.prepare_for_next_input(self.core.as_mut());
         *self.state.0.lock().unwrap() = Some(InnerState::for_fastforward(
             self.match_type,
             self.local_player_index,

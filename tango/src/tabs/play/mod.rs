@@ -11,7 +11,7 @@
 mod lobby;
 
 use crate::app::Scanners;
-use crate::i18n::{t, t_opt};
+use crate::i18n::t;
 use crate::loadout::{self, Loadout};
 use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::widgets;
@@ -1557,7 +1557,7 @@ pub fn creation_template(
 /// carries the right label for it.
 fn template_label(lang: &unic_langid::LanguageIdentifier, family: &str, raw: &str) -> String {
     let key_suffix = if raw.is_empty() { "megaman" } else { raw };
-    t_opt(lang, &format!("game-{family}.save-{key_suffix}")).unwrap_or_else(|| {
+    game::family_str(family, lang, &format!("save-{key_suffix}")).unwrap_or_else(|| {
         if raw.is_empty() {
             t!(lang, "save-template-default")
         } else {

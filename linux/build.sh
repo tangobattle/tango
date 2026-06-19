@@ -14,7 +14,7 @@ chmod a+x appimagetool-x86_64.AppImage
 
 # Build Linux binaries.
 target_arch="x86_64"
-cargo build --bin tango --target="${target_arch}-unknown-linux-gnu" --profile release-dist
+cargo build --bin tango --features gamesupport-all --target="${target_arch}-unknown-linux-gnu" --profile release-dist
 
 # Assemble AppImage stuff.
 mkdir -p "tango_linux_workdir/${target_arch}/bin"

@@ -159,12 +159,8 @@ pub fn run_prefetch(
     // core; a raw Core driven by run_frame needs it explicitly.
     core.as_mut().reset();
 
-    local_hooks.patch(core.as_mut());
-
     let (stepper_state, shadow) = stepper::State::new_for_replay(replay, remote_rom, remote_hooks, Box::new(|| {}))?;
-    let mut traps = local_hooks.common_traps();
-    traps.extend(local_hooks.stepper_traps(stepper_state.clone()));
-    core.set_traps(traps);
+    local_hooks.install_on_stepper(&mut core, stepper_state.clone());
 
     loop {
         if cancel.load(Ordering::Relaxed) {

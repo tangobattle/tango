@@ -2,7 +2,6 @@ pub async fn eval(
     replay: &crate::replay::Replay,
     rom: &[u8],
     hooks: &'static (dyn crate::hooks::Hooks + Sync + Send),
-    extra_traps: impl FnOnce() -> Vec<crate::hooks::Trap> + Send + Sync,
 ) -> Result<(crate::stepper::RoundResult, Box<mgba::state::State>), anyhow::Error> {
     let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
 
@@ -18,14 +17,7 @@ pub async fn eval(
 
     let (stepper_state, _shadow) = crate::stepper::State::new_for_replay(replay, rom, hooks, Box::new(|| {}))?;
 
-    hooks.patch(core.as_mut());
-    {
-        let stepper_state = stepper_state.clone();
-        let mut traps = hooks.common_traps();
-        traps.extend(hooks.stepper_traps(stepper_state.clone()));
-        traps.extend(extra_traps());
-        core.set_traps(traps);
-    }
+    hooks.install_on_stepper(&mut core, stepper_state.clone());
 
     let replay_is_complete = replay.is_complete;
     loop {

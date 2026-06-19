@@ -1,0 +1,25 @@
+[package]
+name = "tango-gamesupport"
+version = "0.1.0"
+edition = "2021"
+license = "LGPL-3.0-or-later"
+
+[dependencies]
+crc32fast = "1"
+image = { version = "0.25", default-features = false }
+tango-dataview = { path = "../tango-dataview" }
+tango-pvp = { path = "../tango-pvp" }
+thiserror = "1"
+# Only pulled in by the `testing` feature, for the golden-replay
+# determinism harness the per-game crates run in their tests.
+anyhow = { version = "1", optional = true }
+mgba = { path = "../mgba", optional = true }
+sha2 = { version = "0.10", optional = true }
+
+[features]
+# Exposes `golden`, the shared determinism harness each
+# `tango-gamesupport-<game>` crate drives from its own golden replays.
+testing = ["dep:anyhow", "dep:mgba", "dep:sha2"]
+
+[lints]
+workspace = true

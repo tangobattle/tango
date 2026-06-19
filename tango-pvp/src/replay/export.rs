@@ -156,13 +156,7 @@ fn make_core_and_state(
         crate::stepper::State::new_for_replay(replay, shadow_rom, shadow_hooks, Box::new(|| {}))?;
     stepper_state.lock_inner().set_disable_bgm(settings.disable_bgm);
 
-    hooks.patch(core.as_mut());
-    {
-        let stepper_state = stepper_state.clone();
-        let mut traps = hooks.common_traps();
-        traps.extend(hooks.stepper_traps(stepper_state.clone()));
-        core.set_traps(traps);
-    }
+    hooks.install_on_stepper(&mut core, stepper_state.clone());
 
     Ok((core, stepper_state))
 }

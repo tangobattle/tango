@@ -39,7 +39,7 @@ rm -rf Tango.iconset
 
 # Build Windows binaries. MSVC target — statically links the MSVC
 # runtime so no mingw DLL bundling is needed.
-cargo build --bin tango --profile release-dist --target x86_64-pc-windows-msvc
+cargo build --bin tango --features gamesupport-all --profile release-dist --target x86_64-pc-windows-msvc
 
 # Build installer.
 mkdir tango_win_workdir

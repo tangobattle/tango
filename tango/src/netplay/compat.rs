@@ -21,7 +21,7 @@ use crate::patch::PatchMap;
 /// family ("bn6", "exe6", etc). Returns None when the patch info
 /// references a name + version that isn't in our scanner cache.
 pub fn netplay_compatibility(
-    game: &'static (dyn tango_gamedb::Game + Send + Sync),
+    game: crate::rom::GameRef,
     patch: Option<(&str, &semver::Version)>,
     patches: &PatchMap,
 ) -> Option<String> {
@@ -37,7 +37,7 @@ pub fn netplay_compatibility(
 /// Same as `netplay_compatibility` but starting from a
 /// `protocol::GameInfo` (what we receive from the peer).
 pub fn netplay_compatibility_from_game_info(g: &protocol::GameInfo, patches: &PatchMap) -> Option<String> {
-    let game = tango_gamedb::find_by_family_and_variant(g.family_and_variant.0.as_str(), g.family_and_variant.1)?;
+    let game = crate::game::find_by_family_and_variant(g.family_and_variant.0.as_str(), g.family_and_variant.1)?;
     netplay_compatibility(game, g.patch.as_ref().map(|p| (p.name.as_str(), &p.version)), patches)
 }
 

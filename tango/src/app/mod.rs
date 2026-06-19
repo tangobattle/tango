@@ -16,8 +16,8 @@
 use crate::session::ActiveSession;
 use crate::theme::theme_for;
 use crate::{
-    anim, audio, config, discord, game, i18n, identity, input, loadout, net, netplay, patch, replays, rom, save,
-    selection, session, tabs, updater, widgets, INIT_LINK_CODE,
+    anim, audio, config, discord, game, i18n, identity, input, loadout, lobby, net, netplay, patch, replays, rom,
+    save, selection, session, tabs, updater, widgets, INIT_LINK_CODE,
 };
 use i18n::t;
 use iced::widget::container;
@@ -38,6 +38,60 @@ mod update;
 /// background task — both because it can block briefly and
 /// because arboard's Clipboard handle isn't Send-safe to keep on
 /// the UI thread.
+/// Build a `net::protocol::Settings` from a lobby `MatchProposal`, to seed the
+/// PvP session (a lobby match does no p2p Settings exchange).
+fn settings_from_proposal(p: &tango_lobby::MatchProposal, nickname: String) -> crate::net::protocol::Settings {
+    let game_info = p.game_info.as_ref().map(|g| crate::net::protocol::GameInfo {
+        family_and_variant: (g.family.clone(), g.variant as u8),
+        patch: g.patch.as_ref().and_then(|pt| {
+            semver::Version::parse(&pt.version)
+                .ok()
+                .map(|version| crate::net::protocol::PatchInfo {
+                    name: pt.name.clone(),
+                    version,
+                })
+        }),
+    });
+    crate::net::protocol::Settings {
+        nickname,
+        match_type: p
+            .match_type
+            .as_ref()
+            .map(|m| (m.mode as u8, m.subtype as u8))
+            .unwrap_or((0, 0)),
+        game_info,
+        available_games: Vec::new(),
+        available_patches: Vec::new(),
+        blind_setup: p.blind_setup,
+    }
+}
+
+/// Format lobby `IceServer`s into the inline-credential URL strings
+/// libdatachannel expects (TURN-over-TCP is dropped — libdatachannel rejects it).
+fn ice_to_strings(servers: &[tango_lobby::IceServer]) -> Vec<String> {
+    servers
+        .iter()
+        .flat_map(|s| {
+            let username = s.username.clone();
+            let credential = s.credential.clone();
+            s.urls
+                .iter()
+                .filter_map(move |url| {
+                    let colon = url.find(':')?;
+                    let (proto, rest) = (&url[..colon], &url[colon + 1..]);
+                    if url.ends_with("?transport=tcp") {
+                        return None;
+                    }
+                    Some(match (&username, &credential) {
+                        (Some(u), Some(c)) => format!("{proto}:{u}:{c}@{rest}"),
+                        _ => format!("{proto}:{rest}"),
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
 fn copy_image_to_clipboard(img: image::RgbaImage) {
     let (width, height) = (img.width() as usize, img.height() as usize);
     let bytes = img.into_raw();
@@ -129,6 +183,11 @@ pub struct App {
     /// certificate. `None` if it couldn't be loaded/created — netplay
     /// then dials without a client cert.
     identity: Option<tango_signaling::ClientIdentity>,
+
+    /// Presence connection to the lobby server (roster + challenges). Runs
+    /// alongside the existing link-code netplay path; a failure to reach it is
+    /// non-fatal.
+    lobby: lobby::State,
 
     /// Active emulator session (replay playback or single-player) plus
     /// the cached framebuffer Handle. While `session.is_active()`, the
@@ -262,7 +321,7 @@ impl App {
             .and_then(game::family_static)
             .or_else(|| config.last_game.as_ref().and_then(|(f, _)| game::family_static(f)));
         if let Some((family, variant)) = config.last_game.as_ref() {
-            if let Some(game) = tango_gamedb::find_by_family_and_variant(family, *variant) {
+            if let Some(game) = crate::game::find_by_family_and_variant(family, *variant) {
                 if scanners.roms.read().contains_key(&game) {
                     restored.game = Some(game);
                     restored.family = Some(game.family_and_variant().0);
@@ -348,6 +407,15 @@ impl App {
             play.link_code = code.clone();
         }
 
+        let identity = identity::load();
+        let lobby = lobby::State::new(
+            config.lobby_endpoint.clone(),
+            identity.as_ref().map(|id| tango_lobby::ClientIdentity {
+                cert_der: id.cert_der.clone(),
+                key_der: id.key_der.clone(),
+            }),
+        );
+
         let mut app = Self {
             config,
             tab: Tab::Play,
@@ -363,7 +431,8 @@ impl App {
             patches: PatchesState::default(),
             session: session::State::new(),
             netplay: netplay::State::new(),
-            identity: identity::load(),
+            identity,
+            lobby,
             discord: discord::Client::new(),
             session_started_at: None,
             patch_autoupdater,
@@ -378,7 +447,8 @@ impl App {
         };
         app.refresh_loaded();
         let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
-        (app, stats_task)
+        let lobby_task = app.lobby.connect().map(Message::Lobby);
+        (app, iced::Task::batch([stats_task, lobby_task]))
     }
 
     /// Drops cached replay stats for paths that no longer exist in
@@ -420,6 +490,137 @@ impl App {
             })
             .filter_map(|(path, stats)| async move { stats.map(|s| tabs::replays::Message::StatsLoaded(path, s)) });
         iced::Task::stream(stream)
+    }
+
+    /// Route a lobby message: the App handles the actions that need its loadout
+    /// + loaded save (issue/accept a challenge), the rest go to the lobby state.
+    fn handle_lobby_message(&mut self, message: lobby::Message) -> iced::Task<Message> {
+        match message {
+            lobby::Message::IssueChallenge(peer) => self.issue_challenge(peer),
+            lobby::Message::AcceptIncoming(peer) => self.accept_incoming(peer),
+            lobby::Message::Event(event) => self.handle_lobby_event(event),
+            other => self.lobby.update(other).map(Message::Lobby),
+        }
+    }
+
+    /// Drive the lobby's match-relevant events: relay SDP into an in-flight
+    /// bring-up, and on accept/confirm kick off the WebRTC match (which goes
+    /// straight to PvP, no netplay lobby screen).
+    fn handle_lobby_event(&mut self, event: tango_lobby::Event) -> iced::Task<Message> {
+        use tango_lobby::Event;
+        if let Event::RtcOffer { sdp, .. } | Event::RtcAnswer { sdp, .. } = &event {
+            self.netplay.feed_lobby_sdp(sdp.clone());
+        }
+        let start = matches!(event, Event::ChallengeAccepted { .. } | Event::ChallengeConfirmed { .. });
+        // Bookkeeping first, so my_match gets the peer commitment + ICE servers.
+        let lobby_task = self.lobby.update(lobby::Message::Event(event)).map(Message::Lobby);
+        let net_task = if start {
+            self.start_lobby_match()
+        } else {
+            iced::Task::none()
+        };
+        iced::Task::batch([lobby_task, net_task])
+    }
+
+    /// Pull the ready match out of the lobby state and bring up the WebRTC match.
+    fn start_lobby_match(&mut self) -> iced::Task<Message> {
+        let Some(start) = self.lobby.take_match_start() else {
+            return iced::Task::none();
+        };
+        let Some(handle) = self.lobby.handle() else {
+            return iced::Task::none();
+        };
+        let role = if start.is_offerer {
+            crate::net::lobby_rtc::LobbyRole::Offerer
+        } else {
+            crate::net::lobby_rtc::LobbyRole::Answerer
+        };
+        let ice_servers = ice_to_strings(&start.ice_servers);
+        let match_type = start
+            .local_proposal
+            .match_type
+            .as_ref()
+            .map(|m| (m.mode as u8, m.subtype as u8))
+            .unwrap_or((0, 0));
+        let local_settings = settings_from_proposal(&start.local_proposal, self.config.nickname.clone().unwrap_or_default());
+        let remote_settings = settings_from_proposal(&start.peer_proposal, String::new());
+        self.netplay
+            .connect_lobby_match(
+                role,
+                ice_servers,
+                handle,
+                start.peer,
+                start.local_compressed,
+                start.peer_commitment,
+                local_settings,
+                remote_settings,
+                match_type,
+            )
+            .map(Message::Netplay)
+    }
+
+    /// Whether we can issue / accept a challenge right now (a game + save loaded).
+    fn can_challenge(&self) -> bool {
+        self.loadout.game.is_some() && self.loaded.is_some()
+    }
+
+    /// The match proposal for our current loadout, or `None` if no game is picked.
+    fn current_proposal(&self) -> Option<tango_lobby::MatchProposal> {
+        let game = self.loadout.game?;
+        let (family, variant) = game.family_and_variant();
+        let patch = match (&self.loadout.patch, &self.loadout.patch_version) {
+            (Some(name), Some(version)) => Some(tango_lobby::proto::lobby::game_info::Patch {
+                name: name.clone(),
+                version: version.to_string(),
+            }),
+            _ => None,
+        };
+        Some(tango_lobby::MatchProposal {
+            match_type: Some(tango_lobby::MatchType {
+                mode: self.netplay.lobby.match_type.0 as u32,
+                subtype: self.netplay.lobby.match_type.1 as u32,
+            }),
+            game_info: Some(tango_lobby::GameInfo {
+                family: family.to_string(),
+                variant: variant as u32,
+                patch,
+            }),
+            blind_setup: self.netplay.lobby.blind_setup,
+        })
+    }
+
+    /// Build a commitment + reveal from the loaded save's SRAM.
+    fn local_reveal(&self) -> Option<crate::net::protocol::LocalReveal> {
+        let loaded = self.loaded.as_ref()?;
+        let sram = loaded.save.to_sram_dump();
+        match crate::net::protocol::build_commitment(sram) {
+            Ok(reveal) => Some(reveal),
+            Err(e) => {
+                log::warn!("lobby challenge: build commitment failed: {e:#}");
+                None
+            }
+        }
+    }
+
+    fn issue_challenge(&mut self, peer: tango_lobby::FriendCode) -> iced::Task<Message> {
+        let (Some(proposal), Some(reveal)) = (self.current_proposal(), self.local_reveal()) else {
+            log::warn!("lobby challenge: need a game + save loaded");
+            return iced::Task::none();
+        };
+        self.lobby.start_outgoing(peer, proposal, reveal);
+        iced::Task::none()
+    }
+
+    fn accept_incoming(&mut self, peer: tango_lobby::FriendCode) -> iced::Task<Message> {
+        let Some(incoming) = self.lobby.incoming.get(&peer).cloned() else {
+            return iced::Task::none();
+        };
+        let (Some(proposal), Some(reveal)) = (self.current_proposal(), self.local_reveal()) else {
+            log::warn!("lobby accept: need a game + save loaded");
+            return iced::Task::none();
+        };
+        self.lobby.accept_incoming(peer, incoming, proposal, reveal);
+        iced::Task::none()
     }
 
     /// Persist `self.config` to disk. Failures are logged but otherwise
@@ -690,6 +891,7 @@ pub enum Message {
     Welcome(tabs::welcome::Message),
     Session(session::Message),
     Netplay(netplay::Message),
+    Lobby(lobby::Message),
     /// Carries the freshly-constructed PvP session back into the
     /// App after the async build task in `spawn_pvp` resolves.
     /// `Slot` because PvpSession isn't Clone.
@@ -1001,6 +1203,7 @@ impl App {
                     |result| Message::PvpSessionBuilt(std::sync::Arc::new(std::sync::Mutex::new(Some(result)))),
                 )
             }
+            Message::Lobby(m) => self.handle_lobby_message(m),
             Message::Netplay(m) => {
                 // Always resend after a netplay message too: this
                 // covers the Negotiating → Lobby transition (first
@@ -1094,6 +1297,7 @@ impl App {
         let mut subs = vec![
             session::subscription(&self.session).map(Message::Session),
             netplay::subscription(&self.netplay).map(Message::Netplay),
+            lobby::subscription(&self.lobby).map(Message::Lobby),
             // 1 Hz Discord refresh — cheap (compares activity for
             // equality before re-sending) and gives us the join-
             // secret pickup loop too.
@@ -1369,23 +1573,32 @@ impl App {
 
         let rescanning = self.is_rescanning();
         let body: Element<'_, Message> = match self.tab {
-            Tab::Play => self
-                .play
-                .view(
-                    lang,
-                    &self.scanners,
-                    &self.loadout,
-                    self.loaded.as_ref(),
-                    self.config.streamer_mode,
-                    &self.config,
-                    &self.netplay.phase,
-                    &self.netplay.lobby,
-                    self.netplay.handoff_pending(),
-                    rescanning,
-                    &self.lobby_swap,
-                    self.lobby_exit_snapshot.as_ref(),
-                )
-                .map(Message::Play),
+            Tab::Play => {
+                let main = self
+                    .play
+                    .view(
+                        lang,
+                        &self.scanners,
+                        &self.loadout,
+                        self.loaded.as_ref(),
+                        self.config.streamer_mode,
+                        &self.config,
+                        &self.netplay.phase,
+                        &self.netplay.lobby,
+                        self.netplay.handoff_pending(),
+                        rescanning,
+                        &self.lobby_swap,
+                        self.lobby_exit_snapshot.as_ref(),
+                    )
+                    .map(Message::Play);
+                // The presence roster rides on the right as a full-height pane,
+                // composed here so the Play tab proper stays unaware of it.
+                row![
+                    container(main).width(Fill).height(Fill),
+                    lobby::sidebar(&self.lobby, lang, self.can_challenge()).map(Message::Lobby),
+                ]
+                .into()
+            }
             Tab::Replays => self
                 .replays
                 .view(lang, &self.scanners, &self.config, &self.netplay.phase, rescanning)

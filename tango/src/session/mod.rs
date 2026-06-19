@@ -756,7 +756,7 @@ pub fn build_playback(
             .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
         let variant = u8::try_from(gi.rom_variant)
             .map_err(|_| anyhow::anyhow!("variant {} out of range", gi.rom_variant))?;
-        let entry = tango_gamedb::find_by_family_and_variant(&gi.rom_family, variant)
+        let entry = crate::game::find_by_family_and_variant(&gi.rom_family, variant)
             .ok_or_else(|| anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, gi.rom_variant))?;
         let g = game::from_gamedb_entry(entry).ok_or_else(|| {
             anyhow::anyhow!("no impl for {}/{}", gi.rom_family, gi.rom_variant)
@@ -827,7 +827,7 @@ pub async fn spawn_pvp(
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("remote settings missing game info"))?;
     let remote_game =
-        tango_gamedb::find_by_family_and_variant(&remote_gi.family_and_variant.0, remote_gi.family_and_variant.1)
+        crate::game::find_by_family_and_variant(&remote_gi.family_and_variant.0, remote_gi.family_and_variant.1)
             .ok_or_else(|| anyhow::anyhow!("unknown remote rom"))?;
     let remote_game_impl =
         game::from_gamedb_entry(remote_game).ok_or_else(|| anyhow::anyhow!("no impl for remote game"))?;

@@ -335,7 +335,7 @@ impl Loaded {
             .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
         let variant =
             u8::try_from(gi.rom_variant).map_err(|_| anyhow::anyhow!("variant {} out of range", gi.rom_variant))?;
-        let game = tango_gamedb::find_by_family_and_variant(&gi.rom_family, variant)
+        let game = crate::game::find_by_family_and_variant(&gi.rom_family, variant)
             .ok_or_else(|| anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, gi.rom_variant))?;
         let rom = scanners
             .roms

@@ -37,12 +37,6 @@ impl SinglePlayerSession {
         let save_file = std::fs::OpenOptions::new().read(true).write(true).open(save_path)?;
         core.as_mut().load_save(mgba::vfile::VFile::from_file(save_file))?;
 
-        // hooks().patch installs the per-game memory patches that fix
-        // determinism bugs (RNG seeding, RTC reads, etc.). Safe to apply
-        // in single-player too — they don't depend on a partner.
-        let hooks = game.hooks;
-        hooks.patch(core.as_mut());
-
         let joyflags = Arc::new(AtomicU32::new(0));
         let thread = mgba::thread::Thread::new(core);
         // Wipe the shared framebuffer so the previous session's

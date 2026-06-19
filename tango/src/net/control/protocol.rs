@@ -126,3 +126,38 @@ impl NegotiatedState {
         STATE_BINCODE_OPTIONS.deserialize(d)
     }
 }
+
+/// `Shake128("tango:lobby:" || buf)` truncated to 16 bytes — the commitment
+/// hash over the compressed reveal. Shared by the lobby challenge flow and the
+/// peer-to-peer reveal verification so both ends agree on the construction.
+pub fn make_commitment(buf: &[u8]) -> [u8; 16] {
+    use sha3::digest::{ExtendableOutput, Update, XofReader};
+    let mut h = sha3::Shake128::default();
+    h.update(b"tango:lobby:");
+    h.update(buf);
+    let mut out = [0u8; 16];
+    h.finalize_xof().read(&mut out);
+    out
+}
+
+/// Our half of a match commitment: a fresh nonce, the compressed reveal bytes
+/// (`zstd(bincode(NegotiatedState))`) the peer reassembles and verifies, and the
+/// commitment hash to publish.
+pub struct LocalReveal {
+    pub nonce: [u8; 16],
+    pub commitment: [u8; 16],
+    pub compressed: Vec<u8>,
+}
+
+/// Build a commitment + reveal from the local save SRAM. The commitment is sent
+/// over the lobby (challenge/accept); the compressed reveal is streamed
+/// peer-to-peer once connected, where the peer checks it against the commitment.
+pub fn build_commitment(save_sram: Vec<u8>) -> anyhow::Result<LocalReveal> {
+    let mut nonce = [0u8; 16];
+    rand::Rng::fill(&mut rand::thread_rng(), &mut nonce);
+    let state = NegotiatedState { nonce, save_data: save_sram };
+    let bin = state.serialize()?;
+    let compressed = zstd::stream::encode_all(std::io::Cursor::new(&bin), 3)?;
+    let commitment = make_commitment(&compressed);
+    Ok(LocalReveal { nonce, commitment, compressed })
+}

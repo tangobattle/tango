@@ -28,6 +28,24 @@ tab-replays = Replays
 tab-patches = Patches
 tab-settings = Settings
 
+# Lobby / presence sidebar
+lobby-whos-around = Who's around
+lobby-you = You
+lobby-online = Online
+lobby-in-match = In a match
+lobby-status-online = Online
+lobby-status-invisible = Invisible
+lobby-go-invisible = Go invisible
+lobby-go-online = Go online
+lobby-connecting = Connecting…
+lobby-offline = Offline
+lobby-no-identity = No identity
+lobby-empty = No one's around
+lobby-challenges = Challenges
+lobby-challenge = Challenge
+lobby-accept = Accept
+lobby-decline = Decline
+
 # Play selectors
 play-no-game = No game selected
 play-no-save = Select save

@@ -142,7 +142,7 @@ struct FastforwardExtras {
     /// poised at the start of `current_tick` with r4 left unset (the matching mgba
     /// state is materialized on demand by
     /// [`Stepper::save`](super::Stepper::save)). The consumer supplies the local
-    /// joyflags: the live core via `Hooks::inject_joyflags_on_primary_snapshot`,
+    /// joyflags: the live core via `Hooks::inject_joyflags_on_primary`,
     /// the next FF by re-priming r4 at its first `main_read_joyflags`.
     capture_tick: u32,
     captured: Option<CapturedBoundary>,
