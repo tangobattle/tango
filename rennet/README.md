@@ -62,7 +62,7 @@ frame simply by whether any bytes follow the header.
 ```text
 base             uvarint   always
 ack              svarint   always; encoded as (frontier − base)
-tick_advantage  svarint   present iff a body follows
+tick_advantage   svarint   present iff a body follows
 body             Body      present iff there are bytes left; runs to the
                            end of the datagram
 ```
