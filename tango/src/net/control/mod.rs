@@ -47,12 +47,19 @@ pub enum NegotiationError {
     Other(#[from] anyhow::Error),
 }
 
-/// Exchange Hello packets with the peer and verify both sides speak
-/// the same `protocol::VERSION`. Has to run on both peers before any
-/// other packet is sent.
-pub async fn negotiate(sender: &mut Sender, receiver: &mut Receiver) -> Result<(), NegotiationError> {
+/// Exchange Hello packets with the peer and verify both sides speak the same
+/// `protocol::VERSION`. The Hello carries our settings + reveal commitment (the
+/// lobby already brokered the match), so this returns the peer's Hello — their
+/// settings + commitment — for the caller to drive the reveal exchange. Has to
+/// run on both peers before any Chunk is sent.
+pub async fn negotiate(
+    sender: &mut Sender,
+    receiver: &mut Receiver,
+    settings: protocol::Settings,
+    commitment: [u8; 16],
+) -> Result<protocol::Hello, NegotiationError> {
     sender
-        .send_hello()
+        .send_hello(settings, commitment)
         .await
         .map_err(|e| NegotiationError::Other(e.into()))?;
     let hello = match receiver.receive().await.map_err(|_| NegotiationError::ExpectedHello)? {
@@ -65,7 +72,7 @@ pub async fn negotiate(sender: &mut Sender, receiver: &mut Receiver) -> Result<(
     if hello.protocol_version > protocol::VERSION {
         return Err(NegotiationError::RemoteProtocolVersionTooNew);
     }
-    Ok(())
+    Ok(hello)
 }
 
 pub struct Sender {
@@ -89,33 +96,13 @@ impl Sender {
         self.send_raw(p.serialize().unwrap().as_slice()).await
     }
 
-    pub async fn send_hello(&mut self) -> std::io::Result<()> {
+    pub async fn send_hello(&mut self, settings: protocol::Settings, commitment: [u8; 16]) -> std::io::Result<()> {
         self.send_packet(&protocol::Packet::Hello(protocol::Hello {
             protocol_version: protocol::VERSION,
+            settings,
+            commitment,
         }))
         .await
-    }
-
-    pub async fn send_ping(&mut self, ts: u16) -> std::io::Result<()> {
-        self.send_packet(&protocol::Packet::Ping(protocol::Ping { ts })).await
-    }
-
-    pub async fn send_pong(&mut self, ts: u16) -> std::io::Result<()> {
-        self.send_packet(&protocol::Packet::Pong(protocol::Pong { ts })).await
-    }
-
-    pub async fn send_settings(&mut self, settings: protocol::Settings) -> std::io::Result<()> {
-        self.send_packet(&protocol::Packet::Settings(settings)).await
-    }
-
-    pub async fn send_commit(&mut self, commitment: [u8; 16]) -> std::io::Result<()> {
-        self.send_packet(&protocol::Packet::Commit(protocol::Commit { commitment }))
-            .await
-    }
-
-    pub async fn send_uncommit(&mut self) -> std::io::Result<()> {
-        self.send_packet(&protocol::Packet::Uncommit(protocol::Uncommit {}))
-            .await
     }
 
     pub async fn send_chunk(&mut self, chunk: Vec<u8>) -> std::io::Result<()> {

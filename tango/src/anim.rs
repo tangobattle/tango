@@ -345,13 +345,3 @@ pub fn backdrop_style(alpha: f32) -> impl Fn(&iced::Theme) -> iced::widget::cont
     }
 }
 
-/// Slow sinusoidal pulse in [0, 1] for "something is alive"
-/// indicators (the connecting / waiting-for-opponent status
-/// lines). Stateless — phase comes off the process-wide epoch —
-/// so callers just sample it per frame; the App's subscription
-/// keeps frames coming while a pulsing line is on screen.
-pub fn pulse() -> f32 {
-    const PERIOD_SECS: f32 = 1.6;
-    let t = EPOCH.elapsed().as_secs_f32();
-    0.5 - 0.5 * (t * std::f32::consts::TAU / PERIOD_SECS).cos()
-}

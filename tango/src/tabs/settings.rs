@@ -91,6 +91,13 @@ pub enum Message {
     /// connection.
     RelayModeChanged(config::RelayMode),
     PatchRepoChanged(String),
+    /// Lobby server endpoint edited (per keystroke). Persisted live; the live
+    /// presence connection is left alone until the user commits with Enter
+    /// ([`Message::LobbyEndpointSubmitted`]) so it doesn't thrash mid-typing.
+    LobbyEndpointChanged(String),
+    /// Enter pressed in the lobby-endpoint field — the App tears down and
+    /// re-dials the presence connection against the new endpoint.
+    LobbyEndpointSubmitted,
     /// "Change…" clicked next to the data folder. The App intercepts this
     /// (before `State::update`) to open an async folder picker, which comes
     /// back as `DataFolderPicked`.
@@ -149,6 +156,7 @@ pub enum ConfigChange {
     FrameDelay(u32),
     RelayMode(config::RelayMode),
     PatchRepo(String),
+    LobbyEndpoint(String),
     /// New root data folder picked. The App points `config.data_path` at it,
     /// creates the standard subfolders, re-scans, and re-points the patch
     /// autoupdater.
@@ -198,6 +206,10 @@ impl State {
             Message::FrameDelayChanged(v) => Some(ConfigChange::FrameDelay(v)),
             Message::RelayModeChanged(m) => Some(ConfigChange::RelayMode(m)),
             Message::PatchRepoChanged(s) => Some(ConfigChange::PatchRepo(s)),
+            Message::LobbyEndpointChanged(s) => Some(ConfigChange::LobbyEndpoint(s)),
+            // The reconnect is driven by the App at the top-level dispatch (it
+            // owns the lobby connection); nothing to change in config here.
+            Message::LobbyEndpointSubmitted => None,
             // Intercepted by the App before it reaches here (it opens the
             // folder picker); the arm exists only for exhaustiveness.
             Message::OpenDataFolderPicker => None,
@@ -635,6 +647,15 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             .padding(STANDARD_PADDING)
             .style(widgets::chunky_pick_list)
         }),
+        labeled::<Message>(
+            t!(lang, "settings-lobby-endpoint"),
+            text_input("", &config.lobby_endpoint)
+                .on_input(Message::LobbyEndpointChanged)
+                .on_submit(Message::LobbyEndpointSubmitted)
+                .padding(STANDARD_PADDING)
+                .width(Length::Fixed(480.0))
+                .style(widgets::chunky_text_input),
+        ),
     ]
     .spacing(14)
     .padding(style::PANE_PADDING)

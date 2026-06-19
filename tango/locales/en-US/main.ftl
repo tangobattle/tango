@@ -46,6 +46,30 @@ lobby-challenge = Challenge
 lobby-accept = Accept
 lobby-decline = Decline
 
+# Presence sidebar (roster)
+roster-zone = Who's around
+roster-empty = No one's around
+roster-lookup = Look up by friend code
+roster-lookup-placeholder = Friend code
+roster-decline = Decline
+roster-accept = Accept
+roster-mismatch = Setup doesn't match yours
+roster-back = Back
+roster-name-placeholder = Add a nickname
+roster-remove-friend = Remove friend
+roster-incoming = They challenged you
+roster-challenge-sent = Challenge sent
+roster-waiting = Waiting for them to accept…
+roster-cancel-challenge = Cancel challenge
+roster-challenge = Challenge
+roster-you = You
+roster-set-status = Set your status
+roster-self-online = Online
+roster-self-invisible = Invisible
+roster-self-offline = Offline
+# Zone header over the Play tab body, paired with roster-zone on the sidebar.
+play-zone-build = Your build
+
 # Play selectors
 play-no-game = No game selected
 play-no-save = Select save
@@ -345,6 +369,7 @@ settings-use-relay = Use relay server
 settings-use-relay-auto = Auto
 settings-use-relay-always = Always
 settings-use-relay-never = Never
+settings-lobby-endpoint = Lobby server
 settings-window-size = Window size
 settings-fullscreen = Fullscreen
 settings-ui-scale = UI scale

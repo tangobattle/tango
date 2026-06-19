@@ -724,6 +724,16 @@ pub fn primary_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
     }
 }
 
+/// A region/zone header — a small uppercase accent caption that labels a major
+/// area of a screen (e.g. "YOUR BUILD" / "WHO'S AROUND"), one level above the
+/// muted section labels inside it. Indented to `PANE_PADDING` so it lines up
+/// with the region's content.
+pub fn zone_title<'a, M: 'a>(label: &str) -> iced::Element<'a, M> {
+    container(text(label.to_uppercase()).size(TEXT_CAPTION).style(primary_text_style))
+        .padding([2, crate::style::PANE_PADDING as u16])
+        .into()
+}
+
 /// The standard tooltip bubble: a caption-sized `label` on the
 /// [`tooltip_chrome`] plate. Pass as the overlay to `iced::widget::tooltip`.
 pub fn tooltip_bubble<'a, M: 'a>(label: impl Into<String>) -> iced::widget::Container<'a, M> {
@@ -1181,11 +1191,6 @@ pub fn hex_chain<'a, M: 'a>(height: f32) -> Element<'a, M> {
 /// motion — not a single flat color stripe across the window.
 pub fn hud_scanline_top<'a, M: 'a>() -> Element<'a, M> {
     hud_scanline(crate::theme::is_gay_time().then(|| flag_background(&crate::theme::rainbow_flag_stops())))
-}
-
-/// The bottom-edge accent strip.
-pub fn hud_scanline_bottom<'a, M: 'a>() -> Element<'a, M> {
-    hud_scanline(crate::theme::is_gay_time().then(|| flag_background(&crate::theme::trans_flag_stops())))
 }
 
 /// A flat left→right linear gradient through `stops`, packaged as a

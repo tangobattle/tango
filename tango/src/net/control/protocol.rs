@@ -29,23 +29,20 @@ static STATE_BINCODE_OPTIONS: LazyLock<
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub enum Packet {
-    // Handshake.
+    /// Opening packet, sent once by each side as soon as the connection is up.
+    /// Carries the protocol version plus the match settings + reveal commitment
+    /// — the lobby has already brokered agreement, so there's no in-connection
+    /// settings/ready negotiation: it's just `Hello -> Chunk… -> StartMatch`.
     Hello(Hello),
-
-    // Ping.
-    Ping(Ping),
-    Pong(Pong),
-
-    // Lobby.
-    Settings(Settings),
-    Commit(Commit),
-    Uncommit(Uncommit),
+    /// One slice of the zstd-compressed reveal (an empty `chunk` is the
+    /// end-of-stream sentinel). Verified against the peer's `Hello.commitment`.
     Chunk(Chunk),
+    /// Sent once each side has streamed + verified the reveal.
     StartMatch(StartMatch),
     // The live match's per-frame Input / EndOfRound / EndOfMatch traffic no
     // longer rides this reliable channel — it's the data plane's job, carried
     // as `data::wire` frames/markers over a separate unreliable channel (see
-    // [`crate::net::data`]). Only lobby/handshake packets remain here.
+    // [`crate::net::data`]). Only the handshake packets remain here.
 }
 
 impl Packet {
@@ -61,29 +58,18 @@ impl Packet {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Hello {
     pub protocol_version: u8,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct Commit {
+    /// Our match settings (nickname / game / match type / blind flag). The
+    /// lobby already agreed these; this is what the PvP session reads off the
+    /// wire so the two sides don't have to re-derive them.
+    pub settings: Settings,
+    /// Commitment hash over our compressed reveal — the peer checks the reveal
+    /// chunks against it. (`Shake128` of the reveal; see [`make_commitment`].)
     pub commitment: [u8; 16],
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct Uncommit {}
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Chunk {
     pub chunk: Vec<u8>,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct Ping {
-    pub ts: u16,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct Pong {
-    pub ts: u16,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -103,8 +89,6 @@ pub struct Settings {
     pub nickname: String,
     pub match_type: (u8, u8),
     pub game_info: Option<GameInfo>,
-    pub available_games: Vec<(String, u8)>,
-    pub available_patches: Vec<(String, Vec<semver::Version>)>,
     pub blind_setup: bool,
 }
 
@@ -155,9 +139,16 @@ pub struct LocalReveal {
 pub fn build_commitment(save_sram: Vec<u8>) -> anyhow::Result<LocalReveal> {
     let mut nonce = [0u8; 16];
     rand::Rng::fill(&mut rand::thread_rng(), &mut nonce);
-    let state = NegotiatedState { nonce, save_data: save_sram };
+    let state = NegotiatedState {
+        nonce,
+        save_data: save_sram,
+    };
     let bin = state.serialize()?;
     let compressed = zstd::stream::encode_all(std::io::Cursor::new(&bin), 3)?;
     let commitment = make_commitment(&compressed);
-    Ok(LocalReveal { nonce, commitment, compressed })
+    Ok(LocalReveal {
+        nonce,
+        commitment,
+        compressed,
+    })
 }

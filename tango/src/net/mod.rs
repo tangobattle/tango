@@ -35,11 +35,6 @@ pub use data::{InMatchTx, PvpReceiver, PvpSender};
 /// anything already listening locally.
 pub const DEFAULT_LOCAL_PORT: u16 = 24680;
 
-/// How often the lobby + match loops fire a ping. Latency is computed
-/// from the matching Pong; absent pongs after a few intervals signal
-/// a dropped peer.
-pub const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
-
 /// Median-of-window latency tracker. Identical to the legacy
 /// `tango/src/stats.rs::LatencyCounter` — used by the PvP loop
 /// to report ping in the running match.

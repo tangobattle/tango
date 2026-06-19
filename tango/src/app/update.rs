@@ -33,52 +33,6 @@ impl App {
         };
         use tabs::play::Effect as E;
         match effect {
-            E::SetFrameDelay(d) => {
-                // Lobby slider. Persisted to config; it's this side's local
-                // frame delay (snapshotted into the match at start, not
-                // negotiated with the peer), so there's no live match to push it
-                // to here.
-                self.config.frame_delay = d;
-                self.persist_config();
-                iced::Task::none()
-            }
-            E::Netplay(m) => {
-                // An explicit user pick of match type pre-Lobby
-                // would otherwise be clobbered the first time
-                // `resend_settings_if_lobby` runs in Lobby —
-                // that helper's "default to Triple" policy
-                // fires whenever `default_mt_for_game` doesn't
-                // match the current game, which is the case
-                // when the user picked their match type before
-                // any default was applied. Stamp the slot here
-                // so the policy treats the pick as already
-                // having defaulted for this game.
-                if let netplay::Message::SetMatchType(_) = &m {
-                    if let Some(g) = self.loadout.game {
-                        let (fam, var) = g.family_and_variant();
-                        self.netplay.lobby.default_mt_for_game = Some((fam.to_string(), var));
-                    }
-                }
-                // Remember the blind-setup choice so the next lobby
-                // (this session or a future launch) defaults to it.
-                if let netplay::Message::SetBlindSetup(v) = &m {
-                    self.config.last_blind_setup = *v;
-                    self.persist_config();
-                }
-                self.netplay.update(m).map(Message::Netplay)
-            }
-            E::ReadyWithSave => {
-                // View-time gating disables the Ready button when
-                // no save is loaded, so this is just defense in
-                // depth — fall through silently if reached.
-                let Some(loaded) = self.loaded.as_ref() else {
-                    return iced::Task::none();
-                };
-                let save_sram = loaded.save.to_sram_dump();
-                self.netplay
-                    .update(netplay::Message::Commit { save_sram })
-                    .map(Message::Netplay)
-            }
             E::OpenPath(p) => open_path(p),
             E::CopyText(s) => iced::clipboard::write(s),
             E::CopyImage(img) => {
@@ -263,26 +217,15 @@ impl App {
                 } else {
                     None
                 };
-                let Some(sram) = saved_sram else {
+                if saved_sram.is_none() {
                     return iced::Task::none();
-                };
-                // If we're in a lobby and already committed (Ready), the saved
-                // edits changed the save our commitment was made over — re-commit
-                // so the opponent gets the new commitment (and chunks) instead of
-                // a hash of our pre-edit save.
-                let recommit =
-                    if matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) && self.netplay.lobby.local_ready {
-                        self.netplay
-                            .update(netplay::Message::Commit { save_sram: sram })
-                            .map(Message::Netplay)
-                    } else {
-                        iced::Task::none()
-                    };
+                }
                 // Reconcile the scanner cache with the new on-disk bytes (the
                 // in-memory loaded is already current, so refresh_loaded will
-                // early-return and keep it).
-                let rescan = self.rescan_off_thread(RescanFollowup::Refresh);
-                iced::Task::batch([rescan, recommit])
+                // early-return and keep it). A challenge's reveal is committed
+                // from the save at challenge time, so there's nothing live to
+                // re-commit here.
+                self.rescan_off_thread(RescanFollowup::Refresh)
             }
             E::SaveEditCancel => {
                 // Staged edits live only in the in-memory loaded save;
@@ -666,6 +609,9 @@ impl App {
                     v.clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY)
             }
             C::PatchRepo(s) => self.config.patch_repo = s,
+            // Persisted live; the live connection is re-dialed only on submit
+            // (see the LobbyEndpointSubmitted handling in the top-level update).
+            C::LobbyEndpoint(s) => self.config.lobby_endpoint = s,
             C::DataPath(path) => {
                 self.config.data_path = path;
                 // Make sure the standard subfolders exist in the new location

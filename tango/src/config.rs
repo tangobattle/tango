@@ -171,6 +171,13 @@ pub struct Config {
     /// of pickers and get a star glyph next to their label.
     #[serde(default)]
     pub favorite_patches: std::collections::BTreeSet<String>,
+    /// Local-only nicknames for other players, keyed by their friend code's
+    /// canonical string form (`XXXX-XXXX-XXXX-XXXX`). Purely client-side — the
+    /// lobby server never sees usernames; giving someone a nickname is what
+    /// makes them a "friend" (they show in the roster even while offline and
+    /// sort above strangers). An empty / absent entry means "not a friend".
+    #[serde(default)]
+    pub friends: std::collections::BTreeMap<String, String>,
     /// Last unmaximized window size (logical pixels). Used as the
     /// `iced::window::Settings::size` at startup so the window comes
     /// back at the size the user left it. Updated on every Resized
@@ -262,6 +269,7 @@ impl Default for Config {
             last_save_per_game: std::collections::BTreeMap::new(),
             last_patch_per_save: std::collections::BTreeMap::new(),
             favorite_patches: std::collections::BTreeSet::new(),
+            friends: std::collections::BTreeMap::new(),
             last_window_size: None,
             last_window_maximized: false,
             last_window_position: None,

@@ -16,8 +16,8 @@
 use crate::session::ActiveSession;
 use crate::theme::theme_for;
 use crate::{
-    anim, audio, config, discord, game, i18n, identity, input, loadout, lobby, net, netplay, patch, replays, rom,
-    save, selection, session, tabs, updater, widgets,
+    anim, audio, config, discord, game, i18n, identity, input, loadout, lobby, net, netplay, patch, replays, rom, save,
+    selection, session, tabs, updater, widgets,
 };
 use i18n::t;
 use iced::widget::container;
@@ -60,8 +60,6 @@ fn settings_from_proposal(p: &tango_lobby::MatchProposal, nickname: String) -> c
             .map(|m| (m.mode as u8, m.subtype as u8))
             .unwrap_or((0, 0)),
         game_info,
-        available_games: Vec::new(),
-        available_patches: Vec::new(),
         blind_setup: p.blind_setup,
     }
 }
@@ -232,20 +230,6 @@ pub struct App {
     /// What the current `screen_enter` moves and which way — see
     /// [`EnterScope`].
     screen_enter_scope: EnterScope,
-    /// Two-phase swap between the Play tab's bottom bands (link-code
-    /// strip ↔ lobby) — mirrors [`App::lobby_on_screen`], synced after
-    /// every update. Runs two transition lengths with a linear ramp:
-    /// the view spends the first half sinking + dissolving the
-    /// outgoing band into the page surface and the second half
-    /// rising + condensing the incoming one out of it, so the swap
-    /// reads as the code strip turning into the lobby and back.
-    lobby_swap: anim::Transition,
-    /// The lobby's last live (phase, lobby) pair, frozen on the
-    /// frame the lobby leaves the screen. The exiting half of the
-    /// band swap renders from this so the verdict (e.g. the failure
-    /// banner being dismissed) holds steady through the dissolve
-    /// instead of flashing to the idle handshake line.
-    lobby_exit_snapshot: Option<(netplay::Phase, netplay::LobbyState)>,
 }
 
 /// See [`App::screen_enter_scope`].
@@ -428,8 +412,6 @@ impl App {
             // and not animating until first triggered.
             screen_enter: anim::Enter::default(),
             screen_enter_scope: EnterScope::Root { dy: ROOT_SLIDE },
-            lobby_swap: anim::Transition::swap(false),
-            lobby_exit_snapshot: None,
         };
         app.refresh_loaded();
         let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
@@ -485,8 +467,60 @@ impl App {
             lobby::Message::IssueChallenge(peer) => self.issue_challenge(peer),
             lobby::Message::AcceptIncoming(peer) => self.accept_incoming(peer),
             lobby::Message::Event(event) => self.handle_lobby_event(event),
+            // Local friend nicknames live in config, not the lobby state — a
+            // non-empty name makes them a friend; empty clears it.
+            lobby::Message::SetNickname { code, name } => {
+                let name = name.trim().to_string();
+                if name.is_empty() {
+                    self.config.friends.remove(&code);
+                } else {
+                    self.config.friends.insert(code, name);
+                }
+                self.persist_config();
+                iced::Task::none()
+            }
+            // The match settings feed `current_proposal` — stash them on the
+            // netplay lobby state the proposal builder reads (no live
+            // connection during challenge setup, so nothing to resend).
+            lobby::Message::SetMatchType(mt) => {
+                self.netplay.lobby.match_type = mt;
+                iced::Task::none()
+            }
+            lobby::Message::SetBlindSetup(v) => {
+                self.netplay.lobby.blind_setup = v;
+                // Remember it so the next challenge defaults to the same choice.
+                self.config.last_blind_setup = v;
+                self.persist_config();
+                iced::Task::none()
+            }
+            lobby::Message::CopyText { text, flash } => {
+                crate::copy_feedback::flash(flash);
+                iced::clipboard::write(text)
+            }
             other => self.lobby.update(other).map(Message::Lobby),
         }
+    }
+
+    /// Incoming challengers whose proposed setup is netplay-incompatible with
+    /// our current loadout — accepting is blocked for these (the sidebar shows
+    /// the mismatch). Computed per-frame for the sidebar.
+    fn incompatible_challengers(&self) -> std::collections::BTreeSet<tango_lobby::FriendCode> {
+        if self.lobby.incoming.is_empty() {
+            return std::collections::BTreeSet::new();
+        }
+        let local = self.make_local_settings();
+        let patches = self.scanners.patches.read();
+        self.lobby
+            .incoming
+            .iter()
+            .filter_map(|(fc, inc)| {
+                let remote = settings_from_proposal(&inc.proposal, String::new());
+                match netplay::compat::check(&local, &remote, &*patches) {
+                    netplay::compat::Verdict::Compatible => None,
+                    _ => Some(*fc),
+                }
+            })
+            .collect()
     }
 
     /// Drive the lobby's match-relevant events: relay SDP into an in-flight
@@ -497,7 +531,13 @@ impl App {
         if let Event::RtcOffer { sdp, .. } | Event::RtcAnswer { sdp, .. } = &event {
             self.netplay.feed_lobby_sdp(sdp.clone());
         }
-        let start = matches!(event, Event::ChallengeAccepted { .. } | Event::ChallengeConfirmed { .. });
+        let start = matches!(
+            event,
+            Event::ChallengeAccepted { .. } | Event::ChallengeConfirmed { .. }
+        );
+        // A fresh incoming challenge: flash + bounce the taskbar so you notice
+        // even when Tango isn't focused (no-op when already focused, per iced).
+        let incoming = matches!(event, Event::ChallengeIncoming { .. });
         // Bookkeeping first, so my_match gets the peer commitment + ICE servers.
         let lobby_task = self.lobby.update(lobby::Message::Event(event)).map(Message::Lobby);
         let net_task = if start {
@@ -505,7 +545,13 @@ impl App {
         } else {
             iced::Task::none()
         };
-        iced::Task::batch([lobby_task, net_task])
+        let attention = if incoming {
+            iced::window::latest()
+                .and_then(|id| iced::window::request_user_attention(id, Some(iced::window::UserAttention::Critical)))
+        } else {
+            iced::Task::none()
+        };
+        iced::Task::batch([lobby_task, net_task, attention])
     }
 
     /// Pull the ready match out of the lobby state and bring up the WebRTC match.
@@ -529,7 +575,8 @@ impl App {
             .as_ref()
             .map(|m| (m.mode as u8, m.subtype as u8))
             .unwrap_or((0, 0));
-        let local_settings = settings_from_proposal(&start.local_proposal, self.config.nickname.clone().unwrap_or_default());
+        let local_settings =
+            settings_from_proposal(&start.local_proposal, self.config.nickname.clone().unwrap_or_default());
         let remote_settings = settings_from_proposal(&start.peer_proposal, String::new());
         self.netplay
             .connect_lobby_match(
@@ -611,6 +658,15 @@ impl App {
         iced::Task::none()
     }
 
+    /// Tear down and re-dial the presence connection against the current
+    /// `config.lobby_endpoint` — called when the endpoint changes in Settings.
+    /// A fresh `lobby::State` resets the roster + transient view state, which a
+    /// reconnect would clear regardless.
+    fn restart_lobby(&mut self) -> iced::Task<Message> {
+        self.lobby = lobby::State::new(self.config.lobby_endpoint.clone(), identity::load());
+        self.lobby.connect().map(Message::Lobby)
+    }
+
     /// Persist `self.config` to disk. Failures are logged but otherwise
     /// swallowed so a transient write error doesn't crash the UI.
     fn persist_config(&self) {
@@ -643,23 +699,15 @@ impl App {
         self.persist_config();
     }
 
-    /// Snapshot of the inputs that determine `loaded`, used to skip
-    /// rebuilds when nothing relevant changed.
-    /// Build the current Settings packet + dispatch SendLocalSettings
-    /// Default match-type policy:
-    ///   - Game JUST changed (or first selection in this lobby):
-    ///     pick Triple (mode=1) if the game supports it, else
-    ///     Single. This is the "default to triple" the user wants
-    ///     — keyed off `default_mt_for_game` so it only fires once
-    ///     per (lobby, game) pair.
-    ///   - Same game, current value invalid for it: same fallback
-    ///     (paranoia).
-    ///   - Same game, valid value: leave alone — sticky user pick.
+    /// Default the sidebar proposal's match type when the selected game
+    /// changes:
+    ///   - Game just changed: pick Triple (mode=1) if the game supports it,
+    ///     else Single — keyed off `default_mt_for_game` so it fires once per
+    ///     game and a user's explicit pick for the same game sticks.
+    ///   - Same game, current value invalid for it: same fallback (paranoia).
+    ///   - Same game, valid value: leave alone.
     ///
-    /// Called any time the current game or lobby state could have
-    /// changed in a way that affects the right default: on Connect
-    /// (cancel_and_renew wiped the lobby), on selection change,
-    /// and defensively inside `resend_settings_if_lobby`.
+    /// Called on selection change; `current_proposal` reads the result.
     fn apply_default_match_type(&mut self) {
         let Some(game) = self.loadout.game else { return };
         let mt_table = game::from_gamedb_entry(game).map(|g| g.match_types).unwrap_or(&[]);
@@ -680,21 +728,6 @@ impl App {
             self.netplay.lobby.match_type = new_mt;
             self.netplay.lobby.default_mt_for_game = Some(game_key);
         }
-    }
-
-    /// — only meaningful while netplay is in Lobby phase; outside
-    /// that this returns `Task::none()`. Wrapped in a helper because
-    /// it has three callers: lobby entry, selection change, and
-    /// match-type change.
-    fn resend_settings_if_lobby(&mut self) -> iced::Task<Message> {
-        if !matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) {
-            return iced::Task::none();
-        }
-        self.apply_default_match_type();
-        let settings = self.make_local_settings();
-        self.netplay
-            .update(netplay::Message::SendLocalSettings(Box::new(settings)))
-            .map(Message::Netplay)
     }
 
     /// Run a full `Scanners::rescan` on a tokio blocking worker so
@@ -728,31 +761,6 @@ impl App {
         self.rescans_in_flight > 0
     }
 
-    /// If a netplay state change just flipped the compat verdict to
-    /// anything other than Compatible while we're still flagged
-    /// ready, fire an Uncommit so the local commit doesn't outlive
-    /// the agreement it was based on. Covers the cases the netplay
-    /// handlers don't catch — peer changing their game/patch/
-    /// match_type, or our own available_patches shrinking out from
-    /// under a previously-valid commit.
-    fn uncommit_if_incompat(&self) -> iced::Task<Message> {
-        if !matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) {
-            return iced::Task::none();
-        }
-        if !self.netplay.lobby.local_ready {
-            return iced::Task::none();
-        }
-        let (Some(local), Some(remote)) = (self.netplay.lobby.local.as_ref(), self.netplay.lobby.remote.as_ref())
-        else {
-            return iced::Task::none();
-        };
-        let patches = self.scanners.patches.read();
-        let verdict = netplay::compat::check(local, remote, &*patches);
-        if matches!(verdict, netplay::compat::Verdict::Compatible) {
-            return iced::Task::none();
-        }
-        iced::Task::done(Message::Netplay(netplay::Message::Uncommit))
-    }
 
     /// Build a `protocol::Settings` packet from the App's current
     /// state: nickname from config, match_type defaults to (0, 0),
@@ -760,8 +768,7 @@ impl App {
     /// available_patches lists from the scanners so the peer can see
     /// what we have locally.
     fn make_local_settings(&self) -> net::protocol::Settings {
-        self.loadout
-            .make_local_settings(&self.config, &self.netplay.lobby, &self.scanners)
+        self.loadout.make_local_settings(&self.config, &self.netplay.lobby)
     }
 
     fn loaded_key(&self) -> Option<(rom::GameRef, std::path::PathBuf, Option<(String, semver::Version)>)> {
@@ -951,18 +958,13 @@ impl App {
         }
     }
 
-    /// Whether the Play tab's bottom band is the lobby (a netplay
-    /// attempt is in flight, failed-but-not-dismissed, or handing
-    /// off) rather than the link-code strip. Drives
-    /// [`App::lobby_swap`] and the nav badge on the Play tab.
-    /// `Failed` counts: the lobby stays up as a sticky failure
-    /// banner until the user cancels it.
-    fn lobby_on_screen(&self) -> bool {
+    /// Whether a netplay attempt is in flight (connecting, failed-but-not-
+    /// dismissed, or handing off) — drives the nav badge on the Play tab so an
+    /// in-progress match is visible from other tabs.
+    fn netplay_active(&self) -> bool {
         matches!(
             self.netplay.phase,
-            netplay::Phase::Connecting { .. }
-                | netplay::Phase::Lobby { .. }
-                | netplay::Phase::Failed { .. }
+            netplay::Phase::Connecting { .. } | netplay::Phase::Failed { .. }
         ) || self.netplay.handoff_pending()
     }
 
@@ -970,12 +972,6 @@ impl App {
         let screen_before = self.screen_key();
         let family_before = self.loadout.family;
         let selection_before = (self.loadout.game, self.loadout.save.clone());
-        // Candidate snapshot for the lobby's exit animation — taken
-        // before dispatch (the handler about to run may reset the
-        // phase/lobby), kept only if the lobby actually left.
-        let lobby_live = self
-            .lobby_on_screen()
-            .then(|| (self.netplay.phase.clone(), self.netplay.lobby.clone()));
         let task = self.update_inner(message);
         let now = iced::time::Instant::now();
         let screen_after = self.screen_key();
@@ -1001,15 +997,6 @@ impl App {
                 _ => EnterScope::Root { dy: ROOT_SLIDE },
             };
         }
-        // The Play tab's band swap follows the netplay phase: the
-        // view morphs the link-code strip into the lobby (and back)
-        // off this transition. When the lobby leaves, freeze its last
-        // live state for the exit half to render from.
-        let lobby_after = self.lobby_on_screen();
-        if let (Some(snap), false) = (lobby_live, lobby_after) {
-            self.lobby_exit_snapshot = Some(snap);
-        }
-        self.lobby_swap.set(lobby_after, now);
         // A different family swaps the entire bottom of the tab —
         // rise the whole save-view pane in. A different game or save
         // within the family only re-renders the save's content — rise
@@ -1037,19 +1024,10 @@ impl App {
                 self.tab = t;
                 iced::Task::none()
             }
-            // Loadout strip interactions route to the shared
-            // App-level Loadout — the tab never sees them.
-            // Every dispatch below is followed by a Settings resend —
-            // the netplay handler dedupes against the last-sent value
-            // via `Settings: Eq`, so unchanged dispatches are free.
-            Message::Play(tabs::play::Message::Loadout(m)) => {
-                let task = self.update_loadout(m);
-                iced::Task::batch([task, self.resend_settings_if_lobby()])
-            }
-            Message::Play(m) => {
-                let task = self.update_play(m);
-                iced::Task::batch([task, self.resend_settings_if_lobby()])
-            }
+            // Loadout strip interactions route to the shared App-level Loadout
+            // — the tab never sees them.
+            Message::Play(tabs::play::Message::Loadout(m)) => self.update_loadout(m),
+            Message::Play(m) => self.update_play(m),
             Message::Patches(m) => self.update_patches(m),
             Message::DiscordTick => {
                 self.handle_discord_tick();
@@ -1095,7 +1073,17 @@ impl App {
                 iced::Task::none()
             }
             Message::Replays(m) => self.update_replays(m),
-            Message::Settings(m) => self.update_settings(m).map(Message::Settings),
+            Message::Settings(m) => {
+                // The endpoint field commits on Enter — re-dial the presence
+                // connection against the (already-persisted) new endpoint.
+                let reconnect = matches!(m, tabs::settings::Message::LobbyEndpointSubmitted);
+                let settings_task = self.update_settings(m).map(Message::Settings);
+                if reconnect {
+                    iced::Task::batch([settings_task, self.restart_lobby()])
+                } else {
+                    settings_task
+                }
+            }
             Message::Welcome(m) => self.update_welcome(m),
             Message::Session(m) => {
                 // In-match frame-delay slider: persist the new value to config so
@@ -1187,31 +1175,7 @@ impl App {
                 )
             }
             Message::Lobby(m) => self.handle_lobby_message(m),
-            Message::Netplay(m) => {
-                // Always resend after a netplay message too: this
-                // covers the Negotiating → Lobby transition (first
-                // announce) and lobby-state mutations like
-                // SetMatchType / SetFrameDelay. The dedupe inside
-                // netplay::State::update::SendLocalSettings makes
-                // unchanged dispatches a no-op.
-                let was_lobby = matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
-                let task = self.netplay.update(m).map(Message::Netplay);
-                let became_lobby = !was_lobby && matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
-                // Opponent just completed the handshake — flash the
-                // taskbar / bounce the dock so the lobby host
-                // notices even if Tango isn't focused. No-op if the
-                // window is already focused (per iced docs).
-                let attention = if became_lobby {
-                    iced::window::latest().and_then(|id| {
-                        iced::window::request_user_attention(id, Some(iced::window::UserAttention::Critical))
-                    })
-                } else {
-                    iced::Task::none()
-                };
-                let resend = self.resend_settings_if_lobby();
-                let uncommit = self.uncommit_if_incompat();
-                iced::Task::batch([task, resend, uncommit, attention])
-            }
+            Message::Netplay(m) => self.netplay.update(m).map(Message::Netplay),
             Message::PvpSessionBuilt(slot) => {
                 let Some(result) = slot.lock().unwrap().take() else {
                     return iced::Task::none();
@@ -1279,7 +1243,6 @@ impl App {
     pub fn subscription(&self) -> iced::Subscription<Message> {
         let mut subs = vec![
             session::subscription(&self.session).map(Message::Session),
-            netplay::subscription(&self.netplay).map(Message::Netplay),
             lobby::subscription(&self.lobby).map(Message::Lobby),
             // 1 Hz Discord refresh — cheap (compares activity for
             // equality before re-sending) and gives us the join-
@@ -1298,15 +1261,7 @@ impl App {
         // forever.
         let waiting_pulse_on_screen = !self.session.is_active()
             && self.tab == Tab::Play
-            && match &self.netplay.phase {
-                netplay::Phase::Connecting { .. } => true,
-                // The lobby's "waiting for opponent data" handshake
-                // line pulses too, until both sides' settings land.
-                netplay::Phase::Lobby { .. } => {
-                    self.netplay.lobby.local.is_none() || self.netplay.lobby.remote.is_none()
-                }
-                _ => false,
-            };
+            && matches!(self.netplay.phase, netplay::Phase::Connecting { .. });
         if anim::any_active() || waiting_pulse_on_screen {
             subs.push(iced::window::frames().map(|_| Message::AnimTick));
         }
@@ -1358,10 +1313,7 @@ impl App {
         }
 
         match &self.netplay.phase {
-            netplay::Phase::Lobby { ident } => discord::make_in_lobby_activity(ident, lang, game_info),
-            netplay::Phase::Connecting { ident, .. } => {
-                discord::make_looking_activity(ident, lang, game_info)
-            }
+            netplay::Phase::Connecting { ident, .. } => discord::make_looking_activity(ident, lang, game_info),
             netplay::Phase::Idle | netplay::Phase::Failed { .. } => discord::make_base_activity(game_info),
         }
     }
@@ -1556,18 +1508,27 @@ impl App {
                         self.config.streamer_mode,
                         &self.config,
                         &self.netplay.phase,
-                        &self.netplay.lobby,
                         self.netplay.handoff_pending(),
                         rescanning,
-                        &self.lobby_swap,
-                        self.lobby_exit_snapshot.as_ref(),
                     )
                     .map(Message::Play);
                 // The presence roster rides on the right as a full-height pane,
                 // composed here so the Play tab proper stays unaware of it.
+                let incompatible = self.incompatible_challengers();
+                let ctx = lobby::view::Ctx {
+                    lang,
+                    state: &self.lobby,
+                    friends: &self.config.friends,
+                    streamer_mode: self.config.streamer_mode,
+                    can_challenge: self.can_challenge(),
+                    netplay_idle: matches!(self.netplay.phase, netplay::Phase::Idle),
+                    local_game: self.loadout.game,
+                    match_type: self.netplay.lobby.match_type,
+                    blind_setup: self.netplay.lobby.blind_setup,
+                };
                 row![
                     container(main).width(Fill).height(Fill),
-                    lobby::sidebar(&self.lobby, lang, self.can_challenge()).map(Message::Lobby),
+                    lobby::view::sidebar(&ctx, &incompatible).map(Message::Lobby),
                 ]
                 .into()
             }
@@ -1605,7 +1566,7 @@ impl App {
         // While a lobby is live and the user is on another tab, the
         // Play tab's nav pill carries a small attention dot so the
         // open lobby isn't forgotten behind a tab switch.
-        let lobby_badge = self.lobby_on_screen() && self.tab != Tab::Play;
+        let lobby_badge = self.netplay_active() && self.tab != Tab::Play;
         let root: Element<'_, Message> = column![
             top_bar(lang, self.tab, lobby_badge, self.config.fullscreen),
             widgets::hud_scanline_top(),

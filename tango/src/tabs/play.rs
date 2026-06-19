@@ -1,14 +1,10 @@
-//! The Play tab: everything in one place. The full loadout selector
-//! (family / save / patch pickers + save management) and the save
-//! viewer/editor fill the body, and a netplay band rides the bottom —
-//! the link-code strip + Fight CTA when idle, the full lobby
-//! ([`lobby`]) once a connection attempt is in flight. The save view
-//! stays on screen through it all, so what you're bringing to the
-//! match is always visible (and switchable) even mid-lobby. The
-//! selection state itself is App-level ([`crate::loadout::Loadout`])
-//! so the lobby settings-resend sees every change made here live.
-
-mod lobby;
+//! The Play tab: the full loadout selector (family / save / patch
+//! pickers + save management) and the save viewer/editor. Internet play
+//! is driven entirely from the presence sidebar ([`crate::lobby::view`]),
+//! composed alongside this tab at the App level — so the tab itself stays
+//! focused on picking + managing what you bring to a match. The selection
+//! state is App-level ([`crate::loadout::Loadout`]) so the challenge
+//! proposal sees every change made here live.
 
 use crate::app::Scanners;
 use crate::i18n::t;
@@ -31,31 +27,10 @@ pub enum Message {
     Loadout(loadout::Message),
     SaveViewAction(save_view::Action),
 
-    Disconnect,
-    /// Lobby UI: user picked a different match type. App routes
-    /// this through netplay::Message::SetMatchType so the resend
-    /// machinery picks it up.
-    SetMatchType((u8, u8)),
-    /// Lobby UI: user dragged the frame-delay slider, OR pressed
-    /// the "suggest" button (which dispatches a value computed from the
-    /// `lobby.latency_counter` median). Routes to the shared `config.frame_delay`
-    /// (same store the Settings-tab slider writes), not lobby-local state.
-    SetFrameDelay(u32),
-    /// Lobby UI: user toggled the blind-setup checkbox.
-    SetBlindSetup(bool),
-    /// Lobby UI: user pressed Ready. App loads the local
-    /// save's raw SRAM, builds a NegotiatedState, and
-    /// dispatches netplay::Message::Commit.
-    Ready,
-    /// Lobby UI: user pressed Unready (Ready button while
-    /// already committed). Sends an Uncommit packet.
-    Unready,
-    /// Soft-disable sentinel for widgets that don't accept a
-    /// `None` handler in iced 0.14 (pick_list, slider). The
-    /// lobby reroutes match-type / frame-delay changes here in
-    /// Phase::Failed (and the selector strip during handoff) so
-    /// the controls render inert without touching layout. The
-    /// update handler drops it.
+    /// Soft-disable sentinel for widgets that don't accept a `None`
+    /// handler in iced 0.14 (pick_list). The selector strip reroutes
+    /// loadout changes here during the PvP handoff so the controls render
+    /// inert without touching layout. The update handler drops it.
     Noop,
 
     SaveOpenFolder,
@@ -262,15 +237,6 @@ pub enum AutoBattleDataEdit {
 /// as an `Effect` for the caller to interpret.
 #[derive(Debug)]
 pub enum Effect {
-    /// Forward verbatim to the netplay subsystem.
-    Netplay(crate::netplay::Message),
-    /// Lobby frame-delay slider moved. App persists `config.frame_delay`; it's
-    /// this side's local frame delay (snapshotted into the match at
-    /// start, not negotiated with the peer), so there's nothing live to update.
-    SetFrameDelay(u32),
-    /// Lobby Ready — App reads the local save SRAM and
-    /// dispatches `netplay::Message::Commit`.
-    ReadyWithSave,
     /// `open::that(_)` on a file or folder.
     OpenPath(std::path::PathBuf),
     /// Copy plain text to the clipboard.
@@ -362,12 +328,6 @@ impl State {
             // dispatch is reached.
             Message::Loadout(_) => None,
             Message::Noop => None,
-            Message::Disconnect => Some(Effect::Netplay(crate::netplay::Message::Disconnect)),
-            Message::SetMatchType(mt) => Some(Effect::Netplay(crate::netplay::Message::SetMatchType(mt))),
-            Message::SetFrameDelay(d) => Some(Effect::SetFrameDelay(d)),
-            Message::SetBlindSetup(v) => Some(Effect::Netplay(crate::netplay::Message::SetBlindSetup(v))),
-            Message::Ready => Some(Effect::ReadyWithSave),
-            Message::Unready => Some(Effect::Netplay(crate::netplay::Message::Uncommit)),
             Message::SaveViewAction(action) => {
                 use save_view::Action as A;
                 let sv_task = self.save_view.apply(&action);
@@ -770,19 +730,8 @@ impl State {
         streamer_mode: bool,
         config: &'a config::Config,
         netplay_phase: &'a crate::netplay::Phase,
-        netplay_lobby: &'a crate::netplay::LobbyState,
         netplay_handoff_pending: bool,
         rescanning: bool,
-        // Two-phase swap between the bottom bands (link-code strip ↔
-        // lobby), driven by the App (which sees the netplay phase
-        // flip): first half sinks + dissolves the outgoing band,
-        // second half rises the incoming one out of the page surface.
-        bottom_swap: &'a crate::anim::Transition,
-        // The lobby's last live state, frozen by the App on the
-        // frame the band left — the exiting band renders from
-        // this so the verdict (e.g. the failure banner) doesn't
-        // flash to the idle handshake line mid-dissolve.
-        lobby_exit_snapshot: Option<&'a (crate::netplay::Phase, crate::netplay::LobbyState)>,
     ) -> Element<'a, Message> {
         let now = iced::time::Instant::now();
         let mut save_body = self.body(lang, scanners, loadout, loaded, streamer_mode, config, netplay_phase);
@@ -794,15 +743,16 @@ impl State {
             save_body = crate::anim::slide_in(save_body, p, iced::Vector::new(0.0, 20.0));
         }
 
-        // Selector strip + save-view body live inside a single
-        // PANE_GAP-padded column so every pane in that area shares
-        // the same inset from the window edges and gap from one
-        // another. The hud_scanline_bottom + bottom band sit OUTSIDE
-        // that padding so they remain edge-to-edge bottom bars.
+        // Zone header + selector strip + save-view body live inside a
+        // single PANE_GAP-padded column so every pane in that area shares
+        // the same inset from the window edges and gap from one another.
+        // The "Your build" header rides above the panes, mirroring the
+        // sidebar's "Who's around" so the two regions read as distinct.
         // The strip goes inert during the handoff window: the PvP
         // session is being built from the committed state and
         // selection changes would only confuse.
         let inner = column![
+            widgets::zone_title(&t!(lang, "play-zone-build")),
             self.selector_strip(lang, scanners, loadout, config, rescanning, netplay_handoff_pending),
             save_body,
         ]
@@ -815,62 +765,6 @@ impl State {
             col = col.push(widgets::error_banner(lang, err, Message::DismissError));
         }
         col = col.push(inner);
-        // While a netplay attempt is in flight (Connecting / Lobby,
-        // sticky Failed, handoff) the lobby IS the bottom band — it
-        // carries the versus cards, match settings, and the
-        // verdict/cancel/ready chrome, while the save view above stays
-        // visible. When idle there's no bottom band at all: the save
-        // view fills the space and netplay is started from the roster
-        // sidebar.
-        //
-        // The band slides in and out on `bottom_swap`'s timeline,
-        // rising out of the page surface on the way in and sinking
-        // back into it on the way out. The bottom HUD scanline is
-        // grouped into the moving band so it rides the motion instead
-        // of staying pinned above it.
-        let (render_lobby, swap) = crate::anim::swap_phase(bottom_swap, now);
-        if render_lobby {
-            // While the band is on its way OUT, the live phase has
-            // already gone Idle (and the lobby may be wiped) — use
-            // the snapshot the App froze on the band's last live
-            // frame so the verdict doesn't flash mid-dissolve.
-            let (band_phase, band_lobby) = if !bottom_swap.shown() {
-                lobby_exit_snapshot
-                    .map(|(p, l)| (p, l))
-                    .unwrap_or((netplay_phase, netplay_lobby))
-            } else {
-                (netplay_phase, netplay_lobby)
-            };
-            // Synthesize the local side's Settings from the current
-            // loadout so the "You" slot fills in immediately —
-            // pre-Lobby phases haven't populated `lobby.local` yet,
-            // but everything it needs is already on hand locally.
-            // Same builder the netplay loop uses to ship settings on
-            // the wire, so the visible info during the handshake
-            // exactly matches what gets sent.
-            let local_fallback = loadout.make_local_settings(config, netplay_lobby, scanners);
-            let band = lobby::Lobby {
-                lang,
-                state: band_lobby,
-                phase: band_phase,
-                local_game: loadout.game,
-                scanners,
-                has_save: loaded.is_some(),
-                local_fallback,
-                streamer_mode,
-                handoff_pending: netplay_handoff_pending,
-                frame_delay: config.frame_delay,
-            }
-            .view();
-            let mut group: Element<'a, Message> =
-                column![widgets::hud_scanline_bottom(), band].width(Fill).into();
-            if let Some(phase) = swap {
-                group = crate::anim::swap_transform(group, phase, iced::Vector::new(0.0, 48.0), |theme: &iced::Theme| {
-                    theme.palette().background
-                });
-            }
-            col = col.push(group);
-        }
         col.into()
     }
 
@@ -1570,117 +1464,6 @@ pub fn create_new_save(
     let sram = save.to_sram_dump();
     std::fs::write(&dst, sram)?;
     Ok(dst)
-}
-
-// ---------- "Commit to a match" CTA chrome ----------
-//
-// Shared between the bottom strip's Fight button and the lobby's
-// Ready toggle — both are the same "slam this to fight" affordance,
-// so they wear the same chrome.
-
-/// Which ready-button state we're painting. Drives
-/// [`ready_button_style`]'s color choice.
-#[derive(Clone, Copy)]
-enum ReadyPalette {
-    /// Pre-commit; the action is "ready up". Accent (primary) so
-    /// it reads as the call-to-action in the strip.
-    Idle,
-    /// Locally committed; the action is "unready". Neutral / gray —
-    /// the commitment isn't a celebration to surface in green;
-    /// what matters is the user can un-commit.
-    Committed,
-    /// Both committed; match is spinning up. Rendered as a passive
-    /// indicator: muted background, no click target, no border.
-    /// Caller sets `on_press = None` to match the disabled look.
-    Starting,
-}
-
-/// Custom style for the lobby's Ready toggle. Three discrete
-/// moods — each one its own visual register so a glance at the
-/// button tells the whole story of "where are we in the
-/// handshake".
-///
-/// * Idle      — primary_button on steroids: brighter gradient,
-///               huge primary glow, chunky 2 px border. This is
-///               the moment the user is supposed to slam the
-///               button, so it has to feel hot.
-/// * Committed — neutral beveled plate. We've ack'd locally and
-///               are waiting on the peer; the only useful action
-///               is to take it back, which is not a celebration.
-/// * Starting  — flat muted badge. Both sides committed; the
-///               button is now purely a status indicator with no
-///               click target.
-fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: ReadyPalette) -> button::Style {
-    let p = theme.extended_palette();
-    let primary = theme.palette().primary;
-    match palette {
-        ReadyPalette::Starting => button::Style {
-            background: Some(iced::Background::Color(p.background.weak.color)),
-            text_color: widgets::muted_color(theme),
-            border: iced::Border {
-                radius: widgets::tech_radius(10.0),
-                width: 1.0,
-                color: p.background.strong.color,
-            },
-            ..Default::default()
-        },
-        ReadyPalette::Committed => {
-            // Defer to the shared beveled neutral so the
-            // un-ready toggle looks like a sibling of the other
-            // chunky neutral buttons in the lobby strip.
-            crate::widgets::neutral(theme, status)
-        }
-        ReadyPalette::Idle => {
-            // Disabled state defers to the standard neutral
-            // button so it reads as a plainly-greyed-out button
-            // — the dim-primary-fill version this used to
-            // render looked like a corrupted variant of the
-            // lit-up state rather than a disabled affordance.
-            if matches!(status, button::Status::Disabled) {
-                return crate::widgets::neutral(theme, status);
-            }
-            // Inline expansion of the battle-button kernel with
-            // every dial cranked: bigger glow, brighter top stop,
-            // 2 px border so the button reads as a console
-            // affordance rather than a CSS rectangle.
-            let lighter = widgets::mix(primary, iced::Color::WHITE, 0.30);
-            let darker = widgets::mix(primary, iced::Color::BLACK, 0.25);
-            let (top, bottom, glow_alpha, offset_y, blur) = match status {
-                button::Status::Hovered => (
-                    widgets::mix(lighter, iced::Color::WHITE, 0.18),
-                    widgets::mix(primary, iced::Color::WHITE, 0.05),
-                    0.95,
-                    8.0,
-                    28.0,
-                ),
-                button::Status::Pressed => (darker, widgets::mix(darker, iced::Color::BLACK, 0.12), 0.35, 2.0, 14.0),
-                button::Status::Disabled => unreachable!("handled above"),
-                button::Status::Active => (lighter, darker, 0.75, 6.0, 22.0),
-            };
-            button::Style {
-                background: Some(iced::Background::Gradient(iced::Gradient::Linear(
-                    iced::gradient::Linear::new(0.0)
-                        .add_stop(0.0, top)
-                        .add_stop(1.0, bottom),
-                ))),
-                text_color: widgets::on_accent(primary),
-                border: iced::Border {
-                    radius: widgets::tech_radius(10.0),
-                    width: 2.0,
-                    color: widgets::mix(primary, iced::Color::WHITE, 0.45),
-                },
-                shadow: iced::Shadow {
-                    color: iced::Color {
-                        a: glow_alpha,
-                        ..primary
-                    },
-                    offset: iced::Vector::new(0.0, offset_y),
-                    blur_radius: blur,
-                },
-                snap: false,
-            }
-        }
-    }
 }
 
 // ---------- Direct-command parsing ----------

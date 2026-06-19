@@ -1,25 +1,20 @@
-// The challenge UI + the challenge -> SDP-relay -> match-start flow are
-// follow-up increments, so the collected `incoming` challenge state is still
-// write-only; silence dead-code noise at the module level until it lands.
+// Some lobby plumbing (a few `MyMatch` reveal fields, helper accessors) is only
+// read on certain paths; keep the module quiet rather than peppering it with
+// per-item allows.
 #![allow(dead_code)]
 
 //! App-level glue to the lobby server (`tango_lobby`): owns the persistent
-//! presence connection, mirrors the roster, and collects incoming challenges.
-//!
-//! Additive — this does not touch the existing link-code netplay path. The
-//! presence connection runs alongside it; failing to reach the lobby is
-//! non-fatal (the app just shows no roster).
+//! presence connection, mirrors the roster + incoming challenges, and carries
+//! the transient sidebar view-state (open profile, status menu, add-by-code
+//! draft). The rendering lives in [`view`]; reaching the lobby is non-fatal
+//! (the app just shows an offline sidebar).
+
+pub mod view;
 
 use std::sync::Arc;
 
 use futures::StreamExt;
-use iced::widget::{button, container, scrollable, text};
-use iced::{Element, Fill, Length};
-use sweeten::widget::{column, row};
 use tango_lobby::{Event, FriendCode, IceServer, Lobby, MatchProposal, Welcome};
-use unic_langid::LanguageIdentifier;
-
-use crate::{style, widgets};
 
 /// Lobby wire-protocol version (matches the server's `SERVER_PROTOCOL_VERSION`).
 const LOBBY_PROTOCOL_VERSION: u32 = 1;
@@ -31,6 +26,16 @@ fn slot<T>(value: T) -> Slot<T> {
 }
 
 type EventRx = tokio::sync::mpsc::UnboundedReceiver<Event>;
+
+/// Your own presence, IM-client style. Online and Invisible are both
+/// *connected* (you see the roster and can challenge); Invisible hides you
+/// from everyone else's roster. Offline tears the presence connection down.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SelfStatus {
+    Online,
+    Invisible,
+    Offline,
+}
 
 #[derive(Debug, Clone)]
 pub enum Connection {
@@ -47,6 +52,9 @@ pub enum Connection {
 pub struct IncomingChallenge {
     pub proposal: MatchProposal,
     pub commitment: Vec<u8>,
+    /// Monotonic arrival stamp (see [`State::challenge_seq`]) — orders the
+    /// challenges list by time received once friends are floated to the top.
+    pub seq: u64,
 }
 
 /// Our role in a match we're setting up.
@@ -60,8 +68,8 @@ enum MatchRole {
 
 /// The one match we're currently negotiating. Holds our reveal (streamed
 /// peer-to-peer once connected) and, once the peer commits, their commitment +
-/// proposal + ICE servers — everything the WebRTC bring-up (sub-increment B)
-/// needs to start the match.
+/// proposal + ICE servers — everything the WebRTC bring-up needs to start the
+/// match.
 struct MyMatch {
     peer: FriendCode,
     role: MatchRole,
@@ -90,12 +98,19 @@ pub struct State {
     identity: Option<tango_lobby::ClientIdentity>,
     /// Our own visibility toggle (local; drives what we send via SetStatus).
     invisible: bool,
+    /// We've chosen to go fully Offline (tore the connection down on purpose) —
+    /// distinguishes a deliberate sign-off from an error/transient disconnect
+    /// when deriving [`Self::self_status`].
+    user_offline: bool,
     pub connection: Connection,
     /// Visible roster, keyed by friend code; the value is `now_playing`
     /// (`Some` => in a match). One entry per identity.
     pub roster: std::collections::BTreeMap<FriendCode, Option<MatchProposal>>,
     /// Challenges offered to us, keyed by the challenger.
     pub incoming: std::collections::BTreeMap<FriendCode, IncomingChallenge>,
+    /// Monotonic stamp handed to each arriving [`IncomingChallenge`] so the
+    /// challenges list can sort by time received.
+    challenge_seq: u64,
     /// The match we're currently negotiating (at most one), if any.
     my_match: Option<MyMatch>,
     handle: Option<Lobby>,
@@ -103,6 +118,21 @@ pub struct State {
     /// `epoch` keys the subscription so it respawns on each (re)connect.
     event_rx_slot: Slot<EventRx>,
     epoch: u64,
+
+    // ---- transient sidebar view-state ----
+    /// Which peer's profile is open in the sidebar (Telegram-style
+    /// master→detail), if any. A `FriendCode` rather than a roster index so it
+    /// survives roster churn and works for offline friends + just-typed codes.
+    pub open_peer: Option<FriendCode>,
+    /// Slide in/out of the open profile. While animating *out* the profile
+    /// keeps rendering even though `open_peer` is still set; the view drops it
+    /// once this is no longer visible.
+    pub profile_vis: crate::anim::Transition,
+    /// Whether the self-status menu (online / invisible / offline) is open.
+    pub status_menu_open: bool,
+    /// Draft of the "find by friend code" bar. Submitting opens that code's
+    /// profile so you can nickname it.
+    pub add_draft: String,
 }
 
 #[derive(Debug, Clone)]
@@ -114,8 +144,8 @@ pub enum Message {
     ConnectFailed(String),
     /// A decoded server event off the live stream.
     Event(Event),
-    /// UI: toggle our own visibility (Online <-> Invisible).
-    SetInvisible(bool),
+    /// UI: pick your own presence (online / invisible / offline).
+    SetSelfStatus(SelfStatus),
     /// UI: challenge a roster player. Intercepted by the App (it builds the
     /// proposal + commitment from the loadout + loaded save).
     IssueChallenge(FriendCode),
@@ -123,6 +153,30 @@ pub enum Message {
     AcceptIncoming(FriendCode),
     /// UI: decline an incoming challenge.
     DeclineIncoming(FriendCode),
+    /// UI: withdraw our outstanding outgoing challenge.
+    CancelChallenge,
+    /// UI: open a peer's profile. Carries the code (not a roster index) so it
+    /// works for offline friends and just-typed codes too.
+    OpenPeer(FriendCode),
+    /// UI: close the open profile (animates it out).
+    ClosePeer,
+    /// UI: open/close the self-status menu.
+    ToggleStatusMenu,
+    /// UI: edit the "add by friend code" draft.
+    AddDraftChanged(String),
+    /// UI: submit the add-by-code draft — opens that code's profile to name.
+    ConfirmAddContact,
+    /// UI: set/clear a peer's local nickname. Intercepted by the App (persists
+    /// to `config.friends`); never reaches [`State::update`].
+    SetNickname { code: String, name: String },
+    /// UI: choose the match type to propose. Intercepted by the App (routes to
+    /// `netplay` so `current_proposal` picks it up).
+    SetMatchType((u8, u8)),
+    /// UI: toggle proposing a blind setup. Also App-intercepted (→ netplay).
+    SetBlindSetup(bool),
+    /// UI: copy text (a friend code) to the clipboard, lighting the `flash`
+    /// copy button's feedback. App-intercepted.
+    CopyText { text: String, flash: &'static str },
 }
 
 impl State {
@@ -136,13 +190,19 @@ impl State {
             endpoint,
             identity,
             invisible: false,
+            user_offline: false,
             connection,
             roster: std::collections::BTreeMap::new(),
             incoming: std::collections::BTreeMap::new(),
+            challenge_seq: 0,
             my_match: None,
             handle: None,
             event_rx_slot: Arc::new(std::sync::Mutex::new(None)),
             epoch: 0,
+            open_peer: None,
+            profile_vis: crate::anim::Transition::new(false),
+            status_menu_open: false,
+            add_draft: String::new(),
         }
     }
 
@@ -157,6 +217,28 @@ impl State {
     /// A clone of the live lobby handle, if connected.
     pub fn handle(&self) -> Option<Lobby> {
         self.handle.clone()
+    }
+
+    /// Our presence as the status menu should reflect it — intent-based, so a
+    /// transient reconnect still shows the status the user picked.
+    pub fn self_status(&self) -> SelfStatus {
+        if self.user_offline {
+            SelfStatus::Offline
+        } else if self.invisible {
+            SelfStatus::Invisible
+        } else {
+            SelfStatus::Online
+        }
+    }
+
+    /// The peer we have an outstanding *outgoing* challenge to (we're the
+    /// challenger and the match hasn't started yet), if any — drives the
+    /// "waiting…" + Cancel state in that peer's profile.
+    pub fn outgoing_peer(&self) -> Option<FriendCode> {
+        self.my_match
+            .as_ref()
+            .filter(|m| m.role == MatchRole::Challenger)
+            .map(|m| m.peer)
     }
 
     /// Once the peer has committed (ChallengeAccepted/Confirmed filled their
@@ -183,7 +265,8 @@ impl State {
     }
 
     /// Dial the lobby (no-op without an identity). Kicked once at startup; the
-    /// `tango_lobby` driver handles transparent reconnects after that.
+    /// `tango_lobby` driver handles transparent reconnects after that. Comes up
+    /// Invisible if that's the user's current pick.
     pub fn connect(&mut self) -> iced::Task<Message> {
         let Some(identity) = self.identity.clone() else {
             self.connection = Connection::NoIdentity;
@@ -191,16 +274,13 @@ impl State {
         };
         self.connection = Connection::Connecting;
         let endpoint = self.endpoint.clone();
+        let status = if self.invisible {
+            tango_lobby::Status::Invisible
+        } else {
+            tango_lobby::Status::Online
+        };
         iced::Task::perform(
-            async move {
-                tango_lobby::connect(
-                    &endpoint,
-                    identity,
-                    LOBBY_PROTOCOL_VERSION,
-                    tango_lobby::Status::Online,
-                )
-                .await
-            },
+            async move { tango_lobby::connect(&endpoint, identity, LOBBY_PROTOCOL_VERSION, status).await },
             |result| match result {
                 Ok((handle, welcome, rx)) => Message::Connected(slot((handle, welcome, rx))),
                 Err(e) => Message::ConnectFailed(format!("{e}")),
@@ -209,6 +289,7 @@ impl State {
     }
 
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
+        let now = iced::time::Instant::now();
         match message {
             Message::Connected(payload) => {
                 let Some((handle, welcome, rx)) = payload.lock().unwrap().take() else {
@@ -235,17 +316,7 @@ impl State {
                 self.apply_event(event);
                 iced::Task::none()
             }
-            Message::SetInvisible(invisible) => {
-                self.invisible = invisible;
-                if let Some(handle) = &self.handle {
-                    handle.set_status(if invisible {
-                        tango_lobby::Status::Invisible
-                    } else {
-                        tango_lobby::Status::Online
-                    });
-                }
-                iced::Task::none()
-            }
+            Message::SetSelfStatus(status) => self.set_self_status(status),
             Message::DeclineIncoming(peer) => {
                 if self.incoming.remove(&peer).is_some() {
                     if let Some(handle) = &self.handle {
@@ -254,11 +325,105 @@ impl State {
                 }
                 iced::Task::none()
             }
-            // IssueChallenge / AcceptIncoming need the app's loadout + save, so
-            // the App intercepts them (see App::handle_lobby_message) and they
-            // never reach here.
-            Message::IssueChallenge(_) | Message::AcceptIncoming(_) => iced::Task::none(),
+            Message::CancelChallenge => {
+                self.cancel_outgoing();
+                iced::Task::none()
+            }
+            Message::OpenPeer(peer) => {
+                self.open_peer = Some(peer);
+                self.status_menu_open = false;
+                self.profile_vis.set(true, now);
+                iced::Task::none()
+            }
+            Message::ClosePeer => {
+                // Animate out — keep `open_peer` set so the profile keeps
+                // rendering while it glides away; the view drops it once the
+                // transition is no longer visible.
+                self.profile_vis.set(false, now);
+                iced::Task::none()
+            }
+            Message::ToggleStatusMenu => {
+                self.status_menu_open = !self.status_menu_open;
+                iced::Task::none()
+            }
+            Message::AddDraftChanged(s) => {
+                // Friend codes are Crockford base32 grouped with hyphens; keep
+                // alphanumerics + dashes + spaces (FromStr normalizes the rest).
+                self.add_draft = s
+                    .chars()
+                    .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == ' ')
+                    .take(64)
+                    .collect();
+                iced::Task::none()
+            }
+            Message::ConfirmAddContact => {
+                let parsed: Result<FriendCode, _> = self.add_draft.trim().parse();
+                if let Ok(peer) = parsed {
+                    self.add_draft.clear();
+                    self.open_peer = Some(peer);
+                    self.status_menu_open = false;
+                    self.profile_vis.set(true, now);
+                }
+                iced::Task::none()
+            }
+            // App-intercepted (see App::handle_lobby_message): these need the
+            // app's loadout / save / config / clipboard, so they never reach
+            // here.
+            Message::IssueChallenge(_)
+            | Message::AcceptIncoming(_)
+            | Message::SetNickname { .. }
+            | Message::SetMatchType(_)
+            | Message::SetBlindSetup(_)
+            | Message::CopyText { .. } => iced::Task::none(),
         }
+    }
+
+    /// Apply a self-status pick: toggle visibility live when connected, or
+    /// re-dial / tear down when crossing the connected boundary.
+    pub fn set_self_status(&mut self, status: SelfStatus) -> iced::Task<Message> {
+        self.status_menu_open = false;
+        match status {
+            SelfStatus::Online | SelfStatus::Invisible => {
+                self.user_offline = false;
+                self.invisible = status == SelfStatus::Invisible;
+                let wire = if self.invisible {
+                    tango_lobby::Status::Invisible
+                } else {
+                    tango_lobby::Status::Online
+                };
+                match &self.connection {
+                    Connection::Connected { .. } => {
+                        if let Some(handle) = &self.handle {
+                            handle.set_status(wire);
+                        }
+                        iced::Task::none()
+                    }
+                    // Re-dial from an offline / failed / never-connected state
+                    // (comes up at the chosen visibility — see `connect`).
+                    _ => self.connect(),
+                }
+            }
+            SelfStatus::Offline => {
+                self.user_offline = true;
+                self.disconnect();
+                iced::Task::none()
+            }
+        }
+    }
+
+    /// Tear the presence connection down (deliberate sign-off). Best-effort:
+    /// dropping the handle ends our sending + the event subscription; the
+    /// server reaps us when the socket closes.
+    fn disconnect(&mut self) {
+        self.handle = None;
+        self.connection = Connection::Disconnected("offline".to_string());
+        self.roster.clear();
+        self.incoming.clear();
+        self.my_match = None;
+        // Rekey the subscription (handle is None ⇒ it goes idle) so a later
+        // reconnect spawns a clean one.
+        self.epoch = self.epoch.wrapping_add(1);
+        *self.event_rx_slot.lock().unwrap() = None;
     }
 
     /// Begin an outgoing challenge: stash our reveal, send the Challenge.
@@ -281,6 +446,15 @@ impl State {
         });
         if let Some(handle) = &self.handle {
             handle.challenge(&peer, proposal, reveal.commitment.to_vec());
+        }
+    }
+
+    /// Withdraw our outstanding outgoing challenge (if any).
+    pub fn cancel_outgoing(&mut self) {
+        if let Some(m) = self.my_match.take() {
+            if let Some(handle) = &self.handle {
+                handle.cancel(&m.peer);
+            }
         }
     }
 
@@ -314,6 +488,17 @@ impl State {
         self.incoming.clear();
     }
 
+    /// Stamp + record an arriving challenge, preserving the original arrival
+    /// order if the same peer re-challenges before we've answered.
+    fn record_incoming(&mut self, peer: FriendCode, proposal: MatchProposal, commitment: Vec<u8>) {
+        let seq = self.incoming.get(&peer).map(|c| c.seq).unwrap_or_else(|| {
+            let s = self.challenge_seq;
+            self.challenge_seq = self.challenge_seq.wrapping_add(1);
+            s
+        });
+        self.incoming.insert(peer, IncomingChallenge { proposal, commitment, seq });
+    }
+
     fn apply_event(&mut self, event: Event) {
         match event {
             Event::RosterUpsert(entry) => {
@@ -328,7 +513,7 @@ impl State {
                 proposal,
                 commitment,
             } => {
-                self.incoming.insert(peer, IncomingChallenge { proposal, commitment });
+                self.record_incoming(peer, proposal, commitment);
             }
             Event::ChallengeWithdrawn { peer, .. } => {
                 self.incoming.remove(&peer);
@@ -359,8 +544,7 @@ impl State {
                         m.peer_commitment = commitment.as_slice().try_into().ok();
                         m.peer_proposal = Some(proposal);
                         m.ice_servers = ice_servers;
-                        // TODO(sub-increment B): start the WebRTC offer here.
-                        log::info!("{peer} accepted; ready to start match as offerer (WebRTC bring-up pending)");
+                        log::info!("{peer} accepted; starting match as offerer");
                     }
                 }
             }
@@ -368,8 +552,7 @@ impl State {
                 if let Some(m) = &mut self.my_match {
                     if m.peer == peer {
                         m.ice_servers = ice_servers;
-                        // TODO(sub-increment B): start the WebRTC answerer here.
-                        log::info!("{peer} confirmed our accept; ready to start match as answerer (WebRTC bring-up pending)");
+                        log::info!("{peer} confirmed our accept; starting match as answerer");
                     }
                 }
             }
@@ -379,7 +562,8 @@ impl State {
                     self.my_match = None;
                 }
             }
-            // WebRTC SDP relay — wired in sub-increment B.
+            // WebRTC SDP relay is fed straight into the in-flight bring-up by
+            // the App (see `handle_lobby_event`); nothing to mirror here.
             Event::RtcOffer { .. } | Event::RtcAnswer { .. } => {}
         }
     }
@@ -419,166 +603,4 @@ fn build_event_stream(tag: &LobbyTag) -> impl futures::Stream<Item = Message> {
         .left_stream(),
         None => futures::stream::empty().right_stream(),
     }
-}
-
-// ---- the "Who's around" sidebar (rendered alongside the Play tab) ----
-
-const SIDEBAR_WIDTH: f32 = 280.0;
-
-/// Full-height roster pane: incoming challenges, who's online (with a Challenge
-/// button), and a "You" footer with the visibility toggle. Composed at the app
-/// level so `tabs/play` stays untouched. `can_challenge` is whether a game +
-/// save are loaded (else challenge/accept are disabled).
-pub fn sidebar<'a>(state: &'a State, lang: &'a LanguageIdentifier, can_challenge: bool) -> Element<'a, Message> {
-    let header = text(crate::t!(lang, "lobby-whos-around")).size(style::TEXT_TITLE);
-
-    let body: Element<'a, Message> = match &state.connection {
-        Connection::NoIdentity => hint(crate::t!(lang, "lobby-no-identity")),
-        Connection::Connecting => hint(crate::t!(lang, "lobby-connecting")),
-        Connection::Disconnected(_) => hint(crate::t!(lang, "lobby-offline")),
-        Connection::Connected { .. } => connected_body(state, lang, can_challenge),
-    };
-
-    let mut col = column![header, body].spacing(style::PANE_GAP).width(Fill).height(Fill);
-    if let Some(me) = state.friend_code() {
-        col = col.push(you_footer(state, me, lang));
-    }
-
-    container(col)
-        .padding(style::PANE_PADDING)
-        .width(Length::Fixed(SIDEBAR_WIDTH))
-        .height(Fill)
-        .style(widgets::pane)
-        .into()
-}
-
-fn connected_body<'a>(state: &'a State, lang: &'a LanguageIdentifier, can_challenge: bool) -> Element<'a, Message> {
-    let mut col = column![].spacing(style::PANE_GAP).width(Fill).height(Fill);
-
-    if !state.incoming.is_empty() {
-        col = col.push(text(crate::t!(lang, "lobby-challenges")).size(style::TEXT_HEADING));
-        for (peer, inc) in &state.incoming {
-            col = col.push(incoming_row(*peer, inc, can_challenge, lang));
-        }
-    }
-
-    if state.roster.is_empty() {
-        col = col.push(hint(crate::t!(lang, "lobby-empty")));
-    } else {
-        let mut list = column![].spacing(2);
-        for (fc, now_playing) in &state.roster {
-            let in_match = now_playing.is_some();
-            // Can't challenge an in-match player, or someone who's already
-            // challenged us.
-            let challengeable = can_challenge && !in_match && !state.incoming.contains_key(fc);
-            list = list.push(roster_row(*fc, in_match, challengeable, lang));
-        }
-        col = col.push(scrollable(list).style(widgets::chunky_scrollable).height(Fill));
-    }
-
-    col.into()
-}
-
-fn roster_row<'a>(fc: FriendCode, in_match: bool, challengeable: bool, lang: &'a LanguageIdentifier) -> Element<'a, Message> {
-    let status = if in_match {
-        crate::t!(lang, "lobby-in-match")
-    } else {
-        crate::t!(lang, "lobby-online")
-    };
-    let info = container(
-        column![
-            text(fc.to_string()).size(style::TEXT_BODY),
-            text(status).size(style::TEXT_CAPTION).style(widgets::muted_text_style),
-        ]
-        .spacing(2),
-    )
-    .width(Fill);
-
-    let mut row_el = row![info].spacing(8);
-    if challengeable {
-        row_el = row_el.push(
-            button(text(crate::t!(lang, "lobby-challenge")).size(style::TEXT_CAPTION))
-                .padding(style::STANDARD_PADDING)
-                .style(widgets::neutral)
-                .on_press(Message::IssueChallenge(fc)),
-        );
-    }
-    container(row_el).padding(style::ROW_PADDING).width(Fill).into()
-}
-
-fn incoming_row<'a>(
-    peer: FriendCode,
-    inc: &IncomingChallenge,
-    can_challenge: bool,
-    lang: &'a LanguageIdentifier,
-) -> Element<'a, Message> {
-    let accept = button(text(crate::t!(lang, "lobby-accept")).size(style::TEXT_CAPTION))
-        .padding(style::STANDARD_PADDING)
-        .style(widgets::primary_button);
-    // Disabled until a game + save are loaded to accept with.
-    let accept = if can_challenge {
-        accept.on_press(Message::AcceptIncoming(peer))
-    } else {
-        accept
-    };
-    let decline = button(text(crate::t!(lang, "lobby-decline")).size(style::TEXT_CAPTION))
-        .padding(style::STANDARD_PADDING)
-        .style(widgets::neutral)
-        .on_press(Message::DeclineIncoming(peer));
-
-    container(
-        column![
-            text(peer.to_string()).size(style::TEXT_BODY),
-            text(proposal_label(&inc.proposal)).size(style::TEXT_CAPTION).style(widgets::muted_text_style),
-            row![accept, decline].spacing(8),
-        ]
-        .spacing(4),
-    )
-    .padding(style::ROW_PADDING)
-    .width(Fill)
-    .style(widgets::pane)
-    .into()
-}
-
-/// Compact "family · mode-subtype" label for a proposal.
-fn proposal_label(p: &MatchProposal) -> String {
-    let game = p.game_info.as_ref().map(|g| g.family.as_str()).unwrap_or("?");
-    match &p.match_type {
-        Some(m) => format!("{game} · {}-{}", m.mode, m.subtype),
-        None => game.to_string(),
-    }
-}
-
-fn you_footer<'a>(state: &'a State, me: FriendCode, lang: &'a LanguageIdentifier) -> Element<'a, Message> {
-    let status_word = if state.invisible {
-        crate::t!(lang, "lobby-status-invisible")
-    } else {
-        crate::t!(lang, "lobby-status-online")
-    };
-    let toggle_label = if state.invisible {
-        crate::t!(lang, "lobby-go-online")
-    } else {
-        crate::t!(lang, "lobby-go-invisible")
-    };
-    let toggle = button(text(toggle_label).size(style::TEXT_CAPTION))
-        .padding(style::STANDARD_PADDING)
-        .style(widgets::neutral)
-        .on_press(Message::SetInvisible(!state.invisible));
-
-    container(
-        column![
-            text(crate::t!(lang, "lobby-you")).size(style::TEXT_CAPTION).style(widgets::muted_text_style),
-            text(me.to_string()).size(style::TEXT_BODY),
-            row![text(status_word).size(style::TEXT_CAPTION), toggle].spacing(8),
-        ]
-        .spacing(4),
-    )
-    .padding(style::ROW_PADDING)
-    .width(Fill)
-    .style(widgets::pane)
-    .into()
-}
-
-fn hint<'a>(message: String) -> Element<'a, Message> {
-    text(message).size(style::TEXT_CAPTION).style(widgets::muted_text_style).into()
 }
