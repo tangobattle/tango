@@ -99,10 +99,6 @@ pub struct State {
     identity: Option<tango_lobby::ClientIdentity>,
     /// Our own visibility toggle (local; drives what we send via SetStatus).
     invisible: bool,
-    /// We've chosen to go fully Offline (tore the connection down on purpose) —
-    /// distinguishes a deliberate sign-off from an error/transient disconnect
-    /// when deriving [`Self::self_status`].
-    user_offline: bool,
     pub connection: Connection,
     /// Visible roster, keyed by friend code; the value is `now_playing`
     /// (`Some` => in a match). One entry per identity.
@@ -114,6 +110,13 @@ pub struct State {
     challenge_seq: u64,
     /// The match we're currently negotiating (at most one), if any.
     my_match: Option<MyMatch>,
+    /// Whether a match is actually live now (set when negotiation hands off to
+    /// the running match — `take_match_start` — or a direct match goes live via
+    /// `report_busy`; cleared by `report_idle` on match end). `my_match` clears
+    /// the moment the match starts, so this carries the busy dot through play,
+    /// and it's the only busy signal for direct matches (which never set
+    /// `my_match`).
+    in_match: bool,
     handle: Option<Lobby>,
     /// The live event receiver is parked here for the subscription to take;
     /// `epoch` keys the subscription so it respawns on each (re)connect.
@@ -213,9 +216,8 @@ impl State {
         // Restore the user's last presence: Offline stays disconnected until
         // they pick Online/Invisible; otherwise we dial (Invisible just comes up
         // hidden — see `connect`).
-        let user_offline = initial_status == SelfStatus::Offline;
         let invisible = initial_status == SelfStatus::Invisible;
-        let connection = if user_offline {
+        let connection = if initial_status == SelfStatus::Offline {
             Connection::Disconnected("offline".to_string())
         } else if identity.is_some() {
             Connection::Connecting
@@ -226,12 +228,12 @@ impl State {
             endpoint,
             identity,
             invisible,
-            user_offline,
             connection,
             roster: std::collections::BTreeMap::new(),
             incoming: std::collections::BTreeMap::new(),
             challenge_seq: 0,
             my_match: None,
+            in_match: false,
             handle: None,
             event_rx_slot: Arc::new(std::sync::Mutex::new(None)),
             epoch: 0,
@@ -259,16 +261,30 @@ impl State {
         self.handle.clone()
     }
 
-    /// Our presence as the status menu should reflect it — intent-based, so a
-    /// transient reconnect still shows the status the user picked.
+    /// Our presence as the status menu should reflect it. Offline *is* the
+    /// disconnected state — there's no separate "user signed off" flag, so a
+    /// deliberate sign-off and being kicked (displaced / connect failure) read
+    /// identically. Intent (Online vs Invisible) only shows through while we're
+    /// connected or mid-reconnect (a transient `Connecting` keeps the pick).
     pub fn self_status(&self) -> SelfStatus {
-        if self.user_offline {
+        if matches!(self.connection, Connection::Disconnected(_)) {
             SelfStatus::Offline
         } else if self.invisible {
             SelfStatus::Invisible
         } else {
             SelfStatus::Online
         }
+    }
+
+    /// Whether we're occupied with a match the client is tracking: a challenge
+    /// in flight (we challenged and are waiting, or we accepted and are
+    /// negotiating) *or* a match that's actually live. Drives the busy dot on
+    /// our own "You" chip so it matches how peers see us, from the moment we
+    /// challenge through the end of the match. Clears when the challenge
+    /// resolves without a match (decline / cancel / disconnect) or the match
+    /// ends ([`Self::report_idle`]).
+    pub fn self_busy(&self) -> bool {
+        self.my_match.is_some() || self.in_match
     }
 
     /// The peer we have an outstanding *outgoing* challenge to (we're the
@@ -301,6 +317,9 @@ impl State {
             peer_proposal,
         };
         self.my_match = None;
+        // The negotiation just became a live match — keep us busy through play
+        // (`my_match` is now clear); `report_idle` resets this on match end.
+        self.in_match = true;
         Some(start)
     }
 
@@ -308,8 +327,9 @@ impl State {
     /// `tango_lobby` driver handles transparent reconnects after that. Comes up
     /// Invisible if that's the user's current pick.
     pub fn connect(&mut self) -> iced::Task<Message> {
-        // Deliberately Offline — don't dial until the user picks Online/Invisible.
-        if self.user_offline {
+        // Offline (Disconnected) — don't dial until the user picks
+        // Online/Invisible, which leaves that state first (see `set_self_status`).
+        if matches!(self.connection, Connection::Disconnected(_)) {
             return iced::Task::none();
         }
         let Some(identity) = self.identity.clone() else {
@@ -354,6 +374,7 @@ impl State {
                 log::warn!("lobby connect failed: {e}");
                 self.connection = Connection::Disconnected(e);
                 self.handle = None;
+                self.return_to_roster();
                 iced::Task::none()
             }
             Message::Event(event) => {
@@ -455,7 +476,10 @@ impl State {
     /// marked server-side (on challenge + on accept) instead, so this is only
     /// for the direct path. Invisible stays hidden (a busy status would reveal
     /// us); cleared by [`Self::report_idle`] when the match ends.
-    pub fn report_busy(&self, proposal: MatchProposal) {
+    pub fn report_busy(&mut self, proposal: MatchProposal) {
+        // Live now (this is the direct path's only busy signal — it never sets
+        // `my_match`); carries our own busy dot until `report_idle`.
+        self.in_match = true;
         if let (Connection::Connected { .. }, Some(handle)) = (&self.connection, &self.handle) {
             handle.set_status(if self.invisible {
                 tango_lobby::Status::Invisible
@@ -469,7 +493,8 @@ impl State {
     /// ends to clear the "now playing" the server derived when the match was
     /// brokered. No-op unless connected (a disconnect already drops us from the
     /// roster), and invisible stays hidden.
-    pub fn report_idle(&self) {
+    pub fn report_idle(&mut self) {
+        self.in_match = false;
         if let (Connection::Connected { .. }, Some(handle)) = (&self.connection, &self.handle) {
             handle.set_status(if self.invisible {
                 tango_lobby::Status::Invisible
@@ -485,7 +510,6 @@ impl State {
         self.status_menu_open = false;
         match status {
             SelfStatus::Online | SelfStatus::Invisible => {
-                self.user_offline = false;
                 self.invisible = status == SelfStatus::Invisible;
                 let wire = if self.invisible {
                     tango_lobby::Status::Invisible
@@ -499,13 +523,17 @@ impl State {
                         }
                         iced::Task::none()
                     }
-                    // Re-dial from an offline / failed / never-connected state
-                    // (comes up at the chosen visibility — see `connect`).
-                    _ => self.connect(),
+                    // Re-dial from an offline / failed / never-connected state.
+                    // Leave the disconnected state first so `connect` doesn't
+                    // treat this as "stay offline" and bail; it comes up at the
+                    // chosen visibility (see `connect`).
+                    _ => {
+                        self.connection = Connection::Connecting;
+                        self.connect()
+                    }
                 }
             }
             SelfStatus::Offline => {
-                self.user_offline = true;
                 self.disconnect();
                 iced::Task::none()
             }
@@ -521,10 +549,25 @@ impl State {
         self.roster.clear();
         self.incoming.clear();
         self.my_match = None;
+        self.in_match = false;
+        self.return_to_roster();
         // Rekey the subscription (handle is None ⇒ it goes idle) so a later
         // reconnect spawns a clean one.
         self.epoch = self.epoch.wrapping_add(1);
         *self.event_rx_slot.lock().unwrap() = None;
+    }
+
+    /// Snap the sidebar back to the roster list: drop any open peer profile and
+    /// close the popovers. Called whenever we drop offline — deliberately or
+    /// kicked (displaced / connect failure) — so the user lands on the roster
+    /// (which then renders the offline state) instead of being stranded on a
+    /// now-meaningless profile card. The direct-connect form is left untouched:
+    /// it's signaling-free and stays usable without lobby presence.
+    fn return_to_roster(&mut self) {
+        self.open_peer = None;
+        self.profile_vis.set(false, iced::time::Instant::now());
+        self.status_menu_open = false;
+        self.menu_open = false;
     }
 
     /// Begin an outgoing challenge: stash our reveal, send the Challenge.
@@ -633,6 +676,13 @@ impl State {
                 log::warn!("lobby: displaced by another connection for this identity");
                 self.connection = Connection::Disconnected("signed in on another device".to_string());
                 self.handle = None;
+                // Kicked: drop the now-stale presence state and snap back to the
+                // roster (which renders the offline notice) like a sign-off does.
+                self.roster.clear();
+                self.incoming.clear();
+                self.my_match = None;
+                self.in_match = false;
+                self.return_to_roster();
             }
             Event::ChallengeAccepted {
                 peer,

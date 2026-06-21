@@ -292,11 +292,13 @@ fn roster_list<'a>(ctx: &Ctx<'a>, incompatible: &BTreeSet<FriendCode>) -> Elemen
     // Two sections — Friends (anyone you've nicknamed, online or offline) and
     // Online (present strangers). Within each, pending challenges float to the
     // top (earliest first), then free players, then by name. Offline strangers
-    // aren't shown.
+    // aren't shown — except one who's challenging us: an invisible peer reads as
+    // offline (they're not in our roster) but can still issue a challenge, which
+    // must surface so we can accept/decline it.
     let mut friends: Vec<&Player> = all.iter().filter(|p| p.is_friend()).collect();
     let mut online: Vec<&Player> = all
         .iter()
-        .filter(|p| !p.is_friend() && p.status != Status::Offline)
+        .filter(|p| !p.is_friend() && (p.status != Status::Offline || p.has_incoming()))
         .collect();
     let order = |p: &&Player| {
         (
@@ -695,7 +697,7 @@ fn profile_panel<'a>(ctx: &Ctx<'a>, code: FriendCode, incompatible: &BTreeSet<Fr
     );
 
     let pip = if is_me {
-        self_pip(ctx.state.self_status())
+        self_pip(ctx.state.self_status(), ctx.state.self_busy())
     } else {
         pip_of(p.status)
     };
@@ -958,7 +960,7 @@ fn you_chip<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
     let code = ctx.state.friend_code().map(|c| c.to_string());
 
     let avatar_el: Element<'a, Message> = match &code {
-        Some(c) => avatar(c, self_pip(status), 26.0),
+        Some(c) => avatar(c, self_pip(status, ctx.state.self_busy()), 26.0),
         // No code yet (connecting / offline / no identity): a neutral emblem,
         // centered in the same 26×26 footprint as the identicon so the row
         // doesn't shift when a code appears/disappears. (The glyph's line box is
@@ -1057,7 +1059,7 @@ fn status_menu<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
     let lang = ctx.lang;
     let row_btn = |status: SelfStatus, label: String| -> Element<'a, Message> {
         button(
-            row![status_dot(self_pip(status), 10.0), text(label).size(TEXT_BODY)]
+            row![status_dot(self_pip(status, false), 10.0), text(label).size(TEXT_BODY)]
                 .spacing(8)
                 .width(Fill)
                 .align_y(Alignment::Center),
@@ -1234,9 +1236,12 @@ fn pip_of(status: Status) -> Pip {
     }
 }
 
-fn self_pip(status: SelfStatus) -> Pip {
+fn self_pip(status: SelfStatus, busy: bool) -> Pip {
     match status {
-        SelfStatus::Online => Pip::Online,
+        // Busy only reads through when we're visibly online; invisible/offline
+        // present as a dark dot regardless — a busy dot would contradict being
+        // hidden, and matches that peers don't see a busy us either.
+        SelfStatus::Online => if busy { Pip::Busy } else { Pip::Online },
         SelfStatus::Invisible | SelfStatus::Offline => Pip::Off,
     }
 }
