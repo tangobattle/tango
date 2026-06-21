@@ -227,8 +227,8 @@ pub fn sidebar<'a>(ctx: &Ctx<'a>, incompatible: &BTreeSet<FriendCode>) -> Elemen
 /// minus ourselves, into a [`Player`].
 fn players(ctx: &Ctx) -> Vec<Player> {
     let me = ctx.state.friend_code();
-    let mut codes: BTreeSet<FriendCode> = ctx.state.roster.keys().copied().collect();
-    codes.extend(ctx.state.incoming.keys().copied());
+    let mut codes: BTreeSet<FriendCode> = ctx.state.roster_codes().collect();
+    codes.extend(ctx.state.incoming_codes());
     for key in ctx.friends.keys() {
         if let Ok(fc) = key.parse::<FriendCode>() {
             codes.insert(fc);
@@ -249,12 +249,12 @@ fn player(ctx: &Ctx, code: FriendCode) -> Player {
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
-    let (status, now_playing_label) = match ctx.state.roster.get(&code) {
+    let (status, now_playing_label) = match ctx.state.roster_get(&code) {
         Some(Some(p)) => (Status::Busy, Some(proposal_label(ctx.lang, p))),
         Some(None) => (Status::Online, None),
         None => (Status::Offline, None),
     };
-    let incoming = ctx.state.incoming.get(&code);
+    let incoming = ctx.state.incoming_get(&code);
     Player {
         code,
         code_str,
@@ -269,7 +269,7 @@ fn player(ctx: &Ctx, code: FriendCode) -> Player {
 
 fn roster_list<'a>(ctx: &Ctx<'a>, incompatible: &BTreeSet<FriendCode>) -> Element<'a, Message> {
     let lang = ctx.lang;
-    let connected = matches!(ctx.state.connection, Connection::Connected { .. });
+    let connected = matches!(ctx.state.connection, Connection::Connected(_));
 
     // Not connected: explain why instead of an empty roster.
     if !connected {

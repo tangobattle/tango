@@ -577,14 +577,13 @@ impl App {
     /// our current loadout — accepting is blocked for these (the sidebar shows
     /// the mismatch). Computed per-frame for the sidebar.
     fn incompatible_challengers(&self) -> std::collections::BTreeSet<tango_lobby::FriendCode> {
-        if self.lobby.incoming.is_empty() {
+        if !self.lobby.has_incoming() {
             return std::collections::BTreeSet::new();
         }
         let local = self.make_local_settings();
         let patches = self.scanners.patches.read();
         self.lobby
-            .incoming
-            .iter()
+            .incoming_iter()
             .filter_map(|(fc, inc)| {
                 let remote = settings_from_proposal(&inc.proposal, String::new());
                 // Accepting adopts the challenger's match type, so only a
@@ -744,7 +743,7 @@ impl App {
     }
 
     fn accept_incoming(&mut self, peer: tango_lobby::FriendCode) -> iced::Task<Message> {
-        let Some(incoming) = self.lobby.incoming.get(&peer).cloned() else {
+        let Some(incoming) = self.lobby.incoming_get(&peer).cloned() else {
             return iced::Task::none();
         };
         // Accept on their terms: adopt the challenger's match type so the two
@@ -1096,11 +1095,27 @@ impl App {
         ) || self.netplay.handoff_pending()
     }
 
+    /// Whether a match is tying us up: a live PvP session, or a bring-up still
+    /// in flight. The true→false edge (match ended / failed / cancelled, by any
+    /// path) is where [`update`] reports us idle to the lobby.
+    fn match_occupied(&self) -> bool {
+        matches!(self.session.active, Some(ActiveSession::PvP(_)))
+            || matches!(self.netplay.phase, netplay::Phase::Connecting { .. })
+    }
+
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
         let screen_before = self.screen_key();
         let family_before = self.loadout.family;
         let selection_before = (self.loadout.game, self.loadout.save.clone());
+        let occupied_before = self.match_occupied();
         let task = self.update_inner(message);
+        // Whenever a match stops occupying us — clean close, failed bring-up, or
+        // a cancelled connect, by whatever path — tell the lobby we're idle once
+        // here, so the roster (and our own busy dot) always clears rather than
+        // only on the clean-close path.
+        if occupied_before && !self.match_occupied() {
+            self.lobby.report_idle();
+        }
         let now = iced::time::Instant::now();
         let screen_after = self.screen_key();
         if screen_before != screen_after {
@@ -1257,12 +1272,9 @@ impl App {
                 // Replays tab without a manual rescan. The
                 // `RefreshAndReplayStats` followup also warms the
                 // stats sidebar with the just-landed match.
+                // (Clearing the lobby "now playing" on match end is handled
+                // centrally in `update` via the match-occupied transition.)
                 let pvp_closed = was_pvp && self.session.active.is_none();
-                if pvp_closed {
-                    // Clear the "now playing" the lobby derived when the match was
-                    // brokered, so the roster shows us idle again.
-                    self.lobby.report_idle();
-                }
                 let pvp_rescan = if pvp_closed {
                     self.rescan_off_thread(RescanFollowup::RefreshAndReplayStats)
                 } else {

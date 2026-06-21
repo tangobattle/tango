@@ -38,12 +38,13 @@ pub enum SelfStatus {
     Offline,
 }
 
-#[derive(Debug, Clone)]
 pub enum Connection {
     /// No identity loaded — the lobby requires an mTLS cert, so we never dial.
     NoIdentity,
     Connecting,
-    Connected { your_friend_code: FriendCode },
+    /// Live session — carries all the connection-scoped presence state ([`Live`]),
+    /// so connect builds it fresh and any disconnect/reconnect just drops it.
+    Connected(Live),
     Disconnected(String),
 }
 
@@ -94,17 +95,20 @@ pub struct LobbyMatchStart {
     pub peer_proposal: MatchProposal,
 }
 
-pub struct State {
-    endpoint: String,
-    identity: Option<tango_lobby::ClientIdentity>,
-    /// Our own visibility toggle (local; drives what we send via SetStatus).
-    invisible: bool,
-    pub connection: Connection,
+/// Everything that exists only while we hold a live lobby session: our assigned
+/// friend code, the roster, the challenges offered to us, and the match we're
+/// negotiating or in. Built fresh on connect (and on each resync) and dropped
+/// whole when the session ends — so going offline, being displaced, or a
+/// reconnect needs no field-by-field reset, it just drops this. (The [`Lobby`]
+/// handle and event plumbing live on [`State`] instead: they're the transport,
+/// and survive the transparent reconnects this gets rebuilt across.)
+pub(crate) struct Live {
+    your_friend_code: FriendCode,
     /// Visible roster, keyed by friend code; the value is `now_playing`
     /// (`Some` => in a match). One entry per identity.
-    pub roster: std::collections::BTreeMap<FriendCode, Option<MatchProposal>>,
+    roster: std::collections::BTreeMap<FriendCode, Option<MatchProposal>>,
     /// Challenges offered to us, keyed by the challenger.
-    pub incoming: std::collections::BTreeMap<FriendCode, IncomingChallenge>,
+    incoming: std::collections::BTreeMap<FriendCode, IncomingChallenge>,
     /// Monotonic stamp handed to each arriving [`IncomingChallenge`] so the
     /// challenges list can sort by time received.
     challenge_seq: u64,
@@ -117,6 +121,33 @@ pub struct State {
     /// and it's the only busy signal for direct matches (which never set
     /// `my_match`).
     in_match: bool,
+}
+
+impl Live {
+    /// A fresh session from a welcome / resync: the given roster, nothing else.
+    fn new(your_friend_code: FriendCode, roster: Vec<tango_lobby::RosterEntry>) -> Self {
+        Self {
+            your_friend_code,
+            roster: roster.into_iter().map(|e| (e.friend_code, e.now_playing)).collect(),
+            incoming: std::collections::BTreeMap::new(),
+            challenge_seq: 0,
+            my_match: None,
+            in_match: false,
+        }
+    }
+}
+
+pub struct State {
+    endpoint: String,
+    identity: Option<tango_lobby::ClientIdentity>,
+    /// Our own visibility toggle (local; drives what we send via SetStatus).
+    invisible: bool,
+    /// Connection status; the [`Connection::Connected`] variant owns all the
+    /// per-session presence state (see [`Live`]).
+    pub connection: Connection,
+    /// The live lobby handle — transport, not presence: it survives the
+    /// transparent reconnects that rebuild [`Live`], and is dropped only on a
+    /// terminal disconnect. `None` whenever we're not / no longer connected.
     handle: Option<Lobby>,
     /// The live event receiver is parked here for the subscription to take;
     /// `epoch` keys the subscription so it respawns on each (re)connect.
@@ -229,11 +260,6 @@ impl State {
             identity,
             invisible,
             connection,
-            roster: std::collections::BTreeMap::new(),
-            incoming: std::collections::BTreeMap::new(),
-            challenge_seq: 0,
-            my_match: None,
-            in_match: false,
             handle: None,
             event_rx_slot: Arc::new(std::sync::Mutex::new(None)),
             epoch: 0,
@@ -248,17 +274,60 @@ impl State {
         }
     }
 
-    /// This client's own friend code, once connected.
-    pub fn friend_code(&self) -> Option<FriendCode> {
+    /// The per-session presence state, if we're connected.
+    fn live(&self) -> Option<&Live> {
         match &self.connection {
-            Connection::Connected { your_friend_code } => Some(*your_friend_code),
+            Connection::Connected(live) => Some(live),
             _ => None,
         }
+    }
+
+    fn live_mut(&mut self) -> Option<&mut Live> {
+        match &mut self.connection {
+            Connection::Connected(live) => Some(live),
+            _ => None,
+        }
+    }
+
+    /// This client's own friend code, once connected.
+    pub fn friend_code(&self) -> Option<FriendCode> {
+        self.live().map(|l| l.your_friend_code)
     }
 
     /// A clone of the live lobby handle, if connected.
     pub fn handle(&self) -> Option<Lobby> {
         self.handle.clone()
+    }
+
+    /// The roster entry for `fc`: `None` if not connected or not in the roster,
+    /// `Some(None)` if present and idle, `Some(Some(p))` if in a match.
+    pub fn roster_get(&self, fc: &FriendCode) -> Option<&Option<MatchProposal>> {
+        self.live().and_then(|l| l.roster.get(fc))
+    }
+
+    /// Friend codes currently in the roster (empty when not connected).
+    pub fn roster_codes(&self) -> impl Iterator<Item = FriendCode> + '_ {
+        self.live().into_iter().flat_map(|l| l.roster.keys().copied())
+    }
+
+    /// The incoming challenge from `fc`, if any.
+    pub fn incoming_get(&self, fc: &FriendCode) -> Option<&IncomingChallenge> {
+        self.live().and_then(|l| l.incoming.get(fc))
+    }
+
+    /// Friend codes who've challenged us (empty when not connected).
+    pub fn incoming_codes(&self) -> impl Iterator<Item = FriendCode> + '_ {
+        self.live().into_iter().flat_map(|l| l.incoming.keys().copied())
+    }
+
+    /// Whether anyone has an incoming challenge waiting on us.
+    pub fn has_incoming(&self) -> bool {
+        self.live().is_some_and(|l| !l.incoming.is_empty())
+    }
+
+    /// Every incoming challenge, by challenger (empty when not connected).
+    pub fn incoming_iter(&self) -> impl Iterator<Item = (&FriendCode, &IncomingChallenge)> + '_ {
+        self.live().into_iter().flat_map(|l| l.incoming.iter())
     }
 
     /// Our presence as the status menu should reflect it. Offline *is* the
@@ -284,15 +353,15 @@ impl State {
     /// resolves without a match (decline / cancel / disconnect) or the match
     /// ends ([`Self::report_idle`]).
     pub fn self_busy(&self) -> bool {
-        self.my_match.is_some() || self.in_match
+        self.live().is_some_and(|l| l.my_match.is_some() || l.in_match)
     }
 
     /// The peer we have an outstanding *outgoing* challenge to (we're the
     /// challenger and the match hasn't started yet), if any — drives the
     /// "waiting…" + Cancel state in that peer's profile.
     pub fn outgoing_peer(&self) -> Option<FriendCode> {
-        self.my_match
-            .as_ref()
+        self.live()
+            .and_then(|l| l.my_match.as_ref())
             .filter(|m| m.role == MatchRole::Challenger)
             .map(|m| m.peer)
     }
@@ -301,7 +370,8 @@ impl State {
     /// commitment + ICE servers into `my_match`), pull out everything to start
     /// the match. Clears `my_match`. `None` if no match is ready.
     pub fn take_match_start(&mut self) -> Option<LobbyMatchStart> {
-        let m = self.my_match.as_ref()?;
+        let live = self.live_mut()?;
+        let m = live.my_match.as_ref()?;
         let peer_commitment = m.peer_commitment?;
         let peer_proposal = m.peer_proposal.clone()?;
         if m.ice_servers.is_empty() {
@@ -316,10 +386,10 @@ impl State {
             local_proposal: m.proposal.clone(),
             peer_proposal,
         };
-        self.my_match = None;
+        live.my_match = None;
         // The negotiation just became a live match — keep us busy through play
         // (`my_match` is now clear); `report_idle` resets this on match end.
-        self.in_match = true;
+        live.in_match = true;
         Some(start)
     }
 
@@ -360,10 +430,8 @@ impl State {
                     return iced::Task::none();
                 };
                 log::info!("lobby connected as {}", welcome.your_friend_code);
-                self.connection = Connection::Connected {
-                    your_friend_code: welcome.your_friend_code,
-                };
-                self.replace_roster(welcome.roster);
+                self.connection =
+                    Connection::Connected(Live::new(welcome.your_friend_code, welcome.roster));
                 self.handle = Some(handle);
                 *self.event_rx_slot.lock().unwrap() = Some(rx);
                 // Restart the subscription so it picks up the parked receiver.
@@ -383,7 +451,8 @@ impl State {
             }
             Message::SetSelfStatus(status) => self.set_self_status(status),
             Message::DeclineIncoming(peer) => {
-                if self.incoming.remove(&peer).is_some() {
+                let removed = self.live_mut().is_some_and(|l| l.incoming.remove(&peer).is_some());
+                if removed {
                     if let Some(handle) = &self.handle {
                         handle.decline(&peer);
                     }
@@ -477,11 +546,15 @@ impl State {
     /// for the direct path. Invisible stays hidden (a busy status would reveal
     /// us); cleared by [`Self::report_idle`] when the match ends.
     pub fn report_busy(&mut self, proposal: MatchProposal) {
+        let invisible = self.invisible;
         // Live now (this is the direct path's only busy signal — it never sets
-        // `my_match`); carries our own busy dot until `report_idle`.
-        self.in_match = true;
-        if let (Connection::Connected { .. }, Some(handle)) = (&self.connection, &self.handle) {
-            handle.set_status(if self.invisible {
+        // `my_match`); carries our own busy dot until `report_idle`. No-op if not
+        // connected: there's no lobby to tell and no `Live` to hold it, and the
+        // dot is hidden while offline anyway.
+        let Some(live) = self.live_mut() else { return };
+        live.in_match = true;
+        if let Some(handle) = &self.handle {
+            handle.set_status(if invisible {
                 tango_lobby::Status::Invisible
             } else {
                 tango_lobby::Status::Busy(proposal)
@@ -494,9 +567,12 @@ impl State {
     /// brokered. No-op unless connected (a disconnect already drops us from the
     /// roster), and invisible stays hidden.
     pub fn report_idle(&mut self) {
-        self.in_match = false;
-        if let (Connection::Connected { .. }, Some(handle)) = (&self.connection, &self.handle) {
-            handle.set_status(if self.invisible {
+        let invisible = self.invisible;
+        if let Some(live) = self.live_mut() {
+            live.in_match = false;
+        }
+        if let (Connection::Connected(_), Some(handle)) = (&self.connection, &self.handle) {
+            handle.set_status(if invisible {
                 tango_lobby::Status::Invisible
             } else {
                 tango_lobby::Status::Online
@@ -517,7 +593,7 @@ impl State {
                     tango_lobby::Status::Online
                 };
                 match &self.connection {
-                    Connection::Connected { .. } => {
+                    Connection::Connected(_) => {
                         if let Some(handle) = &self.handle {
                             handle.set_status(wire);
                         }
@@ -545,11 +621,9 @@ impl State {
     /// server reaps us when the socket closes.
     fn disconnect(&mut self) {
         self.handle = None;
+        // Dropping the `Connected` state drops all presence (roster, challenges,
+        // in-flight/in match) in one go — no field-by-field reset.
         self.connection = Connection::Disconnected("offline".to_string());
-        self.roster.clear();
-        self.incoming.clear();
-        self.my_match = None;
-        self.in_match = false;
         self.return_to_roster();
         // Rekey the subscription (handle is None ⇒ it goes idle) so a later
         // reconnect spawns a clean one.
@@ -578,7 +652,8 @@ impl State {
         proposal: MatchProposal,
         reveal: crate::net::protocol::LocalReveal,
     ) {
-        self.my_match = Some(MyMatch {
+        let commitment = reveal.commitment.to_vec();
+        let m = MyMatch {
             peer,
             role: MatchRole::Challenger,
             nonce: reveal.nonce,
@@ -587,17 +662,20 @@ impl State {
             peer_commitment: None,
             peer_proposal: None,
             ice_servers: Vec::new(),
-        });
+        };
+        let Some(live) = self.live_mut() else { return }; // can't challenge while offline
+        live.my_match = Some(m);
         if let Some(handle) = &self.handle {
-            handle.challenge(&peer, proposal, reveal.commitment.to_vec());
+            handle.challenge(&peer, proposal, commitment);
         }
     }
 
     /// Withdraw our outstanding outgoing challenge (if any).
     pub fn cancel_outgoing(&mut self) {
-        if let Some(m) = self.my_match.take() {
+        let peer = self.live_mut().and_then(|l| l.my_match.take()).map(|m| m.peer);
+        if let Some(peer) = peer {
             if let Some(handle) = &self.handle {
-                handle.cancel(&m.peer);
+                handle.cancel(&peer);
             }
         }
     }
@@ -611,7 +689,8 @@ impl State {
         proposal: MatchProposal,
         reveal: crate::net::protocol::LocalReveal,
     ) {
-        self.my_match = Some(MyMatch {
+        let commitment = reveal.commitment.to_vec();
+        let m = MyMatch {
             peer,
             role: MatchRole::Accepter,
             nonce: reveal.nonce,
@@ -620,68 +699,75 @@ impl State {
             peer_commitment: incoming.commitment.as_slice().try_into().ok(),
             peer_proposal: Some(incoming.proposal),
             ice_servers: Vec::new(),
-        });
+        };
+        let Some(live) = self.live_mut() else { return };
+        live.my_match = Some(m);
+        live.incoming.remove(&peer);
         if let Some(handle) = &self.handle {
-            handle.accept(&peer, proposal, reveal.commitment.to_vec());
+            handle.accept(&peer, proposal, commitment);
         }
-        self.incoming.remove(&peer);
-    }
-
-    fn replace_roster(&mut self, entries: Vec<tango_lobby::RosterEntry>) {
-        self.roster = entries.into_iter().map(|e| (e.friend_code, e.now_playing)).collect();
-        self.incoming.clear();
     }
 
     /// Stamp + record an arriving challenge, preserving the original arrival
     /// order if the same peer re-challenges before we've answered.
-    fn record_incoming(&mut self, peer: FriendCode, proposal: MatchProposal, commitment: Vec<u8>) {
-        let seq = self.incoming.get(&peer).map(|c| c.seq).unwrap_or_else(|| {
-            let s = self.challenge_seq;
-            self.challenge_seq = self.challenge_seq.wrapping_add(1);
+    fn record_incoming(live: &mut Live, peer: FriendCode, proposal: MatchProposal, commitment: Vec<u8>) {
+        let seq = live.incoming.get(&peer).map(|c| c.seq).unwrap_or_else(|| {
+            let s = live.challenge_seq;
+            live.challenge_seq = live.challenge_seq.wrapping_add(1);
             s
         });
-        self.incoming.insert(peer, IncomingChallenge { proposal, commitment, seq });
+        live.incoming.insert(peer, IncomingChallenge { proposal, commitment, seq });
     }
 
     fn apply_event(&mut self, event: Event) {
         match event {
             Event::RosterUpsert(entry) => {
-                self.roster.insert(entry.friend_code, entry.now_playing);
+                if let Some(live) = self.live_mut() {
+                    live.roster.insert(entry.friend_code, entry.now_playing);
+                }
             }
             Event::RosterLeave(fc) => {
-                self.roster.remove(&fc);
-                self.incoming.remove(&fc);
+                if let Some(live) = self.live_mut() {
+                    live.roster.remove(&fc);
+                    live.incoming.remove(&fc);
+                }
             }
             Event::ChallengeIncoming {
                 peer,
                 proposal,
                 commitment,
             } => {
-                self.record_incoming(peer, proposal, commitment);
+                if let Some(live) = self.live_mut() {
+                    Self::record_incoming(live, peer, proposal, commitment);
+                }
             }
             Event::ChallengeWithdrawn { peer, .. } => {
-                self.incoming.remove(&peer);
+                if let Some(live) = self.live_mut() {
+                    live.incoming.remove(&peer);
+                }
             }
             Event::Resynced {
                 your_friend_code,
                 roster,
             } => {
-                self.connection = Connection::Connected { your_friend_code };
-                self.replace_roster(roster);
+                // Reconnected: rebuild a fresh session from the resync snapshot.
+                self.connection = Connection::Connected(Live::new(your_friend_code, roster));
             }
             Event::Reconnecting => {
+                // The socket dropped: the server tears our challenges down (the
+                // old socket closing, or the reconnect re-joining and displacing
+                // it), so a pending negotiation can't survive the blip. Dropping
+                // the `Connected` state discards it — and the now-stale roster —
+                // wholesale; `Resynced` rebuilds fresh. The handle stays: the
+                // driver reconnects underneath it.
                 self.connection = Connection::Connecting;
             }
             Event::Displaced => {
                 log::warn!("lobby: displaced by another connection for this identity");
-                self.connection = Connection::Disconnected("signed in on another device".to_string());
+                // Kicked: drop the handle and the whole session state, and snap
+                // back to the roster (which renders the offline notice).
                 self.handle = None;
-                // Kicked: drop the now-stale presence state and snap back to the
-                // roster (which renders the offline notice) like a sign-off does.
-                self.roster.clear();
-                self.incoming.clear();
-                self.my_match = None;
-                self.in_match = false;
+                self.connection = Connection::Disconnected("signed in on another device".to_string());
                 self.return_to_roster();
             }
             Event::ChallengeAccepted {
@@ -690,7 +776,7 @@ impl State {
                 commitment,
                 ice_servers,
             } => {
-                if let Some(m) = &mut self.my_match {
+                if let Some(m) = self.live_mut().and_then(|l| l.my_match.as_mut()) {
                     if m.peer == peer {
                         m.peer_commitment = commitment.as_slice().try_into().ok();
                         m.peer_proposal = Some(proposal);
@@ -700,7 +786,7 @@ impl State {
                 }
             }
             Event::ChallengeConfirmed { peer, ice_servers } => {
-                if let Some(m) = &mut self.my_match {
+                if let Some(m) = self.live_mut().and_then(|l| l.my_match.as_mut()) {
                     if m.peer == peer {
                         m.ice_servers = ice_servers;
                         log::info!("{peer} confirmed our accept; starting match as answerer");
@@ -708,9 +794,11 @@ impl State {
                 }
             }
             Event::ChallengeDeclined { peer, .. } => {
-                if self.my_match.as_ref().map(|m| m.peer) == Some(peer) {
-                    log::info!("{peer} declined our challenge");
-                    self.my_match = None;
+                if let Some(live) = self.live_mut() {
+                    if live.my_match.as_ref().map(|m| m.peer) == Some(peer) {
+                        log::info!("{peer} declined our challenge");
+                        live.my_match = None;
+                    }
                 }
             }
             // WebRTC SDP relay is fed straight into the in-flight bring-up by
