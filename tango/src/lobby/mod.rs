@@ -68,11 +68,23 @@ enum MatchRole {
     Accepter,
 }
 
-/// The one match we're currently negotiating. Holds our reveal (streamed
-/// peer-to-peer once connected) and, once the peer commits, their commitment +
-/// proposal + ICE servers — everything the WebRTC bring-up needs to start the
-/// match.
-struct MyMatch {
+/// What's currently occupying us, if anything ([`Live::my_match`]). Its mere
+/// presence is what "busy" means — there's no separate in-match flag.
+enum MyMatch {
+    /// A lobby-brokered match: the challenge negotiation, then — once
+    /// `take_match_start` hands it to netplay — the live match. The negotiation
+    /// data stays put; `started` just flips so the hand-off fires once and we
+    /// keep showing busy through play.
+    Lobby(LobbyMatch),
+    /// A direct-link match, live now. No lobby negotiation, so no data: it just
+    /// marks us busy until the match ends.
+    Direct,
+}
+
+/// The lobby-brokered match we're negotiating (then running). Holds our reveal
+/// (streamed peer-to-peer once connected) and, once the peer commits, their
+/// commitment + proposal + ICE servers — everything the WebRTC bring-up needs.
+struct LobbyMatch {
     peer: FriendCode,
     role: MatchRole,
     nonce: [u8; 16],
@@ -81,6 +93,9 @@ struct MyMatch {
     peer_commitment: Option<[u8; 16]>,
     peer_proposal: Option<MatchProposal>,
     ice_servers: Vec<IceServer>,
+    /// Flipped by `take_match_start` once the match is handed to netplay: the
+    /// negotiation is done and it's live, so we stay busy but don't re-hand-off.
+    started: bool,
 }
 
 /// Everything netplay needs to bring up a lobby match, pulled from `MyMatch`
@@ -112,15 +127,9 @@ pub(crate) struct Live {
     /// Monotonic stamp handed to each arriving [`IncomingChallenge`] so the
     /// challenges list can sort by time received.
     challenge_seq: u64,
-    /// The match we're currently negotiating (at most one), if any.
+    /// What's occupying us, if anything (a lobby challenge/match or a direct
+    /// match). `Some` ⇔ busy.
     my_match: Option<MyMatch>,
-    /// Whether a match is actually live now (set when negotiation hands off to
-    /// the running match — `take_match_start` — or a direct match goes live via
-    /// `report_busy`; cleared by `report_idle` on match end). `my_match` clears
-    /// the moment the match starts, so this carries the busy dot through play,
-    /// and it's the only busy signal for direct matches (which never set
-    /// `my_match`).
-    in_match: bool,
 }
 
 impl Live {
@@ -132,7 +141,6 @@ impl Live {
             incoming: std::collections::BTreeMap::new(),
             challenge_seq: 0,
             my_match: None,
-            in_match: false,
         }
     }
 }
@@ -353,25 +361,30 @@ impl State {
     /// resolves without a match (decline / cancel / disconnect) or the match
     /// ends ([`Self::report_idle`]).
     pub fn self_busy(&self) -> bool {
-        self.live().is_some_and(|l| l.my_match.is_some() || l.in_match)
+        self.live().is_some_and(|l| l.my_match.is_some())
     }
 
     /// The peer we have an outstanding *outgoing* challenge to (we're the
     /// challenger and the match hasn't started yet), if any — drives the
     /// "waiting…" + Cancel state in that peer's profile.
     pub fn outgoing_peer(&self) -> Option<FriendCode> {
-        self.live()
-            .and_then(|l| l.my_match.as_ref())
-            .filter(|m| m.role == MatchRole::Challenger)
-            .map(|m| m.peer)
+        match self.live().and_then(|l| l.my_match.as_ref()) {
+            Some(MyMatch::Lobby(m)) if m.role == MatchRole::Challenger && !m.started => Some(m.peer),
+            _ => None,
+        }
     }
 
     /// Once the peer has committed (ChallengeAccepted/Confirmed filled their
-    /// commitment + ICE servers into `my_match`), pull out everything to start
-    /// the match. Clears `my_match`. `None` if no match is ready.
+    /// commitment + ICE servers into the lobby match), pull out everything to
+    /// start the match. `None` if there's no lobby match ready, or it's already
+    /// been handed off. Marks the match `started` (we stay busy through play, but
+    /// it won't hand off twice); `report_idle` clears it on match end.
     pub fn take_match_start(&mut self) -> Option<LobbyMatchStart> {
         let live = self.live_mut()?;
-        let m = live.my_match.as_ref()?;
+        let Some(MyMatch::Lobby(m)) = &mut live.my_match else { return None };
+        if m.started {
+            return None;
+        }
         let peer_commitment = m.peer_commitment?;
         let peer_proposal = m.peer_proposal.clone()?;
         if m.ice_servers.is_empty() {
@@ -386,10 +399,7 @@ impl State {
             local_proposal: m.proposal.clone(),
             peer_proposal,
         };
-        live.my_match = None;
-        // The negotiation just became a live match — keep us busy through play
-        // (`my_match` is now clear); `report_idle` resets this on match end.
-        live.in_match = true;
+        m.started = true;
         Some(start)
     }
 
@@ -547,12 +557,12 @@ impl State {
     /// us); cleared by [`Self::report_idle`] when the match ends.
     pub fn report_busy(&mut self, proposal: MatchProposal) {
         let invisible = self.invisible;
-        // Live now (this is the direct path's only busy signal — it never sets
-        // `my_match`); carries our own busy dot until `report_idle`. No-op if not
+        // A direct match has no lobby negotiation, so this is its only busy
+        // signal; it carries our busy dot until `report_idle`. No-op if not
         // connected: there's no lobby to tell and no `Live` to hold it, and the
         // dot is hidden while offline anyway.
         let Some(live) = self.live_mut() else { return };
-        live.in_match = true;
+        live.my_match = Some(MyMatch::Direct);
         if let Some(handle) = &self.handle {
             handle.set_status(if invisible {
                 tango_lobby::Status::Invisible
@@ -569,7 +579,7 @@ impl State {
     pub fn report_idle(&mut self) {
         let invisible = self.invisible;
         if let Some(live) = self.live_mut() {
-            live.in_match = false;
+            live.my_match = None;
         }
         if let (Connection::Connected(_), Some(handle)) = (&self.connection, &self.handle) {
             handle.set_status(if invisible {
@@ -653,7 +663,7 @@ impl State {
         reveal: crate::net::protocol::LocalReveal,
     ) {
         let commitment = reveal.commitment.to_vec();
-        let m = MyMatch {
+        let m = LobbyMatch {
             peer,
             role: MatchRole::Challenger,
             nonce: reveal.nonce,
@@ -662,21 +672,26 @@ impl State {
             peer_commitment: None,
             peer_proposal: None,
             ice_servers: Vec::new(),
+            started: false,
         };
         let Some(live) = self.live_mut() else { return }; // can't challenge while offline
-        live.my_match = Some(m);
+        live.my_match = Some(MyMatch::Lobby(m));
         if let Some(handle) = &self.handle {
             handle.challenge(&peer, proposal, commitment);
         }
     }
 
-    /// Withdraw our outstanding outgoing challenge (if any).
+    /// Withdraw our outstanding outgoing challenge — only a still-negotiating
+    /// lobby challenge can be cancelled (a live match isn't withdrawn this way).
     pub fn cancel_outgoing(&mut self) {
-        let peer = self.live_mut().and_then(|l| l.my_match.take()).map(|m| m.peer);
-        if let Some(peer) = peer {
-            if let Some(handle) = &self.handle {
-                handle.cancel(&peer);
-            }
+        let Some(live) = self.live_mut() else { return };
+        let peer = match &live.my_match {
+            Some(MyMatch::Lobby(m)) if !m.started => m.peer,
+            _ => return,
+        };
+        live.my_match = None;
+        if let Some(handle) = &self.handle {
+            handle.cancel(&peer);
         }
     }
 
@@ -690,7 +705,7 @@ impl State {
         reveal: crate::net::protocol::LocalReveal,
     ) {
         let commitment = reveal.commitment.to_vec();
-        let m = MyMatch {
+        let m = LobbyMatch {
             peer,
             role: MatchRole::Accepter,
             nonce: reveal.nonce,
@@ -699,9 +714,10 @@ impl State {
             peer_commitment: incoming.commitment.as_slice().try_into().ok(),
             peer_proposal: Some(incoming.proposal),
             ice_servers: Vec::new(),
+            started: false,
         };
         let Some(live) = self.live_mut() else { return };
-        live.my_match = Some(m);
+        live.my_match = Some(MyMatch::Lobby(m));
         live.incoming.remove(&peer);
         if let Some(handle) = &self.handle {
             handle.accept(&peer, proposal, commitment);
@@ -776,8 +792,8 @@ impl State {
                 commitment,
                 ice_servers,
             } => {
-                if let Some(m) = self.live_mut().and_then(|l| l.my_match.as_mut()) {
-                    if m.peer == peer {
+                if let Some(MyMatch::Lobby(m)) = self.live_mut().and_then(|l| l.my_match.as_mut()) {
+                    if m.peer == peer && !m.started {
                         m.peer_commitment = commitment.as_slice().try_into().ok();
                         m.peer_proposal = Some(proposal);
                         m.ice_servers = ice_servers;
@@ -786,8 +802,8 @@ impl State {
                 }
             }
             Event::ChallengeConfirmed { peer, ice_servers } => {
-                if let Some(m) = self.live_mut().and_then(|l| l.my_match.as_mut()) {
-                    if m.peer == peer {
+                if let Some(MyMatch::Lobby(m)) = self.live_mut().and_then(|l| l.my_match.as_mut()) {
+                    if m.peer == peer && !m.started {
                         m.ice_servers = ice_servers;
                         log::info!("{peer} confirmed our accept; starting match as answerer");
                     }
@@ -795,7 +811,7 @@ impl State {
             }
             Event::ChallengeDeclined { peer, .. } => {
                 if let Some(live) = self.live_mut() {
-                    if live.my_match.as_ref().map(|m| m.peer) == Some(peer) {
+                    if matches!(&live.my_match, Some(MyMatch::Lobby(m)) if m.peer == peer && !m.started) {
                         log::info!("{peer} declined our challenge");
                         live.my_match = None;
                     }
