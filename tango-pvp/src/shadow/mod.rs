@@ -232,7 +232,7 @@ impl Shadow {
             let mut shared = self.state.lock();
             let round = shared.round.as_mut().expect("round");
             round.set_pending_shadow_input(ip);
-            round.peek_remote_packet().expect("pending remote packet")
+            round.peek_remote_packet().expect("pending remote packet").to_vec()
         };
         // Discard any stale "input applied" signal before the coming run. The
         // per-game trap sets it whenever `take_input_injected()` fires, which

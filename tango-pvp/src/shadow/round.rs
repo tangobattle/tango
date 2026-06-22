@@ -138,8 +138,8 @@ impl Round {
         });
     }
 
-    pub fn peek_remote_packet(&self) -> Option<Vec<u8>> {
-        self.pending_remote_packet.as_ref().map(|p| p.packet.clone())
+    pub fn peek_remote_packet(&self) -> Option<&[u8]> {
+        self.pending_remote_packet.as_ref().map(|p| p.packet.as_slice())
     }
 
     /// Verify the buffered remote packet was queued for the current tick.
