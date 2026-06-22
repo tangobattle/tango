@@ -22,7 +22,7 @@
 //! The rollback horizon is a constructor parameter (`new(horizon)`) rather than
 //! a constant: it's a property of the consuming engine's input buffer, not of
 //! the protocol.
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 
 use crate::frame::{Body, Frame};
 
@@ -223,10 +223,16 @@ pub struct InStream<E> {
     /// Next contiguous seq we still need. Everything below has been
     /// delivered. Starts at 0, matching [`OutStream`]'s 0-based seq line.
     recv_base: u32,
-    /// Elements received with seq > recv_base that can't be delivered yet
-    /// (a gap precedes them). Keyed by seq; re-inserting a seq is a no-op,
-    /// which is how redundant copies dedup.
-    buffer: BTreeMap<u32, E>,
+    /// Elements received ahead of `recv_base` that can't be delivered yet (a
+    /// gap precedes them), as a ring indexed by distance from `recv_base`:
+    /// slot `k` holds the seq `recv_base + k`, `None` for one not yet received.
+    /// Grown on demand and bounded by `horizon`; the front slides up as the
+    /// contiguous prefix drains. Replaces a `BTreeMap<seq, E>` — the bounded,
+    /// contiguous index means steady-state in-order delivery touches only slot 0
+    /// with no per-element node allocation. A redundant copy of an
+    /// already-buffered seq is dropped (first copy wins), which is how
+    /// duplicates dedup.
+    buffer: VecDeque<Option<E>>,
     /// Freshest tick-advantage seen; [`accept`](Self::accept) returns it with
     /// every delivery so the caller can tag the delivered inputs. Persisted
     /// across calls for the reorder guard below.
@@ -248,7 +254,7 @@ impl<E: Copy> InStream<E> {
     pub fn new(horizon: u32) -> Self {
         Self {
             recv_base: 0,
-            buffer: BTreeMap::new(),
+            buffer: VecDeque::new(),
             latest_advantage: 0,
             latest_advantage_seq: 0,
             horizon,
@@ -288,17 +294,31 @@ impl<E: Copy> InStream<E> {
             if seq < self.recv_base {
                 continue; // already delivered — a redundant/duplicate copy.
             }
-            if seq >= self.recv_base.saturating_add(self.horizon) {
+            let offset = (seq - self.recv_base) as usize;
+            if offset >= self.horizon as usize {
                 // Too far ahead of our frontier to ever roll back to.
                 return Err(HorizonExceeded);
             }
-            self.buffer.entry(seq).or_insert(e);
+            // Slot `offset` holds seq `recv_base + offset`; grow the ring to
+            // reach it (the guard means this only ever extends, never truncates),
+            // filling any skipped slots with `None` gaps.
+            if offset >= self.buffer.len() {
+                self.buffer.resize(offset + 1, None);
+            }
+            // First copy wins, like the old `entry(..).or_insert(..)` — a
+            // redundant resend of an already-buffered seq is dropped.
+            if self.buffer[offset].is_none() {
+                self.buffer[offset] = Some(e);
+            }
         }
         // `recv_base` before draining is the seq of the first delivered element.
         let delivered_base = self.recv_base;
         let mut delivered = Vec::new();
-        while let Some(e) = self.buffer.remove(&self.recv_base) {
-            delivered.push(e);
+        // Pop the contiguous run off the front; each pop slides slot 0 up to the
+        // next seq, preserving `slot k == recv_base + k`. Stops at the first gap
+        // (a `None` front) or when the ring empties.
+        while matches!(self.buffer.front(), Some(Some(_))) {
+            delivered.push(self.buffer.pop_front().unwrap().unwrap());
             self.recv_base += 1;
         }
         Ok(Window {
