@@ -668,14 +668,14 @@ impl PvpSession {
         self.reconnect_deadline.lock().unwrap().is_some()
     }
 
-    /// Time left before the reconnect coordinator gives up and ends the match,
-    /// or `None` when not reconnecting. Drives the overlay's countdown; saturates
-    /// at zero rather than going negative once the deadline passes.
-    pub fn reconnect_remaining(&self) -> Option<std::time::Duration> {
-        self.reconnect_deadline
-            .lock()
-            .unwrap()
-            .map(|deadline| deadline.saturating_duration_since(std::time::Instant::now()))
+    /// Fraction of the reconnect give-up window still remaining — `1.0` when a
+    /// reconnect just started, falling to `0.0` at the give-up deadline, or
+    /// `None` when not reconnecting. Drives the overlay's depleting progress bar.
+    pub fn reconnect_progress(&self) -> Option<f32> {
+        self.reconnect_deadline.lock().unwrap().map(|deadline| {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            (remaining.as_secs_f32() / RECONNECT_TIMEOUT.as_secs_f32()).clamp(0.0, 1.0)
+        })
     }
 
     /// True once it's safe to tear the session down. Requires

@@ -1014,15 +1014,22 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, session: &'a ActiveSes
         return None;
     }
     let title = text(t!(lang, "playback-reconnecting")).size(TEXT_BODY + 4.0);
-    // Whole seconds left before give-up, rounded up so it reads "30s … 1s"
-    // rather than flicking to 0 a second early. The coordinator ticks the
-    // session redraw ~4×/s while paused so this stays live.
-    let secs = pvp.reconnect_remaining().map(|d| d.as_secs_f64().ceil() as i64).unwrap_or(0);
-    // Kept short enough to fit one line within the panel: text wrapping doesn't
-    // take in this nested column/stack (a min-width floor in the layout limits
-    // overrides any wrap width), same as the disconnect prompt above — so the
-    // detail is sized to never need wrapping rather than fought into it.
-    let body_text = text(t!(lang, "playback-reconnecting-detail", secs = secs)).style(widgets::muted_text_style);
+    let body_text = text(t!(lang, "playback-reconnecting-detail")).style(widgets::muted_text_style);
+    // Depleting bar for the time left before give-up, in place of a text
+    // countdown: it fills the panel width (no wrap/min-width pitfall) and the
+    // coordinator ticks the session redraw ~4×/s while paused so it eases down.
+    let time_left = pvp.reconnect_progress().unwrap_or(0.0);
+    let progress = iced::widget::progress_bar(0.0..=1.0, time_left)
+        .length(Fill)
+        .girth(6.0)
+        .style(|theme: &iced::Theme| iced::widget::progress_bar::Style {
+            background: iced::Background::Color(iced::Color { a: 0.12, ..iced::Color::WHITE }),
+            bar: iced::Background::Color(theme.extended_palette().primary.base.color),
+            border: iced::Border {
+                radius: 3.0.into(),
+                ..Default::default()
+            },
+        });
     let disconnect_btn = widgets::labeled_icon_button(
         Icon::Unplug,
         t!(lang, "playback-disconnect"),
@@ -1031,7 +1038,7 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, session: &'a ActiveSes
         widgets::danger_button,
     );
     let buttons = row![horizontal_space(), disconnect_btn].spacing(8).align_y(Alignment::Center);
-    let panel = container(column![title, body_text, buttons].spacing(14).width(Fill))
+    let panel = container(column![title, body_text, progress, buttons].spacing(14).width(Fill))
         .width(iced::Length::Fixed(420.0))
         .padding(20)
         .style(widgets::panel);
