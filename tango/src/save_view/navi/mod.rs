@@ -88,7 +88,7 @@ fn render_navi_card<M: 'static>(
     card = card.push(
         column![
             text(t!(lang, "navi-base-hp")).size(TEXT_CAPTION).style(muted_text_style),
-            text(loaded.save.base_hp().to_string()).size(TEXT_DISPLAY),
+            text(loaded.save.base_max_hp().to_string()).size(TEXT_DISPLAY),
         ]
         .spacing(2)
         .align_x(Alignment::Center),
@@ -131,7 +131,7 @@ pub(crate) fn navi_as_text(lang: &LanguageIdentifier, loaded: &Loaded) -> Option
         out.push_str(&name);
         out.push('\n');
     }
-    out.push_str(&format!("{}\t{}\n", t!(lang, "navi-base-hp"), loaded.save.base_hp()));
+    out.push_str(&format!("{}\t{}\n", t!(lang, "navi-base-hp"), loaded.save.base_max_hp()));
     Some(out)
 }
 
