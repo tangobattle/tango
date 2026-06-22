@@ -1018,7 +1018,12 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, session: &'a ActiveSes
     // rather than flicking to 0 a second early. The coordinator ticks the
     // session redraw ~4×/s while paused so this stays live.
     let secs = pvp.reconnect_remaining().map(|d| d.as_secs_f64().ceil() as i64).unwrap_or(0);
-    let body_text = text(t!(lang, "playback-reconnecting-detail", secs = secs)).style(widgets::muted_text_style);
+    // `Fill` so this (longer than the disconnect prompt) line wraps to the panel
+    // width instead of overflowing it: `text` defaults to `Shrink`, which lays a
+    // long string out on one unbounded line.
+    let body_text = text(t!(lang, "playback-reconnecting-detail", secs = secs))
+        .width(Fill)
+        .style(widgets::muted_text_style);
     let disconnect_btn = widgets::labeled_icon_button(
         Icon::Unplug,
         t!(lang, "playback-disconnect"),
