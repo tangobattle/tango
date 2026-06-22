@@ -129,6 +129,7 @@ session-stat-ping = Network latency
 # Save view sub-tabs
 save-tab-cover = Cover
 save-tab-navi = Navi
+save-tab-navicust = NaviCust
 save-tab-folder = Folder
 save-tab-patch-cards = Patch Cards
 save-tab-auto-battle-data = Auto Battle Data

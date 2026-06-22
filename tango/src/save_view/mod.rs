@@ -17,6 +17,7 @@ use unic_langid::LanguageIdentifier;
 pub(crate) mod abd;
 mod cover;
 pub(crate) mod folder;
+mod navi;
 pub mod navicust;
 pub(crate) mod patch_cards;
 
@@ -24,6 +25,7 @@ pub(crate) mod patch_cards;
 pub enum Tab {
     Cover,
     Navi,
+    Navicust,
     Folder,
     PatchCards,
     AutoBattleData,
@@ -231,8 +233,11 @@ pub fn available_tabs(save: &dyn Save, streamer_mode: bool) -> Vec<Tab> {
     if streamer_mode {
         tabs.push(Tab::Cover);
     }
-    if save.view_navi().is_some() || save.view_navicust().is_some() {
+    if save.view_navi().is_some() {
         tabs.push(Tab::Navi);
+    }
+    if save.view_navicust().is_some() {
+        tabs.push(Tab::Navicust);
     }
     if save.view_chips().is_some() {
         tabs.push(Tab::Folder);
@@ -254,7 +259,8 @@ pub fn render<M: 'static>(
 ) -> Element<'static, M> {
     match tab {
         Tab::Cover => cover::render_cover(lang, loaded),
-        Tab::Navi => navicust::render_navi(lang, loaded),
+        Tab::Navi => navi::render_navi(lang, loaded),
+        Tab::Navicust => navicust::render_navicust_tab(lang, loaded),
         Tab::Folder => folder::render_folder(lang, loaded, opts.folder_grouped),
         Tab::PatchCards => patch_cards::render_patch_cards(lang, loaded),
         Tab::AutoBattleData => abd::render_auto_battle_data(lang, loaded),
@@ -267,6 +273,7 @@ fn tab_icon(tab: Tab) -> lucide_icons::Icon {
     match tab {
         Tab::Cover => Icon::Eye,
         Tab::Navi => Icon::Bot,
+        Tab::Navicust => Icon::Puzzle,
         Tab::Folder => Icon::Files,
         Tab::PatchCards => Icon::CreditCard,
         Tab::AutoBattleData => Icon::Swords,
@@ -967,6 +974,7 @@ pub fn view<'a>(
         let label = match tab {
             Tab::Cover => t!(lang, "save-tab-cover"),
             Tab::Navi => t!(lang, "save-tab-navi"),
+            Tab::Navicust => t!(lang, "save-tab-navicust"),
             Tab::Folder => t!(lang, "save-tab-folder"),
             Tab::PatchCards => t!(lang, "save-tab-patch-cards"),
             Tab::AutoBattleData => t!(lang, "save-tab-auto-battle-data"),
@@ -1032,8 +1040,8 @@ pub fn view<'a>(
             // that actually appeared slide in. Suppressed while
             // the edit-mode morph runs — the whole side is moving
             // then.
-            let prev_kinds = state.prev_tab.map(|p| extra_kinds(p, loaded)).unwrap_or_default();
-            for kind in extra_kinds(active, loaded) {
+            let prev_kinds = state.prev_tab.map(|p| extra_kinds(p)).unwrap_or_default();
+            for kind in extra_kinds(active) {
                 let el = render_extra(lang, state, active, kind);
                 let carried = enter_from.x != 0.0 && prev_kinds.contains(&kind);
                 let el = if edit_swap.is_some() || carried {
@@ -1106,7 +1114,7 @@ pub fn view<'a>(
             .height(Fill)
             .into();
     }
-    if navicust_editing && active == Tab::Navi {
+    if navicust_editing && active == Tab::Navicust {
         let editor = navicust::render_navicust_edit(lang, loaded, state);
         return column![tab_pane, entered(editor)]
             .spacing(style::PANE_GAP)
@@ -1213,8 +1221,9 @@ fn tab_has_edit(tab: Tab, loaded: &Loaded, editable: bool) -> bool {
             Tab::Folder => loaded.chips_editable,
             // Only BN4/5/6 with a writable navicust. `navicust_editable`
             // is the cached `view_navicust_mut()` probe, which is already
-            // `None` for link navis and navicust-less BN4.5.
-            Tab::Navi => loaded.navicust_editable,
+            // `None` for link navis and navicust-less BN4.5. The Navi tab
+            // itself is read-only (falls through to `_`).
+            Tab::Navicust => loaded.navicust_editable,
             // BN4 (PatchCard4s) and BN5/BN6 (PatchCard56s) are
             // both writable, each via its own editor.
             Tab::PatchCards => loaded.patch_cards_editable,
@@ -1243,17 +1252,13 @@ enum ExtraKind {
 
 /// The tail controls `tab` shows, in display order. The Edit
 /// affordance is tracked separately — see [`tab_has_edit`].
-fn extra_kinds(tab: Tab, loaded: &Loaded) -> Vec<ExtraKind> {
+fn extra_kinds(tab: Tab) -> Vec<ExtraKind> {
     match tab {
         Tab::Folder => vec![ExtraKind::FolderGroup, ExtraKind::Copy],
-        Tab::Navi => {
-            let has_navicust = loaded.save.view_navicust().is_some();
-            if has_navicust {
-                vec![ExtraKind::CopyImage, ExtraKind::Copy]
-            } else {
-                vec![ExtraKind::Copy]
-            }
-        }
+        // The navi card copies as text only; the navicust grid also
+        // copies as an image.
+        Tab::Navi => vec![ExtraKind::Copy],
+        Tab::Navicust => vec![ExtraKind::CopyImage, ExtraKind::Copy],
         Tab::PatchCards | Tab::AutoBattleData => vec![ExtraKind::Copy],
         Tab::Cover => vec![],
     }
@@ -1308,7 +1313,8 @@ pub fn tab_as_text(_lang: &LanguageIdentifier, tab: Tab, loaded: &Loaded, opts: 
         Tab::Folder => folder::as_text(loaded, opts),
         Tab::PatchCards => patch_cards::as_text(loaded),
         Tab::AutoBattleData => abd::as_text(loaded),
-        Tab::Navi => navicust::as_text(loaded),
+        Tab::Navi => navi::navi_as_text(loaded),
+        Tab::Navicust => navicust::navicust_as_text(loaded),
         Tab::Cover => None,
     }
 }
@@ -1317,7 +1323,7 @@ pub fn tab_as_text(_lang: &LanguageIdentifier, tab: Tab, loaded: &Loaded, opts: 
 /// Only Navi/NaviCust has an image form; `None` otherwise.
 pub fn tab_as_image(tab: Tab, loaded: &Loaded) -> Option<image::RgbaImage> {
     match tab {
-        Tab::Navi => navicust::as_image(loaded),
+        Tab::Navicust => navicust::as_image(loaded),
         _ => None,
     }
 }
@@ -1524,7 +1530,6 @@ fn colored_badge_sized<M: 'static>(
         })
         .into()
 }
-
 
 // muted_color / muted_text_style / success_text_style /
 // danger_text_style now live in `crate::widgets`. Kept here as

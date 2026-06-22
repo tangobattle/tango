@@ -319,115 +319,14 @@ pub(super) fn render_navicust_edit<'a>(
     editor_panes(editor_pane(grid_header, grid_inner), editor_pane(parts_header, palette))
 }
 
-// ---------- Navi ----------
+// ---------- NaviCust ----------
 
-pub(super) fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
-    // The navicust grid takes precedence; a link navi (which has no
-    // navicust of its own) shows its emblem card instead.
-    if let Some(v) = loaded.save.view_navicust() {
-        return render_navicust(lang, loaded, v.as_ref());
-    }
-    let Some(navi_view) = loaded.save.view_navi() else {
+/// The NaviCust tab: the equipped navi's customizer grid.
+pub(super) fn render_navicust_tab<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
+    let Some(v) = loaded.save.view_navicust() else {
         return placeholder(t!(lang, "save-empty"));
     };
-    let assets = loaded.assets.as_ref();
-
-    let navi_id = navi_view.navi();
-    let name = assets
-        .navi(navi_id)
-        .and_then(|n| n.name())
-        .unwrap_or_else(|| format!("Navi #{navi_id}"));
-    // Plate/glow tint: the emblem's own signature color, with a
-    // neutral slate fallback for monochrome emblems.
-    let accent = loaded
-        .navi_accents
-        .get(&navi_id)
-        .copied()
-        .unwrap_or(iced::Color::from_rgb8(0x6b, 0x7a, 0x99));
-
-    // Emblem at an integer multiple of its 15px crop so the
-    // nearest-neighbor upscale lands on even pixels.
-    let emblem: Element<'static, M> = loaded
-        .navi_emblems
-        .get(&navi_id)
-        .cloned()
-        .map(|h| {
-            Image::new(h)
-                .width(Length::Fixed(90.0))
-                .height(Length::Fixed(90.0))
-                .filter_method(iced_image::FilterMethod::Nearest)
-                .content_fit(ContentFit::Contain)
-                .into()
-        })
-        .unwrap_or_else(|| {
-            Space::new()
-                .width(Length::Fixed(90.0))
-                .height(Length::Fixed(90.0))
-                .into()
-        });
-
-    // Circular plate behind the emblem: accent-tinted fill, a
-    // ring a shade brighter, and an accent glow lifting it off
-    // the pane.
-    let plate: Element<'static, M> = container(emblem)
-        .width(Length::Fixed(140.0))
-        .height(Length::Fixed(140.0))
-        .align_x(Alignment::Center)
-        .align_y(Alignment::Center)
-        .style(move |theme: &iced::Theme| {
-            let bg = theme.palette().background;
-            container::Style {
-                background: Some(iced::Background::Color(crate::widgets::mix(bg, accent, 0.22))),
-                border: iced::Border {
-                    radius: 70.0.into(),
-                    width: 2.0,
-                    color: iced::Color { a: 0.8, ..accent },
-                },
-                shadow: iced::Shadow {
-                    color: iced::Color { a: 0.45, ..accent },
-                    offset: iced::Vector::new(0.0, 0.0),
-                    blur_radius: 26.0,
-                },
-                ..Default::default()
-            }
-        })
-        .into();
-
-    let card = column![
-        plate,
-        column![
-            text(name).size(TEXT_DISPLAY),
-            text(t!(lang, "navi-link-navi"))
-                .size(TEXT_CAPTION)
-                .style(muted_text_style),
-        ]
-        .spacing(2)
-        .align_x(Alignment::Center),
-    ]
-    .spacing(16)
-    .align_x(Alignment::Center);
-
-    // The pane itself picks up a whisper of the accent, fading
-    // back to the standard plate color toward the bottom.
-    container(card)
-        .width(Fill)
-        .align_x(Alignment::Center)
-        .padding([28.0, crate::style::PANE_PADDING])
-        .style(move |theme: &iced::Theme| {
-            let mut s = crate::widgets::pane(theme);
-            if let Some(iced::Background::Color(plate_color)) = s.background {
-                // Stop 0 sits at the bottom for a 0-radian linear
-                // gradient, so the accent goes on stop 1 — the
-                // tint halos the plate at the top of the card.
-                s.background = Some(iced::Background::Gradient(iced::Gradient::Linear(
-                    iced::gradient::Linear::new(0.0)
-                        .add_stop(0.0, plate_color)
-                        .add_stop(1.0, crate::widgets::mix(plate_color, accent, 0.10)),
-                )));
-            }
-            s
-        })
-        .into()
+    render_navicust(lang, loaded, v.as_ref())
 }
 
 /// The installed-parts badge strip shown under the grid: two columns
@@ -810,22 +709,15 @@ fn sorted_navicust_parts(loaded: &Loaded, sort: NavicustSort, filter: &str) -> V
     rows.into_iter().map(|e| (e.id, e.name, e.desc)).collect()
 }
 
-/// The Navi / NaviCust tab as text.
-pub(crate) fn as_text(loaded: &Loaded) -> Option<String> {
+/// The NaviCust tab as text: style name first (BN3 only), then two TSV
+/// columns — solid parts on the left, plus parts on the right, lined up
+/// row-by-row to match the side-by-side layout the UI renders. The
+/// trailing tab keeps a paste parsing as two columns even when the last
+/// solid row has no plus partner.
+pub(crate) fn navicust_as_text(loaded: &Loaded) -> Option<String> {
     let assets = loaded.assets.as_ref();
+    let v = loaded.save.view_navicust()?;
     let mut out = String::new();
-    let Some(v) = loaded.save.view_navicust() else {
-        // Link navi (or no navicust): just the navi name, if there is one.
-        let id = loaded.save.view_navi()?.navi();
-        let name = assets.navi(id).and_then(|n| n.name()).unwrap_or_else(|| format!("#{id}"));
-        out.push_str(&format!("{name}\n"));
-        return Some(out);
-    };
-    // Style name first (BN3 only), then two TSV columns: solid parts on
-    // the left, plus parts on the right, lined up row-by-row to match
-    // the side-by-side layout the UI renders. The trailing tab keeps a
-    // paste parsing as two columns even when the last solid row has no
-    // plus partner.
     if let Some(style_id) = v.style() {
         if let Some(name) = assets.style(style_id).and_then(|s| s.name()) {
             out.push_str(&name);
