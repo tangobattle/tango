@@ -318,12 +318,6 @@ pub struct NavicustLayout {
 pub trait Assets {
     fn chip(&self, id: usize) -> Option<Box<dyn Chip + '_>>;
     fn num_chips(&self) -> usize;
-    fn can_set_regular_chip(&self) -> bool {
-        false
-    }
-    fn can_set_tag_chips(&self) -> bool {
-        false
-    }
     fn regular_chip_is_in_place(&self) -> bool {
         false
     }
