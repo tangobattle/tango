@@ -5794,108 +5794,69 @@ dependencies = [
 name = "tango-gamesupport-bn1"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "bitvec",
  "bytemuck",
  "byteorder",
- "c2rust-bitfields",
  "image",
- "itertools 0.6.5",
  "log",
  "mgba",
- "ndarray",
- "num-derive",
  "num-traits",
- "patricia_tree",
  "rand",
- "rand_pcg",
- "serde",
- "serde_repr",
  "tango-dataview",
  "tango-gamesupport",
  "tango-pvp",
- "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "tango-gamesupport-bn2"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "bitvec",
  "bytemuck",
  "byteorder",
  "c2rust-bitfields",
  "image",
- "itertools 0.6.5",
  "log",
  "mgba",
- "ndarray",
- "num-derive",
  "num-traits",
- "patricia_tree",
  "rand",
- "rand_pcg",
- "serde",
- "serde_repr",
  "tango-dataview",
  "tango-gamesupport",
  "tango-pvp",
- "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "tango-gamesupport-bn3"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "bitvec",
  "bytemuck",
  "byteorder",
  "c2rust-bitfields",
  "image",
- "itertools 0.6.5",
  "log",
  "mgba",
  "ndarray",
- "num-derive",
  "num-traits",
- "patricia_tree",
  "rand",
- "rand_pcg",
- "serde",
- "serde_repr",
  "tango-dataview",
  "tango-gamesupport",
  "tango-pvp",
- "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "tango-gamesupport-bn4"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "bitvec",
  "bytemuck",
- "byteorder",
  "c2rust-bitfields",
  "image",
- "itertools 0.6.5",
  "log",
  "mgba",
  "ndarray",
- "num-derive",
  "num-traits",
- "patricia_tree",
  "rand",
- "rand_pcg",
- "serde",
- "serde_repr",
  "tango-dataview",
  "tango-gamesupport",
  "tango-pvp",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -5903,26 +5864,17 @@ name = "tango-gamesupport-bn5"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bitvec",
  "bytemuck",
- "byteorder",
  "c2rust-bitfields",
  "image",
- "itertools 0.6.5",
  "log",
  "mgba",
  "ndarray",
- "num-derive",
  "num-traits",
- "patricia_tree",
  "rand",
- "rand_pcg",
- "serde",
- "serde_repr",
  "tango-dataview",
  "tango-gamesupport",
  "tango-pvp",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -5930,53 +5882,33 @@ name = "tango-gamesupport-bn6"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bitvec",
  "bytemuck",
- "byteorder",
  "c2rust-bitfields",
  "image",
- "itertools 0.6.5",
  "log",
  "mgba",
  "ndarray",
- "num-derive",
  "num-traits",
- "patricia_tree",
  "rand",
- "rand_pcg",
- "serde",
- "serde_repr",
  "tango-dataview",
  "tango-gamesupport",
  "tango-pvp",
- "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "tango-gamesupport-exe45"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "bitvec",
  "bytemuck",
- "byteorder",
  "c2rust-bitfields",
  "image",
- "itertools 0.6.5",
  "log",
  "mgba",
- "ndarray",
- "num-derive",
  "num-traits",
- "patricia_tree",
  "rand",
- "rand_pcg",
- "serde",
- "serde_repr",
  "tango-dataview",
  "tango-gamesupport",
  "tango-pvp",
- "thiserror 1.0.69",
 ]
 
 [[package]]
