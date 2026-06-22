@@ -81,10 +81,6 @@ where
         None
     }
 
-    /// The player navi's base max HP — from HP Memories / leveling only,
-    /// excluding NaviCust and Mod-Code HP bonuses.
-    fn base_max_hp(&self) -> u16;
-
     /// The navicust customizer, or `None` when the save has no navicust —
     /// either the game has none at all, or a link navi is equipped (see
     /// [`NaviView`]).
@@ -309,6 +305,11 @@ pub trait PatchCard4sViewMut<'a> {
 /// save has no editable navicust, so [`Save::view_navicust`] returns `None`.
 pub trait NaviView<'a> {
     fn navi(&self) -> usize;
+
+    /// The navi's base max HP — from HP Memories / leveling only, excluding
+    /// NaviCust and Mod-Code HP bonuses. For the games without a link-navi
+    /// roster (BN1–4) this is the player navi's HP.
+    fn base_max_hp(&self) -> u16;
 }
 
 pub trait NaviViewMut<'a> {

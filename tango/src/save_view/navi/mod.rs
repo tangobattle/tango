@@ -18,15 +18,20 @@ fn render_navi_card<M: 'static>(
 ) -> Element<'static, M> {
     let assets = loaded.assets.as_ref();
 
+    // Only the games with a real navi roster (BN5/BN6/EXE4.5) get an emblem +
+    // name plate. BN1–4 report a placeholder navi the ROM has no entry for, so
+    // their card is just the HP.
+    let roster_navi = navi_id.filter(|&id| assets.navi(id).is_some());
+
     // Plate/glow tint: the equipped emblem's own signature color, with a
     // neutral slate fallback (also used by the navi-less games).
-    let accent = navi_id
+    let accent = roster_navi
         .and_then(|id| loaded.navi_accents.get(&id).copied())
         .unwrap_or(iced::Color::from_rgb8(0x6b, 0x7a, 0x99));
 
     let mut card = column![].spacing(16).align_x(Alignment::Center);
 
-    if let Some(navi_id) = navi_id {
+    if let Some(navi_id) = roster_navi {
         let name = assets
             .navi(navi_id)
             .and_then(|n| n.name())
@@ -90,7 +95,8 @@ fn render_navi_card<M: 'static>(
     let base_max_hp = navi_id
         .and_then(|id| assets.navi(id))
         .and_then(|n| n.base_max_hp())
-        .unwrap_or_else(|| loaded.save.base_max_hp());
+        .or_else(|| loaded.save.view_navi().map(|nv| nv.base_max_hp()))
+        .unwrap_or(0);
     card = card.push(
         column![
             text(t!(lang, "navi-base-hp")).size(TEXT_CAPTION).style(muted_text_style),
@@ -127,23 +133,20 @@ fn render_navi_card<M: 'static>(
 /// link-navi roster) and the player navi's max HP.
 pub(crate) fn navi_as_text(lang: &LanguageIdentifier, loaded: &Loaded) -> Option<String> {
     let mut out = String::new();
-    if let Some(id) = loaded.save.view_navi().map(|nv| nv.navi()) {
-        let name = loaded
-            .assets
-            .as_ref()
-            .navi(id)
-            .and_then(|n| n.name())
-            .unwrap_or_else(|| format!("#{id}"));
+    let assets = loaded.assets.as_ref();
+    let equipped = loaded.save.view_navi().map(|nv| nv.navi());
+    // Only show a name for a real roster navi (BN5/BN6/EXE4.5); BN1–4 report a
+    // placeholder the ROM has no entry for.
+    if let Some(id) = equipped.filter(|&id| assets.navi(id).is_some()) {
+        let name = assets.navi(id).and_then(|n| n.name()).unwrap_or_else(|| format!("#{id}"));
         out.push_str(&name);
         out.push('\n');
     }
-    let base_max_hp = loaded
-        .save
-        .view_navi()
-        .map(|nv| nv.navi())
-        .and_then(|id| loaded.assets.as_ref().navi(id))
+    let base_max_hp = equipped
+        .and_then(|id| assets.navi(id))
         .and_then(|n| n.base_max_hp())
-        .unwrap_or_else(|| loaded.save.base_max_hp());
+        .or_else(|| loaded.save.view_navi().map(|nv| nv.base_max_hp()))
+        .unwrap_or(0);
     out.push_str(&format!("{}\t{}\n", t!(lang, "navi-base-hp"), base_max_hp));
     Some(out)
 }
