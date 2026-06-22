@@ -49,17 +49,17 @@ message IceServer {
 }
 
 // Presence status, shared by Join and the set_status message. Declarative FULL
-// state: exactly one case, stored wholesale by the server (no delta / no
-// clear-vs-no-change ambiguity). invisible and now_playing are mutually
-// exclusive — a hidden player has no roster entry to show now_playing on.
+// state, stored wholesale by the server. Visibility and activity are
+// independent so a visibility change never disturbs an in-match state (and you
+// can be hidden AND in a match):
+//   - invisible: hidden from everyone else's roster (indistinguishable from
+//     offline). Absent/false = visible.
+//   - now_playing: the match the client is in (direct, or maintained for a
+//     lobby match). A challenge in flight is NOT reported here — the server
+//     derives that busy from its own pending-challenge state.
 message Status {
-  message Online {}      // visible, idle
-  message Invisible {}   // hidden; indistinguishable from offline
-  oneof state {
-    Online online = 1;
-    Invisible invisible = 2;
-    MatchProposal now_playing = 3;   // visible, in a match
-  }
+  bool invisible = 1;
+  optional MatchProposal now_playing = 2;
 }
 
 // ---- client -> server ----

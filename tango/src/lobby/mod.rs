@@ -17,7 +17,8 @@ use futures::StreamExt;
 use tango_lobby::{Event, FriendCode, IceServer, Lobby, MatchProposal, Welcome};
 
 /// Lobby wire-protocol version (matches the server's `SERVER_PROTOCOL_VERSION`).
-const LOBBY_PROTOCOL_VERSION: u32 = 1;
+/// 2: Status split into independent `invisible` + `now_playing`.
+const LOBBY_PROTOCOL_VERSION: u32 = 2;
 
 /// Non-Clone async payloads threaded through a `Message`, same trick as netplay.
 type Slot<T> = Arc<std::sync::Mutex<Option<T>>>;
@@ -76,9 +77,9 @@ enum MyMatch {
     /// data stays put; `started` just flips so the hand-off fires once and we
     /// keep showing busy through play.
     Lobby(LobbyMatch),
-    /// A direct-link match, live now. No lobby negotiation, so no data: it just
-    /// marks us busy until the match ends.
-    Direct,
+    /// A direct-link match, live now (no lobby negotiation). Carries the
+    /// proposal so we can report it as our now-playing to the lobby.
+    Direct(MatchProposal),
 }
 
 /// The lobby-brokered match we're negotiating (then running). Holds our reveal
@@ -418,10 +419,11 @@ impl State {
         };
         self.connection = Connection::Connecting;
         let endpoint = self.endpoint.clone();
-        let status = if self.invisible {
-            tango_lobby::Status::Invisible
-        } else {
-            tango_lobby::Status::Online
+        // Fresh dial: visibility from our pick, no now-playing yet (no live
+        // session). The driver re-sends the latest status on its own reconnects.
+        let status = tango_lobby::Status {
+            invisible: self.invisible,
+            now_playing: self.match_now_playing(),
         };
         iced::Task::perform(
             async move { tango_lobby::connect(&endpoint, identity, LOBBY_PROTOCOL_VERSION, status).await },
@@ -550,44 +552,48 @@ impl State {
         }
     }
 
-    /// Report that we're busy in a match the lobby didn't broker (a direct
-    /// link), so the roster shows us unavailable. Lobby-brokered matches are
-    /// marked server-side (on challenge + on accept) instead, so this is only
-    /// for the direct path. Invisible stays hidden (a busy status would reveal
-    /// us); cleared by [`Self::report_idle`] when the match ends.
-    pub fn report_busy(&mut self, proposal: MatchProposal) {
-        let invisible = self.invisible;
-        // A direct match has no lobby negotiation, so this is its only busy
-        // signal; it carries our busy dot until `report_idle`. No-op if not
-        // connected: there's no lobby to tell and no `Live` to hold it, and the
-        // dot is hidden while offline anyway.
-        let Some(live) = self.live_mut() else { return };
-        live.my_match = Some(MyMatch::Direct);
+    /// The match we're in (lobby or direct), reported to the lobby as our
+    /// now-playing. A challenge still negotiating is *not* "now playing" — the
+    /// server derives that busy from its own pending state.
+    fn match_now_playing(&self) -> Option<MatchProposal> {
+        match self.live().and_then(|l| l.my_match.as_ref())? {
+            MyMatch::Lobby(m) if m.started => Some(m.proposal.clone()),
+            MyMatch::Direct(proposal) => Some(proposal.clone()),
+            _ => None,
+        }
+    }
+
+    /// Push our current presence — visibility plus now-playing — to the lobby.
+    /// Visibility and now-playing are orthogonal on the wire, so this is safe to
+    /// call on either kind of change; it always sends the full, current state.
+    fn sync_status(&self) {
         if let Some(handle) = &self.handle {
-            handle.set_status(if invisible {
-                tango_lobby::Status::Invisible
-            } else {
-                tango_lobby::Status::Busy(proposal)
+            handle.set_status(tango_lobby::Status {
+                invisible: self.invisible,
+                now_playing: self.match_now_playing(),
             });
         }
     }
 
-    /// Re-assert our base presence (online / invisible) — call when a match
-    /// ends to clear the "now playing" the server derived when the match was
-    /// brokered. No-op unless connected (a disconnect already drops us from the
-    /// roster), and invisible stays hidden.
+    /// Report that we're in a match the lobby didn't broker (a direct link), so
+    /// the roster shows us unavailable. Lobby-brokered matches are marked
+    /// server-side on accept instead. No-op if not connected (no `Live` to hold
+    /// it, and we're hidden anyway); invisibility is preserved by `sync_status`.
+    pub fn report_busy(&mut self, proposal: MatchProposal) {
+        match self.live_mut() {
+            Some(live) => live.my_match = Some(MyMatch::Direct(proposal)),
+            None => return,
+        }
+        self.sync_status();
+    }
+
+    /// Clear our now-playing — call when a match ends. The server drops the
+    /// busy it derived/recorded; visibility is unchanged.
     pub fn report_idle(&mut self) {
-        let invisible = self.invisible;
         if let Some(live) = self.live_mut() {
             live.my_match = None;
         }
-        if let (Connection::Connected(_), Some(handle)) = (&self.connection, &self.handle) {
-            handle.set_status(if invisible {
-                tango_lobby::Status::Invisible
-            } else {
-                tango_lobby::Status::Online
-            });
-        }
+        self.sync_status();
     }
 
     /// Apply a self-status pick: toggle visibility live when connected, or
@@ -597,16 +603,11 @@ impl State {
         match status {
             SelfStatus::Online | SelfStatus::Invisible => {
                 self.invisible = status == SelfStatus::Invisible;
-                let wire = if self.invisible {
-                    tango_lobby::Status::Invisible
-                } else {
-                    tango_lobby::Status::Online
-                };
                 match &self.connection {
+                    // Visibility flips independently of now-playing now, so just
+                    // re-push the full status (it carries our current match).
                     Connection::Connected(_) => {
-                        if let Some(handle) = &self.handle {
-                            handle.set_status(wire);
-                        }
+                        self.sync_status();
                         iced::Task::none()
                     }
                     // Re-dial from an offline / failed / never-connected state.

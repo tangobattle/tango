@@ -102,27 +102,22 @@ fn is_transient(e: &Error) -> bool {
     }
 }
 
-/// The presence status a client sets on itself, mirroring `Status` in the
-/// proto. Exactly one of these holds at a time.
-#[derive(Clone, Debug)]
-pub enum Status {
-    /// Visible and idle.
-    Online,
-    /// Hidden — indistinguishable from offline to everyone else.
-    Invisible,
-    /// Visible but unavailable — in a match, or with a challenge in flight. The
-    /// proposal renders as `now_playing` on the wire.
-    Busy(pb::MatchProposal),
+/// The presence a client sets on itself, mirroring `Status` in the proto.
+/// Visibility and activity are independent: a hidden client can still be in a
+/// match. `now_playing` is the match the client is in (a challenge in flight is
+/// NOT reported here — the server derives that busy from its own pending state).
+#[derive(Clone, Debug, Default)]
+pub struct Status {
+    pub invisible: bool,
+    pub now_playing: Option<pb::MatchProposal>,
 }
 
 impl Status {
     fn to_proto(&self) -> pb::Status {
-        let state = match self {
-            Status::Online => pb::status::State::Online(pb::status::Online {}),
-            Status::Invisible => pb::status::State::Invisible(pb::status::Invisible {}),
-            Status::Busy(proposal) => pb::status::State::NowPlaying(proposal.clone()),
-        };
-        pb::Status { state: Some(state) }
+        pb::Status {
+            invisible: self.invisible,
+            now_playing: self.now_playing.clone(),
+        }
     }
 }
 
