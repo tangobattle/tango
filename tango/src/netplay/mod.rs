@@ -1484,7 +1484,7 @@ async fn run_direct_rtc_negotiate(
                 .await
                 .map_err(|e| AsyncError::Failed(format!("direct connect: {e}")))?,
         };
-        let crate::net::direct_rtc::DirectChannels {
+        let crate::net::channel::Channels {
             control: (mut sender, mut receiver),
             in_match: (in_match_sender, in_match_receiver),
             peer_conn,

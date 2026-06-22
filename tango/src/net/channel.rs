@@ -19,7 +19,21 @@
 //! both sides just create them with matching ids — no DCEP open handshake.
 
 use super::{PacketSink, PacketStream, Receiver, Sender};
-use datachannel_wrapper::{DataChannelInit, Reliability};
+use datachannel_wrapper::{DataChannelInit, PeerConnection, Reliability};
+
+/// The two netplay channels (reliable control + unreliable in-match) plus the
+/// peer connection that owns them, as one bundle. Produced by every transport's
+/// bring-up *and* rebuild: the signaling-free [`super::direct_rtc`]
+/// `host`/`connect`, and the matchmaking / reconnect paths that split the
+/// signaling client's channel `Vec` into this shape. The caller keeps
+/// `peer_conn` alive for the channels' lifetime.
+pub struct Channels {
+    /// Reliable, ordered — the control/lobby `Packet` protocol.
+    pub control: (Sender, Receiver),
+    /// Unreliable, unordered — the in-match `data::wire` datagrams.
+    pub in_match: (Sender, Receiver),
+    pub peer_conn: PeerConnection,
+}
 
 /// Label + init for the reliable control channel, as a
 /// [`tango_signaling::ChannelSpec`] (the matchmaking path passes every channel's

@@ -471,7 +471,7 @@ impl PvpSession {
                     };
 
                     // Hot-swap the rebuilt channels under the persistent streams.
-                    let crate::net::direct_rtc::DirectChannels {
+                    let crate::net::channel::Channels {
                         control: (new_control_sender, new_control_receiver),
                         in_match: (new_in_match_sender, new_in_match_receiver),
                         peer_conn: new_peer_conn,
@@ -896,14 +896,14 @@ async fn silence_watchdog(last_recv: &Mutex<Option<std::time::Instant>>) {
 /// peers race each other to re-rendezvous) until `deadline`, returning `None`
 /// on timeout or cancellation.
 ///
-/// Returns the rebuilt channels in a [`DirectChannels`] bundle regardless of
+/// Returns the rebuilt channels in a [`crate::net::channel::Channels`] bundle regardless of
 /// transport — the matchmaking path just demuxes the signaling client's
 /// channel `Vec` (control first, in-match second) into the same shape.
 async fn rebuild_connection(
     recipe: &crate::netplay::ReconnectRecipe,
     deadline: std::time::Instant,
     cancel: &tokio_util::sync::CancellationToken,
-) -> Option<crate::net::direct_rtc::DirectChannels> {
+) -> Option<crate::net::channel::Channels> {
     use crate::netplay::{DirectRole, ReconnectRecipe};
     let attempt_timeout = match recipe {
         ReconnectRecipe::Direct(_) => RECONNECT_DIRECT_ATTEMPT_TIMEOUT,
@@ -944,7 +944,7 @@ async fn rebuild_connection(
                     // Same spec order we passed: control first, in-match second.
                     let [control_dc, in_match_dc] =
                         <[_; 2]>::try_from(dcs).map_err(|_| std::io::Error::other("expected 2 data channels"))?;
-                    crate::net::direct_rtc::DirectChannels {
+                    crate::net::channel::Channels {
                         control: crate::net::channel::pair(control_dc),
                         in_match: crate::net::channel::pair(in_match_dc),
                         peer_conn,
