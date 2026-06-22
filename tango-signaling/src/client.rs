@@ -192,8 +192,8 @@ fn is_transient(e: &Error) -> bool {
 pub struct Connected {
     pub channels: Vec<datachannel_wrapper::DataChannel>,
     pub peer_conn: datachannel_wrapper::PeerConnection,
-    pub local_fingerprint: Vec<u8>,
-    pub peer_fingerprint: Vec<u8>,
+    pub local_dtls_fingerprint: Vec<u8>,
+    pub peer_dtls_fingerprint: Vec<u8>,
 }
 
 pub type Connecting = futures_util::future::BoxFuture<'static, Result<Connected, Error>>;
@@ -631,11 +631,11 @@ pub async fn connect(
         // to: ours from the local description, the peer's from the remote one
         // libdatachannel just verified against the peer's certificate. The caller
         // pairs them to derive a rendezvous id both ends agree on.
-        let local_fingerprint = peer_conn
+        let local_dtls_fingerprint = peer_conn
             .local_description()
             .and_then(|d| parse_dtls_fingerprint(&d.sdp))
             .unwrap_or_default();
-        let peer_fingerprint = peer_conn
+        let peer_dtls_fingerprint = peer_conn
             .remote_description()
             .and_then(|d| parse_dtls_fingerprint(&d.sdp))
             .unwrap_or_default();
@@ -659,9 +659,9 @@ pub async fn connect(
         for candidate in pending_local_candidates.drain(..) {
             let _ = send_signal(
                 &mut signaling_stream,
-                crate::proto::signaling::packet::Which::IceCandidate(
-                    crate::proto::signaling::packet::IceCandidate { candidate },
-                ),
+                crate::proto::signaling::packet::Which::IceCandidate(crate::proto::signaling::packet::IceCandidate {
+                    candidate,
+                }),
             )
             .await;
         }
@@ -732,8 +732,8 @@ pub async fn connect(
         Ok(Connected {
             channels: dcs,
             peer_conn,
-            local_fingerprint,
-            peer_fingerprint,
+            local_dtls_fingerprint,
+            peer_dtls_fingerprint,
         })
     }))
 }
