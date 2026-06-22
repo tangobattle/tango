@@ -243,4 +243,59 @@ mod tests {
         assert_eq!(got_at_conn, b"ping-h2c");
         assert_eq!(got_at_host, b"ping-c2h");
     }
+
+    /// The transparent-reconnect primitive: after a live link is torn down,
+    /// both peers must be able to rebuild it from the *same* recipe (host
+    /// re-pins the same UDP port; dialer re-dials the same address) and carry
+    /// traffic again. This is exactly what the in-match reconnect coordinator
+    /// does on a drop — including the one real race, the host re-binding its
+    /// pinned port the instant the old peer connection is dropped.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn rebuild_after_drop_round_trips() {
+        let port = 24988;
+        let addr = format!("127.0.0.1:{port}");
+
+        // Bring up the link, handshake, and prove it carries a datagram.
+        let bring_up = || async {
+            let (host_res, conn_res) = tokio::join!(host(port), connect(&addr));
+            let mut host_ch = host_res.expect("host setup");
+            let mut conn_ch = conn_res.expect("connect setup");
+            let handshake = async {
+                tokio::try_join!(
+                    crate::net::negotiate(&mut host_ch.control.0, &mut host_ch.control.1),
+                    crate::net::negotiate(&mut conn_ch.control.0, &mut conn_ch.control.1),
+                )
+            };
+            tokio::time::timeout(std::time::Duration::from_secs(15), handshake)
+                .await
+                .expect("handshake timed out — channel never opened")
+                .expect("negotiate failed");
+            (host_ch, conn_ch)
+        };
+
+        let (host_ch, conn_ch) = bring_up().await;
+        // Simulate the drop: tearing down both peer connections releases the
+        // host's pinned UDP port.
+        drop(host_ch);
+        drop(conn_ch);
+
+        // Rebuild from the identical recipe — host must re-bind the just-freed
+        // port. If the OS hadn't released it, `host(port)` here would fail.
+        let (mut host_ch, mut conn_ch) = bring_up().await;
+
+        // The rebuilt in-match channel carries traffic both ways.
+        host_ch.in_match.0.send_raw(b"reconnected-h2c").await.expect("post-reconnect host send");
+        conn_ch.in_match.0.send_raw(b"reconnected-c2h").await.expect("post-reconnect conn send");
+        let roundtrip = async {
+            let at_conn = conn_ch.in_match.1.recv_raw().await?;
+            let at_host = host_ch.in_match.1.recv_raw().await?;
+            Ok::<_, std::io::Error>((at_conn, at_host))
+        };
+        let (at_conn, at_host) = tokio::time::timeout(std::time::Duration::from_secs(15), roundtrip)
+            .await
+            .expect("post-reconnect datagram timed out — rebuilt channel never opened")
+            .expect("post-reconnect send/recv failed");
+        assert_eq!(at_conn, b"reconnected-h2c");
+        assert_eq!(at_host, b"reconnected-c2h");
+    }
 }

@@ -116,6 +116,29 @@ pub struct PeerConnection {
     data_channel_rx: tokio::sync::mpsc::Receiver<DataChannel>,
 }
 
+/// Hand a callback's payload to its mpsc channel without ever panicking.
+///
+/// libdatachannel can fire callbacks **synchronously from the peer
+/// connection's destructor**, and that destructor may run on a thread that's
+/// actively driving the Tokio runtime — exactly what happens when the in-match
+/// reconnect coordinator drops the old connection before rebuilding. There,
+/// `blocking_send` panics ("cannot block the current thread from within a
+/// runtime"), and because the panic would have to unwind across libdatachannel's
+/// `extern "C"` callback frame, it can't — the process aborts instead. So inside
+/// a runtime fall back to the non-blocking `try_send` (dropping the event is
+/// fine: a destructor-fired event is teardown noise); only block when we're
+/// genuinely off-runtime, where blocking is both safe and lossless.
+fn deliver<T>(tx: &tokio::sync::mpsc::Sender<T>, msg: T) {
+    match tokio::runtime::Handle::try_current() {
+        Ok(_) => {
+            let _ = tx.try_send(msg);
+        }
+        Err(_) => {
+            let _ = tx.blocking_send(msg);
+        }
+    }
+}
+
 impl PeerConnection {
     pub fn new(config: RtcConfig) -> Result<(Self, tokio::sync::mpsc::Receiver<PeerConnectionEvent>), std::io::Error> {
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
@@ -133,54 +156,52 @@ impl PeerConnection {
         })
         .map_err(error_to_io)?;
 
+        // Every callback delivers through `deliver` (not raw `blocking_send`):
+        // any of them can fire synchronously from the destructor on a runtime
+        // thread, where a blocking send would abort the process. See `deliver`.
         inner.set_on_local_description(Some({
             let event_tx = event_tx.clone();
             move |sdp: &str, type_: SdpType| {
-                let _ = event_tx.blocking_send(PeerConnectionEvent::SessionDescription(SessionDescription {
-                    sdp_type: type_,
-                    sdp: sdp.to_owned(),
-                }));
+                deliver(
+                    &event_tx,
+                    PeerConnectionEvent::SessionDescription(SessionDescription {
+                        sdp_type: type_,
+                        sdp: sdp.to_owned(),
+                    }),
+                );
             }
         }));
 
         inner.set_on_local_candidate(Some({
             let event_tx = event_tx.clone();
             move |cand: &str| {
-                let _ = event_tx.blocking_send(PeerConnectionEvent::IceCandidate(IceCandidate {
-                    candidate: cand.to_owned(),
-                }));
+                deliver(
+                    &event_tx,
+                    PeerConnectionEvent::IceCandidate(IceCandidate {
+                        candidate: cand.to_owned(),
+                    }),
+                );
             }
         }));
 
         inner.set_on_state_change(Some({
             let event_tx = event_tx.clone();
             move |state: ConnectionState| {
-                // libdatachannel can fire this synchronously from the destructor
-                // on the same thread Tokio is driving (horrible). `blocking_send`
-                // would panic in an async context, so try-send there instead.
-                let event = PeerConnectionEvent::ConnectionStateChange(state);
-                match tokio::runtime::Handle::try_current() {
-                    Ok(_) => {
-                        let _ = event_tx.try_send(event);
-                    }
-                    Err(_) => {
-                        let _ = event_tx.blocking_send(event);
-                    }
-                }
+                deliver(&event_tx, PeerConnectionEvent::ConnectionStateChange(state));
             }
         }));
 
         inner.set_on_gathering_state_change(Some({
             let event_tx = event_tx.clone();
             move |state: GatheringState| {
-                let _ = event_tx.blocking_send(PeerConnectionEvent::GatheringStateChange(state));
+                deliver(&event_tx, PeerConnectionEvent::GatheringStateChange(state));
             }
         }));
 
         inner.set_on_data_channel(Some({
             let data_channel_tx = data_channel_tx.clone();
             move |dc: libdatachannel::DataChannel| {
-                let _ = data_channel_tx.blocking_send(DataChannel::wrap(dc));
+                deliver(&data_channel_tx, DataChannel::wrap(dc));
             }
         }));
 

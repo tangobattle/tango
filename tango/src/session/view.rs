@@ -231,6 +231,11 @@ pub fn view<'a>(
     if let Some(o) = disconnect_overlay(lang, session, state) {
         stacked = stacked.push(o);
     }
+    // Topmost: the auto-reconnect modal. Above the disconnect-confirm so that if
+    // the link drops while that prompt is open, "Reconnecting…" reads over it.
+    if let Some(o) = reconnecting_overlay(lang, session) {
+        stacked = stacked.push(o);
+    }
     // Any cursor movement over the session wakes the controls.
     // iced's mouse_area, not sweeten's: sweeten 0.14 gates all its
     // enter/move/exit dispatches on the cursor being inside the
@@ -992,6 +997,54 @@ fn disconnect_overlay<'a>(
     if state.disconnect.shown() {
         backdrop = backdrop.on_press(|_| Message::CloseDisconnectConfirm);
     }
+    Some(iced::widget::stack![Element::from(backdrop), Element::from(placement)].into())
+}
+
+/// The automatic mid-match reconnect modal: shown while a dropped direct link is
+/// being transparently rebuilt ([`PvpSession::is_reconnecting`]). The emulator
+/// is paused underneath, so this is a static notice rather than an animated
+/// one — plus a Disconnect escape hatch (routes through [`Message::Close`], same
+/// as the confirm dialog's) so the user can abandon the wait. Pushed last in
+/// [`view`] so it sits above every other layer.
+fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, session: &'a ActiveSession) -> Option<Element<'a, Message>> {
+    let ActiveSession::PvP(pvp) = session else {
+        return None;
+    };
+    if !pvp.is_reconnecting() {
+        return None;
+    }
+    let title = text(t!(lang, "playback-reconnecting")).size(TEXT_BODY + 4.0);
+    // Whole seconds left before give-up, rounded up so it reads "30s … 1s"
+    // rather than flicking to 0 a second early. The coordinator ticks the
+    // session redraw ~4×/s while paused so this stays live.
+    let secs = pvp.reconnect_remaining().map(|d| d.as_secs_f64().ceil() as i64).unwrap_or(0);
+    let body_text = text(t!(lang, "playback-reconnecting-detail", secs = secs)).style(widgets::muted_text_style);
+    let disconnect_btn = widgets::labeled_icon_button(
+        Icon::Unplug,
+        t!(lang, "playback-disconnect"),
+        Message::Close,
+        [8.0, 14.0],
+        widgets::danger_button,
+    );
+    let buttons = row![horizontal_space(), disconnect_btn].spacing(8).align_y(Alignment::Center);
+    let panel = container(column![title, body_text, buttons].spacing(14).width(Fill))
+        .width(iced::Length::Fixed(420.0))
+        .padding(20)
+        .style(widgets::panel);
+    // Swallow clicks on the panel's inert regions so they don't fall through;
+    // the Disconnect button still captures its own press.
+    let panel_swallow = mouse_area(panel).on_press(|_| Message::NoOp);
+    let placement = container(panel_swallow)
+        .width(Fill)
+        .height(Fill)
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::alignment::Vertical::Center);
+    // Solid dim, no dismiss-on-press: the user leaves only via Disconnect (or
+    // the link returning, which clears the overlay on its own).
+    let backdrop = container(iced::widget::Space::new().width(Fill).height(Fill))
+        .width(Fill)
+        .height(Fill)
+        .style(anim::backdrop_style(0.55));
     Some(iced::widget::stack![Element::from(backdrop), Element::from(placement)].into())
 }
 

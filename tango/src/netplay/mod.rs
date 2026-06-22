@@ -305,6 +305,10 @@ struct ConnectionHandles {
     /// or we're the host on the direct link. Drives the
     /// `Match::pick_local_player_index` tie-break.
     is_offerer: bool,
+    /// Direct-link rebuild recipe for transparent mid-match reconnection,
+    /// or `None` for the matchmaking transport. See
+    /// [`NegotiationOutput::reconnect`].
+    reconnect: Option<DirectRole>,
 }
 
 /// Messages the netplay subsystem emits + accepts. App routes
@@ -468,6 +472,13 @@ pub struct NegotiationOutput {
     /// Pre-computed by the per-transport negotiator. Matchmaking reads
     /// the SDP type; the direct link sets host=true, connect=false.
     pub is_offerer: bool,
+    /// The recipe for rebuilding this connection if it drops mid-match,
+    /// or `None` for transports that can't be re-established without
+    /// coordination. Only the signaling-free direct path sets it (its
+    /// fixed ICE creds + known address make a rebuild a pure local
+    /// `host`/`connect` retry); the matchmaking path leaves it `None`,
+    /// which gates transparent reconnection off for that transport.
+    pub reconnect: Option<DirectRole>,
 }
 
 impl std::fmt::Debug for NegotiationOutput {
@@ -701,6 +712,7 @@ impl State {
             in_match_sender: out.in_match_sender,
             peer_conn: out.peer_conn,
             is_offerer: out.is_offerer,
+            reconnect: out.reconnect,
         });
         // Spawn the lobby loop as a detached tokio task.
         // It owns the data-channel receiver and bridges
@@ -1119,6 +1131,7 @@ impl State {
             remote_settings,
             link_code,
             match_type: self.lobby.match_type,
+            reconnect: handles.reconnect,
         };
         Some(pre_match)
     }
@@ -1173,6 +1186,10 @@ pub struct PreMatchData {
     pub remote_settings: crate::net::protocol::Settings,
     pub link_code: String,
     pub match_type: (u8, u8),
+    /// Direct-link rebuild recipe for transparent mid-match reconnection,
+    /// or `None` for the matchmaking transport (feature off). See
+    /// [`NegotiationOutput::reconnect`].
+    pub reconnect: Option<DirectRole>,
 }
 
 // The channel/peer-conn handles aren't `Debug`; a placeholder keeps the
@@ -1378,6 +1395,10 @@ async fn run_direct_rtc_negotiate(
     cancel: CancellationToken,
 ) -> Result<NegotiationOutput, AsyncError> {
     let is_offerer = matches!(role, DirectRole::Host { .. });
+    // The role is also the rebuild recipe: a dropped direct link is
+    // re-established by re-running this exact `host`/`connect`, so stash a
+    // clone for the in-match reconnect coordinator before the match consumes it.
+    let reconnect = Some(role.clone());
     let work = async {
         let channels = match role {
             DirectRole::Host { port } => crate::net::direct_rtc::host(port)
@@ -1404,6 +1425,7 @@ async fn run_direct_rtc_negotiate(
             in_match_receiver,
             peer_conn,
             is_offerer,
+            reconnect,
         })
     };
     tokio::select! {
@@ -1457,6 +1479,10 @@ async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) ->
                 in_match_receiver,
                 peer_conn,
                 is_offerer,
+                // Matchmaking can't be re-established without re-running
+                // signaling against the server, so transparent reconnection is
+                // off for this transport (for now).
+                reconnect: None,
             })
         }
     }

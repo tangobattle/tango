@@ -93,10 +93,18 @@ impl InMatchTx {
     /// heartbeat is transparent — callers just `send_*`; the channel keeps the
     /// unacked window flowing on its own when the emulator goes quiet (see
     /// [`run_heartbeat`](Self::run_heartbeat)). `heartbeat` is the resend
-    /// cadence (the caller picks it — typically one emulator frame).
+    /// cadence (the caller picks it — typically one emulator frame). `cancel`
+    /// stops the heartbeat at match teardown — and *only* then: a transport
+    /// error doesn't end it, so the heartbeat keeps running (and the unacked
+    /// window keeps living in the out-stream) across a mid-match reconnect,
+    /// resending the moment the coordinator swaps a live `sink` back in.
     ///
     /// Must be called within a Tokio runtime (it spawns the heartbeat task).
-    pub fn new(sink: std::sync::Arc<tokio::sync::Mutex<Sender>>, heartbeat: std::time::Duration) -> Self {
+    pub fn new(
+        sink: std::sync::Arc<tokio::sync::Mutex<Sender>>,
+        heartbeat: std::time::Duration,
+        cancel: tokio_util::sync::CancellationToken,
+    ) -> Self {
         let this = Self {
             state: std::sync::Arc::new(std::sync::Mutex::new(InMatchState {
                 out: OutStream::new(protocol::HORIZON),
@@ -108,7 +116,7 @@ impl InMatchTx {
             data_sends: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
             heartbeat,
         };
-        tokio::spawn(this.clone().run_heartbeat());
+        tokio::spawn(this.clone().run_heartbeat(cancel));
         this
     }
 
@@ -188,13 +196,18 @@ impl InMatchTx {
     /// risking a bail on otherwise-recoverable loss. This decouples the two: it
     /// resends only on intervals where the emulator sent nothing, so it adds no
     /// traffic during normal play but fills the gaps during a stall. Runs until
-    /// the channel errors (match teardown).
-    async fn run_heartbeat(self) {
+    /// `cancel` fires (match teardown) — a transport error is non-terminal so it
+    /// survives a mid-match reconnect.
+    async fn run_heartbeat(self, cancel: tokio_util::sync::CancellationToken) {
         let mut interval = tokio::time::interval(self.heartbeat);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut last_seen = self.data_sends.load(std::sync::atomic::Ordering::Relaxed);
         loop {
-            interval.tick().await;
+            tokio::select! {
+                biased;
+                _ = cancel.cancelled() => return,
+                _ = interval.tick() => {}
+            }
             let now = self.data_sends.load(std::sync::atomic::Ordering::Relaxed);
             if now != last_seen {
                 // The emulator sent a frame this interval; nothing to fill in.
@@ -202,8 +215,12 @@ impl InMatchTx {
                 continue;
             }
             if let Err(e) = self.resend_window().await {
-                log::debug!("pvp heartbeat ended: {e}");
-                return;
+                // Not terminal: mid-reconnect the `sink` is a dropped channel,
+                // and the coordinator swaps a live one back under us. Keep
+                // ticking — the unacked window persists in the out-stream across
+                // the swap, so the next resend bridges the whole gap. Only
+                // `cancel` (teardown) stops this loop.
+                log::debug!("pvp heartbeat resend failed (continuing): {e}");
             }
         }
     }
@@ -274,11 +291,13 @@ impl PvpSender {
                     tango_pvp::net::Event::EndOfRound => im.send_end_of_round().await,
                 };
                 if let Err(e) = result {
-                    // Dropping rx closes the channel; the next trap-side send
-                    // sees BrokenPipe and cancels the match, same as an inline
-                    // send failure would have.
-                    log::error!("pvp send pump: {e}");
-                    break;
+                    // Non-terminal: the element was pushed into the out-stream's
+                    // window *before* the send await (see `send_frame_with`), so a
+                    // failed send loses nothing — the heartbeat/next frame
+                    // retransmits it once the reconnect coordinator swaps a live
+                    // channel back in. Keep pumping; the task ends when `rx`
+                    // closes (the `PvpSender`/`Match` dropped at teardown).
+                    log::debug!("pvp send pump (continuing): {e}");
                 }
             }
         });
@@ -319,6 +338,14 @@ pub struct PvpReceiver {
     /// Session subscription wake, pinged after `remote_ended` flips so
     /// `is_ended` is re-checked without waiting on the next vblank.
     end_of_match_notify: std::sync::Arc<tokio::sync::Notify>,
+    /// Wall-clock instant of the most recent datagram off the wire (any frame,
+    /// even a redundant or ack-only one — it just has to prove the link is
+    /// alive), or `None` until the very first one arrives. The reconnect
+    /// coordinator's silence watchdog reads this to tell a dead link from mere
+    /// jitter, and the `None` gate keeps it from false-tripping during startup
+    /// before the link has delivered anything. Shared (not owned) so it survives
+    /// the receiver being rebuilt over a fresh channel on reconnect.
+    last_recv: std::sync::Arc<std::sync::Mutex<Option<std::time::Instant>>>,
     /// Elements made contiguous by the last frame but not yet yielded.
     pending: std::collections::VecDeque<tango_pvp::net::Event>,
 }
@@ -330,6 +357,7 @@ impl PvpReceiver {
         latency_counter: std::sync::Arc<tokio::sync::Mutex<Option<LatencyCounter>>>,
         remote_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
         end_of_match_notify: std::sync::Arc<tokio::sync::Notify>,
+        last_recv: std::sync::Arc<std::sync::Mutex<Option<std::time::Instant>>>,
     ) -> Self {
         Self {
             receiver,
@@ -337,6 +365,7 @@ impl PvpReceiver {
             latency_counter,
             remote_ended,
             end_of_match_notify,
+            last_recv,
             pending: std::collections::VecDeque::new(),
         }
     }
@@ -350,6 +379,9 @@ impl tango_pvp::net::Receiver for PvpReceiver {
                 return Ok(event);
             }
             let msg = self.receiver.recv_raw().await?;
+            // A datagram arrived — mark the link alive for the silence watchdog
+            // before we even parse it (a malformed frame still proves liveness).
+            *self.last_recv.lock().unwrap() = Some(std::time::Instant::now());
             let frame = protocol::Frame::decode(&msg)?;
             let delivery = self
                 .im
