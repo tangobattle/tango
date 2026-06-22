@@ -1018,12 +1018,10 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, session: &'a ActiveSes
     // rather than flicking to 0 a second early. The coordinator ticks the
     // session redraw ~4×/s while paused so this stays live.
     let secs = pvp.reconnect_remaining().map(|d| d.as_secs_f64().ceil() as i64).unwrap_or(0);
-    // `Fill` so this (longer than the disconnect prompt) line wraps to the panel
-    // width instead of overflowing it: `text` defaults to `Shrink`, which lays a
-    // long string out on one unbounded line.
-    let body_text = text(t!(lang, "playback-reconnecting-detail", secs = secs))
-        .width(Fill)
-        .style(widgets::muted_text_style);
+    // Left default (Shrink) so the wrapped lines keep a ragged right margin
+    // instead of a Fill block butting flush against the padding. The column's
+    // hard width below is what bounds the wrap.
+    let body_text = text(t!(lang, "playback-reconnecting-detail", secs = secs)).style(widgets::muted_text_style);
     let disconnect_btn = widgets::labeled_icon_button(
         Icon::Unplug,
         t!(lang, "playback-disconnect"),
@@ -1032,8 +1030,10 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, session: &'a ActiveSes
         widgets::danger_button,
     );
     let buttons = row![horizontal_space(), disconnect_btn].spacing(8).align_y(Alignment::Center);
-    let panel = container(column![title, body_text, buttons].spacing(14).width(Fill))
-        .width(iced::Length::Fixed(420.0))
+    // Give the content column a hard width (rather than `Fill` inside a
+    // fixed-width container) so the text wraps to exactly this and stays clear of
+    // the panel padding; the container then shrink-wraps to width + 2×padding.
+    let panel = container(column![title, body_text, buttons].spacing(14).width(iced::Length::Fixed(380.0)))
         .padding(20)
         .style(widgets::panel);
     // Swallow clicks on the panel's inert regions so they don't fall through;
