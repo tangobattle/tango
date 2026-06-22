@@ -39,11 +39,11 @@ const RECONNECT_SILENCE: std::time::Duration = std::time::Duration::from_millis(
 /// How long the coordinator keeps trying to rebuild a dropped direct link
 /// before giving up and ending the match. Generous: the sim is paused
 /// throughout, so a long outage costs nothing but the wait.
-const RECONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const RECONNECT_DIRECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 /// Per-attempt cap on a single `host`/`connect` + `negotiate` rebuild — the
 /// dialer's `connect` will hang on ICE until the host is listening again, so
 /// bound it and retry rather than blocking the whole budget on one attempt.
-const RECONNECT_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const RECONNECT_DIRECT_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 /// Give-up window for the matchmaking path — longer than direct's, since each
 /// attempt re-rendezvouses on the signaling server then re-gathers ICE (and
 /// possibly TURN), which is much slower than re-binding a known local port.
@@ -369,15 +369,14 @@ impl PvpSession {
             let last_recv = last_recv.clone();
             let cancel = cancellation_token.clone();
             let mut reliable_receiver = reliable_receiver;
-            let mut receiver: Box<dyn tango_pvp::net::Receiver + Send + Sync> =
-                Box::new(crate::net::PvpReceiver::new(
-                    in_match_receiver,
-                    in_match.clone(),
-                    latency_counter.clone(),
-                    end.remote_ended.clone(),
-                    frame_notify.clone(),
-                    last_recv.clone(),
-                ));
+            let mut receiver: Box<dyn tango_pvp::net::Receiver + Send + Sync> = Box::new(crate::net::PvpReceiver::new(
+                in_match_receiver,
+                in_match.clone(),
+                latency_counter.clone(),
+                end.remote_ended.clone(),
+                frame_notify.clone(),
+                last_recv.clone(),
+            ));
             tokio::task::spawn(async move {
                 // Why the receive loop ended this iteration.
                 enum Trip {
@@ -428,7 +427,7 @@ impl PvpSession {
                     let start = std::time::Instant::now();
                     let deadline = start
                         + match recipe {
-                            crate::netplay::ReconnectRecipe::Direct(_) => RECONNECT_TIMEOUT,
+                            crate::netplay::ReconnectRecipe::Direct(_) => RECONNECT_DIRECT_TIMEOUT,
                             crate::netplay::ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_TIMEOUT,
                         };
                     *reconnect_window.lock().unwrap() = Some((start, deadline));
@@ -689,8 +688,13 @@ impl PvpSession {
     /// `None` when not reconnecting. Drives the overlay's depleting progress bar.
     pub fn reconnect_progress(&self) -> Option<f32> {
         self.reconnect_window.lock().unwrap().map(|(start, deadline)| {
-            let total = deadline.saturating_duration_since(start).as_secs_f32().max(f32::EPSILON);
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now()).as_secs_f32();
+            let total = deadline
+                .saturating_duration_since(start)
+                .as_secs_f32()
+                .max(f32::EPSILON);
+            let remaining = deadline
+                .saturating_duration_since(std::time::Instant::now())
+                .as_secs_f32();
             (remaining / total).clamp(0.0, 1.0)
         })
     }
@@ -902,7 +906,7 @@ async fn rebuild_connection(
 ) -> Option<crate::net::direct_rtc::DirectChannels> {
     use crate::netplay::{DirectRole, ReconnectRecipe};
     let attempt_timeout = match recipe {
-        ReconnectRecipe::Direct(_) => RECONNECT_ATTEMPT_TIMEOUT,
+        ReconnectRecipe::Direct(_) => RECONNECT_DIRECT_ATTEMPT_TIMEOUT,
         ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_ATTEMPT_TIMEOUT,
     };
     loop {
@@ -938,8 +942,8 @@ async fn rebuild_connection(
                         .await
                         .map_err(|e| std::io::Error::other(format!("webrtc: {e}")))?;
                     // Same spec order we passed: control first, in-match second.
-                    let [control_dc, in_match_dc] = <[_; 2]>::try_from(dcs)
-                        .map_err(|_| std::io::Error::other("expected 2 data channels"))?;
+                    let [control_dc, in_match_dc] =
+                        <[_; 2]>::try_from(dcs).map_err(|_| std::io::Error::other("expected 2 data channels"))?;
                     crate::net::direct_rtc::DirectChannels {
                         control: crate::net::channel::pair(control_dc),
                         in_match: crate::net::channel::pair(in_match_dc),
