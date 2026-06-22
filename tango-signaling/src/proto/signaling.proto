@@ -22,6 +22,10 @@ message Packet {
 
   message Answer { string sdp = 1; }
 
+  // A single trickled ICE candidate, relayed by the server to the peer after
+  // the SDP exchange. `candidate` is the SDP `a=candidate:...` payload.
+  message IceCandidate { string candidate = 1; }
+
   message Abort {
     enum Reason {
       REASON_UNKNOWN = 0;
@@ -43,5 +47,6 @@ message Packet {
     Answer answer = 3;
     Abort abort = 5;
     Ping ping = 6;
+    IceCandidate ice_candidate = 7;
   }
 }

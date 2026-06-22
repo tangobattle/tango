@@ -71,8 +71,10 @@ const MAX_RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_sec
 pub type ChannelSpec = (&'static str, datachannel_wrapper::DataChannelInit);
 
 /// Build a fresh peer connection, create every requested channel on it, then
-/// generate the offer and wait for ICE gathering to complete. Returns the
-/// channels in the same order as `channels`.
+/// generate the offer. Returns immediately with a (candidate-less or partial)
+/// local description — ICE candidates are trickled separately as they gather, so
+/// the offer ships before gathering finishes. Channels come back in the same
+/// order as `channels`.
 ///
 /// Auto-negotiation is disabled and the offer is driven explicitly *after* all
 /// channels exist: relying on auto-negotiation here raced the channel creation,
@@ -92,7 +94,7 @@ async fn create_data_channels(
     ),
     std::io::Error,
 > {
-    let (mut peer_conn, mut event_rx) = datachannel_wrapper::PeerConnection::new(rtc_config)?;
+    let (mut peer_conn, event_rx) = datachannel_wrapper::PeerConnection::new(rtc_config)?;
 
     let dcs = channels
         .iter()
@@ -103,16 +105,22 @@ async fn create_data_channels(
     // in the initial association and starts gathering.
     peer_conn.set_local_description(datachannel_wrapper::SdpType::Offer, None)?;
 
-    loop {
-        if let Some(datachannel_wrapper::PeerConnectionEvent::GatheringStateChange(
-            datachannel_wrapper::GatheringState::Complete,
-        )) = event_rx.recv().await
-        {
-            break;
-        }
-    }
-
+    // Trickle ICE: don't wait for gathering. `local_description()` already holds
+    // the offer; candidates flow out of `event_rx` as they're gathered and the
+    // caller forwards each as an `IceCandidate` packet.
     Ok((dcs, event_rx, peer_conn))
+}
+
+/// Encode and send one signaling `Packet` over the websocket.
+async fn send_signal(
+    stream: &mut SignalingStream,
+    which: crate::proto::signaling::packet::Which,
+) -> Result<(), tokio_tungstenite::tungstenite::Error> {
+    stream
+        .send(tokio_tungstenite::tungstenite::Message::Binary(
+            crate::proto::signaling::Packet { which: Some(which) }.encode_to_vec(),
+        ))
+        .await
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -346,13 +354,26 @@ enum WaitOutcome {
 /// anything become `Dropped`, which the caller may transparently reconnect.
 async fn wait_for_exchange(
     signaling_stream: &mut SignalingStream,
+    event_rx: &mut tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
     peer_conn: &mut datachannel_wrapper::PeerConnection,
+    pending_local_candidates: &mut Vec<String>,
 ) -> Result<WaitOutcome, Error> {
     let mut ping_interval = tokio::time::interval_at(tokio::time::Instant::now() + PING_INTERVAL, PING_INTERVAL);
     ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
         let raw = tokio::select! {
+            // Drain our own ICE candidates as they gather, buffering them until
+            // the SDP exchange completes (the peer can't accept them before it
+            // has our offer/answer); they're flushed right after. No connection
+            // state can change before a remote description exists, so anything
+            // else is ignored.
+            event = event_rx.recv() => {
+                if let Some(datachannel_wrapper::PeerConnectionEvent::IceCandidate(c)) = event {
+                    pending_local_candidates.push(c.candidate);
+                }
+                continue;
+            }
             _ = ping_interval.tick() => {
                 if let Err(e) = signaling_stream
                     .send(tokio_tungstenite::tungstenite::Message::Binary(
@@ -510,11 +531,22 @@ pub async fn connect(
     let session_id = session_id.to_owned();
 
     Ok(Box::pin(async move {
+        // Local ICE candidates gathered before the peer has our SDP — buffered by
+        // `wait_for_exchange`, flushed once the exchange completes.
+        let mut pending_local_candidates: Vec<String> = Vec::new();
+
         // Wait for the peer to start the SDP exchange. As long as the peer hasn't
         // started, a websocket drop is recoverable: tear everything down and dial
         // again with a fresh peer connection / offer.
         loop {
-            match wait_for_exchange(&mut signaling_stream, &mut peer_conn).await? {
+            match wait_for_exchange(
+                &mut signaling_stream,
+                &mut event_rx,
+                &mut peer_conn,
+                &mut pending_local_candidates,
+            )
+            .await?
+            {
                 WaitOutcome::Exchanged => break,
                 WaitOutcome::Dropped(reason) => {
                     log::warn!(
@@ -539,6 +571,9 @@ pub async fn connect(
                                 dcs = d;
                                 event_rx = e;
                                 peer_conn = p;
+                                // Fresh peer connection → buffered candidates are
+                                // stale; they'll gather anew.
+                                pending_local_candidates.clear();
                                 log::info!("signaling reconnected; still waiting for the peer");
                                 break;
                             }
@@ -555,12 +590,6 @@ pub async fn connect(
             }
         }
 
-        // Best-effort: the server closes both sockets itself the moment it
-        // forwards the answer, so our close frame races its teardown. The
-        // websocket has already served its purpose — losing that race must
-        // not abort a healthy peer connection bring-up.
-        let _ = signaling_stream.close(None).await;
-
         log::debug!(
             "local sdp (type = {:?}): {}",
             peer_conn.local_description().expect("local sdp").sdp_type,
@@ -572,27 +601,83 @@ pub async fn connect(
             peer_conn.remote_description().expect("remote sdp").sdp
         );
 
-        loop {
-            let signal = event_rx.recv().await.unwrap();
+        // Trickle phase: both peers now hold each other's SDP. Flush the
+        // candidates we buffered during the exchange, then keep the websocket
+        // open to trickle new local candidates out and apply the peer's, until
+        // our connection comes up. Each peer closes its own socket on `Connected`
+        // (the server no longer closes them after the answer).
+        for candidate in pending_local_candidates.drain(..) {
+            let _ = send_signal(
+                &mut signaling_stream,
+                crate::proto::signaling::packet::Which::IceCandidate(
+                    crate::proto::signaling::packet::IceCandidate { candidate },
+                ),
+            )
+            .await;
+        }
 
-            if let datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(c) = signal {
-                match c {
-                    datachannel_wrapper::ConnectionState::Connected => {
-                        break;
+        let mut ping_interval = tokio::time::interval_at(tokio::time::Instant::now() + PING_INTERVAL, PING_INTERVAL);
+        ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        let outcome: Result<(), Error> = loop {
+            tokio::select! {
+                // The peer connection's own events are the authority on when we're
+                // up, and the source of the local candidates we trickle out.
+                ev = event_rx.recv() => match ev {
+                    Some(datachannel_wrapper::PeerConnectionEvent::IceCandidate(c)) => {
+                        let _ = send_signal(
+                            &mut signaling_stream,
+                            crate::proto::signaling::packet::Which::IceCandidate(
+                                crate::proto::signaling::packet::IceCandidate { candidate: c.candidate },
+                            ),
+                        )
+                        .await;
                     }
-                    datachannel_wrapper::ConnectionState::Disconnected => {
-                        return Err(Error::PeerConnectionDisconnected);
+                    Some(datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(c)) => match c {
+                        datachannel_wrapper::ConnectionState::Connected => break Ok(()),
+                        datachannel_wrapper::ConnectionState::Disconnected => break Err(Error::PeerConnectionDisconnected),
+                        datachannel_wrapper::ConnectionState::Failed => break Err(Error::PeerConnectionFailed),
+                        datachannel_wrapper::ConnectionState::Closed => break Err(Error::PeerConnectionClosed),
+                        _ => {}
+                    },
+                    Some(_) => {}
+                    None => {
+                        break Err(std::io::Error::new(
+                            std::io::ErrorKind::UnexpectedEof,
+                            "peer connection event stream ended",
+                        )
+                        .into())
                     }
-                    datachannel_wrapper::ConnectionState::Failed => {
-                        return Err(Error::PeerConnectionFailed);
+                },
+                // Incoming peer candidates over the websocket — best-effort: if
+                // the socket dies here the already-exchanged candidates usually
+                // suffice, so a read error isn't fatal; we keep waiting on the
+                // connection state above.
+                msg = tokio::time::timeout(READ_TIMEOUT, signaling_stream.try_next()) => {
+                    if let Ok(Ok(Some(tokio_tungstenite::tungstenite::Message::Binary(d)))) = msg {
+                        if let Ok(crate::proto::signaling::Packet {
+                            which: Some(crate::proto::signaling::packet::Which::IceCandidate(c)),
+                        }) = crate::proto::signaling::Packet::decode(d.as_slice())
+                        {
+                            let _ = peer_conn
+                                .add_remote_candidate(datachannel_wrapper::IceCandidate { candidate: c.candidate });
+                        }
                     }
-                    datachannel_wrapper::ConnectionState::Closed => {
-                        return Err(Error::PeerConnectionClosed);
-                    }
-                    _ => {}
+                }
+                _ = ping_interval.tick() => {
+                    let _ = send_signal(
+                        &mut signaling_stream,
+                        crate::proto::signaling::packet::Which::Ping(crate::proto::signaling::packet::Ping {}),
+                    )
+                    .await;
                 }
             }
-        }
+        };
+
+        // Connected or failed — either way we're done with signaling. Closing is
+        // best-effort; losing the close race must not fail a healthy bring-up.
+        let _ = signaling_stream.close(None).await;
+        outcome?;
 
         Ok((dcs, peer_conn))
     }))
