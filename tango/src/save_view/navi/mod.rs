@@ -103,7 +103,10 @@ fn render_navi_card<M: 'static>(loaded: &Loaded, navi_id: usize) -> Element<'sta
 pub(crate) fn navi_as_text(loaded: &Loaded) -> Option<String> {
     let assets = loaded.assets.as_ref();
     let id = loaded.save.view_navi()?.navi();
-    let name = assets.navi(id).and_then(|n| n.name()).unwrap_or_else(|| format!("#{id}"));
+    let name = assets
+        .navi(id)
+        .and_then(|n| n.name())
+        .unwrap_or_else(|| format!("#{id}"));
     Some(format!("{name}\n"))
 }
 
@@ -116,20 +119,27 @@ pub(super) fn render_navi_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loa
     let current = loaded.save.view_navi().map(|nv| nv.navi());
 
     // One plate per real navi, wrapped into rows.
-    const COLS: usize = 6;
-    let ids: Vec<usize> = (0..assets.num_navis()).filter(|&id| assets.navi(id).is_some()).collect();
+    const COLS: usize = 7;
+    let ids: Vec<usize> = (0..assets.num_navis())
+        .filter(|&id| assets.navi(id).is_some())
+        .collect();
     let mut grid = column![].spacing(14).align_x(Alignment::Center);
     for chunk in ids.chunks(COLS) {
         let mut r = row![].spacing(14).align_y(Alignment::Start);
         for &id in chunk {
-            let name = assets.navi(id).and_then(|n| n.name()).unwrap_or_else(|| format!("Navi #{id}"));
+            let name = assets
+                .navi(id)
+                .and_then(|n| n.name())
+                .unwrap_or_else(|| format!("Navi #{id}"));
             r = r.push(navi_cell(loaded, id, name, current == Some(id)));
         }
         grid = grid.push(r);
     }
 
     let body = column![
-        text(t!(lang, "navi-edit-select")).size(TEXT_BODY).style(muted_text_style),
+        text(t!(lang, "navi-edit-select"))
+            .size(TEXT_BODY)
+            .style(muted_text_style),
         grid,
     ]
     .spacing(16)
