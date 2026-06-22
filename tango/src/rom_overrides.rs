@@ -280,9 +280,6 @@ impl tango_dataview::rom::Assets for OverridenAssets {
     fn ex_code(&self, code: u8) -> Option<tango_dataview::rom::ExCode> {
         self.assets.ex_code(code)
     }
-    fn regular_chip_is_in_place(&self) -> bool {
-        self.assets.regular_chip_is_in_place()
-    }
     fn chips_have_mb(&self) -> bool {
         self.assets.chips_have_mb()
     }

@@ -13,20 +13,12 @@ pub(super) fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Load
     let tag_idxs = chips_view.tag_chip_indexes(folder_idx).flatten();
     let chips_have_mb = assets.chips_have_mb();
 
-    // Pull the 30-chip folder.
-    let mut chips: Vec<Option<tango_dataview::save::Chip>> =
+    // Pull the 30-chip folder. The Regular chip is stored at its real
+    // grid slot in every game that has one, so `regular_idx` already is
+    // its display position.
+    let chips: Vec<Option<tango_dataview::save::Chip>> =
         (0..MAX_FOLDER_CHIPS).map(|i| chips_view.chip(folder_idx, i)).collect();
-    let regular_display_idx = if !assets.regular_chip_is_in_place() {
-        if let Some(ri) = regular_idx {
-            let c = chips.remove(0);
-            chips.insert(ri, c);
-            Some(ri)
-        } else {
-            None
-        }
-    } else {
-        regular_idx
-    };
+    let regular_display_idx = regular_idx;
 
     // Build display items: either grouped (collapsed by chip identity)
     // or per-slot (one row per slot, possibly empty).
@@ -1045,19 +1037,9 @@ pub(crate) fn as_text(loaded: &Loaded, opts: RenderOpts) -> Option<String> {
     let regular_idx = chips_view.regular_chip_index(folder_idx).flatten();
     let tag_idxs = chips_view.tag_chip_indexes(folder_idx).flatten();
 
-    let mut chips: Vec<Option<tango_dataview::save::Chip>> =
+    let chips: Vec<Option<tango_dataview::save::Chip>> =
         (0..MAX_FOLDER_CHIPS).map(|i| chips_view.chip(folder_idx, i)).collect();
-    let regular_display_idx = if !assets.regular_chip_is_in_place() {
-        if let Some(ri) = regular_idx {
-            let c = chips.remove(0);
-            chips.insert(ri, c);
-            Some(ri)
-        } else {
-            None
-        }
-    } else {
-        regular_idx
-    };
+    let regular_display_idx = regular_idx;
 
     let mut out = String::new();
     if opts.folder_grouped {
