@@ -307,6 +307,13 @@ pub type PatchCard56EffectTemplate = Vec<PatchCard56EffectTemplatePart>;
 pub trait Navi {
     fn name(&self) -> Option<String>;
     fn emblem(&self) -> image::RgbaImage;
+
+    /// The navi's intrinsic base max HP, when the game keeps a navi HP table in
+    /// the ROM. Games without one return `None`, and callers fall back to the
+    /// HP recorded in the save.
+    fn base_max_hp(&self) -> Option<u16> {
+        None
+    }
 }
 
 pub struct NavicustLayout {

@@ -84,11 +84,17 @@ fn render_navi_card<M: 'static>(
     }
 
     // The max-HP stat — the one piece every game has — as a muted
-    // caption above the value.
+    // caption above the value. Prefer the navi's intrinsic HP from the ROM
+    // (some games don't keep a trustworthy copy in the save); fall back to the
+    // save otherwise.
+    let base_max_hp = navi_id
+        .and_then(|id| assets.navi(id))
+        .and_then(|n| n.base_max_hp())
+        .unwrap_or_else(|| loaded.save.base_max_hp());
     card = card.push(
         column![
             text(t!(lang, "navi-base-hp")).size(TEXT_CAPTION).style(muted_text_style),
-            text(loaded.save.base_max_hp().to_string()).size(TEXT_DISPLAY),
+            text(base_max_hp.to_string()).size(TEXT_DISPLAY),
         ]
         .spacing(2)
         .align_x(Alignment::Center),
@@ -131,7 +137,14 @@ pub(crate) fn navi_as_text(lang: &LanguageIdentifier, loaded: &Loaded) -> Option
         out.push_str(&name);
         out.push('\n');
     }
-    out.push_str(&format!("{}\t{}\n", t!(lang, "navi-base-hp"), loaded.save.base_max_hp()));
+    let base_max_hp = loaded
+        .save
+        .view_navi()
+        .map(|nv| nv.navi())
+        .and_then(|id| loaded.assets.as_ref().navi(id))
+        .and_then(|n| n.base_max_hp())
+        .unwrap_or_else(|| loaded.save.base_max_hp());
+    out.push_str(&format!("{}\t{}\n", t!(lang, "navi-base-hp"), base_max_hp));
     Some(out)
 }
 
