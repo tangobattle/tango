@@ -170,9 +170,13 @@ fn init_logger() {
             let message = unsafe { std::ffi::CStr::from_ptr(message) }.to_string_lossy();
             log::log!(
                 match level {
-                    libdatachannel_sys::rtcLogLevel_RTC_LOG_FATAL => {
-                        panic!("{}", message);
-                    }
+                    // libdatachannel logs recoverable failures at FATAL too — e.g.
+                    // libjuice's "Connection creation for agent failed", which the
+                    // reconnect loop just retries. A library log must never crash
+                    // the host, and panicking here would unwind across this
+                    // `extern "C"` callback (which aborts), so surface it loudly as
+                    // an error and carry on rather than taking the process down.
+                    libdatachannel_sys::rtcLogLevel_RTC_LOG_FATAL => log::Level::Error,
                     libdatachannel_sys::rtcLogLevel_RTC_LOG_ERROR => log::Level::Error,
                     libdatachannel_sys::rtcLogLevel_RTC_LOG_WARNING => log::Level::Warn,
                     libdatachannel_sys::rtcLogLevel_RTC_LOG_INFO => log::Level::Info,
