@@ -1,7 +1,11 @@
 use super::*;
 use sweeten::widget::{column, row};
 
-pub(super) fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped: bool) -> Element<'static, M> {
+pub(super) fn render_folder<M: 'static>(
+    lang: &LanguageIdentifier,
+    loaded: &Loaded,
+    grouped: bool,
+) -> Element<'static, M> {
     let Some(chips_view) = loaded.save.view_chips() else {
         return placeholder(t!(lang, "save-empty"));
     };
@@ -18,7 +22,6 @@ pub(super) fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Load
     // its display position.
     let chips: Vec<Option<tango_dataview::save::Chip>> =
         (0..MAX_FOLDER_CHIPS).map(|i| chips_view.chip(folder_idx, i)).collect();
-    let regular_display_idx = regular_idx;
 
     // Build display items: either grouped (collapsed by chip identity)
     // or per-slot (one row per slot, possibly empty).
@@ -29,7 +32,7 @@ pub(super) fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Load
         for (i, chip) in chips.iter().enumerate() {
             let g = grouped_map.entry(chip.clone()).or_default();
             g.count += 1;
-            if regular_display_idx == Some(i) {
+            if regular_idx == Some(i) {
                 g.is_regular = true;
             }
             if let Some(t) = tag_idxs {
@@ -52,7 +55,7 @@ pub(super) fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Load
                     c,
                     GroupedChip {
                         count: 1,
-                        is_regular: regular_display_idx == Some(i),
+                        is_regular: regular_idx == Some(i),
                         has_tag1: t1,
                         has_tag2: t2,
                     },
@@ -113,7 +116,11 @@ pub(super) fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Load
 /// [`tango_dataview::save::FolderLimits`] (mega/giga caps, per-chip copy
 /// cap, Regular/Tag memory) are surfaced in the folder header and enforced
 /// by greying out library chips / REG / TAG toggles that would break them.
-pub(super) fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, state: &'a State) -> Element<'a, Action> {
+pub(super) fn render_folder_edit<'a>(
+    lang: &'a LanguageIdentifier,
+    loaded: &'a Loaded,
+    state: &'a State,
+) -> Element<'a, Action> {
     // Only reached while editing, so the EditState is present.
     let Some(edit) = state.editing.as_ref() else {
         return placeholder(t!(lang, "save-empty"));
@@ -1039,7 +1046,6 @@ pub(crate) fn as_text(loaded: &Loaded, opts: RenderOpts) -> Option<String> {
 
     let chips: Vec<Option<tango_dataview::save::Chip>> =
         (0..MAX_FOLDER_CHIPS).map(|i| chips_view.chip(folder_idx, i)).collect();
-    let regular_display_idx = regular_idx;
 
     let mut out = String::new();
     if opts.folder_grouped {
@@ -1048,7 +1054,7 @@ pub(crate) fn as_text(loaded: &Loaded, opts: RenderOpts) -> Option<String> {
         for (i, chip) in chips.iter().enumerate() {
             let g = grouped_map.entry(chip.clone()).or_default();
             g.count += 1;
-            if regular_display_idx == Some(i) {
+            if regular_idx == Some(i) {
                 g.is_regular = true;
             }
             if let Some(t) = tag_idxs {
@@ -1089,7 +1095,7 @@ pub(crate) fn as_text(loaded: &Loaded, opts: RenderOpts) -> Option<String> {
                 .and_then(|info| info.name())
                 .unwrap_or_else(|| "???".to_string());
             out.push_str(&format!("{name}\t{}", c.code));
-            if regular_display_idx == Some(i) {
+            if regular_idx == Some(i) {
                 out.push_str("\t[REG]");
             }
             if let Some(ti) = tag_idxs {
