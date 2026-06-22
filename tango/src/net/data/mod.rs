@@ -305,12 +305,17 @@ impl PvpSender {
     }
 }
 
-#[async_trait::async_trait]
 impl tango_pvp::net::Sender for PvpSender {
-    async fn send(&mut self, event: &tango_pvp::net::Event) -> std::io::Result<()> {
+    fn send(&mut self, event: &tango_pvp::net::Event) -> std::io::Result<()> {
+        // blocking_send, not try_send: the pump channel feeds the reliable
+        // out-stream window, so dropping here would lose an input *before* it
+        // becomes retransmittable — a permanent hole in the ordered input
+        // stream, i.e. desync. Blocking applies the same backpressure the old
+        // `send().await` did (the emulator thread waited on channel space via
+        // block_on then too), and is safe only because the emulator thread no
+        // longer has a tokio runtime entered.
         self.tx
-            .send(event.clone())
-            .await
+            .blocking_send(event.clone())
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pvp send pump terminated"))
     }
 }

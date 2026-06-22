@@ -70,4 +70,3 @@ pub mod net;
 pub mod replay;
 pub mod shadow;
 pub mod stepper;
-pub mod sync;

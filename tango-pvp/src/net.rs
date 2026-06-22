@@ -17,9 +17,8 @@ pub enum Event {
     EndOfRound,
 }
 
-#[async_trait::async_trait]
 pub trait Sender {
-    async fn send(&mut self, event: &Event) -> std::io::Result<()>;
+    fn send(&mut self, event: &Event) -> std::io::Result<()>;
 }
 
 #[async_trait::async_trait]

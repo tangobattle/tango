@@ -2,8 +2,6 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as SyncMutex};
 
-use tokio::sync::Mutex;
-
 use super::round::{Round, MAX_QUEUE_LENGTH};
 use super::{MatchIdentity, ReplayConfig};
 
@@ -101,9 +99,10 @@ pub struct RoundMetrics {
 
 /// The outbound network channel. Locked only from the emulator thread —
 /// primary traps shipping the per-frame input and `end_round` emitting the
-/// `EndOfRound` marker; the net task only receives. A tokio mutex because
-/// `send` awaits while the lock is held.
-pub(crate) type SenderMutex = Mutex<Box<dyn crate::net::Sender + Send + Sync>>;
+/// `EndOfRound` marker; the net task only receives. A std mutex: `send` is
+/// synchronous (it `blocking_send`s into the pump channel), so the lock is
+/// never held across an await.
+pub(crate) type SenderMutex = SyncMutex<Box<dyn crate::net::Sender + Send + Sync>>;
 
 /// Connection-level state for a single PvP match.
 pub struct Match {
@@ -168,7 +167,7 @@ impl Match {
             shadow: Arc::new(SyncMutex::new(shadow)),
             local_hooks,
             rom,
-            sender: Mutex::new(sender),
+            sender: SyncMutex::new(sender),
             rng: SyncMutex::new(rng),
             cancellation_token,
             identity,
@@ -323,7 +322,7 @@ impl Match {
             shadow.advance_until_round_end()?;
         }
         self.local_round_idx.fetch_add(1, Ordering::Release);
-        crate::sync::block_on(async { self.sender.lock().await.send(&crate::net::Event::EndOfRound).await })?;
+        self.sender.lock().unwrap().send(&crate::net::Event::EndOfRound)?;
         Ok(())
     }
 

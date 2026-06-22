@@ -258,12 +258,6 @@ impl PvpSession {
         );
 
         let thread = mgba::thread::Thread::new(core);
-        // Those primary traps call `tango_pvp::sync::block_on` to drive async
-        // Match work (start_round / record_first_commit / end_round), but they
-        // run on this mgba CPU thread, which has no ambient tokio runtime. Enter
-        // the current runtime on that thread at start so `Handle::current()`
-        // resolves there for the thread's lifetime.
-        thread.set_start_callback(tango_pvp::sync::enter_runtime_on_emulator_thread());
 
         // RNG seeded from the XOR'd nonces. Match::new clones the
         // Mcg into its own state; we also need a clone for the

@@ -180,7 +180,7 @@ impl Round {
     /// engine's frame advantage attached — the engine itself never sends),
     /// then advances the rollback engine one displayed frame, loading the
     /// chosen state into `core`.
-    pub async fn add_local_input_and_fastforward(
+    pub fn add_local_input_and_fastforward(
         &mut self,
         sender: &super::SenderMutex,
         mut core: mgba::core::CoreMutRef<'_>,
@@ -189,12 +189,11 @@ impl Round {
         let tick_advantage = self.local_tick_advantage();
         sender
             .lock()
-            .await
+            .unwrap()
             .send(&crate::net::Event::Input(crate::net::Input {
                 joyflags,
                 tick_advantage,
-            }))
-            .await?;
+            }))?;
 
         // The engine exists by now: the primary's first `main_read_joyflags`
         // calls `start_session` before this in the same trap fire. Bail (the
