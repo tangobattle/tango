@@ -62,7 +62,7 @@ impl Shadow {
     }
 
     /// Build a shadow for replay-style reconstruction (playback, export,
-    /// eval, the golden suite). Pulls remote sram + match_type +
+    /// the golden suite). Pulls remote sram + match_type +
     /// is_offerer + local_player_index from `replay`, seeds the RNG from
     /// `replay.rng_seed`, and advances it past the one-bool draw that
     /// [`crate::battle::Match::pick_local_player_index`] would have
@@ -79,7 +79,9 @@ impl Shadow {
     ) -> anyhow::Result<Self> {
         use rand::SeedableRng;
         let mut rng = rand_pcg::Mcg128Xsl64::from_seed(replay.rng_seed);
-        let _ = rand::Rng::gen::<bool>(&mut rng);
+        // Advance past the one-bool polite-win draw that the live match made
+        // in `pick_local_player_index`; the index itself comes from `replay`.
+        let _ = crate::battle::Match::pick_local_player_index(&mut rng, replay.is_offerer);
         let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
         Self::new_from_sram(
             rom,

@@ -63,7 +63,6 @@
 //!    and advances the shadow past its matching round end.
 
 pub mod battle;
-pub mod eval;
 pub mod hooks;
 pub mod input;
 pub mod net;

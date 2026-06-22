@@ -50,7 +50,7 @@ LIVE PVP
   │ index, hold until the Round is ready, attach to its queue    │
   └──────────────────────────────────────────────────────────────┘
 
-REPLAY (playback / export / eval / golden)
+REPLAY (playback / export / golden)
   ┌──────────────────────────────────────────────────────────────┐
   │ playback core ──stepper traps──► stepper::State (PlaybackPhase)
   │     per tick: pop recorded input pair, resolve remote packet ┼──► Shadow.apply_input

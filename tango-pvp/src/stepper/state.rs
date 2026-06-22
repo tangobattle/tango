@@ -854,7 +854,7 @@ impl State {
     /// totals — is derived from the replay itself.
     ///
     /// This is the one way every playback consumer starts (viewer, export,
-    /// eval, prefetch, the golden suite). Rounds play back in order;
+    /// prefetch, the golden suite). Rounds play back in order;
     /// `set_round_ended` advances to the next until the queue is empty,
     /// then `on_round_ended` fires.
     pub fn new_for_replay(
@@ -872,8 +872,9 @@ impl State {
         use rand::SeedableRng;
         let mut rng = rand_pcg::Mcg128Xsl64::from_seed(replay.rng_seed);
         // Match::new advances the shared rng by one bool draw before any
-        // game traps fire (the polite-win pick). Stay in sync.
-        let _ = rand::Rng::gen::<bool>(&mut rng);
+        // game traps fire (the polite-win pick). Route through the same
+        // function so the draw can't drift out of sync.
+        let _ = crate::battle::Match::pick_local_player_index(&mut rng, replay.is_offerer);
 
         let inner = InnerState::for_replay(ReplayInit {
             match_type,

@@ -14,16 +14,38 @@ pub struct Shared {
     /// [`State::start_round`], dropped by [`State::end_round`].
     pub round: Option<Round>,
     /// Set when the game's round-end traps report a result. (BN3's jump
-    /// table trap fudges link input once this is in.)
-    pub result_is_in: bool,
+    /// table trap fudges link input once this is in.) Engine-internal: the
+    /// per-game traps go through [`Shared::signal_result_in`] /
+    /// [`Shared::result_reported`] rather than touching the flag directly.
+    pub(super) result_is_in: bool,
     pub rng: rand_pcg::Mcg128Xsl64,
     /// Signal that the pending shadow input has been consumed and the core
     /// has run forward to the next tick's `main_read_joyflags`, where the
-    /// per-game trap raises this and calls `end_run_loop` (which parks the
-    /// core at that tick boundary).
+    /// per-game trap raises this (via [`Shared::signal_input_applied`]) and
+    /// calls `end_run_loop` (which parks the core at that tick boundary).
     /// [`Shadow::apply_input`](super::Shadow::apply_input) polls it via
     /// [`State::take_input_applied`] to know its run is done.
-    pub input_applied: bool,
+    pub(super) input_applied: bool,
+}
+
+impl Shared {
+    /// Flag that the pending shadow input has been consumed and the core has
+    /// reached the next tick's `main_read_joyflags`. Raised by the per-game
+    /// shadow trap (which then calls `end_run_loop`).
+    pub fn signal_input_applied(&mut self) {
+        self.input_applied = true;
+    }
+
+    /// Flag that the game's round-end traps have reported a round result.
+    pub fn signal_result_in(&mut self) {
+        self.result_is_in = true;
+    }
+
+    /// Whether the round-end result has been reported (see
+    /// [`signal_result_in`](Self::signal_result_in)).
+    pub fn result_reported(&self) -> bool {
+        self.result_is_in
+    }
 }
 
 pub(super) struct InnerState {
