@@ -165,6 +165,7 @@ folder-sort-mb = MB
 
 # Navi pane
 navi-id = Navi ID
+navi-base-hp = Base HP
 navi-link-navi = Link Navi
 navi-edit-select = Navi
 navi-style-unset = (no style)

@@ -233,9 +233,9 @@ pub fn available_tabs(save: &dyn Save, streamer_mode: bool) -> Vec<Tab> {
     if streamer_mode {
         tabs.push(Tab::Cover);
     }
-    if save.view_navi().is_some() {
-        tabs.push(Tab::Navi);
-    }
+    // Every game has a player navi with a max HP, so the Navi tab is
+    // always present; for BN1–4 (no link-navi roster) it's just the HP.
+    tabs.push(Tab::Navi);
     if save.view_navicust().is_some() {
         tabs.push(Tab::Navicust);
     }
@@ -1322,12 +1322,12 @@ fn render_extra<'a>(lang: &'a LanguageIdentifier, state: &'a State, tab: Tab, ki
 
 /// A save-view tab as TSV text for clipboard "copy as text", or `None` for
 /// tabs without a text form. The Folder branch honors `opts.folder_grouped`.
-pub fn tab_as_text(_lang: &LanguageIdentifier, tab: Tab, loaded: &Loaded, opts: RenderOpts) -> Option<String> {
+pub fn tab_as_text(lang: &LanguageIdentifier, tab: Tab, loaded: &Loaded, opts: RenderOpts) -> Option<String> {
     match tab {
         Tab::Folder => folder::as_text(loaded, opts),
         Tab::PatchCards => patch_cards::as_text(loaded),
         Tab::AutoBattleData => abd::as_text(loaded),
-        Tab::Navi => navi::navi_as_text(loaded),
+        Tab::Navi => navi::navi_as_text(lang, loaded),
         Tab::Navicust => navicust::navicust_as_text(loaded),
         Tab::Cover => None,
     }

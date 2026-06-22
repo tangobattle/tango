@@ -81,6 +81,10 @@ where
         None
     }
 
+    /// The player navi's base max HP — from HP Memories / leveling only,
+    /// excluding NaviCust and Mod-Code HP bonuses.
+    fn base_hp(&self) -> u16;
+
     /// The navicust customizer, or `None` when the save has no navicust —
     /// either the game has none at all, or a link navi is equipped (see
     /// [`NaviView`]).
