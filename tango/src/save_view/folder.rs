@@ -163,25 +163,26 @@ pub(super) fn render_folder_edit<'a>(
         let is_tag = edit.tags.contains(&slot);
         // This slot's chip MB, for the Regular / Tag memory gates.
         let this_mb = chip.as_ref().and_then(|c| assets.chip(c.id)).map(|c| c.mb());
-        // A chip can be made Regular only if its MB fits Regular memory;
-        // clearing the current Regular is always allowed.
-        let reg_allowed = match limits.reg_memory {
-            Some(cap) => is_regular || this_mb.map_or(true, |mb| mb <= cap),
+        // A chip can be made Regular only if its MB fits Regular memory and
+        // it isn't already a Tag chip (a chip can't be both); clearing the
+        // current Regular is always allowed.
+        let reg_fits = match limits.reg_memory {
+            Some(cap) => this_mb.map_or(true, |mb| mb <= cap),
             None => true,
         };
+        let reg_allowed = is_regular || (!is_tag && reg_fits);
         // It can join the Tag pair only if it fits Tag memory on its own
-        // (a chip bigger than the whole budget can never be tagged) and,
-        // once a partner is picked, the pair's combined MB still fits.
-        // Deselecting is always allowed.
-        let tag_allowed = match limits.tag_memory {
+        // (a chip bigger than the whole budget can never be tagged), the
+        // pair's combined MB still fits once a partner is picked, and it
+        // isn't the Regular chip. Deselecting is always allowed.
+        let tag_fits = match limits.tag_memory {
             Some(budget) => {
-                is_tag || {
-                    let this = this_mb.map(|m| m as u32).unwrap_or(0);
-                    this <= budget && tag_partner_mb.map_or(true, |partner| partner + this <= budget)
-                }
+                let this = this_mb.map(|m| m as u32).unwrap_or(0);
+                this <= budget && tag_partner_mb.map_or(true, |partner| partner + this <= budget)
             }
             None => true,
         };
+        let tag_allowed = is_tag || (!is_regular && tag_fits);
         folder_rows.push(folder_slot_row(
             loaded,
             slot,
