@@ -1017,7 +1017,7 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, session: &'a ActiveSes
     let body_text = text(t!(lang, "playback-reconnecting-detail")).style(widgets::muted_text_style);
     // Depleting bar for the time left before give-up, in place of a text
     // countdown: it fills the panel width (no wrap/min-width pitfall) and the
-    // coordinator ticks the session redraw ~4×/s while paused so it eases down.
+    // coordinator ticks the session redraw ~30 fps while paused so it eases down.
     let time_left = pvp.reconnect_progress().unwrap_or(0.0);
     let progress = iced::widget::progress_bar(0.0..=1.0, time_left)
         .length(Fill)

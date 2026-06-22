@@ -49,6 +49,10 @@ const RECONNECT_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duration::from
 const RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(250);
 /// Silence-watchdog poll cadence.
 const RECONNECT_WATCHDOG_POLL: std::time::Duration = std::time::Duration::from_millis(250);
+/// Session-redraw cadence while reconnecting (~30 fps), so the give-up progress
+/// bar drains smoothly even though the paused emulator emits no frames. Purely
+/// cosmetic, hence faster than the silence watchdog's poll.
+const RECONNECT_UI_TICK: std::time::Duration = std::time::Duration::from_millis(33);
 
 /// The latching end-of-match signals, grouped so the teardown policy
 /// lives in one place instead of four loose atomics on the session.
@@ -430,11 +434,11 @@ impl PvpSession {
                     let old = peer_conn.lock().unwrap().take();
                     let _ = tokio::task::spawn_blocking(move || drop(old)).await;
 
-                    // Rebuild, ticking the UI ~4×/s so the give-up countdown stays
-                    // live while the paused emulator produces no frames of its own.
+                    // Rebuild, ticking the UI at ~30 fps so the give-up bar drains
+                    // smoothly while the paused emulator produces no frames.
                     let rebuilt = {
                         let ui_tick = async {
-                            let mut iv = tokio::time::interval(RECONNECT_WATCHDOG_POLL);
+                            let mut iv = tokio::time::interval(RECONNECT_UI_TICK);
                             loop {
                                 iv.tick().await;
                                 frame_notify.notify_one();
