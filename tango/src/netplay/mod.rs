@@ -315,6 +315,12 @@ struct ConnectionHandles {
     /// or `None` for the matchmaking transport. See
     /// [`NegotiationOutput::reconnect`].
     reconnect: Option<DirectRole>,
+    /// This connection's two DTLS certificate fingerprints, captured at connect
+    /// time and folded into the matchmaking reconnect `session_id` once the
+    /// shared RNG seed exists (see [`State::take_pre_match`]). Empty on the
+    /// direct path.
+    local_fingerprint: Vec<u8>,
+    peer_fingerprint: Vec<u8>,
 }
 
 /// Messages the netplay subsystem emits + accepts. App routes
@@ -464,19 +470,51 @@ struct MatchmakingReconnect {
     identity: Option<tango_signaling::ClientIdentity>,
 }
 
-/// Derive the matchmaking reconnect `session_id` from the shared match RNG seed
-/// (the XOR of both commit nonces — known to both peers, unknown to anyone
-/// else). The seed is *hashed*, never used raw, so re-rendezvousing can't leak
-/// it to the signaling server; domain-separated from the lobby commitment
-/// (which uses the same `Shake128` over `"tango:lobby:"`).
-fn derive_reconnect_session_id(rng_seed: &[u8; 16]) -> String {
+/// Derive the matchmaking reconnect `session_id`, the rendezvous code both peers
+/// re-dial after a mid-match drop. It must be reproducible by either peer yet
+/// unguessable to anyone else (so a stranger can't camp the rendezvous and
+/// hijack the reconnect).
+///
+/// Two independent secrets are mixed in, neither sufficient alone:
+///
+/// * `rng_seed` — the shared match RNG seed (XOR of both commit nonces, exchanged
+///   over the encrypted data channel). The *signaling server* never sees it.
+/// * the two DTLS certificate fingerprints — per-connection, high-entropy, and
+///   verified during the handshake, but unlike `rng_seed` never written to disk
+///   (the seed doubles as the in-match RNG seed, so it lands in replay files). A
+///   *replay holder* never sees the fingerprints.
+///
+/// So no single party outside the two peers can reproduce the id: the server has
+/// the fingerprints but not the seed; a replay leaks the seed but not the
+/// fingerprints. The two fingerprints are folded together by XOR — commutative,
+/// so both peers reach the same value without having to agree on an order (which
+/// is "local" vs "remote" is swapped between them).
+///
+/// Falls back to seed-only (the original construction) when a fingerprint is
+/// missing or the two differ in length — e.g. a peer whose signaling stack didn't
+/// surface one — so the two ends still agree on an id rather than silently
+/// diverging. Domain-separated from the lobby commitment (same `Shake128`, over
+/// `"tango:lobby:"`).
+///
+/// We also prefix it with _ as the client does not allow construction of
+/// link codes containing _, but the server does permit them.
+fn derive_reconnect_session_id(rng_seed: &[u8; 16], fp_a: &[u8], fp_b: &[u8]) -> String {
     use sha3::digest::{ExtendableOutput, Update, XofReader};
     let mut h = sha3::Shake128::default();
     h.update(b"tango:reconnect:");
     h.update(rng_seed);
+    // Both fingerprints are SHA-256 digests (equal length); the empty / unequal
+    // guard keeps the two peers in lockstep on the seed-only fallback when one is
+    // absent rather than mixing in a lopsided value.
+    if !fp_a.is_empty() && fp_a.len() == fp_b.len() {
+        let folded: Vec<u8> = fp_a.iter().zip(fp_b).map(|(a, b)| a ^ b).collect();
+        h.update(&folded);
+    }
     let mut out = [0u8; 16];
     h.finalize_xof().read(&mut out);
-    out.iter().map(|b| format!("{b:02x}")).collect()
+    let mut code: String = "_".into();
+    code.extend(out.iter().map(|b| format!("{b:02x}")));
+    code
 }
 
 pub struct ConnectionPayload {
@@ -486,6 +524,12 @@ pub struct ConnectionPayload {
     /// channel (see `net::channel`), not bolted on after the connection.
     pub in_match_dc: datachannel_wrapper::DataChannel,
     pub peer_conn: datachannel_wrapper::PeerConnection,
+    /// This connection's two DTLS certificate fingerprints (raw SHA-256 bytes),
+    /// parsed from the offer/answer SDP. Carried up to seed the matchmaking
+    /// reconnect `session_id` (see [`derive_reconnect_session_id`]). Empty on a
+    /// transport that doesn't surface them.
+    pub local_fingerprint: Vec<u8>,
+    pub peer_fingerprint: Vec<u8>,
 }
 
 /// Intermediate hand-off between `run_signaling_connect` (server
@@ -532,6 +576,11 @@ pub struct NegotiationOutput {
     /// derived `session_id`. Either way the final [`ReconnectRecipe`] lands in
     /// [`PreMatchData::reconnect`].
     pub reconnect: Option<DirectRole>,
+    /// This connection's two DTLS certificate fingerprints, mixed into the
+    /// matchmaking reconnect `session_id`. Empty on the direct path (its fabricated
+    /// SDP carries no meaningful fingerprint, and it reconnects via `reconnect`).
+    pub local_fingerprint: Vec<u8>,
+    pub peer_fingerprint: Vec<u8>,
 }
 
 impl std::fmt::Debug for NegotiationOutput {
@@ -775,6 +824,8 @@ impl State {
             peer_conn: out.peer_conn,
             is_offerer: out.is_offerer,
             reconnect: out.reconnect,
+            local_fingerprint: out.local_fingerprint,
+            peer_fingerprint: out.peer_fingerprint,
         });
         // Spawn the lobby loop as a detached tokio task.
         // It owns the data-channel receiver and bridges
@@ -1182,12 +1233,18 @@ impl State {
         let reconnect = if let Some(role) = handles.reconnect {
             Some(ReconnectRecipe::Direct(role))
         } else {
-            self.matchmaking_reconnect.take().map(|mm| ReconnectRecipe::Matchmaking {
-                endpoint: mm.endpoint,
-                session_id: derive_reconnect_session_id(&rng_seed),
-                use_relay: mm.use_relay,
-                identity: mm.identity,
-            })
+            self.matchmaking_reconnect
+                .take()
+                .map(|mm| ReconnectRecipe::Matchmaking {
+                    endpoint: mm.endpoint,
+                    session_id: derive_reconnect_session_id(
+                        &rng_seed,
+                        &handles.local_fingerprint,
+                        &handles.peer_fingerprint,
+                    ),
+                    use_relay: mm.use_relay,
+                    identity: mm.identity,
+                })
         };
         // The receiver might not be in post_lobby_receiver yet
         // (the loop hasn't observed the cancel) — but the App
@@ -1437,7 +1494,12 @@ async fn run_signaling_connect(
 /// joins + WebRTC ICE handshake opens the data channel.
 async fn run_await_peer(hello: SignalingHello, cancel: CancellationToken) -> Result<ConnectionPayload, AsyncError> {
     let work = async {
-        let (dcs, peer_conn) = hello
+        let tango_signaling::Connected {
+            channels: dcs,
+            peer_conn,
+            local_fingerprint,
+            peer_fingerprint,
+        } = hello
             .connecting
             .await
             .map_err(|e| AsyncError::Failed(format!("webrtc: {e}")))?;
@@ -1449,6 +1511,8 @@ async fn run_await_peer(hello: SignalingHello, cancel: CancellationToken) -> Res
             control_dc,
             in_match_dc,
             peer_conn,
+            local_fingerprint,
+            peer_fingerprint,
         })
     };
     tokio::select! {
@@ -1502,6 +1566,11 @@ async fn run_direct_rtc_negotiate(
             peer_conn,
             is_offerer,
             reconnect,
+            // The direct path fabricates SDP with fingerprint verification
+            // disabled and rebuilds via `reconnect`, so it carries no
+            // fingerprints to seed a session_id.
+            local_fingerprint: Vec::new(),
+            peer_fingerprint: Vec::new(),
         })
     };
     tokio::select! {
@@ -1532,6 +1601,8 @@ async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) ->
         control_dc,
         in_match_dc,
         peer_conn,
+        local_fingerprint,
+        peer_fingerprint,
     } = payload;
     // Both channels were created together up front (before the offer); here we
     // just split each into its Sender/Receiver. The handshake runs on the
@@ -1559,6 +1630,8 @@ async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) ->
                 // signaling against the server, so transparent reconnection is
                 // off for this transport (for now).
                 reconnect: None,
+                local_fingerprint,
+                peer_fingerprint,
             })
         }
     }

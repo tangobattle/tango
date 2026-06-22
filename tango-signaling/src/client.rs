@@ -178,16 +178,53 @@ fn is_transient(e: &Error) -> bool {
     }
 }
 
-pub type Connecting = futures_util::future::BoxFuture<
-    'static,
-    Result<
-        (
-            Vec<datachannel_wrapper::DataChannel>,
-            datachannel_wrapper::PeerConnection,
-        ),
-        Error,
-    >,
->;
+/// The successful outcome of [`connect`]: the negotiated data channels and peer
+/// connection, plus both ends' DTLS certificate fingerprints (raw SHA-256
+/// digest bytes) as observed during the SDP exchange. The fingerprints let the
+/// caller bind a later reconnect rendezvous to *this* connection's cryptographic
+/// identities — per-connection, high-entropy, never persisted — rather than to a
+/// value (like a game RNG seed) that might leak through other channels.
+///
+/// `local_fingerprint` is parsed from our own offer/answer SDP; `peer_fingerprint`
+/// from the remote description libdatachannel verified against the peer's
+/// certificate. Either may be empty if it couldn't be parsed — callers must
+/// tolerate that.
+pub struct Connected {
+    pub channels: Vec<datachannel_wrapper::DataChannel>,
+    pub peer_conn: datachannel_wrapper::PeerConnection,
+    pub local_fingerprint: Vec<u8>,
+    pub peer_fingerprint: Vec<u8>,
+}
+
+pub type Connecting = futures_util::future::BoxFuture<'static, Result<Connected, Error>>;
+
+/// Parse a DTLS certificate fingerprint out of an SDP blob, returning the raw
+/// SHA-256 digest bytes. SDP carries it as an `a=fingerprint:sha-256 <hex>`
+/// attribute whose value is colon-separated, hex-encoded octets (e.g.
+/// `AA:BB:...`). Returns `None` if there's no SHA-256 fingerprint line or it
+/// doesn't decode; only `sha-256` is accepted (what libdatachannel emits).
+fn parse_dtls_fingerprint(sdp: &str) -> Option<Vec<u8>> {
+    for line in sdp.lines() {
+        let Some(rest) = line.trim().strip_prefix("a=fingerprint:") else {
+            continue;
+        };
+        let mut parts = rest.splitn(2, ' ');
+        let algo = parts.next()?;
+        if !algo.eq_ignore_ascii_case("sha-256") {
+            continue;
+        }
+        let Some(hex) = parts.next() else { continue };
+        let bytes: Option<Vec<u8>> = hex
+            .split(':')
+            .map(|octet| u8::from_str_radix(octet.trim(), 16).ok())
+            .collect();
+        match bytes {
+            Some(b) if !b.is_empty() => return Some(b),
+            _ => continue,
+        }
+    }
+    None
+}
 
 /// Bring up a fresh signaling websocket end to end: connect, read the server's
 /// `Hello`, build a new peer connection from the offered ICE servers, and send
@@ -590,6 +627,19 @@ pub async fn connect(
             }
         }
 
+        // Both ends' DTLS fingerprints, parsed from the SDP each side committed
+        // to: ours from the local description, the peer's from the remote one
+        // libdatachannel just verified against the peer's certificate. The caller
+        // pairs them to derive a rendezvous id both ends agree on.
+        let local_fingerprint = peer_conn
+            .local_description()
+            .and_then(|d| parse_dtls_fingerprint(&d.sdp))
+            .unwrap_or_default();
+        let peer_fingerprint = peer_conn
+            .remote_description()
+            .and_then(|d| parse_dtls_fingerprint(&d.sdp))
+            .unwrap_or_default();
+
         log::debug!(
             "local sdp (type = {:?}): {}",
             peer_conn.local_description().expect("local sdp").sdp_type,
@@ -679,6 +729,11 @@ pub async fn connect(
         let _ = signaling_stream.close(None).await;
         outcome?;
 
-        Ok((dcs, peer_conn))
+        Ok(Connected {
+            channels: dcs,
+            peer_conn,
+            local_fingerprint,
+            peer_fingerprint,
+        })
     }))
 }

@@ -938,7 +938,11 @@ async fn rebuild_connection(
                     .map_err(|e| std::io::Error::other(format!("signaling: {e}")))?;
                     // Blocks at the server until the peer rejoins the session, then
                     // completes the WebRTC handshake — the matchmaking rendezvous.
-                    let (dcs, peer_conn) = connecting
+                    // The fingerprints only feed the session_id, already fixed from
+                    // the original connection, so this reconnect ignores them.
+                    let tango_signaling::Connected {
+                        channels: dcs, peer_conn, ..
+                    } = connecting
                         .await
                         .map_err(|e| std::io::Error::other(format!("webrtc: {e}")))?;
                     // Same spec order we passed: control first, in-match second.
