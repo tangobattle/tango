@@ -30,7 +30,7 @@ pub struct Loaded {
     /// `&Loaded`. Drives whether the Folder tab shows the Edit button.
     pub chips_editable: bool,
     /// Whether this save supports in-place navicust editing — i.e.
-    /// `save.view_navi_mut()` yields the `Navicust` variant (BN4/5/6).
+    /// `save.view_navicust_mut().is_some()` (BN4/5/6, and not a link navi).
     /// Cached at build time (the probe needs `&mut save`); drives
     /// whether the Navi tab shows the Edit button.
     pub navicust_editable: bool,
@@ -58,8 +58,8 @@ pub struct Loaded {
     /// emblem is entirely monochrome (then the card falls back to a
     /// neutral accent).
     pub navi_accents: HashMap<usize, iced::Color>,
-    /// Precomputed NaviCust grid image for the Navicust variant. None
-    /// for LinkNavi games or when no navicust_layout is published.
+    /// Precomputed NaviCust grid image, from `view_navicust()`. None for
+    /// link navis (no navicust) or when no navicust_layout is published.
     pub navicust_render: Option<NavicustRender>,
     /// Per-part shape thumbnails (compressed footprint, in the part's
     /// color) for the navicust editor palette, as `(width, height,
@@ -160,13 +160,10 @@ impl Loaded {
         // the mutable chip view has no side effects, so this is a pure
         // capability check we can cache on the immutable Loaded.
         let chips_editable = save.view_chips_mut().is_some();
-        // Navicust editability: only the `Navicust` navi variant (BN4/5/6)
-        // is writable. LinkNavi games and read-only-navicust BN3 stay
+        // Navicust editability (BN4/5/6). A link navi has no navicust, so
+        // `view_navicust_mut` is `None`; read-only-navicust BN3 also stays
         // off. Same pure-capability probe pattern as `chips_editable`.
-        let navicust_editable = matches!(
-            save.view_navi_mut(),
-            Some(tango_dataview::save::NaviViewMut::Navicust(_))
-        );
+        let navicust_editable = save.view_navicust_mut().is_some();
         // Patch-card editability: both BN4 (PatchCard4s) and BN5/BN6
         // (PatchCard56s) are writable, each through its own editor. Same
         // pure-capability probe pattern as the others.
@@ -373,11 +370,7 @@ fn build_navicust_render(
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     game: GameRef,
 ) -> Option<NavicustRender> {
-    let nv = save.view_navi()?;
-    let view = match nv {
-        tango_dataview::save::NaviView::Navicust(v) => v,
-        _ => return None,
-    };
+    let view = save.view_navicust()?;
     let layout = assets.navicust_layout()?;
     let materialized = view.materialized();
 

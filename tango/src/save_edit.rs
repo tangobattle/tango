@@ -242,7 +242,7 @@ pub fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdi
 /// view isn't the (writable) Navicust variant.
 pub fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::NavicustEdit) {
     use tabs::play::NavicustEdit;
-    use tango_dataview::save::{NaviViewMut, NavicustPart};
+    use tango_dataview::save::NavicustPart;
 
     // Resolve any reads (empty-slot search, slot count) under an
     // immutable borrow first, so it's dropped before the mutable view.
@@ -254,8 +254,8 @@ pub fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Nav
         NavicustEdit::AddPart(part) => {
             // First empty slot; no-op if every slot is full or the part is
             // already at its per-part copy cap.
-            let slot = match loaded.save.view_navi() {
-                Some(tango_dataview::save::NaviView::Navicust(v)) => {
+            let slot = match loaded.save.view_navicust() {
+                Some(v) => {
                     let copies = (0..v.count())
                         .filter(|&i| v.navicust_part(i).map_or(false, |p| p.id == part.id))
                         .count();
@@ -264,7 +264,7 @@ pub fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Nav
                     }
                     (0..v.count()).find(|&i| v.navicust_part(i).is_none())
                 }
-                _ => None,
+                None => None,
             };
             match slot {
                 Some(slot) => vec![Op::Set { slot, part }],
@@ -274,11 +274,9 @@ pub fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Nav
         NavicustEdit::RemovePart { slot } => {
             // Drop the part and shift everything after it up one slot, so
             // the placement order (which drives the color bar) has no gap.
-            let parts: Vec<Option<NavicustPart>> = match loaded.save.view_navi() {
-                Some(tango_dataview::save::NaviView::Navicust(v)) => {
-                    (0..v.count()).map(|i| v.navicust_part(i)).collect()
-                }
-                _ => return,
+            let parts: Vec<Option<NavicustPart>> = match loaded.save.view_navicust() {
+                Some(v) => (0..v.count()).map(|i| v.navicust_part(i)).collect(),
+                None => return,
             };
             let mut parts = parts;
             if slot < parts.len() {
@@ -295,15 +293,15 @@ pub fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Nav
                 .collect()
         }
         NavicustEdit::ClearAll => {
-            let count = match loaded.save.view_navi() {
-                Some(tango_dataview::save::NaviView::Navicust(v)) => v.count(),
-                _ => return,
+            let count = match loaded.save.view_navicust() {
+                Some(v) => v.count(),
+                None => return,
             };
             (0..count).map(|slot| Op::Clear { slot }).collect()
         }
     };
 
-    if let Some(NaviViewMut::Navicust(mut nc)) = loaded.save.view_navi_mut() {
+    if let Some(mut nc) = loaded.save.view_navicust_mut() {
         for op in ops {
             match op {
                 Op::Set { slot, part } => {
@@ -320,7 +318,7 @@ pub fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Nav
     // the editor (which renders the color bar straight from the save) shows
     // the change live. Disjoint field borrows: assets vs save.
     let assets = loaded.assets.as_ref();
-    if let Some(NaviViewMut::Navicust(mut nc)) = loaded.save.view_navi_mut() {
+    if let Some(mut nc) = loaded.save.view_navicust_mut() {
         nc.rebuild_materialized(assets);
     }
 }

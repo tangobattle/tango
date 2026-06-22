@@ -610,7 +610,7 @@ impl State {
                         // Read the part being removed so it becomes the
                         // held part — the user can re-place / rotate it.
                         let held = loaded.and_then(|l| {
-                            if let Some(tango_dataview::save::NaviView::Navicust(v)) = l.save.view_navi() {
+                            if let Some(v) = l.save.view_navicust() {
                                 v.navicust_part(slot)
                             } else {
                                 None

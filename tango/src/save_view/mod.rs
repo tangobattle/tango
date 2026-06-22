@@ -231,7 +231,7 @@ pub fn available_tabs(save: &dyn Save, streamer_mode: bool) -> Vec<Tab> {
     if streamer_mode {
         tabs.push(Tab::Cover);
     }
-    if save.view_navi().is_some() {
+    if save.view_navi().is_some() || save.view_navicust().is_some() {
         tabs.push(Tab::Navi);
     }
     if save.view_chips().is_some() {
@@ -1211,16 +1211,10 @@ fn tab_has_edit(tab: Tab, loaded: &Loaded, editable: bool) -> bool {
             // `chips_editable` is the cached `view_chips_mut()`
             // probe.
             Tab::Folder => loaded.chips_editable,
-            // Only BN4/5/6 (writable navicust) — and only saves
-            // that actually have a navicust grid (LinkNavi BN4.5
-            // navis have nothing to edit).
-            Tab::Navi => {
-                loaded.navicust_editable
-                    && matches!(
-                        loaded.save.view_navi(),
-                        Some(tango_dataview::save::NaviView::Navicust(_))
-                    )
-            }
+            // Only BN4/5/6 with a writable navicust. `navicust_editable`
+            // is the cached `view_navicust_mut()` probe, which is already
+            // `None` for link navis and navicust-less BN4.5.
+            Tab::Navi => loaded.navicust_editable,
             // BN4 (PatchCard4s) and BN5/BN6 (PatchCard56s) are
             // both writable, each via its own editor.
             Tab::PatchCards => loaded.patch_cards_editable,
@@ -1253,10 +1247,7 @@ fn extra_kinds(tab: Tab, loaded: &Loaded) -> Vec<ExtraKind> {
     match tab {
         Tab::Folder => vec![ExtraKind::FolderGroup, ExtraKind::Copy],
         Tab::Navi => {
-            let has_navicust = matches!(
-                loaded.save.view_navi(),
-                Some(tango_dataview::save::NaviView::Navicust(_))
-            );
+            let has_navicust = loaded.save.view_navicust().is_some();
             if has_navicust {
                 vec![ExtraKind::CopyImage, ExtraKind::Copy]
             } else {

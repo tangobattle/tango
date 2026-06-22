@@ -73,11 +73,22 @@ where
         None
     }
 
-    fn view_navi(&self) -> Option<NaviView<'_>> {
+    fn view_navi(&self) -> Option<Box<dyn NaviView<'_> + '_>> {
         None
     }
 
-    fn view_navi_mut(&mut self) -> Option<NaviViewMut<'_>> {
+    fn view_navi_mut(&mut self) -> Option<Box<dyn NaviViewMut<'_> + '_>> {
+        None
+    }
+
+    /// The navicust customizer, or `None` when the save has no navicust —
+    /// either the game has none at all, or a link navi is equipped (see
+    /// [`NaviView`]).
+    fn view_navicust(&self) -> Option<Box<dyn NavicustView<'_> + '_>> {
+        None
+    }
+
+    fn view_navicust_mut(&mut self) -> Option<Box<dyn NavicustViewMut<'_> + '_>> {
         None
     }
 
@@ -287,21 +298,16 @@ pub trait PatchCard4sViewMut<'a> {
     fn rebuild_anticheat(&mut self);
 }
 
-pub enum NaviView<'a> {
-    LinkNavi(Box<dyn LinkNaviView<'a> + 'a>),
-    Navicust(Box<dyn NavicustView<'a> + 'a>),
-}
-
-pub enum NaviViewMut<'a> {
-    LinkNavi(Box<dyn LinkNaviViewMut<'a> + 'a>),
-    Navicust(Box<dyn NavicustViewMut<'a> + 'a>),
-}
-
-pub trait LinkNaviView<'a> {
+/// The save's navi: which navi is equipped (a link navi when `navi() != 0`,
+/// the player's own navi otherwise). Deliberately its own view, separate
+/// from [`NavicustView`], so it can grow more navi-level fields without
+/// being entangled with the navicust. When a link navi is equipped the
+/// save has no editable navicust, so [`Save::view_navicust`] returns `None`.
+pub trait NaviView<'a> {
     fn navi(&self) -> usize;
 }
 
-pub trait LinkNaviViewMut<'a> {
+pub trait NaviViewMut<'a> {
     fn set_navi(&self, navi: usize) -> bool;
 }
 
