@@ -182,7 +182,9 @@ pub(super) fn render_folder_edit<'a>(
             }
             None => true,
         };
-        let tag_allowed = is_tag || (!is_regular && tag_fits);
+        // A third tag can't be added: once two are picked, only the
+        // already-tagged chips stay toggleable (so one can be deselected).
+        let tag_allowed = is_tag || (!is_regular && tag_fits && edit.tags.len() < 2);
         folder_rows.push(folder_slot_row(
             loaded,
             slot,
