@@ -103,8 +103,6 @@ pub struct Settings {
     pub nickname: String,
     pub match_type: (u8, u8),
     pub game_info: Option<GameInfo>,
-    pub available_games: Vec<(String, u8)>,
-    pub available_patches: Vec<(String, Vec<semver::Version>)>,
     pub blind_setup: bool,
 }
 
@@ -138,26 +136,4 @@ pub fn make_commitment(buf: &[u8]) -> [u8; 16] {
     let mut out = [0u8; 16];
     h.finalize_xof().read(&mut out);
     out
-}
-
-/// Our half of a match commitment: a fresh nonce, the compressed reveal bytes
-/// (`zstd(bincode(NegotiatedState))`) the peer reassembles and verifies, and the
-/// commitment hash to publish.
-pub struct LocalReveal {
-    pub nonce: [u8; 16],
-    pub commitment: [u8; 16],
-    pub compressed: Vec<u8>,
-}
-
-/// Build a commitment + reveal from the local save SRAM. The commitment is sent
-/// over the lobby (challenge/accept); the compressed reveal is streamed
-/// peer-to-peer once connected, where the peer checks it against the commitment.
-pub fn build_commitment(save_sram: Vec<u8>) -> anyhow::Result<LocalReveal> {
-    let mut nonce = [0u8; 16];
-    rand::Rng::fill(&mut rand::thread_rng(), &mut nonce);
-    let state = NegotiatedState { nonce, save_data: save_sram };
-    let bin = state.serialize()?;
-    let compressed = zstd::stream::encode_all(std::io::Cursor::new(&bin), 3)?;
-    let commitment = make_commitment(&compressed);
-    Ok(LocalReveal { nonce, commitment, compressed })
 }

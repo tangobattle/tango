@@ -240,11 +240,8 @@ impl Loadout {
         &self,
         config: &config::Config,
         lobby: &crate::netplay::LobbyState,
-        scanners: &Scanners,
     ) -> crate::net::protocol::Settings {
         use crate::net::protocol::{GameInfo, PatchInfo, Settings};
-        let roms = scanners.roms.read();
-        let patches = scanners.patches.read();
         Settings {
             nickname: config.nickname.clone().unwrap_or_default(),
             match_type: lobby.match_type,
@@ -261,17 +258,6 @@ impl Loadout {
                     },
                 }
             }),
-            available_games: roms
-                .keys()
-                .map(|g| {
-                    let (family, variant) = g.family_and_variant();
-                    (family.to_string(), variant)
-                })
-                .collect(),
-            available_patches: patches
-                .iter()
-                .map(|(name, info)| (name.clone(), info.versions.keys().cloned().collect()))
-                .collect(),
             blind_setup: lobby.blind_setup,
         }
     }
@@ -712,9 +698,7 @@ pub fn save_picker<'a>(
     pick_list(options, selected, Message::SaveSelected)
         .disabled(move |opts: &[SaveOption]| {
             opts.iter()
-                .map(|o| {
-                    !o.available || patch_supported.as_ref().map(|s| !s.contains(&o.game)).unwrap_or(false)
-                })
+                .map(|o| !o.available || patch_supported.as_ref().map(|s| !s.contains(&o.game)).unwrap_or(false))
                 .collect()
         })
         .placeholder(t!(lang, "play-no-save"))

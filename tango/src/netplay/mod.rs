@@ -26,6 +26,8 @@ use std::sync::Arc;
 use subtle::ConstantTimeEq;
 use tokio_util::sync::CancellationToken;
 
+use crate::net::protocol::make_commitment;
+
 pub mod compat;
 
 // 0x47: in-match Input/EndOfRound/EndOfMatch moved off the reliable lobby
@@ -33,7 +35,7 @@ pub mod compat;
 // protocol. Incompatible with 0x46 peers, so the version gate rejects them.
 // 0x48: the data frame's piggybacked ack is now a signed delta from `base`
 // instead of an absolute frontier (smaller on the wire). Incompatible with 0x47.
-pub const PROTOCOL_VERSION: u32 = 0x48;
+pub const PROTOCOL_VERSION: u32 = 0x49;
 
 /// Where the lifecycle is right now. Drives the Play tab's status
 /// bar + the Cancel button's visibility.
@@ -72,8 +74,6 @@ pub enum Phase {
 pub enum LinkIdent {
     Matchmaking(String),
     Direct(DirectRole),
-    /// A lobby-server challenge (presence-driven). No shareable code.
-    Lobby,
 }
 
 impl LinkIdent {
@@ -85,7 +85,7 @@ impl LinkIdent {
     pub fn discord_join_secret(&self) -> Option<&str> {
         match self {
             LinkIdent::Matchmaking(code) => Some(code.as_str()),
-            LinkIdent::Direct(_) | LinkIdent::Lobby => None,
+            LinkIdent::Direct(_) => None,
         }
     }
 }
@@ -345,9 +345,6 @@ pub enum Message {
     /// Internal: protocol negotiate succeeded. Receiver is parked
     /// in the slot for the lobby subscription to take.
     NegotiationDone(Slot<NegotiationOutput>),
-    /// A lobby match finished its bring-up + reveal exchange; the built
-    /// `PreMatchData` is parked for the App's PvP spawn (no lobby screen).
-    LobbyMatchReady(Slot<PreMatchData>),
     /// Internal: any step (signaling, datachannel, negotiate, or
     /// lobby loop) failed. Includes the user-readable error
     /// message.
@@ -520,7 +517,6 @@ impl State {
             Message::SignalingHelloReceived(slot_rx) => self.on_signaling_hello(slot_rx),
             Message::SignalingDone(slot_rx) => self.on_signaling_done(slot_rx),
             Message::NegotiationDone(slot_rx) => self.on_negotiation_done(slot_rx),
-            Message::LobbyMatchReady(slot_rx) => self.on_lobby_match_ready(slot_rx),
             Message::PingMeasured(dur) => {
                 self.lobby.latency_counter.mark(dur);
                 iced::Task::none()
@@ -626,77 +622,6 @@ impl State {
         };
         let cancel = self.cancel.clone();
         iced::Task::perform(run_direct_rtc_negotiate(role, cancel), map_negotiate_result)
-    }
-
-    /// Start a lobby-server-brokered match: bring up the WebRTC connection by
-    /// relaying SDP through `lobby` (we offer as the challenger, answer as the
-    /// accepter), then feed it into the normal negotiate → lobby → handshake
-    /// flow. `feed_lobby_sdp` delivers the peer's relayed SDP into the bring-up.
-    pub fn connect_lobby_match(
-        &mut self,
-        role: crate::net::lobby_rtc::LobbyRole,
-        ice_servers: Vec<String>,
-        lobby: tango_lobby::Lobby,
-        peer: tango_lobby::FriendCode,
-        local_compressed: Vec<u8>,
-        peer_commitment: [u8; 16],
-        local_settings: crate::net::protocol::Settings,
-        remote_settings: crate::net::protocol::Settings,
-        match_type: (u8, u8),
-    ) -> iced::Task<Message> {
-        self.cancel_and_renew();
-        self.phase = Phase::Connecting {
-            ident: LinkIdent::Lobby,
-            waiting_for_opponent: matches!(role, crate::net::lobby_rtc::LobbyRole::Answerer),
-        };
-        let cancel = self.cancel.clone();
-        let (sdp_tx, sdp_rx) = tokio::sync::mpsc::channel(2);
-        self.pending_lobby_sdp_tx = Some(sdp_tx);
-        let is_offerer = matches!(role, crate::net::lobby_rtc::LobbyRole::Offerer);
-        let send_local_sdp = move |sdp: String| {
-            if is_offerer {
-                lobby.rtc_offer(&peer, sdp);
-            } else {
-                lobby.rtc_answer(&peer, sdp);
-            }
-        };
-        iced::Task::perform(
-            run_lobby_match(
-                role,
-                ice_servers,
-                send_local_sdp,
-                sdp_rx,
-                local_compressed,
-                peer_commitment,
-                local_settings,
-                remote_settings,
-                match_type,
-                cancel,
-            ),
-            |result| match result {
-                Ok(pre_match) => Message::LobbyMatchReady(Arc::new(std::sync::Mutex::new(Some(pre_match)))),
-                Err(AsyncError::Cancelled) => Message::Cancelled,
-                Err(AsyncError::Failed(e)) => Message::Failed(e),
-            },
-        )
-    }
-
-    /// Park a finished lobby-match `PreMatchData` and signal handoff — the App's
-    /// `MatchHandoffReady` handler then `take_pre_match`es it and spawns PvP.
-    fn on_lobby_match_ready(&mut self, slot_rx: Slot<PreMatchData>) -> iced::Task<Message> {
-        let Some(pre_match) = slot_rx.lock().unwrap().take() else {
-            return iced::Task::none();
-        };
-        self.pending_pre_match = Some(pre_match);
-        iced::Task::done(Message::MatchHandoffReady)
-    }
-
-    /// Relay a peer SDP (an RtcOffer/RtcAnswer from the lobby) into the in-flight
-    /// bring-up. No-op if no lobby connect is pending.
-    pub fn feed_lobby_sdp(&self, sdp: String) {
-        if let Some(tx) = &self.pending_lobby_sdp_tx {
-            let _ = tx.try_send(sdp);
-        }
     }
 
     /// `Message::SignalingHelloReceived` — server hello arrived; flip to
@@ -1162,7 +1087,7 @@ impl State {
                 ident: LinkIdent::Matchmaking(code),
             } => code.clone(),
             Phase::Lobby {
-                ident: LinkIdent::Direct(_) | LinkIdent::Lobby,
+                ident: LinkIdent::Direct(_),
             } => String::new(),
             _ => return None,
         };
@@ -1268,19 +1193,6 @@ impl std::fmt::Debug for PreMatchData {
 /// scanner repopulates.
 fn settings_materially_differ(a: &crate::net::protocol::Settings, b: &crate::net::protocol::Settings) -> bool {
     a.game_info != b.game_info || a.match_type != b.match_type
-}
-
-/// `Shake128("tango:lobby:" || buf)` truncated to 16 bytes.
-/// Matches the legacy app's commitment construction
-/// (`tango/src/net.rs::make_commitment`).
-fn make_commitment(buf: &[u8]) -> [u8; 16] {
-    use sha3::digest::{ExtendableOutput, Update, XofReader};
-    let mut h = sha3::Shake128::default();
-    h.update(b"tango:lobby:");
-    h.update(buf);
-    let mut out = [0u8; 16];
-    h.finalize_xof().read(&mut out);
-    out
 }
 
 /// Subscription that forwards messages from the detached lobby
@@ -1498,123 +1410,6 @@ async fn run_direct_rtc_negotiate(
         biased;
         _ = cancel.cancelled() => Err(AsyncError::Cancelled),
         out = work => out,
-    }
-}
-
-/// Full lobby-match task: bring up the connection by relaying SDP through the
-/// lobby, run the protocol-version `negotiate`, exchange the reveal (verifying
-/// the peer's against the lobby-supplied commitment), then build `PreMatchData`
-/// for an immediate PvP handoff — no netplay lobby screen.
-#[allow(clippy::too_many_arguments)]
-async fn run_lobby_match(
-    role: crate::net::lobby_rtc::LobbyRole,
-    ice_servers: Vec<String>,
-    send_local_sdp: impl FnOnce(String) + Send + 'static,
-    sdp_rx: tokio::sync::mpsc::Receiver<String>,
-    local_compressed: Vec<u8>,
-    peer_commitment: [u8; 16],
-    local_settings: crate::net::protocol::Settings,
-    remote_settings: crate::net::protocol::Settings,
-    match_type: (u8, u8),
-    cancel: CancellationToken,
-) -> Result<PreMatchData, AsyncError> {
-    let is_offerer = matches!(role, crate::net::lobby_rtc::LobbyRole::Offerer);
-    let work = async {
-        let crate::net::direct_rtc::DirectChannels {
-            control: (mut sender, mut receiver),
-            in_match: (in_match_sender, in_match_receiver),
-            peer_conn,
-        } = crate::net::lobby_rtc::bring_up(ice_servers, role, send_local_sdp, sdp_rx)
-            .await
-            .map_err(|e| AsyncError::Failed(format!("lobby rtc: {e}")))?;
-        crate::net::negotiate(&mut sender, &mut receiver)
-            .await
-            .map_err(negotiation_error_sentinel)?;
-
-        let remote_compressed =
-            exchange_reveal(&mut sender, &mut receiver, &local_compressed, &peer_commitment).await?;
-        let local_state =
-            decode_state(&local_compressed).map_err(|e| AsyncError::Failed(format!("decode local reveal: {e}")))?;
-        let remote_state =
-            decode_state(&remote_compressed).map_err(|e| AsyncError::Failed(format!("decode peer reveal: {e}")))?;
-        let rng_seed: [u8; 16] = std::array::from_fn(|i| local_state.nonce[i] ^ remote_state.nonce[i]);
-
-        sender
-            .send_start_match()
-            .await
-            .map_err(|e| AsyncError::Failed(format!("send start match: {e}")))?;
-        wait_for_start_match(&mut receiver).await?;
-
-        Ok::<_, AsyncError>(PreMatchData {
-            lobby_sender: Arc::new(tokio::sync::Mutex::new(sender)),
-            in_match_sender: Arc::new(tokio::sync::Mutex::new(in_match_sender)),
-            peer_conn,
-            is_offerer,
-            reliable_receiver_slot: Arc::new(std::sync::Mutex::new(Some(receiver))),
-            in_match_receiver_slot: Arc::new(std::sync::Mutex::new(Some(in_match_receiver))),
-            rng_seed,
-            local_save_data: local_state.save_data,
-            remote_save_data: remote_state.save_data,
-            local_settings,
-            remote_settings,
-            link_code: String::new(),
-            match_type,
-        })
-    };
-    tokio::select! {
-        biased;
-        _ = cancel.cancelled() => Err(AsyncError::Cancelled),
-        out = work => out,
-    }
-}
-
-fn decode_state(compressed: &[u8]) -> anyhow::Result<crate::net::protocol::NegotiatedState> {
-    let bin = zstd::stream::decode_all(std::io::Cursor::new(compressed))?;
-    Ok(crate::net::protocol::NegotiatedState::deserialize(&bin)?)
-}
-
-/// Stream our reveal and reassemble the peer's concurrently (so neither blocks
-/// on the other's send buffer), then verify the peer's against `peer_commitment`.
-async fn exchange_reveal(
-    sender: &mut crate::net::Sender,
-    receiver: &mut crate::net::Receiver,
-    local_compressed: &[u8],
-    peer_commitment: &[u8; 16],
-) -> Result<Vec<u8>, AsyncError> {
-    use subtle::ConstantTimeEq;
-    const CHUNK_SIZE: usize = 32 * 1024;
-    let send = async {
-        for chunk in local_compressed.chunks(CHUNK_SIZE) {
-            sender.send_chunk(chunk.to_vec()).await?;
-        }
-        sender.send_chunk(Vec::new()).await // empty sentinel = end of stream
-    };
-    let recv = async {
-        let mut remote = Vec::new();
-        loop {
-            match receiver.receive().await? {
-                crate::net::protocol::Packet::Chunk(c) if c.chunk.is_empty() => return Ok(remote),
-                crate::net::protocol::Packet::Chunk(c) => remote.extend_from_slice(&c.chunk),
-                _ => {} // ignore anything else on the wire mid-exchange
-            }
-        }
-    };
-    let (send_res, recv_res): (std::io::Result<()>, std::io::Result<Vec<u8>>) = tokio::join!(send, recv);
-    send_res.map_err(|e| AsyncError::Failed(format!("send reveal chunk: {e}")))?;
-    let remote = recv_res.map_err(|e| AsyncError::Failed(format!("recv reveal chunk: {e}")))?;
-    if !bool::from(crate::net::protocol::make_commitment(&remote).ct_eq(peer_commitment)) {
-        return Err(AsyncError::Failed("peer commitment mismatch".to_string()));
-    }
-    Ok(remote)
-}
-
-async fn wait_for_start_match(receiver: &mut crate::net::Receiver) -> Result<(), AsyncError> {
-    loop {
-        match receiver.receive().await {
-            Ok(crate::net::protocol::Packet::StartMatch(_)) => return Ok(()),
-            Ok(_) => continue,
-            Err(e) => return Err(AsyncError::Failed(format!("await start match: {e}"))),
-        }
     }
 }
 

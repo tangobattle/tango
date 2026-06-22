@@ -54,7 +54,6 @@ rennet = { path = "../rennet" }
 tango-pvp = { path = "../tango-pvp" }
 tango-filesync = { path = "../tango-filesync" }
 tango-signaling = { path = "../tango-signaling" }
-tango-lobby = { path = "../tango-lobby" }
 datachannel-wrapper = { path = "../datachannel-wrapper" }
 bincode = "1"
 async-trait = "0.1"

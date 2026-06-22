@@ -48,9 +48,6 @@ pub enum Verdict {
     Compatible,
     /// One or both sides are missing a game selection.
     MissingGame,
-    /// One side picked something the other doesn't have scanned
-    /// locally — they need to install the rom / patch first.
-    MissingRomOrPatch,
     /// Games + patches resolve but to different netplay_compatibility
     /// tags. Cross-version play not allowed.
     DifferentVersions,
@@ -66,31 +63,6 @@ pub fn check(local: &protocol::Settings, remote: &protocol::Settings, patches: &
     let (Some(local_gi), Some(remote_gi)) = (local.game_info.as_ref(), remote.game_info.as_ref()) else {
         return Verdict::MissingGame;
     };
-
-    if !remote.available_games.iter().any(|g| g == &local_gi.family_and_variant)
-        || !local.available_games.iter().any(|g| g == &remote_gi.family_and_variant)
-    {
-        return Verdict::MissingRomOrPatch;
-    }
-
-    if let Some(p) = local_gi.patch.as_ref() {
-        if !remote
-            .available_patches
-            .iter()
-            .any(|(name, versions)| name == &p.name && versions.contains(&p.version))
-        {
-            return Verdict::MissingRomOrPatch;
-        }
-    }
-    if let Some(p) = remote_gi.patch.as_ref() {
-        if !local
-            .available_patches
-            .iter()
-            .any(|(name, versions)| name == &p.name && versions.contains(&p.version))
-        {
-            return Verdict::MissingRomOrPatch;
-        }
-    }
 
     let local_tag = netplay_compatibility_from_game_info(local_gi, patches);
     let remote_tag = netplay_compatibility_from_game_info(remote_gi, patches);

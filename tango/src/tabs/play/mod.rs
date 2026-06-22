@@ -950,7 +950,7 @@ impl State {
             // Same builder the netplay loop uses to ship settings on
             // the wire, so the visible info during the handshake
             // exactly matches what gets sent.
-            let local_fallback = loadout.make_local_settings(config, netplay_lobby, scanners);
+            let local_fallback = loadout.make_local_settings(config, netplay_lobby);
             lobby::Lobby {
                 lang,
                 state: band_lobby,
@@ -1126,7 +1126,12 @@ impl State {
             .align_y(Alignment::Center)
             .into(),
             SaveAction::Duplicating { draft } => row![
-                save_name_input(lang, draft, Message::SaveDuplicateDraftChanged, Message::SaveDuplicateConfirm),
+                save_name_input(
+                    lang,
+                    draft,
+                    Message::SaveDuplicateDraftChanged,
+                    Message::SaveDuplicateConfirm
+                ),
                 save_action_cancel_button(lang),
                 widgets::labeled_icon_button(
                     Icon::Files,

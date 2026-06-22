@@ -51,9 +51,6 @@ impl App {
                         identity: self.identity.clone(),
                     },
                     netplay::LinkIdent::Direct(role) => netplay::Message::ConnectDirect { role },
-                    // Lobby matches are started from the roster sidebar
-                    // (handle_lobby_event), never the link-code Connect button.
-                    netplay::LinkIdent::Lobby => return iced::Task::none(),
                 };
                 let task = self.netplay.update(msg).map(Message::Netplay);
                 // Connect wipes lobby state — re-apply the
@@ -839,5 +836,4 @@ impl App {
             M::RescanRoms => self.rescan_off_thread(RescanFollowup::Refresh),
         }
     }
-
 }

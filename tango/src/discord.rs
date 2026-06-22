@@ -27,8 +27,7 @@ pub fn make_game_info(
     let family = game.family_and_variant().0.to_string();
     // Game-name localization goes through the per-family path, not the
     // app's general i18n loader.
-    let mut title =
-        crate::game::family_str(&family, language, "name").unwrap_or_else(|| format!("⟦game-{family}⟧"));
+    let mut title = crate::game::family_str(&family, language, "name").unwrap_or_else(|| format!("⟦game-{family}⟧"));
     if let Some((patch_name, patch_version)) = patch.as_ref() {
         title.push_str(&format!(" + {} v{}", patch_name, patch_version));
     }
@@ -78,7 +77,7 @@ pub fn make_looking_activity(
 fn party_id(ident: &crate::netplay::LinkIdent) -> Option<String> {
     match ident {
         crate::netplay::LinkIdent::Matchmaking(code) => Some(format!("party:{code}")),
-        crate::netplay::LinkIdent::Direct(_) | crate::netplay::LinkIdent::Lobby => None,
+        crate::netplay::LinkIdent::Direct(_) => None,
     }
 }
 

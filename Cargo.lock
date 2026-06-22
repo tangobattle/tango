@@ -5733,7 +5733,6 @@ dependencies = [
  "tango-gamesupport-bn5",
  "tango-gamesupport-bn6",
  "tango-gamesupport-exe45",
- "tango-lobby",
  "tango-pvp",
  "tango-signaling",
  "thiserror 1.0.69",
@@ -5978,21 +5977,6 @@ dependencies = [
  "tango-gamesupport",
  "tango-pvp",
  "thiserror 1.0.69",
-]
-
-[[package]]
-name = "tango-lobby"
-version = "0.1.0"
-dependencies = [
- "futures-util",
- "log",
- "prost",
- "prost-build",
- "rustls",
- "thiserror 1.0.69",
- "tokio",
- "tokio-tungstenite",
- "webpki-roots",
 ]
 
 [[package]]

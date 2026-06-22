@@ -14,7 +14,6 @@ members = [
     "tango-gamesupport",
     "tango-pvp",
     "tango-signaling",
-    "tango-lobby",
 ]
 
 # `release` keeps Cargo's defaults (lto = false, codegen-units = 16) so

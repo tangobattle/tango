@@ -228,7 +228,6 @@ impl<'a> Lobby<'a> {
                         t!(lang, "lobby-direct-connect", target = addr.clone()),
                         None,
                     ),
-                    LinkIdent::Lobby => (Icon::Link, t!(lang, "lobby-connecting"), None),
                 }
             }
             _ => return None,
@@ -320,7 +319,6 @@ impl<'a> Lobby<'a> {
                 let label = match verdict {
                     Verdict::Compatible => t!(lang, "lobby-compat-ok"),
                     Verdict::MissingGame => t!(lang, "lobby-compat-missing-game"),
-                    Verdict::MissingRomOrPatch => t!(lang, "lobby-compat-missing-rom"),
                     Verdict::DifferentVersions => t!(lang, "lobby-compat-version-mismatch"),
                     Verdict::DifferentMatchTypes => t!(lang, "lobby-compat-match-mismatch"),
                 };
