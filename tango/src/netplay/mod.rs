@@ -149,6 +149,11 @@ pub struct State {
     /// A fully-built `PreMatchData` from a lobby match, parked for
     /// `take_pre_match` (the lobby path bypasses the netplay handshake/lobby).
     pending_pre_match: Option<PreMatchData>,
+
+    /// Matchmaking connection params stashed at `Connect`, used in
+    /// `take_pre_match` to build a [`ReconnectRecipe::Matchmaking`]. `None` on
+    /// the direct path (its recipe rides `ConnectionHandles::reconnect` instead).
+    matchmaking_reconnect: Option<MatchmakingReconnect>,
 }
 
 #[derive(Clone)]
@@ -235,6 +240,7 @@ impl Default for State {
             handshake: Handshake::default(),
             pending_lobby_sdp_tx: None,
             pending_pre_match: None,
+            matchmaking_reconnect: None,
         }
     }
 }
@@ -425,6 +431,54 @@ pub enum DirectRole {
     Connect { addr: String },
 }
 
+/// How to rebuild a dropped connection mid-match. Carried in [`PreMatchData`]
+/// and consumed by the in-match reconnect coordinator (`session::pvp`); `None`
+/// there means the transport can't be transparently rebuilt.
+#[derive(Debug, Clone)]
+pub enum ReconnectRecipe {
+    /// Signaling-free direct link: re-run the same `host`/`connect`.
+    Direct(DirectRole),
+    /// Matchmaking link: re-rendezvous on the signaling server. Both peers
+    /// reconnect to `session_id` — derived from the shared match RNG seed (see
+    /// [`derive_reconnect_session_id`]) so it's unguessable and can't collide
+    /// with a stranger on the original link code — and re-exchange fresh SDP.
+    /// The server keeps no per-session state once a pair's sockets close, so it
+    /// re-pairs them with no server-side changes. `is_offerer`/player index stay
+    /// fixed from the original match, so the re-assigned offerer/answerer roles
+    /// here don't matter.
+    Matchmaking {
+        endpoint: String,
+        session_id: String,
+        use_relay: Option<bool>,
+        identity: Option<tango_signaling::ClientIdentity>,
+    },
+}
+
+/// Matchmaking connection params stashed at `Connect` (before the shared RNG
+/// seed exists), combined with the derived `session_id` in [`take_pre_match`]
+/// to form a [`ReconnectRecipe::Matchmaking`].
+#[derive(Clone)]
+struct MatchmakingReconnect {
+    endpoint: String,
+    use_relay: Option<bool>,
+    identity: Option<tango_signaling::ClientIdentity>,
+}
+
+/// Derive the matchmaking reconnect `session_id` from the shared match RNG seed
+/// (the XOR of both commit nonces — known to both peers, unknown to anyone
+/// else). The seed is *hashed*, never used raw, so re-rendezvousing can't leak
+/// it to the signaling server; domain-separated from the lobby commitment
+/// (which uses the same `Shake128` over `"tango:lobby:"`).
+fn derive_reconnect_session_id(rng_seed: &[u8; 16]) -> String {
+    use sha3::digest::{ExtendableOutput, Update, XofReader};
+    let mut h = sha3::Shake128::default();
+    h.update(b"tango:reconnect:");
+    h.update(rng_seed);
+    let mut out = [0u8; 16];
+    h.finalize_xof().read(&mut out);
+    out.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 pub struct ConnectionPayload {
     /// Reliable control/lobby channel.
     pub control_dc: datachannel_wrapper::DataChannel,
@@ -472,12 +526,11 @@ pub struct NegotiationOutput {
     /// Pre-computed by the per-transport negotiator. Matchmaking reads
     /// the SDP type; the direct link sets host=true, connect=false.
     pub is_offerer: bool,
-    /// The recipe for rebuilding this connection if it drops mid-match,
-    /// or `None` for transports that can't be re-established without
-    /// coordination. Only the signaling-free direct path sets it (its
-    /// fixed ICE creds + known address make a rebuild a pure local
-    /// `host`/`connect` retry); the matchmaking path leaves it `None`,
-    /// which gates transparent reconnection off for that transport.
+    /// The **direct**-link rebuild role, if this is the direct path; `None` on
+    /// the matchmaking path, whose reconnect recipe is instead built in
+    /// [`State::take_pre_match`] from params stashed at `Connect` plus the
+    /// derived `session_id`. Either way the final [`ReconnectRecipe`] lands in
+    /// [`PreMatchData::reconnect`].
     pub reconnect: Option<DirectRole>,
 }
 
@@ -512,6 +565,7 @@ impl State {
         self.handshake.reset();
         self.pending_lobby_sdp_tx = None;
         self.pending_pre_match = None;
+        self.matchmaking_reconnect = None;
     }
 
     /// Apply a Message. Returns the iced Task to schedule for any
@@ -608,6 +662,14 @@ impl State {
         identity: Option<tango_signaling::ClientIdentity>,
     ) -> iced::Task<Message> {
         self.cancel_and_renew();
+        // Stash what a mid-match re-rendezvous needs (the session_id is derived
+        // later from the shared RNG seed; see take_pre_match). Set *after*
+        // cancel_and_renew, which clears it.
+        self.matchmaking_reconnect = Some(MatchmakingReconnect {
+            endpoint: endpoint.clone(),
+            use_relay,
+            identity: identity.clone(),
+        });
         self.phase = Phase::Connecting {
             ident: LinkIdent::Matchmaking(link_code.clone()),
             waiting_for_opponent: false,
@@ -1113,6 +1175,20 @@ impl State {
         // receiver via post_lobby_receiver. The loop drops the
         // receiver into that slot on cancel-exit.
         self.cancel.cancel();
+        // Build the mid-match reconnect recipe. The direct path carries its
+        // recipe on ConnectionHandles; the matchmaking path combines the params
+        // stashed at Connect with a session_id derived from the shared RNG seed
+        // (now known), so both peers re-rendezvous on the same secret id.
+        let reconnect = if let Some(role) = handles.reconnect {
+            Some(ReconnectRecipe::Direct(role))
+        } else {
+            self.matchmaking_reconnect.take().map(|mm| ReconnectRecipe::Matchmaking {
+                endpoint: mm.endpoint,
+                session_id: derive_reconnect_session_id(&rng_seed),
+                use_relay: mm.use_relay,
+                identity: mm.identity,
+            })
+        };
         // The receiver might not be in post_lobby_receiver yet
         // (the loop hasn't observed the cancel) — but the App
         // also takes a clone of the slot Arc and reads
@@ -1131,7 +1207,7 @@ impl State {
             remote_settings,
             link_code,
             match_type: self.lobby.match_type,
-            reconnect: handles.reconnect,
+            reconnect,
         };
         Some(pre_match)
     }
@@ -1186,10 +1262,10 @@ pub struct PreMatchData {
     pub remote_settings: crate::net::protocol::Settings,
     pub link_code: String,
     pub match_type: (u8, u8),
-    /// Direct-link rebuild recipe for transparent mid-match reconnection,
-    /// or `None` for the matchmaking transport (feature off). See
-    /// [`NegotiationOutput::reconnect`].
-    pub reconnect: Option<DirectRole>,
+    /// Recipe for transparently rebuilding the connection if it drops mid-match
+    /// (direct or matchmaking), or `None` for a transport that can't be rebuilt.
+    /// Consumed by the in-match reconnect coordinator.
+    pub reconnect: Option<ReconnectRecipe>,
 }
 
 // The channel/peer-conn handles aren't `Debug`; a placeholder keeps the

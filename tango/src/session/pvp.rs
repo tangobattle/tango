@@ -44,6 +44,13 @@ const RECONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30
 /// dialer's `connect` will hang on ICE until the host is listening again, so
 /// bound it and retry rather than blocking the whole budget on one attempt.
 const RECONNECT_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+/// Give-up window for the matchmaking path — longer than direct's, since each
+/// attempt re-rendezvouses on the signaling server then re-gathers ICE (and
+/// possibly TURN), which is much slower than re-binding a known local port.
+const RECONNECT_MATCHMAKING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+/// Per-attempt cap for a matchmaking rebuild (signaling rendezvous + ICE/TURN
+/// gathering + negotiate).
+const RECONNECT_MATCHMAKING_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 /// Pause between failed rebuild attempts (e.g. dialer racing ahead of the host
 /// re-binding its port).
 const RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(250);
@@ -121,11 +128,12 @@ pub struct PvpSession {
     /// the old, installs the rebuilt) on a transparent direct-link reconnect;
     /// the session just keeps the slot alive for the match's lifetime.
     _peer_conn: Arc<Mutex<Option<datachannel_wrapper::PeerConnection>>>,
-    /// The instant the coordinator will give up rebuilding a dropped direct
-    /// link, or `None` when not reconnecting (the steady state, and always for
-    /// the matchmaking transport). Drives the "Reconnecting…" overlay and its
-    /// give-up countdown. The emulator is paused while this is `Some`.
-    reconnect_deadline: Arc<Mutex<Option<std::time::Instant>>>,
+    /// `(started_at, give_up_at)` for the in-progress reconnect, or `None` when
+    /// not reconnecting (the steady state). Drives the "Reconnecting…" overlay
+    /// and its depleting give-up bar; the pair (rather than just the deadline)
+    /// lets the bar's fraction work across the direct/matchmaking window sizes.
+    /// The emulator is paused while this is `Some`.
+    reconnect_window: Arc<Mutex<Option<(std::time::Instant, std::time::Instant)>>>,
     /// Reliable lobby channel's sender, parked for the match's lifetime. Idle
     /// in-match (all traffic is on the unreliable channel), but held open so
     /// its close doesn't surface as a spurious disconnect on the peer's
@@ -326,11 +334,10 @@ impl PvpSession {
         // whole life, while the reconnect coordinator can drop the old one (to
         // free the host's pinned UDP port) and slot the rebuilt one back in.
         let peer_conn = Arc::new(Mutex::new(Some(pre_match.peer_conn)));
-        // The instant the coordinator will give up rebuilding a dropped direct
-        // link, or `None` when not reconnecting. The UI reads it to draw the
-        // "Reconnecting…" overlay and its give-up countdown; the emulator is
-        // paused for the duration.
-        let reconnect_deadline = Arc::new(Mutex::new(None::<std::time::Instant>));
+        // `(started_at, give_up_at)` of the in-progress reconnect, or `None` when
+        // not reconnecting. The UI reads it to draw the "Reconnecting…" overlay
+        // and its give-up bar; the emulator is paused for the duration.
+        let reconnect_window = Arc::new(Mutex::new(None::<(std::time::Instant, std::time::Instant)>));
         // Last datagram-arrival time, fed by the PvpReceiver and read by the
         // coordinator's silence watchdog. Shared so it survives the receiver
         // being rebuilt over a fresh channel. `None` until the first frame ever
@@ -358,7 +365,7 @@ impl PvpSession {
             let reconnect = pre_match.reconnect.clone();
             let handle = thread.handle();
             let peer_conn = peer_conn.clone();
-            let reconnect_deadline = reconnect_deadline.clone();
+            let reconnect_window = reconnect_window.clone();
             let last_recv = last_recv.clone();
             let cancel = cancellation_token.clone();
             let mut reliable_receiver = reliable_receiver;
@@ -412,18 +419,23 @@ impl PvpSession {
                         }
                         break;
                     }
-                    let role = reconnect.clone().unwrap();
+                    let recipe = reconnect.clone().unwrap();
 
                     // Freeze the sim so its speculative lead can't run past the
                     // rollback horizon (and overflow-bail) while the link is down;
-                    // retire the latency readout; arm the give-up deadline the UI
-                    // counts down toward.
-                    let deadline = std::time::Instant::now() + RECONNECT_TIMEOUT;
-                    *reconnect_deadline.lock().unwrap() = Some(deadline);
+                    // retire the latency readout; arm the give-up window the UI
+                    // bar drains over (matchmaking gets longer than direct).
+                    let start = std::time::Instant::now();
+                    let deadline = start
+                        + match recipe {
+                            crate::netplay::ReconnectRecipe::Direct(_) => RECONNECT_TIMEOUT,
+                            crate::netplay::ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_TIMEOUT,
+                        };
+                    *reconnect_window.lock().unwrap() = Some((start, deadline));
                     *latency_counter.lock().await = None;
                     handle.pause();
                     frame_notify.notify_one();
-                    log::info!("pvp direct link dropped — pausing to reconnect");
+                    log::info!("pvp link dropped — pausing to reconnect");
 
                     // Drop the old peer connection *before* rebuilding so the
                     // host's pinned UDP port is free to re-bind. Off the runtime
@@ -445,14 +457,14 @@ impl PvpSession {
                             }
                         };
                         tokio::select! {
-                            r = reconnect_direct(&role, deadline, &cancel) => r,
+                            r = rebuild_connection(&recipe, deadline, &cancel) => r,
                             _ = ui_tick => None,
                         }
                     };
 
                     let Some(channels) = rebuilt else {
                         // Timed out or cancelled — give up and end the match.
-                        *reconnect_deadline.lock().unwrap() = None;
+                        *reconnect_window.lock().unwrap() = None;
                         end.remote_disconnected.store(true, Ordering::Release);
                         cancel.cancel();
                         handle.unpause();
@@ -488,7 +500,7 @@ impl PvpSession {
                     // reconnect once more (self-healing) instead of stalling.
                     *last_recv.lock().unwrap() = Some(std::time::Instant::now());
                     *latency_counter.lock().await = Some(crate::net::LatencyCounter::new(5));
-                    *reconnect_deadline.lock().unwrap() = None;
+                    *reconnect_window.lock().unwrap() = None;
                     handle.unpause();
                     frame_notify.notify_one();
                     log::info!("pvp transparently reconnected the direct link");
@@ -611,7 +623,7 @@ impl PvpSession {
             cancellation_token,
             latency_counter,
             _peer_conn: peer_conn,
-            reconnect_deadline,
+            reconnect_window,
             _lobby_sender: pre_match.lobby_sender,
             match_handle,
             link_code: pre_match.link_code,
@@ -665,20 +677,21 @@ impl PvpSession {
         self.cancellation_token.cancel();
     }
 
-    /// `true` while the direct link has dropped and the session is transparently
-    /// rebuilding it — the emulator is paused and the PvP view shows a
-    /// "Reconnecting…" overlay. Always `false` on the matchmaking transport.
+    /// `true` while the link has dropped and the session is transparently
+    /// rebuilding it (direct or matchmaking) — the emulator is paused and the
+    /// PvP view shows a "Reconnecting…" overlay.
     pub fn is_reconnecting(&self) -> bool {
-        self.reconnect_deadline.lock().unwrap().is_some()
+        self.reconnect_window.lock().unwrap().is_some()
     }
 
     /// Fraction of the reconnect give-up window still remaining — `1.0` when a
     /// reconnect just started, falling to `0.0` at the give-up deadline, or
     /// `None` when not reconnecting. Drives the overlay's depleting progress bar.
     pub fn reconnect_progress(&self) -> Option<f32> {
-        self.reconnect_deadline.lock().unwrap().map(|deadline| {
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-            (remaining.as_secs_f32() / RECONNECT_TIMEOUT.as_secs_f32()).clamp(0.0, 1.0)
+        self.reconnect_window.lock().unwrap().map(|(start, deadline)| {
+            let total = deadline.saturating_duration_since(start).as_secs_f32().max(f32::EPSILON);
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now()).as_secs_f32();
+            (remaining / total).clamp(0.0, 1.0)
         })
     }
 
@@ -870,38 +883,79 @@ async fn silence_watchdog(last_recv: &Mutex<Option<std::time::Instant>>) {
     }
 }
 
-/// Rebuild a dropped signaling-free direct link from its fixed recipe: re-run
-/// the same `host`/`connect` the session first connected with, then the version
-/// `negotiate` handshake on the rebuilt reliable channel. The handshake doubles
-/// as a rendezvous barrier — `host`'s first send blocks until the dialer is
-/// back, and vice versa — so both peers only return (and unpause) once the link
-/// is genuinely carrying traffic again. Retries failed attempts (the dialer
-/// races ahead of the host re-binding its port) until [`RECONNECT_TIMEOUT`],
-/// returning `None` on timeout or cancellation.
-async fn reconnect_direct(
-    role: &crate::netplay::DirectRole,
+/// Rebuild a dropped connection from its recipe, then run the version
+/// `negotiate` handshake on the rebuilt reliable channel. The bring-up doubles
+/// as a rendezvous barrier — the direct `host`'s first send blocks until the
+/// dialer is back, and matchmaking's `connect` blocks at the signaling server
+/// until the peer rejoins — so both peers only return (and unpause) once the
+/// link is genuinely carrying traffic again. Retries failed attempts (the
+/// peers race each other to re-rendezvous) until `deadline`, returning `None`
+/// on timeout or cancellation.
+///
+/// Returns the rebuilt channels in a [`DirectChannels`] bundle regardless of
+/// transport — the matchmaking path just demuxes the signaling client's
+/// channel `Vec` (control first, in-match second) into the same shape.
+async fn rebuild_connection(
+    recipe: &crate::netplay::ReconnectRecipe,
     deadline: std::time::Instant,
     cancel: &tokio_util::sync::CancellationToken,
 ) -> Option<crate::net::direct_rtc::DirectChannels> {
-    use crate::netplay::DirectRole;
+    use crate::netplay::{DirectRole, ReconnectRecipe};
+    let attempt_timeout = match recipe {
+        ReconnectRecipe::Direct(_) => RECONNECT_ATTEMPT_TIMEOUT,
+        ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_ATTEMPT_TIMEOUT,
+    };
     loop {
         if cancel.is_cancelled() || std::time::Instant::now() >= deadline {
             return None;
         }
         let attempt = async {
-            let mut channels = match role {
-                DirectRole::Host { port } => crate::net::direct_rtc::host(*port).await?,
-                DirectRole::Connect { addr } => crate::net::direct_rtc::connect(addr).await?,
+            let mut channels = match recipe {
+                ReconnectRecipe::Direct(DirectRole::Host { port }) => crate::net::direct_rtc::host(*port).await?,
+                ReconnectRecipe::Direct(DirectRole::Connect { addr }) => crate::net::direct_rtc::connect(addr).await?,
+                ReconnectRecipe::Matchmaking {
+                    endpoint,
+                    session_id,
+                    use_relay,
+                    identity,
+                } => {
+                    let connecting = tango_signaling::connect(
+                        endpoint,
+                        session_id,
+                        *use_relay,
+                        crate::netplay::PROTOCOL_VERSION,
+                        vec![
+                            crate::net::channel::control_channel(),
+                            crate::net::channel::in_match_channel(),
+                        ],
+                        identity.clone(),
+                    )
+                    .await
+                    .map_err(|e| std::io::Error::other(format!("signaling: {e}")))?;
+                    // Blocks at the server until the peer rejoins the session, then
+                    // completes the WebRTC handshake — the matchmaking rendezvous.
+                    let (dcs, peer_conn) = connecting
+                        .await
+                        .map_err(|e| std::io::Error::other(format!("webrtc: {e}")))?;
+                    // Same spec order we passed: control first, in-match second.
+                    let [control_dc, in_match_dc] = <[_; 2]>::try_from(dcs)
+                        .map_err(|_| std::io::Error::other("expected 2 data channels"))?;
+                    crate::net::direct_rtc::DirectChannels {
+                        control: crate::net::channel::pair(control_dc),
+                        in_match: crate::net::channel::pair(in_match_dc),
+                        peer_conn,
+                    }
+                }
             };
             crate::net::negotiate(&mut channels.control.0, &mut channels.control.1)
                 .await
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("negotiate: {e:?}")))?;
+                .map_err(|e| std::io::Error::other(format!("negotiate: {e:?}")))?;
             Ok::<_, std::io::Error>(channels)
         };
         let outcome = tokio::select! {
             biased;
             _ = cancel.cancelled() => return None,
-            r = tokio::time::timeout(RECONNECT_ATTEMPT_TIMEOUT, attempt) => r,
+            r = tokio::time::timeout(attempt_timeout, attempt) => r,
         };
         match outcome {
             Ok(Ok(channels)) => return Some(channels),
