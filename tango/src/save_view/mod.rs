@@ -696,6 +696,7 @@ impl State {
             | Action::PlaceHeld { .. }
             | Action::PickUpInstalledPart { .. }
             | Action::ClearNavicust
+            | Action::SetNavi(_)
             | Action::AddPatchCard56 { .. }
             | Action::RemovePatchCard56 { .. }
             | Action::ReorderPatchCard56s(_)
@@ -809,6 +810,9 @@ pub enum Action {
     },
     /// Remove every installed part.
     ClearNavicust,
+    // ----- Navi editor (only emitted when `editable` is set) -----
+    /// Set the equipped navi to this index.
+    SetNavi(usize),
     /// Palette: the filter text changed.
     NavicustFilterChanged(String),
     /// Palette: the sort order changed.
@@ -950,8 +954,9 @@ pub fn view<'a>(
     // editor (gated by that feature's editability), and one Save / Cancel
     // commits / discards them all.
     let editing_session = editable && state.editing.is_some();
-    let folder_editing = editing_session && loaded.chips_editable;
+    let folder_editing = editing_session && loaded.folder_editable;
     let navicust_editing = editing_session && loaded.navicust_editable;
+    let navi_editing = editing_session && loaded.navi_editable;
     let patch_cards_editing = editing_session && loaded.patch_cards_editable;
     let auto_battle_data_editing = editing_session && loaded.auto_battle_data_editable;
 
@@ -1122,6 +1127,14 @@ pub fn view<'a>(
             .height(Fill)
             .into();
     }
+    if navi_editing && active == Tab::Navi {
+        let editor = navi::render_navi_edit(lang, loaded);
+        return column![tab_pane, entered(editor)]
+            .spacing(style::PANE_GAP)
+            .width(Fill)
+            .height(Fill)
+            .into();
+    }
     if patch_cards_editing && active == Tab::PatchCards {
         let editor = patch_cards::render_patch_cards_edit(lang, loaded, state);
         return column![tab_pane, entered(editor)]
@@ -1181,7 +1194,7 @@ pub fn view<'a>(
 fn edit_buttons<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded) -> Element<'a, Action> {
     use crate::widgets;
     use lucide_icons::Icon;
-    let can_save = !loaded.chips_editable || {
+    let can_save = !loaded.folder_editable || {
         let full = loaded.save.view_chips().map_or(true, |v| {
             let folder = v.equipped_folder_index();
             (0..folder::MAX_FOLDER_CHIPS).all(|i| v.chip(folder, i).is_some())
@@ -1216,14 +1229,15 @@ fn tab_has_edit(tab: Tab, loaded: &Loaded, editable: bool) -> bool {
     editable
         && match tab {
             // Only saves with a writable chip view (BN4/5/6);
-            // `chips_editable` is the cached `view_chips_mut()`
+            // `folder_editable` is the cached `view_chips_mut()`
             // probe.
-            Tab::Folder => loaded.chips_editable,
+            Tab::Folder => loaded.folder_editable,
             // Only BN4/5/6 with a writable navicust. `navicust_editable`
             // is the cached `view_navicust_mut()` probe, which is already
-            // `None` for link navis and navicust-less BN4.5. The Navi tab
-            // itself is read-only (falls through to `_`).
+            // `None` for link navis and navicust-less BN4.5.
             Tab::Navicust => loaded.navicust_editable,
+            // BN5/BN6/BN4.5 expose a writable equipped-navi selector.
+            Tab::Navi => loaded.navi_editable,
             // BN4 (PatchCard4s) and BN5/BN6 (PatchCard56s) are
             // both writable, each via its own editor.
             Tab::PatchCards => loaded.patch_cards_editable,

@@ -235,6 +235,14 @@ impl App {
                 }
                 iced::Task::none()
             }
+            E::EditNavi(edit) => {
+                // Stage the equipped-navi change into the in-memory loaded
+                // save; the UI reads `loaded.save` directly so it shows live.
+                if let Some(loaded) = self.loaded.as_mut() {
+                    crate::save_edit::apply_navi_edit(loaded, edit);
+                }
+                iced::Task::none()
+            }
             E::EditPatchCard56s(edit) => {
                 // Stage one BN5/BN6 patch-card edit into the in-memory loaded
                 // save; the UI reads `loaded.save` directly so it shows live.

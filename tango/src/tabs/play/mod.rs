@@ -221,6 +221,15 @@ pub enum NavicustEdit {
     ClearAll,
 }
 
+/// A staged navi-selection edit. Applied to the loaded save in memory by
+/// [`Effect::EditNavi`]; not persisted to disk until the user hits Save
+/// ([`Effect::SaveEditCommit`]).
+#[derive(Debug, Clone)]
+pub enum NaviEdit {
+    /// Set the equipped navi to this index.
+    SetNavi(usize),
+}
+
 /// A single BN5/BN6 patch-card edit staged by the editor. Applied to the
 /// loaded save in memory by [`Effect::EditPatchCard56s`]; not persisted to
 /// disk until the user hits Save ([`Effect::SaveEditCommit`]).
@@ -337,6 +346,9 @@ pub enum Effect {
     /// Navicust editor: stage one edit into the loaded save in memory
     /// (UI updates live; nothing hits disk yet).
     EditNavicust(NavicustEdit),
+    /// Navi editor: stage the equipped-navi change into the loaded save in
+    /// memory (UI updates live; nothing hits disk yet).
+    EditNavi(NaviEdit),
     /// BN5/BN6 patch-card editor: stage one edit into the loaded save in
     /// memory (UI updates live; nothing hits disk yet).
     EditPatchCard56s(PatchCard56Edit),
@@ -682,6 +694,8 @@ impl State {
                         }))
                     }
                     A::ClearAutoBattleData => Some(Effect::EditAutoBattleData(AutoBattleDataEdit::ClearAll)),
+                    // ----- Navi editor -----
+                    A::SetNavi(navi) => Some(Effect::EditNavi(NaviEdit::SetNavi(navi))),
                     _ => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
                 }
             }

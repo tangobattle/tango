@@ -323,6 +323,20 @@ pub fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Nav
     }
 }
 
+/// Apply a staged [`tabs::play::NaviEdit`] (the equipped-navi selection) to
+/// the loaded save in memory. No disk I/O — the commit path checksums and
+/// writes. A no-op on saves without a writable navi view.
+pub fn apply_navi_edit(loaded: &mut selection::Loaded, edit: tabs::play::NaviEdit) {
+    use tabs::play::NaviEdit;
+    match edit {
+        NaviEdit::SetNavi(navi) => {
+            if let Some(mut nv) = loaded.save.view_navi_mut() {
+                nv.set_navi(navi);
+            }
+        }
+    }
+}
+
 /// Apply one staged [`tabs::play::PatchCard56Edit`] to a loaded save's
 /// registered patch-card list, in memory. Reads the current list under an
 /// immutable borrow, computes the new list, rewrites the slots via

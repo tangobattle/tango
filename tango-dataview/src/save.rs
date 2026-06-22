@@ -308,7 +308,9 @@ pub trait NaviView<'a> {
 }
 
 pub trait NaviViewMut<'a> {
-    fn set_navi(&self, navi: usize) -> bool;
+    /// Set the equipped navi index. Returns `false` (no write) if `navi`
+    /// is out of range for this game.
+    fn set_navi(&mut self, navi: usize) -> bool;
 }
 
 #[derive(Clone, Debug, std::hash::Hash, Eq, PartialEq)]

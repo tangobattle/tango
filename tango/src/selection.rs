@@ -28,12 +28,17 @@ pub struct Loaded {
     /// `save.view_chips_mut().is_some()`. Cached at build time because
     /// the probe needs `&mut save`, but the per-frame view only holds
     /// `&Loaded`. Drives whether the Folder tab shows the Edit button.
-    pub chips_editable: bool,
+    pub folder_editable: bool,
     /// Whether this save supports in-place navicust editing — i.e.
     /// `save.view_navicust_mut().is_some()` (BN4/5/6, and not a link navi).
     /// Cached at build time (the probe needs `&mut save`); drives
-    /// whether the Navi tab shows the Edit button.
+    /// whether the NaviCust tab shows the Edit button.
     pub navicust_editable: bool,
+    /// Whether this save supports editing the equipped navi — i.e.
+    /// `save.view_navi_mut().is_some()` (BN5/BN6/BN4.5). Cached at build
+    /// time (the probe needs `&mut save`); drives whether the Navi tab
+    /// shows the Edit button.
+    pub navi_editable: bool,
     /// Whether this save supports in-place patch-card editing — i.e.
     /// `save.view_patch_cards_mut().is_some()`. True for BN4 (PatchCard4s,
     /// slot-based) and BN5/BN6 (PatchCard56s, list-based); each gets its own
@@ -159,11 +164,14 @@ impl Loaded {
         // Probe folder-editability once (needs `&mut save`); constructing
         // the mutable chip view has no side effects, so this is a pure
         // capability check we can cache on the immutable Loaded.
-        let chips_editable = save.view_chips_mut().is_some();
+        let folder_editable = save.view_chips_mut().is_some();
         // Navicust editability (BN4/5/6). A link navi has no navicust, so
         // `view_navicust_mut` is `None`; read-only-navicust BN3 also stays
-        // off. Same pure-capability probe pattern as `chips_editable`.
+        // off. Same pure-capability probe pattern as `folder_editable`.
         let navicust_editable = save.view_navicust_mut().is_some();
+        // Navi (equipped link navi) editability: BN5/BN6/BN4.5. Same
+        // pure-capability probe pattern as the others.
+        let navi_editable = save.view_navi_mut().is_some();
         // Patch-card editability: both BN4 (PatchCard4s) and BN5/BN6
         // (PatchCard56s) are writable, each through its own editor. Same
         // pure-capability probe pattern as the others.
@@ -285,8 +293,9 @@ impl Loaded {
             game,
             save_path,
             save,
-            chips_editable,
+            folder_editable,
             navicust_editable,
+            navi_editable,
             patch_cards_editable,
             auto_battle_data_editable,
             patch: applied_patch,

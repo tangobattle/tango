@@ -1,5 +1,5 @@
 use super::*;
-use sweeten::widget::column;
+use sweeten::widget::{column, row};
 
 pub(super) fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
     let Some(nv) = loaded.save.view_navi() else {
@@ -105,4 +105,130 @@ pub(crate) fn navi_as_text(loaded: &Loaded) -> Option<String> {
     let id = loaded.save.view_navi()?.navi();
     let name = assets.navi(id).and_then(|n| n.name()).unwrap_or_else(|| format!("#{id}"));
     Some(format!("{name}\n"))
+}
+
+/// The Navi editor: a grid of the game's navis, each on its own
+/// accent-tinted emblem plate (the equipped one lit up with a glow ring).
+/// Clicking a plate emits [`Action::SetNavi`], which the embedder stages
+/// into the loaded save.
+pub(super) fn render_navi_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded) -> Element<'a, Action> {
+    let assets = loaded.assets.as_ref();
+    let current = loaded.save.view_navi().map(|nv| nv.navi());
+
+    // One plate per real navi, wrapped into rows.
+    const COLS: usize = 6;
+    let ids: Vec<usize> = (0..assets.num_navis()).filter(|&id| assets.navi(id).is_some()).collect();
+    let mut grid = column![].spacing(14).align_x(Alignment::Center);
+    for chunk in ids.chunks(COLS) {
+        let mut r = row![].spacing(14).align_y(Alignment::Start);
+        for &id in chunk {
+            let name = assets.navi(id).and_then(|n| n.name()).unwrap_or_else(|| format!("Navi #{id}"));
+            r = r.push(navi_cell(loaded, id, name, current == Some(id)));
+        }
+        grid = grid.push(r);
+    }
+
+    let body = column![
+        text(t!(lang, "navi-edit-select")).size(TEXT_BODY).style(muted_text_style),
+        grid,
+    ]
+    .spacing(16)
+    .align_x(Alignment::Center)
+    .width(Fill);
+
+    container(
+        scrollable(body)
+            .style(crate::widgets::chunky_scrollable)
+            .height(Fill)
+            .width(Fill),
+    )
+    .padding(crate::style::PANE_PADDING)
+    .style(crate::widgets::pane)
+    .width(Fill)
+    .height(Fill)
+    .into()
+}
+
+/// One selectable navi: its emblem on a circular accent-tinted plate (lit
+/// with a glow ring when it's the equipped navi), the name beneath, all
+/// wrapped in a borderless button that emits [`Action::SetNavi`].
+fn navi_cell(loaded: &Loaded, id: usize, name: String, selected: bool) -> Element<'static, Action> {
+    let accent = loaded
+        .navi_accents
+        .get(&id)
+        .copied()
+        .unwrap_or(iced::Color::from_rgb8(0x6b, 0x7a, 0x99));
+
+    let emblem: Element<'static, Action> = loaded
+        .navi_emblems
+        .get(&id)
+        .cloned()
+        .map(|h| {
+            Image::new(h)
+                .width(Length::Fixed(48.0))
+                .height(Length::Fixed(48.0))
+                .filter_method(iced_image::FilterMethod::Nearest)
+                .content_fit(ContentFit::Contain)
+                .into()
+        })
+        .unwrap_or_else(|| {
+            Space::new()
+                .width(Length::Fixed(48.0))
+                .height(Length::Fixed(48.0))
+                .into()
+        });
+
+    let plate = container(emblem)
+        .width(Length::Fixed(72.0))
+        .height(Length::Fixed(72.0))
+        .align_x(Alignment::Center)
+        .align_y(Alignment::Center)
+        .style(move |theme: &iced::Theme| {
+            let bg = theme.palette().background;
+            container::Style {
+                background: Some(iced::Background::Color(crate::widgets::mix(
+                    bg,
+                    accent,
+                    if selected { 0.40 } else { 0.14 },
+                ))),
+                border: iced::Border {
+                    radius: 36.0.into(),
+                    width: if selected { 2.0 } else { 1.0 },
+                    color: iced::Color {
+                        a: if selected { 0.9 } else { 0.3 },
+                        ..accent
+                    },
+                },
+                shadow: if selected {
+                    iced::Shadow {
+                        color: iced::Color { a: 0.5, ..accent },
+                        offset: iced::Vector::new(0.0, 0.0),
+                        blur_radius: 16.0,
+                    }
+                } else {
+                    iced::Shadow::default()
+                },
+                ..Default::default()
+            }
+        });
+
+    let mut label = text(name).size(TEXT_CAPTION);
+    if !selected {
+        label = label.style(muted_text_style);
+    }
+
+    let cell = column![plate, label]
+        .spacing(6)
+        .align_x(Alignment::Center)
+        .width(Length::Fixed(88.0));
+
+    button(cell)
+        .padding(4)
+        .on_press(Action::SetNavi(id))
+        .style(|theme: &iced::Theme, _status| button::Style {
+            background: None,
+            text_color: theme.palette().text,
+            ..Default::default()
+        })
+        .into()
 }
