@@ -202,21 +202,21 @@ fn navi_cell(loaded: &Loaded, id: usize, name: String, selected: bool) -> Elemen
                 background: Some(iced::Background::Color(crate::widgets::mix(
                     bg,
                     accent,
-                    if selected { 0.55 } else { 0.07 },
+                    if selected { 0.40 } else { 0.14 },
                 ))),
                 border: iced::Border {
                     radius: 36.0.into(),
-                    width: if selected { 3.0 } else { 1.0 },
+                    width: if selected { 2.0 } else { 1.0 },
                     color: iced::Color {
-                        a: if selected { 1.0 } else { 0.15 },
+                        a: if selected { 0.9 } else { 0.3 },
                         ..accent
                     },
                 },
                 shadow: if selected {
                     iced::Shadow {
-                        color: iced::Color { a: 0.75, ..accent },
+                        color: iced::Color { a: 0.5, ..accent },
                         offset: iced::Vector::new(0.0, 0.0),
-                        blur_radius: 30.0,
+                        blur_radius: 16.0,
                     }
                 } else {
                     iced::Shadow::default()
