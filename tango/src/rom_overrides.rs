@@ -274,6 +274,9 @@ impl tango_dataview::rom::Assets for OverridenAssets {
     fn num_navis(&self) -> usize {
         self.assets.num_navis()
     }
+    fn navi_order(&self) -> &[&[usize]] {
+        self.assets.navi_order()
+    }
     fn navicust_layout(&self) -> Option<tango_dataview::rom::NavicustLayout> {
         self.assets.navicust_layout()
     }

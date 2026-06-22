@@ -357,6 +357,12 @@ pub trait Assets {
     fn num_navis(&self) -> usize {
         0
     }
+    /// The navis the navi-edit grid should show, grouped into the rows it
+    /// should lay them out in. Each inner slice is one row of navi ids; the
+    /// UI renders rows top-to-bottom and ids left-to-right exactly as given.
+    fn navi_order(&self) -> &[&[usize]] {
+        &[]
+    }
     fn navicust_layout(&self) -> Option<NavicustLayout> {
         None
     }

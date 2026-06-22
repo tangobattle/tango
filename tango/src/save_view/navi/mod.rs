@@ -143,15 +143,12 @@ pub(super) fn render_navi_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loa
     let assets = loaded.assets.as_ref();
     let current = loaded.save.view_navi().map(|nv| nv.navi());
 
-    // One plate per real navi, wrapped into rows.
-    const COLS: usize = 7;
-    let ids: Vec<usize> = (0..assets.num_navis())
-        .filter(|&id| assets.navi(id).is_some())
-        .collect();
+    // The dataview lays the roster out in rows; render one plate per navi in
+    // exactly that order.
     let mut grid = column![].spacing(14).align_x(Alignment::Center);
-    for chunk in ids.chunks(COLS) {
+    for &order_row in assets.navi_order() {
         let mut r = row![].spacing(14).align_y(Alignment::Start);
-        for &id in chunk {
+        for &id in order_row {
             let name = assets
                 .navi(id)
                 .and_then(|n| n.name())
