@@ -179,6 +179,9 @@ fn navi_cell(loaded: &Loaded, id: usize, name: String, selected: bool) -> Elemen
                 .height(Length::Fixed(48.0))
                 .filter_method(iced_image::FilterMethod::Nearest)
                 .content_fit(ContentFit::Contain)
+                // The equipped navi stays full-color; the rest dim back so
+                // it's the only vivid emblem in the grid.
+                .opacity(if selected { 1.0 } else { 0.45 })
                 .into()
         })
         .unwrap_or_else(|| {
@@ -199,21 +202,21 @@ fn navi_cell(loaded: &Loaded, id: usize, name: String, selected: bool) -> Elemen
                 background: Some(iced::Background::Color(crate::widgets::mix(
                     bg,
                     accent,
-                    if selected { 0.40 } else { 0.14 },
+                    if selected { 0.55 } else { 0.07 },
                 ))),
                 border: iced::Border {
                     radius: 36.0.into(),
-                    width: if selected { 2.0 } else { 1.0 },
+                    width: if selected { 3.0 } else { 1.0 },
                     color: iced::Color {
-                        a: if selected { 0.9 } else { 0.3 },
+                        a: if selected { 1.0 } else { 0.15 },
                         ..accent
                     },
                 },
                 shadow: if selected {
                     iced::Shadow {
-                        color: iced::Color { a: 0.5, ..accent },
+                        color: iced::Color { a: 0.75, ..accent },
                         offset: iced::Vector::new(0.0, 0.0),
-                        blur_radius: 16.0,
+                        blur_radius: 30.0,
                     }
                 } else {
                     iced::Shadow::default()
