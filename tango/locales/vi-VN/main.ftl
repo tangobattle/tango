@@ -326,3 +326,12 @@ welcome-step-nickname = Đặt biệt danh
 welcome-step-nickname-description = Bạn có thể đổi bất cứ lúc nào trong Cài đặt.
 welcome-roms-needed = Thêm ít nhất một ROM để tiếp tục.
 rescan = Quét lại
+
+# Reconnect / data folder / save-view tabs
+session-stat-lead = Dẫn trước
+save-tab-navicust = NaviCust
+navi-edit-select = Navi
+playback-reconnecting = Mất kết nối
+playback-reconnecting-detail = Đang kết nối lại…
+settings-data-folder = Thư mục dữ liệu
+settings-data-folder-change = Thay đổi…

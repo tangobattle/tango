@@ -342,3 +342,12 @@ welcome-step-nickname = Задайте свой ник
 welcome-step-nickname-description = Можно изменить в любой момент в Настройках.
 welcome-roms-needed = Добавьте хотя бы один ROM, чтобы продолжить.
 rescan = Пересканировать
+
+# Reconnect / data folder / save-view tabs
+session-stat-lead = Опережение
+save-tab-navicust = NaviCust
+navi-edit-select = Нави
+playback-reconnecting = Соединение потеряно
+playback-reconnecting-detail = Переподключение…
+settings-data-folder = Папка данных
+settings-data-folder-change = Изменить…

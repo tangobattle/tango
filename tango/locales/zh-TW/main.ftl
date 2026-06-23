@@ -326,3 +326,12 @@ welcome-step-nickname = 設定暱稱
 welcome-step-nickname-description = 可隨時在設定中變更。
 welcome-roms-needed = 請至少新增一個 ROM 以繼續。
 rescan = 重新掃描
+
+# Reconnect / data folder / save-view tabs
+session-stat-lead = 領先
+save-tab-navicust = 領航員改造
+navi-edit-select = 領航員
+playback-reconnecting = 連線中斷
+playback-reconnecting-detail = 重新連線中…
+settings-data-folder = 資料夾
+settings-data-folder-change = 變更…

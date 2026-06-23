@@ -326,3 +326,12 @@ welcome-step-nickname = 设置昵称
 welcome-step-nickname-description = 可以随时在设置里修改。
 welcome-roms-needed = 请至少添加一个 ROM 才能继续。
 rescan = 重新扫描
+
+# Reconnect / data folder / save-view tabs
+session-stat-lead = 领先
+save-tab-navicust = 领航员改造
+navi-edit-select = 领航员
+playback-reconnecting = 连接已断开
+playback-reconnecting-detail = 正在重连…
+settings-data-folder = 数据文件夹
+settings-data-folder-change = 改变…

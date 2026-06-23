@@ -349,3 +349,12 @@ rescan = 再スキャン
 
 # Game names live in games.ftl (Fluent attribute scheme shared with
 # the legacy app: game-<family>.variant-N, .short, .match-type-X-Y).
+
+# Reconnect / data folder / save-view tabs
+session-stat-lead = リード
+save-tab-navicust = ナビカス
+navi-edit-select = ナビ
+playback-reconnecting = 接続が切れました
+playback-reconnecting-detail = 再接続中…
+settings-data-folder = データフォルダ
+settings-data-folder-change = 変更…

@@ -338,3 +338,12 @@ welcome-step-nickname = Pon tu apodo
 welcome-step-nickname-description = Puedes cambiarlo en cualquier momento en Ajustes.
 welcome-roms-needed = Agrega al menos un ROM para continuar.
 rescan = Reanalizar
+
+# Reconnect / data folder / save-view tabs
+session-stat-lead = Ventaja
+save-tab-navicust = NaviCust
+navi-edit-select = Navi
+playback-reconnecting = Conexión perdida
+playback-reconnecting-detail = Reconectando…
+settings-data-folder = Carpeta de datos
+settings-data-folder-change = Cambiar…
