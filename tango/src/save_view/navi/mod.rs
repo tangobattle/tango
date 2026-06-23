@@ -1,21 +1,16 @@
 use super::*;
 use sweeten::widget::{column, row};
 
-pub(super) fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
-    // Games with a link-navi roster (BN5/BN6/EXE4.5) report the equipped
-    // navi; the rest (BN1–4) have no navi to pick, so the card is just the
-    // player's HP.
+pub(super) fn render_navi<M: 'static>(_lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
+    // Games with a link-navi roster (BN5/BN6/EXE4.5) report the equipped navi;
+    // the rest (BN1–4) have no navi to pick, so the card is empty.
     let navi_id = loaded.save.view_navi().map(|nv| nv.navi());
-    render_navi_card::<M>(lang, loaded, navi_id)
+    render_navi_card::<M>(loaded, navi_id)
 }
 
-/// The navi card: the equipped navi's emblem + name (when the game has
-/// one) above the player navi's max HP.
-fn render_navi_card<M: 'static>(
-    lang: &LanguageIdentifier,
-    loaded: &Loaded,
-    navi_id: Option<usize>,
-) -> Element<'static, M> {
+/// The navi card: the equipped navi's emblem + name, for games with a
+/// link-navi roster (empty for the navi-less games).
+fn render_navi_card<M: 'static>(loaded: &Loaded, navi_id: Option<usize>) -> Element<'static, M> {
     let assets = loaded.assets.as_ref();
 
     // Only the games with a real navi roster (BN5/BN6/EXE4.5) get an emblem +
@@ -88,24 +83,6 @@ fn render_navi_card<M: 'static>(
         card = card.push(plate).push(text(name).size(TEXT_DISPLAY));
     }
 
-    // The max-HP stat — the one piece every game has — as a muted
-    // caption above the value. Prefer the navi's intrinsic HP from the ROM
-    // (some games don't keep a trustworthy copy in the save); fall back to the
-    // save otherwise.
-    let base_max_hp = navi_id
-        .and_then(|id| assets.navi(id))
-        .and_then(|n| n.base_max_hp())
-        .or_else(|| loaded.save.view_navi().map(|nv| nv.base_max_hp()))
-        .unwrap_or(0);
-    card = card.push(
-        column![
-            text(t!(lang, "navi-base-hp")).size(TEXT_CAPTION).style(muted_text_style),
-            text(base_max_hp.to_string()).size(TEXT_DISPLAY),
-        ]
-        .spacing(2)
-        .align_x(Alignment::Center),
-    );
-
     // The pane itself picks up a whisper of the accent, fading
     // back to the standard plate color toward the bottom.
     container(card)
@@ -129,26 +106,18 @@ fn render_navi_card<M: 'static>(
         .into()
 }
 
-/// The Navi tab as text: the equipped navi's name (when the game has a
-/// link-navi roster) and the player navi's max HP.
-pub(crate) fn navi_as_text(lang: &LanguageIdentifier, loaded: &Loaded) -> Option<String> {
-    let mut out = String::new();
+/// The Navi tab as text: the equipped navi's name, for games with a link-navi
+/// roster. `None` for the navi-less games (BN1–4), which have nothing to copy.
+pub(crate) fn navi_as_text(_lang: &LanguageIdentifier, loaded: &Loaded) -> Option<String> {
     let assets = loaded.assets.as_ref();
-    let equipped = loaded.save.view_navi().map(|nv| nv.navi());
-    // Only show a name for a real roster navi (BN5/BN6/EXE4.5); BN1–4 report a
+    // Only a real roster navi (BN5/BN6/EXE4.5) has a name; BN1–4 report a
     // placeholder the ROM has no entry for.
-    if let Some(id) = equipped.filter(|&id| assets.navi(id).is_some()) {
-        let name = assets.navi(id).and_then(|n| n.name()).unwrap_or_else(|| format!("#{id}"));
-        out.push_str(&name);
-        out.push('\n');
-    }
-    let base_max_hp = equipped
-        .and_then(|id| assets.navi(id))
-        .and_then(|n| n.base_max_hp())
-        .or_else(|| loaded.save.view_navi().map(|nv| nv.base_max_hp()))
-        .unwrap_or(0);
-    out.push_str(&format!("{}\t{}\n", t!(lang, "navi-base-hp"), base_max_hp));
-    Some(out)
+    let id = loaded
+        .save
+        .view_navi()
+        .map(|nv| nv.navi())
+        .filter(|&id| assets.navi(id).is_some())?;
+    Some(assets.navi(id).and_then(|n| n.name()).unwrap_or_else(|| format!("#{id}")))
 }
 
 /// The Navi editor: a grid of the game's navis, each on its own
