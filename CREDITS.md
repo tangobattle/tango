@@ -33,5 +33,3 @@
 - #1 fan: [playerzero](https://twitter.com/Playerzero_exe)
 
 And, of course, a huge thank you to [CAPCOM](https://www.capcom.com) for making Mega Man Battle Network!
-
-Tango is licensed under the terms of the [GNU Affero General Public License v3](https://tldrlegal.com/license/gnu-affero-general-public-license-v3-%28agpl-3.0%29). That means you're free to modify the [source code](https://github.com/tangobattle), as long as you contribute your changes back!
