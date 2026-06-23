@@ -1,9 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-# Cleanup.
-function cleanup {
-	rm -rf tango_linux_workdir
+cleanup() {
+    rm -rf tango_linux_workdir
 }
 trap cleanup EXIT
 cleanup

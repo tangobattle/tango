@@ -13,8 +13,8 @@
 ## Translation
 
 - Japanese: [weenie](https://github.com/bigfarts), [Nonstopmop](https://twitter.com/seventhfonist42), [dhenva](https://twitch.tv/dhenva)
-- Mandarin (mainland China): [weenie](https://github.com/bigfarts), [Hikari Calyx](https://twitter.com/Hikari_Calyx)
-- Mandarin (Taiwan): [weenie](https://github.com/bigfarts), [Hikari Calyx](https://twitter.com/Hikari_Calyx)
+- Mandarin (mainland China): [weenie](https://github.com/bigfarts)
+- Mandarin (Taiwan): [weenie](https://github.com/bigfarts)
 - Spanish (Latin America): [Karate_Bugman](https://twitter.com/Karate_Bugman)
 - Portuguese (Brazil): [Darkgaia](https://ayo.so/darkgaiagames), [mushiguchi](https://twitter.com/mushiguchi)
 - French (France): [Sheriel Phoenix](https://twitter.com/Sheriel_Phoenix), [Justplay](https://twitter.com/justplayfly)
