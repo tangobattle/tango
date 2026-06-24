@@ -6,7 +6,7 @@ license = "LGPL-3.0-or-later"
 
 [dependencies]
 bitvec = "1"
-bytemuck = { version = "1", features = ["derive"] }
+bytemuck = { version = "1", features = ["derive", "const_zeroed"] }
 byteorder = "1"
 c2rust-bitfields = "0.22"
 image = { version = "0.25", default-features = false }
