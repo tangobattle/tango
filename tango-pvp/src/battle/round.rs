@@ -12,7 +12,16 @@ use super::EXPECTED_FPS;
 /// against — anything queueing inputs upstream of the engine (e.g. the host's
 /// send pump) can hold a bit more than this and rely on the engine's bail
 /// firing first.
-pub const MAX_QUEUE_LENGTH: usize = 5 * 60; // ~5 seconds
+///
+/// This is the rollback horizon, not a liveness timeout — the session layer's
+/// silence watchdog detects a dead link far sooner (~1.5 s) and pauses the sim,
+/// so on a real drop this bail is only a backstop. The floor is set by that
+/// pause: a stalled link keeps the local queue growing one tick per displayed
+/// frame (the throttler caps slowdown, so the sim never fully stalls) until the
+/// watchdog freezes it ~1.8 s in, ≈110 frames, plus the lead already standing
+/// when the link died. Stay comfortably above that or the bail fires before the
+/// watchdog can pause-and-reconnect — the failure the watchdog exists to avoid.
+pub const MAX_QUEUE_LENGTH: usize = 4 * 60; // ~4 seconds
 
 /// One round of live PvP. A thin shell around the generic
 /// [`getgud::Session`]: it owns the rollback state machine plus the
