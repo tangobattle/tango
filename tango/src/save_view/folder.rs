@@ -1079,11 +1079,16 @@ pub(crate) fn as_text(loaded: &Loaded, opts: RenderOpts) -> Option<String> {
                 .and_then(|info| info.name())
                 .unwrap_or_else(|| "???".to_string());
             out.push_str(&format!("{}\t{name}\t{}", g.count, c.code));
+            let mut suffix = vec![];
             if g.is_regular {
-                out.push_str("\t[REG]");
+                suffix.push("[REG]");
             }
             for _ in 0..(g.has_tag1 as usize + g.has_tag2 as usize) {
-                out.push_str("\t[TAG]");
+                suffix.push("[TAG]");
+            }
+            if !suffix.is_empty() {
+                out.push('\t');
+                out.push_str(&suffix.join(""));
             }
             out.push('\n');
         }
@@ -1098,13 +1103,18 @@ pub(crate) fn as_text(loaded: &Loaded, opts: RenderOpts) -> Option<String> {
                 .and_then(|info| info.name())
                 .unwrap_or_else(|| "???".to_string());
             out.push_str(&format!("{name}\t{}", c.code));
+            let mut suffix = vec![];
             if regular_idx == Some(i) {
-                out.push_str("\t[REG]");
+                suffix.push("[REG]");
             }
             if let Some(ti) = tag_idxs {
                 if ti.contains(&i) {
-                    out.push_str("\t[TAG]");
+                    suffix.push("[TAG]");
                 }
+            }
+            if !suffix.is_empty() {
+                out.push('\t');
+                out.push_str(&suffix.join(""));
             }
             out.push('\n');
         }
