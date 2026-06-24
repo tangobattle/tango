@@ -60,6 +60,7 @@ pub trait Chip {
 
 pub struct PatchCard56Effect {
     pub id: usize,
+    pub kind: PatchCard56EffectKind,
     pub name: Option<String>,
     pub parameter: u8,
     pub is_ability: bool,
@@ -70,6 +71,79 @@ pub trait PatchCard56 {
     fn name(&self) -> Option<String>;
     fn mb(&self) -> u8;
     fn effects(&self) -> Vec<PatchCard56Effect>;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PatchCard56EffectKind {
+    /// Max HP `+parameter×10`.
+    MaxHpPlus,
+    /// Max HP `+parameter%`.
+    MaxHpPlusPercent,
+    /// Max HP `-parameter×10`.
+    MaxHpMinus,
+    /// Max HP `-parameter%`.
+    MaxHpMinusPercent,
+    /// Set element to Normal.
+    NormalBody,
+    /// Set element to Fire.
+    FireBody,
+    /// Set element to Aqua.
+    AquaBody,
+    /// Set element to Elec.
+    ElecBody,
+    /// Set element to Wood.
+    WoodBody,
+    /// MegaBuster Attack `+parameter`.
+    AttackPlus,
+    /// MegaBuster Attack `-parameter`.
+    AttackMinus,
+    /// MegaBuster Attack `×parameter`.
+    AttackTimes,
+    /// Buster rapid (speed) `+parameter`.
+    SpeedPlus,
+    /// Buster rapid (speed) `-parameter`.
+    SpeedMinus,
+    /// Buster charge `+parameter`.
+    ChargePlus,
+    /// Buster charge `-parameter`.
+    ChargeMinus,
+    /// Custom screen `+parameter` chips.
+    CustomPlus,
+    /// Custom screen `-parameter` chips.
+    CustomMinus,
+    /// Mega-chip folder limit `+parameter`.
+    MegaFolderPlus,
+    /// Mega-chip folder limit `-parameter`.
+    MegaFolderMinus,
+    /// Giga-chip folder limit `+parameter`.
+    GigaFolderPlus,
+    /// Giga-chip folder limit `-parameter`.
+    GigaFolderMinus,
+    /// DoubleSoul duration `+parameter` turns (BN5 only).
+    SoulTimePlus,
+    /// DoubleSoul duration `-parameter` turns (BN5 only).
+    SoulTimeMinus,
+    /// Can't be pushed back.
+    SuperArmor,
+    /// Immune to status ailments.
+    StatusGuard,
+    /// Immune to panel-type effects.
+    FloatShoes,
+    /// Can move over holes.
+    AirShoes,
+    /// Survive a lethal hit on 1 HP.
+    UnderShirt,
+    /// The MegaBuster fires three shots at once.
+    TripleBuster,
+    /// The B-button tap is overridden to a fixed chip or guard. The specific
+    /// chip is given by the effect's ROM name.
+    BButtonChip,
+    /// The MegaBuster's shots gain an added effect. The specific modifier is
+    /// given by the effect's ROM name.
+    BusterModifier,
+    /// The charged B-button shot is overridden to a fixed chip. The specific
+    /// chip is given by the effect's ROM name.
+    BChargeChip,
 }
 
 /// A BN4 patch-card (modcard) effect, reverse-engineered from the game's
