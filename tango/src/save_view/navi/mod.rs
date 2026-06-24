@@ -117,12 +117,12 @@ pub(super) fn render_navi_strip<'a>(
     edit: Option<Action>,
     actions: Element<'a, Action>,
 ) -> Element<'a, Action> {
-    // The pane pads the button (and actions) off its edges with a uniform `6`;
-    // the card carries the rest of the inset (`[4, 10]`) so the content still
-    // lines up at 16px horizontal / 10px vertical, but most of it lives inside
-    // the change-navi button (its hover-highlight area). Both card modes pad
-    // identically so toggling edit doesn't nudge it: flat press target in edit
-    // mode (with a pencil cue), plain container otherwise.
+    // The pane pads its content off the edges with a uniform `6`; the card
+    // carries the rest of the left inset (`[4, 10]`, so the content sits at 16px
+    // horizontal / 10px vertical, with that room inside the change-navi button's
+    // hover-highlight area). Both card modes pad identically so toggling edit
+    // doesn't nudge it: flat press target in edit mode (with a pencil cue), plain
+    // container otherwise.
     let card: Element<'a, Action> = match edit {
         Some(action) => button(navi_card_content::<Action>(lang, loaded, true))
             .padding([4.0, 10.0])
@@ -133,9 +133,17 @@ pub(super) fn render_navi_strip<'a>(
             .padding([4.0, 10.0])
             .into(),
     };
+    // Right-align the actions with the tab strip's action buttons: that strip
+    // insets its content 8px (`tab_row`'s `[4, 8]`) and this pane insets 6, so
+    // the actions take the remaining 2px on the right to share the margin.
+    let actions = container(actions).padding(iced::Padding {
+        top: 0.0,
+        right: 2.0,
+        bottom: 0.0,
+        left: 0.0,
+    });
     container(
         row![card, Space::new().width(Fill), actions]
-            .spacing(8)
             .align_y(Alignment::Center)
             .width(Fill),
     )
