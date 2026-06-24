@@ -333,6 +333,12 @@ pub struct State {
     /// is keyed on the mode (not the sub-tab), they stay planted
     /// while the user flips between editor tabs.
     pub edit_anim: crate::anim::Transition,
+    /// Show/hide transition for the navi picker over the [tab strip + body]
+    /// region. Driven in lockstep with `active_tab == Some(Tab::Navi)` as the
+    /// change-navi card toggles it; the incoming side (the picker on open, the
+    /// tab strip + body on dismiss) slides up into place — a plain vertical
+    /// slide, matching every other screen/tab transition (no fade).
+    pub navi_select: crate::anim::Transition,
     /// Horizontal scroll offset of the sub-tab strip (relative, 0..=1). Tracked
     /// so the strip's edge fades only appear on the side that has hidden tabs.
     tab_scroll: f32,
@@ -414,6 +420,7 @@ impl State {
             enter_from: iced::Vector::new(24.0, 0.0),
             prev_tab: None,
             edit_anim: crate::anim::Transition::swap(false),
+            navi_select: crate::anim::Transition::new(false),
             tab_scroll: 0.0,
         }
     }
@@ -531,6 +538,9 @@ impl State {
                     self.prev_tab = self.active_tab;
                     self.active_tab = Some(*t);
                     self.enter.start(iced::time::Instant::now());
+                    // Picking a real tab is never the navi picker; keep the swap
+                    // in lockstep with `active_tab`.
+                    self.navi_select.set(false, iced::time::Instant::now());
                 }
                 // Reset the body scroll and the sub-tab strip scroll to the
                 // start, and clear the strip's fade mirror to match. The strip's
@@ -575,6 +585,9 @@ impl State {
                 self.enter_from = iced::Vector::new(0.0, 20.0);
                 self.enter.start(now);
                 self.edit_anim.set(false, now);
+                // Leaving edit mode closes the navi picker too (the whole edit
+                // session is ending, so this snaps rather than swaps).
+                self.navi_select.set(false, now);
                 iced::Task::none()
             }
             Action::LibraryFilterChanged(s) => {
@@ -689,30 +702,31 @@ impl State {
                 self.auto_battle_data_sort = *s;
                 iced::Task::none()
             }
-            // Point the body at the navi picker (rising it in like an edit-mode
-            // swap). The host separately opens the edit session — it needs
-            // `&Loaded` to seed tag state, same as `EnterEdit`. Guard against a
-            // re-click while the picker is already open: `prev_tab` must keep
-            // pointing at the real tab to return to once a navi is picked.
+            // Toggle the navi picker. Opening points the body at it (the picker
+            // slides up while the tab content drops); clicking the card again
+            // while it's open closes it, dropping back to the tab the user came
+            // from. The host opens the edit session on the way in — it needs
+            // `&Loaded` to seed tag state, same as `EnterEdit`.
             Action::EnterEditNavi => {
-                if self.active_tab != Some(Tab::Navi) {
+                let now = iced::time::Instant::now();
+                if self.active_tab == Some(Tab::Navi) {
+                    self.active_tab = self.prev_tab;
+                    self.navi_select.set(false, now);
+                } else {
                     self.prev_tab = self.active_tab;
                     self.active_tab = Some(Tab::Navi);
-                    let now = iced::time::Instant::now();
-                    self.enter_from = iced::Vector::new(0.0, 20.0);
-                    self.enter.start(now);
+                    self.navi_select.set(true, now);
                 }
                 iced::Task::none()
             }
             // Picking a navi closes the picker: drop back to the tab the user
-            // was on when they opened it (still inside the edit session). The
+            // was on when they opened it (still inside the edit session), the
+            // picker dropping away while the tab strip + body rise back in. The
             // host stages the chosen navi via its own Effect.
             Action::SetNavi(_) => {
                 if self.active_tab == Some(Tab::Navi) {
                     self.active_tab = self.prev_tab;
-                    let now = iced::time::Instant::now();
-                    self.enter_from = iced::Vector::new(0.0, 20.0);
-                    self.enter.start(now);
+                    self.navi_select.set(false, iced::time::Instant::now());
                 }
                 iced::Task::none()
             }
@@ -1154,62 +1168,83 @@ pub fn view<'a>(
 
     let tab_pane = container(tab_row.padding([4, 8])).width(Fill).style(widgets::pane);
 
-    // The navi picker is reached via the header's change-navi button, which parks
-    // `active_tab` on the tab-less `Tab::Navi`; the equipped navi stays visible in
-    // the header above while choosing. While picking, the tab strip is hidden —
-    // there's nothing to navigate to, and picking a navi (or Save / Cancel)
-    // returns the user to the section tabs.
-    let selecting_navi = navi_editing && state.active_tab == Some(Tab::Navi);
+    // The navi picker shows over the [tab strip + body] region, reached via the
+    // header's change-navi card (which parks `active_tab` on the tab-less
+    // `Tab::Navi`). `navi_select` tracks it while the navi is editable; the
+    // incoming side slides up into place on open/dismiss — a plain vertical
+    // slide like every tab/screen transition. The equipped navi stays visible in
+    // the header above throughout.
+    let show_picker = navi_editing && state.navi_select.shown();
+    let navi_sliding = navi_editing && state.navi_select.is_animating(now);
 
-    // Pick the body. The navi picker, the in-place editors and the Cover logo
-    // banner each claim the full available height; the read-only section views
-    // hug their content inside a shrink-height scrollable so a short tab doesn't
-    // stretch. `fill` carries that distinction to the column below.
-    let (body, fill): (Element<'a, Action>, bool) = if selecting_navi {
+    // The region below the header. The navi picker, the in-place editors and the
+    // Cover logo banner each claim the full available height; the read-only
+    // section views hug their content inside a shrink-height scrollable so a
+    // short tab doesn't stretch. `fill` carries that distinction to the column.
+    let (region, mut fill): (Element<'a, Action>, bool) = if show_picker {
         (navi::render_navi_edit(lang, loaded), true)
-    } else if folder_editing && active == Tab::Folder {
-        // The folder editor lays out two side-by-side panes, each with its own
-        // scrollbar, and wants the full height — so it bypasses the read-only
-        // views' shared shrink-height body scrollable.
-        (folder::render_folder_edit(lang, loaded, state), true)
-    } else if navicust_editing && active == Tab::Navicust {
-        (navicust::render_navicust_edit(lang, loaded, state), true)
-    } else if patch_cards_editing && active == Tab::PatchCards {
-        (patch_cards::render_patch_cards_edit(lang, loaded, state), true)
-    } else if auto_battle_data_editing && active == Tab::AutoBattleData {
-        (abd::render_auto_battle_data_edit(lang, loaded, state), true)
-    } else if active == Tab::Cover {
-        // The Cover tab is a single full-height pane (logo banner).
-        (cover::render_cover::<Action>(lang, loaded), true)
     } else {
-        let opts = RenderOpts {
-            folder_grouped: state.folder_grouped,
+        let (body, body_fill): (Element<'a, Action>, bool) = if folder_editing && active == Tab::Folder {
+            // The folder editor lays out two side-by-side panes, each with its
+            // own scrollbar, and wants the full height — so it bypasses the
+            // read-only views' shared shrink-height body scrollable.
+            (folder::render_folder_edit(lang, loaded, state), true)
+        } else if navicust_editing && active == Tab::Navicust {
+            (navicust::render_navicust_edit(lang, loaded, state), true)
+        } else if patch_cards_editing && active == Tab::PatchCards {
+            (patch_cards::render_patch_cards_edit(lang, loaded, state), true)
+        } else if auto_battle_data_editing && active == Tab::AutoBattleData {
+            (abd::render_auto_battle_data_edit(lang, loaded, state), true)
+        } else if active == Tab::Cover {
+            // The Cover tab is a single full-height pane (logo banner).
+            (cover::render_cover::<Action>(lang, loaded), true)
+        } else {
+            let opts = RenderOpts {
+                folder_grouped: state.folder_grouped,
+            };
+            let body = render::<Action>(lang, active, loaded, opts);
+            // Each render_* returns one-or-more pane-styled containers stacked
+            // into an Element. We wrap that whole group in a shrink-height
+            // scrollable so when its panes don't fill the available space the
+            // column hugs them, and when they do the user can scroll past the
+            // visible window. The per-instance id is what [`State::apply`] snaps
+            // to the top on tab changes.
+            let body_scrollable = scrollable(body)
+                .id(state.body_scroll_id.clone())
+                .style(crate::widgets::chunky_scrollable)
+                .width(Fill);
+            (body_scrollable.into(), false)
         };
-        let body = render::<Action>(lang, active, loaded, opts);
-        // Each render_* returns one-or-more pane-styled containers stacked into
-        // an Element. We wrap that whole group in a shrink-height scrollable so
-        // when its panes don't fill the available space the column hugs them,
-        // and when they do the user can scroll past the visible window. The
-        // per-instance id is what [`State::apply`] snaps to the top on tab
-        // changes.
-        let body_scrollable = scrollable(body)
-            .id(state.body_scroll_id.clone())
-            .style(crate::widgets::chunky_scrollable)
-            .width(Fill);
-        (body_scrollable.into(), false)
+        // The whole region (tab strip + body) slides as one while the picker
+        // animates; the tab-switch slide is suppressed then (the navi slide owns
+        // the motion), and the tab strip rides along instead of popping.
+        let body = if navi_sliding { body } else { entered(body) };
+        let mut tab_col = column![tab_pane, body].spacing(style::PANE_GAP).width(Fill);
+        if body_fill {
+            tab_col = tab_col.height(Fill);
+        }
+        (tab_col.into(), body_fill)
     };
 
-    // Assemble: persistent navi header (if any), then the tab strip (hidden
-    // while picking a navi), then the animated body. Only the body slides on a
-    // tab/edit change — the header and tab pane are fixtures.
+    // Slide the incoming side up into place. While sliding, keep the region
+    // full-height so it doesn't change the column's height mid-motion.
+    let region = if navi_sliding {
+        fill = true;
+        let progress = state.navi_select.progress(now);
+        // Entrance progress of the side actually on screen (the target): the
+        // picker on open, the tab content on dismiss.
+        let entrance = if state.navi_select.shown() { progress } else { 1.0 - progress };
+        crate::anim::slide_in(region, entrance, iced::Vector::new(0.0, 20.0))
+    } else {
+        region
+    };
+
+    // Assemble: persistent navi header (if any), then the body region.
     let mut col = column![].spacing(style::PANE_GAP).width(Fill);
     if let Some(strip) = navi_strip {
         col = col.push(strip);
     }
-    if !selecting_navi {
-        col = col.push(tab_pane);
-    }
-    col = col.push(entered(body));
+    col = col.push(region);
     if fill {
         col = col.height(Fill);
     }
