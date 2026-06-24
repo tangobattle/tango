@@ -2,7 +2,7 @@
 name = "tango"
 version = "5.0.39"
 edition = "2021"
-license = "LGPL-3.0-or-later"
+license = "MPL-2.0"
 publish = false
 build = "build.rs"
 
