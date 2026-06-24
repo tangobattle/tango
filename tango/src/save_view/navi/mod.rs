@@ -1,16 +1,26 @@
 use super::*;
 use sweeten::widget::{column, row};
 
-pub(super) fn render_navi<M: 'static>(_lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
-    // Games with a link-navi roster (BN5/BN6/EXE4.5) report the equipped navi;
-    // the rest (BN1–4) have no navi to pick, so the card is empty.
-    let navi_id = loaded.save.view_navi().map(|nv| nv.navi());
-    render_navi_card::<M>(loaded, navi_id)
+pub(super) fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
+    let assets = loaded.assets.as_ref();
+    // Every game has a player navi with a base max HP. Games with a link-navi
+    // roster (BN5/BN6/EXE4.5) also report which navi is equipped (id + emblem +
+    // name); the rest (BN1–4) have no navi to pick, so the card is just the HP.
+    let navi = loaded.save.view_navi();
+    let navi_id = navi.as_ref().map(|nv| nv.navi());
+    let base_max_hp = navi.as_ref().map(|nv| nv.base_max_hp(assets));
+    render_navi_card::<M>(lang, loaded, navi_id, base_max_hp)
 }
 
-/// The navi card: the equipped navi's emblem + name, for games with a
-/// link-navi roster (empty for the navi-less games).
-fn render_navi_card<M: 'static>(loaded: &Loaded, navi_id: Option<usize>) -> Element<'static, M> {
+/// The navi card: the equipped navi's emblem + name (for games with a
+/// link-navi roster) over its base max HP. The navi-less games (BN1–4) drop
+/// the emblem/name and the card is just the HP stat.
+fn render_navi_card<M: 'static>(
+    lang: &LanguageIdentifier,
+    loaded: &Loaded,
+    navi_id: Option<usize>,
+    base_max_hp: Option<u16>,
+) -> Element<'static, M> {
     let assets = loaded.assets.as_ref();
 
     // Only the games with a real navi roster (BN5/BN6/EXE4.5) get an emblem +
@@ -83,6 +93,12 @@ fn render_navi_card<M: 'static>(loaded: &Loaded, navi_id: Option<usize>) -> Elem
         card = card.push(plate).push(text(name).size(TEXT_DISPLAY));
     }
 
+    // Every game's navi has a base max HP — the card's centerpiece for the
+    // roster-less games, a stat beneath the name for the rest.
+    if let Some(hp) = base_max_hp {
+        card = card.push(hp_stat::<M>(lang, hp));
+    }
+
     // The pane itself picks up a whisper of the accent, fading
     // back to the standard plate color toward the bottom.
     container(card)
@@ -106,18 +122,42 @@ fn render_navi_card<M: 'static>(loaded: &Loaded, navi_id: Option<usize>) -> Elem
         .into()
 }
 
-/// The Navi tab as text: the equipped navi's name, for games with a link-navi
-/// roster. `None` for the navi-less games (BN1–4), which have nothing to copy.
-pub(crate) fn navi_as_text(_lang: &LanguageIdentifier, loaded: &Loaded) -> Option<String> {
+/// The navi's base max HP as a centered stat block: a muted "Base Max HP"
+/// caption over the value. The card's centerpiece for the roster-less games
+/// (BN1–4), a secondary stat beneath the name for the rest.
+fn hp_stat<M: 'static>(lang: &LanguageIdentifier, hp: u16) -> Element<'static, M> {
+    column![
+        text(t!(lang, "navi-base-hp"))
+            .size(TEXT_CAPTION)
+            .style(muted_text_style),
+        text(format!("{hp}")).size(TEXT_DISPLAY),
+    ]
+    .spacing(2)
+    .align_x(Alignment::Center)
+    .into()
+}
+
+/// The Navi tab as text: the equipped navi's name (for games with a link-navi
+/// roster) and its base max HP. Every game has a navi with HP, so this always
+/// returns something.
+pub(crate) fn navi_as_text(lang: &LanguageIdentifier, loaded: &Loaded) -> Option<String> {
     let assets = loaded.assets.as_ref();
+    let navi = loaded.save.view_navi()?;
+    let mut out = String::new();
     // Only a real roster navi (BN5/BN6/EXE4.5) has a name; BN1–4 report a
-    // placeholder the ROM has no entry for.
-    let id = loaded
-        .save
-        .view_navi()
-        .map(|nv| nv.navi())
-        .filter(|&id| assets.navi(id).is_some())?;
-    Some(assets.navi(id).and_then(|n| n.name()).unwrap_or_else(|| format!("#{id}")))
+    // placeholder the ROM has no entry for, so they lead straight with the HP.
+    if assets.navi(navi.navi()).is_some() {
+        let name = assets
+            .navi(navi.navi())
+            .and_then(|n| n.name())
+            .unwrap_or_else(|| format!("#{}", navi.navi()));
+        out.push_str(&name);
+        out.push('\n');
+    }
+    out.push_str(&t!(lang, "navi-base-hp"));
+    out.push('\t');
+    out.push_str(&navi.base_max_hp(assets).to_string());
+    Some(out)
 }
 
 /// The Navi editor: a grid of the game's navis, each on its own

@@ -148,6 +148,7 @@ folder-sort-mb = MB
 # Navi pane
 navi-id = Navi ID
 navi-link-navi = Link Navi
+navi-base-hp = Base Max HP
 navi-edit-select = Navi
 navi-style-unset = (no style)
 navicust-grid-size = Grid: { $cols } × { $rows }
