@@ -1128,8 +1128,11 @@ pub fn view<'a>(
             .into();
     }
     if navi_editing && active == Tab::Navi {
+        // Keep the navi stats card visible above the picker so the equipped
+        // navi's emblem/name/HP stay in view while choosing a new one.
+        let stats = navi::render_navi::<Action>(lang, loaded);
         let editor = navi::render_navi_edit(lang, loaded);
-        return column![tab_pane, entered(editor)]
+        return column![tab_pane, stats, entered(editor)]
             .spacing(style::PANE_GAP)
             .width(Fill)
             .height(Fill)

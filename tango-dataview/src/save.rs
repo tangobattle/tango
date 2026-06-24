@@ -310,6 +310,30 @@ pub trait NaviView<'a> {
     /// NaviCust and Mod-Code HP bonuses. For the games without a link-navi
     /// roster (BN1–4) this is the player navi's HP.
     fn base_max_hp(&self, assets: &dyn crate::rom::Assets) -> u16;
+
+    /// The navi's live MegaBuster levels and B-button power attack, or `None`
+    /// for games that don't expose them. See [`NaviBusterStats`].
+    fn buster_stats(&self, _assets: &dyn crate::rom::Assets) -> Option<NaviBusterStats> {
+        None
+    }
+}
+
+/// A navi's MegaBuster loadout, as the game's MegaBuster status screen shows it.
+///
+/// `attack`/`speed`/`charge` are the displayed levels (1–5). For the player's
+/// own navi they fold in NaviCust programs and Patch Cards; a link navi reports
+/// the fixed levels from its stats block.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NaviBusterStats {
+    /// MegaBuster Attack level (1–5).
+    pub attack: u8,
+    /// MegaBuster Rapid/Speed level (1–5).
+    pub speed: u8,
+    /// MegaBuster Charge level (1–5).
+    pub charge: u8,
+    /// B-button power attack: the charged-shot attack id, or 0 for the plain
+    /// MegaBuster charge shot. Link navis carry a signature attack here.
+    pub b_power_attack: u8,
 }
 
 pub trait NaviViewMut<'a> {

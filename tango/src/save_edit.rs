@@ -335,6 +335,14 @@ pub fn apply_navi_edit(loaded: &mut selection::Loaded, edit: tabs::play::NaviEdi
             }
         }
     }
+    // Switching the equipped navi flips whether an editable navicust exists: a
+    // link navi has none, the player's own navi does. Both the editability
+    // probe and the baked read-only grid image are cached on `Loaded` (the
+    // per-frame view only holds `&Loaded`), so refresh them here — otherwise
+    // they stay stale until the save is reselected, leaving the NaviCust editor
+    // disabled (or showing the wrong grid) after a navi swap.
+    loaded.navicust_editable = loaded.save.view_navicust_mut().is_some();
+    loaded.rebuild_navicust_render();
 }
 
 /// Apply one staged [`tabs::play::PatchCard56Edit`] to a loaded save's
