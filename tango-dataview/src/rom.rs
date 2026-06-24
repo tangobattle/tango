@@ -2,7 +2,7 @@ use byteorder::ReadBytesExt;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExCodeEffect {
-    MaxHP(u16),
+    MaxHp(u16),
     SuperArmor,
     BreakBuster,
     BreakCharge,
@@ -81,8 +81,8 @@ pub trait PatchCard56 {
 pub enum PatchCard4Effect {
     /// No in-battle effect — the cosmetic PET-menu recolor cards.
     None,
-    /// Max HP increased by this many points (direct `maxHP += N`).
-    MaxHP(u16),
+    /// Max HP increased by this many points (direct `MaxHp += N`).
+    MaxHp(u16),
     /// Buster attack power set to this level (`set_effect 0x05`).
     BusterAttack(u8),
     /// B Button shortcut / normal-shot modifier (`set_effect 0x09`).
@@ -236,7 +236,7 @@ pub enum PatchCard4Bug {
     /// MegaMan auto-moves forward (`set_bug 0x01, 2`).
     AutoMove,
     /// HP drains during the battle (`set_bug 0x02, n`) — `n` is the severity.
-    HP(u8),
+    Hp(u8),
     /// Custom gauge HP bug (`set_bug 0x03, 1`).
     CustomHP,
     /// Custom gauge −1 (`set_bug 0x03, 2`).
