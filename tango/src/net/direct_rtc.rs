@@ -102,11 +102,25 @@ fn open_channels(mut pc: PeerConnection) -> Channels {
     }
 }
 
+/// Drain (and log) a peer connection's state changes for its lifetime. The
+/// event stream is otherwise unused on the direct path, so without this a
+/// drop's cause (ICE/SCTP tearing the link down) is invisible. The task ends
+/// when the connection is dropped (the event sender goes away).
+fn spawn_state_logger(mut events: tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>) {
+    tokio::spawn(async move {
+        while let Some(ev) = events.recv().await {
+            if let datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(state) = ev {
+                log::info!("pvp peer connection state: {state:?}");
+            }
+        }
+    });
+}
+
 /// Host side: pin the UDP `port`, offer with fixed ICE creds, and accept
 /// the dialer reflexively. Returns once the descriptions are set; the
 /// channels open asynchronously and the first `send` blocks until they do.
 pub async fn host(port: u16) -> std::io::Result<Channels> {
-    let (pc, _events) = PeerConnection::new(RtcConfig {
+    let (pc, events) = PeerConnection::new(RtcConfig {
         disable_fingerprint_verification: true,
         // We drive setLocalDescription ourselves (with pinned ICE creds);
         // an auto offer would race ahead with random creds.
@@ -116,6 +130,7 @@ pub async fn host(port: u16) -> std::io::Result<Channels> {
         port_range: Some((port, port)),
         ..Default::default()
     })?;
+    spawn_state_logger(events);
 
     let mut channels = open_channels(pc);
 
@@ -145,7 +160,7 @@ pub async fn connect(addr: &str) -> std::io::Result<Channels> {
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "could not resolve address"))?;
     let candidate = host_candidate(&sock);
 
-    let (pc, _events) = PeerConnection::new(RtcConfig {
+    let (pc, events) = PeerConnection::new(RtcConfig {
         disable_fingerprint_verification: true,
         // We drive setLocalDescription ourselves (with pinned ICE creds);
         // an auto offer would race ahead with random creds and make us an
@@ -153,6 +168,7 @@ pub async fn connect(addr: &str) -> std::io::Result<Channels> {
         disable_auto_negotiation: true,
         ..Default::default()
     })?;
+    spawn_state_logger(events);
 
     let mut channels = open_channels(pc);
 

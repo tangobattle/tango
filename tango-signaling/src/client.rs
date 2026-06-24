@@ -729,6 +729,19 @@ pub async fn connect(
         let _ = signaling_stream.close(None).await;
         outcome?;
 
+        // The peer connection's event stream is otherwise dropped once we return,
+        // so a mid-match state change (the cause of a drop) would be invisible.
+        // Keep draining it on a detached task that logs connection-state changes
+        // for the life of the connection; it ends when the connection is dropped
+        // (the event sender goes away).
+        tokio::spawn(async move {
+            while let Some(ev) = event_rx.recv().await {
+                if let datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(state) = ev {
+                    log::info!("pvp peer connection state: {state:?}");
+                }
+            }
+        });
+
         Ok(Connected {
             channels: dcs,
             peer_conn,
