@@ -15,9 +15,9 @@ pub(super) fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded
 
 /// The navi card. For games with a link-navi roster (BN5/BN6/EXE4.5): the
 /// equipped navi's emblem + name on the left, its stats on the right — base max
-/// HP and, where the game exposes them (BN6), the live MegaBuster levels and
-/// B-button power attack. The navi-less games (BN1–4) drop the emblem/name and
-/// the card is just the centered HP stat.
+/// HP and, where the game exposes them (BN6), the live MegaBuster levels. A flat
+/// band that fills the pane width. The navi-less games (BN1–4) drop the
+/// emblem/name and the card is just the centered HP stat.
 fn render_navi_card<M: 'static>(
     lang: &LanguageIdentifier,
     loaded: &Loaded,
@@ -28,15 +28,9 @@ fn render_navi_card<M: 'static>(
     let assets = loaded.assets.as_ref();
 
     // Only the games with a real navi roster (BN5/BN6/EXE4.5) get an emblem +
-    // name plate. BN1–4 report a placeholder navi the ROM has no entry for, so
-    // their card is just the HP.
+    // name. BN1–4 report a placeholder navi the ROM has no entry for, so their
+    // card is just the HP.
     let roster_navi = navi_id.filter(|&id| assets.navi(id).is_some());
-
-    // Plate/glow tint: the equipped emblem's own signature color, with a
-    // neutral slate fallback (also used by the navi-less games).
-    let accent = roster_navi
-        .and_then(|id| loaded.navi_accents.get(&id).copied())
-        .unwrap_or(iced::Color::from_rgb8(0x6b, 0x7a, 0x99));
 
     let content: Element<'static, M> = if let Some(navi_id) = roster_navi {
         let name = assets
@@ -44,8 +38,8 @@ fn render_navi_card<M: 'static>(
             .and_then(|n| n.name())
             .unwrap_or_else(|| format!("Navi #{navi_id}"));
 
-        // Emblem at an integer multiple of its 15px crop so the
-        // nearest-neighbor upscale lands on even pixels.
+        // Flat emblem (no plate/glow), sized to an integer multiple of its 15px
+        // crop so the nearest-neighbor upscale lands on even pixels.
         let emblem: Element<'static, M> = loaded
             .navi_emblems
             .get(&navi_id)
@@ -65,60 +59,34 @@ fn render_navi_card<M: 'static>(
                     .into()
             });
 
-        // Circular plate behind the emblem: accent-tinted fill, a
-        // ring a shade brighter, and an accent glow lifting it off
-        // the pane.
-        let plate: Element<'static, M> = container(emblem)
-            .width(Length::Fixed(96.0))
-            .height(Length::Fixed(96.0))
-            .align_x(Alignment::Center)
-            .align_y(Alignment::Center)
-            .style(move |theme: &iced::Theme| {
-                let bg = theme.palette().background;
-                container::Style {
-                    background: Some(iced::Background::Color(crate::widgets::mix(bg, accent, 0.22))),
-                    border: iced::Border {
-                        radius: 48.0.into(),
-                        width: 2.0,
-                        color: iced::Color { a: 0.8, ..accent },
-                    },
-                    shadow: iced::Shadow {
-                        color: iced::Color { a: 0.45, ..accent },
-                        offset: iced::Vector::new(0.0, 0.0),
-                        blur_radius: 18.0,
-                    },
-                    ..Default::default()
-                }
-            })
-            .into();
+        let title = row![emblem, text(name).size(style::TEXT_TITLE)]
+            .spacing(10)
+            .align_y(Alignment::Center);
 
-        let left = column![plate, text(name).size(style::TEXT_TITLE)]
-            .spacing(8)
-            .align_x(Alignment::Center)
-            .width(Length::Fixed(118.0));
-
-        // Right-hand stat sheet: base max HP up top, then the MegaBuster block.
-        let mut stats = column![].spacing(5).width(Fill);
+        // Stat sheet: base max HP, then the MegaBuster levels on one compact
+        // row. Each value sits flush against its label.
+        let mut stats = column![].spacing(6);
         if let Some(hp) = base_max_hp {
-            stats = stats.push(stat_row::<M>(t!(lang, "navi-base-hp"), format!("{hp}")));
+            stats = stats.push(stat_inline::<M>(t!(lang, "navi-base-hp"), hp.to_string()));
         }
         if let Some(b) = buster {
             stats = stats.push(
-                text(t!(lang, "navi-megabuster"))
-                    .size(TEXT_CAPTION)
-                    .style(muted_text_style),
+                row![
+                    text(t!(lang, "navi-buster")).size(TEXT_CAPTION).style(muted_text_style),
+                    stat_inline::<M>(t!(lang, "navi-buster-attack"), b.attack.to_string()),
+                    stat_inline::<M>(t!(lang, "navi-buster-rapid"), b.speed.to_string()),
+                    stat_inline::<M>(t!(lang, "navi-buster-charge"), b.charge.to_string()),
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center),
             );
-            stats = stats.push(stat_row::<M>(t!(lang, "navi-buster-attack"), b.attack.to_string()));
-            stats = stats.push(stat_row::<M>(t!(lang, "navi-buster-rapid"), b.speed.to_string()));
-            stats = stats.push(stat_row::<M>(t!(lang, "navi-buster-charge"), b.charge.to_string()));
-            // (B power attack omitted for now — b_pwr_atk is an opaque charge-
-            // attack id with no player-facing name table.)
         }
 
-        row![left, stats]
-            .spacing(18)
+        // Emblem + name on the left, stats pushed to the right; fills the pane.
+        row![title, Space::new().width(Fill), stats]
+            .spacing(16)
             .align_y(Alignment::Center)
-            .width(Length::Fixed(320.0))
+            .width(Fill)
             .into()
     } else {
         // Roster-less games (BN1–4): just the base max HP, centered.
@@ -129,46 +97,29 @@ fn render_navi_card<M: 'static>(
         card.into()
     };
 
-    // The pane itself picks up a whisper of the accent, fading
-    // back to the standard plate color toward the bottom.
     container(content)
         .width(Fill)
         .align_x(Alignment::Center)
-        .padding([14.0, crate::style::PANE_PADDING])
-        .style(move |theme: &iced::Theme| {
-            let mut s = crate::widgets::pane(theme);
-            if let Some(iced::Background::Color(plate_color)) = s.background {
-                // Stop 0 sits at the bottom for a 0-radian linear
-                // gradient, so the accent goes on stop 1 — the
-                // tint halos the plate at the top of the card.
-                s.background = Some(iced::Background::Gradient(iced::Gradient::Linear(
-                    iced::gradient::Linear::new(0.0)
-                        .add_stop(0.0, plate_color)
-                        .add_stop(1.0, crate::widgets::mix(plate_color, accent, 0.10)),
-                )));
-            }
-            s
-        })
+        .padding(crate::style::PANE_PADDING)
+        .style(crate::widgets::pane)
         .into()
 }
 
-/// One right-hand stat-sheet row: a muted label on the left, the value pushed
-/// flush to the right.
-fn stat_row<M: 'static>(label: String, value: String) -> Element<'static, M> {
+/// One stat as a tight inline pair: a muted label with its value flush beside
+/// it (no stretched gap).
+fn stat_inline<M: 'static>(label: String, value: String) -> Element<'static, M> {
     row![
-        text(label).size(TEXT_BODY).style(muted_text_style),
-        Space::new().width(Fill),
+        text(label).size(TEXT_CAPTION).style(muted_text_style),
         text(value).size(style::TEXT_HEADING),
     ]
-    .spacing(12)
+    .spacing(5)
     .align_y(Alignment::Center)
-    .width(Fill)
     .into()
 }
 
-/// The navi's base max HP as a centered stat block: a muted "Base Max HP"
-/// caption over the value. The card's centerpiece for the roster-less games
-/// (BN1–4), a secondary stat beneath the name for the rest.
+/// The navi's base max HP as a centered stat block: a muted "HP" caption over
+/// the value. The card's centerpiece for the roster-less games (BN1–4), a
+/// secondary stat beneath the name for the rest.
 fn hp_stat<M: 'static>(lang: &LanguageIdentifier, hp: u16) -> Element<'static, M> {
     column![
         text(t!(lang, "navi-base-hp"))

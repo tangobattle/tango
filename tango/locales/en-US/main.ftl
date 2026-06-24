@@ -148,8 +148,8 @@ folder-sort-mb = MB
 # Navi pane
 navi-id = Navi ID
 navi-link-navi = Link Navi
-navi-base-hp = Base Max HP
-navi-megabuster = MegaBuster
+navi-base-hp = HP
+navi-buster = Buster
 navi-buster-attack = Attack
 navi-buster-rapid = Rapid
 navi-buster-charge = Charge
