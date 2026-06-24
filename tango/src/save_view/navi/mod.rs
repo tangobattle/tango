@@ -133,15 +133,9 @@ pub(super) fn render_navi_strip<'a>(
             .padding([4.0, 10.0])
             .into(),
     };
-    // Right-align the actions with the tab strip's action buttons: that strip
-    // insets its content 8px (`tab_row`'s `[4, 8]`) and this pane insets 6, so
-    // the actions take the remaining 2px on the right to share the margin.
-    let actions = container(actions).padding(iced::Padding {
-        top: 0.0,
-        right: 2.0,
-        bottom: 0.0,
-        left: 0.0,
-    });
+    // A little horizontal breathing room for the actions cluster (none
+    // vertically — the row centers it).
+    let actions = container(actions).padding([0.0, 4.0]);
     container(
         row![card, Space::new().width(Fill), actions]
             .align_y(Alignment::Center)
