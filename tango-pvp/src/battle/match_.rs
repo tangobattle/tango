@@ -2,8 +2,8 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as SyncMutex};
 
-use super::round::{Round, MAX_QUEUE_LENGTH};
-use super::{MatchIdentity, ReplayConfig};
+use super::round::Round;
+use super::{MatchIdentity, MAX_QUEUE_LENGTH, ReplayConfig};
 
 /// Handoff queue from the net receive task to the live round: inputs from
 /// the peer, tagged at receive time with the peer-round index they belong

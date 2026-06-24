@@ -32,11 +32,14 @@ const IN_MATCH_HEARTBEAT: std::time::Duration =
 
 /// In-match silence that trips the reconnect coordinator: no datagram off the
 /// wire for this long means the link is dead, not jittering (frames normally
-/// arrive ~every emulator frame via the heartbeat). Kept well under the
-/// engine's ~4 s input-buffer overflow ([`tango_pvp::battle::MAX_QUEUE_LENGTH`])
-/// so the emulator is paused — and the runaway lead frozen — with margin to
-/// spare before a bail could fire.
-const RECONNECT_SILENCE: std::time::Duration = std::time::Duration::from_millis(1500);
+/// arrive ~every emulator frame via the heartbeat).
+///
+/// This is the canonical liveness knob; the engine's input-buffer overflow
+/// horizon ([`tango_pvp::battle::MAX_QUEUE_LENGTH`]) is *derived* from it (see
+/// [`tango_pvp::battle::SILENCE_WINDOW`]) and sized to out-cover it, so the
+/// emulator is always paused — and the runaway lead frozen — with margin to
+/// spare before that bail could fire. Retune the window there, not here.
+const RECONNECT_SILENCE: std::time::Duration = tango_pvp::battle::SILENCE_WINDOW;
 /// How long the coordinator keeps trying to rebuild a dropped direct link
 /// before giving up and ending the match. Generous: the sim is paused
 /// throughout, so a long outage costs nothing but the wait.
