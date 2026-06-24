@@ -243,8 +243,6 @@ pub enum PatchCard56Edit {
     /// the cards in between). The registered list is dense, so both ends are
     /// always valid.
     MoveCard { from: usize, to: usize },
-    /// Toggle the patch card in `slot` between enabled and disabled.
-    ToggleCard { slot: usize },
     /// Unregister every patch card.
     ClearAll,
 }
@@ -524,6 +522,19 @@ impl State {
                         }
                         None
                     }
+                    // Same global edit session as EnterEdit, but reached from the
+                    // navi strip's change-navi button (apply() already pointed the
+                    // body at the picker). Don't re-seed if a session is already
+                    // open — that would wipe in-progress scratch (staged tags, a
+                    // held navicust part); the user is just hopping to the navi.
+                    A::EnterEditNavi => {
+                        if self.save_view.editing.is_none() {
+                            if let Some(l) = loaded {
+                                self.save_view.enter_edit(l);
+                            }
+                        }
+                        None
+                    }
                     // One global Save / Cancel for the whole save.
                     A::SaveEdit => Some(Effect::SaveEditCommit),
                     A::CancelEdit => Some(Effect::SaveEditCancel),
@@ -656,9 +667,6 @@ impl State {
                     A::AddPatchCard56 { id } => Some(Effect::EditPatchCard56s(PatchCard56Edit::AddCard { id })),
                     A::RemovePatchCard56 { slot } => {
                         Some(Effect::EditPatchCard56s(PatchCard56Edit::RemoveCard { slot }))
-                    }
-                    A::TogglePatchCard56 { slot } => {
-                        Some(Effect::EditPatchCard56s(PatchCard56Edit::ToggleCard { slot }))
                     }
                     A::ClearPatchCard56s => Some(Effect::EditPatchCard56s(PatchCard56Edit::ClearAll)),
                     A::ReorderPatchCard56s(ev) => {

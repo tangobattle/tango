@@ -1,6 +1,6 @@
 use crate::i18n::t;
 use crate::selection::Loaded;
-use crate::style::{self, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY};
+use crate::style::{self, TEXT_BODY, TEXT_CAPTION};
 use crate::widgets::{muted_color, muted_text_style};
 use iced::widget::{button, container, image as iced_image, scrollable, stack, text, tooltip, Image, Space};
 use sweeten::widget::{column, pick_list, row, text_input};
@@ -233,9 +233,9 @@ pub fn available_tabs(save: &dyn Save, streamer_mode: bool) -> Vec<Tab> {
     if streamer_mode {
         tabs.push(Tab::Cover);
     }
-    // Every game has a player navi with a max HP, so the Navi tab is
-    // always present; for BN1–4 (no link-navi roster) it's just the HP.
-    tabs.push(Tab::Navi);
+    // The equipped navi (emblem / name / HP / buster) is no longer a tab — it
+    // lives in the persistent strip above the body (see [`view`]), so it's
+    // always on screen regardless of the active section.
     if save.view_navicust().is_some() {
         tabs.push(Tab::Navicust);
     }
@@ -563,6 +563,12 @@ impl State {
             // Dropping the whole EditState clears every editor's scratch.
             Action::SaveEdit | Action::CancelEdit => {
                 self.editing = None;
+                // The navi picker is reached by parking `active_tab` on the
+                // tab-less `Tab::Navi`; once editing ends there's nothing to
+                // show for it, so fall back to the default tab.
+                if self.active_tab == Some(Tab::Navi) {
+                    self.active_tab = None;
+                }
                 // Returning read-only body rises in (mirroring
                 // `enter_edit`) while Save / Cancel slide back out.
                 let now = iced::time::Instant::now();
@@ -683,6 +689,33 @@ impl State {
                 self.auto_battle_data_sort = *s;
                 iced::Task::none()
             }
+            // Point the body at the navi picker (rising it in like an edit-mode
+            // swap). The host separately opens the edit session — it needs
+            // `&Loaded` to seed tag state, same as `EnterEdit`. Guard against a
+            // re-click while the picker is already open: `prev_tab` must keep
+            // pointing at the real tab to return to once a navi is picked.
+            Action::EnterEditNavi => {
+                if self.active_tab != Some(Tab::Navi) {
+                    self.prev_tab = self.active_tab;
+                    self.active_tab = Some(Tab::Navi);
+                    let now = iced::time::Instant::now();
+                    self.enter_from = iced::Vector::new(0.0, 20.0);
+                    self.enter.start(now);
+                }
+                iced::Task::none()
+            }
+            // Picking a navi closes the picker: drop back to the tab the user
+            // was on when they opened it (still inside the edit session). The
+            // host stages the chosen navi via its own Effect.
+            Action::SetNavi(_) => {
+                if self.active_tab == Some(Tab::Navi) {
+                    self.active_tab = self.prev_tab;
+                    let now = iced::time::Instant::now();
+                    self.enter_from = iced::Vector::new(0.0, 20.0);
+                    self.enter.start(now);
+                }
+                iced::Task::none()
+            }
             // EnterEdit needs `&Loaded` (to seed tag state), and the
             // mutation actions become host Effects — all are driven by
             // the embedder (play tab), so they're no-ops here.
@@ -696,11 +729,9 @@ impl State {
             | Action::PlaceHeld { .. }
             | Action::PickUpInstalledPart { .. }
             | Action::ClearNavicust
-            | Action::SetNavi(_)
             | Action::AddPatchCard56 { .. }
             | Action::RemovePatchCard56 { .. }
             | Action::ReorderPatchCard56s(_)
-            | Action::TogglePatchCard56 { .. }
             | Action::ClearPatchCard56s
             | Action::AddPatchCard4 { .. }
             | Action::RemovePatchCard4 { .. }
@@ -743,6 +774,12 @@ pub enum Action {
     /// Edits are staged live in the loaded save but not written to disk
     /// until [`Action::SaveEdit`].
     EnterEdit,
+    /// Focus the navi picker as the edit body — fired by clicking the navi
+    /// strip's card, which is only a button while the global edit session is
+    /// open. The navi has no tab of its own, so this points the body at the
+    /// picker (handled in [`State::apply`]); the host opens the session if it
+    /// somehow isn't already (it needs `&Loaded`, like [`Action::EnterEdit`]).
+    EnterEditNavi,
     /// Finish editing: commit the staged folder to the save file on
     /// disk, then leave edit mode.
     SaveEdit,
@@ -830,11 +867,6 @@ pub enum Action {
     /// List pane: a drag-reorder gesture (carries sweeten's raw [`DragEvent`];
     /// only a completed drop reorders — see the play tab's handler).
     ReorderPatchCard56s(sweeten::widget::drag::DragEvent),
-    /// List pane: toggle the patch card in `slot` between enabled and
-    /// disabled.
-    TogglePatchCard56 {
-        slot: usize,
-    },
     /// List pane: unregister every patch card.
     ClearPatchCard56s,
     /// Library pane: the filter text changed.
@@ -905,21 +937,11 @@ pub fn view<'a>(
     use iced::{Alignment, Fill};
 
     let available = available_tabs(loaded.save.as_ref(), streamer_mode);
-    if available.is_empty() {
-        return placeholder(t!(lang, "save-empty"));
-    }
-    let active = state
-        .active_tab
-        .filter(|t| available.contains(t))
-        .unwrap_or(available[0]);
 
-    // Body entrance — restarted on sub-tab switches (sliding
-    // along the strip's direction of travel), edit-mode toggles
-    // and game/save swaps (rising in vertically). The Play button
-    // in the strip's tail is a fixture and never animates;
-    // everything else in the tail slides horizontally only (these
-    // are controls in a fixed-height row, not part of the body).
     let now = iced::time::Instant::now();
+    // Body entrance — restarted on sub-tab switches (sliding along the strip's
+    // direction of travel), edit-mode toggles and game/save swaps (rising in
+    // vertically).
     let enter = state.enter.progress(now);
     let enter_from = state.enter_from;
     let entered = move |el: Element<'a, Action>| -> Element<'a, Action> {
@@ -928,12 +950,10 @@ pub fn view<'a>(
             None => el,
         }
     };
-    // Tail buttons animate only when their content actually
-    // changed — a sub-tab switch (horizontal enter). A game/save
-    // swap rises the body in, but the strip's buttons are
-    // typically identical across saves, and re-animating them
-    // there reads as a glitch. Edit-mode toggles run their own
-    // two-phase swap below instead.
+    // Tab-tail extras animate only when their content actually changed — a
+    // sub-tab switch (horizontal enter). A game/save swap rises the body in, but
+    // the extras are typically identical across saves, and re-animating them
+    // there reads as a glitch.
     let tail_slide = enter.filter(|_| enter_from.x != 0.0);
     let extras_dx = if enter_from.x != 0.0 { enter_from.x } else { 24.0 };
     let extras_entered = move |el: Element<'a, Action>| -> Element<'a, Action> {
@@ -942,31 +962,104 @@ pub fn view<'a>(
             None => el,
         }
     };
-    // Edit-mode tail morph: the per-tab extras and the Save /
-    // Cancel pair fade-through swap in both directions, so the
-    // Edit affordance visibly turns into Save / Cancel and back.
+    // Edit-mode morph: the navi header's Edit / Play and the Save / Cancel pair
+    // fade-through swap in both directions, so Edit visibly turns into Save /
+    // Cancel and back.
     let (edit_side, edit_swap) = crate::anim::swap_phase(&state.edit_anim, now);
     let render_edit_buttons = editable && edit_side;
-    // True while one of the in-place editors is open. Suppresses the
-    // Play button (single-player would fight the open edit session) and
-    // selects the editable body below.
-    // One global edit toggle: while set, every editable tab shows its
-    // editor (gated by that feature's editability), and one Save / Cancel
-    // commits / discards them all.
+    // One global edit session covers the whole save (entered from the Edit button
+    // in the navi header); `editing_session` is on whenever it's open and selects
+    // each section's editable body below. It also suppresses the Play button
+    // (single-player would fight the open session); one Save / Cancel commits /
+    // discards every section at once.
     let editing_session = editable && state.editing.is_some();
+    // The single Edit button covers the whole save: shown whenever *any* section
+    // is editable, not per-tab. Once open, the user navigates tabs to edit each
+    // section (and clicks the navi header to swap navi).
+    let save_editable = editable
+        && (loaded.folder_editable
+            || loaded.navicust_editable
+            || loaded.navi_editable
+            || loaded.patch_cards_editable
+            || loaded.auto_battle_data_editable);
+
+    // The save-level actions live at the navi header's right edge (not the tab
+    // strip): Edit + Play in read mode, Save / Cancel while editing, swapping
+    // between the two as one unit.
+    let mut actions = row![].spacing(6).align_y(Alignment::Center);
+    if render_edit_buttons {
+        if inline_actions {
+            actions = actions.push(edit_buttons(lang, loaded));
+        }
+    } else {
+        if inline_actions && save_editable {
+            actions = actions.push(widgets::labeled_icon_button(
+                lucide_icons::Icon::Pencil,
+                t!(lang, "save-edit"),
+                Action::EnterEdit,
+                [4.0, 10.0],
+                widgets::neutral,
+            ));
+        }
+        if let Some(enabled) = play_button {
+            let label = row![lucide_icons::Icon::Play.widget(), text(t!(lang, "play-play"))]
+                .spacing(6)
+                .align_y(Alignment::Center);
+            let mut btn = button(label).padding([4, 10]);
+            if enabled {
+                btn = btn.style(widgets::primary_button).on_press(Action::PlayClicked);
+            } else {
+                btn = btn.style(widgets::neutral);
+            }
+            actions = actions.push(btn);
+        }
+    }
+    let mut actions_tail: Element<'a, Action> = actions.into();
+    if let Some(phase) = edit_swap {
+        actions_tail =
+            crate::anim::swap_transform(actions_tail, phase, iced::Vector::new(32.0, 0.0), crate::widgets::plate_color);
+    }
+
+    // The equipped navi (emblem / name / HP / buster) rides in a slim header
+    // strip above the body on every tab — it used to be a tab of its own, but
+    // it's a single row of stats, so a tab spent the whole body on it. The
+    // save-level actions sit at its right edge. While editing (and the navi is
+    // editable) the card itself becomes the change-navi affordance — clicking it
+    // opens the picker as the body.
+    let navi_edit = (editing_session && loaded.navi_editable).then_some(Action::EnterEditNavi);
+    let navi_strip = loaded
+        .save
+        .view_navi()
+        .is_some()
+        .then(|| navi::render_navi_strip(lang, loaded, navi_edit, actions_tail));
+
+    if available.is_empty() {
+        // No section tabs (an unsupported / empty save) — still surface the navi
+        // header (it carries Play) if there's a navi to show.
+        let mut col = column![].spacing(style::PANE_GAP).width(Fill);
+        if let Some(strip) = navi_strip {
+            col = col.push(strip);
+        }
+        return col.push(placeholder(t!(lang, "save-empty"))).into();
+    }
+    let active = state
+        .active_tab
+        .filter(|t| available.contains(t))
+        .unwrap_or(available[0]);
+
+    // The global edit session selects each section's editable body below.
     let folder_editing = editing_session && loaded.folder_editable;
     let navicust_editing = editing_session && loaded.navicust_editable;
     let navi_editing = editing_session && loaded.navi_editable;
     let patch_cards_editing = editing_session && loaded.patch_cards_editable;
     let auto_battle_data_editing = editing_session && loaded.auto_battle_data_editable;
 
-    // Tab strip: tabs left, extras+Play right. We split into two
-    // rows so the tab list can wrap onto a second line without
-    // dragging the extras/Play tail with it. The tail is a
-    // separate row, sized to its content and capped to the tab
-    // button height so the strip's overall height doesn't grow
-    // when active-tab extras (folder group toggle, copy buttons)
-    // change.
+    // Tab strip: tabs left, the active tab's contextual extras (copy, folder
+    // group toggle, copy-as-image) right — the save-level actions live in the
+    // navi header now. We split into two rows so the tab list can wrap/scroll
+    // without dragging the extras tail with it. The tail is a separate row,
+    // sized to its content and capped to the tab button height so the strip's
+    // overall height doesn't grow when the extras change.
     // Height of a small `widgets::tab_button`: TEXT_BODY at iced's
     // default 1.3 line height plus the [6, 14] chip padding. The
     // tail is pinned to exactly this so both halves of the strip
@@ -1024,73 +1117,26 @@ pub fn view<'a>(
         tabs_scroll,
         row![left_fade, Space::new().width(Fill), right_fade].height(Fill),
     ];
-    // The whole tail morphs as ONE unit between its two sides —
-    // (extras + Edit + Play) and (Save / Cancel) — so entering or
-    // leaving edit mode dissolves everything together. Animating
-    // only the extras left the Play button popping out instantly
-    // and the exiting controls shifting into its freed space.
+    // The tail carries only the active tab's contextual extras now — the
+    // save-level Edit / Play / Save-Cancel actions moved to the navi header.
+    // Extras are read-mode only; entering edit fades them out under the same
+    // swap phase the header's morph uses.
     let mut side = row![].spacing(6).align_y(Alignment::Center);
-    if render_edit_buttons {
-        // Save / Cancel are keyed on the mode, not the active
-        // sub-tab — they stay planted while the user flips
-        // between editor tabs.
-        if inline_actions {
-            side = side.push(edit_buttons(lang, loaded));
-        }
-    } else {
-        if inline_actions {
-            // Per-control entrances: a control carried over from
-            // the previous sub-tab (the copy button lives on most
-            // tabs) stays anchored in the strip; only controls
-            // that actually appeared slide in. Suppressed while
-            // the edit-mode morph runs — the whole side is moving
-            // then.
-            let prev_kinds = state.prev_tab.map(|p| extra_kinds(p)).unwrap_or_default();
-            for kind in extra_kinds(active) {
-                let el = render_extra(lang, state, active, kind);
-                let carried = enter_from.x != 0.0 && prev_kinds.contains(&kind);
-                let el = if edit_swap.is_some() || carried {
-                    el
-                } else {
-                    extras_entered(el)
-                };
-                side = side.push(el);
-            }
-            if tab_has_edit(active, loaded, editable) {
-                let edit_btn: Element<'a, Action> = widgets::labeled_icon_button(
-                    lucide_icons::Icon::Pencil,
-                    t!(lang, "save-edit"),
-                    Action::EnterEdit,
-                    [4.0, 10.0],
-                    widgets::neutral,
-                );
-                // If the previous tab had the Edit affordance too, the
-                // button never left the strip — re-animating it would
-                // read as a glitch. Only sub-tab switches (horizontal
-                // enters) can carry it over; vertical enters are
-                // whole-body swaps where everything is new.
-                let carried_over =
-                    enter_from.x != 0.0 && state.prev_tab.map_or(false, |p| tab_has_edit(p, loaded, editable));
-                let el = if edit_swap.is_some() || carried_over {
-                    edit_btn
-                } else {
-                    extras_entered(edit_btn)
-                };
-                side = side.push(el);
-            }
-        }
-        if let Some(enabled) = play_button {
-            use lucide_icons::Icon;
-            let label = row![Icon::Play.widget(), text(t!(lang, "play-play"))]
-                .spacing(6)
-                .align_y(Alignment::Center);
-            let mut btn = button(label).padding([4, 10]);
-            if enabled {
-                btn = btn.style(widgets::primary_button).on_press(Action::PlayClicked);
+    if !render_edit_buttons && inline_actions {
+        // Per-control entrances: a control carried over from the previous
+        // sub-tab (the copy button lives on most tabs) stays anchored; only
+        // controls that actually appeared slide in. Suppressed while the
+        // edit-mode morph runs — the whole tail is moving then.
+        let prev_kinds = state.prev_tab.map(|p| extra_kinds(p)).unwrap_or_default();
+        for kind in extra_kinds(active) {
+            let el = render_extra(lang, state, active, kind);
+            let carried = enter_from.x != 0.0 && prev_kinds.contains(&kind);
+            let el = if edit_swap.is_some() || carried {
+                el
             } else {
-                btn = btn.style(widgets::neutral);
-            }
-            side = side.push(btn);
+                extras_entered(el)
+            };
+            side = side.push(el);
         }
     }
     let mut tail: Element<'a, Action> = side.into();
@@ -1108,88 +1154,71 @@ pub fn view<'a>(
 
     let tab_pane = container(tab_row.padding([4, 8])).width(Fill).style(widgets::pane);
 
-    // The folder editor lays out two side-by-side panes, each with its
-    // own scrollbar, and wants the full available height — so it bypasses
-    // the shared Shrink-height body scrollable the read-only views use.
-    if folder_editing && active == Tab::Folder {
-        let editor = folder::render_folder_edit(lang, loaded, state);
-        return column![tab_pane, entered(editor)]
-            .spacing(style::PANE_GAP)
-            .width(Fill)
-            .height(Fill)
-            .into();
-    }
-    if navicust_editing && active == Tab::Navicust {
-        let editor = navicust::render_navicust_edit(lang, loaded, state);
-        return column![tab_pane, entered(editor)]
-            .spacing(style::PANE_GAP)
-            .width(Fill)
-            .height(Fill)
-            .into();
-    }
-    if navi_editing && active == Tab::Navi {
-        // Keep the navi stats card visible above the picker so the equipped
-        // navi's emblem/name/HP stay in view while choosing a new one.
-        let stats = navi::render_navi::<Action>(lang, loaded);
-        let editor = navi::render_navi_edit(lang, loaded);
-        return column![tab_pane, stats, entered(editor)]
-            .spacing(style::PANE_GAP)
-            .width(Fill)
-            .height(Fill)
-            .into();
-    }
-    if patch_cards_editing && active == Tab::PatchCards {
-        let editor = patch_cards::render_patch_cards_edit(lang, loaded, state);
-        return column![tab_pane, entered(editor)]
-            .spacing(style::PANE_GAP)
-            .width(Fill)
-            .height(Fill)
-            .into();
-    }
-    if auto_battle_data_editing && active == Tab::AutoBattleData {
-        let editor = abd::render_auto_battle_data_edit(lang, loaded, state);
-        return column![tab_pane, entered(editor)]
-            .spacing(style::PANE_GAP)
-            .width(Fill)
-            .height(Fill)
-            .into();
-    }
+    // The navi picker is reached via the header's change-navi button, which parks
+    // `active_tab` on the tab-less `Tab::Navi`; the equipped navi stays visible in
+    // the header above while choosing. While picking, the tab strip is hidden —
+    // there's nothing to navigate to, and picking a navi (or Save / Cancel)
+    // returns the user to the section tabs.
+    let selecting_navi = navi_editing && state.active_tab == Some(Tab::Navi);
 
-    // The Cover tab is a single full-height pane (logo banner), so it skips
-    // the shrink-height body scrollable the other read-only views use.
-    if active == Tab::Cover {
-        let cover = cover::render_cover::<Action>(lang, loaded);
-        return column![tab_pane, entered(cover)]
-            .spacing(style::PANE_GAP)
-            .width(Fill)
-            .height(Fill)
-            .into();
-    }
-
-    let opts = RenderOpts {
-        folder_grouped: state.folder_grouped,
+    // Pick the body. The navi picker, the in-place editors and the Cover logo
+    // banner each claim the full available height; the read-only section views
+    // hug their content inside a shrink-height scrollable so a short tab doesn't
+    // stretch. `fill` carries that distinction to the column below.
+    let (body, fill): (Element<'a, Action>, bool) = if selecting_navi {
+        (navi::render_navi_edit(lang, loaded), true)
+    } else if folder_editing && active == Tab::Folder {
+        // The folder editor lays out two side-by-side panes, each with its own
+        // scrollbar, and wants the full height — so it bypasses the read-only
+        // views' shared shrink-height body scrollable.
+        (folder::render_folder_edit(lang, loaded, state), true)
+    } else if navicust_editing && active == Tab::Navicust {
+        (navicust::render_navicust_edit(lang, loaded, state), true)
+    } else if patch_cards_editing && active == Tab::PatchCards {
+        (patch_cards::render_patch_cards_edit(lang, loaded, state), true)
+    } else if auto_battle_data_editing && active == Tab::AutoBattleData {
+        (abd::render_auto_battle_data_edit(lang, loaded, state), true)
+    } else if active == Tab::Cover {
+        // The Cover tab is a single full-height pane (logo banner).
+        (cover::render_cover::<Action>(lang, loaded), true)
+    } else {
+        let opts = RenderOpts {
+            folder_grouped: state.folder_grouped,
+        };
+        let body = render::<Action>(lang, active, loaded, opts);
+        // Each render_* returns one-or-more pane-styled containers stacked into
+        // an Element. We wrap that whole group in a shrink-height scrollable so
+        // when its panes don't fill the available space the column hugs them,
+        // and when they do the user can scroll past the visible window. The
+        // per-instance id is what [`State::apply`] snaps to the top on tab
+        // changes.
+        let body_scrollable = scrollable(body)
+            .id(state.body_scroll_id.clone())
+            .style(crate::widgets::chunky_scrollable)
+            .width(Fill);
+        (body_scrollable.into(), false)
     };
-    let body = render::<Action>(lang, active, loaded, opts);
-    // Body: each render_* returns one-or-more pane-styled
-    // containers stacked into an Element. We wrap that whole
-    // group in a Shrink-height scrollable so when its panes don't
-    // fill the available space the column hugs them, and when
-    // they do the user can scroll past the visible window. The
-    // per-instance id is what [`State::apply`] snaps to the top
-    // on tab changes.
-    let body_scrollable = scrollable(body)
-        .id(state.body_scroll_id.clone())
-        .style(crate::widgets::chunky_scrollable)
-        .width(Fill);
-    column![tab_pane, entered(body_scrollable.into())]
-        .spacing(style::PANE_GAP)
-        .width(Fill)
-        .into()
+
+    // Assemble: persistent navi header (if any), then the tab strip (hidden
+    // while picking a navi), then the animated body. Only the body slides on a
+    // tab/edit change — the header and tab pane are fixtures.
+    let mut col = column![].spacing(style::PANE_GAP).width(Fill);
+    if let Some(strip) = navi_strip {
+        col = col.push(strip);
+    }
+    if !selecting_navi {
+        col = col.push(tab_pane);
+    }
+    col = col.push(entered(body));
+    if fill {
+        col = col.height(Fill);
+    }
+    col.into()
 }
 
-/// The global edit mode's Save / Cancel pair, shown in the tab
-/// strip's tail while edit mode is on (or sliding out). One pair
-/// for the whole save: they commit / discard the edits on *all*
+/// The global edit mode's Save / Cancel pair, shown at the navi
+/// header's right edge while edit mode is on (or sliding out). One
+/// pair for the whole save: they commit / discard the edits on *all*
 /// tabs at once. Save is gated on a legal folder when chips are
 /// editable — a full 30 chips with no folder-limit violations (an
 /// incomplete or over-limit folder can't be written over the
@@ -1223,31 +1252,6 @@ fn edit_buttons<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded) -> Element
     .spacing(6)
     .align_y(iced::Alignment::Center)
     .into()
-}
-
-/// Whether `tab` offers the Edit affordance for this save. Split
-/// from [`tab_extras`] so the view can keep the Edit button
-/// unanimated when a sub-tab switch carries it over.
-fn tab_has_edit(tab: Tab, loaded: &Loaded, editable: bool) -> bool {
-    editable
-        && match tab {
-            // Only saves with a writable chip view (BN4/5/6);
-            // `folder_editable` is the cached `view_chips_mut()`
-            // probe.
-            Tab::Folder => loaded.folder_editable,
-            // Only BN4/5/6 with a writable navicust. `navicust_editable`
-            // is the cached `view_navicust_mut()` probe, which is already
-            // `None` for link navis and navicust-less BN4.5.
-            Tab::Navicust => loaded.navicust_editable,
-            // BN5/BN6/BN4.5 expose a writable equipped-navi selector.
-            Tab::Navi => loaded.navi_editable,
-            // BN4 (PatchCard4s) and BN5/BN6 (PatchCard56s) are
-            // both writable, each via its own editor.
-            Tab::PatchCards => loaded.patch_cards_editable,
-            // Only BN4/BN5 (writable auto-battle data).
-            Tab::AutoBattleData => loaded.auto_battle_data_editable,
-            _ => false,
-        }
 }
 
 /// One control in the tab strip's tail. Identified per-kind (not

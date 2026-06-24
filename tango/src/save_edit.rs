@@ -371,15 +371,17 @@ pub fn apply_patch_card56_edit(loaded: &mut selection::Loaded, edit: tabs::play:
     let mut new_cards = cards.clone();
     match edit {
         PatchCard56Edit::AddCard { id } => {
-            // No-op if the list is full or the card is already registered.
-            if new_cards.len() >= max || new_cards.iter().any(|c| c.id == id) {
+            // No-op if the list is full, the card is already registered, or it
+            // wouldn't fit the MB budget. Every registered card is active (no
+            // on/off state), so the library disables non-fitting cards and this
+            // is just a guard. Appended, enabled, at the end of the list.
+            if new_cards.len() >= max
+                || new_cards.iter().any(|c| c.id == id)
+                || enabled_mb(&new_cards) + card_mb(id) > crate::save_view::patch_cards::MAX_PATCH_CARD56_MB
+            {
                 return;
             }
-            // Register it; enable it only if it still fits the MB budget,
-            // otherwise it lands disabled (the user can free up room and
-            // enable it later). Inserted at the top of the list.
-            let enabled = enabled_mb(&new_cards) + card_mb(id) <= crate::save_view::patch_cards::MAX_PATCH_CARD56_MB;
-            new_cards.insert(0, PatchCard { id, enabled });
+            new_cards.push(PatchCard { id, enabled: true });
         }
         PatchCard56Edit::RemoveCard { slot } => {
             if slot >= new_cards.len() {
@@ -394,18 +396,6 @@ pub fn apply_patch_card56_edit(loaded: &mut selection::Loaded, edit: tabs::play:
             }
             let card = new_cards.remove(from);
             new_cards.insert(to, card);
-        }
-        PatchCard56Edit::ToggleCard { slot } => {
-            let Some(card) = new_cards.get(slot) else { return };
-            if card.enabled {
-                new_cards[slot].enabled = false;
-            } else {
-                // Enabling: refuse if it would exceed the MB budget.
-                if enabled_mb(&new_cards) + card_mb(card.id) > crate::save_view::patch_cards::MAX_PATCH_CARD56_MB {
-                    return;
-                }
-                new_cards[slot].enabled = true;
-            }
         }
         PatchCard56Edit::ClearAll => new_cards.clear(),
     }

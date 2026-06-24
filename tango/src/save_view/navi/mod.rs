@@ -2,37 +2,36 @@ use super::*;
 use sweeten::widget::{column, row};
 
 pub(super) fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
+    container(navi_card_content::<M>(lang, loaded, false))
+        .width(Fill)
+        .align_x(Alignment::Center)
+        .padding(crate::style::PANE_PADDING)
+        .style(crate::widgets::pane)
+        .into()
+}
+
+/// The navi card's inner content (no pane wrapper): emblem on the left, the
+/// navi's name stacked over its stats on the right — base max HP and, where the
+/// game exposes them (BN6), the live MegaBuster levels. The navi-less games
+/// (BN1–4) drop the emblem/name and just show the base HP. With `editing_hint`
+/// set, a small pencil sits by the name to signal the card is the change-navi
+/// button.
+fn navi_card_content<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, editing_hint: bool) -> Element<'static, M> {
     let assets = loaded.assets.as_ref();
     // Every game has a player navi with a base max HP. Games with a link-navi
     // roster (BN5/BN6/EXE4.5) also report which navi is equipped (id + emblem +
-    // name); the rest (BN1–4) have no navi to pick, so the card is just the HP.
+    // name); the rest (BN1–4) have no navi to pick.
     let navi = loaded.save.view_navi();
     let navi_id = navi.as_ref().map(|nv| nv.navi());
     let base_max_hp = navi.as_ref().map(|nv| nv.base_max_hp(assets));
     let buster = navi.as_ref().and_then(|nv| nv.buster_stats(assets));
-    render_navi_card::<M>(lang, loaded, navi_id, base_max_hp, buster)
-}
-
-/// The navi card. For games with a link-navi roster (BN5/BN6/EXE4.5): the
-/// equipped navi's emblem + name on the left, its stats on the right — base max
-/// HP and, where the game exposes them (BN6), the live MegaBuster levels. A flat
-/// band that fills the pane width. The navi-less games (BN1–4) drop the
-/// emblem/name and the card is just the centered HP stat.
-fn render_navi_card<M: 'static>(
-    lang: &LanguageIdentifier,
-    loaded: &Loaded,
-    navi_id: Option<usize>,
-    base_max_hp: Option<u16>,
-    buster: Option<tango_dataview::save::NaviBusterStats>,
-) -> Element<'static, M> {
-    let assets = loaded.assets.as_ref();
 
     // Only the games with a real navi roster (BN5/BN6/EXE4.5) get an emblem +
-    // name. BN1–4 report a placeholder navi the ROM has no entry for, so their
-    // card is just the HP.
+    // name. BN1–4 report a placeholder navi the ROM has no entry for, so they
+    // just show the HP.
     let roster_navi = navi_id.filter(|&id| assets.navi(id).is_some());
 
-    let content: Element<'static, M> = if let Some(navi_id) = roster_navi {
+    if let Some(navi_id) = roster_navi {
         let name = assets
             .navi(navi_id)
             .and_then(|n| n.name())
@@ -46,63 +45,104 @@ fn render_navi_card<M: 'static>(
             .cloned()
             .map(|h| {
                 Image::new(h)
-                    .width(Length::Fixed(60.0))
-                    .height(Length::Fixed(60.0))
+                    .width(Length::Fixed(45.0))
+                    .height(Length::Fixed(45.0))
                     .filter_method(iced_image::FilterMethod::Nearest)
                     .content_fit(ContentFit::Contain)
                     .into()
             })
             .unwrap_or_else(|| {
                 Space::new()
-                    .width(Length::Fixed(60.0))
-                    .height(Length::Fixed(60.0))
+                    .width(Length::Fixed(45.0))
+                    .height(Length::Fixed(45.0))
                     .into()
             });
 
-        let title = row![emblem, text(name).size(style::TEXT_TITLE)]
-            .spacing(10)
-            .align_y(Alignment::Center);
-
-        // Stat sheet: base max HP, then the MegaBuster levels on one compact
-        // row. Each value sits flush against its label.
-        let mut stats = column![].spacing(6);
+        // Stats on their own row beneath the name: base max HP, then the
+        // MegaBuster levels (attack / rapid / charge) as a tight group. Each
+        // label bottom-aligns with its value.
+        let mut stats = row![].spacing(16).align_y(Alignment::End);
         if let Some(hp) = base_max_hp {
             stats = stats.push(stat_inline::<M>(t!(lang, "navi-base-hp"), hp.to_string()));
         }
         if let Some(b) = buster {
             stats = stats.push(
                 row![
-                    text(t!(lang, "navi-buster")).size(TEXT_CAPTION).style(muted_text_style),
                     stat_inline::<M>(t!(lang, "navi-buster-attack"), b.attack.to_string()),
                     stat_inline::<M>(t!(lang, "navi-buster-rapid"), b.speed.to_string()),
                     stat_inline::<M>(t!(lang, "navi-buster-charge"), b.charge.to_string()),
                 ]
                 .spacing(12)
-                .align_y(Alignment::Center),
+                .align_y(Alignment::End),
             );
         }
 
-        // Emblem + name on the left, stats pushed to the right; fills the pane.
-        row![title, Space::new().width(Fill), stats]
-            .spacing(16)
+        // Emblem on the left, name stacked over its stats on the right. While
+        // editing, a pencil glyph trails the name as the change-navi cue.
+        let name_el: Element<'static, M> = if editing_hint {
+            row![
+                text(name).size(style::TEXT_TITLE),
+                lucide_icons::Icon::Pencil
+                    .widget()
+                    .size(TEXT_CAPTION)
+                    .style(muted_text_style),
+            ]
+            .spacing(6)
             .align_y(Alignment::Center)
-            .width(Fill)
             .into()
+        } else {
+            text(name).size(style::TEXT_TITLE).into()
+        };
+        let info = column![name_el, stats].spacing(4);
+        row![emblem, info].spacing(10).align_y(Alignment::Center).into()
     } else {
-        // Roster-less games (BN1–4): just the base max HP, centered.
-        let mut card = column![].spacing(16).align_x(Alignment::Center);
+        // Roster-less games (BN1–4): just the base max HP, inline.
+        let mut card = row![].spacing(14).align_y(Alignment::Center);
         if let Some(hp) = base_max_hp {
-            card = card.push(hp_stat::<M>(lang, hp));
+            card = card.push(stat_inline::<M>(t!(lang, "navi-base-hp"), hp.to_string()));
         }
         card.into()
-    };
+    }
+}
 
-    container(content)
-        .width(Fill)
-        .align_x(Alignment::Center)
-        .padding(crate::style::PANE_PADDING)
-        .style(crate::widgets::pane)
-        .into()
+/// The persistent navi identity strip shown above the tab body (it replaces the
+/// old standalone Navi tab) and the home for the save's primary actions. The
+/// card on the left, the `actions` cluster (Edit / Play, or Save / Cancel while
+/// editing) on the right. When `edit` is `Some`, the card itself becomes the
+/// change-navi button (a flat press target with a pencil hint), opening the
+/// picker as the body — there's no separate Edit pencil to confuse it with.
+pub(super) fn render_navi_strip<'a>(
+    lang: &'a LanguageIdentifier,
+    loaded: &'a Loaded,
+    edit: Option<Action>,
+    actions: Element<'a, Action>,
+) -> Element<'a, Action> {
+    // The pane pads the button (and actions) off its edges with a uniform `6`;
+    // the card carries the rest of the inset (`[4, 10]`) so the content still
+    // lines up at 16px horizontal / 10px vertical, but most of it lives inside
+    // the change-navi button (its hover-highlight area). Both card modes pad
+    // identically so toggling edit doesn't nudge it: flat press target in edit
+    // mode (with a pencil cue), plain container otherwise.
+    let card: Element<'a, Action> = match edit {
+        Some(action) => button(navi_card_content::<Action>(lang, loaded, true))
+            .padding([4.0, 10.0])
+            .style(crate::widgets::flat)
+            .on_press(action)
+            .into(),
+        None => container(navi_card_content::<Action>(lang, loaded, false))
+            .padding([4.0, 10.0])
+            .into(),
+    };
+    container(
+        row![card, Space::new().width(Fill), actions]
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .width(Fill),
+    )
+    .padding(6.0)
+    .width(Fill)
+    .style(crate::widgets::pane)
+    .into()
 }
 
 /// One stat as a tight inline pair: a muted label with its value flush beside
@@ -113,22 +153,7 @@ fn stat_inline<M: 'static>(label: String, value: String) -> Element<'static, M> 
         text(value).size(style::TEXT_HEADING),
     ]
     .spacing(5)
-    .align_y(Alignment::Center)
-    .into()
-}
-
-/// The navi's base max HP as a centered stat block: a muted "HP" caption over
-/// the value. The card's centerpiece for the roster-less games (BN1–4), a
-/// secondary stat beneath the name for the rest.
-fn hp_stat<M: 'static>(lang: &LanguageIdentifier, hp: u16) -> Element<'static, M> {
-    column![
-        text(t!(lang, "navi-base-hp"))
-            .size(TEXT_CAPTION)
-            .style(muted_text_style),
-        text(format!("{hp}")).size(TEXT_DISPLAY),
-    ]
-    .spacing(2)
-    .align_x(Alignment::Center)
+    .align_y(Alignment::End)
     .into()
 }
 
@@ -188,13 +213,15 @@ pub(super) fn render_navi_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loa
     .align_x(Alignment::Center)
     .width(Fill);
 
+    // Pad the content, not the pane: that keeps the scrollbar flush with the
+    // pane's right edge like every other editor pane (a `.padding()` on the
+    // outer container would inset the whole scrollable, scrollbar included).
     container(
-        scrollable(body)
+        scrollable(container(body).padding(crate::style::PANE_PADDING).width(Fill))
             .style(crate::widgets::chunky_scrollable)
             .height(Fill)
             .width(Fill),
     )
-    .padding(crate::style::PANE_PADDING)
     .style(crate::widgets::pane)
     .width(Fill)
     .height(Fill)

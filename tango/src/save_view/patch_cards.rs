@@ -177,15 +177,13 @@ fn patch_card56_cells<'a, M: 'static>(
 }
 
 /// One registered patch card, laid out like a [`render_patch_cards`] row
-/// (index · name+MB · abilities · bugs) with an enable toggle and an ✕
-/// remove button appended. The name dims while the card is disabled.
-/// `can_enable` is whether enabling this (currently disabled) card would
-/// still fit the MB budget; it gates the ON toggle.
+/// (index · name+MB · abilities · bugs) with an ✕ remove button appended.
+/// Every registered card is active — there's no enable/disable toggle — so the
+/// list is simply the set of equipped cards, MB-budgeted via the library.
 fn patch_card56_list_row<'a>(
     loaded: &'a Loaded,
     slot: usize,
     card: tango_dataview::save::PatchCard,
-    can_enable: bool,
 ) -> Element<'a, Action> {
     let info = loaded.assets.patch_card56(card.id);
     let name = info
@@ -195,12 +193,7 @@ fn patch_card56_list_row<'a>(
     let mb = info.as_ref().map(|c| c.mb()).unwrap_or(0);
     let [name_cell, ability_cell, bug_cell] = patch_card56_cells(loaded, &name, mb, card.enabled, card.id);
 
-    // Green "ON" toggle (matches the folder editor's TAG tint), then the
-    // ✕ that backs the card out to the library. The toggle is disabled
-    // when the card is off and enabling it would exceed the MB budget (an
-    // already-on card can always be turned off).
-    let toggle_msg = (card.enabled || can_enable).then_some(Action::TogglePatchCard56 { slot });
-    let toggle = edit_toggle_maybe("ON", card.enabled, iced::Color::from_rgb8(0x29, 0xa1, 0x21), toggle_msg);
+    // Just the ✕ that backs the card out to the library.
     let remove = remove_button(Action::RemovePatchCard56 { slot });
 
     let row = row![
@@ -211,7 +204,6 @@ fn patch_card56_list_row<'a>(
         name_cell,
         ability_cell,
         bug_cell,
-        toggle,
         remove,
     ]
     .spacing(8)
@@ -230,19 +222,20 @@ fn patch_card56_list_row<'a>(
 }
 
 /// One library card, laid out like a [`render_patch_cards`] row (index ·
-/// name+MB · abilities · bugs). The whole row is a click-to-add button
-/// (the palette affordance) that registers the card; effects show
-/// enabled, since adding a card enables it when it fits. Disabled
-/// (unclickable) when the list is full.
+/// name+MB · abilities · bugs). The whole row is a click-to-add button (the
+/// palette affordance) that registers the card. When it can't be added — the
+/// list is full, or adding it would blow the MB budget — the row renders greyed
+/// and unclickable (`selectable` is false), so the MB limit is enforced by
+/// disabling the selection rather than an after-the-fact toggle.
 fn patch_card56_library_row<'a>(
     loaded: &'a Loaded,
     id: usize,
     name: String,
     mb: u8,
     row_idx: usize,
-    list_full: bool,
+    selectable: bool,
 ) -> Element<'a, Action> {
-    let [name_cell, ability_cell, bug_cell] = patch_card56_cells(loaded, &name, mb, true, id);
+    let [name_cell, ability_cell, bug_cell] = patch_card56_cells(loaded, &name, mb, selectable, id);
 
     let row = row![name_cell, ability_cell, bug_cell]
         .spacing(8)
@@ -254,7 +247,7 @@ fn patch_card56_library_row<'a>(
         .width(Fill)
         .padding(style::ROW_PADDING)
         .style(crate::widgets::list_item(false, row_idx));
-    if !list_full {
+    if selectable {
         b = b.on_press(Action::AddPatchCard56 { id });
     }
     b.into()
@@ -313,10 +306,7 @@ fn render_patch_card56s_edit<'a>(
 
     let mut list_rows: Vec<Element<'a, Action>> = Vec::with_capacity(cards.len());
     for (slot, card) in &cards {
-        // A disabled card can be enabled only if it still fits the budget;
-        // an enabled card can always be turned off.
-        let can_enable = enabled_mb + card_mb(card.id) <= MAX_PATCH_CARD56_MB;
-        list_rows.push(patch_card56_list_row(loaded, *slot, card.clone(), can_enable));
+        list_rows.push(patch_card56_list_row(loaded, *slot, card.clone()));
     }
     // Draggable list: grab a card row and drop it to reorder the registered
     // order (dense list, so any drop is a valid ordered move).
@@ -359,7 +349,10 @@ fn render_patch_card56s_edit<'a>(
         if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
             continue;
         }
-        lib_col = lib_col.push(patch_card56_library_row(loaded, id, name, mb, shown, list_full));
+        // Selectable only if there's room and it fits the MB budget — that's how
+        // the limit is enforced now (no post-add enable/disable toggle).
+        let selectable = !list_full && enabled_mb + mb as u32 <= MAX_PATCH_CARD56_MB;
+        lib_col = lib_col.push(patch_card56_library_row(loaded, id, name, mb, shown, selectable));
         shown += 1;
     }
     let lib_header = library_header(
