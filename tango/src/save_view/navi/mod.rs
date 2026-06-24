@@ -16,7 +16,11 @@ pub(super) fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded
 /// (BN1–4) drop the emblem/name and just show the base HP. With `editing_hint`
 /// set, a small pencil sits by the name to signal the card is the change-navi
 /// button.
-fn navi_card_content<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, editing_hint: bool) -> Element<'static, M> {
+fn navi_card_content<M: 'static>(
+    lang: &LanguageIdentifier,
+    loaded: &Loaded,
+    editing_hint: bool,
+) -> Element<'static, M> {
     let assets = loaded.assets.as_ref();
     // Every game has a player navi with a base max HP. Games with a link-navi
     // roster (BN5/BN6/EXE4.5) also report which navi is equipped (id + emblem +
@@ -118,19 +122,19 @@ pub(super) fn render_navi_strip<'a>(
     actions: Element<'a, Action>,
 ) -> Element<'a, Action> {
     // The pane pads its content off the edges with a uniform `6`; the card
-    // carries the rest of the left inset (`[4, 10]`, so the content sits at 16px
+    // carries the rest of the left inset (`[4, 6]`, so the content sits at 12px
     // horizontal / 10px vertical, with that room inside the change-navi button's
     // hover-highlight area). Both card modes pad identically so toggling edit
     // doesn't nudge it: flat press target in edit mode (with a pencil cue), plain
     // container otherwise.
     let card: Element<'a, Action> = match edit {
         Some(action) => button(navi_card_content::<Action>(lang, loaded, true))
-            .padding([4.0, 10.0])
+            .padding([4.0, 6.0])
             .style(crate::widgets::flat)
             .on_press(action)
             .into(),
         None => container(navi_card_content::<Action>(lang, loaded, false))
-            .padding([4.0, 10.0])
+            .padding([4.0, 6.0])
             .into(),
     };
     // A little horizontal breathing room for the actions cluster (none
