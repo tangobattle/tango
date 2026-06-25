@@ -57,14 +57,15 @@ pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
 /// the window to trip reconnect faster (the horizon shrinks with it); lengthen
 /// it to ride out longer blips (the horizon grows). Nothing else to retune.
 pub const SILENCE_WINDOW: std::time::Duration = std::time::Duration::from_millis(SILENCE_WINDOW_MS);
-const SILENCE_WINDOW_MS: u64 = 1500;
+const SILENCE_WINDOW_MS: u64 = 3000;
 
 /// Slack folded into [`MAX_QUEUE_LENGTH`] on top of [`SILENCE_WINDOW`]: covers
 /// the watchdog's poll interval and the frame or two `pause()` takes to land,
 /// the speculative lead standing at the drop, and a safety factor over all of
-/// it. Deliberately larger than the window itself — overflow must never beat the
-/// watchdog to the punch.
-const STALL_HEADROOM_MS: u64 = 2500;
+/// it — sized so the overflow bail can never beat the watchdog + pause to the
+/// punch (it need not exceed the window itself; the slop it has to cover is a
+/// handful of frames, far short of the window's worth of growth).
+const STALL_HEADROOM_MS: u64 = 1500;
 
 /// Per-side input-queue capacity (the rollback horizon): how many local inputs
 /// may sit unmatched against remote ones (and vice versa) before the engine

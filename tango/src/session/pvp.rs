@@ -395,11 +395,22 @@ impl PvpSession {
                     let trip = tokio::select! {
                         biased;
                         _ = cancel.cancelled() => Trip::Cancelled,
+                        // Ahead of the in-match EOF: a peer's `Reconnecting` marker
+                        // rides the reliable channel just before the close it then
+                        // sends, so reading it first lets us treat the teardown as a
+                        // reconnect (Silence) instead of the close that follows it
+                        // (CleanClose).
+                        peer_reconnecting = watch_reliable(&mut reliable_receiver) => {
+                            if peer_reconnecting {
+                                Trip::Silence
+                            } else {
+                                Trip::CleanClose
+                            }
+                        }
                         r = inner_match.run(receiver) => {
                             log::info!("pvp in-match channel closed: {r:?}");
                             Trip::CleanClose
                         }
-                        _ = drain_until_err(&mut reliable_receiver) => Trip::CleanClose,
                         _ = silence_watchdog(&last_recv) => Trip::Silence,
                     };
 
@@ -433,6 +444,16 @@ impl PvpSession {
                     handle.pause();
                     frame_notify.notify_one();
                     log::info!("pvp link dropped — pausing to reconnect");
+
+                    // Tell the peer we're tearing the link down to reconnect, not
+                    // quitting, so it follows us into a re-rendezvous instead of
+                    // reading the imminent close as a disconnect (which would end
+                    // the match on its side while we wait at the rendezvous). Rides
+                    // the reliable channel just ahead of the close — SCTP flushes
+                    // it before the shutdown — so it arrives first. Best-effort: if
+                    // the link is already fully gone the peer never gets it and
+                    // falls back to its own silence watchdog, which trips alike.
+                    let _ = lobby_sender.lock().await.send_reconnecting().await;
 
                     // Drop the old peer connection *before* rebuilding so the
                     // host's pinned UDP port is free to re-bind. Off the runtime
@@ -858,12 +879,27 @@ async fn drain_receiver(
     }
 }
 
-/// Drain a receiver, discarding any stray late traffic, until it errors — i.e.
-/// the channel closed. Used as a disconnect signal for the reliable channel
-/// (nothing legitimately flows on it mid-match, so any return means the link is
-/// gone). Never returns while the channel is healthy.
-async fn drain_until_err(receiver: &mut crate::net::Receiver) {
-    while receiver.recv_raw().await.is_ok() {}
+/// Watch the reliable channel mid-match. Resolves to `true` if the peer sent a
+/// [`Reconnecting`] marker — it's about to tear the link down to re-rendezvous,
+/// so we should follow it into a reconnect rather than read the close it then
+/// sends as a quit — or `false` if the channel simply closed (a genuine
+/// disconnect). Nothing else legitimately flows on this channel mid-match, so
+/// stray traffic and undecodable bytes are ignored; only the channel actually
+/// closing (a recv error) ends the watch. Never returns while it's healthy.
+///
+/// [`Reconnecting`]: crate::net::protocol::Packet::Reconnecting
+async fn watch_reliable(receiver: &mut crate::net::Receiver) -> bool {
+    use crate::net::protocol::Packet;
+    loop {
+        match receiver.recv_raw().await {
+            Ok(bytes) => {
+                if matches!(Packet::deserialize(&bytes), Ok(Packet::Reconnecting(_))) {
+                    return true;
+                }
+            }
+            Err(_) => return false,
+        }
+    }
 }
 
 /// Resolve once the in-match channel has been silent for [`RECONNECT_SILENCE`].

@@ -42,10 +42,19 @@ pub enum Packet {
     Uncommit(Uncommit),
     Chunk(Chunk),
     StartMatch(StartMatch),
+
+    // Mid-match control.
+    /// The sender's in-match link fell silent and it's about to tear the
+    /// connection down to re-rendezvous (transparent reconnect). Tells the peer
+    /// the imminent channel close is a reconnect, not a quit, so it follows
+    /// instead of ending the match. Appended last so existing tags don't shift;
+    /// older peers ignore it (the reliable channel is drained raw mid-match).
+    Reconnecting(Reconnecting),
     // The live match's per-frame Input / EndOfRound / EndOfMatch traffic no
     // longer rides this reliable channel — it's the data plane's job, carried
     // as `data::wire` frames/markers over a separate unreliable channel (see
-    // [`crate::net::data`]). Only lobby/handshake packets remain here.
+    // [`crate::net::data`]). Only lobby/handshake packets (and the reconnect
+    // marker above) remain here.
 }
 
 impl Packet {
@@ -108,6 +117,9 @@ pub struct Settings {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct StartMatch {}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct Reconnecting {}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct NegotiatedState {
