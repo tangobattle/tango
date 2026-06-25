@@ -52,6 +52,13 @@ const RECONNECT_DIRECT_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duratio
 /// attempt re-rendezvouses on the signaling server then re-gathers ICE (and
 /// possibly TURN), which is much slower than re-binding a known local port.
 const RECONNECT_MATCHMAKING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+/// Give-up window for a reconnect triggered by a channel *close* (rather than
+/// silence). A close is most often a deliberate quit, so we wait only briefly:
+/// a genuine asymmetric drop has the peer already at the rendezvous and rejoins
+/// almost at once, while a quit finds no peer and ends without a long
+/// "Reconnecting…". Applies to both transports (the cost of a needless wait is
+/// the same either way).
+const RECONNECT_CLEAN_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
 /// Per-attempt cap for a matchmaking rebuild (signaling rendezvous + ICE/TURN
 /// gathering + negotiate).
 const RECONNECT_MATCHMAKING_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
@@ -378,15 +385,16 @@ impl PvpSession {
             tokio::task::spawn(async move {
                 // Why the receive loop ended this iteration.
                 enum Trip {
-                    /// Clean local teardown (user closed / cancelled).
+                    /// Clean local teardown (user closed / cancelled). Never reconnects.
                     Cancelled,
-                    /// A channel hit EOF: the peer closed the RTC connection
-                    /// gracefully (quit / pressed Disconnect). A real network
-                    /// drop doesn't close the channel — it goes *silent* — so a
-                    /// close means the opponent left on purpose; don't reconnect.
+                    /// A channel hit EOF — a deliberate quit, or a drop the RTC stack
+                    /// detected and closed. We can't tell those apart, so we reconnect
+                    /// on a *short* window: a real (asymmetric) drop has the peer
+                    /// already waiting at the rendezvous, so it rejoins in a second or
+                    /// two, while a genuine quit finds no one there and ends quickly.
                     CleanClose,
-                    /// No datagram for the silence window: a dead link
-                    /// (drop/timeout). The only thing worth reconnecting.
+                    /// No datagram for the silence window: a dead link (drop/timeout).
+                    /// Reconnects on the full per-transport window.
                     Silence,
                 }
                 loop {
@@ -395,31 +403,23 @@ impl PvpSession {
                     let trip = tokio::select! {
                         biased;
                         _ = cancel.cancelled() => Trip::Cancelled,
-                        // Ahead of the in-match EOF: a peer's `Reconnecting` marker
-                        // rides the reliable channel just before the close it then
-                        // sends, so reading it first lets us treat the teardown as a
-                        // reconnect (Silence) instead of the close that follows it
-                        // (CleanClose).
-                        peer_reconnecting = watch_reliable(&mut reliable_receiver) => {
-                            if peer_reconnecting {
-                                Trip::Silence
-                            } else {
-                                Trip::CleanClose
-                            }
-                        }
                         r = inner_match.run(receiver) => {
                             log::info!("pvp in-match channel closed: {r:?}");
                             Trip::CleanClose
                         }
+                        _ = drain_until_err(&mut reliable_receiver) => Trip::CleanClose,
                         _ = silence_watchdog(&last_recv) => Trip::Silence,
                     };
 
-                    // Only a silent drop on a direct link, before the match has
-                    // completed, is worth reconnecting. A clean close (opponent
-                    // left), the matchmaking transport (no rebuild recipe), a
-                    // post-completion drop, or our own cancel all end it here.
-                    let reconnectable =
-                        matches!(trip, Trip::Silence) && reconnect.is_some() && !completion_token.is_complete();
+                    // Reconnect on any mid-match link loss — silence *or* a channel
+                    // close — as long as the transport can rebuild and the match
+                    // isn't ending (our completion or the peer's EndOfMatch). Our own
+                    // cancel ends here without trying. A close uses the short window
+                    // below, so a deliberate quit doesn't hang the match.
+                    let reconnectable = matches!(trip, Trip::Silence | Trip::CleanClose)
+                        && reconnect.is_some()
+                        && !completion_token.is_complete()
+                        && !end.remote_ended.load(Ordering::Acquire);
                     if !reconnectable {
                         if !matches!(trip, Trip::Cancelled) {
                             end.remote_disconnected.store(true, Ordering::Release);
@@ -431,29 +431,25 @@ impl PvpSession {
 
                     // Freeze the sim so its speculative lead can't run past the
                     // rollback horizon (and overflow-bail) while the link is down;
-                    // retire the latency readout; arm the give-up window the UI
-                    // bar drains over (matchmaking gets longer than direct).
+                    // retire the latency readout; arm the give-up window the UI bar
+                    // drains over. A channel close gets the short window (likely a
+                    // quit — don't hang on it); a silent drop gets the full
+                    // per-transport window (the sim is paused, so waiting is free).
                     let start = std::time::Instant::now();
-                    let deadline = start
-                        + match recipe {
+                    let timeout = if matches!(trip, Trip::CleanClose) {
+                        RECONNECT_CLEAN_CLOSE_TIMEOUT
+                    } else {
+                        match recipe {
                             crate::netplay::ReconnectRecipe::Direct(_) => RECONNECT_DIRECT_TIMEOUT,
                             crate::netplay::ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_TIMEOUT,
-                        };
+                        }
+                    };
+                    let deadline = start + timeout;
                     *reconnect_window.lock().unwrap() = Some((start, deadline));
                     *latency_counter.lock().await = None;
                     handle.pause();
                     frame_notify.notify_one();
                     log::info!("pvp link dropped — pausing to reconnect");
-
-                    // Tell the peer we're tearing the link down to reconnect, not
-                    // quitting, so it follows us into a re-rendezvous instead of
-                    // reading the imminent close as a disconnect (which would end
-                    // the match on its side while we wait at the rendezvous). Rides
-                    // the reliable channel just ahead of the close — SCTP flushes
-                    // it before the shutdown — so it arrives first. Best-effort: if
-                    // the link is already fully gone the peer never gets it and
-                    // falls back to its own silence watchdog, which trips alike.
-                    let _ = lobby_sender.lock().await.send_reconnecting().await;
 
                     // Drop the old peer connection *before* rebuilding so the
                     // host's pinned UDP port is free to re-bind. Off the runtime
@@ -879,27 +875,12 @@ async fn drain_receiver(
     }
 }
 
-/// Watch the reliable channel mid-match. Resolves to `true` if the peer sent a
-/// [`Reconnecting`] marker — it's about to tear the link down to re-rendezvous,
-/// so we should follow it into a reconnect rather than read the close it then
-/// sends as a quit — or `false` if the channel simply closed (a genuine
-/// disconnect). Nothing else legitimately flows on this channel mid-match, so
-/// stray traffic and undecodable bytes are ignored; only the channel actually
-/// closing (a recv error) ends the watch. Never returns while it's healthy.
-///
-/// [`Reconnecting`]: crate::net::protocol::Packet::Reconnecting
-async fn watch_reliable(receiver: &mut crate::net::Receiver) -> bool {
-    use crate::net::protocol::Packet;
-    loop {
-        match receiver.recv_raw().await {
-            Ok(bytes) => {
-                if matches!(Packet::deserialize(&bytes), Ok(Packet::Reconnecting(_))) {
-                    return true;
-                }
-            }
-            Err(_) => return false,
-        }
-    }
+/// Drain the reliable channel mid-match, discarding any stray late traffic,
+/// until it errors — i.e. the channel closed. Used as a disconnect signal for
+/// the reliable channel (nothing legitimately flows on it mid-match, so any
+/// return means the link is gone). Never returns while the channel is healthy.
+async fn drain_until_err(receiver: &mut crate::net::Receiver) {
+    while receiver.recv_raw().await.is_ok() {}
 }
 
 /// Resolve once the in-match channel has been silent for [`RECONNECT_SILENCE`].

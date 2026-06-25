@@ -128,14 +128,6 @@ impl Sender {
             .await
     }
 
-    /// Tell the peer we're about to tear the link down to reconnect (not quit),
-    /// so it re-rendezvous with us instead of reading the imminent close as a
-    /// disconnect. See [`protocol::Packet::Reconnecting`].
-    pub async fn send_reconnecting(&mut self) -> std::io::Result<()> {
-        self.send_packet(&protocol::Packet::Reconnecting(protocol::Reconnecting {}))
-            .await
-    }
-
     // EndOfRound / EndOfMatch are no longer reliable-channel packets — they
     // ride in-band as `data::wire` markers on the unreliable in-match channel
     // (see [`super::data::InMatchTx`]), so their old send helpers are gone.
