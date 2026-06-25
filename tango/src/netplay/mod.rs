@@ -361,7 +361,7 @@ pub enum Message {
     /// Internal: the signaling + WebRTC handshake resolved. We then
     /// kick off the protocol negotiate task before lifecycle moves
     /// out of Connecting.
-    SignalingDone(Slot<ConnectionPayload>),
+    SignalingDone(Slot<crate::net::channel::Channels>),
     /// Internal: protocol negotiate succeeded. Receiver is parked
     /// in the slot for the lobby subscription to take.
     NegotiationDone(Slot<NegotiationOutput>),
@@ -521,21 +521,6 @@ pub(crate) fn derive_reconnect_session_id(rng_seed: &[u8; 16], fp_a: &[u8], fp_b
     code
 }
 
-pub struct ConnectionPayload {
-    /// Reliable control/lobby channel.
-    pub control_dc: datachannel_wrapper::DataChannel,
-    /// Unreliable in-match channel, created up front alongside the control
-    /// channel (see `net::channel`), not bolted on after the connection.
-    pub in_match_dc: datachannel_wrapper::DataChannel,
-    pub peer_conn: datachannel_wrapper::PeerConnection,
-    /// This connection's two DTLS certificate fingerprints (raw SHA-256 bytes),
-    /// parsed from the offer/answer SDP. Carried up to seed the matchmaking
-    /// reconnect `session_id` (see [`derive_reconnect_session_id`]). Empty on a
-    /// transport that doesn't surface them.
-    pub local_dtls_fingerprint: Vec<u8>,
-    pub peer_dtls_fingerprint: Vec<u8>,
-}
-
 /// Intermediate hand-off between `run_signaling_connect` (server
 /// hello arrived) and `run_await_peer` (WebRTC handshake done).
 /// Wraps `tango_signaling::Connecting` so the Connecting future
@@ -547,12 +532,6 @@ pub struct SignalingHello {
 impl std::fmt::Debug for SignalingHello {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("SignalingHello { .. }")
-    }
-}
-
-impl std::fmt::Debug for ConnectionPayload {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("ConnectionPayload { .. }")
     }
 }
 
@@ -771,18 +750,18 @@ impl State {
 
     /// `Message::SignalingDone` — WebRTC handshake resolved; run the protocol
     /// negotiate task before lifecycle moves out of Connecting.
-    fn on_signaling_done(&mut self, slot_rx: Slot<ConnectionPayload>) -> iced::Task<Message> {
+    fn on_signaling_done(&mut self, slot_rx: Slot<crate::net::channel::Channels>) -> iced::Task<Message> {
         let ident = match &self.phase {
             Phase::Connecting { ident, .. } => ident.clone(),
             // Cancelled / superseded — late delivery, ignore.
             _ => return iced::Task::none(),
         };
-        let Some(payload) = slot_rx.lock().unwrap().take() else {
+        let Some(channels) = slot_rx.lock().unwrap().take() else {
             return iced::Task::none();
         };
         self.phase = Phase::Negotiating { ident };
         let cancel = self.cancel.clone();
-        iced::Task::perform(run_negotiate(payload, cancel), map_negotiate_result)
+        iced::Task::perform(run_negotiate(channels, cancel), map_negotiate_result)
     }
 
     /// `Message::NegotiationDone` — protocol handshake complete; install the
@@ -1331,7 +1310,7 @@ pub struct PreMatchData {
 
 // The channel/peer-conn handles aren't `Debug`; a placeholder keeps the
 // enclosing `Message` (which carries a `Slot<PreMatchData>`) derivable, same as
-// `ConnectionPayload`.
+// `Channels`.
 impl std::fmt::Debug for PreMatchData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("PreMatchData { .. }")
@@ -1432,9 +1411,9 @@ fn map_signaling_hello_result(result: Result<SignalingHello, AsyncError>) -> Mes
     }
 }
 
-fn map_connect_result(result: Result<ConnectionPayload, AsyncError>) -> Message {
+fn map_connect_result(result: Result<crate::net::channel::Channels, AsyncError>) -> Message {
     match result {
-        Ok(payload) => Message::SignalingDone(slot(payload)),
+        Ok(channels) => Message::SignalingDone(slot(channels)),
         Err(e) => map_async_err(e),
     }
 }
@@ -1496,28 +1475,18 @@ async fn run_signaling_connect(
 
 /// Stage 2: drive the `Connecting` future to completion — peer
 /// joins + WebRTC ICE handshake opens the data channel.
-async fn run_await_peer(hello: SignalingHello, cancel: CancellationToken) -> Result<ConnectionPayload, AsyncError> {
+async fn run_await_peer(
+    hello: SignalingHello,
+    cancel: CancellationToken,
+) -> Result<crate::net::channel::Channels, AsyncError> {
     let work = async {
-        let tango_signaling::Connected {
-            channels: dcs,
-            peer_conn,
-            local_dtls_fingerprint,
-            peer_dtls_fingerprint,
-        } = hello
+        let connected = hello
             .connecting
             .await
             .map_err(|e| AsyncError::Failed(format!("webrtc: {e}")))?;
-        // `connect` created the channels in the order we passed their specs:
-        // control first, in-match second (see `run_signaling_connect`).
-        let [control_dc, in_match_dc] = <[_; 2]>::try_from(dcs)
-            .map_err(|dcs: Vec<_>| AsyncError::Failed(format!("expected 2 data channels, got {}", dcs.len())))?;
-        Ok::<_, AsyncError>(ConnectionPayload {
-            control_dc,
-            in_match_dc,
-            peer_conn,
-            local_dtls_fingerprint,
-            peer_dtls_fingerprint,
-        })
+        // Same split + pairing a mid-match reconnect uses, so both bundle a
+        // matchmaking connection identically (see [`Channels::from_signaling`]).
+        crate::net::channel::Channels::from_signaling(connected).map_err(|e| AsyncError::Failed(e.to_string()))
     };
     tokio::select! {
         biased;
@@ -1556,6 +1525,10 @@ async fn run_direct_rtc_negotiate(
             control: (mut sender, mut receiver),
             in_match: (in_match_sender, in_match_receiver),
             peer_conn,
+            // Empty on the direct path (fabricated SDP, fingerprint verification
+            // off); it rebuilds via `reconnect`, not a derived session_id.
+            local_dtls_fingerprint,
+            peer_dtls_fingerprint,
         } = channels;
         // Handshake on the reliable channel; the unreliable in-match channel
         // shares the association and is open by the time the match starts.
@@ -1570,11 +1543,8 @@ async fn run_direct_rtc_negotiate(
             peer_conn,
             is_offerer,
             reconnect,
-            // The direct path fabricates SDP with fingerprint verification
-            // disabled and rebuilds via `reconnect`, so it carries no
-            // fingerprints to seed a session_id.
-            local_dtls_fingerprint: Vec::new(),
-            peer_dtls_fingerprint: Vec::new(),
+            local_dtls_fingerprint,
+            peer_dtls_fingerprint,
         })
     };
     tokio::select! {
@@ -1598,21 +1568,21 @@ fn negotiation_error_sentinel(e: crate::net::NegotiationError) -> AsyncError {
     })
 }
 
-/// Split the data channel + run `protocol::negotiate`. Aborts on
+/// Run `protocol::negotiate` over the already-built channels. Aborts on
 /// cancel.
-async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) -> Result<NegotiationOutput, AsyncError> {
-    let ConnectionPayload {
-        control_dc,
-        in_match_dc,
+async fn run_negotiate(
+    channels: crate::net::channel::Channels,
+    cancel: CancellationToken,
+) -> Result<NegotiationOutput, AsyncError> {
+    let crate::net::channel::Channels {
+        control: (mut sender, mut receiver),
+        in_match: (in_match_sender, in_match_receiver),
         peer_conn,
         local_dtls_fingerprint,
         peer_dtls_fingerprint,
-    } = payload;
-    // Both channels were created together up front (before the offer); here we
-    // just split each into its Sender/Receiver. The handshake runs on the
-    // reliable channel.
-    let (mut sender, mut receiver) = crate::net::channel::pair(control_dc);
-    let (in_match_sender, in_match_receiver) = crate::net::channel::pair(in_match_dc);
+    } = channels;
+    // The channels were paired when the connection was bundled; the handshake
+    // runs on the reliable channel.
     let work = crate::net::negotiate(&mut sender, &mut receiver);
     tokio::select! {
         biased;

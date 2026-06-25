@@ -99,6 +99,11 @@ fn open_channels(mut pc: PeerConnection) -> Channels {
         control: super::channel::pair(control_dc),
         in_match: super::channel::pair(in_match_dc),
         peer_conn: pc,
+        // Fabricated SDP with fingerprint verification disabled, so the dummy
+        // fingerprint is meaningless; the direct path rebuilds via re-run, not a
+        // derived session_id. Leave the pair empty.
+        local_dtls_fingerprint: Vec::new(),
+        peer_dtls_fingerprint: Vec::new(),
     }
 }
 

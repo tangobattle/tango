@@ -496,7 +496,7 @@ impl PvpSession {
                         }
                     };
 
-                    let Some(rebuilt) = rebuilt else {
+                    let Some(channels) = rebuilt else {
                         // Timed out or cancelled — give up and end the match.
                         *reconnect_window.lock().unwrap() = None;
                         end.remote_disconnected.store(true, Ordering::Release);
@@ -504,6 +504,15 @@ impl PvpSession {
                         handle.unpause();
                         break;
                     };
+
+                    // Hot-swap the rebuilt channels under the persistent streams.
+                    let crate::net::channel::Channels {
+                        control: (new_control_sender, new_control_receiver),
+                        in_match: (new_in_match_sender, new_in_match_receiver),
+                        peer_conn: new_peer_conn,
+                        local_dtls_fingerprint,
+                        peer_dtls_fingerprint,
+                    } = channels;
 
                     // Refresh the matchmaking rendezvous so the *next* drop re-dials
                     // a fresh, unguessable `session_id` derived from this new
@@ -515,17 +524,10 @@ impl PvpSession {
                     if let Some(crate::netplay::ReconnectRecipe::Matchmaking { session_id, .. }) = reconnect.as_mut() {
                         *session_id = crate::netplay::derive_reconnect_session_id(
                             &rng_seed,
-                            &rebuilt.local_dtls_fingerprint,
-                            &rebuilt.peer_dtls_fingerprint,
+                            &local_dtls_fingerprint,
+                            &peer_dtls_fingerprint,
                         );
                     }
-
-                    // Hot-swap the rebuilt channels under the persistent streams.
-                    let crate::net::channel::Channels {
-                        control: (new_control_sender, new_control_receiver),
-                        in_match: (new_in_match_sender, new_in_match_receiver),
-                        peer_conn: new_peer_conn,
-                    } = rebuilt.channels;
                     *peer_conn.lock().unwrap() = Some(new_peer_conn);
                     // Retarget the out-stream sink (pump + heartbeat both send
                     // through this shared handle); keep the new reliable sender
@@ -960,26 +962,15 @@ async fn silence_watchdog(last_recv: &Mutex<Option<std::time::Instant>>) {
 /// peers race each other to re-rendezvous) until `deadline`, returning `None`
 /// on timeout or cancellation.
 ///
-/// Returns the rebuilt channels in a [`crate::net::channel::Channels`] bundle regardless of
-/// transport — the matchmaking path just demuxes the signaling client's
-/// channel `Vec` (control first, in-match second) into the same shape.
-/// A freshly-rebuilt connection plus the DTLS certificate fingerprints (raw
-/// SHA-256 bytes) of *this* handshake. The fingerprints let the coordinator
-/// refresh the matchmaking reconnect `session_id` so a subsequent drop re-dials
-/// a fresh, unguessable rendezvous rather than reusing the original one. Both
-/// empty on the direct path (its fabricated SDP carries no meaningful
-/// fingerprint, and it re-rendezvous by re-running host/connect anyway).
-struct Rebuilt {
-    channels: crate::net::channel::Channels,
-    local_dtls_fingerprint: Vec<u8>,
-    peer_dtls_fingerprint: Vec<u8>,
-}
-
+/// Returns the rebuilt [`crate::net::channel::Channels`] bundle regardless of
+/// transport — the matchmaking path funnels the signaling client's `Connected`
+/// through the same [`Channels::from_signaling`] the initial connect uses, so a
+/// rebuild and a fresh build produce the identical shape (fingerprints and all).
 async fn rebuild_connection(
     recipe: &crate::netplay::ReconnectRecipe,
     deadline: std::time::Instant,
     cancel: &tokio_util::sync::CancellationToken,
-) -> Option<Rebuilt> {
+) -> Option<crate::net::channel::Channels> {
     use crate::netplay::{DirectRole, ReconnectRecipe};
     let attempt_timeout = match recipe {
         ReconnectRecipe::Direct(_) => RECONNECT_DIRECT_ATTEMPT_TIMEOUT,
@@ -995,15 +986,9 @@ async fn rebuild_connection(
         // reconnect) fires on time instead of overrunning by a whole attempt.
         let this_timeout = attempt_timeout.min(deadline.saturating_duration_since(now));
         let attempt = async {
-            // (channels, local fingerprint, peer fingerprint). The direct arms
-            // carry no meaningful fingerprint, so they leave the pair empty.
-            let (mut channels, local_fp, peer_fp) = match recipe {
-                ReconnectRecipe::Direct(DirectRole::Host { port }) => {
-                    (crate::net::direct_rtc::host(*port).await?, Vec::new(), Vec::new())
-                }
-                ReconnectRecipe::Direct(DirectRole::Connect { addr }) => {
-                    (crate::net::direct_rtc::connect(addr).await?, Vec::new(), Vec::new())
-                }
+            let mut channels = match recipe {
+                ReconnectRecipe::Direct(DirectRole::Host { port }) => crate::net::direct_rtc::host(*port).await?,
+                ReconnectRecipe::Direct(DirectRole::Connect { addr }) => crate::net::direct_rtc::connect(addr).await?,
                 ReconnectRecipe::Matchmaking {
                     endpoint,
                     session_id,
@@ -1025,35 +1010,19 @@ async fn rebuild_connection(
                     .map_err(|e| std::io::Error::other(format!("signaling: {e}")))?;
                     // Blocks at the server until the peer rejoins the session, then
                     // completes the WebRTC handshake — the matchmaking rendezvous.
-                    // We carry this handshake's fingerprints back out so the
+                    // The bundle carries this handshake's fingerprints so the
                     // coordinator can re-derive the session_id for the next drop;
                     // they don't affect *this* rendezvous (its id is already fixed).
-                    let tango_signaling::Connected {
-                        channels: dcs,
-                        peer_conn,
-                        local_dtls_fingerprint,
-                        peer_dtls_fingerprint,
-                    } = connecting
+                    let connected = connecting
                         .await
                         .map_err(|e| std::io::Error::other(format!("webrtc: {e}")))?;
-                    // Same spec order we passed: control first, in-match second.
-                    let [control_dc, in_match_dc] =
-                        <[_; 2]>::try_from(dcs).map_err(|_| std::io::Error::other("expected 2 data channels"))?;
-                    (
-                        crate::net::channel::Channels {
-                            control: crate::net::channel::pair(control_dc),
-                            in_match: crate::net::channel::pair(in_match_dc),
-                            peer_conn,
-                        },
-                        local_dtls_fingerprint,
-                        peer_dtls_fingerprint,
-                    )
+                    crate::net::channel::Channels::from_signaling(connected)?
                 }
             };
             crate::net::negotiate(&mut channels.control.0, &mut channels.control.1)
                 .await
                 .map_err(|e| std::io::Error::other(format!("negotiate: {e:?}")))?;
-            Ok::<_, std::io::Error>((channels, local_fp, peer_fp))
+            Ok::<_, std::io::Error>(channels)
         };
         let outcome = tokio::select! {
             biased;
@@ -1061,13 +1030,7 @@ async fn rebuild_connection(
             r = tokio::time::timeout(this_timeout, attempt) => r,
         };
         match outcome {
-            Ok(Ok((channels, local_dtls_fingerprint, peer_dtls_fingerprint))) => {
-                return Some(Rebuilt {
-                    channels,
-                    local_dtls_fingerprint,
-                    peer_dtls_fingerprint,
-                })
-            }
+            Ok(Ok(channels)) => return Some(channels),
             Ok(Err(e)) => log::debug!("pvp reconnect attempt failed: {e}"),
             Err(_) => log::debug!("pvp reconnect attempt timed out"),
         }

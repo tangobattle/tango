@@ -33,6 +33,45 @@ pub struct Channels {
     /// Unreliable, unordered — the in-match `data::wire` datagrams.
     pub in_match: (Sender, Receiver),
     pub peer_conn: PeerConnection,
+    /// This connection's two DTLS certificate fingerprints (raw SHA-256 bytes),
+    /// parsed from the offer/answer SDP, used to seed the matchmaking reconnect
+    /// `session_id` (see `netplay::derive_reconnect_session_id`). Empty on a
+    /// transport that doesn't surface them — the direct path fabricates SDP with
+    /// fingerprint verification off, so its dummy value is meaningless.
+    pub local_dtls_fingerprint: Vec<u8>,
+    pub peer_dtls_fingerprint: Vec<u8>,
+}
+
+impl Channels {
+    /// Build the bundle from a freshly-connected matchmaking session: split the
+    /// signaling client's channel `Vec` into [control, in-match] (the spec order
+    /// we always pass — see [`control_channel`] / [`in_match_channel`]), pair
+    /// each, and carry the connection's DTLS fingerprints through. The initial
+    /// connect and a mid-match reconnect both funnel through here, so they bundle
+    /// a matchmaking connection identically.
+    pub fn from_signaling(connected: tango_signaling::Connected) -> std::io::Result<Self> {
+        let tango_signaling::Connected {
+            channels: dcs,
+            peer_conn,
+            local_dtls_fingerprint,
+            peer_dtls_fingerprint,
+        } = connected;
+        let [control_dc, in_match_dc] = <[_; 2]>::try_from(dcs)
+            .map_err(|dcs: Vec<_>| std::io::Error::other(format!("expected 2 data channels, got {}", dcs.len())))?;
+        Ok(Self {
+            control: pair(control_dc),
+            in_match: pair(in_match_dc),
+            peer_conn,
+            local_dtls_fingerprint,
+            peer_dtls_fingerprint,
+        })
+    }
+}
+
+impl std::fmt::Debug for Channels {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Channels { .. }")
+    }
 }
 
 /// Label + init for the reliable control channel, as a
