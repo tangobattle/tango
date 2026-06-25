@@ -27,7 +27,7 @@ fn navi_card_content<M: 'static>(
     // name); the rest (BN1–4) have no navi to pick.
     let navi = loaded.save.view_navi();
     let navi_id = navi.as_ref().map(|nv| nv.navi());
-    let base_max_hp = navi.as_ref().map(|nv| nv.base_max_hp(assets));
+    let base_max_hp = navi.as_ref().map(|nv| nv.max_hp(assets));
     let buster = navi.as_ref().and_then(|nv| nv.buster_stats(assets));
 
     // Only the games with a real navi roster (BN5/BN6/EXE4.5) get an emblem +
@@ -182,7 +182,7 @@ pub(crate) fn navi_as_text(lang: &LanguageIdentifier, loaded: &Loaded) -> Option
     }
     out.push_str(&t!(lang, "navi-base-hp"));
     out.push('\t');
-    out.push_str(&navi.base_max_hp(assets).to_string());
+    out.push_str(&navi.max_hp(assets).to_string());
     Some(out)
 }
 

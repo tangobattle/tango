@@ -309,7 +309,7 @@ pub trait NaviView<'a> {
     /// The navi's base max HP — from HP Memories / leveling only, excluding
     /// NaviCust and Mod-Code HP bonuses. For the games without a link-navi
     /// roster (BN1–4) this is the player navi's HP.
-    fn base_max_hp(&self, assets: &dyn crate::rom::Assets) -> u16;
+    fn max_hp(&self, assets: &dyn crate::rom::Assets) -> u16;
 
     /// The navi's live MegaBuster levels and B-button power attack, or `None`
     /// for games that don't expose them. See [`NaviBusterStats`].
