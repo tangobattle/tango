@@ -26,19 +26,20 @@ use std::collections::VecDeque;
 
 use crate::frame::{Body, Frame};
 
-/// Default proactive redundancy floor: the minimum elements every data frame
-/// carries regardless of acks, so a dropped datagram is covered by the next one
-/// without waiting for the peer's ack to report the hole. This is just the
-/// starting/typical value — the floor is adaptive (see
-/// [`OutStream::set_min_redundancy`]); the caller raises or lowers it from the
-/// measured round-trip.
-pub const DEFAULT_REDUNDANCY: u32 = 2;
-
-/// Hard ceiling on the adaptive redundancy floor. Every extra element is bytes
-/// on every datagram, and bursts longer than the floor are still recovered by
-/// the ack-driven window growth (just a round-trip slower), so the *proactive*
-/// floor is capped low.
-pub const MAX_REDUNDANCY: u32 = 3;
+/// Proactive redundancy floor: the minimum elements every data frame carries
+/// regardless of acks, so a dropped datagram is covered by the next one without
+/// waiting for the peer's ack to report the hole.
+///
+/// A fixed floor, not an adaptive knob. The redundancy window is
+/// `max(REDUNDANCY, unconfirmed_span)` (see [`OutStream::trim`]), and the
+/// unconfirmed span — the genuinely in-flight, not-yet-acked tail, re-sent every
+/// frame — already grows with the round-trip, so it recovers loss on its own at
+/// any RTT past a frame or two. This floor only bites when the peer is caught up
+/// to within `REDUNDANCY` (a sub-frame, LAN-class round-trip), where the span
+/// would otherwise collapse below it; there it guarantees a dropped datagram
+/// still has a copy in the next one. Two is plenty: a larger floor is inert,
+/// since the span overtakes it before the floor would ever apply.
+pub const REDUNDANCY: u32 = 2;
 
 /// A contiguous run of elements plus the time-sync advantage that rides with
 /// them. Both halves of the protocol produce one: [`OutStream::window`] builds
@@ -75,9 +76,6 @@ pub struct OutStream<E> {
     peer_ack_base: u32,
     /// Newest input's time-sync lead, echoed once per frame.
     latest_advantage: i16,
-    /// Current proactive redundancy floor. Adaptive — the caller drives it from
-    /// the measured RTT. Always in `[1, MAX_REDUNDANCY]`.
-    min_redundancy: u32,
     /// Rollback horizon: history older than this is dropped (the peer would
     /// bail rather than roll back that far, so retaining it is pointless).
     horizon: u32,
@@ -92,23 +90,7 @@ impl<E: Copy> OutStream<E> {
             history: VecDeque::new(),
             peer_ack_base: 0,
             latest_advantage: 0,
-            min_redundancy: DEFAULT_REDUNDANCY,
             horizon,
-        }
-    }
-
-    /// Adjust the proactive redundancy floor, clamped to `[1, MAX_REDUNDANCY]`.
-    /// The caller drives this from the measured round-trip: redundancy exists to
-    /// recover a lost datagram in ~one frame instead of waiting for the
-    /// ack-driven resend, which costs a whole RTT — so a longer RTT makes a
-    /// deeper floor worth more, and a sub-frame RTT makes it worthless (the
-    /// resend is itself ~one frame). Re-trims immediately so a lowered floor
-    /// sheds its now-excess window the same tick.
-    pub fn set_min_redundancy(&mut self, n: u32) {
-        let n = n.clamp(1, MAX_REDUNDANCY);
-        if n != self.min_redundancy {
-            self.min_redundancy = n;
-            self.trim();
         }
     }
 
@@ -146,16 +128,17 @@ impl<E: Copy> OutStream<E> {
         }
     }
 
-    /// Drop history the peer has confirmed, while keeping at least the current
-    /// redundancy floor ([`min_redundancy`](Self::min_redundancy)) of recent
-    /// elements and no more than a horizon's worth (beyond the horizon the peer
-    /// would bail, so retaining them is pointless).
+    /// Drop history the peer has confirmed, while keeping at least the
+    /// redundancy floor ([`REDUNDANCY`]) of recent elements and no more than a
+    /// horizon's worth (beyond the horizon the peer would bail, so retaining
+    /// them is pointless). The window it leaves is thus
+    /// `max(REDUNDANCY, unconfirmed_span)`, capped at `horizon`.
     fn trim(&mut self) {
         if self.history.is_empty() {
             return;
         }
         let newest = self.next_seq - 1;
-        let redundancy_floor = newest.saturating_sub(self.min_redundancy.saturating_sub(1));
+        let redundancy_floor = newest.saturating_sub(REDUNDANCY.saturating_sub(1));
         let horizon_floor = newest.saturating_sub(self.horizon.saturating_sub(1));
         let keep_from = self.peer_ack_base.min(redundancy_floor).max(horizon_floor);
         // Each pop advances the front seq (`base` rises as the deque shrinks);
@@ -381,33 +364,29 @@ mod tests {
         push_input(&mut out, 3, 0);
         // Peer has confirmed everything through seq 2 (frontier = 3).
         out.apply_ack(3);
-        // Still keeps DEFAULT_REDUNDANCY recent elements (seqs are 0..=2).
-        assert_eq!(out.window_len(), DEFAULT_REDUNDANCY as usize);
+        // Still keeps REDUNDANCY recent elements (seqs are 0..=2).
+        assert_eq!(out.window_len(), REDUNDANCY as usize);
         let w = out.window().unwrap();
-        assert_eq!(w.base, 2 - (DEFAULT_REDUNDANCY - 1)); // seq of first kept = 1
-        assert_eq!(w.entries.len(), DEFAULT_REDUNDANCY as usize);
+        assert_eq!(w.base, 2 - (REDUNDANCY - 1)); // seq of first kept = 1
+        assert_eq!(w.entries.len(), REDUNDANCY as usize);
     }
 
     #[test]
-    fn min_redundancy_floor_is_adaptive() {
+    fn window_is_max_of_floor_and_unconfirmed_span() {
         let mut out = out();
-        for k in 0..5 {
+        for k in 0..10 {
             push_input(&mut out, k, 0);
         }
-        out.apply_ack(5); // peer caught up: only the floor is retained.
-        assert_eq!(out.window_len(), DEFAULT_REDUNDANCY as usize);
+        // Peer lagging: frontier 4 leaves seqs 4..=9 unconfirmed (six >
+        // REDUNDANCY), so the unconfirmed span governs the window.
+        out.apply_ack(4);
+        assert_eq!(out.window_len(), 10 - 4); // the whole unconfirmed span
 
-        // Lower the floor (clean/low-RTT link): the window sheds down to 1 at once.
-        out.set_min_redundancy(1);
-        assert_eq!(out.window_len(), 1);
-
-        // Raise it past the default (high-RTT link); clamped at MAX_REDUNDANCY.
-        out.set_min_redundancy(99);
-        for k in 5..10 {
-            push_input(&mut out, k, 0);
-        }
+        // Peer catches up (frontier = 10, a monotonic advance): the span
+        // collapses below the floor, so the fixed floor governs — exactly
+        // REDUNDANCY recent elements remain.
         out.apply_ack(10);
-        assert_eq!(out.window_len(), MAX_REDUNDANCY as usize);
+        assert_eq!(out.window_len(), REDUNDANCY as usize);
     }
 
     #[test]
@@ -479,7 +458,7 @@ mod tests {
     fn in_recovers_a_dropped_frame_via_redundancy() {
         let mut out = out();
         let mut inn = inn();
-        // Each "frame" carries the last DEFAULT_REDUNDANCY+ elements. Drop one
+        // Each "frame" carries the last REDUNDANCY+ elements. Drop one
         // datagram entirely; the next one's window should still cover it.
         push_input(&mut out, 10, 0);
         let f_a = make_frame(&out); // window ends at seq0=Input(10)
@@ -548,7 +527,7 @@ mod tests {
         // The in-stream now wants seq 4; its ack should advance the peer's
         // out-stream frontier so it trims to the redundancy floor.
         out.apply_ack(inn.ack());
-        assert_eq!(out.window_len(), DEFAULT_REDUNDANCY as usize);
+        assert_eq!(out.window_len(), REDUNDANCY as usize);
     }
 
     #[test]

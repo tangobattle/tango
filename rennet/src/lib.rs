@@ -26,7 +26,7 @@ pub mod frame;
 pub mod stream;
 
 pub use frame::{Ack, Body, Frame};
-pub use stream::{HorizonExceeded, InStream, OutStream, Window, DEFAULT_REDUNDANCY, MAX_REDUNDANCY};
+pub use stream::{HorizonExceeded, InStream, OutStream, Window, REDUNDANCY};
 
 /// Example [`Body`] impls shared by the `frame` and `stream` unit tests. Two
 /// different packings of the same element type, so the tests double as a
