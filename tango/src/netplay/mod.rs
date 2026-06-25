@@ -502,7 +502,7 @@ struct MatchmakingReconnect {
 ///
 /// We also prefix it with _ as the client does not allow construction of
 /// link codes containing _, but the server does permit them.
-fn derive_reconnect_session_id(rng_seed: &[u8; 16], fp_a: &[u8], fp_b: &[u8]) -> String {
+pub(crate) fn derive_reconnect_session_id(rng_seed: &[u8; 16], fp_a: &[u8], fp_b: &[u8]) -> String {
     use sha3::digest::{ExtendableOutput, Update, XofReader};
     let mut h = sha3::Shake128::default();
     h.update(b"tango:reconnect:");
