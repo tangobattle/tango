@@ -42,10 +42,18 @@ pub enum Packet {
     Uncommit(Uncommit),
     Chunk(Chunk),
     StartMatch(StartMatch),
+
+    // Mid-match control.
+    /// The sender is leaving the match on purpose (the user quit / the app is
+    /// exiting), not dropping. Sent on the reliable channel just before the
+    /// teardown so the peer ends the match immediately instead of waiting out
+    /// the short reconnect window. A real drop sends no `Closing`.
+    Closing(Closing),
     // The live match's per-frame Input / EndOfRound / EndOfMatch traffic no
     // longer rides this reliable channel — it's the data plane's job, carried
     // as `data::wire` frames/markers over a separate unreliable channel (see
-    // [`crate::net::data`]). Only lobby/handshake packets remain here.
+    // [`crate::net::data`]). Only lobby/handshake packets (and the close marker
+    // above) remain here.
 }
 
 impl Packet {
@@ -108,6 +116,9 @@ pub struct Settings {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct StartMatch {}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct Closing {}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct NegotiatedState {

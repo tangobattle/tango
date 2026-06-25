@@ -35,7 +35,11 @@ pub mod compat;
 // protocol. Incompatible with 0x46 peers, so the version gate rejects them.
 // 0x48: the data frame's piggybacked ack is now a signed delta from `base`
 // instead of an absolute frontier (smaller on the wire). Incompatible with 0x47.
-pub const PROTOCOL_VERSION: u32 = 0x49;
+// 0x4a: mid-match disconnect reworked — a bare channel close reconnects on a
+// short window, and a deliberate quit announces itself with a `Closing` marker
+// so the peer ends at once. Incompatible with the interim 0x49 `Reconnecting`
+// marker, which sat at the same packet tag with the opposite meaning.
+pub const PROTOCOL_VERSION: u32 = 0x4a;
 
 /// Where the lifecycle is right now. Drives the Play tab's status
 /// bar + the Cancel button's visibility.

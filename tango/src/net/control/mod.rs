@@ -128,6 +128,13 @@ impl Sender {
             .await
     }
 
+    /// Tell the peer we're leaving the match on purpose (quit / app exit), so it
+    /// ends immediately instead of waiting out the reconnect window. See
+    /// [`protocol::Packet::Closing`].
+    pub async fn send_closing(&mut self) -> std::io::Result<()> {
+        self.send_packet(&protocol::Packet::Closing(protocol::Closing {})).await
+    }
+
     // EndOfRound / EndOfMatch are no longer reliable-channel packets — they
     // ride in-band as `data::wire` markers on the unreliable in-match channel
     // (see [`super::data::InMatchTx`]), so their old send helpers are gone.

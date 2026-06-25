@@ -397,34 +397,50 @@ impl PvpSession {
                     /// Reconnects on the full per-transport window.
                     Silence,
                 }
+                // Latched by `watch_reliable` when the peer sends a `Closing`
+                // marker ahead of its disconnect: it's leaving on purpose, so we
+                // end rather than spend the reconnect window on it.
+                let peer_closing = AtomicBool::new(false);
                 loop {
                     // `run` takes `receiver` by move, which is fine — every
                     // looping path rebuilds it.
                     let trip = tokio::select! {
                         biased;
                         _ = cancel.cancelled() => Trip::Cancelled,
+                        // Ahead of the in-match EOF: a `Closing` marker rides the
+                        // reliable channel just before the close it announces, so
+                        // reading it first latches `peer_closing` before the close
+                        // trips.
+                        _ = watch_reliable(&mut reliable_receiver, &peer_closing) => Trip::CleanClose,
                         r = inner_match.run(receiver) => {
                             log::info!("pvp in-match channel closed: {r:?}");
                             Trip::CleanClose
                         }
-                        _ = drain_until_err(&mut reliable_receiver) => Trip::CleanClose,
                         _ = silence_watchdog(&last_recv) => Trip::Silence,
                     };
 
-                    // Reconnect on any mid-match link loss — silence *or* a channel
-                    // close — as long as the transport can rebuild and the match
-                    // isn't ending (our completion or the peer's EndOfMatch). Our own
-                    // cancel ends here without trying. A close uses the short window
-                    // below, so a deliberate quit doesn't hang the match.
+                    // Our own deliberate close: tell the peer (a `Closing` marker)
+                    // so it ends immediately instead of waiting out its reconnect
+                    // window, then stop. (`cancel` is already tripped.)
+                    if matches!(trip, Trip::Cancelled) {
+                        let _ = lobby_sender.lock().await.send_closing().await;
+                        break;
+                    }
+
+                    // Reconnect on any other mid-match link loss — silence *or* a
+                    // channel close — as long as the transport can rebuild, the
+                    // match isn't ending (our completion or the peer's EndOfMatch),
+                    // and the peer didn't announce a deliberate close. A close uses
+                    // the short window below, so a real drop reconnects fast while a
+                    // (markerless) quit ends quickly anyway.
                     let reconnectable = matches!(trip, Trip::Silence | Trip::CleanClose)
                         && reconnect.is_some()
                         && !completion_token.is_complete()
-                        && !end.remote_ended.load(Ordering::Acquire);
+                        && !end.remote_ended.load(Ordering::Acquire)
+                        && !peer_closing.load(Ordering::Acquire);
                     if !reconnectable {
-                        if !matches!(trip, Trip::Cancelled) {
-                            end.remote_disconnected.store(true, Ordering::Release);
-                            cancel.cancel();
-                        }
+                        end.remote_disconnected.store(true, Ordering::Release);
+                        cancel.cancel();
                         break;
                     }
                     let recipe = reconnect.clone().unwrap();
@@ -875,12 +891,26 @@ async fn drain_receiver(
     }
 }
 
-/// Drain the reliable channel mid-match, discarding any stray late traffic,
-/// until it errors — i.e. the channel closed. Used as a disconnect signal for
-/// the reliable channel (nothing legitimately flows on it mid-match, so any
-/// return means the link is gone). Never returns while the channel is healthy.
-async fn drain_until_err(receiver: &mut crate::net::Receiver) {
-    while receiver.recv_raw().await.is_ok() {}
+/// Watch the reliable channel mid-match for the peer's deliberate-close marker.
+/// On a [`Closing`] packet it latches `peer_closing` — the peer is leaving on
+/// purpose, so the disconnect it's about to send is clean and we should end
+/// rather than reconnect — and keeps watching. It only returns when the channel
+/// actually closes (a recv error). Nothing else legitimately flows here
+/// mid-match, so stray traffic / undecodable bytes are ignored.
+///
+/// [`Closing`]: crate::net::protocol::Packet::Closing
+async fn watch_reliable(receiver: &mut crate::net::Receiver, peer_closing: &AtomicBool) {
+    use crate::net::protocol::Packet;
+    loop {
+        match receiver.recv_raw().await {
+            Ok(bytes) => {
+                if matches!(Packet::deserialize(&bytes), Ok(Packet::Closing(_))) {
+                    peer_closing.store(true, Ordering::Release);
+                }
+            }
+            Err(_) => return,
+        }
+    }
 }
 
 /// Resolve once the in-match channel has been silent for [`RECONNECT_SILENCE`].
@@ -925,9 +955,14 @@ async fn rebuild_connection(
         ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_ATTEMPT_TIMEOUT,
     };
     loop {
-        if cancel.is_cancelled() || std::time::Instant::now() >= deadline {
+        let now = std::time::Instant::now();
+        if cancel.is_cancelled() || now >= deadline {
             return None;
         }
+        // Cap the attempt by whichever is sooner — the per-attempt limit or the
+        // remaining give-up budget — so a short give-up window (a channel-close
+        // reconnect) fires on time instead of overrunning by a whole attempt.
+        let this_timeout = attempt_timeout.min(deadline.saturating_duration_since(now));
         let attempt = async {
             let mut channels = match recipe {
                 ReconnectRecipe::Direct(DirectRole::Host { port }) => crate::net::direct_rtc::host(*port).await?,
@@ -978,7 +1013,7 @@ async fn rebuild_connection(
         let outcome = tokio::select! {
             biased;
             _ = cancel.cancelled() => return None,
-            r = tokio::time::timeout(attempt_timeout, attempt) => r,
+            r = tokio::time::timeout(this_timeout, attempt) => r,
         };
         match outcome {
             Ok(Ok(channels)) => return Some(channels),
