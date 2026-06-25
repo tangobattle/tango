@@ -30,16 +30,6 @@ const PEER_END_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 const IN_MATCH_HEARTBEAT: std::time::Duration =
     std::time::Duration::from_nanos((1_000_000_000.0 / EXPECTED_FPS as f64) as u64);
 
-/// In-match silence that trips the reconnect coordinator: no datagram off the
-/// wire for this long means the link is dead, not jittering (frames normally
-/// arrive ~every emulator frame via the heartbeat).
-///
-/// This is the canonical liveness knob; the engine's input-buffer overflow
-/// horizon ([`tango_pvp::battle::MAX_QUEUE_LENGTH`]) is *derived* from it (see
-/// [`tango_pvp::battle::SILENCE_WINDOW`]) and sized to out-cover it, so the
-/// emulator is always paused — and the runaway lead frozen — with margin to
-/// spare before that bail could fire. Retune the window there, not here.
-const RECONNECT_SILENCE: std::time::Duration = tango_pvp::battle::SILENCE_WINDOW;
 /// How long the coordinator keeps trying to rebuild a dropped direct link
 /// before giving up and ending the match. Generous: the sim is paused
 /// throughout, so a long outage costs nothing but the wait.
@@ -52,8 +42,9 @@ const RECONNECT_DIRECT_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duratio
 /// attempt re-rendezvouses on the signaling server then re-gathers ICE (and
 /// possibly TURN), which is much slower than re-binding a known local port.
 const RECONNECT_MATCHMAKING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
-/// Give-up window for a reconnect triggered by a channel *close* (rather than
-/// silence). A close is most often a deliberate quit, so we wait only briefly:
+/// Give-up window for a reconnect triggered by a channel *close* (rather than a
+/// stalled input queue). A close is most often a deliberate quit, so we wait
+/// only briefly:
 /// a genuine asymmetric drop has the peer already at the rendezvous and rejoins
 /// almost at once, while a quit finds no peer and ends without a long
 /// "Reconnecting…". Applies to both transports (the cost of a needless wait is
@@ -65,11 +56,9 @@ const RECONNECT_MATCHMAKING_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Du
 /// Pause between failed rebuild attempts (e.g. dialer racing ahead of the host
 /// re-binding its port).
 const RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(250);
-/// Silence-watchdog poll cadence.
-const RECONNECT_WATCHDOG_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 /// Session-redraw cadence while reconnecting (~30 fps), so the give-up progress
 /// bar drains smoothly even though the paused emulator emits no frames. Purely
-/// cosmetic, hence faster than the silence watchdog's poll.
+/// cosmetic.
 const RECONNECT_UI_TICK: std::time::Duration = std::time::Duration::from_millis(33);
 
 /// The latching end-of-match signals, grouped so the teardown policy
@@ -343,11 +332,6 @@ impl PvpSession {
         // not reconnecting. The UI reads it to draw the "Reconnecting…" overlay
         // and its give-up bar; the emulator is paused for the duration.
         let reconnect_window = Arc::new(Mutex::new(None::<(std::time::Instant, std::time::Instant)>));
-        // Last datagram-arrival time, fed by the PvpReceiver and read by the
-        // coordinator's silence watchdog. Shared so it survives the receiver
-        // being rebuilt over a fresh channel. `None` until the first frame ever
-        // arrives, so the watchdog can't false-trip during a slow startup.
-        let last_recv = Arc::new(Mutex::new(None::<std::time::Instant>));
 
         // Match receive loop + transparent-reconnect coordinator. Holds
         // inner_match alive until the match ends (completion / cancel) or, for a
@@ -375,7 +359,6 @@ impl PvpSession {
             let handle = thread.handle();
             let peer_conn = peer_conn.clone();
             let reconnect_window = reconnect_window.clone();
-            let last_recv = last_recv.clone();
             let cancel = cancellation_token.clone();
             let mut reliable_receiver = reliable_receiver;
             let mut receiver: Box<dyn tango_pvp::net::Receiver + Send + Sync> = Box::new(crate::net::PvpReceiver::new(
@@ -384,7 +367,6 @@ impl PvpSession {
                 latency_counter.clone(),
                 end.remote_ended.clone(),
                 frame_notify.clone(),
-                last_recv.clone(),
             ));
             tokio::task::spawn(async move {
                 // Why the receive loop ended this iteration.
@@ -397,9 +379,10 @@ impl PvpSession {
                     /// already waiting at the rendezvous, so it rejoins in a second or
                     /// two, while a genuine quit finds no one there and ends quickly.
                     CleanClose,
-                    /// No datagram for the silence window: a dead link (drop/timeout).
-                    /// Reconnects on the full per-transport window.
-                    Silence,
+                    /// The local input queue climbed to [`RECONNECT_QUEUE_LENGTH`]:
+                    /// the peer stopped matching our inputs, i.e. a dead link
+                    /// (drop/timeout). Reconnects on the full per-transport window.
+                    Stalled,
                 }
                 // Latched by `watch_reliable` when the peer sends a `Closing`
                 // marker ahead of its disconnect: it's leaving on purpose, so we
@@ -420,7 +403,7 @@ impl PvpSession {
                             log::info!("pvp in-match channel closed: {r:?}");
                             Trip::CleanClose
                         }
-                        _ = silence_watchdog(&last_recv) => Trip::Silence,
+                        _ = inner_match.stalled() => Trip::Stalled,
                     };
 
                     // Our own deliberate close: tell the peer (a `Closing` marker)
@@ -431,13 +414,13 @@ impl PvpSession {
                         break;
                     }
 
-                    // Reconnect on any other mid-match link loss — silence *or* a
-                    // channel close — as long as the transport can rebuild, the
-                    // match isn't ending (our completion or the peer's EndOfMatch),
-                    // and the peer didn't announce a deliberate close. A close uses
-                    // the short window below, so a real drop reconnects fast while a
-                    // (markerless) quit ends quickly anyway.
-                    let reconnectable = matches!(trip, Trip::Silence | Trip::CleanClose)
+                    // Reconnect on any other mid-match link loss — a stalled input
+                    // queue *or* a channel close — as long as the transport can
+                    // rebuild, the match isn't ending (our completion or the peer's
+                    // EndOfMatch), and the peer didn't announce a deliberate close.
+                    // A close uses the short window below, so a real drop reconnects
+                    // fast while a (markerless) quit ends quickly anyway.
+                    let reconnectable = matches!(trip, Trip::Stalled | Trip::CleanClose)
                         && reconnect.is_some()
                         && !completion_token.is_complete()
                         && !end.remote_ended.load(Ordering::Acquire)
@@ -453,7 +436,7 @@ impl PvpSession {
                     // rollback horizon (and overflow-bail) while the link is down;
                     // retire the latency readout; arm the give-up window the UI bar
                     // drains over. A channel close gets the short window (likely a
-                    // quit — don't hang on it); a silent drop gets the full
+                    // quit — don't hang on it); a stalled link gets the full
                     // per-transport window (the sim is paused, so waiting is free).
                     let start = std::time::Instant::now();
                     let timeout = if matches!(trip, Trip::CleanClose) {
@@ -544,12 +527,13 @@ impl PvpSession {
                         latency_counter.clone(),
                         end.remote_ended.clone(),
                         frame_notify.clone(),
-                        last_recv.clone(),
                     ));
-                    // Re-arm the silence watchdog with a fresh window: if the
-                    // rebuilt link falls silent again, it re-trips and we
-                    // reconnect once more (self-healing) instead of stalling.
-                    *last_recv.lock().unwrap() = Some(std::time::Instant::now());
+                    // The queue watchdog re-arms itself on the next loop turn (it
+                    // builds fresh each `select!`): it waits for the rebuilt link's
+                    // resent inputs to drain the standing queue back below the
+                    // threshold before it can trip again, so it re-trips and
+                    // reconnects once more (self-healing) if the link falls silent
+                    // anew, without instantly re-firing on the not-yet-drained queue.
                     *latency_counter.lock().await = Some(crate::net::LatencyCounter::new(5));
                     *reconnect_window.lock().unwrap() = None;
                     handle.unpause();
@@ -930,25 +914,6 @@ async fn watch_reliable(receiver: &mut crate::net::Receiver, peer_closing: &Atom
                 }
             }
             Err(_) => return,
-        }
-    }
-}
-
-/// Resolve once the in-match channel has been silent for [`RECONNECT_SILENCE`].
-/// `last_recv` is stamped by the [`PvpReceiver`](crate::net::PvpReceiver) on
-/// every datagram; with the heartbeat ticking ~every frame, a gap this long
-/// means a dead link rather than jitter. The fast disconnect trigger — it
-/// fires well before the unreliable channel's own close event would.
-async fn silence_watchdog(last_recv: &Mutex<Option<std::time::Instant>>) {
-    loop {
-        tokio::time::sleep(RECONNECT_WATCHDOG_POLL).await;
-        // `None` => no datagram has ever arrived (startup, or just-rebuilt link
-        // that hasn't delivered yet) — don't trip until the link proves itself
-        // live at least once, so a slow start can't masquerade as a drop.
-        if let Some(t) = *last_recv.lock().unwrap() {
-            if t.elapsed() >= RECONNECT_SILENCE {
-                return;
-            }
         }
     }
 }

@@ -121,6 +121,15 @@ pub struct Match {
     /// round exclusively through [`SharedRemoteInputs`], which is what lets
     /// this be a plain std mutex.
     round_state: SyncMutex<Option<Round>>,
+    /// Fires when the live round's local input queue climbs to
+    /// [`RECONNECT_QUEUE_LENGTH`](crate::battle::RECONNECT_QUEUE_LENGTH) — a
+    /// dead link, since the peer has stopped matching our inputs. The round
+    /// raises it (rising-edge, from the emulator thread) at the point it
+    /// enqueues a local input; the session's reconnect coordinator awaits it via
+    /// [`stalled`](Self::stalled) to pause and rebuild before the queue can
+    /// reach the overflow bail. Detecting the stall where the queue grows beats
+    /// polling its depth — no latency, no cross-thread round-state lock.
+    local_stall: Arc<tokio::sync::Notify>,
     primary_thread_handle: mgba::thread::Handle,
     /// Handoff queue from the net receive task to the live round.
     remote_inputs: Arc<RemoteInputs>,
@@ -172,6 +181,7 @@ impl Match {
             cancellation_token,
             identity,
             round_state: SyncMutex::new(None),
+            local_stall: Arc::new(tokio::sync::Notify::new()),
             primary_thread_handle,
             remote_inputs: Arc::default(),
             local_round_idx: AtomicU32::new(0),
@@ -222,6 +232,10 @@ impl Match {
         self.remote_inputs.clone()
     }
 
+    pub(super) fn local_stall_handle(&self) -> Arc<tokio::sync::Notify> {
+        self.local_stall.clone()
+    }
+
     /// The local round counter a [`Round`] created right now belongs to.
     pub(crate) fn current_local_round_idx(&self) -> u32 {
         self.local_round_idx.load(Ordering::Acquire)
@@ -268,6 +282,16 @@ impl Match {
 
     pub fn cancelled(&self) -> tokio_util::sync::WaitForCancellationFuture<'_> {
         self.cancellation_token.cancelled()
+    }
+
+    /// Resolves the next time the live round's local input queue crosses up to
+    /// [`RECONNECT_QUEUE_LENGTH`](crate::battle::RECONNECT_QUEUE_LENGTH) — a dead
+    /// link. The reconnect coordinator selects on this to pause and rebuild. The
+    /// signal is rising-edge, so a queue that sits above the threshold (e.g. just
+    /// after a reconnect, before the resent inputs drain it) fires once, not
+    /// every frame; it re-arms once the queue drops back below.
+    pub fn stalled(&self) -> tokio::sync::futures::Notified<'_> {
+        self.local_stall.notified()
     }
 
     /// Called from the primary main_read_joyflags trap when the live core

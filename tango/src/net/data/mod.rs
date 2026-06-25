@@ -343,14 +343,6 @@ pub struct PvpReceiver {
     /// Session subscription wake, pinged after `remote_ended` flips so
     /// `is_ended` is re-checked without waiting on the next vblank.
     end_of_match_notify: std::sync::Arc<tokio::sync::Notify>,
-    /// Wall-clock instant of the most recent datagram off the wire (any frame,
-    /// even a redundant or ack-only one — it just has to prove the link is
-    /// alive), or `None` until the very first one arrives. The reconnect
-    /// coordinator's silence watchdog reads this to tell a dead link from mere
-    /// jitter, and the `None` gate keeps it from false-tripping during startup
-    /// before the link has delivered anything. Shared (not owned) so it survives
-    /// the receiver being rebuilt over a fresh channel on reconnect.
-    last_recv: std::sync::Arc<std::sync::Mutex<Option<std::time::Instant>>>,
     /// Elements made contiguous by the last frame but not yet yielded.
     pending: std::collections::VecDeque<tango_pvp::net::Event>,
 }
@@ -362,7 +354,6 @@ impl PvpReceiver {
         latency_counter: std::sync::Arc<tokio::sync::Mutex<Option<LatencyCounter>>>,
         remote_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
         end_of_match_notify: std::sync::Arc<tokio::sync::Notify>,
-        last_recv: std::sync::Arc<std::sync::Mutex<Option<std::time::Instant>>>,
     ) -> Self {
         Self {
             receiver,
@@ -370,7 +361,6 @@ impl PvpReceiver {
             latency_counter,
             remote_ended,
             end_of_match_notify,
-            last_recv,
             pending: std::collections::VecDeque::new(),
         }
     }
@@ -384,9 +374,6 @@ impl tango_pvp::net::Receiver for PvpReceiver {
                 return Ok(event);
             }
             let msg = self.receiver.recv_raw().await?;
-            // A datagram arrived — mark the link alive for the silence watchdog
-            // before we even parse it (a malformed frame still proves liveness).
-            *self.last_recv.lock().unwrap() = Some(std::time::Instant::now());
             let frame = protocol::Frame::decode(&msg)?;
             let delivery = self
                 .im

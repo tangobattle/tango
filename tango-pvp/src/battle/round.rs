@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::input::PartialInput;
 
 use super::world::{MgbaState, MgbaWorld};
-use super::{EXPECTED_FPS, MAX_QUEUE_LENGTH};
+use super::{EXPECTED_FPS, MAX_QUEUE_LENGTH, RECONNECT_QUEUE_LENGTH};
 
 /// One round of live PvP. A thin shell around the generic
 /// [`getgud::Session`]: it owns the rollback state machine plus the
@@ -53,6 +53,17 @@ pub struct Round {
     /// before the first load. Read by the per-game `round_post_increment_tick`
     /// traps via [`last_loaded_tick`](Self::last_loaded_tick).
     last_loaded_tick: u32,
+    /// Signals the session's reconnect coordinator the first frame the local
+    /// input queue reaches [`RECONNECT_QUEUE_LENGTH`] (a dead link). Cloned from
+    /// the [`Match`](super::Match) so it outlives the round.
+    local_stall: Arc<tokio::sync::Notify>,
+    /// Whether [`local_stall`](Self::local_stall) has already fired for the
+    /// current above-threshold episode, so the rising edge signals once instead
+    /// of every frame. Cleared when the queue drops back below the threshold —
+    /// which, after a reconnect, the peer's resent inputs do, re-arming the
+    /// signal for any later drop. Persisting on the round (which survives the
+    /// reconnect pause) is what makes that re-arm automatic.
+    stall_signaled: bool,
 }
 
 impl Round {
@@ -67,6 +78,8 @@ impl Round {
             primary_thread_handle: match_.primary_thread_handle(),
             throttler: super::throttler::Throttler::new(),
             last_loaded_tick: 0,
+            local_stall: match_.local_stall_handle(),
+            stall_signaled: false,
         }
     }
 
@@ -194,8 +207,23 @@ impl Round {
         let Some(session) = self.session.as_mut() else {
             anyhow::bail!("add_local_input_and_fastforward on an armed round (no first commit yet)");
         };
-        if session.local_queue_length() >= MAX_QUEUE_LENGTH {
+        let queue_length = session.local_queue_length();
+        if queue_length >= MAX_QUEUE_LENGTH {
             anyhow::bail!("local overflowed our input buffer");
+        }
+        // A dead link keeps this queue climbing ~one per frame (nothing arrives
+        // to match against), so its depth is the liveness signal: at
+        // RECONNECT_QUEUE_LENGTH wake the session's reconnect coordinator to
+        // pause and rebuild, well short of the overflow bail above. Rising-edge —
+        // signal once per episode, not every frame it sits high (e.g. before a
+        // reconnect's resent inputs drain it) — and re-arm once it drops back.
+        if queue_length >= RECONNECT_QUEUE_LENGTH {
+            if !self.stall_signaled {
+                self.stall_signaled = true;
+                self.local_stall.notify_one();
+            }
+        } else {
+            self.stall_signaled = false;
         }
 
         // Drain peer inputs that arrived since last frame into the engine.
