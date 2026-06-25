@@ -401,7 +401,8 @@ impl InnerState {
     /// record the boundary ([`Self::capture`]) and halt the core there.
     /// Always false in replay mode.
     pub fn at_capture_tick(&self) -> bool {
-        self.fastforward().is_some_and(|ff| self.current_tick == ff.capture_tick)
+        self.fastforward()
+            .is_some_and(|ff| self.current_tick == ff.capture_tick)
     }
 
     pub fn increment_current_tick(&mut self) {
@@ -937,9 +938,7 @@ impl State {
     ) -> anyhow::Result<()> {
         let mut guard = self.0.lock().unwrap();
         let prev = guard.as_mut().ok_or_else(|| anyhow::anyhow!("stepper state missing"))?;
-        let prev_replay = prev
-            .replay_mut()
-            .ok_or_else(|| anyhow::anyhow!("not in replay mode"))?;
+        let prev_replay = prev.replay_mut().ok_or_else(|| anyhow::anyhow!("not in replay mode"))?;
 
         let on_round_ended = prev_replay.on_round_ended.take();
         let is_offerer = prev_replay.is_offerer;

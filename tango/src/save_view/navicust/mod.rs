@@ -728,7 +728,9 @@ pub(crate) fn navicust_as_text(loaded: &Loaded) -> Option<String> {
     let mut plus = Vec::new();
     for i in 0..v.count() {
         let Some(part) = v.navicust_part(i) else { continue };
-        let Some(info) = assets.navicust_part(part.id) else { continue };
+        let Some(info) = assets.navicust_part(part.id) else {
+            continue;
+        };
         let name = info.name().unwrap_or_else(|| format!("#{}", part.id));
         if info.is_solid() {
             solid.push(name);
@@ -757,5 +759,12 @@ pub(crate) fn as_image(loaded: &Loaded) -> Option<image::RgbaImage> {
     let materialized = v.materialized();
     let lang = crate::game::region_to_language(loaded.game.region());
     // Clipboard / export path: render at native (high) resolution.
-    Some(grid::render(&materialized, &layout, v.as_ref(), loaded.assets.as_ref(), &lang, None))
+    Some(grid::render(
+        &materialized,
+        &layout,
+        v.as_ref(),
+        loaded.assets.as_ref(),
+        &lang,
+        None,
+    ))
 }

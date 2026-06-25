@@ -447,8 +447,8 @@ fn setup_drawers_overlay<'a>(
     let mut panes: Vec<Element<'a, Message>> = Vec::new();
     if s.local_loaded.is_some() && (state.self_panel.shown() || state.self_panel.is_animating(now)) {
         let me = s.local_loaded.as_ref().unwrap();
-        let panel = save_view::view(lang, me, &s.local_save_view, true, None, false, false)
-            .map(Message::SelfSaveViewAction);
+        let panel =
+            save_view::view(lang, me, &s.local_save_view, true, None, false, false).map(Message::SelfSaveViewAction);
         let pane = setup_pane(panel, -SETUP_DRAWER_TRAVEL, state.self_panel.progress(now));
         panes.push(
             container(pane)
@@ -550,7 +550,10 @@ fn corner_commands_overlay<'a>(
                msg: Message,
                style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style|
      -> Element<'a, Message> {
-        let btn = button(icon.widget().size(16.0)).padding([6.0, 8.0]).style(style).on_press(msg);
+        let btn = button(icon.widget().size(16.0))
+            .padding([6.0, 8.0])
+            .style(style)
+            .on_press(msg);
         iced::widget::tooltip(
             btn,
             widgets::tooltip_bubble(label),
@@ -1023,7 +1026,10 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, session: &'a ActiveSes
         .length(Fill)
         .girth(6.0)
         .style(|theme: &iced::Theme| iced::widget::progress_bar::Style {
-            background: iced::Background::Color(iced::Color { a: 0.12, ..iced::Color::WHITE }),
+            background: iced::Background::Color(iced::Color {
+                a: 0.12,
+                ..iced::Color::WHITE
+            }),
             bar: iced::Background::Color(theme.extended_palette().primary.base.color),
             border: iced::Border {
                 radius: 3.0.into(),
@@ -1037,7 +1043,9 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, session: &'a ActiveSes
         [8.0, 14.0],
         widgets::danger_button,
     );
-    let buttons = row![horizontal_space(), disconnect_btn].spacing(8).align_y(Alignment::Center);
+    let buttons = row![horizontal_space(), disconnect_btn]
+        .spacing(8)
+        .align_y(Alignment::Center);
     let panel = container(column![title, body_text, progress, buttons].spacing(14).width(Fill))
         .width(iced::Length::Fixed(420.0))
         .padding(20)
@@ -1058,4 +1066,3 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, session: &'a ActiveSes
         .style(anim::backdrop_style(0.55));
     Some(iced::widget::stack![Element::from(backdrop), Element::from(placement)].into())
 }
-

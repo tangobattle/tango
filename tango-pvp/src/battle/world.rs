@@ -139,7 +139,9 @@ impl getgud::World for MgbaWorld {
 
     fn recycle(&mut self, state: MgbaState) {
         let MgbaState {
-            primary, shadow_snapshot, ..
+            primary,
+            shadow_snapshot,
+            ..
         } = state;
         for spent in [primary, shadow_snapshot.mgba_state] {
             if self.state_pool.len() >= STATE_POOL_CAP {

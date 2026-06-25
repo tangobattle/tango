@@ -80,32 +80,33 @@ pub fn from_gamedb_entry(entry: GameRef) -> Option<GameRef> {
 /// Per-family Fluent bundles, one per `(family id, locale)`, built from
 /// each enabled family's `translations`. Keyed by the family id (so a
 /// borrowed `&str` family looks up directly) then by language.
-static FAMILY_LOCALES: LazyLock<HashMap<&'static str, HashMap<unic_langid::LanguageIdentifier, FluentBundle<FluentResource>>>> =
-    LazyLock::new(|| {
-        let mut map: HashMap<&'static str, HashMap<unic_langid::LanguageIdentifier, FluentBundle<FluentResource>>> =
-            HashMap::new();
-        for family in FAMILIES.iter() {
-            let by_lang = map.entry(family.id).or_default();
-            for (lang_str, ftl) in family.translations {
-                let Ok(lang) = lang_str.parse::<unic_langid::LanguageIdentifier>() else {
-                    continue;
-                };
-                // The fragments are checked in; on a partial parse keep
-                // what parsed (a missing key just falls back).
-                let res = match FluentResource::try_new(ftl.to_string()) {
-                    Ok(r) => r,
-                    Err((r, _errs)) => r,
-                };
-                let mut bundle = FluentBundle::new_concurrent(vec![lang.clone()]);
-                // Plain strings, no placeholders — skip the bidi isolation
-                // marks fluent wraps args in by default.
-                bundle.set_use_isolating(false);
-                let _ = bundle.add_resource(res);
-                by_lang.insert(lang, bundle);
-            }
+static FAMILY_LOCALES: LazyLock<
+    HashMap<&'static str, HashMap<unic_langid::LanguageIdentifier, FluentBundle<FluentResource>>>,
+> = LazyLock::new(|| {
+    let mut map: HashMap<&'static str, HashMap<unic_langid::LanguageIdentifier, FluentBundle<FluentResource>>> =
+        HashMap::new();
+    for family in FAMILIES.iter() {
+        let by_lang = map.entry(family.id).or_default();
+        for (lang_str, ftl) in family.translations {
+            let Ok(lang) = lang_str.parse::<unic_langid::LanguageIdentifier>() else {
+                continue;
+            };
+            // The fragments are checked in; on a partial parse keep
+            // what parsed (a missing key just falls back).
+            let res = match FluentResource::try_new(ftl.to_string()) {
+                Ok(r) => r,
+                Err((r, _errs)) => r,
+            };
+            let mut bundle = FluentBundle::new_concurrent(vec![lang.clone()]);
+            // Plain strings, no placeholders — skip the bidi isolation
+            // marks fluent wraps args in by default.
+            bundle.set_use_isolating(false);
+            let _ = bundle.add_resource(res);
+            by_lang.insert(lang, bundle);
         }
-        map
-    });
+    }
+    map
+});
 
 /// Look the bare `key` up in `family`'s bundle for `lang`, falling back to
 /// the en-US fragment. Returns `None` if the family/key isn't defined.
@@ -189,7 +190,10 @@ pub fn match_type_name(
 /// Blue). The family string is region-specific (`exe3` JP vs `bn3` US
 /// are distinct families), so the members differ only by color variant.
 pub fn games_in_family(family: &str) -> impl Iterator<Item = GameRef> + '_ {
-    GAMES.iter().copied().filter(move |g| g.family_and_variant().0 == family)
+    GAMES
+        .iter()
+        .copied()
+        .filter(move |g| g.family_and_variant().0 == family)
 }
 
 /// Best-effort family display name (e.g. "Mega Man Battle Network 3") via

@@ -95,10 +95,19 @@ impl MaterializedAutoBattleData {
                     SECONDARY_STANDARD_SLOTS,
                     ChipClass::Standard,
                 ))
-                .chain(materialize_section(assets, &use_counts, STANDARD_SLOTS, ChipClass::Standard))
+                .chain(materialize_section(
+                    assets,
+                    &use_counts,
+                    STANDARD_SLOTS,
+                    ChipClass::Standard,
+                ))
                 .chain(materialize_section(assets, &use_counts, MEGA_SLOTS, ChipClass::Mega))
                 .chain(materialize_section(assets, &use_counts, GIGA_SLOTS, ChipClass::Giga))
-                .chain(COMBO_SLOTS.iter().flat_map(|&count| std::iter::repeat(None).take(count)))
+                .chain(
+                    COMBO_SLOTS
+                        .iter()
+                        .flat_map(|&count| std::iter::repeat(None).take(count)),
+                )
                 .chain(materialize_section(
                     assets,
                     &use_counts,

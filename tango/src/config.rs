@@ -373,8 +373,7 @@ pub fn game_key(game: crate::rom::GameRef) -> String {
 /// when the OS user-dirs lookup fails, the same degraded case
 /// [`Config::load_or_create`] already tolerates.
 pub fn config_dir() -> Option<std::path::PathBuf> {
-    directories_next::ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
-        .map(|d| d.config_dir().to_path_buf())
+    directories_next::ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION).map(|d| d.config_dir().to_path_buf())
 }
 
 fn config_path() -> Option<std::path::PathBuf> {

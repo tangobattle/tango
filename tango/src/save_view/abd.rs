@@ -1,5 +1,5 @@
-use super::*;
 use super::folder::{chip_icon, chip_row, chip_stat_cells, class_accent, with_chip_tooltip, GroupedChip};
+use super::*;
 use sweeten::widget::{column, row, text_input};
 
 // ---------- Auto Battle Data ----------
@@ -367,7 +367,10 @@ pub(crate) fn as_text(loaded: &Loaded) -> Option<String> {
     let view = loaded.save.view_auto_battle_data()?;
     let mat = view.materialized();
     let chip_name = |id: Option<usize>| match id {
-        Some(id) => assets.chip(id).and_then(|c| c.name()).unwrap_or_else(|| format!("#{id}")),
+        Some(id) => assets
+            .chip(id)
+            .and_then(|c| c.name())
+            .unwrap_or_else(|| format!("#{id}")),
         None => "—".to_string(),
     };
     let mut out = String::new();

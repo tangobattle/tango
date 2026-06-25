@@ -36,10 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "vendored")]
     {
         let openssl_artifacts = openssl_src::Build::new().build();
-        cmake.define(
-            "OPENSSL_ROOT_DIR",
-            openssl_artifacts.lib_dir().parent().unwrap(),
-        );
+        cmake.define("OPENSSL_ROOT_DIR", openssl_artifacts.lib_dir().parent().unwrap());
         cmake.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
 
         println!(
@@ -71,10 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     rustc_link_search(&cmake, &format!("native={out_dir}/build/deps/libjuice"));
     println!("cargo:rustc-link-lib=static=juice-static");
 
-    rustc_link_search(
-        &cmake,
-        &format!("native={out_dir}/build/deps/usrsctp/usrsctplib"),
-    );
+    rustc_link_search(&cmake, &format!("native={out_dir}/build/deps/usrsctp/usrsctplib"));
     println!("cargo:rustc-link-lib=static=usrsctp");
 
     rustc_link_search(&cmake, &format!("native={out_dir}/build"));

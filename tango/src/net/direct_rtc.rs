@@ -294,8 +294,18 @@ mod tests {
         let (mut host_ch, mut conn_ch) = bring_up().await;
 
         // The rebuilt in-match channel carries traffic both ways.
-        host_ch.in_match.0.send_raw(b"reconnected-h2c").await.expect("post-reconnect host send");
-        conn_ch.in_match.0.send_raw(b"reconnected-c2h").await.expect("post-reconnect conn send");
+        host_ch
+            .in_match
+            .0
+            .send_raw(b"reconnected-h2c")
+            .await
+            .expect("post-reconnect host send");
+        conn_ch
+            .in_match
+            .0
+            .send_raw(b"reconnected-c2h")
+            .await
+            .expect("post-reconnect conn send");
         let roundtrip = async {
             let at_conn = conn_ch.in_match.1.recv_raw().await?;
             let at_host = host_ch.in_match.1.recv_raw().await?;

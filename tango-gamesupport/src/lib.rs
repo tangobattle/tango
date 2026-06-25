@@ -202,11 +202,17 @@ pub fn games_of(families: &[&'static Family]) -> Vec<GameRef> {
 }
 
 pub fn find_by_family_and_variant(games: &[GameRef], family: &str, variant: u8) -> Option<GameRef> {
-    games.iter().copied().find(|g| g.family_and_variant() == (family, variant))
+    games
+        .iter()
+        .copied()
+        .find(|g| g.family_and_variant() == (family, variant))
 }
 
 pub fn find_by_rom_info(games: &[GameRef], code: &[u8; 4], revision: u8) -> Option<GameRef> {
-    games.iter().copied().find(|g| g.rom_code_and_revision() == (code, revision))
+    games
+        .iter()
+        .copied()
+        .find(|g| g.rom_code_and_revision() == (code, revision))
 }
 
 /// Identify a clean ROM dump: match the `code`/`revision` header bytes,

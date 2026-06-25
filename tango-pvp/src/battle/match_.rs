@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as SyncMutex};
 
 use super::round::Round;
-use super::{MatchIdentity, MAX_QUEUE_LENGTH, ReplayConfig};
+use super::{MatchIdentity, ReplayConfig, MAX_QUEUE_LENGTH};
 
 /// Handoff queue from the net receive task to the live round: inputs from
 /// the peer, tagged at receive time with the peer-round index they belong

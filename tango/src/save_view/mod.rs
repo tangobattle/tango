@@ -1030,8 +1030,12 @@ pub fn view<'a>(
     }
     let mut actions_tail: Element<'a, Action> = actions.into();
     if let Some(phase) = edit_swap {
-        actions_tail =
-            crate::anim::swap_transform(actions_tail, phase, iced::Vector::new(32.0, 0.0), crate::widgets::plate_color);
+        actions_tail = crate::anim::swap_transform(
+            actions_tail,
+            phase,
+            iced::Vector::new(32.0, 0.0),
+            crate::widgets::plate_color,
+        );
     }
 
     // The equipped navi (emblem / name / HP / buster) rides in a slim header
@@ -1233,7 +1237,11 @@ pub fn view<'a>(
         let progress = state.navi_select.progress(now);
         // Entrance progress of the side actually on screen (the target): the
         // picker on open, the tab content on dismiss.
-        let entrance = if state.navi_select.shown() { progress } else { 1.0 - progress };
+        let entrance = if state.navi_select.shown() {
+            progress
+        } else {
+            1.0 - progress
+        };
         crate::anim::slide_in(region, entrance, iced::Vector::new(0.0, 20.0))
     } else {
         region

@@ -56,7 +56,9 @@ pub struct PendingSnapshot(std::sync::mpsc::Receiver<anyhow::Result<ShadowSnapsh
 
 impl PendingSnapshot {
     pub fn wait(self) -> anyhow::Result<ShadowSnapshot> {
-        self.0.recv().map_err(|_| anyhow::format_err!("shadow worker is gone"))?
+        self.0
+            .recv()
+            .map_err(|_| anyhow::format_err!("shadow worker is gone"))?
     }
 }
 
@@ -108,7 +110,8 @@ impl Worker {
     pub fn join_pending(&self) -> anyhow::Result<()> {
         let inflight = self.inflight.lock().unwrap().take();
         if let Some(done) = inflight {
-            done.recv().map_err(|_| anyhow::format_err!("shadow worker is gone"))??;
+            done.recv()
+                .map_err(|_| anyhow::format_err!("shadow worker is gone"))??;
         }
         Ok(())
     }

@@ -51,7 +51,11 @@ pub fn copy_icon_button<'a, M: Clone + 'a>(
     padding: [f32; 2],
 ) -> Element<'a, M> {
     let lit = crate::copy_feedback::is_lit(key);
-    let (glyph, tip) = if lit { (Icon::ClipboardCheck, copied_label) } else { (icon, label) };
+    let (glyph, tip) = if lit {
+        (Icon::ClipboardCheck, copied_label)
+    } else {
+        (icon, label)
+    };
     let mut glyph_el = glyph.widget().size(icon_size);
     if lit {
         glyph_el = glyph_el.style(primary_text_style);
@@ -60,13 +64,7 @@ pub fn copy_icon_button<'a, M: Clone + 'a>(
     if let Some(m) = msg {
         btn = btn.on_press(m);
     }
-    tooltip(
-        btn,
-        tooltip_bubble(tip),
-        tooltip::Position::Top,
-    )
-    .gap(4)
-    .into()
+    tooltip(btn, tooltip_bubble(tip), tooltip::Position::Top).gap(4).into()
 }
 
 /// List-item button style for selectable rows (patches list,
@@ -330,13 +328,9 @@ pub fn icon_button_styled<'a, M: Clone + 'a>(
     if let Some(m) = msg {
         btn = btn.on_press(m);
     }
-    tooltip(
-        btn,
-        tooltip_bubble(label),
-        tooltip::Position::Bottom,
-    )
-    .gap(4)
-    .into()
+    tooltip(btn, tooltip_bubble(label), tooltip::Position::Bottom)
+        .gap(4)
+        .into()
 }
 
 /// A pick_list option: a value paired with a pre-resolved display
@@ -485,13 +479,9 @@ pub fn nav_icon_tab_button<'a, M: Clone + 'a>(
     active: bool,
 ) -> Element<'a, M> {
     let stacked = tab_button_inner(icon, None, msg, active, true);
-    tooltip(
-        stacked,
-        tooltip_bubble(tooltip_label),
-        tooltip::Position::Bottom,
-    )
-    .gap(4)
-    .into()
+    tooltip(stacked, tooltip_bubble(tooltip_label), tooltip::Position::Bottom)
+        .gap(4)
+        .into()
 }
 
 fn tab_button_inner<'a, M: Clone + 'a>(
@@ -727,7 +717,9 @@ pub fn primary_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
 /// The standard tooltip bubble: a caption-sized `label` on the
 /// [`tooltip_chrome`] plate. Pass as the overlay to `iced::widget::tooltip`.
 pub fn tooltip_bubble<'a, M: 'a>(label: impl Into<String>) -> iced::widget::Container<'a, M> {
-    container(text(label.into()).size(TEXT_CAPTION)).padding(6).style(tooltip_chrome)
+    container(text(label.into()).size(TEXT_CAPTION))
+        .padding(6)
+        .style(tooltip_chrome)
 }
 
 pub fn tooltip_chrome(theme: &Theme) -> iced::widget::container::Style {
@@ -894,7 +886,7 @@ pub fn body_surface(theme: &Theme) -> iced::widget::container::Style {
 /// Static — no animation — and cached; the geometry only
 /// re-tessellates when the canvas resizes or the theme flips.
 pub fn cyber_backdrop<'a, M: 'a>() -> Element<'a, M> {
-    use iced::widget::canvas::{self, Canvas, LineDash, Path, Stroke, Style, gradient};
+    use iced::widget::canvas::{self, gradient, Canvas, LineDash, Path, Stroke, Style};
     use iced::{Point, Rectangle, Renderer};
 
     struct Backdrop;
@@ -1304,10 +1296,10 @@ pub fn tinted_button(theme: &Theme, status: button::Status, accent: iced::Color)
         let bg = theme.palette().background;
         let text = theme.palette().text;
         let dim = if p.is_dark {
-        mix(bg, plate_lift(theme), 0.11)
-    } else {
-        mix(bg, text, 0.08)
-    };
+            mix(bg, plate_lift(theme), 0.11)
+        } else {
+            mix(bg, text, 0.08)
+        };
         return button::Style {
             background: Some(iced::Background::Color(dim)),
             text_color: iced::Color { a: 0.35, ..text },

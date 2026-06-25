@@ -157,10 +157,8 @@ impl Replay {
         // `OP_PREV` for the per-record encoding. `0x00` ends the stream
         // cleanly; any unexpected EOF mid-record drops the partial record
         // and leaves is_complete=false.
-        let mut rounds: Vec<Vec<(crate::input::PartialInput, crate::input::PartialInput)>> =
-            Vec::new();
-        let mut current_round: Vec<(crate::input::PartialInput, crate::input::PartialInput)> =
-            Vec::new();
+        let mut rounds: Vec<Vec<(crate::input::PartialInput, crate::input::PartialInput)>> = Vec::new();
+        let mut current_round: Vec<(crate::input::PartialInput, crate::input::PartialInput)> = Vec::new();
         let mut is_complete = false;
         let mut prev: (u16, u16) = (0, 0);
 
