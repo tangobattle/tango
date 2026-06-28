@@ -990,12 +990,7 @@ pub fn view<'a>(
     // The single Edit button covers the whole save: shown whenever *any* section
     // is editable, not per-tab. Once open, the user navigates tabs to edit each
     // section (and clicks the navi header to swap navi).
-    let save_editable = editable
-        && (loaded.folder_editable
-            || loaded.navicust_editable
-            || loaded.navi_editable
-            || loaded.patch_cards_editable
-            || loaded.auto_battle_data_editable);
+    let save_editable = editable && loaded.editability.any();
 
     // The save-level actions live at the navi header's right edge (not the tab
     // strip): Edit + Play in read mode, Save / Cancel while editing, swapping
@@ -1044,7 +1039,7 @@ pub fn view<'a>(
     // save-level actions sit at its right edge. While editing (and the navi is
     // editable) the card itself becomes the change-navi affordance — clicking it
     // opens the picker as the body.
-    let navi_edit = (editing_session && loaded.navi_editable).then_some(Action::EnterEditNavi);
+    let navi_edit = (editing_session && loaded.editability.navi).then_some(Action::EnterEditNavi);
     let navi_strip = loaded
         .save
         .view_navi()
@@ -1066,11 +1061,11 @@ pub fn view<'a>(
         .unwrap_or(available[0]);
 
     // The global edit session selects each section's editable body below.
-    let folder_editing = editing_session && loaded.folder_editable;
-    let navicust_editing = editing_session && loaded.navicust_editable;
-    let navi_editing = editing_session && loaded.navi_editable;
-    let patch_cards_editing = editing_session && loaded.patch_cards_editable;
-    let auto_battle_data_editing = editing_session && loaded.auto_battle_data_editable;
+    let folder_editing = editing_session && loaded.editability.folder;
+    let navicust_editing = editing_session && loaded.editability.navicust;
+    let navi_editing = editing_session && loaded.editability.navi;
+    let patch_cards_editing = editing_session && loaded.editability.patch_cards;
+    let auto_battle_data_editing = editing_session && loaded.editability.auto_battle_data;
 
     // Tab strip: tabs left, the active tab's contextual extras (copy, folder
     // group toggle, copy-as-image) right — the save-level actions live in the
@@ -1269,7 +1264,7 @@ pub fn view<'a>(
 fn edit_buttons<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded) -> Element<'a, Action> {
     use crate::widgets;
     use lucide_icons::Icon;
-    let can_save = !loaded.folder_editable || {
+    let can_save = !loaded.editability.folder || {
         let full = loaded.save.view_chips().map_or(true, |v| {
             let folder = v.equipped_folder_index();
             (0..folder::MAX_FOLDER_CHIPS).all(|i| v.chip(folder, i).is_some())

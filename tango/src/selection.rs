@@ -20,36 +20,64 @@ pub struct AppliedPatch {
     pub version_meta: Arc<crate::patch::Version>,
 }
 
+/// Which sections of a loaded save can be edited in place. Each flag is a
+/// pure capability probe — `view_*_mut().is_some()` — which needs `&mut save`,
+/// so it's computed once and cached on the immutable `Loaded` (the per-frame
+/// view only holds `&Loaded`, and the read-only `view_*()` probes answer a
+/// different question: BN3 has a viewable-but-not-writable navicust, BN1–4 a
+/// viewable-but-not-writable navi). Swapping the equipped navi flips some of
+/// these (a link navi has no navicust / patch cards), so re-probe via
+/// [`Loaded::refresh_editability`] after any in-memory edit that can change
+/// capability.
+#[derive(Clone, Copy, Default)]
+pub struct Editability {
+    /// `view_chips_mut().is_some()` — drives the Folder tab's Edit button.
+    pub folder: bool,
+    /// `view_navicust_mut().is_some()` (BN4/5/6, and not a link navi).
+    pub navicust: bool,
+    /// `view_navi_mut().is_some()` — the equipped navi (BN5/BN6/BN4.5).
+    pub navi: bool,
+    /// `view_patch_cards_mut().is_some()` — BN4 (PatchCard4s, slot-based) and
+    /// BN5/BN6 (PatchCard56s, list-based); each gets its own editor.
+    pub patch_cards: bool,
+    /// `view_auto_battle_data_mut().is_some()` (BN4/BN5).
+    pub auto_battle_data: bool,
+}
+
+impl Editability {
+    /// Probe every section's writable view once. Constructing a mutable view
+    /// has no side effects, so this is a pure capability check.
+    fn probe(save: &mut (dyn tango_dataview::save::Save + Send + Sync)) -> Self {
+        // Each `is_some()` gets its own statement so the borrowed view temporary
+        // is dropped before the next probe — a single struct literal would keep
+        // every mutable borrow of `save` alive at once.
+        let folder = save.view_chips_mut().is_some();
+        let navicust = save.view_navicust_mut().is_some();
+        let navi = save.view_navi_mut().is_some();
+        let patch_cards = save.view_patch_cards_mut().is_some();
+        let auto_battle_data = save.view_auto_battle_data_mut().is_some();
+        Self {
+            folder,
+            navicust,
+            navi,
+            patch_cards,
+            auto_battle_data,
+        }
+    }
+
+    /// Whether *any* section is editable — drives the single save-level Edit
+    /// button (once open, the user navigates tabs to edit each section).
+    pub fn any(&self) -> bool {
+        self.folder || self.navicust || self.navi || self.patch_cards || self.auto_battle_data
+    }
+}
+
 pub struct Loaded {
     pub game: GameRef,
     pub save_path: std::path::PathBuf,
     pub save: Box<dyn tango_dataview::save::Save + Send + Sync>,
-    /// Whether this save supports in-place folder editing — i.e.
-    /// `save.view_chips_mut().is_some()`. Cached at build time because
-    /// the probe needs `&mut save`, but the per-frame view only holds
-    /// `&Loaded`. Drives whether the Folder tab shows the Edit button.
-    pub folder_editable: bool,
-    /// Whether this save supports in-place navicust editing — i.e.
-    /// `save.view_navicust_mut().is_some()` (BN4/5/6, and not a link navi).
-    /// Cached at build time (the probe needs `&mut save`); drives
-    /// whether the NaviCust tab shows the Edit button.
-    pub navicust_editable: bool,
-    /// Whether this save supports editing the equipped navi — i.e.
-    /// `save.view_navi_mut().is_some()` (BN5/BN6/BN4.5). Cached at build
-    /// time (the probe needs `&mut save`); drives whether the Navi tab
-    /// shows the Edit button.
-    pub navi_editable: bool,
-    /// Whether this save supports in-place patch-card editing — i.e.
-    /// `save.view_patch_cards_mut().is_some()`. True for BN4 (PatchCard4s,
-    /// slot-based) and BN5/BN6 (PatchCard56s, list-based); each gets its own
-    /// editor. Cached at build time (the probe needs `&mut save`); drives
-    /// whether the Patch Cards tab shows the Edit button.
-    pub patch_cards_editable: bool,
-    /// Whether this save supports in-place auto-battle-data editing — i.e.
-    /// `save.view_auto_battle_data_mut().is_some()` (BN4/BN5). Cached at
-    /// build time (the probe needs `&mut save`); drives whether the Auto
-    /// Battle Data tab shows the Edit button.
-    pub auto_battle_data_editable: bool,
+    /// Which sections of this save can be edited in place. See [`Editability`].
+    pub editability: Editability,
     /// Patch+version baked into this Loaded, if any. `None` = raw ROM.
     pub patch: Option<AppliedPatch>,
     pub assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>,
@@ -161,24 +189,10 @@ impl Loaded {
         mut save: Box<dyn tango_dataview::save::Save + Send + Sync>,
         applied_patch: Option<AppliedPatch>,
     ) -> Self {
-        // Probe folder-editability once (needs `&mut save`); constructing
-        // the mutable chip view has no side effects, so this is a pure
-        // capability check we can cache on the immutable Loaded.
-        let folder_editable = save.view_chips_mut().is_some();
-        // Navicust editability (BN4/5/6). A link navi has no navicust, so
-        // `view_navicust_mut` is `None`; read-only-navicust BN3 also stays
-        // off. Same pure-capability probe pattern as `folder_editable`.
-        let navicust_editable = save.view_navicust_mut().is_some();
-        // Navi (equipped link navi) editability: BN5/BN6/BN4.5. Same
-        // pure-capability probe pattern as the others.
-        let navi_editable = save.view_navi_mut().is_some();
-        // Patch-card editability: both BN4 (PatchCard4s) and BN5/BN6
-        // (PatchCard56s) are writable, each through its own editor. Same
-        // pure-capability probe pattern as the others.
-        let patch_cards_editable = save.view_patch_cards_mut().is_some();
-        // Auto-battle-data editability: BN4/BN5 expose a writable view.
-        // Same pure-capability probe pattern as the others.
-        let auto_battle_data_editable = save.view_auto_battle_data_mut().is_some();
+        // Probe section editability once (each needs `&mut save`, but the
+        // per-frame view only holds `&Loaded`). Constructing a mutable view has
+        // no side effects, so this is a pure capability check we can cache.
+        let editability = Editability::probe(&mut *save);
 
         let wram = save.as_raw_wram().into_owned();
         let charset_owned: Option<Vec<&str>> = applied_patch
@@ -293,11 +307,7 @@ impl Loaded {
             game,
             save_path,
             save,
-            folder_editable,
-            navicust_editable,
-            navi_editable,
-            patch_cards_editable,
-            auto_battle_data_editable,
+            editability,
             patch: applied_patch,
             assets,
             chip_icons,
@@ -319,6 +329,14 @@ impl Loaded {
     /// otherwise stay stale until the next reselection.
     pub fn rebuild_navicust_render(&mut self) {
         self.navicust_render = build_navicust_render(self.save.as_ref(), self.assets.as_ref(), self.game);
+    }
+
+    /// Re-probe section [`Editability`] from the current in-memory save.
+    /// Swapping the equipped navi flips navicust / patch-card capability, so
+    /// the edit path calls this after a navi change to keep the cached flags
+    /// in sync (they're read from the `&Loaded`-only per-frame view).
+    pub fn refresh_editability(&mut self) {
+        self.editability = Editability::probe(&mut *self.save);
     }
 
     /// Build a Loaded for the local side of a replay — used by the

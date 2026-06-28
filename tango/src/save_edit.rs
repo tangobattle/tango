@@ -337,13 +337,12 @@ pub fn apply_navi_edit(loaded: &mut selection::Loaded, edit: tabs::play::NaviEdi
     }
     // Switching the equipped navi flips whether an editable navicust and patch
     // card list exist: a link navi has neither, the player's own navi does. The
-    // editability probes (and the baked read-only navicust grid image) are
-    // cached on `Loaded` (the per-frame view only holds `&Loaded`), so refresh
-    // them here — otherwise they stay stale until the save is reselected,
-    // leaving the NaviCust / patch card editors disabled (or showing the wrong
-    // grid) after a navi swap.
-    loaded.navicust_editable = loaded.save.view_navicust_mut().is_some();
-    loaded.patch_cards_editable = loaded.save.view_patch_cards_mut().is_some();
+    // editability flags (and the baked read-only navicust grid image) are cached
+    // on `Loaded` (the per-frame view only holds `&Loaded`), so refresh them
+    // here — otherwise they stay stale until the save is reselected, leaving the
+    // NaviCust / patch card editors disabled (or showing the wrong grid) after a
+    // navi swap.
+    loaded.refresh_editability();
     loaded.rebuild_navicust_render();
 }
 
