@@ -92,8 +92,6 @@ where
         None
     }
 
-    fn folder_limits(&self, assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits;
-
     fn view_auto_battle_data(&self) -> Option<Box<dyn AutoBattleDataView<'_> + '_>> {
         None
     }
@@ -316,6 +314,12 @@ pub trait NaviView<'a> {
     fn buster_stats(&self, _assets: &dyn crate::rom::Assets) -> Option<NaviBusterStats> {
         None
     }
+
+    /// The folder-construction limits for this navi — the class caps (navi/
+    /// mega/giga/dark), the per-chip copy cap, and the Regular/Tag memory
+    /// budgets. These depend on the equipped navi (its style, NaviCust, and
+    /// Patch Cards all feed in), which is why they live on the navi view.
+    fn folder_limits(&self, assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits;
 }
 
 /// A navi's MegaBuster loadout, as the game's MegaBuster status screen shows it.

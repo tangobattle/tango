@@ -35,7 +35,11 @@ pub fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdi
         ChipEdit::AddChip { chip_id, code } => {
             // Enforce the equipped navi's folder limits (mega/giga class
             // caps + the per-chip copy cap).
-            let limits = loaded.save.folder_limits(&*loaded.assets);
+            let limits = loaded
+                .save
+                .view_navi()
+                .map(|nv| nv.folder_limits(&*loaded.assets))
+                .unwrap_or_default();
             if !crate::save_view::folder::FolderUsage::scan(loaded, folder_idx).can_add(loaded, chip_id, &limits) {
                 return;
             }
@@ -170,7 +174,11 @@ pub fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdi
             // Setting a new Regular requires its MB to fit Regular memory
             // (the editor greys the toggle out otherwise). Clearing is free.
             if current != Some(slot) {
-                let limits = loaded.save.folder_limits(&*loaded.assets);
+                let limits = loaded
+                    .save
+                    .view_navi()
+                    .map(|nv| nv.folder_limits(&*loaded.assets))
+                    .unwrap_or_default();
                 if let Some(cap) = limits.reg_memory {
                     let fits = loaded
                         .save
@@ -192,7 +200,11 @@ pub fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdi
             // greys out the toggle that would form it, so this is a
             // backstop). `None` clears the pair and is always allowed.
             if let Some([a, b]) = pair {
-                let limits = loaded.save.folder_limits(&*loaded.assets);
+                let limits = loaded
+                    .save
+                    .view_navi()
+                    .map(|nv| nv.folder_limits(&*loaded.assets))
+                    .unwrap_or_default();
                 if let Some(budget) = limits.tag_memory {
                     let lr: &selection::Loaded = loaded;
                     let mb_of = |slot: usize| {

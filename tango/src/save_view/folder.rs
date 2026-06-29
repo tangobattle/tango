@@ -139,7 +139,11 @@ pub(super) fn render_folder_edit<'a>(
     // caps, per-chip copy cap, Regular/Tag memory budgets). `None` for
     // games that don't define them — those stay unrestricted.
     let assets = loaded.assets.as_ref();
-    let limits = loaded.save.folder_limits(assets);
+    let limits = loaded
+        .save
+        .view_navi()
+        .map(|nv| nv.folder_limits(assets))
+        .unwrap_or_default();
     let usage = FolderUsage::scan(loaded, folder_idx);
     // If exactly one Tag chip is picked, a second can only join if the
     // pair's combined MB fits Tag memory; capture the partner's MB so each
@@ -679,7 +683,11 @@ pub(crate) fn folder_limits_satisfied(loaded: &Loaded) -> bool {
         return true;
     };
     let folder_idx = view.equipped_folder_index();
-    let limits = loaded.save.folder_limits(&*loaded.assets);
+    let limits = loaded
+        .save
+        .view_navi()
+        .map(|nv| nv.folder_limits(&*loaded.assets))
+        .unwrap_or_default();
     let usage = FolderUsage::scan(loaded, folder_idx);
     if limits.navi_limit.map(|limit| usage.navi > limit).unwrap_or(false)
         || limits.mega_limit.map(|limit| usage.mega > limit).unwrap_or(false)
