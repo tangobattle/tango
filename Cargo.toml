@@ -31,6 +31,7 @@ members = [
 inherits = "release"
 lto = "thin"
 codegen-units = 1
+debug = 1
 
 [workspace.lints.clippy]
 new_without_default = "allow"
