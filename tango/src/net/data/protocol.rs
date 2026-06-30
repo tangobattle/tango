@@ -1,19 +1,19 @@
 //! tango's concrete in-match payload for the unreliable netplay datagram
-//! channel: the [`Element`] each seq slot carries, and the [`Entries`] body that
-//! packs a run of them onto the wire.
+//! channel: the [`Element`] each seq slot carries, the [`Meta`] side-channel
+//! that rides on every frame, and the [`InMatch`] [`rennet::Codec`] descriptor
+//! that pairs them.
 //!
 //! The envelope (per-tick seq `base`, the delta-encoded cumulative `ack`, and
-//! the `tick_advantage`), the LEB128 codec, and the redundancy-window /
+//! the per-frame [`Meta`]), the LEB128 codec, and the redundancy-window /
 //! cumulative-ack reliability machinery all live in the transport- and
-//! packing-agnostic [`rennet`] crate. rennet doesn't know or care how a body is
-//! laid out — it just calls [`Body::encode`](rennet::Body::encode) /
-//! [`decode`](rennet::Body::decode) and reads its
-//! [`elements`](rennet::Body::elements). This module supplies that body.
+//! packing-agnostic [`rennet`] crate. rennet owns the run framing too — it
+//! concatenates the elements and decodes them back until the datagram runs out,
+//! so each [`Element`] only has to self-delimit and the [`Meta`] likewise. This
+//! module supplies both (tango's meta is the time-sync `tick_advantage`).
 //!
-//! The body is the last thing in the datagram, so rennet hands [`Entries`]
-//! exactly its own bytes and the run needs no length prefix — it's read until
-//! the bytes run out. Entries are **variable-length**, tagged by the top bit of
-//! their first byte:
+//! The element run is the last thing in the datagram, so it needs no length
+//! prefix — rennet reads elements until the bytes run out. Elements are
+//! **variable-length**, tagged by the top bit of their first byte:
 //!
 //! * an **input** is two bytes — the 10-bit joyflags, high byte first (so its
 //!   top bit is clear, since joyflags never exceed `0x3ff`);
@@ -27,7 +27,7 @@ use std::io;
 
 use tango_pvp::input::JOYFLAGS_MASK;
 
-/// Top bit of an entry's first byte: set => a 1-byte marker, clear => the high
+/// Top bit of an element's first byte: set => a 1-byte marker, clear => the high
 /// byte of a 2-byte input (always clear there, as joyflags fit in 10 bits).
 const MARKER_FLAG: u8 = 0x80;
 
@@ -35,9 +35,10 @@ const MARKER_FLAG: u8 = 0x80;
 const KIND_END_OF_ROUND: u8 = 0;
 const KIND_END_OF_MATCH: u8 = 1;
 
-/// Hard cap on entries decoded from one body. A legitimate redundancy window
-/// can't exceed the rollback horizon (the out-stream trims it to that), so a
-/// body claiming more is malformed or hostile.
+/// Hard cap on elements decoded from one datagram. A legitimate redundancy
+/// window can't exceed the rollback horizon (the out-stream trims it to that),
+/// so a datagram claiming more is malformed or hostile; rennet enforces this in
+/// [`Frame::decode`](rennet::Frame::decode) via [`InMatch::MAX_RUN`].
 const MAX_ENTRIES: usize = tango_pvp::battle::MAX_QUEUE_LENGTH;
 
 /// Rollback horizon for the in-match reliability streams: a gap wider than this
@@ -48,14 +49,87 @@ pub const HORIZON: u32 = tango_pvp::battle::MAX_QUEUE_LENGTH as u32;
 /// Cumulative ack frontier — re-exported so callers keep saying `protocol::Ack`.
 pub use rennet::Ack;
 
-/// One whole in-match datagram: tango's [`Entries`] body wired into the generic
-/// [`rennet::Frame`]. A `Frame` *is* the message — see [`rennet::frame`] for the
-/// envelope layout. Build data frames with [`data_frame`] and ack-only frames
-/// with [`rennet::Frame::ack_only`].
-pub type Frame = rennet::Frame<Entries>;
+/// One whole in-match datagram: tango's [`Element`] run and [`Meta`] wired into
+/// the generic [`rennet::Frame`] via the [`InMatch`] descriptor. A `Frame` *is*
+/// the message — see [`rennet::frame`] for the envelope layout. Build them with
+/// [`data_frame`]; an "ack-only" frame is just one with no entries.
+pub type Frame = rennet::Frame<InMatch>;
 
-/// One element of the input stream, occupying a single seq slot: either a
-/// tick's input, or a round/match boundary that rides in-band on the seq line.
+/// The [`rennet::Codec`] descriptor for tango's in-match datagrams: pairs the
+/// [`Element`] stream with the [`Meta`] side-channel. A zero-sized marker — it's
+/// only ever a type parameter (`rennet::Frame<InMatch>`, the stream aliases in
+/// the parent module, …).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InMatch;
+
+impl rennet::Codec for InMatch {
+    type Element = Element;
+    type Meta = Meta;
+    const MAX_RUN: usize = MAX_ENTRIES;
+
+    /// Write one element's wire bytes (see the module header).
+    fn encode_element<W: io::Write>(element: &Element, w: &mut W) -> io::Result<()> {
+        match *element {
+            Element::Input(joyflags) => {
+                assert!(
+                    joyflags & !JOYFLAGS_MASK == 0,
+                    "joyflags use reserved high bits: {joyflags:#06x}"
+                );
+                // High byte first; its top bit is clear (joyflags <= 0x3ff),
+                // which is what tells an input from a marker on the way back in.
+                w.write_all(&[(joyflags >> 8) as u8, joyflags as u8])
+            }
+            Element::EndOfRound => w.write_all(&[MARKER_FLAG | KIND_END_OF_ROUND]),
+            Element::EndOfMatch => w.write_all(&[MARKER_FLAG | KIND_END_OF_MATCH]),
+        }
+    }
+
+    /// Read exactly one element off `r` — the top bit of the first byte tells an
+    /// input (two bytes) from a marker (one).
+    fn decode_element<R: io::Read>(r: &mut R) -> io::Result<Element> {
+        let mut b0 = [0u8; 1];
+        r.read_exact(&mut b0)?;
+        let b0 = b0[0];
+        if b0 & MARKER_FLAG != 0 {
+            match b0 & !MARKER_FLAG {
+                KIND_END_OF_ROUND => Ok(Element::EndOfRound),
+                KIND_END_OF_MATCH => Ok(Element::EndOfMatch),
+                other => Err(invalid(format!("unknown marker kind: {other}"))),
+            }
+        } else {
+            // Input: this byte's the high half, the next its low half.
+            let mut b1 = [0u8; 1];
+            r.read_exact(&mut b1)?;
+            Ok(Element::Input(((b0 as u16) << 8 | b1[0] as u16) & JOYFLAGS_MASK))
+        }
+    }
+
+    /// The meta is a single svarint of `tick_advantage`.
+    fn encode_meta<W: io::Write>(meta: &Meta, w: &mut W) -> io::Result<()> {
+        rennet::write_svarint(w, meta.tick_advantage as i64)
+    }
+
+    fn decode_meta<R: io::Read>(r: &mut R) -> io::Result<Meta> {
+        let tick_advantage =
+            i16::try_from(rennet::read_svarint(r)?).map_err(|_| invalid("tick_advantage out of range".to_string()))?;
+        Ok(Meta { tick_advantage })
+    }
+}
+
+/// The per-frame meta tango rides on every in-match datagram (its codec is the
+/// [`InMatch`] meta codec). It's a struct rather than a bare `i16` so more
+/// synced-once-per-frame fields can join `tick_advantage` later without touching
+/// the wire plumbing — add a field here and extend the meta codec on [`InMatch`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Meta {
+    /// The newest local input's time-sync lead, fed to the throttler on the far
+    /// side (see `round.rs` / the engine session).
+    pub tick_advantage: i16,
+}
+
+/// One element of the input stream, occupying a single seq slot: either a tick's
+/// input, or a round/match boundary that rides in-band on the seq line. Its wire
+/// packing is the [`InMatch`] element codec (see the module header).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Element {
     /// Joyflags for this tick (10-bit GBA keypad; the top 6 bits must be 0).
@@ -66,85 +140,15 @@ pub enum Element {
     EndOfMatch,
 }
 
-impl Element {
-    /// Append this entry's wire bytes (see the module header).
-    fn encode_into(self, out: &mut Vec<u8>) {
-        match self {
-            Element::Input(joyflags) => {
-                assert!(
-                    joyflags & !JOYFLAGS_MASK == 0,
-                    "joyflags use reserved high bits: {joyflags:#06x}"
-                );
-                // High byte first; its top bit is clear (joyflags <= 0x3ff),
-                // which is what tells an input from a marker on the way back in.
-                out.push((joyflags >> 8) as u8);
-                out.push(joyflags as u8);
-            }
-            Element::EndOfRound => out.push(MARKER_FLAG | KIND_END_OF_ROUND),
-            Element::EndOfMatch => out.push(MARKER_FLAG | KIND_END_OF_MATCH),
-        }
-    }
-}
-
-/// tango's frame body: a variable-length run of [`Element`] entries with no
-/// internal framing — the datagram boundary delimits it (see the module
-/// header). Exactly the contract [`rennet::Body`] asks for.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Entries(pub Vec<Element>);
-
-impl rennet::Body for Entries {
-    type Elem = Element;
-
-    fn encode(&self, out: &mut Vec<u8>) {
-        for e in &self.0 {
-            e.encode_into(out);
-        }
-    }
-
-    fn decode(bytes: &[u8]) -> io::Result<Self> {
-        let mut entries = Vec::new();
-        let mut i = 0;
-        while i < bytes.len() {
-            let b0 = bytes[i];
-            i += 1;
-            let element = if b0 & MARKER_FLAG != 0 {
-                match b0 & !MARKER_FLAG {
-                    KIND_END_OF_ROUND => Element::EndOfRound,
-                    KIND_END_OF_MATCH => Element::EndOfMatch,
-                    other => return Err(invalid(format!("unknown marker kind: {other}"))),
-                }
-            } else {
-                // Input: this byte's the high half, the next its low half.
-                let b1 = *bytes
-                    .get(i)
-                    .ok_or_else(|| invalid("input entry truncated".to_string()))?;
-                i += 1;
-                Element::Input(((b0 as u16) << 8 | b1 as u16) & JOYFLAGS_MASK)
-            };
-            entries.push(element);
-            // The body is bounded by the datagram, but a hostile peer's datagram
-            // is only capped by the SCTP max message size — reject an over-long
-            // run rather than letting it grow the allocation unbounded.
-            if entries.len() > MAX_ENTRIES {
-                return Err(invalid(format!("frame exceeds {MAX_ENTRIES}-entry window cap")));
-            }
-        }
-        Ok(Entries(entries))
-    }
-
-    fn elements(&self) -> &[Element] {
-        &self.0
-    }
-}
-
 fn invalid(msg: String) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg)
 }
 
-/// Build an in-match data frame from a run of [`Element`]s. Wraps the entries
-/// into [`Entries`] and defers to [`rennet::Frame::data`].
-pub fn data_frame(base: u32, tick_advantage: i16, entries: Vec<Element>, ack: Ack) -> Frame {
-    rennet::Frame::data(base, tick_advantage, Entries(entries), ack)
+/// Build an in-match frame from the `base`/`ack` header, the per-frame [`Meta`],
+/// and a run of [`Element`]s — a thin [`rennet::Frame::new`] wrapper that pins
+/// the [`InMatch`] descriptor. An empty `entries` makes an "ack-only" frame.
+pub fn data_frame(base: u32, ack: Ack, meta: Meta, entries: Vec<Element>) -> Frame {
+    rennet::Frame::new(base, ack, meta, entries)
 }
 
 #[cfg(test)]
@@ -153,45 +157,57 @@ mod tests {
 
     #[test]
     fn tango_entries_exact_bytes() {
-        // base=12345, ack=12345 (delta 0), adv=+2, [Right(0x010), EndOfRound,
-        // A(0x001)]. Inputs are two bytes (high, low); the marker is one (0x80).
+        // base=12345, ack=12345 (delta 0), meta tick_advantage=+2, [Right(0x010),
+        // EndOfRound, A(0x001)]. Inputs are two bytes (high, low); the marker is
+        // one (0x80). The meta is a single svarint byte, just as the old inlined
+        // tick_advantage was — so the wire form is byte-for-byte unchanged.
         let f = data_frame(
             12345,
-            2,
-            vec![Element::Input(0x010), Element::EndOfRound, Element::Input(0x001)],
             12345,
+            Meta { tick_advantage: 2 },
+            vec![Element::Input(0x010), Element::EndOfRound, Element::Input(0x001)],
         );
-        assert_eq!(f.encode(), vec![0xB9, 0x60, 0x00, 0x04, 0x00, 0x10, 0x80, 0x00, 0x01]);
+        assert_eq!(f.to_vec(), vec![0xB9, 0x60, 0x00, 0x04, 0x00, 0x10, 0x80, 0x00, 0x01]);
     }
 
     #[test]
     fn all_variants_roundtrip() {
         let f = data_frame(
             7,
-            -3,
+            6,
+            Meta { tick_advantage: -3 },
             vec![
                 Element::Input(0x3ff),
                 Element::EndOfRound,
                 Element::Input(0),
                 Element::EndOfMatch,
             ],
-            6,
         );
-        assert_eq!(Frame::decode(&f.encode()).unwrap(), f);
+        assert_eq!(Frame::decode(&mut &f.to_vec()[..]).unwrap(), f);
+    }
+
+    #[test]
+    fn empty_run_is_an_ack_only_frame() {
+        // No entries: base=9, ack=9 (delta 0), meta tick_advantage=0, no run.
+        let f = data_frame(9, 9, Meta::default(), vec![]);
+        assert_eq!(f.to_vec(), vec![0x09, 0x00, 0x00]);
+        let back = Frame::decode(&mut &f.to_vec()[..]).unwrap();
+        assert_eq!(back, f);
+        assert!(back.entries.is_empty());
     }
 
     #[test]
     fn unknown_marker_kind_errors() {
-        // base=1, ack=1, adv=0, then a marker byte (top bit set) with an
+        // base=1, ack=1, meta=0, then a marker byte (top bit set) with an
         // undefined kind (2).
         let bytes = vec![0x01, 0x00, 0x00, 0x82];
-        assert!(Frame::decode(&bytes).is_err());
+        assert!(Frame::decode(&mut &bytes[..]).is_err());
     }
 
     #[test]
     fn truncated_input_errors() {
-        // base=1, ack=1, adv=0, then a lone input high byte with no low byte.
+        // base=1, ack=1, meta=0, then a lone input high byte with no low byte.
         let bytes = vec![0x01, 0x00, 0x00, 0x03];
-        assert!(Frame::decode(&bytes).is_err());
+        assert!(Frame::decode(&mut &bytes[..]).is_err());
     }
 }

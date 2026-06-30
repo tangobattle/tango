@@ -24,7 +24,7 @@
 //! the protocol.
 use std::collections::VecDeque;
 
-use crate::frame::{Body, Frame};
+use crate::frame::{Frame, Codec};
 
 /// Proactive redundancy floor: the minimum elements every data frame carries
 /// regardless of acks, so a dropped datagram is covered by the next one without
@@ -41,26 +41,26 @@ use crate::frame::{Body, Frame};
 /// since the span overtakes it before the floor would ever apply.
 pub const REDUNDANCY: u32 = 2;
 
-/// A contiguous run of elements plus the time-sync advantage that rides with
+/// A contiguous run of elements plus the per-frame [`Meta`] that rides with
 /// them. Both halves of the protocol produce one: [`OutStream::window`] builds
-/// the outbound redundancy window (wrapped into a [`Frame::data`]), and
+/// the outbound redundancy window (wrapped into a [`Frame`]), and
 /// [`InStream::accept`] returns the run it just made contiguous, tagged with the
-/// freshest advantage, for the receive side.
+/// freshest meta, for the receive side.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Window<E> {
+pub struct Window<P: Codec> {
     /// Seq of `entries[0]`: the frame's `base` outbound, the oldest
     /// just-delivered seq inbound. When `entries` is empty, the next seq the
     /// producer expects (`next_seq` / `recv_base`).
     pub base: u32,
-    /// Time-sync lead carried with this run: the newest local input's lead
-    /// outbound, the freshest advantage seen inbound.
-    pub tick_advantage: i16,
+    /// Per-frame side-channel carried with this run: the newest local input's
+    /// value outbound, the freshest seen inbound.
+    pub meta: P::Meta,
     /// The elements, ascending by seq from `base`.
-    pub entries: Vec<E>,
+    pub entries: Vec<P::Element>,
 }
 
 /// Sender half: seq assignment + redundancy window.
-pub struct OutStream<E> {
+pub struct OutStream<P: Codec> {
     /// Next seq to hand out; the seq line is 0-based (the first element gets
     /// seq 0). There's no reserved sentinel — an ack-only [`Frame`] is told
     /// from a data one by the absence of a body, not by a magic seq.
@@ -70,18 +70,18 @@ pub struct OutStream<E> {
     /// window is a contiguous run ending at `next_seq - 1` (only `push` appends,
     /// only `trim` pops the front), so the front's seq is always
     /// [`base`](Self::base) `== next_seq - history.len()`.
-    history: VecDeque<E>,
+    history: VecDeque<P::Element>,
     /// Peer's contiguous frontier (lowest seq it hasn't confirmed). Trims
     /// `history`; only ever advances.
     peer_ack_base: u32,
-    /// Newest input's time-sync lead, echoed once per frame.
-    latest_advantage: i16,
+    /// Newest input's [`crate::Meta`], echoed once per frame.
+    latest_meta: P::Meta,
     /// Rollback horizon: history older than this is dropped (the peer would
     /// bail rather than roll back that far, so retaining it is pointless).
     horizon: u32,
 }
 
-impl<E: Copy> OutStream<E> {
+impl<P: Codec> OutStream<P> {
     /// Build an out-stream whose redundancy window never retains more than
     /// `horizon` elements (the consuming engine's rollback depth).
     pub fn new(horizon: u32) -> Self {
@@ -89,23 +89,24 @@ impl<E: Copy> OutStream<E> {
             next_seq: 0,
             history: VecDeque::new(),
             peer_ack_base: 0,
-            latest_advantage: 0,
+            latest_meta: P::Meta::default(),
             horizon,
         }
     }
 
-    /// Append an element at the next seq and record the time-sync advantage it
-    /// carries; returns its seq. The advantaged counterpart to [`push`](Self::push)
-    /// — use it for elements that update the clock-sync lead (inputs); markers
-    /// carry none and go through `push`.
-    pub fn push_advantaged(&mut self, e: E, tick_advantage: i16) -> u32 {
-        self.latest_advantage = tick_advantage;
+    /// Append an element at the next seq and record the [`crate::Meta`] it
+    /// carries; returns its seq. The meta-bearing counterpart to
+    /// [`push`](Self::push) — use it for elements that update the side-channel
+    /// (e.g. inputs carrying a fresh time-sync lead); elements that don't
+    /// (markers) go through `push`, which leaves the meta unchanged.
+    pub fn push_with_meta(&mut self, e: P::Element, meta: P::Meta) -> u32 {
+        self.latest_meta = meta;
         self.push(e)
     }
 
     /// Append any element at the next seq; returns it. Markers ride in-band on
     /// the same seq line as inputs.
-    pub fn push(&mut self, e: E) -> u32 {
+    pub fn push(&mut self, e: P::Element) -> u32 {
         let seq = self.next_seq;
         self.next_seq += 1;
         self.history.push_back(e);
@@ -156,17 +157,16 @@ impl<E: Copy> OutStream<E> {
         self.next_seq - self.history.len() as u32
     }
 
-    /// The data portion of an outbound frame — see [`Window`]. `None` before the
-    /// first element is pushed: the caller emits an ack-only frame instead.
-    pub fn window(&self) -> Option<Window<E>> {
-        if self.history.is_empty() {
-            return None;
-        }
-        Some(Window {
+    /// The data portion of an outbound frame — see [`Window`]. Always available:
+    /// before the first element is pushed the history is empty, so it reports an
+    /// empty run at `next_seq` — an "ack-only" frame. The freshest [`crate::Meta`]
+    /// rides along regardless.
+    pub fn window(&self) -> Window<P> {
+        Window {
             base: self.base(),
-            tick_advantage: self.latest_advantage,
+            meta: self.latest_meta,
             entries: self.history.iter().copied().collect(),
-        })
+        }
     }
 
     /// The newest seq handed out so far, or `None` before the first push. The
@@ -202,7 +202,7 @@ impl<E: Copy> OutStream<E> {
 pub struct HorizonExceeded;
 
 /// Receiver half: reorder buffer + contiguous delivery + cumulative ack.
-pub struct InStream<E> {
+pub struct InStream<P: Codec> {
     /// Next contiguous seq we still need. Everything below has been
     /// delivered. Starts at 0, matching [`OutStream`]'s 0-based seq line.
     recv_base: u32,
@@ -215,59 +215,53 @@ pub struct InStream<E> {
     /// with no per-element node allocation. A redundant copy of an
     /// already-buffered seq is dropped (first copy wins), which is how
     /// duplicates dedup.
-    buffer: VecDeque<Option<E>>,
-    /// Freshest tick-advantage seen; [`accept`](Self::accept) returns it with
-    /// every delivery so the caller can tag the delivered inputs. Persisted
+    buffer: VecDeque<Option<P::Element>>,
+    /// Freshest [`crate::Meta`] seen; [`accept`](Self::accept) returns it with
+    /// every delivery so the caller can tag the delivered elements. Persisted
     /// across calls for the reorder guard below.
-    latest_advantage: i16,
-    /// Newest seq whose frame set [`latest_advantage`](Self::latest_advantage).
-    /// Datagrams reorder under jitter, so a *later-arriving* frame can be an
-    /// *older* one; without this guard its stale advantage would overwrite the
-    /// fresh one and jerk the clock-sync skew backward. Only a frame reaching at
-    /// least this far updates the advantage.
-    latest_advantage_seq: u32,
+    latest_meta: P::Meta,
+    /// Newest seq whose frame set [`latest_meta`](Self::latest_meta). Datagrams
+    /// reorder under jitter, so a *later-arriving* frame can be an *older* one;
+    /// without this guard its stale meta would overwrite the fresh one (and, for
+    /// a time-sync field, jerk the clock-sync skew backward). Only a frame
+    /// reaching at least this far updates the meta.
+    latest_meta_seq: u32,
     /// Rollback horizon: a gap wider than this can't be rolled back to, so
     /// [`accept`](Self::accept) bails instead of buffering forever.
     horizon: u32,
 }
 
-impl<E: Copy> InStream<E> {
+impl<P: Codec> InStream<P> {
     /// Build an in-stream that bails once a gap grows past `horizon` (the
     /// consuming engine's rollback depth).
     pub fn new(horizon: u32) -> Self {
         Self {
             recv_base: 0,
             buffer: VecDeque::new(),
-            latest_advantage: 0,
-            latest_advantage_seq: 0,
+            latest_meta: P::Meta::default(),
+            latest_meta_seq: 0,
             horizon,
         }
     }
 
     /// Ingest one frame's entries. Returns the run that became contiguous (in
     /// strict seq order, possibly empty) as a [`Window`]: `entries` are the
-    /// newly-delivered elements, `base` their starting seq, and `tick_advantage`
-    /// the freshest advantage seen so far — the reorder guard below keeps a
-    /// late-arriving older frame from regressing it. The frame's cumulative ack
-    /// is the caller's job to apply to its [`OutStream`].
-    pub fn accept<B: Body<Elem = E>>(&mut self, frame: &Frame<B>) -> Result<Window<E>, HorizonExceeded> {
-        // Ack-only frames carry no entries — nothing to reassemble.
-        let (base, tick_advantage, entries) = match &frame.payload {
-            None => {
-                return Ok(Window {
-                    base: self.recv_base,
-                    tick_advantage: self.latest_advantage,
-                    entries: Vec::new(),
-                })
-            }
-            Some(p) => (frame.base, p.tick_advantage, p.body.elements()),
-        };
-        // Only the newest-by-seq frame's advantage is fresh; a reordered older
-        // frame arriving later must not clobber it (its `tick_advantage` is stale).
+    /// newly-delivered elements, `base` their starting seq, and `meta` the
+    /// freshest per-frame value seen so far — the reorder guard below keeps a
+    /// late-arriving older frame from regressing it. An empty-body frame (an
+    /// "ack-only") delivers no entries but can still refresh the meta. The
+    /// frame's cumulative ack is the caller's job to apply to its [`OutStream`].
+    pub fn accept(&mut self, frame: &Frame<P>) -> Result<Window<P>, HorizonExceeded> {
+        let base = frame.base;
+        let entries = &frame.entries;
+        // Only the newest-by-seq frame's meta is fresh; a reordered older frame
+        // arriving later must not clobber it (its meta is stale). An empty-body
+        // frame reports the sender's newest seq as `base - 1`, so a redundant
+        // empty "ack" can refresh the meta but never regress it.
         let frame_newest = base.saturating_add(entries.len() as u32).saturating_sub(1);
-        if frame_newest >= self.latest_advantage_seq {
-            self.latest_advantage_seq = frame_newest;
-            self.latest_advantage = tick_advantage;
+        if frame_newest >= self.latest_meta_seq {
+            self.latest_meta_seq = frame_newest;
+            self.latest_meta = frame.meta;
         }
         for (i, &e) in entries.iter().enumerate() {
             // Saturating: `base` is peer-supplied, so `base + i` mustn't
@@ -306,7 +300,7 @@ impl<E: Copy> InStream<E> {
         }
         Ok(Window {
             base: delivered_base,
-            tick_advantage: self.latest_advantage,
+            meta: self.latest_meta,
             entries: delivered,
         })
     }
@@ -325,35 +319,37 @@ impl<E: Copy> InStream<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testutil::{El, RawBody};
+    use crate::testutil::{El, RawProto};
 
     /// Horizon used across these tests (the engine's input-buffer cap).
     const HORIZON: u32 = 300;
 
-    fn out() -> OutStream<El> {
+    // The streams run on `RawProto` (raw-u16 body, plain `i16` meta standing in
+    // for a caller's time-sync field — testutil impls [`crate::Meta`] for it).
+    fn out() -> OutStream<RawProto> {
         OutStream::new(HORIZON)
     }
-    fn inn() -> InStream<El> {
+    fn inn() -> InStream<RawProto> {
         InStream::new(HORIZON)
     }
     fn input(j: u16) -> El {
         El::Input(j)
     }
-    fn push_input(out: &mut OutStream<El>, j: u16, fa: i16) {
-        out.push_advantaged(El::Input(j), fa);
+    fn push_input(out: &mut OutStream<RawProto>, j: u16, fa: i16) {
+        out.push_with_meta(El::Input(j), fa);
     }
-    /// Wrap an entry run into a data frame.
-    fn frame(base: u32, fa: i16, entries: Vec<El>, ack: u32) -> Frame<RawBody> {
-        Frame::data(base, fa, RawBody(entries), ack)
+    /// Wrap an entry run into a frame.
+    fn frame(base: u32, fa: i16, entries: Vec<El>, ack: u32) -> Frame<RawProto> {
+        Frame::new(base, ack, fa, entries)
     }
 
     /// Build a frame from the out-stream's current window, then round-trip it
     /// through the wire codec (so tests exercise the real encode/decode too).
     /// The ack is irrelevant to these reassembly tests — the in-stream ignores
     /// it — so it's pinned to the initial frontier.
-    fn make_frame(out: &OutStream<El>) -> Frame<RawBody> {
-        let w = out.window().expect("window");
-        Frame::decode(&frame(w.base, w.tick_advantage, w.entries, 1).encode()).unwrap()
+    fn make_frame(out: &OutStream<RawProto>) -> Frame<RawProto> {
+        let w = out.window();
+        Frame::decode(&mut &frame(w.base, w.meta, w.entries, 1).to_vec()[..]).unwrap()
     }
 
     #[test]
@@ -366,7 +362,7 @@ mod tests {
         out.apply_ack(3);
         // Still keeps REDUNDANCY recent elements (seqs are 0..=2).
         assert_eq!(out.window_len(), REDUNDANCY as usize);
-        let w = out.window().unwrap();
+        let w = out.window();
         assert_eq!(w.base, 2 - (REDUNDANCY - 1)); // seq of first kept = 1
         assert_eq!(w.entries.len(), REDUNDANCY as usize);
     }
@@ -397,7 +393,7 @@ mod tests {
         }
         // Peer only confirmed through seq 3 (frontier = 4): seqs 4..=9 unconfirmed.
         out.apply_ack(4);
-        let w = out.window().unwrap();
+        let w = out.window();
         assert_eq!(w.base, 4);
         assert_eq!(w.entries.len(), 6); // 4,5,6,7,8,9
     }
@@ -410,7 +406,7 @@ mod tests {
         }
         out.apply_ack(8);
         out.apply_ack(3); // stale/reordered
-        let w = out.window().unwrap();
+        let w = out.window();
         assert_eq!(w.base, 8); // didn't regress
     }
 
@@ -540,11 +536,11 @@ mod tests {
         let mut delivered = Vec::new();
         for k in 1..=200u32 {
             push_input(&mut out, k as u16, 0);
-            let w = out.window().unwrap();
-            let dg = frame(w.base, w.tick_advantage, w.entries, 1);
+            let w = out.window();
+            let dg = frame(w.base, w.meta, w.entries, 1);
             if k % 3 != 0 {
                 // delivered: round-trip through the wire and ingest.
-                let f = Frame::<RawBody>::decode(&dg.encode()).unwrap();
+                let f = Frame::<RawProto>::decode(&mut &dg.to_vec()[..]).unwrap();
                 delivered.extend(f_inputs(inn.accept(&f).unwrap().entries));
                 out.apply_ack(inn.ack());
             }

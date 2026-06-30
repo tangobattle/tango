@@ -2,19 +2,26 @@
 //! the live-match netplay protocol, split out as a transport-, engine-, and
 //! packing-agnostic crate.
 //!
+//! Everything is generic over one [`Codec`] impl — usually a zero-sized
+//! marker — that fixes the [`Element`] each seq slot carries and the per-frame
+//! [`Meta`] side-channel, so call sites read `Frame<MyCodec>` rather than
+//! carrying each type separately.
+//!
 //! Two layers:
 //!
-//! * [`frame`] — the on-wire [`Frame`]: a per-tick seq (`base`), a time-sync
-//!   `tick_advantage`, an opaque [`Body`], and a piggybacked cumulative ack,
-//!   byte-minimized (LEB128 varints, ack as a signed delta). rennet owns only
-//!   that envelope; the [`Body`] owns its own bytes and just has to
-//!   self-delimit and expose its elements. *How* a body packs its elements
-//!   (continuation-delimited, length-prefixed, …) is the caller's business.
-//! * [`stream`] — the reliability state machines, generic over the element
-//!   type: [`OutStream`] keeps a redundancy window and trims it on acks;
-//!   [`InStream`] reassembles the peer's stream in strict seq order, dedups
-//!   redundant copies, emits the cumulative ack, and bails past a configurable
-//!   rollback horizon.
+//! * [`frame`] — the on-wire [`Frame`]: a per-tick seq (`base`), a
+//!   caller-defined [`Meta`] side-channel, a run of [`Element`]s, and a
+//!   piggybacked cumulative ack, byte-minimized (LEB128 varints, ack as a signed
+//!   delta). rennet owns the envelope and the run framing (it concatenates the
+//!   elements and decodes them back until the datagram runs out); each
+//!   [`Element`] need only self-delimit, and the [`Meta`] likewise. *What* the
+//!   meta means (a time-sync `tick_advantage`, …) and *how* a single element
+//!   packs are the caller's business; with the `()` meta the frame carries no
+//!   side-channel at all.
+//! * [`stream`] — the reliability state machines: [`OutStream`] keeps a
+//!   redundancy window and trims it on acks; [`InStream`] reassembles the peer's
+//!   stream in strict seq order, dedups redundant copies, emits the cumulative
+//!   ack, and bails past a configurable rollback horizon.
 //!
 //! Recovery is proactive — a lost element rides again in the next frame's
 //! window, so single/short losses cost ~one frame rather than a round-trip. The
@@ -25,25 +32,28 @@
 pub mod frame;
 pub mod stream;
 
-pub use frame::{Ack, Body, Frame};
+pub use frame::{read_svarint, read_uvarint, write_svarint, write_uvarint, Ack, Frame, Codec};
 pub use stream::{HorizonExceeded, InStream, OutStream, Window, REDUNDANCY};
 
-/// Example [`Body`] impls shared by the `frame` and `stream` unit tests. Two
-/// different packings of the same element type, so the tests double as a
-/// demonstration that the frame envelope and the reliability streams don't care
-/// how a body is laid out.
+/// Test fixtures shared by the `frame` and `stream` unit tests: an example
+/// element [`El`] and the [`Codec`]s that pair it with a meta.
 #[cfg(test)]
 pub(crate) mod testutil {
-    use crate::frame::Body;
+    use crate::frame::Codec;
     use std::io;
+
+    /// Cap on elements per datagram for the test protocols (stands in for the
+    /// engine's rollback horizon).
+    const MAX_RUN: usize = 300;
 
     /// Bit 14 marks a boundary; bits 0..=9 carry the payload — the packing the
     /// tango client uses (no continuation bit: the datagram delimits the run).
     const MARK: u16 = 0x4000;
     const PAYLOAD: u16 = 0x03ff;
-    /// Entry cap (the engine's rollback horizon), shared by both test bodies.
-    pub const MAX_RUN: usize = 300;
 
+    /// Example element: an input or a round/match boundary, packed (by the
+    /// protocols below) as one little-endian `u16` — the tango client's packing,
+    /// so the `frame` exact-byte tests built on it document the real wire form.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum El {
         Input(u16),
@@ -51,95 +61,75 @@ pub(crate) mod testutil {
         EndOfMatch,
     }
 
-    fn el_to_u16(e: &El) -> u16 {
-        match e {
+    fn encode_el<W: io::Write>(e: &El, w: &mut W) -> io::Result<()> {
+        let v = match e {
             El::Input(j) => j & PAYLOAD,
             El::EndOfRound => MARK,
             El::EndOfMatch => MARK | 1,
-        }
+        };
+        w.write_all(&v.to_le_bytes())
     }
 
-    fn el_from_u16(w: u16) -> io::Result<El> {
-        if w & MARK != 0 {
-            match w & PAYLOAD {
+    fn decode_el<R: io::Read>(r: &mut R) -> io::Result<El> {
+        let mut b = [0u8; 2];
+        r.read_exact(&mut b)?;
+        let v = u16::from_le_bytes(b);
+        if v & MARK != 0 {
+            match v & PAYLOAD {
                 0 => Ok(El::EndOfRound),
                 1 => Ok(El::EndOfMatch),
                 other => Err(io::Error::new(io::ErrorKind::InvalidData, format!("kind {other}"))),
             }
         } else {
-            Ok(El::Input(w & PAYLOAD))
+            Ok(El::Input(v & PAYLOAD))
         }
     }
 
-    fn invalid(msg: &str) -> io::Error {
-        io::Error::new(io::ErrorKind::InvalidData, msg.to_string())
-    }
+    /// Test [`Codec`] pairing [`El`] with a plain `i16` meta (standing in for
+    /// a caller's time-sync field). Markers derive the standard traits so
+    /// [`Frame`](crate::Frame)/[`Window`](crate::Window) can derive theirs.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct RawProto;
+    impl Codec for RawProto {
+        type Element = El;
+        type Meta = i16;
+        const MAX_RUN: usize = MAX_RUN;
 
-    /// Raw body: one little-endian `u16` per entry, no internal framing — the
-    /// run fills the datagram tail. This is the tango client's packing, so the
-    /// `frame` exact-byte tests built on it document the real wire form.
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    pub struct RawBody(pub Vec<El>);
-
-    impl Body for RawBody {
-        type Elem = El;
-
-        fn encode(&self, out: &mut Vec<u8>) {
-            for e in &self.0 {
-                out.extend_from_slice(&el_to_u16(e).to_le_bytes());
-            }
+        fn encode_element<W: io::Write>(element: &El, w: &mut W) -> io::Result<()> {
+            encode_el(element, w)
         }
-
-        fn decode(bytes: &[u8]) -> io::Result<Self> {
-            if !bytes.len().is_multiple_of(2) {
-                return Err(invalid("body length is not a whole number of u16 entries"));
-            }
-            if bytes.len() / 2 > MAX_RUN {
-                return Err(invalid("run exceeds cap"));
-            }
-            let v = bytes
-                .chunks_exact(2)
-                .map(|c| el_from_u16(u16::from_le_bytes([c[0], c[1]])))
-                .collect::<io::Result<Vec<_>>>()?;
-            Ok(RawBody(v))
+        fn decode_element<R: io::Read>(r: &mut R) -> io::Result<El> {
+            decode_el(r)
         }
-
-        fn elements(&self) -> &[El] {
-            &self.0
+        fn encode_meta<W: io::Write>(meta: &i16, w: &mut W) -> io::Result<()> {
+            crate::frame::write_svarint(w, *meta as i64)
+        }
+        fn decode_meta<R: io::Read>(r: &mut R) -> io::Result<i16> {
+            i16::try_from(crate::frame::read_svarint(r)?)
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "meta out of i16 range"))
         }
     }
 
-    /// Length-prefixed body: a single leading byte counts the entries (test runs
-    /// stay short), then the entries. A different packing of the same elements,
-    /// to prove rennet is body-agnostic.
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    pub struct LenBody(pub Vec<El>);
+    /// Like [`RawProto`] but with the zero-width `()` meta, to exercise the
+    /// no-side-channel path.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct RawUnitProto;
+    impl Codec for RawUnitProto {
+        type Element = El;
+        type Meta = ();
+        const MAX_RUN: usize = MAX_RUN;
 
-    impl Body for LenBody {
-        type Elem = El;
-
-        fn encode(&self, out: &mut Vec<u8>) {
-            out.push(self.0.len() as u8);
-            for e in &self.0 {
-                out.extend_from_slice(&el_to_u16(e).to_le_bytes());
-            }
+        fn encode_element<W: io::Write>(element: &El, w: &mut W) -> io::Result<()> {
+            encode_el(element, w)
         }
-
-        fn decode(bytes: &[u8]) -> io::Result<Self> {
-            let (&len, rest) = bytes.split_first().ok_or_else(|| invalid("missing length prefix"))?;
-            let len = len as usize;
-            if rest.len() != len * 2 {
-                return Err(invalid("length prefix disagrees with body size"));
-            }
-            let v = rest
-                .chunks_exact(2)
-                .map(|c| el_from_u16(u16::from_le_bytes([c[0], c[1]])))
-                .collect::<io::Result<Vec<_>>>()?;
-            Ok(LenBody(v))
+        fn decode_element<R: io::Read>(r: &mut R) -> io::Result<El> {
+            decode_el(r)
         }
-
-        fn elements(&self) -> &[El] {
-            &self.0
+        fn encode_meta<W: io::Write>(_: &(), _: &mut W) -> io::Result<()> {
+            Ok(())
+        }
+        fn decode_meta<R: io::Read>(_: &mut R) -> io::Result<()> {
+            Ok(())
         }
     }
 }

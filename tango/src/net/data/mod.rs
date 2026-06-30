@@ -11,9 +11,9 @@ pub mod protocol;
 
 use super::{LatencyCounter, Receiver, Sender};
 
-/// The in-match streams' element type: tango's [`protocol::Element`].
-type OutStream = rennet::OutStream<protocol::Element>;
-type InStream = rennet::InStream<protocol::Element>;
+/// The in-match streams, keyed on tango's [`protocol::InMatch`] descriptor.
+type OutStream = rennet::OutStream<protocol::InMatch>;
+type InStream = rennet::InStream<protocol::InMatch>;
 
 /// Send-pump queue depth. Deeper than the engine's unacked-local-input cap
 /// so that under a genuinely stalled wire the engine's overflow bail fires
@@ -45,11 +45,12 @@ struct InMatchState {
 }
 
 /// What [`InMatchTx::recv`] extracts from one incoming frame: the elements it
-/// made contiguous (seq order), the freshest frame-advantage for the throttler,
-/// and an RTT sample if the frame's ack confirmed a timestamped seq of ours.
+/// made contiguous (seq order), the freshest per-frame [`protocol::Meta`] (whose
+/// `tick_advantage` feeds the throttler), and an RTT sample if the frame's ack
+/// confirmed a timestamped seq of ours.
 struct Delivery {
     elements: Vec<protocol::Element>,
-    tick_advantage: i16,
+    meta: protocol::Meta,
     rtt: Option<std::time::Duration>,
 }
 
@@ -118,18 +119,18 @@ impl InMatchTx {
                     }
                 }
             }
-            let w = st.out.window().expect("window is non-empty after a push");
+            let w = st.out.window();
             let ack = st.inn.ack();
-            protocol::data_frame(w.base, w.tick_advantage, w.entries, ack)
+            protocol::data_frame(w.base, ack, w.meta, w.entries)
         };
-        self.sink.lock().await.send_raw(&frame.encode()).await
+        self.sink.lock().await.send_raw(&frame.to_vec()).await
     }
 
     pub async fn send_input(&self, joyflags: u16, tick_advantage: i16) -> std::io::Result<()> {
         self.send_frame_with(move |out| {
-            out.push_advantaged(
+            out.push_with_meta(
                 protocol::Element::Input(joyflags & tango_pvp::input::JOYFLAGS_MASK),
-                tick_advantage,
+                protocol::Meta { tick_advantage },
             );
         })
         .await
@@ -151,21 +152,20 @@ impl InMatchTx {
         .await
     }
 
-    /// Re-send the current redundancy window (or a bare ack if no inputs yet)
-    /// without advancing the stream — the heartbeat's retransmit. Lets recovery
-    /// and the peer's acks keep flowing while the emulator is throttled/stalled.
-    /// (Also keeps RTT samples coming: the peer keeps acking our resent window,
-    /// and each returning ack dates a round-trip.)
+    /// Re-send the current redundancy window without advancing the stream — the
+    /// heartbeat's retransmit. Before the first input the window is empty, so this
+    /// is just a bare ack. Lets recovery and the peer's acks keep flowing while
+    /// the emulator is throttled/stalled. (Also keeps RTT samples coming: the
+    /// peer keeps acking our resent window, and each returning ack dates a
+    /// round-trip.)
     async fn resend_window(&self) -> std::io::Result<()> {
         let frame = {
             let st = self.state.lock().unwrap();
             let ack = st.inn.ack();
-            match st.out.window() {
-                Some(w) => protocol::data_frame(w.base, w.tick_advantage, w.entries, ack),
-                None => protocol::Frame::ack_only(st.out.next_seq(), ack),
-            }
+            let w = st.out.window();
+            protocol::data_frame(w.base, ack, w.meta, w.entries)
         };
-        self.sink.lock().await.send_raw(&frame.encode()).await
+        self.sink.lock().await.send_raw(&frame.to_vec()).await
     }
 
     /// Retransmit heartbeat: keep the unacked window (and our ack) flowing at
@@ -228,7 +228,7 @@ impl InMatchTx {
         let delivered = st.inn.accept(frame)?;
         Ok(Delivery {
             elements: delivered.entries,
-            tick_advantage: delivered.tick_advantage,
+            meta: delivered.meta,
             rtt,
         })
     }
@@ -339,7 +339,7 @@ impl tango_pvp::net::Receiver for PvpReceiver {
                 return Ok(event);
             }
             let msg = self.receiver.recv_raw().await?;
-            let frame = protocol::Frame::decode(&msg)?;
+            let frame = protocol::Frame::decode(&mut &msg[..])?;
             let delivery = self
                 .im
                 .recv(&frame)
@@ -356,7 +356,7 @@ impl tango_pvp::net::Receiver for PvpReceiver {
                         self.pending
                             .push_back(tango_pvp::net::Event::Input(tango_pvp::net::Input {
                                 joyflags,
-                                tick_advantage: delivery.tick_advantage,
+                                tick_advantage: delivery.meta.tick_advantage,
                             }));
                     }
                     protocol::Element::EndOfRound => {
