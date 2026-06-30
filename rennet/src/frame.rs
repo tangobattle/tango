@@ -41,7 +41,7 @@
 //! ([`Frame::ack_offset`]); [`Frame::ack`] reconstructs the absolute frontier
 //! against `base`. The wire form and the in-memory form are thus the same — no
 //! conversion on encode or decode.
-use std::io::{self, BufRead, Read, Write};
+use std::io::{self, Read, Write};
 
 /// Cumulative acknowledgement: the receiver's contiguous frontier — the lowest
 /// seq it hasn't received yet, i.e. "resend your window from here." That single
@@ -49,46 +49,60 @@ use std::io::{self, BufRead, Read, Write};
 /// on, so a frontier is all it needs.
 pub type Ack = u32;
 
-/// Defines a wire protocol: the [`Element`](Codec::Element) each seq slot
-/// carries, the per-frame [`Meta`](Codec::Meta) side-channel, and how each is
-/// packed on the wire. One impl — usually a zero-sized marker — is the single
-/// type parameter threaded through [`Frame`], [`OutStream`](crate::OutStream),
+/// A value that serializes itself to / from the wire — implemented by the
+/// [`Element`](Protocol::Element) and [`Meta`](Protocol::Meta) types a
+/// [`Protocol`] names. rennet owns the run framing, so an element only has to
+/// **self-delimit** ([`decode`](Codec::decode) reads exactly its own bytes); a
+/// meta likewise, as it precedes the run. [`crate::write_svarint`] and friends
+/// are the byte-minimal toolkit.
+pub trait Codec: Sized {
+    /// Write this value's self-delimiting bytes.
+    fn encode<W: Write>(&self, w: &mut W) -> io::Result<()>;
+    /// Read one value, consuming exactly its own bytes from `r`.
+    ///
+    /// Returns `Ok(None)` at a clean EOF reached *before any byte of a value* —
+    /// this is how the element run signals it has ended, so rennet needs no
+    /// length prefix and no [`BufRead`](std::io::BufRead). It returns
+    /// `Err(`[`UnexpectedEof`](io::ErrorKind::UnexpectedEof)`)` if EOF strikes
+    /// *part-way* through a value (a truncation). The per-frame meta is a single
+    /// required field read once, so its impl errors on EOF rather than `None`-ing.
+    fn decode<R: Read>(r: &mut R) -> io::Result<Option<Self>>;
+}
+
+/// The trivial meta: no side-channel at all, zero bytes on the wire — the
+/// [`Meta`](Protocol::Meta) for a protocol that wants only rennet's reliable,
+/// ordered element stream. Always "present" (it reads nothing), so `decode`
+/// never returns `None`.
+impl Codec for () {
+    fn encode<W: Write>(&self, _: &mut W) -> io::Result<()> {
+        Ok(())
+    }
+    fn decode<R: Read>(_: &mut R) -> io::Result<Option<Self>> {
+        Ok(Some(()))
+    }
+}
+
+/// Defines a wire protocol: the [`Element`](Protocol::Element) each seq slot
+/// carries and the per-frame [`Meta`](Protocol::Meta) side-channel — each a
+/// [`Codec`]. One impl — usually a zero-sized marker — is the single type
+/// parameter threaded through [`Frame`], [`OutStream`](crate::OutStream),
 /// [`InStream`](crate::InStream), and [`Window`](crate::Window), so call sites
-/// read `Frame<MyCodec>` rather than carrying each type separately.
-///
-/// The codec lives here, not as traits on the element/meta types, so those can be
-/// plain data — primitives, foreign types, whatever — and one `impl Codec` is
-/// all a caller writes. rennet owns the run framing: it calls
-/// [`encode_element`](Codec::encode_element) per element on the way out and
-/// [`decode_element`](Codec::decode_element) until the datagram's bytes run out
-/// on the way in, so **each element must self-delimit**, and the meta likewise (it
-/// precedes the run). [`crate::write_svarint`] and friends are the byte-minimal
-/// toolkit for the codec methods.
-pub trait Codec {
+/// read `Frame<MyProto>` rather than carrying each type separately.
+pub trait Protocol {
     /// The element each seq slot carries — what the reliability streams
     /// reassemble in order. `Copy` is for the streams' redundancy window; the
     /// `Debug`/`PartialEq`/`Eq` bounds let [`Frame`]/[`Window`](crate::Window)
     /// derive those.
-    type Element: Copy + std::fmt::Debug + PartialEq + Eq;
+    type Element: Codec + Copy + std::fmt::Debug + PartialEq + Eq;
     /// The per-frame side-channel value — a time-sync `tick_advantage`, a flag
     /// word, … — that rennet shuttles but never interprets; use `()` for none.
     /// `Default` is the value the streams report before any frame sets one.
-    type Meta: Copy + Default + std::fmt::Debug + PartialEq + Eq;
+    type Meta: Codec + Copy + Default + std::fmt::Debug + PartialEq + Eq;
     /// Hard cap on elements decoded from one datagram. A datagram's size is only
     /// bounded by the transport's max message size, so without this a hostile
     /// peer could make [`Frame::decode`] allocate an enormous run; the rollback
     /// horizon is the natural value (a longer run can't be acted on anyway).
     const MAX_RUN: usize;
-
-    /// Write one element's self-delimiting bytes.
-    fn encode_element<W: Write>(element: &Self::Element, w: &mut W) -> io::Result<()>;
-    /// Read exactly one element, consuming its own bytes from `r`.
-    fn decode_element<R: Read>(r: &mut R) -> io::Result<Self::Element>;
-    /// Write the meta's self-delimiting bytes (they precede the run). A `()` meta
-    /// writes nothing.
-    fn encode_meta<W: Write>(meta: &Self::Meta, w: &mut W) -> io::Result<()>;
-    /// Read the meta back, consuming exactly its own bytes from `r`.
-    fn decode_meta<R: Read>(r: &mut R) -> io::Result<Self::Meta>;
 }
 
 /// One in-match datagram: a `base`/`ack` header, a per-frame [`Meta`], and a run
@@ -97,7 +111,7 @@ pub trait Codec {
 /// new to send but an ack to report). The type carries no sentinel and needs no
 /// enum tag.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Frame<P: Codec> {
+pub struct Frame<P: Protocol> {
     /// Seq of the run's first element (`entries[i]` has seq `base + i`). On an
     /// empty-run frame this is the sender's next unsent seq, carried for
     /// uniformity (there are no elements to place).
@@ -113,7 +127,7 @@ pub struct Frame<P: Codec> {
     pub entries: Vec<P::Element>,
 }
 
-impl<P: Codec> Frame<P> {
+impl<P: Protocol> Frame<P> {
     /// Build a frame from its parts: the `base`/`ack` header (`ack` is the
     /// absolute frontier, stored as an offset from `base`), then the per-frame
     /// `meta` and the element run. For an "ack-only" frame, pass an empty run
@@ -143,9 +157,9 @@ impl<P: Codec> Frame<P> {
         // The stored `ack_offset` is already the wire form (a signed delta from
         // `base` — see the module header).
         write_svarint(w, self.ack_offset as i64)?;
-        P::encode_meta(&self.meta, w)?;
+        self.meta.encode(w)?;
         for e in &self.entries {
-            P::encode_element(e, w)?;
+            e.encode(w)?;
         }
         Ok(())
     }
@@ -162,23 +176,33 @@ impl<P: Codec> Frame<P> {
     /// Decode one whole datagram from `r`: `base`/`ack` header, the
     /// self-delimiting `meta`, then the element run (each element self-delimits;
     /// the run is delimited by the datagram's end). Never leans on a length
-    /// prefix or sentinel. `r` must yield exactly one datagram = one frame.
-    pub fn decode<R: BufRead>(r: &mut R) -> io::Result<Frame<P>> {
-        // The run is delimited by the datagram's end, so pull the whole datagram
-        // in and parse against its length.
+    /// prefix or sentinel, and never buffers the whole datagram — it reads
+    /// straight from `r`, using [`fill_buf`](BufRead::fill_buf) to spot the run's
+    /// end (an empty buffer = EOF). `r` must yield exactly one datagram = one
+    /// frame; a `&[u8]` already implements [`BufRead`], so the common "I have the
+    /// bytes" case is `Frame::decode(&mut &bytes[..])`.
+    ///
+    /// A truncated element is an error, not tolerated: the element
+    /// [`Codec::decode`] returns `None` only at a clean boundary (EOF before any
+    /// byte), so a partial trailing element reads its first byte and then fails
+    /// with [`UnexpectedEof`](io::ErrorKind::UnexpectedEof). A malformed complete
+    /// element, a short header, and a short meta all error too.
+    pub fn decode<R: Read>(r: &mut R) -> io::Result<Frame<P>> {
         let base = read_u32(r)?;
         // The ack rides as a signed delta from `base` — stored as-is (see the
         // module header); [`Frame::ack`] reconstructs the absolute frontier.
         let ack_offset = i16::try_from(read_svarint(r)?).map_err(|_| invalid("ack offset out of range".to_string()))?;
-        // The meta self-delimits, leaving the cursor at the run's first byte.
-        let meta = P::decode_meta(r)?;
-        // Whatever's left is the run — decode elements until the bytes run out.
+        // The meta is required, so its absence is a truncation, not a clean end.
+        let meta = P::Meta::decode(r)?
+            .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "datagram ended before the meta"))?;
+        // The run fills the rest of the datagram: decode elements until one
+        // reports a clean end (`None`); a truncated trailing element errors.
         let mut entries = Vec::new();
-        while !r.fill_buf()?.is_empty() {
-            if entries.len() >= P::MAX_RUN {
+        while let Some(e) = P::Element::decode(r)? {
+            entries.push(e);
+            if entries.len() > P::MAX_RUN {
                 return Err(invalid(format!("run exceeds {}-element cap", P::MAX_RUN)));
             }
-            entries.push(P::decode_element(r)?);
         }
         Ok(Frame {
             base,

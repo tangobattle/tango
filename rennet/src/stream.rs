@@ -24,7 +24,7 @@
 //! the protocol.
 use std::collections::VecDeque;
 
-use crate::frame::{Frame, Codec};
+use crate::frame::{Frame, Protocol};
 
 /// Proactive redundancy floor: the minimum elements every data frame carries
 /// regardless of acks, so a dropped datagram is covered by the next one without
@@ -41,13 +41,13 @@ use crate::frame::{Frame, Codec};
 /// since the span overtakes it before the floor would ever apply.
 pub const REDUNDANCY: u32 = 2;
 
-/// A contiguous run of elements plus the per-frame [`Meta`] that rides with
+/// A contiguous run of elements plus the per-frame meta that rides with
 /// them. Both halves of the protocol produce one: [`OutStream::window`] builds
 /// the outbound redundancy window (wrapped into a [`Frame`]), and
 /// [`InStream::accept`] returns the run it just made contiguous, tagged with the
 /// freshest meta, for the receive side.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Window<P: Codec> {
+pub struct Window<P: Protocol> {
     /// Seq of `entries[0]`: the frame's `base` outbound, the oldest
     /// just-delivered seq inbound. When `entries` is empty, the next seq the
     /// producer expects (`next_seq` / `recv_base`).
@@ -60,7 +60,7 @@ pub struct Window<P: Codec> {
 }
 
 /// Sender half: seq assignment + redundancy window.
-pub struct OutStream<P: Codec> {
+pub struct OutStream<P: Protocol> {
     /// Next seq to hand out; the seq line is 0-based (the first element gets
     /// seq 0). There's no reserved sentinel — an ack-only [`Frame`] is told
     /// from a data one by the absence of a body, not by a magic seq.
@@ -74,14 +74,14 @@ pub struct OutStream<P: Codec> {
     /// Peer's contiguous frontier (lowest seq it hasn't confirmed). Trims
     /// `history`; only ever advances.
     peer_ack_base: u32,
-    /// Newest input's [`crate::Meta`], echoed once per frame.
+    /// Newest input's meta, echoed once per frame.
     latest_meta: P::Meta,
     /// Rollback horizon: history older than this is dropped (the peer would
     /// bail rather than roll back that far, so retaining it is pointless).
     horizon: u32,
 }
 
-impl<P: Codec> OutStream<P> {
+impl<P: Protocol> OutStream<P> {
     /// Build an out-stream whose redundancy window never retains more than
     /// `horizon` elements (the consuming engine's rollback depth).
     pub fn new(horizon: u32) -> Self {
@@ -94,7 +94,7 @@ impl<P: Codec> OutStream<P> {
         }
     }
 
-    /// Append an element at the next seq and record the [`crate::Meta`] it
+    /// Append an element at the next seq and record the meta it
     /// carries; returns its seq. The meta-bearing counterpart to
     /// [`push`](Self::push) — use it for elements that update the side-channel
     /// (e.g. inputs carrying a fresh time-sync lead); elements that don't
@@ -159,7 +159,7 @@ impl<P: Codec> OutStream<P> {
 
     /// The data portion of an outbound frame — see [`Window`]. Always available:
     /// before the first element is pushed the history is empty, so it reports an
-    /// empty run at `next_seq` — an "ack-only" frame. The freshest [`crate::Meta`]
+    /// empty run at `next_seq` — an "ack-only" frame. The freshest meta
     /// rides along regardless.
     pub fn window(&self) -> Window<P> {
         Window {
@@ -202,7 +202,7 @@ impl<P: Codec> OutStream<P> {
 pub struct HorizonExceeded;
 
 /// Receiver half: reorder buffer + contiguous delivery + cumulative ack.
-pub struct InStream<P: Codec> {
+pub struct InStream<P: Protocol> {
     /// Next contiguous seq we still need. Everything below has been
     /// delivered. Starts at 0, matching [`OutStream`]'s 0-based seq line.
     recv_base: u32,
@@ -216,7 +216,7 @@ pub struct InStream<P: Codec> {
     /// already-buffered seq is dropped (first copy wins), which is how
     /// duplicates dedup.
     buffer: VecDeque<Option<P::Element>>,
-    /// Freshest [`crate::Meta`] seen; [`accept`](Self::accept) returns it with
+    /// Freshest meta seen; [`accept`](Self::accept) returns it with
     /// every delivery so the caller can tag the delivered elements. Persisted
     /// across calls for the reorder guard below.
     latest_meta: P::Meta,
@@ -231,7 +231,7 @@ pub struct InStream<P: Codec> {
     horizon: u32,
 }
 
-impl<P: Codec> InStream<P> {
+impl<P: Protocol> InStream<P> {
     /// Build an in-stream that bails once a gap grows past `horizon` (the
     /// consuming engine's rollback depth).
     pub fn new(horizon: u32) -> Self {
@@ -325,7 +325,7 @@ mod tests {
     const HORIZON: u32 = 300;
 
     // The streams run on `RawProto` (raw-u16 body, plain `i16` meta standing in
-    // for a caller's time-sync field — testutil impls [`crate::Meta`] for it).
+    // for a caller's time-sync field — testutil impls [`Codec`](crate::Codec) for it).
     fn out() -> OutStream<RawProto> {
         OutStream::new(HORIZON)
     }

@@ -14,9 +14,9 @@ short loss costs about one frame rather than a round-trip.
 
 The crate is **pure**: no async, no I/O, no transport, no clock. You pump `Frame`
 bytes over whatever datagram channel you have and map the delivered elements to
-your own event type. Everything is generic over one `Codec` impl — usually a
-zero-sized marker — that fixes the `Element` each seq slot carries and the
-per-frame `Meta` side-channel, so call sites read `Frame<MyCodec>` rather than
+your own event type. Everything is generic over one `Protocol` impl — usually a
+zero-sized marker — that names the `Element` each seq slot carries and the
+per-frame `Meta` side-channel, so call sites read `Frame<MyProto>` rather than
 threading each type separately.
 
 ## Two layers
@@ -38,7 +38,7 @@ the `Meta` means* are entirely the caller's business.
 
 ### `stream` — the reliability state machines
 
-Two halves, both pure and generic over the `Codec` `P`:
+Two halves, both pure and generic over the `Protocol` `P`:
 
 - **`OutStream`** — assigns a monotonic seq to each local element, keeps a
   redundancy window of recent unconfirmed elements, and trims it as the peer's
@@ -71,35 +71,39 @@ run    Element*  always; each element self-delimits; runs to the datagram end
 
 With the zero-width `()` meta, a frame is just `base | ack | run`.
 
-## The `Codec` trait
+## The `Protocol` and `Codec` traits
 
-You supply one type — usually a zero-sized marker — implementing `Codec`. It names
-the `Element` each seq slot carries and the per-frame `Meta`, and supplies the
-codec for each. The element and meta are *plain data* (primitives, foreign types,
-your own structs — no rennet trait impls on them); the wire packing lives on the
-`Codec`, so one `impl Codec` is all you write:
+A `Protocol` names the two types — the `Element` each seq slot carries and the
+per-frame `Meta` — and the per-datagram element cap. Each of those types is a
+`Codec`: a value that serializes itself to / from the wire.
 
 ```rust
-pub trait Codec {
-    type Element: Copy + Debug + PartialEq + Eq;
-    type Meta: Copy + Default + Debug + PartialEq + Eq;   // use () for no side-channel
-    const MAX_RUN: usize;   // cap on elements per datagram (the rollback horizon)
+pub trait Codec: Sized {
+    fn encode<W: Write>(&self, w: &mut W) -> std::io::Result<()>;
+    // Ok(None) at a clean EOF (run boundary); Err(UnexpectedEof) if truncated mid-value.
+    fn decode<R: Read>(r: &mut R) -> std::io::Result<Option<Self>>;
+}
 
-    fn encode_element<W: Write>(element: &Self::Element, w: &mut W) -> std::io::Result<()>;
-    fn decode_element<R: Read>(r: &mut R) -> std::io::Result<Self::Element>;
-    fn encode_meta<W: Write>(meta: &Self::Meta, w: &mut W) -> std::io::Result<()>;
-    fn decode_meta<R: Read>(r: &mut R) -> std::io::Result<Self::Meta>;
+pub trait Protocol {
+    type Element: Codec + Copy + Debug + PartialEq + Eq;
+    type Meta:    Codec + Copy + Default + Debug + PartialEq + Eq;   // () for no side-channel
+    const MAX_RUN: usize;   // cap on elements per datagram (the rollback horizon)
 }
 ```
 
-rennet owns the run framing, so each element only has to self-delimit:
-`encode_element` is called per element on the way out, `decode_element` until the
-datagram's bytes run out on the way in. The meta precedes the run, so it
-self-delimits too (a `()` meta writes nothing). Markers (round/match boundaries,
-etc.) ride in-band on the same seq line as ordinary inputs, so an element type is
-typically an enum of "input" plus whatever boundaries your engine needs.
-`write_uvarint` / `write_svarint` (and their `read_` counterparts) are exported as
-the byte-minimal toolkit for the codec methods.
+rennet owns the run framing, so each element's `Codec` only has to self-delimit:
+`encode` is called per element on the way out, `decode` per element on the way in.
+The run has no length prefix — `decode` returns `Ok(None)` at a clean EOF (no
+bytes left) to end the run, and `Err(UnexpectedEof)` if EOF strikes part-way
+through, so a truncated trailing element is an error, not silently dropped. That's
+why a plain `Read` suffices (no `BufRead`/peeking). The meta precedes the run and
+self-delimits too (the `Codec for ()` impl writes nothing and always decodes to
+`Some(())`); being a single required field, a real meta's `decode` errors at EOF
+rather than returning `None`. Markers (round/match boundaries, etc.) ride in-band
+on the same seq line as ordinary inputs, so an element type is typically an enum
+of "input" plus whatever boundaries your engine needs. `write_uvarint` /
+`write_svarint` (and their `read_` counterparts) are exported as the byte-minimal
+toolkit for `Codec` impls.
 
 ## Usage
 
@@ -108,8 +112,8 @@ rollback horizon (the depth past which a gap can never be reconciled, so the
 receiver bails rather than buffering forever):
 
 ```rust
-let mut out = OutStream::<MyCodec>::new(HORIZON);
-let mut inn = InStream::<MyCodec>::new(HORIZON);
+let mut out = OutStream::<MyProto>::new(HORIZON);
+let mut inn = InStream::<MyProto>::new(HORIZON);
 ```
 
 **Sending** — push local elements, then build a frame from the current window
@@ -120,7 +124,7 @@ absolute ack frontier the in-stream wants next:
 out.push_with_meta(Element::Input(joyflags), my_meta); // or out.push(marker), which leaves the meta unchanged
 
 let w = out.window();
-let frame = Frame::<MyCodec>::new(w.base, inn.ack(), w.meta, w.entries);
+let frame = Frame::<MyProto>::new(w.base, inn.ack(), w.meta, w.entries);
 send_datagram(&frame.to_vec());
 ```
 
@@ -129,7 +133,7 @@ send_datagram(&frame.to_vec());
 seq order, tagged with the freshest meta:
 
 ```rust
-let frame = Frame::<MyCodec>::decode(&mut datagram)?;  // any io::Read of one datagram
+let frame = Frame::<MyProto>::decode(&mut datagram)?;  // any io::Read of one datagram
 out.apply_ack(frame.ack());
 let delivered = inn.accept(&frame)?;   // Err(HorizonExceeded) → tear the match down
 for element in delivered.entries {

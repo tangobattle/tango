@@ -55,21 +55,61 @@ pub use rennet::Ack;
 /// [`data_frame`]; an "ack-only" frame is just one with no entries.
 pub type Frame = rennet::Frame<InMatch>;
 
-/// The [`rennet::Codec`] descriptor for tango's in-match datagrams: pairs the
+/// The [`rennet::Protocol`] descriptor for tango's in-match datagrams: pairs the
 /// [`Element`] stream with the [`Meta`] side-channel. A zero-sized marker — it's
 /// only ever a type parameter (`rennet::Frame<InMatch>`, the stream aliases in
 /// the parent module, …).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InMatch;
 
-impl rennet::Codec for InMatch {
+impl rennet::Protocol for InMatch {
     type Element = Element;
     type Meta = Meta;
     const MAX_RUN: usize = MAX_ENTRIES;
+}
 
-    /// Write one element's wire bytes (see the module header).
-    fn encode_element<W: io::Write>(element: &Element, w: &mut W) -> io::Result<()> {
-        match *element {
+/// The per-frame meta tango rides on every in-match datagram. It's a struct
+/// rather than a bare `i16` so more synced-once-per-frame fields can join
+/// `tick_advantage` later without touching the wire plumbing — add a field here
+/// and extend its [`Codec`](rennet::Codec) impl.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Meta {
+    /// The newest local input's time-sync lead, fed to the throttler on the far
+    /// side (see `round.rs` / the engine session).
+    pub tick_advantage: i16,
+}
+
+impl rennet::Codec for Meta {
+    /// The meta is a single svarint of `tick_advantage`.
+    fn encode<W: io::Write>(&self, w: &mut W) -> io::Result<()> {
+        rennet::write_svarint(w, self.tick_advantage as i64)
+    }
+
+    fn decode<R: io::Read>(r: &mut R) -> io::Result<Option<Self>> {
+        // The meta is required: a short read errors (never a clean `None`).
+        let tick_advantage =
+            i16::try_from(rennet::read_svarint(r)?).map_err(|_| invalid("tick_advantage out of range".to_string()))?;
+        Ok(Some(Meta { tick_advantage }))
+    }
+}
+
+/// One element of the input stream, occupying a single seq slot: either a tick's
+/// input, or a round/match boundary that rides in-band on the seq line (see the
+/// module header for its wire packing).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Element {
+    /// Joyflags for this tick (10-bit GBA keypad; the top 6 bits must be 0).
+    Input(u16),
+    /// End-of-round boundary — the round its preceding inputs belong to ends here.
+    EndOfRound,
+    /// End-of-match boundary.
+    EndOfMatch,
+}
+
+impl rennet::Codec for Element {
+    /// Write this element's wire bytes (see the module header).
+    fn encode<W: io::Write>(&self, w: &mut W) -> io::Result<()> {
+        match *self {
             Element::Input(joyflags) => {
                 assert!(
                     joyflags & !JOYFLAGS_MASK == 0,
@@ -84,60 +124,31 @@ impl rennet::Codec for InMatch {
         }
     }
 
-    /// Read exactly one element off `r` — the top bit of the first byte tells an
-    /// input (two bytes) from a marker (one).
-    fn decode_element<R: io::Read>(r: &mut R) -> io::Result<Element> {
+    /// Read one element off `r` — the top bit of the first byte tells an input
+    /// (two bytes) from a marker (one). `None` at a clean EOF (the run's end); a
+    /// lone input high byte with no low byte is a truncation error.
+    fn decode<R: io::Read>(r: &mut R) -> io::Result<Option<Self>> {
         let mut b0 = [0u8; 1];
-        r.read_exact(&mut b0)?;
+        // 0 bytes read = clean EOF at the run boundary.
+        if r.read(&mut b0)? == 0 {
+            return Ok(None);
+        }
         let b0 = b0[0];
-        if b0 & MARKER_FLAG != 0 {
+        let element = if b0 & MARKER_FLAG != 0 {
             match b0 & !MARKER_FLAG {
-                KIND_END_OF_ROUND => Ok(Element::EndOfRound),
-                KIND_END_OF_MATCH => Ok(Element::EndOfMatch),
-                other => Err(invalid(format!("unknown marker kind: {other}"))),
+                KIND_END_OF_ROUND => Element::EndOfRound,
+                KIND_END_OF_MATCH => Element::EndOfMatch,
+                other => return Err(invalid(format!("unknown marker kind: {other}"))),
             }
         } else {
-            // Input: this byte's the high half, the next its low half.
+            // Input: this byte's the high half, the next its low half (EOF here
+            // is a truncated element, not a clean end).
             let mut b1 = [0u8; 1];
             r.read_exact(&mut b1)?;
-            Ok(Element::Input(((b0 as u16) << 8 | b1[0] as u16) & JOYFLAGS_MASK))
-        }
+            Element::Input(((b0 as u16) << 8 | b1[0] as u16) & JOYFLAGS_MASK)
+        };
+        Ok(Some(element))
     }
-
-    /// The meta is a single svarint of `tick_advantage`.
-    fn encode_meta<W: io::Write>(meta: &Meta, w: &mut W) -> io::Result<()> {
-        rennet::write_svarint(w, meta.tick_advantage as i64)
-    }
-
-    fn decode_meta<R: io::Read>(r: &mut R) -> io::Result<Meta> {
-        let tick_advantage =
-            i16::try_from(rennet::read_svarint(r)?).map_err(|_| invalid("tick_advantage out of range".to_string()))?;
-        Ok(Meta { tick_advantage })
-    }
-}
-
-/// The per-frame meta tango rides on every in-match datagram (its codec is the
-/// [`InMatch`] meta codec). It's a struct rather than a bare `i16` so more
-/// synced-once-per-frame fields can join `tick_advantage` later without touching
-/// the wire plumbing — add a field here and extend the meta codec on [`InMatch`].
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Meta {
-    /// The newest local input's time-sync lead, fed to the throttler on the far
-    /// side (see `round.rs` / the engine session).
-    pub tick_advantage: i16,
-}
-
-/// One element of the input stream, occupying a single seq slot: either a tick's
-/// input, or a round/match boundary that rides in-band on the seq line. Its wire
-/// packing is the [`InMatch`] element codec (see the module header).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Element {
-    /// Joyflags for this tick (10-bit GBA keypad; the top 6 bits must be 0).
-    Input(u16),
-    /// End-of-round boundary — the round its preceding inputs belong to ends here.
-    EndOfRound,
-    /// End-of-match boundary.
-    EndOfMatch,
 }
 
 fn invalid(msg: String) -> io::Error {
