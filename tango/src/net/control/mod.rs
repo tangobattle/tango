@@ -1,39 +1,18 @@
 //! Control plane: the reliable lobby/handshake channel.
 //!
 //! The [`protocol`] `Packet` wire format (handshake, lobby settings,
-//! commitment/chunk exchange, match start), the [`PacketSink`] / [`PacketStream`]
-//! byte transport wrapped as a [`Sender`] / [`Receiver`] pair that frames those
-//! `Packet`s, and the version [`negotiate`] handshake.
+//! commitment/chunk exchange, match start), the [`Sender`] / [`Receiver`] pair
+//! that frames those typed `Packet`s over the shared [`PacketSink`] /
+//! [`PacketStream`] byte-pipe, and the version [`negotiate`] handshake.
 //!
 //! Everything here runs over the reliable, ordered channel; the live match's
-//! per-frame traffic is the data plane's job ([`super::data`]).
-//!
-//! `Sender::send_raw` / `Receiver::recv_raw` expose the underlying byte pipe:
-//! the data plane frames its own `wire` datagrams through the same pair (over
-//! the unreliable channel), and the in-match disconnect watch drains `recv_raw`
-//! for the reliable channel's EOF.
+//! per-frame traffic — and its own raw-bytes [`Sender`](super::data::Sender) /
+//! [`Receiver`](super::data::Receiver) — is the data plane's job
+//! ([`super::data`]).
 
 pub mod protocol;
 
-/// One half of a peer connection's send side. Carries discrete,
-/// reliable, in-order byte messages — same contract as a WebRTC
-/// DataChannel configured `unordered: false, unreliable: false`. A
-/// stream-oriented impl would have to add its own length-prefix
-/// framing so each `send` round-trips as exactly one `recv` on the
-/// peer; the DataChannel transports preserve message boundaries
-/// natively.
-#[async_trait::async_trait]
-pub trait PacketSink: Send + Sync {
-    async fn send(&mut self, bytes: &[u8]) -> std::io::Result<()>;
-}
-
-/// One half of a peer connection's receive side. See [`PacketSink`]
-/// for the contract on message boundaries. A clean stream close is
-/// reported as `io::ErrorKind::UnexpectedEof`.
-#[async_trait::async_trait]
-pub trait PacketStream: Send + Sync {
-    async fn recv(&mut self) -> std::io::Result<Vec<u8>>;
-}
+use super::{PacketSink, PacketStream};
 
 #[derive(Debug, thiserror::Error)]
 pub enum NegotiationError {
@@ -77,16 +56,10 @@ impl Sender {
         Self { sink }
     }
 
-    /// Ship a pre-serialized payload straight to the transport. The control
-    /// plane's typed `Packet` helpers below frame through here; the data
-    /// plane's `data::wire` framing writes its in-match datagrams through here
-    /// too (over the unreliable channel).
-    pub async fn send_raw(&mut self, bytes: &[u8]) -> std::io::Result<()> {
-        self.sink.send(bytes).await
-    }
-
+    /// Serialize a typed `Packet` and frame it as one message on the transport.
+    /// Every `send_*` helper below funnels through here.
     pub async fn send_packet(&mut self, p: &protocol::Packet) -> std::io::Result<()> {
-        self.send_raw(p.serialize().unwrap().as_slice()).await
+        self.sink.send(p.serialize().unwrap().as_slice()).await
     }
 
     pub async fn send_hello(&mut self) -> std::io::Result<()> {
@@ -149,15 +122,13 @@ impl Receiver {
         Self { stream }
     }
 
-    /// Read one raw transport message. The receive counterpart to
-    /// [`Sender::send_raw`] — the data plane decodes its `wire` frames off
-    /// this, and the in-match disconnect watch drains it for the channel's EOF.
-    pub async fn recv_raw(&mut self) -> std::io::Result<Vec<u8>> {
-        self.stream.recv().await
-    }
-
+    /// Read one message off the transport and decode it as a `Packet`. A
+    /// transport-level close surfaces as `io::ErrorKind::UnexpectedEof`;
+    /// undecodable bytes as `io::ErrorKind::InvalidData` — callers that tolerate
+    /// stray traffic (e.g. the mid-match `Closing` watch) discriminate on the
+    /// error kind.
     pub async fn receive(&mut self) -> std::io::Result<protocol::Packet> {
-        let bytes = self.recv_raw().await?;
+        let bytes = self.stream.recv().await?;
         protocol::Packet::deserialize(bytes.as_slice())
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }

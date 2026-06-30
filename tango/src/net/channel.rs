@@ -1,5 +1,7 @@
-//! WebRTC data channels: their specs, and the adapter that turns one into a
-//! transport-agnostic [`Sender`] / [`Receiver`] pair.
+//! WebRTC data channels: their specs, and the adapters that turn one into a
+//! transport-agnostic `Sender` / `Receiver` pair — [`control_pair`] for the
+//! control plane's typed-`Packet` transport, [`data_pair`] for the data plane's
+//! raw-bytes one.
 //!
 //! Single source of truth for the two channels every netplay transport brings
 //! up:
@@ -18,7 +20,7 @@
 //! All channels are *negotiated* (pre-agreed stream ids, no in-band DCEP), so
 //! both sides just create them with matching ids — no DCEP open handshake.
 
-use super::{PacketSink, PacketStream, Receiver, Sender};
+use super::{control, data, PacketSink, PacketStream};
 use datachannel_wrapper::{DataChannelInit, PeerConnection, Reliability};
 
 /// The two netplay channels (reliable control + unreliable in-match) plus the
@@ -29,9 +31,9 @@ use datachannel_wrapper::{DataChannelInit, PeerConnection, Reliability};
 /// `peer_conn` alive for the channels' lifetime.
 pub struct Channels {
     /// Reliable, ordered — the control/lobby `Packet` protocol.
-    pub control: (Sender, Receiver),
+    pub control: (control::Sender, control::Receiver),
     /// Unreliable, unordered — the in-match `data::wire` datagrams.
-    pub in_match: (Sender, Receiver),
+    pub in_match: (data::Sender, data::Receiver),
     pub peer_conn: PeerConnection,
     /// This connection's two DTLS certificate fingerprints (raw SHA-256 bytes),
     /// parsed from the offer/answer SDP, used to seed the matchmaking reconnect
@@ -59,8 +61,8 @@ impl Channels {
         let [control_dc, in_match_dc] = <[_; 2]>::try_from(dcs)
             .map_err(|dcs: Vec<_>| std::io::Error::other(format!("expected 2 data channels, got {}", dcs.len())))?;
         Ok(Self {
-            control: pair(control_dc),
-            in_match: pair(in_match_dc),
+            control: control_pair(control_dc),
+            in_match: data_pair(in_match_dc),
             peer_conn,
             local_dtls_fingerprint,
             peer_dtls_fingerprint,
@@ -133,12 +135,29 @@ impl PacketStream for DataChannelStream {
     }
 }
 
-/// Split a `DataChannel` into a transport-agnostic Sender + Receiver
-/// pair. The peer connection that owns the channel must be kept alive
-/// separately (see `netplay::NegotiationOutput`).
-pub fn pair(dc: datachannel_wrapper::DataChannel) -> (Sender, Receiver) {
+/// Wrap a `DataChannel`'s two halves into the shared [`PacketSink`] /
+/// [`PacketStream`] byte-pipe both planes' transports build on.
+fn split(dc: datachannel_wrapper::DataChannel) -> (Box<dyn PacketSink>, Box<dyn PacketStream>) {
     let (dc_tx, dc_rx) = dc.split();
-    let sender = Sender::new(Box::new(DataChannelSink { inner: dc_tx }));
-    let receiver = Receiver::new(Box::new(DataChannelStream { inner: dc_rx }));
-    (sender, receiver)
+    (
+        Box::new(DataChannelSink { inner: dc_tx }),
+        Box::new(DataChannelStream { inner: dc_rx }),
+    )
+}
+
+/// Pair a `DataChannel` into the control plane's typed-`Packet`
+/// [`control::Sender`] / [`control::Receiver`] — the reliable control channel.
+/// The unreliable in-match channel pairs via [`data_pair`] instead. The peer
+/// connection that owns the channel must be kept alive separately (see
+/// `netplay::NegotiationOutput`).
+pub fn control_pair(dc: datachannel_wrapper::DataChannel) -> (control::Sender, control::Receiver) {
+    let (sink, stream) = split(dc);
+    (control::Sender::new(sink), control::Receiver::new(stream))
+}
+
+/// Pair a `DataChannel` into the data plane's raw-bytes [`data::Sender`] /
+/// [`data::Receiver`] — the in-match counterpart to [`control_pair`].
+pub fn data_pair(dc: datachannel_wrapper::DataChannel) -> (data::Sender, data::Receiver) {
+    let (sink, stream) = split(dc);
+    (data::Sender::new(sink), data::Receiver::new(stream))
 }

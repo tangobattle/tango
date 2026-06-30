@@ -96,8 +96,8 @@ fn open_channels(mut pc: PeerConnection) -> Channels {
         .create_data_channel(label, init)
         .expect("create pre-negotiated in-match data channel");
     Channels {
-        control: super::channel::pair(control_dc),
-        in_match: super::channel::pair(in_match_dc),
+        control: super::channel::control_pair(control_dc),
+        in_match: super::channel::data_pair(in_match_dc),
         peer_conn: pc,
         // Fabricated SDP with fingerprint verification disabled, so the dummy
         // fingerprint is meaningless; the direct path rebuilds via re-run, not a
@@ -240,10 +240,10 @@ mod tests {
         // The unreliable in-match channel shares the same association, so it's
         // open by now too — round-trip a raw datagram each way.
         let in_match = async {
-            host_ch.in_match.0.send_raw(b"ping-h2c").await?;
-            conn_ch.in_match.0.send_raw(b"ping-c2h").await?;
-            let got_at_conn = conn_ch.in_match.1.recv_raw().await?;
-            let got_at_host = host_ch.in_match.1.recv_raw().await?;
+            host_ch.in_match.0.send(b"ping-h2c").await?;
+            conn_ch.in_match.0.send(b"ping-c2h").await?;
+            let got_at_conn = conn_ch.in_match.1.recv().await?;
+            let got_at_host = host_ch.in_match.1.recv().await?;
             Ok::<_, std::io::Error>((got_at_conn, got_at_host))
         };
         let (got_at_conn, got_at_host) = tokio::time::timeout(std::time::Duration::from_secs(15), in_match)
@@ -297,18 +297,18 @@ mod tests {
         host_ch
             .in_match
             .0
-            .send_raw(b"reconnected-h2c")
+            .send(b"reconnected-h2c")
             .await
             .expect("post-reconnect host send");
         conn_ch
             .in_match
             .0
-            .send_raw(b"reconnected-c2h")
+            .send(b"reconnected-c2h")
             .await
             .expect("post-reconnect conn send");
         let roundtrip = async {
-            let at_conn = conn_ch.in_match.1.recv_raw().await?;
-            let at_host = host_ch.in_match.1.recv_raw().await?;
+            let at_conn = conn_ch.in_match.1.recv().await?;
+            let at_host = host_ch.in_match.1.recv().await?;
             Ok::<_, std::io::Error>((at_conn, at_host))
         };
         let (at_conn, at_host) = tokio::time::timeout(std::time::Duration::from_secs(15), roundtrip)

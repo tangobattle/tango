@@ -1,21 +1,27 @@
 //! Per-peer netplay networking, split into planes that mirror each other:
 //!
 //! * [`control`] — the reliable lobby/handshake channel: the `Packet`
-//!   [`protocol`](control::protocol), the `Sender` / `Receiver` byte transport,
-//!   and the version `negotiate` handshake.
-//! * [`data`] — the live in-match channel: tango's concrete `protocol`
-//!   `Element` (carried by the loss-tolerant frame codec + reliability state
-//!   machines in the [`rennet`] crate), plus the `InMatchTx` / `PvpSender` /
-//!   `PvpReceiver` adapters used by the battle loop. Runs over a separate
-//!   **unreliable** data channel.
+//!   [`protocol`](control::protocol), the `Sender` / `Receiver` pair that frames
+//!   those typed `Packet`s, and the version `negotiate` handshake.
+//! * [`data`] — the live in-match channel: a raw-bytes [`Sender`](data::Sender) /
+//!   [`Receiver`](data::Receiver) transport carrying tango's concrete `protocol`
+//!   `Element`s (via the loss-tolerant frame codec + reliability state machines
+//!   in the [`rennet`] crate), plus the `InMatchTx` / `PvpSender` / `PvpReceiver`
+//!   adapters the battle loop drives over it. Runs over a separate **unreliable**
+//!   data channel.
 //!
-//! [`channel`] owns the data-channel specs (labels / stream ids / reliability)
-//! and the adapter that splits a WebRTC `DataChannel` into a `Sender` /
-//! `Receiver`. [`direct_rtc`] is the signaling-free direct transport.
+//! Both planes build their `Sender` / `Receiver` on the shared [`PacketSink`] /
+//! [`PacketStream`] byte-pipe defined here — a message-boundary-preserving
+//! datagram transport, agnostic to whether the underlying channel is
+//! reliable/ordered. [`channel`] owns the data-channel specs (labels / stream
+//! ids / reliability) and the adapters that split a WebRTC `DataChannel` into
+//! either pair ([`channel::control_pair`] for control, [`channel::data_pair`]
+//! for data). [`direct_rtc`] is the signaling-free direct transport.
 //!
-//! The control plane's transport types and the `protocol` module are re-exported
-//! at the root so callers can keep saying `crate::net::Sender`,
-//! `crate::net::protocol`, etc. without knowing the layering.
+//! The control plane's `Sender` / `Receiver` and the `protocol` module are
+//! re-exported at the root so callers can keep saying `crate::net::Sender`,
+//! `crate::net::protocol`, etc.; the data plane's same-named transport types stay
+//! under `crate::net::data` to keep the two straight.
 
 pub mod channel;
 pub mod control;
@@ -23,8 +29,29 @@ pub mod data;
 pub mod direct_rtc;
 
 pub use control::protocol;
-pub use control::{negotiate, NegotiationError, PacketSink, PacketStream, Receiver, Sender};
+pub use control::{negotiate, NegotiationError, Receiver, Sender};
 pub use data::{InMatchTx, PvpReceiver, PvpSender};
+
+/// One half of a peer connection's send side: the byte-pipe both planes' typed
+/// transports build on. Carries discrete byte messages, preserving message
+/// boundaries — each `send` lands as exactly one `recv` on the peer, a WebRTC
+/// DataChannel's native contract. A stream-oriented impl would have to add its
+/// own length-prefix framing to match. Reliability and ordering are the concrete
+/// channel's properties — the control channel is reliable + ordered, the
+/// in-match channel unreliable + unordered — not this trait's; it only promises
+/// boundaries.
+#[async_trait::async_trait]
+pub trait PacketSink: Send + Sync {
+    async fn send(&mut self, bytes: &[u8]) -> std::io::Result<()>;
+}
+
+/// One half of a peer connection's receive side. See [`PacketSink`] for the
+/// contract on message boundaries. A clean stream close is reported as
+/// `io::ErrorKind::UnexpectedEof`.
+#[async_trait::async_trait]
+pub trait PacketStream: Send + Sync {
+    async fn recv(&mut self) -> std::io::Result<Vec<u8>>;
+}
 
 /// Default UDP port for the signaling-free direct local-play transport
 /// (link-code commands `/host` and `/connect`; see

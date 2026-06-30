@@ -138,7 +138,7 @@ pub struct State {
     /// isn't owned by the lobby loop). PvP handoff (`take_pre_match`) hands the
     /// slot to the PvpReceiver. Reset to a fresh `Arc` on every session
     /// boundary alongside [`post_lobby_receiver`].
-    in_match_receiver_slot: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
+    in_match_receiver_slot: Arc<std::sync::Mutex<Option<crate::net::data::Receiver>>>,
     /// Lobby-only state — what each side has advertised so far.
     /// `local` is what we sent; `remote` is what came in over the
     /// Settings packet. Both being `Some` means the lobby pane
@@ -305,7 +305,7 @@ struct ConnectionHandles {
     sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     /// Unreliable, unordered in-match channel sender — idle during the lobby,
     /// handed to the PvP session to carry the live `data::wire` datagrams.
-    in_match_sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
+    in_match_sender: Arc<tokio::sync::Mutex<crate::net::data::Sender>>,
     /// The peer connection, kept alive for the duration of the
     /// session. Both transports (matchmaking WebRTC and the
     /// signaling-free direct link) bring one up.
@@ -542,11 +542,11 @@ pub struct NegotiationOutput {
     pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     pub receiver: crate::net::Receiver,
     /// Unreliable in-match channel's send half. Idle until the match starts.
-    pub in_match_sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
+    pub in_match_sender: Arc<tokio::sync::Mutex<crate::net::data::Sender>>,
     /// Unreliable in-match channel's receive half. Parked for the PvP handoff
     /// the moment negotiate completes — nothing flows on it during the lobby,
     /// so unlike the reliable receiver it isn't owned by the lobby loop.
-    pub in_match_receiver: crate::net::Receiver,
+    pub in_match_receiver: crate::net::data::Receiver,
     /// The peer connection. Set by both transports. See
     /// [`ConnectionHandles::peer_conn`] for the lifetime contract.
     pub peer_conn: datachannel_wrapper::PeerConnection,
@@ -1283,7 +1283,7 @@ pub struct PreMatchData {
     pub lobby_sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     /// Unreliable in-match channel sender — the live match's `data::wire`
     /// datagrams.
-    pub in_match_sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
+    pub in_match_sender: Arc<tokio::sync::Mutex<crate::net::data::Sender>>,
     /// The peer connection; brought up by both transports. See
     /// [`ConnectionHandles::peer_conn`].
     pub peer_conn: datachannel_wrapper::PeerConnection,
@@ -1294,7 +1294,7 @@ pub struct PreMatchData {
     pub reliable_receiver_slot: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
     /// Unreliable in-match receiver slot, parked at negotiate time. PvP setup
     /// waits on this (one-shot poll on a tick).
-    pub in_match_receiver_slot: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
+    pub in_match_receiver_slot: Arc<std::sync::Mutex<Option<crate::net::data::Receiver>>>,
     pub rng_seed: [u8; 16],
     pub local_save_data: Vec<u8>,
     pub remote_save_data: Vec<u8>,

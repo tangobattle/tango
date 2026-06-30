@@ -9,7 +9,47 @@
 
 pub mod protocol;
 
-use super::{LatencyCounter, Receiver, Sender};
+use super::{LatencyCounter, PacketSink, PacketStream};
+
+/// Send half of the data plane's transport: a thin, untyped byte pipe over the
+/// unreliable in-match channel. Where the control plane's
+/// [`Sender`](super::Sender) frames typed `Packet`s, this one ships whatever
+/// bytes it's handed — a `protocol::Frame` already owns its wire format — so its
+/// whole surface is [`send`](Self::send). Pairs with [`Receiver`].
+pub struct Sender {
+    sink: Box<dyn PacketSink>,
+}
+
+impl Sender {
+    pub fn new(sink: Box<dyn PacketSink>) -> Self {
+        Self { sink }
+    }
+
+    /// Ship one pre-serialized `protocol::Frame` (or any opaque datagram) to the
+    /// peer — one `send` is one datagram on the wire.
+    pub async fn send(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        self.sink.send(bytes).await
+    }
+}
+
+/// Receive half of the data plane's transport — the counterpart to [`Sender`].
+/// Yields whole datagrams as raw bytes; the caller ([`PvpReceiver`]) decodes each
+/// into a `protocol::Frame`. A clean channel close surfaces as
+/// `io::ErrorKind::UnexpectedEof`.
+pub struct Receiver {
+    stream: Box<dyn PacketStream>,
+}
+
+impl Receiver {
+    pub fn new(stream: Box<dyn PacketStream>) -> Self {
+        Self { stream }
+    }
+
+    /// Read one datagram off the unreliable channel.
+    pub async fn recv(&mut self) -> std::io::Result<Vec<u8>> {
+        self.stream.recv().await
+    }
+}
 
 /// The in-match streams, keyed on tango's [`protocol::InMatch`] descriptor.
 type OutStream = rennet::OutStream<protocol::InMatch>;
@@ -57,7 +97,7 @@ struct Delivery {
 /// Send handle for the unreliable in-match channel (tango-rtc stream-1 data
 /// channel). Shared by the per-frame input pump, the receive loop's ack
 /// replies, and the session's in-band `EndOfMatch`. Carries [`protocol`] frames
-/// over [`Sender::send_raw`].
+/// over [`Sender::send`].
 #[derive(Clone)]
 pub struct InMatchTx {
     state: std::sync::Arc<std::sync::Mutex<InMatchState>>,
@@ -123,7 +163,7 @@ impl InMatchTx {
             let ack = st.inn.ack();
             protocol::data_frame(w.base, ack, w.meta, w.entries)
         };
-        self.sink.lock().await.send_raw(&frame.to_vec()).await
+        self.sink.lock().await.send(&frame.to_vec()).await
     }
 
     pub async fn send_input(&self, joyflags: u16, tick_advantage: i16) -> std::io::Result<()> {
@@ -165,7 +205,7 @@ impl InMatchTx {
             let w = st.out.window();
             protocol::data_frame(w.base, ack, w.meta, w.entries)
         };
-        self.sink.lock().await.send_raw(&frame.to_vec()).await
+        self.sink.lock().await.send(&frame.to_vec()).await
     }
 
     /// Retransmit heartbeat: keep the unacked window (and our ack) flowing at
@@ -338,7 +378,7 @@ impl tango_pvp::net::Receiver for PvpReceiver {
             if let Some(event) = self.pending.pop_front() {
                 return Ok(event);
             }
-            let msg = self.receiver.recv_raw().await?;
+            let msg = self.receiver.recv().await?;
             let frame = protocol::Frame::decode(&mut &msg[..])?;
             let delivery = self
                 .im

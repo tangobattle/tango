@@ -876,12 +876,11 @@ impl Drop for PvpSession {
     }
 }
 
-/// Poll the receiver-handoff slot until the lobby loop drops
-/// the live Receiver into it. Bounded to avoid hanging the
-/// PvP setup forever if something went off the rails.
-async fn drain_receiver(
-    slot: &Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
-) -> anyhow::Result<crate::net::Receiver> {
+/// Poll the receiver-handoff slot until the lobby loop drops the live receiver
+/// into it. Generic over the receiver type so it serves both the reliable
+/// control receiver and the unreliable in-match one. Bounded to avoid hanging
+/// the PvP setup forever if something went off the rails.
+async fn drain_receiver<R>(slot: &Arc<std::sync::Mutex<Option<R>>>) -> anyhow::Result<R> {
     const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
     const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(5);
     let deadline = tokio::time::Instant::now() + TIMEOUT;
@@ -907,12 +906,15 @@ async fn drain_receiver(
 async fn watch_reliable(receiver: &mut crate::net::Receiver, peer_closing: &AtomicBool) {
     use crate::net::protocol::Packet;
     loop {
-        match receiver.recv_raw().await {
-            Ok(bytes) => {
-                if matches!(Packet::deserialize(&bytes), Ok(Packet::Closing(_))) {
-                    peer_closing.store(true, Ordering::Release);
-                }
-            }
+        match receiver.receive().await {
+            Ok(Packet::Closing(_)) => peer_closing.store(true, Ordering::Release),
+            // Some other packet — nothing else legitimately flows here mid-match,
+            // but ignore it and keep watching.
+            Ok(_) => {}
+            // Undecodable bytes (`InvalidData`) are stray traffic, not a close —
+            // ignore and keep watching. Any other error (notably the channel's
+            // `UnexpectedEof`) means it actually closed, so stop.
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {}
             Err(_) => return,
         }
     }
