@@ -309,10 +309,16 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
         };
         let (w, h) = (img_w * scale, img_h * scale);
 
-        let frame = state
+        let mut frame = state
             .current_frame
             .clone()
             .unwrap_or_else(crate::video::framebuffer::Frame::black);
+        // The uploaded texture is always the native frame; the effect is just
+        // the draw-time pipeline pick. Take it live from config here (not from
+        // whatever was current when the frame was produced) so switching the
+        // video filter re-renders immediately — even on a paused replay that
+        // isn't producing new frames.
+        frame.effect = effect;
         let fb = iced::widget::shader::Shader::new(crate::video::framebuffer::Program::new(frame))
             .width(Length::Fixed(w))
             .height(Length::Fixed(h));

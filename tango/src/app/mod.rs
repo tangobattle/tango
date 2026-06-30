@@ -935,7 +935,7 @@ impl App {
                 let was_pvp = matches!(self.session.active, Some(ActiveSession::PvP(_)));
                 let task = self
                     .session
-                    .update(m, &self.config.input_mapping, &self.config.video_filter)
+                    .update(m, &self.config.input_mapping)
                     .map(Message::Session);
                 // Rescan + reload run off-thread; the Rescanned
                 // followup forces a `loaded` rebuild past the

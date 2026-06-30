@@ -372,12 +372,28 @@ pub enum InputEvent {
     GamepadDisconnected,
 }
 
+/// Per-keypress playhead delta for the replay seek keybinds, in recorded
+/// frames. Arrow keys jump ±5 seconds (300 frames at 60fps); comma/period
+/// frame-step by ±1. `None` for any other key.
+fn replay_seek_delta(physical: iced::keyboard::key::Physical) -> Option<i32> {
+    use iced::keyboard::key::{Code, Physical};
+    // 5 seconds at the GBA's 60fps.
+    const JUMP: i32 = 300;
+    match physical {
+        Physical::Code(Code::ArrowLeft) => Some(-JUMP),
+        Physical::Code(Code::ArrowRight) => Some(JUMP),
+        Physical::Code(Code::Comma) => Some(-1),
+        Physical::Code(Code::Period) => Some(1),
+        _ => None,
+    }
+}
+
 impl State {
     /// Apply a session message to the state. Returns the iced Task
     /// that should be scheduled (always Task::none today — kept for
     /// API parity with the other tabs).
-    pub fn update(&mut self, msg: Message, mapping: &crate::input::Mapping, video_filter: &str) -> iced::Task<Message> {
-        let task = self.update_inner(msg, mapping, video_filter);
+    pub fn update(&mut self, msg: Message, mapping: &crate::input::Mapping) -> iced::Task<Message> {
+        let task = self.update_inner(msg, mapping);
         // Mirror each overlay's bool into its transition in one
         // place — handlers above flip them freely and the
         // animations follow, including the multi-flip paths (Esc
@@ -423,12 +439,33 @@ impl State {
         self.controls_hovered = false;
     }
 
-    fn update_inner(
-        &mut self,
-        msg: Message,
-        mapping: &crate::input::Mapping,
-        video_filter: &str,
-    ) -> iced::Task<Message> {
+    /// Play/pause the active replay (no-op for other session kinds).
+    /// Shared by the transport button's [`Message::TogglePlay`] and the
+    /// spacebar keybind.
+    fn toggle_replay_play(&self) {
+        if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+            if s.seek_will_resume() {
+                // An in-flight seek is about to resume playback, so the
+                // button shows "Pause" — honor the press as one: land the
+                // seek, stay paused.
+                s.cancel_seek_resume();
+            } else {
+                // Play at end-of-replay: rewind to start and play through
+                // again. Mirrors any media player — "play" on a finished
+                // track restarts it. The seek is asynchronous, so resuming
+                // is deferred to the chase landing — unpausing here would
+                // run frames off the end before the rewind starts.
+                let paused = s.is_paused();
+                if paused && s.current_tick() >= s.total_ticks() {
+                    s.seek_to(0, true);
+                } else {
+                    s.set_paused(!paused);
+                }
+            }
+        }
+    }
+
+    fn update_inner(&mut self, msg: Message, mapping: &crate::input::Mapping) -> iced::Task<Message> {
         match msg {
             Message::Close => {
                 if let Some(s) = self.active.as_ref() {
@@ -442,6 +479,37 @@ impl State {
                 self.scrub.clear();
             }
             Message::Input(ev) => {
+                // Replay transport keybinds: arrow keys jump ±5s, comma/period
+                // step ±1 frame. A replay plays back recorded input, so these
+                // keys are free to drive the seek bar; live sessions fall
+                // through to the joyflag pipeline below as normal. Fires on
+                // every press, key-repeat included, so holding scrubs.
+                if let InputEvent::Key { physical, pressed: true } = &ev {
+                    // Edge: compare against the held set *before* the match
+                    // below records this press, so OS key-repeat (which the
+                    // seek keys want but the pause toggle doesn't) is filtered.
+                    let fresh_press = !self.input_held.is_key_held(physical);
+                    if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+                        if let Some(delta) = replay_seek_delta(*physical) {
+                            // Chain off the in-flight seek's target so a burst
+                            // of presses accumulates instead of all snapping to
+                            // the same spot.
+                            let base = s.pending_seek_target().unwrap_or_else(|| s.current_tick());
+                            let target = base.saturating_add_signed(delta).min(s.total_ticks());
+                            // Preserve the logical play state across the seek
+                            // (the thread is paused for the chase either way).
+                            let playing = !s.is_paused() || s.seek_will_resume();
+                            s.seek_to(target, playing);
+                        } else if fresh_press
+                            && matches!(
+                                physical,
+                                iced::keyboard::key::Physical::Code(iced::keyboard::key::Code::Space)
+                            )
+                        {
+                            self.toggle_replay_play();
+                        }
+                    }
+                }
                 match ev {
                     InputEvent::Key { physical, pressed } => self.input_held.set_key(physical, pressed),
                     InputEvent::Button { button, pressed } => self.input_held.set_button(button, pressed),
@@ -469,30 +537,7 @@ impl State {
                     }
                 }
             }
-            Message::TogglePlay => {
-                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
-                    if s.seek_will_resume() {
-                        // An in-flight seek is about to resume playback,
-                        // so the button shows "Pause" — honor the press
-                        // as one: land the seek, stay paused.
-                        s.cancel_seek_resume();
-                    } else {
-                        // Play at end-of-replay: rewind to start and
-                        // play through again. Mirrors the behaviour you
-                        // get on any media player — "play" on a finished
-                        // track restarts it. The seek is asynchronous, so
-                        // resuming is deferred to the chase landing —
-                        // unpausing here would run frames off the end
-                        // before the rewind starts.
-                        let paused = s.is_paused();
-                        if paused && s.current_tick() >= s.total_ticks() {
-                            s.seek_to(0, true);
-                        } else {
-                            s.set_paused(!paused);
-                        }
-                    }
-                }
-            }
+            Message::TogglePlay => self.toggle_replay_play(),
             Message::ScrubPreview(target) => {
                 if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
                     self.scrub.drag(target, s);
@@ -617,7 +662,11 @@ impl State {
                             width: replay::SCREEN_WIDTH,
                             height: replay::SCREEN_HEIGHT,
                             revision: self.frame_revision,
-                            effect: crate::video::effects::effect_for(video_filter),
+                            // Neutral placeholder — the view picks the live
+                            // effect from config at draw time (see
+                            // `framebuffer_view`), so the producer doesn't need
+                            // to know the current filter.
+                            effect: &crate::video::effects::PASSTHROUGH,
                         });
                         if let ActiveSession::PvP(pvp) = session {
                             sample = Some(MetricSample::capture(pvp));
@@ -650,12 +699,31 @@ impl State {
 /// [`crate::input_capture`] — see that module's docs for why the
 /// subscription path is too laggy for joypad state.
 pub fn subscription(state: &State) -> iced::Subscription<Message> {
-    iced::Subscription::run_with(
+    let frames = iced::Subscription::run_with(
         FrameTag {
             notify: state.frame_notify.clone(),
         },
         build_frame_stream,
-    )
+    );
+    // The scrub bar's prefetch-progress fill is only repainted on redraw,
+    // and a paused (or mid-seek) replay fires no `frame_notify` — so the bar
+    // would sit frozen while the background prefetcher races ahead. Tick a
+    // redraw at ~20 Hz for the duration of the prefetch so it fills live.
+    // Playback already redraws at 60 Hz from the frame callback, hence the
+    // `is_paused` gate, and the whole thing switches off once prefetch lands.
+    let prefetching = state
+        .active
+        .as_ref()
+        .and_then(ActiveSession::as_replay)
+        .is_some_and(|r| r.is_paused() && r.prefetch_progress() < r.total_ticks());
+    if prefetching {
+        iced::Subscription::batch([
+            frames,
+            iced::time::every(std::time::Duration::from_millis(50)).map(|_| Message::UpdateFramebuffer),
+        ])
+    } else {
+        frames
+    }
 }
 
 /// Stable subscription identity. The hash is a constant string so
