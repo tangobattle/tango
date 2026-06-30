@@ -961,28 +961,48 @@ fn rasterize(model: &GridModel) -> image::RgbaImage {
     image::RgbaImage::from_raw(w, h, rgba).expect("navicust rgba")
 }
 
-/// A small standalone thumbnail of one part's shape — the whole grid-sized
-/// bitmap (uncropped, so every part's thumbnail is the same n×n block size
-/// and lines up in the palette), with filled cells in the part's solid
-/// color and a plus-color outline + separators, on a transparent
-/// background. Rendered at an integer block size and shown 1:1, so the 1px
+/// A small standalone thumbnail of one part's shape: filled cells in the
+/// part's solid color with a plus-color outline + separators, on a
+/// transparent background, at an integer block size shown 1:1 so the 1px
 /// lines never warp. Returns `None` for an empty bitmap.
+///
+/// With `crop = false` the image is the whole grid-sized n×n block, so every
+/// part's thumbnail is the same size and lines up in the editor palette. With
+/// `crop = true` it's sized straight to the shape's bounding box (no separate
+/// trim pass), for the read-only parts list where it sits inline beside the
+/// name and the grid-sized transparent margin would just push the text away.
 pub fn render_part_thumb(
     bitmap: &tango_dataview::rom::NavicustBitmap,
     color: NavicustPartColor,
     is_solid: bool,
+    crop: bool,
 ) -> Option<image::RgbaImage> {
     const PX: u32 = 8;
     let (h, w) = bitmap.dim();
-    let cells: Vec<(usize, usize)> = (0..h)
+    let mut cells: Vec<(usize, usize)> = (0..h)
         .flat_map(|y| (0..w).map(move |x| (x, y)))
         .filter(|&(x, y)| bitmap[[y, x]])
         .collect();
     if cells.is_empty() {
         return None;
     }
+    // When cropping, shift the shape to the origin and size the image to its
+    // bounding box; otherwise keep the full grid-sized n×n block.
+    let (grid_w, grid_h) = if crop {
+        let min_x = cells.iter().map(|&(x, _)| x).min().unwrap();
+        let min_y = cells.iter().map(|&(_, y)| y).min().unwrap();
+        let max_x = cells.iter().map(|&(x, _)| x).max().unwrap();
+        let max_y = cells.iter().map(|&(_, y)| y).max().unwrap();
+        for c in &mut cells {
+            c.0 -= min_x;
+            c.1 -= min_y;
+        }
+        ((max_x - min_x + 1) as u32, (max_y - min_y + 1) as u32)
+    } else {
+        (w as u32, h as u32)
+    };
     let (solid, plus) = part_colors(color);
-    let mut img = image::RgbaImage::new(w as u32 * PX, h as u32 * PX);
+    let mut img = image::RgbaImage::new(grid_w * PX, grid_h * PX);
     // Solid bodies first.
     for &(cx, cy) in &cells {
         for dy in 0..PX {

@@ -265,6 +265,7 @@ impl Loaded {
                     &info.compressed_bitmap().unwrap_or_else(|| info.uncompressed_bitmap()),
                     color,
                     info.is_solid(),
+                    false,
                 )
             });
             navicust_part_icons.push(img.map(|img| {
@@ -480,11 +481,12 @@ fn cropped_handle(src: &image::RgbaImage, x: u32, y: u32, w: u32, h: u32) -> ice
 
 /// Bake one cropped shape thumbnail per *installed* navicust slot, at the
 /// slot's actual rotation + compression, for the read-only Navi tab's parts
-/// list. Mirrors the per-id grid-sized icon bake above (same `render_part_thumb`
-/// pipeline, then `crop_to_opaque`) but picks the bitmap (compressed vs
-/// uncompressed) and rotation from the placed part instead of the part's
-/// default footprint. Indexed by navicust slot; `None` for an empty slot or a
-/// part with no color / shape. Empty for saves without a navicust.
+/// list. Mirrors the per-id grid-sized icon bake above (same `render_part_thumb`)
+/// but renders straight to the shape's bounding box (`crop = true`) and picks
+/// the bitmap (compressed vs uncompressed) and rotation from the placed part
+/// instead of the part's default footprint. Indexed by navicust slot; `None`
+/// for an empty slot or a part with no color / shape. Empty for saves without
+/// a navicust.
 fn build_navicust_part_thumbs(
     save: &(dyn tango_dataview::save::Save + Send + Sync),
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
@@ -502,27 +504,11 @@ fn build_navicust_part_thumbs(
                 .filter(|_| part.compressed)
                 .unwrap_or_else(|| info.uncompressed_bitmap());
             let rotated = crate::save_view::navicust::grid::rotate_bitmap(&bitmap, part.rot);
-            let img = crate::save_view::navicust::grid::render_part_thumb(&rotated, color, info.is_solid())?;
-            let cropped = crop_to_opaque(&img)?;
-            let (w, h) = (cropped.width(), cropped.height());
-            Some((w, h, iced_image::Handle::from_rgba(w, h, cropped.into_raw())))
+            let img = crate::save_view::navicust::grid::render_part_thumb(&rotated, color, info.is_solid(), true)?;
+            let (w, h) = (img.width(), img.height());
+            Some((w, h, iced_image::Handle::from_rgba(w, h, img.into_raw())))
         })
         .collect()
-}
-
-/// Trim `img` to the bounding box of its non-transparent pixels.
-/// `None` for a fully transparent image.
-fn crop_to_opaque(img: &image::RgbaImage) -> Option<image::RgbaImage> {
-    let (mut x0, mut y0, mut x1, mut y1) = (u32::MAX, u32::MAX, 0u32, 0u32);
-    for (x, y, p) in img.enumerate_pixels() {
-        if p.0[3] != 0 {
-            x0 = x0.min(x);
-            y0 = y0.min(y);
-            x1 = x1.max(x);
-            y1 = y1.max(y);
-        }
-    }
-    (x0 != u32::MAX).then(|| image::imageops::crop_imm(img, x0, y0, x1 - x0 + 1, y1 - y0 + 1).to_image())
 }
 
 /// The emblem's signature color: every distinct opaque pixel color is
