@@ -41,7 +41,7 @@
 //! ([`Frame::ack_offset`]); [`Frame::ack`] reconstructs the absolute frontier
 //! against `base`. The wire form and the in-memory form are thus the same — no
 //! conversion on encode or decode.
-use std::io::{self, Read, Write};
+use std::io::{self, BufRead, Read, Write};
 
 /// Cumulative acknowledgement: the receiver's contiguous frontier — the lowest
 /// seq it hasn't received yet, i.e. "resend your window from here." That single
@@ -163,26 +163,22 @@ impl<P: Codec> Frame<P> {
     /// self-delimiting `meta`, then the element run (each element self-delimits;
     /// the run is delimited by the datagram's end). Never leans on a length
     /// prefix or sentinel. `r` must yield exactly one datagram = one frame.
-    pub fn decode<R: Read>(r: &mut R) -> io::Result<Frame<P>> {
+    pub fn decode<R: BufRead>(r: &mut R) -> io::Result<Frame<P>> {
         // The run is delimited by the datagram's end, so pull the whole datagram
         // in and parse against its length.
-        let mut buf = Vec::new();
-        r.read_to_end(&mut buf)?;
-        let mut c = io::Cursor::new(&buf[..]);
-        let base = read_u32(&mut c)?;
+        let base = read_u32(r)?;
         // The ack rides as a signed delta from `base` — stored as-is (see the
         // module header); [`Frame::ack`] reconstructs the absolute frontier.
-        let ack_offset =
-            i16::try_from(read_svarint(&mut c)?).map_err(|_| invalid("ack offset out of range".to_string()))?;
+        let ack_offset = i16::try_from(read_svarint(r)?).map_err(|_| invalid("ack offset out of range".to_string()))?;
         // The meta self-delimits, leaving the cursor at the run's first byte.
-        let meta = P::decode_meta(&mut c)?;
+        let meta = P::decode_meta(r)?;
         // Whatever's left is the run — decode elements until the bytes run out.
         let mut entries = Vec::new();
-        while (c.position() as usize) < buf.len() {
+        while !r.fill_buf()?.is_empty() {
             if entries.len() >= P::MAX_RUN {
                 return Err(invalid(format!("run exceeds {}-element cap", P::MAX_RUN)));
             }
-            entries.push(P::decode_element(&mut c)?);
+            entries.push(P::decode_element(r)?);
         }
         Ok(Frame {
             base,
