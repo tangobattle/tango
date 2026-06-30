@@ -405,11 +405,13 @@ fn navicust_parts_panel<M: 'static>(
 
         // Shape thumb at its native baked scale (8 px per cell), centered
         // in a fixed box so the name column lines up across rows. The
-        // largest shapes (5+ cells on a side) scale down to fit.
+        // largest shapes (5+ cells on a side) scale down to fit. Baked per
+        // installed slot at the part's actual rotation + compression, so the
+        // thumb matches how the part sits in the grid.
         const THUMB_BOX: f32 = 40.0;
         let thumb: Element<'static, M> = loaded
-            .navicust_part_icons_cropped
-            .get(part.id)
+            .navicust_installed_part_thumbs
+            .get(i)
             .and_then(|o| o.clone())
             .map(|(w, h, handle)| {
                 Image::new(handle)
