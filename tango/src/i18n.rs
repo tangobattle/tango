@@ -31,6 +31,12 @@ fluent_templates::static_loader! {
     static LOCALES = {
         locales: "./locales",
         fallback_language: "en-US",
+        // Disable Fluent's BiDi isolation, which otherwise wraps every
+        // interpolated placeholder (e.g. `path` in the crash dialog) in
+        // U+2068/U+2069 control chars. Text renderers hide those, but
+        // rfd's native message dialogs draw them as garbage boxes. Matches
+        // what game.rs does for its own bundles.
+        customise: |bundle| bundle.set_use_isolating(false),
     };
 }
 
