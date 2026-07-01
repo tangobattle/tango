@@ -218,7 +218,10 @@ fn start_crash_server(
     sock_path: &std::path::Path,
     log: std::fs::File,
     dump_path: std::path::PathBuf,
-) -> Option<(std::thread::JoinHandle<()>, std::sync::Arc<std::sync::atomic::AtomicBool>)> {
+) -> Option<(
+    std::thread::JoinHandle<()>,
+    std::sync::Arc<std::sync::atomic::AtomicBool>,
+)> {
     let mut server = match minidumper::Server::with_name(sock_path) {
         Ok(s) => s,
         Err(e) => {
@@ -263,7 +266,10 @@ impl minidumper::ServerHandler for CrashServerHandler {
         Ok((file, self.dump_path.clone()))
     }
 
-    fn on_minidump_created(&self, result: Result<minidumper::MinidumpBinary, minidumper::Error>) -> minidumper::LoopAction {
+    fn on_minidump_created(
+        &self,
+        result: Result<minidumper::MinidumpBinary, minidumper::Error>,
+    ) -> minidumper::LoopAction {
         use std::io::Write;
         if let Ok(mut log) = self.log.lock() {
             // The child does no logging in its handler (see crash_log.rs), so
@@ -331,15 +337,16 @@ fn run_app() -> iced::Result {
     // than in this process's fault handler. Also installs a panic hook
     // for Rust panics. Leak the handle so it stays installed for the
     // lifetime of the process.
-    let crash_client = std::env::var_os(TANGO_CRASH_SOCKET_ENV_VAR).and_then(|name| {
-        match minidumper::Client::with_name(std::path::Path::new(&name)) {
-            Ok(c) => Some(c),
-            Err(e) => {
-                eprintln!("could not connect to crash dump server: {e:?}");
-                None
+    let crash_client =
+        std::env::var_os(TANGO_CRASH_SOCKET_ENV_VAR).and_then(|name| {
+            match minidumper::Client::with_name(std::path::Path::new(&name)) {
+                Ok(c) => Some(c),
+                Err(e) => {
+                    log::error!("could not connect to crash dump server: {e:?}");
+                    None
+                }
             }
-        }
-    });
+        });
     std::mem::forget(crash_log::install(crash_client));
 
     // Re-parse the CLI in the child (the supervisor doesn't pass

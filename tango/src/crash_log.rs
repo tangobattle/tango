@@ -100,19 +100,21 @@ pub fn install(client: Option<minidumper::Client>) -> crash_handler::CrashHandle
 /// `libc::write` maps to the CRT `_write`. The supervisor redirects the
 /// child's stderr into the log either way.
 fn raw_stderr(bytes: &[u8]) {
-    // stderr is fd 2 by POSIX; get it via `AsRawFd` on unix rather than
-    // hardcoding, and use the CRT's fd 2 on Windows (no `AsRawFd` there).
+    // POSIX exposes the stderr fd as `STDERR_FILENO`; on Windows `libc`
+    // doesn't export the constant, but the CRT hardcodes stderr as fd 2.
     #[cfg(unix)]
-    let fd = {
-        use std::os::fd::AsRawFd;
-        std::io::stderr().as_raw_fd()
-    };
-    #[cfg(not(unix))]
-    let fd = 2;
+    const STDERR_FD: libc::c_int = libc::STDERR_FILENO;
+    #[cfg(windows)]
+    const STDERR_FD: libc::c_int = 2;
+
     // SAFETY: a bare `write(2)` syscall on the stderr fd; `bytes` outlives
     // it. `as _` picks the platform's count type (size_t / c_uint).
     unsafe {
-        let _ = libc::write(fd, bytes.as_ptr() as *const libc::c_void, bytes.len() as _);
+        let _ = libc::write(
+            STDERR_FD,
+            bytes.as_ptr() as *const libc::c_void,
+            bytes.len() as _,
+        );
     }
 }
 
@@ -132,7 +134,11 @@ fn write_describe(cc: &crash_handler::CrashContext, w: &mut impl core::fmt::Writ
 fn write_describe(cc: &crash_handler::CrashContext, w: &mut impl core::fmt::Write) {
     match &cc.exception {
         Some(e) => {
-            let _ = write!(w, "mach exception kind={} code={} subcode={:?}", e.kind, e.code, e.subcode);
+            let _ = write!(
+                w,
+                "mach exception kind={} code={} subcode={:?}",
+                e.kind, e.code, e.subcode
+            );
         }
         None => {
             let _ = w.write_str("mach exception (no info)");
@@ -142,5 +148,9 @@ fn write_describe(cc: &crash_handler::CrashContext, w: &mut impl core::fmt::Writ
 
 #[cfg(windows)]
 fn write_describe(cc: &crash_handler::CrashContext, w: &mut impl core::fmt::Write) {
-    let _ = write!(w, "exception code 0x{:08x} (thread {})", cc.exception_code as u32, cc.thread_id);
+    let _ = write!(
+        w,
+        "exception code 0x{:08x} (thread {})",
+        cc.exception_code as u32, cc.thread_id
+    );
 }
