@@ -93,6 +93,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: |
             ./dist/tango-x86_64-windows.exe
+            ./dist/tango-x86_64-windows.pdb
 
   release-mac-universal:
     runs-on: macos-14
