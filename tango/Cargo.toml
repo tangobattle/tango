@@ -117,17 +117,16 @@ env_logger = "0.9"
 anyhow = "1"
 # Cross-platform native crash catcher: POSIX signal handlers on
 # Linux, a Mach exception server on macOS (needed for
-# EXC_BAD_ACCESS), SetUnhandledExceptionFilter + a vectored
-# handler on Windows. We install this in the child UI process so
-# segfaults coming from mgba / datachannel C code land in the
-# same log file as Rust panics.
-#
-# Note: crash-handler's Windows code path imports `_invoke_watson`
-# from the MSVC CRT, which mingw-w64's libmsvcrt.a does not
-# export. We define our own stub in `crash_log.rs` under
-# `cfg(all(windows, target_env = "gnu"))` to satisfy the
-# cross-compile link.
+# EXC_BAD_ACCESS), SetUnhandledExceptionFilter + a vectored handler
+# on Windows. Installed in the child UI process so segfaults from
+# mgba / datachannel / wgpu C code are caught.
 crash-handler = "0.6"
+# Out-of-process minidump writing + IPC. The child's crash handler
+# only ships the crash context over this channel; the supervisor
+# writes the `.dmp` by reading the suspended child. Unifies on
+# crash-context 0.6.3 with crash-handler, and self-links dbghelp on
+# Windows (no extra link config).
+minidumper = "0.8"
 indexmap = "2"
 clap = { version = "4", features = ["derive"] }
 
