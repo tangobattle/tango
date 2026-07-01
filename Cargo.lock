@@ -5831,6 +5831,7 @@ version = "5.0.43"
 dependencies = [
  "anyhow",
  "arboard",
+ "arrayvec",
  "async-trait",
  "bincode",
  "bps",
@@ -5851,6 +5852,7 @@ dependencies = [
  "image",
  "indexmap",
  "itertools 0.13.0",
+ "libc",
  "log",
  "lucide-icons",
  "mailparse",

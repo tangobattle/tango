@@ -68,12 +68,18 @@ pub fn install(client: Option<minidumper::Client>) -> crash_handler::CrashHandle
                 Some(client) => {
                     let _ = client.request_dump(cc);
                 }
-                // No supervisor (child launched directly, e.g. in dev): nothing
-                // will write a dump, so fall back to a stderr note.
+                // No dump server (server failed to start, or the child was
+                // launched directly): nothing will write a dump, so leave a
+                // note. Still allocation- and lock-free: the describe is
+                // formatted into a fixed stack buffer via `core::fmt` (which
+                // renders integers into a stack scratch, no heap) and written
+                // with a raw `write(2)` instead of the `std::io::Stderr` lock.
                 None => {
-                    let mut stderr = std::io::stderr().lock();
-                    let _ = writeln!(stderr, "\n=== native crash ===\n{}\n(no crash server; minidump not written)\n=== end native crash ===\n", describe(cc));
-                    let _ = stderr.flush();
+                    let mut buf = arrayvec::ArrayString::<256>::new();
+                    let _ = buf.try_push_str("\n=== native crash ===\n");
+                    write_describe(cc, &mut buf);
+                    let _ = buf.try_push_str("\n(no crash server; minidump not written)\n=== end native crash ===\n");
+                    raw_stderr(buf.as_bytes());
                 }
             }
             // `Handled(false)` = let the crash propagate so the OS still
@@ -87,25 +93,54 @@ pub fn install(client: Option<minidumper::Client>) -> crash_handler::CrashHandle
     handler
 }
 
+/// Async-signal-safe write of a byte slice to stderr, for use from the
+/// crash handler. Unlike `std::io::stderr().lock()` it takes no lock
+/// (which the suspended faulting thread might hold → deadlock) and
+/// allocates nothing. `write(2)` is async-signal-safe; on Windows
+/// `libc::write` maps to the CRT `_write`. The supervisor redirects the
+/// child's stderr into the log either way.
+fn raw_stderr(bytes: &[u8]) {
+    // stderr is fd 2 by POSIX; get it via `AsRawFd` on unix rather than
+    // hardcoding, and use the CRT's fd 2 on Windows (no `AsRawFd` there).
+    #[cfg(unix)]
+    let fd = {
+        use std::os::fd::AsRawFd;
+        std::io::stderr().as_raw_fd()
+    };
+    #[cfg(not(unix))]
+    let fd = 2;
+    // SAFETY: a bare `write(2)` syscall on the stderr fd; `bytes` outlives
+    // it. `as _` picks the platform's count type (size_t / c_uint).
+    unsafe {
+        let _ = libc::write(fd, bytes.as_ptr() as *const libc::c_void, bytes.len() as _);
+    }
+}
+
+/// Format the crash summary into a caller-provided [`core::fmt::Write`]
+/// sink. `core::fmt` renders integers into a stack scratch (never
+/// `malloc`), so with a stack-backed sink — the handler passes an
+/// `arrayvec::ArrayString` — this is fully allocation-free and safe to
+/// call from the crash handler.
 #[cfg(any(target_os = "linux", target_os = "android"))]
-fn describe(cc: &crash_handler::CrashContext) -> String {
+fn write_describe(cc: &crash_handler::CrashContext, w: &mut impl core::fmt::Write) {
     // crash-handler stuffs `signalfd_siginfo` here, not the POSIX
     // `siginfo_t`, so the field is `ssi_signo`.
-    format!("signal {} (tid {})", cc.siginfo.ssi_signo, cc.tid)
+    let _ = write!(w, "signal {} (tid {})", cc.siginfo.ssi_signo, cc.tid);
 }
 
 #[cfg(target_os = "macos")]
-fn describe(cc: &crash_handler::CrashContext) -> String {
+fn write_describe(cc: &crash_handler::CrashContext, w: &mut impl core::fmt::Write) {
     match &cc.exception {
-        Some(e) => format!("mach exception kind={} code={} subcode={:?}", e.kind, e.code, e.subcode,),
-        None => "mach exception (no info)".to_string(),
+        Some(e) => {
+            let _ = write!(w, "mach exception kind={} code={} subcode={:?}", e.kind, e.code, e.subcode);
+        }
+        None => {
+            let _ = w.write_str("mach exception (no info)");
+        }
     }
 }
 
 #[cfg(windows)]
-fn describe(cc: &crash_handler::CrashContext) -> String {
-    format!(
-        "exception code 0x{:08x} (thread {})",
-        cc.exception_code as u32, cc.thread_id,
-    )
+fn write_describe(cc: &crash_handler::CrashContext, w: &mut impl core::fmt::Write) {
+    let _ = write!(w, "exception code 0x{:08x} (thread {})", cc.exception_code as u32, cc.thread_id);
 }

@@ -127,6 +127,14 @@ crash-handler = "0.6"
 # crash-context 0.6.3 with crash-handler, and self-links dbghelp on
 # Windows (no extra link config).
 minidumper = "0.8"
+# For an async-signal-safe raw write(2) from the crash handler's
+# no-server fallback path — `std::io::stderr().lock()` (a lock) and
+# `format!` (an allocation) are both unusable in a signal/exception
+# handler. `libc::write` maps to the CRT `_write` on Windows too.
+libc = "0.2"
+# Stack-allocated string for formatting the crash summary in the handler
+# without heap allocation (see crash_log.rs).
+arrayvec = "0.7"
 indexmap = "2"
 clap = { version = "4", features = ["derive"] }
 
