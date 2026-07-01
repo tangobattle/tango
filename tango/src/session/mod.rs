@@ -49,13 +49,15 @@ pub(crate) fn new_gba_core(rom: &[u8]) -> anyhow::Result<mgba::core::Core> {
     Ok(core)
 }
 
-/// At most one of these can be active at a time: replay playback, or
-/// single-player. The two variants share enough surface (vbuf,
+/// At most one of these can be active at a time: replay playback,
+/// single-player, or PvP. The variants share enough surface (vbuf,
 /// close-request) that the view + tick loop wrap them uniformly.
 pub enum ActiveSession {
     Replay(replay::ReplaySession),
     SinglePlayer(singleplayer::SinglePlayerSession),
-    PvP(pvp::PvpSession),
+    /// Boxed: `PvpSession` is ~2.5 KB, an order of magnitude bigger
+    /// than the other variants.
+    PvP(Box<pvp::PvpSession>),
 }
 
 impl ActiveSession {
@@ -97,10 +99,6 @@ impl ActiveSession {
     }
 }
 
-/// Per-session UI state. App holds `session: State`; the Play and
-/// Replays tabs swap an `ActiveSession` into `active` to start a
-/// session, then [`State::update`] handles the rest until [`Close`]
-/// clears it.
 /// One per-frame snapshot of the live PvP telemetry, retained in a short ring
 /// buffer ([`State::metric_history`]) so the match-settings popover can draw a
 /// sparkline per metric. `round` is `None` between rounds, when no
@@ -132,6 +130,10 @@ impl MetricSample {
 /// How many frames of telemetry the sparklines retain (~3 s at 60 fps).
 const METRIC_HISTORY_LEN: usize = 180;
 
+/// Per-session UI state. App holds `session: State`; the Play and
+/// Replays tabs swap an `ActiveSession` into `active` to start a
+/// session, then [`State::update`] handles the rest until [`Close`]
+/// clears it.
 pub struct State {
     /// Permanent iced ↔ emu-thread wake handle. Cloned into each
     /// active session at construction so its frame callback (and
@@ -412,7 +414,7 @@ impl State {
             .active
             .as_ref()
             .and_then(ActiveSession::as_replay)
-            .map_or(false, |r| r.is_paused());
+            .is_some_and(|r| r.is_paused());
         // The telemetry panel (match_settings) deliberately
         // doesn't count: it lives in the permanently-visible
         // top-right indicator, independent of the HUD controls,
@@ -484,7 +486,11 @@ impl State {
                 // keys are free to drive the seek bar; live sessions fall
                 // through to the joyflag pipeline below as normal. Fires on
                 // every press, key-repeat included, so holding scrubs.
-                if let InputEvent::Key { physical, pressed: true } = &ev {
+                if let InputEvent::Key {
+                    physical,
+                    pressed: true,
+                } = &ev
+                {
                     // Edge: compare against the held set *before* the match
                     // below records this press, so OS key-repeat (which the
                     // seek keys want but the pause toggle doesn't) is filtered.

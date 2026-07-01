@@ -130,7 +130,7 @@ fn sorted_auto_battle_data_chips(loaded: &Loaded, sort: AutoBattleDataSort, filt
                 chips_view
                     .as_ref()
                     .and_then(|v| v.pack_count(id, variant))
-                    .map_or(false, |c| c > 0)
+                    .is_some_and(|c| c > 0)
             });
             if !in_pack {
                 continue;

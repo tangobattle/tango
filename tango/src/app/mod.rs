@@ -247,15 +247,17 @@ impl App {
 
         // Restore the last selection from config, but only the bits
         // that still resolve against the current scanners.
-        let mut restored = loadout::Loadout::default();
-        // Restore the selected family (drives the picker even when no
-        // owned-ROM game resolves under it); falls back to the family of
-        // `last_game` for configs written before `last_family` existed.
-        restored.family = config
-            .last_family
-            .as_deref()
-            .and_then(game::family_static)
-            .or_else(|| config.last_game.as_ref().and_then(|(f, _)| game::family_static(f)));
+        let mut restored = loadout::Loadout {
+            // Restore the selected family (drives the picker even when no
+            // owned-ROM game resolves under it); falls back to the family of
+            // `last_game` for configs written before `last_family` existed.
+            family: config
+                .last_family
+                .as_deref()
+                .and_then(game::family_static)
+                .or_else(|| config.last_game.as_ref().and_then(|(f, _)| game::family_static(f))),
+            ..Default::default()
+        };
         if let Some((family, variant)) = config.last_game.as_ref() {
             if let Some(game) = crate::game::find_by_family_and_variant(family, *variant) {
                 if scanners.roms.read().contains_key(&game) {
@@ -301,7 +303,6 @@ impl App {
         audio_binder.set_volume(config.volume);
         let audio_backend = match audio::sdl::Backend::new(audio_binder.clone()) {
             Ok(b) => {
-                use audio::Backend;
                 audio_binder.set_sample_rate(b.sample_rate());
                 log::info!("audio: sdl backend up at {} Hz", b.sample_rate());
                 Some(b)
@@ -555,7 +556,7 @@ impl App {
             return iced::Task::none();
         };
         let patches = self.scanners.patches.read();
-        let verdict = netplay::compat::check(local, remote, &*patches);
+        let verdict = netplay::compat::check(local, remote, &patches);
         if matches!(verdict, netplay::compat::Verdict::Compatible) {
             return iced::Task::none();
         }
@@ -581,10 +582,10 @@ impl App {
         Some((game, save_path, patch))
     }
 
-    /// Recompute `self.loaded` from `play.local_game` + `play.local_save`
-    /// + `play.local_patch[+version]`. Cheap when nothing's changed;
-    /// expensive when ROM/assets need a fresh parse (BPS + asset
-    /// parsing + icon decode), which is why we don't call it from view().
+    /// Recompute `self.loaded` from the loadout's game + save +
+    /// patch[+version]. Cheap when nothing's changed; expensive when
+    /// ROM/assets need a fresh parse (BPS + asset parsing + icon
+    /// decode), which is why we don't call it from view().
     fn refresh_loaded(&mut self) {
         let Some((game, save_path, patch)) = self.loaded_key() else {
             self.loaded = None;
@@ -933,10 +934,7 @@ impl App {
                 // We trigger the replay rescan whenever a PvP
                 // session was active before and isn't after.
                 let was_pvp = matches!(self.session.active, Some(ActiveSession::PvP(_)));
-                let task = self
-                    .session
-                    .update(m, &self.config.input_mapping)
-                    .map(Message::Session);
+                let task = self.session.update(m, &self.config.input_mapping).map(Message::Session);
                 // Rescan + reload run off-thread; the Rescanned
                 // followup forces a `loaded` rebuild past the
                 // same-key dedupe so the play tab's save view
@@ -1028,7 +1026,7 @@ impl App {
                 };
                 match result {
                     Ok(session) => {
-                        self.session.active = Some(ActiveSession::PvP(session));
+                        self.session.active = Some(ActiveSession::PvP(Box::new(session)));
                         // Both setup drawers start closed — the edge
                         // handles are the invitation; a pane that
                         // barges in over the match start isn't.

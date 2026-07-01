@@ -21,17 +21,17 @@ pub enum Error {
 #[repr(u32)]
 pub enum CertificateType {
     #[default]
-    Default = libdatachannel_sys::rtcCertificateType_RTC_CERTIFICATE_DEFAULT as u32,
-    ECDSA = libdatachannel_sys::rtcCertificateType_RTC_CERTIFICATE_ECDSA as u32,
-    RSA = libdatachannel_sys::rtcCertificateType_RTC_CERTIFICATE_RSA as u32,
+    Default = libdatachannel_sys::rtcCertificateType_RTC_CERTIFICATE_DEFAULT,
+    ECDSA = libdatachannel_sys::rtcCertificateType_RTC_CERTIFICATE_ECDSA,
+    RSA = libdatachannel_sys::rtcCertificateType_RTC_CERTIFICATE_RSA,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(u32)]
 pub enum TransportPolicy {
     #[default]
-    All = libdatachannel_sys::rtcTransportPolicy_RTC_TRANSPORT_POLICY_ALL as u32,
-    Relay = libdatachannel_sys::rtcTransportPolicy_RTC_TRANSPORT_POLICY_RELAY as u32,
+    All = libdatachannel_sys::rtcTransportPolicy_RTC_TRANSPORT_POLICY_ALL,
+    Relay = libdatachannel_sys::rtcTransportPolicy_RTC_TRANSPORT_POLICY_RELAY,
 }
 
 #[derive(Debug, Clone)]
@@ -82,7 +82,7 @@ fn get_string(f: impl Fn(*mut i8, i32) -> i32) -> Result<std::ffi::CString, Erro
 
 fn check_error(r: i32) -> Result<i32, Error> {
     if r < 0 {
-        return Err(Error::from_i32(r as i32).unwrap_or(Error::Failure));
+        return Err(Error::from_i32(r).unwrap_or(Error::Failure));
     }
     Ok(r)
 }
@@ -139,19 +139,19 @@ pub struct PeerConnection {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, num_derive::FromPrimitive)]
 #[repr(u32)]
 pub enum State {
-    Connecting = libdatachannel_sys::rtcState_RTC_CONNECTING as u32,
-    Connected = libdatachannel_sys::rtcState_RTC_CONNECTED as u32,
-    Disconnected = libdatachannel_sys::rtcState_RTC_DISCONNECTED as u32,
-    Failed = libdatachannel_sys::rtcState_RTC_FAILED as u32,
-    Closed = libdatachannel_sys::rtcState_RTC_CLOSED as u32,
+    Connecting = libdatachannel_sys::rtcState_RTC_CONNECTING,
+    Connected = libdatachannel_sys::rtcState_RTC_CONNECTED,
+    Disconnected = libdatachannel_sys::rtcState_RTC_DISCONNECTED,
+    Failed = libdatachannel_sys::rtcState_RTC_FAILED,
+    Closed = libdatachannel_sys::rtcState_RTC_CLOSED,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, num_derive::FromPrimitive)]
 #[repr(u32)]
 pub enum GatheringState {
-    New = libdatachannel_sys::rtcGatheringState_RTC_GATHERING_NEW as u32,
-    InProgress = libdatachannel_sys::rtcGatheringState_RTC_GATHERING_INPROGRESS as u32,
-    Complete = libdatachannel_sys::rtcGatheringState_RTC_GATHERING_COMPLETE as u32,
+    New = libdatachannel_sys::rtcGatheringState_RTC_GATHERING_NEW,
+    InProgress = libdatachannel_sys::rtcGatheringState_RTC_GATHERING_INPROGRESS,
+    Complete = libdatachannel_sys::rtcGatheringState_RTC_GATHERING_COMPLETE,
 }
 
 #[derive(Default)]
@@ -593,7 +593,7 @@ impl DataChannel {
             extern "C" fn error_callback(_id: i32, error: *const std::ffi::c_char, userdata: *mut std::ffi::c_void) {
                 let ud = unsafe { &*(userdata as *mut DataChannelUserData) };
                 if let Some(cb) = &ud.on_error {
-                    cb(&unsafe { std::ffi::CStr::from_ptr(error) }.to_str().unwrap());
+                    cb(unsafe { std::ffi::CStr::from_ptr(error) }.to_str().unwrap());
                 }
             }
             libdatachannel_sys::rtcSetErrorCallback(id, Some(error_callback))

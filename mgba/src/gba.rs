@@ -2,8 +2,8 @@ use super::arm_core;
 use super::sync;
 use super::timing;
 
-pub const SCREEN_WIDTH: u32 = mgba_sys::GBA_VIDEO_HORIZONTAL_PIXELS as u32;
-pub const SCREEN_HEIGHT: u32 = mgba_sys::GBA_VIDEO_VERTICAL_PIXELS as u32;
+pub const SCREEN_WIDTH: u32 = mgba_sys::GBA_VIDEO_HORIZONTAL_PIXELS;
+pub const SCREEN_HEIGHT: u32 = mgba_sys::GBA_VIDEO_VERTICAL_PIXELS;
 
 #[repr(transparent)]
 #[derive(Clone, Copy)]

@@ -25,7 +25,7 @@ pub const PASSTHROUGH: Effect = Effect {
 /// The registry, in pick-list order. The `&str` is the `config.video_filter`
 /// key (unchanged from the old CPU registry, so existing configs keep
 /// working); the first entry is the canonical pass-through.
-pub static EFFECTS: &[&'static Effect] = &[&PASSTHROUGH, &hqx::HQ2X, &hqx::HQ3X, &hqx::HQ4X, &mmpx::MMPX, &lcd::LCD];
+pub static EFFECTS: &[&Effect] = &[&PASSTHROUGH, &hqx::HQ2X, &hqx::HQ3X, &hqx::HQ4X, &mmpx::MMPX, &lcd::LCD];
 
 /// Resolve a `config.video_filter` key to its effect. Unknown / empty keys
 /// fall back to the pass-through (index 0).

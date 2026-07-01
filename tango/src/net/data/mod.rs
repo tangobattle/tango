@@ -152,7 +152,7 @@ impl InMatchTx {
             // brand-new (higher) seq lands here; resends and the heartbeat don't
             // touch this, so the time stays anchored to first transmission.
             if let Some(seq) = st.out.newest_seq() {
-                if st.sent_times.back().map_or(true, |&(prev, _)| seq > prev) {
+                if st.sent_times.back().is_none_or(|&(prev, _)| seq > prev) {
                     st.sent_times.push_back((seq, std::time::Instant::now()));
                     while st.sent_times.len() > MAX_RTT_SAMPLES {
                         st.sent_times.pop_front();
@@ -383,7 +383,7 @@ impl tango_pvp::net::Receiver for PvpReceiver {
             let delivery = self
                 .im
                 .recv(&frame)
-                .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "remote overflowed our input buffer"))?;
+                .map_err(|_| std::io::Error::other("remote overflowed our input buffer"))?;
             // A returning ack that confirmed one of our seqs dates a round-trip.
             if let Some(rtt) = delivery.rtt {
                 if let Some(c) = self.latency_counter.lock().await.as_mut() {

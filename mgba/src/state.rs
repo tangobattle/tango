@@ -68,6 +68,13 @@ impl State {
         unsafe { Box::from_raw(Box::into_raw(state) as *mut _) }
     }
 
+    /// # Safety
+    ///
+    /// `slice` must be exactly `size_of::<Self>()` bytes of a state
+    /// previously produced by mgba (`Self` is a plain-old-data C struct,
+    /// so the copy itself can't create an invalid value — but feeding a
+    /// state that didn't come from a compatible core is undefined at the
+    /// emulator level).
     pub unsafe fn from_slice(slice: &[u8]) -> Box<Self> {
         let mut state = Self::new_uninit();
         std::slice::from_raw_parts_mut(state.as_mut_ptr() as *mut _, std::mem::size_of::<Self>())

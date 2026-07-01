@@ -58,6 +58,10 @@ pub struct Backend {
 }
 
 impl Backend {
+    pub fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+
     pub fn new(stream: impl audio::Stream + Send + 'static) -> anyhow::Result<Self> {
         let spec = AudioSpec {
             freq: Some(TARGET_SAMPLE_RATE),
@@ -82,11 +86,5 @@ impl Backend {
             _stream: stream_with_cb,
             sample_rate: TARGET_SAMPLE_RATE as u32,
         })
-    }
-}
-
-impl audio::Backend for Backend {
-    fn sample_rate(&self) -> u32 {
-        self.sample_rate
     }
 }

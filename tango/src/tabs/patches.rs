@@ -319,7 +319,7 @@ impl PatchesState {
         let supported_games_str = version_info
             .as_ref()
             .map(|v| {
-                let mut names: Vec<String> = v.supported_games.iter().map(|g| game::display_name(lang, *g)).collect();
+                let mut names: Vec<String> = v.supported_games.iter().map(|g| game::display_name(lang, g)).collect();
                 names.sort();
                 if names.is_empty() {
                     "—".to_string()

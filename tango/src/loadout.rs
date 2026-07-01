@@ -23,6 +23,7 @@ use lucide_icons::Icon;
 use sweeten::widget::pick_list;
 use unic_langid::LanguageIdentifier;
 
+#[derive(Default)]
 pub struct Loadout {
     /// Selected game *family* (region-specific gamedb family string).
     /// The family picker drives the intermingled save list; the
@@ -34,18 +35,6 @@ pub struct Loadout {
     /// see the module docs; persisted per save, not globally.
     pub patch: Option<String>,
     pub patch_version: Option<semver::Version>,
-}
-
-impl Default for Loadout {
-    fn default() -> Self {
-        Self {
-            family: None,
-            game: None,
-            save: None,
-            patch: None,
-            patch_version: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -73,10 +62,6 @@ pub enum Effect {
 
 impl Loadout {
     pub fn update(&mut self, msg: Message, scanners: &Scanners, config: &config::Config) -> Option<Effect> {
-        self.update_inner(msg, scanners, config)
-    }
-
-    fn update_inner(&mut self, msg: Message, scanners: &Scanners, config: &config::Config) -> Option<Effect> {
         match msg {
             Message::FamilySelected(f) => {
                 self.family = Some(f.family);

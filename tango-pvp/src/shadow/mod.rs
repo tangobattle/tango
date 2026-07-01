@@ -85,7 +85,7 @@ impl Shadow {
         let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
         Self::new_from_sram(
             rom,
-            &replay.remote_sram_dump(),
+            &replay.remote_sram,
             hooks,
             match_type,
             replay.is_offerer,

@@ -1,4 +1,7 @@
-//! Netplay state + connection lifecycle.
+//! Netplay state + connection lifecycle: the session-layer state
+//! machine (connection choreography, settings exchange, match
+//! handoff) sitting atop [`crate::net`], which owns the wire
+//! protocols and channel mechanics.
 //!
 //! Phase transitions:
 //! `Idle → Connecting → Negotiating → Lobby` (any → `Failed` on
@@ -43,9 +46,10 @@ pub const PROTOCOL_VERSION: u32 = 0x4a;
 
 /// Where the lifecycle is right now. Drives the Play tab's status
 /// bar + the Cancel button's visibility.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum Phase {
     /// No connection attempt in flight.
+    #[default]
     Idle,
     /// Signaling task in flight. `waiting_for_opponent` flips true
     /// once the matchmaking server's Hello arrives; up to that
@@ -91,12 +95,6 @@ impl LinkIdent {
             LinkIdent::Matchmaking(code) => Some(code.as_str()),
             LinkIdent::Direct(_) => None,
         }
-    }
-}
-
-impl Default for Phase {
-    fn default() -> Self {
-        Self::Idle
     }
 }
 
@@ -294,10 +292,10 @@ impl Handshake {
     }
 }
 
-/// Handles we hang onto for the duration of a connected session:
-/// the Sender (locked behind a tokio Mutex because the lobby loop
-/// + the eventual battle loop share it), and the peer-connection
-/// itself so the underlying RTC stays up. The PvP-handoff path
+/// Handles we hang onto for the duration of a connected session: the
+/// Sender (locked behind a tokio Mutex because the lobby loop and the
+/// eventual battle loop share it), and the peer-connection itself so
+/// the underlying RTC stays up. The PvP-handoff path
 /// (`take_pre_match`) drains these into the PvpSession.
 struct ConnectionHandles {
     /// Reliable, ordered control/lobby channel sender. Shared by the lobby loop
@@ -620,7 +618,7 @@ impl State {
             }
             Message::SendLocalSettings(settings) => self.send_local_settings(settings),
             Message::WireOpDone => iced::Task::none(),
-            Message::RemoteSettings(settings) => self.on_remote_settings(settings),
+            Message::RemoteSettings(settings) => self.on_remote_settings(*settings),
             Message::SetMatchType(mt) => {
                 self.lobby.match_type = mt;
                 // Don't unready here directly — the App fires a
@@ -883,7 +881,7 @@ impl State {
 
     /// `Message::RemoteSettings` — peer's Settings landed; record them and
     /// drop our commit if they downgraded visibility.
-    fn on_remote_settings(&mut self, settings: Box<crate::net::protocol::Settings>) -> iced::Task<Message> {
+    fn on_remote_settings(&mut self, settings: crate::net::protocol::Settings) -> iced::Task<Message> {
         // Visibility downgrade (peer's setup used to be
         // visible, now they've blinded it): drop our local
         // commit so we re-commit explicitly under the new
@@ -895,7 +893,7 @@ impl State {
             .as_ref()
             .map(|prev| !prev.blind_setup && settings.blind_setup)
             .unwrap_or(false);
-        self.lobby.remote = Some(*settings);
+        self.lobby.remote = Some(settings);
         if downgrade {
             self.invalidate_local_commit()
         } else {
@@ -1201,10 +1199,7 @@ impl State {
         };
         // RNG seed for the in-match shared RNG: XOR of the two
         // nonces. Same construction as the legacy app.
-        let mut rng_seed = [0u8; 16];
-        for i in 0..16 {
-            rng_seed[i] = local_commit.state.nonce[i] ^ peer_state.nonce[i];
-        }
+        let rng_seed: [u8; 16] = std::array::from_fn(|i| local_commit.state.nonce[i] ^ peer_state.nonce[i]);
         // Cancel the lobby loop so it returns ownership of the
         // receiver via post_lobby_receiver. The loop drops the
         // receiver into that slot on cancel-exit.

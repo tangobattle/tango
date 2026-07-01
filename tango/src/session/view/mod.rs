@@ -451,8 +451,11 @@ fn setup_drawers_overlay<'a>(
         anim::slide_in(pane, progress, iced::Vector::new(from_dx, 0.0))
     };
     let mut panes: Vec<Element<'a, Message>> = Vec::new();
-    if s.local_loaded.is_some() && (state.self_panel.shown() || state.self_panel.is_animating(now)) {
-        let me = s.local_loaded.as_ref().unwrap();
+    if let Some(me) = s
+        .local_loaded
+        .as_ref()
+        .filter(|_| state.self_panel.shown() || state.self_panel.is_animating(now))
+    {
         let panel =
             save_view::view(lang, me, &s.local_save_view, true, None, false, false).map(Message::SelfSaveViewAction);
         let pane = setup_pane(panel, -SETUP_DRAWER_TRAVEL, state.self_panel.progress(now));
@@ -464,8 +467,11 @@ fn setup_drawers_overlay<'a>(
                 .into(),
         );
     }
-    if s.opponent_loaded.is_some() && (state.opponent_panel.shown() || state.opponent_panel.is_animating(now)) {
-        let opponent = s.opponent_loaded.as_ref().unwrap();
+    if let Some(opponent) = s
+        .opponent_loaded
+        .as_ref()
+        .filter(|_| state.opponent_panel.shown() || state.opponent_panel.is_animating(now))
+    {
         let panel = save_view::view(lang, opponent, &s.opponent_save_view, true, None, false, false)
             .map(Message::OpponentSaveViewAction);
         let pane = setup_pane(panel, SETUP_DRAWER_TRAVEL, state.opponent_panel.progress(now));

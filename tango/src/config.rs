@@ -1,5 +1,5 @@
-//! On-disk user config. Slim version of `tango/src/config.rs` — keeps
-//! Owned by the App; pulled from / written to ProjectDirs.
+//! On-disk user config. Owned by the App; pulled from / written to
+//! ProjectDirs.
 
 use serde::{Deserialize, Serialize};
 use std::io::Write;
@@ -11,15 +11,10 @@ const ORGANIZATION: &str = "n1gp";
 const APPLICATION: &str = "tango";
 
 pub const DEFAULT_MATCHMAKING_ENDPOINT: &str = "wss://matchmaking.tango.n1gp.net";
-pub const DEFAULT_LOBBY_ENDPOINT: &str = "wss://lobby.tango.n1gp.net";
 pub const DEFAULT_PATCH_REPO: &str = "https://patches.tango.n1gp.net";
 
 fn default_matchmaking_endpoint() -> String {
     DEFAULT_MATCHMAKING_ENDPOINT.to_string()
-}
-
-fn default_lobby_endpoint() -> String {
-    DEFAULT_LOBBY_ENDPOINT.to_string()
 }
 
 fn default_patch_repo() -> String {
@@ -106,7 +101,6 @@ pub struct Config {
     pub theme: ThemeMode,
     pub data_path: std::path::PathBuf,
     pub matchmaking_endpoint: String,
-    pub lobby_endpoint: String,
     pub patch_repo: String,
     /// When `true`, the patch autoupdater (`patch::Autoupdater`)
     /// runs in the background and refreshes the local patch
@@ -255,7 +249,6 @@ impl Default for Config {
             theme: ThemeMode::default(),
             data_path,
             matchmaking_endpoint: default_matchmaking_endpoint(),
-            lobby_endpoint: default_lobby_endpoint(),
             patch_repo: default_patch_repo(),
             enable_patch_autoupdate: true,
             video_filter: String::new(),

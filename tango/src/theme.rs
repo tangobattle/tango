@@ -77,6 +77,9 @@ pub fn is_gay_time() -> bool {
     chrono::Local::now().month() == 6
 }
 
+// The n/5 pattern spells out the six evenly-spaced stops; clippy's
+// eq_op would flag the final 5.0/5.0.
+#[allow(clippy::eq_op)]
 pub fn rainbow_flag_stops() -> [(f32, iced::Color); 6] {
     [
         (0.0 / 5.0, iced::Color::from_rgb8(0xe4, 0x03, 0x03)), // red

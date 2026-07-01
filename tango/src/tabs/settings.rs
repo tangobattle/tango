@@ -232,9 +232,7 @@ impl State {
                 None
             }
             Message::BindingCaptured(p) => {
-                let Some(target) = self.capture_target.take() else {
-                    return None;
-                };
+                let target = self.capture_target.take()?;
                 Some(ConfigChange::AddInputBinding(target, p))
             }
             Message::BindingRemove(k, idx) => Some(ConfigChange::RemoveInputBinding(k, idx)),
@@ -346,7 +344,7 @@ pub fn view<'a>(
                         Some(input::PhysicalInput::Button(input::GamepadButton::from_sdl3(b)))
                     }
                     crate::gamepad::GamepadEvent::AxisMotion { axis, value } => (value.abs() > input::AXIS_THRESHOLD)
-                        .then(|| input::PhysicalInput::Axis {
+                        .then_some(input::PhysicalInput::Axis {
                             axis,
                             dir: if value > 0.0 {
                                 input::AxisDir::Positive

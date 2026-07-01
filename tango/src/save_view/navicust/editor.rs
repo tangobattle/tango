@@ -48,21 +48,21 @@ fn draw_part_outline(
             let y = origin_y + row as f32 * cell;
             let same = |dc: isize, dr: isize| occ(col as isize + dc, row as isize + dr) == Some(slot);
             if !same(0, -1) {
-                frame.stroke(&Path::line(Point::new(x, y), Point::new(x + cell, y)), stroke.clone());
+                frame.stroke(&Path::line(Point::new(x, y), Point::new(x + cell, y)), stroke);
             }
             if !same(0, 1) {
                 frame.stroke(
                     &Path::line(Point::new(x, y + cell), Point::new(x + cell, y + cell)),
-                    stroke.clone(),
+                    stroke,
                 );
             }
             if !same(-1, 0) {
-                frame.stroke(&Path::line(Point::new(x, y), Point::new(x, y + cell)), stroke.clone());
+                frame.stroke(&Path::line(Point::new(x, y), Point::new(x, y + cell)), stroke);
             }
             if !same(1, 0) {
                 frame.stroke(
                     &Path::line(Point::new(x + cell, y), Point::new(x + cell, y + cell)),
-                    stroke.clone(),
+                    stroke,
                 );
             }
         }

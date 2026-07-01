@@ -119,7 +119,7 @@ impl<'a> Lobby<'a> {
             _ => match (self.state.local.as_ref(), self.state.remote.as_ref()) {
                 (Some(l), Some(r)) => {
                     let patches = self.scanners.patches.read();
-                    Status::Verdict(netplay::compat::check(l, r, &*patches))
+                    Status::Verdict(netplay::compat::check(l, r, &patches))
                 }
                 _ => Status::Handshake,
             },
@@ -182,10 +182,10 @@ impl<'a> Lobby<'a> {
     /// Small line under the status, in one of two visually distinct
     /// states so a glance tells which one it's in. While dialing
     /// (Connecting / Negotiating) it's the *identifier*: a link glyph
-    /// + the matchmaking code (or direct host / target), with a copy
+    /// and the matchmaking code (or direct host / target), with a copy
     /// button so the code can be handed to the opponent straight from
     /// here. Once the connection is established it's the *wire*: an
-    /// activity glyph + the live ping. Streamer privacy mode masks
+    /// activity glyph and the live ping. Streamer privacy mode masks
     /// the code on screen — so a viewer can't scrape it and crash the
     /// lobby — but the copy button still copies the real one, so
     /// inviting someone doesn't require leaving streamer mode.
@@ -550,12 +550,13 @@ impl<'a> Lobby<'a> {
             .into()
     }
 
-    /// Big single toggle: Ready → Unready → Starting…, switching label
-    /// + icon + color on click. Same button, same position; clicking
-    /// it always does the obvious next thing (ready up, unready, or
-    /// wait for match-start). A touch chunkier than the regular CTAs
-    /// in the strip, but not so big that it blows the lobby layout —
-    /// the glow shadow does the work of "look at me" instead.
+    /// Big single toggle: Ready → Unready → Starting…, switching
+    /// label, icon, and color on click. Same button, same position;
+    /// clicking it always does the obvious next thing (ready up,
+    /// unready, or wait for match-start). A touch chunkier than the
+    /// regular CTAs in the strip, but not so big that it blows the
+    /// lobby layout — the glow shadow does the work of "look at me"
+    /// instead.
     fn ready_button(&self, compat_ok: bool) -> Element<'a, Message> {
         const READY_TEXT: f32 = 16.0;
         const READY_PAD: [f32; 2] = [10.0, 16.0];

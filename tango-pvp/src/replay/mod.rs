@@ -127,19 +127,6 @@ impl Replay {
         self.rounds.iter().map(|r| r.len()).sum()
     }
 
-    /// Owned clone of the local-side SRAM dump (stored as-is on disk
-    /// in schema 0x1B+). Wraps the field so callers don't have to
-    /// reach into the struct for the common case of feeding it to
-    /// `mgba::core::Core::load_save`.
-    pub fn local_sram_dump(&self) -> Vec<u8> {
-        self.local_sram.clone()
-    }
-
-    /// Same as [`Replay::local_sram_dump`] for the remote side.
-    pub fn remote_sram_dump(&self) -> Vec<u8> {
-        self.remote_sram.clone()
-    }
-
     pub fn decode(r: impl std::io::Read) -> std::io::Result<Self> {
         let mut r = std::io::BufReader::new(r);
         let metadata = read_metadata(&mut r)?;
@@ -162,11 +149,7 @@ impl Replay {
         let mut is_complete = false;
         let mut prev: (u16, u16) = (0, 0);
 
-        loop {
-            let tag = match r.read_u8() {
-                Ok(v) => v,
-                Err(_) => break,
-            };
+        while let Ok(tag) = r.read_u8() {
             if tag == END_OF_REPLAY {
                 is_complete = true;
                 break;

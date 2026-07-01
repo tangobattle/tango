@@ -229,7 +229,7 @@ pub(super) fn render_navicust_edit<'a>(
                 .height(Length::Fixed(40.0))
                 .into()
         });
-        let selected = held_opt.map_or(false, |h| h.id == id);
+        let selected = held_opt.is_some_and(|h| h.id == id);
         let name_text = if at_cap {
             text(name).size(TEXT_BODY).style(muted_text_style)
         } else {
@@ -754,9 +754,7 @@ pub(crate) fn navicust_as_text(loaded: &Loaded) -> Option<String> {
 /// The NaviCust grid rendered to an RGBA image for "copy as image". `None`
 /// for non-NaviCust navi views (only the grid has a meaningful image).
 pub(crate) fn as_image(loaded: &Loaded) -> Option<image::RgbaImage> {
-    let Some(v) = loaded.save.view_navicust() else {
-        return None;
-    };
+    let v = loaded.save.view_navicust()?;
     let layout = loaded.assets.navicust_layout()?;
     let materialized = v.materialized();
     let lang = crate::game::region_to_language(loaded.game.region());

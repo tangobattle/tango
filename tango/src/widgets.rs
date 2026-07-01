@@ -1091,7 +1091,7 @@ pub fn hex_chain<'a, M: 'a>(height: f32) -> Element<'a, M> {
                     r + 1.0 + 1.5 * r * i as f32,
                     // True honeycomb stagger: adjacent columns sit
                     // ±(√3/4)·r off the centerline.
-                    cy + if i % 2 == 0 { 0.433 * r } else { -0.433 * r },
+                    cy + if i.is_multiple_of(2) { 0.433 * r } else { -0.433 * r },
                 )
             };
 
@@ -1677,7 +1677,7 @@ pub fn chunky_scrollable(theme: &Theme, status: iced::widget::scrollable::Status
     let rail = |lit: bool| Rail {
         // Faint plate only under a lit scroller — at rest the rail
         // disappears into the pane and only the thumb shows.
-        background: lit.then(|| iced::Background::Color(iced::Color { a: 0.06, ..text })),
+        background: lit.then_some(iced::Background::Color(iced::Color { a: 0.06, ..text })),
         border: iced::Border {
             radius: 999.0.into(),
             width: 0.0,

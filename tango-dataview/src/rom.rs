@@ -474,8 +474,8 @@ impl Bgr555 {
         let raw = self.to_le();
         image::Rgba([
             ((raw & 0x1f) * 0xff / 0x1f) as u8,
-            (((raw >> 5) & 0x1f) as u16 * 0xff / 0x1f) as u8,
-            (((raw >> 10) & 0x1f) as u16 * 0xff / 0x1f) as u8,
+            (((raw >> 5) & 0x1f) * 0xff / 0x1f) as u8,
+            (((raw >> 10) & 0x1f) * 0xff / 0x1f) as u8,
             0xff,
         ])
     }
@@ -487,7 +487,7 @@ pub type Palette = [Bgr555; 16];
 /// (`r | g << 5 | b << 10`). Built from [`Bgr555::to_rgba8`] at compile
 /// time so bulk conversion and per-color sprite/palette rendering can't
 /// drift apart.
-const BGR555_RGBA8_LUT: [image::Rgba<u8>; 0x8000] = {
+static BGR555_RGBA8_LUT: [image::Rgba<u8>; 0x8000] = {
     let mut arr = [image::Rgba([0, 0, 0, 0]); 0x8000];
     let mut i = 0u16;
     while i < 0x8000 {

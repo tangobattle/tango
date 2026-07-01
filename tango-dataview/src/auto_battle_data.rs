@@ -48,7 +48,7 @@ fn materialize_section(
 ) -> impl Iterator<Item = Option<usize>> {
     group_section(assets, use_counts, chip_counts, class)
         .into_iter()
-        .flat_map(|(item, count)| std::iter::repeat(item).take(count))
+        .flat_map(|(item, count)| std::iter::repeat_n(item, count))
 }
 
 impl MaterializedAutoBattleData {
@@ -103,11 +103,7 @@ impl MaterializedAutoBattleData {
                 ))
                 .chain(materialize_section(assets, &use_counts, MEGA_SLOTS, ChipClass::Mega))
                 .chain(materialize_section(assets, &use_counts, GIGA_SLOTS, ChipClass::Giga))
-                .chain(
-                    COMBO_SLOTS
-                        .iter()
-                        .flat_map(|&count| std::iter::repeat(None).take(count)),
-                )
+                .chain(COMBO_SLOTS.iter().flat_map(|&count| std::iter::repeat_n(None, count)))
                 .chain(materialize_section(
                     assets,
                     &use_counts,

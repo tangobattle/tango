@@ -433,20 +433,21 @@ impl State {
     /// the play tab calls this rather than routing through [`Self::apply`].
     pub fn enter_edit(&mut self, loaded: &Loaded) {
         // A fresh EditState — every editor opens with clean scratch state.
-        let mut edit = EditState::default();
-        // Seed the tag toggles from the equipped folder's tag pair, if
-        // the game has tag chips and a pair is set.
-        edit.tags = loaded
-            .save
-            .view_chips()
-            .and_then(|v| {
-                let folder = v.equipped_folder_index();
-                v.tag_chip_indexes(folder)
-            })
-            .flatten()
-            .map(|[a, b]| vec![a, b])
-            .unwrap_or_default();
-        self.editing = Some(edit);
+        self.editing = Some(EditState {
+            // Seed the tag toggles from the equipped folder's tag pair, if
+            // the game has tag chips and a pair is set.
+            tags: loaded
+                .save
+                .view_chips()
+                .and_then(|v| {
+                    let folder = v.equipped_folder_index();
+                    v.tag_chip_indexes(folder)
+                })
+                .flatten()
+                .map(|[a, b]| vec![a, b])
+                .unwrap_or_default(),
+            ..Default::default()
+        });
         // Mode change, not navigation — the editor body rises in
         // while the Save / Cancel pair slides into the tail.
         let now = iced::time::Instant::now();
@@ -469,7 +470,7 @@ impl State {
     /// slots are selected, else `None` (which clears the tag pairing —
     /// a lone tag chip isn't a valid state in-game).
     pub fn toggle_tag(&mut self, slot: usize) -> Option<[usize; 2]> {
-        let Some(edit) = self.editing.as_mut() else { return None };
+        let edit = self.editing.as_mut()?;
         if let Some(pos) = edit.tags.iter().position(|&s| s == slot) {
             edit.tags.remove(pos);
         } else if edit.tags.len() < 2 {
@@ -605,7 +606,7 @@ impl State {
                 if let Some(e) = self.editing.as_mut() {
                     // Toggle: clicking the held part deselects it; otherwise
                     // pick it up in the orientation set in the picker.
-                    if e.held_part.map_or(false, |h| h.id == *id) {
+                    if e.held_part.is_some_and(|h| h.id == *id) {
                         e.held_part = None;
                     } else {
                         let (rot, compressed) = e.orient_of(*id);
@@ -934,6 +935,7 @@ pub enum Action {
 ///   * `Some(false)` — Play button rendered but disabled (e.g.
 ///     while a netplay lobby is active and singleplayer would
 ///     conflict with the open session).
+///
 /// `editable`: when `true` (only the play tab passes this) and the
 /// loaded save supports it, the Folder tab gains an Edit button that
 /// flips its body into the in-place chip-deck editor. Replay /
@@ -1265,7 +1267,7 @@ fn edit_buttons<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded) -> Element
     use crate::widgets;
     use lucide_icons::Icon;
     let can_save = !loaded.editability.folder || {
-        let full = loaded.save.view_chips().map_or(true, |v| {
+        let full = loaded.save.view_chips().is_none_or(|v| {
             let folder = v.equipped_folder_index();
             (0..folder::MAX_FOLDER_CHIPS).all(|i| v.chip(folder, i).is_some())
         });

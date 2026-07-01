@@ -750,7 +750,7 @@ impl InnerState {
     /// True iff round_start_ret has fired for the current round. In FF mode
     /// this is always true (FF resumes from a known committed state).
     pub fn round_active(&self) -> bool {
-        self.replay().map_or(true, |r| r.phase.round_active())
+        self.replay().is_none_or(|r| r.phase.round_active())
     }
 
     // ----- replay-mode round transitions -----

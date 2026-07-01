@@ -34,6 +34,10 @@ codegen-units = 1
 debug = 1
 
 [workspace.lints.clippy]
+# False positive on `GameRef` (= `&'static Game`) map keys: `Game` holds
+# lazily-decoded caches (interior mutability), but its Hash/Eq go by
+# static address, so keys can't destabilize.
+mutable_key_type = "allow"
 new_without_default = "allow"
 type_complexity = "allow"
 identity_op = "allow"

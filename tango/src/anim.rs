@@ -19,9 +19,9 @@ use std::sync::LazyLock;
 /// motion is purely visual).
 pub const TRANSITION: std::time::Duration = std::time::Duration::from_millis(160);
 
-/// Duration of a two-phase fade-through swap ([`Transition::swap`]
-/// + [`swap_phase`]): one [`TRANSITION`] for the outgoing half,
-/// one for the incoming half.
+/// Duration of a two-phase fade-through swap ([`Transition::swap`] +
+/// [`swap_phase`]): one [`TRANSITION`] for the outgoing half, one for
+/// the incoming half.
 pub const TRANSITION_SWAP: std::time::Duration = std::time::Duration::from_millis(320);
 
 /// Process-wide animation clock base. Both the activity registry

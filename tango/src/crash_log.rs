@@ -110,11 +110,7 @@ fn raw_stderr(bytes: &[u8]) {
     // SAFETY: a bare `write(2)` syscall on the stderr fd; `bytes` outlives
     // it. `as _` picks the platform's count type (size_t / c_uint).
     unsafe {
-        let _ = libc::write(
-            STDERR_FD,
-            bytes.as_ptr() as *const libc::c_void,
-            bytes.len() as _,
-        );
+        let _ = libc::write(STDERR_FD, bytes.as_ptr() as *const libc::c_void, bytes.len() as _);
     }
 }
 

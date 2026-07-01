@@ -353,8 +353,8 @@ fn run_app() -> iced::Result {
     // it through). Bad args here would have failed in the
     // supervisor already, so unwrap is fine.
     let args = <Args as clap::Parser>::parse();
-    let init_link_code = args.command.and_then(|c| match c {
-        Command::Join { link_code } => Some(link_code),
+    let init_link_code = args.command.map(|c| match c {
+        Command::Join { link_code } => link_code,
     });
     let _ = INIT_LINK_CODE.set(init_link_code);
     // Route mgba's global default logger through `c_log` too — without

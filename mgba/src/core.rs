@@ -348,6 +348,11 @@ impl<'a> CoreMutRef<'a> {
         }
     }
 
+    /// # Safety
+    ///
+    /// `ptr` must point to a live, initialized `mCore`, and the caller must
+    /// ensure the core outlives the returned ref and isn't aliased by
+    /// another mutable ref for that lifetime.
     pub unsafe fn from_ptr(ptr: *mut mgba_sys::mCore) -> Self {
         CoreMutRef {
             ptr,

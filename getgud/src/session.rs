@@ -441,7 +441,7 @@ impl<W: World> Session<W> {
             "speculation only runs once the settled cap has caught up to the confirmed frontier"
         );
         let mut predicted = self.last_confirmed_remote.clone();
-        while self.settled_tick + self.speculations.len() as u32 + 1 <= target {
+        while (self.settled_tick + self.speculations.len() as u32) < target {
             // `unmatched_locals[k]` is the local input for tick
             // `confirm_frontier + k`; here `confirm_frontier == settled_tick`, so
             // the local for the next speculative tick is at `speculations.len()`.

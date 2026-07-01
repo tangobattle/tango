@@ -185,7 +185,7 @@ pub fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdi
                         .view_chips()
                         .and_then(|v| v.chip(folder_idx, slot))
                         .and_then(|c| loaded.assets.chip(c.id))
-                        .map_or(true, |c| c.mb() <= cap);
+                        .is_none_or(|c| c.mb() <= cap);
                     if !fits {
                         return;
                     }
@@ -269,7 +269,7 @@ pub fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Nav
             let slot = match loaded.save.view_navicust() {
                 Some(v) => {
                     let copies = (0..v.count())
-                        .filter(|&i| v.navicust_part(i).map_or(false, |p| p.id == part.id))
+                        .filter(|&i| v.navicust_part(i).is_some_and(|p| p.id == part.id))
                         .count();
                     if copies >= crate::save_view::navicust::editor::MAX_COPIES_PER_PART {
                         return;

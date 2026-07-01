@@ -256,7 +256,13 @@ impl RewindBuffer {
     /// Largest buffered snapshot with `frame_index <= target` — same
     /// contract as [`SnapshotStore::best_at_or_before`].
     pub fn best_at_or_before(&self, target: u32) -> Option<Arc<ReplaySnapshot>> {
-        self.0.entries.lock().unwrap().range(..=target).next_back().map(|(_, s)| s.clone())
+        self.0
+            .entries
+            .lock()
+            .unwrap()
+            .range(..=target)
+            .next_back()
+            .map(|(_, s)| s.clone())
     }
 
     /// Largest buffered snapshot with `lo_exclusive < frame_index <=
@@ -266,7 +272,10 @@ impl RewindBuffer {
             .entries
             .lock()
             .unwrap()
-            .range((std::ops::Bound::Excluded(lo_exclusive), std::ops::Bound::Included(hi_inclusive)))
+            .range((
+                std::ops::Bound::Excluded(lo_exclusive),
+                std::ops::Bound::Included(hi_inclusive),
+            ))
             .next_back()
             .map(|(_, s)| s.clone())
     }
@@ -330,7 +339,7 @@ pub fn run_prefetch(
     core.as_mut()
         .load_rom(mgba::vfile::VFile::from_vec(local_rom.to_vec()))?;
     core.as_mut()
-        .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()))?;
+        .load_save(mgba::vfile::VFile::from_vec(replay.local_sram.clone()))?;
     // mgba::thread::Thread::start does this implicitly for the playback
     // core; a raw Core driven by run_frame needs it explicitly.
     core.as_mut().reset();
@@ -775,9 +784,7 @@ fn backfill_chunk_on_core(
     let landing = match rewind.exact(end) {
         Some(snap) => snap,
         None => {
-            let keyframe = store
-                .best_at_or_before(end)
-                .filter(|s| s.checkpoint.frame_index == end);
+            let keyframe = store.best_at_or_before(end).filter(|s| s.checkpoint.frame_index == end);
             match keyframe {
                 Some(snap) => {
                     rewind.adopt(snap.clone());

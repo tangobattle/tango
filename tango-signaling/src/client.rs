@@ -128,8 +128,10 @@ pub enum Error {
     #[error("signaling abort: {0:?}")]
     ServerAbort(AbortReason),
 
+    // Boxed: tungstenite's Error is ~136 bytes and would dominate the
+    // size of every Result<_, Error> in the crate.
     #[error("tungstenite: {0:?}")]
-    Tungstenite(#[from] tokio_tungstenite::tungstenite::Error),
+    Tungstenite(Box<tokio_tungstenite::tungstenite::Error>),
 
     #[error("rustls: {0:?}")]
     Rustls(#[from] rustls::Error),
@@ -162,6 +164,12 @@ pub enum Error {
     PeerConnectionClosed,
 }
 
+impl From<tokio_tungstenite::tungstenite::Error> for Error {
+    fn from(e: tokio_tungstenite::tungstenite::Error) -> Self {
+        Error::Tungstenite(Box::new(e))
+    }
+}
+
 /// Whether an error is a transport-level hiccup that a reconnect might paper
 /// over (websocket dropped, timed out, reset, EOF) as opposed to a definitive
 /// protocol-level rejection (server abort, malformed/unexpected packet, bad
@@ -171,7 +179,7 @@ fn is_transient(e: &Error) -> bool {
     match e {
         Error::Io(_) => true,
         Error::Tungstenite(ws) => matches!(
-            ws,
+            **ws,
             Ws::ConnectionClosed | Ws::AlreadyClosed | Ws::Io(_) | Ws::Protocol(_) | Ws::Tls(_)
         ),
         _ => false,

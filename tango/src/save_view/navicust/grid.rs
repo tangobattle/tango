@@ -405,14 +405,14 @@ pub fn build_model(
     let occupancy: Vec<Option<usize>> = materialized.iter().copied().collect();
 
     let mut part_styles: Vec<Option<PartStyle>> = vec![None; view.count()];
-    for i in 0..view.count() {
+    for (i, style) in part_styles.iter_mut().enumerate() {
         let Some(part) = view.navicust_part(i) else { continue };
         let Some(info) = assets.navicust_part(part.id) else {
             continue;
         };
         let Some(c) = info.color() else { continue };
         let (solid, plus) = part_colors(c);
-        part_styles[i] = Some(PartStyle {
+        *style = Some(PartStyle {
             solid,
             plus,
             is_solid: info.is_solid(),

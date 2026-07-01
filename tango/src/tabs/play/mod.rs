@@ -566,14 +566,12 @@ impl State {
                         };
                         let from = index;
                         // Live folder occupancy, to validate + resolve the drop.
-                        let Some(filled) = loaded.and_then(|l| l.save.view_chips()).map(|v| {
+                        let filled = loaded.and_then(|l| l.save.view_chips()).map(|v| {
                             let fi = v.equipped_folder_index();
                             (0..save_view::folder::MAX_FOLDER_CHIPS)
                                 .map(|i| v.chip(fi, i).is_some())
                                 .collect::<Vec<bool>>()
-                        }) else {
-                            return None;
-                        };
+                        })?;
                         // Can't drag an empty slot.
                         if !filled.get(from).copied().unwrap_or(false) {
                             return None;
@@ -584,10 +582,7 @@ impl State {
                         let to = if filled.get(target_index).copied().unwrap_or(false) {
                             target_index
                         } else {
-                            match filled.iter().rposition(|&f| f) {
-                                Some(last) => last,
-                                None => return None,
-                            }
+                            filled.iter().rposition(|&f| f)?
                         };
                         if from == to {
                             return None;
@@ -1256,7 +1251,7 @@ impl State {
         loadout: &'a Loadout,
     ) -> Element<'a, Message> {
         let can_new = creation_games(loadout, scanners).iter().any(|g| {
-            templates_for_game(*g, loadout.patch.as_deref(), loadout.patch_version.as_ref(), scanners).is_some()
+            templates_for_game(g, loadout.patch.as_deref(), loadout.patch_version.as_ref(), scanners).is_some()
         });
         widgets::icon_button_maybe(
             Icon::FilePlus,
@@ -1798,16 +1793,14 @@ enum ReadyPalette {
 /// button tells the whole story of "where are we in the
 /// handshake".
 ///
-/// * Idle      — primary_button on steroids: brighter gradient,
-///               huge primary glow, chunky 2 px border. This is
-///               the moment the user is supposed to slam the
-///               button, so it has to feel hot.
-/// * Committed — neutral beveled plate. We've ack'd locally and
-///               are waiting on the peer; the only useful action
-///               is to take it back, which is not a celebration.
-/// * Starting  — flat muted badge. Both sides committed; the
-///               button is now purely a status indicator with no
-///               click target.
+/// * Idle — primary_button on steroids: brighter gradient, huge
+///   primary glow, chunky 2 px border. This is the moment the user is
+///   supposed to slam the button, so it has to feel hot.
+/// * Committed — neutral beveled plate. We've ack'd locally and are
+///   waiting on the peer; the only useful action is to take it back,
+///   which is not a celebration.
+/// * Starting — flat muted badge. Both sides committed; the button is
+///   now purely a status indicator with no click target.
 fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: ReadyPalette) -> button::Style {
     let p = theme.extended_palette();
     let primary = theme.palette().primary;
@@ -1900,10 +1893,10 @@ fn resolve_link_ident(input: &str) -> Option<crate::netplay::LinkIdent> {
 /// Recognise the direct-TCP link-code commands the user can type
 /// in place of a matchmaking code:
 ///
-/// - `/host`            — listen on [`crate::net::DEFAULT_LOCAL_PORT`]
-/// - `/host <port>`     — listen on the given port
-/// - `/connect <addr>`  — dial `<addr>`, appending the default
-///                        port if the user didn't specify one
+/// - `/host` — listen on [`crate::net::DEFAULT_LOCAL_PORT`]
+/// - `/host <port>` — listen on the given port
+/// - `/connect <addr>` — dial `<addr>`, appending the default port if
+///   the user didn't specify one
 fn parse_direct_command(input: &str) -> Option<crate::netplay::DirectRole> {
     // The leading slash is the disambiguator — without it, any
     // input is a matchmaking link code (which can legitimately

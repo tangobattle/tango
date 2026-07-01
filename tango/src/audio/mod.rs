@@ -190,7 +190,3 @@ impl Stream for MGBAStream {
         available
     }
 }
-
-pub trait Backend {
-    fn sample_rate(&self) -> u32;
-}

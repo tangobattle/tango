@@ -171,7 +171,7 @@ pub(super) fn render_folder_edit<'a>(
         // it isn't already a Tag chip (a chip can't be both); clearing the
         // current Regular is always allowed.
         let reg_fits = match limits.reg_memory {
-            Some(cap) => this_mb.map_or(true, |mb| mb <= cap),
+            Some(cap) => this_mb.is_none_or(|mb| mb <= cap),
             None => true,
         };
         let reg_allowed = is_regular || (!is_tag && reg_fits);
@@ -182,7 +182,7 @@ pub(super) fn render_folder_edit<'a>(
         let tag_fits = match limits.tag_memory {
             Some(budget) => {
                 let this = this_mb.map(|m| m as u32).unwrap_or(0);
-                this <= budget && tag_partner_mb.map_or(true, |partner| partner + this <= budget)
+                this <= budget && tag_partner_mb.is_none_or(|partner| partner + this <= budget)
             }
             None => true,
         };
@@ -548,7 +548,7 @@ fn sorted_library_entries(loaded: &Loaded, sort: LibrarySort) -> Vec<(usize, Str
             let owned = chips_view
                 .as_ref()
                 .and_then(|v| v.pack_count(id, variant))
-                .map_or(false, |c| c > 0);
+                .is_some_and(|c| c > 0);
             if !owned {
                 continue;
             }
@@ -898,12 +898,6 @@ pub(crate) fn chip_row<M: 'static>(
     chip_popover(card, image_handle, description, accent)
 }
 
-/// Tooltip chrome for chip hovers — same shape as
-/// [`tooltip_style`] but takes the chip's class accent so
-/// mega / giga / dark chips get a background that matches the
-/// row's left-edge stripe. Standard chips (accent = None) fall
-/// back to the default near-black tooltip.
-
 /// Accent color for the left edge of a chip row. None = no accent (the
 /// row reads as a default chip with no class adornment).
 pub(crate) fn class_accent(class: Option<tango_dataview::rom::ChipClass>, dark: bool) -> Option<iced::Color> {
@@ -969,9 +963,9 @@ pub(crate) fn chip_popover<'a, M: 'a>(
     .into()
 }
 
-/// Wrap `inner` so hovering anywhere over it shows the chip's full image
-/// + description (the read-only list's chip popover). No-op when the
-/// chip has neither, or for an empty slot.
+/// Wrap `inner` so hovering anywhere over it shows the chip's full
+/// image and description (the read-only list's chip popover). No-op
+/// when the chip has neither, or for an empty slot.
 pub(crate) fn with_chip_tooltip<'a>(
     loaded: &'a Loaded,
     chip_id: Option<usize>,
@@ -985,7 +979,7 @@ pub(crate) fn with_chip_tooltip<'a>(
     // popover is description-only.
     let is_pa = info
         .as_ref()
-        .map_or(false, |i| i.class() == tango_dataview::rom::ChipClass::ProgramAdvance);
+        .is_some_and(|i| i.class() == tango_dataview::rom::ChipClass::ProgramAdvance);
     let image_handle = if is_pa {
         None
     } else {
@@ -1030,6 +1024,11 @@ pub(crate) fn chip_stat_cells<'a>(loaded: &'a Loaded, chip_id: usize, chips_have
     [element, atk, mb_cell]
 }
 
+/// Tooltip chrome for chip hovers — same shape as
+/// [`tooltip_style`](super::tooltip_style) but takes the chip's class
+/// accent so mega / giga / dark chips get a background that matches
+/// the row's left-edge stripe. Standard chips (accent = None) fall
+/// back to the default near-black tooltip.
 pub(crate) fn chip_tooltip_style(accent: Option<iced::Color>) -> impl Fn(&iced::Theme) -> container::Style {
     move |_theme: &iced::Theme| {
         let bg = accent.unwrap_or_else(|| iced::Color::from_rgba8(0, 0, 0, 0.85));
@@ -1091,9 +1090,7 @@ pub(crate) fn as_text(loaded: &Loaded, opts: RenderOpts) -> Option<String> {
             if g.is_regular {
                 suffix.push("[REG]");
             }
-            for _ in 0..(g.has_tag1 as usize + g.has_tag2 as usize) {
-                suffix.push("[TAG]");
-            }
+            suffix.extend(std::iter::repeat_n("[TAG]", g.has_tag1 as usize + g.has_tag2 as usize));
             if !suffix.is_empty() {
                 out.push('\t');
                 out.push_str(&suffix.join(""));

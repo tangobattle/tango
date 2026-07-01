@@ -741,6 +741,7 @@ impl PvpSession {
     ///   * the peer also sent us `EndOfMatch`, or
     ///   * `PEER_END_GRACE` has elapsed since local completion
     ///     (peer crashed / disconnected — give up waiting).
+    ///
     /// The handshake keeps the data channel alive long enough
     /// for the lagging side to also reach its hook and write
     /// `END_OF_REPLAY` before we drop `_peer_conn`. Without it,

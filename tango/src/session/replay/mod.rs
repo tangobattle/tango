@@ -158,7 +158,7 @@ impl ReplaySession {
     ) -> anyhow::Result<Self> {
         let mut core = crate::session::new_gba_core(rom.as_ref())?;
         core.as_mut()
-            .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()))?;
+            .load_save(mgba::vfile::VFile::from_vec(replay.local_sram.clone()))?;
 
         let hooks = game.hooks;
 

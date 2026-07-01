@@ -44,10 +44,9 @@ fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp::PvpSessio
     // clamped to the slider range, off the median ping. Enabled whenever the
     // link is live (`latency()` is `Some`); before the first ping that reads
     // `Some(ZERO)`, which just suggests the minimum frame delay.
-    let suggest_msg = match pvp.latency() {
-        Some(rtt) => Some(Message::SetFrameDelay(suggest_frame_delay(rtt))),
-        _ => None,
-    };
+    let suggest_msg = pvp
+        .latency()
+        .map(|rtt| Message::SetFrameDelay(suggest_frame_delay(rtt)));
     let suggest = widgets::icon_button_maybe(
         Icon::Wand,
         t!(lang, "lobby-frame-delay-suggest"),
