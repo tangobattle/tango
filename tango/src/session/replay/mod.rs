@@ -3,18 +3,21 @@
 //! Owns an mgba playback thread, installs the per-game stepper traps,
 //! pushes captured snapshots into a [`SnapshotStore`] each frame, and
 //! runs a background [`Prefetcher`] thread that races ahead of the
-//! playhead to keep that store populated for seeks. Seeks are
-//! asynchronous: requests land on a [`SeekController`] and a dedicated
-//! [`SeekWorker`] thread chases the newest target on the mgba thread,
-//! so the UI never blocks on catch-up emulation. Audio is bound via
-//! the shared [`crate::audio::LateBinder`].
+//! playhead to keep that store populated for seeks. A [`RewindBuffer`]
+//! additionally keeps every frame of the last ~1.5s behind the
+//! playhead, so single-frame backward steps land on exact snapshots
+//! with no catch-up emulation. Seeks are asynchronous: requests land
+//! on a [`SeekController`] and a dedicated [`SeekWorker`] thread
+//! chases the newest target on the mgba thread, so the UI never
+//! blocks on catch-up emulation. Audio is bound via the shared
+//! [`crate::audio::LateBinder`].
 
 pub mod scrubber;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
-use tango_pvp::replay::playback::{SeekController, SnapshotStore};
+use tango_pvp::replay::playback::{RewindBuffer, SeekController, SnapshotStore};
 use tango_pvp::shadow::Shadow;
 
 pub const SCREEN_WIDTH: u32 = mgba::gba::SCREEN_WIDTH;
@@ -57,14 +60,25 @@ pub struct Scrub {
 impl Scrub {
     /// Begin or continue a drag at `target`. The first event of a drag
     /// freezes playback under the cursor (remembering whether to
-    /// resume) and starts blitting keyframes from the snapshot store.
+    /// resume) and starts blitting previews from the snapshot buffers.
     pub fn drag(&mut self, target: u32, replay: &ReplaySession) {
-        if self.preview.is_none() {
+        let press = self.preview.is_none();
+        if press {
             self.resume = !replay.is_paused();
             replay.set_paused(true);
         }
         self.preview = Some(target);
-        if replay.scrub_preview(target, self.blitted) {
+        // The press itself only previews an exact frame: a click seeks
+        // to the tick under the cursor, and blitting the *nearest*
+        // keyframe there would flash a wrong frame until the chase
+        // delivers the real one. Once the drag is actually moving,
+        // nearest-keyframe previews are the scrubbing feedback.
+        let blitted = if press {
+            replay.scrub_preview_exact(target)
+        } else {
+            replay.scrub_preview(target, self.blitted)
+        };
+        if blitted {
             self.blitted = true;
         }
     }
@@ -104,6 +118,9 @@ pub struct ReplaySession {
     close_requested: Arc<AtomicBool>,
     stepper_state: tango_pvp::stepper::State,
     snapshots: SnapshotStore,
+    /// Dense per-frame snapshot window trailing the playhead (see
+    /// [`RewindBuffer`]); backward steps land on it exactly.
+    rewind: RewindBuffer,
     prefetch_progress: Arc<AtomicU32>,
     /// Inter-round seek-bar marks: cumulative recorded input-pair counts,
     /// computed once at construction (see [`Self::round_boundaries`]).
@@ -185,6 +202,7 @@ impl ReplaySession {
             .collect::<Vec<_>>();
 
         let snapshots = SnapshotStore::new();
+        let rewind = RewindBuffer::new();
         let prefetch_progress = Arc::new(AtomicU32::new(0));
         let prefetcher = Prefetcher::spawn(
             rom.clone(),
@@ -203,6 +221,7 @@ impl ReplaySession {
             let completion_token = completion_token.clone();
             let stepper_state = stepper_state.clone();
             let snapshots = snapshots.clone();
+            let rewind = rewind.clone();
             let shadow = shadow.clone();
             let frame_notify = frame_notify.clone();
             let seek = seek.clone();
@@ -231,11 +250,18 @@ impl ReplaySession {
                     frame_notify.notify_one();
                 }
 
-                // Capture round-start + every MID_ROUND_SNAPSHOT_INTERVAL
-                // ticks so backward seeks have a nearby jumping-off point
-                // even if the prefetcher hasn't reached them yet.
+                // Capture every frame into the rewind window so backward
+                // steps land exactly, and lift the sparse keyframes
+                // (round starts + every MID_ROUND_SNAPSHOT_INTERVAL) out
+                // of the same capture so those frames don't pay a second
+                // save_state.
                 if let Some(cp) = stepper_state.capture_replay_checkpoint() {
-                    snapshots.capture_if_needed(cp, &mut core, &shadow, video_buffer);
+                    let keyframe_needed = snapshots.snapshot_needed(&cp);
+                    if let Some(snap) = rewind.capture(cp, &mut core, &shadow, video_buffer) {
+                        if keyframe_needed {
+                            snapshots.push_arc(snap);
+                        }
+                    }
                 }
 
                 // Mirrors the legacy guard: clean replays wait for the
@@ -261,7 +287,25 @@ impl ReplaySession {
             shadow.clone(),
             replay.clone(),
             snapshots.clone(),
+            rewind.clone(),
             completion_token.clone(),
+            {
+                // Zero-frame seek landings (exact snapshot hits) never run
+                // a frame, so the frame callback can't publish them — the
+                // chase blits the snapshot's stored framebuffer instead.
+                let vbuf = vbuf.clone();
+                let frame_notify = frame_notify.clone();
+                move |snap: &tango_pvp::stepper::ReplaySnapshot| {
+                    {
+                        let mut vbuf = vbuf.lock().unwrap();
+                        if vbuf.len() != snap.framebuffer.len() {
+                            return;
+                        }
+                        vbuf.copy_from_slice(&snap.framebuffer);
+                    }
+                    frame_notify.notify_one();
+                }
+            },
         );
 
         let audio_binding = audio_binder.bind_mgba(thread.handle(), "replay");
@@ -271,6 +315,7 @@ impl ReplaySession {
             close_requested: Arc::new(AtomicBool::new(false)),
             stepper_state,
             snapshots,
+            rewind,
             prefetch_progress,
             round_boundaries,
             total_ticks,
@@ -385,10 +430,15 @@ impl ReplaySession {
     }
 
     /// The captured snapshot nearest `target`, if any — backs the hover
-    /// thumbnail above the scrub bar. The snapshot's framebuffer is
-    /// mgba-native BGR555, same as the shared display buffer.
+    /// thumbnail above the scrub bar and the drag preview blit. Near the
+    /// playhead the rewind window supplies exact frames; elsewhere it's
+    /// the store's keyframes. The snapshot's framebuffer is mgba-native
+    /// BGR555, same as the shared display buffer.
     pub fn nearest_snapshot(&self, target: u32) -> Option<std::sync::Arc<tango_pvp::stepper::ReplaySnapshot>> {
-        self.snapshots.nearest(target)
+        [self.snapshots.nearest(target), self.rewind.nearest(target)]
+            .into_iter()
+            .flatten()
+            .min_by_key(|s| s.checkpoint.frame_index.abs_diff(target))
     }
 
     /// Blit the captured framebuffer of the snapshot nearest `target`
@@ -404,7 +454,7 @@ impl ReplaySession {
     /// in the buffer, so callers pass `force_keyframe` from then on.
     /// Returns whether a blit happened.
     pub fn scrub_preview(&self, target: u32, force_keyframe: bool) -> bool {
-        let Some(snap) = self.snapshots.nearest(target) else {
+        let Some(snap) = self.nearest_snapshot(target) else {
             return false;
         };
         if !force_keyframe {
@@ -413,6 +463,25 @@ impl ReplaySession {
                 return false;
             }
         }
+        self.blit_snapshot(&snap)
+    }
+
+    /// Blit the frame at exactly `target`, if a snapshot holds it —
+    /// the scrub *press*'s preview. Unlike [`Self::scrub_preview`] this
+    /// never substitutes a nearby keyframe: a click seeks to whatever
+    /// tick is under the cursor, and blitting the nearest keyframe
+    /// there would flash a wrong frame for the chase's duration before
+    /// snapping to the real one. Returns whether a blit happened.
+    pub fn scrub_preview_exact(&self, target: u32) -> bool {
+        match self.nearest_snapshot(target) {
+            Some(snap) if snap.checkpoint.frame_index == target => self.blit_snapshot(&snap),
+            _ => false,
+        }
+    }
+
+    /// Copy `snap`'s stored framebuffer into the shared display buffer
+    /// and wake the renderer. False if the buffer sizes disagree.
+    fn blit_snapshot(&self, snap: &tango_pvp::stepper::ReplaySnapshot) -> bool {
         {
             let mut vbuf = self.vbuf.lock().unwrap();
             if vbuf.len() != snap.framebuffer.len() {
@@ -444,7 +513,9 @@ impl SeekWorker {
         shadow: Arc<Mutex<Shadow>>,
         replay: Arc<tango_pvp::replay::Replay>,
         snapshots: SnapshotStore,
+        rewind: RewindBuffer,
         completion_token: tango_pvp::hooks::CompletionToken,
+        publish_landing: impl Fn(&tango_pvp::stepper::ReplaySnapshot) + Send + Sync + 'static,
     ) -> Self {
         let join_handle = std::thread::spawn({
             let ctrl = ctrl.clone();
@@ -456,7 +527,9 @@ impl SeekWorker {
                     shadow,
                     replay,
                     snapshots,
+                    rewind,
                     completion_token,
+                    publish_landing,
                 );
             }
         });

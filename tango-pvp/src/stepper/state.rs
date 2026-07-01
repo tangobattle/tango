@@ -815,13 +815,15 @@ pub struct ReplayCheckpoint {
     pub has_committed_this_round: bool,
     pub rng_state: rand_pcg::Mcg128Xsl64,
     pub local_packet: Option<LocalPacket>,
-    /// Inputs consumed within the current round (resets each round);
-    /// reseeds the restored round's consume cursor.
-    pub inputs_consumed_in_current_round: u32,
     /// Cumulative inputs consumed across all rounds at capture — the
     /// recorded-frame index this snapshot sits at. The seek/snapshot
     /// machinery keys on this so snapshots, the chase target, and the
-    /// seek bar all share one scale (see [`InnerState::inputs_consumed`]).
+    /// seek bar all share one scale (see [`InnerState::inputs_consumed`]),
+    /// and the restored round's consume cursor is derived from it (minus
+    /// the completed rounds' lengths). There is deliberately no separate
+    /// in-round cursor field: `output_pairs.len()` restarts at zero on
+    /// every restore, so a checkpoint captured mid-seek-chase would
+    /// record a poisoned cursor and strand the playhead when loaded.
     pub frame_index: u32,
 }
 
@@ -921,7 +923,6 @@ impl State {
             has_committed_this_round: replay.phase.has_committed(),
             rng_state: replay.rng.clone(),
             local_packet: inner.local_packet.clone(),
-            inputs_consumed_in_current_round: inner.output_pairs.len() as u32,
             frame_index: inner.inputs_consumed(),
         })
     }
@@ -960,6 +961,11 @@ impl State {
 
         let rounds_from_current: VecDeque<Vec<PartialInputPair>> = rounds[round_idx..].iter().cloned().collect();
 
+        // The in-round consume cursor is the recorded-frame index minus the
+        // completed rounds' lengths — completed rounds always drain fully
+        // before a transition, so the identity holds by construction.
+        let consumed_before_round: u32 = rounds[..round_idx].iter().map(|r| r.len() as u32).sum();
+
         let new_inner = InnerState::for_replay(ReplayInit {
             match_type,
             local_player_index,
@@ -968,7 +974,7 @@ impl State {
             shadow,
             is_offerer,
             rounds: rounds_from_current,
-            inputs_consumed_in_current_round: checkpoint.inputs_consumed_in_current_round,
+            inputs_consumed_in_current_round: checkpoint.frame_index.saturating_sub(consumed_before_round),
             current_round_index: checkpoint.current_round_index,
             absolute_tick: checkpoint.absolute_tick,
             total_replay_ticks,
