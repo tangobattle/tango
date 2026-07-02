@@ -352,27 +352,11 @@ pub enum Message {
     NoOp,
 }
 
-/// Atomic input event we feed to the mapping resolver. Carries
-/// the raw key/button/axis info so the session layer can drive
-/// both joyflags and the speed-up edge detector.
-#[derive(Debug, Clone)]
-pub enum InputEvent {
-    Key {
-        physical: iced::keyboard::key::Physical,
-        pressed: bool,
-    },
-    Button {
-        button: crate::input::GamepadButton,
-        pressed: bool,
-    },
-    Axis {
-        axis: crate::input::GamepadAxis,
-        value: f32,
-    },
-    /// Controller dropped — clear all gamepad state so
-    /// disconnected buttons don't read as still-held.
-    GamepadDisconnected,
-}
+/// Atomic input event we feed to the mapping resolver. Lives in
+/// [`crate::input`] (as [`Event`](crate::input::Event)) because the
+/// settings input pane's live binding highlight consumes the same
+/// normalized stream.
+pub use crate::input::Event as InputEvent;
 
 /// Per-keypress playhead delta for the replay seek keybinds, in recorded
 /// frames. Arrow keys jump ±5 seconds (300 frames at 60fps); comma/period
@@ -516,12 +500,7 @@ impl State {
                         }
                     }
                 }
-                match ev {
-                    InputEvent::Key { physical, pressed } => self.input_held.set_key(physical, pressed),
-                    InputEvent::Button { button, pressed } => self.input_held.set_button(button, pressed),
-                    InputEvent::Axis { axis, value } => self.input_held.set_axis(axis, value),
-                    InputEvent::GamepadDisconnected => self.input_held.clear_gamepad(),
-                }
+                self.input_held.apply(&ev);
                 let joyflags = mapping.to_mgba_keys(&self.input_held);
                 match self.active.as_ref() {
                     Some(ActiveSession::SinglePlayer(s)) => s.set_joyflags(joyflags),

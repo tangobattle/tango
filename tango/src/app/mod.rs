@@ -847,6 +847,11 @@ impl App {
             Message::Quit => iced::exit(),
             Message::TabSelected(t) => {
                 self.tab = t;
+                // A tab switch unmounts the input settings pane's capture
+                // wrapper, so key/button releases stop arriving — drop the
+                // held set rather than show stale-lit binding chips on the
+                // way back.
+                self.settings.held = Default::default();
                 iced::Task::none()
             }
             // Loadout strip interactions route to the shared
@@ -1114,7 +1119,15 @@ impl App {
                 }
                 _ => false,
             };
-        if anim::any_active() || waiting_pulse_on_screen {
+        // The input settings pane needs redraws too: its live binding
+        // highlight polls the gamepad from the SDL pump, which only runs
+        // on RedrawRequested — with no session (whose vblank notify
+        // drives redraws) and no animation, a pad press would otherwise
+        // sit unseen until some other event happened to redraw.
+        let input_pane_on_screen = !self.session.is_active()
+            && self.tab == Tab::Settings
+            && self.settings.active_tab == tabs::settings::SettingsTab::Input;
+        if anim::any_active() || waiting_pulse_on_screen || input_pane_on_screen {
             subs.push(iced::window::frames().map(|_| Message::AnimTick));
         }
         iced::Subscription::batch(subs)
@@ -1239,8 +1252,18 @@ impl App {
             // flight too, so the panel eases in and out.
             let composed: Element<'_, Message> = if self.session.settings.visible(now) {
                 let progress = self.session.settings.progress(now);
-                let body = tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking())
-                    .map(Message::Settings);
+                // The session's own InputCapture wrapper + vblank pump
+                // already track every key/button in `input_held`, so the
+                // input pane's live binding highlight reads from that
+                // instead of pumping its own.
+                let body = tabs::settings::view(
+                    lang,
+                    &self.config,
+                    &self.settings,
+                    self.updater.status_blocking(),
+                    Some(&self.session.input_held),
+                )
+                .map(Message::Settings);
                 // Top header row carrying the X close button. The
                 // close is the only affordance for dismissing the
                 // modal — the backdrop is inert. Inline (not a
@@ -1323,40 +1346,18 @@ impl App {
                         iced::keyboard::key::Physical::Code(iced::keyboard::key::Code::Escape)
                     )
                 };
-                let ev = match input {
-                    crate::input_capture::Input::Keyboard(kb) => match kb {
+                if let crate::input_capture::Input::Keyboard(kb) = &input {
+                    match kb {
                         iced::keyboard::Event::KeyPressed { physical_key, .. } if is_escape(physical_key) => {
                             return Some(Message::Session(session::Message::EscPressed));
                         }
                         iced::keyboard::Event::KeyReleased { physical_key, .. } if is_escape(physical_key) => {
                             return None;
                         }
-                        iced::keyboard::Event::KeyPressed { physical_key, .. } => Some(session::InputEvent::Key {
-                            physical: *physical_key,
-                            pressed: true,
-                        }),
-                        iced::keyboard::Event::KeyReleased { physical_key, .. } => Some(session::InputEvent::Key {
-                            physical: *physical_key,
-                            pressed: false,
-                        }),
-                        _ => None,
-                    },
-                    crate::input_capture::Input::Gamepad(ev) => match *ev {
-                        crate::gamepad::GamepadEvent::ButtonDown(b) => Some(session::InputEvent::Button {
-                            button: crate::input::GamepadButton::from_sdl3(b),
-                            pressed: true,
-                        }),
-                        crate::gamepad::GamepadEvent::ButtonUp(b) => Some(session::InputEvent::Button {
-                            button: crate::input::GamepadButton::from_sdl3(b),
-                            pressed: false,
-                        }),
-                        crate::gamepad::GamepadEvent::AxisMotion { axis, value } => {
-                            Some(session::InputEvent::Axis { axis, value })
-                        }
-                        crate::gamepad::GamepadEvent::DeviceRemoved => Some(session::InputEvent::GamepadDisconnected),
-                    },
-                };
-                ev.map(|ev| Message::Session(session::Message::Input(ev)))
+                        _ => {}
+                    }
+                }
+                input.to_event().map(|ev| Message::Session(session::Message::Input(ev)))
             })
             .into();
         }
@@ -1391,8 +1392,10 @@ impl App {
                 .patches
                 .view(lang, &self.scanners, &self.config, rescanning)
                 .map(Message::Patches),
-            Tab::Settings => tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking())
-                .map(Message::Settings),
+            Tab::Settings => {
+                tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking(), None)
+                    .map(Message::Settings)
+            }
         };
 
         // Body content rides on the drawn cyberworld backdrop (the

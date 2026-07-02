@@ -490,6 +490,30 @@ pub enum MappedKey {
     SpeedUp,
 }
 
+/// Atomic input event fed to the held-state tracker. Carries the raw
+/// key/button/axis info so both consumers — the session's joyflag
+/// pipeline and the input settings pane's live binding highlight —
+/// share one normalized stream (see
+/// [`crate::input_capture::Input::to_event`]).
+#[derive(Debug, Clone)]
+pub enum Event {
+    Key {
+        physical: Physical,
+        pressed: bool,
+    },
+    Button {
+        button: GamepadButton,
+        pressed: bool,
+    },
+    Axis {
+        axis: GamepadAxis,
+        value: f32,
+    },
+    /// Controller dropped — clear all gamepad state so
+    /// disconnected buttons don't read as still-held.
+    GamepadDisconnected,
+}
+
 /// Live held-input state combined from keyboard + every connected
 /// gamepad. The session loop updates this on every key/gamepad
 /// event then asks the Mapping to compute the resulting joyflags.
@@ -503,6 +527,16 @@ pub struct HeldState {
 }
 
 impl HeldState {
+    /// Fold one event into the held sets.
+    pub fn apply(&mut self, ev: &Event) {
+        match *ev {
+            Event::Key { physical, pressed } => self.set_key(physical, pressed),
+            Event::Button { button, pressed } => self.set_button(button, pressed),
+            Event::Axis { axis, value } => self.set_axis(axis, value),
+            Event::GamepadDisconnected => self.clear_gamepad(),
+        }
+    }
+
     pub fn set_key(&mut self, physical: Physical, pressed: bool) {
         if pressed {
             self.keys.insert(physical);

@@ -74,6 +74,15 @@ pub struct State {
     /// `Default` of 0.0 is never seen: a direction is always set
     /// before the first entrance starts.
     pub pane_enter_dy: f32,
+    /// Live held keys/buttons while the Input pane is on screen out
+    /// of a session, fed by the pane's own `InputCapture` wrapper via
+    /// [`Message::LiveInput`] — pressing a bound key/button lights up
+    /// its chip. Inside the in-session settings modal the highlight
+    /// reads the session's `input_held` instead (see [`view`]'s
+    /// `session_held`), so this stays untouched there. Reset whenever
+    /// the pane leaves the screen (its wrapper unmounts mid-hold and
+    /// the releases would never arrive).
+    pub held: input::HeldState,
 }
 
 #[derive(Debug, Clone)]
@@ -130,6 +139,10 @@ pub enum Message {
     BindingRemove(input::MappedKey, usize),
     /// User clicked Reset to defaults.
     BindingsReset,
+    /// Raw key/button/axis event seen by the Input pane's capture
+    /// wrapper while NOT rebinding — folded into [`State::held`] for
+    /// the live binding-chip highlight.
+    LiveInput(input::Event),
     /// User clicked an external link in the About panel. Side
     /// effect only — opens the URL via `open::that` and returns
     /// `None` from update. `String` (not `&'static str`) so the
@@ -191,6 +204,10 @@ impl State {
                     };
                     self.active_tab = t;
                     self.pane_enter.start(iced::time::Instant::now());
+                    // Leaving the Input pane unmounts its capture
+                    // wrapper mid-hold; drop the held set so nothing
+                    // shows stale-lit on the way back.
+                    self.held = Default::default();
                 }
                 None
             }
@@ -237,6 +254,10 @@ impl State {
             }
             Message::BindingRemove(k, idx) => Some(ConfigChange::RemoveInputBinding(k, idx)),
             Message::BindingsReset => Some(ConfigChange::ResetInputBindings),
+            Message::LiveInput(ev) => {
+                self.held.apply(&ev);
+                None
+            }
             Message::OpenUrl(url) => {
                 if let Err(e) = open::that(&url) {
                     log::warn!("open url {url}: {e}");
@@ -247,11 +268,18 @@ impl State {
     }
 }
 
+/// `session_held`: inside the in-session settings modal, the session's
+/// live held-state — its own `InputCapture` wrapper + vblank-paced pump
+/// already see every key/button, so the Input pane's binding highlight
+/// reads from it and this view adds no wrapper of its own (a second
+/// pump would steal the session's gamepad events). `None` outside a
+/// session; the pane then wraps itself and feeds [`State::held`].
 pub fn view<'a>(
     lang: &'a LanguageIdentifier,
     config: &'a config::Config,
     state: &'a State,
     updater_status: crate::updater::Status,
+    session_held: Option<&'a input::HeldState>,
 ) -> Element<'a, Message> {
     let active = state.active_tab;
     // Vertical tab strip on the left; selected pane on the right.
@@ -293,7 +321,7 @@ pub fn view<'a>(
         SettingsTab::General => settings_general(lang, config),
         SettingsTab::Graphics => settings_graphics(lang, config),
         SettingsTab::Audio => settings_audio(lang, config),
-        SettingsTab::Input => settings_input(lang, config, state),
+        SettingsTab::Input => settings_input(lang, config, state, session_held.unwrap_or(&state.held)),
         SettingsTab::Netplay => settings_netplay(lang, config),
         SettingsTab::About => settings_about(lang, config, &state.about, updater_status),
         // The status arg is consumed by About's call here; iced
@@ -326,36 +354,47 @@ pub fn view<'a>(
         .width(Fill)
         .height(Fill);
 
-    // Binding capture: while the user is rebinding a key, wrap the
-    // settings UI in `InputCapture` so both keyboard and gamepad
-    // events flow through one synchronous path. Without the wrapper
-    // we'd be idle and SDL3's pump (main-thread only) wouldn't get
-    // drained. The callback publishes a `BindingCaptured` for the
-    // first key press, button press, or axis-past-threshold event.
-    if state.capture_target.is_some() {
-        crate::input_capture::InputCapture::new(root, |input| {
-            let captured = match input {
-                crate::input_capture::Input::Keyboard(iced::keyboard::Event::KeyPressed { physical_key, .. }) => {
-                    Some(input::PhysicalInput::Key(input::KeyPhysical(*physical_key)))
+    // Input pane: wrap the settings UI in `InputCapture` so both
+    // keyboard and gamepad events flow through one synchronous path.
+    // Without the wrapper we'd be idle and SDL3's pump (main-thread
+    // only) wouldn't get drained. While the user is rebinding a key
+    // the callback publishes a `BindingCaptured` for the first key
+    // press, button press, or axis-past-threshold event; everything
+    // else (releases included) folds into `State::held` as `LiveInput`
+    // so the binding chips light up while their key is down. In a
+    // session the outer session wrapper already tracks held state, so
+    // no wrapper here (see `session_held` on [`view`]).
+    let capturing = state.capture_target.is_some();
+    if capturing || (state.active_tab == SettingsTab::Input && session_held.is_none()) {
+        crate::input_capture::InputCapture::new(root, move |input| {
+            if capturing {
+                let captured = match input {
+                    crate::input_capture::Input::Keyboard(iced::keyboard::Event::KeyPressed {
+                        physical_key, ..
+                    }) => Some(input::PhysicalInput::Key(input::KeyPhysical(*physical_key))),
+                    crate::input_capture::Input::Keyboard(_) => None,
+                    crate::input_capture::Input::Gamepad(ev) => match *ev {
+                        crate::gamepad::GamepadEvent::ButtonDown(b) => {
+                            Some(input::PhysicalInput::Button(input::GamepadButton::from_sdl3(b)))
+                        }
+                        crate::gamepad::GamepadEvent::AxisMotion { axis, value } => {
+                            (value.abs() > input::AXIS_THRESHOLD).then_some(input::PhysicalInput::Axis {
+                                axis,
+                                dir: if value > 0.0 {
+                                    input::AxisDir::Positive
+                                } else {
+                                    input::AxisDir::Negative
+                                },
+                            })
+                        }
+                        _ => None,
+                    },
+                };
+                if let Some(captured) = captured {
+                    return Some(Message::BindingCaptured(captured));
                 }
-                crate::input_capture::Input::Keyboard(_) => None,
-                crate::input_capture::Input::Gamepad(ev) => match *ev {
-                    crate::gamepad::GamepadEvent::ButtonDown(b) => {
-                        Some(input::PhysicalInput::Button(input::GamepadButton::from_sdl3(b)))
-                    }
-                    crate::gamepad::GamepadEvent::AxisMotion { axis, value } => (value.abs() > input::AXIS_THRESHOLD)
-                        .then_some(input::PhysicalInput::Axis {
-                            axis,
-                            dir: if value > 0.0 {
-                                input::AxisDir::Positive
-                            } else {
-                                input::AxisDir::Negative
-                            },
-                        }),
-                    _ => None,
-                },
-            };
-            captured.map(Message::BindingCaptured)
+            }
+            input.to_event().map(Message::LiveInput)
         })
         .into()
     } else {
@@ -654,6 +693,7 @@ fn settings_input<'a>(
     lang: &'a LanguageIdentifier,
     config: &'a config::Config,
     state: &'a State,
+    held: &input::HeldState,
 ) -> Element<'a, Message> {
     let mut col = column![].spacing(2);
     let slots = config.input_mapping.slots();
@@ -705,7 +745,7 @@ fn settings_input<'a>(
         };
         let mut chips = row![].spacing(6).align_y(iced::Alignment::Center);
         for (i, b) in bindings.iter().enumerate() {
-            chips = chips.push(binding_chip(lang, b, k, i));
+            chips = chips.push(binding_chip(lang, b, k, i, held.is_active(b)));
         }
         // Wrap chips onto new lines when a key has more bindings
         // than fit on one row. The Fill container bounds the wrap
@@ -760,6 +800,7 @@ fn binding_chip<'a>(
     binding: &input::PhysicalInput,
     key: input::MappedKey,
     idx: usize,
+    lit: bool,
 ) -> Element<'a, Message> {
     let (kind, label) = input::describe(lang, binding);
     let kind_glyph = match kind {
@@ -782,15 +823,19 @@ fn binding_chip<'a>(
         .align_y(iced::Alignment::Center),
     )
     .padding([3, 8])
-    .style(|theme: &iced::Theme| {
+    .style(move |theme: &iced::Theme| {
         let primary = theme.palette().primary;
+        // `lit` = the bound key/button is physically held right now —
+        // the chip brightens so the user can test their bindings from
+        // this screen. Colors only; the geometry never moves.
+        let (bg_a, border_a) = if lit { (0.45, 1.0) } else { (0.12, 0.45) };
         iced::widget::container::Style {
-            background: Some(iced::Background::Color(iced::Color { a: 0.12, ..primary })),
+            background: Some(iced::Background::Color(iced::Color { a: bg_a, ..primary })),
             text_color: Some(theme.palette().text),
             border: iced::Border {
                 radius: 999.0.into(),
                 width: 1.0,
-                color: iced::Color { a: 0.45, ..primary },
+                color: iced::Color { a: border_a, ..primary },
             },
             ..Default::default()
         }

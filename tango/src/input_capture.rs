@@ -44,6 +44,39 @@ pub enum Input<'a> {
     Gamepad(&'a GamepadEvent),
 }
 
+impl Input<'_> {
+    /// Normalize to the shared [`crate::input::Event`] stream the
+    /// held-state trackers consume. `None` for keyboard events that
+    /// aren't a key press/release (modifiers-changed, IME, …).
+    pub fn to_event(&self) -> Option<crate::input::Event> {
+        Some(match self {
+            Input::Keyboard(kb) => match kb {
+                iced::keyboard::Event::KeyPressed { physical_key, .. } => crate::input::Event::Key {
+                    physical: *physical_key,
+                    pressed: true,
+                },
+                iced::keyboard::Event::KeyReleased { physical_key, .. } => crate::input::Event::Key {
+                    physical: *physical_key,
+                    pressed: false,
+                },
+                _ => return None,
+            },
+            Input::Gamepad(ev) => match **ev {
+                GamepadEvent::ButtonDown(b) => crate::input::Event::Button {
+                    button: crate::input::GamepadButton::from_sdl3(b),
+                    pressed: true,
+                },
+                GamepadEvent::ButtonUp(b) => crate::input::Event::Button {
+                    button: crate::input::GamepadButton::from_sdl3(b),
+                    pressed: false,
+                },
+                GamepadEvent::AxisMotion { axis, value } => crate::input::Event::Axis { axis, value },
+                GamepadEvent::DeviceRemoved => crate::input::Event::GamepadDisconnected,
+            },
+        })
+    }
+}
+
 pub struct InputCapture<'a, Message, Theme = iced::Theme, Renderer = iced::Renderer> {
     content: Element<'a, Message, Theme, Renderer>,
     on_input: Box<dyn Fn(Input<'_>) -> Option<Message> + 'a>,
