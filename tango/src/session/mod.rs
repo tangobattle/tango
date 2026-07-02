@@ -7,6 +7,7 @@
 //! [`spawn_singleplayer`] and stuff it into `state.active`); this
 //! module handles everything that happens after.
 
+pub mod pacer;
 pub mod pvp;
 pub mod replay;
 pub mod singleplayer;
@@ -32,18 +33,20 @@ use lucide_icons::Icon;
 use tango_pvp::battle::{suggest_frame_delay, MAX_FRAME_DELAY, MIN_FRAME_DELAY};
 use unic_langid::LanguageIdentifier;
 
-/// Create the mgba core every session boots from: a GBA core with audio-sync
-/// on, its video buffer enabled, and `rom` loaded. Callers then load the save
-/// (which differs per session — RW file vs in-memory SRAM dump) and install
-/// their own traps.
+/// Create the mgba core every session boots from: a GBA core with its video
+/// buffer enabled and `rom` loaded. Callers then load the save (which differs
+/// per session — RW file vs in-memory SRAM dump) and install their own traps.
+///
+/// Sync-to-audio stays OFF: the emulator thread paces itself by wall clock
+/// ([`pacer::Pacer`], called from each session's frame callback) and the host
+/// audio callback drains the core's sample ring best-effort (see
+/// [`crate::audio`]). Never turn audio sync back on here — it makes emulation
+/// progress (and, in PvP, input transmission) hostage to the audio device
+/// servicing its stream, so a stalled device (a Voicemeeter virtual output, a
+/// sleeping Bluetooth headset) freezes the session and the opponent sees a
+/// phantom disconnect.
 pub(crate) fn new_gba_core(rom: &[u8]) -> anyhow::Result<mgba::core::Core> {
-    let mut core = mgba::core::Core::new_gba(
-        "tango",
-        &mgba::core::Options {
-            audio_sync: true,
-            ..Default::default()
-        },
-    )?;
+    let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options::default())?;
     core.enable_video_buffer();
     core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
     Ok(core)

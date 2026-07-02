@@ -631,6 +631,7 @@ impl PvpSession {
             let handle_completion = handle_completion.clone();
             let vbuf = vbuf.clone();
             let frame_notify = frame_notify.clone();
+            let pacer = crate::session::pacer::Pacer::new();
             move |mut core, video_buffer, mut thread_handle| {
                 core.set_keys(joyflags.load(Ordering::Relaxed));
                 tps_counter.lock().unwrap().mark();
@@ -642,7 +643,12 @@ impl PvpSession {
                 frame_notify.notify_one();
                 if handle_completion() {
                     thread_handle.pause();
+                    return;
                 }
+                // With sync-to-audio off, this sleep is what holds the
+                // live core at the throttler-adjusted fps_target (see
+                // session::pacer).
+                pacer.pace_by_sync_target(&mut core);
             }
         });
 

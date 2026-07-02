@@ -225,6 +225,7 @@ impl ReplaySession {
             let shadow = shadow.clone();
             let frame_notify = frame_notify.clone();
             let seek = seek.clone();
+            let pacer = crate::session::pacer::Pacer::new();
             move |mut core, video_buffer, mut thread_handle| {
                 let (inputs_consumed, total_left, is_round_ended) = {
                     let mut inner = stepper_state.lock_inner();
@@ -241,7 +242,8 @@ impl ReplaySession {
                 // During a seek chase only the landing frame reaches the
                 // display; publishing every intermediate catch-up frame
                 // would strobe a fast-forward of everything in between.
-                if seek.should_publish_frame(inputs_consumed) {
+                let publish = seek.should_publish_frame(inputs_consumed);
+                if publish {
                     // Copy mgba's native BGR555 straight through; the framebuffer
                     // shader expands it to RGB on the GPU at draw time.
                     vbuf.lock().unwrap().copy_from_slice(video_buffer);
@@ -273,6 +275,13 @@ impl ReplaySession {
 
                 if completion_token.is_complete() {
                     thread_handle.pause();
+                } else if publish {
+                    // With sync-to-audio off, this sleep is what holds
+                    // playback at fps_target (see session::pacer). Pace
+                    // only published (realtime) frames: chase catch-up
+                    // and rewind backfill run under the closed publish
+                    // gate and should go flat-out.
+                    pacer.pace_by_sync_target(&mut core);
                 }
             }
         });
@@ -338,8 +347,8 @@ impl ReplaySession {
     }
 
     /// Drive the mgba thread at `factor * 60` fps. 1.0 = realtime,
-    /// 0.5 = slow-mo, 2.0 / 4.0 = fast-forward. Audio paces frames, so
-    /// values above ~4 start dropping samples.
+    /// 0.5 = slow-mo, 2.0 / 4.0 = fast-forward. The wall-clock pacer
+    /// follows this target (see `session::pacer`).
     pub fn set_speed(&self, factor: f32) {
         let fps = (EXPECTED_FPS * factor).max(1.0);
         self.thread.handle().lock_audio().sync_mut().set_fps_target(fps);
