@@ -342,6 +342,7 @@ settings-use-relay = Use relay server
 settings-use-relay-auto = Auto
 settings-use-relay-always = Always
 settings-use-relay-never = Never
+settings-show-opponent-setup = Show opponent's setup at match start
 settings-window-size = Window size
 settings-fullscreen = Fullscreen
 settings-ui-scale = UI scale

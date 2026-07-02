@@ -100,6 +100,10 @@ pub enum Message {
     /// Sampled at the next Connect; doesn't affect an in-flight
     /// connection.
     RelayModeChanged(config::RelayMode),
+    /// "Show opponent's setup at match start" checkbox toggled.
+    /// Persisted to `config.show_opponent_setup`; sampled when the
+    /// next PvP session is installed.
+    ToggleShowOpponentSetup(bool),
     PatchRepoChanged(String),
     /// "Change…" clicked next to the data folder. The App intercepts this
     /// (before `State::update`) to open an async folder picker, which comes
@@ -163,6 +167,7 @@ pub enum ConfigChange {
     MatchmakingEndpoint(String),
     FrameDelay(u32),
     RelayMode(config::RelayMode),
+    ShowOpponentSetup(bool),
     PatchRepo(String),
     /// New root data folder picked. The App points `config.data_path` at it,
     /// creates the standard subfolders, re-scans, and re-points the patch
@@ -217,6 +222,7 @@ impl State {
             Message::MatchmakingEndpointChanged(s) => Some(ConfigChange::MatchmakingEndpoint(s)),
             Message::FrameDelayChanged(v) => Some(ConfigChange::FrameDelay(v)),
             Message::RelayModeChanged(m) => Some(ConfigChange::RelayMode(m)),
+            Message::ToggleShowOpponentSetup(b) => Some(ConfigChange::ShowOpponentSetup(b)),
             Message::PatchRepoChanged(s) => Some(ConfigChange::PatchRepo(s)),
             // Intercepted by the App before it reaches here (it opens the
             // folder picker); the arm exists only for exhaustiveness.
@@ -683,6 +689,10 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             .padding(STANDARD_PADDING)
             .style(widgets::chunky_pick_list)
         }),
+        iced::widget::checkbox(config.show_opponent_setup)
+            .label(t!(lang, "settings-show-opponent-setup"))
+            .on_toggle(Message::ToggleShowOpponentSetup)
+            .style(widgets::chunky_checkbox),
     ]
     .spacing(14)
     .padding(style::PANE_PADDING)

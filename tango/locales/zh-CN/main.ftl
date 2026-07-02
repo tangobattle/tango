@@ -324,6 +324,7 @@ settings-use-relay = 使用中继服务器
 settings-use-relay-auto = 自动
 settings-use-relay-always = 总是
 settings-use-relay-never = 从不
+settings-show-opponent-setup = 对战开始时显示对手的配置
 settings-window-size = 窗口大小
 settings-fullscreen = 全屏
 settings-ui-scale = UI 缩放

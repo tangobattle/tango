@@ -1031,11 +1031,19 @@ impl App {
                 };
                 match result {
                     Ok(session) => {
-                        self.session.active = Some(ActiveSession::PvP(Box::new(session)));
                         // Both setup drawers start closed — the edge
                         // handles are the invitation; a pane that
                         // barges in over the match start isn't.
-                        self.session.opponent_panel.close();
+                        // Except when the user opted in: slide the
+                        // opponent's drawer open at match start if
+                        // their setup is actually visible.
+                        let auto_open = self.config.show_opponent_setup && session.opponent_loaded.is_some();
+                        self.session.active = Some(ActiveSession::PvP(Box::new(session)));
+                        if auto_open {
+                            self.session.opponent_panel.open();
+                        } else {
+                            self.session.opponent_panel.close();
+                        }
                         self.session.self_panel.close();
                         self.session.wake_controls();
                     }

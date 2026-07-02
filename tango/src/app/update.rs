@@ -791,6 +791,9 @@ impl App {
             }
             // Sampled by spawn_pvp at match start; nothing live to poke.
             C::DisableBgmInPvp(b) => self.config.disable_bgm_in_pvp = b,
+            // Sampled when the next PvP session is installed
+            // (Message::PvpSessionBuilt); nothing live to poke.
+            C::ShowOpponentSetup(b) => self.config.show_opponent_setup = b,
             C::Theme(t) => self.config.theme = t,
             C::AddInputBinding(slot, binding) => {
                 let bindings = self.config.input_mapping.slot_mut(slot);

@@ -146,6 +146,7 @@ settings-use-relay = Relay-Server verwenden
 settings-use-relay-auto = Automatisch
 settings-use-relay-always = Immer
 settings-use-relay-never = Nie
+settings-show-opponent-setup = Setup des Gegners bei Spielbeginn anzeigen
 lobby-frame-delay-suggest = Anhand des Pings vorschlagen
 lobby-no-match-types = (keine Match-Typen für dieses Spiel)
 lobby-pick-game-first = Wähle zuerst ein Spiel

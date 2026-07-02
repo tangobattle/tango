@@ -143,6 +143,7 @@ settings-use-relay = Dùng máy chủ chuyển tiếp
 settings-use-relay-auto = Tự động
 settings-use-relay-always = Luôn luôn
 settings-use-relay-never = Không bao giờ
+settings-show-opponent-setup = Hiện thiết lập của đối thủ khi trận đấu bắt đầu
 lobby-frame-delay-suggest = Đề xuất theo ping
 lobby-no-match-types = (không có kiểu trận cho game này)
 lobby-pick-game-first = Chọn game trước đã

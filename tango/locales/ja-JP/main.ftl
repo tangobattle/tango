@@ -88,6 +88,7 @@ settings-use-relay = リレーサーバーを使用
 settings-use-relay-auto = 自動
 settings-use-relay-always = 常に使用
 settings-use-relay-never = 使用しない
+settings-show-opponent-setup = 対戦開始時に相手の構築を表示
 lobby-frame-delay-suggest = Pingから推奨
 lobby-no-match-types = （このゲームには対戦モードがありません）
 lobby-pick-game-first = まずゲームを選んでください

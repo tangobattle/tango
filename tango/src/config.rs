@@ -233,6 +233,13 @@ pub struct Config {
     /// each lobby remains independently toggleable thereafter.
     #[serde(default)]
     pub last_blind_setup: bool,
+    /// Slide the opponent's setup drawer open automatically at PvP
+    /// match start (when they haven't blinded their setup). Off, the
+    /// drawer starts closed and the edge handle is the invitation.
+    /// Sampled once when the session is installed; the drawer stays
+    /// freely toggleable afterwards.
+    #[serde(default)]
+    pub show_opponent_setup: bool,
 }
 
 impl Default for Config {
@@ -272,6 +279,7 @@ impl Default for Config {
             frame_delay: default_frame_delay(),
             relay_mode: RelayMode::default(),
             last_blind_setup: false,
+            show_opponent_setup: false,
         }
     }
 }
