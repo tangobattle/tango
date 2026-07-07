@@ -9,11 +9,36 @@
 //! thread inside `App._audio_backend` — `AudioStreamWithCallback`
 //! is `!Send` because it holds an `AudioSubsystem` clone, and
 //! sdl3 enforces that those only touch the main thread.
+//!
+//! The output device can die under us (a USB DAC unplugged,
+//! Voicemeeter's virtual endpoint dropping on an engine restart) —
+//! and because emulation is paced by this stream's callbacks, a dead
+//! stream freezes any running core, not just the sound. SDL migrates
+//! a default-device stream across a default *change*, but it can't
+//! resurrect a stream whose endpoint went away, so the app diffs
+//! [`playback_device_ids`] once a second and rebuilds the [`Backend`]
+//! when the topology moves (see `App::reopen_audio_backend`).
 
 use sdl3::audio::{AudioCallback, AudioFormat, AudioSpec, AudioStream, AudioStreamWithCallback};
 
 use crate::audio;
 use crate::sdl_init;
+
+/// Current playback-device topology, sorted for order-insensitive
+/// comparison; the app's 1 Hz housekeeping tick diffs successive
+/// snapshots to decide when to reopen the [`Backend`]. Polling the
+/// list rather than watching `AudioDeviceAdded`/`Removed` events is
+/// deliberate: SDL parks those events in an internal pending list
+/// that only flushes when the event pump runs, and our pump is
+/// redraw-driven — during the exact failure this detects (a dead
+/// output device freezing the audio-paced emulator) redraws may have
+/// stopped entirely. The device *list* has no such gate; SDL's
+/// notification thread keeps it current.
+pub fn playback_device_ids(audio: &sdl3::AudioSubsystem) -> Vec<sdl3::audio::AudioDeviceID> {
+    let mut ids = audio.audio_playback_device_ids().unwrap_or_default();
+    ids.sort_by_key(|id| id.id().0);
+    ids
+}
 
 const TARGET_SAMPLE_RATE: i32 = 48000;
 const TARGET_CHANNELS: i32 = audio::NUM_CHANNELS as i32;
