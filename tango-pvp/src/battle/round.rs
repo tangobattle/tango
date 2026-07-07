@@ -279,11 +279,19 @@ impl Round {
 
 impl Drop for Round {
     fn drop(&mut self) {
-        // HACK: This is the only safe way to set the FPS without clogging
-        // everything else up.
-        self.primary_thread_handle
-            .lock_audio()
-            .sync_mut()
-            .set_fps_target(EXPECTED_FPS);
+        // Reset the throttler's shaved fps target so inter-round screens run
+        // at full speed again. Handed to a detached thread: `Round` drops on
+        // the emulator thread (`end_round`'s trap), and `Handle::lock_audio`
+        // takes the same handle mutex that `Handle::pause` holds for its
+        // entire wait on the emulator thread reaching a pause point — taking
+        // it here inverts that lock order and deadlocks both threads if a
+        // pause (e.g. the reconnect coordinator's) lands at round end. On a
+        // thread nothing joins, the cycle can't close; the reset landing a
+        // beat late at worst overwrites one frame of the next round's
+        // target, which its own per-frame set immediately corrects.
+        let handle = self.primary_thread_handle.clone();
+        std::thread::spawn(move || {
+            handle.lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
+        });
     }
 }
