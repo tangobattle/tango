@@ -49,7 +49,6 @@ impl SinglePlayerSession {
             let vbuf = vbuf.clone();
             let joyflags = joyflags.clone();
             let frame_notify = frame_notify.clone();
-            let pacer = crate::session::pacer::Pacer::new();
             move |mut core, video_buffer, _thread_handle| {
                 // Copy mgba's native BGR555 straight through; the framebuffer
                 // shader expands it to RGB on the GPU at draw time.
@@ -59,9 +58,6 @@ impl SinglePlayerSession {
                 // the texture handle for this frame. Notify
                 // coalesces — a slow UI doesn't queue up wakes.
                 frame_notify.notify_one();
-                // With sync-to-audio off, this sleep is what holds the
-                // core at fps_target (see session::pacer).
-                pacer.pace_by_sync_target(&mut core);
             }
         });
 
@@ -95,9 +91,9 @@ impl SinglePlayerSession {
     }
 
     /// Drive the emulator at `factor * EXPECTED_FPS` fps. 1.0 = realtime,
-    /// anything higher = fast-forward. The wall-clock pacer follows this
-    /// target (see `session::pacer`); clamped to 4x, past which the
-    /// sped-up audio degrades into noise.
+    /// anything higher = fast-forward. Audio paces frames, so values
+    /// above ~4x start dropping samples; clamp accordingly to keep audio
+    /// coherent.
     pub fn set_speed(&self, factor: f32) {
         let fps = (EXPECTED_FPS * factor).clamp(1.0, EXPECTED_FPS * 4.0);
         self._thread.handle().lock_audio().sync_mut().set_fps_target(fps);
