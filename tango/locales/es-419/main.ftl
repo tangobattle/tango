@@ -278,6 +278,7 @@ settings-section-input = Entrada
 settings-input-press-key = Presiona una tecla o botón…
 settings-input-add = Agregar asignación
 settings-input-reset = Restablecer predeterminados
+settings-input-select-hint = Haz clic en un botón para editar sus asignaciones
 input-key-up = Arriba
 input-key-down = Abajo
 input-key-left = Izquierda

@@ -278,6 +278,7 @@ settings-section-input = Eingabe
 settings-input-press-key = Drücke eine Taste oder einen Knopf…
 settings-input-add = Belegung hinzufügen
 settings-input-reset = Auf Standard zurücksetzen
+settings-input-select-hint = Klicke auf eine Taste, um ihre Belegung zu bearbeiten
 input-key-up = Hoch
 input-key-down = Runter
 input-key-left = Links

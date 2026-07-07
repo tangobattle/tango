@@ -266,6 +266,7 @@ settings-section-input = Đầu vào
 settings-input-press-key = Nhấn phím hoặc nút…
 settings-input-add = Thêm phím
 settings-input-reset = Khôi phục mặc định
+settings-input-select-hint = Nhấp vào một nút để chỉnh sửa phím gán
 input-key-up = Lên
 input-key-down = Xuống
 input-key-left = Trái

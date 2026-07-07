@@ -278,6 +278,7 @@ settings-section-input = Entrada
 settings-input-press-key = Pressione uma tecla ou botão…
 settings-input-add = Adicionar atalho
 settings-input-reset = Restaurar padrões
+settings-input-select-hint = Clique em um botão para editar seus atalhos
 input-key-up = Cima
 input-key-down = Baixo
 input-key-left = Esquerda

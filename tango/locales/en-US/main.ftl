@@ -284,6 +284,7 @@ settings-section-input = Input
 settings-input-press-key = Press a key or button…
 settings-input-add = Add binding
 settings-input-reset = Reset to defaults
+settings-input-select-hint = Click a button to edit its bindings
 input-key-up = Up
 input-key-down = Down
 input-key-left = Left

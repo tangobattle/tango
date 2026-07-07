@@ -54,9 +54,13 @@ pub struct State {
     pub active_tab: SettingsTab,
     /// When `Some(k)`, the next keyboard/gamepad event captured by
     /// the settings subscription is appended to the bindings list
-    /// for `k`. UI displays a "press a key…" hint on the matching
-    /// row.
+    /// for `k`. UI displays a "press a key…" hint on the console
+    /// screen.
     pub capture_target: Option<input::MappedKey>,
+    /// The console key whose bindings the Input pane's screen is
+    /// showing — set by clicking a key on the drawn GBA. `None`
+    /// (fresh state) shows a "click a button" hint instead.
+    pub selected_key: Option<input::MappedKey>,
     /// Cached parsed markdown for the About tab. Lives here
     /// (rather than as a `static`) because `markdown::Content`
     /// is `!Sync`.
@@ -131,6 +135,9 @@ pub enum Message {
     /// hands off to the installer + exits the process.
     UpdateNow,
     ThemeChanged(config::ThemeMode),
+    /// User clicked key `k` on the drawn console — the screen
+    /// switches to showing its bindings.
+    BindingSlotSelected(input::MappedKey),
     /// User clicked "Add binding" for `k`. The next key/button
     /// event captured by the settings subscription is appended.
     BindingCaptureStart(input::MappedKey),
@@ -246,6 +253,14 @@ impl State {
             // process on success. Nothing to fold into config.
             Message::UpdateNow => None,
             Message::ThemeChanged(t) => Some(ConfigChange::Theme(t)),
+            Message::BindingSlotSelected(k) => {
+                // Clicking a console key retargets the screen; any
+                // in-flight capture is dropped rather than silently
+                // rebound to the newly-selected key.
+                self.selected_key = Some(k);
+                self.capture_target = None;
+                None
+            }
             Message::BindingCaptureStart(k) => {
                 self.capture_target = Some(k);
                 None
@@ -699,40 +714,144 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
     .into()
 }
 
+/// Fixed width of the drawn console shell. Sized to fit the
+/// in-session settings modal's body (~620px wide); in the full
+/// settings page it centers in the pane.
+const GBA_SHELL_WIDTH: f32 = 560.0;
+
 fn settings_input<'a>(
     lang: &'a LanguageIdentifier,
     config: &'a config::Config,
     state: &'a State,
     held: &input::HeldState,
 ) -> Element<'a, Message> {
-    let mut col = column![].spacing(2);
-    let slots = config.input_mapping.slots();
-    for (idx, (k, bindings)) in slots.iter().enumerate() {
-        let k = *k;
-        let label = match k {
-            input::MappedKey::Up => t!(lang, "input-key-up"),
-            input::MappedKey::Down => t!(lang, "input-key-down"),
-            input::MappedKey::Left => t!(lang, "input-key-left"),
-            input::MappedKey::Right => t!(lang, "input-key-right"),
-            input::MappedKey::A => t!(lang, "input-key-a"),
-            input::MappedKey::B => t!(lang, "input-key-b"),
-            input::MappedKey::L => t!(lang, "input-key-l"),
-            input::MappedKey::R => t!(lang, "input-key-r"),
-            input::MappedKey::Start => t!(lang, "input-key-start"),
-            input::MappedKey::Select => t!(lang, "input-key-select"),
-            input::MappedKey::SpeedUp => t!(lang, "input-key-speed-up"),
-        };
-        let bindings: &Vec<input::PhysicalInput> = bindings;
-        // Capture-mode hint for the currently-targeted slot;
-        // matches show "press a key…" + a cancel chip instead
-        // of the usual Add button.
+    let mapping = &config.input_mapping;
+    // A console key lights up while any of its bindings is physically
+    // held — the same test-your-bindings affordance the old chip table
+    // had, moved onto the drawn button itself.
+    let lit = |k: input::MappedKey| mapping.slot(k).iter().any(|b| held.is_active(b));
+    // One clickable console key: fixed box, centered face label,
+    // selected/lit chrome. Clicking brings the key up on the screen.
+    let key_btn = |content: Element<'a, Message>, k: input::MappedKey, w: f32, h: f32, radius: iced::border::Radius| {
+        button(container(content).center(Fill))
+            .width(Length::Fixed(w))
+            .height(Length::Fixed(h))
+            .padding(0)
+            .style(gba_key(state.selected_key == Some(k), lit(k), radius))
+            .on_press(Message::BindingSlotSelected(k))
+    };
+
+    // D-pad: four arms around an inert hub. Outer corners take the
+    // big radius so the cross reads as one molded pad; the 2px seams
+    // keep each arm clickable as its own key.
+    let cell = 34.0;
+    let arm = |icon: Icon, k: input::MappedKey, corners: [f32; 4]| {
+        key_btn(
+            icon.widget().size(16.0).into(),
+            k,
+            cell,
+            cell,
+            iced::border::Radius {
+                top_left: corners[0],
+                top_right: corners[1],
+                bottom_right: corners[2],
+                bottom_left: corners[3],
+            },
+        )
+    };
+    let corner = || Space::new().width(cell).height(cell);
+    let hub = container(Space::new())
+        .width(Length::Fixed(cell))
+        .height(Length::Fixed(cell))
+        .style(|theme: &iced::Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(gba_key_plate(theme))),
+            border: iced::Border {
+                radius: 4.0.into(),
+                width: 1.0,
+                color: theme.extended_palette().background.strong.color,
+            },
+            ..Default::default()
+        });
+    let (ro, ri) = (10.0, 4.0);
+    let dpad = column![
+        row![
+            corner(),
+            arm(Icon::ChevronUp, input::MappedKey::Up, [ro, ro, ri, ri]),
+            corner()
+        ]
+        .spacing(2),
+        row![
+            arm(Icon::ChevronLeft, input::MappedKey::Left, [ro, ri, ri, ro]),
+            hub,
+            arm(Icon::ChevronRight, input::MappedKey::Right, [ri, ro, ro, ri]),
+        ]
+        .spacing(2),
+        row![
+            corner(),
+            arm(Icon::ChevronDown, input::MappedKey::Down, [ri, ri, ro, ro]),
+            corner()
+        ]
+        .spacing(2),
+    ]
+    .spacing(2);
+
+    // Start/Select: small pills below the D-pad, Start on top and
+    // nudged right — flattening the real console's slanted pair.
+    // Face labels stay literal like the silkscreen (localized names
+    // appear on the bezel caption when selected).
+    let pill = |label: &'static str, k: input::MappedKey| {
+        key_btn(text(label).size(TEXT_CAPTION).into(), k, 64.0, 20.0, 999.0.into())
+    };
+    let start_select = column![
+        row![Space::new().width(12.0), pill("START", input::MappedKey::Start)],
+        pill("SELECT", input::MappedKey::Select),
+    ]
+    .spacing(5);
+    let left_col = column![dpad, start_select].spacing(16);
+
+    // A/B: round keys on a diagonal, A raised on the right. The
+    // little always-on dot above them is the power LED.
+    let ab_d = 46.0;
+    let ab = row![
+        column![
+            Space::new().height(20.0),
+            key_btn(
+                text("B").size(style::TEXT_HEADING).into(),
+                input::MappedKey::B,
+                ab_d,
+                ab_d,
+                999.0.into()
+            ),
+        ],
+        column![
+            key_btn(
+                text("A").size(style::TEXT_HEADING).into(),
+                input::MappedKey::A,
+                ab_d,
+                ab_d,
+                999.0.into()
+            ),
+            Space::new().height(20.0),
+        ],
+    ]
+    .spacing(8);
+    let right_col = column![ab].spacing(18).align_x(iced::Alignment::End);
+
+    // The screen shows the selected key's bindings — chips + the
+    // add/capture flow the old table rows carried — or a hint when
+    // nothing is selected yet.
+    let screen_body: Element<'a, Message> = if let Some(k) = state.selected_key {
+        let mut chips = row![].spacing(6).align_y(iced::Alignment::Center);
+        for (i, b) in mapping.slot(k).iter().enumerate() {
+            chips = chips.push(binding_chip(lang, b, k, i, held.is_active(b)));
+        }
+        // Capture mode swaps the Add button for "press a key…" + a
+        // cancel chip, same as the old per-row treatment.
         let action: Element<'a, Message> = if state.capture_target == Some(k) {
             row![
                 text(t!(lang, "settings-input-press-key"))
                     .size(TEXT_BODY)
-                    .style(|theme: &iced::Theme| iced::widget::text::Style {
-                        color: Some(theme.palette().primary),
-                    }),
+                    .style(widgets::primary_text_style),
                 widgets::icon_button(
                     Icon::X,
                     t!(lang, "save-action-cancel"),
@@ -744,8 +863,6 @@ fn settings_input<'a>(
             .align_y(iced::Alignment::Center)
             .into()
         } else {
-            // Icon-only + tooltip — "Add binding" text on every
-            // row was visual noise; the + glyph is universal.
             widgets::icon_button(
                 Icon::Plus,
                 t!(lang, "settings-input-add"),
@@ -753,34 +870,99 @@ fn settings_input<'a>(
                 STANDARD_PADDING,
             )
         };
-        let mut chips = row![].spacing(6).align_y(iced::Alignment::Center);
-        for (i, b) in bindings.iter().enumerate() {
-            chips = chips.push(binding_chip(lang, b, k, i, held.is_active(b)));
-        }
-        // Wrap chips onto new lines when a key has more bindings
-        // than fit on one row. The Fill container bounds the wrap
-        // width (sweeten's `Wrapping` is Shrink by default) and
-        // pushes the Add/cancel action to the right edge — same
-        // pattern as the save_view tab strip.
-        let row_inner = row![
-            container(text(label).size(TEXT_BODY)).width(Length::Fixed(140.0)),
-            container(chips.wrap()).width(Fill),
-            action,
+        container(
+            column![chips.wrap(), action]
+                .spacing(10)
+                .align_x(iced::Alignment::Center),
+        )
+        .center(Fill)
+        .into()
+    } else {
+        container(
+            text(t!(lang, "settings-input-select-hint"))
+                .size(TEXT_BODY)
+                .style(widgets::muted_text_style)
+                .align_x(iced::Alignment::Center),
+        )
+        .center(Fill)
+        .into()
+    };
+    let screen = container(screen_body)
+        .width(Length::Fixed(252.0))
+        .height(Length::Fixed(168.0))
+        .padding(8)
+        .style(gba_screen);
+    // Silkscreen line under the glass names the selected key in the
+    // UI language. Fixed-height slot so selecting never reflows the
+    // bezel.
+    let caption = container(
+        text(
+            state
+                .selected_key
+                .map(|k| mapped_key_label(lang, k))
+                .unwrap_or_default(),
+        )
+        .size(TEXT_CAPTION)
+        .style(|_: &iced::Theme| iced::widget::text::Style {
+            color: Some(iced::Color::from_rgba(0.82, 0.82, 0.86, 0.9)),
+        }),
+    )
+    .height(Length::Fixed(16.0));
+    let bezel = container(column![screen, caption].spacing(4).align_x(iced::Alignment::Center))
+        .padding(iced::Padding {
+            top: 12.0,
+            right: 14.0,
+            bottom: 4.0,
+            left: 14.0,
+        })
+        .style(gba_bezel);
+
+    let shoulders = row![
+        key_btn(
+            text("L").size(TEXT_BODY).into(),
+            input::MappedKey::L,
+            84.0,
+            22.0,
+            999.0.into()
+        ),
+        horizontal_space(),
+        key_btn(
+            text("R").size(TEXT_BODY).into(),
+            input::MappedKey::R,
+            84.0,
+            22.0,
+            999.0.into()
+        ),
+    ];
+    let face =
+        row![left_col, horizontal_space(), bezel, horizontal_space(), right_col].align_y(iced::Alignment::Center);
+    let shell = container(column![shoulders, face].spacing(10))
+        .width(Length::Fixed(GBA_SHELL_WIDTH))
+        .padding(iced::Padding {
+            top: 10.0,
+            right: 18.0,
+            bottom: 24.0,
+            left: 18.0,
+        })
+        .style(gba_shell);
+
+    // Fast-forward isn't a console key; it sits under the shell as a
+    // pill sharing the key chrome, with Reset on the opposite edge.
+    let speed = button(
+        row![
+            Icon::FastForward.widget().size(TEXT_BODY),
+            text(t!(lang, "input-key-speed-up")).size(TEXT_BODY),
         ]
-        .spacing(10)
-        .align_y(iced::Alignment::Center);
-        // Zebra-stripe the rows so the eye can scan them as a
-        // table without a chunky border on every row. Same
-        // helper save_view uses for its chip table.
-        col = col.push(
-            container(row_inner)
-                .padding(style::HEADER_PADDING)
-                .width(Fill)
-                .style(widgets::zebra_row(idx)),
-        );
-    }
-    // Reset sits in a row padded identically to the table rows
-    // so its right edge aligns with the per-row Add buttons.
+        .spacing(6)
+        .align_y(iced::Alignment::Center),
+    )
+    .padding([5.0, 12.0])
+    .style(gba_key(
+        state.selected_key == Some(input::MappedKey::SpeedUp),
+        lit(input::MappedKey::SpeedUp),
+        999.0.into(),
+    ))
+    .on_press(Message::BindingSlotSelected(input::MappedKey::SpeedUp));
     let reset = widgets::labeled_icon_button(
         Icon::RefreshCw,
         t!(lang, "settings-input-reset"),
@@ -788,21 +970,169 @@ fn settings_input<'a>(
         STANDARD_PADDING,
         widgets::neutral,
     );
-    col = col
-        .push(Space::new().height(12))
-        .push(container(row![horizontal_space(), reset]).padding([0, 12]).width(Fill));
-    // Table is flush left/right against the scrollable's
-    // visible edges — rows carry their own internal padding so
-    // the zebra stripes extend full width without any outer
-    // column padding. Vertical padding still applies so the
-    // first/last row don't slam the scanline above/below.
-    col.padding(iced::Padding {
-        top: 0.0,
-        right: 0.0,
-        bottom: 20.0,
-        left: 0.0,
-    })
-    .into()
+    let below = row![speed, horizontal_space(), reset]
+        .width(Length::Fixed(GBA_SHELL_WIDTH))
+        .align_y(iced::Alignment::Center);
+
+    container(column![shell, below].spacing(14))
+        .width(Fill)
+        .align_x(iced::alignment::Horizontal::Center)
+        .padding(style::PANE_PADDING)
+        .into()
+}
+
+/// Localized display name for a mapped key — shown on the bezel
+/// caption under the screen.
+fn mapped_key_label(lang: &LanguageIdentifier, k: input::MappedKey) -> String {
+    match k {
+        input::MappedKey::Up => t!(lang, "input-key-up"),
+        input::MappedKey::Down => t!(lang, "input-key-down"),
+        input::MappedKey::Left => t!(lang, "input-key-left"),
+        input::MappedKey::Right => t!(lang, "input-key-right"),
+        input::MappedKey::A => t!(lang, "input-key-a"),
+        input::MappedKey::B => t!(lang, "input-key-b"),
+        input::MappedKey::L => t!(lang, "input-key-l"),
+        input::MappedKey::R => t!(lang, "input-key-r"),
+        input::MappedKey::Start => t!(lang, "input-key-start"),
+        input::MappedKey::Select => t!(lang, "input-key-select"),
+        input::MappedKey::SpeedUp => t!(lang, "input-key-speed-up"),
+    }
+}
+
+/// The molded-plastic fill console keys share (and the D-pad hub) —
+/// a step above the shell plate so keys read as raised.
+fn gba_key_plate(theme: &iced::Theme) -> iced::Color {
+    let p = theme.extended_palette();
+    let bg = theme.palette().background;
+    if p.is_dark {
+        widgets::mix(bg, theme.palette().text, 0.16)
+    } else {
+        widgets::mix(bg, iced::Color::WHITE, 0.65)
+    }
+}
+
+/// Chrome for one console key. `selected` = the screen is showing
+/// this key (primary ring); `lit` = a bound physical input is held
+/// right now (primary flush, the live binding test). Both are
+/// color-only so live input never shifts the layout.
+fn gba_key(
+    selected: bool,
+    lit: bool,
+    radius: iced::border::Radius,
+) -> impl Fn(&iced::Theme, button::Status) -> button::Style {
+    move |theme: &iced::Theme, status: button::Status| {
+        let p = theme.extended_palette();
+        let primary = theme.palette().primary;
+        let plate = gba_key_plate(theme);
+        let base = match status {
+            button::Status::Hovered => widgets::mix(plate, iced::Color::WHITE, if p.is_dark { 0.12 } else { 0.2 }),
+            button::Status::Pressed => widgets::mix(plate, iced::Color::BLACK, 0.10),
+            _ => plate,
+        };
+        let background = if lit { widgets::mix(base, primary, 0.55) } else { base };
+        button::Style {
+            background: Some(iced::Background::Color(background)),
+            text_color: theme.palette().text,
+            border: iced::Border {
+                radius,
+                width: if selected { 2.0 } else { 1.0 },
+                color: if selected {
+                    primary
+                } else if matches!(status, button::Status::Hovered) {
+                    iced::Color { a: 0.7, ..primary }
+                } else {
+                    p.background.strong.color
+                },
+            },
+            shadow: iced::Shadow {
+                color: iced::Color {
+                    a: if p.is_dark { 0.35 } else { 0.12 },
+                    ..iced::Color::BLACK
+                },
+                offset: iced::Vector::new(
+                    0.0,
+                    if matches!(status, button::Status::Pressed) {
+                        1.0
+                    } else {
+                        2.0
+                    },
+                ),
+                blur_radius: 6.0,
+            },
+            snap: false,
+        }
+    }
+}
+
+/// The console shell — one lifted plate with the GBA's silhouette
+/// (bottom grip corners fuller than the top). The accent stays on
+/// the keys; the shell frames quietly.
+fn gba_shell(theme: &iced::Theme) -> iced::widget::container::Style {
+    let p = theme.extended_palette();
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(widgets::plate_color(theme))),
+        text_color: Some(theme.palette().text),
+        border: iced::Border {
+            radius: iced::border::Radius {
+                top_left: 24.0,
+                top_right: 24.0,
+                bottom_right: 34.0,
+                bottom_left: 34.0,
+            },
+            width: 1.5,
+            color: p.background.strong.color,
+        },
+        ..Default::default()
+    }
+}
+
+/// The glass bezel around the screen — near-black in both themes,
+/// like the real console's glass regardless of shell color.
+fn gba_bezel(theme: &iced::Theme) -> iced::widget::container::Style {
+    let p = theme.extended_palette();
+    let glass = if p.is_dark {
+        widgets::mix(theme.palette().background, iced::Color::BLACK, 0.55)
+    } else {
+        iced::Color::from_rgb(0.15, 0.15, 0.18)
+    };
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(glass)),
+        border: iced::Border {
+            radius: 14.0.into(),
+            width: 1.0,
+            color: iced::Color {
+                a: 0.5,
+                ..iced::Color::BLACK
+            },
+        },
+        ..Default::default()
+    }
+}
+
+/// The LCD inside the bezel. Follows the theme (pale lit panel on
+/// light, near-black on dark) so the binding chips and hint text
+/// drawn "on screen" keep their normal contrast.
+fn gba_screen(theme: &iced::Theme) -> iced::widget::container::Style {
+    let p = theme.extended_palette();
+    let bg = theme.palette().background;
+    let lcd = if p.is_dark {
+        widgets::mix(bg, iced::Color::BLACK, 0.3)
+    } else {
+        widgets::mix(bg, iced::Color::WHITE, 0.25)
+    };
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(lcd)),
+        text_color: Some(theme.palette().text),
+        border: iced::Border {
+            radius: 4.0.into(),
+            width: 1.0,
+            color: iced::Color {
+                a: 0.35,
+                ..iced::Color::BLACK
+            },
+        },
+        ..Default::default()
+    }
 }
 
 fn binding_chip<'a>(

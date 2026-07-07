@@ -268,6 +268,7 @@ settings-section-input = 入力
 settings-input-press-key = キーまたはボタンを押してください…
 settings-input-add = 割り当てを追加
 settings-input-reset = 初期設定に戻す
+settings-input-select-hint = ボタンをクリックして割り当てを編集
 input-key-up = 上
 input-key-down = 下
 input-key-left = 左

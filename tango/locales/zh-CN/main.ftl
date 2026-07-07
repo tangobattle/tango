@@ -266,6 +266,7 @@ settings-section-input = 输入
 settings-input-press-key = 按下按键或按钮…
 settings-input-add = 添加绑定
 settings-input-reset = 恢复默认
+settings-input-select-hint = 点击按键以编辑其绑定
 input-key-up = 上
 input-key-down = 下
 input-key-left = 左

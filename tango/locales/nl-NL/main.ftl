@@ -278,6 +278,7 @@ settings-section-input = Invoer
 settings-input-press-key = Druk op een toets of knop…
 settings-input-add = Toewijzing toevoegen
 settings-input-reset = Standaard herstellen
+settings-input-select-hint = Klik op een knop om de toewijzingen te bewerken
 input-key-up = Omhoog
 input-key-down = Omlaag
 input-key-left = Links

@@ -410,22 +410,22 @@ impl Default for Mapping {
 }
 
 impl Mapping {
-    /// Iterate every binding slot. Used by the settings editor
-    /// to render the per-key tables.
-    pub fn slots(&self) -> [(MappedKey, &Vec<PhysicalInput>); 11] {
-        [
-            (MappedKey::Up, &self.up),
-            (MappedKey::Down, &self.down),
-            (MappedKey::Left, &self.left),
-            (MappedKey::Right, &self.right),
-            (MappedKey::A, &self.a),
-            (MappedKey::B, &self.b),
-            (MappedKey::L, &self.l),
-            (MappedKey::R, &self.r),
-            (MappedKey::Start, &self.start),
-            (MappedKey::Select, &self.select),
-            (MappedKey::SpeedUp, &self.speed_up),
-        ]
+    /// The binding list for one mapped key. Used by the settings
+    /// editor's console view to look up each key it draws.
+    pub fn slot(&self, key: MappedKey) -> &Vec<PhysicalInput> {
+        match key {
+            MappedKey::Up => &self.up,
+            MappedKey::Down => &self.down,
+            MappedKey::Left => &self.left,
+            MappedKey::Right => &self.right,
+            MappedKey::A => &self.a,
+            MappedKey::B => &self.b,
+            MappedKey::L => &self.l,
+            MappedKey::R => &self.r,
+            MappedKey::Start => &self.start,
+            MappedKey::Select => &self.select,
+            MappedKey::SpeedUp => &self.speed_up,
+        }
     }
 
     pub fn slot_mut(&mut self, key: MappedKey) -> &mut Vec<PhysicalInput> {

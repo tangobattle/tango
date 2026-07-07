@@ -282,6 +282,7 @@ settings-section-input = Управление
 settings-input-press-key = Нажмите клавишу или кнопку…
 settings-input-add = Добавить привязку
 settings-input-reset = Сбросить по умолчанию
+settings-input-select-hint = Нажмите на кнопку, чтобы изменить её привязки
 input-key-up = Вверх
 input-key-down = Вниз
 input-key-left = Влево
