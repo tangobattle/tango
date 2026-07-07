@@ -146,6 +146,22 @@ const MAX_RATE_ADJUSTMENT: f64 = 0.005;
 /// the session's audio latency sky-high forever.
 const MAX_RESERVOIR_SECS: f64 = 0.25;
 
+/// How much fill-demand history the flood gate sums over.
+const DEMAND_WINDOW: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Demand over [`DEMAND_WINDOW`] beyond this multiple of real-time
+/// counts as a catch-up flood. 1.5× sits well above steady-state
+/// jitter (an occasional doubled callback is a few percent) and well
+/// below the ~4× a post-stall flood runs at.
+const FLOOD_THRESHOLD: f64 = 1.5;
+
+/// A service gap this long means the device stalled outright (a rate
+/// change tears it down for over a second; a sleeping headset longer).
+/// SDL follows one with a catch-up flood, but the gate's window needs
+/// ~100 ms of history to see it — long enough for the flood's front to
+/// drain the reservoir. The gap itself is the tell: pre-arm the gate.
+const STALL_GAP: std::time::Duration = std::time::Duration::from_millis(100);
+
 /// Pulls audio out of a running mgba thread, resampling from mGBA's
 /// internal rate to the host audio rate.
 ///
@@ -195,6 +211,12 @@ pub struct MGBAStream {
     /// Serve silence until the reservoir first reaches
     /// `reservoir_target`. Set at construction and again on underrun.
     priming: bool,
+    /// Recent fill demand, as (when, frames) per callback, kept for
+    /// [`DEMAND_WINDOW`]. After a device stall (a rate change tears
+    /// the device down for over a second) SDL repays its missed
+    /// timeline by demanding several times real-time for a stretch;
+    /// summing this window spots that flood.
+    demand: std::collections::VecDeque<(std::time::Instant, usize)>,
 }
 
 impl MGBAStream {
@@ -212,6 +234,7 @@ impl MGBAStream {
             reservoir: std::collections::VecDeque::new(),
             reservoir_target: 0,
             priming: true,
+            demand: std::collections::VecDeque::new(),
         }
     }
 }
@@ -219,6 +242,23 @@ impl MGBAStream {
 impl Stream for MGBAStream {
     fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize {
         let frame_count = buf.len();
+
+        // Track demand over the last DEMAND_WINDOW for the catch-up
+        // flood gate below. A fill arriving after a dead stretch gets
+        // a synthetic over-threshold entry stuffed in ahead of it, so
+        // the expected flood is gated from its very first frame.
+        let now = std::time::Instant::now();
+        if let Some(&(last, _)) = self.demand.back() {
+            if now.duration_since(last) > STALL_GAP {
+                let prearm = (DEMAND_WINDOW.as_secs_f64() * self.sample_rate as f64 * FLOOD_THRESHOLD) as usize + 1;
+                self.demand.clear();
+                self.demand.push_back((now, prearm));
+            }
+        }
+        self.demand.push_back((now, frame_count));
+        while self.demand.front().is_some_and(|(t, _)| now.duration_since(*t) > DEMAND_WINDOW) {
+            self.demand.pop_front();
+        }
 
         let mut audio_guard = self.handle.lock_audio();
         let mut fps_target = audio_guard.sync().fps_target();
@@ -290,6 +330,17 @@ impl Stream for MGBAStream {
         if self.reservoir.len() > self.reservoir_target * 2 {
             let excess = self.reservoir.len() - self.reservoir_target;
             self.reservoir.drain(..excess);
+        }
+
+        // Catch-up flood gate: sustained demand well past real-time is
+        // SDL repaying a stalled device timeline (observed as batches
+        // of back-to-back callbacks for a stretch after a device rate
+        // change). A real-time producer can't repay it — serve the
+        // flood silence, leaving the reservoir and priming state
+        // alone, so clean audio resumes the moment demand normalizes.
+        let windowed: usize = self.demand.iter().map(|(_, f)| f).sum();
+        if windowed as f64 > DEMAND_WINDOW.as_secs_f64() * self.sample_rate as f64 * FLOOD_THRESHOLD {
+            return 0;
         }
 
         // Priming: hold silence until the cushion is full, so serving
