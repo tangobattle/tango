@@ -48,6 +48,13 @@ use unic_langid::LanguageIdentifier;
 pub(crate) fn new_gba_core(rom: &[u8]) -> anyhow::Result<mgba::core::Core> {
     let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options::default())?;
     core.enable_video_buffer();
+    // Enlarge the sample ring from mGBA's 2048 default (~62 ms at
+    // 32768 Hz). With sync-to-audio off it's pure slack: a device that
+    // services its stream less often than the ring covers (Bluetooth
+    // and some rate/backend combos run 100 ms+ buffers) would overrun
+    // it between callbacks and drop samples on every cycle. 8192
+    // (~250 ms) matches the audio reservoir's latency ceiling.
+    core.as_mut().set_audio_buffer_size(8192);
     core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
     Ok(core)
 }
