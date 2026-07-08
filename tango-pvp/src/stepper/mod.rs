@@ -22,12 +22,12 @@ pub use state::{CapturedBoundary, ReplayCheckpoint, ReplaySnapshot, SharedShadow
 /// `Arc` everywhere it's needed (the production impl synchronizes
 /// internally via its mutex).
 pub trait RemotePacketSource: Send + Sync {
-    fn resolve(&self, tick: u32, pair: (Input, PartialInput)) -> anyhow::Result<Vec<u8>>;
+    fn resolve(&self, pair: (Input, PartialInput)) -> anyhow::Result<Vec<u8>>;
 }
 
 impl RemotePacketSource for std::sync::Mutex<crate::shadow::Shadow> {
-    fn resolve(&self, tick: u32, pair: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
-        self.lock().unwrap().apply_input(tick, pair)
+    fn resolve(&self, pair: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
+        self.lock().unwrap().apply_input(pair)
     }
 }
 

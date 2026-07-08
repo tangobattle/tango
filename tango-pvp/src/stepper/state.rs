@@ -538,7 +538,7 @@ impl InnerState {
     /// drive loops abort on — and this returns `None`; the per-game trap
     /// just ends its fire.
     pub fn apply_shadow_input(&mut self, input: (Input, PartialInput)) -> Option<Vec<u8>> {
-        match self.packet_source.resolve(self.current_tick, input.clone()) {
+        match self.packet_source.resolve(input.clone()) {
             Ok(remote_packet) => {
                 let (local, remote) = input;
                 self.output_pairs

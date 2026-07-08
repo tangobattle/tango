@@ -145,7 +145,7 @@ impl Worker {
 }
 
 impl crate::stepper::RemotePacketSource for Worker {
-    fn resolve(&self, _tick: u32, pair: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
+    fn resolve(&self, pair: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
         // The previous tick's run must have completed: it buffered the packet
         // the peek below returns and parked the core at the boundary this
         // tick's run continues from. (In steady state it finished long ago —

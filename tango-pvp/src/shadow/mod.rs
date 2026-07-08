@@ -164,7 +164,7 @@ impl Shadow {
         // correspond to the just-restored core state.
         shared.input_applied = false;
         drop(shared);
-        *self.state.0.error.lock().unwrap() = None;
+        self.state.clear_error();
         Ok(())
     }
 
@@ -218,13 +218,11 @@ impl Shadow {
     /// core exactly at that boundary. This call only ever advances; a rollback
     /// rewinds the shadow beforehand via [`load_state`](Self::load_state) (the
     /// rollback engine drives the primary and shadow cores in lockstep), so each
-    /// `apply_input` resumes from the rewound position. `expected_tick` is
-    /// unused, kept only to match the resolver callback signature. Returns the
-    /// remote packet queued before this run.
-    pub fn apply_input(&mut self, expected_tick: u32, ip: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
+    /// `apply_input` resumes from the rewound position. Returns the remote
+    /// packet queued before this run.
+    pub fn apply_input(&mut self, ip: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
         let pending_remote_packet = self.begin_apply_input(ip)?;
         self.finish_apply_input()?;
-        let _ = expected_tick;
         Ok(pending_remote_packet)
     }
 

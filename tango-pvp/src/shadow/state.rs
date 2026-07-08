@@ -120,6 +120,12 @@ impl State {
         *self.0.error.lock().unwrap() = Some(err);
     }
 
+    /// Discard any queued trap error — used when restoring a snapshot,
+    /// where a pending error belongs to the run the restore just threw away.
+    pub fn clear_error(&self) {
+        *self.0.error.lock().unwrap() = None;
+    }
+
     /// Take-and-clear the [`Shared::input_applied`] signal.
     /// [`super::Shadow::apply_input`] polls this to know its run is done —
     /// no snapshot needed, since `end_run_loop` already parked the core at
