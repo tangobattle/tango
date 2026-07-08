@@ -340,7 +340,7 @@ pub struct PvpReceiver {
     /// `None` once the remote drops — the session swaps the counter out so the
     /// UI can tell "no live link" from "0 ms ping on LAN". While the link is up
     /// it's `Some` and latency samples land here.
-    latency_counter: std::sync::Arc<tokio::sync::Mutex<Option<LatencyCounter>>>,
+    latency_counter: std::sync::Arc<std::sync::Mutex<Option<LatencyCounter>>>,
     /// Flipped `true` the first time an in-band `EndOfMatch` marker is
     /// delivered. `PvpSession::is_ended` reads this to know the remote reached
     /// its match_end_ret hook and the connection is safe to tear down.
@@ -356,7 +356,7 @@ impl PvpReceiver {
     pub fn new(
         receiver: Receiver,
         im: InMatchTx,
-        latency_counter: std::sync::Arc<tokio::sync::Mutex<Option<LatencyCounter>>>,
+        latency_counter: std::sync::Arc<std::sync::Mutex<Option<LatencyCounter>>>,
         remote_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
         end_of_match_notify: std::sync::Arc<tokio::sync::Notify>,
     ) -> Self {
@@ -386,7 +386,7 @@ impl tango_pvp::net::Receiver for PvpReceiver {
                 .map_err(|_| std::io::Error::other("remote overflowed our input buffer"))?;
             // A returning ack that confirmed one of our seqs dates a round-trip.
             if let Some(rtt) = delivery.rtt {
-                if let Some(c) = self.latency_counter.lock().await.as_mut() {
+                if let Some(c) = self.latency_counter.lock().unwrap().as_mut() {
                     c.mark(rtt);
                 }
             }

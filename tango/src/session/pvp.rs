@@ -122,7 +122,9 @@ pub struct PvpSession {
     /// Ping tracker shared with the net receive task. `Some` while the link is
     /// up; the match-run task swaps it to `None` the moment the remote drops,
     /// which is how the UI retires the instrument panel (see [`Self::latency`]).
-    latency_counter: Arc<tokio::sync::Mutex<Option<crate::net::LatencyCounter>>>,
+    /// A std Mutex — every guard scope is a plain read or swap, never held
+    /// across an await, and the UI reads it from the render thread.
+    latency_counter: Arc<std::sync::Mutex<Option<crate::net::LatencyCounter>>>,
     /// The peer connection, kept alive so it outlives the data channels. Held
     /// behind a shared slot because the reconnect coordinator swaps it (drops
     /// the old, installs the rebuilt) on a transparent direct-link reconnect;
@@ -312,7 +314,7 @@ impl PvpSession {
             rtc_time,
         )?;
 
-        let latency_counter = Arc::new(tokio::sync::Mutex::new(Some(crate::net::LatencyCounter::new(5))));
+        let latency_counter = Arc::new(std::sync::Mutex::new(Some(crate::net::LatencyCounter::new(5))));
         let end = EndState::default();
         // `frame_delay` (this side's frame delay) is realized entirely
         // locally by the display core trailing the netcode frontier; it's not
@@ -459,7 +461,7 @@ impl PvpSession {
                     };
                     let deadline = start + timeout;
                     *reconnect_window.lock().unwrap() = Some((start, deadline));
-                    *latency_counter.lock().await = None;
+                    *latency_counter.lock().unwrap() = None;
                     handle.pause();
                     frame_notify.notify_one();
                     log::info!("pvp link dropped — pausing to reconnect");
@@ -544,7 +546,7 @@ impl PvpSession {
                     // threshold before it can trip again, so it re-trips and
                     // reconnects once more (self-healing) if the link falls silent
                     // anew, without instantly re-firing on the not-yet-drained queue.
-                    *latency_counter.lock().await = Some(crate::net::LatencyCounter::new(5));
+                    *latency_counter.lock().unwrap() = Some(crate::net::LatencyCounter::new(5));
                     *reconnect_window.lock().unwrap() = None;
                     handle.unpause();
                     frame_notify.notify_one();
@@ -556,7 +558,7 @@ impl PvpSession {
                 // `is_ended` (the emu thread may be paused, so no vblank is
                 // coming), finalize the replay iff the match reached its end
                 // screen, and release the match handle.
-                *latency_counter.lock().await = None;
+                *latency_counter.lock().unwrap() = None;
                 frame_notify.notify_one();
                 if completion_token.is_complete() {
                     if let Err(e) = inner_match.finish_replay() {
@@ -799,7 +801,7 @@ impl PvpSession {
     /// by [`is_ended`](Self::is_ended)) can't distinguish from a legitimate 0 ms
     /// LAN ping that sticks at its last reading after a drop.
     pub fn latency(&self) -> Option<std::time::Duration> {
-        self.latency_counter.blocking_lock().as_ref().map(|c| c.median())
+        self.latency_counter.lock().unwrap().as_ref().map(|c| c.median())
     }
 
     /// Raw latest ping — the most recent single measurement, unsmoothed.
@@ -809,7 +811,8 @@ impl PvpSession {
     /// the instrument panel identically; only the reported value differs.
     pub fn latency_raw(&self) -> Option<std::time::Duration> {
         self.latency_counter
-            .blocking_lock()
+            .lock()
+            .unwrap()
             .as_ref()
             .map(|c| c.latest().unwrap_or(std::time::Duration::ZERO))
     }
