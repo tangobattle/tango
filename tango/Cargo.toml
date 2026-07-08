@@ -1,6 +1,6 @@
 [package]
 name = "tango"
-version = "5.0.43"
+version = "5.0.44"
 edition = "2021"
 license = "MPL-2.0"
 publish = false
