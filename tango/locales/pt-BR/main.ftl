@@ -118,10 +118,6 @@ empty-no-roms-title = Nenhuma ROM encontrada
 empty-no-roms-body = Coloque seus arquivos .gba de Battle Network / Rockman EXE em:
 empty-no-saves-title = Sem saves para este jogo
 empty-no-saves-body = Coloque um .sav para este jogo em:
-empty-no-patches-title = Nenhum patch instalado
-empty-no-patches-body = “Atualização” baixa a coleção de patches mais recente do repositório de patches.
-empty-no-replays-title = Nenhum replay ainda
-empty-no-replays-body = Os replays das suas partidas são gravados aqui automaticamente.
 play-version-placeholder = —
 play-link-code-random = Código aleatório
 play-status-idle = Digite um código para iniciar netplay, ou deixe em branco para um jogador.
@@ -344,7 +340,6 @@ welcome-step-nickname = Defina seu apelido
 welcome-step-nickname-description = Você pode alterá-lo a qualquer momento em Ajustes.
 welcome-roms-needed = Adicione pelo menos uma ROM para continuar.
 rescan = Recarregar
-search-no-matches = Nenhum resultado.
 
 # Reconnect / data folder / save-view tabs
 session-stat-lead = Vantagem

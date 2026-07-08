@@ -52,10 +52,6 @@ empty-no-roms-title = 找不到遊戲 ROM
 empty-no-roms-body = 將你的 Battle Network / Rockman EXE .gba 檔案放入：
 empty-no-saves-title = 此遊戲沒有存檔檔案
 empty-no-saves-body = 將此遊戲的 .sav 檔案放入：
-empty-no-patches-title = 尚未安裝任何補丁
-empty-no-patches-body = 點選「更新」即可從補丁儲存庫下載最新的補丁合集。
-empty-no-replays-title = 還沒有重播
-empty-no-replays-body = 你的對戰重播會自動記錄在這裡。
 play-no-patch = 無補丁
 play-patch-toggle = 使用補丁…
 play-version-placeholder = —
@@ -358,7 +354,6 @@ welcome-roms-needed = 繼續前請至少新增一個 ROM。
 
 # Common actions
 rescan = 重新掃描
-search-no-matches = 沒有符合的結果。
 
 # Game names live in games.ftl — same Fluent attribute scheme the
 # legacy app uses (game-<family> = base name; .variant-N for each

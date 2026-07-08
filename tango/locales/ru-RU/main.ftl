@@ -119,10 +119,6 @@ empty-no-roms-title = ROM-файлы не найдены
 empty-no-roms-body = Поместите ваши файлы .gba от Battle Network / Rockman EXE в:
 empty-no-saves-title = Нет сохранений для этой игры
 empty-no-saves-body = Поместите .sav для этой игры в:
-empty-no-patches-title = Патчи не установлены
-empty-no-patches-body = «Обновить» загружает свежую коллекцию патчей из репозитория патчей.
-empty-no-replays-title = Повторов пока нет
-empty-no-replays-body = Повторы ваших матчей записываются сюда автоматически.
 play-version-placeholder = —
 play-link-code-random = Случайный код
 play-status-idle = Введите код для netplay или оставьте пустым для одиночной игры.
@@ -348,7 +344,6 @@ welcome-step-nickname = Задайте свой ник
 welcome-step-nickname-description = Можно изменить в любой момент в Настройках.
 welcome-roms-needed = Добавьте хотя бы один ROM, чтобы продолжить.
 rescan = Пересканировать
-search-no-matches = Ничего не найдено.
 
 # Reconnect / data folder / save-view tabs
 session-stat-lead = Опережение

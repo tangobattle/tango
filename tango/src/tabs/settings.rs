@@ -1219,6 +1219,8 @@ fn settings_about<'a>(
         Handle::from_bytes(raw)
     });
 
+    let _ = lang; // about screen is English-only, matching legacy.
+
     let emblem = iced::widget::container(Image::new(EMBLEM.clone()).width(Length::Fixed(200.0)))
         .width(Fill)
         .align_x(iced::alignment::Horizontal::Center);
@@ -1231,21 +1233,12 @@ fn settings_about<'a>(
     let theme = crate::theme::theme_for(config);
     let style = crate::theme::markdown_style(&theme);
     let settings = markdown::Settings::with_text_size(TEXT_BODY, style);
-    // The markdown body itself is English-only (CREDITS.md),
-    // matching legacy; only the updater footer localizes.
     let body: Element<'a, Message> = markdown::view(about.content().items(), settings).map(Message::OpenUrl);
 
     column![
         emblem,
         body,
-        // The updater footer sits on its own quiet pane plate.
-        // It used to be set off by the app's last remaining
-        // default-styled `rule`; the plate does the same job in
-        // the pane language every other region already speaks.
-        iced::widget::container(updater_section(lang, updater_status, config.enable_updater))
-            .width(Fill)
-            .padding(style::PANE_PADDING)
-            .style(widgets::pane),
+        updater_section(lang, updater_status, config.enable_updater)
     ]
     .spacing(12)
     // Symmetric inner padding so the emblem doesn't rub
@@ -1324,7 +1317,7 @@ fn updater_section<'a>(
             version_row.push(text(t!(lang, "updater-latest-version", version = latest_label)).size(TEXT_CAPTION));
     }
 
-    let mut col = column![version_row].spacing(8);
+    let mut col = column![iced::widget::rule::horizontal(1), version_row].spacing(8);
     match (status_line, action) {
         // Update ready: the button sits to the right of the status message on the
         // same row, rather than on its own row below it.
