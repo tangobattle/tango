@@ -212,8 +212,7 @@ fn compute_fingerprint(
         .load_save(mgba::vfile::VFile::from_vec(replay.local_sram.clone()))?;
     // Pin the cart RTC before reset so games that surface RTC into RAM
     // (e.g. exe45) produce a byte-stable fingerprint.
-    let replay_time = std::time::UNIX_EPOCH + std::time::Duration::from_millis(replay.metadata.ts);
-    core.set_rtc_fixed(replay_time);
+    core.set_rtc_fixed(replay.rtc_time());
     core.as_mut().reset();
 
     let (stepper_state, _shadow) =

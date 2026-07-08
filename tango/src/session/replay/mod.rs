@@ -159,6 +159,11 @@ impl ReplaySession {
         let mut core = crate::session::new_gba_core(rom.as_ref())?;
         core.as_mut()
             .load_save(mgba::vfile::VFile::from_vec(replay.local_sram.clone()))?;
+        // Pin the cart RTC to the recorded match clock so RTC-reading games
+        // (exe45) replay the values the live match saw — and so seek/rewind
+        // re-steps land on the same states the first pass produced. The
+        // prefetcher and the shadow pin themselves to the same value.
+        core.set_rtc_fixed(replay.rtc_time());
 
         let hooks = game.hooks;
 

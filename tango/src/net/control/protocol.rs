@@ -123,6 +123,12 @@ pub struct Closing {}
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct NegotiatedState {
     pub nonce: [u8; 16],
+    /// Sender's wall clock at commit time, milliseconds since the unix epoch.
+    /// The offerer's value becomes the match clock: the fixed time every core
+    /// on both sides pins its cart RTC to, and the `ts` recorded in the replay
+    /// metadata — so RTC-reading games (exe45) run deterministically in PvP
+    /// and on playback.
+    pub ts: u64,
     pub save_data: Vec<u8>,
 }
 

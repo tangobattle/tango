@@ -49,6 +49,7 @@ impl Shadow {
         is_offerer: bool,
         local_player_index: u8,
         rng: rand_pcg::Mcg128Xsl64,
+        rtc_time: std::time::SystemTime,
     ) -> anyhow::Result<Self> {
         Self::new_from_sram(
             rom,
@@ -58,6 +59,7 @@ impl Shadow {
             is_offerer,
             local_player_index,
             rng,
+            rtc_time,
         )
     }
 
@@ -91,6 +93,7 @@ impl Shadow {
             replay.is_offerer,
             replay.local_player_index,
             rng,
+            replay.rtc_time(),
         )
     }
 
@@ -106,12 +109,17 @@ impl Shadow {
         is_offerer: bool,
         local_player_index: u8,
         rng: rand_pcg::Mcg128Xsl64,
+        rtc_time: std::time::SystemTime,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
 
         core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
         core.as_mut()
             .load_save(mgba::vfile::VFile::from_vec(save_sram.to_vec()))?;
+        // Pin the cart RTC to the match clock so RTC-reading games (exe45)
+        // derive the same values here as on the primary — and as on the
+        // peer's pair of cores.
+        core.set_rtc_fixed(rtc_time);
 
         let state = State::new(match_type, is_offerer, local_player_index, rng);
 

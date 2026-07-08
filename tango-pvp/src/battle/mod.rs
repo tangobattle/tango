@@ -25,6 +25,12 @@ pub struct MatchIdentity {
     pub match_type: (u8, u8),
     pub is_offerer: bool,
     pub local_player_index: u8,
+    /// The negotiated match clock: the fixed time every core on both sides —
+    /// primary, shadow, and each round's re-sim [`Stepper`](crate::stepper::Stepper)
+    /// — pins its cart RTC to (`Core::set_rtc_fixed`), so RTC-reading games
+    /// (exe45) stay deterministic. Also recorded as the replay's `metadata.ts`
+    /// so playback pins to the identical value.
+    pub rtc_time: std::time::SystemTime,
 }
 
 /// Replay sink: a writer, or none if not recording.

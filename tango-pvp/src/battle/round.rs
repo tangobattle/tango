@@ -113,6 +113,7 @@ impl Round {
             local_state.as_ref(),
             shadow.clone(),
             match_.disable_bgm(),
+            match_.rtc_time(),
         )?;
         let world = MgbaWorld {
             stepper,

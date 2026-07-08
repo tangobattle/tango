@@ -196,6 +196,10 @@ impl Match {
         self.disable_bgm
     }
 
+    pub(super) fn rtc_time(&self) -> std::time::SystemTime {
+        self.identity.rtc_time
+    }
+
     pub(super) fn rom(&self) -> &[u8] {
         &self.rom
     }

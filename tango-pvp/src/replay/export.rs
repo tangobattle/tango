@@ -146,6 +146,9 @@ fn make_core_and_state(
 
     core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
     core.as_mut().load_save(mgba::vfile::VFile::from_vec(sram.to_vec()))?;
+    // Pin the cart RTC to the recorded match clock so RTC-reading games
+    // (exe45) export the same frames the live match produced.
+    core.set_rtc_fixed(replay.rtc_time());
     core.as_mut().reset();
 
     if replay.rounds.is_empty() {

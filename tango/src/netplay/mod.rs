@@ -42,7 +42,10 @@ pub mod compat;
 // short window, and a deliberate quit announces itself with a `Closing` marker
 // so the peer ends at once. Incompatible with the interim 0x49 `Reconnecting`
 // marker, which sat at the same packet tag with the opposite meaning.
-pub const PROTOCOL_VERSION: u32 = 0x4a;
+// 0x4b: `NegotiatedState` gained `ts` — the commit-time wall clock whose
+// offerer-side value becomes the match clock every core pins its cart RTC to
+// (deterministic exe45 PvP/replays). Old peers can't decode the reveal.
+pub const PROTOCOL_VERSION: u32 = 0x4b;
 
 /// Where the lifecycle is right now. Drives the Play tab's status
 /// bar + the Cancel button's visibility.
@@ -998,6 +1001,10 @@ impl State {
         rand::Rng::fill(&mut rand::thread_rng(), &mut nonce);
         let state = crate::net::protocol::NegotiatedState {
             nonce,
+            ts: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64,
             save_data: save_sram,
         };
         let bin = match state.serialize() {
@@ -1200,6 +1207,13 @@ impl State {
         // RNG seed for the in-match shared RNG: XOR of the two
         // nonces. Same construction as the legacy app.
         let rng_seed: [u8; 16] = std::array::from_fn(|i| local_commit.state.nonce[i] ^ peer_state.nonce[i]);
+        // Match clock: the offerer's commit-time wall clock, so both peers pin
+        // every core's cart RTC to the same instant (see PreMatchData::match_ts).
+        let match_ts = if handles.is_offerer {
+            local_commit.state.ts
+        } else {
+            peer_state.ts
+        };
         // Cancel the lobby loop so it returns ownership of the
         // receiver via post_lobby_receiver. The loop drops the
         // receiver into that slot on cancel-exit.
@@ -1236,6 +1250,7 @@ impl State {
             reliable_receiver_slot: self.post_lobby_receiver.clone(),
             in_match_receiver_slot: self.in_match_receiver_slot.clone(),
             rng_seed,
+            match_ts,
             local_save_data: local_commit.state.save_data,
             remote_save_data: peer_state.save_data,
             local_settings,
@@ -1291,6 +1306,12 @@ pub struct PreMatchData {
     /// waits on this (one-shot poll on a tick).
     pub in_match_receiver_slot: Arc<std::sync::Mutex<Option<crate::net::data::Receiver>>>,
     pub rng_seed: [u8; 16],
+    /// The match clock, milliseconds since the unix epoch: the offerer's
+    /// commit-time wall clock, identical on both peers. Every core (primary,
+    /// shadow, re-sim stepper) pins its cart RTC here so RTC-reading games
+    /// (exe45) stay deterministic, and the replay metadata records it as `ts`
+    /// so playback pins to the same value.
+    pub match_ts: u64,
     pub local_save_data: Vec<u8>,
     pub remote_save_data: Vec<u8>,
     pub local_settings: crate::net::protocol::Settings,

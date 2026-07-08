@@ -110,6 +110,16 @@ fn write_zstd_frame(w: impl Write, data: &[u8]) -> std::io::Result<()> {
 }
 
 impl Replay {
+    /// The cart-RTC time playback cores must be pinned to (via
+    /// `Core::set_rtc_fixed`, before `reset()`): the match clock in
+    /// `metadata.ts`, milliseconds since the unix epoch. Live PvP pins every
+    /// core to the negotiated match clock and records that same value as
+    /// `metadata.ts`, so playback reproduces the live match's RTC reads
+    /// exactly — without the pin, RTC-reading games (exe45) diverge.
+    pub fn rtc_time(&self) -> std::time::SystemTime {
+        std::time::UNIX_EPOCH + std::time::Duration::from_millis(self.metadata.ts)
+    }
+
     pub fn into_remote(mut self) -> Self {
         std::mem::swap(&mut self.metadata.local_side, &mut self.metadata.remote_side);
         self.local_player_index = 1 - self.local_player_index;

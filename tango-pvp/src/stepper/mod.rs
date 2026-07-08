@@ -121,6 +121,7 @@ impl Stepper {
         initial_state: &mgba::state::State,
         packet_source: std::sync::Arc<dyn RemotePacketSource>,
         disable_bgm: bool,
+        rtc_time: std::time::SystemTime,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
         let rom_vf = mgba::vfile::VFile::from_vec(rom.to_vec());
@@ -129,6 +130,10 @@ impl Stepper {
         let state = State(std::sync::Arc::new(std::sync::Mutex::new(None)));
 
         hooks.install_on_stepper(&mut core, state.clone());
+        // Pin the cart RTC to the match clock: re-sim ticks must read the
+        // same values the live core (and the peer) read, or RTC-reading
+        // games (exe45) diverge on every rollback.
+        core.set_rtc_fixed(rtc_time);
         core.as_mut().reset();
         // Headless re-sim core: never rasterize. Its pixels are never shown, so
         // skipping drawScanline cuts a large constant off the dominant cost. Set

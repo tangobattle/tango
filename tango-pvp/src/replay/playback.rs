@@ -340,6 +340,10 @@ pub fn run_prefetch(
         .load_rom(mgba::vfile::VFile::from_vec(local_rom.to_vec()))?;
     core.as_mut()
         .load_save(mgba::vfile::VFile::from_vec(replay.local_sram.clone()))?;
+    // Pin the cart RTC to the recorded match clock — prefetched snapshots
+    // must be byte-identical to the states the playback core reaches on its
+    // own, or seeking through them desyncs RTC-reading games (exe45).
+    core.set_rtc_fixed(replay.rtc_time());
     // mgba::thread::Thread::start does this implicitly for the playback
     // core; a raw Core driven by run_frame needs it explicitly.
     core.as_mut().reset();

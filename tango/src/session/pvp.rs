@@ -238,6 +238,13 @@ impl PvpSession {
         // be carrying over from netplay anyway).
         core.as_mut()
             .load_save(mgba::vfile::VFile::from_vec(local_save.to_sram_dump()))?;
+        // Pin the cart RTC to the negotiated match clock. Both peers pin all
+        // their cores (primary here; shadow + re-sim stepper below via
+        // Shadow::new / MatchIdentity) to this same instant, so RTC-reading
+        // games (exe45) can't desync on it; the replay metadata records it
+        // (build_replay_writer) so playback pins to the identical value.
+        let rtc_time = std::time::UNIX_EPOCH + std::time::Duration::from_millis(pre_match.match_ts);
+        core.set_rtc_fixed(rtc_time);
 
         let joyflags = Arc::new(AtomicU32::new(0));
         let local_hooks = local_game.hooks;
@@ -277,6 +284,7 @@ impl PvpSession {
             pre_match.is_offerer,
             local_player_index,
             pre_match.rng_seed,
+            pre_match.match_ts,
             local_save.as_ref(),
             remote_save.as_ref(),
         )
@@ -291,6 +299,7 @@ impl PvpSession {
             match_type: pre_match.match_type,
             is_offerer: pre_match.is_offerer,
             local_player_index,
+            rtc_time,
         };
         let shadow = tango_pvp::shadow::Shadow::new(
             remote_rom.as_ref(),
@@ -300,6 +309,7 @@ impl PvpSession {
             pre_match.is_offerer,
             local_player_index,
             rng.clone(),
+            rtc_time,
         )?;
 
         let latency_counter = Arc::new(tokio::sync::Mutex::new(Some(crate::net::LatencyCounter::new(5))));
@@ -1023,6 +1033,7 @@ fn build_replay_writer(
     is_offerer: bool,
     local_player_index: u8,
     rng_seed: [u8; 16],
+    match_ts: u64,
     local_save: &(dyn tango_dataview::save::Save + Send + Sync),
     remote_save: &(dyn tango_dataview::save::Save + Send + Sync),
 ) -> anyhow::Result<tango_pvp::replay::Writer> {
@@ -1069,10 +1080,12 @@ fn build_replay_writer(
         // incomplete) replay changes nothing; finish() flushes.
         std::io::BufWriter::new(file),
         tango_pvp::replay::Metadata {
-            ts: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64,
+            // The negotiated match clock, not the local wall clock: every live
+            // core's cart RTC is pinned to this instant, and playback pins to
+            // `metadata.ts` (see `Replay::rtc_time`), so recording the same
+            // value is what makes exe45 replays reproduce the live match. Both
+            // peers' replays of one match carry the identical ts.
+            ts: match_ts,
             link_code: link_code.to_string(),
             local_side: Some(tango_pvp::replay::metadata::Side {
                 nickname: local_settings.nickname.clone(),
