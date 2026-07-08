@@ -447,7 +447,6 @@ impl State {
         loaded: Option<&'a selection::Loaded>,
         streamer_mode: bool,
         config: &'a config::Config,
-        rescanning: bool,
         band: LobbyBandCtx<'a>,
     ) -> Element<'a, Message> {
         let now = iced::time::Instant::now();
@@ -469,7 +468,7 @@ impl State {
         // session is being built from the committed state and
         // selection changes would only confuse.
         let inner = column![
-            self.selector_strip(lang, scanners, loadout, config, rescanning, band.handoff_pending),
+            self.selector_strip(lang, scanners, loadout, config, band.handoff_pending),
             save_body,
         ]
         .spacing(style::PANE_GAP)
@@ -588,7 +587,6 @@ impl State {
         scanners: &'a Scanners,
         loadout: &'a Loadout,
         config: &'a config::Config,
-        rescanning: bool,
         inert: bool,
     ) -> Element<'a, Message> {
         // Inert during the PvP handoff window — the loadout pickers
@@ -596,7 +594,7 @@ impl State {
         // contradict the committed state, without the strip changing
         // shape.
         let gate = move |m: loadout::Message| if inert { Message::Noop } else { Message::Loadout(m) };
-        let game_row: Element<'a, Message> = loadout::game_row(loadout, lang, scanners, config, rescanning).map(gate);
+        let game_row: Element<'a, Message> = loadout::game_row(loadout, lang, scanners, config).map(gate);
         let save_picker: Element<'a, Message> =
             Element::from(loadout::save_picker(loadout, lang, scanners, config).width(Length::Fill)).map(gate);
         let save_row = self.save_action_row(lang, scanners, loadout, save_picker);

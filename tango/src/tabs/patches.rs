@@ -21,7 +21,6 @@ pub enum Message {
     VersionSelected(semver::Version),
     OpenFolder(std::path::PathBuf),
     ReadmeLinkClicked(iced::widget::markdown::Uri),
-    Rescan,
     Update,
     UpdateFinished(Result<(), String>),
     /// Star / unstar a patch. The patches list sorts favorites to
@@ -57,8 +56,6 @@ pub struct PatchesState {
 pub enum Effect {
     /// `open::that(_)` — folder or http URL.
     OpenPath(String),
-    /// User clicked Rescan; App re-scans + refreshes loaded.
-    Rescan,
     /// User clicked Update; App spawns `patch::update(url, root)`
     /// and dispatches `Message::UpdateFinished` on completion.
     /// Carries the repo URL + on-disk root.
@@ -96,7 +93,6 @@ impl PatchesState {
             }
             Message::OpenFolder(p) => Some(Effect::OpenPath(p.display().to_string())),
             Message::ReadmeLinkClicked(url) => Some(Effect::OpenPath(url.to_string())),
-            Message::Rescan => Some(Effect::Rescan),
             Message::Update => {
                 if self.updating {
                     return None;
@@ -153,11 +149,10 @@ impl PatchesState {
         lang: &'a LanguageIdentifier,
         scanners: &'a Scanners,
         config: &'a crate::config::Config,
-        rescanning: bool,
     ) -> Element<'a, Message> {
         let patches = scanners.patches.read();
 
-        let top = self.top_strip(lang, rescanning);
+        let top = self.top_strip(lang);
         let left = self.patch_list(&patches, config);
         let right: Element<'_, Message> =
             if let Some((name, patch)) = self.selected.as_ref().and_then(|n| patches.get(n).map(|p| (n, p))) {
@@ -177,8 +172,8 @@ impl PatchesState {
     }
 
     /// Top strip: the search filter, the in-flight / failed update
-    /// status, and the update + rescan buttons.
-    fn top_strip<'a>(&'a self, lang: &'a LanguageIdentifier, rescanning: bool) -> Element<'a, Message> {
+    /// status, and the update button.
+    fn top_strip<'a>(&'a self, lang: &'a LanguageIdentifier) -> Element<'a, Message> {
         let update_msg = if self.updating { None } else { Some(Message::Update) };
 
         // Search input replaces the "Installed: N" label. The
@@ -205,20 +200,12 @@ impl PatchesState {
             );
         }
 
-        top_row = top_row
-            .push(horizontal_space())
-            .push(widgets::icon_button_maybe(
-                Icon::CloudSync,
-                t!(lang, "patches-update"),
-                update_msg,
-                STANDARD_PADDING,
-            ))
-            .push(widgets::icon_button_maybe(
-                Icon::RefreshCw,
-                t!(lang, "rescan"),
-                (!rescanning).then_some(Message::Rescan),
-                STANDARD_PADDING,
-            ));
+        top_row = top_row.push(horizontal_space()).push(widgets::icon_button_maybe(
+            Icon::CloudSync,
+            t!(lang, "patches-update"),
+            update_msg,
+            STANDARD_PADDING,
+        ));
 
         container(top_row)
             .padding(style::PANE_PADDING)

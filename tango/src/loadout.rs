@@ -15,11 +15,9 @@
 
 use crate::app::Scanners;
 use crate::i18n::t;
-use crate::style::STANDARD_PADDING;
 use crate::{config, game, rom, widgets};
 use iced::widget::row;
 use iced::{Alignment, Element, Length};
-use lucide_icons::Icon;
 use unic_langid::LanguageIdentifier;
 
 #[derive(Default)]
@@ -43,7 +41,6 @@ pub enum Message {
     /// Real patch name; empty string is the "no patch" sentinel.
     PatchSelected(String),
     PatchVersionSelected(semver::Version),
-    Rescan,
 }
 
 /// Side-effects bubble-up, mirroring the tab modules' convention:
@@ -55,8 +52,6 @@ pub enum Effect {
     /// App should rebuild its `Loaded` cache, persist config, and
     /// resend lobby settings if one is live.
     SelectionChanged,
-    /// User clicked Rescan; App should scanner-rescan + refresh.
-    Rescan,
 }
 
 impl Loadout {
@@ -131,7 +126,6 @@ impl Loadout {
                 self.patch_version = Some(v);
                 Some(Effect::SelectionChanged)
             }
-            Message::Rescan => Some(Effect::Rescan),
         }
     }
 
@@ -617,31 +611,21 @@ pub fn patch_supports(loadout: &Loadout, scanners: &Scanners, game: rom::GameRef
 // ---------- Views ----------
 
 /// The full game row for the Play tab's selector strip: family
-/// picker, patch + version pickers, rescan button. The patch controls
-/// are always visible.
+/// picker, patch + version pickers. The patch controls are always
+/// visible. No rescan button — scans re-run on their own (tab
+/// entry, window refocus, session close).
 pub fn game_row<'a>(
     loadout: &'a Loadout,
     lang: &'a LanguageIdentifier,
     scanners: &'a Scanners,
     config: &'a config::Config,
-    rescanning: bool,
 ) -> Element<'a, Message> {
     let game = family_picker(loadout, lang, scanners).width(Length::FillPortion(3));
-
-    let refresh = widgets::icon_button_maybe(
-        Icon::RefreshCw,
-        t!(lang, "rescan"),
-        (!rescanning).then_some(Message::Rescan),
-        STANDARD_PADDING,
-    );
 
     let patch = patch_picker(loadout, lang, scanners, config).width(Length::FillPortion(2));
     let version = version_picker(loadout, lang, scanners);
 
-    row![game, patch, version, refresh]
-        .spacing(8)
-        .align_y(Alignment::Center)
-        .into()
+    row![game, patch, version].spacing(8).align_y(Alignment::Center).into()
 }
 
 fn family_picker<'a>(

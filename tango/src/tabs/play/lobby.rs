@@ -353,17 +353,15 @@ impl<'a> Lobby<'a> {
         )
     }
 
-    /// Matchup pane: you / opponent cards with a wide gap so the
-    /// diagonal cut + VS badge from `widgets::vs_splitter` paints
-    /// through the middle. The splitter canvas (which also paints the
-    /// red/blue half tints) is layered *under* the row. On failure
-    /// the matchup powers down — both ready lights go dark, since the
-    /// lobby those flags belonged to is gone — but the opponent card
-    /// keeps their info ("who just left" is exactly what you want to
-    /// read off a dead lobby; netplay deliberately doesn't wipe it).
+    /// Matchup pane ([`widgets::matchup_pane`]): the you / opponent
+    /// side cards. On failure the matchup powers down — both ready
+    /// lights go dark, since the lobby those flags belonged to is
+    /// gone — but the opponent card keeps their info ("who just
+    /// left" is exactly what you want to read off a dead lobby;
+    /// netplay deliberately doesn't wipe it).
     fn matchup_pane(&self, failed: bool) -> Element<'a, Message> {
         let lang = self.lang;
-        let sides_row = row![
+        widgets::matchup_pane(
             side_card(
                 lang,
                 t!(lang, "play-you"),
@@ -376,22 +374,9 @@ impl<'a> Lobby<'a> {
                 t!(lang, "play-opponent"),
                 t!(lang, "lobby-blind-peer-on"),
                 self.state.remote.as_ref(),
-                self.state.remote_ready && !failed
+                self.state.remote_ready && !failed,
             ),
-        ]
-        .spacing(56)
-        // Top-align so the YOU slot doesn't bounce upward when the
-        // opponent's settings land and their card grows from a 2-line
-        // placeholder to a 3-line filled card.
-        .align_y(Alignment::Start);
-        container(
-            iced::widget::Stack::new()
-                .push(container(sides_row).padding(style::PANE_PADDING).width(Fill))
-                .push_under(widgets::vs_splitter()),
         )
-        .width(Fill)
-        .style(widgets::pane)
-        .into()
     }
 
     /// The match settings, clustered as labeled columns — a muted

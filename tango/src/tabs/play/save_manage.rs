@@ -271,7 +271,7 @@ impl State {
             return row![
                 self.new_save_button(lang, scanners, loadout),
                 save_picker,
-                self.save_action_buttons(lang, loadout),
+                save_actions_menu(lang, loadout),
             ]
             .spacing(8)
             .align_y(Alignment::Center)
@@ -285,7 +285,7 @@ impl State {
                 row![
                     self.new_save_button(lang, scanners, loadout),
                     save_picker,
-                    self.save_action_buttons(lang, loadout),
+                    save_actions_menu(lang, loadout),
                 ]
                 .spacing(8)
                 .align_y(Alignment::Center)
@@ -426,48 +426,29 @@ impl State {
             STANDARD_PADDING,
         )
     }
+}
 
-    fn save_action_buttons<'a>(&'a self, lang: &'a LanguageIdentifier, loadout: &'a Loadout) -> Element<'a, Message> {
-        let enabled = loadout.save.is_some();
-        let mk = |icon: Icon, label: String, msg: Message, on: bool| {
-            widgets::icon_button_maybe(icon, label, if on { Some(msg) } else { None }, STANDARD_PADDING)
-        };
-        // Destructive variant for Delete — flags it red so it
-        // doesn't look like just another toolbar action.
-        let mk_danger = |icon: Icon, label: String, msg: Message, on: bool| {
-            widgets::icon_button_styled(
-                icon,
-                label,
-                if on { Some(msg) } else { None },
-                STANDARD_PADDING,
-                widgets::danger_button,
-            )
-        };
-        row![
-            mk(
-                Icon::FolderOpen,
-                t!(lang, "save-open-folder"),
-                Message::SaveOpenFolder,
-                enabled
-            ),
-            mk(
-                Icon::Files,
-                t!(lang, "save-duplicate"),
-                Message::SaveDuplicateStart,
-                enabled
-            ),
-            mk(
-                Icon::PencilLine,
-                t!(lang, "save-rename"),
-                Message::SaveRenameStart,
-                enabled
-            ),
-            mk_danger(Icon::Trash, t!(lang, "save-delete"), Message::SaveDeleteStart, enabled),
-        ]
-        .spacing(6)
-        .align_y(Alignment::Center)
-        .into()
-    }
+/// The ⋮ menu of manage-what's-there actions (open folder /
+/// duplicate / rename / delete), collapsed behind one trigger so
+/// the picker row stays [New save][picker][⋮]. Every action needs
+/// a selected save to act on, so the whole trigger disables when
+/// there isn't one. Delete's red flag moves to its inline confirm
+/// (the dropdown renders rows uniformly), which still stands
+/// between the click and the file.
+fn save_actions_menu<'a>(lang: &LanguageIdentifier, loadout: &Loadout) -> Element<'a, Message> {
+    let items = vec![
+        widgets::MenuItem::new(t!(lang, "save-open-folder"), Message::SaveOpenFolder),
+        widgets::MenuItem::new(t!(lang, "save-duplicate"), Message::SaveDuplicateStart),
+        widgets::MenuItem::new(t!(lang, "save-rename"), Message::SaveRenameStart),
+        widgets::MenuItem::new(t!(lang, "save-delete"), Message::SaveDeleteStart),
+    ];
+    widgets::menu_button(
+        Icon::EllipsisVertical,
+        t!(lang, "save-actions"),
+        items,
+        loadout.save.is_some(),
+        STANDARD_PADDING,
+    )
 }
 
 /// The "× Cancel" button that ends every save-action form (rename / duplicate

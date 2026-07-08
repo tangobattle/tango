@@ -147,12 +147,12 @@ pub struct App {
     /// installer. UI lives in Settings → About; toggle is in
     /// Settings → Network.
     updater: updater::Updater,
-    /// Number of in-flight `rescan_off_thread` tasks. Drives the
-    /// per-tab Rescan button gate — `view` reads it to render a
-    /// disabled rescan button while a rescan worker is still busy.
-    /// A counter (not a bool) because rescans can overlap (e.g.
-    /// patch autoupdater fires its own rescan separately from the
-    /// user clicking the button).
+    /// Number of in-flight `rescan_off_thread` tasks. Gates the
+    /// automatic rescan triggers (tab entry, window refocus) so
+    /// they don't stack workers, and the welcome screen's rescan
+    /// button. A counter (not a bool) because rescans can overlap
+    /// (e.g. the patch autoupdater fires its own rescan separately
+    /// from an automatic one).
     rescans_in_flight: u32,
     /// Entrance glide played on freshly-swapped content whenever
     /// the [`screen_key`] changes (tab switch, welcome → main,
@@ -545,6 +545,18 @@ impl App {
             .map(Message::Netplay)
     }
 
+    /// The followup for an automatic rescan (tab entry / window
+    /// refocus): warm the replay stats cache too when the Replays
+    /// tab is what's being looked at, so newly-recorded replays get
+    /// their stats line without a manual nudge.
+    fn auto_rescan_followup(&self) -> RescanFollowup {
+        if self.tab == Tab::Replays {
+            RescanFollowup::RefreshAndReplayStats
+        } else {
+            RescanFollowup::Refresh
+        }
+    }
+
     /// Run a full `Scanners::rescan` on a tokio blocking worker so
     /// the disk walk + TOML parse for patches (the slowest of the
     /// four) doesn't stall iced's update loop. Returns a task that
@@ -553,10 +565,9 @@ impl App {
     /// chain (refresh `self.loaded`, warm stats, auto-pick a save).
     ///
     /// Bumps `rescans_in_flight` synchronously so the very next
-    /// `view` call sees the rescan as live and renders the per-tab
-    /// Rescan button disabled — without this, the button would
-    /// remain clickable until the spawned worker thread actually
-    /// gets scheduled.
+    /// `view` call (and auto-rescan trigger) sees the rescan as
+    /// live — without this, back-to-back triggers would stack
+    /// workers until the first one actually gets scheduled.
     fn rescan_off_thread(&mut self, followup: RescanFollowup) -> iced::Task<Message> {
         self.rescans_in_flight += 1;
         let scanners = self.scanners.clone();
@@ -570,8 +581,8 @@ impl App {
     }
 
     /// Whether any rescan worker spawned by [`rescan_off_thread`] is
-    /// still in flight. View functions read this to disable their
-    /// Rescan buttons.
+    /// still in flight. Gates the automatic rescan triggers and the
+    /// welcome screen's rescan button.
     pub fn is_rescanning(&self) -> bool {
         self.rescans_in_flight > 0
     }
@@ -648,8 +659,8 @@ impl App {
         };
         let Some(scanned) = saves.get(&game).and_then(|v| v.iter().find(|s| s.path == save_path)) else {
             // Save was deleted out from under us (e.g. user deleted
-            // it then hit Rescan). Drop the stale selection so the
-            // picker stops showing a missing entry.
+            // it on disk and a rescan noticed). Drop the stale
+            // selection so the picker stops showing a missing entry.
             self.loaded = None;
             drop(saves);
             drop(roms);
@@ -758,9 +769,9 @@ pub enum Message {
     /// Fired when a backgrounded `Scanners::rescan` task completes.
     /// `followup` tells the handler which post-scan work to do —
     /// most paths just want `Refresh` (re-validate `self.loaded`),
-    /// the replays-tab rescan also warms the stats cache, and the
-    /// save-delete handler asks for a fresh "first save" pick now
-    /// that the scan results are in.
+    /// a rescan with the Replays tab on screen also warms the stats
+    /// cache, and the save-delete handler asks for a fresh "first
+    /// save" pick now that the scan results are in.
     Rescanned(RescanFollowup),
 }
 
@@ -771,8 +782,9 @@ pub enum Message {
 pub enum RescanFollowup {
     /// Just re-validate `self.loaded` against the fresh scan.
     Refresh,
-    /// Refresh + warm the replays-tab stats cache (used after the
-    /// Replays-tab Rescan button).
+    /// Refresh + warm the replays-tab stats cache (used when a
+    /// rescan runs with the Replays tab on screen, and after a PvP
+    /// session closes).
     RefreshAndReplayStats,
     /// Refresh + if `local_save` is `None`, auto-pick the first
     /// remaining save for the local game. Used by the save-delete
@@ -896,12 +908,20 @@ impl App {
                 iced::exit()
             }
             Message::TabSelected(t) => {
+                let entered = self.tab != t;
                 self.tab = t;
                 // A tab switch unmounts the input settings pane's capture
                 // wrapper, so key/button releases stop arriving — drop the
                 // held set rather than show stale-lit binding chips on the
                 // way back.
                 self.settings.held = Default::default();
+                // Entering a scanner-backed tab re-runs the scan in the
+                // background — there are no Rescan buttons; this (plus
+                // window refocus) is how new files on disk get noticed.
+                // Settings doesn't read the scanners, so skip it there.
+                if entered && t != Tab::Settings && !self.is_rescanning() {
+                    return self.rescan_off_thread(self.auto_rescan_followup());
+                }
                 iced::Task::none()
             }
             // Loadout strip interactions route to the shared
@@ -945,6 +965,19 @@ impl App {
             }
             Message::Window(id, ev) => {
                 match ev {
+                    iced::window::Event::Focused => {
+                        // Coming back to the window is the moment new
+                        // files are most likely to have appeared (the
+                        // user was just in their file manager) — the
+                        // refocus rescan is what replaced the Rescan
+                        // buttons for files added while already on a
+                        // tab. Skipped mid-session: nothing scanner-
+                        // backed is on screen, and the session-close
+                        // path rescans anyway.
+                        if !self.session.is_active() && !self.is_rescanning() {
+                            return self.rescan_off_thread(self.auto_rescan_followup());
+                        }
+                    }
                     iced::window::Event::Resized(size) => {
                         // The Resized size could be either a user-driven
                         // resize or the result of maximize/unmaximize.
@@ -1458,7 +1491,6 @@ impl App {
             .into();
         }
 
-        let rescanning = self.is_rescanning();
         let body: Element<'_, Message> = match self.tab {
             Tab::Play => {
                 let main = self
@@ -1470,7 +1502,6 @@ impl App {
                         self.loaded.as_ref(),
                         self.config.streamer_mode,
                         &self.config,
-                        rescanning,
                         tabs::play::LobbyBandCtx {
                             phase: &self.netplay.phase,
                             lobby: &self.netplay.lobby,
@@ -1484,11 +1515,11 @@ impl App {
             }
             Tab::Replays => self
                 .replays
-                .view(lang, &self.scanners, &self.config, &self.netplay.phase, rescanning)
+                .view(lang, &self.scanners, &self.config, &self.netplay.phase)
                 .map(Message::Replays),
             Tab::Patches => self
                 .patches
-                .view(lang, &self.scanners, &self.config, rescanning)
+                .view(lang, &self.scanners, &self.config)
                 .map(Message::Patches),
             Tab::Settings => {
                 tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking(), None)

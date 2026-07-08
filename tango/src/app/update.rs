@@ -20,7 +20,6 @@ impl App {
                 self.apply_default_match_type();
                 iced::Task::none()
             }
-            loadout::Effect::Rescan => self.rescan_off_thread(RescanFollowup::Refresh),
         }
     }
 
@@ -301,7 +300,6 @@ impl App {
         use tabs::patches::Effect as E;
         match effect {
             E::OpenPath(s) => open_path(s),
-            E::Rescan => self.rescan_off_thread(RescanFollowup::Refresh),
             E::UpdateRescan => self.rescan_off_thread(RescanFollowup::Refresh),
             E::StartUpdate { url, root } => iced::Task::perform(
                 async move { patch::update(url, root).await.map_err(|e| e.to_string()) },
@@ -346,11 +344,6 @@ impl App {
                 }
                 iced::Task::none()
             }
-            // User triggered a full rescan — re-validate the
-            // stats cache and warm it for any new replays
-            // (handled in the Rescanned handler via the
-            // `RefreshAndReplayStats` followup).
-            E::Rescan => self.rescan_off_thread(RescanFollowup::RefreshAndReplayStats),
             E::CopyText(s) => iced::clipboard::write(s),
             E::CopyImage(img) => {
                 copy_image_to_clipboard(img);
@@ -660,10 +653,6 @@ impl App {
             C::StreamerMode(b) => self.config.streamer_mode = b,
             C::MatchmakingEndpoint(s) => self.config.matchmaking_endpoint = s,
             C::RelayMode(m) => self.config.relay_mode = m,
-            C::FrameDelay(v) => {
-                self.config.frame_delay =
-                    v.clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY)
-            }
             C::PatchRepo(s) => self.config.patch_repo = s,
             C::DataPath(path) => {
                 self.config.data_path = path;

@@ -12,12 +12,41 @@ use iced::{Alignment, Element, Length, Theme};
 use lucide_icons::Icon;
 use sweeten::widget::{column, row};
 
+mod menu_button;
+pub use menu_button::MenuItem;
+
 /// Icon-only button for low-emphasis toolbar actions (rescan,
 /// copy, open-folder, etc.). Uses [`neutral`] — a soft, theme-
 /// aware style that doesn't compete with primary CTAs in the
 /// same row. The plain-text label is exposed as a hover tooltip.
 pub fn icon_button<'a, M: Clone + 'a>(icon: Icon, label: String, msg: M, padding: [f32; 2]) -> Element<'a, M> {
     icon_button_styled(icon, label, Some(msg), padding, neutral)
+}
+
+/// A ⋮ "more actions" button: [`icon_button`] chrome on the trigger,
+/// the standard dropdown overlay for the actions. `label` is the
+/// hover tooltip; each item's message fires on selection (the
+/// dropdown closes itself, on selection or click-away). Disabled
+/// (greyed, won't open) when `enabled` is false — for rows whose
+/// actions all need a selection to act on.
+pub fn menu_button<'a, M: Clone + 'a>(
+    icon: Icon,
+    label: String,
+    items: Vec<MenuItem<M>>,
+    enabled: bool,
+    padding: [f32; 2],
+) -> Element<'a, M> {
+    let btn = menu_button::MenuButton::new(
+        icon.widget(),
+        items,
+        enabled,
+        padding,
+        crate::style::STANDARD_PADDING,
+        neutral,
+    );
+    // Tooltip above, not below — below is where the dropdown lands,
+    // and the bubble lingers while the cursor rests on the trigger.
+    tooltip(btn, tooltip_bubble(label), tooltip::Position::Top).gap(4).into()
 }
 
 /// `icon_button` with the on_press wrapped in an Option so callers
@@ -1821,6 +1850,30 @@ pub fn slim_progress_bar(theme: &Theme) -> iced::widget::progress_bar::Style {
             color: iced::Color::TRANSPARENT,
         },
     }
+}
+
+/// The "you vs opponent" matchup pane shared by the lobby band and
+/// the replay detail: the two side cards with a wide gap so the
+/// diagonal cut + VS badge from [`vs_splitter`] paints through the
+/// middle. The splitter canvas (which also paints the red/blue half
+/// tints) is layered *under* the row, so the cards sit on top of
+/// the colored plate. Top-aligned so the left card doesn't bounce
+/// when the right one grows (the lobby's opponent card gains a line
+/// when their settings land).
+pub fn matchup_pane<'a, M: 'a>(left: Element<'a, M>, right: Element<'a, M>) -> Element<'a, M> {
+    let sides_row = row![left, right].spacing(56).align_y(Alignment::Start);
+    container(
+        iced::widget::Stack::new()
+            .push(
+                container(sides_row)
+                    .padding(crate::style::PANE_PADDING)
+                    .width(Length::Fill),
+            )
+            .push_under(vs_splitter()),
+    )
+    .width(Length::Fill)
+    .style(pane)
+    .into()
 }
 
 /// Full-height "VS" splitter: paints a near-vertical band in the

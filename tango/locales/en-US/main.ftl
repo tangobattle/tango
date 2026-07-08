@@ -33,6 +33,7 @@ play-no-game = No game selected
 play-no-save = Select save
 
 # Save management
+save-actions = Save actions
 save-open-folder = Open folder
 save-duplicate = Duplicate
 save-rename = Rename

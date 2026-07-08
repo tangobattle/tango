@@ -96,10 +96,6 @@ pub enum Message {
     NicknameChanged(String),
     ToggleStreamerMode(bool),
     MatchmakingEndpointChanged(String),
-    /// Netplay frame-delay slider moved. Persisted to `config.frame_delay`;
-    /// it's this side's local presentation lag, applied at the next match start
-    /// (or live via the in-match footer slider).
-    FrameDelayChanged(u32),
     /// Relay (TURN) usage policy picked: auto / always / never.
     /// Sampled at the next Connect; doesn't affect an in-flight
     /// connection.
@@ -172,7 +168,6 @@ pub enum ConfigChange {
     Nickname(String),
     StreamerMode(bool),
     MatchmakingEndpoint(String),
-    FrameDelay(u32),
     RelayMode(config::RelayMode),
     ShowOpponentSetup(bool),
     PatchRepo(String),
@@ -227,7 +222,6 @@ impl State {
             Message::NicknameChanged(s) => Some(ConfigChange::Nickname(s)),
             Message::ToggleStreamerMode(b) => Some(ConfigChange::StreamerMode(b)),
             Message::MatchmakingEndpointChanged(s) => Some(ConfigChange::MatchmakingEndpoint(s)),
-            Message::FrameDelayChanged(v) => Some(ConfigChange::FrameDelay(v)),
             Message::RelayModeChanged(m) => Some(ConfigChange::RelayMode(m)),
             Message::ToggleShowOpponentSetup(b) => Some(ConfigChange::ShowOpponentSetup(b)),
             Message::PatchRepoChanged(s) => Some(ConfigChange::PatchRepo(s)),
@@ -657,11 +651,10 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
 }
 
 fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
-    // Clamp the displayed value so a stale out-of-range config still lands the
-    // slider handle inside the track.
-    let frame_delay = config
-        .frame_delay
-        .clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY);
+    // No frame-delay control here — that knob lives in the lobby
+    // (next to the latency it's tuned against, with the Suggest
+    // button) and in the in-match settings; both persist to the
+    // same `config.frame_delay`.
     column![
         labeled::<Message>(
             t!(lang, "settings-matchmaking-endpoint"),
@@ -670,25 +663,6 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 .padding(STANDARD_PADDING)
                 .width(Length::Fixed(480.0))
                 .style(widgets::chunky_text_input),
-        ),
-        labeled::<Message>(
-            t!(lang, "settings-netplay-frame-delay"),
-            row![
-                container(
-                    iced::widget::slider(
-                        tango_pvp::battle::MIN_FRAME_DELAY..=tango_pvp::battle::MAX_FRAME_DELAY,
-                        frame_delay,
-                        Message::FrameDelayChanged,
-                    )
-                    .style(widgets::chunky_slider)
-                )
-                .width(Length::Fixed(220.0)),
-                // Compact numeric readout next to the track, mirroring the
-                // volume slider's percent display.
-                text(format!("{}", frame_delay)).size(TEXT_CAPTION),
-            ]
-            .spacing(12)
-            .align_y(Alignment::Center),
         ),
         labeled::<Message>(t!(lang, "settings-use-relay"), {
             let options = vec![

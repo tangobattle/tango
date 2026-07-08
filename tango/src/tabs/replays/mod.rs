@@ -41,7 +41,6 @@ pub enum Message {
     /// arrives as one of these messages and lands in
     /// [`ReplaysState::stats`].
     StatsLoaded(std::path::PathBuf, crate::replays::ReplayStats),
-    Rescan,
     SaveViewAction(save_view::Action),
     /// Used by Tasks that need a Message to return but want no
     /// state mutation. Currently: the user dismissed the Save As
@@ -108,9 +107,6 @@ pub enum Effect {
     /// User clicked Watch on a replay; App spawns the playback
     /// session and stuffs it into `session.active`.
     Watch(std::path::PathBuf),
-    /// User clicked Rescan; App re-scans roms / saves / patches /
-    /// replays + refreshes any cached Loaded.
-    Rescan,
     /// Copy plain text to the clipboard.
     CopyText(String),
     /// Copy a raster image to the clipboard.
@@ -182,7 +178,6 @@ impl ReplaysState {
             }
             Message::OpenFolder(p) => Some(Effect::OpenPath(p)),
             Message::Watch(p) => Some(Effect::Watch(p)),
-            Message::Rescan => Some(Effect::Rescan),
             Message::SaveViewAction(action) => {
                 // Clipboard outcomes need the App's clipboard collaborator
                 // — bubble them up as Effects. Anything else gets folded
@@ -261,7 +256,6 @@ impl ReplaysState {
         scanners: &'a Scanners,
         config: &'a config::Config,
         netplay_phase: &'a crate::netplay::Phase,
-        rescanning: bool,
     ) -> Element<'a, Message> {
         // Replay playback spawns an emulator session that would
         // conflict with an active netplay session. Disable the
@@ -271,7 +265,7 @@ impl ReplaysState {
         let replays_path = config.replays_path();
         let replays = scanners.replays.read();
 
-        let top = self.filter_strip(lang, &replays, rescanning);
+        let top = self.filter_strip(lang, &replays);
 
         // Left list — AND of game + opponent + completeness filters.
         let filtered: Vec<&replays::ScannedReplay> = replays.iter().filter(|r| self.matches_filters(r)).collect();
@@ -308,14 +302,13 @@ impl ReplaysState {
     }
 
     /// Top strip: game + opponent filter dropdowns plus the
-    /// show-incomplete toggle and rescan button. Options are derived
-    /// from the distinct values seen across the scanned replays'
-    /// local/remote metadata; "All …" is always the first option.
+    /// show-incomplete toggle. Options are derived from the distinct
+    /// values seen across the scanned replays' local/remote metadata;
+    /// "All …" is always the first option.
     fn filter_strip<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
         replays: &[replays::ScannedReplay],
-        rescanning: bool,
     ) -> Element<'a, Message> {
         let all_games = t!(lang, "replays-filter-all-games");
         let mut game_options = vec![widgets::Choice::new(None, all_games.clone())];
@@ -361,13 +354,6 @@ impl ReplaysState {
                     .width(Length::Fixed(220.0))
                     .style(widgets::chunky_text_input),
                 show_incomplete_toggle,
-                horizontal_space(),
-                widgets::icon_button_maybe(
-                    Icon::RefreshCw,
-                    t!(lang, "rescan"),
-                    (!rescanning).then_some(Message::Rescan),
-                    STANDARD_PADDING,
-                ),
             ]
             .spacing(8)
             .align_y(Alignment::Center),
@@ -774,24 +760,10 @@ fn replay_detail<'a>(
     .padding(style::PANE_PADDING)
     .style(widgets::pane);
 
-    // Matchup pane: you-vs-opponent cards with a wide gap. The
-    // diagonal cut + red/blue halves + VS badge are painted by
-    // `widgets::vs_splitter`, layered *under* the row so the
-    // cards sit on top of the colored plate.
-    let matchup_row = row![
+    let matchup_pane = widgets::matchup_pane(
         row_for_side(t!(lang, "play-you"), md.local_side.as_ref()),
         row_for_side(t!(lang, "play-opponent"), md.remote_side.as_ref()),
-    ]
-    .spacing(56)
-    .align_y(iced::Alignment::Start)
-    .height(Length::Shrink);
-    let matchup_pane = container(
-        iced::widget::Stack::new()
-            .push(container(matchup_row).padding(style::PANE_PADDING).width(Fill))
-            .push_under(widgets::vs_splitter()),
-    )
-    .width(Fill)
-    .style(widgets::pane);
+    );
 
     // Save view contributes its own pane pair (tab strip + body)
     // when a save is loaded; otherwise a single placeholder pane
