@@ -638,6 +638,39 @@ pub fn run_seek_worker(
     }
 }
 
+/// Restore the playback trio to `snap`: the mgba core's state, the
+/// stepper's replay checkpoint, and the shadow. The shadow holds its
+/// own mgba core + Round state; without restoring it alongside the
+/// other two, post-seek apply_input calls would feed the stepper
+/// packets from the shadow's stale pre-seek state.
+fn load_snapshot(
+    core: &mut mgba::core::CoreMutRef<'_>,
+    stepper_state: &stepper::State,
+    shadow: &Mutex<Shadow>,
+    replay: &Replay,
+    snap: &ReplaySnapshot,
+) -> anyhow::Result<()> {
+    core.load_state(&snap.mgba_state)?;
+    stepper_state.restore_replay_checkpoint(&snap.checkpoint, &replay.rounds)?;
+    shadow.lock().unwrap().load_state(&snap.shadow_snapshot)?;
+    Ok(())
+}
+
+/// [`load_snapshot`], skipped when the stepper is already parked on
+/// `snap`'s frame (the previous run usually left the core right there).
+fn load_snapshot_if_off(
+    core: &mut mgba::core::CoreMutRef<'_>,
+    stepper_state: &stepper::State,
+    shadow: &Mutex<Shadow>,
+    replay: &Replay,
+    snap: &ReplaySnapshot,
+) -> anyhow::Result<()> {
+    if stepper_state.lock_inner().inputs_consumed() != snap.checkpoint.frame_index {
+        load_snapshot(core, stepper_state, shadow, replay, snap)?;
+    }
+    Ok(())
+}
+
 /// Catch-up loop on the playback mgba core: loads the best starting
 /// snapshot for the controller's current target, then runs frames until
 /// the stepper reaches it — re-planning from scratch whenever a newer
@@ -707,13 +740,7 @@ fn chase_on_core(
             // without this entry coverage could never merge across a
             // keyframe start (see the same adopt in the backfill).
             rewind.adopt(snap.clone());
-            core.load_state(&snap.mgba_state)?;
-            stepper_state.restore_replay_checkpoint(&snap.checkpoint, &replay.rounds)?;
-            // Restore shadow alongside stepper. The shadow holds its own
-            // mgba core + Round state; without restoring it, post-seek
-            // apply_input calls would feed the stepper packets from the
-            // shadow's stale pre-seek state.
-            shadow.lock().unwrap().load_state(&snap.shadow_snapshot)?;
+            load_snapshot(&mut core, stepper_state, shadow, replay, snap)?;
             // A zero-frame landing (the snapshot IS the target — the
             // rewind buffer's usual case) never runs a frame, so the
             // frame callback can't put it on screen; blit the stored
@@ -803,12 +830,7 @@ fn backfill_chunk_on_core(
     // The anchor guarantees coverage_floor anchors at `end`.
     let floor = rewind.coverage_floor(end).unwrap_or(end);
     let restore_landing = |core: &mut mgba::core::CoreMutRef<'_>| -> anyhow::Result<()> {
-        if stepper_state.lock_inner().inputs_consumed() != end {
-            core.load_state(&landing.mgba_state)?;
-            stepper_state.restore_replay_checkpoint(&landing.checkpoint, &replay.rounds)?;
-            shadow.lock().unwrap().load_state(&landing.shadow_snapshot)?;
-        }
-        Ok(())
+        load_snapshot_if_off(core, stepper_state, shadow, replay, &landing)
     };
     if floor <= lo {
         // Window full — put the core back on the landing frame if an
@@ -848,11 +870,7 @@ fn backfill_chunk_on_core(
 
     // Resume from the front — the previous chunk usually left the core
     // right there, in which case the load is skipped.
-    if stepper_state.lock_inner().inputs_consumed() != front.checkpoint.frame_index {
-        core.load_state(&front.mgba_state)?;
-        stepper_state.restore_replay_checkpoint(&front.checkpoint, &replay.rounds)?;
-        shadow.lock().unwrap().load_state(&front.shadow_snapshot)?;
-    }
+    load_snapshot_if_off(&mut core, stepper_state, shadow, replay, &front)?;
 
     for _ in 0..BACKFILL_CHUNK_FRAMES {
         if ctrl.cancel.load(Ordering::Acquire) || ctrl.dirty.load(Ordering::Acquire) {
@@ -885,10 +903,5 @@ fn restore_landing_on_core(
     let Some(landing) = rewind.exact(end) else {
         return Ok(());
     };
-    if stepper_state.lock_inner().inputs_consumed() != end {
-        core.load_state(&landing.mgba_state)?;
-        stepper_state.restore_replay_checkpoint(&landing.checkpoint, &replay.rounds)?;
-        shadow.lock().unwrap().load_state(&landing.shadow_snapshot)?;
-    }
-    Ok(())
+    load_snapshot_if_off(&mut core, stepper_state, shadow, replay, &landing)
 }

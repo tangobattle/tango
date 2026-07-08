@@ -358,6 +358,164 @@ fn kept_input_pairs(replay: &crate::replay::Replay, selected: &[bool]) -> usize 
     }
 }
 
+fn split_flags(flags: &str) -> anyhow::Result<Vec<std::ffi::OsString>> {
+    Ok(shell_words::split(flags)?
+        .into_iter()
+        .map(std::ffi::OsString::from)
+        .collect())
+}
+
+/// Progress denominator: kept input pairs across every replay.
+fn total_kept_frames(replays: &[crate::replay::Replay], selected_rounds: &[Vec<bool>]) -> usize {
+    replays
+        .iter()
+        .enumerate()
+        .map(|(idx, replay)| kept_input_pairs(replay, selected_rounds.get(idx).map(Vec::as_slice).unwrap_or(&[])))
+        .sum()
+}
+
+/// Whether playback of this replay is done. An incomplete replay stops
+/// the moment the stepper has fed the last queued pair (no
+/// fade-to-black tail to wait for); a complete one waits for the final
+/// round to actually end + play through the fade. `is_complete` here
+/// means "the match was played out", not "the writer finished cleanly"
+/// — see `Match::finish_replay`'s call site in pvp_session.rs.
+fn playback_finished(
+    replay: &crate::replay::Replay,
+    state: &crate::stepper::State,
+    cur_round_idx: usize,
+    last_round_idx: usize,
+) -> bool {
+    let state = state.lock_inner();
+    (!replay.is_complete && state.total_input_pairs_left() == 0)
+        || (state.is_round_ended() && cur_round_idx >= last_round_idx)
+}
+
+/// Per-replay bookkeeping derived from the export's round selection.
+struct ReplayPlan<'a> {
+    /// Which rounds get written. Unselected rounds still simulate (the
+    /// sim state has to advance through them) — they just don't reach
+    /// the encoders.
+    selected: &'a [bool],
+    last_selected_round: Option<usize>,
+    /// Input pairs counted toward progress: every round up to and
+    /// including the last selected one.
+    kept_replay_len: usize,
+    full_replay_len: usize,
+    last_round_idx: usize,
+}
+
+impl<'a> ReplayPlan<'a> {
+    fn new(replay: &crate::replay::Replay, selected_rounds: &'a [Vec<bool>], replay_idx: usize) -> Self {
+        let selected = selected_rounds.get(replay_idx).map(Vec::as_slice).unwrap_or(&[]);
+        Self {
+            selected,
+            last_selected_round: selected.iter().rposition(|&s| s),
+            kept_replay_len: kept_input_pairs(replay, selected),
+            full_replay_len: replay.total_input_pairs(),
+            last_round_idx: replay.rounds.len().saturating_sub(1),
+        }
+    }
+
+    fn should_write(&self, round_idx: usize) -> bool {
+        self.selected.get(round_idx).copied().unwrap_or(false)
+    }
+
+    /// True once the playhead has passed the last selected round —
+    /// nothing further will be written, so the run can stop.
+    fn past_selection(&self, round_idx: usize) -> bool {
+        self.last_selected_round.is_none_or(|last| round_idx > last)
+    }
+}
+
+/// The ffmpeg leg of an export: one video encoder + N audio encoders
+/// (one per track), each writing to its own temp file, muxed into the
+/// final container once every stream is done.
+struct EncodePipeline {
+    video: FfmpegChild,
+    video_output: tempfile::NamedTempFile,
+    audios: Vec<(FfmpegChild, tempfile::NamedTempFile)>,
+}
+
+impl EncodePipeline {
+    /// Spawn the encoder children. `width_screens` is the output width
+    /// in GBA screens (1 = one-sided, 2 = side-by-side).
+    fn spawn(
+        settings: &Settings,
+        canceller: &Canceller,
+        width_screens: usize,
+        audio_tracks: usize,
+    ) -> anyhow::Result<Self> {
+        let video_output = tempfile::NamedTempFile::new()?;
+        let video = make_video_ffmpeg(
+            &settings.ffmpeg,
+            video_output.path(),
+            mgba::gba::SCREEN_WIDTH as usize * width_screens,
+            mgba::gba::SCREEN_HEIGHT as usize,
+            &split_flags(&settings.ffmpeg_video_flags)?,
+            canceller,
+        )?;
+        let audios = (0..audio_tracks)
+            .map(|_| {
+                let output = tempfile::NamedTempFile::new()?;
+                let child = make_audio_ffmpeg(
+                    &settings.ffmpeg,
+                    output.path(),
+                    &split_flags(&settings.ffmpeg_audio_flags)?,
+                    canceller,
+                )?;
+                Ok((child, output))
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        Ok(Self {
+            video,
+            video_output,
+            audios,
+        })
+    }
+
+    fn write_video(&mut self, frame: &[u8]) -> std::io::Result<()> {
+        self.video.stdin().write_all(frame)
+    }
+
+    /// Write one run of interleaved samples to audio track `track` as
+    /// s16le bytes (the format the audio child was spawned to read).
+    fn write_audio(&mut self, track: usize, samples: &[i16]) -> std::io::Result<()> {
+        let mut bytes = vec![0u8; samples.len() * 2];
+        byteorder::LittleEndian::write_i16_into(samples, &mut bytes[..]);
+        self.audios[track].0.stdin().write_all(&bytes)
+    }
+
+    /// Close every encoder's stdin (EOF makes them finish encoding),
+    /// wait for each, then mux the encoded streams into `output_path`
+    /// with the audio tracks in spawn order.
+    fn finish(self, settings: &Settings, canceller: &Canceller, output_path: &std::path::Path) -> anyhow::Result<()> {
+        let Self {
+            mut video,
+            video_output,
+            audios,
+        } = self;
+        video.close_stdin();
+        video.wait()?;
+        let mut audio_outputs = Vec::with_capacity(audios.len());
+        for (mut child, output) in audios {
+            child.close_stdin();
+            child.wait()?;
+            audio_outputs.push(output);
+        }
+        let mux_child = make_mux_ffmpeg(
+            &settings.ffmpeg,
+            output_path,
+            video_output.path(),
+            &audio_outputs.iter().map(|o| o.path()).collect::<Vec<_>>(),
+            &split_flags(&settings.ffmpeg_mux_flags)?,
+            canceller,
+        )?;
+        mux_child.wait()?;
+        Ok(())
+    }
+}
+
 pub fn export(
     local_rom: &[u8],
     local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
@@ -378,36 +536,9 @@ pub fn export(
         anyhow::bail!("cancelled");
     }
     let mut vbuf = image::RgbaImage::new(mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT);
+    let mut pipeline = EncodePipeline::spawn(settings, canceller, 1, 1)?;
 
-    let video_output = tempfile::NamedTempFile::new()?;
-    let mut video_child = make_video_ffmpeg(
-        &settings.ffmpeg,
-        video_output.path(),
-        mgba::gba::SCREEN_WIDTH as usize,
-        mgba::gba::SCREEN_HEIGHT as usize,
-        &shell_words::split(&settings.ffmpeg_video_flags)?
-            .into_iter()
-            .map(std::ffi::OsString::from)
-            .collect::<Vec<_>>(),
-        canceller,
-    )?;
-
-    let audio_output = tempfile::NamedTempFile::new()?;
-    let mut audio_child = make_audio_ffmpeg(
-        &settings.ffmpeg,
-        audio_output.path(),
-        &shell_words::split(&settings.ffmpeg_audio_flags)?
-            .into_iter()
-            .map(std::ffi::OsString::from)
-            .collect::<Vec<_>>(),
-        canceller,
-    )?;
-
-    let total_frames: usize = replays
-        .iter()
-        .enumerate()
-        .map(|(idx, replay)| kept_input_pairs(replay, selected_rounds.get(idx).map(Vec::as_slice).unwrap_or(&[])))
-        .sum();
+    let total_frames = total_kept_frames(replays, selected_rounds);
     let mut completed_total = 0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
 
@@ -431,37 +562,18 @@ pub fn export(
             replay,
             settings,
         )?;
-        let full_replay_len = replay.total_input_pairs();
-        let selected = selected_rounds.get(replay_idx).map(Vec::as_slice).unwrap_or(&[]);
-        let last_selected_round = selected.iter().rposition(|&s| s);
-        let kept_replay_len = kept_input_pairs(replay, selected);
+        let plan = ReplayPlan::new(replay, selected_rounds, replay_idx);
 
-        let last_round_idx = replay.rounds.len().saturating_sub(1);
         loop {
             if canceller.is_cancelled() {
                 anyhow::bail!("cancelled");
             }
-            let (cur_round_idx, is_ended, pairs_left) = {
-                let state = state.lock_inner();
-                (
-                    state.current_round_index() as usize,
-                    state.is_round_ended(),
-                    state.total_input_pairs_left(),
-                )
-            };
-
-            // Incomplete: stop the moment the stepper has fed the
-            // last queued pair (no fade-to-black tail to wait for).
-            // Complete: wait for the final round to actually end +
-            // play through the fade. `is_complete` here means
-            // "the match was played out", not "the writer finished
-            // cleanly" — see `Match::finish_replay`'s call site
-            // in pvp_session.rs.
-            if (!replay.is_complete && pairs_left == 0) || (is_ended && cur_round_idx >= last_round_idx) {
+            let cur_round_idx = state.lock_inner().current_round_index() as usize;
+            if playback_finished(replay, &state, cur_round_idx, plan.last_round_idx) {
                 break;
             }
 
-            if last_selected_round.is_none_or(|last| cur_round_idx > last) {
+            if plan.past_selection(cur_round_idx) {
                 break;
             }
 
@@ -469,7 +581,7 @@ pub fn export(
                 Err(err)?;
             }
 
-            let should_write = selected.get(cur_round_idx).copied().unwrap_or(false);
+            let should_write = plan.should_write(cur_round_idx);
             if should_write && !prev_should_write {
                 resampler = mgba::audio::AudioResampler::new();
                 dest_buffer.clear();
@@ -479,40 +591,19 @@ pub fn export(
             let samples = run_frame(&mut core, &mut resampler, &mut dest_buffer, &mut samples, &mut vbuf);
 
             if should_write {
-                video_child.stdin().write_all(&vbuf)?;
-
-                let mut audio_bytes = vec![0u8; samples.len() * 2];
-                byteorder::LittleEndian::write_i16_into(samples, &mut audio_bytes[..]);
-                audio_child.stdin().write_all(&audio_bytes)?;
+                pipeline.write_video(&vbuf)?;
+                pipeline.write_audio(0, samples)?;
             }
             progress_callback(
-                full_replay_len - state.lock_inner().total_input_pairs_left() + completed_total,
+                plan.full_replay_len - state.lock_inner().total_input_pairs_left() + completed_total,
                 total_frames,
             );
         }
 
-        completed_total += kept_replay_len;
+        completed_total += plan.kept_replay_len;
     }
 
-    video_child.close_stdin();
-    video_child.wait()?;
-    audio_child.close_stdin();
-    audio_child.wait()?;
-
-    let mux_child = make_mux_ffmpeg(
-        &settings.ffmpeg,
-        output_path,
-        video_output.path(),
-        &[audio_output.path()],
-        &shell_words::split(&settings.ffmpeg_mux_flags)?
-            .into_iter()
-            .map(std::ffi::OsString::from)
-            .collect::<Vec<_>>(),
-        canceller,
-    )?;
-    mux_child.wait()?;
-
-    Ok(())
+    pipeline.finish(settings, canceller, output_path)
 }
 
 pub fn export_twosided(
@@ -534,47 +625,11 @@ pub fn export_twosided(
     let mut vbuf = image::RgbaImage::new(mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT);
     let mut composed_vbuf = image::RgbaImage::new(mgba::gba::SCREEN_WIDTH * 2, mgba::gba::SCREEN_HEIGHT);
 
-    let video_output = tempfile::NamedTempFile::new()?;
-    let mut video_child = make_video_ffmpeg(
-        &settings.ffmpeg,
-        video_output.path(),
-        (mgba::gba::SCREEN_WIDTH * 2) as usize,
-        mgba::gba::SCREEN_HEIGHT as usize,
-        &shell_words::split(&settings.ffmpeg_video_flags)?
-            .into_iter()
-            .map(std::ffi::OsString::from)
-            .collect::<Vec<_>>(),
-        canceller,
-    )?;
+    // Side-by-side video, two audio tracks: local first, remote second
+    // — the mux maps them in spawn order.
+    let mut pipeline = EncodePipeline::spawn(settings, canceller, 2, 2)?;
 
-    let local_audio_output = tempfile::NamedTempFile::new()?;
-    let mut local_audio_child = make_audio_ffmpeg(
-        &settings.ffmpeg,
-        local_audio_output.path(),
-        &shell_words::split(&settings.ffmpeg_audio_flags)?
-            .into_iter()
-            .map(std::ffi::OsString::from)
-            .collect::<Vec<_>>(),
-        canceller,
-    )?;
-
-    let remote_audio_output = tempfile::NamedTempFile::new()?;
-    let mut remote_audio_child = make_audio_ffmpeg(
-        &settings.ffmpeg,
-        remote_audio_output.path(),
-        &shell_words::split(&settings.ffmpeg_audio_flags)?
-            .into_iter()
-            .map(std::ffi::OsString::from)
-            .collect::<Vec<_>>(),
-        canceller,
-    )?;
-
-    let total_frames: usize = replays
-        .iter()
-        .enumerate()
-        .map(|(idx, replay)| kept_input_pairs(replay, selected_rounds.get(idx).map(Vec::as_slice).unwrap_or(&[])))
-        .sum();
-
+    let total_frames = total_kept_frames(replays, selected_rounds);
     let mut completed_total = 0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
 
@@ -614,11 +669,7 @@ pub fn export_twosided(
             settings,
         )?;
 
-        let full_replay_len = replay.total_input_pairs();
-        let selected = selected_rounds.get(replay_idx).map(Vec::as_slice).unwrap_or(&[]);
-        let last_selected_round = selected.iter().rposition(|&s| s);
-        let kept_replay_len = kept_input_pairs(replay, selected);
-        let last_round_idx = replay.rounds.len().saturating_sub(1);
+        let plan = ReplayPlan::new(replay, selected_rounds, replay_idx);
 
         loop {
             if canceller.is_cancelled() {
@@ -626,28 +677,16 @@ pub fn export_twosided(
             }
             let cur_round_idx = local_state.lock_inner().current_round_index() as usize;
 
+            if playback_finished(&local_replay, &local_state, cur_round_idx, plan.last_round_idx)
+                || playback_finished(&remote_replay, &remote_state, cur_round_idx, plan.last_round_idx)
             {
-                let local_state = local_state.lock_inner();
-                if (!local_replay.is_complete && local_state.total_input_pairs_left() == 0)
-                    || (local_state.is_round_ended() && cur_round_idx >= last_round_idx)
-                {
-                    break;
-                }
-            }
-
-            {
-                let remote_state = remote_state.lock_inner();
-                if (!remote_replay.is_complete && remote_state.total_input_pairs_left() == 0)
-                    || (remote_state.is_round_ended() && cur_round_idx >= last_round_idx)
-                {
-                    break;
-                }
-            }
-
-            if last_selected_round.is_none_or(|last| cur_round_idx > last) {
                 break;
             }
-            let should_write = selected.get(cur_round_idx).copied().unwrap_or(false);
+
+            if plan.past_selection(cur_round_idx) {
+                break;
+            }
+            let should_write = plan.should_write(cur_round_idx);
             if should_write && !prev_should_write {
                 local_resampler = mgba::audio::AudioResampler::new();
                 local_dest_buffer.clear();
@@ -686,9 +725,7 @@ pub fn export_twosided(
                     );
                     if should_write {
                         image::imageops::replace(&mut composed_vbuf, &vbuf, 0, 0);
-                        let mut audio_bytes = vec![0u8; local_samples.len() * 2];
-                        byteorder::LittleEndian::write_i16_into(local_samples, &mut audio_bytes[..]);
-                        local_audio_child.stdin().write_all(&audio_bytes)?;
+                        pipeline.write_audio(0, local_samples)?;
                     }
                 }
 
@@ -702,14 +739,12 @@ pub fn export_twosided(
                     );
                     if should_write {
                         image::imageops::replace(&mut composed_vbuf, &vbuf, mgba::gba::SCREEN_WIDTH as i64, 0);
-                        let mut audio_bytes = vec![0u8; remote_samples.len() * 2];
-                        byteorder::LittleEndian::write_i16_into(remote_samples, &mut audio_bytes[..]);
-                        remote_audio_child.stdin().write_all(&audio_bytes)?;
+                        pipeline.write_audio(1, remote_samples)?;
                     }
                 }
 
                 if should_write {
-                    video_child.stdin().write_all(composed_vbuf.as_bytes())?;
+                    pipeline.write_video(composed_vbuf.as_bytes())?;
                 }
             }
 
@@ -734,33 +769,13 @@ pub fn export_twosided(
             }
 
             progress_callback(
-                full_replay_len - local_state.lock_inner().total_input_pairs_left() + completed_total,
+                plan.full_replay_len - local_state.lock_inner().total_input_pairs_left() + completed_total,
                 total_frames,
             );
         }
 
-        completed_total += kept_replay_len;
+        completed_total += plan.kept_replay_len;
     }
 
-    video_child.close_stdin();
-    video_child.wait()?;
-    local_audio_child.close_stdin();
-    local_audio_child.wait()?;
-    remote_audio_child.close_stdin();
-    remote_audio_child.wait()?;
-
-    let mux_child = make_mux_ffmpeg(
-        &settings.ffmpeg,
-        output_path,
-        video_output.path(),
-        &[local_audio_output.path(), remote_audio_output.path()],
-        &shell_words::split(&settings.ffmpeg_mux_flags)?
-            .into_iter()
-            .map(std::ffi::OsString::from)
-            .collect::<Vec<_>>(),
-        canceller,
-    )?;
-    mux_child.wait()?;
-
-    Ok(())
+    pipeline.finish(settings, canceller, output_path)
 }
