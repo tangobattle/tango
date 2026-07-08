@@ -76,6 +76,9 @@ impl Scanners {
 
 pub struct App {
     config: config::Config,
+    /// Background thread that owns the actual config-file writes; see
+    /// [`config::Writer`]. `persist_config` queues snapshots on it.
+    config_writer: config::Writer,
     tab: Tab,
     scanners: Scanners,
     /// Cloned into every session so they can bind their MGBAStream
@@ -382,6 +385,7 @@ impl App {
 
         let mut app = Self {
             config,
+            config_writer: config::Writer::new(),
             tab: Tab::Play,
             welcome,
             settings: tabs::settings::State::default(),
@@ -456,12 +460,11 @@ impl App {
         iced::Task::stream(stream)
     }
 
-    /// Persist `self.config` to disk. Failures are logged but otherwise
-    /// swallowed so a transient write error doesn't crash the UI.
+    /// Queue `self.config` for persistence on the background writer —
+    /// the render thread never blocks on the disk. Write failures are
+    /// logged by the writer thread.
     fn persist_config(&self) {
-        if let Err(e) = self.config.save() {
-            log::error!("failed to save config: {e}");
-        }
+        self.config_writer.write(self.config.clone());
     }
 
     /// Record the current selection back to config; called after any
@@ -887,7 +890,13 @@ impl App {
             // Same as the OS close button: config is persisted
             // incrementally (on every change + resize), so there's
             // no shutdown bookkeeping to flush here.
-            Message::Quit => iced::exit(),
+            Message::Quit => {
+                // Complete any queued config write before the runtime
+                // tears down (Drop also flushes, as the backstop for the
+                // window-close exit path).
+                self.config_writer.flush();
+                iced::exit()
+            }
             Message::TabSelected(t) => {
                 self.tab = t;
                 // A tab switch unmounts the input settings pane's capture

@@ -149,9 +149,10 @@ pub struct Config {
     /// `last_game` so a family selected with no owned ROM still restores.
     #[serde(default)]
     pub last_family: Option<String>,
-    /// Legacy (pre-loadout-model) global "last patch" selection. Read
-    /// once by [`Config::migrate`] to seed [`Config::last_patch_per_save`],
-    /// never written back.
+    /// Per-game memory of the save each game was last used with. Key:
+    /// [`game_key`] (`family/variant`); value: the save's data-relative
+    /// path. Written on every save pick, read to restore the selection at
+    /// startup and when the user switches back to a game.
     #[serde(default)]
     pub last_save_per_game: std::collections::BTreeMap<String, String>,
     /// Per-save memory of the patch each save was last used with — the
@@ -330,18 +331,38 @@ impl Config {
     }
 
     pub fn load_or_create() -> Self {
-        match config_path() {
-            Some(p) => match std::fs::read_to_string(&p) {
-                Ok(s) => match serde_json::from_str::<Self>(&s) {
-                    Ok(c) => {
-                        return c;
+        let Some(p) = config_path() else {
+            log::warn!("could not resolve config dir, using defaults");
+            return Self::default();
+        };
+        match std::fs::read_to_string(&p) {
+            Ok(s) => match serde_json::from_str::<Self>(&s) {
+                Ok(c) => return c,
+                Err(e) => {
+                    // Don't compound a parse failure by overwriting the user's
+                    // settings with defaults — park the unparseable file next
+                    // door so it can be recovered or reported.
+                    let backup = p.with_extension("json.bad");
+                    match std::fs::rename(&p, &backup) {
+                        Ok(()) => log::warn!("config parse failed ({e}); moved the bad file to {}", backup.display()),
+                        Err(rename_err) => {
+                            log::warn!(
+                                "config parse failed ({e}) and backing the file up failed too ({rename_err}); \
+                                 using defaults without persisting"
+                            );
+                            return Self::default();
+                        }
                     }
-                    Err(e) => log::warn!("config parse failed, using defaults: {e}"),
-                },
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => log::warn!("config read failed, using defaults: {e}"),
+                }
             },
-            None => log::warn!("could not resolve config dir, using defaults"),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                // The file exists but couldn't be read (permissions, invalid
+                // UTF-8, transient I/O) — it may be perfectly good on the next
+                // launch, so don't overwrite it with defaults.
+                log::warn!("config read failed, using defaults without persisting: {e}");
+                return Self::default();
+            }
         }
         let c = Self::default();
         let _ = c.save();
@@ -357,9 +378,74 @@ impl Config {
         }
         let s =
             serde_json::to_string_pretty(self).map_err(|e| std::io::Error::other(format!("serialize failed: {e}")))?;
-        let mut f = std::fs::File::create(&p)?;
-        f.write_all(s.as_bytes())?;
+        // Write-then-rename so an interrupted save can't leave a truncated
+        // config.json behind (std::fs::rename replaces the destination on
+        // both unix and windows).
+        let tmp = p.with_extension("json.tmp");
+        {
+            let mut f = std::fs::File::create(&tmp)?;
+            f.write_all(s.as_bytes())?;
+            f.sync_all()?;
+        }
+        std::fs::rename(&tmp, &p)?;
         Ok(())
+    }
+}
+
+/// Debounced background writer for [`Config`]. The UI thread queues a
+/// snapshot on every change ([`write`](Self::write)); a dedicated thread
+/// coalesces bursts down to the newest snapshot and does the (fsync'd)
+/// disk write, so rapid selection changes cost one write and the render
+/// thread never blocks on I/O. All writes happen on the one thread, so
+/// an older snapshot can never land after a newer one.
+pub struct Writer {
+    tx: Option<std::sync::mpsc::Sender<Config>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Writer {
+    pub fn new() -> Self {
+        let (tx, rx) = std::sync::mpsc::channel::<Config>();
+        let thread = std::thread::Builder::new()
+            .name("config-writer".to_string())
+            .spawn(move || {
+                while let Ok(mut config) = rx.recv() {
+                    // Coalesce a burst into its newest snapshot.
+                    while let Ok(newer) = rx.try_recv() {
+                        config = newer;
+                    }
+                    if let Err(e) = config.save() {
+                        log::error!("failed to save config: {e}");
+                    }
+                }
+            })
+            .expect("spawn config writer");
+        Self {
+            tx: Some(tx),
+            thread: Some(thread),
+        }
+    }
+
+    pub fn write(&self, config: Config) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(config);
+        }
+    }
+
+    /// Drain the queue and stop the thread — called before exit so the
+    /// final write (window geometry, last selection) is on disk before
+    /// the process ends. Idempotent; `write` after `flush` is a no-op.
+    pub fn flush(&mut self) {
+        self.tx = None;
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
+impl Drop for Writer {
+    fn drop(&mut self) {
+        self.flush();
     }
 }
 

@@ -63,7 +63,7 @@ pub type PatchMap = BTreeMap<String, Arc<Patch>>;
 pub type Scanner = scanner::Scanner<PatchMap>;
 
 /// Fetch the patch repo's index.json and download any missing /
-/// updated files via tango_filesync. Mirrors `tango/src/patch.rs::update`.
+/// updated files via tango_filesync.
 pub async fn update(url: String, root: PathBuf) -> anyhow::Result<()> {
     std::fs::create_dir_all(&root)?;
 
@@ -87,12 +87,15 @@ pub async fn update(url: String, root: PathBuf) -> anyhow::Result<()> {
         {
             let url = url.clone();
             let root = root.clone();
+            // One shared client across all downloads — reqwest::Client is an
+            // Arc'd pool, so clones reuse connections + TLS sessions.
+            let client = client.clone();
             move |path| {
                 let url = url.clone();
                 let root = root.clone();
+                let client = client.clone();
                 Box::pin(async move {
                     let mut output_file = tokio::fs::File::create(&root.join(path)).await?;
-                    let client = reqwest::Client::new();
                     let mut stream = tokio::time::timeout(
                         std::time::Duration::from_secs(30),
                         client
