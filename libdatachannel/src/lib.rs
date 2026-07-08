@@ -21,17 +21,17 @@ pub enum Error {
 #[repr(u32)]
 pub enum CertificateType {
     #[default]
-    Default = libdatachannel_sys::rtcCertificateType_RTC_CERTIFICATE_DEFAULT,
-    ECDSA = libdatachannel_sys::rtcCertificateType_RTC_CERTIFICATE_ECDSA,
-    RSA = libdatachannel_sys::rtcCertificateType_RTC_CERTIFICATE_RSA,
+    Default = libdatachannel_sys::rtcCertificateType_RTC_CERTIFICATE_DEFAULT as u32,
+    ECDSA = libdatachannel_sys::rtcCertificateType_RTC_CERTIFICATE_ECDSA as u32,
+    RSA = libdatachannel_sys::rtcCertificateType_RTC_CERTIFICATE_RSA as u32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(u32)]
 pub enum TransportPolicy {
     #[default]
-    All = libdatachannel_sys::rtcTransportPolicy_RTC_TRANSPORT_POLICY_ALL,
-    Relay = libdatachannel_sys::rtcTransportPolicy_RTC_TRANSPORT_POLICY_RELAY,
+    All = libdatachannel_sys::rtcTransportPolicy_RTC_TRANSPORT_POLICY_ALL as u32,
+    Relay = libdatachannel_sys::rtcTransportPolicy_RTC_TRANSPORT_POLICY_RELAY as u32,
 }
 
 #[derive(Debug, Clone)]
@@ -139,19 +139,19 @@ pub struct PeerConnection {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, num_derive::FromPrimitive)]
 #[repr(u32)]
 pub enum State {
-    Connecting = libdatachannel_sys::rtcState_RTC_CONNECTING,
-    Connected = libdatachannel_sys::rtcState_RTC_CONNECTED,
-    Disconnected = libdatachannel_sys::rtcState_RTC_DISCONNECTED,
-    Failed = libdatachannel_sys::rtcState_RTC_FAILED,
-    Closed = libdatachannel_sys::rtcState_RTC_CLOSED,
+    Connecting = libdatachannel_sys::rtcState_RTC_CONNECTING as u32,
+    Connected = libdatachannel_sys::rtcState_RTC_CONNECTED as u32,
+    Disconnected = libdatachannel_sys::rtcState_RTC_DISCONNECTED as u32,
+    Failed = libdatachannel_sys::rtcState_RTC_FAILED as u32,
+    Closed = libdatachannel_sys::rtcState_RTC_CLOSED as u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, num_derive::FromPrimitive)]
 #[repr(u32)]
 pub enum GatheringState {
-    New = libdatachannel_sys::rtcGatheringState_RTC_GATHERING_NEW,
-    InProgress = libdatachannel_sys::rtcGatheringState_RTC_GATHERING_INPROGRESS,
-    Complete = libdatachannel_sys::rtcGatheringState_RTC_GATHERING_COMPLETE,
+    New = libdatachannel_sys::rtcGatheringState_RTC_GATHERING_NEW as u32,
+    InProgress = libdatachannel_sys::rtcGatheringState_RTC_GATHERING_INPROGRESS as u32,
+    Complete = libdatachannel_sys::rtcGatheringState_RTC_GATHERING_COMPLETE as u32,
 }
 
 #[derive(Default)]

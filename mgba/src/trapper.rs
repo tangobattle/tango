@@ -46,7 +46,7 @@ unsafe extern "C" fn c_trapper_bkpt16(arm_core: *mut mgba_sys::ARMCore, imm: i32
     }
 
     let r#impl = &mut trapper.r#impl;
-    let caller = arm_core.as_ref().gpr(15) as u32 - mgba_sys::WordSize_WORD_SIZE_THUMB * 2;
+    let caller = arm_core.as_ref().gpr(15) as u32 - mgba_sys::WordSize_WORD_SIZE_THUMB as u32 * 2;
     let trap = r#impl.traps.get_mut(&caller).unwrap();
     mgba_sys::ARMRunFake(arm_core.ptr, trap.original as u32);
     (trap.handler)(core::CoreMutRef {
