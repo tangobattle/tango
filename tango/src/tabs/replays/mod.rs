@@ -297,16 +297,47 @@ impl ReplaysState {
 
         let top = self.filter_strip(lang, &replays, rescanning);
 
+        // Nothing recorded yet: the list/detail split would be an
+        // empty sidebar next to "Select a replay." — which tells a
+        // new user nothing. Replace it with one card explaining
+        // that replays record themselves; there's no action to
+        // offer because playing matches *is* the action.
+        if replays.is_empty() {
+            let card = widgets::empty_state_card::<Message>(
+                Icon::Film,
+                t!(lang, "empty-no-replays-title"),
+                vec![t!(lang, "empty-no-replays-body")],
+                None,
+            );
+            return column![top, card]
+                .spacing(style::PANE_GAP)
+                .padding(style::PANE_GAP)
+                .height(Fill)
+                .into();
+        }
+
         // Left list — AND of game + opponent + completeness filters.
         let filtered: Vec<&replays::ScannedReplay> = replays.iter().filter(|r| self.matches_filters(r)).collect();
-        let mut list = column![].spacing(2).padding([8, 0]);
-        for (idx, r) in filtered.iter().enumerate() {
-            list = list.push(self.replay_list_row(lang, r, idx));
-        }
-        let left = container(scrollable(list).style(widgets::chunky_scrollable).height(Fill))
-            .width(Length::Fixed(360.0))
-            .height(Fill)
-            .style(widgets::pane);
+        let left: Element<'_, Message> = if filtered.is_empty() {
+            // Replays exist but the filters exclude them all — say
+            // so instead of showing a silently empty column. The
+            // filters (and the show-incomplete toggle, the usual
+            // culprit) are directly above.
+            container(widgets::pane_prompt(Icon::SearchX, t!(lang, "search-no-matches")))
+                .width(Length::Fixed(360.0))
+                .height(Fill)
+                .into()
+        } else {
+            let mut list = column![].spacing(2).padding([8, 0]);
+            for (idx, r) in filtered.iter().enumerate() {
+                list = list.push(self.replay_list_row(lang, r, idx));
+            }
+            container(scrollable(list).style(widgets::chunky_scrollable).height(Fill))
+                .width(Length::Fixed(360.0))
+                .height(Fill)
+                .style(widgets::pane)
+                .into()
+        };
 
         // Right panel: replay_detail returns a column of panes
         // when something is selected; the empty-state collapses to
@@ -324,7 +355,7 @@ impl ReplaysState {
                 None => detail,
             }
         } else {
-            widgets::pane_prompt(t!(lang, "replays-select-prompt"))
+            widgets::pane_prompt(Icon::MousePointerClick, t!(lang, "replays-select-prompt"))
         };
 
         widgets::top_split_pane(top, left, right)

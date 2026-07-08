@@ -10,10 +10,12 @@ use lucide_icons::Icon;
 use sweeten::widget::{column, pick_list, row, text_input};
 use unic_langid::LanguageIdentifier;
 
-/// Gold tone used for filled favorite stars. Hardcoded (not from
-/// the theme palette) so it reads as "this is a favorite" on both
-/// light and dark themes, regardless of the configured accent.
-const FAVORITE_GOLD: iced::Color = iced::Color::from_rgb(1.0, 0.78, 0.0);
+/// Gold tone for favorite stars — the same selection gold
+/// `widgets::list_item` paints picked rows with, so "favorite" and
+/// "selected" read as one warm register instead of two competing
+/// golds. Theme-independent on purpose: it has to say "favorite"
+/// on both light and dark regardless of the configured accent.
+const FAVORITE_GOLD: iced::Color = crate::theme::SELECT_YELLOW;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -158,7 +160,32 @@ impl PatchesState {
         let patches = scanners.patches.read();
 
         let top = self.top_strip(lang, rescanning);
-        let left = self.patch_list(&patches, config);
+
+        // Brand-new install: nothing on disk at all. The list/detail
+        // split would be an empty sidebar next to "Select a patch." —
+        // useless. Replace it with one card that points at Update,
+        // which is where patches actually come from. The button greys
+        // out (rather than vanishing) while an update runs so the
+        // card doesn't reflow.
+        if patches.is_empty() {
+            let card = widgets::empty_state_card(
+                Icon::PackageSearch,
+                t!(lang, "empty-no-patches-title"),
+                vec![t!(lang, "empty-no-patches-body")],
+                Some((
+                    Icon::CloudSync,
+                    t!(lang, "patches-update"),
+                    (!self.updating).then_some(Message::Update),
+                )),
+            );
+            return column![top, card]
+                .spacing(style::PANE_GAP)
+                .padding(style::PANE_GAP)
+                .height(Length::Fill)
+                .into();
+        }
+
+        let left = self.patch_list(lang, &patches, config);
         let right: Element<'_, Message> =
             if let Some((name, patch)) = self.selected.as_ref().and_then(|n| patches.get(n).map(|p| (n, p))) {
                 let detail = self.patch_detail(lang, config, name, patch);
@@ -169,7 +196,7 @@ impl PatchesState {
                     None => detail,
                 }
             } else {
-                widgets::pane_prompt(t!(lang, "patches-select-prompt"))
+                widgets::pane_prompt(Icon::MousePointerClick, t!(lang, "patches-select-prompt"))
             };
 
         widgets::top_split_pane(top, left, right)
@@ -231,6 +258,7 @@ impl PatchesState {
     /// in the detail header).
     fn patch_list<'a>(
         &'a self,
+        lang: &'a LanguageIdentifier,
         patches: &crate::patch::PatchMap,
         config: &crate::config::Config,
     ) -> Element<'a, Message> {
@@ -243,6 +271,15 @@ impl PatchesState {
                 query.is_empty() || n.to_lowercase().contains(&query) || p.title.to_lowercase().contains(&query)
             })
             .collect();
+        // Search matched nothing: say so in the list pane instead
+        // of showing a silently empty column (which reads as "the
+        // list broke", not "your filter excluded everything").
+        if ordered_patches.is_empty() && !query.is_empty() {
+            return container(widgets::pane_prompt(Icon::SearchX, t!(lang, "search-no-matches")))
+                .width(Length::Fixed(280.0))
+                .height(Length::Fill)
+                .into();
+        }
         // Favorites first, alphabetical within each group.
         ordered_patches.sort_by(|(a, _), (b, _)| {
             let fa = config.favorite_patches.contains(*a);
@@ -256,7 +293,8 @@ impl PatchesState {
             let is_fav = config.favorite_patches.contains(*name);
             let title_row: Element<'_, Message> = if is_fav {
                 row![
-                    text("\u{2605}")
+                    Icon::Star
+                        .widget()
                         .size(TEXT_BODY)
                         .style(|_: &iced::Theme| iced::widget::text::Style {
                             color: Some(FAVORITE_GOLD),
@@ -336,9 +374,9 @@ impl PatchesState {
 
         // Favorite toggle lives in the detail header, styled
         // as a flat icon-only affordance so it reads as a
-        // toggle indicator rather than a CTA. State is carried
-        // entirely by the glyph + color: filled gold "★" when
-        // favorite, hollow muted "☆" when not.
+        // toggle indicator rather than a CTA. Same Lucide star
+        // as the list rows; state is carried entirely by color —
+        // selection gold when favorite, muted when not.
         let is_fav = config.favorite_patches.contains(name);
         let favorite_toggle = {
             let label = if is_fav {
@@ -346,8 +384,8 @@ impl PatchesState {
             } else {
                 t!(lang, "patches-favorite")
             };
-            let glyph = if is_fav { "\u{2605}" } else { "\u{2606}" };
-            let star = text(glyph)
+            let star = Icon::Star
+                .widget()
                 .size(TEXT_TITLE)
                 .style(move |theme: &iced::Theme| iced::widget::text::Style {
                     color: Some(if is_fav {

@@ -13,10 +13,10 @@ mod lobby;
 use crate::app::Scanners;
 use crate::i18n::t;
 use crate::loadout::{self, Loadout};
-use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
+use crate::style::{self, STANDARD_PADDING, TEXT_BODY};
 use crate::widgets;
 use crate::{config, game, rom, save_view, selection};
-use iced::widget::{button, container, text, Space};
+use iced::widget::{button, container, text};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
 use sweeten::widget::{column, pick_list, row, text_input};
@@ -1010,10 +1010,15 @@ impl State {
         // No ROMs at all: explain where to put them.
         if scanners.roms.read().is_empty() {
             let roms_path = config.roms_path();
-            return empty_state_card(
+            return widgets::empty_state_card(
+                Icon::Gamepad2,
                 t!(lang, "empty-no-roms-title"),
                 vec![t!(lang, "empty-no-roms-body"), roms_path.display().to_string()],
-                Some((t!(lang, "save-open-folder"), roms_path)),
+                Some((
+                    Icon::Folder,
+                    t!(lang, "save-open-folder"),
+                    Some(Message::OpenSavesFolder(roms_path)),
+                )),
             );
         }
         // Family selected but no save files anywhere in it.
@@ -1023,10 +1028,15 @@ impl State {
                 game::games_in_family(family).any(|g| saves.get(&g).map(|v| !v.is_empty()).unwrap_or(false));
             if !has_saves && loadout.save.is_none() {
                 let saves_path = config.saves_path();
-                return empty_state_card(
+                return widgets::empty_state_card(
+                    Icon::FilePlus,
                     t!(lang, "empty-no-saves-title"),
                     vec![t!(lang, "empty-no-saves-body"), saves_path.display().to_string()],
-                    Some((t!(lang, "save-open-folder"), saves_path)),
+                    Some((
+                        Icon::Folder,
+                        t!(lang, "save-open-folder"),
+                        Some(Message::OpenSavesFolder(saves_path)),
+                    )),
                 );
             }
         }
@@ -1605,45 +1615,6 @@ fn save_template_choice(
     // families, so the picker reads consistently.
     let display = format!("{} \u{2013} {}", crate::game::variant_short_name(lang, game), label);
     widgets::Choice::new((game, raw.to_string()), display)
-}
-
-/// Centered card used for the no-roms / no-saves hints. Title is
-/// rendered larger, body lines stack underneath in muted text.
-/// When `folder` is provided, appends an "Open Folder" button —
-/// usually the same path as the body's last line, so the user
-/// can click straight through instead of copy-pasting it into
-/// their file manager.
-fn empty_state_card(
-    title: String,
-    body_lines: Vec<String>,
-    open_folder: Option<(String, std::path::PathBuf)>,
-) -> Element<'static, Message> {
-    let mut col = column![
-        // Lucide "info" glyph sized up so the card has a clear
-        // visual anchor — without it the empty state was just a
-        // floating title + paragraph, which read as a flash of
-        // text rather than a deliberate placeholder.
-        Icon::Info.widget().size(28.0),
-        text(title).size(TEXT_TITLE),
-    ]
-    .spacing(10)
-    .align_x(Alignment::Center);
-    for line in body_lines {
-        col = col.push(text(line).size(TEXT_CAPTION).style(widgets::muted_text_style));
-    }
-    if let Some((label, path)) = open_folder {
-        col = col.push(Space::new().height(4)).push(widgets::labeled_icon_button(
-            Icon::Folder,
-            label,
-            Message::OpenSavesFolder(path),
-            STANDARD_PADDING,
-            widgets::neutral,
-        ));
-    }
-    container(container(col.padding(28).max_width(520)).style(widgets::panel))
-        .padding(24)
-        .center(Fill)
-        .into()
 }
 
 // ---------- File-level save helpers ----------

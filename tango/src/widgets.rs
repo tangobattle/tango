@@ -6,7 +6,7 @@
 //! come straight from the `lucide-icons` crate — call sites pass
 //! `Icon::Foo` directly.
 
-use crate::style::{PANE_GAP, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING};
+use crate::style::{PANE_GAP, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
 use iced::widget::{button, container, text, tooltip};
 use iced::{Alignment, Element, Length, Theme};
 use lucide_icons::Icon;
@@ -634,12 +634,61 @@ pub fn top_split_pane<'a, M: 'a>(
         .into()
 }
 
-/// A detail pane's empty state: `message` centered on the [`pane`] plate.
-/// Shown by the Patches / Replays tabs when nothing is selected.
-pub fn pane_prompt<'a, M: 'a>(message: String) -> Element<'a, M> {
-    container(text(message).size(TEXT_BODY))
+/// A detail pane's placeholder: a muted glyph over `message`,
+/// centered on the [`pane`] plate. Shown by the Patches / Replays
+/// tabs when nothing is selected, and by their lists when a filter
+/// matches nothing. Deliberately quiet — the glowing
+/// [`empty_state_card`] is for states the user has to go fix; this
+/// one just points back at the list/filter next to it.
+pub fn pane_prompt<'a, M: 'a>(icon: Icon, message: String) -> Element<'a, M> {
+    container(
+        column![
+            icon.widget().size(24.0).style(muted_text_style),
+            text(message).size(TEXT_BODY).style(muted_text_style),
+        ]
+        .spacing(8)
+        .align_x(Alignment::Center),
+    )
+    .center(Length::Fill)
+    .style(pane)
+    .into()
+}
+
+/// Centered card for true empty states (no ROMs, no saves, no
+/// patches, no replays): a glyph anchor + title on the glowing
+/// [`panel`] frame, muted body lines underneath, and an optional
+/// icon+label call-to-action (`None` msg renders it disabled). The
+/// loud cousin of [`pane_prompt`] — reserve it for "you need to do
+/// something" states, not "nothing selected yet". The glyph is
+/// per-state (game pad for ROMs, film for replays, …) so the card
+/// says what's missing before the title is read.
+pub fn empty_state_card<'a, M: Clone + 'a>(
+    icon: Icon,
+    title: String,
+    body_lines: Vec<String>,
+    action: Option<(Icon, String, Option<M>)>,
+) -> Element<'a, M> {
+    let mut col = column![
+        // Glyph sized up so the card has a clear visual anchor —
+        // without it the empty state was just a floating title +
+        // paragraph, which read as a flash of text rather than a
+        // deliberate placeholder.
+        icon.widget().size(28.0),
+        text(title).size(TEXT_TITLE),
+    ]
+    .spacing(10)
+    .align_x(Alignment::Center);
+    for line in body_lines {
+        col = col.push(text(line).size(TEXT_CAPTION).style(muted_text_style));
+    }
+    if let Some((action_icon, label, msg)) = action {
+        col = col.push(iced::widget::Space::new().height(4)).push(
+            labeled_icon_button_maybe(action_icon, label, msg, STANDARD_PADDING, neutral),
+        );
+    }
+    container(container(col.padding(28).max_width(520)).style(panel))
+        .padding(24)
         .center(Length::Fill)
-        .style(pane)
         .into()
 }
 

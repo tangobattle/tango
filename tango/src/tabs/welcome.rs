@@ -74,18 +74,25 @@ pub fn view<'a>(
     .padding(STANDARD_PADDING)
     .style(widgets::chunky_pick_list);
 
-    let step_marker = |done: bool| -> Icon {
+    // Checklist glyphs: a green check for a finished step, a muted
+    // dashed circle for one still to do. (This was RefreshCw for a
+    // while, which read as "reload this step", not "pending".)
+    let step_marker = |done: bool| -> Element<'static, Message> {
         if done {
-            Icon::Check
+            Icon::Check.widget().size(16.0).style(widgets::success_text_style).into()
         } else {
-            Icon::RefreshCw
+            Icon::CircleDashed
+                .widget()
+                .size(16.0)
+                .style(widgets::muted_text_style)
+                .into()
         }
     };
 
     // Step 1 — ROMs.
     let mut roms_block = column![
         row![
-            step_marker(has_roms).widget().size(16.0),
+            step_marker(has_roms),
             text(t!(lang, "welcome-step-roms")).size(TEXT_TITLE),
         ]
         .spacing(8)
@@ -134,7 +141,7 @@ pub fn view<'a>(
 
     let mut nickname_block = column![
         row![
-            step_marker(!state.nickname_draft.trim().is_empty()).widget().size(16.0),
+            step_marker(!state.nickname_draft.trim().is_empty()),
             text(t!(lang, "welcome-step-nickname")).size(TEXT_TITLE),
         ]
         .spacing(8)

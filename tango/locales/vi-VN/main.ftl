@@ -115,6 +115,10 @@ empty-no-roms-title = Không tìm thấy ROM nào
 empty-no-roms-body = Đặt các tệp .gba Battle Network / Rockman EXE của bạn vào:
 empty-no-saves-title = Không có save cho game này
 empty-no-saves-body = Đặt tệp .sav cho game này vào:
+empty-no-patches-title = Chưa cài đặt bản vá nào
+empty-no-patches-body = “Cập nhật bản vá” sẽ tải về bộ sưu tập bản vá mới nhất từ kho bản vá.
+empty-no-replays-title = Chưa có replay nào
+empty-no-replays-body = Replay các trận đấu của bạn sẽ được tự động lưu lại tại đây.
 play-version-placeholder = —
 play-link-code-random = Mã ngẫu nhiên
 play-status-idle = Nhập mã để bắt đầu netplay, hoặc để trống cho chơi đơn.
@@ -328,6 +332,7 @@ welcome-step-nickname = Đặt biệt danh
 welcome-step-nickname-description = Bạn có thể đổi bất cứ lúc nào trong Cài đặt.
 welcome-roms-needed = Thêm ít nhất một ROM để tiếp tục.
 rescan = Quét lại
+search-no-matches = Không có kết quả nào.
 
 # Reconnect / data folder / save-view tabs
 session-stat-lead = Dẫn trước

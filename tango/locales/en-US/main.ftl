@@ -52,6 +52,10 @@ empty-no-roms-title = No game ROMs found
 empty-no-roms-body = Drop your Battle Network / Rockman EXE .gba files into:
 empty-no-saves-title = No save files for this game
 empty-no-saves-body = Drop a .sav for this game into:
+empty-no-patches-title = No patches installed
+empty-no-patches-body = Update downloads the latest patch collection from the patch repository.
+empty-no-replays-title = No replays yet
+empty-no-replays-body = Replays of your matches are recorded here automatically.
 play-no-patch = No patch
 play-patch-toggle = Use a patch…
 play-version-placeholder = —
@@ -372,6 +376,7 @@ welcome-roms-needed = Add at least one ROM before continuing.
 
 # Common actions
 rescan = Rescan
+search-no-matches = No matches.
 
 # Game names live in games.ftl — same Fluent attribute scheme the
 # legacy app uses (game-<family> = base name; .variant-N for each
