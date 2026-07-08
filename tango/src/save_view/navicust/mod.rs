@@ -240,13 +240,11 @@ pub(super) fn render_navicust_edit<'a>(
             // On the selected (held) row, drop the muted wash so the
             // description inherits the gold plate's ink — every line
             // reads in the title's color, same as the replay list.
-            info_col = info_col.push(text(desc).size(TEXT_CAPTION).style(move |theme: &iced::Theme| {
-                if selected {
-                    iced::widget::text::Style { color: None }
-                } else {
-                    muted_text_style(theme)
-                }
-            }));
+            info_col = info_col.push(
+                text(desc)
+                    .size(TEXT_CAPTION)
+                    .style(widgets::list_caption_style(selected)),
+            );
         }
         // Per-part orientation controls: rotate, and (de)compress. They
         // edit this part's picker entry — including the thumbnail beside

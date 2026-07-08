@@ -19,7 +19,7 @@ use crate::{config, game, rom, save_view, selection};
 use iced::widget::{button, container, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
-use sweeten::widget::{column, pick_list, row, text_input};
+use sweeten::widget::{column, row, text_input};
 use unic_langid::LanguageIdentifier;
 
 // ---------- Messages ----------
@@ -1210,23 +1210,20 @@ impl State {
                         widgets::primary_button,
                     )
                 } else {
-                    button(
-                        row![Icon::FilePlus.widget(), text(t!(lang, "save-new-confirm"))]
-                            .spacing(8)
-                            .align_y(Alignment::Center),
+                    widgets::labeled_icon_button_maybe(
+                        Icon::FilePlus,
+                        t!(lang, "save-new-confirm"),
+                        None,
+                        STANDARD_PADDING,
+                        widgets::neutral,
                     )
-                    .padding(STANDARD_PADDING)
-                    .style(widgets::neutral)
-                    .into()
                 };
                 row![
-                    pick_list(options, selected, |o: widgets::Choice<(rom::GameRef, String)>| {
+                    widgets::picker(options, selected, |o: widgets::Choice<(rom::GameRef, String)>| {
                         Message::SaveNewTemplateSelected(o.value.0, o.value.1)
                     })
                     .placeholder(t!(lang, "save-template-pick"))
-                    .padding(STANDARD_PADDING)
-                    .width(Length::Fixed(180.0))
-                    .style(widgets::chunky_pick_list),
+                    .width(Length::Fixed(180.0)),
                     save_name_input(lang, draft, Message::SaveNewDraftChanged, Message::SaveNewConfirm),
                     save_action_cancel_button(lang),
                     confirm_btn,

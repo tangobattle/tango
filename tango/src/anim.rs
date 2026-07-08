@@ -269,6 +269,21 @@ pub fn slide_in<'a, M: 'a>(content: impl Into<Element<'a, M>>, progress: f32, fr
         .into()
 }
 
+/// [`slide_in`] gated on an entrance's progress — the standard way
+/// views apply an [`Enter`]: mid-flight (`Some`) the content glides
+/// in from `from`; at rest (`None`) it passes through with no
+/// wrapper at all.
+pub fn slide_in_opt<'a, M: 'a>(
+    content: impl Into<Element<'a, M>>,
+    progress: Option<f32>,
+    from: iced::Vector,
+) -> Element<'a, M> {
+    match progress {
+        Some(p) => slide_in(content, p, from),
+        None => content.into(),
+    }
+}
+
 /// Sample a two-phase fade-through swap driven by a
 /// [`Transition::swap`]: returns which side to render (`true` =
 /// the transition's "shown" side) and, while mid-swap, the eased

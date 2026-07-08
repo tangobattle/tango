@@ -20,7 +20,6 @@ use crate::{config, game, rom, widgets};
 use iced::widget::row;
 use iced::{Alignment, Element, Length};
 use lucide_icons::Icon;
-use sweeten::widget::pick_list;
 use unic_langid::LanguageIdentifier;
 
 #[derive(Default)]
@@ -654,11 +653,9 @@ fn family_picker<'a>(
     let selected = loadout
         .family
         .and_then(|fam| options.iter().find(|opt| opt.family == fam).cloned());
-    pick_list(options, selected, Message::FamilySelected)
+    widgets::picker(options, selected, Message::FamilySelected)
         .disabled(|opts: &[FamilyOption]| opts.iter().map(|o| !o.available).collect())
         .placeholder(t!(lang, "play-no-game"))
-        .padding(STANDARD_PADDING)
-        .style(widgets::chunky_pick_list)
 }
 
 /// The save picker on its own — the Play tab embeds it in its
@@ -680,15 +677,13 @@ pub fn save_picker<'a>(
     // patch — switch/clear the patch first. `None` (no patch) disables
     // nothing on this axis.
     let patch_supported = patch_supported_games(loadout, scanners);
-    pick_list(options, selected, Message::SaveSelected)
+    widgets::picker(options, selected, Message::SaveSelected)
         .disabled(move |opts: &[SaveOption]| {
             opts.iter()
                 .map(|o| !o.available || patch_supported.as_ref().map(|s| !s.contains(&o.game)).unwrap_or(false))
                 .collect()
         })
         .placeholder(t!(lang, "play-no-save"))
-        .padding(STANDARD_PADDING)
-        .style(widgets::chunky_pick_list)
 }
 
 fn patch_picker<'a>(
@@ -704,11 +699,9 @@ fn patch_picker<'a>(
     Message,
 > {
     let (options, selected) = patch_options(loadout, lang, scanners, config);
-    pick_list(options, selected, |c: widgets::Choice<String>| {
+    widgets::picker(options, selected, |c: widgets::Choice<String>| {
         Message::PatchSelected(c.value)
     })
-    .padding(STANDARD_PADDING)
-    .style(widgets::chunky_pick_list)
 }
 
 /// No patch selected (or none with matching versions) → render the
@@ -725,11 +718,9 @@ fn version_picker<'a>(
             .width(Length::Fixed(100.0))
             .into()
     } else {
-        pick_list(options, loadout.patch_version.clone(), Message::PatchVersionSelected)
+        widgets::picker(options, loadout.patch_version.clone(), Message::PatchVersionSelected)
             .placeholder(t!(lang, "play-version-placeholder"))
-            .padding(STANDARD_PADDING)
             .width(Length::Fixed(100.0))
-            .style(widgets::chunky_pick_list)
             .into()
     }
 }

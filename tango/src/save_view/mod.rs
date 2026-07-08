@@ -960,24 +960,15 @@ pub fn view<'a>(
     // vertically).
     let enter = state.enter.progress(now);
     let enter_from = state.enter_from;
-    let entered = move |el: Element<'a, Action>| -> Element<'a, Action> {
-        match enter {
-            Some(p) => crate::anim::slide_in(el, p, enter_from),
-            None => el,
-        }
-    };
+    let entered = move |el: Element<'a, Action>| crate::anim::slide_in_opt(el, enter, enter_from);
     // Tab-tail extras animate only when their content actually changed — a
     // sub-tab switch (horizontal enter). A game/save swap rises the body in, but
     // the extras are typically identical across saves, and re-animating them
     // there reads as a glitch.
     let tail_slide = enter.filter(|_| enter_from.x != 0.0);
     let extras_dx = if enter_from.x != 0.0 { enter_from.x } else { 24.0 };
-    let extras_entered = move |el: Element<'a, Action>| -> Element<'a, Action> {
-        match tail_slide {
-            Some(p) => crate::anim::slide_in(el, p, iced::Vector::new(extras_dx, 0.0)),
-            None => el,
-        }
-    };
+    let extras_entered =
+        move |el: Element<'a, Action>| crate::anim::slide_in_opt(el, tail_slide, iced::Vector::new(extras_dx, 0.0));
     // Edit-mode morph: the navi header's Edit / Play and the Save / Cancel pair
     // fade-through swap in both directions, so Edit visibly turns into Save /
     // Cancel and back.

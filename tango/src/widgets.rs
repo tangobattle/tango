@@ -705,6 +705,19 @@ pub fn danger_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
     }
 }
 
+/// Caption text inside a [`list_item`] row: muted at rest, but on
+/// the selected row `color: None` so the caption inherits the lit
+/// plate's ink instead of vanishing into the gold.
+pub fn list_caption_style(selected: bool) -> impl Fn(&Theme) -> iced::widget::text::Style {
+    move |theme: &Theme| {
+        if selected {
+            iced::widget::text::Style { color: None }
+        } else {
+            muted_text_style(theme)
+        }
+    }
+}
+
 /// Accent-tinted text — for "lit" indicators that belong to the
 /// primary glow language (like the lobby's ready nicknames)
 /// rather than the success/danger semantic colors.
@@ -1280,6 +1293,38 @@ pub fn panel(theme: &Theme) -> iced::widget::container::Style {
     }
 }
 
+/// The scaffolding every modal overlay shares: `panel` (already
+/// pop-animated by the caller if it animates) wrapped in a
+/// click-swallowing mouse_area and centered, stacked over a dim
+/// backdrop wash at `backdrop_alpha` (callers scale their resting
+/// alpha by the open-transition's progress so the dim fades with
+/// the panel). `dismiss`, when armed, closes the modal on a
+/// backdrop click — pass `None` while the modal is animating out
+/// so a click mid-fade can't re-fire the close (and for modals
+/// that must not be click-dismissed at all).
+pub fn modal_layer<'a, M: Clone + 'a>(
+    panel: Element<'a, M>,
+    backdrop_alpha: f32,
+    swallow: M,
+    dismiss: Option<M>,
+) -> Element<'a, M> {
+    let placement = container(sweeten::widget::mouse_area(panel).on_press(move |_| swallow.clone()))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::alignment::Vertical::Center);
+    let mut backdrop = sweeten::widget::mouse_area(
+        container(iced::widget::Space::new().width(Length::Fill).height(Length::Fill))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(crate::anim::backdrop_style(backdrop_alpha)),
+    );
+    if let Some(m) = dismiss {
+        backdrop = backdrop.on_press(move |_| m.clone());
+    }
+    iced::widget::stack![Element::from(backdrop), Element::from(placement)].into()
+}
+
 /// Shared chunky-button kernel — gradient fill in the given accent
 /// color, accent-tinted glow shadow, hover/press/disabled state
 /// math. The shape (radius, border width, white text) is identical
@@ -1445,6 +1490,29 @@ pub fn chunky_text_input(
     }
 }
 
+/// The standard dropdown: sweeten's `pick_list` with the
+/// [`chunky_pick_list`] chrome and [`STANDARD_PADDING`] applied.
+/// Callers chain extras (`.placeholder`, `.width`, `.disabled`) on
+/// the returned picker; compact in-pane variants (CONTROL_PADDING +
+/// smaller text) keep hand-building.
+///
+/// [`STANDARD_PADDING`]: crate::style::STANDARD_PADDING
+pub fn picker<'a, T, L, V, M>(
+    options: L,
+    selected: Option<V>,
+    on_selected: impl Fn(T) -> M + 'a,
+) -> sweeten::widget::PickList<'a, T, L, V, M>
+where
+    T: ToString + PartialEq + Clone + 'a,
+    L: std::borrow::Borrow<[T]> + 'a,
+    V: std::borrow::Borrow<T> + 'a,
+    M: Clone,
+{
+    sweeten::widget::pick_list(options, selected, on_selected)
+        .padding(crate::style::STANDARD_PADDING)
+        .style(chunky_pick_list)
+}
+
 /// Chunky pick_list matching the button bevel. Same gradient
 /// plate + thicker border. Open state lights up the border in
 /// primary so the dropdown reads as "live".
@@ -1460,9 +1528,7 @@ pub fn chunky_pick_list(
     use sweeten::widget::pick_list::Status;
     let p = theme.extended_palette();
     let primary = theme.palette().primary;
-    let bg = theme.palette().background;
     let text = theme.palette().text;
-    let _ = bg;
     // pick_list::Background is `Background` (Color or Gradient).
     // Drop in the same gradient as the text input so the two
     // widgets read as siblings.
@@ -1536,6 +1602,22 @@ pub fn disabled_pick_list<'a, M: 'a>(label: impl Into<String>) -> iced::widget::
     iced::widget::container(iced::widget::text(label.into()))
         .padding(crate::style::STANDARD_PADDING)
         .style(disabled_pick_list_style)
+}
+
+/// The standard checkbox: [`chunky_checkbox`] chrome with a trailing
+/// label. `label` is pre-resolved display text (`t!` at the call
+/// site). Compact variants (custom `.size()` / `.text_size()`,
+/// conditional `on_toggle`) keep hand-building on
+/// `iced::widget::checkbox` directly.
+pub fn checkbox<'a, M: 'a>(
+    checked: bool,
+    label: String,
+    on_toggle: impl Fn(bool) -> M + 'a,
+) -> iced::widget::Checkbox<'a, M> {
+    iced::widget::checkbox(checked)
+        .label(label)
+        .on_toggle(on_toggle)
+        .style(chunky_checkbox)
 }
 
 /// Chunky checkbox: 4 px rounded box, primary-tinted border when

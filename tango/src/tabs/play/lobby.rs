@@ -24,7 +24,7 @@ use crate::widgets;
 use iced::widget::{button, container, text};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
-use sweeten::widget::{column, pick_list, row};
+use sweeten::widget::{column, row};
 use tango_pvp::battle::suggest_frame_delay;
 use unic_langid::LanguageIdentifier;
 
@@ -515,11 +515,9 @@ impl<'a> Lobby<'a> {
         let lang = self.lang;
         let Some(g) = self.local_game else {
             let empty: Vec<MatchTypeOption> = Vec::new();
-            return pick_list(empty, None::<MatchTypeOption>, |o: MatchTypeOption| {
+            return widgets::picker(empty, None::<MatchTypeOption>, |o: MatchTypeOption| {
                 Message::SetMatchType((o.mode, o.subtype))
             })
-            .padding(STANDARD_PADDING)
-            .style(widgets::chunky_pick_list)
             .into();
         };
         let game_impl = game::from_gamedb_entry(g);
@@ -544,10 +542,7 @@ impl<'a> Lobby<'a> {
             .find(|o| o.mode == self.state.match_type.0 && o.subtype == self.state.match_type.1)
             .cloned();
         let on_change = gated(self.inert(), Message::SetMatchType);
-        pick_list(options, selected, move |o| on_change((o.mode, o.subtype)))
-            .padding(STANDARD_PADDING)
-            .style(widgets::chunky_pick_list)
-            .into()
+        widgets::picker(options, selected, move |o| on_change((o.mode, o.subtype))).into()
     }
 
     /// Big single toggle: Ready → Unready → Starting…, switching

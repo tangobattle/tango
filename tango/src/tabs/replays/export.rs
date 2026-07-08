@@ -510,14 +510,13 @@ pub(super) fn export_panel<'a>(
             widgets::primary_button,
         )
     } else {
-        button(
-            row![Icon::Upload.widget(), text(t!(lang, "replays-export-save-as")),]
-                .spacing(8)
-                .align_y(Alignment::Center),
+        widgets::labeled_icon_button_maybe(
+            Icon::Upload,
+            t!(lang, "replays-export-save-as"),
+            None,
+            STANDARD_PADDING,
+            widgets::neutral,
         )
-        .padding(STANDARD_PADDING)
-        .style(widgets::neutral)
-        .into()
     };
     // Left column stacks the controls (scale + checkboxes) and the
     // optional rounds row. The Save As button lives in the outer

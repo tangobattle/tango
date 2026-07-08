@@ -1,7 +1,7 @@
 use super::*;
 // Explicit so these win over iced's prelude `column!`/`row!` macros, which
 // would otherwise clash with the sweeten ones re-exported via `super::*`.
-use sweeten::widget::{column, mouse_area, row};
+use sweeten::widget::{column, row};
 
 mod telemetry;
 use telemetry::telemetry_overlay;
@@ -990,29 +990,16 @@ fn disconnect_overlay<'a>(
         .width(iced::Length::Fixed(420.0))
         .padding(20)
         .style(widgets::panel);
-    // Swallow clicks on the panel's inert regions (title,
-    // body) so they don't fall through to the backdrop's
-    // dismiss-on-press handler. Buttons inside the panel
-    // still capture their own events.
-    let panel_swallow = mouse_area(anim::pop(panel, progress, 8.0)).on_press(|_| Message::NoOp);
-    let placement = container(panel_swallow)
-        .width(Fill)
-        .height(Fill)
-        .align_x(iced::alignment::Horizontal::Center)
-        .align_y(iced::alignment::Vertical::Center);
-    // Backdrop dim fades with the panel; the dismiss handler is
-    // only armed while the modal is actually open so a click during
-    // the fade-out can't re-fire the close.
-    let mut backdrop = mouse_area(
-        container(iced::widget::Space::new().width(Fill).height(Fill))
-            .width(Fill)
-            .height(Fill)
-            .style(anim::backdrop_style(0.55 * progress)),
-    );
-    if state.disconnect.shown() {
-        backdrop = backdrop.on_press(|_| Message::CloseDisconnectConfirm);
-    }
-    Some(iced::widget::stack![Element::from(backdrop), Element::from(placement)].into())
+    // Dim + click-swallow + centering come from the shared
+    // scaffolding; the dismiss handler is only armed while the
+    // modal is actually open so a click during the fade-out can't
+    // re-fire the close.
+    Some(widgets::modal_layer(
+        anim::pop(panel, progress, 8.0),
+        0.55 * progress,
+        Message::NoOp,
+        state.disconnect.shown().then_some(Message::CloseDisconnectConfirm),
+    ))
 }
 
 /// The automatic mid-match reconnect modal: shown while a dropped direct link is
@@ -1062,19 +1049,7 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, session: &'a ActiveSes
         .width(iced::Length::Fixed(420.0))
         .padding(20)
         .style(widgets::panel);
-    // Swallow clicks on the panel's inert regions so they don't fall through;
-    // the Disconnect button still captures its own press.
-    let panel_swallow = mouse_area(panel).on_press(|_| Message::NoOp);
-    let placement = container(panel_swallow)
-        .width(Fill)
-        .height(Fill)
-        .align_x(iced::alignment::Horizontal::Center)
-        .align_y(iced::alignment::Vertical::Center);
     // Solid dim, no dismiss-on-press: the user leaves only via Disconnect (or
     // the link returning, which clears the overlay on its own).
-    let backdrop = container(iced::widget::Space::new().width(Fill).height(Fill))
-        .width(Fill)
-        .height(Fill)
-        .style(anim::backdrop_style(0.55));
-    Some(iced::widget::stack![Element::from(backdrop), Element::from(placement)].into())
+    Some(widgets::modal_layer(panel.into(), 0.55, Message::NoOp, None))
 }

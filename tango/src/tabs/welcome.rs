@@ -1,11 +1,11 @@
 use crate::i18n::{t, SUPPORTED_LANGS};
-use crate::style::{PRIMARY_PADDING, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_TITLE};
+use crate::style::{STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_TITLE};
 use crate::widgets;
 use crate::widgets::labeled;
 use iced::widget::{button, container, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
-use sweeten::widget::{column, pick_list, row, text_input};
+use sweeten::widget::{column, row, text_input};
 use unic_langid::LanguageIdentifier;
 
 #[derive(Debug, Clone)]
@@ -68,28 +68,22 @@ pub fn view<'a>(
         .map(|id| crate::i18n::LanguageChoice::new(id.clone()))
         .collect();
     let lang_selected = lang_options.iter().find(|c| &c.id == lang).cloned();
-    let lang_picker = pick_list(lang_options, lang_selected, |c: crate::i18n::LanguageChoice| {
+    let lang_picker = widgets::picker(lang_options, lang_selected, |c: crate::i18n::LanguageChoice| {
         Message::LanguageSelected(c.id)
-    })
-    .padding(STANDARD_PADDING)
-    .style(widgets::chunky_pick_list);
+    });
 
-    let step_marker = |done: bool| -> Icon {
-        if done {
-            Icon::Check
-        } else {
-            Icon::RefreshCw
-        }
+    // Step header: status glyph (check once done, refresh while
+    // pending) + title. `label` is pre-resolved (t! at the call site).
+    let step_header = |done: bool, label: String| {
+        let icon = if done { Icon::Check } else { Icon::RefreshCw };
+        row![icon.widget().size(16.0), text(label).size(TEXT_TITLE)]
+            .spacing(8)
+            .align_y(Alignment::Center)
     };
 
     // Step 1 — ROMs.
     let mut roms_block = column![
-        row![
-            step_marker(has_roms).widget().size(16.0),
-            text(t!(lang, "welcome-step-roms")).size(TEXT_TITLE),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center),
+        step_header(has_roms, t!(lang, "welcome-step-roms")),
         text(t!(lang, "welcome-step-roms-description"))
             .size(TEXT_CAPTION)
             .style(widgets::muted_text_style),
@@ -125,7 +119,7 @@ pub fn view<'a>(
 
     // Step 2 — nickname. Gated until at least one ROM is detected.
     let can_continue = has_roms && !state.nickname_draft.trim().is_empty();
-    let mut continue_btn = button(text(t!(lang, "welcome-continue"))).padding(PRIMARY_PADDING);
+    let mut continue_btn = button(text(t!(lang, "welcome-continue"))).padding(STANDARD_PADDING);
     if can_continue {
         continue_btn = continue_btn.style(widgets::primary_button).on_press(Message::Continue);
     } else {
@@ -133,12 +127,10 @@ pub fn view<'a>(
     }
 
     let mut nickname_block = column![
-        row![
-            step_marker(!state.nickname_draft.trim().is_empty()).widget().size(16.0),
-            text(t!(lang, "welcome-step-nickname")).size(TEXT_TITLE),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center),
+        step_header(
+            !state.nickname_draft.trim().is_empty(),
+            t!(lang, "welcome-step-nickname")
+        ),
         text(t!(lang, "welcome-step-nickname-description"))
             .size(TEXT_CAPTION)
             .style(widgets::muted_text_style),

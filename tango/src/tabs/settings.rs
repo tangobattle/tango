@@ -7,7 +7,7 @@ use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, scrollable, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
-use sweeten::widget::{column, pick_list, row, text_input};
+use sweeten::widget::{column, row, text_input};
 use unic_langid::LanguageIdentifier;
 
 /// A [`config::ThemeMode`] as a pick_list [`Choice`], labeled in the
@@ -364,10 +364,11 @@ pub fn view<'a>(
     .style(widgets::pane);
     // Section-switch entrance: just this pane glides in,
     // vertically along the direction of travel in the sidebar.
-    let body_wrap: Element<'a, Message> = match state.pane_enter.progress(iced::time::Instant::now()) {
-        Some(p) => crate::anim::slide_in(body_wrap, p, iced::Vector::new(0.0, state.pane_enter_dy)),
-        None => body_wrap.into(),
-    };
+    let body_wrap: Element<'a, Message> = crate::anim::slide_in_opt(
+        body_wrap,
+        state.pane_enter.progress(iced::time::Instant::now()),
+        iced::Vector::new(0.0, state.pane_enter_dy),
+    );
 
     let root = row![sidebar, body_wrap]
         .spacing(style::PANE_GAP)
@@ -443,11 +444,9 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 .map(|id| crate::i18n::LanguageChoice::new(id.clone()))
                 .collect();
             let selected = options.iter().find(|c| c.id == config.language).cloned();
-            pick_list(options, selected, |c: crate::i18n::LanguageChoice| {
+            widgets::picker(options, selected, |c: crate::i18n::LanguageChoice| {
                 Message::LanguageSelected(c.id)
             })
-            .padding(STANDARD_PADDING)
-            .style(widgets::chunky_pick_list)
         },),
         labeled::<Message>(t!(lang, "settings-theme"), {
             let options = vec![
@@ -455,16 +454,15 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 theme_choice(lang, config::ThemeMode::Light),
             ];
             let selected = options.iter().find(|c| c.value == config.theme).cloned();
-            pick_list(options, selected, |c: Choice<config::ThemeMode>| {
+            widgets::picker(options, selected, |c: Choice<config::ThemeMode>| {
                 Message::ThemeChanged(c.value)
             })
-            .padding(STANDARD_PADDING)
-            .style(widgets::chunky_pick_list)
         }),
-        iced::widget::checkbox(config.streamer_mode)
-            .label(t!(lang, "settings-streamer-mode"))
-            .on_toggle(Message::ToggleStreamerMode)
-            .style(widgets::chunky_checkbox),
+        widgets::checkbox(
+            config.streamer_mode,
+            t!(lang, "settings-streamer-mode"),
+            Message::ToggleStreamerMode,
+        ),
         labeled::<Message>(
             t!(lang, "settings-data-folder"),
             row![
@@ -485,18 +483,21 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 .width(Length::Fixed(480.0))
                 .style(widgets::chunky_text_input),
         ),
-        iced::widget::checkbox(config.enable_patch_autoupdate)
-            .label(t!(lang, "settings-enable-patch-autoupdate"))
-            .on_toggle(Message::TogglePatchAutoupdate)
-            .style(widgets::chunky_checkbox),
-        iced::widget::checkbox(config.enable_updater)
-            .label(t!(lang, "settings-enable-updater"))
-            .on_toggle(Message::ToggleEnableUpdater)
-            .style(widgets::chunky_checkbox),
-        iced::widget::checkbox(config.allow_prerelease_upgrades)
-            .label(t!(lang, "settings-allow-prerelease-upgrades"))
-            .on_toggle(Message::ToggleAllowPrereleaseUpgrades)
-            .style(widgets::chunky_checkbox),
+        widgets::checkbox(
+            config.enable_patch_autoupdate,
+            t!(lang, "settings-enable-patch-autoupdate"),
+            Message::TogglePatchAutoupdate,
+        ),
+        widgets::checkbox(
+            config.enable_updater,
+            t!(lang, "settings-enable-updater"),
+            Message::ToggleEnableUpdater,
+        ),
+        widgets::checkbox(
+            config.allow_prerelease_upgrades,
+            t!(lang, "settings-allow-prerelease-upgrades"),
+            Message::ToggleAllowPrereleaseUpgrades,
+        ),
     ]
     .spacing(14)
     .padding(style::PANE_PADDING)
@@ -523,10 +524,11 @@ fn settings_audio<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) 
             .spacing(12)
             .align_y(Alignment::Center),
         ),
-        iced::widget::checkbox(config.disable_bgm_in_pvp)
-            .label(t!(lang, "settings-disable-bgm-in-pvp"))
-            .on_toggle(Message::ToggleDisableBgmInPvp)
-            .style(widgets::chunky_checkbox),
+        widgets::checkbox(
+            config.disable_bgm_in_pvp,
+            t!(lang, "settings-disable-bgm-in-pvp"),
+            Message::ToggleDisableBgmInPvp,
+        ),
     ]
     .spacing(14)
     .padding(style::PANE_PADDING)
@@ -591,11 +593,9 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
         let label = selected_resolution.map(|r| r.label).unwrap_or_else(|| "—".into());
         widgets::disabled_pick_list(label).into()
     } else {
-        pick_list(resolution_options, selected_resolution, |c: Choice<(f32, f32)>| {
+        widgets::picker(resolution_options, selected_resolution, |c: Choice<(f32, f32)>| {
             Message::ResolutionChanged(c.value)
         })
-        .padding(STANDARD_PADDING)
-        .style(widgets::chunky_pick_list)
         .into()
     };
     let ui_scale_options: Vec<Choice<f32>> = UI_SCALE_PRESETS.iter().copied().map(ui_scale_choice).collect();
@@ -613,10 +613,11 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
                 .style(widgets::muted_text_style),
             row![
                 window_size_picker,
-                iced::widget::checkbox(config.fullscreen)
-                    .label(t!(lang, "settings-fullscreen"))
-                    .on_toggle(Message::ToggleFullscreen)
-                    .style(widgets::chunky_checkbox),
+                widgets::checkbox(
+                    config.fullscreen,
+                    t!(lang, "settings-fullscreen"),
+                    Message::ToggleFullscreen
+                ),
             ]
             .spacing(14)
             .align_y(Alignment::Center),
@@ -624,11 +625,9 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
         .spacing(4),
         labeled::<Message>(
             t!(lang, "settings-ui-scale"),
-            pick_list(ui_scale_options, selected_ui_scale, |c: Choice<f32>| {
+            widgets::picker(ui_scale_options, selected_ui_scale, |c: Choice<f32>| {
                 Message::UiScaleChanged(c.value)
-            })
-            .padding(STANDARD_PADDING)
-            .style(widgets::chunky_pick_list),
+            }),
         ),
         labeled::<Message>(t!(lang, "settings-video-filter"), {
             // `value` is the `config.video_filter` key (`""`, `"hq2x"`, …).
@@ -637,20 +636,20 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
                 .map(|effect| Choice::new(effect.id.into(), effect.name))
                 .collect();
             let selected = options.iter().find(|c| c.value == config.video_filter).cloned();
-            pick_list(options, selected, |c: Choice<String>| {
+            widgets::picker(options, selected, |c: Choice<String>| {
                 Message::VideoFilterChanged(c.value)
             })
-            .padding(STANDARD_PADDING)
-            .style(widgets::chunky_pick_list)
         },),
-        iced::widget::checkbox(config.fractional_scaling)
-            .label(t!(lang, "settings-fractional-scaling"))
-            .on_toggle(Message::ToggleFractionalScaling)
-            .style(widgets::chunky_checkbox),
-        iced::widget::checkbox(config.hide_emulator_border)
-            .label(t!(lang, "settings-hide-emulator-border"))
-            .on_toggle(Message::ToggleHideEmulatorBorder)
-            .style(widgets::chunky_checkbox),
+        widgets::checkbox(
+            config.fractional_scaling,
+            t!(lang, "settings-fractional-scaling"),
+            Message::ToggleFractionalScaling,
+        ),
+        widgets::checkbox(
+            config.hide_emulator_border,
+            t!(lang, "settings-hide-emulator-border"),
+            Message::ToggleHideEmulatorBorder,
+        ),
     ]
     .spacing(14)
     .padding(style::PANE_PADDING)
@@ -698,16 +697,15 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 relay_mode_choice(lang, config::RelayMode::Never),
             ];
             let selected = options.iter().find(|c| c.value == config.relay_mode).cloned();
-            pick_list(options, selected, |c: Choice<config::RelayMode>| {
+            widgets::picker(options, selected, |c: Choice<config::RelayMode>| {
                 Message::RelayModeChanged(c.value)
             })
-            .padding(STANDARD_PADDING)
-            .style(widgets::chunky_pick_list)
         }),
-        iced::widget::checkbox(config.show_opponent_setup)
-            .label(t!(lang, "settings-show-opponent-setup"))
-            .on_toggle(Message::ToggleShowOpponentSetup)
-            .style(widgets::chunky_checkbox),
+        widgets::checkbox(
+            config.show_opponent_setup,
+            t!(lang, "settings-show-opponent-setup"),
+            Message::ToggleShowOpponentSetup,
+        ),
     ]
     .spacing(14)
     .padding(style::PANE_PADDING)

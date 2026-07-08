@@ -23,7 +23,7 @@ use i18n::t;
 use iced::widget::container;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::{Alignment, Element, Fill, Theme};
-use sweeten::widget::{column, mouse_area, row};
+use sweeten::widget::{column, row};
 use tabs::patches::PatchesState;
 use tabs::play::{create_new_save, duplicate_save, rename_save};
 use tabs::replays::ReplaysState;
@@ -1328,13 +1328,12 @@ impl App {
                 self.is_rescanning(),
             )
             .map(Message::Welcome);
-            return entered(
+            return anim::slide_in_opt(
                 iced::widget::stack![widgets::cyber_backdrop(), welcome]
                     .width(Fill)
-                    .height(Fill)
-                    .into(),
+                    .height(Fill),
                 enter,
-                ROOT_SLIDE,
+                iced::Vector::new(0.0, ROOT_SLIDE),
             );
         }
 
@@ -1402,38 +1401,20 @@ impl App {
                     .width(iced::Length::Fixed(820.0))
                     .height(iced::Length::Fixed(560.0))
                     .style(widgets::panel);
-                // Wrap the panel in a mouse_area so clicks on
-                // its inert regions (background, headings) get
-                // swallowed instead of falling through to the
-                // dismiss-on-press backdrop layer below.
-                let modal_panel_swallow =
-                    mouse_area(anim::pop(modal_panel, progress, 12.0)).on_press(|_| Message::NoOp);
-                let placement = iced::widget::container(modal_panel_swallow)
-                    .width(Fill)
-                    .height(Fill)
-                    .align_x(iced::alignment::Horizontal::Center)
-                    .align_y(iced::alignment::Vertical::Center);
-                // Backdrop — dim wash that also dismisses the
-                // modal on click. Captures the press so it
-                // doesn't reach the session HUD beneath. The dim
-                // fades with the panel, and the dismiss handler is
+                // Dim wash + click-swallow + centered placement come
+                // from the shared scaffolding; the dismiss handler is
                 // only armed while the modal is actually open so a
                 // click mid-fade-out can't re-fire the close.
-                let mut backdrop = mouse_area(
-                    iced::widget::container(iced::widget::Space::new().width(Fill).height(Fill))
-                        .width(Fill)
-                        .height(Fill)
-                        .style(anim::backdrop_style(0.45 * progress)),
+                let modal = widgets::modal_layer(
+                    anim::pop(modal_panel, progress, 12.0),
+                    0.45 * progress,
+                    Message::NoOp,
+                    self.session
+                        .settings
+                        .shown()
+                        .then_some(Message::Session(session::Message::CloseSettings)),
                 );
-                if self.session.settings.shown() {
-                    backdrop = backdrop.on_press(|_| Message::Session(session::Message::CloseSettings));
-                }
-                iced::widget::stack![
-                    Element::from(session_view),
-                    Element::from(backdrop),
-                    Element::from(placement),
-                ]
-                .into()
+                iced::widget::stack![Element::from(session_view), modal].into()
             } else {
                 session_view
             };
@@ -1441,7 +1422,7 @@ impl App {
             // covers the way back out (the menu descends — see the
             // screen-swap match in `update`).
             let composed = match (enter, self.screen_enter_scope) {
-                (Some(p), EnterScope::Root { dy }) => entered(composed, Some(p), dy),
+                (Some(p), EnterScope::Root { dy }) => anim::slide_in(composed, p, iced::Vector::new(0.0, dy)),
                 _ => composed,
             };
             return crate::input_capture::InputCapture::new(composed, |input| {
@@ -1539,7 +1520,7 @@ impl App {
         .height(Fill)
         .into();
         match (enter, self.screen_enter_scope) {
-            (Some(p), EnterScope::Root { dy }) => entered(root, Some(p), dy),
+            (Some(p), EnterScope::Root { dy }) => anim::slide_in(root, p, iced::Vector::new(0.0, dy)),
             _ => root,
         }
     }
@@ -1556,17 +1537,6 @@ impl App {
     /// top of the OS DPI scale.
     pub fn scale_factor(&self) -> f32 {
         self.config.ui_scale
-    }
-}
-
-/// Apply the whole-window entrance glide to `el` while one is live;
-/// pass-through otherwise. `dy` is the starting offset (positive =
-/// rise in from below). Drawing-only — layout and hit-testing stay
-/// at the rest position throughout.
-fn entered(el: Element<'_, Message>, progress: Option<f32>, dy: f32) -> Element<'_, Message> {
-    match progress {
-        Some(p) => anim::slide_in(el, p, iced::Vector::new(0.0, dy)),
-        None => el,
     }
 }
 

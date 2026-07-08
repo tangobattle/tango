@@ -7,7 +7,7 @@ use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, scrollable, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
-use sweeten::widget::{column, pick_list, row, text_input};
+use sweeten::widget::{column, row, text_input};
 use unic_langid::LanguageIdentifier;
 
 mod export;
@@ -319,10 +319,11 @@ impl ReplaysState {
             let detail = replay_detail(lang, r, &replays_path, self, scanners, netplay_active);
             // Selection entrance: the detail panel rises up into
             // place.
-            match self.detail_enter.progress(iced::time::Instant::now()) {
-                Some(p) => crate::anim::slide_in(detail, p, iced::Vector::new(0.0, 28.0)),
-                None => detail,
-            }
+            crate::anim::slide_in_opt(
+                detail,
+                self.detail_enter.progress(iced::time::Instant::now()),
+                iced::Vector::new(0.0, 28.0),
+            )
         } else {
             widgets::pane_prompt(t!(lang, "replays-select-prompt"))
         };
@@ -373,13 +374,11 @@ impl ReplaysState {
             .style(widgets::chunky_checkbox);
         container(
             row![
-                pick_list(
+                widgets::picker(
                     game_options,
                     Some(selected_game),
                     |o: widgets::Choice<Option<String>>| { Message::GameFilterSelected(o.value) }
-                )
-                .padding(STANDARD_PADDING)
-                .style(widgets::chunky_pick_list),
+                ),
                 text_input(&t!(lang, "replays-filter-opponent-placeholder"), &self.opponent_filter,)
                     .on_input(Message::OpponentFilterChanged)
                     .padding(STANDARD_PADDING)
@@ -449,13 +448,7 @@ impl ReplaysState {
         let local_nick = md.local_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
         let remote_nick = md.remote_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
 
-        let ts_str = std::time::UNIX_EPOCH
-            .checked_add(std::time::Duration::from_millis(md.ts))
-            .map(|t| {
-                let dt: chrono::DateTime<chrono::Local> = t.into();
-                dt.format("%Y-%m-%d %H:%M:%S").to_string()
-            })
-            .unwrap_or_else(|| "(?)".to_string());
+        let ts_str = format_ts(md.ts, "%Y-%m-%d %H:%M:%S");
 
         let local_gi = md.local_side.as_ref().and_then(|s| s.game_info.as_ref());
         let game_label = local_gi
@@ -480,32 +473,22 @@ impl ReplaysState {
         let rendering = matches!(job_state, Some(j) if j.result.is_none());
         let render_done_ok = matches!(job_state, Some(j) if matches!(&j.result, Some(Ok(_))));
         let render_done_err = matches!(job_state, Some(j) if matches!(&j.result, Some(Err(_))));
+        let status_badge = |icon: Icon, color: fn(&iced::Theme) -> iced::Color| -> Element<'a, Message> {
+            container(
+                icon.widget()
+                    .style(move |theme: &iced::Theme| iced::widget::text::Style {
+                        color: Some(color(theme)),
+                    }),
+            )
+            .padding([0, 4])
+            .into()
+        };
         let badge: Element<'_, Message> = if rendering {
-            container(
-                Icon::Clapperboard
-                    .widget()
-                    .style(|theme: &iced::Theme| iced::widget::text::Style {
-                        color: Some(theme.palette().primary),
-                    }),
-            )
-            .padding([0, 4])
-            .into()
+            status_badge(Icon::Clapperboard, |theme| theme.palette().primary)
         } else if render_done_ok {
-            container(
-                Icon::Check
-                    .widget()
-                    .style(|theme: &iced::Theme| iced::widget::text::Style {
-                        color: Some(theme.palette().success),
-                    }),
-            )
-            .padding([0, 4])
-            .into()
+            status_badge(Icon::Check, |theme| theme.palette().success)
         } else if render_done_err {
-            container(Icon::X.widget().style(|theme: &iced::Theme| iced::widget::text::Style {
-                color: Some(theme.palette().danger),
-            }))
-            .padding([0, 4])
-            .into()
+            status_badge(Icon::X, |theme| theme.palette().danger)
         } else {
             Space::new().width(Length::Fixed(0.0)).into()
         };
@@ -576,11 +559,7 @@ impl ReplaysState {
                 link_code_display(lang, &md.link_code)
             ))
             .size(TEXT_CAPTION)
-            .style(move |theme: &iced::Theme| if selected {
-                iced::widget::text::Style { color: None }
-            } else {
-                widgets::muted_text_style(theme)
-            }),
+            .style(widgets::list_caption_style(selected)),
         ]
         .spacing(2)
         .width(Fill);
@@ -588,10 +567,8 @@ impl ReplaysState {
             text_col = text_col.push(text(line).size(TEXT_CAPTION).style(move |theme: &iced::Theme| {
                 if !is_complete {
                     widgets::danger_text_style(theme)
-                } else if selected {
-                    iced::widget::text::Style { color: None }
                 } else {
-                    widgets::muted_text_style(theme)
+                    widgets::list_caption_style(selected)(theme)
                 }
             }));
         }
@@ -631,13 +608,7 @@ fn replay_detail<'a>(
         .map(|g| scanners.roms.read().contains_key(&g))
         .unwrap_or(false);
     let md = &r.metadata;
-    let ts_str = std::time::UNIX_EPOCH
-        .checked_add(std::time::Duration::from_millis(md.ts))
-        .map(|t| {
-            let dt: chrono::DateTime<chrono::Local> = t.into();
-            dt.format("%Y-%m-%d %H:%M:%S %z").to_string()
-        })
-        .unwrap_or_else(|| "(?)".to_string());
+    let ts_str = format_ts(md.ts, "%Y-%m-%d %H:%M:%S %z");
 
     let row_for_side = |label: String, side: Option<&tango_pvp::replay::metadata::Side>| -> Element<'static, Message> {
         let nick = side.map(|s| s.nickname.clone()).unwrap_or_default();
@@ -875,6 +846,15 @@ fn replay_detail<'a>(
 /// v{variant}" for unrecognized families.
 fn family_display_name(lang: &LanguageIdentifier, family: &str, variant: u32) -> String {
     crate::game::family_str(family, lang, "name").unwrap_or_else(|| format!("{family} v{variant}"))
+}
+
+/// A replay's millis-since-epoch timestamp, formatted per `fmt` in
+/// local time; `"(?)"` when the value is out of range.
+fn format_ts(ms: u64, fmt: &str) -> String {
+    std::time::UNIX_EPOCH
+        .checked_add(std::time::Duration::from_millis(ms))
+        .map(|t| chrono::DateTime::<chrono::Local>::from(t).format(fmt).to_string())
+        .unwrap_or_else(|| "(?)".to_string())
 }
 
 /// `tick_count` → `"M:SS"` (or `"H:MM:SS"` past an hour). 60

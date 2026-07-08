@@ -20,12 +20,10 @@ pub const TEXT_HEADING: f32 = 15.0;
 pub const TEXT_BODY: f32 = 13.0;
 pub const TEXT_CAPTION: f32 = 11.0;
 
-// Button sizing constants. `PRIMARY` is the big call-to-action
-// (Play); `STANDARD` is everything else. Standard body text comes
-// from iced's `default_text_size` (set in `run_app`), so there's
-// no standalone STANDARD_TEXT_SIZE constant — widgets that don't
-// pass an explicit size inherit the app default.
-pub const PRIMARY_PADDING: [f32; 2] = [6.0, 14.0];
+// Standard button padding. Standard body text comes from iced's
+// `default_text_size` (set in `run_app`), so there's no standalone
+// STANDARD_TEXT_SIZE constant — widgets that don't pass an explicit
+// size inherit the app default.
 pub const STANDARD_PADDING: [f32; 2] = [6.0, 14.0];
 
 /// Header strip across the top of a pane (editor headers, settings

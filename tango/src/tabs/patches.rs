@@ -7,7 +7,7 @@ use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, scrollable, text};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
-use sweeten::widget::{column, pick_list, row, text_input};
+use sweeten::widget::{column, row, text_input};
 use unic_langid::LanguageIdentifier;
 
 /// Gold tone used for filled favorite stars. Hardcoded (not from
@@ -164,10 +164,11 @@ impl PatchesState {
                 let detail = self.patch_detail(lang, config, name, patch);
                 // Selection entrance: the detail panel rises up
                 // into place.
-                match self.detail_enter.progress(iced::time::Instant::now()) {
-                    Some(p) => crate::anim::slide_in(detail, p, iced::Vector::new(0.0, 28.0)),
-                    None => detail,
-                }
+                crate::anim::slide_in_opt(
+                    detail,
+                    self.detail_enter.progress(iced::time::Instant::now()),
+                    iced::Vector::new(0.0, 28.0),
+                )
             } else {
                 widgets::pane_prompt(t!(lang, "patches-select-prompt"))
             };
@@ -275,11 +276,7 @@ impl PatchesState {
                         title_row,
                         text((*name).clone())
                             .size(TEXT_CAPTION)
-                            .style(move |theme: &iced::Theme| if selected {
-                                iced::widget::text::Style { color: None }
-                            } else {
-                                widgets::muted_text_style(theme)
-                            }),
+                            .style(widgets::list_caption_style(selected)),
                     ]
                     .spacing(2),
                 )
@@ -378,9 +375,7 @@ impl PatchesState {
             container(text(patch.title.clone()).size(TEXT_TITLE))
                 .padding([4, 0])
                 .width(Fill),
-            pick_list(versions, selected_version, Message::VersionSelected)
-                .padding(STANDARD_PADDING)
-                .style(widgets::chunky_pick_list),
+            widgets::picker(versions, selected_version, Message::VersionSelected),
             widgets::icon_button(
                 Icon::FolderOpen,
                 t!(lang, "patches-open-folder"),
