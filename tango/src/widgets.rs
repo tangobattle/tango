@@ -46,7 +46,9 @@ pub fn menu_button<'a, M: Clone + 'a>(
     );
     // Tooltip above, not below — below is where the dropdown lands,
     // and the bubble lingers while the cursor rests on the trigger.
-    tooltip(btn, tooltip_bubble(label), tooltip::Position::Top).gap(4).into()
+    tooltip(btn, tooltip_bubble(label), tooltip::Position::Top)
+        .gap(4)
+        .into()
 }
 
 /// `icon_button` with the on_press wrapped in an Option so callers

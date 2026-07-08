@@ -432,15 +432,15 @@ impl State {
 /// duplicate / rename / delete), collapsed behind one trigger so
 /// the picker row stays [New save][picker][⋮]. Every action needs
 /// a selected save to act on, so the whole trigger disables when
-/// there isn't one. Delete's red flag moves to its inline confirm
-/// (the dropdown renders rows uniformly), which still stands
-/// between the click and the file.
+/// there isn't one. Each row wears the icon its standalone button
+/// used to, Delete in danger red — and its inline confirm still
+/// stands between the click and the file.
 fn save_actions_menu<'a>(lang: &LanguageIdentifier, loadout: &Loadout) -> Element<'a, Message> {
     let items = vec![
-        widgets::MenuItem::new(t!(lang, "save-open-folder"), Message::SaveOpenFolder),
-        widgets::MenuItem::new(t!(lang, "save-duplicate"), Message::SaveDuplicateStart),
-        widgets::MenuItem::new(t!(lang, "save-rename"), Message::SaveRenameStart),
-        widgets::MenuItem::new(t!(lang, "save-delete"), Message::SaveDeleteStart),
+        widgets::MenuItem::new(Icon::FolderOpen, t!(lang, "save-open-folder"), Message::SaveOpenFolder),
+        widgets::MenuItem::new(Icon::Files, t!(lang, "save-duplicate"), Message::SaveDuplicateStart),
+        widgets::MenuItem::new(Icon::PencilLine, t!(lang, "save-rename"), Message::SaveRenameStart),
+        widgets::MenuItem::danger(Icon::Trash, t!(lang, "save-delete"), Message::SaveDeleteStart),
     ];
     widgets::menu_button(
         Icon::EllipsisVertical,
