@@ -494,7 +494,7 @@ impl State {
         self.in_match_receiver_slot = Arc::new(std::sync::Mutex::new(None));
         self.conn = None;
         self.lobby = LobbyState::default();
-        self.handshake.reset();
+        self.handshake = Handshake::default();
         self.matchmaking_reconnect = None;
     }
 
@@ -698,7 +698,7 @@ impl State {
         self.post_lobby_receiver = Arc::new(std::sync::Mutex::new(None));
         self.in_match_receiver_slot = Arc::new(std::sync::Mutex::new(None));
         self.conn = None;
-        self.handshake.reset();
+        self.handshake = Handshake::default();
         self.phase = Phase::Failed {
             error: "peer-disconnected".to_string(),
         };

@@ -46,15 +46,6 @@ pub(super) struct Handshake {
     pub(super) local_chunks_sent: bool,
 }
 
-impl Handshake {
-    /// Drop every commitment field — both sides' commits, the chunk
-    /// buffer, and the send-once guard. Used at session boundaries
-    /// where the whole exchange is starting over.
-    pub(super) fn reset(&mut self) {
-        *self = Self::default();
-    }
-}
-
 impl State {
     /// Drop the local commitment + reset the related lobby flags.
     /// If we had previously sent a Commit, also fires an Uncommit
