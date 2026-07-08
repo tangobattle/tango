@@ -378,7 +378,7 @@ impl App {
         // the user can hit Fight straight away.
         let init_link_code = INIT_LINK_CODE.get().and_then(|c| c.clone());
         if let Some(code) = &init_link_code {
-            play.link_code = code.clone();
+            play.adopt_link_code(code.clone());
         }
 
         let identity = identity::load();
@@ -688,10 +688,9 @@ impl App {
         // We just swapped in a freshly-built save, so any in-progress
         // edit (which lived in the previous in-memory save) is gone —
         // leave the global edit mode so the UI doesn't show stale state.
-        // Dropping the whole EditState clears every editor's scratch at
-        // once. The commit path takes the early-return above and never
+        // The commit path takes the early-return above and never
         // reaches here, so this only fires on a real selection change.
-        self.play.save_view.clear_editing();
+        self.play.reset_save_editing();
     }
 }
 
@@ -875,10 +874,9 @@ impl App {
         // the strip itself planted. (Sub-tab switches slide the inner
         // panes horizontally instead; see save_view::State::apply.)
         if family_before != self.loadout.family {
-            self.play.save_body_enter.start(now);
+            self.play.animate_family_switch(now);
         } else if selection_before != (self.loadout.game, self.loadout.save.clone()) {
-            self.play.save_view.enter_from = iced::Vector::new(0.0, 20.0);
-            self.play.save_view.enter.start(now);
+            self.play.animate_save_switch(now);
         }
         task
     }
@@ -1122,7 +1120,7 @@ impl App {
                     }
                     Err(e) => {
                         log::error!("pvp session build failed: {e}");
-                        self.play.last_error = Some(format!("{e}"));
+                        self.play.set_error(format!("{e}"));
                     }
                 }
                 // Drop the post-handoff lobby snapshot now that the
@@ -1267,7 +1265,7 @@ impl App {
         if self.discord.has_current_join_secret() {
             if let Some(secret) = self.discord.take_current_join_secret() {
                 log::info!("discord: accepted join with link code");
-                self.play.link_code = secret;
+                self.play.adopt_link_code(secret);
                 self.tab = Tab::Play;
             }
         }
@@ -1472,12 +1470,14 @@ impl App {
                         self.loaded.as_ref(),
                         self.config.streamer_mode,
                         &self.config,
-                        &self.netplay.phase,
-                        &self.netplay.lobby,
-                        self.netplay.handoff_pending(),
                         rescanning,
-                        &self.lobby_swap,
-                        self.lobby_exit_snapshot.as_ref(),
+                        tabs::play::LobbyBandCtx {
+                            phase: &self.netplay.phase,
+                            lobby: &self.netplay.lobby,
+                            handoff_pending: self.netplay.handoff_pending(),
+                            swap: &self.lobby_swap,
+                            exit_snapshot: self.lobby_exit_snapshot.as_ref(),
+                        },
                     )
                     .map(Message::Play);
                 container(main).width(Fill).height(Fill).into()

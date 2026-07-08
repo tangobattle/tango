@@ -96,7 +96,7 @@ pub enum Message {
 // ---------- Play tab state ----------
 
 pub struct State {
-    pub link_code: String,
+    link_code: String,
     /// A link code Fight auto-generated for an empty input, parked here
     /// instead of `link_code` while the lobby is up: the outgoing strip
     /// renders for the first half of the band morph, so writing the input
@@ -109,32 +109,32 @@ pub struct State {
     /// Persistent state for the embedded save view (active tab,
     /// folder grouping). Apply incoming `SaveViewAction`s via
     /// [`save_view::State::apply`].
-    pub save_view: save_view::State,
+    save_view: save_view::State,
     /// Inline state for the save-management actions (rename / delete).
-    pub save_action: SaveAction,
+    save_action: SaveAction,
     /// Last after-the-fact action failure (singleplayer launch
     /// errored, PvP session build failed, …) — rendered as a
     /// dismissable banner at the top of the tab. Pre-condition errors
     /// ("you need a save first") are NOT funneled here; they're
     /// handled by view-time button gating + inline hints, because
     /// graying out the action surface explains itself.
-    pub last_error: Option<String>,
+    last_error: Option<String>,
     /// Entrance glide for the whole save-view pane under the selector
     /// strip, played by the App when the *family* changes — a family
     /// switch replaces the entire bottom of the tab. A save switch
     /// within the family plays the smaller [`save_view::State`]
     /// entrance instead, which only moves the panes under the save
     /// view's sub-tab strip.
-    pub save_body_enter: crate::anim::Enter,
+    save_body_enter: crate::anim::Enter,
     /// Fade-through swap for the save-action row: the picker row
     /// morphs into whichever rename / delete / create form opens
     /// ([`State::save_action`]) and back.
-    pub save_form: crate::anim::Transition,
+    save_form: crate::anim::Transition,
     /// The form that was open before `save_action` reset to
     /// `None`, frozen so the swap's exit half has something to
     /// render (the live form — including the rename draft — is
     /// already gone).
-    pub save_action_exit: SaveAction,
+    save_action_exit: SaveAction,
 }
 
 impl Default for State {
@@ -255,6 +255,43 @@ impl State {
                 self.link_code = code;
             }
         }
+    }
+
+    /// Prefill the link-code input from an external source — the CLI
+    /// `Join <code>` argument or a Discord join secret.
+    pub fn adopt_link_code(&mut self, code: String) {
+        self.link_code = code;
+    }
+
+    /// Surface an after-the-fact action failure (session launch / PvP
+    /// build errored) as the tab's dismissable banner.
+    pub fn set_error(&mut self, message: String) {
+        self.last_error = Some(message);
+    }
+
+    /// Leave any in-progress save-edit session. The App calls this when
+    /// the loaded save is rebuilt out from under the view, where staged
+    /// edits (which lived in the previous in-memory save) are already
+    /// gone — dropping the whole EditState clears every editor's
+    /// scratch at once.
+    pub fn reset_save_editing(&mut self) {
+        self.save_view.clear_editing();
+    }
+
+    /// Play the family-switch entrance: a family change replaces the
+    /// entire bottom of the tab, so the whole save-view pane under the
+    /// selector strip glides in.
+    pub fn animate_family_switch(&mut self, now: iced::time::Instant) {
+        self.save_body_enter.start(now);
+    }
+
+    /// Play the save-switch entrance: a game/save change within the
+    /// family only re-renders the save's content, so just the panes
+    /// under the save view's sub-tab strip rise, leaving the strip
+    /// planted.
+    pub fn animate_save_switch(&mut self, now: iced::time::Instant) {
+        self.save_view.enter_from = iced::Vector::new(0.0, 20.0);
+        self.save_view.enter.start(now);
     }
 
     fn update_inner(
@@ -379,8 +416,29 @@ impl State {
     }
 }
 
+/// The netplay-side inputs the Play tab needs to render its bottom
+/// band, bundled so [`State::view`] doesn't take the App's netplay
+/// internals as loose positional arguments.
+pub struct LobbyBandCtx<'a> {
+    pub phase: &'a crate::netplay::Phase,
+    pub lobby: &'a crate::netplay::LobbyState,
+    /// True between "both sides exchanged StartMatch" and the PvP
+    /// session taking over: the selector strip goes inert and the
+    /// lobby shows its "Starting match…" chrome.
+    pub handoff_pending: bool,
+    /// Two-phase swap between the bottom bands (link-code strip ↔
+    /// lobby), driven by the App (which sees the netplay phase
+    /// flip): first half sinks + dissolves the outgoing band,
+    /// second half rises the incoming one out of the page surface.
+    pub swap: &'a crate::anim::Transition,
+    /// The lobby's last live state, frozen by the App on the
+    /// frame the band left — the exiting band renders from
+    /// this so the verdict (e.g. the failure banner) doesn't
+    /// flash to the idle handshake line mid-dissolve.
+    pub exit_snapshot: Option<&'a (crate::netplay::Phase, crate::netplay::LobbyState)>,
+}
+
 impl State {
-    #[allow(clippy::too_many_arguments)]
     pub fn view<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
@@ -389,23 +447,11 @@ impl State {
         loaded: Option<&'a selection::Loaded>,
         streamer_mode: bool,
         config: &'a config::Config,
-        netplay_phase: &'a crate::netplay::Phase,
-        netplay_lobby: &'a crate::netplay::LobbyState,
-        netplay_handoff_pending: bool,
         rescanning: bool,
-        // Two-phase swap between the bottom bands (link-code strip ↔
-        // lobby), driven by the App (which sees the netplay phase
-        // flip): first half sinks + dissolves the outgoing band,
-        // second half rises the incoming one out of the page surface.
-        bottom_swap: &'a crate::anim::Transition,
-        // The lobby's last live state, frozen by the App on the
-        // frame the band left — the exiting band renders from
-        // this so the verdict (e.g. the failure banner) doesn't
-        // flash to the idle handshake line mid-dissolve.
-        lobby_exit_snapshot: Option<&'a (crate::netplay::Phase, crate::netplay::LobbyState)>,
+        band: LobbyBandCtx<'a>,
     ) -> Element<'a, Message> {
         let now = iced::time::Instant::now();
-        let mut save_body = self.body(lang, scanners, loadout, loaded, streamer_mode, config, netplay_phase);
+        let mut save_body = self.body(lang, scanners, loadout, loaded, streamer_mode, config, band.phase);
         // A family switch replaces the entire bottom of the tab, so
         // the whole pane glides in (the App starts `save_body_enter`
         // when `loadout.family` flips); save switches within the
@@ -423,7 +469,7 @@ impl State {
         // session is being built from the committed state and
         // selection changes would only confuse.
         let inner = column![
-            self.selector_strip(lang, scanners, loadout, config, rescanning, netplay_handoff_pending),
+            self.selector_strip(lang, scanners, loadout, config, rescanning, band.handoff_pending),
             save_body,
         ]
         .spacing(style::PANE_GAP)
@@ -450,18 +496,18 @@ impl State {
         // other arriving. The bottom HUD scanline is grouped into the
         // moving band so it rides the motion instead of staying
         // pinned above it.
-        let (render_lobby, swap) = crate::anim::swap_phase(bottom_swap, now);
+        let (render_lobby, swap) = crate::anim::swap_phase(band.swap, now);
         let bottom: Element<'a, Message> = if render_lobby {
             // While the band is on its way OUT, the live phase has
             // already gone Idle (and the lobby may be wiped) — use
             // the snapshot the App froze on the band's last live
             // frame so the verdict doesn't flash mid-dissolve.
-            let (band_phase, band_lobby) = if !bottom_swap.shown() {
-                lobby_exit_snapshot
+            let (band_phase, band_lobby) = if !band.swap.shown() {
+                band.exit_snapshot
                     .map(|(p, l)| (p, l))
-                    .unwrap_or((netplay_phase, netplay_lobby))
+                    .unwrap_or((band.phase, band.lobby))
             } else {
-                (netplay_phase, netplay_lobby)
+                (band.phase, band.lobby)
             };
             // Synthesize the local side's Settings from the current
             // loadout so the "You" slot fills in immediately —
@@ -470,7 +516,7 @@ impl State {
             // Same builder the netplay loop uses to ship settings on
             // the wire, so the visible info during the handshake
             // exactly matches what gets sent.
-            let local_fallback = loadout.make_local_settings(config, netplay_lobby);
+            let local_fallback = loadout.make_local_settings(config, band.lobby);
             lobby::Lobby {
                 lang,
                 state: band_lobby,
@@ -480,7 +526,7 @@ impl State {
                 has_save: loaded.is_some(),
                 local_fallback,
                 streamer_mode,
-                handoff_pending: netplay_handoff_pending,
+                handoff_pending: band.handoff_pending,
                 frame_delay: config.frame_delay,
             }
             .view()

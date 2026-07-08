@@ -133,7 +133,7 @@ impl App {
                     }
                     Err(e) => {
                         log::warn!("singleplayer start failed: {e}");
-                        self.play.last_error = Some(format!("{e}"));
+                        self.play.set_error(format!("{e}"));
                     }
                 }
                 iced::Task::none()
