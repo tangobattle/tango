@@ -518,13 +518,15 @@ impl State {
         }
     }
 
-    /// Apply an `Action` to the state. `CopyTab` is left for the
-    /// caller to handle (clipboard side-effects can't happen inside
-    /// `apply`); everything else is folded in. Returns a Task the
+    /// Fold an `Action` into view-local state. Returns a Task the
     /// caller should run — used for save-view-internal side
     /// effects (notably the scroll-to-top snap on a tab change)
-    /// so hosts don't have to know about them.
-    pub fn apply(&mut self, action: &Action) -> iced::Task<Action> {
+    /// so hosts don't have to know about them. Read-only embedders
+    /// (the session setup drawers) call this directly; embedders
+    /// that surface edits / copies / launches call
+    /// [`apply`](Self::apply), which also computes the host-side
+    /// [`Outcome`].
+    pub fn fold(&mut self, action: &Action) -> iced::Task<Action> {
         match action {
             Action::SelectTab(t) => {
                 if self.active_tab != Some(*t) {
@@ -732,8 +734,8 @@ impl State {
                 iced::Task::none()
             }
             // EnterEdit needs `&Loaded` (to seed tag state), and the
-            // mutation actions become host Effects — all are driven by
-            // the embedder (play tab), so they're no-ops here.
+            // mutation / copy actions surface as host [`Outcome`]s —
+            // all are computed in `outcome`, so they're no-ops here.
             Action::EnterEdit
             | Action::AddChip { .. }
             | Action::RemoveChip { .. }
@@ -760,6 +762,267 @@ impl State {
             | Action::PlayClicked => iced::Task::none(),
         }
     }
+
+    /// Apply an `Action`: fold it into view-local state, then translate
+    /// it into the [`Outcome`] the host must act on. `loaded` feeds the
+    /// arms that read the save (copy rendering, edit-session seeding,
+    /// drop-target resolution).
+    pub fn apply(
+        &mut self,
+        action: &Action,
+        lang: &unic_langid::LanguageIdentifier,
+        loaded: Option<&Loaded>,
+    ) -> (iced::Task<Action>, Option<Outcome>) {
+        let task = self.fold(action);
+        let outcome = self.outcome(action, lang, loaded);
+        (task, outcome)
+    }
+
+    /// The host-side work an action implies — staged edits, clipboard
+    /// copies, session launches — plus the edit-session scratch updates
+    /// (staged tags, held part) that must stay aligned with the edit.
+    /// `None` means the action was fully folded into view state; hosts
+    /// forward [`fold`](Self::fold)'s task instead.
+    fn outcome(
+        &mut self,
+        action: &Action,
+        lang: &unic_langid::LanguageIdentifier,
+        loaded: Option<&Loaded>,
+    ) -> Option<Outcome> {
+        use crate::save_edit::{
+            AutoBattleDataEdit, ChipEdit, Edit, NaviEdit, NavicustEdit, PatchCard4Edit, PatchCard56Edit,
+        };
+        match action {
+            Action::CopyTab(tab) => {
+                let opts = RenderOpts {
+                    folder_grouped: self.folder_grouped,
+                };
+                // Only a copy that actually produced text earns the
+                // "Copied!" flash.
+                let text = loaded.and_then(|l| tab_as_text(lang, *tab, l, opts))?;
+                crate::copy_feedback::flash(&copy_flash_key(*tab, false));
+                Some(Outcome::CopyText(text))
+            }
+            Action::CopyTabImage(tab) => {
+                let img = loaded.and_then(|l| tab_as_image(*tab, l))?;
+                crate::copy_feedback::flash(&copy_flash_key(*tab, true));
+                Some(Outcome::CopyImage(img))
+            }
+            Action::PlayClicked => Some(Outcome::Play),
+            // ----- Folder editor -----
+            // EnterEdit needs the read view to seed tag state + build the
+            // per-slot chip pickers, so it can't be folded without `loaded`.
+            Action::EnterEdit => {
+                if let Some(l) = loaded {
+                    self.enter_edit(l);
+                }
+                None
+            }
+            // Same global edit session as EnterEdit, but reached from the
+            // navi strip's change-navi button (`fold` already pointed the
+            // body at the picker). Don't re-seed if a session is already
+            // open — that would wipe in-progress scratch (staged tags, a
+            // held navicust part); the user is just hopping to the navi.
+            Action::EnterEditNavi => {
+                if self.editing.is_none() {
+                    if let Some(l) = loaded {
+                        self.enter_edit(l);
+                    }
+                }
+                None
+            }
+            // One global Save / Cancel for the whole save.
+            Action::SaveEdit => Some(Outcome::Commit),
+            Action::CancelEdit => Some(Outcome::Cancel),
+            Action::AddChip { chip_id, code } => {
+                // New chips are inserted at the top, sliding the existing
+                // run down into the first empty slot — so shift the staged
+                // TAG selection to match.
+                if let Some(gap) = loaded.and_then(|l| l.save.view_chips()).and_then(|v| {
+                    let fi = v.equipped_folder_index();
+                    (0..folder::MAX_FOLDER_CHIPS).find(|&i| v.chip(fi, i).is_none())
+                }) {
+                    self.shift_tags_for_top_insert(gap);
+                }
+                Some(Outcome::Edit(Edit::Chips(ChipEdit::AddChip {
+                    chip_id: *chip_id,
+                    code: *code,
+                })))
+            }
+            Action::RemoveChip { slot } => {
+                // Mirror the save-side compaction in the in-progress tag
+                // selection (drop + shift), so the TAG toggles stay
+                // aligned with the shifted chips.
+                self.compact_tags(*slot);
+                Some(Outcome::Edit(Edit::Chips(ChipEdit::RemoveChip { slot: *slot })))
+            }
+            Action::ReorderChips(ev) => {
+                // Only a completed drop reorders; pick-up / cancel are
+                // visual-only.
+                use sweeten::widget::drag::DragEvent;
+                let DragEvent::Dropped { index, target_index } = *ev else {
+                    return None;
+                };
+                let from = index;
+                // Live folder occupancy, to validate + resolve the drop.
+                let filled = loaded.and_then(|l| l.save.view_chips()).map(|v| {
+                    let fi = v.equipped_folder_index();
+                    (0..folder::MAX_FOLDER_CHIPS)
+                        .map(|i| v.chip(fi, i).is_some())
+                        .collect::<Vec<bool>>()
+                })?;
+                // Can't drag an empty slot.
+                if !filled.get(from).copied().unwrap_or(false) {
+                    return None;
+                }
+                // Dropping onto an empty slot drops the chip in at the end
+                // of the packed list (the first empty slot above the target
+                // = right after the last chip), never leaving a gap.
+                let to = if filled.get(target_index).copied().unwrap_or(false) {
+                    target_index
+                } else {
+                    filled.iter().rposition(|&f| f)?
+                };
+                if from == to {
+                    return None;
+                }
+                // Keep the staged TAG selection aligned with the move.
+                self.move_tags(from, to);
+                Some(Outcome::Edit(Edit::Chips(ChipEdit::MoveChip { from, to })))
+            }
+            Action::ClearFolder => {
+                if let Some(e) = self.editing.as_mut() {
+                    e.tags.clear();
+                }
+                Some(Outcome::Edit(Edit::Chips(ChipEdit::ClearFolder)))
+            }
+            Action::ToggleRegular { slot } => Some(Outcome::Edit(Edit::Chips(ChipEdit::ToggleRegular { slot: *slot }))),
+            Action::ToggleTag { slot } => {
+                // `toggle_tag` updates the in-progress UI selection and
+                // hands back the pair to commit (Some([a,b]) at two, else
+                // None to clear).
+                let pair = self.toggle_tag(*slot);
+                Some(Outcome::Edit(Edit::Chips(ChipEdit::SetTags(pair))))
+            }
+            // ----- Navicust editor -----
+            Action::PlaceHeld { col, row } => {
+                // Build the part from the held state (already folded), then
+                // drop it so the cursor is free again.
+                let edit = self.editing.as_mut();
+                let part = edit.and_then(|e| {
+                    let p = e.held_part.map(|h| tango_dataview::save::NavicustPart {
+                        id: h.id,
+                        col: *col,
+                        row: *row,
+                        rot: h.rot,
+                        compressed: h.compressed,
+                    });
+                    e.held_part = None;
+                    p
+                });
+                part.map(|p| Outcome::Edit(Edit::Navicust(NavicustEdit::AddPart(p))))
+            }
+            Action::PickUpInstalledPart { slot, col, row } => {
+                // Read the part being removed so it becomes the held part —
+                // the user can re-place / rotate it.
+                let held = loaded.and_then(|l| {
+                    if let Some(v) = l.save.view_navicust() {
+                        v.navicust_part(*slot)
+                    } else {
+                        None
+                    }
+                });
+                if let (Some(p), Some(e)) = (held, self.editing.as_mut()) {
+                    // Grab the part at the clicked cell: store that cell's
+                    // offset from the part's center anchor so it stays
+                    // under the cursor while dragging.
+                    e.held_part = Some(navicust::HeldPart {
+                        id: p.id,
+                        rot: p.rot,
+                        compressed: p.compressed,
+                        grab_row: *row as i8 - p.row as i8,
+                        grab_col: *col as i8 - p.col as i8,
+                    });
+                    // Keep the picker entry in sync so picking is
+                    // consistent: the part now shows this rotation /
+                    // compression in the palette too.
+                    e.part_orient.insert(p.id, (p.rot, p.compressed));
+                }
+                Some(Outcome::Edit(Edit::Navicust(NavicustEdit::RemovePart { slot: *slot })))
+            }
+            Action::ClearNavicust => {
+                if let Some(e) = self.editing.as_mut() {
+                    e.held_part = None;
+                }
+                Some(Outcome::Edit(Edit::Navicust(NavicustEdit::ClearAll)))
+            }
+            // ----- BN5/BN6 patch-card editor -----
+            Action::AddPatchCard56 { id } => Some(Outcome::Edit(Edit::PatchCard56s(PatchCard56Edit::AddCard {
+                id: *id,
+            }))),
+            Action::RemovePatchCard56 { slot } => Some(Outcome::Edit(Edit::PatchCard56s(
+                PatchCard56Edit::RemoveCard { slot: *slot },
+            ))),
+            Action::ClearPatchCard56s => Some(Outcome::Edit(Edit::PatchCard56s(PatchCard56Edit::ClearAll))),
+            Action::ReorderPatchCard56s(ev) => {
+                // Registered list is dense, so any drop is a valid ordered
+                // move; pick-up / cancel are visual-only.
+                use sweeten::widget::drag::DragEvent;
+                match ev {
+                    DragEvent::Dropped { index, target_index } if index != target_index => Some(Outcome::Edit(
+                        Edit::PatchCard56s(PatchCard56Edit::MoveCard {
+                            from: *index,
+                            to: *target_index,
+                        }),
+                    )),
+                    _ => None,
+                }
+            }
+            // ----- BN4 patch-card editor -----
+            Action::AddPatchCard4 { id } => Some(Outcome::Edit(Edit::PatchCard4s(PatchCard4Edit::AddCard {
+                id: *id,
+            }))),
+            Action::RemovePatchCard4 { slot } => Some(Outcome::Edit(Edit::PatchCard4s(PatchCard4Edit::RemoveCard {
+                slot: *slot,
+            }))),
+            Action::TogglePatchCard4 { slot } => Some(Outcome::Edit(Edit::PatchCard4s(PatchCard4Edit::ToggleCard {
+                slot: *slot,
+            }))),
+            Action::ClearPatchCard4s => Some(Outcome::Edit(Edit::PatchCard4s(PatchCard4Edit::ClearAll))),
+            // ----- Auto Battle Data editor -----
+            Action::SetChipUseCount { id, count } => Some(Outcome::Edit(Edit::AutoBattleData(
+                AutoBattleDataEdit::SetUseCount { id: *id, count: *count },
+            ))),
+            Action::SetSecondaryChipUseCount { id, count } => Some(Outcome::Edit(Edit::AutoBattleData(
+                AutoBattleDataEdit::SetSecondaryUseCount { id: *id, count: *count },
+            ))),
+            Action::ClearAutoBattleData => Some(Outcome::Edit(Edit::AutoBattleData(AutoBattleDataEdit::ClearAll))),
+            // ----- Navi editor -----
+            Action::SetNavi(navi) => Some(Outcome::Edit(Edit::Navi(NaviEdit::SetNavi(*navi)))),
+            _ => None,
+        }
+    }
+}
+
+/// What the host must do in response to an applied [`Action`] —
+/// everything the save view can't do itself because it needs App-level
+/// collaborators (the in-memory loaded save, the clipboard, the
+/// session host).
+pub enum Outcome {
+    /// Stage one edit into the loaded save in memory (the UI reads it
+    /// live; nothing hits disk until [`Outcome::Commit`]).
+    Edit(crate::save_edit::Edit),
+    /// Copy plain text to the clipboard.
+    CopyText(String),
+    /// Copy a raster image to the clipboard.
+    CopyImage(image::RgbaImage),
+    /// The embedder-defined Play button was pressed.
+    Play,
+    /// Write every staged edit (folder + navicust + patch cards + auto
+    /// battle data) to the .sav on disk in one shot.
+    Commit,
+    /// Discard all staged edits, reloading the on-disk original.
+    Cancel,
 }
 
 /// User-driven changes the embedded save view wants to surface. The

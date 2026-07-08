@@ -218,52 +218,12 @@ impl App {
                 }
                 iced::Task::none()
             }
-            E::EditChips(edit) => {
+            E::Edit(edit) => {
                 // Stage one edit into the in-memory loaded save. The UI
                 // reads `loaded.save` directly, so the change shows
                 // immediately; nothing is written to disk until Save.
                 if let Some(loaded) = self.loaded.as_mut() {
-                    crate::save_edit::apply_chip_edit(loaded, edit);
-                }
-                iced::Task::none()
-            }
-            E::EditNavicust(edit) => {
-                // Stage one navicust edit into the in-memory loaded save;
-                // the UI reads `loaded.save` directly so it shows live.
-                if let Some(loaded) = self.loaded.as_mut() {
-                    crate::save_edit::apply_navicust_edit(loaded, edit);
-                }
-                iced::Task::none()
-            }
-            E::EditNavi(edit) => {
-                // Stage the equipped-navi change into the in-memory loaded
-                // save; the UI reads `loaded.save` directly so it shows live.
-                if let Some(loaded) = self.loaded.as_mut() {
-                    crate::save_edit::apply_navi_edit(loaded, edit);
-                }
-                iced::Task::none()
-            }
-            E::EditPatchCard56s(edit) => {
-                // Stage one BN5/BN6 patch-card edit into the in-memory loaded
-                // save; the UI reads `loaded.save` directly so it shows live.
-                if let Some(loaded) = self.loaded.as_mut() {
-                    crate::save_edit::apply_patch_card56_edit(loaded, edit);
-                }
-                iced::Task::none()
-            }
-            E::EditPatchCard4s(edit) => {
-                // Stage one BN4 patch-card edit into the in-memory loaded save;
-                // the UI reads `loaded.save` directly so it shows live.
-                if let Some(loaded) = self.loaded.as_mut() {
-                    crate::save_edit::apply_patch_card4_edit(loaded, edit);
-                }
-                iced::Task::none()
-            }
-            E::EditAutoBattleData(edit) => {
-                // Stage one auto-battle-data edit into the in-memory loaded
-                // save; the UI reads `loaded.save` directly so it shows live.
-                if let Some(loaded) = self.loaded.as_mut() {
-                    crate::save_edit::apply_auto_battle_data_edit(loaded, edit);
+                    crate::save_edit::apply_edit(loaded, edit);
                 }
                 iced::Task::none()
             }

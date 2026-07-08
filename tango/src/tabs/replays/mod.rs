@@ -184,42 +184,18 @@ impl ReplaysState {
             Message::Watch(p) => Some(Effect::Watch(p)),
             Message::Rescan => Some(Effect::Rescan),
             Message::SaveViewAction(action) => {
-                let sv_task = self.save_view.apply(&action);
-                // Clipboard variants need the App's clipboard
-                // collaborator — bubble them up as Effects.
-                // Anything else gets folded into save_view-internal
-                // state and surfaces as a generic SaveViewTask
-                // (currently used for the scroll-to-top snap on a
-                // tab change).
-                match action {
-                    save_view::Action::CopyTab(tab) => {
-                        let opts = save_view::RenderOpts {
-                            folder_grouped: self.save_view.folder_grouped,
-                        };
-                        let effect = self
-                            .loaded
-                            .as_ref()
-                            .and_then(|l| save_view::tab_as_text(&config.language, tab, l, opts))
-                            .map(Effect::CopyText);
-                        // Only a copy that actually produced text
-                        // earns the "Copied!" flash.
-                        if effect.is_some() {
-                            crate::copy_feedback::flash(&save_view::copy_flash_key(tab, false));
-                        }
-                        effect
-                    }
-                    save_view::Action::CopyTabImage(tab) => {
-                        let effect = self
-                            .loaded
-                            .as_ref()
-                            .and_then(|l| save_view::tab_as_image(tab, l))
-                            .map(Effect::CopyImage);
-                        if effect.is_some() {
-                            crate::copy_feedback::flash(&save_view::copy_flash_key(tab, true));
-                        }
-                        effect
-                    }
-                    _ => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
+                // Clipboard outcomes need the App's clipboard collaborator
+                // — bubble them up as Effects. Anything else gets folded
+                // into save_view-internal state and surfaces as a generic
+                // SaveViewTask (currently used for the scroll-to-top snap
+                // on a tab change). Edit/Play outcomes can't fire here:
+                // the replay save view renders read-only.
+                let (sv_task, outcome) = self.save_view.apply(&action, &config.language, self.loaded.as_ref());
+                match outcome {
+                    Some(save_view::Outcome::CopyText(s)) => Some(Effect::CopyText(s)),
+                    Some(save_view::Outcome::CopyImage(img)) => Some(Effect::CopyImage(img)),
+                    Some(_) => None,
+                    None => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
                 }
             }
             Message::Export(m) => self.update_export(m),

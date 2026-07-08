@@ -183,103 +183,6 @@ impl Default for State {
     }
 }
 
-/// A single folder edit staged by the folder editor. Applied to the
-/// loaded save in memory by [`Effect::EditChips`]; not persisted to
-/// disk until the user hits Save ([`Effect::SaveEditCommit`]).
-#[derive(Debug, Clone)]
-pub enum ChipEdit {
-    /// Add chip `chip_id` with `code` to the first empty folder slot.
-    AddChip {
-        chip_id: usize,
-        code: tango_dataview::save::ChipCode,
-    },
-    /// Empty `slot`.
-    RemoveChip { slot: usize },
-    /// Reorder: move the chip at `from` to `to` (an ordered move that shifts
-    /// the chips in between). Both slots must be filled — the editor never
-    /// drags an empty slot or drops into a gap. REG/TAG slot pointers follow
-    /// the moved chips.
-    MoveChip { from: usize, to: usize },
-    /// Empty every folder slot (and clear REG/TAG).
-    ClearFolder,
-    /// Toggle `slot` as the folder's Regular chip (clear if already set).
-    ToggleRegular { slot: usize },
-    /// Set (or clear, with `None`) the folder's Tag chip pair.
-    SetTags(Option<[usize; 2]>),
-}
-
-/// A single navicust edit staged by the navicust editor. Applied to the
-/// loaded save in memory by [`Effect::EditNavicust`]; not persisted to
-/// disk until the user hits Save ([`Effect::SaveEditCommit`]).
-#[derive(Debug, Clone)]
-pub enum NavicustEdit {
-    /// Place a part into the first empty navicust slot.
-    AddPart(tango_dataview::save::NavicustPart),
-    /// Empty navicust slot `slot`.
-    RemovePart { slot: usize },
-    /// Remove every installed part.
-    ClearAll,
-}
-
-/// A staged navi-selection edit. Applied to the loaded save in memory by
-/// [`Effect::EditNavi`]; not persisted to disk until the user hits Save
-/// ([`Effect::SaveEditCommit`]).
-#[derive(Debug, Clone)]
-pub enum NaviEdit {
-    /// Set the equipped navi to this index.
-    SetNavi(usize),
-}
-
-/// A single BN5/BN6 patch-card edit staged by the editor. Applied to the
-/// loaded save in memory by [`Effect::EditPatchCard56s`]; not persisted to
-/// disk until the user hits Save ([`Effect::SaveEditCommit`]).
-#[derive(Debug, Clone)]
-pub enum PatchCard56Edit {
-    /// Register patch card `id` (append to the list, enabled).
-    AddCard { id: usize },
-    /// Unregister the patch card in `slot` (shift the rest up).
-    RemoveCard { slot: usize },
-    /// Reorder: move the card at `from` to `to` (an ordered move that shifts
-    /// the cards in between). The registered list is dense, so both ends are
-    /// always valid.
-    MoveCard { from: usize, to: usize },
-    /// Unregister every patch card.
-    ClearAll,
-}
-
-/// A single BN4 patch-card edit staged by the editor. Applied to the loaded
-/// save in memory by [`Effect::EditPatchCard4s`]; not persisted to disk
-/// until the user hits Save ([`Effect::SaveEditCommit`]). BN4 is slot-based:
-/// every card belongs to one fixed catalog slot (0A–0F), so adding a card
-/// installs it into its own slot (replacing whatever was there).
-#[derive(Debug, Clone)]
-pub enum PatchCard4Edit {
-    /// Install patch card `id` into its own catalog slot, enabled.
-    AddCard { id: usize },
-    /// Clear catalog slot `slot`.
-    RemoveCard { slot: usize },
-    /// Toggle slot `slot`'s card between enabled and disabled.
-    ToggleCard { slot: usize },
-    /// Clear every slot.
-    ClearAll,
-}
-
-/// A single auto-battle-data edit staged by the editor. Applied to the
-/// loaded save in memory by [`Effect::EditAutoBattleData`]; not persisted
-/// to disk until the user hits Save ([`Effect::SaveEditCommit`]). The deck
-/// is derived from per-chip use counts, so these set those counts; the
-/// applier rebuilds the materialized deck after each so the preview shows
-/// the change live.
-#[derive(Debug, Clone)]
-pub enum AutoBattleDataEdit {
-    /// Set chip `id`'s primary use count.
-    SetUseCount { id: usize, count: usize },
-    /// Set chip `id`'s secondary use count (Standard chips only).
-    SetSecondaryUseCount { id: usize, count: usize },
-    /// Zero every chip's use counts, emptying the deck.
-    ClearAll,
-}
-
 /// Side-effects bubble-up. Mirrors the [`crate::tabs::replays::Effect`]
 /// convention: pure UI-state mutations happen inside
 /// [`State::update`]; anything that requires App-level
@@ -338,24 +241,9 @@ pub enum Effect {
     /// snap on tab change) flow through without per-feature
     /// Effect variants.
     SaveViewTask(iced::Task<Message>),
-    /// Folder editor: stage one edit into the loaded save in memory
+    /// Save editor: stage one edit into the loaded save in memory
     /// (UI updates live; nothing hits disk yet).
-    EditChips(ChipEdit),
-    /// Navicust editor: stage one edit into the loaded save in memory
-    /// (UI updates live; nothing hits disk yet).
-    EditNavicust(NavicustEdit),
-    /// Navi editor: stage the equipped-navi change into the loaded save in
-    /// memory (UI updates live; nothing hits disk yet).
-    EditNavi(NaviEdit),
-    /// BN5/BN6 patch-card editor: stage one edit into the loaded save in
-    /// memory (UI updates live; nothing hits disk yet).
-    EditPatchCard56s(PatchCard56Edit),
-    /// BN4 patch-card editor: stage one edit into the loaded save in memory
-    /// (UI updates live; nothing hits disk yet).
-    EditPatchCard4s(PatchCard4Edit),
-    /// Auto-battle-data editor: stage one edit into the loaded save in
-    /// memory (UI updates live; nothing hits disk yet).
-    EditAutoBattleData(AutoBattleDataEdit),
+    Edit(crate::save_edit::Edit),
     /// Global save editor: write every staged edit (folder + navicust +
     /// patch cards + auto battle data) to the .sav on disk in one shot.
     SaveEditCommit,
@@ -479,227 +367,24 @@ impl State {
             Message::Ready => Some(Effect::ReadyWithSave),
             Message::Unready => Some(Effect::Netplay(crate::netplay::Message::Uncommit)),
             Message::SaveViewAction(action) => {
-                use save_view::Action as A;
-                let sv_task = self.save_view.apply(&action);
-                match action {
-                    A::CopyTab(tab) => {
-                        let opts = save_view::RenderOpts {
-                            folder_grouped: self.save_view.folder_grouped,
-                        };
-                        let effect = loaded
-                            .and_then(|l| save_view::tab_as_text(&config.language, tab, l, opts))
-                            .map(Effect::CopyText);
-                        // Only a copy that actually produced text
-                        // earns the "Copied!" flash.
-                        if effect.is_some() {
-                            crate::copy_feedback::flash(&save_view::copy_flash_key(tab, false));
-                        }
-                        effect
-                    }
-                    A::CopyTabImage(tab) => {
-                        let effect = loaded
-                            .and_then(|l| save_view::tab_as_image(tab, l))
-                            .map(Effect::CopyImage);
-                        if effect.is_some() {
-                            crate::copy_feedback::flash(&save_view::copy_flash_key(tab, true));
-                        }
-                        effect
-                    }
-                    A::PlayClicked => {
+                // `apply` folds the action into save-view state and hands
+                // back what's left for the App: staged edits, clipboard
+                // copies, launches. Everything else flows through as a
+                // generic save-view-internal task.
+                let (sv_task, outcome) = self.save_view.apply(&action, &config.language, loaded);
+                match outcome {
+                    Some(save_view::Outcome::Edit(edit)) => Some(Effect::Edit(edit)),
+                    Some(save_view::Outcome::CopyText(s)) => Some(Effect::CopyText(s)),
+                    Some(save_view::Outcome::CopyImage(img)) => Some(Effect::CopyImage(img)),
+                    Some(save_view::Outcome::Play) => {
                         // Clear stale error from a prior attempt; the
                         // new launch's outcome takes its place.
                         self.last_error = None;
                         Some(Effect::StartSinglePlayer)
                     }
-                    // ----- Folder editor -----
-                    // EnterEdit needs the read view to seed tag state +
-                    // build the per-slot chip pickers, so it touches
-                    // save_view state directly rather than emitting an
-                    // Effect.
-                    A::EnterEdit => {
-                        if let Some(l) = loaded {
-                            self.save_view.enter_edit(l);
-                        }
-                        None
-                    }
-                    // Same global edit session as EnterEdit, but reached from the
-                    // navi strip's change-navi button (apply() already pointed the
-                    // body at the picker). Don't re-seed if a session is already
-                    // open — that would wipe in-progress scratch (staged tags, a
-                    // held navicust part); the user is just hopping to the navi.
-                    A::EnterEditNavi => {
-                        if self.save_view.editing.is_none() {
-                            if let Some(l) = loaded {
-                                self.save_view.enter_edit(l);
-                            }
-                        }
-                        None
-                    }
-                    // One global Save / Cancel for the whole save.
-                    A::SaveEdit => Some(Effect::SaveEditCommit),
-                    A::CancelEdit => Some(Effect::SaveEditCancel),
-                    A::AddChip { chip_id, code } => {
-                        // New chips are inserted at the top, sliding the
-                        // existing run down into the first empty slot — so
-                        // shift the staged TAG selection to match.
-                        if let Some(gap) = loaded.and_then(|l| l.save.view_chips()).and_then(|v| {
-                            let fi = v.equipped_folder_index();
-                            (0..save_view::folder::MAX_FOLDER_CHIPS).find(|&i| v.chip(fi, i).is_none())
-                        }) {
-                            self.save_view.shift_tags_for_top_insert(gap);
-                        }
-                        Some(Effect::EditChips(ChipEdit::AddChip { chip_id, code }))
-                    }
-                    A::RemoveChip { slot } => {
-                        // Mirror the save-side compaction in the in-progress
-                        // tag selection (drop + shift), so the TAG toggles
-                        // stay aligned with the shifted chips.
-                        self.save_view.compact_tags(slot);
-                        Some(Effect::EditChips(ChipEdit::RemoveChip { slot }))
-                    }
-                    A::ReorderChips(ev) => {
-                        // Only a completed drop reorders; pick-up / cancel are
-                        // visual-only.
-                        use sweeten::widget::drag::DragEvent;
-                        let DragEvent::Dropped { index, target_index } = ev else {
-                            return None;
-                        };
-                        let from = index;
-                        // Live folder occupancy, to validate + resolve the drop.
-                        let filled = loaded.and_then(|l| l.save.view_chips()).map(|v| {
-                            let fi = v.equipped_folder_index();
-                            (0..save_view::folder::MAX_FOLDER_CHIPS)
-                                .map(|i| v.chip(fi, i).is_some())
-                                .collect::<Vec<bool>>()
-                        })?;
-                        // Can't drag an empty slot.
-                        if !filled.get(from).copied().unwrap_or(false) {
-                            return None;
-                        }
-                        // Dropping onto an empty slot drops the chip in at the
-                        // end of the packed list (the first empty slot above the
-                        // target = right after the last chip), never leaving a gap.
-                        let to = if filled.get(target_index).copied().unwrap_or(false) {
-                            target_index
-                        } else {
-                            filled.iter().rposition(|&f| f)?
-                        };
-                        if from == to {
-                            return None;
-                        }
-                        // Keep the staged TAG selection aligned with the move.
-                        self.save_view.move_tags(from, to);
-                        Some(Effect::EditChips(ChipEdit::MoveChip { from, to }))
-                    }
-                    A::ClearFolder => {
-                        if let Some(e) = self.save_view.editing.as_mut() {
-                            e.tags.clear();
-                        }
-                        Some(Effect::EditChips(ChipEdit::ClearFolder))
-                    }
-                    A::ToggleRegular { slot } => Some(Effect::EditChips(ChipEdit::ToggleRegular { slot })),
-                    A::ToggleTag { slot } => {
-                        // `toggle_tag` updates the in-progress UI
-                        // selection and hands back the pair to commit
-                        // (Some([a,b]) at two, else None to clear).
-                        let pair = self.save_view.toggle_tag(slot);
-                        Some(Effect::EditChips(ChipEdit::SetTags(pair)))
-                    }
-                    // ----- Navicust editor -----
-                    A::PlaceHeld { col, row } => {
-                        // Build the part from the held state (already
-                        // folded by `apply`), then drop it so the cursor
-                        // is free again.
-                        let edit = self.save_view.editing.as_mut();
-                        let part = edit.and_then(|e| {
-                            let p = e.held_part.map(|h| tango_dataview::save::NavicustPart {
-                                id: h.id,
-                                col,
-                                row,
-                                rot: h.rot,
-                                compressed: h.compressed,
-                            });
-                            e.held_part = None;
-                            p
-                        });
-                        part.map(|p| Effect::EditNavicust(NavicustEdit::AddPart(p)))
-                    }
-                    A::PickUpInstalledPart { slot, col, row } => {
-                        // Read the part being removed so it becomes the
-                        // held part — the user can re-place / rotate it.
-                        let held = loaded.and_then(|l| {
-                            if let Some(v) = l.save.view_navicust() {
-                                v.navicust_part(slot)
-                            } else {
-                                None
-                            }
-                        });
-                        if let (Some(p), Some(e)) = (held, self.save_view.editing.as_mut()) {
-                            // Grab the part at the clicked cell: store that
-                            // cell's offset from the part's center anchor
-                            // so it stays under the cursor while dragging.
-                            e.held_part = Some(save_view::navicust::HeldPart {
-                                id: p.id,
-                                rot: p.rot,
-                                compressed: p.compressed,
-                                grab_row: row as i8 - p.row as i8,
-                                grab_col: col as i8 - p.col as i8,
-                            });
-                            // Keep the picker entry in sync so picking is
-                            // consistent: the part now shows this rotation
-                            // / compression in the palette too.
-                            e.part_orient.insert(p.id, (p.rot, p.compressed));
-                        }
-                        Some(Effect::EditNavicust(NavicustEdit::RemovePart { slot }))
-                    }
-                    A::ClearNavicust => {
-                        if let Some(e) = self.save_view.editing.as_mut() {
-                            e.held_part = None;
-                        }
-                        Some(Effect::EditNavicust(NavicustEdit::ClearAll))
-                    }
-                    // ----- BN5/BN6 patch-card editor -----
-                    A::AddPatchCard56 { id } => Some(Effect::EditPatchCard56s(PatchCard56Edit::AddCard { id })),
-                    A::RemovePatchCard56 { slot } => {
-                        Some(Effect::EditPatchCard56s(PatchCard56Edit::RemoveCard { slot }))
-                    }
-                    A::ClearPatchCard56s => Some(Effect::EditPatchCard56s(PatchCard56Edit::ClearAll)),
-                    A::ReorderPatchCard56s(ev) => {
-                        // Registered list is dense, so any drop is a valid
-                        // ordered move; pick-up / cancel are visual-only.
-                        use sweeten::widget::drag::DragEvent;
-                        match ev {
-                            DragEvent::Dropped { index, target_index } if index != target_index => {
-                                Some(Effect::EditPatchCard56s(PatchCard56Edit::MoveCard {
-                                    from: index,
-                                    to: target_index,
-                                }))
-                            }
-                            _ => None,
-                        }
-                    }
-                    // ----- BN4 patch-card editor -----
-                    A::AddPatchCard4 { id } => Some(Effect::EditPatchCard4s(PatchCard4Edit::AddCard { id })),
-                    A::RemovePatchCard4 { slot } => Some(Effect::EditPatchCard4s(PatchCard4Edit::RemoveCard { slot })),
-                    A::TogglePatchCard4 { slot } => Some(Effect::EditPatchCard4s(PatchCard4Edit::ToggleCard { slot })),
-                    A::ClearPatchCard4s => Some(Effect::EditPatchCard4s(PatchCard4Edit::ClearAll)),
-                    // ----- Auto Battle Data editor -----
-                    A::SetChipUseCount { id, count } => {
-                        Some(Effect::EditAutoBattleData(AutoBattleDataEdit::SetUseCount {
-                            id,
-                            count,
-                        }))
-                    }
-                    A::SetSecondaryChipUseCount { id, count } => {
-                        Some(Effect::EditAutoBattleData(AutoBattleDataEdit::SetSecondaryUseCount {
-                            id,
-                            count,
-                        }))
-                    }
-                    A::ClearAutoBattleData => Some(Effect::EditAutoBattleData(AutoBattleDataEdit::ClearAll)),
-                    // ----- Navi editor -----
-                    A::SetNavi(navi) => Some(Effect::EditNavi(NaviEdit::SetNavi(navi))),
-                    _ => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
+                    Some(save_view::Outcome::Commit) => Some(Effect::SaveEditCommit),
+                    Some(save_view::Outcome::Cancel) => Some(Effect::SaveEditCancel),
+                    None => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
                 }
             }
             Message::DismissError => {
