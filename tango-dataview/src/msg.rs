@@ -107,7 +107,7 @@ pub struct Parser<Command> {
 fn coalesce<Command>(chunks: Vec<Chunk<Command>>) -> Vec<Chunk<Command>> {
     chunks
         .into_iter()
-        .group_by(|chunk| matches!(chunk, Chunk::Text(_)))
+        .chunk_by(|chunk| matches!(chunk, Chunk::Text(_)))
         .into_iter()
         .flat_map(|(is_text, g)| {
             if !is_text {

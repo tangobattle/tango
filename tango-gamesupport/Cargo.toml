@@ -5,16 +5,16 @@ edition = "2021"
 license = "LGPL-3.0-or-later"
 
 [dependencies]
-crc32fast = "1"
-image = { version = "0.25", default-features = false }
+crc32fast.workspace = true
+image.workspace = true
 tango-dataview = { path = "../tango-dataview" }
 tango-pvp = { path = "../tango-pvp" }
-thiserror = "1"
+thiserror.workspace = true
 # Only pulled in by the `testing` feature, for the golden-replay
 # determinism harness the per-game crates run in their tests.
-anyhow = { version = "1", optional = true }
+anyhow = { workspace = true, optional = true }
 mgba = { path = "../mgba", optional = true }
-sha2 = { version = "0.10", optional = true }
+sha2 = { workspace = true, optional = true }
 
 [features]
 # Exposes `golden`, the shared determinism harness each

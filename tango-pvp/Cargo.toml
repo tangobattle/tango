@@ -4,28 +4,28 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1"
-async-trait = "0.1"
-byteorder = "1"
-bytemuck = "1"
-log = "0.4"
-image = { version = "0.25", default-features = false }
+anyhow.workspace = true
+async-trait.workspace = true
+byteorder.workspace = true
+bytemuck.workspace = true
+log.workspace = true
+image.workspace = true
 mgba = { path = "../mgba" }
-prost = "0.14"
-rand = "0.8"
-rand_pcg = { version = "0.3", features = ["serde1"] }
-serde = { version = "1", features = ["derive"] }
+prost.workspace = true
+rand.workspace = true
+rand_pcg.workspace = true
+serde.workspace = true
 serde_repr = "0.1"
 getgud = { path = "../getgud" }
 shell-words = "1"
 tango-dataview = { path = "../tango-dataview" }
 tempfile = "3"
-tokio = { version = "1", features = ["full"] }
-tokio-util = "0.7"
-zstd = "0.11"
+tokio = { workspace = true, features = ["full"] }
+tokio-util.workspace = true
+zstd.workspace = true
 
 [build-dependencies]
-prost-build = "0.14"
+prost-build.workspace = true
 
 [lints]
 workspace = true

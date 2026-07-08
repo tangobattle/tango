@@ -7,11 +7,11 @@ edition = "2021"
 
 [dependencies]
 async-recursion = "1"
-futures = "0.3"
-serde = { version = "1", features = ["derive"] }
-serde-hex = "0.1"
-sha2 = "0.10"
-tokio = { version = "1", features = ["full"] }
+futures.workspace = true
+serde.workspace = true
+serde-hex.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, features = ["full"] }
 
 [lints]
 workspace = true
