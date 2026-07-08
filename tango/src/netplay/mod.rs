@@ -146,15 +146,6 @@ pub struct State {
     /// can render the symmetric "you vs them" view.
     pub lobby: LobbyState,
 
-    /// While a lobby-server-brokered RTC bring-up is in flight, the channel its
-    /// task awaits the peer's SDP on. `feed_lobby_sdp` pushes RtcOffer/RtcAnswer
-    /// payloads here. Cleared on each session boundary.
-    pending_lobby_sdp_tx: Option<tokio::sync::mpsc::Sender<String>>,
-
-    /// A fully-built `PreMatchData` from a lobby match, parked for
-    /// `take_pre_match` (the lobby path bypasses the netplay handshake/lobby).
-    pending_pre_match: Option<PreMatchData>,
-
     /// Matchmaking connection params stashed at `Connect`, used in
     /// `take_pre_match` to build a [`ReconnectRecipe::Matchmaking`]. `None` on
     /// the direct path (its recipe rides `ConnectionHandles::reconnect` instead).
@@ -243,8 +234,6 @@ impl Default for State {
             in_match_receiver_slot: Arc::new(std::sync::Mutex::new(None)),
             lobby: LobbyState::default(),
             handshake: Handshake::default(),
-            pending_lobby_sdp_tx: None,
-            pending_pre_match: None,
             matchmaking_reconnect: None,
         }
     }
@@ -596,8 +585,6 @@ impl State {
         self.conn = None;
         self.lobby = LobbyState::default();
         self.handshake.reset();
-        self.pending_lobby_sdp_tx = None;
-        self.pending_pre_match = None;
         self.matchmaking_reconnect = None;
     }
 
@@ -1172,11 +1159,6 @@ impl State {
     /// [`finish_handoff`] when the PvP session is built (or its
     /// build fails) to clear that state.
     pub fn take_pre_match(&mut self) -> Option<PreMatchData> {
-        // The lobby path builds PreMatchData itself (no handshake state); hand
-        // that straight over.
-        if let Some(pre_match) = self.pending_pre_match.take() {
-            return Some(pre_match);
-        }
         if !(self.lobby.match_ready && self.lobby.remote_match_ready) {
             return None;
         }
@@ -1187,8 +1169,14 @@ impl State {
         // Decompress + decode peer's NegotiatedState — we already
         // verified its hash in try_finish_handshake; this is just
         // to recover the nonce + save_data.
-        let peer_state_bytes = zstd::stream::decode_all(std::io::Cursor::new(&self.handshake.remote_chunks)).ok()?;
-        let peer_state = crate::net::protocol::NegotiatedState::deserialize(&peer_state_bytes).ok()?;
+        let peer_state_bytes = match zstd::stream::decode_all(std::io::Cursor::new(&self.handshake.remote_chunks)) {
+            Ok(b) => b,
+            Err(e) => return self.fail_handoff(format!("zstd decode: {e}")),
+        };
+        let peer_state = match crate::net::protocol::NegotiatedState::deserialize(&peer_state_bytes) {
+            Ok(s) => s,
+            Err(e) => return self.fail_handoff(format!("decode peer state: {e}")),
+        };
         // Direct-TCP codes carry no remote-discoverable identity,
         // so the replay metadata's `link_code` slot is left empty
         // for them — the replay filename and view substitute
@@ -1260,6 +1248,19 @@ impl State {
             reconnect,
         };
         Some(pre_match)
+    }
+
+    /// A handoff-time decode failure: the peer's revealed state won't parse
+    /// even though its hash matched the commitment (checked back in
+    /// `try_finish_handshake`). By this point `take_pre_match` has already
+    /// consumed the connection handles, so the session can't proceed — tear it
+    /// down into a visible Failed banner. Returning a bare `None` instead
+    /// would read as "already drained" to the App, leaving the lobby stuck on
+    /// its "Starting match…" chrome with no error.
+    fn fail_handoff(&mut self, error: String) -> Option<PreMatchData> {
+        self.cancel_and_renew();
+        self.phase = Phase::Failed { error };
+        None
     }
 
     /// Clear the lobby snapshot that `take_pre_match` left visible.
