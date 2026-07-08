@@ -14,8 +14,8 @@
 //! engine's type axes — [`MgbaState`] (the primary + shadow snapshots and our
 //! in-flight outgoing packet) and [`PartialInput`] (joyflags) — wraps the single
 //! [`Stepper`](crate::stepper::Stepper) core, owns the shadow, and predicts the
-//! remote *joyflags* (held A/B) from which the packet falls out of the shadow
-//! co-sim.
+//! remote *joyflags* (repeat-last) from which the packet falls out of the
+//! shadow co-sim.
 //!
 //! The chosen display state is loaded into the live core — and the time-sync
 //! skew turned into a frame-rate target via [`Throttler`](super::throttler::Throttler)
@@ -165,11 +165,13 @@ impl getgud::World for MgbaWorld {
         Ok(())
     }
 
+    /// Repeat-last: assume the remote keeps holding exactly what they held.
+    /// Measured over the replay corpus (see `examples/predictor-eval.rs`) this
+    /// roughly third-ed the rollback rate of the old keep-only-A|B mask at
+    /// every speculation depth — every button flips less often than it's held,
+    /// so predicting any of them released loses.
     fn predict(&self, last_remote: &PartialInput) -> PartialInput {
-        const HELD_KEYS: u16 = mgba::input::keys::A as u16 | mgba::input::keys::B as u16;
-        PartialInput {
-            joyflags: last_remote.joyflags & HELD_KEYS,
-        }
+        last_remote.clone()
     }
 
     fn log(&mut self, pair: &(PartialInput, PartialInput)) {
