@@ -41,7 +41,7 @@ pub struct NegotiationOutput {
     pub in_match_receiver: crate::net::data::Receiver,
     /// The peer connection. Set by both transports. See
     /// [`ConnectionHandles::peer_conn`] for the lifetime contract.
-    pub peer_conn: datachannel_wrapper::PeerConnection,
+    pub peer_conn: tango_rtc::PeerConnection,
     /// Pre-computed by the per-transport negotiator. Matchmaking reads
     /// the SDP type; the direct link sets host=true, connect=false.
     pub is_offerer: bool,
@@ -304,11 +304,11 @@ async fn run_await_peer(
     }
 }
 
-/// Direct signaling-free entry: bring up a libdatachannel peer
-/// connection whose SDP both sides fabricate from fixed ICE creds
-/// (host listens on a pinned UDP port; connect dials it), then run
-/// the same `protocol::negotiate` handshake the matchmaking WebRTC
-/// path uses. No signaling server — see [`crate::net::direct_rtc`].
+/// Direct signaling-free entry: bring up a peer connection both
+/// sides configure locally from fixed ICE creds (host listens on a
+/// pinned UDP port; connect dials it), then run the same
+/// `protocol::negotiate` handshake the matchmaking WebRTC path
+/// uses. No signaling server — see [`crate::net::direct_rtc`].
 /// `is_offerer` is set from the role (host = true) so the
 /// `pick_local_player_index` symmetry break still has a stable
 /// asymmetric input.
@@ -400,7 +400,7 @@ async fn run_negotiate(
             result.map_err(negotiation_error_sentinel)?;
             let is_offerer = peer_conn
                 .local_description()
-                .map(|d| matches!(d.sdp_type, datachannel_wrapper::SdpType::Offer))
+                .map(|d| matches!(d.sdp_type, tango_rtc::SdpType::Offer))
                 .unwrap_or(false);
             Ok(NegotiationOutput {
                 sender: Arc::new(tokio::sync::Mutex::new(sender)),

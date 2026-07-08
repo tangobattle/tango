@@ -1,7 +1,7 @@
 //! Crash logging. Installs a Rust panic hook and a native crash
 //! handler ([`crash_handler::CrashHandler`]) so segfaults / SEH
 //! exceptions / mach EXC_BAD_ACCESS — i.e. crashes coming from
-//! mgba, datachannel, or wgpu / driver code — are captured.
+//! mgba or wgpu / driver code — are captured.
 //!
 //! Native crashes are handled **out-of-process**: on a fault the
 //! child's handler does the bare minimum — hand the crash context to

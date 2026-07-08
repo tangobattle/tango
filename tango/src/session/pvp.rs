@@ -129,7 +129,7 @@ pub struct PvpSession {
     /// behind a shared slot because the reconnect coordinator swaps it (drops
     /// the old, installs the rebuilt) on a transparent direct-link reconnect;
     /// the session just keeps the slot alive for the match's lifetime.
-    _peer_conn: Arc<Mutex<Option<datachannel_wrapper::PeerConnection>>>,
+    _peer_conn: Arc<Mutex<Option<tango_rtc::PeerConnection>>>,
     /// `(started_at, give_up_at)` for the in-progress reconnect, or `None` when
     /// not reconnecting (the steady state). Drives the "Reconnecting…" overlay
     /// and its depleting give-up bar; the pair (rather than just the deadline)
@@ -467,13 +467,12 @@ impl PvpSession {
                     log::info!("pvp link dropped — pausing to reconnect");
 
                     // Drop the old peer connection *before* rebuilding so the
-                    // host's pinned UDP port is free to re-bind. Off the runtime
-                    // thread: the libdatachannel destructor can block and can fire
-                    // callbacks synchronously, neither of which belongs on an
-                    // async worker. Awaited so the socket is actually released
-                    // before `host` re-binds the port.
-                    let old = peer_conn.lock().unwrap().take();
-                    let _ = tokio::task::spawn_blocking(move || drop(old)).await;
+                    // host's pinned UDP port frees up for the re-bind. The drop
+                    // itself is non-blocking (a best-effort close_notify flush);
+                    // the socket is released asynchronously when the old driver
+                    // task tears down, so a rebuild attempt can race it and see
+                    // AddrInUse — `rebuild_connection` retries, absorbing that.
+                    drop(peer_conn.lock().unwrap().take());
 
                     // Rebuild, ticking the UI at ~30 fps so the give-up bar drains
                     // smoothly while the paused emulator produces no frames.
