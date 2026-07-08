@@ -61,11 +61,14 @@ pub enum ActiveSession {
 }
 
 impl ActiveSession {
+    /// Pre-drop teardown. Only PvP has any: it cancels its token so the
+    /// receive loop announces the quit to the peer instead of leaving them
+    /// hanging on a reconnect window. Replay and single-player sessions
+    /// close by being dropped (the mgba thread joins in Drop).
     pub fn request_close(&self) {
         match self {
-            Self::Replay(s) => s.request_close(),
-            Self::SinglePlayer(s) => s.request_close(),
             Self::PvP(s) => s.request_close(),
+            Self::Replay(_) | Self::SinglePlayer(_) => {}
         }
     }
 

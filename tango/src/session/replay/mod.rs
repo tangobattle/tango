@@ -115,7 +115,6 @@ impl Scrub {
 
 pub struct ReplaySession {
     game: &'static crate::game::Game,
-    close_requested: Arc<AtomicBool>,
     stepper_state: tango_pvp::stepper::State,
     snapshots: SnapshotStore,
     /// Dense per-frame snapshot window trailing the playhead (see
@@ -317,7 +316,6 @@ impl ReplaySession {
 
         Ok(Self {
             game,
-            close_requested: Arc::new(AtomicBool::new(false)),
             stepper_state,
             snapshots,
             rewind,
@@ -367,10 +365,6 @@ impl ReplaySession {
             // — that's fine and matches the legacy behavior.
             h.unpause();
         }
-    }
-
-    pub fn request_close(&self) {
-        self.close_requested.store(true, Ordering::Release);
     }
 
     /// Playhead position on the seek bar: the recorded-frame index =

@@ -8,7 +8,7 @@
 //! ride for one player. (The PVP / replay traps require a partner /
 //! recorded packets, neither of which apply here.)
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -17,7 +17,6 @@ const EXPECTED_FPS: f32 = 60.0;
 pub struct SinglePlayerSession {
     game: &'static crate::game::Game,
     joyflags: Arc<AtomicU32>,
-    close_requested: Arc<AtomicBool>,
     _audio_binding: Option<crate::audio::Binding>,
     _thread: mgba::thread::Thread,
 }
@@ -69,7 +68,6 @@ impl SinglePlayerSession {
         Ok(Self {
             game,
             joyflags,
-            close_requested: Arc::new(AtomicBool::new(false)),
             _audio_binding: audio_binding,
             _thread: thread,
         })
@@ -84,10 +82,6 @@ impl SinglePlayerSession {
     /// flag word and pushes the result here every event.
     pub fn set_joyflags(&self, mgba_keys: u32) {
         self.joyflags.store(mgba_keys, Ordering::Relaxed);
-    }
-
-    pub fn request_close(&self) {
-        self.close_requested.store(true, Ordering::Release);
     }
 
     /// Drive the emulator at `factor * EXPECTED_FPS` fps. 1.0 = realtime,
