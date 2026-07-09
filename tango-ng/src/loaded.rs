@@ -1,14 +1,16 @@
 //! The read-only save viewer's data layer: a stripped port of
 //! `tango/src/selection.rs`'s `Loaded` (ROM assets + the one-time image
 //! bake, with `slint::Image` handles in place of iced ones) plus the
-//! model-building halves of `tango/src/save_view/{folder.rs,navi/mod.rs}`
-//! (the layouts live in `ui/app.slint`). No editors, and no
+//! model-building halves of `tango/src/save_view/*` — folder, navi
+//! header, navicust (grid baked via [`crate::navicust`]), patch cards,
+//! and auto battle data (the layouts live in `ui/app.slint`), and the
+//! sections' copy-as-text renderings. No editors, and no
 //! `rom_overrides`: tango-ng's `patch.rs` deliberately doesn't parse the
 //! text overrides yet, so a patched save shows whatever the BPS itself
 //! rewrote in the ROM.
 
 use crate::rom::GameRef;
-use crate::{ChipRow, NaviHeader};
+use crate::{AbdRow, ChipRow, NaviHeader, NcpPartRow, PatchCardLine};
 use std::collections::HashMap;
 
 /// Number of chip slots in an equipped folder.
@@ -163,7 +165,6 @@ pub fn folder_rows(loaded: &Loaded, grouped: bool) -> Vec<ChipRow> {
     let Some(chips_view) = loaded.save.view_chips() else {
         return Vec::new();
     };
-    let assets = loaded.assets.as_ref();
     let folder_idx = chips_view.equipped_folder_index();
     // Read-only display treats "unsupported" and "unset" the same —
     // flatten the outer Option away.
@@ -201,41 +202,629 @@ pub fn folder_rows(loaded: &Loaded, grouped: bool) -> Vec<ChipRow> {
     items
         .into_iter()
         .map(|(chip, g)| {
-            let info = chip.as_ref().and_then(|c| assets.chip(c.id));
-            let class = info.as_ref().map(|i| i.class());
-            let dark = info.as_ref().map(|i| i.dark()).unwrap_or(false);
-            let accent = class_accent(class, dark);
-            let power = info.as_ref().map(|i| i.attack_power()).unwrap_or(0);
-            let mb = info.as_ref().map(|i| i.mb()).unwrap_or(0);
-            let name = match (&chip, info.as_ref().and_then(|i| i.name())) {
-                (None, _) => "—".to_string(),
-                (Some(_), Some(name)) => name,
-                (Some(_), None) => "???".to_string(),
-            };
-            ChipRow {
-                icon: chip
-                    .as_ref()
-                    .and_then(|c| loaded.chip_icons.get(c.id).cloned().flatten())
-                    .unwrap_or_default(),
-                element_icon: info
-                    .as_ref()
-                    .and_then(|i| loaded.element_icons.get(&i.element()).cloned())
-                    .unwrap_or_default(),
-                name: name.into(),
-                code: chip.as_ref().map(|c| c.code.to_string()).unwrap_or_default().into(),
-                // Zero attack / zero MB render as blanks, not "0"s.
-                power: if power > 0 { power.to_string() } else { String::new() }.into(),
-                mb: if mb > 0 { format!("{mb}MB") } else { String::new() }.into(),
-                count: format!("{}×", g.count).into(),
-                is_regular: g.is_regular,
-                tag_count: g.tag_count,
-                accent: accent.unwrap_or_default(),
-                has_accent: accent.is_some(),
-                is_empty: chip.is_none(),
-                description: info.as_ref().and_then(|i| i.description()).unwrap_or_default().into(),
-            }
+            make_chip_row(
+                loaded,
+                chip.as_ref().map(|c| c.id),
+                chip.as_ref().map(|c| c.code.to_string()),
+                &g,
+            )
         })
         .collect()
+}
+
+/// One [`ChipRow`] from a chip id (+ optional code) and its group
+/// metadata — the shared row builder behind the Folder list and the
+/// Auto Battle Data deck (which has ids but no codes).
+fn make_chip_row(loaded: &Loaded, id: Option<usize>, code: Option<String>, g: &GroupedChip) -> ChipRow {
+    let assets = loaded.assets.as_ref();
+    let info = id.and_then(|id| assets.chip(id));
+    let class = info.as_ref().map(|i| i.class());
+    let dark = info.as_ref().map(|i| i.dark()).unwrap_or(false);
+    let accent = class_accent(class, dark);
+    let power = info.as_ref().map(|i| i.attack_power()).unwrap_or(0);
+    let mb = info.as_ref().map(|i| i.mb()).unwrap_or(0);
+    let name = match (id, info.as_ref().and_then(|i| i.name())) {
+        (None, _) => "—".to_string(),
+        (Some(_), Some(name)) => name,
+        (Some(_), None) => "???".to_string(),
+    };
+    ChipRow {
+        icon: id
+            .and_then(|id| loaded.chip_icons.get(id).cloned().flatten())
+            .unwrap_or_default(),
+        element_icon: info
+            .as_ref()
+            .and_then(|i| loaded.element_icons.get(&i.element()).cloned())
+            .unwrap_or_default(),
+        name: name.into(),
+        code: code.unwrap_or_default().into(),
+        // Zero attack / zero MB render as blanks, not "0"s.
+        power: if power > 0 { power.to_string() } else { String::new() }.into(),
+        mb: if mb > 0 { format!("{mb}MB") } else { String::new() }.into(),
+        count: format!("{}×", g.count).into(),
+        is_regular: g.is_regular,
+        tag_count: g.tag_count,
+        accent: accent.unwrap_or_default(),
+        has_accent: accent.is_some(),
+        is_empty: id.is_none(),
+        description: info.as_ref().and_then(|i| i.description()).unwrap_or_default().into(),
+    }
+}
+
+/// Everything the Slint navicust section needs, baked once per
+/// selection change (tango's `build_navicust_render` + parts panel,
+/// selection.rs / save_view/navicust).
+pub struct NavicustModel {
+    /// The composed grid image (background + color bar + body), baked
+    /// at 2× its display size so it stays crisp.
+    pub image: slint::Image,
+    /// Width / height, so the layout can size the image box off its
+    /// height and keep narrower grids proportionally smaller.
+    pub aspect: f32,
+    /// BN3 style name ("" for the other games) — overlaid on the color
+    /// bar by the Slint layer, which gets script-aware font fallback
+    /// for free (the original rasterized it through cosmic-text).
+    pub style_name: String,
+    /// The label line's position in the image's own coordinate space.
+    pub label_x_frac: f32,
+    pub label_y_frac: f32,
+    pub label_h_frac: f32,
+    /// Installed parts: solid parts first, then plus parts, keeping
+    /// slot order within each group (the parts panel's ordering).
+    pub parts: Vec<NcpPartRow>,
+}
+
+/// Bake the navicust section, or `None` when the save has no navicust
+/// view (the tab is gated off).
+pub fn navicust_model(loaded: &Loaded) -> Option<NavicustModel> {
+    let v = loaded.save.view_navicust()?;
+    let assets = loaded.assets.as_ref();
+    let layout = assets.navicust_layout()?;
+    let materialized = v.materialized();
+    let model = crate::navicust::build_model(&materialized, &layout, v.as_ref(), assets);
+    let g = crate::navicust::geometry(model.cols, model.rows);
+
+    // Cell size pinned to the widest (7-col) grid at ~440 display px —
+    // baked at 2× so downscales stay crisp — like tango's viewer.
+    let ref_g = crate::navicust::geometry(crate::navicust::REFERENCE_COLS, crate::navicust::REFERENCE_COLS);
+    let target_w = (g.total_w * (440.0 / ref_g.total_w) * 2.0).round() as u32;
+    let image = slint_image(crate::navicust::render(&model, Some(target_w)));
+
+    let style_name = v
+        .style()
+        .and_then(|sid| assets.style(sid).and_then(|s| s.name()))
+        .unwrap_or_default();
+    // The BN3 label sits on the color bar's left edge (see grid.rs
+    // `render` in the tango crate): x past the padding + border, the
+    // bar spanning [PADDING_V, PADDING_V + bar_h] vertically.
+    let label_x_frac =
+        (crate::navicust::PADDING_H as f32 + crate::navicust::BORDER_WIDTH + 4.0) / g.total_w;
+    let label_y_frac = crate::navicust::PADDING_V as f32 / g.total_h;
+    let label_h_frac = g.bar_h / g.total_h;
+
+    let mut solid = Vec::new();
+    let mut plus = Vec::new();
+    for i in 0..v.count() {
+        let Some(part) = v.navicust_part(i) else { continue };
+        let Some(info) = assets.navicust_part(part.id) else {
+            continue;
+        };
+        let Some(color) = info.color() else { continue };
+        let name = info.name().unwrap_or_else(|| format!("#{}", part.id));
+        // Thumb baked at the part's installed rotation + compression,
+        // so it matches how the part sits in the grid.
+        let bitmap = info
+            .compressed_bitmap()
+            .filter(|_| part.compressed)
+            .unwrap_or_else(|| info.uncompressed_bitmap());
+        let rotated = crate::navicust::rotate_bitmap(&bitmap, part.rot);
+        let (solid_c, plus_c) = crate::navicust::part_colors(color.clone());
+        let thumb = crate::navicust::render_part_thumb(&rotated, color, info.is_solid());
+        let c = if info.is_solid() { solid_c } else { plus_c };
+        let row = NcpPartRow {
+            thumb: thumb.map(slint_image).unwrap_or_default(),
+            name: name.into(),
+            tint: slint::Color::from_rgb_u8(c[0], c[1], c[2]),
+            desc: info.description().unwrap_or_default().into(),
+        };
+        if info.is_solid() {
+            solid.push(row);
+        } else {
+            plus.push(row);
+        }
+    }
+    solid.extend(plus);
+
+    Some(NavicustModel {
+        image,
+        aspect: g.total_w / g.total_h,
+        style_name,
+        label_x_frac,
+        label_y_frac,
+        label_h_frac,
+        parts: solid,
+    })
+}
+
+/// The NaviCust grid rendered at full native resolution for "copy as
+/// image". The BN3 style label is not baked in (the app has no text
+/// rasterizer; the on-screen label is a Slint overlay).
+pub fn navicust_clipboard_image(loaded: &Loaded) -> Option<image::RgbaImage> {
+    let v = loaded.save.view_navicust()?;
+    let assets = loaded.assets.as_ref();
+    let layout = assets.navicust_layout()?;
+    let materialized = v.materialized();
+    let model = crate::navicust::build_model(&materialized, &layout, v.as_ref(), assets);
+    Some(crate::navicust::render(&model, None))
+}
+
+/// The Patch Cards section as flattened display lines, plus which
+/// chrome to render (0 = BN5/BN6 badge columns, 1 = BN4 slots).
+/// `None` when the save has no patch-cards view.
+pub fn patch_card_lines(
+    lang: &unic_langid::LanguageIdentifier,
+    loaded: &Loaded,
+) -> Option<(i32, Vec<PatchCardLine>)> {
+    let view = loaded.save.view_patch_cards()?;
+    let assets = loaded.assets.as_ref();
+    let mut lines = Vec::new();
+    match view {
+        tango_dataview::save::PatchCardsView::PatchCard56s(v) => {
+            for i in 0..v.count() {
+                let Some(card) = v.patch_card(i) else { continue };
+                let info = assets.patch_card56(card.id);
+                let name = info
+                    .as_ref()
+                    .and_then(|c| c.name())
+                    .unwrap_or_else(|| format!("#{}", card.id));
+                let mb = info.as_ref().map(|c| c.mb()).unwrap_or(0);
+                let effects = info.map(|c| c.effects()).unwrap_or_default();
+                let abilities: Vec<_> = effects.iter().filter(|e| e.is_ability).collect();
+                let bugs: Vec<_> = effects.iter().filter(|e| !e.is_ability).collect();
+                // A card spans one line per effect badge; the first
+                // line carries the index / name / MB cell.
+                let effect_name =
+                    |e: &&tango_dataview::rom::PatchCard56Effect| e.name.clone().unwrap_or_else(|| "???".to_string());
+                for j in 0..abilities.len().max(bugs.len()).max(1) {
+                    let ability = abilities.get(j);
+                    let bug = bugs.get(j);
+                    lines.push(PatchCardLine {
+                        first: j == 0,
+                        zebra: i as i32,
+                        idx: if j == 0 { format!("{:>2}", i + 1) } else { String::new() }.into(),
+                        name: if j == 0 { name.clone() } else { String::new() }.into(),
+                        mb: if j == 0 { format!("{mb}MB") } else { String::new() }.into(),
+                        enabled: card.enabled,
+                        ability: ability.map(effect_name).unwrap_or_default().into(),
+                        ability_debuff: ability.map(|e| e.is_debuff).unwrap_or(false),
+                        bug: bug.map(effect_name).unwrap_or_default().into(),
+                        bug_debuff: bug.map(|e| e.is_debuff).unwrap_or(false),
+                        bug_plain: false,
+                    });
+                }
+            }
+            Some((0, lines))
+        }
+        tango_dataview::save::PatchCardsView::PatchCard4s(v) => {
+            for (slot, slot_label) in PATCH_CARD4_SLOT_LABELS.iter().enumerate() {
+                match v.patch_card(slot) {
+                    Some(card) => {
+                        let info = assets.patch_card4(card.id);
+                        let name = info
+                            .as_ref()
+                            .and_then(|i| i.name())
+                            .unwrap_or_else(|| format!("#{}", card.id));
+                        // 3-digit catalog number, then "name — effect"
+                        // (several cards share a name within a slot;
+                        // the effect tells them apart).
+                        let label = match info.as_ref().map(|i| i.effect()) {
+                            Some(effect) => {
+                                format!("{:03} {name} — {}", card.id, patch_card4_effect_label(effect))
+                            }
+                            None => format!("{:03} {name}", card.id),
+                        };
+                        lines.push(PatchCardLine {
+                            first: true,
+                            zebra: slot as i32,
+                            idx: (*slot_label).into(),
+                            name: label.into(),
+                            mb: "".into(),
+                            enabled: card.enabled,
+                            ability: "".into(),
+                            ability_debuff: false,
+                            bug: "".into(),
+                            bug_debuff: false,
+                            bug_plain: false,
+                        });
+                        // The card's downside as its own purple line —
+                        // the effect is in the label, the bug is what
+                        // the user should still see at a glance.
+                        if let Some(bug) = info.as_ref().and_then(|i| patch_card4_bugs_label(i.bugs())) {
+                            lines.push(PatchCardLine {
+                                first: false,
+                                zebra: slot as i32,
+                                idx: "".into(),
+                                name: "".into(),
+                                mb: "".into(),
+                                enabled: card.enabled,
+                                ability: "".into(),
+                                ability_debuff: false,
+                                bug: bug.into(),
+                                bug_debuff: true,
+                                bug_plain: true,
+                            });
+                        }
+                    }
+                    None => lines.push(PatchCardLine {
+                        first: true,
+                        zebra: slot as i32,
+                        idx: (*slot_label).into(),
+                        name: crate::t!(lang, "patch-card4-none").into(),
+                        mb: "".into(),
+                        enabled: false,
+                        ability: "".into(),
+                        ability_debuff: false,
+                        bug: "".into(),
+                        bug_debuff: false,
+                        bug_plain: false,
+                    }),
+                }
+            }
+            Some((1, lines))
+        }
+    }
+}
+
+/// BN4 catalog-slot labels (the "0A"–"0F" the game shows).
+const PATCH_CARD4_SLOT_LABELS: [&str; 6] = ["0A", "0B", "0C", "0D", "0E", "0F"];
+
+/// Human-readable label for a BN4 patch-card effect (tango's
+/// save_view/patch_cards.rs; B-shortcut chip params shown raw — the
+/// shortcut → chip-id table isn't mapped).
+fn patch_card4_effect_label(effect: tango_dataview::rom::PatchCard4Effect) -> String {
+    use tango_dataview::rom::{
+        PatchCard4Aura as A, PatchCard4Color as C, PatchCard4Effect as E, PatchCard4Panel as P,
+        PatchCard4PetColor as PT, PatchCard4Soul as S,
+    };
+    match effect {
+        E::None => "—".to_string(),
+        E::PetMenu(c) => format!(
+            "{} PET menu",
+            match c {
+                PT::Blue => "Blue",
+                PT::Pink => "Pink",
+                PT::Green => "Green",
+                PT::Black => "Black",
+            }
+        ),
+        E::MaxHp(n) => format!("Max HP +{n}"),
+        E::BusterAttack(n) => format!("Buster Attack {}", n as u16 + 1),
+        E::BButton(s) => format!("B Button {s:?}"),
+        E::BCharge(s) => format!("B Charge {s:?}"),
+        E::BLeft(s) => format!("B + ← {s:?}"),
+        E::CustomSlots(n) => format!("Custom +{n}"),
+        E::MegaFolder(n) => format!("Mega Chip +{n}"),
+        E::GigaFolder(n) => format!("Giga Chip +{n}"),
+        E::TripleSupporter => "Triple Supporter".to_string(),
+        E::PanelStep(p) => format!(
+            "{} Panel Step",
+            match p {
+                P::Broken => "Broken",
+                P::Cracked => "Cracked",
+                P::Metal => "Metal",
+                P::Holy => "Holy",
+            }
+        ),
+        E::FullSynchro => "Full Synchro".to_string(),
+        E::Aura(a) => match a {
+            A::Barrier100 => "Barrier 100",
+            A::Barrier200 => "Barrier 200",
+            A::LifeAura => "LifeAura",
+        }
+        .to_string(),
+        E::Soul(s) => format!(
+            "{} Soul",
+            match s {
+                S::Roll => "Roll",
+                S::Guts => "Guts",
+                S::Wind => "Wind",
+                S::Search => "Search",
+                S::Fire => "Fire",
+                S::Thunder => "Thunder",
+                S::Proto => "Proto",
+                S::Number => "Number",
+                S::Metal => "Metal",
+                S::Junk => "Junk",
+                S::Aqua => "Aqua",
+                S::Wood => "Wood",
+            }
+        ),
+        E::Color(c) => format!(
+            "{} MegaMan",
+            match c {
+                C::Red => "Red",
+                C::Yellow => "Yellow",
+                C::White => "White",
+                C::Green => "Green",
+            }
+        ),
+        E::AllGuard => "All Guard".to_string(),
+    }
+}
+
+/// Joined human-readable label for a BN4 card's bugs, or `None`.
+fn patch_card4_bugs_label(bugs: &[tango_dataview::rom::PatchCard4Bug]) -> Option<String> {
+    use tango_dataview::rom::PatchCard4Bug as B;
+    if bugs.is_empty() {
+        return None;
+    }
+    Some(
+        bugs.iter()
+            .map(|b| match b {
+                B::Confused => "Start battle Confused",
+                B::AutoMove => "Auto-move forward",
+                B::Hp(_) => "HP Bug",
+                B::CustomHP => "Custom HP Bug",
+                B::CustomMinus1 => "Custom −1",
+                B::PoisonPanelStep => "Poison Panel Step",
+            })
+            .collect::<Vec<_>>()
+            .join(" & "),
+    )
+}
+
+/// The Auto Battle Data section as flattened rows: six titled sections
+/// (grouped runs, so a chip filling several deck slots reads as one
+/// "N× chip" row; unfilled runs render as "—" rows). Empty when the
+/// save has no ABD view.
+pub fn abd_rows(lang: &unic_langid::LanguageIdentifier, loaded: &Loaded) -> Vec<AbdRow> {
+    let Some(view) = loaded.save.view_auto_battle_data() else {
+        return Vec::new();
+    };
+    let assets = loaded.assets.as_ref();
+    let grouped = tango_dataview::auto_battle_data::GroupedAutoBattleData::materialize(view.as_ref(), assets);
+    let sections: [(String, &Vec<(Option<usize>, usize)>); 6] = [
+        (
+            crate::t!(lang, "auto-battle-data-secondary-standard-chips"),
+            &grouped.secondary_standard_chips,
+        ),
+        (crate::t!(lang, "auto-battle-data-standard-chips"), &grouped.standard_chips),
+        (crate::t!(lang, "auto-battle-data-mega-chips"), &grouped.mega_chips),
+        (crate::t!(lang, "auto-battle-data-giga-chip"), &grouped.giga_chip),
+        (crate::t!(lang, "auto-battle-data-combos"), &grouped.combos),
+        (
+            crate::t!(lang, "auto-battle-data-program-advance"),
+            &grouped.program_advance,
+        ),
+    ];
+    let mut rows = Vec::new();
+    for (title, runs) in sections {
+        rows.push(AbdRow {
+            is_header: true,
+            title: title.into(),
+            chip: ChipRow::default(),
+            zebra: 0,
+        });
+        for (zebra, (id, count)) in runs.iter().enumerate() {
+            let g = GroupedChip {
+                count: *count,
+                ..GroupedChip::default()
+            };
+            rows.push(AbdRow {
+                is_header: false,
+                title: Default::default(),
+                chip: make_chip_row(loaded, *id, None, &g),
+                zebra: zebra as i32,
+            });
+        }
+    }
+    rows
+}
+
+// ----- copy-as-text renderings (tango's save_view tab_as_text) -----
+
+/// The active section as TSV text for the clipboard, keyed by the
+/// Slint-side section kind (0 = NaviCust, 1 = Folder, 2 = Patch Cards,
+/// 3 = Auto Battle Data).
+pub fn section_as_text(loaded: &Loaded, kind: i32, folder_grouped: bool) -> Option<String> {
+    match kind {
+        0 => navicust_as_text(loaded),
+        1 => folder_as_text(loaded, folder_grouped),
+        2 => patch_cards_as_text(loaded),
+        3 => abd_as_text(loaded),
+        _ => None,
+    }
+}
+
+/// Two TSV columns — solid parts | plus parts — lined up row-by-row to
+/// match the side-by-side layout, with the BN3 style name first.
+fn navicust_as_text(loaded: &Loaded) -> Option<String> {
+    let assets = loaded.assets.as_ref();
+    let v = loaded.save.view_navicust()?;
+    let mut out = String::new();
+    if let Some(style_id) = v.style() {
+        if let Some(name) = assets.style(style_id).and_then(|s| s.name()) {
+            out.push_str(&name);
+            out.push('\n');
+        }
+    }
+    let mut solid = Vec::new();
+    let mut plus = Vec::new();
+    for i in 0..v.count() {
+        let Some(part) = v.navicust_part(i) else { continue };
+        let Some(info) = assets.navicust_part(part.id) else {
+            continue;
+        };
+        let name = info.name().unwrap_or_else(|| format!("#{}", part.id));
+        if info.is_solid() {
+            solid.push(name);
+        } else {
+            plus.push(name);
+        }
+    }
+    for i in 0..solid.len().max(plus.len()) {
+        let s = solid.get(i).map(String::as_str).unwrap_or("");
+        let p = plus.get(i).map(String::as_str).unwrap_or("");
+        out.push_str(s);
+        out.push('\t');
+        out.push_str(p);
+        out.push('\n');
+    }
+    Some(out)
+}
+
+/// The folder as TSV, honoring the grouped toggle (tango's
+/// folder::as_text; the [REG]/[TAG] markers ride as a suffix column).
+fn folder_as_text(loaded: &Loaded, grouped: bool) -> Option<String> {
+    let assets = loaded.assets.as_ref();
+    let chips_view = loaded.save.view_chips()?;
+    let folder_idx = chips_view.equipped_folder_index();
+    let regular_idx = chips_view.regular_chip_index(folder_idx).flatten();
+    let tag_idxs = chips_view.tag_chip_indexes(folder_idx).flatten();
+
+    let chips: Vec<Option<tango_dataview::save::Chip>> =
+        (0..MAX_FOLDER_CHIPS).map(|i| chips_view.chip(folder_idx, i)).collect();
+
+    let mut out = String::new();
+    if grouped {
+        // Ordered dedup by chip identity — 30 entries, linear find does.
+        let mut groups: Vec<(Option<tango_dataview::save::Chip>, GroupedChip)> = Vec::new();
+        for (i, chip) in chips.iter().enumerate() {
+            let slot = match groups.iter().position(|(c, _)| c == chip) {
+                Some(pos) => pos,
+                None => {
+                    groups.push((chip.clone(), GroupedChip::default()));
+                    groups.len() - 1
+                }
+            };
+            let g = &mut groups[slot].1;
+            g.count += 1;
+            if regular_idx == Some(i) {
+                g.is_regular = true;
+            }
+            if let Some(t) = tag_idxs {
+                g.tag_count += (t[0] == i) as i32 + (t[1] == i) as i32;
+            }
+        }
+        for (chip, g) in &groups {
+            let Some(c) = chip else {
+                out.push_str(&format!("{}\t---\n", g.count));
+                continue;
+            };
+            let name = assets
+                .chip(c.id)
+                .and_then(|info| info.name())
+                .unwrap_or_else(|| "???".to_string());
+            out.push_str(&format!("{}\t{name}\t{}", g.count, c.code));
+            let mut suffix = vec![];
+            if g.is_regular {
+                suffix.push("[REG]");
+            }
+            suffix.extend(std::iter::repeat_n("[TAG]", g.tag_count.max(0) as usize));
+            if !suffix.is_empty() {
+                out.push('\t');
+                out.push_str(&suffix.join(""));
+            }
+            out.push('\n');
+        }
+    } else {
+        for (i, chip) in chips.iter().enumerate() {
+            let Some(c) = chip else {
+                out.push_str("---\n");
+                continue;
+            };
+            let name = assets
+                .chip(c.id)
+                .and_then(|info| info.name())
+                .unwrap_or_else(|| "???".to_string());
+            out.push_str(&format!("{name}\t{}", c.code));
+            let mut suffix = vec![];
+            if regular_idx == Some(i) {
+                suffix.push("[REG]");
+            }
+            if let Some(ti) = tag_idxs {
+                if ti.contains(&i) {
+                    suffix.push("[TAG]");
+                }
+            }
+            if !suffix.is_empty() {
+                out.push('\t');
+                out.push_str(&suffix.join(""));
+            }
+            out.push('\n');
+        }
+    }
+    Some(out)
+}
+
+/// The enabled patch cards as TSV (tango's patch_cards::as_text).
+fn patch_cards_as_text(loaded: &Loaded) -> Option<String> {
+    let assets = loaded.assets.as_ref();
+    let view = loaded.save.view_patch_cards()?;
+    let mut out = String::new();
+    match view {
+        tango_dataview::save::PatchCardsView::PatchCard56s(v) => {
+            for i in 0..v.count() {
+                let Some(card) = v.patch_card(i) else { continue };
+                if !card.enabled {
+                    continue;
+                }
+                let info = assets.patch_card56(card.id);
+                let name = info
+                    .as_ref()
+                    .and_then(|c| c.name())
+                    .unwrap_or_else(|| format!("#{}", card.id));
+                let mb = info.as_ref().map(|c| c.mb()).unwrap_or(0);
+                out.push_str(&format!("{name}\t{mb}MB\n"));
+            }
+        }
+        tango_dataview::save::PatchCardsView::PatchCard4s(v) => {
+            for (i, slot_label) in PATCH_CARD4_SLOT_LABELS.iter().enumerate() {
+                let Some(card) = v.patch_card(i) else { continue };
+                if !card.enabled {
+                    continue;
+                }
+                let info = assets.patch_card4(card.id);
+                let name = info
+                    .as_ref()
+                    .and_then(|c| c.name())
+                    .unwrap_or_else(|| format!("#{}", card.id));
+                out.push_str(&format!("{slot_label}\t{name}\n"));
+            }
+        }
+    }
+    Some(out)
+}
+
+/// The materialized ABD deck as sectioned text (tango's abd::as_text —
+/// section headers intentionally English, like the original).
+fn abd_as_text(loaded: &Loaded) -> Option<String> {
+    let assets = loaded.assets.as_ref();
+    let view = loaded.save.view_auto_battle_data()?;
+    let mat = view.materialized();
+    let chip_name = |id: Option<usize>| match id {
+        Some(id) => assets
+            .chip(id)
+            .and_then(|c| c.name())
+            .unwrap_or_else(|| format!("#{id}")),
+        None => "—".to_string(),
+    };
+    let mut out = String::new();
+    let mut section = |title: &str, ids: &[Option<usize>]| {
+        out.push_str(&format!("[{title}]\n"));
+        for id in ids {
+            out.push_str(&chip_name(*id));
+            out.push('\n');
+        }
+        out.push('\n');
+    };
+    section("Secondary standard", mat.secondary_standard_chips());
+    section("Standard", mat.standard_chips());
+    section("Mega", mat.mega_chips());
+    section("Giga", &[mat.giga_chip()]);
+    section("Combos", mat.combos());
+    section("Program advance", &[mat.program_advance()]);
+    Some(out)
 }
 
 /// The equipped-navi header card's content (tango's

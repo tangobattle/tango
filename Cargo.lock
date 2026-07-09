@@ -8561,6 +8561,7 @@ name = "tango-ng"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arboard",
  "async-trait",
  "bincode 1.3.3",
  "bps",

@@ -35,6 +35,10 @@ mod loaded;
 mod net;
 #[allow(dead_code)]
 mod netplay;
+// The read-only NaviCust grid raster; the editor's live-grid surface
+// (ghosts, drop targets) waits on the save-editor port.
+#[allow(dead_code)]
+mod navicust;
 mod patch;
 // PvP session (Phase A port). Parts of its surface (frame-delay
 // slider, reconnect overlay, median latency) wait on the Phase B
@@ -119,6 +123,10 @@ fn apply_i18n(app: &AppWindow, config: &config::Config) {
     i18n.set_navi_buster_charge(t!(lang, "navi-buster-charge").into());
     i18n.set_folder_group(t!(lang, "folder-group").into());
     i18n.set_save_empty(t!(lang, "save-empty").into());
+    i18n.set_save_copy(t!(lang, "save-copy").into());
+    i18n.set_save_copy_image(t!(lang, "save-copy-image").into());
+    i18n.set_copied(t!(lang, "copied").into());
+    i18n.set_patch_card4_none(t!(lang, "patch-card4-none").into());
     // lobby band
     i18n.set_lobby_you(t!(lang, "play-you").into());
     i18n.set_lobby_opponent(t!(lang, "play-opponent").into());
@@ -749,19 +757,63 @@ fn push_save_view(app: &AppWindow, st: &State) {
     let Some(l) = st.loaded.as_ref() else {
         app.set_save_loaded(false);
         app.set_navi_header(NaviHeader::default());
-        app.set_save_tabs(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
+        app.set_save_tabs(ModelRc::new(VecModel::from(Vec::<SaveTabItem>::new())));
         app.set_folder_chips(ModelRc::new(VecModel::from(Vec::<ChipRow>::new())));
+        app.set_navicust_image(Image::default());
+        app.set_navicust_style_name(SharedString::default());
+        app.set_navicust_parts(ModelRc::new(VecModel::from(Vec::<NcpPartRow>::new())));
+        app.set_patch_card_lines(ModelRc::new(VecModel::from(Vec::<PatchCardLine>::new())));
+        app.set_abd_rows(ModelRc::new(VecModel::from(Vec::<AbdRow>::new())));
         return;
     };
     let lang = &st.config.language;
     app.set_navi_header(loaded::navi_header(l));
     // Section gating like tango's available_tabs — each tab exists iff
-    // its view does. Only Folder is ported so far; the others append
-    // here as they land.
-    let mut tabs: Vec<SharedString> = Vec::new();
-    if l.save.view_chips().is_some() {
-        tabs.push(t!(lang, "save-tab-folder").into());
+    // its view does, in tango's order (NaviCust, Folder, Patch Cards,
+    // Auto Battle Data). The kind rides with the label so the bodies
+    // don't depend on tab position.
+    let mut tabs: Vec<SaveTabItem> = Vec::new();
+    if let Some(nc) = loaded::navicust_model(l) {
+        tabs.push(SaveTabItem {
+            label: t!(lang, "save-tab-navicust").into(),
+            kind: 0,
+        });
+        app.set_navicust_image(nc.image);
+        app.set_navicust_aspect(nc.aspect);
+        app.set_navicust_style_name(nc.style_name.into());
+        app.set_navicust_label_x_frac(nc.label_x_frac);
+        app.set_navicust_label_y_frac(nc.label_y_frac);
+        app.set_navicust_label_h_frac(nc.label_h_frac);
+        app.set_navicust_parts(ModelRc::new(VecModel::from(nc.parts)));
+    } else {
+        app.set_navicust_image(Image::default());
+        app.set_navicust_style_name(SharedString::default());
+        app.set_navicust_parts(ModelRc::new(VecModel::from(Vec::<NcpPartRow>::new())));
     }
+    if l.save.view_chips().is_some() {
+        tabs.push(SaveTabItem {
+            label: t!(lang, "save-tab-folder").into(),
+            kind: 1,
+        });
+    }
+    if let Some((kind, lines)) = loaded::patch_card_lines(lang, l) {
+        tabs.push(SaveTabItem {
+            label: t!(lang, "save-tab-patch-cards").into(),
+            kind: 2,
+        });
+        app.set_patch_cards_kind(kind);
+        app.set_patch_card_lines(ModelRc::new(VecModel::from(lines)));
+    } else {
+        app.set_patch_card_lines(ModelRc::new(VecModel::from(Vec::<PatchCardLine>::new())));
+    }
+    let abd = loaded::abd_rows(lang, l);
+    if !abd.is_empty() {
+        tabs.push(SaveTabItem {
+            label: t!(lang, "save-tab-auto-battle-data").into(),
+            kind: 3,
+        });
+    }
+    app.set_abd_rows(ModelRc::new(VecModel::from(abd)));
     app.set_save_tabs(ModelRc::new(VecModel::from(tabs)));
     app.set_save_active_tab(0);
     app.set_folder_has_mb(l.assets.chips_have_mb());
@@ -770,6 +822,112 @@ fn push_save_view(app: &AppWindow, st: &State) {
         app.get_folder_grouped(),
     ))));
     app.set_save_loaded(true);
+}
+
+/// The active save-view section's kind (-1 when none) — mirror of the
+/// .slint-side derived `save-kind` property, for the copy callbacks.
+fn save_active_kind(app: &AppWindow) -> i32 {
+    use slint::Model;
+    let tabs = app.get_save_tabs();
+    usize::try_from(app.get_save_active_tab())
+        .ok()
+        .and_then(|i| tabs.row_data(i))
+        .map(|t| t.kind)
+        .unwrap_or(-1)
+}
+
+/// --ui-shot: point the Play tab at the first (game, save) whose save
+/// satisfies `pred` — game_rows order, then that game's save order
+/// (the same order the save picker shows). No-op when nothing matches.
+fn select_save_where(
+    app: &AppWindow,
+    state: &Rc<RefCell<State>>,
+    pred: &dyn Fn(&(dyn tango_dataview::save::Save + Send + Sync)) -> bool,
+) {
+    let target = {
+        let st = state.borrow();
+        st.game_rows.iter().enumerate().find_map(|(gi, g)| {
+            st.saves
+                .get(g)
+                .and_then(|saves| saves.iter().position(|s| pred(s.save.as_ref())))
+                .map(|si| (gi, si))
+        })
+    };
+    let Some((gi, si)) = target else { return };
+    app.set_selected_game(gi as i32);
+    app.invoke_game_selected(gi as i32);
+    app.set_selected_save(si as i32);
+    app.invoke_save_selected(si as i32);
+}
+
+/// --ui-shot: the save-tab-strip index of the section with `kind`.
+fn save_tab_index_of_kind(app: &AppWindow, kind: i32) -> Option<i32> {
+    use slint::Model;
+    let tabs = app.get_save_tabs();
+    (0..tabs.row_count())
+        .find(|&i| tabs.row_data(i).is_some_and(|t| t.kind == kind))
+        .map(|i| i as i32)
+}
+
+/// Flip the copy button's label to "Copied!" for a moment (tango's
+/// copy_feedback flash), reverting via a single-shot timer.
+fn flash_copy_feedback(app: &AppWindow, image: bool) {
+    if image {
+        app.set_save_copy_image_flash(true);
+    } else {
+        app.set_save_copy_flash(true);
+    }
+    let app_weak = app.as_weak();
+    slint::Timer::single_shot(std::time::Duration::from_millis(1200), move || {
+        let Some(app) = app_weak.upgrade() else { return };
+        if image {
+            app.set_save_copy_image_flash(false);
+        } else {
+            app.set_save_copy_flash(false);
+        }
+    });
+}
+
+/// Put plain text on the system clipboard. Desktop-only: arboard has
+/// no Android/iOS backend, so mobile builds compile this to a no-op
+/// (the mobile copy story is OS share sheets, a follow-up).
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn copy_text_to_clipboard(text: &str) -> bool {
+    match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(text)) {
+        Ok(()) => true,
+        Err(e) => {
+            log::error!("clipboard text copy failed: {e}");
+            false
+        }
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn copy_text_to_clipboard(_text: &str) -> bool {
+    false
+}
+
+/// Put an RGBA image on the system clipboard (the NaviCust grid).
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn copy_image_to_clipboard(img: image::RgbaImage) -> bool {
+    let (width, height) = (img.width() as usize, img.height() as usize);
+    let data = arboard::ImageData {
+        width,
+        height,
+        bytes: std::borrow::Cow::Owned(img.into_raw()),
+    };
+    match arboard::Clipboard::new().and_then(|mut cb| cb.set_image(data)) {
+        Ok(()) => true,
+        Err(e) => {
+            log::error!("clipboard image copy failed: {e}");
+            false
+        }
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn copy_image_to_clipboard(_img: image::RgbaImage) -> bool {
+    false
 }
 
 /// Single source of truth for the local side's `protocol::Settings`
@@ -1724,6 +1882,43 @@ fn main() -> anyhow::Result<()> {
             let Some(app) = app_weak.upgrade() else { return };
             let mut st = state.borrow_mut();
             refresh_loaded(&app, &mut st);
+        }
+    });
+
+    // Save-view copy affordances (tango's CopyTab / CopyTabImage): the
+    // active section as TSV text, or the NaviCust grid as an image.
+    // Desktop-only — the clipboard crate has no mobile backends; the
+    // buttons stay visible but inert there.
+    app.on_save_copy({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let st = state.borrow();
+            let Some(l) = st.loaded.as_ref() else { return };
+            let kind = save_active_kind(&app);
+            let Some(text) = loaded::section_as_text(l, kind, app.get_folder_grouped()) else {
+                return;
+            };
+            if copy_text_to_clipboard(&text) {
+                flash_copy_feedback(&app, false);
+            }
+        }
+    });
+
+    app.on_save_copy_image({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let st = state.borrow();
+            let Some(l) = st.loaded.as_ref() else { return };
+            let Some(img) = loaded::navicust_clipboard_image(l) else {
+                return;
+            };
+            if copy_image_to_clipboard(img) {
+                flash_copy_feedback(&app, true);
+            }
         }
     });
 
@@ -2771,8 +2966,38 @@ fn main() -> anyhow::Result<()> {
                         app.set_settings_section(3);
                         app.invoke_input_key_selected(input::MappedKey::A.index() as i32);
                     }
-                    117 => {
-                        snapshot(&app, &dir.join("ui-settings-input.png"));
+                    117 => snapshot(&app, &dir.join("ui-settings-input.png")),
+                    // Save-view sections beyond Folder, each on the
+                    // first save that actually exposes the view (a BN6
+                    // link-navi save legitimately has none of them).
+                    119 => app.set_active_tab(0),
+                    120 => select_save_where(&app, &state, &|s| s.view_navicust().is_some()),
+                    130 => {
+                        if save_tab_index_of_kind(&app, 0).is_some() {
+                            snapshot(&app, &dir.join("ui-save-navicust.png"));
+                        }
+                    }
+                    132 => select_save_where(&app, &state, &|s| s.view_auto_battle_data().is_some()),
+                    140 => {
+                        if let Some(ti) = save_tab_index_of_kind(&app, 3) {
+                            app.set_save_active_tab(ti);
+                        }
+                    }
+                    145 => {
+                        if save_tab_index_of_kind(&app, 3).is_some() {
+                            snapshot(&app, &dir.join("ui-save-abd.png"));
+                        }
+                    }
+                    147 => select_save_where(&app, &state, &|s| s.view_patch_cards().is_some()),
+                    155 => {
+                        if let Some(ti) = save_tab_index_of_kind(&app, 2) {
+                            app.set_save_active_tab(ti);
+                        }
+                    }
+                    160 => {
+                        if save_tab_index_of_kind(&app, 2).is_some() {
+                            snapshot(&app, &dir.join("ui-save-patch-cards.png"));
+                        }
                         let _ = slint::quit_event_loop();
                     }
                     _ => {}
