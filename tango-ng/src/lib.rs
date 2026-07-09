@@ -907,19 +907,19 @@ fn refresh_loaded(app: &AppWindow, st: &mut State) {
 /// rows — from `st.loaded`, or clear the whole viewer when it's gone.
 fn push_save_view(app: &AppWindow, st: &State) {
     let Some(l) = st.loaded.as_ref() else {
-        app.set_save_loaded(false);
-        app.set_navi_header(NaviHeader::default());
-        app.set_save_tabs(ModelRc::new(VecModel::from(Vec::<SaveTabItem>::new())));
-        app.set_folder_chips(ModelRc::new(VecModel::from(Vec::<ChipRow>::new())));
-        app.set_navicust_image(Image::default());
-        app.set_navicust_style_name(SharedString::default());
-        app.set_navicust_parts(ModelRc::new(VecModel::from(Vec::<NcpPartRow>::new())));
-        app.set_patch_card_lines(ModelRc::new(VecModel::from(Vec::<PatchCardLine>::new())));
-        app.set_abd_rows(ModelRc::new(VecModel::from(Vec::<AbdRow>::new())));
+        app.global::<SaveView>().set_save_loaded(false);
+        app.global::<SaveView>().set_navi_header(NaviHeader::default());
+        app.global::<SaveView>().set_save_tabs(ModelRc::new(VecModel::from(Vec::<SaveTabItem>::new())));
+        app.global::<SaveView>().set_folder_chips(ModelRc::new(VecModel::from(Vec::<ChipRow>::new())));
+        app.global::<SaveView>().set_navicust_image(Image::default());
+        app.global::<SaveView>().set_navicust_style_name(SharedString::default());
+        app.global::<SaveView>().set_navicust_parts(ModelRc::new(VecModel::from(Vec::<NcpPartRow>::new())));
+        app.global::<SaveView>().set_patch_card_lines(ModelRc::new(VecModel::from(Vec::<PatchCardLine>::new())));
+        app.global::<SaveView>().set_abd_rows(ModelRc::new(VecModel::from(Vec::<AbdRow>::new())));
         return;
     };
     let lang = &st.config.language;
-    app.set_navi_header(loaded::navi_header(l));
+    app.global::<SaveView>().set_navi_header(loaded::navi_header(l));
     // Section gating like tango's available_tabs — each tab exists iff
     // its view does, in tango's order (NaviCust, Folder, Patch Cards,
     // Auto Battle Data). The kind rides with the label so the bodies
@@ -929,9 +929,9 @@ fn push_save_view(app: &AppWindow, st: &State) {
     // default view leaks nothing.
     if st.config.streamer_mode {
         let cover = loaded::cover_model(l);
-        app.set_cover_logos(ModelRc::new(VecModel::from(cover.logos)));
-        app.set_cover_lane_w(cover.lane_w);
-        app.set_cover_lane_h(cover.lane_h);
+        app.global::<SaveView>().set_cover_logos(ModelRc::new(VecModel::from(cover.logos)));
+        app.global::<SaveView>().set_cover_lane_w(cover.lane_w);
+        app.global::<SaveView>().set_cover_lane_h(cover.lane_h);
         tabs.push(SaveTabItem {
             label: t!(lang, "save-tab-cover").into(),
             kind: 4,
@@ -942,17 +942,17 @@ fn push_save_view(app: &AppWindow, st: &State) {
             label: t!(lang, "save-tab-navicust").into(),
             kind: 0,
         });
-        app.set_navicust_image(nc.image);
-        app.set_navicust_aspect(nc.aspect);
-        app.set_navicust_style_name(nc.style_name.into());
-        app.set_navicust_label_x_frac(nc.label_x_frac);
-        app.set_navicust_label_y_frac(nc.label_y_frac);
-        app.set_navicust_label_h_frac(nc.label_h_frac);
-        app.set_navicust_parts(ModelRc::new(VecModel::from(nc.parts)));
+        app.global::<SaveView>().set_navicust_image(nc.image);
+        app.global::<SaveView>().set_navicust_aspect(nc.aspect);
+        app.global::<SaveView>().set_navicust_style_name(nc.style_name.into());
+        app.global::<SaveView>().set_navicust_label_x_frac(nc.label_x_frac);
+        app.global::<SaveView>().set_navicust_label_y_frac(nc.label_y_frac);
+        app.global::<SaveView>().set_navicust_label_h_frac(nc.label_h_frac);
+        app.global::<SaveView>().set_navicust_parts(ModelRc::new(VecModel::from(nc.parts)));
     } else {
-        app.set_navicust_image(Image::default());
-        app.set_navicust_style_name(SharedString::default());
-        app.set_navicust_parts(ModelRc::new(VecModel::from(Vec::<NcpPartRow>::new())));
+        app.global::<SaveView>().set_navicust_image(Image::default());
+        app.global::<SaveView>().set_navicust_style_name(SharedString::default());
+        app.global::<SaveView>().set_navicust_parts(ModelRc::new(VecModel::from(Vec::<NcpPartRow>::new())));
     }
     if l.save.view_chips().is_some() {
         tabs.push(SaveTabItem {
@@ -965,10 +965,10 @@ fn push_save_view(app: &AppWindow, st: &State) {
             label: t!(lang, "save-tab-patch-cards").into(),
             kind: 2,
         });
-        app.set_patch_cards_kind(kind);
-        app.set_patch_card_lines(ModelRc::new(VecModel::from(lines)));
+        app.global::<SaveView>().set_patch_cards_kind(kind);
+        app.global::<SaveView>().set_patch_card_lines(ModelRc::new(VecModel::from(lines)));
     } else {
-        app.set_patch_card_lines(ModelRc::new(VecModel::from(Vec::<PatchCardLine>::new())));
+        app.global::<SaveView>().set_patch_card_lines(ModelRc::new(VecModel::from(Vec::<PatchCardLine>::new())));
     }
     let abd = loaded::abd_rows(lang, l);
     if !abd.is_empty() {
@@ -977,15 +977,15 @@ fn push_save_view(app: &AppWindow, st: &State) {
             kind: 3,
         });
     }
-    app.set_abd_rows(ModelRc::new(VecModel::from(abd)));
-    app.set_save_tabs(ModelRc::new(VecModel::from(tabs)));
-    app.set_save_active_tab(0);
-    app.set_folder_has_mb(l.assets.chips_have_mb());
-    app.set_folder_chips(ModelRc::new(VecModel::from(loaded::folder_rows(
+    app.global::<SaveView>().set_abd_rows(ModelRc::new(VecModel::from(abd)));
+    app.global::<SaveView>().set_save_tabs(ModelRc::new(VecModel::from(tabs)));
+    app.global::<SaveView>().set_save_active_tab(0);
+    app.global::<SaveView>().set_folder_has_mb(l.assets.chips_have_mb());
+    app.global::<SaveView>().set_folder_chips(ModelRc::new(VecModel::from(loaded::folder_rows(
         l,
-        app.get_folder_grouped(),
+        app.global::<SaveView>().get_folder_grouped(),
     ))));
-    app.set_save_loaded(true);
+    app.global::<SaveView>().set_save_loaded(true);
 }
 
 /// Push the current app state into Discord rich presence (tango's
@@ -1025,8 +1025,8 @@ fn update_discord_presence(_app: &AppWindow, _st: &State) {}
 /// .slint-side derived `save-kind` property, for the copy callbacks.
 fn save_active_kind(app: &AppWindow) -> i32 {
     use slint::Model;
-    let tabs = app.get_save_tabs();
-    usize::try_from(app.get_save_active_tab())
+    let tabs = app.global::<SaveView>().get_save_tabs();
+    usize::try_from(app.global::<SaveView>().get_save_active_tab())
         .ok()
         .and_then(|i| tabs.row_data(i))
         .map(|t| t.kind)
@@ -1060,7 +1060,7 @@ fn select_save_where(
 /// --ui-shot: the save-tab-strip index of the section with `kind`.
 fn save_tab_index_of_kind(app: &AppWindow, kind: i32) -> Option<i32> {
     use slint::Model;
-    let tabs = app.get_save_tabs();
+    let tabs = app.global::<SaveView>().get_save_tabs();
     (0..tabs.row_count())
         .find(|&i| tabs.row_data(i).is_some_and(|t| t.kind == kind))
         .map(|i| i as i32)
@@ -1070,17 +1070,17 @@ fn save_tab_index_of_kind(app: &AppWindow, kind: i32) -> Option<i32> {
 /// copy_feedback flash), reverting via a single-shot timer.
 fn flash_copy_feedback(app: &AppWindow, image: bool) {
     if image {
-        app.set_save_copy_image_flash(true);
+        app.global::<SaveView>().set_save_copy_image_flash(true);
     } else {
-        app.set_save_copy_flash(true);
+        app.global::<SaveView>().set_save_copy_flash(true);
     }
     let app_weak = app.as_weak();
     slint::Timer::single_shot(std::time::Duration::from_millis(1200), move || {
         let Some(app) = app_weak.upgrade() else { return };
         if image {
-            app.set_save_copy_image_flash(false);
+            app.global::<SaveView>().set_save_copy_image_flash(false);
         } else {
-            app.set_save_copy_flash(false);
+            app.global::<SaveView>().set_save_copy_flash(false);
         }
     });
 }
@@ -2552,7 +2552,7 @@ pub fn run() -> anyhow::Result<()> {
     // active section as TSV text, or the NaviCust grid as an image.
     // Desktop-only — the clipboard crate has no mobile backends; the
     // buttons stay visible but inert there.
-    app.on_save_copy({
+    app.global::<SaveView>().on_save_copy({
         let state = state.clone();
         let app_weak = app.as_weak();
         move || {
@@ -2560,7 +2560,7 @@ pub fn run() -> anyhow::Result<()> {
             let st = state.borrow();
             let Some(l) = st.loaded.as_ref() else { return };
             let kind = save_active_kind(&app);
-            let Some(text) = loaded::section_as_text(l, kind, app.get_folder_grouped()) else {
+            let Some(text) = loaded::section_as_text(l, kind, app.global::<SaveView>().get_folder_grouped()) else {
                 return;
             };
             if copy_text_to_clipboard(&text) {
@@ -2569,7 +2569,7 @@ pub fn run() -> anyhow::Result<()> {
         }
     });
 
-    app.on_save_copy_image({
+    app.global::<SaveView>().on_save_copy_image({
         let state = state.clone();
         let app_weak = app.as_weak();
         move || {
@@ -3059,7 +3059,7 @@ pub fn run() -> anyhow::Result<()> {
         }
     });
 
-    app.on_folder_grouped_toggled({
+    app.global::<SaveView>().on_folder_grouped_toggled({
         let state = state.clone();
         let app_weak = app.as_weak();
         move |grouped| {
@@ -3067,7 +3067,7 @@ pub fn run() -> anyhow::Result<()> {
             // Only the folder model depends on grouping — no rebake.
             let st = state.borrow();
             if let Some(l) = st.loaded.as_ref() {
-                app.set_folder_chips(ModelRc::new(VecModel::from(loaded::folder_rows(l, grouped))));
+                app.global::<SaveView>().set_folder_chips(ModelRc::new(VecModel::from(loaded::folder_rows(l, grouped))));
             }
         }
     });
@@ -4327,7 +4327,7 @@ pub fn run() -> anyhow::Result<()> {
                     132 => select_save_where(&app, &state, &|s| s.view_auto_battle_data().is_some()),
                     140 => {
                         if let Some(ti) = save_tab_index_of_kind(&app, 3) {
-                            app.set_save_active_tab(ti);
+                            app.global::<SaveView>().set_save_active_tab(ti);
                         }
                     }
                     145 => {
@@ -4338,7 +4338,7 @@ pub fn run() -> anyhow::Result<()> {
                     147 => select_save_where(&app, &state, &|s| s.view_patch_cards().is_some()),
                     155 => {
                         if let Some(ti) = save_tab_index_of_kind(&app, 2) {
-                            app.set_save_active_tab(ti);
+                            app.global::<SaveView>().set_save_active_tab(ti);
                         }
                     }
                     160 => {

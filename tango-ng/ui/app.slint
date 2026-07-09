@@ -1015,6 +1015,590 @@ component GbaKey inherits Rectangle {
     }
 }
 
+// The read-only save viewer's models + interactions, shared by every
+// embedder (play tab now; the replay tab's local-save view and the
+// in-session setup drawers render the same body). Rust pushes models
+// through the global; the strip's tail controls fire its callbacks.
+export global SaveView {
+    // True while a Loaded is built for the current selection; false
+    // clears the whole viewer (deselect / rescan).
+    in-out property <bool> save-loaded: false;
+    in-out property <NaviHeader> navi-header;
+    // Section tabs, pushed from Rust with tango's save-tab-* strings —
+    // one entry per view the save supports (available_tabs).
+    in-out property <[SaveTabItem]> save-tabs: [];
+    in-out property <int> save-active-tab: 0;
+    // The active section's kind (-1 = none): the bodies and the strip's
+    // tail controls gate on this, not on the tab index.
+    out property <int> save-kind: save-tabs.length > 0
+        && save-active-tab >= 0
+        && save-active-tab < save-tabs.length
+        ? save-tabs[save-active-tab].kind : -1;
+    in-out property <[ChipRow]> folder-chips: [];
+    // BN1/2 chips carry no MB — the whole column hides.
+    in-out property <bool> folder-has-mb: true;
+    in-out property <bool> folder-grouped: true;
+    // ---- navicust section ----
+    in-out property <image> navicust-image;
+    // Baked image aspect (w / h): the image box is height-driven, so
+    // narrower grids render proportionally smaller.
+    in-out property <float> navicust-aspect: 1.0;
+    // BN3 style name, overlaid on the color bar ("" = none). The fracs
+    // locate the bar's label line in the image's own coordinate space.
+    in-out property <string> navicust-style-name: "";
+    in-out property <float> navicust-label-x-frac: 0.0;
+    in-out property <float> navicust-label-y-frac: 0.0;
+    in-out property <float> navicust-label-h-frac: 0.0;
+    // Installed parts, solid parts first then plus parts (slot order
+    // within each group), like tango's parts panel.
+    in-out property <[NcpPartRow]> navicust-parts: [];
+    // ---- patch cards section ----
+    // 0 = BN5/BN6 badge-column list, 1 = BN4 catalog slots.
+    in-out property <int> patch-cards-kind: 0;
+    in-out property <[PatchCardLine]> patch-card-lines: [];
+    // ---- auto battle data section ----
+    in-out property <[AbdRow]> abd-rows: [];
+    // Cover section (streamer mode only).
+    in-out property <[CoverLogo]> cover-logos: [];
+    in-out property <float> cover-lane-w: 0.0;
+    in-out property <float> cover-lane-h: 0.0;
+    // Transient "Copied!" flashes on the copy buttons (set from Rust,
+    // cleared by a single-shot timer there).
+    in-out property <bool> save-copy-flash: false;
+    in-out property <bool> save-copy-image-flash: false;
+    callback folder-grouped-toggled(bool);
+    // Copy the active section as TSV text / the NaviCust grid as an
+    // image (tango's CopyTab/CopyTabImage).
+    callback save-copy();
+    callback save-copy-image();
+}
+
+// The save viewer's whole body: navi header card, section tab strip
+// (with the folder-group toggle + copy buttons in its tail), and the
+// active section's pane — everything below an embedder's own chrome.
+component SaveViewBody inherits VerticalLayout {
+    // ---- save viewer (read-only) ----
+    // Navi header card over a tab strip + the
+    // active section's pane. Only the Folder
+    // section is ported so far; the strip is
+    // model-driven so the rest slot in later.
+    if SaveView.save-loaded : VerticalLayout {
+        spacing: 8px;
+        vertical-stretch: 1;
+
+        // navi header card (save_view/navi/mod.rs
+        // navi_card_content): emblem beside
+        // name-over-stats for the roster games
+        // (BN5/BN6/EXE4.5); BN1–4 just the HP.
+        Pane {
+            HorizontalLayout {
+                padding: 12px;
+                spacing: 10px;
+                alignment: start;
+                if SaveView.navi-header.has-name : VerticalLayout {
+                    alignment: center;
+                    Image {
+                        // 3× the 15px emblem crop so the
+                        // nearest-neighbor upscale lands
+                        // on even pixels.
+                        width: 45px;
+                        height: 45px;
+                        source: SaveView.navi-header.emblem;
+                        image-fit: contain;
+                        image-rendering: pixelated;
+                    }
+                }
+                VerticalLayout {
+                    spacing: 4px;
+                    alignment: center;
+                    if SaveView.navi-header.has-name : Text {
+                        text: SaveView.navi-header.name;
+                        font-size: 18px;
+                        color: Theme.text;
+                    }
+                    HorizontalLayout {
+                        spacing: 16px;
+                        alignment: start;
+                        if SaveView.navi-header.hp != "" : StatInline {
+                            label: I18n.navi-base-hp;
+                            value: SaveView.navi-header.hp;
+                        }
+                        if SaveView.navi-header.has-buster : HorizontalLayout {
+                            spacing: 12px;
+                            alignment: start;
+                            StatInline {
+                                label: I18n.navi-buster-attack;
+                                value: SaveView.navi-header.buster-attack;
+                            }
+                            StatInline {
+                                label: I18n.navi-buster-rapid;
+                                value: SaveView.navi-header.buster-rapid;
+                            }
+                            StatInline {
+                                label: I18n.navi-buster-charge;
+                                value: SaveView.navi-header.buster-charge;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // tab strip + the active section's tail
+        // controls (folder's grouped toggle, the
+        // copy buttons)
+        HorizontalLayout {
+            spacing: 4px;
+            for tab[i] in SaveView.save-tabs : SaveTab {
+                label: tab.label;
+                active: SaveView.save-active-tab == i;
+                clicked => { SaveView.save-active-tab = i; }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            if SaveView.save-kind == 1 : VerticalLayout {
+                alignment: center;
+                ChunkyCheckbox {
+                    label: I18n.folder-group;
+                    checked <=> SaveView.folder-grouped;
+                    toggled(g) => { SaveView.folder-grouped-toggled(g); }
+                }
+            }
+            if SaveView.save-kind == 0 : VerticalLayout {
+                alignment: center;
+                NeutralTextButton {
+                    label: SaveView.save-copy-image-flash ? I18n.copied : I18n.save-copy-image;
+                    clicked => { SaveView.save-copy-image(); }
+                }
+            }
+            if SaveView.save-kind >= 0 : VerticalLayout {
+                alignment: center;
+                NeutralTextButton {
+                    label: SaveView.save-copy-flash ? I18n.copied : I18n.save-copy;
+                    clicked => { SaveView.save-copy(); }
+                }
+            }
+        }
+
+        // Cover (save_view/cover.rs, streamer mode
+        // only): the game's logo(s), positioned in
+        // Rust — single = centered banner, twin
+        // versions = staggered pair.
+        if SaveView.save-kind == 4 : Pane {
+            vertical-stretch: 1;
+            Rectangle {
+                width: SaveView.cover-lane-w * 1px;
+                height: SaveView.cover-lane-h * 1px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                for logo in SaveView.cover-logos : Image {
+                    x: logo.x * 1px;
+                    y: logo.y * 1px;
+                    width: logo.w * 1px;
+                    height: logo.h * 1px;
+                    source: logo.img;
+                    image-fit: contain;
+                }
+            }
+        }
+
+        // NaviCust (save_view/navicust): the baked
+        // grid image beside the installed-parts
+        // list. The image box is height-driven so
+        // the grid always fits the pane; BN3's
+        // style name overlays the color bar.
+        if SaveView.save-kind == 0 : Pane {
+            vertical-stretch: 1;
+            // Manually placed (no layout): the grid box is
+            // height-driven (width = height × aspect), which
+            // inside a layout would cycle the layout solver.
+            ncgrid := Rectangle {
+                x: 12px;
+                y: 12px;
+                height: parent.height - 24px;
+                width: self.height * SaveView.navicust-aspect;
+                clip: true;
+                border-radius: 6px;
+                Image {
+                    width: 100%;
+                    height: 100%;
+                    source: SaveView.navicust-image;
+                    image-fit: contain;
+                }
+                if SaveView.navicust-style-name != "" : Text {
+                    x: parent.width * SaveView.navicust-label-x-frac;
+                    y: parent.height * SaveView.navicust-label-y-frac;
+                    height: parent.height * SaveView.navicust-label-h-frac;
+                    text: SaveView.navicust-style-name;
+                    font-size: self.height * 0.5;
+                    color: white;
+                    vertical-alignment: center;
+                }
+            }
+            ListView {
+                x: ncgrid.x + ncgrid.width + 16px;
+                y: 4px;
+                width: parent.width - self.x - 12px;
+                height: parent.height - 8px;
+                for part in SaveView.navicust-parts : HorizontalLayout {
+                        padding-top: 5px;
+                        padding-bottom: 5px;
+                        spacing: 10px;
+                        Rectangle {
+                            width: 40px;
+                            Image {
+                                width: min(parent.width, self.source.width * 1px);
+                                height: min(40px, self.source.height * 1px);
+                                source: part.thumb;
+                                image-fit: contain;
+                                image-rendering: pixelated;
+                            }
+                        }
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 3px;
+                            alignment: center;
+                            HorizontalLayout {
+                                alignment: start;
+                                Rectangle {
+                                    background: part.tint;
+                                    border-radius: 6px;
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        padding-top: 3px;
+                                        padding-bottom: 3px;
+                                        Text {
+                                            text: part.name;
+                                            font-size: 13px;
+                                            color: black;
+                                        }
+                                    }
+                                }
+                            }
+                            if part.desc != "" : Text {
+                                text: part.desc;
+                                font-size: 11px;
+                                color: Theme.text-muted;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                }
+        }
+
+        // Patch Cards (save_view/patch_cards):
+        // flattened lines — BN5/BN6 rows carry
+        // ability / bug badge columns; BN4 rows are
+        // the six catalog slots with purple bug
+        // lines beneath.
+        if SaveView.save-kind == 2 : Pane {
+            vertical-stretch: 1;
+            ListView {
+                x: 1px;
+                y: 4px;
+                width: parent.width - 2px;
+                height: parent.height - 8px;
+                for line in SaveView.patch-card-lines : Rectangle {
+                    height: 26px;
+                    background: Math.mod(line.zebra, 2) == 0 ? transparent : Theme.row-alt;
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 8px;
+                        Text {
+                            width: SaveView.patch-cards-kind == 0 ? 24px : 34px;
+                            text: line.idx;
+                            font-size: 11px;
+                            color: Theme.text-muted;
+                            vertical-alignment: center;
+                            horizontal-alignment: SaveView.patch-cards-kind == 0
+                                ? TextHorizontalAlignment.right
+                                : TextHorizontalAlignment.center;
+                        }
+                        // BN4 bug line: plain purple text across the name cell.
+                        if line.bug-plain : Text {
+                            horizontal-stretch: 1;
+                            text: line.bug;
+                            font-size: 12px;
+                            color: #b55ade;
+                            vertical-alignment: center;
+                        }
+                        if !line.bug-plain : HorizontalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 8px;
+                            alignment: start;
+                            Text {
+                                text: line.name;
+                                font-size: 13px;
+                                color: line.enabled ? Theme.text : Theme.text-muted;
+                                vertical-alignment: center;
+                            }
+                            if line.mb != "" : Text {
+                                text: line.mb;
+                                font-size: 10px;
+                                color: Theme.text-muted;
+                                vertical-alignment: center;
+                            }
+                        }
+                        if SaveView.patch-cards-kind == 0 : HorizontalLayout {
+                            width: 180px;
+                            alignment: start;
+                            if line.ability != "" : VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    background: !line.enabled ? #bdbdbd
+                                        : (line.ability-debuff ? #b55ade : #ffbd18);
+                                    border-radius: 6px;
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        padding-top: 2px;
+                                        padding-bottom: 2px;
+                                        Text {
+                                            text: line.ability;
+                                            font-size: 12px;
+                                            color: black;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if SaveView.patch-cards-kind == 0 : HorizontalLayout {
+                            width: 180px;
+                            alignment: start;
+                            if line.bug != "" : VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    background: !line.enabled ? #bdbdbd
+                                        : (line.bug-debuff ? #b55ade : #ffbd18);
+                                    border-radius: 6px;
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        padding-top: 2px;
+                                        padding-bottom: 2px;
+                                        Text {
+                                            text: line.bug;
+                                            font-size: 12px;
+                                            color: black;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Auto Battle Data (save_view/abd): six
+        // titled sections of chip rows (count ·
+        // icon · name · element · ATK · MB).
+        if SaveView.save-kind == 3 : Pane {
+            vertical-stretch: 1;
+            ListView {
+                x: 1px;
+                y: 4px;
+                width: parent.width - 2px;
+                height: parent.height - 8px;
+                for row in SaveView.abd-rows : Rectangle {
+                    height: row.is-header ? 34px : 36px;
+                    background: row.is-header || Math.mod(row.zebra, 2) == 0
+                        ? transparent : Theme.row-alt;
+                    if row.is-header : HorizontalLayout {
+                        padding-left: 12px;
+                        padding-top: 10px;
+                        Text {
+                            text: row.title;
+                            font-size: 13px;
+                            color: Theme.text;
+                            vertical-alignment: bottom;
+                        }
+                    }
+                    if !row.is-header && row.chip.has-accent : Rectangle {
+                        x: 0;
+                        y: 0;
+                        width: 3px;
+                        height: parent.height;
+                        background: row.chip.accent;
+                    }
+                    if !row.is-header : HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 10px;
+                        Text {
+                            width: 24px;
+                            text: row.chip.count;
+                            font-size: 13px;
+                            color: row.chip.count == "1×" ? Theme.text-muted : Theme.text;
+                            vertical-alignment: center;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                width: 28px;
+                                height: 28px;
+                                source: row.chip.icon;
+                                image-fit: contain;
+                                image-rendering: pixelated;
+                            }
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: row.chip.name;
+                            font-size: 13px;
+                            color: row.chip.is-empty ? Theme.text-muted : Theme.text;
+                            vertical-alignment: center;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                width: 28px;
+                                height: 28px;
+                                source: row.chip.element-icon;
+                                image-fit: contain;
+                                image-rendering: pixelated;
+                            }
+                        }
+                        Text {
+                            width: 50px;
+                            text: row.chip.power;
+                            font-size: 13px;
+                            color: Theme.text;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+                        if SaveView.folder-has-mb : Text {
+                            width: 50px;
+                            text: row.chip.mb;
+                            font-size: 11px;
+                            color: Theme.text;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Folder list (save_view/folder.rs
+        // render_folder): one row per (grouped)
+        // chip — count, icon, name + REG/TAG,
+        // element, code, ATK, MB, with the class
+        // accent as a left stripe.
+        if SaveView.save-kind == 1 : Pane {
+            vertical-stretch: 1;
+            ListView {
+                x: 1px;
+                y: 4px;
+                width: parent.width - 2px;
+                height: parent.height - 8px;
+                for row[i] in SaveView.folder-chips : Rectangle {
+                    height: 36px;
+                    background: Math.mod(i, 2) == 0 ? transparent : Theme.row-alt;
+                    if row.has-accent : Rectangle {
+                        x: 0;
+                        y: 0;
+                        width: 3px;
+                        height: parent.height;
+                        background: row.accent;
+                    }
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 10px;
+                        if SaveView.folder-grouped : Text {
+                            width: 24px;
+                            text: row.count;
+                            font-size: 13px;
+                            // "1×" is visual noise — mute it.
+                            color: row.count == "1×" ? Theme.text-muted : Theme.text;
+                            vertical-alignment: center;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                width: 28px;
+                                height: 28px;
+                                source: row.icon;
+                                image-fit: contain;
+                                image-rendering: pixelated;
+                            }
+                        }
+                        // name + badges hug left inside
+                        // the stretching middle cell.
+                        HorizontalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 8px;
+                            alignment: start;
+                            Text {
+                                text: row.name;
+                                font-size: 13px;
+                                color: row.is-empty ? Theme.text-muted : Theme.text;
+                                vertical-alignment: center;
+                            }
+                            if row.is-regular : VerticalLayout {
+                                alignment: center;
+                                Badge { label: "REG"; tint: #ff42a5; }
+                            }
+                            if row.tag-count >= 1 : VerticalLayout {
+                                alignment: center;
+                                Badge { label: "TAG"; tint: #29a121; }
+                            }
+                            if row.tag-count >= 2 : VerticalLayout {
+                                alignment: center;
+                                Badge { label: "TAG"; tint: #29a121; }
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                width: 28px;
+                                height: 28px;
+                                source: row.element-icon;
+                                image-fit: contain;
+                                image-rendering: pixelated;
+                            }
+                        }
+                        Text {
+                            width: 22px;
+                            text: row.code;
+                            font-size: 13px;
+                            color: Theme.text;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+                        Text {
+                            width: 50px;
+                            text: row.power;
+                            font-size: 13px;
+                            color: Theme.text;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+                        if SaveView.folder-has-mb : Text {
+                            width: 50px;
+                            text: row.mb;
+                            font-size: 11px;
+                            color: Theme.text;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+                    }
+                }
+            }
+        }
+        if SaveView.save-tabs.length == 0 : PanePrompt {
+            vertical-stretch: 1;
+            message: I18n.save-empty;
+        }
+    }
+    if !SaveView.save-loaded : PanePrompt {
+        message: I18n.save-empty;
+        vertical-stretch: 1;
+    }
+}
+
 export component AppWindow inherits Window {
     title: "Tango";
     preferred-width: 960px;
@@ -1102,10 +1686,6 @@ export component AppWindow inherits Window {
     in-out property <bool> settings-show-opponent-setup: false;
     // About: CREDITS.md as pre-split lines (a ListView scrolls them).
     in property <[string]> about-credits: [];
-    // Cover save-view section (streamer mode only).
-    in property <[CoverLogo]> cover-logos: [];
-    in property <float> cover-lane-w: 0.0;
-    in property <float> cover-lane-h: 0.0;
     // 0 = singleplayer, 1 = replay (transport bar), 2 = PvP (telemetry
     // footer + reconnect/disconnect overlays).
     in property <int> session-kind: 0;
@@ -1120,49 +1700,7 @@ export component AppWindow inherits Window {
     in property <float> pvp-reconnect-progress: 0.0;
     // The disconnect confirm modal (X / Escape on a live match).
     in-out property <bool> session-confirm-exit: false;
-    // ---- save viewer (read-only) ----
-    // True while a Loaded is built for the current selection; false
-    // clears the whole viewer (deselect / rescan).
-    in property <bool> save-loaded: false;
-    in property <NaviHeader> navi-header;
-    // Section tabs, pushed from Rust with tango's save-tab-* strings —
-    // one entry per view the save supports (available_tabs).
-    in property <[SaveTabItem]> save-tabs: [];
-    in-out property <int> save-active-tab: 0;
-    // The active section's kind (-1 = none): the bodies and the strip's
-    // tail controls gate on this, not on the tab index.
-    property <int> save-kind: root.save-tabs.length > 0
-        && root.save-active-tab >= 0
-        && root.save-active-tab < root.save-tabs.length
-        ? root.save-tabs[root.save-active-tab].kind : -1;
-    in property <[ChipRow]> folder-chips: [];
-    // BN1/2 chips carry no MB — the whole column hides.
-    in property <bool> folder-has-mb: true;
-    in-out property <bool> folder-grouped: true;
     // ---- navicust section ----
-    in property <image> navicust-image;
-    // Baked image aspect (w / h): the image box is height-driven, so
-    // narrower grids render proportionally narrower.
-    in property <float> navicust-aspect: 1.0;
-    // BN3 style name, overlaid on the color bar ("" = none). The fracs
-    // locate the bar's label line in the image's own coordinate space.
-    in property <string> navicust-style-name: "";
-    in property <float> navicust-label-x-frac: 0.0;
-    in property <float> navicust-label-y-frac: 0.0;
-    in property <float> navicust-label-h-frac: 0.0;
-    // Installed parts, solid parts first then plus parts (slot order
-    // within each group), like tango's parts panel.
-    in property <[NcpPartRow]> navicust-parts: [];
-    // ---- patch cards section ----
-    // 0 = BN5/BN6 badge-column list, 1 = BN4 catalog slots.
-    in property <int> patch-cards-kind: 0;
-    in property <[PatchCardLine]> patch-card-lines: [];
-    // ---- auto battle data section ----
-    in property <[AbdRow]> abd-rows: [];
-    // Transient "Copied!" flashes on the copy buttons (set from Rust,
-    // cleared by a single-shot timer there).
-    in property <bool> save-copy-flash: false;
-    in property <bool> save-copy-image-flash: false;
     // ---- save management (save_manage.rs) ----
     // Which form replaces the save-picker row: 0 = none, 1 = rename,
     // 2 = duplicate, 3 = confirm delete, 4 = new save.
@@ -1240,11 +1778,6 @@ export component AppWindow inherits Window {
     callback patch-selected(int);
     callback version-selected(int);
     callback save-selected(int);
-    callback folder-grouped-toggled(bool);
-    // Save-view copy affordances: copy the active section as TSV text
-    // / the NaviCust grid as an image (tango's CopyTab/CopyTabImage).
-    callback save-copy();
-    callback save-copy-image();
     // Save management (the ⋮ menu + the New save button + form flow).
     callback save-new-start();
     callback save-open-folder();
@@ -1600,523 +2133,11 @@ export component AppWindow inherits Window {
                             }
                         }
                         // ---- save viewer (read-only) ----
-                        // Navi header card over a tab strip + the
-                        // active section's pane. Only the Folder
-                        // section is ported so far; the strip is
-                        // model-driven so the rest slot in later.
-                        if root.save-loaded : VerticalLayout {
-                            spacing: 8px;
-                            vertical-stretch: 1;
-
-                            // navi header card (save_view/navi/mod.rs
-                            // navi_card_content): emblem beside
-                            // name-over-stats for the roster games
-                            // (BN5/BN6/EXE4.5); BN1–4 just the HP.
-                            Pane {
-                                HorizontalLayout {
-                                    padding: 12px;
-                                    spacing: 10px;
-                                    alignment: start;
-                                    if root.navi-header.has-name : VerticalLayout {
-                                        alignment: center;
-                                        Image {
-                                            // 3× the 15px emblem crop so the
-                                            // nearest-neighbor upscale lands
-                                            // on even pixels.
-                                            width: 45px;
-                                            height: 45px;
-                                            source: root.navi-header.emblem;
-                                            image-fit: contain;
-                                            image-rendering: pixelated;
-                                        }
-                                    }
-                                    VerticalLayout {
-                                        spacing: 4px;
-                                        alignment: center;
-                                        if root.navi-header.has-name : Text {
-                                            text: root.navi-header.name;
-                                            font-size: 18px;
-                                            color: Theme.text;
-                                        }
-                                        HorizontalLayout {
-                                            spacing: 16px;
-                                            alignment: start;
-                                            if root.navi-header.hp != "" : StatInline {
-                                                label: I18n.navi-base-hp;
-                                                value: root.navi-header.hp;
-                                            }
-                                            if root.navi-header.has-buster : HorizontalLayout {
-                                                spacing: 12px;
-                                                alignment: start;
-                                                StatInline {
-                                                    label: I18n.navi-buster-attack;
-                                                    value: root.navi-header.buster-attack;
-                                                }
-                                                StatInline {
-                                                    label: I18n.navi-buster-rapid;
-                                                    value: root.navi-header.buster-rapid;
-                                                }
-                                                StatInline {
-                                                    label: I18n.navi-buster-charge;
-                                                    value: root.navi-header.buster-charge;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // tab strip + the active section's tail
-                            // controls (folder's grouped toggle, the
-                            // copy buttons)
-                            HorizontalLayout {
-                                spacing: 4px;
-                                for tab[i] in root.save-tabs : SaveTab {
-                                    label: tab.label;
-                                    active: root.save-active-tab == i;
-                                    clicked => { root.save-active-tab = i; }
-                                }
-                                Rectangle { horizontal-stretch: 1; }
-                                if root.save-kind == 1 : VerticalLayout {
-                                    alignment: center;
-                                    ChunkyCheckbox {
-                                        label: I18n.folder-group;
-                                        checked <=> root.folder-grouped;
-                                        toggled(g) => { root.folder-grouped-toggled(g); }
-                                    }
-                                }
-                                if root.save-kind == 0 : VerticalLayout {
-                                    alignment: center;
-                                    NeutralTextButton {
-                                        label: root.save-copy-image-flash ? I18n.copied : I18n.save-copy-image;
-                                        clicked => { root.save-copy-image(); }
-                                    }
-                                }
-                                if root.save-kind >= 0 : VerticalLayout {
-                                    alignment: center;
-                                    NeutralTextButton {
-                                        label: root.save-copy-flash ? I18n.copied : I18n.save-copy;
-                                        clicked => { root.save-copy(); }
-                                    }
-                                }
-                            }
-
-                            // Cover (save_view/cover.rs, streamer mode
-                            // only): the game's logo(s), positioned in
-                            // Rust — single = centered banner, twin
-                            // versions = staggered pair.
-                            if root.save-kind == 4 : Pane {
-                                vertical-stretch: 1;
-                                Rectangle {
-                                    width: root.cover-lane-w * 1px;
-                                    height: root.cover-lane-h * 1px;
-                                    x: (parent.width - self.width) / 2;
-                                    y: (parent.height - self.height) / 2;
-                                    for logo in root.cover-logos : Image {
-                                        x: logo.x * 1px;
-                                        y: logo.y * 1px;
-                                        width: logo.w * 1px;
-                                        height: logo.h * 1px;
-                                        source: logo.img;
-                                        image-fit: contain;
-                                    }
-                                }
-                            }
-
-                            // NaviCust (save_view/navicust): the baked
-                            // grid image beside the installed-parts
-                            // list. The image box is height-driven so
-                            // the grid always fits the pane; BN3's
-                            // style name overlays the color bar.
-                            if root.save-kind == 0 : Pane {
-                                vertical-stretch: 1;
-                                // Manually placed (no layout): the grid box is
-                                // height-driven (width = height × aspect), which
-                                // inside a layout would cycle the layout solver.
-                                ncgrid := Rectangle {
-                                    x: 12px;
-                                    y: 12px;
-                                    height: parent.height - 24px;
-                                    width: self.height * root.navicust-aspect;
-                                    clip: true;
-                                    border-radius: 6px;
-                                    Image {
-                                        width: 100%;
-                                        height: 100%;
-                                        source: root.navicust-image;
-                                        image-fit: contain;
-                                    }
-                                    if root.navicust-style-name != "" : Text {
-                                        x: parent.width * root.navicust-label-x-frac;
-                                        y: parent.height * root.navicust-label-y-frac;
-                                        height: parent.height * root.navicust-label-h-frac;
-                                        text: root.navicust-style-name;
-                                        font-size: self.height * 0.5;
-                                        color: white;
-                                        vertical-alignment: center;
-                                    }
-                                }
-                                ListView {
-                                    x: ncgrid.x + ncgrid.width + 16px;
-                                    y: 4px;
-                                    width: parent.width - self.x - 12px;
-                                    height: parent.height - 8px;
-                                    for part in root.navicust-parts : HorizontalLayout {
-                                            padding-top: 5px;
-                                            padding-bottom: 5px;
-                                            spacing: 10px;
-                                            Rectangle {
-                                                width: 40px;
-                                                Image {
-                                                    width: min(parent.width, self.source.width * 1px);
-                                                    height: min(40px, self.source.height * 1px);
-                                                    source: part.thumb;
-                                                    image-fit: contain;
-                                                    image-rendering: pixelated;
-                                                }
-                                            }
-                                            VerticalLayout {
-                                                horizontal-stretch: 1;
-                                                spacing: 3px;
-                                                alignment: center;
-                                                HorizontalLayout {
-                                                    alignment: start;
-                                                    Rectangle {
-                                                        background: part.tint;
-                                                        border-radius: 6px;
-                                                        HorizontalLayout {
-                                                            padding-left: 8px;
-                                                            padding-right: 8px;
-                                                            padding-top: 3px;
-                                                            padding-bottom: 3px;
-                                                            Text {
-                                                                text: part.name;
-                                                                font-size: 13px;
-                                                                color: black;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                if part.desc != "" : Text {
-                                                    text: part.desc;
-                                                    font-size: 11px;
-                                                    color: Theme.text-muted;
-                                                    wrap: word-wrap;
-                                                }
-                                            }
-                                        }
-                                    }
-                            }
-
-                            // Patch Cards (save_view/patch_cards):
-                            // flattened lines — BN5/BN6 rows carry
-                            // ability / bug badge columns; BN4 rows are
-                            // the six catalog slots with purple bug
-                            // lines beneath.
-                            if root.save-kind == 2 : Pane {
-                                vertical-stretch: 1;
-                                ListView {
-                                    x: 1px;
-                                    y: 4px;
-                                    width: parent.width - 2px;
-                                    height: parent.height - 8px;
-                                    for line in root.patch-card-lines : Rectangle {
-                                        height: 26px;
-                                        background: Math.mod(line.zebra, 2) == 0 ? transparent : Theme.row-alt;
-                                        HorizontalLayout {
-                                            padding-left: 12px;
-                                            padding-right: 12px;
-                                            spacing: 8px;
-                                            Text {
-                                                width: root.patch-cards-kind == 0 ? 24px : 34px;
-                                                text: line.idx;
-                                                font-size: 11px;
-                                                color: Theme.text-muted;
-                                                vertical-alignment: center;
-                                                horizontal-alignment: root.patch-cards-kind == 0
-                                                    ? TextHorizontalAlignment.right
-                                                    : TextHorizontalAlignment.center;
-                                            }
-                                            // BN4 bug line: plain purple text across the name cell.
-                                            if line.bug-plain : Text {
-                                                horizontal-stretch: 1;
-                                                text: line.bug;
-                                                font-size: 12px;
-                                                color: #b55ade;
-                                                vertical-alignment: center;
-                                            }
-                                            if !line.bug-plain : HorizontalLayout {
-                                                horizontal-stretch: 1;
-                                                spacing: 8px;
-                                                alignment: start;
-                                                Text {
-                                                    text: line.name;
-                                                    font-size: 13px;
-                                                    color: line.enabled ? Theme.text : Theme.text-muted;
-                                                    vertical-alignment: center;
-                                                }
-                                                if line.mb != "" : Text {
-                                                    text: line.mb;
-                                                    font-size: 10px;
-                                                    color: Theme.text-muted;
-                                                    vertical-alignment: center;
-                                                }
-                                            }
-                                            if root.patch-cards-kind == 0 : HorizontalLayout {
-                                                width: 180px;
-                                                alignment: start;
-                                                if line.ability != "" : VerticalLayout {
-                                                    alignment: center;
-                                                    Rectangle {
-                                                        background: !line.enabled ? #bdbdbd
-                                                            : (line.ability-debuff ? #b55ade : #ffbd18);
-                                                        border-radius: 6px;
-                                                        HorizontalLayout {
-                                                            padding-left: 8px;
-                                                            padding-right: 8px;
-                                                            padding-top: 2px;
-                                                            padding-bottom: 2px;
-                                                            Text {
-                                                                text: line.ability;
-                                                                font-size: 12px;
-                                                                color: black;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            if root.patch-cards-kind == 0 : HorizontalLayout {
-                                                width: 180px;
-                                                alignment: start;
-                                                if line.bug != "" : VerticalLayout {
-                                                    alignment: center;
-                                                    Rectangle {
-                                                        background: !line.enabled ? #bdbdbd
-                                                            : (line.bug-debuff ? #b55ade : #ffbd18);
-                                                        border-radius: 6px;
-                                                        HorizontalLayout {
-                                                            padding-left: 8px;
-                                                            padding-right: 8px;
-                                                            padding-top: 2px;
-                                                            padding-bottom: 2px;
-                                                            Text {
-                                                                text: line.bug;
-                                                                font-size: 12px;
-                                                                color: black;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Auto Battle Data (save_view/abd): six
-                            // titled sections of chip rows (count ·
-                            // icon · name · element · ATK · MB).
-                            if root.save-kind == 3 : Pane {
-                                vertical-stretch: 1;
-                                ListView {
-                                    x: 1px;
-                                    y: 4px;
-                                    width: parent.width - 2px;
-                                    height: parent.height - 8px;
-                                    for row in root.abd-rows : Rectangle {
-                                        height: row.is-header ? 34px : 36px;
-                                        background: row.is-header || Math.mod(row.zebra, 2) == 0
-                                            ? transparent : Theme.row-alt;
-                                        if row.is-header : HorizontalLayout {
-                                            padding-left: 12px;
-                                            padding-top: 10px;
-                                            Text {
-                                                text: row.title;
-                                                font-size: 13px;
-                                                color: Theme.text;
-                                                vertical-alignment: bottom;
-                                            }
-                                        }
-                                        if !row.is-header && row.chip.has-accent : Rectangle {
-                                            x: 0;
-                                            y: 0;
-                                            width: 3px;
-                                            height: parent.height;
-                                            background: row.chip.accent;
-                                        }
-                                        if !row.is-header : HorizontalLayout {
-                                            padding-left: 12px;
-                                            padding-right: 12px;
-                                            spacing: 10px;
-                                            Text {
-                                                width: 24px;
-                                                text: row.chip.count;
-                                                font-size: 13px;
-                                                color: row.chip.count == "1×" ? Theme.text-muted : Theme.text;
-                                                vertical-alignment: center;
-                                            }
-                                            VerticalLayout {
-                                                alignment: center;
-                                                Image {
-                                                    width: 28px;
-                                                    height: 28px;
-                                                    source: row.chip.icon;
-                                                    image-fit: contain;
-                                                    image-rendering: pixelated;
-                                                }
-                                            }
-                                            Text {
-                                                horizontal-stretch: 1;
-                                                text: row.chip.name;
-                                                font-size: 13px;
-                                                color: row.chip.is-empty ? Theme.text-muted : Theme.text;
-                                                vertical-alignment: center;
-                                            }
-                                            VerticalLayout {
-                                                alignment: center;
-                                                Image {
-                                                    width: 28px;
-                                                    height: 28px;
-                                                    source: row.chip.element-icon;
-                                                    image-fit: contain;
-                                                    image-rendering: pixelated;
-                                                }
-                                            }
-                                            Text {
-                                                width: 50px;
-                                                text: row.chip.power;
-                                                font-size: 13px;
-                                                color: Theme.text;
-                                                vertical-alignment: center;
-                                                horizontal-alignment: right;
-                                            }
-                                            if root.folder-has-mb : Text {
-                                                width: 50px;
-                                                text: row.chip.mb;
-                                                font-size: 11px;
-                                                color: Theme.text;
-                                                vertical-alignment: center;
-                                                horizontal-alignment: right;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Folder list (save_view/folder.rs
-                            // render_folder): one row per (grouped)
-                            // chip — count, icon, name + REG/TAG,
-                            // element, code, ATK, MB, with the class
-                            // accent as a left stripe.
-                            if root.save-kind == 1 : Pane {
-                                vertical-stretch: 1;
-                                ListView {
-                                    x: 1px;
-                                    y: 4px;
-                                    width: parent.width - 2px;
-                                    height: parent.height - 8px;
-                                    for row[i] in root.folder-chips : Rectangle {
-                                        height: 36px;
-                                        background: Math.mod(i, 2) == 0 ? transparent : Theme.row-alt;
-                                        if row.has-accent : Rectangle {
-                                            x: 0;
-                                            y: 0;
-                                            width: 3px;
-                                            height: parent.height;
-                                            background: row.accent;
-                                        }
-                                        HorizontalLayout {
-                                            padding-left: 12px;
-                                            padding-right: 12px;
-                                            spacing: 10px;
-                                            if root.folder-grouped : Text {
-                                                width: 24px;
-                                                text: row.count;
-                                                font-size: 13px;
-                                                // "1×" is visual noise — mute it.
-                                                color: row.count == "1×" ? Theme.text-muted : Theme.text;
-                                                vertical-alignment: center;
-                                            }
-                                            VerticalLayout {
-                                                alignment: center;
-                                                Image {
-                                                    width: 28px;
-                                                    height: 28px;
-                                                    source: row.icon;
-                                                    image-fit: contain;
-                                                    image-rendering: pixelated;
-                                                }
-                                            }
-                                            // name + badges hug left inside
-                                            // the stretching middle cell.
-                                            HorizontalLayout {
-                                                horizontal-stretch: 1;
-                                                spacing: 8px;
-                                                alignment: start;
-                                                Text {
-                                                    text: row.name;
-                                                    font-size: 13px;
-                                                    color: row.is-empty ? Theme.text-muted : Theme.text;
-                                                    vertical-alignment: center;
-                                                }
-                                                if row.is-regular : VerticalLayout {
-                                                    alignment: center;
-                                                    Badge { label: "REG"; tint: #ff42a5; }
-                                                }
-                                                if row.tag-count >= 1 : VerticalLayout {
-                                                    alignment: center;
-                                                    Badge { label: "TAG"; tint: #29a121; }
-                                                }
-                                                if row.tag-count >= 2 : VerticalLayout {
-                                                    alignment: center;
-                                                    Badge { label: "TAG"; tint: #29a121; }
-                                                }
-                                            }
-                                            VerticalLayout {
-                                                alignment: center;
-                                                Image {
-                                                    width: 28px;
-                                                    height: 28px;
-                                                    source: row.element-icon;
-                                                    image-fit: contain;
-                                                    image-rendering: pixelated;
-                                                }
-                                            }
-                                            Text {
-                                                width: 22px;
-                                                text: row.code;
-                                                font-size: 13px;
-                                                color: Theme.text;
-                                                vertical-alignment: center;
-                                                horizontal-alignment: right;
-                                            }
-                                            Text {
-                                                width: 50px;
-                                                text: row.power;
-                                                font-size: 13px;
-                                                color: Theme.text;
-                                                vertical-alignment: center;
-                                                horizontal-alignment: right;
-                                            }
-                                            if root.folder-has-mb : Text {
-                                                width: 50px;
-                                                text: row.mb;
-                                                font-size: 11px;
-                                                color: Theme.text;
-                                                vertical-alignment: center;
-                                                horizontal-alignment: right;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            if root.save-tabs.length == 0 : PanePrompt {
-                                vertical-stretch: 1;
-                                message: I18n.save-empty;
-                            }
-                        }
-                        if !root.save-loaded : PanePrompt {
-                            message: I18n.save-empty;
+                        // The whole viewer lives in SaveViewBody +
+                        // the SaveView global so the play tab, the
+                        // replay tab, and the in-session setup
+                        // drawers can all render the same models.
+                        SaveViewBody {
                             vertical-stretch: 1;
                         }
                     }
