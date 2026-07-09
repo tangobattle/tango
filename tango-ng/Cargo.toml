@@ -13,6 +13,8 @@ build = "build.rs"
 [lib]
 name = "tango_ng"
 path = "src/lib.rs"
+# rlib for the desktop bin; cdylib is what an Android APK loads.
+crate-type = ["rlib", "cdylib"]
 
 [[bin]]
 name = "tango-ng"
@@ -99,6 +101,12 @@ arboard = "3"
 open = "5"
 # Discord rich presence (workspace IPC client) — no mobile Discord IPC.
 discord-ipc = { path = "../discord-ipc" }
+
+# Android: the Slint android-activity backend (adds slint::android and
+# the android_main glue in lib.rs). Feature union only applies when
+# actually building for android, so desktop builds are untouched.
+[target.'cfg(target_os = "android")'.dependencies]
+slint = { version = "1.17", features = ["backend-android-activity-06"] }
 
 [features]
 # Mirrors the tango crate: each game's support is an optional dependency

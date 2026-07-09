@@ -57,6 +57,23 @@ mod session;
 
 slint::include_modules!();
 
+/// Android entry point (the android-activity contract, invoked by the
+/// APK's NativeActivity glue): hand the activity to Slint's android
+/// backend, then run the same app the desktop `main` runs. The rest of
+/// the mobile story — APK packaging + the mgba NDK toolchain — rides
+/// on top of this.
+#[cfg(target_os = "android")]
+#[no_mangle]
+fn android_main(app: slint::android::AndroidApp) {
+    if let Err(e) = slint::android::init(app) {
+        log::error!("slint android init failed: {e}");
+        return;
+    }
+    if let Err(e) = run() {
+        log::error!("tango-ng exited with error: {e:?}");
+    }
+}
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
