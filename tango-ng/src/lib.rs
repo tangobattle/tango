@@ -1693,7 +1693,10 @@ fn start_pvp_handoff(app: &AppWindow, st: &mut State, rt: &tokio::runtime::Handl
 /// Android entry will call it from `android_main` once the NDK story
 /// lands — the bin/lib split exists for that entry point.
 pub fn run() -> anyhow::Result<()> {
+    #[cfg(not(target_os = "android"))]
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    #[cfg(target_os = "android")]
+    android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info));
     log::info!("tango-ng {}", env!("CARGO_PKG_VERSION"));
 
     // The async (netplay) layer's runtime. Held for the program lifetime;
