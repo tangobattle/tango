@@ -1706,7 +1706,21 @@ fn main() -> anyhow::Result<()> {
     let ui_shot_dir: Option<std::path::PathBuf> = (args.get(1).map(|s| s.as_str()) == Some("--ui-shot"))
         .then(|| std::path::PathBuf::from(args.get(2).map(|s| s.as_str()).unwrap_or(".")));
 
+    // `tango-ng Join <code>` / `tango-ng tango://join/<code>` (Discord
+    // deep-links + tango's CLI Join): pre-fill the Play tab's link code.
+    let init_link_code: Option<String> = match (args.get(1).map(|s| s.as_str()), args.get(2)) {
+        (Some("Join"), Some(code)) => Some(code.clone()),
+        (Some(url), _) if url.starts_with("tango://join/") => {
+            Some(url.trim_start_matches("tango://join/").trim_end_matches('/').to_string())
+        }
+        _ => None,
+    };
+
     let app = AppWindow::new()?;
+    if let Some(code) = &init_link_code {
+        app.set_link_code(code.as_str().into());
+        app.set_active_tab(0);
+    }
     let shot_step = Rc::new(RefCell::new(0i32));
 
     // Main-loop event channel: background work (the scanner, replay
