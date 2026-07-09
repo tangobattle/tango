@@ -115,7 +115,6 @@ impl Stepper {
     /// ready for the first [`step`](Self::step).
     pub fn new(
         rom: &[u8],
-        sram: &[u8],
         hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
         match_type: (u8, u8),
         local_player_index: u8,
@@ -127,12 +126,6 @@ impl Stepper {
         let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
         let rom_vf = mgba::vfile::VFile::from_vec(rom.to_vec());
         core.as_mut().load_rom(rom_vf)?;
-        // The re-sim core must carry the live core's SRAM too: savestates
-        // don't serialize savedata, so traps or game code that read the
-        // cart mid-round (BN4's link-navi re-assert reads the save file)
-        // would see a blank cart on every re-simulated tick and diverge
-        // from the live core and the peer.
-        core.as_mut().load_save(mgba::vfile::VFile::from_vec(sram.to_vec()))?;
 
         let state = State(std::sync::Arc::new(std::sync::Mutex::new(None)));
 

@@ -35,8 +35,7 @@ pub struct Editability {
     pub folder: bool,
     /// `view_navicust_mut().is_some()` (BN4/5/6, and not a link navi).
     pub navicust: bool,
-    /// `view_navi_mut().is_some()` — the equipped navi (BN5/BN6/BN4.5),
-    /// or BN4's EXE4.5-link-assignable operate navi.
+    /// `view_navi_mut().is_some()` — the equipped navi (BN5/BN6/BN4.5).
     pub navi: bool,
     /// `view_patch_cards_mut().is_some()` — BN4 (PatchCard4s, slot-based) and
     /// BN5/BN6 (PatchCard56s, list-based); each gets its own editor.
@@ -236,21 +235,18 @@ impl Loaded {
 
         // Navi emblems for LinkNavi games: 15x15 from (1,0). The accent
         // color (most prominent saturated pixel color) is pulled from the
-        // same crop for the Link Navi card's tinting. Games whose emblems
-        // aren't extractable (BN4) just leave the maps empty — the navi
-        // card and editor already render name-only when an id is missing.
+        // same crop for the Link Navi card's tinting.
         let mut navi_emblems = HashMap::new();
         let mut navi_accents = HashMap::new();
         for id in 0..assets.num_navis() {
-            let Some(emblem) = assets.navi(id).and_then(|navi| navi.emblem()) else {
-                continue;
-            };
-            let crop = image::imageops::crop_imm(&emblem, 1, 0, 15, 15).to_image();
-            if let Some(accent) = emblem_accent(&crop) {
-                navi_accents.insert(id, accent);
+            if let Some(navi) = assets.navi(id) {
+                let crop = image::imageops::crop_imm(&navi.emblem(), 1, 0, 15, 15).to_image();
+                if let Some(accent) = emblem_accent(&crop) {
+                    navi_accents.insert(id, accent);
+                }
+                let (w, h) = crop.dimensions();
+                navi_emblems.insert(id, iced_image::Handle::from_rgba(w, h, crop.into_raw()));
             }
-            let (w, h) = crop.dimensions();
-            navi_emblems.insert(id, iced_image::Handle::from_rgba(w, h, crop.into_raw()));
         }
 
         // Render the NaviCust grid once per save+game.

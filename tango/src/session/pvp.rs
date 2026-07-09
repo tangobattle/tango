@@ -230,9 +230,8 @@ impl PvpSession {
         // .sav file (matches legacy behavior; the only PvP-side
         // mutations are stat/zenny stuff which the user shouldn't
         // be carrying over from netplay anyway).
-        let local_sram = local_save.to_sram_dump();
         core.as_mut()
-            .load_save(mgba::vfile::VFile::from_vec(local_sram.clone()))?;
+            .load_save(mgba::vfile::VFile::from_vec(local_save.to_sram_dump()))?;
         // Pin the cart RTC to the negotiated match clock. Both peers pin all
         // their cores (primary here; shadow + re-sim stepper below via
         // Shadow::new / MatchIdentity) to this same instant, so RTC-reading
@@ -316,7 +315,6 @@ impl PvpSession {
         let frame_delay = Arc::new(AtomicU32::new(frame_delay));
         let inner_match = tango_pvp::battle::Match::new(
             local_rom.as_ref().clone(),
-            local_sram,
             local_hooks,
             thread.handle(),
             Box::new(crate::net::PvpSender::new(in_match.clone())),

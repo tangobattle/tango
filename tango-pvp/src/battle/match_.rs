@@ -131,10 +131,6 @@ pub struct Match {
     /// polling its depth — no latency, no cross-thread round-state lock.
     local_stall: Arc<tokio::sync::Notify>,
     primary_thread_handle: mgba::thread::Handle,
-    /// The SRAM the live primary booted from, loaded into each round's
-    /// re-sim stepper core so cart reads behave identically in re-sim
-    /// (savestates don't carry savedata).
-    local_sram: Vec<u8>,
     /// Handoff queue from the net receive task to the live round.
     remote_inputs: Arc<RemoteInputs>,
     /// Count of local `end_round` calls. Each remote Input is tagged with
@@ -165,7 +161,6 @@ pub struct Match {
 impl Match {
     pub fn new(
         rom: Vec<u8>,
-        local_sram: Vec<u8>,
         local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
         primary_thread_handle: mgba::thread::Handle,
         sender: Box<dyn crate::net::Sender + Send + Sync>,
@@ -181,7 +176,6 @@ impl Match {
             shadow: Arc::new(SyncMutex::new(shadow)),
             local_hooks,
             rom,
-            local_sram,
             sender: SyncMutex::new(sender),
             rng: SyncMutex::new(rng),
             cancellation_token,
@@ -208,10 +202,6 @@ impl Match {
 
     pub(super) fn rom(&self) -> &[u8] {
         &self.rom
-    }
-
-    pub(super) fn local_sram(&self) -> &[u8] {
-        &self.local_sram
     }
 
     pub(super) fn local_hooks(&self) -> &'static (dyn crate::hooks::Hooks + Send + Sync) {
