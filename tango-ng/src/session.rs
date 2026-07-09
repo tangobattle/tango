@@ -120,16 +120,21 @@ impl SinglePlayerSession {
 
 pub struct ReplaySession {
     stepper_state: tango_pvp::stepper::State,
+    snapshots: tango_pvp::replay::playback::SnapshotStore,
+    rewind: tango_pvp::replay::playback::RewindBuffer,
+    prefetch_progress: Arc<AtomicU32>,
+    round_boundaries: Vec<u32>,
     total_ticks: u32,
     completion: tango_pvp::hooks::CompletionToken,
     vbuf: Arc<Mutex<Vec<u8>>>,
     new_frame: Arc<AtomicBool>,
-    // The shadow is shared with the stepper; keep our handle alive for
-    // the session's lifetime (and for the eventual seek port).
-    _shadow: tango_pvp::stepper::SharedShadow,
-    // Binding drops before the thread (declaration order), so the audio
-    // mux reverts to silence before the emu thread is torn down.
+    seek: Arc<tango_pvp::replay::playback::SeekController>,
+    // Drop order (declaration order): audio binding reverts the mux to
+    // silence, prefetcher and seek worker cancel+join their threads —
+    // all before the mgba thread (which their closures drive) tears down.
     _audio_binding: Option<crate::audio::Binding>,
+    _prefetcher: Prefetcher,
+    _seek_worker: SeekWorker,
     _thread: mgba::thread::Thread,
 }
 
@@ -137,14 +142,14 @@ impl ReplaySession {
     pub fn new(
         replay: tango_pvp::replay::Replay,
         local_game: tango_gamesupport::GameRef,
-        local_rom: &[u8],
+        local_rom: Vec<u8>,
         remote_game: tango_gamesupport::GameRef,
-        remote_rom: &[u8],
+        remote_rom: Vec<u8>,
         audio_binder: &crate::audio::LateBinder,
     ) -> anyhow::Result<Self> {
         anyhow::ensure!(!replay.rounds.is_empty(), "replay has no rounds");
 
-        let mut core = new_gba_core(local_rom)?;
+        let mut core = new_gba_core(&local_rom)?;
         // In-memory SRAM clone — playback must never touch a real save.
         core.as_mut()
             .load_save(mgba::vfile::VFile::from_vec(replay.local_sram.clone()))?;
@@ -155,10 +160,21 @@ impl ReplaySession {
         let completion = tango_pvp::hooks::CompletionToken::new();
         let replay_is_complete = replay.is_complete;
         let total_ticks: u32 = replay.rounds.iter().map(|r| r.len() as u32).sum();
+        // Inter-round marks on the seek bar's coordinate: running sum of
+        // round lengths, all but the last round.
+        let round_boundaries = replay
+            .rounds
+            .iter()
+            .take(replay.rounds.len().saturating_sub(1))
+            .scan(0u32, |acc, r| {
+                *acc += r.len() as u32;
+                Some(*acc)
+            })
+            .collect::<Vec<_>>();
 
         let (stepper_state, shadow) = tango_pvp::stepper::State::new_for_replay(
             &replay,
-            remote_rom,
+            &remote_rom,
             remote_game.hooks,
             Box::new({
                 let completion = completion.clone();
@@ -174,22 +190,60 @@ impl ReplaySession {
         let new_frame = Arc::new(AtomicBool::new(false));
         let thread = mgba::thread::Thread::new(core);
 
+        let replay = Arc::new(replay);
+        let snapshots = tango_pvp::replay::playback::SnapshotStore::new();
+        let rewind = tango_pvp::replay::playback::RewindBuffer::new();
+        let prefetch_progress = Arc::new(AtomicU32::new(0));
+        let prefetcher = Prefetcher::spawn(
+            Arc::new(local_rom),
+            Arc::new(remote_rom),
+            replay.clone(),
+            local_game,
+            remote_game,
+            snapshots.clone(),
+            prefetch_progress.clone(),
+        );
+        let seek = Arc::new(tango_pvp::replay::playback::SeekController::new());
+
         thread.set_frame_callback({
             let vbuf = vbuf.clone();
             let new_frame = new_frame.clone();
             let stepper_state = stepper_state.clone();
             let completion = completion.clone();
-            move |_core, video_buffer, mut thread_handle| {
-                let (total_left, is_round_ended) = {
+            let snapshots = snapshots.clone();
+            let rewind = rewind.clone();
+            let shadow = shadow.clone();
+            let seek = seek.clone();
+            move |mut core, video_buffer, mut thread_handle| {
+                let (inputs_consumed, total_left, is_round_ended) = {
                     let mut inner = stepper_state.lock_inner();
                     if let Some(err) = inner.take_error() {
                         log::error!("replay stepper error: {err:?}");
                     }
-                    (inner.total_input_pairs_left(), inner.is_round_ended())
+                    (
+                        inner.inputs_consumed(),
+                        inner.total_input_pairs_left(),
+                        inner.is_round_ended(),
+                    )
                 };
 
-                vbuf.lock().unwrap().copy_from_slice(video_buffer);
-                new_frame.store(true, Ordering::Release);
+                // During a seek chase only the landing frame reaches the
+                // display; publishing every catch-up frame would strobe.
+                if seek.should_publish_frame(inputs_consumed) {
+                    vbuf.lock().unwrap().copy_from_slice(video_buffer);
+                    new_frame.store(true, Ordering::Release);
+                }
+
+                // Capture every frame into the rewind window; lift the
+                // sparse keyframes out of the same capture.
+                if let Some(cp) = stepper_state.capture_replay_checkpoint() {
+                    let keyframe_needed = snapshots.snapshot_needed(&cp);
+                    if let Some(snap) = rewind.capture(cp, &mut core, &shadow, video_buffer) {
+                        if keyframe_needed {
+                            snapshots.push_arc(snap);
+                        }
+                    }
+                }
 
                 // Clean replays wait for the round-end animation; incomplete
                 // ones fall through on input exhaustion.
@@ -205,16 +259,50 @@ impl ReplaySession {
         thread.start()?;
         thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
 
+        let seek_worker = SeekWorker::spawn(
+            thread.handle(),
+            seek.clone(),
+            stepper_state.clone(),
+            shadow,
+            replay,
+            snapshots.clone(),
+            rewind.clone(),
+            completion.clone(),
+            {
+                // Zero-frame seek landings (exact snapshot hits) never run
+                // a frame, so the frame callback can't publish them — blit
+                // the snapshot's stored framebuffer instead.
+                let vbuf = vbuf.clone();
+                let new_frame = new_frame.clone();
+                move |snap: &tango_pvp::stepper::ReplaySnapshot| {
+                    {
+                        let mut vbuf = vbuf.lock().unwrap();
+                        if vbuf.len() != snap.framebuffer.len() {
+                            return;
+                        }
+                        vbuf.copy_from_slice(&snap.framebuffer);
+                    }
+                    new_frame.store(true, Ordering::Release);
+                }
+            },
+        );
+
         let audio_binding = audio_binder.bind_mgba(thread.handle(), "replay");
 
         Ok(Self {
             stepper_state,
+            snapshots,
+            rewind,
+            prefetch_progress,
+            round_boundaries,
             total_ticks,
             completion,
             vbuf,
             new_frame,
-            _shadow: shadow,
+            seek,
             _audio_binding: audio_binding,
+            _prefetcher: prefetcher,
+            _seek_worker: seek_worker,
             _thread: thread,
         })
     }
@@ -258,5 +346,177 @@ impl ReplaySession {
     pub fn read_frame(&self, dst_rgba: &mut [u8]) {
         let vbuf = self.vbuf.lock().unwrap();
         tango_dataview::rom::bgr555_to_rgba8(&vbuf, dst_rgba);
+    }
+
+    /// Highest tick the background prefetcher has buffered (scrub-bar
+    /// fill overlay); reaches `total_ticks` when done.
+    pub fn prefetch_progress(&self) -> u32 {
+        self.prefetch_progress.load(Ordering::Relaxed)
+    }
+
+    /// Recorded-frame index of each inter-round transition — the marks
+    /// the scrubber draws. Empty for a single-round replay.
+    pub fn round_boundaries(&self) -> &[u32] {
+        &self.round_boundaries
+    }
+
+    /// Jump the playhead to `target`, asynchronously. Newer requests
+    /// supersede in-flight ones mid-chase. With `resume_after`, playback
+    /// unpauses once the chase lands.
+    pub fn seek_to(&self, target: u32, resume_after: bool) {
+        self.seek.request(target.min(self.total_ticks), resume_after);
+    }
+
+    /// Target of the in-flight seek, if any — lets the UI draw the
+    /// playhead where it's headed.
+    pub fn pending_seek_target(&self) -> Option<u32> {
+        self.seek.pending_target()
+    }
+
+    /// True while an in-flight seek will unpause playback on landing.
+    pub fn seek_will_resume(&self) -> bool {
+        self.seek.resume_pending()
+    }
+
+    /// Blit the captured framebuffer of the snapshot nearest `target`
+    /// into the display buffer — instant scrub-drag feedback. Unless
+    /// `force_keyframe`, skipped while the playhead's own frame is at
+    /// least as close. Returns whether a blit happened.
+    pub fn scrub_preview(&self, target: u32, force_keyframe: bool) -> bool {
+        let Some(snap) = self.nearest_snapshot(target) else {
+            return false;
+        };
+        if !force_keyframe {
+            let cur = self.stepper_state.lock_inner().inputs_consumed();
+            if cur.abs_diff(target) <= snap.checkpoint.frame_index.abs_diff(target) {
+                return false;
+            }
+        }
+        self.blit_snapshot(&snap)
+    }
+
+    fn nearest_snapshot(&self, target: u32) -> Option<Arc<tango_pvp::stepper::ReplaySnapshot>> {
+        [self.snapshots.nearest(target), self.rewind.nearest(target)]
+            .into_iter()
+            .flatten()
+            .min_by_key(|s| s.checkpoint.frame_index.abs_diff(target))
+    }
+
+    fn blit_snapshot(&self, snap: &tango_pvp::stepper::ReplaySnapshot) -> bool {
+        {
+            let mut vbuf = self.vbuf.lock().unwrap();
+            if vbuf.len() != snap.framebuffer.len() {
+                return false;
+            }
+            vbuf.copy_from_slice(&snap.framebuffer);
+        }
+        self.new_frame.store(true, Ordering::Release);
+        true
+    }
+}
+
+/// Owns the seek worker thread driving `SeekController` requests against
+/// the playback core. Drop cancels the controller (aborting any in-flight
+/// chase at its next frame boundary) and joins.
+struct SeekWorker {
+    ctrl: Arc<tango_pvp::replay::playback::SeekController>,
+    join_handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl SeekWorker {
+    #[allow(clippy::too_many_arguments)]
+    fn spawn(
+        handle: mgba::thread::Handle,
+        ctrl: Arc<tango_pvp::replay::playback::SeekController>,
+        stepper_state: tango_pvp::stepper::State,
+        shadow: tango_pvp::stepper::SharedShadow,
+        replay: Arc<tango_pvp::replay::Replay>,
+        snapshots: tango_pvp::replay::playback::SnapshotStore,
+        rewind: tango_pvp::replay::playback::RewindBuffer,
+        completion_token: tango_pvp::hooks::CompletionToken,
+        publish_landing: impl Fn(&tango_pvp::stepper::ReplaySnapshot) + Send + Sync + 'static,
+    ) -> Self {
+        let join_handle = std::thread::spawn({
+            let ctrl = ctrl.clone();
+            move || {
+                tango_pvp::replay::playback::run_seek_worker(
+                    handle,
+                    ctrl,
+                    stepper_state,
+                    shadow,
+                    replay,
+                    snapshots,
+                    rewind,
+                    completion_token,
+                    publish_landing,
+                );
+            }
+        });
+        Self {
+            ctrl,
+            join_handle: Some(join_handle),
+        }
+    }
+}
+
+impl Drop for SeekWorker {
+    fn drop(&mut self) {
+        self.ctrl.shutdown();
+        if let Some(h) = self.join_handle.take() {
+            let _ = h.join();
+        }
+    }
+}
+
+/// Background snapshot-prefetch worker: a fresh core + shadow racing
+/// ahead of the playhead, pushing keyframes into the shared store so
+/// backward (and long-forward) seeks have a nearby jumping-off point.
+/// Drop cancels the worker and joins.
+struct Prefetcher {
+    cancel: Arc<AtomicBool>,
+    join_handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Prefetcher {
+    fn spawn(
+        rom: Arc<Vec<u8>>,
+        remote_rom: Arc<Vec<u8>>,
+        replay: Arc<tango_pvp::replay::Replay>,
+        game: tango_gamesupport::GameRef,
+        remote_game: tango_gamesupport::GameRef,
+        snapshots: tango_pvp::replay::playback::SnapshotStore,
+        progress: Arc<AtomicU32>,
+    ) -> Self {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_for_thread = cancel.clone();
+        let hooks = game.hooks;
+        let remote_hooks = remote_game.hooks;
+        let join_handle = std::thread::spawn(move || {
+            if let Err(e) = tango_pvp::replay::playback::run_prefetch(
+                rom.as_ref(),
+                remote_rom.as_ref(),
+                &replay,
+                hooks,
+                remote_hooks,
+                snapshots,
+                cancel_for_thread,
+                progress,
+            ) {
+                log::error!("replay prefetch worker exited with error: {e:?}");
+            }
+        });
+        Self {
+            cancel,
+            join_handle: Some(join_handle),
+        }
+    }
+}
+
+impl Drop for Prefetcher {
+    fn drop(&mut self) {
+        self.cancel.store(true, Ordering::Relaxed);
+        if let Some(h) = self.join_handle.take() {
+            let _ = h.join();
+        }
     }
 }

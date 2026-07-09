@@ -65,6 +65,13 @@ struct State {
     joyflags: u32,
     /// Replay speed selected in the transport (fast-forward restores it).
     replay_speed: f32,
+    /// Whether playback was running when a scrub drag started (the drag
+    /// pauses; commit resumes iff this was set).
+    scrub_was_playing: bool,
+    /// Whether this drag has already blitted a keyframe preview — from
+    /// then on nearest-keyframe previews are forced (the live frame is
+    /// no longer in the buffer).
+    scrub_forced: bool,
 }
 
 /// At most one session is active at a time.
@@ -125,7 +132,7 @@ fn start_replay(
     let replay = tango_pvp::replay::Replay::decode(f)?;
     let (local_game, local_rom) = resolve_replay_rom(roms, patches_path, replay.metadata.local_side.as_ref())?;
     let (remote_game, remote_rom) = resolve_replay_rom(roms, patches_path, replay.metadata.remote_side.as_ref())?;
-    session::ReplaySession::new(replay, local_game, &local_rom, remote_game, &remote_rom, audio_binder)
+    session::ReplaySession::new(replay, local_game, local_rom, remote_game, remote_rom, audio_binder)
 }
 
 /// Rebuild the games + replays models (and clear selections) from the
@@ -233,6 +240,8 @@ fn main() -> anyhow::Result<()> {
         session: None,
         joyflags: 0,
         replay_speed: 1.0,
+        scrub_was_playing: false,
+        scrub_forced: false,
     }));
 
     // Background scan; results come back over the channel and are folded
@@ -569,6 +578,12 @@ fn main() -> anyhow::Result<()> {
             );
             match start {
                 Ok(session) => {
+                    let marks: Vec<f32> = session
+                        .round_boundaries()
+                        .iter()
+                        .map(|b| *b as f32 / session.total_ticks().max(1) as f32)
+                        .collect();
+                    app.set_replay_marks(ModelRc::new(VecModel::from(marks)));
                     st.session = Some(ActiveSession::Replay(session));
                     st.replay_speed = 1.0;
                     app.set_replay_speed(1);
@@ -591,10 +606,60 @@ fn main() -> anyhow::Result<()> {
             let Some(app) = app_weak.upgrade() else { return };
             let st = state.borrow();
             if let Some(ActiveSession::Replay(session)) = &st.session {
+                // Play at the end = rewind to the start and play.
+                if session.is_complete() && session.is_paused() {
+                    session.seek_to(0, true);
+                    app.set_replay_paused(false);
+                    return;
+                }
                 let paused = !session.is_paused();
                 session.set_paused(paused);
                 app.set_replay_paused(paused);
             }
+        }
+    });
+
+    app.on_scrub_started({
+        let state = state.clone();
+        move || {
+            let mut st = state.borrow_mut();
+            let Some(ActiveSession::Replay(session)) = &st.session else {
+                return;
+            };
+            let was_playing = (!session.is_paused() || session.seek_will_resume()) && !session.is_complete();
+            session.set_paused(true);
+            st.scrub_was_playing = was_playing;
+            st.scrub_forced = false;
+        }
+    });
+
+    app.on_scrub_moved({
+        let state = state.clone();
+        move |fraction| {
+            let mut st = state.borrow_mut();
+            let Some(ActiveSession::Replay(session)) = &st.session else {
+                return;
+            };
+            let target = (fraction.clamp(0.0, 1.0) * session.total_ticks() as f32) as u32;
+            let forced = st.scrub_forced;
+            if session.scrub_preview(target, forced) {
+                st.scrub_forced = true;
+            }
+        }
+    });
+
+    app.on_scrub_committed({
+        let state = state.clone();
+        move |fraction| {
+            let mut st = state.borrow_mut();
+            let resume = st.scrub_was_playing;
+            st.scrub_was_playing = false;
+            st.scrub_forced = false;
+            let Some(ActiveSession::Replay(session)) = &st.session else {
+                return;
+            };
+            let target = (fraction.clamp(0.0, 1.0) * session.total_ticks() as f32) as u32;
+            session.seek_to(target, resume);
         }
     });
 
@@ -641,10 +706,17 @@ fn main() -> anyhow::Result<()> {
                             session.set_joyflags(st.joyflags);
                         }
                     } else if let Some(ActiveSession::Replay(session)) = &st.session {
-                        // Replays take no input; space doubles as pause toggle.
+                        // Replays take no input; space doubles as pause toggle
+                        // (and play-at-end = rewind to the start).
                         if flag == mgba::input::keys::SELECT && pressed {
-                            let paused = !session.is_paused();
-                            session.set_paused(paused);
+                            let paused = if session.is_complete() && session.is_paused() {
+                                session.seek_to(0, true);
+                                false
+                            } else {
+                                let paused = !session.is_paused();
+                                session.set_paused(paused);
+                                paused
+                            };
                             if let Some(app) = app_weak.upgrade() {
                                 app.set_replay_paused(paused);
                             }
@@ -710,16 +782,24 @@ fn main() -> anyhow::Result<()> {
                     app.set_frame(Image::from_rgba8(pixels));
                 }
                 if let ActiveSession::Replay(replay) = session {
+                    // Draw the playhead where an in-flight seek is headed
+                    // instead of snapping back until the chase lands.
+                    let tick = replay.pending_seek_target().unwrap_or_else(|| replay.current_tick());
                     app.set_replay_progress(
                         format!(
                             "{} / {}{}",
-                            replay.current_tick(),
+                            tick,
                             replay.total_ticks(),
                             if replay.is_complete() { " · end" } else { "" }
                         )
                         .into(),
                     );
-                    app.set_replay_paused(replay.is_paused());
+                    app.set_replay_scrub_pos(tick as f32 / replay.total_ticks().max(1) as f32);
+                    app.set_replay_prefetch(
+                        replay.prefetch_progress() as f32 / replay.total_ticks().max(1) as f32,
+                    );
+                    // A paused thread mid-chase is logically still playing.
+                    app.set_replay_paused(replay.is_paused() && !replay.seek_will_resume());
                 }
             }
             drop(st);
@@ -809,6 +889,19 @@ fn smoke_replay(config: &config::Config, audio_binder: &audio::LateBinder, out: 
             break;
         }
     }
+
+    // Exercise the seek subsystem: jump back near (not at) the end,
+    // paused — late enough that the frame is known to have content
+    // (early ticks sit in the round-start white fade).
+    let mid = session.total_ticks().saturating_sub(10);
+    session.seek_to(mid, false);
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    let landed = session.current_tick();
+    println!("smoke-replay: seek to {mid} landed at {landed}");
+    anyhow::ensure!(
+        landed.abs_diff(mid) <= 2,
+        "seek missed: wanted {mid}, landed {landed}"
+    );
 
     let mut rgba = vec![0u8; session::SCREEN_WIDTH as usize * session::SCREEN_HEIGHT as usize * 4];
     session.read_frame(&mut rgba);
