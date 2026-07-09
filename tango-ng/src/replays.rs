@@ -63,6 +63,39 @@ pub fn scan_replays(path: &std::path::Path) -> Vec<ScannedReplay> {
     out
 }
 
+/// Output of [`compute_stats`]. Cheap to copy.
+#[derive(Clone, Copy, Debug)]
+pub struct ReplayStats {
+    /// One tick per recorded input pair; 60 ticks = 1 second.
+    pub tick_count: u32,
+    pub round_count: u32,
+    /// Whether the recorded stream ended with END_OF_REPLAY.
+    pub is_complete: bool,
+}
+
+/// Heavy stats computation for a single replay — full decode. Spawn on a
+/// worker thread, never from the UI path.
+pub fn compute_stats(path: &std::path::Path) -> std::io::Result<ReplayStats> {
+    let f = std::fs::File::open(path)?;
+    let replay = tango_pvp::replay::Replay::decode(f)?;
+    Ok(ReplayStats {
+        tick_count: replay.rounds.iter().map(|r| r.len() as u32).sum(),
+        round_count: replay.rounds.len() as u32,
+        is_complete: replay.is_complete,
+    })
+}
+
+/// `tick_count` → `"M:SS"` (or `"H:MM:SS"` past an hour), at 60 ticks/s.
+pub fn format_duration(tick_count: u32) -> String {
+    let total_seconds = tick_count / 60;
+    let (hours, minutes, seconds) = (total_seconds / 3600, (total_seconds / 60) % 60, total_seconds % 60);
+    if hours > 0 {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{minutes}:{seconds:02}")
+    }
+}
+
 /// Pretty path relative to the replays root.
 pub fn format_rel_path(replays_path: &std::path::Path, path: &std::path::Path) -> String {
     let s = path.strip_prefix(replays_path).unwrap_or(path).to_string_lossy();

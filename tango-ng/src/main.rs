@@ -37,6 +37,10 @@ enum Event {
         replays: Vec<replays::ScannedReplay>,
         patches: patch::PatchMap,
     },
+    ReplayStats {
+        path: std::path::PathBuf,
+        stats: replays::ReplayStats,
+    },
 }
 
 /// Selectable UI languages, same set as tango's i18n::SUPPORTED_LANGS.
@@ -63,6 +67,9 @@ struct State {
     replay_filter_families: Vec<String>,
     /// Lowercased opponent substring filter.
     replay_filter_opponent: String,
+    /// Replay shown in the detail pane + its lines (stats append lazily).
+    replay_detail_path: Option<std::path::PathBuf>,
+    replay_detail_lines: Vec<SharedString>,
     patches: patch::PatchMap,
     /// Patch names shown in the patch picker (model index i+1 — index 0
     /// is the "No patch" sentinel).
@@ -302,6 +309,8 @@ fn main() -> anyhow::Result<()> {
         replay_filtered: Vec::new(),
         replay_filter_families: Vec::new(),
         replay_filter_opponent: String::new(),
+        replay_detail_path: None,
+        replay_detail_lines: Vec::new(),
         patches: patch::PatchMap::new(),
         patch_rows: Vec::new(),
         version_rows: Vec::new(),
@@ -316,6 +325,7 @@ fn main() -> anyhow::Result<()> {
     // into the UI by the frame timer below. Rc so the data-path setting
     // can retrigger it.
     let (tx, rx) = std::sync::mpsc::channel();
+    let stats_tx = tx.clone();
     let spawn_scan: Rc<dyn Fn()> = Rc::new({
         let state = state.clone();
         let app_weak = app.as_weak();
@@ -533,7 +543,7 @@ fn main() -> anyhow::Result<()> {
         let app_weak = app.as_weak();
         move |index| {
             let Some(app) = app_weak.upgrade() else { return };
-            let st = state.borrow();
+            let mut st = state.borrow_mut();
             let Some(replay) = st
                 .replay_filtered
                 .get(index as usize)
@@ -575,7 +585,20 @@ fn main() -> anyhow::Result<()> {
                     .to_string()
                     .into(),
             );
-            app.set_replay_detail(ModelRc::new(VecModel::from(lines)));
+            app.set_replay_detail(ModelRc::new(VecModel::from(lines.clone())));
+
+            // Stats need a full decode — compute off-thread, folded into
+            // the detail pane when they land (if still selected).
+            let path = replay.path.clone();
+            st.replay_detail_path = Some(path.clone());
+            st.replay_detail_lines = lines;
+            let tx = stats_tx.clone();
+            std::thread::spawn(move || match replays::compute_stats(&path) {
+                Ok(stats) => {
+                    let _ = tx.send(Event::ReplayStats { path, stats });
+                }
+                Err(e) => log::warn!("{}: stats failed: {e}", path.display()),
+            });
         }
     });
 
@@ -875,6 +898,23 @@ fn main() -> anyhow::Result<()> {
                         st.replay_rows = replays;
                         st.patches = patches;
                         refresh_models(&app, &mut st);
+                    }
+                    Event::ReplayStats { path, stats } => {
+                        let st = state.borrow();
+                        if st.replay_detail_path.as_deref() == Some(path.as_path()) {
+                            let mut lines = st.replay_detail_lines.clone();
+                            lines.push(
+                                format!(
+                                    "{} round{} · {}{}",
+                                    stats.round_count,
+                                    if stats.round_count == 1 { "" } else { "s" },
+                                    replays::format_duration(stats.tick_count),
+                                    if stats.is_complete { "" } else { " · incomplete" }
+                                )
+                                .into(),
+                            );
+                            app.set_replay_detail(ModelRc::new(VecModel::from(lines)));
+                        }
                     }
                 }
             }
