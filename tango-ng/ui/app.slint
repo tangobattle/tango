@@ -78,6 +78,13 @@ export global I18n {
     in-out property <string> empty-no-roms-title: "No games found";
     in-out property <string> empty-no-roms-body: "Put ROMs in your Tango roms folder and restart.";
     in-out property <string> empty-select-title: "Select a game and save";
+    // save viewer
+    in-out property <string> navi-base-hp: "HP";
+    in-out property <string> navi-buster-attack: "Attack";
+    in-out property <string> navi-buster-rapid: "Rapid";
+    in-out property <string> navi-buster-charge: "Charge";
+    in-out property <string> folder-group: "Group by chip";
+    in-out property <string> save-empty: "This save has no data for this view.";
     // lobby band
     in-out property <string> lobby-you: "You";
     in-out property <string> lobby-opponent: "Opponent";
@@ -594,6 +601,120 @@ export struct ReplayRow {
     line2: string,
 }
 
+// ---- save viewer (read-only) ----
+// Model shapes are baked in Rust (src/loaded.rs) from tango's
+// save_view data; the layouts below are ports of
+// tango/src/save_view/{folder.rs,navi/mod.rs}'s read-only views.
+
+// One folder row: pre-resolved strings + pre-baked sprite handles.
+export struct ChipRow {
+    icon: image,
+    element-icon: image,
+    name: string,
+    code: string,
+    power: string,
+    mb: string,
+    // "N×" — only rendered in grouped mode.
+    count: string,
+    is-regular: bool,
+    // One TAG badge per tagged copy (the pair can collapse onto one
+    // grouped row).
+    tag-count: int,
+    // Class accent stripe (Mega/Giga/dark); has-accent gates it since
+    // color has no "none".
+    accent: color,
+    has-accent: bool,
+    // Grouped empty-slot row ("—"): muted name, no stats.
+    is-empty: bool,
+    // Chip flavor text, for the hover popover (follow-up).
+    description: string,
+}
+
+// The equipped-navi header card. has-name gates the emblem + name
+// (roster games only — BN1–4 show just the stats row).
+export struct NaviHeader {
+    emblem: image,
+    has-name: bool,
+    name: string,
+    hp: string,
+    buster-attack: string,
+    buster-rapid: string,
+    buster-charge: string,
+    has-buster: bool,
+}
+
+// REG / TAG indicator chip (save_view's badge()).
+component Badge inherits Rectangle {
+    in property <string> label;
+    in property <color> tint;
+    background: tint;
+    border-radius: 3px;
+    HorizontalLayout {
+        padding-left: 4px;
+        padding-right: 4px;
+        padding-top: 1px;
+        padding-bottom: 1px;
+        Text {
+            text: root.label;
+            font-size: 10px;
+            color: white;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// One "label value" stat pair (save_view/navi's stat_inline): muted
+// caption with its value flush beside it.
+component StatInline inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> value;
+    spacing: 5px;
+    alignment: start;
+    Text {
+        text: root.label;
+        font-size: 11px;
+        color: Theme.text-muted;
+        vertical-alignment: bottom;
+    }
+    Text {
+        text: root.value;
+        font-size: 15px;
+        color: Theme.text;
+        vertical-alignment: bottom;
+    }
+}
+
+// Save-view section tab: PillTab minus the glyph — the strip is built
+// from a plain [string] model so future sections (NaviCust, Patch
+// Cards, ABD) slot in from Rust without touching the layout.
+component SaveTab inherits TechPlate {
+    in property <string> label;
+    in property <bool> active;
+    callback clicked();
+
+    r: 10px;
+    background: root.active
+        ? @linear-gradient(180deg, #58bd5c 0%, #3e9a42 100%)
+        : (ta.has-hover ? Theme.hover : transparent);
+
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding-top: 6px;
+        padding-bottom: 6px;
+        padding-left: 16px;
+        padding-right: 16px;
+        Text {
+            text: root.label;
+            font-size: 13px;
+            color: root.active ? white : Theme.text-muted;
+            vertical-alignment: center;
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "Tango";
     preferred-width: 960px;
@@ -628,6 +749,19 @@ export component AppWindow inherits Window {
     in-out property <bool> fractional: false;
     // 0 = singleplayer, 1 = replay (shows the transport bar).
     in property <int> session-kind: 0;
+    // ---- save viewer (read-only) ----
+    // True while a Loaded is built for the current selection; false
+    // clears the whole viewer (deselect / rescan).
+    in property <bool> save-loaded: false;
+    in property <NaviHeader> navi-header;
+    // Section labels, pushed from Rust with tango's save-tab-* strings
+    // (only Folder for now).
+    in property <[string]> save-tabs: [];
+    in-out property <int> save-active-tab: 0;
+    in property <[ChipRow]> folder-chips: [];
+    // BN1/2 chips carry no MB — the whole column hides.
+    in property <bool> folder-has-mb: true;
+    in-out property <bool> folder-grouped: true;
     // Netplay: the typed link code / direct command.
     in-out property <string> link-code: "";
     // ---- netplay lobby band (Phase B) ----
@@ -679,6 +813,9 @@ export component AppWindow inherits Window {
 
     callback game-selected(int);
     callback patch-selected(int);
+    callback version-selected(int);
+    callback save-selected(int);
+    callback folder-grouped-toggled(bool);
     callback replay-selected(int);
     callback replay-filter-selected(int);
     callback replay-opponent-edited(string);
@@ -817,6 +954,7 @@ export component AppWindow inherits Window {
                                     enabled: root.versions.length > 0;
                                     current <=> root.selected-version;
                                     width: 100px;
+                                    selected(i) => { root.version-selected(i); }
                                 }
                             }
                             HorizontalLayout {
@@ -827,6 +965,7 @@ export component AppWindow inherits Window {
                                     placeholder: I18n.play-no-save;
                                     current <=> root.selected-save;
                                     horizontal-stretch: 1;
+                                    selected(i) => { root.save-selected(i); }
                                 }
                                 NeutralButton { glyph: Glyphs.ellipsis-v; enabled: false; }
                             }
@@ -860,9 +999,206 @@ export component AppWindow inherits Window {
                                 }
                             }
                         }
-                        PanePrompt {
-                            // no tango key (tango-ng-only placeholder) — stays English
-                            message: "Save viewer coming soon";
+                        // ---- save viewer (read-only) ----
+                        // Navi header card over a tab strip + the
+                        // active section's pane. Only the Folder
+                        // section is ported so far; the strip is
+                        // model-driven so the rest slot in later.
+                        if root.save-loaded : VerticalLayout {
+                            spacing: 8px;
+                            vertical-stretch: 1;
+
+                            // navi header card (save_view/navi/mod.rs
+                            // navi_card_content): emblem beside
+                            // name-over-stats for the roster games
+                            // (BN5/BN6/EXE4.5); BN1–4 just the HP.
+                            Pane {
+                                HorizontalLayout {
+                                    padding: 12px;
+                                    spacing: 10px;
+                                    alignment: start;
+                                    if root.navi-header.has-name : VerticalLayout {
+                                        alignment: center;
+                                        Image {
+                                            // 3× the 15px emblem crop so the
+                                            // nearest-neighbor upscale lands
+                                            // on even pixels.
+                                            width: 45px;
+                                            height: 45px;
+                                            source: root.navi-header.emblem;
+                                            image-fit: contain;
+                                            image-rendering: pixelated;
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        spacing: 4px;
+                                        alignment: center;
+                                        if root.navi-header.has-name : Text {
+                                            text: root.navi-header.name;
+                                            font-size: 18px;
+                                            color: Theme.text;
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 16px;
+                                            alignment: start;
+                                            if root.navi-header.hp != "" : StatInline {
+                                                label: I18n.navi-base-hp;
+                                                value: root.navi-header.hp;
+                                            }
+                                            if root.navi-header.has-buster : HorizontalLayout {
+                                                spacing: 12px;
+                                                alignment: start;
+                                                StatInline {
+                                                    label: I18n.navi-buster-attack;
+                                                    value: root.navi-header.buster-attack;
+                                                }
+                                                StatInline {
+                                                    label: I18n.navi-buster-rapid;
+                                                    value: root.navi-header.buster-rapid;
+                                                }
+                                                StatInline {
+                                                    label: I18n.navi-buster-charge;
+                                                    value: root.navi-header.buster-charge;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // tab strip + the folder's grouped toggle
+                            HorizontalLayout {
+                                spacing: 4px;
+                                for tab[i] in root.save-tabs : SaveTab {
+                                    label: tab;
+                                    active: root.save-active-tab == i;
+                                    clicked => { root.save-active-tab = i; }
+                                }
+                                Rectangle { horizontal-stretch: 1; }
+                                VerticalLayout {
+                                    alignment: center;
+                                    ChunkyCheckbox {
+                                        label: I18n.folder-group;
+                                        checked <=> root.folder-grouped;
+                                        toggled(g) => { root.folder-grouped-toggled(g); }
+                                    }
+                                }
+                            }
+
+                            // Folder list (save_view/folder.rs
+                            // render_folder): one row per (grouped)
+                            // chip — count, icon, name + REG/TAG,
+                            // element, code, ATK, MB, with the class
+                            // accent as a left stripe.
+                            if root.save-tabs.length > 0 : Pane {
+                                vertical-stretch: 1;
+                                ListView {
+                                    x: 1px;
+                                    y: 4px;
+                                    width: parent.width - 2px;
+                                    height: parent.height - 8px;
+                                    for row[i] in root.folder-chips : Rectangle {
+                                        height: 36px;
+                                        background: Math.mod(i, 2) == 0 ? transparent : Theme.row-alt;
+                                        if row.has-accent : Rectangle {
+                                            x: 0;
+                                            y: 0;
+                                            width: 3px;
+                                            height: parent.height;
+                                            background: row.accent;
+                                        }
+                                        HorizontalLayout {
+                                            padding-left: 12px;
+                                            padding-right: 12px;
+                                            spacing: 10px;
+                                            if root.folder-grouped : Text {
+                                                width: 24px;
+                                                text: row.count;
+                                                font-size: 13px;
+                                                // "1×" is visual noise — mute it.
+                                                color: row.count == "1×" ? Theme.text-muted : Theme.text;
+                                                vertical-alignment: center;
+                                            }
+                                            VerticalLayout {
+                                                alignment: center;
+                                                Image {
+                                                    width: 28px;
+                                                    height: 28px;
+                                                    source: row.icon;
+                                                    image-fit: contain;
+                                                    image-rendering: pixelated;
+                                                }
+                                            }
+                                            // name + badges hug left inside
+                                            // the stretching middle cell.
+                                            HorizontalLayout {
+                                                horizontal-stretch: 1;
+                                                spacing: 8px;
+                                                alignment: start;
+                                                Text {
+                                                    text: row.name;
+                                                    font-size: 13px;
+                                                    color: row.is-empty ? Theme.text-muted : Theme.text;
+                                                    vertical-alignment: center;
+                                                }
+                                                if row.is-regular : VerticalLayout {
+                                                    alignment: center;
+                                                    Badge { label: "REG"; tint: #ff42a5; }
+                                                }
+                                                if row.tag-count >= 1 : VerticalLayout {
+                                                    alignment: center;
+                                                    Badge { label: "TAG"; tint: #29a121; }
+                                                }
+                                                if row.tag-count >= 2 : VerticalLayout {
+                                                    alignment: center;
+                                                    Badge { label: "TAG"; tint: #29a121; }
+                                                }
+                                            }
+                                            VerticalLayout {
+                                                alignment: center;
+                                                Image {
+                                                    width: 28px;
+                                                    height: 28px;
+                                                    source: row.element-icon;
+                                                    image-fit: contain;
+                                                    image-rendering: pixelated;
+                                                }
+                                            }
+                                            Text {
+                                                width: 22px;
+                                                text: row.code;
+                                                font-size: 13px;
+                                                color: Theme.text;
+                                                vertical-alignment: center;
+                                                horizontal-alignment: right;
+                                            }
+                                            Text {
+                                                width: 50px;
+                                                text: row.power;
+                                                font-size: 13px;
+                                                color: Theme.text;
+                                                vertical-alignment: center;
+                                                horizontal-alignment: right;
+                                            }
+                                            if root.folder-has-mb : Text {
+                                                width: 50px;
+                                                text: row.mb;
+                                                font-size: 11px;
+                                                color: Theme.text;
+                                                vertical-alignment: center;
+                                                horizontal-alignment: right;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if root.save-tabs.length == 0 : PanePrompt {
+                                vertical-stretch: 1;
+                                message: I18n.save-empty;
+                            }
+                        }
+                        if !root.save-loaded : PanePrompt {
+                            message: I18n.save-empty;
                             vertical-stretch: 1;
                         }
                     }

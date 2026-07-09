@@ -26,6 +26,7 @@ mod game;
 mod i18n;
 mod identity;
 mod input;
+mod loaded;
 // The net + netplay layers are ported; the direct /host + /connect
 // slice (Phase A) and matchmaking + the lobby band (Phase B) are live.
 // dead_code stays allowed for the surface tango-ng doesn't consume yet
@@ -83,7 +84,7 @@ enum Event {
 ///
 /// Strings the .slint marks "no tango key" intentionally have no
 /// counterpart here and stay English (tango-ng-only placeholders like
-/// "Save viewer coming soon" / "No replays found").
+/// "No replays found").
 fn apply_i18n(app: &AppWindow, config: &config::Config) {
     let lang = &config.language;
     let i18n = app.global::<I18n>();
@@ -102,6 +103,13 @@ fn apply_i18n(app: &AppWindow, config: &config::Config) {
     // roms path; fold the path into the same string here.
     i18n.set_empty_no_roms_body(format!("{}\n{}", t!(lang, "empty-no-roms-body"), config.roms_path().display()).into());
     i18n.set_empty_select_title(t!(lang, "play-no-selection").into());
+    // save viewer
+    i18n.set_navi_base_hp(t!(lang, "navi-base-hp").into());
+    i18n.set_navi_buster_attack(t!(lang, "navi-buster-attack").into());
+    i18n.set_navi_buster_rapid(t!(lang, "navi-buster-rapid").into());
+    i18n.set_navi_buster_charge(t!(lang, "navi-buster-charge").into());
+    i18n.set_folder_group(t!(lang, "folder-group").into());
+    i18n.set_save_empty(t!(lang, "save-empty").into());
     // lobby band
     i18n.set_lobby_you(t!(lang, "play-you").into());
     i18n.set_lobby_opponent(t!(lang, "play-opponent").into());
@@ -165,6 +173,10 @@ struct State {
     patch_rows: Vec<String>,
     /// Versions shown in the version picker, newest first.
     version_rows: Vec<semver::Version>,
+    /// The save viewer's parsed save + ROM assets + baked sprite
+    /// images for the current (game, patch, save) selection. Rebuilt
+    /// by [`refresh_loaded`]; `None` while nothing is selected.
+    loaded: Option<loaded::Loaded>,
     session: Option<ActiveSession>,
     joyflags: u32,
     /// Replay speed selected in the transport (fast-forward restores it).
@@ -271,6 +283,7 @@ fn refresh_models(app: &AppWindow, st: &mut State) {
     st.save_rows.clear();
     st.patch_rows.clear();
     st.version_rows.clear();
+    st.loaded = None;
 
     // Family filter options, from the families actually seen in replays.
     let mut families: Vec<String> = st
@@ -314,6 +327,7 @@ fn refresh_models(app: &AppWindow, st: &mut State) {
     app.set_saves(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
     app.set_patches(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
     app.set_versions(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
+    push_save_view(app, st);
     apply_replay_filter(app, st, None);
 }
 
@@ -536,6 +550,66 @@ fn selected_patch(app: &AppWindow, st: &State) -> Option<(String, semver::Versio
 /// the lobby advertises the game as soon as it's selected, like tango).
 fn selected_game(app: &AppWindow, st: &State) -> Option<rom::GameRef> {
     st.game_rows.get(app.get_selected_game() as usize).copied()
+}
+
+/// Rebuild the save viewer's [`loaded::Loaded`] for the current (game,
+/// patch, save) selection — or clear it when the pick is incomplete —
+/// then push the derived view models. Runs on every save / patch /
+/// version selection change; rescans and language changes land here
+/// via [`refresh_models`]'s cleared selection.
+fn refresh_loaded(app: &AppWindow, st: &mut State) {
+    st.loaded = None;
+    let save_index = app.get_selected_save();
+    if let (Some(game), Some(save)) = (
+        selected_game(app, st),
+        usize::try_from(save_index).ok().and_then(|i| st.save_rows.get(i)),
+    ) {
+        if let Some(rom) = st.roms.get(&game) {
+            // Bake from what Play would boot: the selected patch when
+            // the pick is complete. (Patch chosen but no version row —
+            // possible only when the patch has no versions for this
+            // game — renders unpatched, exactly what Play would refuse
+            // to start.)
+            let patch = selected_patch(app, st);
+            st.loaded = Some(loaded::Loaded::build(
+                game,
+                rom,
+                save.save.clone_box(),
+                &st.config.patches_path(),
+                patch,
+            ));
+        }
+    }
+    push_save_view(app, st);
+}
+
+/// Push the save viewer's models — navi header, section tabs, folder
+/// rows — from `st.loaded`, or clear the whole viewer when it's gone.
+fn push_save_view(app: &AppWindow, st: &State) {
+    let Some(l) = st.loaded.as_ref() else {
+        app.set_save_loaded(false);
+        app.set_navi_header(NaviHeader::default());
+        app.set_save_tabs(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
+        app.set_folder_chips(ModelRc::new(VecModel::from(Vec::<ChipRow>::new())));
+        return;
+    };
+    let lang = &st.config.language;
+    app.set_navi_header(loaded::navi_header(l));
+    // Section gating like tango's available_tabs — each tab exists iff
+    // its view does. Only Folder is ported so far; the others append
+    // here as they land.
+    let mut tabs: Vec<SharedString> = Vec::new();
+    if l.save.view_chips().is_some() {
+        tabs.push(t!(lang, "save-tab-folder").into());
+    }
+    app.set_save_tabs(ModelRc::new(VecModel::from(tabs)));
+    app.set_save_active_tab(0);
+    app.set_folder_has_mb(l.assets.chips_have_mb());
+    app.set_folder_chips(ModelRc::new(VecModel::from(loaded::folder_rows(
+        l,
+        app.get_folder_grouped(),
+    ))));
+    app.set_save_loaded(true);
 }
 
 /// Single source of truth for the local side's `protocol::Settings`
@@ -1040,6 +1114,7 @@ fn main() -> anyhow::Result<()> {
         patches: patch::PatchMap::new(),
         patch_rows: Vec::new(),
         version_rows: Vec::new(),
+        loaded: None,
         session: None,
         joyflags: 0,
         replay_speed: 1.0,
@@ -1246,6 +1321,9 @@ fn main() -> anyhow::Result<()> {
             app.set_selected_patch(0);
             app.set_versions(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
             app.set_selected_version(-1);
+            // The game switch reset the save pick (the Picker clears
+            // `selected-save` before this callback) — drop the viewer.
+            refresh_loaded(&app, &mut st);
         }
     });
 
@@ -1262,6 +1340,7 @@ fn main() -> anyhow::Result<()> {
                 st.version_rows.clear();
                 app.set_versions(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
                 app.set_selected_version(-1);
+                refresh_loaded(&app, &mut st);
                 return;
             }
             let Some(patch) = st
@@ -1282,6 +1361,40 @@ fn main() -> anyhow::Result<()> {
             let model: Vec<SharedString> = st.version_rows.iter().map(|v| format!("v{v}").into()).collect();
             app.set_versions(ModelRc::new(VecModel::from(model)));
             app.set_selected_version(if st.version_rows.is_empty() { -1 } else { 0 });
+            refresh_loaded(&app, &mut st);
+        }
+    });
+
+    app.on_version_selected({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |_index| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            refresh_loaded(&app, &mut st);
+        }
+    });
+
+    app.on_save_selected({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |_index| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            refresh_loaded(&app, &mut st);
+        }
+    });
+
+    app.on_folder_grouped_toggled({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |grouped| {
+            let Some(app) = app_weak.upgrade() else { return };
+            // Only the folder model depends on grouping — no rebake.
+            let st = state.borrow();
+            if let Some(l) = st.loaded.as_ref() {
+                app.set_folder_chips(ModelRc::new(VecModel::from(loaded::folder_rows(l, grouped))));
+            }
         }
     });
 
@@ -1984,6 +2097,18 @@ fn main() -> anyhow::Result<()> {
                     *s += 1;
                     *s
                 };
+                // The BN6 game row (buster stats + roster emblem in
+                // the save viewer), when a BN6 rom + save are both
+                // scanned. Recomputed per step — cheap and keeps the
+                // walker stateless.
+                let bn6_index = || {
+                    let st = state.borrow();
+                    let lang = st.config.language.clone();
+                    st.game_rows.iter().position(|g| {
+                        game::display_name(&lang, *g).contains("Cybeast")
+                            && st.saves.get(g).is_some_and(|s| !s.is_empty())
+                    })
+                };
                 // A few ticks between shots so layout/render settles.
                 match step {
                     10 => snapshot(&app, &dir.join("ui-play-empty.png")),
@@ -1991,6 +2116,7 @@ fn main() -> anyhow::Result<()> {
                         app.set_selected_game(0);
                         app.invoke_game_selected(0);
                         app.set_selected_save(0);
+                        app.invoke_save_selected(0);
                     }
                     30 => snapshot(&app, &dir.join("ui-play-selected.png")),
                     // Bring up the lobby band via the direct /host path
@@ -2004,16 +2130,31 @@ fn main() -> anyhow::Result<()> {
                         snapshot(&app, &dir.join("ui-lobby.png"));
                         app.invoke_lobby_leave();
                     }
-                    50 => app.set_active_tab(1),
-                    55 => {
+                    // Save viewer on a BN6 save: the navi header must
+                    // show the roster emblem + the buster stat row.
+                    50 => {
+                        if let Some(idx) = bn6_index() {
+                            app.set_selected_game(idx as i32);
+                            app.invoke_game_selected(idx as i32);
+                            app.set_selected_save(0);
+                            app.invoke_save_selected(0);
+                        }
+                    }
+                    60 => {
+                        if bn6_index().is_some() {
+                            snapshot(&app, &dir.join("ui-save-bn6.png"));
+                        }
+                    }
+                    70 => app.set_active_tab(1),
+                    75 => {
                         if !state.borrow().replay_rows.is_empty() {
                             app.set_selected_replay(0);
                             app.invoke_replay_selected(0);
                         }
                     }
-                    60 => snapshot(&app, &dir.join("ui-replays.png")),
-                    70 => app.set_active_tab(3),
-                    80 => {
+                    85 => snapshot(&app, &dir.join("ui-replays.png")),
+                    95 => app.set_active_tab(3),
+                    105 => {
                         snapshot(&app, &dir.join("ui-settings.png"));
                         let _ = slint::quit_event_loop();
                     }
