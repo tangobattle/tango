@@ -50,6 +50,33 @@ fn relay_mode_choice(lang: &LanguageIdentifier, mode: config::RelayMode) -> Choi
     )
 }
 
+/// A titled cluster of related rows inside a settings pane. The
+/// flat column-of-everything panes read as a mishmash once they
+/// pass a handful of controls; headers + tight intra-group spacing
+/// (vs. the wide inter-group gap the caller sets) give the pane a
+/// scannable shape. The header is a caption in the accent color
+/// with a hairline rule running off it — text hierarchy, not more
+/// panel chrome, since these panes also render inside the
+/// in-session settings modal where a framed card per group would
+/// fight the modal's own frame.
+fn settings_group<'a>(title: String, rows: Vec<Element<'a, Message>>) -> Element<'a, Message> {
+    let rule = container(Space::new().width(Fill).height(Length::Fixed(1.0))).style(|theme: &iced::Theme| {
+        iced::widget::container::Style {
+            background: Some(iced::Background::Color(iced::Color {
+                a: 0.25,
+                ..theme.palette().primary
+            })),
+            ..Default::default()
+        }
+    });
+    let header = row![text(title).size(TEXT_CAPTION).style(widgets::primary_text_style), rule,]
+        .spacing(10)
+        .align_y(Alignment::Center);
+    rows.into_iter()
+        .fold(column![header].spacing(12), |col, r| col.push(r))
+        .into()
+}
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsTab {
     #[default]
@@ -438,93 +465,126 @@ pub fn view<'a>(
 
 fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
     column![
-        labeled::<Message>(
-            t!(lang, "settings-nickname"),
-            text_input("", config.nickname.as_deref().unwrap_or(""))
-                .on_input(Message::NicknameChanged)
-                .padding(STANDARD_PADDING)
-                .width(Length::Fixed(240.0))
-                .style(widgets::chunky_text_input),
+        settings_group(
+            t!(lang, "settings-group-profile"),
+            vec![
+                labeled::<Message>(
+                    t!(lang, "settings-nickname"),
+                    text_input("", config.nickname.as_deref().unwrap_or(""))
+                        .on_input(Message::NicknameChanged)
+                        .padding(STANDARD_PADDING)
+                        .width(Length::Fixed(240.0))
+                        .style(widgets::chunky_text_input),
+                ),
+                widgets::checkbox(
+                    config.streamer_mode,
+                    t!(lang, "settings-streamer-mode"),
+                    Message::ToggleStreamerMode,
+                )
+                .into(),
+            ],
         ),
-        labeled::<Message>(t!(lang, "settings-language"), {
-            // Build the picker options as `LanguageChoice`
-            // wrappers — they Display the endonym from each
-            // locale's `LANGUAGE` Fluent key instead of the
-            // bare locale code.
-            let options: Vec<crate::i18n::LanguageChoice> = SUPPORTED_LANGS
-                .iter()
-                .map(|id| crate::i18n::LanguageChoice::new(id.clone()))
-                .collect();
-            let selected = options.iter().find(|c| c.id == config.language).cloned();
-            widgets::picker(options, selected, |c: crate::i18n::LanguageChoice| {
-                Message::LanguageSelected(c.id)
-            })
-        },),
-        labeled::<Message>(t!(lang, "settings-theme"), {
-            let options = vec![
-                theme_choice(lang, config::ThemeMode::Dark),
-                theme_choice(lang, config::ThemeMode::Light),
-            ];
-            let selected = options.iter().find(|c| c.value == config.theme).cloned();
-            widgets::picker(options, selected, |c: Choice<config::ThemeMode>| {
-                Message::ThemeChanged(c.value)
-            })
-        }),
-        labeled::<Message>(t!(lang, "settings-accent"), {
-            let options = vec![
-                accent_choice(lang, config::AccentColor::TangoGreen),
-                accent_choice(lang, config::AccentColor::MegaManBlue),
-                accent_choice(lang, config::AccentColor::ProtoManRed),
-                accent_choice(lang, config::AccentColor::RollPink),
-                accent_choice(lang, config::AccentColor::BassGold),
-            ];
-            let selected = options.iter().find(|c| c.value == config.accent).cloned();
-            widgets::picker(options, selected, |c: Choice<config::AccentColor>| {
-                Message::AccentChanged(c.value)
-            })
-        }),
-        widgets::checkbox(
-            config.streamer_mode,
-            t!(lang, "settings-streamer-mode"),
-            Message::ToggleStreamerMode,
+        settings_group(
+            t!(lang, "settings-group-interface"),
+            vec![
+                labeled::<Message>(t!(lang, "settings-language"), {
+                    // Build the picker options as `LanguageChoice`
+                    // wrappers — they Display the endonym from each
+                    // locale's `LANGUAGE` Fluent key instead of the
+                    // bare locale code.
+                    let options: Vec<crate::i18n::LanguageChoice> = SUPPORTED_LANGS
+                        .iter()
+                        .map(|id| crate::i18n::LanguageChoice::new(id.clone()))
+                        .collect();
+                    let selected = options.iter().find(|c| c.id == config.language).cloned();
+                    widgets::picker(options, selected, |c: crate::i18n::LanguageChoice| {
+                        Message::LanguageSelected(c.id)
+                    })
+                }),
+                // Theme + accent share a row — they're the two
+                // halves of one decision (base + chrome color).
+                row![
+                    labeled::<Message>(t!(lang, "settings-theme"), {
+                        let options = vec![
+                            theme_choice(lang, config::ThemeMode::Dark),
+                            theme_choice(lang, config::ThemeMode::Light),
+                        ];
+                        let selected = options.iter().find(|c| c.value == config.theme).cloned();
+                        widgets::picker(options, selected, |c: Choice<config::ThemeMode>| {
+                            Message::ThemeChanged(c.value)
+                        })
+                    }),
+                    labeled::<Message>(t!(lang, "settings-accent"), {
+                        let options = vec![
+                            accent_choice(lang, config::AccentColor::TangoGreen),
+                            accent_choice(lang, config::AccentColor::MegaManBlue),
+                            accent_choice(lang, config::AccentColor::ProtoManRed),
+                            accent_choice(lang, config::AccentColor::RollPink),
+                            accent_choice(lang, config::AccentColor::BassGold),
+                        ];
+                        let selected = options.iter().find(|c| c.value == config.accent).cloned();
+                        widgets::picker(options, selected, |c: Choice<config::AccentColor>| {
+                            Message::AccentChanged(c.value)
+                        })
+                    }),
+                ]
+                .spacing(14)
+                .into(),
+            ],
         ),
-        labeled::<Message>(
-            t!(lang, "settings-data-folder"),
-            row![
-                text(config.data_path.to_string_lossy().into_owned()),
-                button(text(t!(lang, "settings-data-folder-change")))
-                    .on_press(Message::OpenDataFolderPicker)
-                    .padding(STANDARD_PADDING)
-                    .style(widgets::neutral),
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center),
+        settings_group(
+            t!(lang, "settings-group-storage"),
+            vec![labeled::<Message>(
+                t!(lang, "settings-data-folder"),
+                row![
+                    text(config.data_path.to_string_lossy().into_owned()),
+                    button(text(t!(lang, "settings-data-folder-change")))
+                        .on_press(Message::OpenDataFolderPicker)
+                        .padding(STANDARD_PADDING)
+                        .style(widgets::neutral),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center),
+            )],
         ),
-        labeled::<Message>(
-            t!(lang, "settings-patch-repo"),
-            text_input("", &config.patch_repo)
-                .on_input(Message::PatchRepoChanged)
-                .padding(STANDARD_PADDING)
-                .width(Length::Fixed(480.0))
-                .style(widgets::chunky_text_input),
+        settings_group(
+            t!(lang, "settings-group-patches"),
+            vec![
+                labeled::<Message>(
+                    t!(lang, "settings-patch-repo"),
+                    text_input("", &config.patch_repo)
+                        .on_input(Message::PatchRepoChanged)
+                        .padding(STANDARD_PADDING)
+                        .width(Length::Fixed(480.0))
+                        .style(widgets::chunky_text_input),
+                ),
+                widgets::checkbox(
+                    config.enable_patch_autoupdate,
+                    t!(lang, "settings-enable-patch-autoupdate"),
+                    Message::TogglePatchAutoupdate,
+                )
+                .into(),
+            ],
         ),
-        widgets::checkbox(
-            config.enable_patch_autoupdate,
-            t!(lang, "settings-enable-patch-autoupdate"),
-            Message::TogglePatchAutoupdate,
-        ),
-        widgets::checkbox(
-            config.enable_updater,
-            t!(lang, "settings-enable-updater"),
-            Message::ToggleEnableUpdater,
-        ),
-        widgets::checkbox(
-            config.allow_prerelease_upgrades,
-            t!(lang, "settings-allow-prerelease-upgrades"),
-            Message::ToggleAllowPrereleaseUpgrades,
+        settings_group(
+            t!(lang, "settings-group-updates"),
+            vec![
+                widgets::checkbox(
+                    config.enable_updater,
+                    t!(lang, "settings-enable-updater"),
+                    Message::ToggleEnableUpdater,
+                )
+                .into(),
+                widgets::checkbox(
+                    config.allow_prerelease_upgrades,
+                    t!(lang, "settings-allow-prerelease-upgrades"),
+                    Message::ToggleAllowPrereleaseUpgrades,
+                )
+                .into(),
+            ],
         ),
     ]
-    .spacing(14)
+    .spacing(24)
     .padding(style::PANE_PADDING)
     .into()
 }
@@ -629,54 +689,67 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
         .find(|c| (c.value - config.ui_scale).abs() < f32::EPSILON)
         .cloned();
     column![
-        // Label hovers over just the dropdown; the row beneath
-        // it centers the fullscreen checkbox with the dropdown
-        // box itself (not the dropdown+label column).
-        column![
-            text(t!(lang, "settings-window-size"))
-                .size(TEXT_CAPTION)
-                .style(widgets::muted_text_style),
-            row![
-                window_size_picker,
-                widgets::checkbox(
-                    config.fullscreen,
-                    t!(lang, "settings-fullscreen"),
-                    Message::ToggleFullscreen
+        settings_group(
+            t!(lang, "settings-group-window"),
+            vec![
+                // Label hovers over just the dropdown; the row beneath
+                // it centers the fullscreen checkbox with the dropdown
+                // box itself (not the dropdown+label column).
+                column![
+                    text(t!(lang, "settings-window-size"))
+                        .size(TEXT_CAPTION)
+                        .style(widgets::muted_text_style),
+                    row![
+                        window_size_picker,
+                        widgets::checkbox(
+                            config.fullscreen,
+                            t!(lang, "settings-fullscreen"),
+                            Message::ToggleFullscreen
+                        ),
+                    ]
+                    .spacing(14)
+                    .align_y(Alignment::Center),
+                ]
+                .spacing(4)
+                .into(),
+                labeled::<Message>(
+                    t!(lang, "settings-ui-scale"),
+                    widgets::picker(ui_scale_options, selected_ui_scale, |c: Choice<f32>| {
+                        Message::UiScaleChanged(c.value)
+                    }),
                 ),
-            ]
-            .spacing(14)
-            .align_y(Alignment::Center),
-        ]
-        .spacing(4),
-        labeled::<Message>(
-            t!(lang, "settings-ui-scale"),
-            widgets::picker(ui_scale_options, selected_ui_scale, |c: Choice<f32>| {
-                Message::UiScaleChanged(c.value)
-            }),
+            ],
         ),
-        labeled::<Message>(t!(lang, "settings-video-filter"), {
-            // `value` is the `config.video_filter` key (`""`, `"hq2x"`, …).
-            let options: Vec<Choice<String>> = crate::video::effects::EFFECTS
-                .iter()
-                .map(|effect| Choice::new(effect.id.into(), effect.name))
-                .collect();
-            let selected = options.iter().find(|c| c.value == config.video_filter).cloned();
-            widgets::picker(options, selected, |c: Choice<String>| {
-                Message::VideoFilterChanged(c.value)
-            })
-        },),
-        widgets::checkbox(
-            config.fractional_scaling,
-            t!(lang, "settings-fractional-scaling"),
-            Message::ToggleFractionalScaling,
-        ),
-        widgets::checkbox(
-            config.hide_emulator_border,
-            t!(lang, "settings-hide-emulator-border"),
-            Message::ToggleHideEmulatorBorder,
+        settings_group(
+            t!(lang, "settings-group-emulator"),
+            vec![
+                labeled::<Message>(t!(lang, "settings-video-filter"), {
+                    // `value` is the `config.video_filter` key (`""`, `"hq2x"`, …).
+                    let options: Vec<Choice<String>> = crate::video::effects::EFFECTS
+                        .iter()
+                        .map(|effect| Choice::new(effect.id.into(), effect.name))
+                        .collect();
+                    let selected = options.iter().find(|c| c.value == config.video_filter).cloned();
+                    widgets::picker(options, selected, |c: Choice<String>| {
+                        Message::VideoFilterChanged(c.value)
+                    })
+                }),
+                widgets::checkbox(
+                    config.fractional_scaling,
+                    t!(lang, "settings-fractional-scaling"),
+                    Message::ToggleFractionalScaling,
+                )
+                .into(),
+                widgets::checkbox(
+                    config.hide_emulator_border,
+                    t!(lang, "settings-hide-emulator-border"),
+                    Message::ToggleHideEmulatorBorder,
+                )
+                .into(),
+            ],
         ),
     ]
-    .spacing(14)
+    .spacing(24)
     .padding(style::PANE_PADDING)
     .into()
 }

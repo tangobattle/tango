@@ -1148,10 +1148,7 @@ pub fn cyber_backdrop<'a, M: 'a>() -> Element<'a, M> {
                         }
                         let c = Point::new(
                             lat.x + 1.5 * lat_r * col as f32,
-                            lat.y
-                                + 3f32.sqrt()
-                                    * lat_r
-                                    * (row as f32 + if col.rem_euclid(2) == 1 { 0.5 } else { 0.0 }),
+                            lat.y + 3f32.sqrt() * lat_r * (row as f32 + if col.rem_euclid(2) == 1 { 0.5 } else { 0.0 }),
                         );
                         let fall = 1.0 - (col.abs() as f32 / 4.0) * 0.75;
                         frame.stroke(
@@ -1166,7 +1163,13 @@ pub fn cyber_backdrop<'a, M: 'a>() -> Element<'a, M> {
                 }
                 // One lit cell in the patch — the grid's "live node",
                 // same trick as the hex chain's lead hex.
-                frame.fill(&hex(Point::new(lat.x + 1.5 * lat_r, lat.y - 3f32.sqrt() * lat_r * 0.5), lat_r), glow(0.05));
+                frame.fill(
+                    &hex(
+                        Point::new(lat.x + 1.5 * lat_r, lat.y - 3f32.sqrt() * lat_r * 0.5),
+                        lat_r,
+                    ),
+                    glow(0.05),
+                );
 
                 // Circuit traces — the 45°-jog runs the HUD's hex
                 // chain ends in, etched big and faint across the
