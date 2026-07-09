@@ -23,8 +23,23 @@ mgba = { path = "../mgba" }
 tango-dataview = { path = "../tango-dataview" }
 tango-gamesupport = { path = "../tango-gamesupport" }
 tango-pvp = { path = "../tango-pvp" }
+tango-rtc = { path = "../tango-rtc" }
+tango-signaling = { path = "../tango-signaling" }
+rennet = { path = "../rennet" }
+# tango relied on iced's bundled runtime; tango-ng owns one explicitly
+# (rt-multi-thread), created in main and threaded around as a Handle.
+tokio = { workspace = true, features = ["fs", "io-util", "time", "rt", "rt-multi-thread", "net", "sync", "macros"] }
+tokio-util = { workspace = true, features = ["io", "rt"] }
+async-trait.workspace = true
+futures.workspace = true
+bincode = "1"
+rand.workspace = true
+rand_pcg.workspace = true
+sha3 = "0.10"
+subtle = "2"
+zstd.workspace = true
 bps = { path = "../bps" }
-semver = "1"
+semver = { version = "1", features = ["serde"] }
 chrono = "0.4"
 toml = "0.8"
 regex = "1"

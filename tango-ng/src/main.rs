@@ -16,6 +16,13 @@ mod bnlc;
 mod config;
 mod game;
 mod input;
+// The net + netplay layers are mid-port (see the netplay port guide);
+// allow dead_code until the /host + /connect vertical slice wires them
+// into the UI.
+#[allow(dead_code, unused_imports)]
+mod net;
+#[allow(dead_code)]
+mod netplay;
 mod patch;
 mod replays;
 mod rom;
@@ -272,6 +279,12 @@ fn replay_row(lang: &unic_langid::LanguageIdentifier, replay: &replays::ScannedR
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     log::info!("tango-ng {}", env!("CARGO_PKG_VERSION"));
+
+    // The async (netplay) layer's runtime. Held for the program lifetime;
+    // tasks get the Handle — the emulator thread must never have the
+    // runtime *entered* (PvpSender::send uses blocking_send).
+    let tokio_runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
+    let _tokio_handle = tokio_runtime.handle().clone();
 
     let config = config::Config::load();
     log::info!("data path: {}", config.data_path.display());
