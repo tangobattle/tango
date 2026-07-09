@@ -107,6 +107,12 @@ export global I18n {
     in-out property <string> save-action-cancel: "Cancel";
     in-out property <string> save-name-placeholder: "New name";
     in-out property <string> save-template-pick: "Pick a template…";
+    // save editing
+    in-out property <string> save-edit: "Edit";
+    in-out property <string> save-edit-save: "Save";
+    in-out property <string> save-edit-cancel: "Cancel";
+    in-out property <string> save-edit-clear: "Clear all";
+    in-out property <string> folder-edit-search: "Search chips…";
     // lobby band
     in-out property <string> lobby-you: "You";
     in-out property <string> lobby-opponent: "Opponent";
@@ -802,6 +808,9 @@ export struct ChipRow {
     is-empty: bool,
     // Chip flavor text, for the hover popover (follow-up).
     description: string,
+    // Library rows only: whether adding this chip is currently legal
+    // (folder not full, copy/class caps).
+    addable: bool,
 }
 
 // The equipped-navi header card. has-name gates the emblem + name
@@ -1067,6 +1076,26 @@ export global SaveView {
     // cleared by a single-shot timer there).
     in-out property <bool> save-copy-flash: false;
     in-out property <bool> save-copy-image-flash: false;
+    // ---- save editing (save_edit.rs; folder editor so far) ----
+    // The Edit affordance shows (play-tab source + editable save).
+    in-out property <bool> editable: false;
+    // One global edit session; Save/Cancel commits/discards it all.
+    in-out property <bool> editing: false;
+    // Folder editor panes: per-slot folder rows + the chip library.
+    in-out property <[ChipRow]> edit-folder-rows: [];
+    in-out property <[ChipRow]> edit-library-rows: [];
+    callback edit-enter();
+    callback edit-commit();
+    callback edit-cancel();
+    // Library row index → add that (chip, code) to the folder.
+    callback edit-add(int);
+    callback edit-remove(int);
+    // (slot, ±1) — ordered move via the row's arrows.
+    callback edit-move(int, int);
+    callback edit-toggle-regular(int);
+    callback edit-toggle-tag(int);
+    callback edit-clear();
+    callback edit-filter-edited(string);
     callback folder-grouped-toggled(bool);
     // Copy the active section as TSV text / the NaviCust grid as an
     // image (tango's CopyTab/CopyTabImage).
@@ -1156,12 +1185,39 @@ component SaveViewBody inherits VerticalLayout {
                 clicked => { SaveView.save-active-tab = i; }
             }
             Rectangle { horizontal-stretch: 1; }
-            if SaveView.save-kind == 1 : VerticalLayout {
+                if SaveView.save-kind == 1 && !SaveView.editing : VerticalLayout {
                 alignment: center;
                 ChunkyCheckbox {
                     label: I18n.folder-group;
                     checked <=> SaveView.folder-grouped;
                     toggled(g) => { SaveView.folder-grouped-toggled(g); }
+                }
+            }
+            if SaveView.editable && SaveView.save-kind == 1 && !SaveView.editing : VerticalLayout {
+                alignment: center;
+                NeutralTextButton {
+                    label: I18n.save-edit;
+                    clicked => { SaveView.edit-enter(); }
+                }
+            }
+            if SaveView.editing : VerticalLayout {
+                alignment: center;
+                HorizontalLayout {
+                    spacing: 6px;
+                    DangerTextButton {
+                        label: I18n.save-edit-clear;
+                        clicked => { SaveView.edit-clear(); }
+                    }
+                    NeutralTextButton {
+                        label: I18n.save-edit-cancel;
+                        clicked => { SaveView.edit-cancel(); }
+                    }
+                    PrimaryButton {
+                        label: I18n.save-edit-save;
+                        pad-v: 5px;
+                        pad-h: 12px;
+                        clicked => { SaveView.edit-commit(); }
+                    }
                 }
             }
             if SaveView.save-kind == 0 : VerticalLayout {
@@ -1482,12 +1538,236 @@ component SaveViewBody inherits VerticalLayout {
             }
         }
 
+        // Folder editor (save_view/folder.rs render_folder_edit,
+        // condensed): per-slot folder rows with REG/TAG toggles +
+        // reorder arrows + remove on the left, the owned-chip
+        // library (click to add) with a filter on the right.
+        if SaveView.save-kind == 1 && SaveView.editing : HorizontalLayout {
+            vertical-stretch: 1;
+            spacing: 8px;
+            Pane {
+                horizontal-stretch: 1;
+                ListView {
+                    x: 1px;
+                    y: 4px;
+                    width: parent.width - 2px;
+                    height: parent.height - 8px;
+                    for row[i] in SaveView.edit-folder-rows : Rectangle {
+                        height: 36px;
+                        background: Math.mod(i, 2) == 0 ? transparent : Theme.row-alt;
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 6px;
+                            VerticalLayout {
+                                alignment: center;
+                                Image {
+                                    width: 28px;
+                                    height: 28px;
+                                    source: row.icon;
+                                    image-fit: contain;
+                                    image-rendering: pixelated;
+                                }
+                            }
+                            Text {
+                                horizontal-stretch: 1;
+                                text: row.name;
+                                font-size: 13px;
+                                color: Theme.text;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            Text {
+                                width: 18px;
+                                text: row.code;
+                                font-size: 13px;
+                                color: Theme.text;
+                                vertical-alignment: center;
+                            }
+                            Rectangle {
+                                width: 38px;
+                                height: 24px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 6px;
+                                background: row.is-regular ? #ff42a5 : Theme.btn-plate;
+                                border-width: 1px;
+                                border-color: Theme.input-border;
+                                TouchArea {
+                                    clicked => { SaveView.edit-toggle-regular(i); }
+                                }
+                                Text {
+                                    width: 100%;
+                                    height: 100%;
+                                    text: "REG";
+                                    font-size: 10px;
+                                    color: row.is-regular ? white : Theme.text-muted;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            Rectangle {
+                                width: 38px;
+                                height: 24px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 6px;
+                                background: row.tag-count > 0 ? #29a121 : Theme.btn-plate;
+                                border-width: 1px;
+                                border-color: Theme.input-border;
+                                TouchArea {
+                                    clicked => { SaveView.edit-toggle-tag(i); }
+                                }
+                                Text {
+                                    width: 100%;
+                                    height: 100%;
+                                    text: "TAG";
+                                    font-size: 10px;
+                                    color: row.tag-count > 0 ? white : Theme.text-muted;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            Rectangle {
+                                width: 26px;
+                                height: 24px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 6px;
+                                background: upta.has-hover ? Theme.hover : Theme.btn-plate;
+                                border-width: 1px;
+                                border-color: Theme.input-border;
+                                upta := TouchArea {
+                                    clicked => { SaveView.edit-move(i, -1); }
+                                }
+                                LIcon {
+                                    width: 100%;
+                                    height: 100%;
+                                    text: Glyphs.chevron-up;
+                                    font-size: 12px;
+                                    color: Theme.text-muted;
+                                }
+                            }
+                            Rectangle {
+                                width: 26px;
+                                height: 24px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 6px;
+                                background: dnta.has-hover ? Theme.hover : Theme.btn-plate;
+                                border-width: 1px;
+                                border-color: Theme.input-border;
+                                dnta := TouchArea {
+                                    clicked => { SaveView.edit-move(i, 1); }
+                                }
+                                LIcon {
+                                    width: 100%;
+                                    height: 100%;
+                                    text: Glyphs.chevron-down;
+                                    font-size: 12px;
+                                    color: Theme.text-muted;
+                                }
+                            }
+                            Rectangle {
+                                width: 26px;
+                                height: 24px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 6px;
+                                background: rmta.has-hover ? #ff525233 : Theme.btn-plate;
+                                border-width: 1px;
+                                border-color: rmta.has-hover ? #ff5252aa : Theme.input-border;
+                                rmta := TouchArea {
+                                    clicked => { SaveView.edit-remove(i); }
+                                }
+                                LIcon {
+                                    width: 100%;
+                                    height: 100%;
+                                    text: Glyphs.x;
+                                    font-size: 11px;
+                                    color: rmta.has-hover ? #ff8a8a : Theme.text-muted;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Pane {
+                horizontal-stretch: 1;
+                VerticalLayout {
+                    padding: 8px;
+                    spacing: 6px;
+                    ChunkyInput {
+                        placeholder: I18n.folder-edit-search;
+                        edited(t) => { SaveView.edit-filter-edited(t); }
+                    }
+                    ListView {
+                        vertical-stretch: 1;
+                        for row[i] in SaveView.edit-library-rows : Rectangle {
+                            height: 32px;
+                            background: addta.has-hover && row.addable
+                                ? Theme.hover
+                                : (Math.mod(i, 2) == 0 ? transparent : Theme.row-alt);
+                            addta := TouchArea {
+                                clicked => {
+                                    if (row.addable) {
+                                        SaveView.edit-add(i);
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                spacing: 8px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Image {
+                                        width: 24px;
+                                        height: 24px;
+                                        source: row.icon;
+                                        image-fit: contain;
+                                        image-rendering: pixelated;
+                                    }
+                                }
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: row.name;
+                                    font-size: 13px;
+                                    color: row.addable ? Theme.text : Theme.text-muted;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    width: 18px;
+                                    text: row.code;
+                                    font-size: 13px;
+                                    color: row.addable ? Theme.text : Theme.text-muted;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    width: 40px;
+                                    text: row.power;
+                                    font-size: 12px;
+                                    color: Theme.text-muted;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: right;
+                                }
+                                Text {
+                                    width: 44px;
+                                    text: row.mb;
+                                    font-size: 11px;
+                                    color: Theme.text-muted;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: right;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Folder list (save_view/folder.rs
         // render_folder): one row per (grouped)
         // chip — count, icon, name + REG/TAG,
         // element, code, ATK, MB, with the class
         // accent as a left stripe.
-        if SaveView.save-kind == 1 : Pane {
+        if SaveView.save-kind == 1 && !SaveView.editing : Pane {
             vertical-stretch: 1;
             ListView {
                 x: 1px;

@@ -14,7 +14,44 @@ use crate::{AbdRow, ChipRow, NaviHeader, NcpPartRow, PatchCardLine};
 use std::collections::HashMap;
 
 /// Number of chip slots in an equipped folder.
-const MAX_FOLDER_CHIPS: usize = 30;
+pub const MAX_FOLDER_CHIPS: usize = 30;
+
+/// Which sections of a save can be edited in place — one writable-view
+/// probe per section (tango's selection.rs Editability).
+pub struct Editability {
+    pub folder: bool,
+    pub navicust: bool,
+    pub navi: bool,
+    pub patch_cards: bool,
+    pub auto_battle_data: bool,
+}
+
+impl Editability {
+    /// Probe every section's writable view once (pure capability check).
+    fn probe(save: &mut (dyn tango_dataview::save::Save + Send + Sync)) -> Self {
+        // One statement per probe so each mutable borrow drops before
+        // the next.
+        let folder = save.view_chips_mut().is_some();
+        let navicust = save.view_navicust_mut().is_some();
+        let navi = save.view_navi_mut().is_some();
+        let patch_cards = save.view_patch_cards_mut().is_some();
+        let auto_battle_data = save.view_auto_battle_data_mut().is_some();
+        Self {
+            folder,
+            navicust,
+            navi,
+            patch_cards,
+            auto_battle_data,
+        }
+    }
+
+    /// Whether *any* section is editable — drives the save-level Edit
+    /// button (the folder editor is the one ported so far, so it also
+    /// gates on `folder` at the call site).
+    pub fn any(&self) -> bool {
+        self.folder || self.navicust || self.navi || self.patch_cards || self.auto_battle_data
+    }
+}
 
 /// Currently selected game + save + their derived ROM assets and
 /// pre-baked sprite images. Rebuilt only when the (game, patch, save)
@@ -22,6 +59,8 @@ const MAX_FOLDER_CHIPS: usize = 30;
 pub struct Loaded {
     pub game: GameRef,
     pub save: Box<dyn tango_dataview::save::Save + Send + Sync>,
+    /// Which sections can be edited in place (probed once at build).
+    pub editability: Editability,
     pub assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     /// Chip icons, cropped to their visible 14×14 (from the 16×16
     /// sprite). Indexed by chip id; `None` = no such chip.
@@ -71,6 +110,8 @@ impl Loaded {
             None => rom.to_vec(),
         };
 
+        let mut save = save;
+        let editability = Editability::probe(&mut *save);
         let wram = save.as_raw_wram().into_owned();
         let assets = game.load_rom_assets(&rom, &wram, None);
 
@@ -109,6 +150,7 @@ impl Loaded {
         Self {
             game,
             save,
+            editability,
             assets,
             chip_icons,
             chip_full_images,
@@ -323,6 +365,7 @@ fn make_chip_row(loaded: &Loaded, id: Option<usize>, code: Option<String>, g: &G
         has_accent: accent.is_some(),
         is_empty: id.is_none(),
         description: info.as_ref().and_then(|i| i.description()).unwrap_or_default().into(),
+        addable: false,
     }
 }
 
@@ -694,6 +737,56 @@ pub fn abd_rows(lang: &unic_langid::LanguageIdentifier, loaded: &Loaded) -> Vec<
         }
     }
     rows
+}
+
+/// The folder editor's chip library: one row per (chip, code) the
+/// player owns in the pack (pack count > 0), id order, filtered by a
+/// case-insensitive name substring. Returns the display rows plus the
+/// parallel `(chip_id, code)` values the add callback consumes; each
+/// row's `addable` reflects the folder-full/copy-cap/class-cap checks
+/// (tango's sorted_library_entries + per-row gating).
+pub fn folder_library(loaded: &Loaded, filter: &str) -> (Vec<ChipRow>, Vec<(usize, tango_dataview::save::ChipCode)>) {
+    use tango_dataview::save::ChipCode;
+    let assets = loaded.assets.as_ref();
+    let chips_view = loaded.save.view_chips();
+    let folder_idx = chips_view.as_ref().map(|v| v.equipped_folder_index()).unwrap_or(0);
+    let folder_full = chips_view
+        .as_ref()
+        .map(|v| (0..MAX_FOLDER_CHIPS).all(|i| v.chip(folder_idx, i).is_some()))
+        .unwrap_or(true);
+    let limits = loaded
+        .save
+        .view_navi()
+        .map(|nv| nv.folder_limits(assets))
+        .unwrap_or_default();
+    let usage = crate::save_edit::FolderUsage::scan(loaded, folder_idx);
+    let filter = filter.to_lowercase();
+
+    let mut rows = Vec::new();
+    let mut values = Vec::new();
+    for id in 0..assets.num_chips() {
+        let Some(info) = assets.chip(id) else { continue };
+        let Some(name) = info.name() else { continue };
+        if !filter.is_empty() && !name.to_lowercase().contains(&filter) {
+            continue;
+        }
+        let addable = !folder_full && usage.can_add(loaded, id, &limits);
+        for (variant, ch) in info.codes().into_iter().enumerate() {
+            let Some(code) = ChipCode::from_char(ch) else { continue };
+            let owned = chips_view
+                .as_ref()
+                .and_then(|v| v.pack_count(id, variant))
+                .is_some_and(|c| c > 0);
+            if !owned {
+                continue;
+            }
+            let mut row = make_chip_row(loaded, Some(id), Some(code.to_string()), &GroupedChip::default());
+            row.addable = addable;
+            rows.push(row);
+            values.push((id, code));
+        }
+    }
+    (rows, values)
 }
 
 // ----- copy-as-text renderings (tango's save_view tab_as_text) -----

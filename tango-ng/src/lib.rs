@@ -59,6 +59,7 @@ mod randomcode;
 mod replays;
 mod rom;
 mod save;
+mod save_edit;
 mod video;
 mod save_manage;
 mod session;
@@ -348,6 +349,13 @@ struct State {
     /// images for the current (game, patch, save) selection. Rebuilt
     /// by [`refresh_loaded`]; `None` while nothing is selected.
     loaded: Option<loaded::Loaded>,
+    /// The folder editor's staged tag-pair selection (raw slot
+    /// indexes, at most two — tango's EditState.tags).
+    edit_tags: Vec<usize>,
+    /// The folder editor's library values, parallel to its model rows.
+    edit_library_values: Vec<(usize, tango_dataview::save::ChipCode)>,
+    /// The library pane's filter text.
+    edit_library_filter: String,
     /// The new-save form's template picker values, parallel to the
     /// `save-template-options` model rows.
     save_template_values: Vec<(rom::GameRef, String)>,
@@ -893,6 +901,10 @@ fn selected_game(app: &AppWindow, st: &State) -> Option<rom::GameRef> {
 /// version selection change; rescans and language changes land here
 /// via [`refresh_models`]'s cleared selection.
 fn refresh_loaded(app: &AppWindow, st: &mut State) {
+    // Any reload drops an in-progress edit session (its staged edits
+    // lived in the replaced Loaded).
+    app.global::<SaveView>().set_editing(false);
+    st.edit_tags.clear();
     st.loaded = None;
     let save_index = app.get_selected_save();
     if let (Some(game), Some(save)) = (
@@ -1055,6 +1067,17 @@ fn update_discord_presence(app: &AppWindow, st: &State) {
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 fn update_discord_presence(_app: &AppWindow, _st: &State) {}
+
+/// Push the folder editor's two panes: the per-slot folder rows (the
+/// staged in-memory state) and the filtered chip library.
+fn push_folder_editor(app: &AppWindow, st: &mut State) {
+    let Some(l) = st.loaded.as_ref() else { return };
+    let sv = app.global::<SaveView>();
+    sv.set_edit_folder_rows(ModelRc::new(VecModel::from(loaded::folder_rows(l, false))));
+    let (rows, values) = loaded::folder_library(l, &st.edit_library_filter);
+    st.edit_library_values = values;
+    sv.set_edit_library_rows(ModelRc::new(VecModel::from(rows)));
+}
 
 /// The game's BNLC bezel art as a Slint image, cached per game: the
 /// TGA pulled from the owning volume's shared `exe.dat` (tango's
@@ -2139,6 +2162,9 @@ pub fn run() -> anyhow::Result<()> {
         identity: identity::load(),
         lobby_mt_rows: Vec::new(),
         lobby_ui: LobbySnapshot::default(),
+        edit_tags: Vec::new(),
+        edit_library_values: Vec::new(),
+        edit_library_filter: String::new(),
         save_template_values: Vec::new(),
         save_new_auto_default: None,
         pending_select_save: None,
@@ -2879,6 +2905,221 @@ pub fn run() -> anyhow::Result<()> {
             if let Some(dir) = st.replay_detail_path.as_ref().and_then(|p| p.parent()) {
                 open_path(dir);
             }
+        }
+    });
+
+    // ---- folder editor (save_edit.rs; tango's save-edit session) ----
+
+    app.global::<SaveView>().on_edit_enter({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            // Seed the staged tag pair from the equipped folder.
+            st.edit_tags = st
+                .loaded
+                .as_ref()
+                .and_then(|l| {
+                    let v = l.save.view_chips()?;
+                    let folder = v.equipped_folder_index();
+                    v.tag_chip_indexes(folder)
+                })
+                .flatten()
+                .map(|[a, b]| vec![a, b])
+                .unwrap_or_default();
+            st.edit_library_filter.clear();
+            push_folder_editor(&app, &mut st);
+            app.global::<SaveView>().set_editing(true);
+        }
+    });
+
+    app.global::<SaveView>().on_edit_cancel({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            app.global::<SaveView>().set_editing(false);
+            // Rebuild from the pristine scanned save — every staged
+            // edit lived only in the Loaded's clone.
+            refresh_loaded(&app, &mut st);
+        }
+    });
+
+    app.global::<SaveView>().on_edit_commit({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        let spawn_scan = spawn_scan.clone();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let result = {
+                let mut st = state.borrow_mut();
+                let path = usize::try_from(app.get_selected_save())
+                    .ok()
+                    .and_then(|i| st.save_rows.get(i))
+                    .map(|s| s.path.clone());
+                let game = selected_game(&app, &st);
+                match (path, st.loaded.as_mut()) {
+                    (Some(path), Some(l)) => {
+                        let r = save_edit::commit(l, &path);
+                        if r.is_ok() {
+                            // Rescan so the scanned copy matches disk;
+                            // keep this save focused through it.
+                            st.pending_select_save = game.map(|g| (g, path));
+                        }
+                        r
+                    }
+                    _ => Err(anyhow::anyhow!("no save selected")),
+                }
+            };
+            app.global::<SaveView>().set_editing(false);
+            match result {
+                Ok(()) => spawn_scan(),
+                Err(e) => {
+                    log::error!("save-edit commit failed: {e}");
+                    app.set_status(format!("{e}").into());
+                }
+            }
+        }
+    });
+
+    app.global::<SaveView>().on_edit_add({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |index| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Some((chip_id, code)) = usize::try_from(index)
+                .ok()
+                .and_then(|i| st.edit_library_values.get(i))
+                .copied()
+            else {
+                return;
+            };
+            // Adding at the top slides the packed run down one — shift
+            // the staged tag selection with it (tango's
+            // shift_tags_for_top_insert).
+            let gap = st.loaded.as_ref().and_then(|l| {
+                let v = l.save.view_chips()?;
+                let fi = v.equipped_folder_index();
+                (0..loaded::MAX_FOLDER_CHIPS).find(|&i| v.chip(fi, i).is_none())
+            });
+            if let Some(gap) = gap {
+                for t in st.edit_tags.iter_mut() {
+                    if *t < gap {
+                        *t += 1;
+                    }
+                }
+            }
+            if let Some(l) = st.loaded.as_mut() {
+                save_edit::apply_chip_edit(l, save_edit::ChipEdit::AddChip { chip_id, code });
+            }
+            push_folder_editor(&app, &mut st);
+        }
+    });
+
+    app.global::<SaveView>().on_edit_remove({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |slot| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Ok(slot) = usize::try_from(slot) else { return };
+            // Mirror the save-side compaction in the staged tags.
+            st.edit_tags.retain(|&s| s != slot);
+            for t in st.edit_tags.iter_mut() {
+                if *t > slot {
+                    *t -= 1;
+                }
+            }
+            if let Some(l) = st.loaded.as_mut() {
+                save_edit::apply_chip_edit(l, save_edit::ChipEdit::RemoveChip { slot });
+            }
+            push_folder_editor(&app, &mut st);
+        }
+    });
+
+    app.global::<SaveView>().on_edit_move({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |slot, delta| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Ok(from) = usize::try_from(slot) else { return };
+            let to = from as i64 + delta as i64;
+            let Ok(to) = usize::try_from(to) else { return };
+            for t in st.edit_tags.iter_mut() {
+                *t = save_edit::reorder_index(*t, from, to);
+            }
+            if let Some(l) = st.loaded.as_mut() {
+                save_edit::apply_chip_edit(l, save_edit::ChipEdit::MoveChip { from, to });
+            }
+            push_folder_editor(&app, &mut st);
+        }
+    });
+
+    app.global::<SaveView>().on_edit_toggle_regular({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |slot| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Ok(slot) = usize::try_from(slot) else { return };
+            if let Some(l) = st.loaded.as_mut() {
+                save_edit::apply_chip_edit(l, save_edit::ChipEdit::ToggleRegular { slot });
+            }
+            push_folder_editor(&app, &mut st);
+        }
+    });
+
+    app.global::<SaveView>().on_edit_toggle_tag({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |slot| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Ok(slot) = usize::try_from(slot) else { return };
+            // Toggle in the staged pair (cap two); a full pair commits,
+            // anything else clears (a lone tag isn't a valid state).
+            if let Some(pos) = st.edit_tags.iter().position(|&s| s == slot) {
+                st.edit_tags.remove(pos);
+            } else if st.edit_tags.len() < 2 {
+                st.edit_tags.push(slot);
+            }
+            let pair = match st.edit_tags.as_slice() {
+                [a, b] => Some([*a, *b]),
+                _ => None,
+            };
+            if let Some(l) = st.loaded.as_mut() {
+                save_edit::apply_chip_edit(l, save_edit::ChipEdit::SetTags(pair));
+            }
+            push_folder_editor(&app, &mut st);
+        }
+    });
+
+    app.global::<SaveView>().on_edit_clear({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            st.edit_tags.clear();
+            if let Some(l) = st.loaded.as_mut() {
+                save_edit::apply_chip_edit(l, save_edit::ChipEdit::ClearFolder);
+            }
+            push_folder_editor(&app, &mut st);
+        }
+    });
+
+    app.global::<SaveView>().on_edit_filter_edited({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |text| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            st.edit_library_filter = text.to_lowercase();
+            push_folder_editor(&app, &mut st);
         }
     });
 
@@ -4657,6 +4898,20 @@ pub fn run() -> anyhow::Result<()> {
                     160 => {
                         if save_tab_index_of_kind(&app, 2).is_some() {
                             snapshot(&app, &dir.join("ui-save-patch-cards.png"));
+                        }
+                    }
+                    // Folder editor: enter the edit session on the
+                    // current save's Folder tab and shoot it.
+                    162 => {
+                        if let Some(ti) = save_tab_index_of_kind(&app, 1) {
+                            app.global::<SaveView>().set_save_active_tab(ti);
+                            app.global::<SaveView>().invoke_edit_enter();
+                        }
+                    }
+                    172 => {
+                        if app.global::<SaveView>().get_editing() {
+                            snapshot(&app, &dir.join("ui-save-edit.png"));
+                            app.global::<SaveView>().invoke_edit_cancel();
                         }
                         let _ = slint::quit_event_loop();
                     }
