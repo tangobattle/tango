@@ -5,7 +5,14 @@
 //! and rebuild derived mirrors (anti-cheat folder/library) so they
 //! stay in sync. No disk I/O — [`commit`] checksums and writes.
 
-use crate::loaded::{Loaded, MAX_FOLDER_CHIPS};
+use crate::loaded::{Editability, Loaded, MAX_FOLDER_CHIPS};
+
+/// Per-part navicust copy cap (tango's navicust editor).
+pub const MAX_COPIES_PER_PART: usize = 9;
+/// Total MB an enabled BN5/BN6 patch-card set may use.
+pub const MAX_PATCH_CARD56_MB: u32 = 80;
+/// Number of BN4 patch-card catalog slots (0A-0F).
+pub const NUM_PATCH_CARD4_SLOTS: usize = 6;
 
 /// A single folder edit staged by the folder editor. Applied to the
 /// loaded save in memory; not persisted until the user hits Save.
@@ -337,4 +344,287 @@ pub fn commit(loaded: &mut Loaded, path: &std::path::Path) -> anyhow::Result<()>
     let sram = loaded.save.to_sram_dump();
     std::fs::write(path, sram)?;
     Ok(())
+}
+
+/// A single navicust edit staged by the navicust editor.
+#[derive(Debug, Clone)]
+pub enum NavicustEdit {
+    /// Place a part into the first empty navicust slot.
+    AddPart(tango_dataview::save::NavicustPart),
+    /// Empty navicust slot `slot` (the rest shift up - placement order
+    /// drives the color bar).
+    RemovePart { slot: usize },
+    /// Remove every installed part.
+    ClearAll,
+}
+
+/// Apply one staged [`NavicustEdit`] in memory, then rebuild the
+/// materialized WRAM grid so the viewer re-bakes from live state
+/// (tango's apply_navicust_edit).
+pub fn apply_navicust_edit(loaded: &mut Loaded, edit: NavicustEdit) {
+    use tango_dataview::save::NavicustPart;
+
+    enum Op {
+        Set { slot: usize, part: NavicustPart },
+        Clear { slot: usize },
+    }
+    let ops: Vec<Op> = match edit {
+        NavicustEdit::AddPart(part) => {
+            let slot = match loaded.save.view_navicust() {
+                Some(v) => {
+                    let copies = (0..v.count())
+                        .filter(|&i| v.navicust_part(i).is_some_and(|p| p.id == part.id))
+                        .count();
+                    if copies >= MAX_COPIES_PER_PART {
+                        return;
+                    }
+                    (0..v.count()).find(|&i| v.navicust_part(i).is_none())
+                }
+                None => None,
+            };
+            match slot {
+                Some(slot) => vec![Op::Set { slot, part }],
+                None => return,
+            }
+        }
+        NavicustEdit::RemovePart { slot } => {
+            let parts: Vec<Option<NavicustPart>> = match loaded.save.view_navicust() {
+                Some(v) => (0..v.count()).map(|i| v.navicust_part(i)).collect(),
+                None => return,
+            };
+            let mut parts = parts;
+            if slot < parts.len() {
+                parts.remove(slot);
+                parts.push(None);
+            }
+            parts
+                .into_iter()
+                .enumerate()
+                .map(|(i, p)| match p {
+                    Some(part) => Op::Set { slot: i, part },
+                    None => Op::Clear { slot: i },
+                })
+                .collect()
+        }
+        NavicustEdit::ClearAll => {
+            let count = match loaded.save.view_navicust() {
+                Some(v) => v.count(),
+                None => return,
+            };
+            (0..count).map(|slot| Op::Clear { slot }).collect()
+        }
+    };
+
+    if let Some(mut nc) = loaded.save.view_navicust_mut() {
+        for op in ops {
+            match op {
+                Op::Set { slot, part } => {
+                    nc.set_navicust_part(slot, Some(part));
+                }
+                Op::Clear { slot } => {
+                    nc.set_navicust_part(slot, None);
+                }
+            }
+        }
+    }
+    // Rebuild the materialized grid + color bar in the in-memory save;
+    // the viewer re-bakes its image from it on the next push.
+    let assets = loaded.assets.as_ref();
+    if let Some(mut nc) = loaded.save.view_navicust_mut() {
+        nc.rebuild_materialized(assets);
+    }
+}
+
+/// A staged equipped-navi selection.
+#[derive(Debug, Clone)]
+pub enum NaviEdit {
+    SetNavi(usize),
+}
+
+/// Apply a staged [`NaviEdit`] in memory. Switching the equipped navi
+/// flips whether an editable navicust / patch-card list exists, so the
+/// cached editability re-probes here.
+pub fn apply_navi_edit(loaded: &mut Loaded, edit: NaviEdit) {
+    match edit {
+        NaviEdit::SetNavi(navi) => {
+            if let Some(mut nv) = loaded.save.view_navi_mut() {
+                nv.set_navi(navi);
+            }
+        }
+    }
+    loaded.editability = Editability::probe(&mut *loaded.save);
+}
+
+/// A single BN5/BN6 patch-card edit.
+#[derive(Debug, Clone)]
+pub enum PatchCard56Edit {
+    /// Register patch card `id` (appended, enabled).
+    AddCard { id: usize },
+    /// Unregister the card in `slot` (the rest shift up).
+    RemoveCard { slot: usize },
+    /// Ordered move within the dense registered list.
+    MoveCard { from: usize, to: usize },
+    /// Unregister every patch card.
+    ClearAll,
+}
+
+/// Apply one staged [`PatchCard56Edit`] in memory (tango's
+/// apply_patch_card56_edit: list cap, MB budget, anti-cheat rebuild).
+pub fn apply_patch_card56_edit(loaded: &mut Loaded, edit: PatchCard56Edit) {
+    use tango_dataview::save::{PatchCard, PatchCardsView, PatchCardsViewMut};
+
+    let cards: Vec<PatchCard> = match loaded.save.view_patch_cards() {
+        Some(PatchCardsView::PatchCard56s(v)) => (0..v.count()).filter_map(|i| v.patch_card(i)).collect(),
+        _ => return,
+    };
+    let max = loaded.assets.num_patch_card56s();
+    let card_mb = |id: usize| loaded.assets.patch_card56(id).map(|c| c.mb() as u32).unwrap_or(0);
+    let enabled_mb = |list: &[PatchCard]| -> u32 { list.iter().filter(|c| c.enabled).map(|c| card_mb(c.id)).sum() };
+
+    let mut new_cards = cards.clone();
+    match edit {
+        PatchCard56Edit::AddCard { id } => {
+            if new_cards.len() >= max
+                || new_cards.iter().any(|c| c.id == id)
+                || enabled_mb(&new_cards) + card_mb(id) > MAX_PATCH_CARD56_MB
+            {
+                return;
+            }
+            new_cards.push(PatchCard { id, enabled: true });
+        }
+        PatchCard56Edit::RemoveCard { slot } => {
+            if slot >= new_cards.len() {
+                return;
+            }
+            new_cards.remove(slot);
+        }
+        PatchCard56Edit::MoveCard { from, to } => {
+            if from == to || from >= new_cards.len() || to >= new_cards.len() {
+                return;
+            }
+            let card = new_cards.remove(from);
+            new_cards.insert(to, card);
+        }
+        PatchCard56Edit::ClearAll => new_cards.clear(),
+    }
+
+    if let Some(PatchCardsViewMut::PatchCard56s(mut v)) = loaded.save.view_patch_cards_mut() {
+        // Grow to cover both lengths, rewrite, shrink (set_patch_card
+        // only writes below the current count).
+        v.set_count(cards.len().max(new_cards.len()));
+        for (slot, card) in new_cards.iter().enumerate() {
+            v.set_patch_card(slot, card.clone());
+        }
+        v.set_count(new_cards.len());
+        v.rebuild_anticheat();
+    }
+}
+
+/// A single BN4 patch-card edit (slot-based: every card belongs to one
+/// fixed catalog slot).
+#[derive(Debug, Clone)]
+pub enum PatchCard4Edit {
+    /// Install card `id` into its own catalog slot, enabled.
+    AddCard { id: usize },
+    /// Clear catalog slot `slot`.
+    RemoveCard { slot: usize },
+    /// Toggle slot `slot` between enabled and disabled.
+    ToggleCard { slot: usize },
+    /// Clear every slot.
+    ClearAll,
+}
+
+/// Apply one staged [`PatchCard4Edit`] in memory.
+pub fn apply_patch_card4_edit(loaded: &mut Loaded, edit: PatchCard4Edit) {
+    use tango_dataview::save::{PatchCard, PatchCardsView, PatchCardsViewMut};
+
+    enum Op {
+        Set { slot: usize, card: Option<PatchCard> },
+        ClearAll,
+    }
+    let op = match edit {
+        PatchCard4Edit::AddCard { id } => {
+            let slot = loaded.assets.patch_card4(id).map(|c| c.slot() as usize);
+            match slot {
+                Some(slot) if slot < NUM_PATCH_CARD4_SLOTS => Op::Set {
+                    slot,
+                    card: Some(PatchCard { id, enabled: true }),
+                },
+                _ => return,
+            }
+        }
+        PatchCard4Edit::RemoveCard { slot } => Op::Set { slot, card: None },
+        PatchCard4Edit::ToggleCard { slot } => {
+            let current = match loaded.save.view_patch_cards() {
+                Some(PatchCardsView::PatchCard4s(v)) => v.patch_card(slot),
+                _ => None,
+            };
+            match current {
+                Some(c) => Op::Set {
+                    slot,
+                    card: Some(PatchCard {
+                        id: c.id,
+                        enabled: !c.enabled,
+                    }),
+                },
+                None => return,
+            }
+        }
+        PatchCard4Edit::ClearAll => Op::ClearAll,
+    };
+
+    if let Some(PatchCardsViewMut::PatchCard4s(mut v)) = loaded.save.view_patch_cards_mut() {
+        match op {
+            Op::Set { slot, card } => {
+                v.set_patch_card(slot, card);
+            }
+            Op::ClearAll => {
+                for slot in 0..NUM_PATCH_CARD4_SLOTS {
+                    v.set_patch_card(slot, None);
+                }
+            }
+        }
+        v.rebuild_anticheat();
+    }
+}
+
+/// A single auto-battle-data edit (the deck derives from per-chip use
+/// counts).
+#[derive(Debug, Clone)]
+pub enum AutoBattleDataEdit {
+    SetUseCount { id: usize, count: usize },
+    SetSecondaryUseCount { id: usize, count: usize },
+    ClearAll,
+}
+
+/// Apply one staged [`AutoBattleDataEdit`] in memory, then rebuild the
+/// materialized deck so the preview reflects it live.
+pub fn apply_auto_battle_data_edit(loaded: &mut Loaded, edit: AutoBattleDataEdit) {
+    match edit {
+        AutoBattleDataEdit::SetUseCount { id, count } => {
+            if let Some(mut v) = loaded.save.view_auto_battle_data_mut() {
+                v.set_chip_use_count(id, count);
+            }
+        }
+        AutoBattleDataEdit::SetSecondaryUseCount { id, count } => {
+            if let Some(mut v) = loaded.save.view_auto_battle_data_mut() {
+                v.set_secondary_chip_use_count(id, count);
+            }
+        }
+        AutoBattleDataEdit::ClearAll => {
+            // Zero the counts themselves - clearing only the cache would
+            // be undone by the next rebuild.
+            let num_chips = loaded.assets.num_chips();
+            if let Some(mut v) = loaded.save.view_auto_battle_data_mut() {
+                for id in 0..num_chips {
+                    v.set_chip_use_count(id, 0);
+                    v.set_secondary_chip_use_count(id, 0);
+                }
+            }
+        }
+    }
+    let assets = loaded.assets.as_ref();
+    if let Some(mut v) = loaded.save.view_auto_battle_data_mut() {
+        v.rebuild_materialized(assets);
+    }
 }

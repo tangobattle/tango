@@ -28,7 +28,7 @@ pub struct Editability {
 
 impl Editability {
     /// Probe every section's writable view once (pure capability check).
-    fn probe(save: &mut (dyn tango_dataview::save::Save + Send + Sync)) -> Self {
+    pub(crate) fn probe(save: &mut (dyn tango_dataview::save::Save + Send + Sync)) -> Self {
         // One statement per probe so each mutable borrow drops before
         // the next.
         let folder = save.view_chips_mut().is_some();
