@@ -1005,62 +1005,103 @@ fn scrub_thumbnail_overlay<'a>(session: &'a ActiveSession, state: &'a State) -> 
     )
 }
 
-/// Canvas dimensions of one input-display pad.
-const PAD_W: f32 = 92.0;
-const PAD_H: f32 = 40.0;
+/// Width of one input-display pad: the D-pad cross (three 24px cells
+/// + 2px seams) plus the B/A cluster, spread to the edges by the
+/// shoulders' `horizontal_space`.
+const PAD_W: f32 = 160.0;
 
-/// One side's recorded pad state, drawn as a compact GBA layout:
-/// L/R shoulder bars in the top corners, the d-pad cross left,
-/// Start/Select pills center, B/A buttons on the console's diagonal
-/// right. Every control is always drawn — pressed keys fill with
-/// palette primary, released ones with a faint text tint — so the
+/// One side's recorded pad state, drawn as the settings input pane's
+/// console face ([`crate::tabs::settings`]) at ~0.7 scale, minus the
+/// screen: chevron D-pad cross left with the Start/Select pills below
+/// it, B/A round keys on the console's diagonal right, L/R shoulder
+/// pills capping the top corners. Non-interactive twin of that pane's
+/// `key_btn`/`gba_key`: every key is always drawn on the shared
+/// molded plate, and a pressed key mixes toward palette primary —
+/// the same lit chrome as the settings' live binding test — so the
 /// chip never changes size or layout as inputs flip.
-struct InputPad {
-    joyflags: u16,
-}
+fn input_pad<'a>(joyflags: u16) -> Element<'a, Message> {
+    use mgba::input::keys;
+    let cell = 24.0;
+    let key = move |content: Element<'a, Message>, bit: u32, w: f32, h: f32, radius: iced::border::Radius| {
+        let lit = joyflags as u32 & bit != 0;
+        container(container(content).center(Fill))
+            .width(Length::Fixed(w))
+            .height(Length::Fixed(h))
+            .style(move |theme: &iced::Theme| {
+                let plate = widgets::gba_key_plate(theme);
+                iced::widget::container::Style {
+                    background: Some(iced::Background::Color(if lit {
+                        widgets::mix(plate, theme.palette().primary, 0.55)
+                    } else {
+                        plate
+                    })),
+                    text_color: Some(theme.palette().text),
+                    border: iced::Border {
+                        radius,
+                        width: 1.0,
+                        color: theme.extended_palette().background.strong.color,
+                    },
+                    ..Default::default()
+                }
+            })
+    };
 
-impl<M> canvas::Program<M> for InputPad {
-    type State = ();
+    let arm = |icon: Icon, bit: u32, corners: [f32; 4]| {
+        key(
+            icon.widget().size(11.0).into(),
+            bit,
+            cell,
+            cell,
+            iced::border::Radius {
+                top_left: corners[0],
+                top_right: corners[1],
+                bottom_right: corners[2],
+                bottom_left: corners[3],
+            },
+        )
+    };
+    let corner = || iced::widget::Space::new().width(cell).height(cell);
+    // Inert hub: `bit` 0 is never held, which is exactly the
+    // settings hub's always-plate look.
+    let hub = key(iced::widget::Space::new().into(), 0, cell, cell, 3.0.into());
+    let (ro, ri) = (7.0, 3.0);
+    let dpad = column![
+        row![corner(), arm(Icon::ChevronUp, keys::UP, [ro, ro, ri, ri]), corner()].spacing(2),
+        row![
+            arm(Icon::ChevronLeft, keys::LEFT, [ro, ri, ri, ro]),
+            hub,
+            arm(Icon::ChevronRight, keys::RIGHT, [ri, ro, ro, ri]),
+        ]
+        .spacing(2),
+        row![corner(), arm(Icon::ChevronDown, keys::DOWN, [ri, ri, ro, ro]), corner()].spacing(2),
+    ]
+    .spacing(2);
 
-    fn draw(
-        &self,
-        _state: &(),
-        renderer: &Renderer,
-        theme: &Theme,
-        bounds: Rectangle,
-        _cursor: mouse::Cursor,
-    ) -> Vec<canvas::Geometry> {
-        use mgba::input::keys;
-        let mut frame = Frame::new(renderer, bounds.size());
-        let text = theme.palette().text;
-        let lit = theme.palette().primary;
-        let mut fill = |path: &Path, bit: u32| {
-            let color = if self.joyflags as u32 & bit != 0 {
-                lit
-            } else {
-                iced::Color { a: 0.15, ..text }
-            };
-            frame.fill(path, color);
-        };
-        let rect = |x: f32, y: f32, w: f32, h: f32| {
-            Path::rounded_rectangle(Point::new(x, y), iced::Size::new(w, h), 2.0.into())
-        };
-        // Shoulder bars cap the chip's far corners, like the console's.
-        fill(&rect(2.0, 2.0, 18.0, 5.0), keys::L);
-        fill(&rect(PAD_W - 20.0, 2.0, 18.0, 5.0), keys::R);
-        // D-pad cross, centered on (21, 23).
-        fill(&rect(16.5, 9.5, 9.0, 9.0), keys::UP);
-        fill(&rect(16.5, 27.5, 9.0, 9.0), keys::DOWN);
-        fill(&rect(7.5, 18.5, 9.0, 9.0), keys::LEFT);
-        fill(&rect(25.5, 18.5, 9.0, 9.0), keys::RIGHT);
-        // Start over Select, center.
-        fill(&rect(44.0, 17.0, 12.0, 5.0), keys::START);
-        fill(&rect(44.0, 26.0, 12.0, 5.0), keys::SELECT);
-        // B low-left, A high-right — the GBA's diagonal.
-        fill(&Path::circle(Point::new(66.0, 26.0), 6.5), keys::B);
-        fill(&Path::circle(Point::new(80.0, 17.0), 6.5), keys::A);
-        vec![frame.into_geometry()]
-    }
+    let pill = |label: &'static str, bit: u32| key(text(label).size(8.0).into(), bit, 44.0, 14.0, 999.0.into());
+    let start_select = column![
+        row![iced::widget::Space::new().width(8.0), pill("START", keys::START)],
+        pill("SELECT", keys::SELECT),
+    ]
+    .spacing(4);
+    let left_col = column![dpad, start_select].spacing(10);
+
+    let ab_d = 32.0;
+    let ab = row![
+        column![
+            iced::widget::Space::new().height(14.0),
+            key(text("B").size(TEXT_BODY).into(), keys::B, ab_d, ab_d, 999.0.into()),
+        ],
+        column![
+            key(text("A").size(TEXT_BODY).into(), keys::A, ab_d, ab_d, 999.0.into()),
+            iced::widget::Space::new().height(14.0),
+        ],
+    ]
+    .spacing(6);
+
+    let shoulder = |label: &'static str, bit: u32| key(text(label).size(9.0).into(), bit, 56.0, 15.0, 999.0.into());
+    let shoulders = row![shoulder("L", keys::L), horizontal_space(), shoulder("R", keys::R)];
+    let face = row![left_col, horizontal_space(), ab].align_y(Alignment::Center);
+    column![shoulders, face].spacing(8).width(Length::Fixed(PAD_W)).into()
 }
 
 /// Replay-only: the input display overlay — one pad chip per side,
@@ -1084,16 +1125,13 @@ fn input_display_overlay<'a>(
     let (local, remote) = r.input_at(playhead_tick(r, state));
     let (local_nick, remote_nick) = r.nicknames();
     let chip = |joyflags: u16, nick: &str| -> Element<'a, Message> {
-        let pad = Canvas::new(InputPad { joyflags })
-            .width(Length::Fixed(PAD_W))
-            .height(Length::Fixed(PAD_H));
         // The caption renders even when the nickname is empty so the
         // two chips always match heights.
         let name = text(nick.to_string())
             .size(TEXT_CAPTION)
             .style(widgets::muted_text_style);
-        container(column![pad, name].spacing(2).align_x(Alignment::Center))
-            .padding([6, 10])
+        container(column![input_pad(joyflags), name].spacing(4).align_x(Alignment::Center))
+            .padding([8, 10])
             .style(hud_chip_plate)
             .into()
     };

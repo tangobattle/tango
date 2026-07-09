@@ -1548,6 +1548,20 @@ pub fn modal_layer<'a, M: Clone + 'a>(
     iced::widget::stack![Element::from(backdrop), Element::from(placement)].into()
 }
 
+/// The molded-plastic fill the drawn-GBA console keys share (and the
+/// D-pad hub) — a step above the surrounding plate so keys read as
+/// raised. Used by the settings input pane's console and the replay
+/// input display, which mirrors its layout.
+pub fn gba_key_plate(theme: &Theme) -> iced::Color {
+    let p = theme.extended_palette();
+    let bg = theme.palette().background;
+    if p.is_dark {
+        mix(bg, theme.palette().text, 0.16)
+    } else {
+        mix(bg, iced::Color::WHITE, 0.65)
+    }
+}
+
 /// Shared chunky-button kernel — gradient fill in the given accent
 /// color, accent-tinted glow shadow, hover/press/disabled state
 /// math. The shape (radius, border width, white text) is identical

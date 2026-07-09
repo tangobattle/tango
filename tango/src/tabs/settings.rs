@@ -844,7 +844,7 @@ fn settings_input<'a>(
         .width(Length::Fixed(cell))
         .height(Length::Fixed(cell))
         .style(|theme: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(gba_key_plate(theme))),
+            background: Some(iced::Background::Color(widgets::gba_key_plate(theme))),
             border: iced::Border {
                 radius: 4.0.into(),
                 width: 1.0,
@@ -1079,18 +1079,6 @@ fn mapped_key_label(lang: &LanguageIdentifier, k: input::MappedKey) -> String {
     }
 }
 
-/// The molded-plastic fill console keys share (and the D-pad hub) —
-/// a step above the shell plate so keys read as raised.
-fn gba_key_plate(theme: &iced::Theme) -> iced::Color {
-    let p = theme.extended_palette();
-    let bg = theme.palette().background;
-    if p.is_dark {
-        widgets::mix(bg, theme.palette().text, 0.16)
-    } else {
-        widgets::mix(bg, iced::Color::WHITE, 0.65)
-    }
-}
-
 /// Chrome for one console key. `selected` = the screen is showing
 /// this key (primary ring); `lit` = a bound physical input is held
 /// right now (primary flush, the live binding test). Both are
@@ -1103,7 +1091,7 @@ fn gba_key(
     move |theme: &iced::Theme, status: button::Status| {
         let p = theme.extended_palette();
         let primary = theme.palette().primary;
-        let plate = gba_key_plate(theme);
+        let plate = widgets::gba_key_plate(theme);
         let base = match status {
             button::Status::Hovered => widgets::mix(plate, iced::Color::WHITE, if p.is_dark { 0.12 } else { 0.2 }),
             button::Status::Pressed => widgets::mix(plate, iced::Color::BLACK, 0.10),
