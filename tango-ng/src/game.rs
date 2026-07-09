@@ -46,6 +46,11 @@ pub fn detect(rom: &[u8]) -> Option<GameRef> {
     tango_gamesupport::detect(&GAMES, rom)
 }
 
+/// Look a registered game up by `(family, variant)`.
+pub fn find_by_family_and_variant(family: &str, variant: u8) -> Option<GameRef> {
+    tango_gamesupport::find_by_family_and_variant(&GAMES, family, variant)
+}
+
 /// Per-family Fluent bundles, one per `(family id, locale)`, built from
 /// each enabled family's `translations`. Keyed by the family id then by
 /// language.
@@ -115,4 +120,17 @@ pub fn display_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> St
     family_str(family, lang, &format!("variant-{variant}"))
         .or_else(|| family_str(family, lang, "name"))
         .unwrap_or_else(|| format!("{family} v{variant}"))
+}
+
+/// Localized match-type label for a (mode, subtype) pair (e.g.
+/// "Single" / "Triple"). Falls back to "M.S" for pairs the locale
+/// doesn't name.
+pub fn match_type_name(
+    lang: &unic_langid::LanguageIdentifier,
+    family: &str,
+    match_type: u8,
+    match_subtype: u8,
+) -> String {
+    family_str(family, lang, &format!("match-type-{match_type}-{match_subtype}"))
+        .unwrap_or_else(|| format!("{match_type}.{match_subtype}"))
 }

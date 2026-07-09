@@ -16,6 +16,7 @@ mod bnlc;
 mod config;
 mod game;
 mod input;
+mod replays;
 mod rom;
 mod save;
 mod session;
@@ -32,6 +33,7 @@ enum Event {
     ScanDone {
         roms: HashMap<rom::GameRef, Vec<u8>>,
         saves: HashMap<rom::GameRef, Vec<save::ScannedSave>>,
+        replays: Vec<replays::ScannedReplay>,
     },
 }
 
@@ -44,8 +46,34 @@ struct State {
     game_rows: Vec<rom::GameRef>,
     /// Saves shown for the selected game, parallel to the `saves` model rows.
     save_rows: Vec<save::ScannedSave>,
+    /// Replays shown in the list, parallel to the `replays` model rows.
+    replay_rows: Vec<replays::ScannedReplay>,
     session: Option<session::SinglePlayerSession>,
     joyflags: u32,
+}
+
+/// One replay-list row's display strings: "timestamp" over
+/// "game @ code · p1 vs p2", like the tango replay list.
+fn replay_row(lang: &unic_langid::LanguageIdentifier, replay: &replays::ScannedReplay) -> ReplayRow {
+    let md = &replay.metadata;
+    let game_name = md
+        .local_side
+        .as_ref()
+        .and_then(|s| s.game_info.as_ref())
+        .map(|gi| {
+            u8::try_from(gi.rom_variant)
+                .ok()
+                .and_then(|v| game::find_by_family_and_variant(&gi.rom_family, v))
+                .map(|g| game::display_name(lang, g))
+                .unwrap_or_else(|| gi.rom_family.clone())
+        })
+        .unwrap_or_else(|| "?".to_string());
+    let local = md.local_side.as_ref().map(|s| s.nickname.as_str()).unwrap_or("?");
+    let remote = md.remote_side.as_ref().map(|s| s.nickname.as_str()).unwrap_or("?");
+    ReplayRow {
+        line1: replays::format_ts(md.ts, "%Y-%m-%d %H:%M:%S").into(),
+        line2: format!("{} @ {}  ·  {} vs {}", game_name, md.link_code, local, remote).into(),
+    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -80,6 +108,7 @@ fn main() -> anyhow::Result<()> {
         saves: HashMap::new(),
         game_rows: Vec::new(),
         save_rows: Vec::new(),
+        replay_rows: Vec::new(),
         session: None,
         joyflags: 0,
     }));
@@ -91,10 +120,12 @@ fn main() -> anyhow::Result<()> {
         let st = state.borrow();
         let roms_path = st.config.roms_path();
         let saves_path = st.config.saves_path();
+        let replays_path = st.config.replays_path();
         std::thread::spawn(move || {
             let roms = rom::scan_roms(&roms_path);
             let saves = save::scan_saves(&saves_path);
-            let _ = tx.send(Event::ScanDone { roms, saves });
+            let replays = replays::scan_replays(&replays_path);
+            let _ = tx.send(Event::ScanDone { roms, saves, replays });
         });
     }
     app.set_status("Scanning…".into());
@@ -129,6 +160,53 @@ fn main() -> anyhow::Result<()> {
                 })
                 .collect();
             app.set_saves(ModelRc::new(VecModel::from(rows)));
+        }
+    });
+
+    app.on_replay_selected({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |index| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let st = state.borrow();
+            let Some(replay) = st.replay_rows.get(index as usize) else {
+                return;
+            };
+            let md = &replay.metadata;
+            let lang = &st.config.language;
+
+            let mut lines: Vec<SharedString> = Vec::new();
+            lines.push(replays::format_rel_path(&st.config.replays_path(), &replay.path).into());
+            lines.push(replays::format_ts(md.ts, "%Y-%m-%d %H:%M:%S %z").into());
+            if let Some(gi) = md.local_side.as_ref().and_then(|s| s.game_info.as_ref()) {
+                let game_name = u8::try_from(gi.rom_variant)
+                    .ok()
+                    .and_then(|v| game::find_by_family_and_variant(&gi.rom_family, v))
+                    .map(|g| game::display_name(lang, g))
+                    .unwrap_or_else(|| gi.rom_family.clone());
+                let game_line = match &gi.patch {
+                    Some(patch) => format!("{} + {} v{}", game_name, patch.name, patch.version),
+                    None => game_name,
+                };
+                lines.push(game_line.into());
+                lines.push(
+                    game::match_type_name(lang, &gi.rom_family, md.match_type as u8, md.match_subtype as u8).into(),
+                );
+            }
+            let local = md.local_side.as_ref().map(|s| s.nickname.as_str()).unwrap_or("?");
+            let remote = md.remote_side.as_ref().map(|s| s.nickname.as_str()).unwrap_or("?");
+            lines.push(format!("{local} vs {remote}").into());
+
+            app.set_replay_title(
+                replay
+                    .path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string()
+                    .into(),
+            );
+            app.set_replay_detail(ModelRc::new(VecModel::from(lines)));
         }
     });
 
@@ -220,7 +298,7 @@ fn main() -> anyhow::Result<()> {
 
             while let Ok(event) = rx.try_recv() {
                 match event {
-                    Event::ScanDone { roms, saves } => {
+                    Event::ScanDone { roms, saves, replays } => {
                         let mut st = state.borrow_mut();
                         st.roms = roms;
                         st.saves = saves;
@@ -235,18 +313,24 @@ fn main() -> anyhow::Result<()> {
                         st.game_rows = game_rows;
                         st.save_rows.clear();
 
+                        let replay_rows: Vec<ReplayRow> = replays.iter().map(|r| replay_row(&lang, r)).collect();
+                        st.replay_rows = replays;
+
                         app.set_status(
                             format!(
-                                "{} games · {} saves",
+                                "{} games · {} saves · {} replays",
                                 st.game_rows.len(),
-                                st.saves.values().map(|v| v.len()).sum::<usize>()
+                                st.saves.values().map(|v| v.len()).sum::<usize>(),
+                                st.replay_rows.len()
                             )
                             .into(),
                         );
                         app.set_selected_game(-1);
                         app.set_selected_save(-1);
+                        app.set_selected_replay(-1);
                         app.set_games(ModelRc::new(VecModel::from(rows)));
                         app.set_saves(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
+                        app.set_replays(ModelRc::new(VecModel::from(replay_rows)));
                     }
                 }
             }
@@ -285,6 +369,12 @@ fn main() -> anyhow::Result<()> {
                     }
                     30 => snapshot(&app, &dir.join("ui-play-selected.png")),
                     40 => app.set_active_tab(1),
+                    45 => {
+                        if !state.borrow().replay_rows.is_empty() {
+                            app.set_selected_replay(0);
+                            app.invoke_replay_selected(0);
+                        }
+                    }
                     50 => snapshot(&app, &dir.join("ui-replays.png")),
                     60 => app.set_active_tab(3),
                     70 => {

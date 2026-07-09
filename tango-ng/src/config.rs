@@ -61,4 +61,8 @@ impl Config {
     pub fn saves_path(&self) -> std::path::PathBuf {
         self.data_path.join("saves")
     }
+
+    pub fn replays_path(&self) -> std::path::PathBuf {
+        self.data_path.join("replays")
+    }
 }

@@ -8497,6 +8497,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytemuck",
+ "chrono",
  "cpal",
  "directories-next",
  "env_logger 0.9.3",
@@ -8517,6 +8518,7 @@ dependencies = [
  "tango-gamesupport-bn5",
  "tango-gamesupport-bn6",
  "tango-gamesupport-exe45",
+ "tango-pvp",
  "thiserror 1.0.69",
  "unic-langid",
  "walkdir",

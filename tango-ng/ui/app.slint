@@ -314,6 +314,12 @@ component Scanline inherits Rectangle {
     background: @linear-gradient(90deg, #4caf5000 0%, #4caf50b3 30%, #4caf50b3 70%, #4caf5000 100%);
 }
 
+// One replay-list row's display strings.
+export struct ReplayRow {
+    line1: string,
+    line2: string,
+}
+
 export component AppWindow inherits Window {
     title: "Tango";
     preferred-width: 960px;
@@ -327,6 +333,9 @@ export component AppWindow inherits Window {
 
     in property <[string]> games: [];
     in property <[string]> saves: [];
+    in property <[ReplayRow]> replays: [];
+    in property <string> replay-title: "";
+    in property <[string]> replay-detail: [];
     in property <image> frame;
     in property <bool> in-session: false;
     in property <string> status: "";
@@ -337,8 +346,10 @@ export component AppWindow inherits Window {
     in-out property <int> settings-section: 0;
     in-out property <int> selected-game: -1;
     in-out property <int> selected-save: -1;
+    in-out property <int> selected-replay: -1;
 
     callback game-selected(int);
+    callback replay-selected(int);
     callback play-clicked();
     callback stop-clicked();
     callback key-event(string, bool);
@@ -598,13 +609,98 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     spacing: 8px;
                     vertical-stretch: 1;
-                    PanePrompt {
+
+                    // replay list (fixed 360, like tango's)
+                    Pane {
                         width: 360px;
-                        message: "Replay list coming soon";
+                        if root.replays.length == 0 : Text {
+                            width: 100%;
+                            height: 100%;
+                            text: "No replays found";
+                            color: Theme.text-muted;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        if root.replays.length > 0 : ListView {
+                            x: 4px;
+                            y: 8px;
+                            width: parent.width - 8px;
+                            height: parent.height - 16px;
+                            for entry[i] in root.replays : Rectangle {
+                                height: 48px;
+                                border-radius: 4px;
+                                background: root.selected-replay == i
+                                    ? @linear-gradient(180deg, #ffd23d 0%, #e6b520 100%)
+                                    : (rta.has-hover
+                                        ? #ffffff0d
+                                        : (Math.mod(i, 2) == 0 ? transparent : #ffffff05));
+                                rta := TouchArea {
+                                    clicked => {
+                                        root.selected-replay = i;
+                                        root.replay-selected(i);
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-left: 10px;
+                                    padding-right: 10px;
+                                    padding-top: 6px;
+                                    padding-bottom: 6px;
+                                    Text {
+                                        text: entry.line1;
+                                        font-size: 13px;
+                                        color: root.selected-replay == i ? Theme.ink : Theme.text;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: entry.line2;
+                                        font-size: 11px;
+                                        color: root.selected-replay == i ? Theme.ink : Theme.text-muted;
+                                        overflow: elide;
+                                    }
+                                }
+                            }
+                        }
                     }
-                    PanePrompt {
+
+                    // detail
+                    if root.selected-replay < 0 : PanePrompt {
                         horizontal-stretch: 1;
                         message: "Select a replay to view its details";
+                    }
+                    if root.selected-replay >= 0 : Pane {
+                        horizontal-stretch: 1;
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 8px;
+                            alignment: start;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text {
+                                    text: root.replay-title;
+                                    font-size: 18px;
+                                    color: Theme.text;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                }
+                                PrimaryButton {
+                                    glyph: Glyphs.play;
+                                    label: "Watch";
+                                    enabled: false;
+                                    pad-v: 4px;
+                                    pad-h: 10px;
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 3px;
+                                for line in root.replay-detail : Text {
+                                    text: line;
+                                    font-size: 13px;
+                                    color: Theme.text-muted;
+                                    overflow: elide;
+                                }
+                            }
+                        }
                     }
                 }
             }
