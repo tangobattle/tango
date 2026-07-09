@@ -40,9 +40,9 @@ mod netplay;
 #[allow(dead_code)]
 mod navicust;
 mod patch;
-// PvP session (Phase A port). Parts of its surface (frame-delay
-// slider, reconnect overlay, median latency) wait on the Phase B
-// lobby/session UI.
+// PvP session. The in-session HUD consumes the telemetry + reconnect
+// surface; dead_code remains allowed for the corners the UI still
+// doesn't read (raw latency, parts of the reconnect plumbing).
 #[allow(dead_code)]
 mod pvp;
 mod randomcode;
@@ -155,6 +155,12 @@ fn apply_i18n(app: &AppWindow, config: &config::Config) {
     i18n.set_welcome_open_folder(t!(lang, "welcome-open-folder").into());
     i18n.set_welcome_roms_needed(t!(lang, "welcome-roms-needed").into());
     i18n.set_welcome_rescan(t!(lang, "rescan").into());
+    // PvP in-session overlays
+    i18n.set_pvp_disconnect(t!(lang, "playback-disconnect").into());
+    i18n.set_pvp_disconnect_prompt(t!(lang, "playback-disconnect-prompt").into());
+    i18n.set_pvp_disconnect_detail(t!(lang, "playback-disconnect-detail").into());
+    i18n.set_pvp_reconnecting(t!(lang, "playback-reconnecting").into());
+    i18n.set_pvp_reconnecting_detail(t!(lang, "playback-reconnecting-detail").into());
     // lobby band
     i18n.set_lobby_you(t!(lang, "play-you").into());
     i18n.set_lobby_opponent(t!(lang, "play-opponent").into());
@@ -3015,11 +3021,52 @@ fn main() -> anyhow::Result<()> {
             st.held.clear_keys();
             st.speed_up = false;
             app.set_in_session(false);
+            app.set_session_confirm_exit(false);
+            app.set_pvp_reconnecting(false);
             app.set_frame(Image::default());
         }
     };
 
-    app.on_stop_clicked(end_session.clone());
+    // Tearing a *live* PvP match down is gated behind the confirm
+    // modal (session/view's disconnect modal); everything else — and a
+    // match that's already wound down — closes immediately.
+    let request_end_session = {
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        let end_session = end_session.clone();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let confirm = {
+                let st = state.borrow();
+                matches!(&st.session, Some(ActiveSession::Pvp(p)) if !p.is_ended())
+            };
+            if confirm && !app.get_session_confirm_exit() {
+                app.set_session_confirm_exit(true);
+            } else {
+                end_session();
+            }
+        }
+    };
+
+    app.on_stop_clicked(request_end_session.clone());
+    app.on_exit_confirmed(end_session.clone());
+
+    app.on_pvp_frame_delay_changed({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |value| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let st = state.borrow();
+            let frames = tango_pvp::battle::MIN_FRAME_DELAY
+                + (value.clamp(0.0, 1.0)
+                    * (tango_pvp::battle::MAX_FRAME_DELAY - tango_pvp::battle::MIN_FRAME_DELAY) as f32)
+                    .round() as u32;
+            if let Some(ActiveSession::Pvp(p)) = &st.session {
+                p.set_frame_delay(frames);
+            }
+            app.set_pvp_frame_delay_label(frames.to_string().into());
+        }
+    });
 
     // Key events arrive from two FocusScopes that never coexist: the
     // session view's (in-session) and the Input settings pane's (which
@@ -3028,22 +3075,25 @@ fn main() -> anyhow::Result<()> {
     app.on_key_event({
         let state = state.clone();
         let app_weak = app.as_weak();
-        let end_session = end_session.clone();
+        let request_end_session = request_end_session.clone();
         move |text, pressed| {
             let Some(app) = app_weak.upgrade() else { return };
             let mut st = state.borrow_mut();
             let Some(c) = text.as_str().chars().next() else { return };
             // Escape is not bindable: it cancels an in-flight binding
-            // capture, else ends the session (both hardcoded).
+            // capture, peels the disconnect-confirm modal, else asks to
+            // end the session (a live PvP match confirms first).
             if c == char::from(slint::platform::Key::Escape) {
                 if !pressed {
                     return;
                 }
                 if st.input_capture.take().is_some() {
                     refresh_input_ui(&app, &mut st);
+                } else if app.get_session_confirm_exit() {
+                    app.set_session_confirm_exit(false);
                 } else if st.session.is_some() {
                     drop(st);
-                    end_session();
+                    request_end_session();
                 }
                 return;
             }
@@ -3367,6 +3417,19 @@ fn main() -> anyhow::Result<()> {
                         let mut st = state.borrow_mut();
                         match *result {
                             Ok(session) => {
+                                // Seed the telemetry footer's frame-delay
+                                // slider from the session's live value
+                                // (set once; per-tick writes would fight
+                                // the user's drag).
+                                let fd = session.frame_delay();
+                                app.set_pvp_frame_delay(
+                                    (fd - tango_pvp::battle::MIN_FRAME_DELAY) as f32
+                                        / (tango_pvp::battle::MAX_FRAME_DELAY - tango_pvp::battle::MIN_FRAME_DELAY)
+                                            as f32,
+                                );
+                                app.set_pvp_frame_delay_label(fd.to_string().into());
+                                app.set_session_confirm_exit(false);
+                                app.set_pvp_reconnecting(false);
                                 st.session = Some(ActiveSession::Pvp(Box::new(session)));
                                 st.held.clear_keys();
                                 st.speed_up = false;
@@ -3415,14 +3478,20 @@ fn main() -> anyhow::Result<()> {
                     // PvpSession::is_ended); actual teardown happens below,
                     // after this borrow drops.
                     pvp_ended = p.is_ended();
-                    let mut line = format!("PvP · P{} · {:.1} tps", p.local_player_index() + 1, p.tps());
-                    if let Some(l) = p.latency_raw() {
+                    // Telemetry footer: player tag, tps, median ping,
+                    // skew/lead — the condensed session/view HUD.
+                    let mut line = format!("P{} · {:.1} tps", p.local_player_index() + 1, p.tps());
+                    if let Some(l) = p.latency() {
                         line += &format!(" · {} ms", l.as_millis());
                     }
                     if let Some(rs) = p.round_stats() {
                         line += &format!(" · skew {:+} · lead {:+}", rs.skew, rs.lead);
                     }
-                    app.set_status(line.into());
+                    app.set_pvp_stats(line.into());
+                    // Reconnect overlay state (the session pauses the
+                    // emulator itself while the transport rebuilds).
+                    app.set_pvp_reconnecting(p.is_reconnecting());
+                    app.set_pvp_reconnect_progress(p.reconnect_progress().unwrap_or(0.0));
                 }
                 if let ActiveSession::Replay(replay) = session {
                     // Draw the playhead where an in-flight seek is headed

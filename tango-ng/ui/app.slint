@@ -144,6 +144,12 @@ export global I18n {
     in-out property <string> welcome-open-folder: "Open ROMs folder";
     in-out property <string> welcome-roms-needed: "Add at least one ROM before continuing.";
     in-out property <string> welcome-rescan: "Rescan";
+    // PvP in-session overlays
+    in-out property <string> pvp-disconnect: "Disconnect";
+    in-out property <string> pvp-disconnect-prompt: "Disconnect from this match?";
+    in-out property <string> pvp-disconnect-detail: "You will end the match with your opponent.";
+    in-out property <string> pvp-reconnecting: "Connection lost";
+    in-out property <string> pvp-reconnecting-detail: "Reconnecting…";
     // settings
     in-out property <string> settings-general: "General";
     in-out property <string> settings-graphics: "Graphics";
@@ -1073,8 +1079,20 @@ export component AppWindow inherits Window {
     in property <[CoverLogo]> cover-logos: [];
     in property <float> cover-lane-w: 0.0;
     in property <float> cover-lane-h: 0.0;
-    // 0 = singleplayer, 1 = replay (shows the transport bar).
+    // 0 = singleplayer, 1 = replay (transport bar), 2 = PvP (telemetry
+    // footer + reconnect/disconnect overlays).
     in property <int> session-kind: 0;
+    // ---- PvP in-session HUD ----
+    in property <string> pvp-stats: "";
+    // Normalized slider position; frames = 2 + value × 8 (main.rs
+    // clamps to tango-pvp's [2, 10]) — same mapping as the lobby's.
+    in-out property <float> pvp-frame-delay: 0.0;
+    in property <string> pvp-frame-delay-label: "2";
+    in property <bool> pvp-reconnecting: false;
+    // Fraction of the reconnect give-up window remaining (1 → 0).
+    in property <float> pvp-reconnect-progress: 0.0;
+    // The disconnect confirm modal (X / Escape on a live match).
+    in-out property <bool> session-confirm-exit: false;
     // ---- save viewer (read-only) ----
     // True while a Loaded is built for the current selection; false
     // clears the whole viewer (deselect / rescan).
@@ -1237,6 +1255,12 @@ export component AppWindow inherits Window {
     callback scrub-committed(float);
     callback stop-clicked();
     callback key-event(string, bool);
+    // PvP in-session HUD.
+    callback pvp-frame-delay-changed(float);
+    // The confirm modal's / reconnect overlay's Disconnect: tear the
+    // session down for real (stop-clicked only *requests*, and gets
+    // gated behind the modal while a match is live).
+    callback exit-confirmed();
     callback nickname-changed(string);
     callback language-selected(int);
     callback theme-selected(int);
@@ -3488,6 +3512,56 @@ export component AppWindow inherits Window {
             }
         }
 
+        // PvP telemetry footer (session/view/telemetry.rs, condensed):
+        // player tag + tps + ping + skew/lead, and the live frame-delay
+        // slider (purely local presentation lag).
+        if root.session-kind == 2 : TechPlate {
+            r: 10px;
+            x: (parent.width - self.width) / 2;
+            y: parent.height - self.height - 12px;
+            width: min(parent.width - 24px, 680px);
+            height: 48px;
+            background: #000000b3;
+            border-width: 1px;
+            border-color: #ffffff1a;
+
+            HorizontalLayout {
+                padding: 8px;
+                padding-left: 14px;
+                padding-right: 14px;
+                spacing: 12px;
+                Text {
+                    text: root.pvp-stats;
+                    font-size: 13px;
+                    color: #4caf50;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: I18n.lobby-frame-delay;
+                    font-size: 11px;
+                    color: Theme.text-muted;
+                    vertical-alignment: center;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    ChunkySlider {
+                        width: 140px;
+                        value <=> root.pvp-frame-delay;
+                        changed(v) => { root.pvp-frame-delay-changed(v); }
+                    }
+                }
+                Text {
+                    width: 18px;
+                    text: root.pvp-frame-delay-label;
+                    font-size: 13px;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
         // Quiet corner close chip (tear-down), top-right.
         TechPlate {
             r: 10px;
@@ -3508,6 +3582,103 @@ export component AppWindow inherits Window {
                     text: Glyphs.x;
                     font-size: 13px;
                     color: xta.has-hover ? #ff5252 : Theme.text-muted;
+                }
+            }
+        }
+
+        // Mid-match reconnect overlay (session/view's reconnect modal):
+        // the emulator is paused while the transport rebuilds; the bar
+        // depletes toward the give-up deadline.
+        if root.pvp-reconnecting : Rectangle {
+            width: 100%;
+            height: 100%;
+            background: #000000aa;
+            VerticalLayout {
+                alignment: center;
+                HorizontalLayout {
+                    alignment: center;
+                    Panel {
+                        width: 380px;
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 12px;
+                            Text {
+                                text: I18n.pvp-reconnecting;
+                                font-size: 17px;
+                                color: Theme.text;
+                            }
+                            Text {
+                                text: I18n.pvp-reconnecting-detail;
+                                font-size: 13px;
+                                color: Theme.text-muted;
+                            }
+                            Rectangle {
+                                height: 6px;
+                                border-radius: 3px;
+                                background: #ffffff14;
+                                Rectangle {
+                                    x: 0;
+                                    height: 100%;
+                                    width: parent.width * max(0.0, min(1.0, root.pvp-reconnect-progress));
+                                    border-radius: 3px;
+                                    background: #4caf50;
+                                }
+                            }
+                            HorizontalLayout {
+                                alignment: end;
+                                DangerTextButton {
+                                    label: I18n.pvp-disconnect;
+                                    clicked => { root.exit-confirmed(); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Disconnect confirm (session/view's disconnect modal): gates
+        // tearing down a live match from the X chip / Escape.
+        if root.session-confirm-exit : Rectangle {
+            width: 100%;
+            height: 100%;
+            background: #000000aa;
+            // Swallow clicks so the session beneath stays inert.
+            TouchArea {}
+            VerticalLayout {
+                alignment: center;
+                HorizontalLayout {
+                    alignment: center;
+                    Panel {
+                        width: 380px;
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 12px;
+                            Text {
+                                text: I18n.pvp-disconnect-prompt;
+                                font-size: 17px;
+                                color: Theme.text;
+                            }
+                            Text {
+                                text: I18n.pvp-disconnect-detail;
+                                font-size: 13px;
+                                color: Theme.text-muted;
+                                wrap: word-wrap;
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: end;
+                                NeutralTextButton {
+                                    label: I18n.save-action-cancel;
+                                    clicked => { root.session-confirm-exit = false; }
+                                }
+                                DangerTextButton {
+                                    label: I18n.pvp-disconnect;
+                                    clicked => { root.exit-confirmed(); }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
