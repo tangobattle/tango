@@ -354,6 +354,9 @@ struct State {
     edit_tags: Vec<usize>,
     /// The folder editor's library values, parallel to its model rows.
     edit_library_values: Vec<(usize, tango_dataview::save::ChipCode)>,
+    /// The patch-card editor's library values (card ids), parallel to
+    /// its model rows.
+    edit_pc_values: Vec<usize>,
     /// The library pane's filter text.
     edit_library_filter: String,
     /// The new-save form's template picker values, parallel to the
@@ -1077,6 +1080,22 @@ fn push_folder_editor(app: &AppWindow, st: &mut State) {
     let (rows, values) = loaded::folder_library(l, &st.edit_library_filter);
     st.edit_library_values = values;
     sv.set_edit_library_rows(ModelRc::new(VecModel::from(rows)));
+}
+
+/// Push the patch-card editor's panes: the (staged) registered list —
+/// the read-only lines model doubles as the editor's left pane — plus
+/// the card library.
+fn push_pc_editor(app: &AppWindow, st: &mut State) {
+    let lang = st.config.language.clone();
+    let Some(l) = st.loaded.as_ref() else { return };
+    if let Some((kind, lines)) = loaded::patch_card_lines(&lang, l) {
+        app.global::<SaveView>().set_patch_cards_kind(kind);
+        app.global::<SaveView>().set_patch_card_lines(ModelRc::new(VecModel::from(lines)));
+    }
+    let (rows, values) = loaded::patch_card_library(l, &st.edit_library_filter);
+    st.edit_pc_values = values;
+    app.global::<SaveView>()
+        .set_edit_library_rows(ModelRc::new(VecModel::from(rows)));
 }
 
 /// The game's BNLC bezel art as a Slint image, cached per game: the
@@ -2164,6 +2183,7 @@ pub fn run() -> anyhow::Result<()> {
         lobby_ui: LobbySnapshot::default(),
         edit_tags: Vec::new(),
         edit_library_values: Vec::new(),
+        edit_pc_values: Vec::new(),
         edit_library_filter: String::new(),
         save_template_values: Vec::new(),
         save_new_auto_default: None,
@@ -2930,6 +2950,7 @@ pub fn run() -> anyhow::Result<()> {
                 .unwrap_or_default();
             st.edit_library_filter.clear();
             push_folder_editor(&app, &mut st);
+            push_pc_editor(&app, &mut st);
             app.global::<SaveView>().set_editing(true);
         }
     });
@@ -3104,11 +3125,84 @@ pub fn run() -> anyhow::Result<()> {
         move || {
             let Some(app) = app_weak.upgrade() else { return };
             let mut st = state.borrow_mut();
-            st.edit_tags.clear();
-            if let Some(l) = st.loaded.as_mut() {
-                save_edit::apply_chip_edit(l, save_edit::ChipEdit::ClearFolder);
+            match save_active_kind(&app) {
+                1 => {
+                    st.edit_tags.clear();
+                    if let Some(l) = st.loaded.as_mut() {
+                        save_edit::apply_chip_edit(l, save_edit::ChipEdit::ClearFolder);
+                    }
+                    push_folder_editor(&app, &mut st);
+                }
+                2 => {
+                    if let Some(l) = st.loaded.as_mut() {
+                        save_edit::apply_patch_card56_edit(l, save_edit::PatchCard56Edit::ClearAll);
+                        save_edit::apply_patch_card4_edit(l, save_edit::PatchCard4Edit::ClearAll);
+                    }
+                    push_pc_editor(&app, &mut st);
+                }
+                _ => {}
             }
-            push_folder_editor(&app, &mut st);
+        }
+    });
+
+    app.global::<SaveView>().on_pc_edit_add({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |index| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Some(id) = usize::try_from(index).ok().and_then(|i| st.edit_pc_values.get(i)).copied() else {
+                return;
+            };
+            if let Some(l) = st.loaded.as_mut() {
+                save_edit::apply_patch_card56_edit(l, save_edit::PatchCard56Edit::AddCard { id });
+                save_edit::apply_patch_card4_edit(l, save_edit::PatchCard4Edit::AddCard { id });
+            }
+            push_pc_editor(&app, &mut st);
+        }
+    });
+
+    app.global::<SaveView>().on_pc_edit_remove({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |slot| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Ok(slot) = usize::try_from(slot) else { return };
+            if let Some(l) = st.loaded.as_mut() {
+                save_edit::apply_patch_card56_edit(l, save_edit::PatchCard56Edit::RemoveCard { slot });
+                save_edit::apply_patch_card4_edit(l, save_edit::PatchCard4Edit::RemoveCard { slot });
+            }
+            push_pc_editor(&app, &mut st);
+        }
+    });
+
+    app.global::<SaveView>().on_pc_edit_move({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |slot, delta| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Ok(from) = usize::try_from(slot) else { return };
+            let Ok(to) = usize::try_from(from as i64 + delta as i64) else { return };
+            if let Some(l) = st.loaded.as_mut() {
+                save_edit::apply_patch_card56_edit(l, save_edit::PatchCard56Edit::MoveCard { from, to });
+            }
+            push_pc_editor(&app, &mut st);
+        }
+    });
+
+    app.global::<SaveView>().on_pc_edit_toggle({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |slot| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Ok(slot) = usize::try_from(slot) else { return };
+            if let Some(l) = st.loaded.as_mut() {
+                save_edit::apply_patch_card4_edit(l, save_edit::PatchCard4Edit::ToggleCard { slot });
+            }
+            push_pc_editor(&app, &mut st);
         }
     });
 
@@ -3119,7 +3213,10 @@ pub fn run() -> anyhow::Result<()> {
             let Some(app) = app_weak.upgrade() else { return };
             let mut st = state.borrow_mut();
             st.edit_library_filter = text.to_lowercase();
-            push_folder_editor(&app, &mut st);
+            match save_active_kind(&app) {
+                2 => push_pc_editor(&app, &mut st),
+                _ => push_folder_editor(&app, &mut st),
+            }
         }
     });
 

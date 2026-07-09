@@ -1096,6 +1096,11 @@ export global SaveView {
     callback edit-toggle-tag(int);
     callback edit-clear();
     callback edit-filter-edited(string);
+    // Patch-card editor: library index / registered slot arguments.
+    callback pc-edit-add(int);
+    callback pc-edit-remove(int);
+    callback pc-edit-move(int, int);
+    callback pc-edit-toggle(int);
     callback folder-grouped-toggled(bool);
     // Copy the active section as TSV text / the NaviCust grid as an
     // image (tango's CopyTab/CopyTabImage).
@@ -1193,7 +1198,7 @@ component SaveViewBody inherits VerticalLayout {
                     toggled(g) => { SaveView.folder-grouped-toggled(g); }
                 }
             }
-            if SaveView.editable && SaveView.save-kind == 1 && !SaveView.editing : VerticalLayout {
+            if SaveView.editable && (SaveView.save-kind == 1 || SaveView.save-kind == 2) && !SaveView.editing : VerticalLayout {
                 alignment: center;
                 NeutralTextButton {
                     label: I18n.save-edit;
@@ -1348,7 +1353,7 @@ component SaveViewBody inherits VerticalLayout {
         // ability / bug badge columns; BN4 rows are
         // the six catalog slots with purple bug
         // lines beneath.
-        if SaveView.save-kind == 2 : Pane {
+        if SaveView.save-kind == 2 && !SaveView.editing : Pane {
             vertical-stretch: 1;
             ListView {
                 x: 1px;
@@ -1440,6 +1445,182 @@ component SaveViewBody inherits VerticalLayout {
                                             color: black;
                                         }
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Patch-card editor: the registered list (same flattened
+        // lines the viewer renders, with per-card controls on each
+        // first line) beside the card library. BN4's slot toggle
+        // rides the same controls; its adds replace their own slot.
+        if SaveView.save-kind == 2 && SaveView.editing : HorizontalLayout {
+            vertical-stretch: 1;
+            spacing: 8px;
+            Pane {
+                horizontal-stretch: 1;
+                ListView {
+                    x: 1px;
+                    y: 4px;
+                    width: parent.width - 2px;
+                    height: parent.height - 8px;
+                    for line in SaveView.patch-card-lines : Rectangle {
+                        height: 30px;
+                        background: Math.mod(line.zebra, 2) == 0 ? transparent : Theme.row-alt;
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 6px;
+                            Text {
+                                width: 30px;
+                                text: line.idx;
+                                font-size: 11px;
+                                color: Theme.text-muted;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                horizontal-stretch: 1;
+                                text: line.bug-plain ? line.bug : line.name;
+                                font-size: 13px;
+                                color: line.bug-plain
+                                    ? #b55ade
+                                    : (line.enabled ? Theme.text : Theme.text-muted);
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            if line.first && line.mb != "" : Text {
+                                text: line.mb;
+                                font-size: 10px;
+                                color: Theme.text-muted;
+                                vertical-alignment: center;
+                            }
+                            if line.first && SaveView.patch-cards-kind == 1 && line.name != "" : Rectangle {
+                                width: 34px;
+                                height: 22px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 6px;
+                                background: line.enabled ? #29a121 : Theme.btn-plate;
+                                border-width: 1px;
+                                border-color: Theme.input-border;
+                                TouchArea {
+                                    clicked => { SaveView.pc-edit-toggle(line.zebra); }
+                                }
+                                Text {
+                                    width: 100%;
+                                    height: 100%;
+                                    text: "ON";
+                                    font-size: 10px;
+                                    color: line.enabled ? white : Theme.text-muted;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            if line.first && SaveView.patch-cards-kind == 0 : Rectangle {
+                                width: 24px;
+                                height: 22px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 6px;
+                                background: pcup.has-hover ? Theme.hover : Theme.btn-plate;
+                                border-width: 1px;
+                                border-color: Theme.input-border;
+                                pcup := TouchArea {
+                                    clicked => { SaveView.pc-edit-move(line.zebra, -1); }
+                                }
+                                LIcon {
+                                    width: 100%;
+                                    height: 100%;
+                                    text: Glyphs.chevron-up;
+                                    font-size: 11px;
+                                    color: Theme.text-muted;
+                                }
+                            }
+                            if line.first && SaveView.patch-cards-kind == 0 : Rectangle {
+                                width: 24px;
+                                height: 22px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 6px;
+                                background: pcdn.has-hover ? Theme.hover : Theme.btn-plate;
+                                border-width: 1px;
+                                border-color: Theme.input-border;
+                                pcdn := TouchArea {
+                                    clicked => { SaveView.pc-edit-move(line.zebra, 1); }
+                                }
+                                LIcon {
+                                    width: 100%;
+                                    height: 100%;
+                                    text: Glyphs.chevron-down;
+                                    font-size: 11px;
+                                    color: Theme.text-muted;
+                                }
+                            }
+                            if line.first && (SaveView.patch-cards-kind == 0 || line.name != "") : Rectangle {
+                                width: 24px;
+                                height: 22px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 6px;
+                                background: pcrm.has-hover ? #ff525233 : Theme.btn-plate;
+                                border-width: 1px;
+                                border-color: pcrm.has-hover ? #ff5252aa : Theme.input-border;
+                                pcrm := TouchArea {
+                                    clicked => { SaveView.pc-edit-remove(line.zebra); }
+                                }
+                                LIcon {
+                                    width: 100%;
+                                    height: 100%;
+                                    text: Glyphs.x;
+                                    font-size: 10px;
+                                    color: pcrm.has-hover ? #ff8a8a : Theme.text-muted;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Pane {
+                horizontal-stretch: 1;
+                VerticalLayout {
+                    padding: 8px;
+                    spacing: 6px;
+                    ChunkyInput {
+                        placeholder: I18n.folder-edit-search;
+                        edited(t) => { SaveView.edit-filter-edited(t); }
+                    }
+                    ListView {
+                        vertical-stretch: 1;
+                        for row[i] in SaveView.edit-library-rows : Rectangle {
+                            height: 30px;
+                            background: pcadd.has-hover && row.addable
+                                ? Theme.hover
+                                : (Math.mod(i, 2) == 0 ? transparent : Theme.row-alt);
+                            pcadd := TouchArea {
+                                clicked => {
+                                    if (row.addable) {
+                                        SaveView.pc-edit-add(i);
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                spacing: 8px;
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: row.name;
+                                    font-size: 13px;
+                                    color: row.addable ? Theme.text : Theme.text-muted;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    width: 48px;
+                                    text: row.mb;
+                                    font-size: 11px;
+                                    color: Theme.text-muted;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: right;
                                 }
                             }
                         }

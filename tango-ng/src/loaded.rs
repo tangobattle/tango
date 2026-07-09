@@ -789,6 +789,78 @@ pub fn folder_library(loaded: &Loaded, filter: &str) -> (Vec<ChipRow>, Vec<(usiz
     (rows, values)
 }
 
+/// The patch-card editor's library: unregistered cards for BN5/BN6
+/// (addable while the list has room and the 80MB budget fits), or the
+/// full slot catalog for BN4 (labelled by slot, always addable — an
+/// add replaces its own slot). Rows reuse ChipRow (icon empty); the
+/// parallel values are card ids.
+pub fn patch_card_library(loaded: &Loaded, filter: &str) -> (Vec<ChipRow>, Vec<usize>) {
+    let assets = loaded.assets.as_ref();
+    let filter = filter.to_lowercase();
+    let mut rows = Vec::new();
+    let mut values = Vec::new();
+    match loaded.save.view_patch_cards() {
+        Some(tango_dataview::save::PatchCardsView::PatchCard56s(v)) => {
+            let registered: std::collections::HashSet<usize> =
+                (0..v.count()).filter_map(|i| v.patch_card(i).map(|c| c.id)).collect();
+            let enabled_mb: u32 = (0..v.count())
+                .filter_map(|i| v.patch_card(i))
+                .filter(|c| c.enabled)
+                .filter_map(|c| assets.patch_card56(c.id).map(|i| i.mb() as u32))
+                .sum();
+            let full = v.count() >= assets.num_patch_card56s();
+            for id in 0..assets.num_patch_card56s() {
+                if registered.contains(&id) {
+                    continue;
+                }
+                let Some(info) = assets.patch_card56(id) else { continue };
+                let Some(name) = info.name() else { continue };
+                if name.trim().is_empty() {
+                    continue;
+                }
+                if !filter.is_empty() && !name.to_lowercase().contains(&filter) {
+                    continue;
+                }
+                let mb = info.mb();
+                let mut row = make_chip_row(loaded, None, None, &GroupedChip::default());
+                row.name = name.into();
+                row.mb = format!("{mb}MB").into();
+                row.is_empty = false;
+                row.addable = !full && enabled_mb + mb as u32 <= crate::save_edit::MAX_PATCH_CARD56_MB;
+                rows.push(row);
+                values.push(id);
+            }
+        }
+        Some(tango_dataview::save::PatchCardsView::PatchCard4s(_)) => {
+            const SLOTS: [&str; 6] = ["0A", "0B", "0C", "0D", "0E", "0F"];
+            for id in 0..assets.num_patch_card4s() {
+                let Some(info) = assets.patch_card4(id) else { continue };
+                let Some(name) = info.name() else { continue };
+                if name.trim().is_empty() {
+                    continue;
+                }
+                if !filter.is_empty() && !name.to_lowercase().contains(&filter) {
+                    continue;
+                }
+                let slot = info.slot() as usize;
+                let mut row = make_chip_row(loaded, None, None, &GroupedChip::default());
+                row.name = format!(
+                    "{} {:03} {name}",
+                    SLOTS.get(slot).copied().unwrap_or("??"),
+                    id
+                )
+                .into();
+                row.is_empty = false;
+                row.addable = true;
+                rows.push(row);
+                values.push(id);
+            }
+        }
+        None => {}
+    }
+    (rows, values)
+}
+
 // ----- copy-as-text renderings (tango's save_view tab_as_text) -----
 
 /// The active section as TSV text for the clipboard, keyed by the
