@@ -87,6 +87,10 @@ enum Event {
     /// `netplay::State::update` by the timer below (which intercepts
     /// `MatchHandoffReady` itself, mirroring tango's App).
     Netplay(netplay::Message),
+    /// Replay video render progress (frames emitted / total).
+    ExportProgress { current: usize, total: usize },
+    /// Replay video render finished (the written path) or failed.
+    ExportDone { result: Result<std::path::PathBuf, String> },
     /// The async PvP build kicked off by `MatchHandoffReady` resolved
     /// (tango's `Message::PvpSessionBuilt`). Ok installs the session;
     /// Err surfaces in the status line. Either way the netplay lobby
@@ -158,6 +162,13 @@ fn apply_i18n(app: &AppWindow, config: &config::Config) {
     i18n.set_welcome_open_folder(t!(lang, "welcome-open-folder").into());
     i18n.set_welcome_roms_needed(t!(lang, "welcome-roms-needed").into());
     i18n.set_welcome_rescan(t!(lang, "rescan").into());
+    // replay export
+    i18n.set_replays_export(t!(lang, "replays-export").into());
+    i18n.set_replays_export_cancel(t!(lang, "replays-export-cancel").into());
+    i18n.set_replays_export_open(t!(lang, "replays-export-open").into());
+    i18n.set_replays_export_scale(t!(lang, "replays-export-scale").into());
+    i18n.set_replays_export_disable_bgm(t!(lang, "replays-export-disable-bgm").into());
+    i18n.set_replays_export_twosided(t!(lang, "replays-export-twosided").into());
     // PvP in-session overlays
     i18n.set_pvp_disconnect(t!(lang, "playback-disconnect").into());
     i18n.set_pvp_disconnect_prompt(t!(lang, "playback-disconnect-prompt").into());
@@ -289,6 +300,11 @@ struct State {
     /// When the active session started — the rich-presence elapsed
     /// timer's anchor.
     session_start: Option<std::time::SystemTime>,
+    /// In-flight replay render: its cancel handle (Cancel button) —
+    /// None when idle. The kill also terminates ffmpeg children.
+    export_canceller: Option<tango_pvp::replay::export::Canceller>,
+    /// The last successful render's output (the Open button).
+    export_output: Option<std::path::PathBuf>,
     /// Discord rich-presence client (background auto-reconnect task);
     /// the timer pushes an activity snapshot each tick (deduped inside).
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1770,6 +1786,8 @@ fn main() -> anyhow::Result<()> {
         save_new_auto_default: None,
         pending_select_save: None,
         session_start: None,
+        export_canceller: None,
+        export_output: None,
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         discord: discord::Client::new(tokio_runtime.handle().clone()),
     }));
@@ -1778,6 +1796,7 @@ fn main() -> anyhow::Result<()> {
     // into the UI by the frame timer below. Rc so the data-path setting
     // can retrigger it.
     let stats_tx = tx.clone();
+    let export_tx = tx.clone();
     let pvp_tx = tx.clone();
     let patch_update_tx = tx.clone();
     let autoupdate_tx = tx.clone();
@@ -2253,6 +2272,143 @@ fn main() -> anyhow::Result<()> {
             st.config.save();
             app.set_settings_nickname(nickname.into());
             app.set_welcome_visible(false);
+        }
+    });
+
+    // ---- replay video export (tabs/replays/export.rs, condensed:
+    // whole-replay render, no per-round mask / save-as dialog — the
+    // output lands beside the replay as <stem>-render.<ext>) ----
+
+    app.on_replay_export_scale_edited({
+        let app_weak = app.as_weak();
+        move |value| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let scale = (value.clamp(0.0, 1.0) * 10.0).round() as u32;
+            app.set_replay_export_scale_label(if scale == 0 {
+                "lossless".into()
+            } else {
+                format!("{scale}x").into()
+            });
+        }
+    });
+
+    app.on_replay_export_start({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            if st.export_canceller.is_some() {
+                return;
+            }
+            let Some(path) = st.replay_detail_path.clone() else { return };
+            // Resolve both sides' ROMs up front (cheap; scanned bytes +
+            // BPS reapply); the decode + render run on their own thread.
+            let metadata = match st.replay_rows.iter().find(|r| r.path == path) {
+                Some(r) => r.metadata.clone(),
+                None => return,
+            };
+            let patches_path = st.config.patches_path();
+            let prep = (|| -> anyhow::Result<_> {
+                let (lg, lr) = resolve_replay_rom(&st.roms, &patches_path, metadata.local_side.as_ref())?;
+                let (rg, rr) = resolve_replay_rom(&st.roms, &patches_path, metadata.remote_side.as_ref())?;
+                Ok((lg, lr, rg, rr))
+            })();
+            let (local_game, local_rom, remote_game, remote_rom) = match prep {
+                Ok(p) => p,
+                Err(e) => {
+                    let lang = &st.config.language;
+                    app.set_replay_export_status(t!(lang, "replays-export-error", error = format!("{e}")).into());
+                    return;
+                }
+            };
+            let scale = (app.get_replay_export_scale().clamp(0.0, 1.0) * 10.0).round() as u32;
+            let disable_bgm = app.get_replay_export_mute();
+            let twosided = app.get_replay_export_twosided();
+            let output = path.with_file_name(format!(
+                "{}-render.{}",
+                path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
+                if scale == 0 { "mkv" } else { "mp4" }
+            ));
+            let canceller = tango_pvp::replay::export::Canceller::default();
+            st.export_canceller = Some(canceller.clone());
+            st.export_output = None;
+            app.set_replay_export_has_output(false);
+            app.set_replay_export_status(String::new().into());
+            app.set_replay_export_progress(0.0);
+            app.set_replay_exporting(true);
+            let tx = export_tx.clone();
+            // Dedicated OS thread: the export is fully synchronous
+            // (std::process ffmpeg pipes), like tango's export thread.
+            std::thread::Builder::new()
+                .name("replay-export".to_string())
+                .spawn(move || {
+                    let result = (|| -> anyhow::Result<std::path::PathBuf> {
+                        let f = std::fs::File::open(&path)?;
+                        let replay = tango_pvp::replay::Replay::decode(f)?;
+                        let mut settings = tango_pvp::replay::export::Settings::default_with_scale(
+                            (scale > 0).then_some(scale as usize),
+                        );
+                        settings.disable_bgm = disable_bgm;
+                        let masks = vec![vec![true; replay.rounds.len()]];
+                        let cb_tx = tx.clone();
+                        let cb = move |current: usize, total: usize| {
+                            let _ = cb_tx.send(Event::ExportProgress { current, total });
+                        };
+                        if twosided {
+                            tango_pvp::replay::export::export_twosided(
+                                &local_rom,
+                                local_game.hooks,
+                                &remote_rom,
+                                remote_game.hooks,
+                                &[replay],
+                                &masks,
+                                &output,
+                                &settings,
+                                &canceller,
+                                cb,
+                            )?;
+                        } else {
+                            tango_pvp::replay::export::export(
+                                &local_rom,
+                                local_game.hooks,
+                                &remote_rom,
+                                remote_game.hooks,
+                                &[replay],
+                                &masks,
+                                &output,
+                                &settings,
+                                &canceller,
+                                cb,
+                            )?;
+                        }
+                        Ok(output)
+                    })();
+                    let _ = tx.send(Event::ExportDone {
+                        result: result.map_err(|e| format!("{e}")),
+                    });
+                })
+                .expect("spawn replay-export thread");
+        }
+    });
+
+    app.on_replay_export_cancel({
+        let state = state.clone();
+        move || {
+            let st = state.borrow();
+            if let Some(c) = &st.export_canceller {
+                c.kill();
+            }
+        }
+    });
+
+    app.on_replay_export_open({
+        let state = state.clone();
+        move || {
+            let st = state.borrow();
+            if let Some(out) = &st.export_output {
+                open_path(out);
+            }
         }
     });
 
@@ -3443,6 +3599,31 @@ fn main() -> anyhow::Result<()> {
                                 .into(),
                             );
                             app.set_replay_detail(ModelRc::new(VecModel::from(lines)));
+                        }
+                    }
+                    Event::ExportProgress { current, total } => {
+                        app.set_replay_export_progress(if total > 0 {
+                            current as f32 / total as f32
+                        } else {
+                            0.0
+                        });
+                    }
+                    Event::ExportDone { result } => {
+                        let mut st = state.borrow_mut();
+                        st.export_canceller = None;
+                        app.set_replay_exporting(false);
+                        let lang = &st.config.language;
+                        match result {
+                            Ok(path) => {
+                                app.set_replay_export_status(t!(lang, "replays-export-success").into());
+                                st.export_output = Some(path);
+                                app.set_replay_export_has_output(true);
+                            }
+                            Err(e) => {
+                                app.set_replay_export_status(
+                                    t!(lang, "replays-export-error", error = e).into(),
+                                );
+                            }
                         }
                     }
                     Event::PatchUpdateDone { result, background } => {
