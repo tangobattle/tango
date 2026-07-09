@@ -59,6 +59,56 @@ export global Glyphs {
     out property <string> wand: "\u{e246}";
 }
 
+// User-facing strings, pushed from Rust (main.rs `apply_i18n`) out of
+// tango's Fluent bundles at startup and on every language change. The
+// defaults are the current en-US values so previews and an unwired
+// `--ui-shot` still read fine. Strings tango has no Fluent key for
+// stay hardcoded at their use sites, marked "no tango key".
+export global I18n {
+    // top bar
+    in-out property <string> tab-play: "Play";
+    in-out property <string> tab-replays: "Replays";
+    // play tab
+    in-out property <string> play-no-game: "No game selected";
+    in-out property <string> play-no-patch: "No patch";
+    in-out property <string> play-no-save: "No save selected";
+    in-out property <string> play-play: "Play";
+    in-out property <string> play-fight: "Fight";
+    in-out property <string> play-link-code: "Link code";
+    in-out property <string> empty-no-roms-title: "No games found";
+    in-out property <string> empty-no-roms-body: "Put ROMs in your Tango roms folder and restart.";
+    in-out property <string> empty-select-title: "Select a game and save";
+    // lobby band
+    in-out property <string> lobby-you: "You";
+    in-out property <string> lobby-opponent: "Opponent";
+    in-out property <string> lobby-match-type: "Match type";
+    in-out property <string> lobby-frame-delay: "Frame delay";
+    in-out property <string> lobby-blind: "Blind setup";
+    in-out property <string> lobby-ready: "Ready";
+    in-out property <string> lobby-unready: "Unready";
+    in-out property <string> lobby-starting: "Starting…";
+    // replays tab
+    in-out property <string> replays-all-games: "All games";
+    in-out property <string> replays-opponent-placeholder: "Search opponents…";
+    in-out property <string> replays-select-prompt: "Select a replay to view its details";
+    in-out property <string> replays-watch: "Watch";
+    // settings
+    in-out property <string> settings-general: "General";
+    in-out property <string> settings-graphics: "Graphics";
+    in-out property <string> settings-audio: "Audio";
+    in-out property <string> settings-input: "Input";
+    in-out property <string> settings-netplay: "Netplay";
+    in-out property <string> settings-about: "About";
+    in-out property <string> settings-nickname: "Nickname";
+    in-out property <string> settings-language: "Language";
+    in-out property <string> settings-theme: "Theme";
+    in-out property <string> settings-theme-dark: "Dark";
+    in-out property <string> settings-theme-light: "Light";
+    in-out property <string> settings-data-folder: "Data folder (Enter to apply + rescan)";
+    in-out property <string> settings-volume: "Volume";
+    in-out property <string> settings-fractional: "Fractional scaling";
+}
+
 component LIcon inherits Text {
     font-family: "lucide";
     color: Theme.text;
@@ -332,8 +382,10 @@ component Picker inherits TechPlate {
 }
 
 // Chunky text input: plate + accent focus ring, accepts on Enter.
+// `placeholder` shows muted while the input is empty.
 component ChunkyInput inherits TechPlate {
     in-out property <string> text <=> ti.text;
+    in property <string> placeholder;
     in property <bool> enabled: true;
     callback accepted(string);
     callback edited(string);
@@ -343,6 +395,17 @@ component ChunkyInput inherits TechPlate {
     background: !root.enabled ? Theme.plate-input : Theme.btn-plate;
     border-width: 1px;
     border-color: ti.has-focus ? Theme.primary : Theme.input-border;
+
+    if ti.text == "" : Text {
+        x: 14px;
+        width: parent.width - 28px;
+        height: parent.height;
+        text: root.placeholder;
+        color: Theme.text-muted;
+        font-size: 13px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
 
     ti := TextInput {
         x: 14px;
@@ -673,13 +736,13 @@ export component AppWindow inherits Window {
                 }
                 PillTab {
                     glyph: Glyphs.gamepad;
-                    label: "Play";
+                    label: I18n.tab-play;
                     active: root.active-tab == 0;
                     clicked => { root.active-tab = 0; }
                 }
                 PillTab {
                     glyph: Glyphs.film;
-                    label: "Replays";
+                    label: I18n.tab-replays;
                     active: root.active-tab == 1;
                     clicked => { root.active-tab = 1; }
                 }
@@ -732,7 +795,7 @@ export component AppWindow inherits Window {
                                 spacing: 8px;
                                 Picker {
                                     model: root.games;
-                                    placeholder: "No game selected";
+                                    placeholder: I18n.play-no-game;
                                     current <=> root.selected-game;
                                     horizontal-stretch: 3;
                                     selected(i) => {
@@ -742,7 +805,7 @@ export component AppWindow inherits Window {
                                 }
                                 Picker {
                                     model: root.patches;
-                                    placeholder: "No patch";
+                                    placeholder: I18n.play-no-patch;
                                     enabled: root.selected-game >= 0 && root.patches.length > 1;
                                     current <=> root.selected-patch;
                                     horizontal-stretch: 2;
@@ -761,7 +824,7 @@ export component AppWindow inherits Window {
                                 NeutralButton { glyph: Glyphs.file-plus; enabled: false; }
                                 Picker {
                                     model: root.saves;
-                                    placeholder: "No save selected";
+                                    placeholder: I18n.play-no-save;
                                     current <=> root.selected-save;
                                     horizontal-stretch: 1;
                                 }
@@ -790,7 +853,7 @@ export component AppWindow inherits Window {
                                 }
                                 PrimaryButton {
                                     glyph: Glyphs.play;
-                                    label: "Play";
+                                    label: I18n.play-play;
                                     pad-v: 4px;
                                     pad-h: 10px;
                                     clicked => { root.play-clicked(); }
@@ -798,6 +861,7 @@ export component AppWindow inherits Window {
                             }
                         }
                         PanePrompt {
+                            // no tango key (tango-ng-only placeholder) — stays English
                             message: "Save viewer coming soon";
                             vertical-stretch: 1;
                         }
@@ -818,15 +882,16 @@ export component AppWindow inherits Window {
                                 }
                                 Text {
                                     text: root.games.length == 0
-                                        ? "No games found"
-                                        : "Select a game and save";
+                                        ? I18n.empty-no-roms-title
+                                        : I18n.empty-select-title;
                                     font-size: 18px;
                                     color: Theme.text;
                                     horizontal-alignment: center;
                                 }
                                 Text {
+                                    // The select-a-game body has no tango key — stays English.
                                     text: root.games.length == 0
-                                        ? "Put ROMs in your Tango roms folder and restart."
+                                        ? I18n.empty-no-roms-body
                                         : "Pick a game and one of its saves above, then hit Play.";
                                     font-size: 11px;
                                     color: Theme.text-muted;
@@ -860,11 +925,12 @@ export component AppWindow inherits Window {
                             height: 40px;
                             horizontal-stretch: 1;
                             text <=> root.link-code;
+                            placeholder: I18n.play-link-code;
                             accepted(t) => { root.fight-clicked(); }
                         }
                         PrimaryButton {
                             glyph: Glyphs.swords;
-                            label: "Fight";
+                            label: I18n.play-fight;
                             enabled: root.link-code != ""
                                 && root.selected-game >= 0
                                 && root.selected-save >= 0;
@@ -895,7 +961,7 @@ export component AppWindow inherits Window {
                                 spacing: 12px;
                                 LobbySideCard {
                                     horizontal-stretch: 1;
-                                    role-label: "You";
+                                    role-label: I18n.lobby-you;
                                     nickname: root.lobby-local-nickname;
                                     subline: root.lobby-local-subline;
                                     ready: root.lobby-local-ready;
@@ -912,7 +978,7 @@ export component AppWindow inherits Window {
                                 }
                                 LobbySideCard {
                                     horizontal-stretch: 1;
-                                    role-label: "Opponent";
+                                    role-label: I18n.lobby-opponent;
                                     nickname: root.lobby-remote-nickname;
                                     subline: root.lobby-remote-subline;
                                     ready: root.lobby-remote-ready;
@@ -959,7 +1025,7 @@ export component AppWindow inherits Window {
                                 if !root.lobby-failed : HorizontalLayout {
                                     spacing: 16px;
                                     Labeled {
-                                        label: "Match type";
+                                        label: I18n.lobby-match-type;
                                         Picker {
                                             width: 150px;
                                             model: root.lobby-match-types;
@@ -970,7 +1036,7 @@ export component AppWindow inherits Window {
                                         }
                                     }
                                     Labeled {
-                                        label: "Frame delay";
+                                        label: I18n.lobby-frame-delay;
                                         HorizontalLayout {
                                             spacing: 8px;
                                             VerticalLayout {
@@ -999,7 +1065,7 @@ export component AppWindow inherits Window {
                                     VerticalLayout {
                                         alignment: center;
                                         ChunkyCheckbox {
-                                            label: "Blind setup";
+                                            label: I18n.lobby-blind;
                                             enabled: !root.lobby-inert;
                                             checked <=> root.lobby-blind;
                                             toggled(b) => { root.blind-toggled(b); }
@@ -1013,8 +1079,8 @@ export component AppWindow inherits Window {
                                                 ? Glyphs.check
                                                 : (root.lobby-ready-state == 1 ? Glyphs.x : Glyphs.play);
                                             label: root.lobby-ready-state == 0
-                                                ? "Ready"
-                                                : (root.lobby-ready-state == 1 ? "Unready" : "Starting…");
+                                                ? I18n.lobby-ready
+                                                : (root.lobby-ready-state == 1 ? I18n.lobby-unready : I18n.lobby-starting);
                                             enabled: root.lobby-ready-enabled;
                                             pad-v: 8px;
                                             pad-h: 12px;
@@ -1047,13 +1113,14 @@ export component AppWindow inherits Window {
                         spacing: 8px;
                         Picker {
                             model: root.replay-game-filters;
-                            placeholder: "All games";
+                            placeholder: I18n.replays-all-games;
                             current <=> root.selected-replay-filter;
                             width: 220px;
                             selected(i) => { root.replay-filter-selected(i); }
                         }
                         ChunkyInput {
                             width: 220px;
+                            placeholder: I18n.replays-opponent-placeholder;
                             edited(t) => { root.replay-opponent-edited(t); }
                         }
                         Rectangle { horizontal-stretch: 1; }
@@ -1069,6 +1136,7 @@ export component AppWindow inherits Window {
                         if root.replays.length == 0 : Text {
                             width: 100%;
                             height: 100%;
+                            // no tango key ("no replays" state) — stays English
                             text: "No replays found";
                             color: Theme.text-muted;
                             horizontal-alignment: center;
@@ -1118,7 +1186,7 @@ export component AppWindow inherits Window {
                     // detail
                     if root.selected-replay < 0 : PanePrompt {
                         horizontal-stretch: 1;
-                        message: "Select a replay to view its details";
+                        message: I18n.replays-select-prompt;
                     }
                     if root.selected-replay >= 0 : Pane {
                         horizontal-stretch: 1;
@@ -1138,7 +1206,7 @@ export component AppWindow inherits Window {
                                 }
                                 PrimaryButton {
                                     glyph: Glyphs.play;
-                                    label: "Watch";
+                                    label: I18n.replays-watch;
                                     pad-v: 4px;
                                     pad-h: 10px;
                                     clicked => { root.watch-clicked(); }
@@ -1164,6 +1232,7 @@ export component AppWindow inherits Window {
                 height: 100%;
                 padding: 8px;
                 PanePrompt {
+                    // no tango key (tango-ng-only placeholder) — stays English
                     message: "Patches coming soon";
                 }
             }
@@ -1181,37 +1250,37 @@ export component AppWindow inherits Window {
                         spacing: 4px;
                         PillTab {
                             glyph: Glyphs.sliders;
-                            label: "General";
+                            label: I18n.settings-general;
                             active: root.settings-section == 0;
                             clicked => { root.settings-section = 0; }
                         }
                         PillTab {
                             glyph: Glyphs.monitor;
-                            label: "Graphics";
+                            label: I18n.settings-graphics;
                             active: root.settings-section == 1;
                             clicked => { root.settings-section = 1; }
                         }
                         PillTab {
                             glyph: Glyphs.volume;
-                            label: "Audio";
+                            label: I18n.settings-audio;
                             active: root.settings-section == 2;
                             clicked => { root.settings-section = 2; }
                         }
                         PillTab {
                             glyph: Glyphs.gamepad2;
-                            label: "Input";
+                            label: I18n.settings-input;
                             active: root.settings-section == 3;
                             clicked => { root.settings-section = 3; }
                         }
                         PillTab {
                             glyph: Glyphs.globe;
-                            label: "Netplay";
+                            label: I18n.settings-netplay;
                             active: root.settings-section == 4;
                             clicked => { root.settings-section = 4; }
                         }
                         PillTab {
                             glyph: Glyphs.info;
-                            label: "About";
+                            label: I18n.settings-about;
                             active: root.settings-section == 5;
                             clicked => { root.settings-section = 5; }
                         }
@@ -1225,7 +1294,7 @@ export component AppWindow inherits Window {
                         spacing: 14px;
                         alignment: start;
                         Labeled {
-                            label: "Nickname";
+                            label: I18n.settings-nickname;
                             ChunkyInput {
                                 width: 240px;
                                 text <=> root.settings-nickname;
@@ -1233,7 +1302,7 @@ export component AppWindow inherits Window {
                             }
                         }
                         Labeled {
-                            label: "Language";
+                            label: I18n.settings-language;
                             Picker {
                                 width: 240px;
                                 model: root.languages;
@@ -1243,17 +1312,17 @@ export component AppWindow inherits Window {
                             }
                         }
                         Labeled {
-                            label: "Theme";
+                            label: I18n.settings-theme;
                             Picker {
                                 width: 240px;
-                                model: ["Dark", "Light"];
+                                model: [I18n.settings-theme-dark, I18n.settings-theme-light];
                                 placeholder: "—";
                                 current <=> root.settings-theme;
                                 selected(i) => { root.theme-selected(i); }
                             }
                         }
                         Labeled {
-                            label: "Data folder (Enter to apply + rescan)";
+                            label: I18n.settings-data-folder;
                             ChunkyInput {
                                 width: 480px;
                                 text <=> root.settings-data-path;
@@ -1266,7 +1335,7 @@ export component AppWindow inherits Window {
                         spacing: 14px;
                         alignment: start;
                         ChunkyCheckbox {
-                            label: "Fractional scaling";
+                            label: I18n.settings-fractional;
                             checked <=> root.fractional;
                             toggled(b) => { root.fractional-changed(b); }
                         }
@@ -1276,7 +1345,7 @@ export component AppWindow inherits Window {
                         spacing: 14px;
                         alignment: start;
                         Labeled {
-                            label: "Volume";
+                            label: I18n.settings-volume;
                             HorizontalLayout {
                                 spacing: 8px;
                                 ChunkySlider {
@@ -1310,6 +1379,7 @@ export component AppWindow inherits Window {
                     if root.settings-section == 3 || root.settings-section == 4 : Text {
                         width: 100%;
                         height: 100%;
+                        // no tango key (tango-ng-only placeholder) — stays English
                         text: "Coming soon";
                         font-size: 13px;
                         color: Theme.text-muted;

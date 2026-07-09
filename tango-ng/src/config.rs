@@ -70,7 +70,7 @@ impl Default for Config {
                 .and_then(|d| d.document_dir().map(|p| p.to_path_buf()))
                 .unwrap_or_else(|| std::path::PathBuf::from("."))
                 .join("Tango"),
-            language: crate::game::FALLBACK_LANG,
+            language: crate::i18n::FALLBACK_LANG,
             nickname: None,
             theme: ThemeMode::default(),
             volume: 1.0,
@@ -113,6 +113,21 @@ fn config_path() -> Option<std::path::PathBuf> {
 
 impl Config {
     pub fn load() -> Self {
+        let mut config = Self::load_from_disk();
+        // Test-only override for verification drivers (`--ui-shot` in a
+        // given language): forces the UI language for this process
+        // without touching the config file. Note anything that later
+        // calls `save()` will persist it — don't set it interactively.
+        if let Ok(lang) = std::env::var("TANGO_NG_LANG") {
+            match lang.parse() {
+                Ok(lang) => config.language = lang,
+                Err(e) => log::warn!("TANGO_NG_LANG={lang:?}: {e:?}, ignoring"),
+            }
+        }
+        config
+    }
+
+    fn load_from_disk() -> Self {
         if let Some(path) = config_path() {
             match std::fs::read_to_string(&path) {
                 Ok(raw) => match serde_json::from_str(&raw) {

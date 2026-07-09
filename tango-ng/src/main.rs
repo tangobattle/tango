@@ -23,6 +23,7 @@ mod audio;
 mod bnlc;
 mod config;
 mod game;
+mod i18n;
 mod identity;
 mod input;
 // The net + netplay layers are ported; the direct /host + /connect
@@ -74,10 +75,67 @@ enum Event {
     PvpBuilt(Box<anyhow::Result<pvp::PvpSession>>),
 }
 
-/// Selectable UI languages, same set as tango's i18n::SUPPORTED_LANGS.
-const LANGS: &[&str] = &[
-    "en-US", "ja-JP", "zh-CN", "zh-TW", "de-DE", "es-419", "fr-FR", "nl-NL", "pt-BR", "ru-RU", "vi-VN",
-];
+/// Push every localized UI string into the Slint `I18n` global (plus
+/// the app-version line), from tango's Fluent bundles. Called once at
+/// startup and again on every language change; the data-path handler
+/// also re-calls it so the roms-path line under the no-ROMs empty
+/// state stays current. House rule: every t! call takes a literal key.
+///
+/// Strings the .slint marks "no tango key" intentionally have no
+/// counterpart here and stay English (tango-ng-only placeholders like
+/// "Save viewer coming soon" / "No replays found").
+fn apply_i18n(app: &AppWindow, config: &config::Config) {
+    let lang = &config.language;
+    let i18n = app.global::<I18n>();
+    // top bar
+    i18n.set_tab_play(t!(lang, "tab-play").into());
+    i18n.set_tab_replays(t!(lang, "tab-replays").into());
+    // play tab
+    i18n.set_play_no_game(t!(lang, "play-no-game").into());
+    i18n.set_play_no_patch(t!(lang, "play-no-patch").into());
+    i18n.set_play_no_save(t!(lang, "play-no-save").into());
+    i18n.set_play_play(t!(lang, "play-play").into());
+    i18n.set_play_fight(t!(lang, "play-fight").into());
+    i18n.set_play_link_code(t!(lang, "play-link-code").into());
+    i18n.set_empty_no_roms_title(t!(lang, "empty-no-roms-title").into());
+    // tango renders the body ("Drop your … .gba files into:") over the
+    // roms path; fold the path into the same string here.
+    i18n.set_empty_no_roms_body(format!("{}\n{}", t!(lang, "empty-no-roms-body"), config.roms_path().display()).into());
+    i18n.set_empty_select_title(t!(lang, "play-no-selection").into());
+    // lobby band
+    i18n.set_lobby_you(t!(lang, "play-you").into());
+    i18n.set_lobby_opponent(t!(lang, "play-opponent").into());
+    i18n.set_lobby_match_type(t!(lang, "lobby-match-type").into());
+    i18n.set_lobby_frame_delay(t!(lang, "settings-netplay-frame-delay").into());
+    i18n.set_lobby_blind(t!(lang, "lobby-blind-mine").into());
+    i18n.set_lobby_ready(t!(lang, "lobby-ready").into());
+    i18n.set_lobby_unready(t!(lang, "lobby-unready").into());
+    i18n.set_lobby_starting(t!(lang, "lobby-match-starting").into());
+    // replays tab
+    i18n.set_replays_all_games(t!(lang, "replays-filter-all-games").into());
+    i18n.set_replays_opponent_placeholder(t!(lang, "replays-filter-opponent-placeholder").into());
+    i18n.set_replays_select_prompt(t!(lang, "replays-select-prompt").into());
+    i18n.set_replays_watch(t!(lang, "replays-watch").into());
+    // settings
+    i18n.set_settings_general(t!(lang, "settings-section-general").into());
+    i18n.set_settings_graphics(t!(lang, "settings-section-graphics").into());
+    i18n.set_settings_audio(t!(lang, "settings-section-audio").into());
+    i18n.set_settings_input(t!(lang, "settings-section-input").into());
+    i18n.set_settings_netplay(t!(lang, "settings-section-netplay").into());
+    i18n.set_settings_about(t!(lang, "settings-section-about").into());
+    i18n.set_settings_nickname(t!(lang, "settings-nickname").into());
+    i18n.set_settings_language(t!(lang, "settings-language").into());
+    i18n.set_settings_theme(t!(lang, "settings-theme").into());
+    i18n.set_settings_theme_dark(t!(lang, "settings-theme-dark").into());
+    i18n.set_settings_theme_light(t!(lang, "settings-theme-light").into());
+    // tango-ng's "(Enter to apply + rescan)" hint has no key; the
+    // localized label is just "Data folder".
+    i18n.set_settings_data_folder(t!(lang, "settings-data-folder").into());
+    i18n.set_settings_volume(t!(lang, "settings-volume").into());
+    i18n.set_settings_fractional(t!(lang, "settings-fractional-scaling").into());
+    // about
+    app.set_app_version(t!(lang, "updater-current-version", version = format!("v{}", env!("CARGO_PKG_VERSION"))).into());
+}
 
 struct State {
     config: config::Config,
@@ -228,7 +286,7 @@ fn refresh_models(app: &AppWindow, st: &mut State) {
         .collect();
     families.sort();
     families.dedup();
-    let mut filter_model: Vec<SharedString> = vec!["All games".into()];
+    let mut filter_model: Vec<SharedString> = vec![SharedString::from(t!(&lang, "replays-filter-all-games"))];
     filter_model.extend(
         families
             .iter()
@@ -238,6 +296,7 @@ fn refresh_models(app: &AppWindow, st: &mut State) {
     app.set_replay_game_filters(ModelRc::new(VecModel::from(filter_model)));
     app.set_selected_replay_filter(0);
 
+    // tango-ng-only scan summary — no tango key; stays English.
     app.set_status(
         format!(
             "{} games · {} saves · {} replays",
@@ -551,7 +610,7 @@ fn lobby_verdict(st: &State) -> Option<netplay::compat::Verdict> {
 /// (tango's lobby.rs `side_card_subline`).
 fn side_card_subline(lang: &unic_langid::LanguageIdentifier, settings: &net::protocol::Settings) -> String {
     let Some(gi) = settings.game_info.as_ref() else {
-        return "(no game selected)".to_string();
+        return t!(lang, "lobby-no-game");
     };
     let mut subline = game::family_display_name(lang, &gi.family_and_variant.0);
     if let Some(p) = gi.patch.as_ref() {
@@ -564,19 +623,20 @@ fn side_card_subline(lang: &unic_langid::LanguageIdentifier, settings: &net::pro
     subline
 }
 
-/// Map netplay's error sentinels to user copy (the English strings of
-/// tango's `play-status-*` Fluent keys).
-fn lobby_failed_text(error: &str) -> String {
+/// Map netplay's error sentinels to user copy (tango's `play-status-*`
+/// Fluent keys).
+fn lobby_failed_text(lang: &unic_langid::LanguageIdentifier, error: &str) -> String {
     match error {
-        "peer-disconnected" => "The other player left.".to_string(),
-        "negotiate-expected-hello" => "The other player didn't send the expected handshake.".to_string(),
-        "negotiate-version-too-old" => "The other player is running an older version of Tango.".to_string(),
-        "negotiate-version-too-new" => "The other player is running a newer version of Tango.".to_string(),
-        other if other.starts_with("negotiate-other: ") => format!(
-            "An error occurred during negotiation: {}",
-            other.trim_start_matches("negotiate-other: ")
+        "peer-disconnected" => t!(lang, "play-status-peer-disconnected"),
+        "negotiate-expected-hello" => t!(lang, "play-status-negotiate-expected-hello"),
+        "negotiate-version-too-old" => t!(lang, "play-status-negotiate-version-too-old"),
+        "negotiate-version-too-new" => t!(lang, "play-status-negotiate-version-too-new"),
+        other if other.starts_with("negotiate-other: ") => t!(
+            lang,
+            "play-status-negotiate-failed",
+            error = other.trim_start_matches("negotiate-other: ")
         ),
-        other => format!("Connection failed: {other}"),
+        other => t!(lang, "play-status-failed", error = other),
     }
 }
 
@@ -662,7 +722,7 @@ fn compute_lobby_snapshot(app: &AppWindow, st: &State) -> (LobbySnapshot, Vec<(u
     // can't drift from the text).
     let verdict = lobby_verdict(st);
     let (status, tone) = match &st.netplay.phase {
-        netplay::Phase::Failed { error } => (lobby_failed_text(error), 2),
+        netplay::Phase::Failed { error } => (lobby_failed_text(lang, error), 2),
         netplay::Phase::Connecting {
             ident,
             waiting_for_opponent: false,
@@ -670,25 +730,23 @@ fn compute_lobby_snapshot(app: &AppWindow, st: &State) -> (LobbySnapshot, Vec<(u
             // Direct `/connect` dials straight at the peer — the
             // matchmaking copy would be wrong.
             if matches!(ident, netplay::LinkIdent::Direct(netplay::DirectRole::Connect { .. })) {
-                "Connecting to opponent…".to_string()
+                t!(lang, "play-status-direct-connecting")
             } else {
-                "Connecting to matchmaking server…".to_string()
+                t!(lang, "play-status-connecting")
             },
             0,
         ),
         netplay::Phase::Connecting {
             waiting_for_opponent: true,
             ..
-        } => ("Waiting for opponent…".to_string(), 0),
-        netplay::Phase::Negotiating { .. } => ("Negotiating…".to_string(), 0),
+        } => (t!(lang, "play-status-waiting-opponent"), 0),
+        netplay::Phase::Negotiating { .. } => (t!(lang, "play-status-negotiating"), 0),
         netplay::Phase::Lobby { .. } | netplay::Phase::Idle => match &verdict {
-            Some(netplay::compat::Verdict::Compatible) => ("Compatible — ready to play.".to_string(), 1),
-            Some(netplay::compat::Verdict::MissingGame) => ("One side hasn't picked a game.".to_string(), 2),
-            Some(netplay::compat::Verdict::DifferentVersions) => {
-                ("Game versions don't match (different patch / ROM).".to_string(), 2)
-            }
-            Some(netplay::compat::Verdict::DifferentMatchTypes) => ("Match type doesn't match.".to_string(), 2),
-            None => ("Exchanging settings…".to_string(), 0),
+            Some(netplay::compat::Verdict::Compatible) => (t!(lang, "lobby-compat-ok"), 1),
+            Some(netplay::compat::Verdict::MissingGame) => (t!(lang, "lobby-compat-missing-game"), 2),
+            Some(netplay::compat::Verdict::DifferentVersions) => (t!(lang, "lobby-compat-version-mismatch"), 2),
+            Some(netplay::compat::Verdict::DifferentMatchTypes) => (t!(lang, "lobby-compat-match-mismatch"), 2),
+            None => (t!(lang, "lobby-handshake"), 0),
         },
     };
 
@@ -708,20 +766,21 @@ fn compute_lobby_snapshot(app: &AppWindow, st: &State) -> (LobbySnapshot, Vec<(u
         .then(|| lobby.latency_counter.latest())
         .flatten()
     {
-        let ms = d.as_millis();
+        let ms = d.as_millis() as i64;
         match lobby.connection_kind {
-            Some(netplay::ConnectionKind::Direct) => format!("Ping (direct): {ms} ms"),
-            Some(netplay::ConnectionKind::Relayed) => format!("Ping (relayed): {ms} ms"),
-            None => format!("Ping: {ms} ms"),
+            Some(netplay::ConnectionKind::Direct) => t!(lang, "lobby-latency-direct", ms = ms),
+            Some(netplay::ConnectionKind::Relayed) => t!(lang, "lobby-latency-relayed", ms = ms),
+            None => t!(lang, "lobby-latency", ms = ms),
         }
     } else {
         match ident {
-            Some(netplay::LinkIdent::Matchmaking(code)) => format!("Link code: {code}"),
+            Some(netplay::LinkIdent::Matchmaking(code)) => t!(lang, "lobby-link-code", code = code.clone()),
             Some(netplay::LinkIdent::Direct(netplay::DirectRole::Host { port })) => {
-                format!("Hosting on UDP port: {port}")
+                // Stringified so Fluent can't locale-format the number.
+                t!(lang, "lobby-direct-host", port = port.to_string())
             }
             Some(netplay::LinkIdent::Direct(netplay::DirectRole::Connect { addr })) => {
-                format!("Connecting via UDP: {addr}")
+                t!(lang, "lobby-direct-connect", target = addr.clone())
             }
             None => String::new(),
         }
@@ -1030,16 +1089,21 @@ fn main() -> anyhow::Result<()> {
     // Seed the settings widgets + theme from config.
     {
         let st = state.borrow();
+        // Language rows show each locale's endonym (its `LANGUAGE`
+        // Fluent key — "日本語", not "ja-JP"), like tango's picker.
         app.set_languages(ModelRc::new(VecModel::from(
-            LANGS.iter().map(|l| SharedString::from(*l)).collect::<Vec<_>>(),
+            i18n::SUPPORTED_LANGS
+                .iter()
+                .map(|id| SharedString::from(t_opt!(id, "LANGUAGE").unwrap_or_else(|| id.to_string())))
+                .collect::<Vec<_>>(),
         )));
-        app.set_app_version(format!("version {}", env!("CARGO_PKG_VERSION")).into());
+        apply_i18n(&app, &st.config);
         app.set_settings_nickname(st.config.nickname.as_deref().unwrap_or("").into());
         app.set_settings_data_path(st.config.data_path.display().to_string().into());
         app.set_settings_language(
-            LANGS
+            i18n::SUPPORTED_LANGS
                 .iter()
-                .position(|l| *l == st.config.language.to_string())
+                .position(|l| *l == st.config.language)
                 .map(|i| i as i32)
                 .unwrap_or(-1),
         );
@@ -1070,12 +1134,17 @@ fn main() -> anyhow::Result<()> {
         let app_weak = app.as_weak();
         move |index| {
             let Some(app) = app_weak.upgrade() else { return };
-            let Some(lang) = LANGS.get(index as usize).and_then(|l| l.parse().ok()) else {
+            let Some(lang) = i18n::SUPPORTED_LANGS.get(index as usize).cloned() else {
                 return;
             };
             let mut st = state.borrow_mut();
             st.config.language = lang;
             st.config.save();
+            // Relabel the chrome, then the models (game/replay rows and
+            // their derived strings re-render in the new language). The
+            // lobby band, if live, catches up on the next tick's
+            // snapshot diff.
+            apply_i18n(&app, &st.config);
             refresh_models(&app, &mut st);
         }
     });
@@ -1121,12 +1190,17 @@ fn main() -> anyhow::Result<()> {
 
     app.on_data_path_changed({
         let state = state.clone();
+        let app_weak = app.as_weak();
         let spawn_scan = spawn_scan.clone();
         move |text| {
             {
                 let mut st = state.borrow_mut();
                 st.config.data_path = std::path::PathBuf::from(text.as_str());
                 st.config.save();
+                // The no-ROMs empty state renders the roms path — refresh it.
+                if let Some(app) = app_weak.upgrade() {
+                    apply_i18n(&app, &st.config);
+                }
             }
             spawn_scan();
         }
@@ -1165,7 +1239,8 @@ fn main() -> anyhow::Result<()> {
                 .map(|(name, _)| name.clone())
                 .collect();
             st.version_rows.clear();
-            let mut patch_model: Vec<SharedString> = vec!["No patch".into()];
+            let mut patch_model: Vec<SharedString> =
+                vec![SharedString::from(t!(&st.config.language, "play-no-patch"))];
             patch_model.extend(st.patch_rows.iter().map(|n| SharedString::from(n.as_str())));
             app.set_patches(ModelRc::new(VecModel::from(patch_model)));
             app.set_selected_patch(0);
@@ -1778,14 +1853,18 @@ fn main() -> anyhow::Result<()> {
                     Event::ReplayStats { path, stats } => {
                         let st = state.borrow();
                         if st.replay_detail_path.as_deref() == Some(path.as_path()) {
+                            let lang = &st.config.language;
                             let mut lines = st.replay_detail_lines.clone();
                             lines.push(
                                 format!(
-                                    "{} round{} · {}{}",
-                                    stats.round_count,
-                                    if stats.round_count == 1 { "" } else { "s" },
+                                    "{} · {}{}",
+                                    t!(lang, "replays-round-count", count = stats.round_count),
                                     replays::format_duration(stats.tick_count),
-                                    if stats.is_complete { "" } else { " · incomplete" }
+                                    if stats.is_complete {
+                                        String::new()
+                                    } else {
+                                        format!(" · {}", t!(lang, "replays-incomplete"))
+                                    }
                                 )
                                 .into(),
                             );
@@ -2127,7 +2206,9 @@ fn smoke_pvp(
                     let session_tx = session_tx.clone();
                     let frame_delay = config.frame_delay;
                     let disable_bgm = config.disable_bgm_in_pvp;
-                    let replays_path = config.replays_path();
+                    // Smoke matches must not pollute the real replay
+                    // library — record their replays to the temp dir.
+                    let replays_path = std::env::temp_dir().join("tango-ng-smoke-replays");
                     let audio_binder = audio_binder.clone();
                     rt.spawn(async move {
                         let _ = session_tx.send(
