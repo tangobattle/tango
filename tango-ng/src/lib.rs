@@ -3783,6 +3783,39 @@ pub fn run() -> anyhow::Result<()> {
                 }
                 return;
             }
+            // Replay seek shortcuts (session/view's transport keys):
+            // arrows ±5 s keeping the play state, ,/. single-frame
+            // steps (pausing). Handled before binding resolution —
+            // replays take no joyflags, so these keys are free here.
+            if let Some(ActiveSession::Replay(session)) = &st.session {
+                let is_seek_key = c == char::from(slint::platform::Key::LeftArrow)
+                    || c == char::from(slint::platform::Key::RightArrow)
+                    || c == ','
+                    || c == '.';
+                if is_seek_key {
+                    if pressed {
+                        let (delta, frame_step) = if c == char::from(slint::platform::Key::LeftArrow) {
+                            (-300i64, false)
+                        } else if c == char::from(slint::platform::Key::RightArrow) {
+                            (300, false)
+                        } else if c == ',' {
+                            (-1, true)
+                        } else {
+                            (1, true)
+                        };
+                        let cur = session.current_tick() as i64;
+                        let target = (cur + delta).clamp(0, session.total_ticks() as i64) as u32;
+                        if frame_step {
+                            session.set_paused(true);
+                            session.seek_to(target, false);
+                            app.set_replay_paused(true);
+                        } else {
+                            session.seek_to(target, !session.is_paused());
+                        }
+                    }
+                    return;
+                }
+            }
             let Some(name) = input::key_name(c) else { return };
             let was_held = st.held.is_key_held(&name);
             st.held.set_key(&name, pressed);
