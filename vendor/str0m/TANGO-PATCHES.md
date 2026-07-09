@@ -5,8 +5,10 @@ This is a vendored copy of [`str0m` 0.21.0](https://crates.io/crates/str0m)
 `[patch.crates-io]` in the workspace root. Stripped of `tests/`, `examples/`,
 `docs/`, `logo/` and the matching manifest sections plus dev-dependencies
 (we never build str0m's own tests); `src/` is otherwise byte-identical to the
-release except for the marked hunk below. To upgrade: copy the new release
-over this directory, re-strip, re-apply.
+release except for the marked hunk below, which is also kept as an
+applyable patch file: `tango.patch` (`patch -p1 < tango.patch` from this
+directory against a pristine upstream tree). To upgrade: copy the new
+release over this directory, re-strip, re-apply the patch file.
 
 ## The diff against upstream 0.21.0
 

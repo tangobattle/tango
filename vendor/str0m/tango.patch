@@ -1,0 +1,25 @@
+--- a/src/sctp/mod.rs
++++ b/src/sctp/mod.rs
+@@ -899,6 +899,22 @@
+                                 entry.config = Some((&dcep).into());
+                             } else {
+                                 warn!("Received DcepOpen for configured stream: {}", entry.id);
++                            }
++
++                            // TANGO PATCH (see /vendor/str0m/TANGO-PATCHES.md):
++                            // apply the DcepOpen's reliability parameters to the
++                            // sctp-proto stream, exactly like the out-of-band
++                            // open_stream path above does. Without this, the
++                            // DCEP-receiving side of an in-band channel SENDS
++                            // with the stream defaults — ordered + fully
++                            // reliable — no matter what the channel was opened
++                            // as: one lost datagram then head-of-line-blocks
++                            // every later message on an "unordered, unreliable"
++                            // channel for a retransmission round trip. (Pion,
++                            // which this code descends from, configures the
++                            // stream here too.)
++                            if !entry.configure_reliability(&mut stream) {
++                                continue;
+                             }
+ 
+                             let mut obuf = [0];
