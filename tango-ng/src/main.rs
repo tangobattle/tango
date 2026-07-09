@@ -11,19 +11,24 @@
 //!   PvP — run both roles concurrently against the same data dir; each
 //!   side drives the direct /host·/connect path + the auto-lobby to a
 //!   live match, emulates ~8 seconds, dumps the framebuffer.
+//! - `tango-ng --smoke-pvp match <link_code> [out.png]`: same, but both
+//!   instances rendezvous on the real matchmaking server with the given
+//!   link code (set `TANGO_IDENTITY_DIR` per instance for distinct certs).
 //! - `tango-ng --ui-shot [out_dir]`: open the real UI, wait for the scan,
-//!   then snapshot the main screens to PNGs and exit. Run with
-//!   `SLINT_BACKEND=winit-software` for reliable snapshots.
+//!   then snapshot the main screens (including the netplay lobby band)
+//!   to PNGs and exit. Run with `SLINT_BACKEND=winit-software` for
+//!   reliable snapshots.
 
 mod audio;
 mod bnlc;
 mod config;
 mod game;
+mod identity;
 mod input;
-// The net + netplay layers are ported and the direct /host + /connect
-// slice is live (Phase A); the matchmaking path (`Message::Connect`,
-// identity) and parts of the lobby surface stay dormant until Phase B,
-// so keep dead_code allowed.
+// The net + netplay layers are ported; the direct /host + /connect
+// slice (Phase A) and matchmaking + the lobby band (Phase B) are live.
+// dead_code stays allowed for the surface tango-ng doesn't consume yet
+// (Discord join secrets, parts of the reconnect plumbing).
 #[allow(dead_code, unused_imports)]
 mod net;
 #[allow(dead_code)]
@@ -114,10 +119,20 @@ struct State {
     /// no longer in the buffer).
     scrub_forced: bool,
     /// Netplay connection state machine, driven by the link-code bar
-    /// (`/host` + `/connect`) and the timer's event fold. The full
-    /// lobby pane is Phase B; until then `drive_auto_lobby` plays the
-    /// lobby automatically.
+    /// (matchmaking codes, `/host` + `/connect`) and the timer's event
+    /// fold. The lobby band renders off it via `refresh_lobby_ui`.
     netplay: netplay::State,
+    /// The persistent client identity presented to the matchmaking
+    /// server as an mTLS client cert, loaded once at startup and
+    /// threaded into each `Message::Connect`. `None` = dial without one.
+    identity: Option<tango_signaling::ClientIdentity>,
+    /// `(mode, subtype)` rows behind the lobby's match-type picker,
+    /// parallel to the `lobby-match-types` model.
+    lobby_mt_rows: Vec<(u8, u8)>,
+    /// The lobby band's last-pushed property values — `refresh_lobby_ui`
+    /// diffs against this so idle ticks don't invalidate Slint
+    /// properties (or fight the two-way-bound controls mid-drag).
+    lobby_ui: LobbySnapshot,
 }
 
 /// At most one session is active at a time.
@@ -349,8 +364,9 @@ fn parse_direct_command(input: &str) -> Option<netplay::DirectRole> {
     }
 }
 
-/// One-line description of the netplay lifecycle for the Play tab's
-/// bottom band; "" when idle (the link-code input shows instead).
+/// One-line description of the netplay lifecycle, used by the
+/// `--smoke-pvp` driver's progress prints (the GUI's lobby band derives
+/// its own, richer status via `compute_lobby_snapshot`).
 fn netplay_status_text(netplay: &netplay::State) -> String {
     if netplay.handoff_pending() {
         return "Starting match…".to_string();
@@ -377,17 +393,16 @@ fn netplay_status_text(netplay: &netplay::State) -> String {
     }
 }
 
-/// TODO(lobby-ui): interim lobby driver for the /host + /connect
-/// vertical slice. Until the lobby pane lands (Phase B), the app plays
-/// the lobby automatically: it advertises the given selection as its
-/// Settings the moment the phase reaches Lobby (the dedupe inside
+/// Headless auto-lobby for the `--smoke-pvp` driver (the GUI has the
+/// real lobby band): it advertises the given selection as its Settings
+/// the moment the phase reaches Lobby (the dedupe inside
 /// `SendLocalSettings` makes repeats no-ops, and a material change
 /// still auto-uncommits, like tango's resend pass), then auto-Readies
 /// (`Commit` with the selected save's SRAM) once both sides' settings
 /// are in and the compat verdict is green (tango's Ready→Commit,
 /// app/update.rs:100-110). Match type is pinned to (0, 0) — the lobby
 /// default — so both sides agree without a picker; blind setup stays
-/// off. Shared by the GUI timer and the --smoke-pvp driver.
+/// off.
 fn drive_auto_lobby(
     netplay: &mut netplay::State,
     patches: &patch::PatchMap,
@@ -429,23 +444,419 @@ fn drive_auto_lobby(
 
 /// The Play tab's current (game, patch, save-row) pick, or `None` when
 /// incomplete. Mirrors `on_play_clicked`'s reads; the netplay slice
-/// uses it for the auto-lobby Settings and the PvP ROM resolve.
+/// uses it for the lobby Settings and the PvP ROM resolve.
 fn selected_loadout(app: &AppWindow, st: &State) -> Option<(rom::GameRef, Option<(String, semver::Version)>, usize)> {
     let game = st.game_rows.get(app.get_selected_game() as usize).copied()?;
     let save_index = app.get_selected_save();
     if save_index < 0 || save_index as usize >= st.save_rows.len() {
         return None;
     }
-    let patch_index = app.get_selected_patch();
-    let patch = if patch_index > 0 {
-        Some((
-            st.patch_rows.get(patch_index as usize - 1)?.clone(),
-            st.version_rows.get(app.get_selected_version() as usize)?.clone(),
-        ))
+    let patch = if app.get_selected_patch() > 0 {
+        // A patch is picked but its version row is missing → incomplete.
+        Some(selected_patch(app, st)?)
     } else {
         None
     };
     Some((game, patch, save_index as usize))
+}
+
+/// The patch pickers' current (name, version), or `None` when "No
+/// patch" is selected or the version row is missing.
+fn selected_patch(app: &AppWindow, st: &State) -> Option<(String, semver::Version)> {
+    let patch_index = app.get_selected_patch();
+    if patch_index <= 0 {
+        return None;
+    }
+    Some((
+        st.patch_rows.get(patch_index as usize - 1)?.clone(),
+        st.version_rows.get(app.get_selected_version() as usize)?.clone(),
+    ))
+}
+
+/// The Play tab's currently-picked game, if any (no save required —
+/// the lobby advertises the game as soon as it's selected, like tango).
+fn selected_game(app: &AppWindow, st: &State) -> Option<rom::GameRef> {
+    st.game_rows.get(app.get_selected_game() as usize).copied()
+}
+
+/// Single source of truth for the local side's `protocol::Settings`
+/// (tango's `Loadout::make_local_settings`, loadout.rs:217): built from
+/// the current selection + lobby-local state. Also the "You" card
+/// fallback before `netplay.lobby.local` has round-tripped.
+fn make_local_settings(app: &AppWindow, st: &State) -> net::protocol::Settings {
+    net::protocol::Settings {
+        nickname: st.config.nickname.clone().unwrap_or_default(),
+        match_type: st.netplay.lobby.match_type,
+        game_info: selected_game(app, st).map(|game| {
+            let (family, variant) = game.family_and_variant();
+            net::protocol::GameInfo {
+                family_and_variant: (family.to_string(), variant),
+                patch: selected_patch(app, st).map(|(name, version)| net::protocol::PatchInfo { name, version }),
+            }
+        }),
+        blind_setup: st.netplay.lobby.blind_setup,
+    }
+}
+
+/// tango's `App::apply_default_match_type` (app/mod.rs:511): when the
+/// game changed since the last default was applied (or the current pick
+/// is invalid for it), default to Triple (mode 1) where the game
+/// supports it, else Single. Keyed off `default_mt_for_game` so an
+/// explicit user pick for the SAME game sticks.
+fn apply_default_match_type(netplay: &mut netplay::State, game: rom::GameRef) {
+    let mt_table = game.match_types;
+    let game_key = {
+        let (family, variant) = game.family_and_variant();
+        (family.to_string(), variant)
+    };
+    let game_changed = netplay.lobby.default_mt_for_game.as_ref() != Some(&game_key);
+    let (mode, sub) = netplay.lobby.match_type;
+    let current_valid = (mode as usize) < mt_table.len() && (sub as usize) < *mt_table.get(mode as usize).unwrap_or(&0);
+    if game_changed || !current_valid {
+        netplay.lobby.match_type = if mt_table.get(1).copied().unwrap_or(0) > 0 {
+            (1, 0) // Triple
+        } else {
+            (0, 0) // Single
+        };
+        netplay.lobby.default_mt_for_game = Some(game_key);
+    }
+}
+
+/// tango's `App::resend_settings_if_lobby` (app/mod.rs:537): no-op
+/// outside Lobby phase; otherwise re-apply the default-match-type
+/// policy and push the current selection's Settings — the dedupe
+/// inside `SendLocalSettings` makes repeats no-ops, and a material
+/// change auto-uncommits. Called once per timer tick while netplay is
+/// live, which covers both lobby entry and any mid-lobby selection
+/// change (the save/version pickers have no change callbacks to hook).
+fn resend_settings_if_lobby(app: &AppWindow, st: &mut State) {
+    if !matches!(st.netplay.phase, netplay::Phase::Lobby { .. }) {
+        return;
+    }
+    if let Some(game) = selected_game(app, st) {
+        apply_default_match_type(&mut st.netplay, game);
+    }
+    let settings = make_local_settings(app, st);
+    st.netplay.update(netplay::Message::SendLocalSettings(Box::new(settings)));
+}
+
+/// The lobby's compat verdict, once both sides' settings are in.
+fn lobby_verdict(st: &State) -> Option<netplay::compat::Verdict> {
+    let local = st.netplay.lobby.local.as_ref()?;
+    let remote = st.netplay.lobby.remote.as_ref()?;
+    Some(netplay::compat::check(local, remote, &st.patches))
+}
+
+/// A lobby side card's caption line: "<game> · <patch> · <match-type>"
+/// (tango's lobby.rs `side_card_subline`).
+fn side_card_subline(lang: &unic_langid::LanguageIdentifier, settings: &net::protocol::Settings) -> String {
+    let Some(gi) = settings.game_info.as_ref() else {
+        return "(no game selected)".to_string();
+    };
+    let mut subline = game::family_display_name(lang, &gi.family_and_variant.0);
+    if let Some(p) = gi.patch.as_ref() {
+        subline.push_str(&format!(" · {} v{}", p.name, p.version));
+    }
+    subline.push_str(&format!(
+        " · {}",
+        game::match_type_name(lang, &gi.family_and_variant.0, settings.match_type.0, settings.match_type.1)
+    ));
+    subline
+}
+
+/// Map netplay's error sentinels to user copy (the English strings of
+/// tango's `play-status-*` Fluent keys).
+fn lobby_failed_text(error: &str) -> String {
+    match error {
+        "peer-disconnected" => "The other player left.".to_string(),
+        "negotiate-expected-hello" => "The other player didn't send the expected handshake.".to_string(),
+        "negotiate-version-too-old" => "The other player is running an older version of Tango.".to_string(),
+        "negotiate-version-too-new" => "The other player is running a newer version of Tango.".to_string(),
+        other if other.starts_with("negotiate-other: ") => format!(
+            "An error occurred during negotiation: {}",
+            other.trim_start_matches("negotiate-other: ")
+        ),
+        other => format!("Connection failed: {other}"),
+    }
+}
+
+/// Everything the lobby band renders. Computed fresh each tick by
+/// [`compute_lobby_snapshot`] and diffed field-by-field against the
+/// previous push in [`refresh_lobby_ui`].
+#[derive(Clone, PartialEq)]
+struct LobbySnapshot {
+    visible: bool,
+    failed: bool,
+    inert: bool,
+    status: String,
+    /// 0 = in-flight (muted), 1 = good (green), 2 = bad (red).
+    tone: i32,
+    conn_detail: String,
+    local_nickname: String,
+    local_subline: String,
+    local_ready: bool,
+    remote_nickname: String,
+    remote_subline: String,
+    remote_ready: bool,
+    mt_labels: Vec<String>,
+    mt_selected: i32,
+    /// Normalized slider position: (frame_delay - 2) / 8.
+    frame_delay_norm: f32,
+    frame_delay_label: String,
+    blind: bool,
+    /// 0 = Ready, 1 = Unready, 2 = Starting….
+    ready_state: i32,
+    ready_enabled: bool,
+    suggest_enabled: bool,
+}
+
+impl Default for LobbySnapshot {
+    /// Matches the `.slint` property defaults, so the first diff pass
+    /// (and every idle tick) pushes nothing.
+    fn default() -> Self {
+        Self {
+            visible: false,
+            failed: false,
+            inert: false,
+            status: String::new(),
+            tone: 0,
+            conn_detail: String::new(),
+            local_nickname: String::new(),
+            local_subline: String::new(),
+            local_ready: false,
+            remote_nickname: "—".to_string(),
+            remote_subline: "—".to_string(),
+            remote_ready: false,
+            mt_labels: Vec::new(),
+            mt_selected: -1,
+            frame_delay_norm: 0.0,
+            frame_delay_label: "2".to_string(),
+            blind: false,
+            ready_state: 0,
+            ready_enabled: false,
+            suggest_enabled: false,
+        }
+    }
+}
+
+/// Derive this frame's lobby band content from netplay + config +
+/// selection state — the Slint rebuild of tango's `Lobby::view`
+/// (tabs/play/lobby.rs). Returns the snapshot plus the `(mode,
+/// subtype)` rows behind the match-type model. Everything defaults
+/// (band hidden) when netplay is Idle with no handoff pending.
+fn compute_lobby_snapshot(app: &AppWindow, st: &State) -> (LobbySnapshot, Vec<(u8, u8)>) {
+    let handoff = st.netplay.handoff_pending();
+    if matches!(st.netplay.phase, netplay::Phase::Idle) && !handoff {
+        return (LobbySnapshot::default(), Vec::new());
+    }
+    let lang = &st.config.language;
+    let lobby = &st.netplay.lobby;
+    let failed = matches!(st.netplay.phase, netplay::Phase::Failed { .. });
+    // Controls refuse input without changing layout while the lobby is
+    // dead or the match is spinning up (tango's `Lobby::inert`).
+    let inert = failed || handoff;
+
+    // Status line + tone: connection progress until the lobby is up,
+    // then the compat verdict between the two settings (tango's
+    // `Status` enum, kept as one derivation so the Ready gate below
+    // can't drift from the text).
+    let verdict = lobby_verdict(st);
+    let (status, tone) = match &st.netplay.phase {
+        netplay::Phase::Failed { error } => (lobby_failed_text(error), 2),
+        netplay::Phase::Connecting {
+            ident,
+            waiting_for_opponent: false,
+        } => (
+            // Direct `/connect` dials straight at the peer — the
+            // matchmaking copy would be wrong.
+            if matches!(ident, netplay::LinkIdent::Direct(netplay::DirectRole::Connect { .. })) {
+                "Connecting to opponent…".to_string()
+            } else {
+                "Connecting to matchmaking server…".to_string()
+            },
+            0,
+        ),
+        netplay::Phase::Connecting {
+            waiting_for_opponent: true,
+            ..
+        } => ("Waiting for opponent…".to_string(), 0),
+        netplay::Phase::Negotiating { .. } => ("Negotiating…".to_string(), 0),
+        netplay::Phase::Lobby { .. } | netplay::Phase::Idle => match &verdict {
+            Some(netplay::compat::Verdict::Compatible) => ("Compatible — ready to play.".to_string(), 1),
+            Some(netplay::compat::Verdict::MissingGame) => ("One side hasn't picked a game.".to_string(), 2),
+            Some(netplay::compat::Verdict::DifferentVersions) => {
+                ("Game versions don't match (different patch / ROM).".to_string(), 2)
+            }
+            Some(netplay::compat::Verdict::DifferentMatchTypes) => ("Match type doesn't match.".to_string(), 2),
+            None => ("Exchanging settings…".to_string(), 0),
+        },
+    };
+
+    // The caption under the status: the *identifier* (link code /
+    // direct target) while dialing, the *wire* (live ping) once
+    // measured; nothing on a dead lobby (the status carries the
+    // failure).
+    let ident = match &st.netplay.phase {
+        netplay::Phase::Connecting { ident, .. }
+        | netplay::Phase::Negotiating { ident }
+        | netplay::Phase::Lobby { ident } => Some(ident),
+        _ => None,
+    };
+    let conn_detail = if failed {
+        String::new()
+    } else if let Some(d) = matches!(st.netplay.phase, netplay::Phase::Lobby { .. })
+        .then(|| lobby.latency_counter.latest())
+        .flatten()
+    {
+        let ms = d.as_millis();
+        match lobby.connection_kind {
+            Some(netplay::ConnectionKind::Direct) => format!("Ping (direct): {ms} ms"),
+            Some(netplay::ConnectionKind::Relayed) => format!("Ping (relayed): {ms} ms"),
+            None => format!("Ping: {ms} ms"),
+        }
+    } else {
+        match ident {
+            Some(netplay::LinkIdent::Matchmaking(code)) => format!("Link code: {code}"),
+            Some(netplay::LinkIdent::Direct(netplay::DirectRole::Host { port })) => {
+                format!("Hosting on UDP port: {port}")
+            }
+            Some(netplay::LinkIdent::Direct(netplay::DirectRole::Connect { addr })) => {
+                format!("Connecting via UDP: {addr}")
+            }
+            None => String::new(),
+        }
+    };
+
+    // Side cards. "You" falls back to Settings synthesized from the
+    // current selection until `lobby.local` lands; the opponent shows
+    // placeholders until their Settings arrive. Ready lights go dark on
+    // failure (the lobby those flags belonged to is gone), but the
+    // opponent's info stays — "who just left" is what you want to read
+    // off a dead lobby.
+    let local_settings = lobby.local.clone().unwrap_or_else(|| make_local_settings(app, st));
+    let card_nickname = |nickname: &str| {
+        if nickname.is_empty() {
+            "—".to_string()
+        } else {
+            nickname.to_string()
+        }
+    };
+    let (remote_nickname, remote_subline) = match lobby.remote.as_ref() {
+        Some(s) => (card_nickname(&s.nickname), side_card_subline(lang, s)),
+        None => ("—".to_string(), "—".to_string()),
+    };
+
+    // Match-type rows from the local game's mode/subtype table
+    // (tango's `Lobby::match_type_picker`).
+    let mut mt_rows = Vec::new();
+    let mut mt_labels = Vec::new();
+    if let Some(game) = selected_game(app, st) {
+        let family = game.family_and_variant().0;
+        for (mode, subtype_count) in game.match_types.iter().enumerate() {
+            for sub in 0..*subtype_count {
+                mt_rows.push((mode as u8, sub as u8));
+                mt_labels.push(game::match_type_name(lang, family, mode as u8, sub as u8));
+            }
+        }
+    }
+    let mt_selected = mt_rows
+        .iter()
+        .position(|&mt| mt == lobby.match_type)
+        .map(|i| i as i32)
+        .unwrap_or(-1);
+
+    let frame_delay = st
+        .config
+        .frame_delay
+        .clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY);
+    let frame_delay_norm = (frame_delay - tango_pvp::battle::MIN_FRAME_DELAY) as f32
+        / (tango_pvp::battle::MAX_FRAME_DELAY - tango_pvp::battle::MIN_FRAME_DELAY) as f32;
+
+    // Ready → Unready → Starting…, one button (tango's ready_button).
+    let ready_state = if lobby.match_ready {
+        2
+    } else if lobby.local_ready {
+        1
+    } else {
+        0
+    };
+    let has_save = {
+        let save_index = app.get_selected_save();
+        save_index >= 0 && (save_index as usize) < st.save_rows.len()
+    };
+    let compat_ok = matches!(verdict, Some(netplay::compat::Verdict::Compatible));
+    let ready_enabled = !inert
+        && match ready_state {
+            0 => compat_ok && has_save,
+            1 => true,
+            _ => false,
+        };
+
+    let snap = LobbySnapshot {
+        visible: true,
+        failed,
+        inert,
+        status,
+        tone,
+        conn_detail,
+        local_nickname: card_nickname(&local_settings.nickname),
+        local_subline: side_card_subline(lang, &local_settings),
+        local_ready: lobby.local_ready && !failed,
+        remote_nickname,
+        remote_subline,
+        remote_ready: lobby.remote_ready && !failed,
+        mt_labels,
+        mt_selected,
+        frame_delay_norm,
+        frame_delay_label: frame_delay.to_string(),
+        blind: lobby.blind_setup,
+        ready_state,
+        ready_enabled,
+        // Suggest needs a real reading to take the median of — enabled
+        // once the first Pong lands.
+        suggest_enabled: !inert && lobby.latency_counter.latest().is_some(),
+    };
+    (snap, mt_rows)
+}
+
+/// Refresh the lobby band: compute this frame's snapshot and push only
+/// the properties whose values actually changed since the last push.
+fn refresh_lobby_ui(app: &AppWindow, st: &mut State) {
+    let (snap, mt_rows) = compute_lobby_snapshot(app, st);
+    st.lobby_mt_rows = mt_rows;
+    let prev = &st.lobby_ui;
+    macro_rules! push {
+        ($field:ident, $setter:ident) => {
+            if snap.$field != prev.$field {
+                app.$setter(snap.$field.clone().into());
+            }
+        };
+    }
+    push!(visible, set_lobby_visible);
+    push!(failed, set_lobby_failed);
+    push!(inert, set_lobby_inert);
+    push!(status, set_lobby_status);
+    push!(tone, set_lobby_status_tone);
+    push!(conn_detail, set_lobby_conn_detail);
+    push!(local_nickname, set_lobby_local_nickname);
+    push!(local_subline, set_lobby_local_subline);
+    push!(local_ready, set_lobby_local_ready);
+    push!(remote_nickname, set_lobby_remote_nickname);
+    push!(remote_subline, set_lobby_remote_subline);
+    push!(remote_ready, set_lobby_remote_ready);
+    if snap.mt_labels != prev.mt_labels {
+        app.set_lobby_match_types(ModelRc::new(VecModel::from(
+            snap.mt_labels.iter().map(|s| SharedString::from(s.as_str())).collect::<Vec<_>>(),
+        )));
+    }
+    push!(mt_selected, set_lobby_selected_match_type);
+    push!(frame_delay_norm, set_lobby_frame_delay);
+    push!(frame_delay_label, set_lobby_frame_delay_label);
+    push!(blind, set_lobby_blind);
+    push!(ready_state, set_lobby_ready_state);
+    push!(ready_enabled, set_lobby_ready_enabled);
+    push!(suggest_enabled, set_lobby_suggest_enabled);
+    st.lobby_ui = snap;
 }
 
 /// `MatchHandoffReady`: drain the lobby state into a `PreMatchData`,
@@ -522,8 +933,26 @@ fn main() -> anyhow::Result<()> {
     }
     if args.get(1).map(|s| s.as_str()) == Some("--smoke-pvp") {
         let role = args.get(2).cloned().unwrap_or_default();
-        let out = std::path::PathBuf::from(args.get(3).map(|s| s.as_str()).unwrap_or("tango-ng-pvp.png"));
-        return smoke_pvp(&config, &audio_binder, tokio_runtime.handle().clone(), &role, &out);
+        // `match` takes the shared link code as an extra argument, so
+        // the output path shifts one slot right.
+        let (link_code, out_arg) = if role == "match" {
+            let code = args
+                .get(3)
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("--smoke-pvp match needs a <link_code>"))?;
+            (Some(code), 4)
+        } else {
+            (None, 3)
+        };
+        let out = std::path::PathBuf::from(args.get(out_arg).map(|s| s.as_str()).unwrap_or("tango-ng-pvp.png"));
+        return smoke_pvp(
+            &config,
+            &audio_binder,
+            tokio_runtime.handle().clone(),
+            &role,
+            link_code.as_deref(),
+            &out,
+        );
     }
     let ui_shot_dir: Option<std::path::PathBuf> = (args.get(1).map(|s| s.as_str()) == Some("--ui-shot"))
         .then(|| std::path::PathBuf::from(args.get(2).map(|s| s.as_str()).unwrap_or(".")));
@@ -558,6 +987,10 @@ fn main() -> anyhow::Result<()> {
         scrub_was_playing: false,
         scrub_forced: false,
         netplay: netplay::State::new(tokio_runtime.handle().clone(), tx.clone()),
+        // Loaded once here; every matchmaking Connect clones it.
+        identity: identity::load(),
+        lobby_mt_rows: Vec::new(),
+        lobby_ui: LobbySnapshot::default(),
     }));
 
     // Background scan; results come back over the channel and are folded
@@ -941,13 +1374,174 @@ fn main() -> anyhow::Result<()> {
                 // Direct link-code commands: /host [port] | /connect <addr>.
                 match parse_direct_command(&text) {
                     Some(role) => st.netplay.update(netplay::Message::ConnectDirect { role }),
-                    None => app.set_status(format!("Unrecognized command: {text}").into()),
+                    None => {
+                        app.set_status(format!("Unrecognized command: {text}").into());
+                        return;
+                    }
                 }
             } else {
-                // TODO(matchmaking): the signaling path is Phase B.
-                app.set_status("Matchmaking lands with phase B".into());
+                // Matchmaking link code, normalized the way tango's
+                // input filter does as-you-type (tabs/play/mod.rs
+                // LinkCodeChanged): ascii alphanumerics + '-' only,
+                // lowercased (matchmaking is case-sensitive; this keeps
+                // a code read aloud from missing its lobby), 100 max.
+                let link_code: String = text
+                    .chars()
+                    .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+                    .map(|c| c.to_ascii_lowercase())
+                    .take(100)
+                    .collect();
+                if link_code.is_empty() {
+                    app.set_status(format!("Not a valid link code: {text}").into());
+                    return;
+                }
+                let msg = netplay::Message::Connect {
+                    link_code,
+                    endpoint: st.config.matchmaking_endpoint.clone(),
+                    use_relay: st.config.relay_mode.use_relay(),
+                    identity: st.identity.clone(),
+                };
+                st.netplay.update(msg);
             }
-            app.set_netplay_status(netplay_status_text(&st.netplay).into());
+            // Connect wiped the lobby state — apply the default
+            // match-type policy now so the picker reads right from the
+            // first frame (tango app/update.rs:44-61).
+            if let Some(game) = selected_game(&app, &st) {
+                apply_default_match_type(&mut st.netplay, game);
+            }
+            refresh_lobby_ui(&app, &mut st);
+        }
+    });
+
+    app.on_lobby_leave({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            st.netplay.update(netplay::Message::Disconnect);
+            refresh_lobby_ui(&app, &mut st);
+        }
+    });
+
+    app.on_lobby_ready({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            // Defense in depth behind the view-time gating (the button
+            // disables itself): Lobby phase, a compatible verdict, and
+            // a selected save are all required to commit.
+            if !matches!(st.netplay.phase, netplay::Phase::Lobby { .. }) || st.netplay.handoff_pending() {
+                return;
+            }
+            if !matches!(lobby_verdict(&st), Some(netplay::compat::Verdict::Compatible)) {
+                return;
+            }
+            let Some(save_sram) = st
+                .save_rows
+                .get(app.get_selected_save() as usize)
+                .map(|s| s.save.to_sram_dump())
+            else {
+                return;
+            };
+            st.netplay.update(netplay::Message::Commit { save_sram });
+            refresh_lobby_ui(&app, &mut st);
+        }
+    });
+
+    app.on_lobby_unready({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            st.netplay.update(netplay::Message::Uncommit);
+            refresh_lobby_ui(&app, &mut st);
+        }
+    });
+
+    app.on_match_type_selected({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |index| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Some(&mt) = st.lobby_mt_rows.get(index as usize) else {
+                return;
+            };
+            st.netplay.update(netplay::Message::SetMatchType(mt));
+            // Stamp the default-MT slot so the per-tick default pass
+            // doesn't clobber an explicit pre-default pick (tango
+            // app/update.rs:85-90).
+            if let Some(game) = selected_game(&app, &st) {
+                let (family, variant) = game.family_and_variant();
+                st.netplay.lobby.default_mt_for_game = Some((family.to_string(), variant));
+            }
+            resend_settings_if_lobby(&app, &mut st);
+            refresh_lobby_ui(&app, &mut st);
+        }
+    });
+
+    app.on_frame_delay_changed({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |value| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            const MIN: u32 = tango_pvp::battle::MIN_FRAME_DELAY;
+            const MAX: u32 = tango_pvp::battle::MAX_FRAME_DELAY;
+            let frames = ((MIN as f32 + value.clamp(0.0, 1.0) * (MAX - MIN) as f32).round() as u32).clamp(MIN, MAX);
+            // Persisted; it's this side's local frame delay
+            // (snapshotted into the match at start, never negotiated),
+            // so there's no live match to push it to here.
+            if st.config.frame_delay != frames {
+                st.config.frame_delay = frames;
+                st.config.save();
+            }
+            // Snap the slider onto the frame it resolved to (a raw drag
+            // value can rest between detents otherwise) + the readout.
+            let norm = (frames - MIN) as f32 / (MAX - MIN) as f32;
+            app.set_lobby_frame_delay(norm);
+            app.set_lobby_frame_delay_label(frames.to_string().into());
+            st.lobby_ui.frame_delay_norm = norm;
+            st.lobby_ui.frame_delay_label = frames.to_string();
+        }
+    });
+
+    app.on_suggest_delay({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            // Gated on the first Pong having landed; reads the median
+            // window rather than the raw latest so the recommendation
+            // doesn't chase a single spiky Pong (tango lobby.rs:434).
+            if st.netplay.lobby.latency_counter.latest().is_none() {
+                return;
+            }
+            let frames = tango_pvp::battle::suggest_frame_delay(st.netplay.lobby.latency_counter.median());
+            if st.config.frame_delay != frames {
+                st.config.frame_delay = frames;
+                st.config.save();
+            }
+            refresh_lobby_ui(&app, &mut st);
+        }
+    });
+
+    app.on_blind_toggled({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |blind| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            st.netplay.update(netplay::Message::SetBlindSetup(blind));
+            // The flag rides the Settings packet — resend so the peer
+            // sees it (flipping it on also drops their commit).
+            resend_settings_if_lobby(&app, &mut st);
+            refresh_lobby_ui(&app, &mut st);
         }
     });
 
@@ -1204,31 +1798,14 @@ fn main() -> anyhow::Result<()> {
                         // itself (drain + spawn_pvp — mirrors tango's App).
                         // update() may spawn tasks / send further Events
                         // (drained next tick) but never re-borrows this
-                        // RefCell — netplay::State is self-contained.
+                        // RefCell — netplay::State is self-contained. The
+                        // lobby band refresh runs after the drain, below.
                         let mut st = state.borrow_mut();
                         if matches!(msg, netplay::Message::MatchHandoffReady) {
                             start_pvp_handoff(&app, &mut st, &rt, &pvp_tx);
                         } else {
                             st.netplay.update(msg);
-                            // TODO(lobby-ui): stand-in for the Phase B lobby
-                            // pane — auto-advertise + auto-Ready the current
-                            // selection after every netplay fold (tango
-                            // resends settings after every netplay message
-                            // too; the dedupe makes it a no-op).
-                            if let Some((game, patch, save_index)) = selected_loadout(&app, &st) {
-                                let nickname = st.config.nickname.clone().unwrap_or_else(|| "Player".to_string());
-                                let st = &mut *st;
-                                drive_auto_lobby(
-                                    &mut st.netplay,
-                                    &st.patches,
-                                    &nickname,
-                                    game,
-                                    patch,
-                                    &st.save_rows[save_index],
-                                );
-                            }
                         }
-                        app.set_netplay_status(netplay_status_text(&st.netplay).into());
                     }
                     Event::PvpBuilt(result) => {
                         let mut st = state.borrow_mut();
@@ -1248,9 +1825,20 @@ fn main() -> anyhow::Result<()> {
                         // PvP view (or the error) has taken over — tango does
                         // the same at app/mod.rs:1159-1164.
                         st.netplay.finish_handoff();
-                        app.set_netplay_status(netplay_status_text(&st.netplay).into());
                     }
                 }
+            }
+
+            // Lobby upkeep, once per tick: advertise the current
+            // selection while in the lobby (the dedupe inside
+            // SendLocalSettings makes repeats no-ops — this is how both
+            // lobby entry and mid-lobby selection changes reach the
+            // peer, tango's resend pass), then push the lobby band's
+            // properties (diffed, so idle ticks are free).
+            {
+                let mut st = state.borrow_mut();
+                resend_settings_if_lobby(&app, &mut st);
+                refresh_lobby_ui(&app, &mut st);
             }
 
             let st = state.borrow();
@@ -1326,16 +1914,27 @@ fn main() -> anyhow::Result<()> {
                         app.set_selected_save(0);
                     }
                     30 => snapshot(&app, &dir.join("ui-play-selected.png")),
-                    40 => app.set_active_tab(1),
-                    45 => {
+                    // Bring up the lobby band via the direct /host path
+                    // (no matchmaking server involved): the band shows
+                    // the waiting status + matchup/command panes.
+                    32 => {
+                        app.set_link_code("/host".into());
+                        app.invoke_fight_clicked();
+                    }
+                    47 => {
+                        snapshot(&app, &dir.join("ui-lobby.png"));
+                        app.invoke_lobby_leave();
+                    }
+                    50 => app.set_active_tab(1),
+                    55 => {
                         if !state.borrow().replay_rows.is_empty() {
                             app.set_selected_replay(0);
                             app.invoke_replay_selected(0);
                         }
                     }
-                    50 => snapshot(&app, &dir.join("ui-replays.png")),
-                    60 => app.set_active_tab(3),
-                    70 => {
+                    60 => snapshot(&app, &dir.join("ui-replays.png")),
+                    70 => app.set_active_tab(3),
+                    80 => {
                         snapshot(&app, &dir.join("ui-settings.png"));
                         let _ = slint::quit_event_loop();
                     }
@@ -1416,17 +2015,22 @@ fn smoke_replay(config: &config::Config, audio_binder: &audio::LateBinder, out: 
 
 /// Headless two-instance PvP verification: run once as `--smoke-pvp
 /// host <out.png>` and once (concurrently) as `--smoke-pvp connect
-/// <out.png>` against the same data dir. Each side scans, picks the
-/// first game with both a rom and a save (the same pick as `--smoke`,
-/// so the two sides agree), drives the netplay state machine through
-/// the direct /host + /connect path and the auto-lobby to a live
-/// `PvpSession`, then watches ~8 seconds of emulation before dumping
-/// the framebuffer. This is the GUI timer's event fold, minus slint.
+/// <out.png>` against the same data dir — or run BOTH sides as
+/// `--smoke-pvp match <link_code> <out.png>` to rendezvous through the
+/// real matchmaking server instead of the direct path (give each
+/// instance its own `TANGO_IDENTITY_DIR` so they present distinct
+/// client certs). Each side scans, picks the first game with both a
+/// rom and a save (the same pick as `--smoke`, so the two sides
+/// agree), drives the netplay state machine through connection
+/// bring-up and the auto-lobby to a live `PvpSession`, then watches
+/// ~8 seconds of emulation before dumping the framebuffer. This is
+/// the GUI timer's event fold, minus slint.
 fn smoke_pvp(
     config: &config::Config,
     audio_binder: &audio::LateBinder,
     rt: tokio::runtime::Handle,
     role_arg: &str,
+    link_code: Option<&str>,
     out: &std::path::Path,
 ) -> anyhow::Result<()> {
     let tag = format!("smoke-pvp[{role_arg}]");
@@ -1457,16 +2061,32 @@ fn smoke_pvp(
 
     let (tx, rx) = std::sync::mpsc::channel::<Event>();
     let mut netplay = netplay::State::new(rt.clone(), tx.clone());
-    let role = match role_arg {
-        "host" => netplay::DirectRole::Host {
-            port: net::DEFAULT_LOCAL_PORT,
+    let msg = match role_arg {
+        "host" => netplay::Message::ConnectDirect {
+            role: netplay::DirectRole::Host {
+                port: net::DEFAULT_LOCAL_PORT,
+            },
         },
-        "connect" => netplay::DirectRole::Connect {
-            addr: format!("127.0.0.1:{}", net::DEFAULT_LOCAL_PORT),
+        "connect" => netplay::Message::ConnectDirect {
+            role: netplay::DirectRole::Connect {
+                addr: format!("127.0.0.1:{}", net::DEFAULT_LOCAL_PORT),
+            },
         },
-        other => anyhow::bail!("--smoke-pvp needs `host` or `connect`, got {other:?}"),
+        // The real matchmaking path: both instances dial the configured
+        // endpoint with the same link code and rendezvous there, exactly
+        // like the GUI's fight_clicked (identity included — the driver
+        // points TANGO_IDENTITY_DIR at per-instance dirs).
+        "match" => netplay::Message::Connect {
+            link_code: link_code
+                .ok_or_else(|| anyhow::anyhow!("--smoke-pvp match needs a <link_code>"))?
+                .to_string(),
+            endpoint: config.matchmaking_endpoint.clone(),
+            use_relay: config.relay_mode.use_relay(),
+            identity: identity::load(),
+        },
+        other => anyhow::bail!("--smoke-pvp needs `host`, `connect`, or `match`, got {other:?}"),
     };
-    netplay.update(netplay::Message::ConnectDirect { role });
+    netplay.update(msg);
 
     // Drive the state machine by hand until the session is built —
     // exactly what the GUI timer's Event::Netplay arm does, sharing

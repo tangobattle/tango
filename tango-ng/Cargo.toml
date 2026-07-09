@@ -38,6 +38,13 @@ rand_pcg.workspace = true
 sha3 = "0.10"
 subtle = "2"
 zstd.workspace = true
+# The persistent client identity (identity.rs): a self-signed TLS client
+# cert. rcgen mints it, rustls-pemfile reads it back from the PEM on disk
+# as the DER `tango_signaling::ClientIdentity` wants, sha2 derives the
+# SHA-256 fingerprint we log. Same pins as the tango crate.
+rcgen = "0.11"
+rustls-pemfile = "1"
+sha2.workspace = true
 bps = { path = "../bps" }
 semver = { version = "1", features = ["serde"] }
 chrono = "0.4"

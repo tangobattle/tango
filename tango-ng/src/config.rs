@@ -11,6 +11,33 @@ pub enum ThemeMode {
     Dark,
 }
 
+pub const DEFAULT_MATCHMAKING_ENDPOINT: &str = "wss://matchmaking.tango.n1gp.net";
+
+/// Whether matchmaking connections may/must go through the TURN
+/// relay (ported from tango's config.rs). `Auto` lets ICE pick the
+/// best route (direct when possible, relay as fallback); `Always`
+/// forces every candidate through the relay (`ice_transport_policy =
+/// Relay`); `Never` strips the TURN servers from the ICE config
+/// entirely, so only direct routes are attempted.
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug, serde::Serialize, serde::Deserialize)]
+pub enum RelayMode {
+    #[default]
+    Auto,
+    Always,
+    Never,
+}
+
+impl RelayMode {
+    /// The `use_relay` argument `tango_signaling::connect` expects.
+    pub fn use_relay(self) -> Option<bool> {
+        match self {
+            RelayMode::Auto => None,
+            RelayMode::Always => Some(true),
+            RelayMode::Never => Some(false),
+        }
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -29,6 +56,11 @@ pub struct Config {
     /// the volume — the peer is unaffected and the recorded replay keeps
     /// its music.
     pub disable_bgm_in_pvp: bool,
+    /// Matchmaking (signaling) server websocket endpoint.
+    pub matchmaking_endpoint: String,
+    /// TURN relay policy for matchmaking connections. Sampled at
+    /// connect time (see [`RelayMode::use_relay`]).
+    pub relay_mode: RelayMode,
 }
 
 impl Default for Config {
@@ -45,6 +77,8 @@ impl Default for Config {
             fractional_scaling: false,
             frame_delay: 2,
             disable_bgm_in_pvp: false,
+            matchmaking_endpoint: DEFAULT_MATCHMAKING_ENDPOINT.to_string(),
+            relay_mode: RelayMode::default(),
         }
     }
 }
@@ -66,8 +100,15 @@ mod lang_serde {
     }
 }
 
+/// The per-user config directory (ProjectDirs net/n1gp/tango) — shared
+/// with tango, so the two frontends read the same on-disk identity
+/// (see [`crate::identity`]).
+pub fn config_dir() -> Option<std::path::PathBuf> {
+    directories_next::ProjectDirs::from("net", "n1gp", "tango").map(|d| d.config_dir().to_path_buf())
+}
+
 fn config_path() -> Option<std::path::PathBuf> {
-    directories_next::ProjectDirs::from("net", "n1gp", "tango").map(|d| d.config_dir().join("tango-ng.json"))
+    config_dir().map(|d| d.join("tango-ng.json"))
 }
 
 impl Config {
@@ -90,10 +131,10 @@ impl Config {
     /// Best-effort import of the portable fields from tango's config.json.
     fn seed_from_tango() -> Self {
         let mut config = Self::default();
-        let Some(project_dirs) = directories_next::ProjectDirs::from("net", "n1gp", "tango") else {
+        let Some(dir) = config_dir() else {
             return config;
         };
-        let path = project_dirs.config_dir().join("config.json");
+        let path = dir.join("config.json");
         let Ok(raw) = std::fs::read_to_string(&path) else {
             return config;
         };
@@ -124,6 +165,11 @@ impl Config {
         }
         if let Some(volume) = v.get("volume").and_then(|x| x.as_f64()) {
             config.volume = (volume as f32).clamp(0.0, 1.0);
+        }
+        if let Some(endpoint) = v.get("matchmaking_endpoint").and_then(|x| x.as_str()) {
+            if !endpoint.is_empty() {
+                config.matchmaking_endpoint = endpoint.to_string();
+            }
         }
         log::info!("seeded tango-ng config from {}", path.display());
         config

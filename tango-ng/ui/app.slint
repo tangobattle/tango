@@ -54,6 +54,9 @@ export global Glyphs {
     out property <string> globe: "\u{e0e8}";
     out property <string> x: "\u{e1b2}";
     out property <string> pause: "\u{e12e}";
+    out property <string> check: "\u{e06c}";
+    out property <string> log-out: "\u{e10e}";
+    out property <string> wand: "\u{e246}";
 }
 
 component LIcon inherits Text {
@@ -159,6 +162,10 @@ component PrimaryButton inherits TechPlate {
         padding-left: root.pad-h;
         padding-right: root.pad-h;
         spacing: root.glyph == "" || root.label == "" ? 0 : 8px;
+        // Center so a fixed-width instance (the lobby's Ready button,
+        // pinned so its three labels never shift the bar) doesn't
+        // stretch its content left. No-op when sized by content.
+        alignment: center;
         if root.glyph != "" : LIcon {
             text: root.glyph;
             font-size: root.text-size;
@@ -169,6 +176,36 @@ component PrimaryButton inherits TechPlate {
             font-size: root.text-size;
             color: root.enabled ? white : Theme.disabled-text;
             vertical-alignment: center;
+        }
+    }
+}
+
+// Icon-only danger action (the lobby's Leave) — quiet plate at rest,
+// red tint + border on hover, like tango's widgets::danger_button.
+component DangerIconButton inherits TechPlate {
+    in property <string> glyph;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    r: 10px;
+    background: root.enabled && ta.has-hover ? #ff525226 : Theme.btn-plate;
+    border-width: 1px;
+    border-color: root.enabled && ta.has-hover ? #ff5252aa : Theme.input-border;
+
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding-top: 10px;
+        padding-bottom: 10px;
+        padding-left: 12px;
+        padding-right: 12px;
+        LIcon {
+            text: root.glyph;
+            font-size: 15px;
+            color: root.enabled ? Theme.danger : Theme.disabled-text;
         }
     }
 }
@@ -324,6 +361,7 @@ component ChunkyInput inherits TechPlate {
 // Chunky slider: 6px rail + circular handle (widgets::chunky_slider).
 component ChunkySlider inherits Rectangle {
     in-out property <float> value: 1.0; // 0..1
+    in property <bool> enabled: true;
     callback changed(float);
 
     height: 24px;
@@ -356,6 +394,7 @@ component ChunkySlider inherits Rectangle {
         border-color: #00000040;
     }
     TouchArea {
+        enabled: root.enabled;
         moved => {
             if (self.pressed) {
                 root.value = max(0.0, min(1.0, self.mouse-x / root.width));
@@ -372,6 +411,7 @@ component ChunkySlider inherits Rectangle {
 // Chunky checkbox: rounded box, primary fill + check glyph when on.
 component ChunkyCheckbox inherits HorizontalLayout {
     in property <string> label;
+    in property <bool> enabled: true;
     in-out property <bool> checked;
     callback toggled(bool);
 
@@ -384,6 +424,7 @@ component ChunkyCheckbox inherits HorizontalLayout {
         border-width: 1px;
         border-color: root.checked ? Theme.primary : Theme.input-border;
         TouchArea {
+            enabled: root.enabled;
             clicked => {
                 root.checked = !root.checked;
                 root.toggled(root.checked);
@@ -437,6 +478,53 @@ component Scanline inherits Rectangle {
     background: @linear-gradient(90deg, #4caf5000 0%, #4caf50b3 30%, #4caf50b3 70%, #4caf5000 100%);
 }
 
+// One lobby matchup side card (tango's tabs/play/lobby.rs side_card):
+// ready dot beside a caption / nickname / subline column. The dot is a
+// 14px "ready light" — green with a soft glow when that side has
+// committed, muted gray otherwise — padded down so it rides the
+// nickname row. The nickname tints primary when ready.
+component LobbySideCard inherits HorizontalLayout {
+    in property <string> role-label;
+    in property <string> nickname;
+    in property <string> subline;
+    in property <bool> ready;
+
+    spacing: 10px;
+    Rectangle {
+        width: 14px;
+        Rectangle {
+            y: 20px;
+            width: 14px;
+            height: 14px;
+            border-radius: 7px;
+            background: root.ready ? Theme.primary : Theme.text-muted;
+            drop-shadow-blur: root.ready ? 10px : 0px;
+            drop-shadow-color: root.ready ? #4caf50b3 : transparent;
+        }
+    }
+    VerticalLayout {
+        spacing: 2px;
+        alignment: start;
+        Text {
+            text: root.role-label;
+            font-size: 11px;
+            color: Theme.text-muted;
+        }
+        Text {
+            text: root.nickname;
+            font-size: 18px;
+            color: root.ready ? Theme.primary : Theme.text;
+            overflow: elide;
+        }
+        Text {
+            text: root.subline;
+            font-size: 11px;
+            color: Theme.text-muted;
+            overflow: elide;
+        }
+    }
+}
+
 // One replay-list row's display strings.
 export struct ReplayRow {
     line1: string,
@@ -477,10 +565,41 @@ export component AppWindow inherits Window {
     in-out property <bool> fractional: false;
     // 0 = singleplayer, 1 = replay (shows the transport bar).
     in property <int> session-kind: 0;
-    // Netplay: the typed link code / direct command, and the lifecycle
-    // status line ("" while idle — the input shows instead).
+    // Netplay: the typed link code / direct command.
     in-out property <string> link-code: "";
-    in property <string> netplay-status: "";
+    // ---- netplay lobby band (Phase B) ----
+    // Visible whenever a netplay attempt is past Idle; it replaces the
+    // whole idle strip (link-code input + Fight) at the bottom of the
+    // Play tab. All values are pushed from main.rs's per-tick refresh.
+    in property <bool> lobby-visible: false;
+    // Terminal failure: red-wash the command pane, drop everything but
+    // the status line and Leave.
+    in property <bool> lobby-failed: false;
+    // Refuse input without changing layout (match spinning up).
+    in property <bool> lobby-inert: false;
+    in property <string> lobby-status: "";
+    // 0 = in-flight (muted), 1 = good (green), 2 = bad (red).
+    in property <int> lobby-status-tone: 0;
+    // Caption under the status: link code / direct target while
+    // dialing, live ping once measured.
+    in property <string> lobby-conn-detail: "";
+    in property <string> lobby-local-nickname: "";
+    in property <string> lobby-local-subline: "";
+    in property <bool> lobby-local-ready: false;
+    in property <string> lobby-remote-nickname: "—";
+    in property <string> lobby-remote-subline: "—";
+    in property <bool> lobby-remote-ready: false;
+    in property <[string]> lobby-match-types: [];
+    in-out property <int> lobby-selected-match-type: -1;
+    // Normalized slider position; frames = 2 + value × 8 (main.rs maps
+    // + clamps to tango-pvp's [2, 10]).
+    in-out property <float> lobby-frame-delay: 0.0;
+    in property <string> lobby-frame-delay-label: "2";
+    in-out property <bool> lobby-blind: false;
+    // 0 = Ready (commit), 1 = Unready (uncommit), 2 = Starting… (inert).
+    in property <int> lobby-ready-state: 0;
+    in property <bool> lobby-ready-enabled: false;
+    in property <bool> lobby-suggest-enabled: false;
     in property <bool> replay-paused: false;
     in property <string> replay-progress: "";
     in property <float> replay-scrub-pos: 0.0;
@@ -516,6 +635,14 @@ export component AppWindow inherits Window {
     callback volume-changed(float);
     callback fractional-changed(bool);
     callback data-path-changed(string);
+    // Lobby band actions.
+    callback lobby-leave();
+    callback lobby-ready();
+    callback lobby-unready();
+    callback match-type-selected(int);
+    callback frame-delay-changed(float);
+    callback blind-toggled(bool);
+    callback suggest-delay();
 
     if !root.in-session : VerticalLayout {
         width: 100%;
@@ -711,9 +838,15 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                // bottom band, edge-to-edge
+                // bottom band, edge-to-edge. Two variants as sibling
+                // conditionals (NOT branches inside one Rectangle —
+                // that would merge both branches' height constraints
+                // and leave a dead zone under whichever is active).
                 Scanline { }
-                Rectangle {
+                // Idle strip: link code / direct command entry + the
+                // Fight CTA. Yields to the lobby band while a netplay
+                // attempt is live.
+                if !root.lobby-visible : Rectangle {
                     background: Theme.light
                         ? @linear-gradient(180deg, #fbf7ea 0%, #e8e2cd 100%)
                         : @linear-gradient(180deg, #1b1e20 0%, #131516 100%);
@@ -723,33 +856,11 @@ export component AppWindow inherits Window {
                         padding-left: 8px;
                         padding-right: 8px;
                         spacing: 10px;
-                        // Link code / direct command entry; while a
-                        // connection is in flight the same plate slot
-                        // shows the lifecycle status instead (identical
-                        // footprint, so the band never shifts).
-                        if root.netplay-status == "" : ChunkyInput {
+                        ChunkyInput {
                             height: 40px;
                             horizontal-stretch: 1;
                             text <=> root.link-code;
                             accepted(t) => { root.fight-clicked(); }
-                        }
-                        if root.netplay-status != "" : TechPlate {
-                            r: 10px;
-                            height: 40px;
-                            horizontal-stretch: 1;
-                            background: Theme.plate-input;
-                            border-width: 1px;
-                            border-color: Theme.input-border;
-                            Text {
-                                x: 16px;
-                                width: parent.width - 32px;
-                                height: parent.height;
-                                text: root.netplay-status;
-                                font-size: 15px;
-                                color: Theme.text;
-                                vertical-alignment: center;
-                                overflow: elide;
-                            }
                         }
                         PrimaryButton {
                             glyph: Glyphs.swords;
@@ -762,6 +873,163 @@ export component AppWindow inherits Window {
                             text-size: 15px;
                             height: 40px;
                             clicked => { root.fight-clicked(); }
+                        }
+                    }
+                }
+
+                // Lobby band (tango's tabs/play/lobby.rs): the matchup
+                // hero (side cards + VS) over the command bar. The save
+                // view above stays live throughout.
+                if root.lobby-visible : Rectangle {
+                    background: Theme.light
+                        ? @linear-gradient(180deg, #fbf7ea 0%, #e8e2cd 100%)
+                        : @linear-gradient(180deg, #1b1e20 0%, #131516 100%);
+                    VerticalLayout {
+                        padding: 8px;
+                        spacing: 8px;
+
+                        // matchup pane
+                        Pane {
+                            HorizontalLayout {
+                                padding: 12px;
+                                spacing: 12px;
+                                LobbySideCard {
+                                    horizontal-stretch: 1;
+                                    role-label: "You";
+                                    nickname: root.lobby-local-nickname;
+                                    subline: root.lobby-local-subline;
+                                    ready: root.lobby-local-ready;
+                                }
+                                // tango draws a canvas "VS" splitter
+                                // here; a plain centered VS stands in
+                                // for now. TODO(lobby-vs): port the
+                                // angled splitter.
+                                Text {
+                                    text: "VS";
+                                    font-size: 15px;
+                                    color: Theme.text-muted;
+                                    vertical-alignment: center;
+                                }
+                                LobbySideCard {
+                                    horizontal-stretch: 1;
+                                    role-label: "Opponent";
+                                    nickname: root.lobby-remote-nickname;
+                                    subline: root.lobby-remote-subline;
+                                    ready: root.lobby-remote-ready;
+                                }
+                            }
+                        }
+
+                        // command pane: Leave | status stack | match
+                        // settings cluster | Ready. On failure the pane
+                        // powers down: settings + Ready disappear and a
+                        // faint red wash sets the mood.
+                        Pane {
+                            background: root.lobby-failed ? #ff525214 : Theme.plate;
+                            HorizontalLayout {
+                                padding: 12px;
+                                spacing: 16px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    DangerIconButton {
+                                        glyph: Glyphs.log-out;
+                                        enabled: !root.lobby-inert || root.lobby-failed;
+                                        clicked => { root.lobby-leave(); }
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 4px;
+                                    horizontal-stretch: 1;
+                                    Text {
+                                        text: root.lobby-status;
+                                        font-size: 13px;
+                                        color: root.lobby-status-tone == 2
+                                            ? Theme.danger
+                                            : (root.lobby-status-tone == 1 ? Theme.primary : Theme.text-muted);
+                                        overflow: elide;
+                                    }
+                                    if root.lobby-conn-detail != "" : Text {
+                                        text: root.lobby-conn-detail;
+                                        font-size: 11px;
+                                        color: Theme.text-muted;
+                                        overflow: elide;
+                                    }
+                                }
+                                if !root.lobby-failed : HorizontalLayout {
+                                    spacing: 16px;
+                                    Labeled {
+                                        label: "Match type";
+                                        Picker {
+                                            width: 150px;
+                                            model: root.lobby-match-types;
+                                            placeholder: "—";
+                                            enabled: !root.lobby-inert;
+                                            current <=> root.lobby-selected-match-type;
+                                            selected(i) => { root.match-type-selected(i); }
+                                        }
+                                    }
+                                    Labeled {
+                                        label: "Frame delay";
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            VerticalLayout {
+                                                alignment: center;
+                                                ChunkySlider {
+                                                    width: 120px;
+                                                    enabled: !root.lobby-inert;
+                                                    value <=> root.lobby-frame-delay;
+                                                    changed(v) => { root.frame-delay-changed(v); }
+                                                }
+                                            }
+                                            Text {
+                                                text: root.lobby-frame-delay-label;
+                                                width: 16px;
+                                                font-size: 13px;
+                                                color: Theme.text;
+                                                vertical-alignment: center;
+                                            }
+                                            NeutralButton {
+                                                glyph: Glyphs.wand;
+                                                enabled: root.lobby-suggest-enabled;
+                                                clicked => { root.suggest-delay(); }
+                                            }
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        ChunkyCheckbox {
+                                            label: "Blind setup";
+                                            enabled: !root.lobby-inert;
+                                            checked <=> root.lobby-blind;
+                                            toggled(b) => { root.blind-toggled(b); }
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        PrimaryButton {
+                                            width: 122px;
+                                            glyph: root.lobby-ready-state == 0
+                                                ? Glyphs.check
+                                                : (root.lobby-ready-state == 1 ? Glyphs.x : Glyphs.play);
+                                            label: root.lobby-ready-state == 0
+                                                ? "Ready"
+                                                : (root.lobby-ready-state == 1 ? "Unready" : "Starting…");
+                                            enabled: root.lobby-ready-enabled;
+                                            pad-v: 8px;
+                                            pad-h: 12px;
+                                            text-size: 15px;
+                                            clicked => {
+                                                if (root.lobby-ready-state == 0) {
+                                                    root.lobby-ready();
+                                                } else if (root.lobby-ready-state == 1) {
+                                                    root.lobby-unready();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
