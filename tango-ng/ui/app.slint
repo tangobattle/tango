@@ -130,6 +130,20 @@ export global I18n {
     in-out property <string> patches-details-source: "Source:";
     in-out property <string> patches-details-games: "Supported games:";
     in-out property <string> patches-readme-placeholder: "This patch has no README.";
+    in-out property <string> patches-open-folder: "Open folder";
+    in-out property <string> patches-favorite: "Favorite";
+    in-out property <string> patches-unfavorite: "Unfavorite";
+    // welcome overlay
+    in-out property <string> welcome-title: "Welcome to Tango!";
+    in-out property <string> welcome-subtitle: "There's just a few steps you'll need to complete before you can start playing.";
+    in-out property <string> welcome-continue: "Continue";
+    in-out property <string> welcome-step-roms: "Add your ROMs";
+    in-out property <string> welcome-step-roms-description: "Drop your Battle Network / Rockman EXE .gba files into:";
+    in-out property <string> welcome-step-nickname: "Set your nickname";
+    in-out property <string> welcome-step-nickname-description: "You can change this at any time in Settings.";
+    in-out property <string> welcome-open-folder: "Open ROMs folder";
+    in-out property <string> welcome-roms-needed: "Add at least one ROM before continuing.";
+    in-out property <string> welcome-rescan: "Rescan";
     // settings
     in-out property <string> settings-general: "General";
     in-out property <string> settings-graphics: "Graphics";
@@ -739,6 +753,8 @@ export struct ReplayRow {
 export struct PatchRow {
     title: string,
     authors: string,
+    // Favorites sort first and wear a gold star.
+    favorite: bool,
 }
 
 // ---- save viewer (read-only) ----
@@ -1016,8 +1032,16 @@ export component AppWindow inherits Window {
     // Detail version picker rows ("v1.2.3"), newest first.
     in property <[string]> patch-versions: [];
     in-out property <int> selected-patch-version: -1;
+    // Detail pane: is the shown patch a favorite (the toggle's state).
+    in property <bool> patch-detail-favorite: false;
     // Manual repo sync in flight (the Update button disables itself).
     in property <bool> patches-updating: false;
+    // ---- welcome / first-run overlay ----
+    in-out property <bool> welcome-visible: false;
+    in-out property <string> welcome-nickname: "";
+    in property <string> welcome-roms-path: "";
+    in property <string> welcome-roms-detected: "";
+    in property <bool> welcome-has-roms: false;
     // Status beside the Update button: "Updating…" / "Update failed: …"
     // / the last-updated stamp.
     in property <string> patches-update-status: "";
@@ -1196,6 +1220,13 @@ export component AppWindow inherits Window {
     callback patch-detail-version-selected(int);
     callback patch-search-edited(string);
     callback patch-update-clicked();
+    callback patch-favorite-toggle();
+    callback patch-open-folder();
+    callback patch-open-source();
+    // welcome overlay
+    callback welcome-continue();
+    callback welcome-open-roms();
+    callback welcome-rescan();
     callback play-clicked();
     callback fight-clicked();
     callback watch-clicked();
@@ -2095,8 +2126,9 @@ export component AppWindow inherits Window {
                         PrimaryButton {
                             glyph: Glyphs.swords;
                             label: I18n.play-fight;
-                            enabled: root.link-code != ""
-                                && root.selected-game >= 0
+                            // No code required — an empty input makes
+                            // Fight generate a random one (main.rs).
+                            enabled: root.selected-game >= 0
                                 && root.selected-save >= 0;
                             pad-v: 10px;
                             pad-h: 22px;
@@ -2469,11 +2501,22 @@ export component AppWindow inherits Window {
                                     padding-right: 10px;
                                     padding-top: 6px;
                                     padding-bottom: 6px;
-                                    Text {
-                                        text: entry.title;
-                                        font-size: 13px;
-                                        color: root.selected-patch-item == i ? Theme.ink : Theme.text;
-                                        overflow: elide;
+                                    HorizontalLayout {
+                                        spacing: 5px;
+                                        alignment: start;
+                                        if entry.favorite : Text {
+                                            text: "★";
+                                            font-size: 13px;
+                                            // Favorite gold, readable on both washes.
+                                            color: root.selected-patch-item == i ? Theme.ink : #ffc700;
+                                            vertical-alignment: center;
+                                        }
+                                        Text {
+                                            text: entry.title;
+                                            font-size: 13px;
+                                            color: root.selected-patch-item == i ? Theme.ink : Theme.text;
+                                            overflow: elide;
+                                        }
                                     }
                                     Text {
                                         text: entry.authors;
@@ -2505,6 +2548,16 @@ export component AppWindow inherits Window {
                                     vertical-alignment: center;
                                     overflow: elide;
                                     horizontal-stretch: 1;
+                                }
+                                NeutralTextButton {
+                                    label: root.patch-detail-favorite
+                                        ? "★ " + I18n.patches-unfavorite
+                                        : "☆ " + I18n.patches-favorite;
+                                    clicked => { root.patch-favorite-toggle(); }
+                                }
+                                NeutralTextButton {
+                                    label: I18n.patches-open-folder;
+                                    clicked => { root.patch-open-folder(); }
                                 }
                                 Picker {
                                     width: 140px;
@@ -2550,8 +2603,6 @@ export component AppWindow inherits Window {
                                         horizontal-stretch: 1;
                                     }
                                 }
-                                // Plain text for now — TODO: open the
-                                // source URL in the browser on click.
                                 if root.patch-source != "" : HorizontalLayout {
                                     spacing: 6px;
                                     Text {
@@ -2560,13 +2611,18 @@ export component AppWindow inherits Window {
                                         color: Theme.text-muted;
                                         vertical-alignment: center;
                                     }
-                                    Text {
+                                    // Clickable: opens the URL in the browser.
+                                    src-link := Text {
                                         text: root.patch-source;
                                         font-size: 11px;
-                                        color: Theme.text;
+                                        color: srcta.has-hover ? Theme.primary : Theme.text;
                                         vertical-alignment: center;
                                         overflow: elide;
                                         horizontal-stretch: 1;
+                                        srcta := TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => { root.patch-open-source(); }
+                                        }
                                     }
                                 }
                                 // Supported games for the picked version.
@@ -3452,6 +3508,121 @@ export component AppWindow inherits Window {
                     text: Glyphs.x;
                     font-size: 13px;
                     color: xta.has-hover ? #ff5252 : Theme.text-muted;
+                }
+            }
+        }
+    }
+    // ---- welcome / first-run overlay (tabs/welcome.rs) ----
+    // Shown until a nickname is set: language pick, ROMs step (open
+    // folder / rescan / detected count), nickname step gated on >= 1
+    // ROM. Continue writes the nickname and never shows this again.
+    if root.welcome-visible : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: Theme.bg;
+        VerticalLayout {
+            alignment: center;
+            HorizontalLayout {
+                alignment: center;
+                Panel {
+                    width: 560px;
+                    VerticalLayout {
+                        padding: 28px;
+                        spacing: 12px;
+                        Text {
+                            text: I18n.welcome-title;
+                            font-size: 22px;
+                            color: Theme.text;
+                        }
+                        Text {
+                            text: I18n.welcome-subtitle;
+                            font-size: 13px;
+                            color: Theme.text-muted;
+                            wrap: word-wrap;
+                        }
+                        Labeled {
+                            label: I18n.settings-language;
+                            Picker {
+                                width: 240px;
+                                model: root.languages;
+                                placeholder: "—";
+                                current <=> root.settings-language;
+                                selected(i) => { root.language-selected(i); }
+                            }
+                        }
+                        Rectangle { height: 6px; }
+                        Text {
+                            text: I18n.welcome-step-roms;
+                            font-size: 15px;
+                            color: Theme.text;
+                        }
+                        Text {
+                            text: I18n.welcome-step-roms-description;
+                            font-size: 12px;
+                            color: Theme.text-muted;
+                            wrap: word-wrap;
+                        }
+                        Text {
+                            text: root.welcome-roms-path;
+                            font-size: 12px;
+                            color: Theme.text;
+                            overflow: elide;
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            NeutralTextButton {
+                                label: I18n.welcome-open-folder;
+                                clicked => { root.welcome-open-roms(); }
+                            }
+                            NeutralTextButton {
+                                label: I18n.welcome-rescan;
+                                clicked => { root.welcome-rescan(); }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                Text {
+                                    text: root.welcome-roms-detected;
+                                    font-size: 12px;
+                                    color: root.welcome-has-roms ? Theme.text : Theme.text-muted;
+                                }
+                            }
+                        }
+                        Rectangle { height: 6px; }
+                        Text {
+                            text: I18n.welcome-step-nickname;
+                            font-size: 15px;
+                            color: Theme.text;
+                        }
+                        Text {
+                            text: I18n.welcome-step-nickname-description;
+                            font-size: 12px;
+                            color: Theme.text-muted;
+                            wrap: word-wrap;
+                        }
+                        ChunkyInput {
+                            width: 240px;
+                            text <=> root.welcome-nickname;
+                            accepted(t) => { root.welcome-continue(); }
+                        }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            if !root.welcome-has-roms : VerticalLayout {
+                                alignment: center;
+                                Text {
+                                    text: I18n.welcome-roms-needed;
+                                    font-size: 12px;
+                                    color: Theme.text-muted;
+                                }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                            PrimaryButton {
+                                label: I18n.welcome-continue;
+                                enabled: root.welcome-has-roms && root.welcome-nickname != "";
+                                clicked => { root.welcome-continue(); }
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -79,6 +79,9 @@ pub struct Config {
     /// Re-sync the patch repo in the background every 15 minutes
     /// (tango's `enable_patch_autoupdate`).
     pub enable_patch_autoupdate: bool,
+    /// Names of patches the user has favorited — they sort to the top
+    /// of the patch pickers and the Patches tab, starred.
+    pub favorite_patches: std::collections::BTreeSet<String>,
     /// Keyboard + gamepad bindings for the emulator sessions, edited
     /// by the Input settings pane. Not seeded from tango's config —
     /// tango stores physical scancodes, which don't map onto the
@@ -107,6 +110,7 @@ impl Default for Config {
             relay_mode: RelayMode::default(),
             patch_repo: DEFAULT_PATCH_REPO.to_string(),
             enable_patch_autoupdate: true,
+            favorite_patches: std::collections::BTreeSet::new(),
             input_mapping: crate::input::Mapping::default(),
         }
     }
@@ -228,6 +232,12 @@ impl Config {
             if !repo.is_empty() {
                 config.patch_repo = repo.to_string();
             }
+        }
+        if let Some(favs) = v.get("favorite_patches").and_then(|x| x.as_array()) {
+            config.favorite_patches = favs
+                .iter()
+                .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                .collect();
         }
         log::info!("seeded tango-ng config from {}", path.display());
         config

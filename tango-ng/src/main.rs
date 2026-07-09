@@ -45,6 +45,7 @@ mod patch;
 // lobby/session UI.
 #[allow(dead_code)]
 mod pvp;
+mod randomcode;
 mod replays;
 mod rom;
 mod save;
@@ -139,6 +140,21 @@ fn apply_i18n(app: &AppWindow, config: &config::Config) {
     i18n.set_save_action_cancel(t!(lang, "save-action-cancel").into());
     i18n.set_save_name_placeholder(t!(lang, "save-name-placeholder").into());
     i18n.set_save_template_pick(t!(lang, "save-template-pick").into());
+    // patches tab polish
+    i18n.set_patches_open_folder(t!(lang, "patches-open-folder").into());
+    i18n.set_patches_favorite(t!(lang, "patches-favorite").into());
+    i18n.set_patches_unfavorite(t!(lang, "patches-unfavorite").into());
+    // welcome overlay
+    i18n.set_welcome_title(t!(lang, "welcome-title").into());
+    i18n.set_welcome_subtitle(t!(lang, "welcome-subtitle").into());
+    i18n.set_welcome_continue(t!(lang, "welcome-continue").into());
+    i18n.set_welcome_step_roms(t!(lang, "welcome-step-roms").into());
+    i18n.set_welcome_step_roms_description(t!(lang, "welcome-step-roms-description").into());
+    i18n.set_welcome_step_nickname(t!(lang, "welcome-step-nickname").into());
+    i18n.set_welcome_step_nickname_description(t!(lang, "welcome-step-nickname-description").into());
+    i18n.set_welcome_open_folder(t!(lang, "welcome-open-folder").into());
+    i18n.set_welcome_roms_needed(t!(lang, "welcome-roms-needed").into());
+    i18n.set_welcome_rescan(t!(lang, "rescan").into());
     // lobby band
     i18n.set_lobby_you(t!(lang, "play-you").into());
     i18n.set_lobby_opponent(t!(lang, "play-opponent").into());
@@ -374,6 +390,10 @@ fn start_replay(
 /// scanned state — after a scan lands or the display language changes.
 fn refresh_models(app: &AppWindow, st: &mut State) {
     let lang = st.config.language.clone();
+    // Welcome overlay's ROMs step (live while the user drops files in).
+    app.set_welcome_has_roms(!st.roms.is_empty());
+    app.set_welcome_roms_detected(t!(&lang, "welcome-step-roms-detected", count = st.roms.len() as i64).into());
+    app.set_welcome_roms_path(st.config.roms_path().display().to_string().into());
     let mut game_rows: Vec<rom::GameRef> = st.roms.keys().copied().collect();
     game_rows.sort_by_key(|g| game::display_name(&lang, *g));
     let rows: Vec<SharedString> = game_rows
@@ -501,11 +521,20 @@ fn replay_row(lang: &unic_langid::LanguageIdentifier, replay: &replays::ScannedR
 /// resets because the surviving indices no longer line up.
 fn apply_patch_filter(app: &AppWindow, st: &mut State) {
     let query = st.patch_filter.clone();
+    let favs = &st.config.favorite_patches;
+    // Favorites first (starred), alphabetical within each group — the
+    // map iterates name-sorted, so a stable partition preserves that.
+    let mut entries: Vec<_> = st
+        .patches
+        .iter()
+        .filter(|(n, p)| {
+            query.is_empty() || n.to_lowercase().contains(&query) || p.title.to_lowercase().contains(&query)
+        })
+        .collect();
+    entries.sort_by_key(|(name, _)| !favs.contains(*name));
     let mut names = Vec::new();
     let mut rows = Vec::new();
-    for (name, patch) in st.patches.iter().filter(|(n, p)| {
-        query.is_empty() || n.to_lowercase().contains(&query) || p.title.to_lowercase().contains(&query)
-    }) {
+    for (name, patch) in entries {
         names.push(name.clone());
         rows.push(PatchRow {
             title: patch.title.clone().into(),
@@ -516,6 +545,7 @@ fn apply_patch_filter(app: &AppWindow, st: &mut State) {
             } else {
                 patch.authors.join(", ").into()
             },
+            favorite: favs.contains(name),
         });
     }
     st.patch_list_rows = names;
@@ -536,6 +566,7 @@ fn push_patch_detail(app: &AppWindow, st: &mut State, index: usize) {
     else {
         return;
     };
+    app.set_patch_detail_favorite(st.config.favorite_patches.contains(&name));
     st.patch_detail_name = Some(name);
     st.patch_detail_versions = patch.versions.keys().rev().cloned().collect();
     app.set_patch_title(patch.title.clone().into());
@@ -1790,6 +1821,11 @@ fn main() -> anyhow::Result<()> {
                 .map(SharedString::from)
                 .collect::<Vec<_>>(),
         )));
+        // First run (no nickname yet): the welcome overlay leads —
+        // language pick, ROMs, nickname. Continue clears it for good.
+        if st.config.nickname.is_none() && ui_shot_dir.is_none() {
+            app.set_welcome_visible(true);
+        }
     }
 
     app.on_nickname_changed({
@@ -1995,17 +2031,26 @@ fn main() -> anyhow::Result<()> {
                 .collect();
             app.set_saves(ModelRc::new(VecModel::from(rows)));
 
-            // Patches supporting this game (any version).
+            // Patches supporting this game (any version), favorites
+            // first + starred like tango's loadout picker.
             st.patch_rows = st
                 .patches
                 .iter()
                 .filter(|(_, p)| p.versions.values().any(|v| v.supported_games.contains(&game)))
                 .map(|(name, _)| name.clone())
                 .collect();
+            let favs = st.config.favorite_patches.clone();
+            st.patch_rows.sort_by_key(|name| !favs.contains(name));
             st.version_rows.clear();
             let mut patch_model: Vec<SharedString> =
                 vec![SharedString::from(t!(&st.config.language, "play-no-patch"))];
-            patch_model.extend(st.patch_rows.iter().map(|n| SharedString::from(n.as_str())));
+            patch_model.extend(st.patch_rows.iter().map(|n| {
+                if st.config.favorite_patches.contains(n) {
+                    SharedString::from(format!("★ {n}"))
+                } else {
+                    SharedString::from(n.as_str())
+                }
+            }));
             app.set_patches(ModelRc::new(VecModel::from(patch_model)));
             app.set_selected_patch(0);
             app.set_versions(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
@@ -2107,6 +2152,89 @@ fn main() -> anyhow::Result<()> {
             };
             if copy_image_to_clipboard(img) {
                 flash_copy_feedback(&app, true);
+            }
+        }
+    });
+
+    // ---- welcome / first-run overlay (tabs/welcome.rs) ----
+
+    app.on_welcome_open_roms({
+        let state = state.clone();
+        move || {
+            let st = state.borrow();
+            let path = st.config.roms_path();
+            let _ = std::fs::create_dir_all(&path);
+            open_path(path);
+        }
+    });
+
+    app.on_welcome_rescan({
+        let spawn_scan = spawn_scan.clone();
+        move || spawn_scan()
+    });
+
+    app.on_welcome_continue({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let nickname = app.get_welcome_nickname().trim().to_string();
+            if nickname.is_empty() || st.roms.is_empty() {
+                return;
+            }
+            st.config.nickname = Some(nickname.clone());
+            st.config.save();
+            app.set_settings_nickname(nickname.into());
+            app.set_welcome_visible(false);
+        }
+    });
+
+    // ---- patches tab polish (favorites, open folder, source link) ----
+
+    app.on_patch_favorite_toggle({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Some(name) = st.patch_detail_name.clone() else { return };
+            if !st.config.favorite_patches.remove(&name) {
+                st.config.favorite_patches.insert(name.clone());
+            }
+            st.config.save();
+            // Re-sort the list around the change, then re-point the
+            // selection at the same patch (the indices moved).
+            apply_patch_filter(&app, &mut st);
+            if let Some(idx) = st.patch_list_rows.iter().position(|n| *n == name) {
+                app.set_selected_patch_item(idx as i32);
+                push_patch_detail(&app, &mut st, idx);
+            }
+        }
+    });
+
+    app.on_patch_open_folder({
+        let state = state.clone();
+        move || {
+            let st = state.borrow();
+            if let Some(patch) = st.patch_detail_name.as_ref().and_then(|n| st.patches.get(n)) {
+                open_path(&patch.path);
+            }
+        }
+    });
+
+    app.on_patch_open_source({
+        let state = state.clone();
+        move || {
+            let st = state.borrow();
+            if let Some(source) = st
+                .patch_detail_name
+                .as_ref()
+                .and_then(|n| st.patches.get(n))
+                .and_then(|p| p.source.clone())
+            {
+                // open::that handles URLs as well as paths.
+                open_path(source);
             }
         }
     });
@@ -2569,9 +2697,14 @@ fn main() -> anyhow::Result<()> {
         move || {
             let Some(app) = app_weak.upgrade() else { return };
             let mut st = state.borrow_mut();
-            let text = app.get_link_code().trim().to_string();
+            let mut text = app.get_link_code().trim().to_string();
             if text.is_empty() {
-                return;
+                // Empty input generates a memorable random code (and
+                // puts it on the clipboard for the opponent DM), like
+                // tango's Fight button.
+                text = randomcode::generate(&st.config.language);
+                app.set_link_code(text.clone().into());
+                copy_text_to_clipboard(&text);
             }
             if text.starts_with('/') {
                 // Direct link-code commands: /host [port] | /connect <addr>.

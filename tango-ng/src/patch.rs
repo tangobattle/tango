@@ -35,12 +35,10 @@ pub struct Version {
     pub supported_games: HashSet<GameRef>,
     /// Per-game save templates the patch ships. Keyed by template name
     /// (empty string = the default template).
-    #[allow(dead_code)] // used when new-save creation lands
     pub save_templates: HashMap<GameRef, BTreeMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>>,
 }
 
 pub struct Patch {
-    #[allow(dead_code)] // used when the open-folder action lands
     pub path: std::path::PathBuf,
     pub title: String,
     /// Author display strings — parsed via `mailparse` and reduced to a
