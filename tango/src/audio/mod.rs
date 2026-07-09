@@ -4,7 +4,6 @@
 //! to the host rate.
 
 pub mod sdl;
-pub mod ui_sfx;
 
 pub const NUM_CHANNELS: usize = 2;
 pub const SAMPLES: usize = 512;
@@ -99,44 +98,26 @@ impl Stream for LateBinder {
     fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize {
         let mut s = self.stream.lock().unwrap();
 
-        let n = match &mut *s {
-            Some(stream) => {
-                let n = stream.fill(buf);
-                // Master volume gain. Skip the multiply at unity so
-                // the common case is free. Applied before the UI
-                // sfx mix below — the menu sounds have their own
-                // volume knob and shouldn't duck with the game.
-                let v = self.read_volume();
-                if v < 1.0 {
-                    for sample in &mut buf[..n] {
-                        for ch in sample.iter_mut() {
-                            *ch = (*ch as f32 * v) as i16;
-                        }
-                    }
-                }
-                n
+        let Some(stream) = &mut *s else {
+            for v in buf.iter_mut() {
+                *v = [0, 0];
             }
-            None => {
-                for v in buf.iter_mut() {
-                    *v = [0, 0];
-                }
-                buf.len()
-            }
+            return buf.len();
         };
 
-        // Menu sfx ride on top of whatever the source produced. Zero
-        // the underrun tail first (the scratch may hold a previous
-        // callback's samples) so a sound can span the whole window;
-        // when one did, report the full buffer as filled so the
-        // backend doesn't silence the tail again.
-        for v in &mut buf[n..] {
-            *v = [0, 0];
+        let n = stream.fill(buf);
+
+        // Master volume gain. Skip the multiply at unity so the
+        // common case is free.
+        let v = self.read_volume();
+        if v < 1.0 {
+            for sample in &mut buf[..n] {
+                for ch in sample.iter_mut() {
+                    *ch = (*ch as f32 * v) as i16;
+                }
+            }
         }
-        if ui_sfx::mix_into(buf) {
-            buf.len()
-        } else {
-            n
-        }
+        n
     }
 }
 

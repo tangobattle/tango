@@ -14,7 +14,6 @@ use sweeten::widget::{column, row};
 
 mod glide;
 mod menu_button;
-mod option_row;
 pub use glide::Glide;
 pub use menu_button::MenuItem;
 
@@ -429,24 +428,29 @@ pub fn labeled<'a, M: Clone + 'a>(label: String, ctrl: impl Into<Element<'a, M>>
         .into()
 }
 
+/// Fixed height of every [`option_row`] — one slot size whatever
+/// the control (a text input, a picker, a bare checkbox), so a
+/// settings pane reads as an even options list, not a form whose
+/// rows breathe with their contents.
+const OPTION_ROW_HEIGHT: f32 = 40.0;
+
 /// A full-width "options screen" row: label on the left, control
-/// hugging the right edge, the whole row lighting a faint accent
-/// plate on hover — the console-menu shape, not a desktop form's
-/// caption-over-control. The label is body-sized ink (not a muted
-/// caption): on an options screen the setting's name IS the row,
-/// not an annotation on it.
+/// hugging the right edge, every row exactly
+/// [`OPTION_ROW_HEIGHT`] tall — the console-menu shape, not a
+/// desktop form's caption-over-control. The label is body-sized
+/// ink (not a muted caption): on an options screen the setting's
+/// name IS the row, not an annotation on it.
 pub fn option_row<'a, M: 'a>(label: String, ctrl: impl Into<Element<'a, M>>) -> Element<'a, M> {
-    option_row::OptionRow::new(
-        row![
-            text(label).size(TEXT_BODY),
-            iced::widget::space::horizontal(),
-            ctrl.into(),
-        ]
-        .spacing(12)
-        .padding([6, 10])
-        .align_y(Alignment::Center)
-        .width(Length::Fill),
-    )
+    row![
+        text(label).size(TEXT_BODY),
+        iced::widget::space::horizontal(),
+        ctrl.into(),
+    ]
+    .spacing(12)
+    .padding([0, 10])
+    .align_y(Alignment::Center)
+    .width(Length::Fill)
+    .height(Length::Fixed(OPTION_ROW_HEIGHT))
     .into()
 }
 

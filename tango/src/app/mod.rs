@@ -345,7 +345,6 @@ impl App {
         };
         let mut audio_binder = audio::LateBinder::new();
         audio_binder.set_volume(config.volume);
-        audio::ui_sfx::set_volume(config.ui_sfx_volume);
         let audio_backend = match audio::sdl::Backend::new(audio_binder.clone()) {
             Ok(b) => {
                 audio_binder.set_sample_rate(b.sample_rate());
@@ -909,9 +908,6 @@ impl App {
             }
             Message::TabSelected(t) => {
                 let entered = self.tab != t;
-                if entered {
-                    audio::ui_sfx::play(audio::ui_sfx::Sfx::Move);
-                }
                 self.tab = t;
                 // A tab switch unmounts the input settings pane's capture
                 // wrapper, so key/button releases stop arriving — drop the

@@ -532,10 +532,7 @@ impl State {
                 iced::Task::none()
             }
             Message::SetBlindSetup(v) => self.set_blind_setup(v),
-            Message::Commit { save_sram } => {
-                crate::audio::ui_sfx::play(crate::audio::ui_sfx::Sfx::Confirm);
-                self.commit_local(save_sram)
-            }
+            Message::Commit { save_sram } => self.commit_local(save_sram),
             Message::Uncommit => self.invalidate_local_commit(),
             Message::RemoteCommit(c) => {
                 self.handshake.remote_commitment = Some(c);
@@ -583,7 +580,6 @@ impl State {
             Message::Cancelled => iced::Task::none(),
             Message::PeerDisconnected => self.on_peer_disconnected(),
             Message::Disconnect => {
-                crate::audio::ui_sfx::play(crate::audio::ui_sfx::Sfx::Cancel);
                 self.cancel_and_renew();
                 self.phase = Phase::Idle;
                 iced::Task::none()

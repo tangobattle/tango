@@ -253,7 +253,6 @@ settings-section-graphics = 图形
 settings-section-netplay = 联机
 settings-section-audio = 音频
 settings-volume = 音量
-settings-ui-sfx-volume = 菜单音效
 settings-disable-bgm-in-pvp = 联机对战时静音
 settings-nickname = 昵称
 settings-language = 语言

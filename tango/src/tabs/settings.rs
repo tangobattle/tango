@@ -189,9 +189,6 @@ pub enum Message {
     ToggleEnableUpdater(bool),
     ToggleAllowPrereleaseUpgrades(bool),
     VolumeChanged(f32),
-    /// Menu-sounds slider moved. Persisted to `config.ui_sfx_volume`
-    /// and pushed straight into [`crate::audio::ui_sfx`].
-    UiSfxVolumeChanged(f32),
     /// "Mute music in netplay" checkbox toggled. Persisted to
     /// `config.disable_bgm_in_pvp`; sampled at the next match start.
     ToggleDisableBgmInPvp(bool),
@@ -255,7 +252,6 @@ pub enum ConfigChange {
     EnableUpdater(bool),
     AllowPrereleaseUpgrades(bool),
     Volume(f32),
-    UiSfxVolume(f32),
     DisableBgmInPvp(bool),
     Theme(config::ThemeMode),
     Accent(config::AccentColor),
@@ -272,7 +268,6 @@ impl State {
         match msg {
             Message::TabSelected(t) => {
                 if self.active_tab != t {
-                    crate::audio::ui_sfx::play(crate::audio::ui_sfx::Sfx::Move);
                     // The sidebar lists sections in declaration
                     // order, so the discriminants double as
                     // positions: moving down brings the pane in
@@ -314,7 +309,6 @@ impl State {
             Message::ToggleEnableUpdater(b) => Some(ConfigChange::EnableUpdater(b)),
             Message::ToggleAllowPrereleaseUpgrades(b) => Some(ConfigChange::AllowPrereleaseUpgrades(b)),
             Message::VolumeChanged(v) => Some(ConfigChange::Volume(v)),
-            Message::UiSfxVolumeChanged(v) => Some(ConfigChange::UiSfxVolume(v)),
             Message::ToggleDisableBgmInPvp(b) => Some(ConfigChange::DisableBgmInPvp(b)),
             // App handles UpdateNow as a top-level effect — it
             // calls `updater.finish_update()` which exits the
@@ -645,20 +639,6 @@ fn settings_audio<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) 
                 // across the pane, which looks silly for a volume bar.
                 container(
                     iced::widget::slider(0.0..=1.0, config.volume, Message::VolumeChanged)
-                        .step(0.01)
-                        .style(widgets::chunky_slider)
-                )
-                .width(Length::Fixed(220.0)),
-            ]
-            .spacing(12)
-            .align_y(Alignment::Center),
-        ),
-        option_row::<Message>(
-            t!(lang, "settings-ui-sfx-volume"),
-            row![
-                text(format!("{:.0}%", config.ui_sfx_volume * 100.0)).size(TEXT_CAPTION),
-                container(
-                    iced::widget::slider(0.0..=1.0, config.ui_sfx_volume, Message::UiSfxVolumeChanged)
                         .step(0.01)
                         .style(widgets::chunky_slider)
                 )

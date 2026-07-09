@@ -361,7 +361,6 @@ impl<M: Clone> overlay::Overlay<M, Theme, iced::Renderer> for MenuOverlay<'_, '_
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
                 if let Some(position) = cursor.position_in(bounds) {
                     let index = ((position.y / self.row_height(renderer)) as usize).min(self.items.len() - 1);
-                    crate::audio::ui_sfx::play(crate::audio::ui_sfx::Sfx::Confirm);
                     shell.publish(self.items[index].message.clone());
                     *self.is_open = false;
                     shell.capture_event();

@@ -208,9 +208,6 @@ impl State {
             let receiver = run_lobby_loop(receiver, sender, event_tx, cancel).await;
             *post.lock().unwrap() = Some(receiver);
         });
-        // The moment worth a sting: someone is actually on the
-        // other end now.
-        crate::audio::ui_sfx::play(crate::audio::ui_sfx::Sfx::Sting);
         self.phase = Phase::Lobby { ident };
         iced::Task::none()
     }

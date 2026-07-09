@@ -29,10 +29,6 @@ fn default_volume() -> f32 {
     1.0
 }
 
-fn default_ui_sfx_volume() -> f32 {
-    0.5
-}
-
 fn default_frame_delay() -> u32 {
     2
 }
@@ -234,12 +230,6 @@ pub struct Config {
     /// the next buffer fill.
     #[serde(default = "default_volume")]
     pub volume: f32,
-    /// Menu sound-effects volume in `[0.0, 1.0]` — the synthesized
-    /// UI blips (see [`crate::audio::ui_sfx`]). Its own knob,
-    /// independent of the emulator's master `volume`; 0 disables
-    /// the sounds entirely.
-    #[serde(default = "default_ui_sfx_volume")]
-    pub ui_sfx_volume: f32,
     /// When true, PvP sessions install the per-game BGM-skip trap so
     /// battle music never starts (sound effects still play). Local-only,
     /// like the volume; sampled at match start.
@@ -303,7 +293,6 @@ impl Default for Config {
             ui_scale: default_ui_scale(),
             input_mapping: crate::input::Mapping::default(),
             volume: 1.0,
-            ui_sfx_volume: default_ui_sfx_volume(),
             disable_bgm_in_pvp: false,
             frame_delay: default_frame_delay(),
             relay_mode: RelayMode::default(),

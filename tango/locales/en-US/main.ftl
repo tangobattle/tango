@@ -274,7 +274,6 @@ settings-section-graphics = Graphics
 settings-section-netplay = Netplay
 settings-section-audio = Audio
 settings-volume = Volume
-settings-ui-sfx-volume = Menu sounds
 settings-disable-bgm-in-pvp = Mute music in netplay
 settings-nickname = Nickname
 settings-language = Language

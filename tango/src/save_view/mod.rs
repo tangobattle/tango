@@ -530,7 +530,6 @@ impl State {
         match action {
             Action::SelectTab(t) => {
                 if self.active_tab != Some(*t) {
-                    crate::audio::ui_sfx::play(crate::audio::ui_sfx::Sfx::Move);
                     // The strip lays tabs out in declaration order,
                     // so the discriminants double as positions:
                     // moving right enters from the right, moving
