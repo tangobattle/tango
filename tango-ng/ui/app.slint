@@ -96,6 +96,17 @@ export global I18n {
     in-out property <string> save-copy-image: "Copy as image";
     in-out property <string> copied: "Copied!";
     in-out property <string> patch-card4-none: "None";
+    // save management
+    in-out property <string> save-open-folder: "Open folder";
+    in-out property <string> save-duplicate: "Duplicate";
+    in-out property <string> save-rename: "Rename";
+    in-out property <string> save-delete: "Delete";
+    in-out property <string> save-rename-confirm: "Rename";
+    in-out property <string> save-delete-confirm: "Delete";
+    in-out property <string> save-new-confirm: "Create";
+    in-out property <string> save-action-cancel: "Cancel";
+    in-out property <string> save-name-placeholder: "New name";
+    in-out property <string> save-template-pick: "Pick a template…";
     // lobby band
     in-out property <string> lobby-you: "You";
     in-out property <string> lobby-opponent: "Opponent";
@@ -357,6 +368,60 @@ component NeutralTextButton inherits TechPlate {
             text: root.label;
             font-size: 12px;
             color: Theme.text;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// NeutralTextButton's danger twin (widgets::danger_button with a
+// label): quiet plate at rest, red tint + border on hover.
+component DangerTextButton inherits TechPlate {
+    in property <string> label;
+    callback clicked();
+
+    r: 10px;
+    background: ta.has-hover ? #ff525226 : Theme.btn-plate;
+    border-width: 1px;
+    border-color: ta.has-hover ? #ff5252aa : Theme.input-border;
+
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding-top: 5px;
+        padding-bottom: 5px;
+        padding-left: 12px;
+        padding-right: 12px;
+        Text {
+            text: root.label;
+            font-size: 12px;
+            color: ta.has-hover ? #ff8a8a : Theme.text;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// One row of the save-actions ⋮ popup menu (widgets::MenuItem).
+component MenuRow inherits Rectangle {
+    in property <string> label;
+    in property <bool> danger: false;
+    callback clicked();
+
+    height: 30px;
+    background: ta.has-hover ? Theme.hover : transparent;
+
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        Text {
+            text: root.label;
+            font-size: 13px;
+            color: root.danger ? #ff8a8a : Theme.text;
             vertical-alignment: center;
         }
     }
@@ -1029,6 +1094,17 @@ export component AppWindow inherits Window {
     // cleared by a single-shot timer there).
     in property <bool> save-copy-flash: false;
     in property <bool> save-copy-image-flash: false;
+    // ---- save management (save_manage.rs) ----
+    // Which form replaces the save-picker row: 0 = none, 1 = rename,
+    // 2 = duplicate, 3 = confirm delete, 4 = new save.
+    in-out property <int> save-action: 0;
+    in-out property <string> save-action-draft: "";
+    // New-save template picker (labels; values live in Rust).
+    in property <[string]> save-template-options: [];
+    in-out property <int> save-template-selected: -1;
+    in property <string> save-delete-prompt-text: "";
+    // The selected family has creatable templates (New save enables).
+    in property <bool> save-new-enabled: false;
     // Netplay: the typed link code / direct command.
     in-out property <string> link-code: "";
     // ---- netplay lobby band (Phase B) ----
@@ -1100,6 +1176,18 @@ export component AppWindow inherits Window {
     // / the NaviCust grid as an image (tango's CopyTab/CopyTabImage).
     callback save-copy();
     callback save-copy-image();
+    // Save management (the ⋮ menu + the New save button + form flow).
+    callback save-new-start();
+    callback save-open-folder();
+    callback save-duplicate-start();
+    callback save-rename-start();
+    callback save-delete-start();
+    callback save-action-cancel();
+    // One confirm for whichever form is open (Rust switches on
+    // save-action and reads the draft / template pick).
+    callback save-action-confirm();
+    // New-save template picked — Rust may regenerate the suggested name.
+    callback save-template-picked(int);
     callback replay-selected(int);
     callback replay-filter-selected(int);
     callback replay-opponent-edited(string);
@@ -1261,9 +1349,16 @@ export component AppWindow inherits Window {
                                     selected(i) => { root.version-selected(i); }
                                 }
                             }
-                            HorizontalLayout {
+                            // Save row: [New save][picker][⋮] at rest, or
+                            // whichever management form is in flight
+                            // (save_manage.rs; state = save-action).
+                            if root.save-action == 0 : HorizontalLayout {
                                 spacing: 8px;
-                                NeutralButton { glyph: Glyphs.file-plus; enabled: false; }
+                                NeutralButton {
+                                    glyph: Glyphs.file-plus;
+                                    enabled: root.save-new-enabled;
+                                    clicked => { root.save-new-start(); }
+                                }
                                 Picker {
                                     model: root.saves;
                                     placeholder: I18n.play-no-save;
@@ -1271,7 +1366,116 @@ export component AppWindow inherits Window {
                                     horizontal-stretch: 1;
                                     selected(i) => { root.save-selected(i); }
                                 }
-                                NeutralButton { glyph: Glyphs.ellipsis-v; enabled: false; }
+                                Rectangle {
+                                    width: 42px;
+                                    menu-btn := NeutralButton {
+                                        width: 100%;
+                                        height: 100%;
+                                        glyph: Glyphs.ellipsis-v;
+                                        enabled: root.selected-save >= 0;
+                                        clicked => { actions-menu.show(); }
+                                    }
+                                    actions-menu := PopupWindow {
+                                        x: parent.width - 180px;
+                                        y: parent.height + 4px;
+                                        width: 180px;
+                                        Rectangle {
+                                            background: Theme.bg;
+                                            border-width: 1px;
+                                            border-color: Theme.input-border;
+                                            border-radius: 8px;
+                                            VerticalLayout {
+                                                padding: 4px;
+                                                MenuRow {
+                                                    label: I18n.save-open-folder;
+                                                    clicked => { root.save-open-folder(); }
+                                                }
+                                                MenuRow {
+                                                    label: I18n.save-duplicate;
+                                                    clicked => { root.save-duplicate-start(); }
+                                                }
+                                                MenuRow {
+                                                    label: I18n.save-rename;
+                                                    clicked => { root.save-rename-start(); }
+                                                }
+                                                MenuRow {
+                                                    label: I18n.save-delete;
+                                                    danger: true;
+                                                    clicked => { root.save-delete-start(); }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            // Rename / duplicate: name field + cancel + confirm.
+                            if root.save-action == 1 || root.save-action == 2 : HorizontalLayout {
+                                spacing: 8px;
+                                ChunkyInput {
+                                    horizontal-stretch: 1;
+                                    text <=> root.save-action-draft;
+                                    placeholder: I18n.save-name-placeholder;
+                                    accepted(t) => { root.save-action-confirm(); }
+                                }
+                                NeutralTextButton {
+                                    label: I18n.save-action-cancel;
+                                    clicked => { root.save-action-cancel(); }
+                                }
+                                PrimaryButton {
+                                    label: root.save-action == 1 ? I18n.save-rename-confirm : I18n.save-duplicate;
+                                    enabled: root.save-action-draft != "";
+                                    pad-v: 5px;
+                                    pad-h: 12px;
+                                    clicked => { root.save-action-confirm(); }
+                                }
+                            }
+                            // Delete: named prompt + cancel + red confirm.
+                            if root.save-action == 3 : HorizontalLayout {
+                                spacing: 8px;
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: root.save-delete-prompt-text;
+                                    font-size: 13px;
+                                    color: Theme.text-muted;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                NeutralTextButton {
+                                    label: I18n.save-action-cancel;
+                                    clicked => { root.save-action-cancel(); }
+                                }
+                                DangerTextButton {
+                                    label: I18n.save-delete-confirm;
+                                    clicked => { root.save-action-confirm(); }
+                                }
+                            }
+                            // New save: template picker + name + cancel + create.
+                            if root.save-action == 4 : HorizontalLayout {
+                                spacing: 8px;
+                                Picker {
+                                    width: 220px;
+                                    model: root.save-template-options;
+                                    placeholder: I18n.save-template-pick;
+                                    current <=> root.save-template-selected;
+                                    selected(i) => { root.save-template-picked(i); }
+                                }
+                                ChunkyInput {
+                                    horizontal-stretch: 1;
+                                    text <=> root.save-action-draft;
+                                    placeholder: I18n.save-name-placeholder;
+                                    accepted(t) => { root.save-action-confirm(); }
+                                }
+                                NeutralTextButton {
+                                    label: I18n.save-action-cancel;
+                                    clicked => { root.save-action-cancel(); }
+                                }
+                                PrimaryButton {
+                                    label: I18n.save-new-confirm;
+                                    enabled: root.save-action-draft != "" && root.save-template-selected >= 0;
+                                    pad-v: 5px;
+                                    pad-h: 12px;
+                                    clicked => { root.save-action-confirm(); }
+                                }
                             }
                         }
                     }

@@ -83,11 +83,12 @@ unic-langid = { version = "0.9", features = ["likelysubtags"] }
 # png only, for the --smoke framebuffer dump.
 image = { workspace = true, features = ["png"] }
 
-# The save viewer's copy-as-text/-image buttons. Desktop-only: no
-# Android/iOS backends exist, so mobile builds compile the copy helpers
-# to no-ops instead (main.rs).
+# Desktop-only pieces (mobile builds compile the call sites to no-ops
+# in main.rs): arboard backs the save viewer's copy-as-text/-image
+# buttons; open backs the open-folder actions.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 arboard = "3"
+open = "5"
 
 [features]
 # Mirrors the tango crate: each game's support is an optional dependency

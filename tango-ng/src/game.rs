@@ -96,7 +96,7 @@ static FAMILY_LOCALES: LazyLock<
 
 /// Look the bare `key` up in `family`'s bundle for `lang`, falling back to
 /// the en-US fragment. Returns `None` if the family/key isn't defined.
-fn family_str(family: &str, lang: &unic_langid::LanguageIdentifier, key: &str) -> Option<String> {
+pub(crate) fn family_str(family: &str, lang: &unic_langid::LanguageIdentifier, key: &str) -> Option<String> {
     fn get(bundle: &FluentBundle<FluentResource>, key: &str) -> Option<String> {
         let msg = bundle.get_message(key)?;
         let pattern = msg.value()?;
@@ -138,6 +138,21 @@ pub fn display_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> St
 /// the family's `name` string; falls back to the raw family string.
 pub fn family_display_name(lang: &unic_langid::LanguageIdentifier, family: &str) -> String {
     family_str(family, lang, "name").unwrap_or_else(|| family.to_string())
+}
+
+/// Short display name (e.g. "BN6") via the family's `short` string.
+pub fn short_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> String {
+    let (family, variant) = game.family_and_variant();
+    family_str(family, lang, "short").unwrap_or_else(|| format!("{family} v{variant}"))
+}
+
+/// Short *variant* tag (e.g. "White", "Blue Moon") via the family's
+/// `variant-<variant>-short` string — the bare color/team name without
+/// the series title, for disambiguating saves/templates within a family.
+/// Falls back to the family short tag for single-variant families.
+pub fn variant_short_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> String {
+    let (family, variant) = game.family_and_variant();
+    family_str(family, lang, &format!("variant-{variant}-short")).unwrap_or_else(|| short_name(lang, game))
 }
 
 /// Localized match-type label for a (mode, subtype) pair (e.g.

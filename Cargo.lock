@@ -8577,6 +8577,7 @@ dependencies = [
  "log",
  "mailparse",
  "mgba",
+ "open",
  "rand 0.8.5",
  "rand_pcg",
  "rcgen 0.11.3",

@@ -48,6 +48,7 @@ mod pvp;
 mod replays;
 mod rom;
 mod save;
+mod save_manage;
 mod session;
 
 slint::include_modules!();
@@ -127,6 +128,17 @@ fn apply_i18n(app: &AppWindow, config: &config::Config) {
     i18n.set_save_copy_image(t!(lang, "save-copy-image").into());
     i18n.set_copied(t!(lang, "copied").into());
     i18n.set_patch_card4_none(t!(lang, "patch-card4-none").into());
+    // save management
+    i18n.set_save_open_folder(t!(lang, "save-open-folder").into());
+    i18n.set_save_duplicate(t!(lang, "save-duplicate").into());
+    i18n.set_save_rename(t!(lang, "save-rename").into());
+    i18n.set_save_delete(t!(lang, "save-delete").into());
+    i18n.set_save_rename_confirm(t!(lang, "save-rename-confirm").into());
+    i18n.set_save_delete_confirm(t!(lang, "save-delete-confirm").into());
+    i18n.set_save_new_confirm(t!(lang, "save-new-confirm").into());
+    i18n.set_save_action_cancel(t!(lang, "save-action-cancel").into());
+    i18n.set_save_name_placeholder(t!(lang, "save-name-placeholder").into());
+    i18n.set_save_template_pick(t!(lang, "save-template-pick").into());
     // lobby band
     i18n.set_lobby_you(t!(lang, "play-you").into());
     i18n.set_lobby_opponent(t!(lang, "play-opponent").into());
@@ -239,6 +251,16 @@ struct State {
     /// images for the current (game, patch, save) selection. Rebuilt
     /// by [`refresh_loaded`]; `None` while nothing is selected.
     loaded: Option<loaded::Loaded>,
+    /// The new-save form's template picker values, parallel to the
+    /// `save-template-options` model rows.
+    save_template_values: Vec<(rom::GameRef, String)>,
+    /// The auto-generated name the new-save draft was last set to.
+    /// While the user hasn't typed over it, a template pick
+    /// regenerates the suggestion; once they edit, it's left alone.
+    save_new_auto_default: Option<String>,
+    /// Select this (game, save path) once the post-operation rescan
+    /// lands — how rename/duplicate/create keep the new file focused.
+    pending_select_save: Option<(rom::GameRef, std::path::PathBuf)>,
     session: Option<ActiveSession>,
     /// Currently-held physical inputs (keyboard via the FocusScopes'
     /// key events, gamepad via the timer's gilrs poll). Combined with
@@ -760,6 +782,20 @@ fn refresh_loaded(app: &AppWindow, st: &mut State) {
         }
     }
     push_save_view(app, st);
+    // The New save button enables whenever the selected family has an
+    // owned-ROM variant with creatable templates — independent of a
+    // save being selected, so an empty family can bootstrap its first.
+    let can_new = selected_game(app, st).is_some_and(|game| {
+        !save_manage::creation_options(
+            &st.config.language,
+            game.family_and_variant().0,
+            &st.roms,
+            &st.patches,
+            selected_patch(app, st).as_ref(),
+        )
+        .is_empty()
+    });
+    app.set_save_new_enabled(can_new);
 }
 
 /// Push the save viewer's models — navi header, section tabs, folder
@@ -910,6 +946,19 @@ fn flash_copy_feedback(app: &AppWindow, image: bool) {
         }
     });
 }
+
+/// Reveal a file/folder in the OS file manager (tango's open_path).
+/// Desktop-only; mobile has no folder browsing to speak of.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn open_path(path: impl AsRef<std::path::Path>) {
+    let path = path.as_ref();
+    if let Err(e) = open::that(path) {
+        log::error!("open {}: {e}", path.display());
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn open_path(_path: impl AsRef<std::path::Path>) {}
 
 /// Put plain text on the system clipboard. Desktop-only: arboard has
 /// no Android/iOS backend, so mobile builds compile this to a no-op
@@ -1623,6 +1672,9 @@ fn main() -> anyhow::Result<()> {
         identity: identity::load(),
         lobby_mt_rows: Vec::new(),
         lobby_ui: LobbySnapshot::default(),
+        save_template_values: Vec::new(),
+        save_new_auto_default: None,
+        pending_select_save: None,
     }));
 
     // Background scan; results come back over the channel and are folded
@@ -2055,6 +2107,235 @@ fn main() -> anyhow::Result<()> {
             };
             if copy_image_to_clipboard(img) {
                 flash_copy_feedback(&app, true);
+            }
+        }
+    });
+
+    // ---- save management (save_manage.rs; tango's save_manage flows) ----
+
+    app.on_save_open_folder({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let st = state.borrow();
+            let Some(save) = usize::try_from(app.get_selected_save())
+                .ok()
+                .and_then(|i| st.save_rows.get(i))
+            else {
+                return;
+            };
+            if let Some(dir) = save.path.parent() {
+                open_path(dir);
+            }
+        }
+    });
+
+    app.on_save_rename_start({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let st = state.borrow();
+            let Some(save) = usize::try_from(app.get_selected_save())
+                .ok()
+                .and_then(|i| st.save_rows.get(i))
+            else {
+                return;
+            };
+            let stem = save
+                .path
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            app.set_save_action_draft(stem.into());
+            app.set_save_action(1);
+        }
+    });
+
+    app.on_save_duplicate_start({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let st = state.borrow();
+            let Some(save) = usize::try_from(app.get_selected_save())
+                .ok()
+                .and_then(|i| st.save_rows.get(i))
+            else {
+                return;
+            };
+            app.set_save_action_draft(save_manage::suggest_duplicate_stem(&save.path).into());
+            app.set_save_action(2);
+        }
+    });
+
+    app.on_save_delete_start({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let st = state.borrow();
+            let Some(save) = usize::try_from(app.get_selected_save())
+                .ok()
+                .and_then(|i| st.save_rows.get(i))
+            else {
+                return;
+            };
+            let name = save
+                .path
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            app.set_save_delete_prompt_text(t!(&st.config.language, "save-delete-prompt", name = name).into());
+            app.set_save_action(3);
+        }
+    });
+
+    app.on_save_new_start({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Some(game) = selected_game(&app, &st) else { return };
+            let lang = st.config.language.clone();
+            let patch = selected_patch(&app, &st);
+            let options = save_manage::creation_options(
+                &lang,
+                game.family_and_variant().0,
+                &st.roms,
+                &st.patches,
+                patch.as_ref(),
+            );
+            if options.is_empty() {
+                return;
+            }
+            let labels: Vec<SharedString> = options.iter().map(|o| o.label.clone().into()).collect();
+            // Auto-select only when there's exactly one option;
+            // otherwise force an explicit pick (Create stays disabled).
+            let (selected, draft) = if options.len() == 1 {
+                let o = &options[0];
+                (
+                    0,
+                    save_manage::disambiguate_save_name(
+                        &st.config.saves_path(),
+                        &save_manage::suggest_save_name(&lang, o.game, Some(&o.raw)),
+                    ),
+                )
+            } else {
+                (
+                    -1,
+                    save_manage::disambiguate_save_name(
+                        &st.config.saves_path(),
+                        &save_manage::sanitize_filename(&game::family_display_name(
+                            &lang,
+                            game.family_and_variant().0,
+                        )),
+                    ),
+                )
+            };
+            st.save_template_values = options.into_iter().map(|o| (o.game, o.raw)).collect();
+            st.save_new_auto_default = Some(draft.clone());
+            app.set_save_template_options(ModelRc::new(VecModel::from(labels)));
+            app.set_save_template_selected(selected);
+            app.set_save_action_draft(draft.into());
+            app.set_save_action(4);
+        }
+    });
+
+    app.on_save_template_picked({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |index| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Some((game, raw)) = usize::try_from(index)
+                .ok()
+                .and_then(|i| st.save_template_values.get(i))
+                .cloned()
+            else {
+                return;
+            };
+            // Regenerate the suggested name only while the user hasn't
+            // typed over the last auto-generated one.
+            let current = app.get_save_action_draft();
+            if st.save_new_auto_default.as_deref() == Some(current.as_str()) {
+                let lang = st.config.language.clone();
+                let draft = save_manage::disambiguate_save_name(
+                    &st.config.saves_path(),
+                    &save_manage::suggest_save_name(&lang, game, Some(&raw)),
+                );
+                st.save_new_auto_default = Some(draft.clone());
+                app.set_save_action_draft(draft.into());
+            }
+        }
+    });
+
+    app.on_save_action_cancel({
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            app.set_save_action(0);
+        }
+    });
+
+    app.on_save_action_confirm({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        let spawn_scan = spawn_scan.clone();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let action = app.get_save_action();
+            let draft = app.get_save_action_draft().trim().to_string();
+            app.set_save_action(0);
+            let result: anyhow::Result<()> = (|| {
+                let mut st = state.borrow_mut();
+                let selected = usize::try_from(app.get_selected_save())
+                    .ok()
+                    .and_then(|i| st.save_rows.get(i))
+                    .map(|s| s.path.clone());
+                let game = selected_game(&app, &st);
+                match action {
+                    1 | 2 => {
+                        anyhow::ensure!(!draft.is_empty(), "empty save name");
+                        let src = selected.ok_or_else(|| anyhow::anyhow!("no save selected"))?;
+                        let dst = if action == 1 {
+                            save_manage::rename_save(&src, &draft)?
+                        } else {
+                            save_manage::duplicate_save(&src, &draft)?
+                        };
+                        st.pending_select_save = game.map(|g| (g, dst));
+                    }
+                    3 => {
+                        let src = selected.ok_or_else(|| anyhow::anyhow!("no save selected"))?;
+                        std::fs::remove_file(&src)?;
+                    }
+                    4 => {
+                        anyhow::ensure!(!draft.is_empty(), "empty save name");
+                        let (game, raw) = usize::try_from(app.get_save_template_selected())
+                            .ok()
+                            .and_then(|i| st.save_template_values.get(i))
+                            .cloned()
+                            .ok_or_else(|| anyhow::anyhow!("no template selected"))?;
+                        let patch = selected_patch(&app, &st);
+                        let template = save_manage::creation_template(game, &raw, &st.patches, patch.as_ref())
+                            .ok_or_else(|| anyhow::anyhow!("template vanished"))?;
+                        let dst = save_manage::create_new_save(&st.config.saves_path(), &draft, template.as_ref())?;
+                        st.pending_select_save = Some((game, dst));
+                    }
+                    _ => {}
+                }
+                Ok(())
+            })();
+            match result {
+                // The files changed under the scanner — rescan; the
+                // ScanDone fold reselects `pending_select_save`.
+                Ok(()) => spawn_scan(),
+                Err(e) => {
+                    log::error!("save action {action} failed: {e}");
+                    app.set_status(format!("{e}").into());
+                }
             }
         }
     });
@@ -2853,12 +3134,31 @@ fn main() -> anyhow::Result<()> {
                         replays,
                         patches,
                     } => {
-                        let mut st = state.borrow_mut();
-                        st.roms = roms;
-                        st.saves = saves;
-                        st.replay_rows = replays;
-                        st.patches = patches;
-                        refresh_models(&app, &mut st);
+                        let pending = {
+                            let mut st = state.borrow_mut();
+                            st.roms = roms;
+                            st.saves = saves;
+                            st.replay_rows = replays;
+                            st.patches = patches;
+                            refresh_models(&app, &mut st);
+                            st.pending_select_save.take()
+                        };
+                        // A save-management op wants its result focused:
+                        // re-point the pickers at the new file. The
+                        // selection callbacks re-borrow the state, so
+                        // the borrow above must be dropped first.
+                        if let Some((game, path)) = pending {
+                            let gi = state.borrow().game_rows.iter().position(|g| *g == game);
+                            if let Some(gi) = gi {
+                                app.set_selected_game(gi as i32);
+                                app.invoke_game_selected(gi as i32);
+                                let si = state.borrow().save_rows.iter().position(|s| s.path == path);
+                                if let Some(si) = si {
+                                    app.set_selected_save(si as i32);
+                                    app.invoke_save_selected(si as i32);
+                                }
+                            }
+                        }
                     }
                     Event::ReplayStats { path, stats } => {
                         let st = state.borrow();
