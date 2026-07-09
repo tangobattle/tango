@@ -85,6 +85,20 @@ fn main() {
     for def in FORCED_DEFINES {
         cfg.cflag(format!("-D{def}"));
     }
+    if target_os == "android" {
+        // Cross via the NDK's cmake toolchain (the toolchain file itself
+        // comes from the CMAKE_TOOLCHAIN_FILE_<target> env the builder
+        // sets; cmake-rs forwards it). The toolchain file only reads
+        // these as cache defines, not env, so they go on the config.
+        let abi = match env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() {
+            "aarch64" => "arm64-v8a",
+            "arm" => "armeabi-v7a",
+            "x86_64" => "x86_64",
+            other => panic!("unmapped android arch {other:?}"),
+        };
+        cfg.define("ANDROID_ABI", abi);
+        cfg.define("ANDROID_PLATFORM", "android-30");
+    }
 
     let mgba_dst = cfg.build();
 
@@ -108,7 +122,7 @@ fn main() {
             println!("cargo:rustc-link-lib=ole32");
             println!("cargo:rustc-link-lib=uuid");
         }
-        "linux" => {}
+        "linux" | "android" => {}
         tos => panic!("unknown target os {:?}!", tos),
     }
     println!("cargo:rerun-if-changed=wrapper.h");

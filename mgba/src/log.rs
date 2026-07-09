@@ -11,13 +11,18 @@ use std::mem::MaybeUninit;
 // Everywhere else — Windows, arm64 macOS (Apple's ABI uses `char*`),
 // 32-bit Unix — `va_list` is already a pointer typedef and the alias is
 // fine as-is.
+// Android/bionic aarch64 is the exception to the exception: its
+// `va_list` is the AAPCS64 `struct __va_list` typedef (not a
+// one-element array), so there's no decay - bindgen emits it by value
+// (an opaque 4xu64) in the `mLogger.log` field, and the plain
+// `va_list` alias below matches.
 #[cfg(all(unix, target_arch = "x86_64"))]
 type VaListArg = *mut mgba_sys::__va_list_tag;
-#[cfg(all(any(target_os = "linux", target_os = "android"), target_arch = "aarch64"))]
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 type VaListArg = *mut mgba_sys::__va_list;
 #[cfg(not(any(
     all(unix, target_arch = "x86_64"),
-    all(any(target_os = "linux", target_os = "android"), target_arch = "aarch64"),
+    all(target_os = "linux", target_arch = "aarch64"),
 )))]
 type VaListArg = mgba_sys::va_list;
 
