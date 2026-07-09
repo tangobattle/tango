@@ -613,7 +613,7 @@ pub fn patch_supports(loadout: &Loadout, scanners: &Scanners, game: rom::GameRef
 /// The full game row for the Play tab's selector strip: family
 /// picker, patch + version pickers. The patch controls are always
 /// visible. No rescan button — scans re-run on their own (tab
-/// entry, window refocus, session close).
+/// entry, session close).
 pub fn game_row<'a>(
     loadout: &'a Loadout,
     lang: &'a LanguageIdentifier,

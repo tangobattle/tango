@@ -62,15 +62,26 @@ impl Scanners {
         }
     }
 
+    /// Rescan all four collections. Each scanner is gated on a stat
+    /// fingerprint of the tree it reads, so the automatic triggers
+    /// (tab entry, session close) skip the full read-and-parse
+    /// unless files actually changed — switching tabs costs four
+    /// metadata walks, not a re-read of every ROM and save on disk.
     fn rescan(&self, config: &config::Config) {
         let roms_path = config.roms_path();
         let saves_path = config.saves_path();
         let patches_path = config.patches_path();
         let replays_path = config.replays_path();
-        self.roms.rescan(|| Some(rom::scan_roms(&roms_path)));
-        self.saves.rescan(|| Some(save::scan_saves(&saves_path)));
-        self.patches.rescan(|| patch::scan(&patches_path).ok());
-        self.replays.rescan(|| Some(replays::scan_replays(&replays_path)));
+        self.roms
+            .rescan_if_changed(&rom::scan_roots(&roms_path), || Some(rom::scan_roms(&roms_path)));
+        self.saves
+            .rescan_if_changed(std::slice::from_ref(&saves_path), || Some(save::scan_saves(&saves_path)));
+        self.patches
+            .rescan_if_changed(std::slice::from_ref(&patches_path), || patch::scan(&patches_path).ok());
+        self.replays
+            .rescan_if_changed(std::slice::from_ref(&replays_path), || {
+                Some(replays::scan_replays(&replays_path))
+            });
     }
 }
 
@@ -148,9 +159,9 @@ pub struct App {
     /// Settings → Network.
     updater: updater::Updater,
     /// Number of in-flight `rescan_off_thread` tasks. Gates the
-    /// automatic rescan triggers (tab entry, window refocus) so
-    /// they don't stack workers, and the welcome screen's rescan
-    /// button. A counter (not a bool) because rescans can overlap
+    /// automatic rescan trigger (tab entry) so it doesn't stack
+    /// workers, and the welcome screen's rescan button. A counter
+    /// (not a bool) because rescans can overlap
     /// (e.g. the patch autoupdater fires its own rescan separately
     /// from an automatic one).
     rescans_in_flight: u32,
@@ -545,18 +556,6 @@ impl App {
             .map(Message::Netplay)
     }
 
-    /// The followup for an automatic rescan (tab entry / window
-    /// refocus): warm the replay stats cache too when the Replays
-    /// tab is what's being looked at, so newly-recorded replays get
-    /// their stats line without a manual nudge.
-    fn auto_rescan_followup(&self) -> RescanFollowup {
-        if self.tab == Tab::Replays {
-            RescanFollowup::RefreshAndReplayStats
-        } else {
-            RescanFollowup::Refresh
-        }
-    }
-
     /// Run a full `Scanners::rescan` on a tokio blocking worker so
     /// the disk walk + TOML parse for patches (the slowest of the
     /// four) doesn't stall iced's update loop. Returns a task that
@@ -916,11 +915,19 @@ impl App {
                 // way back.
                 self.settings.held = Default::default();
                 // Entering a scanner-backed tab re-runs the scan in the
-                // background — there are no Rescan buttons; this (plus
-                // window refocus) is how new files on disk get noticed.
+                // background — there are no Rescan buttons; this is how
+                // new files on disk get noticed. Cheap when nothing
+                // changed (stat-fingerprint gated, see Scanners::rescan).
                 // Settings doesn't read the scanners, so skip it there.
                 if entered && t != Tab::Settings && !self.is_rescanning() {
-                    return self.rescan_off_thread(self.auto_rescan_followup());
+                    // Entering Replays also warms the stats cache, so
+                    // newly-recorded replays get their stats line
+                    // without a manual nudge.
+                    return self.rescan_off_thread(if t == Tab::Replays {
+                        RescanFollowup::RefreshAndReplayStats
+                    } else {
+                        RescanFollowup::Refresh
+                    });
                 }
                 iced::Task::none()
             }
@@ -965,19 +972,6 @@ impl App {
             }
             Message::Window(id, ev) => {
                 match ev {
-                    iced::window::Event::Focused => {
-                        // Coming back to the window is the moment new
-                        // files are most likely to have appeared (the
-                        // user was just in their file manager) — the
-                        // refocus rescan is what replaced the Rescan
-                        // buttons for files added while already on a
-                        // tab. Skipped mid-session: nothing scanner-
-                        // backed is on screen, and the session-close
-                        // path rescans anyway.
-                        if !self.session.is_active() && !self.is_rescanning() {
-                            return self.rescan_off_thread(self.auto_rescan_followup());
-                        }
-                    }
                     iced::window::Event::Resized(size) => {
                         // The Resized size could be either a user-driven
                         // resize or the result of maximize/unmaximize.

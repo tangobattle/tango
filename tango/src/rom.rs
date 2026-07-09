@@ -5,6 +5,20 @@ use std::io::Read;
 pub type GameRef = tango_gamesupport::GameRef;
 pub type Scanner = scanner::Scanner<std::collections::HashMap<GameRef, Vec<u8>>>;
 
+/// Everything [`scan_roms`] reads: the configured roms dir plus any
+/// BNLC Steam per-game archives. Feeds the scanner's
+/// change-detection fingerprint so an unchanged-on-disk rescan can
+/// be skipped.
+pub fn scan_roots(roms_path: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut roots = vec![roms_path.to_path_buf()];
+    for volume in [bnlc::Volume::Vol1, bnlc::Volume::Vol2] {
+        if let Some(b) = bnlc::get(volume) {
+            roots.extend(b.rom_archives());
+        }
+    }
+    roots
+}
+
 /// Discover ROMs from both the local data path and any Steam-installed
 /// BN Legacy Collection volumes. Mirrors the layered scan in
 /// `tango/src/game.rs::scan_roms`.
