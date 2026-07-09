@@ -1120,26 +1120,21 @@ impl<M> canvas::Program<M> for HoldRing {
     }
 }
 
-/// The hold-Esc-to-quit readout: appears once Esc has been held past
-/// the [`ESC_QUIT_SHOW_AFTER`] grace and counts down to the
-/// [`ESC_QUIT_HOLD`] deadline, where [`State::update`]'s wrapper
-/// closes the session. Deliberately NOT a modal — no dim wash, no
-/// panel, no buttons — but a compact top-center chip in the floating
-/// HUD family ([`hud_chip_plate`]), with a [`HoldRing`] dial filling
-/// around the close X: it's a transient status readout the user is
-/// already acting on, and releasing Esc disarms the hold and takes
-/// the chip with it. Pushed last in [`view`]: the countdown must read
-/// over every other layer, the reconnect modal included (holding Esc
-/// through a stalled reconnect is exactly the bail-out case).
+/// The hold-Esc-to-quit readout: appears the moment the hold arms
+/// and counts down to the [`ESC_QUIT_HOLD`] deadline, where
+/// [`State::update`]'s wrapper closes the session. Deliberately NOT
+/// a modal — no dim wash, no panel, no buttons — but a compact
+/// top-center chip in the floating HUD family ([`hud_chip_plate`]),
+/// with a [`HoldRing`] dial filling around the close X: it's a
+/// transient status readout the user is already acting on, and
+/// releasing Esc disarms the hold and takes the chip with it (a bare
+/// tap just flashes it — feedback that the key registered). Pushed
+/// last in [`view`]: the countdown must read over every other layer,
+/// the reconnect modal included (holding Esc through a stalled
+/// reconnect is exactly the bail-out case).
 fn exit_hold_overlay<'a>(lang: &'a LanguageIdentifier, state: &'a State) -> Option<Element<'a, Message>> {
     let held = state.esc_hold?.elapsed();
-    if held < ESC_QUIT_SHOW_AFTER {
-        return None;
-    }
-    // 0 when the chip appears → 1 at the deadline, so the dial starts
-    // empty instead of pre-filled by the grace period.
-    let progress =
-        (held - ESC_QUIT_SHOW_AFTER).as_secs_f32() / (ESC_QUIT_HOLD - ESC_QUIT_SHOW_AFTER).as_secs_f32();
+    let progress = held.as_secs_f32() / ESC_QUIT_HOLD.as_secs_f32();
     // The close X centered in the dial — same glyph as the corner
     // tear-down button this hold is a shortcut for, danger-tinted to
     // carry the destructive framing.

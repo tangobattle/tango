@@ -220,10 +220,9 @@ pub struct State {
     /// Instant the current Esc hold started, `None` while Esc is up.
     /// Armed on the first [`Message::EscPressed`] of a physical hold
     /// (key repeat re-fires the message but not the arm), cleared on
-    /// [`Message::EscReleased`]. Drives hold-to-quit: past
-    /// [`ESC_QUIT_SHOW_AFTER`] the view draws the exit overlay, and at
-    /// [`ESC_QUIT_HOLD`] the [`update`](State::update) wrapper tears
-    /// the session down.
+    /// [`Message::EscReleased`]. Drives hold-to-quit: the view draws
+    /// the exit overlay for the whole hold, and at [`ESC_QUIT_HOLD`]
+    /// the [`update`](State::update) wrapper tears the session down.
     pub esc_hold: Option<std::time::Instant>,
     /// Show/hide transition for the floating controls bar. Synced
     /// after every update: shown while the mouse moved recently,
@@ -840,13 +839,11 @@ fn background_handle(game: &'static crate::game::Game) -> Option<iced::widget::i
 /// controls slide away.
 const CONTROLS_HIDE_AFTER: std::time::Duration = std::time::Duration::from_millis(2500);
 
-/// How long Esc must be held down to quit the active session.
+/// How long Esc must be held down to quit the active session. The
+/// countdown chip appears the moment the hold arms — no grace
+/// period; it's a compact HUD chip, not a dim, so an Esc tap just
+/// flashes it as feedback that the key registered.
 const ESC_QUIT_HOLD: std::time::Duration = std::time::Duration::from_secs(3);
-
-/// How far into the hold the exit overlay appears. A grace period
-/// rather than immediate so the overlay-peeling Esc tap (and plain
-/// habitual presses) never flash a full-screen dim.
-const ESC_QUIT_SHOW_AFTER: std::time::Duration = std::time::Duration::from_millis(300);
 
 /// Expand an mgba-native BGR555 framebuffer (one little-endian `u16`
 /// per pixel — see [`State`]'s `vbuf`) to an RGBA8 image handle for
