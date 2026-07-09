@@ -1700,6 +1700,10 @@ export component AppWindow inherits Window {
     in property <float> pvp-reconnect-progress: 0.0;
     // The disconnect confirm modal (X / Escape on a live match).
     in-out property <bool> session-confirm-exit: false;
+    // Setup drawers: 0 = closed, 1 = my setup (left), 2 = opponent
+    // (right). One at a time — both render the shared SaveViewBody.
+    in-out property <int> session-drawer: 0;
+    in property <bool> pvp-opponent-blind: false;
     // ---- navicust section ----
     // ---- save management (save_manage.rs) ----
     // Which form replaces the save-picker row: 0 = none, 1 = rename,
@@ -1823,6 +1827,7 @@ export component AppWindow inherits Window {
     callback key-event(string, bool);
     // PvP in-session HUD.
     callback pvp-frame-delay-changed(float);
+    callback session-drawer-changed(int);
     // The confirm modal's / reconnect overlay's Disconnect: tear the
     // session down for real (stop-clicked only *requests*, and gets
     // gated behind the modal while a match is live).
@@ -3770,6 +3775,71 @@ export component AppWindow inherits Window {
                     text: Glyphs.x;
                     font-size: 13px;
                     color: xta.has-hover ? #ff5252 : Theme.text-muted;
+                }
+            }
+        }
+
+        // Setup drawers (session/view's edge panels): my setup from the
+        // left, the opponent's from the right — each is the shared
+        // SaveViewBody over the session (Rust re-points the SaveView
+        // global as the handles toggle).
+        if root.session-kind == 2 && root.session-drawer != 0 : Rectangle {
+            x: root.session-drawer == 1 ? 0 : parent.width - self.width;
+            width: min(560px, parent.width * 0.62);
+            height: 100%;
+            background: Theme.bg;
+            VerticalLayout {
+                padding: 12px;
+                SaveViewBody {
+                    vertical-stretch: 1;
+                }
+            }
+        }
+        if root.session-kind == 2 : TechPlate {
+            r: 10px;
+            x: root.session-drawer == 1
+                ? min(560px, parent.width * 0.62) + 8px
+                : 12px;
+            y: (parent.height - self.height) / 2;
+            background: dlta.has-hover ? #4caf5033 : #00000080;
+            border-width: 1px;
+            border-color: #ffffff1a;
+            dlta := TouchArea {
+                clicked => {
+                    root.session-drawer = root.session-drawer == 1 ? 0 : 1;
+                    root.session-drawer-changed(root.session-drawer);
+                }
+            }
+            HorizontalLayout {
+                padding: 8px;
+                LIcon {
+                    text: root.session-drawer == 1 ? Glyphs.chevron-left : Glyphs.chevron-right;
+                    font-size: 15px;
+                    color: Theme.text;
+                }
+            }
+        }
+        if root.session-kind == 2 && !root.pvp-opponent-blind : TechPlate {
+            r: 10px;
+            x: root.session-drawer == 2
+                ? parent.width - min(560px, parent.width * 0.62) - self.width - 8px
+                : parent.width - self.width - 12px;
+            y: (parent.height - self.height) / 2;
+            background: drta.has-hover ? #2984de33 : #00000080;
+            border-width: 1px;
+            border-color: #ffffff1a;
+            drta := TouchArea {
+                clicked => {
+                    root.session-drawer = root.session-drawer == 2 ? 0 : 2;
+                    root.session-drawer-changed(root.session-drawer);
+                }
+            }
+            HorizontalLayout {
+                padding: 8px;
+                LIcon {
+                    text: root.session-drawer == 2 ? Glyphs.chevron-right : Glyphs.chevron-left;
+                    font-size: 15px;
+                    color: Theme.text;
                 }
             }
         }

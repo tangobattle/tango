@@ -86,6 +86,8 @@ struct EndState {
 }
 
 pub struct PvpSession {
+    /// Setup-drawer ingredients (see [`SetupInfo`]).
+    pub setup: SetupInfo,
     local_game: tango_gamesupport::GameRef,
     /// This side's player index (P1 = 0, P2 = 1), picked once at match start and
     /// stable for the whole match. Match-level, not round-level — the status
@@ -223,6 +225,16 @@ impl PvpSession {
         // (build_replay_writer) so playback pins to the identical value.
         let rtc_time = std::time::UNIX_EPOCH + std::time::Duration::from_millis(pre_match.match_ts);
         core.set_rtc_fixed(rtc_time);
+
+        let setup = SetupInfo {
+            local_game,
+            local_rom: local_rom.clone(),
+            local_save_data: pre_match.local_save_data.clone(),
+            remote_game,
+            remote_rom: remote_rom.clone(),
+            remote_save_data: pre_match.remote_save_data.clone(),
+            remote_blind: pre_match.remote_settings.blind_setup,
+        };
 
         let joyflags = Arc::new(AtomicU32::new(0));
         let local_hooks = local_game.hooks;
@@ -630,6 +642,7 @@ impl PvpSession {
         });
 
         Ok(Self {
+            setup,
             local_game,
             local_player_index,
             joyflags,
@@ -889,6 +902,20 @@ pub struct PvpRoms {
 /// tango's `session::spawn_pvp` (mod.rs:853-906); the games' netplay
 /// compatibility was already verified by the lobby's compat check
 /// before either side could commit.
+/// Everything the in-session setup drawers need to bake save views on
+/// the UI thread after the (Send) session crosses the channel: both
+/// sides' games, pre-patched ROMs, committed SRAM, and whether the
+/// opponent blinded their setup.
+pub struct SetupInfo {
+    pub local_game: tango_gamesupport::GameRef,
+    pub local_rom: Arc<Vec<u8>>,
+    pub local_save_data: Vec<u8>,
+    pub remote_game: tango_gamesupport::GameRef,
+    pub remote_rom: Arc<Vec<u8>>,
+    pub remote_save_data: Vec<u8>,
+    pub remote_blind: bool,
+}
+
 pub fn resolve_pvp_roms(
     roms: &std::collections::HashMap<crate::rom::GameRef, Vec<u8>>,
     patches_path: &Path,

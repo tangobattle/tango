@@ -300,9 +300,15 @@ struct State {
     /// plus the path it was built for.
     replay_loaded: Option<loaded::Loaded>,
     replay_loaded_path: Option<std::path::PathBuf>,
-    /// Which tab's models were last pushed into the SaveView global
-    /// (0 = play, 1 = replays) — the timer re-pushes on tab switches.
+    /// Which dataset was last pushed into the SaveView global
+    /// (0 = play, 1 = replays, 2 = PvP my setup, 3 = PvP opponent) —
+    /// the timer re-pushes on tab switches; the session drawers switch
+    /// explicitly.
     save_view_source: i32,
+    /// The live match's setup views, baked at PvpBuilt from the
+    /// committed save data (remote stays None when they blinded).
+    pvp_local_loaded: Option<loaded::Loaded>,
+    pvp_remote_loaded: Option<loaded::Loaded>,
     /// Lazy duration/round/completion stats keyed by replay path,
     /// filled by the background worker after each scan. The
     /// show-incomplete filter reads it; missing entries stay visible
@@ -919,10 +925,11 @@ fn refresh_loaded(app: &AppWindow, st: &mut State) {
 /// Push the save viewer's models — navi header, section tabs, folder
 /// rows — from `st.loaded`, or clear the whole viewer when it's gone.
 fn push_save_view(app: &AppWindow, st: &State) {
-    let l = if st.save_view_source == 1 {
-        st.replay_loaded.as_ref()
-    } else {
-        st.loaded.as_ref()
+    let l = match st.save_view_source {
+        1 => st.replay_loaded.as_ref(),
+        2 => st.pvp_local_loaded.as_ref(),
+        3 => st.pvp_remote_loaded.as_ref(),
+        _ => st.loaded.as_ref(),
     };
     let Some(l) = l else {
         app.global::<SaveView>().set_save_loaded(false);
@@ -2056,6 +2063,8 @@ pub fn run() -> anyhow::Result<()> {
         replay_loaded: None,
         replay_loaded_path: None,
         save_view_source: 0,
+        pvp_local_loaded: None,
+        pvp_remote_loaded: None,
         patches: patch::PatchMap::new(),
         patch_rows: Vec::new(),
         patch_list_rows: Vec::new(),
@@ -2579,10 +2588,11 @@ pub fn run() -> anyhow::Result<()> {
         move || {
             let Some(app) = app_weak.upgrade() else { return };
             let st = state.borrow();
-            let l = if st.save_view_source == 1 {
-                st.replay_loaded.as_ref()
-            } else {
-                st.loaded.as_ref()
+            let l = match st.save_view_source {
+                1 => st.replay_loaded.as_ref(),
+                2 => st.pvp_local_loaded.as_ref(),
+                3 => st.pvp_remote_loaded.as_ref(),
+                _ => st.loaded.as_ref(),
             };
             let Some(l) = l else { return };
             let kind = save_active_kind(&app);
@@ -2601,10 +2611,11 @@ pub fn run() -> anyhow::Result<()> {
         move || {
             let Some(app) = app_weak.upgrade() else { return };
             let st = state.borrow();
-            let l = if st.save_view_source == 1 {
-                st.replay_loaded.as_ref()
-            } else {
-                st.loaded.as_ref()
+            let l = match st.save_view_source {
+                1 => st.replay_loaded.as_ref(),
+                2 => st.pvp_local_loaded.as_ref(),
+                3 => st.pvp_remote_loaded.as_ref(),
+                _ => st.loaded.as_ref(),
             };
             let Some(l) = l else { return };
             let Some(img) = loaded::navicust_clipboard_image(l) else {
@@ -3097,10 +3108,11 @@ pub fn run() -> anyhow::Result<()> {
             let Some(app) = app_weak.upgrade() else { return };
             // Only the folder model depends on grouping — no rebake.
             let st = state.borrow();
-            let l = if st.save_view_source == 1 {
-                st.replay_loaded.as_ref()
-            } else {
-                st.loaded.as_ref()
+            let l = match st.save_view_source {
+                1 => st.replay_loaded.as_ref(),
+                2 => st.pvp_local_loaded.as_ref(),
+                3 => st.pvp_remote_loaded.as_ref(),
+                _ => st.loaded.as_ref(),
             };
             if let Some(l) = l {
                 app.global::<SaveView>().set_folder_chips(ModelRc::new(VecModel::from(loaded::folder_rows(l, grouped))));
@@ -3665,6 +3677,9 @@ pub fn run() -> anyhow::Result<()> {
             }
             st.session = None;
             st.session_start = None;
+            st.pvp_local_loaded = None;
+            st.pvp_remote_loaded = None;
+            app.set_session_drawer(0);
             st.held.clear_keys();
             st.speed_up = false;
             app.set_in_session(false);
@@ -3697,6 +3712,27 @@ pub fn run() -> anyhow::Result<()> {
 
     app.on_stop_clicked(request_end_session.clone());
     app.on_exit_confirmed(end_session.clone());
+
+    app.on_session_drawer_changed({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |drawer| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            st.save_view_source = match drawer {
+                1 => 2,
+                2 => 3,
+                _ => {
+                    if app.get_active_tab() == 1 {
+                        1
+                    } else {
+                        0
+                    }
+                }
+            };
+            push_save_view(&app, &st);
+        }
+    });
 
     app.on_pvp_frame_delay_changed({
         let state = state.clone();
@@ -3955,11 +3991,14 @@ pub fn run() -> anyhow::Result<()> {
                 }
                 refresh_input_ui(&app, &mut st);
                 // The SaveView global is shared by the play + replays
-                // tabs; whoever is visible owns it.
-                let wanted_source = if app.get_active_tab() == 1 { 1 } else { 0 };
-                if wanted_source != st.save_view_source {
-                    st.save_view_source = wanted_source;
-                    push_save_view(&app, &st);
+                // tabs and the session drawers; outside a session the
+                // visible tab owns it (the drawers switch explicitly).
+                if !app.get_in_session() {
+                    let wanted_source = if app.get_active_tab() == 1 { 1 } else { 0 };
+                    if wanted_source != st.save_view_source {
+                        st.save_view_source = wanted_source;
+                        push_save_view(&app, &st);
+                    }
                 }
                 update_discord_presence(&app, &st);
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4214,6 +4253,52 @@ pub fn run() -> anyhow::Result<()> {
                                 app.set_pvp_frame_delay_label(fd.to_string().into());
                                 app.set_session_confirm_exit(false);
                                 app.set_pvp_reconnecting(false);
+                                // Bake the setup drawers' save views from
+                                // the committed SRAM (the ROMs are already
+                                // patched); a blinded opponent bakes nothing.
+                                let patches_path = st.config.patches_path();
+                                st.pvp_local_loaded = session
+                                    .setup
+                                    .local_game
+                                    .parse_save(&session.setup.local_save_data)
+                                    .ok()
+                                    .map(|save| {
+                                        loaded::Loaded::build(
+                                            session.setup.local_game,
+                                            &session.setup.local_rom,
+                                            save,
+                                            &patches_path,
+                                            None,
+                                        )
+                                    });
+                                st.pvp_remote_loaded = if session.setup.remote_blind {
+                                    None
+                                } else {
+                                    session
+                                        .setup
+                                        .remote_game
+                                        .parse_save(&session.setup.remote_save_data)
+                                        .ok()
+                                        .map(|save| {
+                                            loaded::Loaded::build(
+                                                session.setup.remote_game,
+                                                &session.setup.remote_rom,
+                                                save,
+                                                &patches_path,
+                                                None,
+                                            )
+                                        })
+                                };
+                                app.set_pvp_opponent_blind(st.pvp_remote_loaded.is_none());
+                                // Auto-open the opponent's setup at match
+                                // start when the setting asks for it.
+                                if st.pvp_remote_loaded.is_some() && st.config.show_opponent_setup {
+                                    app.set_session_drawer(2);
+                                    st.save_view_source = 3;
+                                    push_save_view(&app, &st);
+                                } else {
+                                    app.set_session_drawer(0);
+                                }
                                 st.session = Some(ActiveSession::Pvp(Box::new(session)));
                                 st.session_start = Some(std::time::SystemTime::now());
                                 st.held.clear_keys();
