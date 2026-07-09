@@ -113,6 +113,24 @@ slint = { version = "1.17", features = ["backend-android-activity-06"] }
 reqwest = { version = "0.11", features = ["stream", "json", "rustls-tls"], default-features = false }
 # logcat sink; env_logger has nowhere to write on Android.
 android_logger = "0.14"
+# Slint's android backend leaves the activity-glue flavor to the app:
+# NativeActivity (not GameActivity) — it's what cargo-apk packages by
+# default, no Java/Kotlin shim needed.
+android-activity = { version = "0.6", features = ["native-activity"] }
+
+# cargo-apk packaging (`cargo apk build -p tango-ng --lib`). The APK
+# loads the cdylib via NativeActivity; needs an NDK install + the mgba
+# cmake toolchain wired up (the remaining hard part) to actually link.
+[package.metadata.android]
+package = "net.n1gp.tango_ng"
+build_targets = ["aarch64-linux-android"]
+
+[package.metadata.android.sdk]
+min_sdk_version = 30
+target_sdk_version = 34
+
+[package.metadata.android.application]
+label = "Tango NG"
 
 [features]
 # Mirrors the tango crate: each game's support is an optional dependency
