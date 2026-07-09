@@ -3,9 +3,13 @@
 //! UI-agnostic backend crates (mgba, tango-gamesupport, tango-dataview);
 //! modules copied from the `tango` crate say so in their headers.
 //!
-//! `tango-ng --smoke [out.png]` runs headless verification instead of the
-//! UI: scan, boot the first game with a save (against a temp copy of the
-//! save), emulate ~5 real seconds with audio, dump the framebuffer.
+//! Verification modes (instead of the interactive UI):
+//! - `tango-ng --smoke [out.png]`: headless — scan, boot the first game
+//!   with a save (against a temp copy of the save), emulate ~5 real
+//!   seconds with audio, dump the framebuffer.
+//! - `tango-ng --ui-shot [out_dir]`: open the real UI, wait for the scan,
+//!   then snapshot the main screens to PNGs and exit. Run with
+//!   `SLINT_BACKEND=winit-software` for reliable snapshots.
 
 mod audio;
 mod bnlc;
@@ -22,7 +26,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use slint::{ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, VecModel};
+use slint::{ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
 enum Event {
     ScanDone {
@@ -64,8 +68,11 @@ fn main() -> anyhow::Result<()> {
         let out = std::path::PathBuf::from(args.get(2).map(|s| s.as_str()).unwrap_or("tango-ng-smoke.png"));
         return smoke(&config, &audio_binder, &out);
     }
+    let ui_shot_dir: Option<std::path::PathBuf> = (args.get(1).map(|s| s.as_str()) == Some("--ui-shot"))
+        .then(|| std::path::PathBuf::from(args.get(2).map(|s| s.as_str()).unwrap_or(".")));
 
     let app = AppWindow::new()?;
+    let shot_step = Rc::new(RefCell::new(0i32));
     let state = Rc::new(RefCell::new(State {
         config,
         audio_binder,
@@ -91,6 +98,12 @@ fn main() -> anyhow::Result<()> {
         });
     }
     app.set_status("Scanning…".into());
+    {
+        let st = state.borrow();
+        app.set_cfg_nickname(st.config.nickname.as_deref().unwrap_or("—").into());
+        app.set_cfg_language(st.config.language.to_string().into());
+        app.set_cfg_data_path(st.config.data_path.display().to_string().into());
+    }
 
     app.on_game_selected({
         let state = state.clone();
@@ -103,17 +116,16 @@ fn main() -> anyhow::Result<()> {
             };
             st.save_rows = st.saves.get(&game).cloned().unwrap_or_default();
             let saves_path = st.config.saves_path();
-            let rows: Vec<SaveEntry> = st
+            let rows: Vec<SharedString> = st
                 .save_rows
                 .iter()
-                .map(|s| SaveEntry {
-                    name: s
-                        .path
+                .map(|s| {
+                    s.path
                         .strip_prefix(&saves_path)
                         .unwrap_or(&s.path)
                         .display()
                         .to_string()
-                        .into(),
+                        .into()
                 })
                 .collect();
             app.set_saves(ModelRc::new(VecModel::from(rows)));
@@ -141,14 +153,6 @@ fn main() -> anyhow::Result<()> {
                 Ok(session) => {
                     st.session = Some(session);
                     st.joyflags = 0;
-                    app.set_session_title(
-                        format!(
-                            "{} — {}",
-                            game::display_name(&st.config.language, game),
-                            save.path.file_name().unwrap_or_default().to_string_lossy()
-                        )
-                        .into(),
-                    );
                     app.set_in_session(true);
                 }
                 Err(e) => {
@@ -224,20 +228,9 @@ fn main() -> anyhow::Result<()> {
                         let lang = st.config.language.clone();
                         let mut game_rows: Vec<rom::GameRef> = st.roms.keys().copied().collect();
                         game_rows.sort_by_key(|g| game::display_name(&lang, *g));
-                        let rows: Vec<GameEntry> = game_rows
+                        let rows: Vec<SharedString> = game_rows
                             .iter()
-                            .map(|g| {
-                                let save_count = st.saves.get(g).map_or(0, |s| s.len());
-                                GameEntry {
-                                    name: game::display_name(&lang, *g).into(),
-                                    subtitle: match save_count {
-                                        0 => "no saves".to_string(),
-                                        1 => "1 save".to_string(),
-                                        n => format!("{n} saves"),
-                                    }
-                                    .into(),
-                                }
-                            })
+                            .map(|g| game::display_name(&lang, *g).into())
                             .collect();
                         st.game_rows = game_rows;
                         st.save_rows.clear();
@@ -253,7 +246,7 @@ fn main() -> anyhow::Result<()> {
                         app.set_selected_game(-1);
                         app.set_selected_save(-1);
                         app.set_games(ModelRc::new(VecModel::from(rows)));
-                        app.set_saves(ModelRc::new(VecModel::from(Vec::<SaveEntry>::new())));
+                        app.set_saves(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
                     }
                 }
             }
@@ -269,11 +262,63 @@ fn main() -> anyhow::Result<()> {
                     app.set_frame(Image::from_rgba8(pixels));
                 }
             }
+            drop(st);
+
+            // --ui-shot: once the scan is folded in, walk the main
+            // screens, snapshotting each, then quit.
+            if let Some(dir) = &ui_shot_dir {
+                if state.borrow().game_rows.is_empty() {
+                    return;
+                }
+                let step = {
+                    let mut s = shot_step.borrow_mut();
+                    *s += 1;
+                    *s
+                };
+                // A few ticks between shots so layout/render settles.
+                match step {
+                    10 => snapshot(&app, &dir.join("ui-play-empty.png")),
+                    20 => {
+                        app.set_selected_game(0);
+                        app.invoke_game_selected(0);
+                        app.set_selected_save(0);
+                    }
+                    30 => snapshot(&app, &dir.join("ui-play-selected.png")),
+                    40 => app.set_active_tab(1),
+                    50 => snapshot(&app, &dir.join("ui-replays.png")),
+                    60 => app.set_active_tab(3),
+                    70 => {
+                        snapshot(&app, &dir.join("ui-settings.png"));
+                        let _ = slint::quit_event_loop();
+                    }
+                    _ => {}
+                }
+            }
         }
     });
 
     app.run()?;
     Ok(())
+}
+
+/// Save a `--ui-shot` snapshot of the window to `path`.
+fn snapshot(app: &AppWindow, path: &std::path::Path) {
+    let buf = match app.window().take_snapshot() {
+        Ok(buf) => buf,
+        Err(e) => {
+            log::error!("take_snapshot: {e}");
+            return;
+        }
+    };
+    let Some(img) = image::RgbaImage::from_raw(buf.width(), buf.height(), buf.as_bytes().to_vec()) else {
+        log::error!("snapshot: bad buffer");
+        return;
+    };
+    if let Err(e) = img.save(path) {
+        log::error!("snapshot: {}: {e}", path.display());
+    } else {
+        println!("ui-shot: wrote {}", path.display());
+    }
 }
 
 /// Headless verification: boot the first (alphabetical) game that has a

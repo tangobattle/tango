@@ -6,6 +6,7 @@
 pub struct Config {
     pub data_path: std::path::PathBuf,
     pub language: unic_langid::LanguageIdentifier,
+    pub nickname: Option<String>,
 }
 
 impl Default for Config {
@@ -16,6 +17,7 @@ impl Default for Config {
                 .unwrap_or_else(|| std::path::PathBuf::from("."))
                 .join("Tango"),
             language: crate::game::FALLBACK_LANG,
+            nickname: None,
         }
     }
 }
@@ -42,6 +44,11 @@ impl Config {
         if let Some(lang) = v.get("language").and_then(|x| x.as_str()) {
             if let Ok(lang) = lang.parse() {
                 config.language = lang;
+            }
+        }
+        if let Some(nickname) = v.get("nickname").and_then(|x| x.as_str()) {
+            if !nickname.is_empty() {
+                config.nickname = Some(nickname.to_string());
             }
         }
         config
