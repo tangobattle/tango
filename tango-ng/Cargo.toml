@@ -26,6 +26,8 @@ tango-pvp = { path = "../tango-pvp" }
 bps = { path = "../bps" }
 semver = "1"
 chrono = "0.4"
+toml = "0.8"
+regex = "1"
 tango-gamesupport-bn1 = { path = "../gamesupport/tango-gamesupport-bn1", optional = true }
 tango-gamesupport-bn2 = { path = "../gamesupport/tango-gamesupport-bn2", optional = true }
 tango-gamesupport-bn3 = { path = "../gamesupport/tango-gamesupport-bn3", optional = true }

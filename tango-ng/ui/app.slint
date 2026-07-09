@@ -454,6 +454,8 @@ export component AppWindow inherits Window {
 
     in property <[string]> games: [];
     in property <[string]> saves: [];
+    in property <[string]> patches: [];
+    in property <[string]> versions: [];
     in property <[ReplayRow]> replays: [];
     in property <string> replay-title: "";
     in property <[string]> replay-detail: [];
@@ -478,9 +480,12 @@ export component AppWindow inherits Window {
     in-out property <int> settings-section: 0;
     in-out property <int> selected-game: -1;
     in-out property <int> selected-save: -1;
+    in-out property <int> selected-patch: 0;
+    in-out property <int> selected-version: -1;
     in-out property <int> selected-replay: -1;
 
     callback game-selected(int);
+    callback patch-selected(int);
     callback replay-selected(int);
     callback play-clicked();
     callback watch-clicked();
@@ -592,15 +597,18 @@ export component AppWindow inherits Window {
                                     }
                                 }
                                 Picker {
-                                    model: [];
+                                    model: root.patches;
                                     placeholder: "No patch";
-                                    enabled: false;
+                                    enabled: root.selected-game >= 0 && root.patches.length > 1;
+                                    current <=> root.selected-patch;
                                     horizontal-stretch: 2;
+                                    selected(i) => { root.patch-selected(i); }
                                 }
                                 Picker {
-                                    model: [];
+                                    model: root.versions;
                                     placeholder: "—";
-                                    enabled: false;
+                                    enabled: root.versions.length > 0;
+                                    current <=> root.selected-version;
                                     width: 100px;
                                 }
                             }

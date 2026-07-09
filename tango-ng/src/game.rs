@@ -51,6 +51,11 @@ pub fn find_by_family_and_variant(family: &str, variant: u8) -> Option<GameRef> 
     tango_gamesupport::find_by_family_and_variant(&GAMES, family, variant)
 }
 
+/// Look a registered game up by ROM code + revision.
+pub fn find_by_rom_info(code: &[u8; 4], revision: u8) -> Option<GameRef> {
+    tango_gamesupport::find_by_rom_info(&GAMES, code, revision)
+}
+
 /// Per-family Fluent bundles, one per `(family id, locale)`, built from
 /// each enabled family's `translations`. Keyed by the family id then by
 /// language.

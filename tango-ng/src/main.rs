@@ -35,6 +35,7 @@ enum Event {
         roms: HashMap<rom::GameRef, Vec<u8>>,
         saves: HashMap<rom::GameRef, Vec<save::ScannedSave>>,
         replays: Vec<replays::ScannedReplay>,
+        patches: patch::PatchMap,
     },
 }
 
@@ -54,6 +55,12 @@ struct State {
     save_rows: Vec<save::ScannedSave>,
     /// Replays shown in the list, parallel to the `replays` model rows.
     replay_rows: Vec<replays::ScannedReplay>,
+    patches: patch::PatchMap,
+    /// Patch names shown in the patch picker (model index i+1 — index 0
+    /// is the "No patch" sentinel).
+    patch_rows: Vec<String>,
+    /// Versions shown in the version picker, newest first.
+    version_rows: Vec<semver::Version>,
     session: Option<ActiveSession>,
     joyflags: u32,
     /// Replay speed selected in the transport (fast-forward restores it).
@@ -133,6 +140,8 @@ fn refresh_models(app: &AppWindow, st: &mut State) {
         .collect();
     st.game_rows = game_rows;
     st.save_rows.clear();
+    st.patch_rows.clear();
+    st.version_rows.clear();
 
     let replay_rows: Vec<ReplayRow> = st.replay_rows.iter().map(|r| replay_row(&lang, r)).collect();
 
@@ -148,8 +157,12 @@ fn refresh_models(app: &AppWindow, st: &mut State) {
     app.set_selected_game(-1);
     app.set_selected_save(-1);
     app.set_selected_replay(-1);
+    app.set_selected_patch(0);
+    app.set_selected_version(-1);
     app.set_games(ModelRc::new(VecModel::from(rows)));
     app.set_saves(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
+    app.set_patches(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
+    app.set_versions(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
     app.set_replays(ModelRc::new(VecModel::from(replay_rows)));
 }
 
@@ -214,6 +227,9 @@ fn main() -> anyhow::Result<()> {
         game_rows: Vec::new(),
         save_rows: Vec::new(),
         replay_rows: Vec::new(),
+        patches: patch::PatchMap::new(),
+        patch_rows: Vec::new(),
+        version_rows: Vec::new(),
         session: None,
         joyflags: 0,
         replay_speed: 1.0,
@@ -231,6 +247,7 @@ fn main() -> anyhow::Result<()> {
             let roms_path = st.config.roms_path();
             let saves_path = st.config.saves_path();
             let replays_path = st.config.replays_path();
+            let patches_path = st.config.patches_path();
             let tx = tx.clone();
             if let Some(app) = app_weak.upgrade() {
                 app.set_status("Scanning…".into());
@@ -239,7 +256,13 @@ fn main() -> anyhow::Result<()> {
                 let roms = rom::scan_roms(&roms_path);
                 let saves = save::scan_saves(&saves_path);
                 let replays = replays::scan_replays(&replays_path);
-                let _ = tx.send(Event::ScanDone { roms, saves, replays });
+                let patches = patch::scan(&patches_path);
+                let _ = tx.send(Event::ScanDone {
+                    roms,
+                    saves,
+                    replays,
+                    patches,
+                });
             });
         }
     });
@@ -374,6 +397,57 @@ fn main() -> anyhow::Result<()> {
                 })
                 .collect();
             app.set_saves(ModelRc::new(VecModel::from(rows)));
+
+            // Patches supporting this game (any version).
+            st.patch_rows = st
+                .patches
+                .iter()
+                .filter(|(_, p)| p.versions.values().any(|v| v.supported_games.contains(&game)))
+                .map(|(name, _)| name.clone())
+                .collect();
+            st.version_rows.clear();
+            let mut patch_model: Vec<SharedString> = vec!["No patch".into()];
+            patch_model.extend(st.patch_rows.iter().map(|n| SharedString::from(n.as_str())));
+            app.set_patches(ModelRc::new(VecModel::from(patch_model)));
+            app.set_selected_patch(0);
+            app.set_versions(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
+            app.set_selected_version(-1);
+        }
+    });
+
+    app.on_patch_selected({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |index| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Some(game) = st.game_rows.get(app.get_selected_game() as usize).copied() else {
+                return;
+            };
+            if index <= 0 {
+                st.version_rows.clear();
+                app.set_versions(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
+                app.set_selected_version(-1);
+                return;
+            }
+            let Some(patch) = st
+                .patch_rows
+                .get(index as usize - 1)
+                .and_then(|name| st.patches.get(name))
+                .cloned()
+            else {
+                return;
+            };
+            st.version_rows = patch
+                .versions
+                .iter()
+                .rev()
+                .filter(|(_, v)| v.supported_games.contains(&game))
+                .map(|(sv, _)| sv.clone())
+                .collect();
+            let model: Vec<SharedString> = st.version_rows.iter().map(|v| format!("v{v}").into()).collect();
+            app.set_versions(ModelRc::new(VecModel::from(model)));
+            app.set_selected_version(if st.version_rows.is_empty() { -1 } else { 0 });
         }
     });
 
@@ -441,7 +515,29 @@ fn main() -> anyhow::Result<()> {
             let Some(rom) = st.roms.get(&game) else {
                 return;
             };
-            match session::SinglePlayerSession::new(rom, &save.path, &st.audio_binder) {
+            // Apply the selected patch version, if any.
+            let patch_index = app.get_selected_patch();
+            let rom = if patch_index > 0 {
+                let patched = st
+                    .patch_rows
+                    .get(patch_index as usize - 1)
+                    .zip(st.version_rows.get(app.get_selected_version() as usize))
+                    .ok_or_else(|| anyhow::anyhow!("no patch version selected"))
+                    .and_then(|(name, version)| {
+                        patch::apply_patch_from_disk(rom, game, &st.config.patches_path(), name, version)
+                    });
+                match patched {
+                    Ok(r) => r,
+                    Err(e) => {
+                        log::error!("failed to apply patch: {e:?}");
+                        app.set_status(format!("Failed to apply patch: {e}").into());
+                        return;
+                    }
+                }
+            } else {
+                rom.clone()
+            };
+            match session::SinglePlayerSession::new(&rom, &save.path, &st.audio_binder) {
                 Ok(session) => {
                     st.session = Some(ActiveSession::SinglePlayer(session));
                     st.joyflags = 0;
@@ -587,11 +683,17 @@ fn main() -> anyhow::Result<()> {
 
             while let Ok(event) = rx.try_recv() {
                 match event {
-                    Event::ScanDone { roms, saves, replays } => {
+                    Event::ScanDone {
+                        roms,
+                        saves,
+                        replays,
+                        patches,
+                    } => {
                         let mut st = state.borrow_mut();
                         st.roms = roms;
                         st.saves = saves;
                         st.replay_rows = replays;
+                        st.patches = patches;
                         refresh_models(&app, &mut st);
                     }
                 }
