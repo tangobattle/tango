@@ -576,11 +576,12 @@ impl State {
                 self.maybe_signal_pvp_handoff();
             }
             Message::MatchHandoffReady => {
-                // TODO(pvp-wire): in tango the App layer handles this —
-                // it drains `take_pre_match()` and runs `spawn_pvp`. The
-                // tango-ng UI isn't wired to netplay yet, so the signal
-                // is a logged no-op for now.
-                log::debug!("netplay: MatchHandoffReady (PvP handoff not wired yet)");
+                // Handled by the main loop's event fold (mirrors tango's
+                // App): it intercepts this message before `update`, drains
+                // `take_pre_match()`, and runs `spawn_pvp`. Reaching here
+                // would mean a duplicate emit raced the intercept —
+                // harmless, ignore.
+                log::debug!("netplay: MatchHandoffReady reached State::update (already handled by the app)");
             }
             Message::Failed(e) => {
                 self.cancel_and_renew();

@@ -19,9 +19,9 @@ const EXPECTED_FPS: f32 = 60.0;
 
 /// Create the mgba core every session boots from: a GBA core with audio-sync
 /// on, its video buffer enabled, and `rom` loaded. (Same shape as the tango
-/// crate's `new_gba_core`; PvP/replay sessions will layer their traps on top
-/// when they're ported.)
-fn new_gba_core(rom: &[u8]) -> anyhow::Result<mgba::core::Core> {
+/// crate's `new_gba_core`; the replay session here and the PvP session in
+/// [`crate::pvp`] layer their traps on top.)
+pub(crate) fn new_gba_core(rom: &[u8]) -> anyhow::Result<mgba::core::Core> {
     let mut core = mgba::core::Core::new_gba(
         "tango",
         &mgba::core::Options {

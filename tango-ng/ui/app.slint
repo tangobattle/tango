@@ -477,6 +477,10 @@ export component AppWindow inherits Window {
     in-out property <bool> fractional: false;
     // 0 = singleplayer, 1 = replay (shows the transport bar).
     in property <int> session-kind: 0;
+    // Netplay: the typed link code / direct command, and the lifecycle
+    // status line ("" while idle — the input shows instead).
+    in-out property <string> link-code: "";
+    in property <string> netplay-status: "";
     in property <bool> replay-paused: false;
     in property <string> replay-progress: "";
     in property <float> replay-scrub-pos: 0.0;
@@ -497,6 +501,7 @@ export component AppWindow inherits Window {
     callback replay-filter-selected(int);
     callback replay-opponent-edited(string);
     callback play-clicked();
+    callback fight-clicked();
     callback watch-clicked();
     callback toggle-pause();
     callback speed-selected(int);
@@ -718,7 +723,17 @@ export component AppWindow inherits Window {
                         padding-left: 8px;
                         padding-right: 8px;
                         spacing: 10px;
-                        TechPlate {
+                        // Link code / direct command entry; while a
+                        // connection is in flight the same plate slot
+                        // shows the lifecycle status instead (identical
+                        // footprint, so the band never shifts).
+                        if root.netplay-status == "" : ChunkyInput {
+                            height: 40px;
+                            horizontal-stretch: 1;
+                            text <=> root.link-code;
+                            accepted(t) => { root.fight-clicked(); }
+                        }
+                        if root.netplay-status != "" : TechPlate {
                             r: 10px;
                             height: 40px;
                             horizontal-stretch: 1;
@@ -729,20 +744,24 @@ export component AppWindow inherits Window {
                                 x: 16px;
                                 width: parent.width - 32px;
                                 height: parent.height;
-                                text: "Link code — netplay coming soon";
+                                text: root.netplay-status;
                                 font-size: 15px;
-                                color: Theme.disabled-text;
+                                color: Theme.text;
                                 vertical-alignment: center;
+                                overflow: elide;
                             }
                         }
                         PrimaryButton {
                             glyph: Glyphs.swords;
                             label: "Fight";
-                            enabled: false;
+                            enabled: root.link-code != ""
+                                && root.selected-game >= 0
+                                && root.selected-save >= 0;
                             pad-v: 10px;
                             pad-h: 22px;
                             text-size: 15px;
                             height: 40px;
+                            clicked => { root.fight-clicked(); }
                         }
                     }
                 }

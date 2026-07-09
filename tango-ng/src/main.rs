@@ -7,6 +7,10 @@
 //! - `tango-ng --smoke [out.png]`: headless — scan, boot the first game
 //!   with a save (against a temp copy of the save), emulate ~5 real
 //!   seconds with audio, dump the framebuffer.
+//! - `tango-ng --smoke-pvp host|connect [out.png]`: headless two-instance
+//!   PvP — run both roles concurrently against the same data dir; each
+//!   side drives the direct /host·/connect path + the auto-lobby to a
+//!   live match, emulates ~8 seconds, dumps the framebuffer.
 //! - `tango-ng --ui-shot [out_dir]`: open the real UI, wait for the scan,
 //!   then snapshot the main screens to PNGs and exit. Run with
 //!   `SLINT_BACKEND=winit-software` for reliable snapshots.
@@ -16,14 +20,20 @@ mod bnlc;
 mod config;
 mod game;
 mod input;
-// The net + netplay layers are mid-port (see the netplay port guide);
-// allow dead_code until the /host + /connect vertical slice wires them
-// into the UI.
+// The net + netplay layers are ported and the direct /host + /connect
+// slice is live (Phase A); the matchmaking path (`Message::Connect`,
+// identity) and parts of the lobby surface stay dormant until Phase B,
+// so keep dead_code allowed.
 #[allow(dead_code, unused_imports)]
 mod net;
 #[allow(dead_code)]
 mod netplay;
 mod patch;
+// PvP session (Phase A port). Parts of its surface (frame-delay
+// slider, reconnect overlay, median latency) wait on the Phase B
+// lobby/session UI.
+#[allow(dead_code)]
+mod pvp;
 mod replays;
 mod rom;
 mod save;
@@ -49,8 +59,14 @@ enum Event {
         stats: replays::ReplayStats,
     },
     /// Netplay task results + lobby-loop observations, forwarded into
-    /// `netplay::State::update` by the timer below.
+    /// `netplay::State::update` by the timer below (which intercepts
+    /// `MatchHandoffReady` itself, mirroring tango's App).
     Netplay(netplay::Message),
+    /// The async PvP build kicked off by `MatchHandoffReady` resolved
+    /// (tango's `Message::PvpSessionBuilt`). Ok installs the session;
+    /// Err surfaces in the status line. Either way the netplay lobby
+    /// snapshot is cleared via `finish_handoff`.
+    PvpBuilt(Box<anyhow::Result<pvp::PvpSession>>),
 }
 
 /// Selectable UI languages, same set as tango's i18n::SUPPORTED_LANGS.
@@ -97,8 +113,10 @@ struct State {
     /// then on nearest-keyframe previews are forced (the live frame is
     /// no longer in the buffer).
     scrub_forced: bool,
-    /// Netplay connection state machine. Not yet driven by the UI —
-    /// the lobby pane lands with the /host + /connect vertical slice.
+    /// Netplay connection state machine, driven by the link-code bar
+    /// (`/host` + `/connect`) and the timer's event fold. The full
+    /// lobby pane is Phase B; until then `drive_auto_lobby` plays the
+    /// lobby automatically.
     netplay: netplay::State,
 }
 
@@ -106,6 +124,7 @@ struct State {
 enum ActiveSession {
     SinglePlayer(session::SinglePlayerSession),
     Replay(session::ReplaySession),
+    Pvp(Box<pvp::PvpSession>),
 }
 
 impl ActiveSession {
@@ -113,6 +132,7 @@ impl ActiveSession {
         match self {
             ActiveSession::SinglePlayer(s) => s.frame_dirty(),
             ActiveSession::Replay(s) => s.frame_dirty(),
+            ActiveSession::Pvp(s) => s.frame_dirty(),
         }
     }
 
@@ -120,6 +140,7 @@ impl ActiveSession {
         match self {
             ActiveSession::SinglePlayer(s) => s.read_frame(dst_rgba),
             ActiveSession::Replay(s) => s.read_frame(dst_rgba),
+            ActiveSession::Pvp(s) => s.read_frame(dst_rgba),
         }
     }
 }
@@ -282,6 +303,193 @@ fn replay_row(lang: &unic_langid::LanguageIdentifier, replay: &replays::ScannedR
     }
 }
 
+/// Recognise the direct link-code commands the user can type in place
+/// of a matchmaking code (copied from `tango/src/tabs/play/mod.rs`):
+///
+/// - `/host` — listen on [`net::DEFAULT_LOCAL_PORT`]
+/// - `/host <port>` — listen on the given port
+/// - `/connect <addr>` — dial `<addr>`, appending the default port if
+///   the user didn't specify one
+fn parse_direct_command(input: &str) -> Option<netplay::DirectRole> {
+    // The leading slash is the disambiguator — without it, any
+    // input is a matchmaking link code (which can legitimately
+    // contain letters, digits, and the random-code separators).
+    if !input.starts_with('/') {
+        return None;
+    }
+    let mut parts = input.splitn(2, char::is_whitespace);
+    let cmd = parts.next().unwrap_or("");
+    let arg = parts.next().map(str::trim).unwrap_or("");
+    match cmd {
+        "/host" => {
+            let port = if arg.is_empty() {
+                net::DEFAULT_LOCAL_PORT
+            } else {
+                arg.parse::<u16>().ok()?
+            };
+            Some(netplay::DirectRole::Host { port })
+        }
+        "/connect" => {
+            if arg.is_empty() {
+                return None;
+            }
+            // Heuristic: if the user gave no colon (bare IP) or
+            // their input ends with the IPv6 closing bracket
+            // without a trailing colon, append the default port.
+            // We deliberately don't try to validate the address
+            // itself — the connect error surfaces well.
+            let addr = if arg.contains(':') && !arg.ends_with(']') {
+                arg.to_string()
+            } else {
+                format!("{arg}:{}", net::DEFAULT_LOCAL_PORT)
+            };
+            Some(netplay::DirectRole::Connect { addr })
+        }
+        _ => None,
+    }
+}
+
+/// One-line description of the netplay lifecycle for the Play tab's
+/// bottom band; "" when idle (the link-code input shows instead).
+fn netplay_status_text(netplay: &netplay::State) -> String {
+    if netplay.handoff_pending() {
+        return "Starting match…".to_string();
+    }
+    match &netplay.phase {
+        netplay::Phase::Idle => String::new(),
+        netplay::Phase::Connecting {
+            waiting_for_opponent: false,
+            ..
+        } => "Connecting…".to_string(),
+        netplay::Phase::Connecting {
+            waiting_for_opponent: true,
+            ..
+        } => "Waiting for opponent…".to_string(),
+        netplay::Phase::Negotiating { .. } => "Negotiating…".to_string(),
+        netplay::Phase::Lobby { .. } => match netplay.lobby.remote.as_ref() {
+            None => "Lobby — waiting for opponent…".to_string(),
+            Some(remote) if netplay.lobby.local_ready && netplay.lobby.remote_ready => {
+                format!("Lobby — starting vs {}…", remote.nickname)
+            }
+            Some(remote) => format!("Lobby — vs {}", remote.nickname),
+        },
+        netplay::Phase::Failed { error } => format!("Failed: {error}"),
+    }
+}
+
+/// TODO(lobby-ui): interim lobby driver for the /host + /connect
+/// vertical slice. Until the lobby pane lands (Phase B), the app plays
+/// the lobby automatically: it advertises the given selection as its
+/// Settings the moment the phase reaches Lobby (the dedupe inside
+/// `SendLocalSettings` makes repeats no-ops, and a material change
+/// still auto-uncommits, like tango's resend pass), then auto-Readies
+/// (`Commit` with the selected save's SRAM) once both sides' settings
+/// are in and the compat verdict is green (tango's Ready→Commit,
+/// app/update.rs:100-110). Match type is pinned to (0, 0) — the lobby
+/// default — so both sides agree without a picker; blind setup stays
+/// off. Shared by the GUI timer and the --smoke-pvp driver.
+fn drive_auto_lobby(
+    netplay: &mut netplay::State,
+    patches: &patch::PatchMap,
+    nickname: &str,
+    game: rom::GameRef,
+    game_patch: Option<(String, semver::Version)>,
+    save: &save::ScannedSave,
+) {
+    if !matches!(netplay.phase, netplay::Phase::Lobby { .. }) {
+        return;
+    }
+    let (family, variant) = game.family_and_variant();
+    let settings = net::protocol::Settings {
+        nickname: nickname.to_string(),
+        match_type: (0, 0),
+        game_info: Some(net::protocol::GameInfo {
+            family_and_variant: (family.to_string(), variant),
+            patch: game_patch.map(|(name, version)| net::protocol::PatchInfo { name, version }),
+        }),
+        blind_setup: false,
+    };
+    netplay.update(netplay::Message::SendLocalSettings(Box::new(settings)));
+    if netplay.lobby.local_ready {
+        return;
+    }
+    let (Some(local), Some(remote)) = (netplay.lobby.local.as_ref(), netplay.lobby.remote.as_ref()) else {
+        return;
+    };
+    if !matches!(
+        netplay::compat::check(local, remote, patches),
+        netplay::compat::Verdict::Compatible
+    ) {
+        return;
+    }
+    netplay.update(netplay::Message::Commit {
+        save_sram: save.save.to_sram_dump(),
+    });
+}
+
+/// The Play tab's current (game, patch, save-row) pick, or `None` when
+/// incomplete. Mirrors `on_play_clicked`'s reads; the netplay slice
+/// uses it for the auto-lobby Settings and the PvP ROM resolve.
+fn selected_loadout(app: &AppWindow, st: &State) -> Option<(rom::GameRef, Option<(String, semver::Version)>, usize)> {
+    let game = st.game_rows.get(app.get_selected_game() as usize).copied()?;
+    let save_index = app.get_selected_save();
+    if save_index < 0 || save_index as usize >= st.save_rows.len() {
+        return None;
+    }
+    let patch_index = app.get_selected_patch();
+    let patch = if patch_index > 0 {
+        Some((
+            st.patch_rows.get(patch_index as usize - 1)?.clone(),
+            st.version_rows.get(app.get_selected_version() as usize)?.clone(),
+        ))
+    } else {
+        None
+    };
+    Some((game, patch, save_index as usize))
+}
+
+/// `MatchHandoffReady`: drain the lobby state into a `PreMatchData`,
+/// resolve both sides' ROMs, and kick off the async PvP build on the
+/// runtime — its result lands back in the event loop as
+/// `Event::PvpBuilt` (mirrors tango's app/mod.rs:1070-1106 handler).
+/// A resolve failure after the drain can't be retried (the connection
+/// handles are gone), so it surfaces in the status line and clears the
+/// lobby snapshot right here.
+fn start_pvp_handoff(app: &AppWindow, st: &mut State, rt: &tokio::runtime::Handle, tx: &std::sync::mpsc::Sender<Event>) {
+    let Some(pre_match) = st.netplay.take_pre_match() else {
+        return;
+    };
+    let resolved = selected_loadout(app, st)
+        .ok_or_else(|| anyhow::anyhow!("no game/save selected"))
+        .and_then(|(game, patch, _)| {
+            pvp::resolve_pvp_roms(
+                &st.roms,
+                &st.config.patches_path(),
+                game,
+                patch,
+                &pre_match.remote_settings,
+            )
+        });
+    let roms = match resolved {
+        Ok(roms) => roms,
+        Err(e) => {
+            log::error!("pvp rom resolve failed: {e:?}");
+            app.set_status(format!("Failed to start match: {e}").into());
+            st.netplay.finish_handoff();
+            return;
+        }
+    };
+    let frame_delay = st.config.frame_delay;
+    let disable_bgm = st.config.disable_bgm_in_pvp;
+    let replays_path = st.config.replays_path();
+    let audio_binder = st.audio_binder.clone();
+    let tx = tx.clone();
+    rt.spawn(async move {
+        let result = pvp::spawn_pvp(roms, pre_match, frame_delay, disable_bgm, replays_path, audio_binder).await;
+        let _ = tx.send(Event::PvpBuilt(Box::new(result)));
+    });
+}
+
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     log::info!("tango-ng {}", env!("CARGO_PKG_VERSION"));
@@ -311,6 +519,11 @@ fn main() -> anyhow::Result<()> {
     if args.get(1).map(|s| s.as_str()) == Some("--smoke-replay") {
         let out = std::path::PathBuf::from(args.get(2).map(|s| s.as_str()).unwrap_or("tango-ng-replay.png"));
         return smoke_replay(&config, &audio_binder, &out);
+    }
+    if args.get(1).map(|s| s.as_str()) == Some("--smoke-pvp") {
+        let role = args.get(2).cloned().unwrap_or_default();
+        let out = std::path::PathBuf::from(args.get(3).map(|s| s.as_str()).unwrap_or("tango-ng-pvp.png"));
+        return smoke_pvp(&config, &audio_binder, tokio_runtime.handle().clone(), &role, &out);
     }
     let ui_shot_dir: Option<std::path::PathBuf> = (args.get(1).map(|s| s.as_str()) == Some("--ui-shot"))
         .then(|| std::path::PathBuf::from(args.get(2).map(|s| s.as_str()).unwrap_or(".")));
@@ -351,6 +564,7 @@ fn main() -> anyhow::Result<()> {
     // into the UI by the frame timer below. Rc so the data-path setting
     // can retrigger it.
     let stats_tx = tx.clone();
+    let pvp_tx = tx.clone();
     let spawn_scan: Rc<dyn Fn()> = Rc::new({
         let state = state.clone();
         let app_weak = app.as_weak();
@@ -713,6 +927,30 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    app.on_fight_clicked({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let text = app.get_link_code().trim().to_string();
+            if text.is_empty() {
+                return;
+            }
+            if text.starts_with('/') {
+                // Direct link-code commands: /host [port] | /connect <addr>.
+                match parse_direct_command(&text) {
+                    Some(role) => st.netplay.update(netplay::Message::ConnectDirect { role }),
+                    None => app.set_status(format!("Unrecognized command: {text}").into()),
+                }
+            } else {
+                // TODO(matchmaking): the signaling path is Phase B.
+                app.set_status("Matchmaking lands with phase B".into());
+            }
+            app.set_netplay_status(netplay_status_text(&st.netplay).into());
+        }
+    });
+
     app.on_watch_clicked({
         let state = state.clone();
         let app_weak = app.as_weak();
@@ -836,6 +1074,13 @@ fn main() -> anyhow::Result<()> {
         move || {
             let Some(app) = app_weak.upgrade() else { return };
             let mut st = state.borrow_mut();
+            // PvP: cancel the netcode before the drop so the match-run
+            // task sends the peer its Closing marker (Drop also cancels
+            // — this just makes the ordering explicit, mirroring tango's
+            // session Close handler).
+            if let Some(ActiveSession::Pvp(p)) = &st.session {
+                p.request_close();
+            }
             st.session = None;
             st.joyflags = 0;
             app.set_in_session(false);
@@ -848,18 +1093,26 @@ fn main() -> anyhow::Result<()> {
     app.on_key_event({
         let state = state.clone();
         let app_weak = app.as_weak();
+        let end_session = end_session.clone();
         move |text, pressed| {
             let mut st = state.borrow_mut();
             match input::classify(text.as_str()) {
                 Some(input::KeyAction::Joyflag(flag)) => {
-                    if matches!(&st.session, Some(ActiveSession::SinglePlayer(_))) {
+                    // PvP takes live input exactly like singleplayer — the
+                    // netcode reads the joyflag atomic on the primary trap.
+                    if matches!(
+                        &st.session,
+                        Some(ActiveSession::SinglePlayer(_) | ActiveSession::Pvp(_))
+                    ) {
                         if pressed {
                             st.joyflags |= flag;
                         } else {
                             st.joyflags &= !flag;
                         }
-                        if let Some(ActiveSession::SinglePlayer(session)) = &st.session {
-                            session.set_joyflags(st.joyflags);
+                        match &st.session {
+                            Some(ActiveSession::SinglePlayer(session)) => session.set_joyflags(st.joyflags),
+                            Some(ActiveSession::Pvp(session)) => session.set_joyflags(st.joyflags),
+                            _ => {}
                         }
                     } else if let Some(ActiveSession::Replay(session)) = &st.session {
                         // Replays take no input; space doubles as pause toggle
@@ -887,7 +1140,9 @@ fn main() -> anyhow::Result<()> {
                         let speed = if pressed { 4.0 } else { st.replay_speed };
                         session.set_speed(speed);
                     }
-                    None => {}
+                    // PvP is throttled by the netcode's clock-sync — no
+                    // fast-forward.
+                    Some(ActiveSession::Pvp(_)) | None => {}
                 },
                 Some(input::KeyAction::EndSession) => {
                     if pressed {
@@ -906,6 +1161,8 @@ fn main() -> anyhow::Result<()> {
     timer.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(16), {
         let state = state.clone();
         let app_weak = app.as_weak();
+        let rt = tokio_runtime.handle().clone();
+        let end_session = end_session.clone();
         move || {
             let Some(app) = app_weak.upgrade() else { return };
 
@@ -942,16 +1199,62 @@ fn main() -> anyhow::Result<()> {
                         }
                     }
                     Event::Netplay(msg) => {
-                        // Forwarded into the netplay state machine. Its
+                        // Forwarded into the netplay state machine, except
+                        // MatchHandoffReady, which the app layer handles
+                        // itself (drain + spawn_pvp — mirrors tango's App).
                         // update() may spawn tasks / send further Events
                         // (drained next tick) but never re-borrows this
                         // RefCell — netplay::State is self-contained.
-                        state.borrow_mut().netplay.update(msg);
+                        let mut st = state.borrow_mut();
+                        if matches!(msg, netplay::Message::MatchHandoffReady) {
+                            start_pvp_handoff(&app, &mut st, &rt, &pvp_tx);
+                        } else {
+                            st.netplay.update(msg);
+                            // TODO(lobby-ui): stand-in for the Phase B lobby
+                            // pane — auto-advertise + auto-Ready the current
+                            // selection after every netplay fold (tango
+                            // resends settings after every netplay message
+                            // too; the dedupe makes it a no-op).
+                            if let Some((game, patch, save_index)) = selected_loadout(&app, &st) {
+                                let nickname = st.config.nickname.clone().unwrap_or_else(|| "Player".to_string());
+                                let st = &mut *st;
+                                drive_auto_lobby(
+                                    &mut st.netplay,
+                                    &st.patches,
+                                    &nickname,
+                                    game,
+                                    patch,
+                                    &st.save_rows[save_index],
+                                );
+                            }
+                        }
+                        app.set_netplay_status(netplay_status_text(&st.netplay).into());
+                    }
+                    Event::PvpBuilt(result) => {
+                        let mut st = state.borrow_mut();
+                        match *result {
+                            Ok(session) => {
+                                st.session = Some(ActiveSession::Pvp(Box::new(session)));
+                                st.joyflags = 0;
+                                app.set_session_kind(2);
+                                app.set_in_session(true);
+                            }
+                            Err(e) => {
+                                log::error!("pvp session build failed: {e:?}");
+                                app.set_status(format!("Failed to start match: {e}").into());
+                            }
+                        }
+                        // Clear the post-handoff lobby snapshot now that the
+                        // PvP view (or the error) has taken over — tango does
+                        // the same at app/mod.rs:1159-1164.
+                        st.netplay.finish_handoff();
+                        app.set_netplay_status(netplay_status_text(&st.netplay).into());
                     }
                 }
             }
 
             let st = state.borrow();
+            let mut pvp_ended = false;
             if let Some(session) = &st.session {
                 if session.frame_dirty() {
                     let mut pixels = SharedPixelBuffer::<Rgba8Pixel>::new(
@@ -960,6 +1263,21 @@ fn main() -> anyhow::Result<()> {
                     );
                     session.read_frame(pixels.make_mut_bytes());
                     app.set_frame(Image::from_rgba8(pixels));
+                }
+                if let ActiveSession::Pvp(p) = session {
+                    // Self-close once the match has wound down (completion +
+                    // peer EndOfMatch / disconnect / grace — see
+                    // PvpSession::is_ended); actual teardown happens below,
+                    // after this borrow drops.
+                    pvp_ended = p.is_ended();
+                    let mut line = format!("PvP · P{} · {:.1} tps", p.local_player_index() + 1, p.tps());
+                    if let Some(l) = p.latency_raw() {
+                        line += &format!(" · {} ms", l.as_millis());
+                    }
+                    if let Some(rs) = p.round_stats() {
+                        line += &format!(" · skew {:+} · lead {:+}", rs.skew, rs.lead);
+                    }
+                    app.set_status(line.into());
                 }
                 if let ActiveSession::Replay(replay) = session {
                     // Draw the playhead where an in-flight seek is headed
@@ -983,6 +1301,10 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             drop(st);
+
+            if pvp_ended {
+                end_session();
+            }
 
             // --ui-shot: once the scan is folded in, walk the main
             // screens, snapshotting each, then quit.
@@ -1089,6 +1411,178 @@ fn smoke_replay(config: &config::Config, audio_binder: &audio::LateBinder, out: 
         .ok_or_else(|| anyhow::anyhow!("bad framebuffer size"))?;
     img.save(out)?;
     println!("smoke-replay: wrote {}", out.display());
+    Ok(())
+}
+
+/// Headless two-instance PvP verification: run once as `--smoke-pvp
+/// host <out.png>` and once (concurrently) as `--smoke-pvp connect
+/// <out.png>` against the same data dir. Each side scans, picks the
+/// first game with both a rom and a save (the same pick as `--smoke`,
+/// so the two sides agree), drives the netplay state machine through
+/// the direct /host + /connect path and the auto-lobby to a live
+/// `PvpSession`, then watches ~8 seconds of emulation before dumping
+/// the framebuffer. This is the GUI timer's event fold, minus slint.
+fn smoke_pvp(
+    config: &config::Config,
+    audio_binder: &audio::LateBinder,
+    rt: tokio::runtime::Handle,
+    role_arg: &str,
+    out: &std::path::Path,
+) -> anyhow::Result<()> {
+    let tag = format!("smoke-pvp[{role_arg}]");
+    let roms = rom::scan_roms(&config.roms_path());
+    let saves = save::scan_saves(&config.saves_path());
+    let patches = patch::scan(&config.patches_path());
+    println!(
+        "{tag}: {} roms, {} saves",
+        roms.len(),
+        saves.values().map(|v| v.len()).sum::<usize>()
+    );
+
+    let mut candidates: Vec<rom::GameRef> = roms
+        .keys()
+        .copied()
+        .filter(|g| saves.get(g).is_some_and(|s| !s.is_empty()))
+        .collect();
+    candidates.sort_by_key(|g| game::display_name(&game::FALLBACK_LANG, *g));
+    let game = *candidates
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("no game with both a rom and a save"))?;
+    let save = &saves[&game][0];
+    println!(
+        "{tag}: {} with {}",
+        game::display_name(&game::FALLBACK_LANG, game),
+        save.path.display()
+    );
+
+    let (tx, rx) = std::sync::mpsc::channel::<Event>();
+    let mut netplay = netplay::State::new(rt.clone(), tx.clone());
+    let role = match role_arg {
+        "host" => netplay::DirectRole::Host {
+            port: net::DEFAULT_LOCAL_PORT,
+        },
+        "connect" => netplay::DirectRole::Connect {
+            addr: format!("127.0.0.1:{}", net::DEFAULT_LOCAL_PORT),
+        },
+        other => anyhow::bail!("--smoke-pvp needs `host` or `connect`, got {other:?}"),
+    };
+    netplay.update(netplay::Message::ConnectDirect { role });
+
+    // Drive the state machine by hand until the session is built —
+    // exactly what the GUI timer's Event::Netplay arm does, sharing
+    // `drive_auto_lobby`. The build itself runs on the runtime and hands
+    // the session back over a channel: constructing it under a block_on
+    // here would leave this thread's runtime context visible to nothing
+    // useful, and the emulator thread must never see one at all
+    // (PvpSender::send uses blocking_send).
+    let nickname = format!("smoke-{role_arg}");
+    let (session_tx, session_rx) = std::sync::mpsc::channel::<anyhow::Result<pvp::PvpSession>>();
+    let mut spawned = false;
+    let mut last_status = String::new();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
+    let session = loop {
+        if let Ok(built) = session_rx.try_recv() {
+            break built?;
+        }
+        if let netplay::Phase::Failed { error } = &netplay.phase {
+            anyhow::bail!("netplay failed: {error}");
+        }
+        anyhow::ensure!(
+            std::time::Instant::now() < deadline,
+            "setup timed out ({})",
+            if last_status.is_empty() { "idle" } else { &last_status }
+        );
+        match rx.recv_timeout(std::time::Duration::from_millis(16)) {
+            Ok(Event::Netplay(msg)) => {
+                if matches!(msg, netplay::Message::MatchHandoffReady) {
+                    if spawned {
+                        continue;
+                    }
+                    let Some(pre_match) = netplay.take_pre_match() else {
+                        continue;
+                    };
+                    println!("{tag}: handoff ready, building session");
+                    let resolved =
+                        pvp::resolve_pvp_roms(&roms, &config.patches_path(), game, None, &pre_match.remote_settings)?;
+                    let session_tx = session_tx.clone();
+                    let frame_delay = config.frame_delay;
+                    let disable_bgm = config.disable_bgm_in_pvp;
+                    let replays_path = config.replays_path();
+                    let audio_binder = audio_binder.clone();
+                    rt.spawn(async move {
+                        let _ = session_tx.send(
+                            pvp::spawn_pvp(resolved, pre_match, frame_delay, disable_bgm, replays_path, audio_binder)
+                                .await,
+                        );
+                    });
+                    spawned = true;
+                    netplay.finish_handoff();
+                } else {
+                    netplay.update(msg);
+                    drive_auto_lobby(&mut netplay, &patches, &nickname, game, None, save);
+                }
+            }
+            Ok(_) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => anyhow::bail!("event channel closed"),
+        }
+        let status = if spawned {
+            "starting match…".to_string()
+        } else {
+            netplay_status_text(&netplay)
+        };
+        if status != last_status && !status.is_empty() {
+            println!("{tag}: {status}");
+            last_status = status;
+        }
+    };
+    println!("{tag}: session up — playing as P{}", session.local_player_index() + 1);
+
+    // ~8 s of live emulation: frames must keep landing and the match
+    // must not end (nobody plays a round, so `is_ended`'s completion
+    // gate must hold false throughout).
+    for second in 1..=8 {
+        let mut new_frames = 0u32;
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        while std::time::Instant::now() < until {
+            // Keep the event channel drained; nothing needs folding
+            // post-handoff.
+            match rx.recv_timeout(std::time::Duration::from_millis(16)) {
+                Ok(_) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+            if session.frame_dirty() {
+                new_frames += 1;
+            }
+        }
+        let latency = session
+            .latency_raw()
+            .map(|d| format!("{} ms", d.as_millis()))
+            .unwrap_or_else(|| "—".to_string());
+        println!(
+            "{tag}: t+{second}s {new_frames} new frames · {:.1} tps · latency {latency}",
+            session.tps()
+        );
+        anyhow::ensure!(new_frames > 0, "emulator stalled (no new frames in second {second})");
+        anyhow::ensure!(!session.is_ended(), "session ended prematurely");
+    }
+
+    let mut rgba = vec![0u8; session::SCREEN_WIDTH as usize * session::SCREEN_HEIGHT as usize * 4];
+    session.read_frame(&mut rgba);
+    let img = image::RgbaImage::from_raw(session::SCREEN_WIDTH, session::SCREEN_HEIGHT, rgba)
+        .ok_or_else(|| anyhow::anyhow!("bad framebuffer size"))?;
+    img.save(out)?;
+    println!("{tag}: wrote {}", out.display());
+    session.request_close();
+    // Orderly teardown: the mgba thread ends+joins when the *last*
+    // handle to it drops, and the match-run task / Match hold handles
+    // until they observe the cancel. Give them a moment while the
+    // runtime is still healthy — returning immediately races process
+    // exit against a still-running CPU thread (observed as a SIGSEGV in
+    // ARMRunLoop during teardown).
+    drop(session);
+    std::thread::sleep(std::time::Duration::from_millis(500));
     Ok(())
 }
 

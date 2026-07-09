@@ -21,6 +21,14 @@ pub struct Config {
     pub theme: ThemeMode,
     pub volume: f32,
     pub fractional_scaling: bool,
+    /// PvP presentation delay in frames: how far the display core trails
+    /// the netcode frontier. Purely local (never negotiated with the
+    /// peer); clamped to tango-pvp's supported [2, 10] range at use.
+    pub frame_delay: u32,
+    /// Skip the game's battle BGM during PvP matches. Local-only, like
+    /// the volume — the peer is unaffected and the recorded replay keeps
+    /// its music.
+    pub disable_bgm_in_pvp: bool,
 }
 
 impl Default for Config {
@@ -35,6 +43,8 @@ impl Default for Config {
             theme: ThemeMode::default(),
             volume: 1.0,
             fractional_scaling: false,
+            frame_delay: 2,
+            disable_bgm_in_pvp: false,
         }
     }
 }
