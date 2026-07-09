@@ -2485,11 +2485,21 @@ impl Association {
                         self.side,
                         &self.streams,
                     );
-                    to_fast_retrans.push(Box::new(c.clone()));
-                    trace!(
-                        "[{}] fast-retransmit: tsn={} sent={} htna={}",
-                        self.side, c.tsn, c.nsent, self.fast_recover_exit_point
-                    );
+                    // TANGO PATCH (see /vendor/sctp-proto/TANGO-PATCHES.md): a
+                    // chunk whose retransmission budget just ran out is
+                    // abandoned, not retransmitted one last time — the
+                    // FORWARD-TSN machinery takes it from here. Retransmitting
+                    // it anyway (upstream/Pion behavior) delivers stale data
+                    // hundreds of ms late, which `max_retransmits: 0` callers
+                    // specifically asked never to happen (and usrsctp never
+                    // does).
+                    if !c.abandoned() {
+                        to_fast_retrans.push(Box::new(c.clone()));
+                        trace!(
+                            "[{}] fast-retransmit: tsn={} sent={} htna={}",
+                            self.side, c.tsn, c.nsent, self.fast_recover_exit_point
+                        );
+                    }
                 }
                 i += 1;
             }
@@ -2646,12 +2656,16 @@ impl Association {
                     &self.streams,
                 );
 
-                trace!(
-                    "[{}] retransmitting tsn={} ssn={} sent={}",
-                    self.side, c.tsn, c.stream_sequence_number, c.nsent
-                );
+                // TANGO PATCH: abandoned means abandoned — no final
+                // retransmit (see the fast-retransmit site above).
+                if !c.abandoned() {
+                    trace!(
+                        "[{}] retransmitting tsn={} ssn={} sent={}",
+                        self.side, c.tsn, c.stream_sequence_number, c.nsent
+                    );
 
-                chunks.push(c.clone());
+                    chunks.push(c.clone());
+                }
             }
             i += 1;
         }

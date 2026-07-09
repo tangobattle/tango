@@ -47,9 +47,17 @@ the new release over this directory and re-apply the hunks (all marked with
   messages silently dropped at 60ms RTT with zero packet loss**, in an
   alternating pattern locked to the SACK-every-2nd-packet cadence — felt
   in tango as constant in-match input holes and a swinging time-sync skew.
-  With the fix: 100% delivery at 0% loss, ~98–99.7% at 5–15% loss (a lost
-  chunk still gets one late retransmit before abandonment, as the
-  retransmit sites push the chunk after the check — same behavior as Pion).
+  With the fix: 100% delivery at 0% loss regardless of RTT.
+- `src/association/mod.rs` (fast-retransmit + T3 retransmit sites): a chunk
+  whose retransmission budget just ran out is **abandoned without the final
+  retransmit** upstream/Pion would still send. That "bonus" retransmit
+  delivered stale frames 150–400ms late under loss — traffic
+  `max_retransmits: 0` callers asked never to exist (usrsctp never sends
+  it), and noise for anything measuring delivery timing. With both PR-SCTP
+  hunks: at 10% loss / 60ms RTT (± 10ms jitter), delivery ≈ 1−loss and the
+  frontier-advance latency is p99 ≤ 48ms with a worst stall of ~60ms —
+  the redundancy-recovery bound; the app-level (rennet) window is the
+  recovery layer, exactly as with usrsctp.
 
 The right long-term fix is upstream plumbing (str0m `RtcConfig` →
 `TransportConfig`), at which point this vendored copy goes away and the

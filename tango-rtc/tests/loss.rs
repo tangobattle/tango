@@ -28,11 +28,20 @@ fn channel_configs() -> Vec<ChannelConfig> {
 struct Rng(u64);
 
 impl Rng {
-    fn chance(&mut self, permille: u32) -> bool {
+    fn next(&mut self) -> u64 {
         self.0 ^= self.0 << 13;
         self.0 ^= self.0 >> 7;
         self.0 ^= self.0 << 17;
-        (self.0.wrapping_mul(0x2545F4914F6CDD1D) >> 32) as u32 % 1000 < permille
+        self.0.wrapping_mul(0x2545F4914F6CDD1D)
+    }
+
+    fn chance(&mut self, permille: u32) -> bool {
+        (self.next() >> 32) as u32 % 1000 < permille
+    }
+
+    /// Uniform in [0, 1).
+    fn unit(&mut self) -> f64 {
+        (self.next() >> 11) as f64 / (1u64 << 53) as f64
     }
 }
 
@@ -45,6 +54,7 @@ async fn lossy_proxy(
     forward_to: SocketAddr,
     loss_permille: u32,
     delay: std::time::Duration,
+    jitter: std::time::Duration,
     seed: u64,
 ) {
     let host_side = Arc::new(tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap());
@@ -55,11 +65,22 @@ async fn lossy_proxy(
     // Per-datagram delay tasks; tokio's timer wheel keeps per-sleep cost
     // negligible at these rates, and independent sleeps model a fixed-latency
     // (non-queuing) path.
-    let deliver = |sock: Arc<tokio::net::UdpSocket>, payload: Vec<u8>, to: SocketAddr| async move {
-        if !delay.is_zero() {
-            tokio::time::sleep(delay).await;
+    // Per-datagram uniform jitter on top of the base delay; independent
+    // per-packet delays also model the reordering a real jittery path (or a
+    // netem-style conditioner) produces.
+    let deliver = |sock: Arc<tokio::net::UdpSocket>, payload: Vec<u8>, to: SocketAddr, extra: std::time::Duration| async move {
+        if !(delay + extra).is_zero() {
+            tokio::time::sleep(delay + extra).await;
         }
         let _ = sock.send_to(&payload, to).await;
+    };
+    let mut jitter_rng = Rng((seed ^ 0x9E3779B97F4A7C15) | 1);
+    let mut sample_jitter = move || {
+        if jitter.is_zero() {
+            std::time::Duration::ZERO
+        } else {
+            jitter.mul_f64(jitter_rng.unit())
+        }
     };
     loop {
         tokio::select! {
@@ -67,14 +88,14 @@ async fn lossy_proxy(
                 let Ok((n, from)) = r else { break };
                 dialer = Some(from);
                 if !rng.chance(loss_permille) {
-                    tokio::spawn(deliver(host_side.clone(), buf_a[..n].to_vec(), forward_to));
+                    tokio::spawn(deliver(host_side.clone(), buf_a[..n].to_vec(), forward_to, sample_jitter()));
                 }
             }
             r = host_side.recv_from(&mut buf_b) => {
                 let Ok((n, _)) = r else { break };
                 if let Some(dialer) = dialer {
                     if !rng.chance(loss_permille) {
-                        tokio::spawn(deliver(listen.clone(), buf_b[..n].to_vec(), dialer));
+                        tokio::spawn(deliver(listen.clone(), buf_b[..n].to_vec(), dialer, sample_jitter()));
                     }
                 }
             }
@@ -88,6 +109,7 @@ async fn connect_through_proxy(
     host_port: u16,
     loss_permille: u32,
     delay: std::time::Duration,
+    jitter: std::time::Duration,
     seed: u64,
 ) -> ((PeerConnection, Vec<DataChannel>), (PeerConnection, Vec<DataChannel>)) {
     let proxy_sock = Arc::new(tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap());
@@ -97,6 +119,7 @@ async fn connect_through_proxy(
         format!("127.0.0.1:{}", host_port).parse().unwrap(),
         loss_permille,
         delay,
+        jitter,
         seed,
     ));
 
@@ -118,6 +141,14 @@ struct Stats {
     received: usize,
     received_seqs: Vec<u32>,
     latencies_ms: Vec<f64>,
+    /// Latency of each frontier-advancing message (seq higher than everything
+    /// seen before) — the delivery signal the game actually runs on. Stale
+    /// (below-frontier) arrivals are excluded here but counted in `stale`.
+    frontier_latencies_ms: Vec<f64>,
+    /// (elapsed_ms, gap_ms) for each frontier advance: how long the frontier
+    /// had been sitting still. Skew wobble amplitude ~ these gaps.
+    frontier_gaps_ms: Vec<(f64, f64)>,
+    stale: usize,
 }
 
 impl Stats {
@@ -140,6 +171,27 @@ impl Stats {
             pct(1.0),
             wall,
         );
+        if !self.frontier_latencies_ms.is_empty() {
+            let mut fl = self.frontier_latencies_ms.clone();
+            fl.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let fpct = |p: f64| fl[((fl.len() - 1) as f64 * p) as usize];
+            let mut worst_gaps: Vec<(f64, f64)> = self.frontier_gaps_ms.clone();
+            worst_gaps.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+            let shown: Vec<String> = worst_gaps
+                .iter()
+                .take(6)
+                .map(|(at, gap)| format!("{:.0}ms@t={:.1}s", gap, at / 1000.0))
+                .collect();
+            println!(
+                "  frontier: p50={:.1}ms p95={:.1}ms p99={:.1}ms max={:.1}ms; stale={}; worst gaps: {}",
+                fpct(0.50),
+                fpct(0.95),
+                fpct(0.99),
+                fpct(1.0),
+                self.stale,
+                shown.join(", "),
+            );
+        }
         // Missing-seq pattern: random singles vs episodic runs tell very
         // different stories about where frames die.
         let mut have = vec![false; self.sent];
@@ -183,7 +235,12 @@ async fn pump(
         received: 0,
         received_seqs: vec![],
         latencies_ms: vec![],
+        frontier_latencies_ms: vec![],
+        frontier_gaps_ms: vec![],
+        stale: 0,
     };
+    let mut frontier: Option<u32> = None;
+    let mut last_advance_ms: f64 = 0.0;
 
     let mut ticker = tokio::time::interval(interval);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
@@ -208,10 +265,19 @@ async fn pump(
                 let got = got.expect("receive EOF");
                 let seq = u32::from_le_bytes(got[..4].try_into().unwrap());
                 let sent_us = u64::from_le_bytes(got[4..12].try_into().unwrap());
-                let latency_us = epoch.elapsed().as_micros() as u64 - sent_us;
+                let now_ms = epoch.elapsed().as_micros() as f64 / 1000.0;
+                let latency_ms = now_ms - sent_us as f64 / 1000.0;
                 stats.received += 1;
                 stats.received_seqs.push(seq);
-                stats.latencies_ms.push(latency_us as f64 / 1000.0);
+                stats.latencies_ms.push(latency_ms);
+                if frontier.is_none_or(|f| seq > f) {
+                    frontier = Some(seq);
+                    stats.frontier_latencies_ms.push(latency_ms);
+                    stats.frontier_gaps_ms.push((now_ms, now_ms - last_advance_ms));
+                    last_advance_ms = now_ms;
+                } else {
+                    stats.stale += 1;
+                }
                 if stats.received == stats.sent && sent == count {
                     break;
                 }
@@ -222,13 +288,13 @@ async fn pump(
     (stats, epoch.elapsed())
 }
 
-async fn run_scenario(host_port: u16, loss_permille: u32, delay: std::time::Duration, seed: u64) {
+async fn run_scenario(host_port: u16, loss_permille: u32, delay: std::time::Duration, jitter: std::time::Duration, seed: u64) {
     println!(
-        "=== {}‰ loss, {:?} one-way delay (seed {:#x}) ===",
-        loss_permille, delay, seed
+        "=== {}‰ loss, {:?} one-way delay, {:?} jitter (seed {:#x}) ===",
+        loss_permille, delay, jitter, seed
     );
     let ((_host, mut host_chans), (_dialer, mut dialer_chans)) =
-        connect_through_proxy(host_port, loss_permille, delay, seed).await;
+        connect_through_proxy(host_port, loss_permille, delay, jitter, seed).await;
 
     // Warm the connection up (first send drives the whole bring-up).
     host_chans[0].send(b"warmup-h").await.unwrap();
@@ -288,14 +354,14 @@ async fn run_scenario(host_port: u16, loss_permille: u32, delay: std::time::Dura
 #[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 #[ignore = "diagnostic measurement, run by hand with --ignored --nocapture"]
 async fn loss_0_baseline() {
-    run_scenario(28961, 0, std::time::Duration::ZERO, 0x5EED).await;
+    run_scenario(28961, 0, std::time::Duration::ZERO, std::time::Duration::ZERO, 0x5EED).await;
 }
 
 #[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 #[ignore = "diagnostic measurement, run by hand with --ignored --nocapture"]
 async fn loss_5pct() {
     for (i, seed) in [0x5EED, 0xACE, 0xBEEF].into_iter().enumerate() {
-        run_scenario(28910 + i as u16, 50, std::time::Duration::ZERO, seed).await;
+        run_scenario(28910 + i as u16, 50, std::time::Duration::ZERO, std::time::Duration::ZERO, seed).await;
     }
 }
 
@@ -303,7 +369,7 @@ async fn loss_5pct() {
 #[ignore = "diagnostic measurement, run by hand with --ignored --nocapture"]
 async fn loss_15pct() {
     for (i, seed) in [0x5EED, 0xACE, 0xBEEF].into_iter().enumerate() {
-        run_scenario(28920 + i as u16, 150, std::time::Duration::ZERO, seed).await;
+        run_scenario(28920 + i as u16, 150, std::time::Duration::ZERO, std::time::Duration::ZERO, seed).await;
     }
 }
 
@@ -313,11 +379,30 @@ async fn loss_15pct() {
 /// congestion machinery does is invisible — SACKs return instantly.)
 #[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 #[ignore = "diagnostic measurement, run by hand with --ignored --nocapture"]
+async fn wobble_rtt60_10pct_jitter10() {
+    let delay = std::time::Duration::from_millis(30);
+    let jitter = std::time::Duration::from_millis(10);
+    for (j, seed) in [0x5EEDu64, 0xACE, 0xBEEF].into_iter().enumerate() {
+        run_scenario(28950 + j as u16, 100, delay, jitter, seed).await;
+    }
+}
+
+#[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
+#[ignore = "diagnostic measurement, run by hand with --ignored --nocapture"]
+async fn wobble_rtt60_10pct() {
+    let delay = std::time::Duration::from_millis(30);
+    for (j, seed) in [0x5EEDu64, 0xACE, 0xBEEF].into_iter().enumerate() {
+        run_scenario(28940 + j as u16, 100, delay, std::time::Duration::ZERO, seed).await;
+    }
+}
+
+#[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
+#[ignore = "diagnostic measurement, run by hand with --ignored --nocapture"]
 async fn wobble_rtt60() {
     let delay = std::time::Duration::from_millis(30);
     for (i, loss) in [0u32, 50, 150].into_iter().enumerate() {
         for (j, seed) in [0x5EEDu64, 0xACE].into_iter().enumerate() {
-            run_scenario(28930 + (i * 2 + j) as u16, loss, delay, seed).await;
+            run_scenario(28930 + (i * 2 + j) as u16, loss, delay, std::time::Duration::ZERO, seed).await;
         }
     }
 }
