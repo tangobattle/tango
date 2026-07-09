@@ -1353,14 +1353,6 @@ pub fn view<'a>(
             *tab == active,
         ));
     }
-    // Glide draws the active pill's plate so a sub-tab switch sends
-    // it sliding along the strip — the same traveling selection as
-    // the top nav and settings sidebar.
-    let tabs_only = widgets::Glide::over_all(
-        tabs_only,
-        available.len(),
-        available.iter().position(|t| *t == active),
-    );
     // Horizontally scrollable strip with a hidden scrollbar, so a long /
     // localized tab list scrolls instead of wrapping to a second line — the
     // edge fades below are the only scroll affordance.

@@ -12,9 +12,7 @@ use iced::{Alignment, Element, Length, Theme};
 use lucide_icons::Icon;
 use sweeten::widget::{column, row};
 
-mod glide;
 mod menu_button;
-pub use glide::Glide;
 pub use menu_button::MenuItem;
 
 /// Icon-only button for low-emphasis toolbar actions (rescan,
@@ -609,14 +607,22 @@ pub fn pill_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button
         let p = theme.extended_palette();
         let primary = theme.palette().primary;
         let (bg, text_color, glow_alpha, blur) = if active {
-            // No plate here: every pill strip sits under a
-            // [`Glide`], which draws the active plate itself (via
-            // [`pill_plate`]) so it can travel between pills on a
-            // selection change. The button keeps only the on-plate
-            // ink — contrast-aware text, white on tango green,
-            // navy ink if the accent ever goes light again (see
+            let lighter = mix(primary, iced::Color::WHITE, 0.22);
+            let darker = mix(primary, iced::Color::BLACK, 0.18);
+            let grad = iced::Background::Gradient(iced::Gradient::Linear(
+                iced::gradient::Linear::new(0.0)
+                    .add_stop(0.0, lighter)
+                    .add_stop(1.0, darker),
+            ));
+            let (g, b) = if matches!(status, button::Status::Hovered) {
+                (0.85, 22.0)
+            } else {
+                (0.65, 18.0)
+            };
+            // Contrast-aware text — white on tango green, navy ink
+            // if the accent ever goes light again (see
             // [`on_accent`]).
-            (None, on_accent(primary), 0.0, 0.0)
+            (Some(grad), on_accent(primary), g, b)
         } else {
             let hover = matches!(status, button::Status::Hovered);
             let bg = if hover {
@@ -658,35 +664,6 @@ pub fn pill_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button
             snap: false,
         }
     }
-}
-
-/// The active tab's plate — the primary-gradient fill and centered
-/// glow that [`pill_tab_style`]'s active arm used to paint, now
-/// drawn by [`Glide`] so it can travel between pills. Kept next to
-/// the pill style so the two halves of the chip's look stay in one
-/// place.
-pub(crate) fn pill_plate(theme: &Theme, hovered: bool) -> (iced::Background, iced::Shadow) {
-    let primary = theme.palette().primary;
-    let lighter = mix(primary, iced::Color::WHITE, 0.22);
-    let darker = mix(primary, iced::Color::BLACK, 0.18);
-    let background = iced::Background::Gradient(iced::Gradient::Linear(
-        iced::gradient::Linear::new(0.0)
-            .add_stop(0.0, lighter)
-            .add_stop(1.0, darker),
-    ));
-    let (glow_alpha, blur) = if hovered { (0.85, 22.0) } else { (0.65, 18.0) };
-    // Centered glow — zero offset. A downward-offset glow visually
-    // drags the chip off the strip's centerline and the whole tab
-    // row reads as mis-centered.
-    let shadow = iced::Shadow {
-        color: iced::Color {
-            a: glow_alpha,
-            ..primary
-        },
-        offset: iced::Vector::new(0.0, 0.0),
-        blur_radius: blur,
-    };
-    (background, shadow)
 }
 
 /// Minimal "pane" demarcation — a barely-perceptible tinted plate

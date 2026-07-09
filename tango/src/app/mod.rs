@@ -1647,20 +1647,8 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab, lobby_badge: bool, fullscreen
             widgets::window_close,
         ));
     }
-    // The active pill's plate is drawn by the Glide wrapper so a
-    // tab switch sends it sweeping across the bar to the new pill
-    // instead of teleporting. The target indices are the pills'
-    // child positions in the row above: logo=0, then Play/Replays,
-    // spacer=3, hex burst=4, then Patches/Settings.
-    let glide = widgets::Glide::new(
-        bar.padding([10, 8]),
-        vec![1, 2, 5, 6],
-        Some(match active {
-            Tab::Play => 0,
-            Tab::Replays => 1,
-            Tab::Patches => 2,
-            Tab::Settings => 3,
-        }),
-    );
-    container(glide).width(Fill).style(widgets::hud_bar).into()
+    container(bar.padding([10, 8]))
+        .width(Fill)
+        .style(widgets::hud_bar)
+        .into()
 }

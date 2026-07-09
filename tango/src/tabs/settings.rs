@@ -377,39 +377,26 @@ pub fn view<'a>(
             .style(widgets::pill_tab_style(tab == active))
             .on_press(Message::TabSelected(tab))
     };
-    let sidebar_tabs = column![
-        side_btn(
-            Icon::SlidersHorizontal,
-            t!(lang, "settings-section-general"),
-            SettingsTab::General
-        ),
-        side_btn(
-            Icon::Monitor,
-            t!(lang, "settings-section-graphics"),
-            SettingsTab::Graphics
-        ),
-        side_btn(Icon::Volume2, t!(lang, "settings-section-audio"), SettingsTab::Audio),
-        side_btn(Icon::Gamepad2, t!(lang, "settings-section-input"), SettingsTab::Input),
-        side_btn(Icon::Globe, t!(lang, "settings-section-netplay"), SettingsTab::Netplay),
-        side_btn(Icon::Info, t!(lang, "settings-section-about"), SettingsTab::About),
-    ]
-    .spacing(4)
-    .padding(8);
-    // Glide draws the active pill's plate so a section switch
-    // slides it down/up the sidebar — same traveling selection as
-    // the top nav, along this strip's own (vertical) axis.
-    let sidebar = container(widgets::Glide::over_all(
-        sidebar_tabs,
-        6,
-        Some(match active {
-            SettingsTab::General => 0,
-            SettingsTab::Graphics => 1,
-            SettingsTab::Audio => 2,
-            SettingsTab::Input => 3,
-            SettingsTab::Netplay => 4,
-            SettingsTab::About => 5,
-        }),
-    ))
+    let sidebar = container(
+        column![
+            side_btn(
+                Icon::SlidersHorizontal,
+                t!(lang, "settings-section-general"),
+                SettingsTab::General
+            ),
+            side_btn(
+                Icon::Monitor,
+                t!(lang, "settings-section-graphics"),
+                SettingsTab::Graphics
+            ),
+            side_btn(Icon::Volume2, t!(lang, "settings-section-audio"), SettingsTab::Audio),
+            side_btn(Icon::Gamepad2, t!(lang, "settings-section-input"), SettingsTab::Input),
+            side_btn(Icon::Globe, t!(lang, "settings-section-netplay"), SettingsTab::Netplay),
+            side_btn(Icon::Info, t!(lang, "settings-section-about"), SettingsTab::About),
+        ]
+        .spacing(4)
+        .padding(8),
+    )
     .width(Length::Fixed(160.0))
     .height(Fill)
     .style(widgets::pane);
