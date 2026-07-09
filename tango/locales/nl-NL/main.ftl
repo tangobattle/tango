@@ -285,6 +285,7 @@ settings-section-graphics = Beeld
 settings-section-netplay = Netplay
 settings-section-audio = Geluid
 settings-volume = Volume
+settings-ui-sfx-volume = Menugeluiden
 settings-disable-bgm-in-pvp = Muziek in netplay uitschakelen
 settings-section-about = Info
 settings-section-input = Invoer

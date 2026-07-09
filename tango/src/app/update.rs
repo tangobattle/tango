@@ -733,6 +733,14 @@ impl App {
                 // persisted so it survives the restart.
                 self.config.allow_prerelease_upgrades = b;
             }
+            C::UiSfxVolume(v) => {
+                let v = v.clamp(0.0, 1.0);
+                self.config.ui_sfx_volume = v;
+                crate::audio::ui_sfx::set_volume(v);
+                // Blip at the new level so dragging the slider is
+                // its own preview (play() coalesces the re-fires).
+                crate::audio::ui_sfx::play(crate::audio::ui_sfx::Sfx::Move);
+            }
             C::Volume(v) => {
                 let v = v.clamp(0.0, 1.0);
                 self.config.volume = v;

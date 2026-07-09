@@ -289,6 +289,7 @@ settings-section-graphics = Графика
 settings-section-netplay = Сетевая игра
 settings-section-audio = Звук
 settings-volume = Громкость
+settings-ui-sfx-volume = Звуки меню
 settings-disable-bgm-in-pvp = Отключить музыку в сетевой игре
 settings-section-about = О программе
 settings-section-input = Управление

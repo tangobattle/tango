@@ -1,7 +1,7 @@
 use crate::i18n::{t, SUPPORTED_LANGS};
 use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION};
 use crate::widgets;
-use crate::widgets::{labeled, Choice};
+use crate::widgets::{option_row, Choice};
 use crate::{config, input};
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, scrollable, text, Space};
@@ -50,6 +50,21 @@ fn relay_mode_choice(lang: &LanguageIdentifier, mode: config::RelayMode) -> Choi
     )
 }
 
+/// Faint accent hairline — the divider register everywhere in the
+/// app (group headers here, the About footer). Never a stock
+/// `rule`, whose full-opacity gray line reads as dialog chrome.
+fn accent_hairline<'a>() -> Element<'a, Message> {
+    container(Space::new().width(Fill).height(Length::Fixed(1.0)))
+        .style(|theme: &iced::Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(iced::Color {
+                a: 0.25,
+                ..theme.palette().primary
+            })),
+            ..Default::default()
+        })
+        .into()
+}
+
 /// A titled cluster of related rows inside a settings pane. The
 /// flat column-of-everything panes read as a mishmash once they
 /// pass a handful of controls; headers + tight intra-group spacing
@@ -60,21 +75,30 @@ fn relay_mode_choice(lang: &LanguageIdentifier, mode: config::RelayMode) -> Choi
 /// in-session settings modal where a framed card per group would
 /// fight the modal's own frame.
 fn settings_group<'a>(title: String, rows: Vec<Element<'a, Message>>) -> Element<'a, Message> {
-    let rule = container(Space::new().width(Fill).height(Length::Fixed(1.0))).style(|theme: &iced::Theme| {
-        iced::widget::container::Style {
-            background: Some(iced::Background::Color(iced::Color {
-                a: 0.25,
-                ..theme.palette().primary
-            })),
+    // Accent tick ahead of the title — the small "this is a
+    // section" mark game menus hang their headers on.
+    let tick = container(Space::new().width(Length::Fixed(3.0)).height(Length::Fixed(11.0))).style(
+        |theme: &iced::Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(theme.palette().primary)),
             ..Default::default()
-        }
-    });
-    let header = row![text(title).size(TEXT_CAPTION).style(widgets::primary_text_style), rule,]
-        .spacing(10)
-        .align_y(Alignment::Center);
-    rows.into_iter()
-        .fold(column![header].spacing(12), |col, r| col.push(r))
-        .into()
+        },
+    );
+    // Uppercased in code so every locale's Fluent string stays
+    // natural-case for reuse elsewhere; CJK passes through
+    // unchanged.
+    let header = row![
+        tick,
+        text(title.to_uppercase())
+            .size(TEXT_CAPTION)
+            .style(widgets::primary_text_style),
+        accent_hairline(),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center);
+    // Rows sit tight (they're full-width plates that light up on
+    // hover — see [`widgets::option_row`]); the wide gap between
+    // GROUPS is the caller's spacing.
+    column![header, column(rows).spacing(2)].spacing(8).into()
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,6 +189,9 @@ pub enum Message {
     ToggleEnableUpdater(bool),
     ToggleAllowPrereleaseUpgrades(bool),
     VolumeChanged(f32),
+    /// Menu-sounds slider moved. Persisted to `config.ui_sfx_volume`
+    /// and pushed straight into [`crate::audio::ui_sfx`].
+    UiSfxVolumeChanged(f32),
     /// "Mute music in netplay" checkbox toggled. Persisted to
     /// `config.disable_bgm_in_pvp`; sampled at the next match start.
     ToggleDisableBgmInPvp(bool),
@@ -228,6 +255,7 @@ pub enum ConfigChange {
     EnableUpdater(bool),
     AllowPrereleaseUpgrades(bool),
     Volume(f32),
+    UiSfxVolume(f32),
     DisableBgmInPvp(bool),
     Theme(config::ThemeMode),
     Accent(config::AccentColor),
@@ -244,6 +272,7 @@ impl State {
         match msg {
             Message::TabSelected(t) => {
                 if self.active_tab != t {
+                    crate::audio::ui_sfx::play(crate::audio::ui_sfx::Sfx::Move);
                     // The sidebar lists sections in declaration
                     // order, so the discriminants double as
                     // positions: moving down brings the pane in
@@ -285,6 +314,7 @@ impl State {
             Message::ToggleEnableUpdater(b) => Some(ConfigChange::EnableUpdater(b)),
             Message::ToggleAllowPrereleaseUpgrades(b) => Some(ConfigChange::AllowPrereleaseUpgrades(b)),
             Message::VolumeChanged(v) => Some(ConfigChange::Volume(v)),
+            Message::UiSfxVolumeChanged(v) => Some(ConfigChange::UiSfxVolume(v)),
             Message::ToggleDisableBgmInPvp(b) => Some(ConfigChange::DisableBgmInPvp(b)),
             // App handles UpdateNow as a top-level effect — it
             // calls `updater.finish_update()` which exits the
@@ -353,26 +383,39 @@ pub fn view<'a>(
             .style(widgets::pill_tab_style(tab == active))
             .on_press(Message::TabSelected(tab))
     };
-    let sidebar = container(
-        column![
-            side_btn(
-                Icon::SlidersHorizontal,
-                t!(lang, "settings-section-general"),
-                SettingsTab::General
-            ),
-            side_btn(
-                Icon::Monitor,
-                t!(lang, "settings-section-graphics"),
-                SettingsTab::Graphics
-            ),
-            side_btn(Icon::Volume2, t!(lang, "settings-section-audio"), SettingsTab::Audio),
-            side_btn(Icon::Gamepad2, t!(lang, "settings-section-input"), SettingsTab::Input),
-            side_btn(Icon::Globe, t!(lang, "settings-section-netplay"), SettingsTab::Netplay),
-            side_btn(Icon::Info, t!(lang, "settings-section-about"), SettingsTab::About),
-        ]
-        .spacing(4)
-        .padding(8),
-    )
+    let sidebar_tabs = column![
+        side_btn(
+            Icon::SlidersHorizontal,
+            t!(lang, "settings-section-general"),
+            SettingsTab::General
+        ),
+        side_btn(
+            Icon::Monitor,
+            t!(lang, "settings-section-graphics"),
+            SettingsTab::Graphics
+        ),
+        side_btn(Icon::Volume2, t!(lang, "settings-section-audio"), SettingsTab::Audio),
+        side_btn(Icon::Gamepad2, t!(lang, "settings-section-input"), SettingsTab::Input),
+        side_btn(Icon::Globe, t!(lang, "settings-section-netplay"), SettingsTab::Netplay),
+        side_btn(Icon::Info, t!(lang, "settings-section-about"), SettingsTab::About),
+    ]
+    .spacing(4)
+    .padding(8);
+    // Glide draws the active pill's plate so a section switch
+    // slides it down/up the sidebar — same traveling selection as
+    // the top nav, along this strip's own (vertical) axis.
+    let sidebar = container(widgets::Glide::over_all(
+        sidebar_tabs,
+        6,
+        Some(match active {
+            SettingsTab::General => 0,
+            SettingsTab::Graphics => 1,
+            SettingsTab::Audio => 2,
+            SettingsTab::Input => 3,
+            SettingsTab::Netplay => 4,
+            SettingsTab::About => 5,
+        }),
+    ))
     .width(Length::Fixed(160.0))
     .height(Fill)
     .style(widgets::pane);
@@ -463,12 +506,22 @@ pub fn view<'a>(
     }
 }
 
+/// A bare chunky checkbox for the right slot of an [`option_row`] —
+/// the row carries the label, so the box doesn't.
+fn toggle<'a>(checked: bool, msg: fn(bool) -> Message) -> Element<'a, Message> {
+    iced::widget::checkbox(checked)
+        .on_toggle(msg)
+        .size(style::TEXT_HEADING)
+        .style(widgets::chunky_checkbox)
+        .into()
+}
+
 fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
     column![
         settings_group(
             t!(lang, "settings-group-profile"),
             vec![
-                labeled::<Message>(
+                option_row::<Message>(
                     t!(lang, "settings-nickname"),
                     text_input("", config.nickname.as_deref().unwrap_or(""))
                         .on_input(Message::NicknameChanged)
@@ -476,18 +529,16 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                         .width(Length::Fixed(240.0))
                         .style(widgets::chunky_text_input),
                 ),
-                widgets::checkbox(
-                    config.streamer_mode,
+                option_row(
                     t!(lang, "settings-streamer-mode"),
-                    Message::ToggleStreamerMode,
-                )
-                .into(),
+                    toggle(config.streamer_mode, Message::ToggleStreamerMode),
+                ),
             ],
         ),
         settings_group(
             t!(lang, "settings-group-interface"),
             vec![
-                labeled::<Message>(t!(lang, "settings-language"), {
+                option_row::<Message>(t!(lang, "settings-language"), {
                     // Build the picker options as `LanguageChoice`
                     // wrappers — they Display the endonym from each
                     // locale's `LANGUAGE` Fluent key instead of the
@@ -501,43 +552,42 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                         Message::LanguageSelected(c.id)
                     })
                 }),
-                // Theme + accent share a row — they're the two
-                // halves of one decision (base + chrome color).
-                row![
-                    labeled::<Message>(t!(lang, "settings-theme"), {
-                        let options = vec![
-                            theme_choice(lang, config::ThemeMode::Dark),
-                            theme_choice(lang, config::ThemeMode::Light),
-                        ];
-                        let selected = options.iter().find(|c| c.value == config.theme).cloned();
-                        widgets::picker(options, selected, |c: Choice<config::ThemeMode>| {
-                            Message::ThemeChanged(c.value)
-                        })
-                    }),
-                    labeled::<Message>(t!(lang, "settings-accent"), {
-                        let options = vec![
-                            accent_choice(lang, config::AccentColor::TangoGreen),
-                            accent_choice(lang, config::AccentColor::MegaManBlue),
-                            accent_choice(lang, config::AccentColor::ProtoManRed),
-                            accent_choice(lang, config::AccentColor::RollPink),
-                            accent_choice(lang, config::AccentColor::BassGold),
-                        ];
-                        let selected = options.iter().find(|c| c.value == config.accent).cloned();
-                        widgets::picker(options, selected, |c: Choice<config::AccentColor>| {
-                            Message::AccentChanged(c.value)
-                        })
-                    }),
-                ]
-                .spacing(14)
-                .into(),
+                option_row::<Message>(t!(lang, "settings-theme"), {
+                    let options = vec![
+                        theme_choice(lang, config::ThemeMode::Dark),
+                        theme_choice(lang, config::ThemeMode::Light),
+                    ];
+                    let selected = options.iter().find(|c| c.value == config.theme).cloned();
+                    widgets::picker(options, selected, |c: Choice<config::ThemeMode>| {
+                        Message::ThemeChanged(c.value)
+                    })
+                }),
+                option_row::<Message>(t!(lang, "settings-accent"), {
+                    let options = vec![
+                        accent_choice(lang, config::AccentColor::TangoGreen),
+                        accent_choice(lang, config::AccentColor::MegaManBlue),
+                        accent_choice(lang, config::AccentColor::ProtoManRed),
+                        accent_choice(lang, config::AccentColor::RollPink),
+                        accent_choice(lang, config::AccentColor::BassGold),
+                    ];
+                    let selected = options.iter().find(|c| c.value == config.accent).cloned();
+                    widgets::picker(options, selected, |c: Choice<config::AccentColor>| {
+                        Message::AccentChanged(c.value)
+                    })
+                }),
             ],
         ),
         settings_group(
             t!(lang, "settings-group-storage"),
-            vec![labeled::<Message>(
+            vec![option_row::<Message>(
                 t!(lang, "settings-data-folder"),
                 row![
-                    text(config.data_path.to_string_lossy().into_owned()),
+                    // The path is supporting detail next to its
+                    // Change action, so it rides muted at caption
+                    // size instead of competing with the row label.
+                    text(config.data_path.to_string_lossy().into_owned())
+                        .size(TEXT_CAPTION)
+                        .style(widgets::muted_text_style),
                     button(text(t!(lang, "settings-data-folder-change")))
                         .on_press(Message::OpenDataFolderPicker)
                         .padding(STANDARD_PADDING)
@@ -550,37 +600,31 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
         settings_group(
             t!(lang, "settings-group-patches"),
             vec![
-                labeled::<Message>(
+                option_row::<Message>(
                     t!(lang, "settings-patch-repo"),
                     text_input("", &config.patch_repo)
                         .on_input(Message::PatchRepoChanged)
                         .padding(STANDARD_PADDING)
-                        .width(Length::Fixed(480.0))
+                        .width(Length::Fixed(380.0))
                         .style(widgets::chunky_text_input),
                 ),
-                widgets::checkbox(
-                    config.enable_patch_autoupdate,
+                option_row(
                     t!(lang, "settings-enable-patch-autoupdate"),
-                    Message::TogglePatchAutoupdate,
-                )
-                .into(),
+                    toggle(config.enable_patch_autoupdate, Message::TogglePatchAutoupdate),
+                ),
             ],
         ),
         settings_group(
             t!(lang, "settings-group-updates"),
             vec![
-                widgets::checkbox(
-                    config.enable_updater,
+                option_row(
                     t!(lang, "settings-enable-updater"),
-                    Message::ToggleEnableUpdater,
-                )
-                .into(),
-                widgets::checkbox(
-                    config.allow_prerelease_upgrades,
+                    toggle(config.enable_updater, Message::ToggleEnableUpdater),
+                ),
+                option_row(
                     t!(lang, "settings-allow-prerelease-upgrades"),
-                    Message::ToggleAllowPrereleaseUpgrades,
-                )
-                .into(),
+                    toggle(config.allow_prerelease_upgrades, Message::ToggleAllowPrereleaseUpgrades),
+                ),
             ],
         ),
     ]
@@ -591,9 +635,12 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
 
 fn settings_audio<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
     column![
-        labeled::<Message>(
+        option_row::<Message>(
             t!(lang, "settings-volume"),
             row![
+                // Compact percent readout next to the track so the user
+                // can see exactly where the slider sits.
+                text(format!("{:.0}%", config.volume * 100.0)).size(TEXT_CAPTION),
                 // Bounded slider width — Fill would stretch all the way
                 // across the pane, which looks silly for a volume bar.
                 container(
@@ -602,20 +649,30 @@ fn settings_audio<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) 
                         .style(widgets::chunky_slider)
                 )
                 .width(Length::Fixed(220.0)),
-                // Compact percent readout next to the track so the user
-                // can see exactly where the slider sits.
-                text(format!("{:.0}%", config.volume * 100.0)).size(TEXT_CAPTION),
             ]
             .spacing(12)
             .align_y(Alignment::Center),
         ),
-        widgets::checkbox(
-            config.disable_bgm_in_pvp,
+        option_row::<Message>(
+            t!(lang, "settings-ui-sfx-volume"),
+            row![
+                text(format!("{:.0}%", config.ui_sfx_volume * 100.0)).size(TEXT_CAPTION),
+                container(
+                    iced::widget::slider(0.0..=1.0, config.ui_sfx_volume, Message::UiSfxVolumeChanged)
+                        .step(0.01)
+                        .style(widgets::chunky_slider)
+                )
+                .width(Length::Fixed(220.0)),
+            ]
+            .spacing(12)
+            .align_y(Alignment::Center),
+        ),
+        option_row(
             t!(lang, "settings-disable-bgm-in-pvp"),
-            Message::ToggleDisableBgmInPvp,
+            toggle(config.disable_bgm_in_pvp, Message::ToggleDisableBgmInPvp),
         ),
     ]
-    .spacing(14)
+    .spacing(2)
     .padding(style::PANE_PADDING)
     .into()
 }
@@ -692,27 +749,12 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
         settings_group(
             t!(lang, "settings-group-window"),
             vec![
-                // Label hovers over just the dropdown; the row beneath
-                // it centers the fullscreen checkbox with the dropdown
-                // box itself (not the dropdown+label column).
-                column![
-                    text(t!(lang, "settings-window-size"))
-                        .size(TEXT_CAPTION)
-                        .style(widgets::muted_text_style),
-                    row![
-                        window_size_picker,
-                        widgets::checkbox(
-                            config.fullscreen,
-                            t!(lang, "settings-fullscreen"),
-                            Message::ToggleFullscreen
-                        ),
-                    ]
-                    .spacing(14)
-                    .align_y(Alignment::Center),
-                ]
-                .spacing(4)
-                .into(),
-                labeled::<Message>(
+                option_row::<Message>(t!(lang, "settings-window-size"), window_size_picker),
+                option_row(
+                    t!(lang, "settings-fullscreen"),
+                    toggle(config.fullscreen, Message::ToggleFullscreen),
+                ),
+                option_row::<Message>(
                     t!(lang, "settings-ui-scale"),
                     widgets::picker(ui_scale_options, selected_ui_scale, |c: Choice<f32>| {
                         Message::UiScaleChanged(c.value)
@@ -723,7 +765,7 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
         settings_group(
             t!(lang, "settings-group-emulator"),
             vec![
-                labeled::<Message>(t!(lang, "settings-video-filter"), {
+                option_row::<Message>(t!(lang, "settings-video-filter"), {
                     // `value` is the `config.video_filter` key (`""`, `"hq2x"`, …).
                     let options: Vec<Choice<String>> = crate::video::effects::EFFECTS
                         .iter()
@@ -734,18 +776,14 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
                         Message::VideoFilterChanged(c.value)
                     })
                 }),
-                widgets::checkbox(
-                    config.fractional_scaling,
+                option_row(
                     t!(lang, "settings-fractional-scaling"),
-                    Message::ToggleFractionalScaling,
-                )
-                .into(),
-                widgets::checkbox(
-                    config.hide_emulator_border,
+                    toggle(config.fractional_scaling, Message::ToggleFractionalScaling),
+                ),
+                option_row(
                     t!(lang, "settings-hide-emulator-border"),
-                    Message::ToggleHideEmulatorBorder,
-                )
-                .into(),
+                    toggle(config.hide_emulator_border, Message::ToggleHideEmulatorBorder),
+                ),
             ],
         ),
     ]
@@ -760,15 +798,15 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
     // button) and in the in-match settings; both persist to the
     // same `config.frame_delay`.
     column![
-        labeled::<Message>(
+        option_row::<Message>(
             t!(lang, "settings-matchmaking-endpoint"),
             text_input("", &config.matchmaking_endpoint)
                 .on_input(Message::MatchmakingEndpointChanged)
                 .padding(STANDARD_PADDING)
-                .width(Length::Fixed(480.0))
+                .width(Length::Fixed(380.0))
                 .style(widgets::chunky_text_input),
         ),
-        labeled::<Message>(t!(lang, "settings-use-relay"), {
+        option_row::<Message>(t!(lang, "settings-use-relay"), {
             let options = vec![
                 relay_mode_choice(lang, config::RelayMode::Auto),
                 relay_mode_choice(lang, config::RelayMode::Always),
@@ -779,13 +817,12 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 Message::RelayModeChanged(c.value)
             })
         }),
-        widgets::checkbox(
-            config.show_opponent_setup,
+        option_row(
             t!(lang, "settings-show-opponent-setup"),
-            Message::ToggleShowOpponentSetup,
+            toggle(config.show_opponent_setup, Message::ToggleShowOpponentSetup),
         ),
     ]
-    .spacing(14)
+    .spacing(2)
     .padding(style::PANE_PADDING)
     .into()
 }
@@ -1393,7 +1430,7 @@ fn updater_section<'a>(
             version_row.push(text(t!(lang, "updater-latest-version", version = latest_label)).size(TEXT_CAPTION));
     }
 
-    let mut col = column![iced::widget::rule::horizontal(1), version_row].spacing(8);
+    let mut col = column![accent_hairline(), version_row].spacing(8);
     match (status_line, action) {
         // Update ready: the button sits to the right of the status message on the
         // same row, rather than on its own row below it.

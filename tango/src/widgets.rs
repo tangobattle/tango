@@ -12,7 +12,10 @@ use iced::{Alignment, Element, Length, Theme};
 use lucide_icons::Icon;
 use sweeten::widget::{column, row};
 
+mod glide;
 mod menu_button;
+mod option_row;
+pub use glide::Glide;
 pub use menu_button::MenuItem;
 
 /// Icon-only button for low-emphasis toolbar actions (rescan,
@@ -418,12 +421,33 @@ impl<T> std::fmt::Display for Choice<T> {
     }
 }
 
-/// A caption label stacked over a control — the standard "form row"
-/// used by the settings and welcome screens.
+/// A caption label stacked over a control — the "form row" shape
+/// used by the welcome screen (settings rows use [`option_row`]).
 pub fn labeled<'a, M: Clone + 'a>(label: String, ctrl: impl Into<Element<'a, M>>) -> Element<'a, M> {
     sweeten::widget::column![text(label).size(TEXT_CAPTION).style(muted_text_style), ctrl.into(),]
         .spacing(4)
         .into()
+}
+
+/// A full-width "options screen" row: label on the left, control
+/// hugging the right edge, the whole row lighting a faint accent
+/// plate on hover — the console-menu shape, not a desktop form's
+/// caption-over-control. The label is body-sized ink (not a muted
+/// caption): on an options screen the setting's name IS the row,
+/// not an annotation on it.
+pub fn option_row<'a, M: 'a>(label: String, ctrl: impl Into<Element<'a, M>>) -> Element<'a, M> {
+    option_row::OptionRow::new(
+        row![
+            text(label).size(TEXT_BODY),
+            iced::widget::space::horizontal(),
+            ctrl.into(),
+        ]
+        .spacing(12)
+        .padding([6, 10])
+        .align_y(Alignment::Center)
+        .width(Length::Fill),
+    )
+    .into()
 }
 
 /// Icon-plus-label button. Icon and label use distinct fonts
@@ -581,22 +605,14 @@ pub fn pill_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button
         let p = theme.extended_palette();
         let primary = theme.palette().primary;
         let (bg, text_color, glow_alpha, blur) = if active {
-            let lighter = mix(primary, iced::Color::WHITE, 0.22);
-            let darker = mix(primary, iced::Color::BLACK, 0.18);
-            let grad = iced::Background::Gradient(iced::Gradient::Linear(
-                iced::gradient::Linear::new(0.0)
-                    .add_stop(0.0, lighter)
-                    .add_stop(1.0, darker),
-            ));
-            let (g, b) = if matches!(status, button::Status::Hovered) {
-                (0.85, 22.0)
-            } else {
-                (0.65, 18.0)
-            };
-            // Contrast-aware text — white on tango green, navy ink
-            // if the accent ever goes light again (see
+            // No plate here: every pill strip sits under a
+            // [`Glide`], which draws the active plate itself (via
+            // [`pill_plate`]) so it can travel between pills on a
+            // selection change. The button keeps only the on-plate
+            // ink — contrast-aware text, white on tango green,
+            // navy ink if the accent ever goes light again (see
             // [`on_accent`]).
-            (Some(grad), on_accent(primary), g, b)
+            (None, on_accent(primary), 0.0, 0.0)
         } else {
             let hover = matches!(status, button::Status::Hovered);
             let bg = if hover {
@@ -638,6 +654,35 @@ pub fn pill_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button
             snap: false,
         }
     }
+}
+
+/// The active tab's plate — the primary-gradient fill and centered
+/// glow that [`pill_tab_style`]'s active arm used to paint, now
+/// drawn by [`Glide`] so it can travel between pills. Kept next to
+/// the pill style so the two halves of the chip's look stay in one
+/// place.
+pub(crate) fn pill_plate(theme: &Theme, hovered: bool) -> (iced::Background, iced::Shadow) {
+    let primary = theme.palette().primary;
+    let lighter = mix(primary, iced::Color::WHITE, 0.22);
+    let darker = mix(primary, iced::Color::BLACK, 0.18);
+    let background = iced::Background::Gradient(iced::Gradient::Linear(
+        iced::gradient::Linear::new(0.0)
+            .add_stop(0.0, lighter)
+            .add_stop(1.0, darker),
+    ));
+    let (glow_alpha, blur) = if hovered { (0.85, 22.0) } else { (0.65, 18.0) };
+    // Centered glow — zero offset. A downward-offset glow visually
+    // drags the chip off the strip's centerline and the whole tab
+    // row reads as mis-centered.
+    let shadow = iced::Shadow {
+        color: iced::Color {
+            a: glow_alpha,
+            ..primary
+        },
+        offset: iced::Vector::new(0.0, 0.0),
+        blur_radius: blur,
+    };
+    (background, shadow)
 }
 
 /// Minimal "pane" demarcation — a barely-perceptible tinted plate
@@ -1799,22 +1844,6 @@ pub fn disabled_pick_list<'a, M: 'a>(label: impl Into<String>) -> iced::widget::
     iced::widget::container(iced::widget::text(label.into()))
         .padding(crate::style::STANDARD_PADDING)
         .style(disabled_pick_list_style)
-}
-
-/// The standard checkbox: [`chunky_checkbox`] chrome with a trailing
-/// label. `label` is pre-resolved display text (`t!` at the call
-/// site). Compact variants (custom `.size()` / `.text_size()`,
-/// conditional `on_toggle`) keep hand-building on
-/// `iced::widget::checkbox` directly.
-pub fn checkbox<'a, M: 'a>(
-    checked: bool,
-    label: String,
-    on_toggle: impl Fn(bool) -> M + 'a,
-) -> iced::widget::Checkbox<'a, M> {
-    iced::widget::checkbox(checked)
-        .label(label)
-        .on_toggle(on_toggle)
-        .style(chunky_checkbox)
 }
 
 /// Chunky checkbox: 4 px rounded box, primary-tinted border when

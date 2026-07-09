@@ -424,6 +424,7 @@ impl<'a> Lobby<'a> {
             self.frame_delay,
             gated(inert, Message::SetFrameDelay),
         )
+        .style(widgets::chunky_slider)
         .width(Length::Fixed(160.0));
         // "Suggest" button: one-way frames + 1, clamped to the slider
         // range. Reads the median window rather than the raw `latest()`
