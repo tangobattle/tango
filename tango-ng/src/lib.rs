@@ -361,6 +361,11 @@ struct State {
     edit_abd_values: Vec<usize>,
     /// The navi picker's roster values (navi ids).
     edit_navi_values: Vec<usize>,
+    /// The navicust palette's values (part ids), the picked-up part,
+    /// and per-part picker orientation (rotation, compressed).
+    edit_ncp_values: Vec<usize>,
+    edit_ncp_selected: Option<usize>,
+    edit_ncp_orient: HashMap<usize, (u8, bool)>,
     /// The library pane's filter text.
     edit_library_filter: String,
     /// The new-save form's template picker values, parallel to the
@@ -1100,6 +1105,30 @@ fn push_pc_editor(app: &AppWindow, st: &mut State) {
     st.edit_pc_values = values;
     app.global::<SaveView>()
         .set_edit_library_rows(ModelRc::new(VecModel::from(rows)));
+}
+
+/// Re-bake the navicust section (grid image + parts + click geometry)
+/// and the editor's palette — after each navicust edit, without the
+/// full push_save_view (which would reset the active tab).
+fn push_ncp_editor(app: &AppWindow, st: &mut State) {
+    let Some(l) = st.loaded.as_ref() else { return };
+    let sv = app.global::<SaveView>();
+    if let Some(nc) = loaded::navicust_model(l) {
+        sv.set_navicust_image(nc.image);
+        sv.set_navicust_aspect(nc.aspect);
+        sv.set_navicust_style_name(nc.style_name.into());
+        sv.set_navicust_label_x_frac(nc.label_x_frac);
+        sv.set_navicust_label_y_frac(nc.label_y_frac);
+        sv.set_navicust_label_h_frac(nc.label_h_frac);
+        sv.set_ncp_body_x_frac(nc.body_x_frac);
+        sv.set_ncp_body_y_frac(nc.body_y_frac);
+        sv.set_ncp_cell_w_frac(nc.cell_w_frac);
+        sv.set_ncp_cell_h_frac(nc.cell_h_frac);
+        sv.set_navicust_parts(ModelRc::new(VecModel::from(nc.parts)));
+    }
+    let (rows, values) = loaded::navicust_palette(l, &st.edit_library_filter, &st.edit_ncp_orient, st.edit_ncp_selected);
+    st.edit_ncp_values = values;
+    sv.set_edit_ncp_rows(ModelRc::new(VecModel::from(rows)));
 }
 
 /// Push the navi picker's roster strip (shows while editing when the
@@ -2215,6 +2244,9 @@ pub fn run() -> anyhow::Result<()> {
         edit_pc_values: Vec::new(),
         edit_abd_values: Vec::new(),
         edit_navi_values: Vec::new(),
+        edit_ncp_values: Vec::new(),
+        edit_ncp_selected: None,
+        edit_ncp_orient: HashMap::new(),
         edit_library_filter: String::new(),
         save_template_values: Vec::new(),
         save_new_auto_default: None,
@@ -2984,6 +3016,8 @@ pub fn run() -> anyhow::Result<()> {
             push_pc_editor(&app, &mut st);
             push_abd_editor(&app, &mut st);
             push_navi_editor(&app, &mut st);
+            st.edit_ncp_selected = None;
+            push_ncp_editor(&app, &mut st);
             app.global::<SaveView>().set_editing(true);
         }
     });
@@ -3179,7 +3213,115 @@ pub fn run() -> anyhow::Result<()> {
                     }
                     push_abd_editor(&app, &mut st);
                 }
+                0 => {
+                    st.edit_ncp_selected = None;
+                    if let Some(l) = st.loaded.as_mut() {
+                        save_edit::apply_navicust_edit(l, save_edit::NavicustEdit::ClearAll);
+                    }
+                    push_ncp_editor(&app, &mut st);
+                }
                 _ => {}
+            }
+        }
+    });
+
+    app.global::<SaveView>().on_ncp_select({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |index| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Some(id) = usize::try_from(index).ok().and_then(|i| st.edit_ncp_values.get(i)).copied() else {
+                return;
+            };
+            // Toggle: clicking the held part drops it.
+            st.edit_ncp_selected = if st.edit_ncp_selected == Some(id) { None } else { Some(id) };
+            push_ncp_editor(&app, &mut st);
+        }
+    });
+
+    app.global::<SaveView>().on_ncp_rotate({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |index| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Some(id) = usize::try_from(index).ok().and_then(|i| st.edit_ncp_values.get(i)).copied() else {
+                return;
+            };
+            let (rot, compressed) = st.edit_ncp_orient.get(&id).copied().unwrap_or((0, true));
+            st.edit_ncp_orient.insert(id, ((rot + 1) % 4, compressed));
+            push_ncp_editor(&app, &mut st);
+        }
+    });
+
+    app.global::<SaveView>().on_ncp_compress({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |index| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Some(id) = usize::try_from(index).ok().and_then(|i| st.edit_ncp_values.get(i)).copied() else {
+                return;
+            };
+            let (rot, compressed) = st.edit_ncp_orient.get(&id).copied().unwrap_or((0, true));
+            st.edit_ncp_orient.insert(id, (rot, !compressed));
+            push_ncp_editor(&app, &mut st);
+        }
+    });
+
+    app.global::<SaveView>().on_ncp_grid_clicked({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |fx, fy| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let sv = app.global::<SaveView>();
+            let (bx, by) = (sv.get_ncp_body_x_frac(), sv.get_ncp_body_y_frac());
+            let (cw, ch) = (sv.get_ncp_cell_w_frac(), sv.get_ncp_cell_h_frac());
+            if cw <= 0.0 || ch <= 0.0 || fx < bx || fy < by {
+                return;
+            }
+            let col = ((fx - bx) / cw) as i64;
+            let row = ((fy - by) / ch) as i64;
+            let (cols, rows, occupant) = {
+                let Some(l) = st.loaded.as_ref() else { return };
+                let Some(v) = l.save.view_navicust() else { return };
+                let m = v.materialized();
+                let (r, c) = m.dim();
+                if col < 0 || row < 0 || col >= c as i64 || row >= r as i64 {
+                    return;
+                }
+                (c, r, m[[row as usize, col as usize]])
+            };
+            let _ = (cols, rows);
+            match (st.edit_ncp_selected, occupant) {
+                // A held part places at the clicked cell (its anchor).
+                (Some(id), _) => {
+                    let (rot, compressed) = st.edit_ncp_orient.get(&id).copied().unwrap_or((0, true));
+                    st.edit_ncp_selected = None;
+                    if let Some(l) = st.loaded.as_mut() {
+                        save_edit::apply_navicust_edit(
+                            l,
+                            save_edit::NavicustEdit::AddPart(tango_dataview::save::NavicustPart {
+                                id,
+                                col: col as u8,
+                                row: row as u8,
+                                rot,
+                                compressed,
+                            }),
+                        );
+                    }
+                    push_ncp_editor(&app, &mut st);
+                }
+                // No held part: clicking an installed part removes it.
+                (None, Some(slot)) => {
+                    if let Some(l) = st.loaded.as_mut() {
+                        save_edit::apply_navicust_edit(l, save_edit::NavicustEdit::RemovePart { slot });
+                    }
+                    push_ncp_editor(&app, &mut st);
+                }
+                (None, None) => {}
             }
         }
     });
@@ -3327,6 +3469,7 @@ pub fn run() -> anyhow::Result<()> {
             let mut st = state.borrow_mut();
             st.edit_library_filter = text.to_lowercase();
             match save_active_kind(&app) {
+                0 => push_ncp_editor(&app, &mut st),
                 2 => push_pc_editor(&app, &mut st),
                 3 => push_abd_editor(&app, &mut st),
                 _ => push_folder_editor(&app, &mut st),

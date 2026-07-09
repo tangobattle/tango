@@ -387,6 +387,14 @@ pub struct NavicustModel {
     pub label_x_frac: f32,
     pub label_y_frac: f32,
     pub label_h_frac: f32,
+    /// Grid-body geometry in the same fractional space, for the
+    /// editor's click-to-cell mapping.
+    pub body_x_frac: f32,
+    pub body_y_frac: f32,
+    pub cell_w_frac: f32,
+    pub cell_h_frac: f32,
+    pub cols: i32,
+    pub rows: i32,
     /// Installed parts: solid parts first, then plus parts, keeping
     /// slot order within each group (the parts panel's ordering).
     pub parts: Vec<NcpPartRow>,
@@ -419,6 +427,10 @@ pub fn navicust_model(loaded: &Loaded) -> Option<NavicustModel> {
         (crate::navicust::PADDING_H as f32 + crate::navicust::BORDER_WIDTH + 4.0) / g.total_w;
     let label_y_frac = crate::navicust::PADDING_V as f32 / g.total_h;
     let label_h_frac = g.bar_h / g.total_h;
+    let body_x_frac = (g.body_origin_x + crate::navicust::BORDER_WIDTH / 2.0) / g.total_w;
+    let body_y_frac = (g.body_origin_y + crate::navicust::BORDER_WIDTH / 2.0) / g.total_h;
+    let cell_w_frac = crate::navicust::SQUARE_SIZE / g.total_w;
+    let cell_h_frac = crate::navicust::SQUARE_SIZE / g.total_h;
 
     let mut solid = Vec::new();
     let mut plus = Vec::new();
@@ -460,6 +472,12 @@ pub fn navicust_model(loaded: &Loaded) -> Option<NavicustModel> {
         label_x_frac,
         label_y_frac,
         label_h_frac,
+        body_x_frac,
+        body_y_frac,
+        cell_w_frac,
+        cell_h_frac,
+        cols: model.cols as i32,
+        rows: model.rows as i32,
         parts: solid,
     })
 }
@@ -940,6 +958,68 @@ pub fn navi_roster(loaded: &Loaded) -> (Vec<crate::NaviCell>, Vec<usize>) {
         }
     }
     (cells, values)
+}
+
+/// The navicust editor's part palette: every real part the ROM
+/// defines (colored, non-empty shape, capped to 9 same-name variants
+/// like tango), thumbed at its current picker orientation. Returns
+/// display rows + parallel part ids.
+pub fn navicust_palette(
+    loaded: &Loaded,
+    filter: &str,
+    orient: &HashMap<usize, (u8, bool)>,
+    selected: Option<usize>,
+) -> (Vec<crate::NcpPaletteRow>, Vec<usize>) {
+    let assets = loaded.assets.as_ref();
+    let filter = filter.to_lowercase();
+    // Installed copies per id, for the per-part cap.
+    let mut installed: HashMap<usize, usize> = HashMap::new();
+    if let Some(v) = loaded.save.view_navicust() {
+        for i in 0..v.count() {
+            if let Some(p) = v.navicust_part(i) {
+                *installed.entry(p.id).or_insert(0) += 1;
+            }
+        }
+    }
+    let mut per_type: HashMap<String, usize> = HashMap::new();
+    let mut rows = Vec::new();
+    let mut values = Vec::new();
+    for id in 0..assets.num_navicust_parts() {
+        let Some(info) = assets.navicust_part(id) else { continue };
+        let Some(color) = info.color() else { continue };
+        if !info.uncompressed_bitmap().iter().any(|&set| set) {
+            continue;
+        }
+        let Some(name) = info.name() else { continue };
+        if name.trim().is_empty() {
+            continue;
+        }
+        if !filter.is_empty() && !name.to_lowercase().contains(&filter) {
+            continue;
+        }
+        let count = per_type.entry(name.clone()).or_insert(0);
+        if *count >= 9 {
+            continue;
+        }
+        *count += 1;
+        let (rot, compressed) = orient.get(&id).copied().unwrap_or((0, true));
+        let bitmap = info
+            .compressed_bitmap()
+            .filter(|_| compressed)
+            .unwrap_or_else(|| info.uncompressed_bitmap());
+        let rotated = crate::navicust::rotate_bitmap(&bitmap, rot);
+        let thumb = crate::navicust::render_part_thumb(&rotated, color.clone(), info.is_solid());
+        let at_cap = installed.get(&id).copied().unwrap_or(0) >= crate::save_edit::MAX_COPIES_PER_PART;
+        rows.push(crate::NcpPaletteRow {
+            thumb: thumb.map(slint_image).unwrap_or_default(),
+            name: name.into(),
+            desc: info.description().unwrap_or_default().into(),
+            selected: selected == Some(id),
+            at_cap,
+        });
+        values.push(id);
+    }
+    (rows, values)
 }
 
 // ----- copy-as-text renderings (tango's save_view tab_as_text) -----

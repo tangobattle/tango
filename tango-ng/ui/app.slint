@@ -866,6 +866,15 @@ export struct PatchCardLine {
     bug-plain: bool,
 }
 
+// One row of the navicust editor's part palette.
+export struct NcpPaletteRow {
+    thumb: image,
+    name: string,
+    desc: string,
+    selected: bool,
+    at-cap: bool,
+}
+
 // One cell of the navi picker's roster strip.
 export struct NaviCell {
     emblem: image,
@@ -1125,6 +1134,18 @@ export global SaveView {
     in-out property <bool> edit-navi-editable: false;
     in-out property <[NaviCell]> edit-navi-cells: [];
     callback edit-set-navi(int);
+    // Navicust editor: click geometry (fractions of the grid image)
+    // + the part palette. Clicking the grid places the held part at
+    // that cell, or removes the part occupying it.
+    in-out property <float> ncp-body-x-frac: 0.0;
+    in-out property <float> ncp-body-y-frac: 0.0;
+    in-out property <float> ncp-cell-w-frac: 0.0;
+    in-out property <float> ncp-cell-h-frac: 0.0;
+    in-out property <[NcpPaletteRow]> edit-ncp-rows: [];
+    callback ncp-grid-clicked(float, float);
+    callback ncp-select(int);
+    callback ncp-rotate(int);
+    callback ncp-compress(int);
     callback folder-grouped-toggled(bool);
     // Copy the active section as TSV text / the NaviCust grid as an
     // image (tango's CopyTab/CopyTabImage).
@@ -1259,7 +1280,7 @@ component SaveViewBody inherits VerticalLayout {
                     toggled(g) => { SaveView.folder-grouped-toggled(g); }
                 }
             }
-            if SaveView.editable && SaveView.save-kind >= 1 && SaveView.save-kind <= 3 && !SaveView.editing : VerticalLayout {
+            if SaveView.editable && SaveView.save-kind >= 0 && SaveView.save-kind <= 3 && !SaveView.editing : VerticalLayout {
                 alignment: center;
                 NeutralTextButton {
                     label: I18n.save-edit;
@@ -1356,8 +1377,100 @@ component SaveViewBody inherits VerticalLayout {
                     color: white;
                     vertical-alignment: center;
                 }
+                if SaveView.editing : TouchArea {
+                    clicked => {
+                        SaveView.ncp-grid-clicked(
+                            self.mouse-x / parent.width,
+                            self.mouse-y / parent.height);
+                    }
+                }
             }
-            ListView {
+            if SaveView.editing : ListView {
+                x: ncgrid.x + ncgrid.width + 16px;
+                y: 4px;
+                width: parent.width - self.x - 12px;
+                height: parent.height - 8px;
+                for prow[i] in SaveView.edit-ncp-rows : Rectangle {
+                    height: 46px;
+                    background: prow.selected
+                        ? #29a12126
+                        : (ncpta.has-hover && !prow.at-cap
+                            ? Theme.hover
+                            : (Math.mod(i, 2) == 0 ? transparent : Theme.row-alt));
+                    border-width: prow.selected ? 1px : 0px;
+                    border-color: #29a121;
+                    border-radius: 4px;
+                    ncpta := TouchArea {
+                        clicked => {
+                            if (!prow.at-cap) {
+                                SaveView.ncp-select(i);
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 8px;
+                        Rectangle {
+                            width: 40px;
+                            Image {
+                                width: min(parent.width, self.source.width * 1px);
+                                height: min(40px, self.source.height * 1px);
+                                source: prow.thumb;
+                                image-fit: contain;
+                                image-rendering: pixelated;
+                            }
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: prow.name;
+                            font-size: 13px;
+                            color: prow.at-cap ? Theme.text-muted : Theme.text;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Rectangle {
+                            width: 26px;
+                            height: 24px;
+                            y: (parent.height - self.height) / 2;
+                            border-radius: 6px;
+                            background: ncrot.has-hover ? Theme.hover : Theme.btn-plate;
+                            border-width: 1px;
+                            border-color: Theme.input-border;
+                            ncrot := TouchArea {
+                                clicked => { SaveView.ncp-rotate(i); }
+                            }
+                            LIcon {
+                                width: 100%;
+                                height: 100%;
+                                text: Glyphs.refresh-cw;
+                                font-size: 11px;
+                                color: Theme.text-muted;
+                            }
+                        }
+                        Rectangle {
+                            width: 26px;
+                            height: 24px;
+                            y: (parent.height - self.height) / 2;
+                            border-radius: 6px;
+                            background: nccmp.has-hover ? Theme.hover : Theme.btn-plate;
+                            border-width: 1px;
+                            border-color: Theme.input-border;
+                            nccmp := TouchArea {
+                                clicked => { SaveView.ncp-compress(i); }
+                            }
+                            LIcon {
+                                width: 100%;
+                                height: 100%;
+                                text: Glyphs.sliders;
+                                font-size: 11px;
+                                color: Theme.text-muted;
+                            }
+                        }
+                    }
+                }
+            }
+            if !SaveView.editing : ListView {
                 x: ncgrid.x + ncgrid.width + 16px;
                 y: 4px;
                 width: parent.width - self.x - 12px;
