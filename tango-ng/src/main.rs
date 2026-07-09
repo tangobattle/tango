@@ -1334,6 +1334,11 @@ fn compute_lobby_snapshot(app: &AppWindow, st: &State) -> (LobbySnapshot, Vec<(u
         }
     } else {
         match ident {
+            // Streamer privacy: never render the joinable code on
+            // screen (the masked input already hides the typed form).
+            Some(netplay::LinkIdent::Matchmaking(_)) if st.config.streamer_mode => {
+                t!(lang, "lobby-link-code", code = "•••".to_string())
+            }
             Some(netplay::LinkIdent::Matchmaking(code)) => t!(lang, "lobby-link-code", code = code.clone()),
             Some(netplay::LinkIdent::Direct(netplay::DirectRole::Host { port })) => {
                 // Stringified so Fluent can't locale-format the number.
