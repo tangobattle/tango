@@ -121,6 +121,7 @@ export global I18n {
     in-out property <string> replays-opponent-placeholder: "Search opponents…";
     in-out property <string> replays-select-prompt: "Select a replay to view its details";
     in-out property <string> replays-watch: "Watch";
+    in-out property <string> replays-show-incomplete: "Show incomplete";
     in-out property <string> replays-export: "Render";
     in-out property <string> replays-export-cancel: "Cancel";
     in-out property <string> replays-export-open: "Open render";
@@ -1032,6 +1033,8 @@ export component AppWindow inherits Window {
     in property <[ReplayRow]> replays: [];
     in property <[string]> replay-game-filters: [];
     in-out property <int> selected-replay-filter: 0;
+    // Off by default: known-incomplete replays hide from the list.
+    in-out property <bool> replay-show-incomplete: false;
     in property <string> replay-title: "";
     in property <[string]> replay-detail: [];
     // ---- replay video export ----
@@ -1257,6 +1260,7 @@ export component AppWindow inherits Window {
     callback replay-selected(int);
     callback replay-filter-selected(int);
     callback replay-opponent-edited(string);
+    callback replay-incomplete-toggled(bool);
     callback replay-open-folder();
     callback replay-export-scale-edited(float);
     callback replay-export-start();
@@ -2375,6 +2379,14 @@ export component AppWindow inherits Window {
                             width: 220px;
                             placeholder: I18n.replays-opponent-placeholder;
                             edited(t) => { root.replay-opponent-edited(t); }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            ChunkyCheckbox {
+                                label: I18n.replays-show-incomplete;
+                                checked <=> root.replay-show-incomplete;
+                                toggled(b) => { root.replay-incomplete-toggled(b); }
+                            }
                         }
                         Rectangle { horizontal-stretch: 1; }
                     }

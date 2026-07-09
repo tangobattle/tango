@@ -188,6 +188,7 @@ fn apply_i18n(app: &AppWindow, config: &config::Config) {
     i18n.set_welcome_roms_needed(t!(lang, "welcome-roms-needed").into());
     i18n.set_welcome_rescan(t!(lang, "rescan").into());
     // replay export
+    i18n.set_replays_show_incomplete(t!(lang, "replays-show-incomplete").into());
     i18n.set_replays_export(t!(lang, "replays-export").into());
     i18n.set_replays_export_cancel(t!(lang, "replays-export-cancel").into());
     i18n.set_replays_export_open(t!(lang, "replays-export-open").into());
@@ -289,6 +290,11 @@ struct State {
     /// Replay shown in the detail pane + its lines (stats append lazily).
     replay_detail_path: Option<std::path::PathBuf>,
     replay_detail_lines: Vec<SharedString>,
+    /// Lazy duration/round/completion stats keyed by replay path,
+    /// filled by the background worker after each scan. The
+    /// show-incomplete filter reads it; missing entries stay visible
+    /// (we only know a replay is incomplete once its stats land).
+    replay_stats: HashMap<std::path::PathBuf, replays::ReplayStats>,
     patches: patch::PatchMap,
     /// Patch names shown in the patch picker (model index i+1 — index 0
     /// is the "No patch" sentinel).
@@ -540,7 +546,11 @@ fn apply_replay_filter(app: &AppWindow, st: &mut State, family: Option<&str>) {
                     .remote_side
                     .as_ref()
                     .is_some_and(|s| s.nickname.to_lowercase().contains(&opponent));
-            family_ok && opponent_ok
+            // Off by default: hide replays whose loaded stats say
+            // incomplete; not-yet-known replays stay visible.
+            let complete_ok = app.get_replay_show_incomplete()
+                || st.replay_stats.get(&r.path).is_none_or(|s| s.is_complete);
+            family_ok && opponent_ok && complete_ok
         })
         .map(|(i, _)| i)
         .collect();
@@ -2024,6 +2034,7 @@ pub fn run() -> anyhow::Result<()> {
         replay_filter_opponent: String::new(),
         replay_detail_path: None,
         replay_detail_lines: Vec::new(),
+        replay_stats: HashMap::new(),
         patches: patch::PatchMap::new(),
         patch_rows: Vec::new(),
         patch_list_rows: Vec::new(),
@@ -2073,6 +2084,7 @@ pub fn run() -> anyhow::Result<()> {
     // into the UI by the frame timer below. Rc so the data-path setting
     // can retrigger it.
     let stats_tx = tx.clone();
+    let stats_sweep_tx = tx.clone();
     let export_tx = tx.clone();
     let pvp_tx = tx.clone();
     let patch_update_tx = tx.clone();
@@ -2744,6 +2756,21 @@ pub fn run() -> anyhow::Result<()> {
         }
     });
 
+    app.on_replay_incomplete_toggled({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |_show| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let family = usize::try_from(app.get_selected_replay_filter())
+                .ok()
+                .and_then(|i| i.checked_sub(1))
+                .and_then(|i| st.replay_filter_families.get(i))
+                .cloned();
+            apply_replay_filter(&app, &mut st, family.as_deref());
+        }
+    });
+
     app.on_replay_open_folder({
         let state = state.clone();
         move || {
@@ -3094,18 +3121,24 @@ pub fn run() -> anyhow::Result<()> {
             );
             app.set_replay_detail(ModelRc::new(VecModel::from(lines.clone())));
 
-            // Stats need a full decode — compute off-thread, folded into
-            // the detail pane when they land (if still selected).
+            // Stats need a full decode — served from the background
+            // worker's cache when it already has them, else computed
+            // off-thread and folded in when they land (if still selected).
             let path = replay.path.clone();
             st.replay_detail_path = Some(path.clone());
             st.replay_detail_lines = lines;
-            let tx = stats_tx.clone();
-            std::thread::spawn(move || match replays::compute_stats(&path) {
-                Ok(stats) => {
-                    let _ = tx.send(Event::ReplayStats { path, stats });
-                }
-                Err(e) => log::warn!("{}: stats failed: {e}", path.display()),
-            });
+            if let Some(stats) = st.replay_stats.get(&path).copied() {
+                let tx = stats_tx.clone();
+                let _ = tx.send(Event::ReplayStats { path, stats });
+            } else {
+                let tx = stats_tx.clone();
+                std::thread::spawn(move || match replays::compute_stats(&path) {
+                    Ok(stats) => {
+                        let _ = tx.send(Event::ReplayStats { path, stats });
+                    }
+                    Err(e) => log::warn!("{}: stats failed: {e}", path.display()),
+                });
+            }
         }
     });
 
@@ -3925,6 +3958,28 @@ pub fn run() -> anyhow::Result<()> {
                             st.replay_rows = replays;
                             st.patches = patches;
                             refresh_models(&app, &mut st);
+                            // Background stats sweep (tango's lazy stats
+                            // worker): decode every replay we don't have
+                            // stats for yet, oldest scan wins by path.
+                            let missing: Vec<std::path::PathBuf> = st
+                                .replay_rows
+                                .iter()
+                                .map(|r| r.path.clone())
+                                .filter(|p| !st.replay_stats.contains_key(p))
+                                .collect();
+                            if !missing.is_empty() {
+                                let tx = stats_sweep_tx.clone();
+                                std::thread::spawn(move || {
+                                    for path in missing {
+                                        match replays::compute_stats(&path) {
+                                            Ok(stats) => {
+                                                let _ = tx.send(Event::ReplayStats { path, stats });
+                                            }
+                                            Err(e) => log::warn!("{}: stats failed: {e}", path.display()),
+                                        }
+                                    }
+                                });
+                            }
                             st.pending_select_save.take()
                         };
                         // A save-management op wants its result focused:
@@ -3945,7 +4000,19 @@ pub fn run() -> anyhow::Result<()> {
                         }
                     }
                     Event::ReplayStats { path, stats } => {
-                        let st = state.borrow();
+                        let mut st = state.borrow_mut();
+                        let newly_known = st.replay_stats.insert(path.clone(), stats).is_none();
+                        // A newly-known incomplete replay may need hiding
+                        // (only when the toggle is off and it's shown).
+                        if newly_known && !stats.is_complete && !app.get_replay_show_incomplete() {
+                            let family = usize::try_from(app.get_selected_replay_filter())
+                                .ok()
+                                .and_then(|i| i.checked_sub(1))
+                                .and_then(|i| st.replay_filter_families.get(i))
+                                .cloned();
+                            apply_replay_filter(&app, &mut st, family.as_deref());
+                        }
+                        let st = &*st;
                         if st.replay_detail_path.as_deref() == Some(path.as_path()) {
                             let lang = &st.config.language;
                             let mut lines = st.replay_detail_lines.clone();
