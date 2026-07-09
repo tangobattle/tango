@@ -1468,7 +1468,9 @@ impl App {
             return crate::input_capture::InputCapture::new(composed, |input| {
                 // Esc is reserved as the in-session escape/menu key —
                 // it never reaches the joyflag pipeline so the user
-                // can't accidentally hide it behind a mapping.
+                // can't accidentally hide it behind a mapping. Both
+                // edges are routed: press peels overlays and arms
+                // hold-to-quit, release disarms it.
                 let is_escape = |k: &iced::keyboard::key::Physical| {
                     matches!(
                         k,
@@ -1481,7 +1483,7 @@ impl App {
                             return Some(Message::Session(session::Message::EscPressed));
                         }
                         iced::keyboard::Event::KeyReleased { physical_key, .. } if is_escape(physical_key) => {
-                            return None;
+                            return Some(Message::Session(session::Message::EscReleased));
                         }
                         _ => {}
                     }

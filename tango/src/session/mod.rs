@@ -217,6 +217,14 @@ pub struct State {
     /// Cursor is currently over the floating controls bar — pins
     /// it visible regardless of the idle timer.
     pub controls_hovered: bool,
+    /// Instant the current Esc hold started, `None` while Esc is up.
+    /// Armed on the first [`Message::EscPressed`] of a physical hold
+    /// (key repeat re-fires the message but not the arm), cleared on
+    /// [`Message::EscReleased`]. Drives hold-to-quit: past
+    /// [`ESC_QUIT_SHOW_AFTER`] the view draws the exit overlay, and at
+    /// [`ESC_QUIT_HOLD`] the [`update`](State::update) wrapper tears
+    /// the session down.
+    pub esc_hold: Option<std::time::Instant>,
     /// Show/hide transition for the floating controls bar. Synced
     /// after every update: shown while the mouse moved recently,
     /// the cursor rests on the bar, any overlay is open, a scrub
@@ -251,6 +259,7 @@ impl Default for State {
             scrub: replay::Scrub::default(),
             last_mouse_move: std::time::Instant::now(),
             controls_hovered: false,
+            esc_hold: None,
             controls_anim: anim::Transition::new(true),
         }
     }
@@ -312,11 +321,21 @@ pub enum Message {
     ToggleMatchSettings,
     /// User pressed Esc inside a session. Dismisses whichever overlay
     /// is on top (settings modal, disconnect confirm, match-settings
-    /// popover) if any; otherwise does nothing — Esc never tears the
-    /// session down (closing a session is an explicit button action).
-    /// Routed here rather than from the InputCapture so the decision
-    /// sees the current overlay state.
+    /// popover) if any, and arms the hold-to-quit timer — a tap never
+    /// tears the session down, but holding Esc for [`ESC_QUIT_HOLD`]
+    /// does (with the exit overlay counting down the hold). Routed
+    /// here rather than from the InputCapture so the decision sees
+    /// the current overlay state.
     EscPressed,
+    /// Esc came back up — disarms hold-to-quit.
+    EscReleased,
+    /// Redraw/quit-check heartbeat while Esc is held, from the
+    /// [`subscription`] timer branch. No handler work of its own:
+    /// the elapsed-hold check lives in the [`update`](State::update)
+    /// wrapper, and a paused replay (or a mid-reconnect PvP pause)
+    /// produces no frame wakes to run it — this keeps the overlay
+    /// filling and the quit firing anyway.
+    EscHoldTick,
     /// Show the "really disconnect?" modal. PvP-only; picked from
     /// the options menu's Disconnect item, which also dismisses
     /// the popover.
@@ -383,6 +402,22 @@ impl State {
     /// API parity with the other tabs).
     pub fn update(&mut self, msg: Message, mapping: &crate::input::Mapping) -> iced::Task<Message> {
         let task = self.update_inner(msg, mapping);
+        // Hold-to-quit: Esc held to the threshold tears the session
+        // down, same as the Close button. Checked here on every
+        // message (the 60 Hz frame wakes, plus the dedicated
+        // EscHoldTick stream when the emulator is paused) instead of
+        // in a handler, so it doesn't care which message crossed the
+        // finish line.
+        if self.esc_hold.is_some_and(|t| t.elapsed() >= ESC_QUIT_HOLD) {
+            if self.active.is_some() {
+                self.close_session();
+            } else {
+                // The session went away mid-hold with the release
+                // swallowed by the view unmount — disarm so the tick
+                // subscription doesn't run forever.
+                self.esc_hold = None;
+            }
+        }
         // Mirror each overlay's bool into its transition in one
         // place — handlers above flip them freely and the
         // animations follow, including the multi-flip paths (Esc
@@ -426,6 +461,28 @@ impl State {
     pub fn wake_controls(&mut self) {
         self.last_mouse_move = std::time::Instant::now();
         self.controls_hovered = false;
+        // Belt-and-braces: a hold left over from a previous session
+        // (its release swallowed with the session view) must not
+        // count against the new one.
+        self.esc_hold = None;
+    }
+
+    /// Tear down the active session: PvP pre-drop close request, then
+    /// drop-by-clearing plus the reset of every piece of per-session
+    /// UI state. Shared by [`Message::Close`] (the Close button /
+    /// disconnect confirm) and the Esc hold-to-quit expiry in
+    /// [`update`](State::update).
+    fn close_session(&mut self) {
+        if let Some(s) = self.active.as_ref() {
+            s.request_close();
+        }
+        self.active = None;
+        self.current_frame = None;
+        self.controls_hovered = false;
+        self.disconnect.close();
+        self.match_settings.close();
+        self.scrub.clear();
+        self.esc_hold = None;
     }
 
     /// Play/pause the active replay (no-op for other session kinds).
@@ -457,15 +514,7 @@ impl State {
     fn update_inner(&mut self, msg: Message, mapping: &crate::input::Mapping) -> iced::Task<Message> {
         match msg {
             Message::Close => {
-                if let Some(s) = self.active.as_ref() {
-                    s.request_close();
-                }
-                self.active = None;
-                self.current_frame = None;
-                self.controls_hovered = false;
-                self.disconnect.close();
-                self.match_settings.close();
-                self.scrub.clear();
+                self.close_session();
             }
             Message::Input(ev) => {
                 // Replay transport keybinds: arrow keys jump ±5s, comma/period
@@ -572,11 +621,17 @@ impl State {
                 }
             }
             Message::EscPressed => {
+                // Arm hold-to-quit on the first press of a physical
+                // hold only — OS key repeat re-fires EscPressed, and
+                // re-arming would push the deadline out forever.
+                if self.esc_hold.is_none() {
+                    self.esc_hold = Some(std::time::Instant::now());
+                }
                 // Peel overlays off top-down: the settings modal, then
                 // the disconnect confirm, then the match-settings
-                // popover. Esc stops there — it no longer tears the
-                // session down (replay/SP back-out and PvP disconnect
-                // are explicit button actions now).
+                // popover. A tap stops there — tearing the session
+                // down takes an explicit button action or the full
+                // [`ESC_QUIT_HOLD`] hold.
                 if self.settings.shown() {
                     self.settings.close();
                 } else if self.disconnect.shown() {
@@ -584,6 +639,14 @@ impl State {
                 } else if self.match_settings.shown() {
                     self.match_settings.close();
                 }
+            }
+            Message::EscReleased => {
+                self.esc_hold = None;
+            }
+            Message::EscHoldTick => {
+                // Nothing here — the hold check lives in `update`'s
+                // wrapper so every message runs it; this variant only
+                // exists to generate message traffic while held.
             }
             Message::OpenDisconnectConfirm => {
                 self.disconnect.open();
@@ -635,11 +698,7 @@ impl State {
                     // each call `notify_one()` so this branch fires
                     // even after the emu thread has paused.
                     if session.is_ended() {
-                        self.active = None;
-                        self.current_frame = None;
-                        self.controls_hovered = false;
-                        self.disconnect.close();
-                        self.match_settings.close();
+                        self.close_session();
                     } else {
                         // Upload the native frame as-is; the selected effect
                         // magnifies it on the GPU at draw time.
@@ -704,14 +763,20 @@ pub fn subscription(state: &State) -> iced::Subscription<Message> {
         .as_ref()
         .and_then(ActiveSession::as_replay)
         .is_some_and(|r| r.is_paused() && r.prefetch_progress() < r.total_ticks());
+    let mut subs = vec![frames];
     if prefetching {
-        iced::Subscription::batch([
-            frames,
-            iced::time::every(std::time::Duration::from_millis(50)).map(|_| Message::UpdateFramebuffer),
-        ])
-    } else {
-        frames
+        subs.push(iced::time::every(std::time::Duration::from_millis(50)).map(|_| Message::UpdateFramebuffer));
     }
+    // While Esc is held, tick ~30 Hz so the exit overlay's progress
+    // bar fills (and the quit fires) even when the emulator isn't
+    // producing frame wakes — a paused replay or a mid-reconnect
+    // PvP pause. Live sessions redraw at 60 Hz regardless; the tick
+    // is only ever load-bearing on the paused paths, and it stops
+    // the moment the key comes back up.
+    if state.esc_hold.is_some() {
+        subs.push(iced::time::every(std::time::Duration::from_millis(33)).map(|_| Message::EscHoldTick));
+    }
+    iced::Subscription::batch(subs)
 }
 
 /// Stable subscription identity. The hash is a constant string so
@@ -774,6 +839,14 @@ fn background_handle(game: &'static crate::game::Game) -> Option<iced::widget::i
 /// How long the cursor has to sit still before the floating
 /// controls slide away.
 const CONTROLS_HIDE_AFTER: std::time::Duration = std::time::Duration::from_millis(2500);
+
+/// How long Esc must be held down to quit the active session.
+const ESC_QUIT_HOLD: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// How far into the hold the exit overlay appears. A grace period
+/// rather than immediate so the overlay-peeling Esc tap (and plain
+/// habitual presses) never flash a full-screen dim.
+const ESC_QUIT_SHOW_AFTER: std::time::Duration = std::time::Duration::from_millis(300);
 
 /// Expand an mgba-native BGR555 framebuffer (one little-endian `u16`
 /// per pixel — see [`State`]'s `vbuf`) to an RGBA8 image handle for

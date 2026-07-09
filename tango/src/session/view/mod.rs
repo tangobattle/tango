@@ -231,9 +231,14 @@ pub fn view<'a>(
     if let Some(o) = disconnect_overlay(lang, session, state) {
         stacked = stacked.push(o);
     }
-    // Topmost: the auto-reconnect modal. Above the disconnect-confirm so that if
+    // The auto-reconnect modal. Above the disconnect-confirm so that if
     // the link drops while that prompt is open, "Reconnecting…" reads over it.
     if let Some(o) = reconnecting_overlay(lang, session) {
+        stacked = stacked.push(o);
+    }
+    // Topmost: the Esc hold-to-quit countdown (see `exit_hold_overlay`
+    // for why it outranks even the reconnect modal).
+    if let Some(o) = exit_hold_overlay(lang, state) {
         stacked = stacked.push(o);
     }
     // Any cursor movement over the session wakes the controls.
@@ -1024,17 +1029,7 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, session: &'a ActiveSes
     let progress = iced::widget::progress_bar(0.0..=1.0, time_left)
         .length(Fill)
         .girth(6.0)
-        .style(|theme: &iced::Theme| iced::widget::progress_bar::Style {
-            background: iced::Background::Color(iced::Color {
-                a: 0.12,
-                ..iced::Color::WHITE
-            }),
-            bar: iced::Background::Color(theme.extended_palette().primary.base.color),
-            border: iced::Border {
-                radius: 3.0.into(),
-                ..Default::default()
-            },
-        });
+        .style(modal_progress_style);
     let disconnect_btn = widgets::labeled_icon_button(
         Icon::Unplug,
         t!(lang, "playback-disconnect"),
@@ -1051,5 +1046,51 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, session: &'a ActiveSes
         .style(widgets::panel);
     // Solid dim, no dismiss-on-press: the user leaves only via Disconnect (or
     // the link returning, which clears the overlay on its own).
+    Some(widgets::modal_layer(panel.into(), 0.55, Message::NoOp, None))
+}
+
+/// Progress-bar dressing shared by the modal notices (the reconnect
+/// countdown, the Esc hold-to-quit fill): faint white track, primary
+/// bar, rounded caps.
+fn modal_progress_style(theme: &iced::Theme) -> iced::widget::progress_bar::Style {
+    iced::widget::progress_bar::Style {
+        background: iced::Background::Color(iced::Color {
+            a: 0.12,
+            ..iced::Color::WHITE
+        }),
+        bar: iced::Background::Color(theme.extended_palette().primary.base.color),
+        border: iced::Border {
+            radius: 3.0.into(),
+            ..Default::default()
+        },
+    }
+}
+
+/// The hold-Esc-to-quit notice: appears once Esc has been held past
+/// the [`ESC_QUIT_SHOW_AFTER`] grace and fills its bar toward the
+/// [`ESC_QUIT_HOLD`] deadline, where [`State::update`]'s wrapper
+/// closes the session. Pure presentation — releasing Esc disarms the
+/// hold and the overlay vanishes with it, so there are no buttons and
+/// no dismiss handler. Pushed last in [`view`]: the countdown must
+/// read over every other layer, the reconnect modal included (holding
+/// Esc through a stalled reconnect is exactly the bail-out case).
+fn exit_hold_overlay<'a>(lang: &'a LanguageIdentifier, state: &'a State) -> Option<Element<'a, Message>> {
+    let held = state.esc_hold?.elapsed();
+    if held < ESC_QUIT_SHOW_AFTER {
+        return None;
+    }
+    // 0 when the overlay appears → 1 at the deadline, so the bar
+    // starts empty instead of pre-filled by the grace period.
+    let fill = (held - ESC_QUIT_SHOW_AFTER).as_secs_f32() / (ESC_QUIT_HOLD - ESC_QUIT_SHOW_AFTER).as_secs_f32();
+    let title = text(t!(lang, "playback-exit-hold")).size(TEXT_BODY + 4.0);
+    let body_text = text(t!(lang, "playback-exit-hold-detail")).style(widgets::muted_text_style);
+    let bar = iced::widget::progress_bar(0.0..=1.0, fill.min(1.0))
+        .length(Fill)
+        .girth(6.0)
+        .style(modal_progress_style);
+    let panel = container(column![title, body_text, bar].spacing(14).width(Fill))
+        .width(iced::Length::Fixed(420.0))
+        .padding(20)
+        .style(widgets::panel);
     Some(widgets::modal_layer(panel.into(), 0.55, Message::NoOp, None))
 }
