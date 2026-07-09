@@ -239,6 +239,9 @@ fn other_err<E: std::fmt::Display>(e: E) -> std::io::Error {
 /// long as any channel is in use; dropping it hangs up (DTLS close_notify).
 pub struct PeerConnection {
     shared: Arc<Shared>,
+    /// Send the DTLS close_notify in `Drop`; [`abandon`](Self::abandon)
+    /// clears it.
+    graceful_close: bool,
     /// Dropping this (i.e. dropping the `PeerConnection`) tears down the
     /// driver task and with it the whole transport.
     _shutdown_tx: tokio::sync::oneshot::Sender<()>,
@@ -384,6 +387,7 @@ impl PeerConnection {
         Ok((
             PeerConnection {
                 shared,
+                graceful_close: true,
                 _shutdown_tx: shutdown_tx,
             },
             data_channels,
@@ -462,6 +466,17 @@ impl PeerConnection {
         self.shared.inner.lock().unwrap().remote_desc.clone()
     }
 
+    /// Tear the connection down *without* the DTLS close_notify: the remote
+    /// gets silence, not a prompt EOF, and is left to notice the dead link on
+    /// its own. For teardowns where a clean close would mislead the peer —
+    /// tango's mid-match reconnect drops its old transport while the peer
+    /// should keep treating the link as merely quiet (its stall watchdog
+    /// trips it into the same rendezvous), whereas an EOF reads as "the peer
+    /// left". Everything else about the teardown is unchanged.
+    pub fn abandon(mut self) {
+        self.graceful_close = false;
+    }
+
     /// The selected ICE candidate pair as raw candidate strings,
     /// `(local, remote)` — e.g. for telling a relayed (TURN) connection from
     /// a direct one (`typ relay`). Errors until the agent has picked a pair.
@@ -506,6 +521,11 @@ impl Drop for PeerConnection {
     /// prompt EOF instead of sitting out its disconnect grace. Best effort:
     /// one unacknowledged datagram.
     fn drop(&mut self) {
+        if !self.graceful_close {
+            // Abandoned: hang up silently. The driver still tears down (our
+            // `_shutdown_tx` drops) — nothing more goes onto the wire.
+            return;
+        }
         let mut inner = self.shared.inner.lock().unwrap();
         if !inner.rtc.is_alive() {
             return;

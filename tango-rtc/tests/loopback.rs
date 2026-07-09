@@ -160,6 +160,32 @@ async fn hangup_is_prompt_eof() {
     tokio::time::timeout(TEST_TIMEOUT, work).await.expect("test timed out");
 }
 
+/// `abandon` hangs up *silently*: the peer gets no close_notify, so its
+/// channels stay open (no EOF) — it's left to detect the dead link by its own
+/// means. This is the contract tango's mid-match reconnect relies on: the
+/// peer's stall watchdog must be what notices, not a clean EOF it would read
+/// as a quit.
+#[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 2))]
+async fn abandon_is_silent() {
+    let work = async {
+        let ((a, mut a_chans), (_b, mut b_chans)) = connect_signaled_pair().await;
+        round_trip(&mut a_chans, &mut b_chans, "pre-abandon").await;
+
+        drop(a_chans);
+        a.abandon();
+
+        // No EOF reaches the peer: receive() must still be pending (timeout),
+        // not resolve to None, well past the time a close_notify would take.
+        let got = tokio::time::timeout(std::time::Duration::from_secs(3), b_chans[0].receive()).await;
+        assert!(
+            got.is_err(),
+            "peer saw {:?} after abandon — the teardown wasn't silent",
+            got
+        );
+    };
+    tokio::time::timeout(TEST_TIMEOUT, work).await.expect("test timed out");
+}
+
 /// Bring up a direct (signaling-free) pair on loopback.
 async fn connect_direct_pair(port: u16) -> ((PeerConnection, Vec<DataChannel>), (PeerConnection, Vec<DataChannel>)) {
     let (host, host_chans, _host_events) = PeerConnection::new_direct(
