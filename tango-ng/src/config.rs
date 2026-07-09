@@ -12,6 +12,7 @@ pub enum ThemeMode {
 }
 
 pub const DEFAULT_MATCHMAKING_ENDPOINT: &str = "wss://matchmaking.tango.n1gp.net";
+pub const DEFAULT_PATCH_REPO: &str = "https://patches.tango.n1gp.net";
 
 /// Whether matchmaking connections may/must go through the TURN
 /// relay (ported from tango's config.rs). `Auto` lets ICE pick the
@@ -61,6 +62,13 @@ pub struct Config {
     /// TURN relay policy for matchmaking connections. Sampled at
     /// connect time (see [`RelayMode::use_relay`]).
     pub relay_mode: RelayMode,
+    /// Patch repository synced by the Patches tab's Update button and
+    /// the background autoupdater. Empty = the default repo (see
+    /// [`Config::patch_repo_url`]).
+    pub patch_repo: String,
+    /// Re-sync the patch repo in the background every 15 minutes
+    /// (tango's `enable_patch_autoupdate`).
+    pub enable_patch_autoupdate: bool,
     /// Keyboard + gamepad bindings for the emulator sessions, edited
     /// by the Input settings pane. Not seeded from tango's config —
     /// tango stores physical scancodes, which don't map onto the
@@ -84,6 +92,8 @@ impl Default for Config {
             disable_bgm_in_pvp: false,
             matchmaking_endpoint: DEFAULT_MATCHMAKING_ENDPOINT.to_string(),
             relay_mode: RelayMode::default(),
+            patch_repo: DEFAULT_PATCH_REPO.to_string(),
+            enable_patch_autoupdate: true,
             input_mapping: crate::input::Mapping::default(),
         }
     }
@@ -192,6 +202,11 @@ impl Config {
                 config.matchmaking_endpoint = endpoint.to_string();
             }
         }
+        if let Some(repo) = v.get("patch_repo").and_then(|x| x.as_str()) {
+            if !repo.is_empty() {
+                config.patch_repo = repo.to_string();
+            }
+        }
         log::info!("seeded tango-ng config from {}", path.display());
         config
     }
@@ -225,5 +240,16 @@ impl Config {
 
     pub fn patches_path(&self) -> std::path::PathBuf {
         self.data_path.join("patches")
+    }
+
+    /// The effective patch repo URL — the configured one, or the
+    /// default when the config holds an empty string (tango's
+    /// Autoupdater treats empty the same way).
+    pub fn patch_repo_url(&self) -> String {
+        if self.patch_repo.is_empty() {
+            DEFAULT_PATCH_REPO.to_string()
+        } else {
+            self.patch_repo.clone()
+        }
     }
 }

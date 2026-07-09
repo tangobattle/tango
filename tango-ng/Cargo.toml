@@ -53,6 +53,13 @@ semver = { version = "1", features = ["serde"] }
 chrono = "0.4"
 toml = "0.8"
 regex = "1"
+# Patch-repo sync (patch::update): index.json fetch + file downloads.
+# Same pins as the tango crate.
+reqwest = { version = "0.11", features = ["stream", "json", "native-tls"], default-features = false }
+tango-filesync = { path = "../tango-filesync" }
+# Patch info.toml author strings are RFC 5322 mailboxes ("Name <a@b>");
+# mailparse reduces them to display names, like tango's patch scanner.
+mailparse = "0.14"
 tango-gamesupport-bn1 = { path = "../gamesupport/tango-gamesupport-bn1", optional = true }
 tango-gamesupport-bn2 = { path = "../gamesupport/tango-gamesupport-bn2", optional = true }
 tango-gamesupport-bn3 = { path = "../gamesupport/tango-gamesupport-bn3", optional = true }

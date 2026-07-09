@@ -65,6 +65,15 @@ enum Event {
         path: std::path::PathBuf,
         stats: replays::ReplayStats,
     },
+    /// A patch-repo sync finished — from the Patches tab's Update
+    /// button or the background autoupdater. Success triggers a
+    /// rescan; `background` results never touch the tab's status
+    /// line beyond the last-updated stamp (autoupdate errors only
+    /// log, like tango's Autoupdater).
+    PatchUpdateDone {
+        result: Result<(), String>,
+        background: bool,
+    },
     /// Netplay task results + lobby-loop observations, forwarded into
     /// `netplay::State::update` by the timer below (which intercepts
     /// `MatchHandoffReady` itself, mirroring tango's App).
@@ -124,6 +133,15 @@ fn apply_i18n(app: &AppWindow, config: &config::Config) {
     i18n.set_replays_opponent_placeholder(t!(lang, "replays-filter-opponent-placeholder").into());
     i18n.set_replays_select_prompt(t!(lang, "replays-select-prompt").into());
     i18n.set_replays_watch(t!(lang, "replays-watch").into());
+    // patches tab
+    i18n.set_patches_search_placeholder(t!(lang, "patches-search-placeholder").into());
+    i18n.set_patches_select_prompt(t!(lang, "patches-select-prompt").into());
+    i18n.set_patches_update(t!(lang, "patches-update").into());
+    i18n.set_patches_details_authors(t!(lang, "patches-details-authors").into());
+    i18n.set_patches_details_license(t!(lang, "patches-details-license").into());
+    i18n.set_patches_details_source(t!(lang, "patches-details-source").into());
+    i18n.set_patches_details_games(t!(lang, "patches-details-games").into());
+    i18n.set_patches_readme_placeholder(t!(lang, "patches-readme-placeholder").into());
     // settings
     i18n.set_settings_general(t!(lang, "settings-section-general").into());
     i18n.set_settings_graphics(t!(lang, "settings-section-graphics").into());
@@ -179,6 +197,23 @@ struct State {
     /// Patch names shown in the patch picker (model index i+1 — index 0
     /// is the "No patch" sentinel).
     patch_rows: Vec<String>,
+    /// Patch names shown in the Patches tab's list, parallel to the
+    /// `patch-list` model (the search filter narrows this).
+    patch_list_rows: Vec<String>,
+    /// Lowercased name/title substring filter for the Patches tab.
+    patch_filter: String,
+    /// Patch shown in the Patches tab's detail pane.
+    patch_detail_name: Option<String>,
+    /// The detail pane's version picker rows, newest first.
+    patch_detail_versions: Vec<semver::Version>,
+    /// Manual patch-repo sync in flight (the Update button disables
+    /// itself; a second click is refused).
+    patch_updating: bool,
+    /// Last manual sync failure, raw error text (rendered localized by
+    /// [`refresh_patch_status`]).
+    patch_update_error: Option<String>,
+    /// When the last successful sync (manual or background) landed.
+    patch_last_updated: Option<chrono::DateTime<chrono::Local>>,
     /// Versions shown in the version picker, newest first.
     version_rows: Vec<semver::Version>,
     /// The save viewer's parsed save + ROM assets + baked sprite
@@ -354,6 +389,8 @@ fn refresh_models(app: &AppWindow, st: &mut State) {
     app.set_versions(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
     push_save_view(app, st);
     apply_replay_filter(app, st, None);
+    apply_patch_filter(app, st);
+    refresh_patch_status(app, st);
 }
 
 /// Rebuild the shown-replay indices + model from the current filters.
@@ -414,6 +451,104 @@ fn replay_row(lang: &unic_langid::LanguageIdentifier, replay: &replays::ScannedR
         line1: replays::format_ts(md.ts, "%Y-%m-%d %H:%M:%S").into(),
         line2: format!("{} @ {}  ·  {} vs {}", game_name, md.link_code, local, remote).into(),
     }
+}
+
+/// Rebuild the Patches tab's list model from the scanned map with the
+/// search filter applied — case-insensitive substring match on the
+/// patch's directory name and title, like tango's tabs/patches.rs.
+/// Same index-layer pattern as [`apply_replay_filter`]; selection
+/// resets because the surviving indices no longer line up.
+fn apply_patch_filter(app: &AppWindow, st: &mut State) {
+    let query = st.patch_filter.clone();
+    let mut names = Vec::new();
+    let mut rows = Vec::new();
+    for (name, patch) in st.patches.iter().filter(|(n, p)| {
+        query.is_empty() || n.to_lowercase().contains(&query) || p.title.to_lowercase().contains(&query)
+    }) {
+        names.push(name.clone());
+        rows.push(PatchRow {
+            title: patch.title.clone().into(),
+            // Caption: the authors — or the directory name when the
+            // patch declares none, so the row keeps its second line.
+            authors: if patch.authors.is_empty() {
+                name.clone().into()
+            } else {
+                patch.authors.join(", ").into()
+            },
+        });
+    }
+    st.patch_list_rows = names;
+    st.patch_detail_name = None;
+    st.patch_detail_versions.clear();
+    app.set_selected_patch_item(-1);
+    app.set_patch_list(ModelRc::new(VecModel::from(rows)));
+}
+
+/// Push the Patches tab's detail pane for list row `index`: header
+/// fields, version rows (newest first), the README body, and the
+/// selected version's supported-games caption.
+fn push_patch_detail(app: &AppWindow, st: &mut State, index: usize) {
+    let Some((name, patch)) = st
+        .patch_list_rows
+        .get(index)
+        .and_then(|n| st.patches.get(n).map(|p| (n.clone(), p.clone())))
+    else {
+        return;
+    };
+    st.patch_detail_name = Some(name);
+    st.patch_detail_versions = patch.versions.keys().rev().cloned().collect();
+    app.set_patch_title(patch.title.clone().into());
+    app.set_patch_authors(patch.authors.join(", ").into());
+    app.set_patch_license(patch.license.clone().unwrap_or_default().into());
+    app.set_patch_source(patch.source.clone().unwrap_or_default().into());
+    app.set_patch_readme(patch.readme.clone().unwrap_or_default().into());
+    let version_model: Vec<SharedString> = st.patch_detail_versions.iter().map(|v| format!("v{v}").into()).collect();
+    app.set_patch_versions(ModelRc::new(VecModel::from(version_model)));
+    app.set_selected_patch_version(if st.patch_detail_versions.is_empty() { -1 } else { 0 });
+    push_patch_supported_games(app, st);
+}
+
+/// The supported-games caption for the detail pane's currently picked
+/// version — localized game display names, sorted; "—" when the
+/// version supports nothing (or nothing is picked).
+fn push_patch_supported_games(app: &AppWindow, st: &State) {
+    let lang = &st.config.language;
+    let games = st
+        .patch_detail_name
+        .as_ref()
+        .and_then(|n| st.patches.get(n))
+        .and_then(|p| {
+            usize::try_from(app.get_selected_patch_version())
+                .ok()
+                .and_then(|i| st.patch_detail_versions.get(i))
+                .and_then(|v| p.versions.get(v))
+        })
+        .map(|v| {
+            let mut names: Vec<String> = v.supported_games.iter().map(|g| game::display_name(lang, *g)).collect();
+            names.sort();
+            names.join(", ")
+        })
+        .unwrap_or_default();
+    app.set_patch_supported_games(if games.is_empty() { "—".to_string() } else { games }.into());
+}
+
+/// The Patches tab's sync status line: in-flight beats the last error
+/// beats the last-updated stamp beats nothing.
+fn refresh_patch_status(app: &AppWindow, st: &State) {
+    let lang = &st.config.language;
+    let (text, is_error) = if st.patch_updating {
+        (t!(lang, "patches-updating"), false)
+    } else if let Some(e) = &st.patch_update_error {
+        (t!(lang, "patches-update-failed", error = e.clone()), true)
+    } else if let Some(ts) = &st.patch_last_updated {
+        // tango-ng-only "last updated" stamp — no tango key; stays English.
+        (format!("Updated {}", ts.format("%H:%M")), false)
+    } else {
+        (String::new(), false)
+    };
+    app.set_patches_update_status(text.into());
+    app.set_patches_status_error(is_error);
+    app.set_patches_updating(st.patch_updating);
 }
 
 /// Recognise the direct link-code commands the user can type in place
@@ -1284,6 +1419,13 @@ fn main() -> anyhow::Result<()> {
         replay_detail_lines: Vec::new(),
         patches: patch::PatchMap::new(),
         patch_rows: Vec::new(),
+        patch_list_rows: Vec::new(),
+        patch_filter: String::new(),
+        patch_detail_name: None,
+        patch_detail_versions: Vec::new(),
+        patch_updating: false,
+        patch_update_error: None,
+        patch_last_updated: None,
         version_rows: Vec::new(),
         loaded: None,
         session: None,
@@ -1307,6 +1449,8 @@ fn main() -> anyhow::Result<()> {
     // can retrigger it.
     let stats_tx = tx.clone();
     let pvp_tx = tx.clone();
+    let patch_update_tx = tx.clone();
+    let autoupdate_tx = tx.clone();
     let spawn_scan: Rc<dyn Fn()> = Rc::new({
         let state = state.clone();
         let app_weak = app.as_weak();
@@ -1335,6 +1479,29 @@ fn main() -> anyhow::Result<()> {
         }
     });
     spawn_scan();
+
+    // Background patch-repo autoupdater (tango's patch::Autoupdater
+    // minus the Scanner plumbing): first sync immediately, then every
+    // 15 minutes; each result folds back through the same
+    // PatchUpdateDone event as the manual Update button (success →
+    // rescan). Skipped under --ui-shot — the walker's selections must
+    // not be reset by a mid-walk rescan, and the shot run shouldn't
+    // touch the network.
+    if state.borrow().config.enable_patch_autoupdate && ui_shot_dir.is_none() {
+        let url = state.borrow().config.patch_repo_url();
+        let root = state.borrow().config.patches_path();
+        let tx = autoupdate_tx;
+        log::info!("starting patch autoupdater (every {:?})", patch::AUTOUPDATE_INTERVAL);
+        tokio_runtime.handle().spawn(async move {
+            loop {
+                let result = patch::update(url.clone(), root.clone()).await.map_err(|e| e.to_string());
+                if tx.send(Event::PatchUpdateDone { result, background: true }).is_err() {
+                    break;
+                }
+                tokio::time::sleep(patch::AUTOUPDATE_INTERVAL).await;
+            }
+        });
+    }
 
     // Seed the settings widgets + theme from config.
     {
@@ -1666,6 +1833,62 @@ fn main() -> anyhow::Result<()> {
                 st.replay_filter_families.get(index as usize - 1).cloned()
             };
             apply_replay_filter(&app, &mut st, family.as_deref());
+        }
+    });
+
+    app.on_patch_list_selected({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |index| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Ok(index) = usize::try_from(index) else { return };
+            push_patch_detail(&app, &mut st, index);
+        }
+    });
+
+    app.on_patch_detail_version_selected({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |_index| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let st = state.borrow();
+            push_patch_supported_games(&app, &st);
+        }
+    });
+
+    app.on_patch_search_edited({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |text| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            st.patch_filter = text.trim().to_lowercase();
+            apply_patch_filter(&app, &mut st);
+        }
+    });
+
+    app.on_patch_update_clicked({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        let rt = tokio_runtime.handle().clone();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            // Defense in depth behind the button disabling itself.
+            if st.patch_updating {
+                return;
+            }
+            st.patch_updating = true;
+            st.patch_update_error = None;
+            refresh_patch_status(&app, &st);
+            let url = st.config.patch_repo_url();
+            let root = st.config.patches_path();
+            let tx = patch_update_tx.clone();
+            rt.spawn(async move {
+                let result = patch::update(url, root).await.map_err(|e| e.to_string());
+                let _ = tx.send(Event::PatchUpdateDone { result, background: false });
+            });
         }
     });
 
@@ -2216,6 +2439,7 @@ fn main() -> anyhow::Result<()> {
         let app_weak = app.as_weak();
         let rt = tokio_runtime.handle().clone();
         let end_session = end_session.clone();
+        let spawn_scan = spawn_scan.clone();
         move || {
             let Some(app) = app_weak.upgrade() else { return };
 
@@ -2323,6 +2547,40 @@ fn main() -> anyhow::Result<()> {
                                 .into(),
                             );
                             app.set_replay_detail(ModelRc::new(VecModel::from(lines)));
+                        }
+                    }
+                    Event::PatchUpdateDone { result, background } => {
+                        // Fold the sync result into the Patches tab
+                        // status, then rescan on success so the new /
+                        // updated patches appear everywhere (the Play
+                        // pickers included). spawn_scan re-borrows the
+                        // state RefCell — the borrow must drop first.
+                        let rescan = {
+                            let mut st = state.borrow_mut();
+                            if !background {
+                                st.patch_updating = false;
+                            }
+                            let rescan = match result {
+                                Ok(()) => {
+                                    st.patch_last_updated = Some(chrono::Local::now());
+                                    // A successful sync (either path)
+                                    // supersedes any earlier failure.
+                                    st.patch_update_error = None;
+                                    true
+                                }
+                                Err(e) => {
+                                    log::warn!("patch update failed: {e}");
+                                    if !background {
+                                        st.patch_update_error = Some(e);
+                                    }
+                                    false
+                                }
+                            };
+                            refresh_patch_status(&app, &st);
+                            rescan
+                        };
+                        if rescan {
+                            spawn_scan();
                         }
                     }
                     Event::Netplay(msg) => {
@@ -2495,6 +2753,16 @@ fn main() -> anyhow::Result<()> {
                         }
                     }
                     85 => snapshot(&app, &dir.join("ui-replays.png")),
+                    // Patches tab: list + detail (first patch, when
+                    // any are installed).
+                    87 => app.set_active_tab(2),
+                    89 => {
+                        if !state.borrow().patch_list_rows.is_empty() {
+                            app.set_selected_patch_item(0);
+                            app.invoke_patch_list_selected(0);
+                        }
+                    }
+                    93 => snapshot(&app, &dir.join("ui-patches.png")),
                     95 => app.set_active_tab(3),
                     105 => snapshot(&app, &dir.join("ui-settings.png")),
                     // Input section with A selected, so the shot shows

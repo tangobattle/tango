@@ -1,9 +1,12 @@
-//! BPS patch application + disk scanner, copied from `tango/src/patch.rs`
-//! and slimmed: no rom_overrides (save-view rendering only), no authors /
-//! readme / license parsing, and no HTTP repo sync yet — those come over
-//! with the Patches tab.
+//! BPS patch application + disk scanner + repo sync, copied from
+//! `tango/src/patch.rs` and slimmed: no rom_overrides (save-view
+//! rendering only) and no Scanner wrapper (tango-ng rescans via its
+//! event channel instead).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+
+use futures::StreamExt;
+use tokio::io::AsyncWriteExt;
 
 use crate::rom::GameRef;
 
@@ -16,16 +19,18 @@ struct Metadata {
 #[derive(serde::Deserialize, Debug)]
 struct PatchMetadata {
     pub title: String,
+    #[serde(default)]
+    pub authors: Vec<String>,
+    pub license: Option<String>,
+    pub source: Option<String>,
 }
 
 #[derive(serde::Deserialize, Debug, Default)]
 struct VersionMetadata {
-    #[allow(dead_code)] // used by netplay matchup compatibility later
     pub netplay_compatibility: String,
 }
 
 pub struct Version {
-    #[allow(dead_code)] // matchup compatibility, used when netplay lands
     pub netplay_compatibility: String,
     pub supported_games: HashSet<GameRef>,
     /// Per-game save templates the patch ships. Keyed by template name
@@ -35,14 +40,93 @@ pub struct Version {
 }
 
 pub struct Patch {
-    #[allow(dead_code)] // used when the Patches tab lands
+    #[allow(dead_code)] // used when the open-folder action lands
     pub path: std::path::PathBuf,
-    #[allow(dead_code)] // used when the Patches tab lands
     pub title: String,
+    /// Author display strings — parsed via `mailparse` and reduced to a
+    /// display name (or the bare address if no display name), like
+    /// tango's scanner.
+    pub authors: Vec<String>,
+    pub license: Option<String>,
+    pub source: Option<String>,
+    pub readme: Option<String>,
     pub versions: BTreeMap<semver::Version, std::sync::Arc<Version>>,
 }
 
 pub type PatchMap = BTreeMap<String, std::sync::Arc<Patch>>;
+
+/// The background autoupdater's cadence — same as tango's
+/// `patch::Autoupdater::INTERVAL`: fast enough to pick up new patches
+/// within the hour, slow enough not to hammer the repo.
+pub const AUTOUPDATE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+
+/// Fetch the patch repo's index.json and download any missing /
+/// updated files via tango_filesync (ported from `tango/src/patch.rs`).
+pub async fn update(url: String, root: std::path::PathBuf) -> anyhow::Result<()> {
+    std::fs::create_dir_all(&root)?;
+
+    let client = reqwest::Client::new();
+    let entries = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        Ok::<_, anyhow::Error>(
+            client
+                .get(format!("{}/index.json", url))
+                .header("User-Agent", "tango")
+                .send()
+                .await?
+                .json::<tango_filesync::Entries>()
+                .await?,
+        )
+    })
+    .await??;
+
+    tango_filesync::sync(
+        &root,
+        &entries,
+        {
+            let url = url.clone();
+            let root = root.clone();
+            // One shared client across all downloads — reqwest::Client is an
+            // Arc'd pool, so clones reuse connections + TLS sessions.
+            let client = client.clone();
+            move |path| {
+                let url = url.clone();
+                let root = root.clone();
+                let client = client.clone();
+                Box::pin(async move {
+                    let mut output_file = tokio::fs::File::create(&root.join(path)).await?;
+                    let mut stream = tokio::time::timeout(
+                        std::time::Duration::from_secs(30),
+                        client
+                            .get(format!(
+                                "{}/{}",
+                                url,
+                                path.components()
+                                    .map(|v| v.as_os_str().to_string_lossy())
+                                    .collect::<Vec<_>>()
+                                    .join("/")
+                            ))
+                            .header("User-Agent", "tango")
+                            .send(),
+                    )
+                    .await?
+                    .map_err(std::io::Error::other)?
+                    .bytes_stream();
+                    while let Some(chunk) =
+                        tokio::time::timeout(std::time::Duration::from_secs(30), stream.next()).await?
+                    {
+                        let chunk = chunk.map_err(std::io::Error::other)?;
+                        output_file.write_all(&chunk).await?;
+                    }
+                    log::info!("filesynced: {}", path.display());
+                    Ok(())
+                })
+            }
+        },
+        4,
+    )
+    .await?;
+    Ok(())
+}
 
 /// Walk `<patches>/<name>/info.toml` + `v<version>/` dirs and build the
 /// patch map. Version support is derived from which `CODE_rr.bps` files
@@ -85,6 +169,21 @@ pub fn scan(path: &std::path::Path) -> PatchMap {
                 continue;
             }
         };
+
+        // The first directory entry whose name is "README",
+        // case-insensitive (tango matches the bare name, no extension).
+        let readme = std::fs::read_dir(entry.path())
+            .ok()
+            .and_then(|mut it| {
+                it.find(|p| {
+                    p.as_ref()
+                        .map(|e| e.file_name().eq_ignore_ascii_case("readme"))
+                        .unwrap_or(false)
+                })
+                .and_then(|r| r.ok())
+            })
+            .and_then(|e| std::fs::read(e.path()).ok())
+            .map(|buf| String::from_utf8_lossy(&buf).to_string());
 
         let mut versions = BTreeMap::new();
         for (v, ver) in info.versions {
@@ -170,11 +269,36 @@ pub fn scan(path: &std::path::Path) -> PatchMap {
             );
         }
 
+        // Reduce "Display Name <addr>" mailbox strings to the display
+        // name (or the address); unparseable strings pass through.
+        let authors = info
+            .patch
+            .authors
+            .into_iter()
+            .map(|s| match mailparse::addrparse(&s) {
+                Ok(addrs) => addrs
+                    .iter()
+                    .filter_map(|addr| match addr {
+                        mailparse::MailAddr::Single(info) => {
+                            Some(info.display_name.clone().unwrap_or_else(|| info.addr.clone()))
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                Err(_) => s,
+            })
+            .collect();
+
         patches.insert(
             name,
             std::sync::Arc::new(Patch {
                 path: entry.path(),
                 title: info.patch.title,
+                authors,
+                license: info.patch.license,
+                source: info.patch.source,
+                readme,
                 versions,
             }),
         );

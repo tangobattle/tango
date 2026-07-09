@@ -106,6 +106,15 @@ export global I18n {
     in-out property <string> replays-opponent-placeholder: "Search opponents…";
     in-out property <string> replays-select-prompt: "Select a replay to view its details";
     in-out property <string> replays-watch: "Watch";
+    // patches tab
+    in-out property <string> patches-search-placeholder: "Search patches…";
+    in-out property <string> patches-select-prompt: "Select a patch.";
+    in-out property <string> patches-update: "Update";
+    in-out property <string> patches-details-authors: "Authors:";
+    in-out property <string> patches-details-license: "License:";
+    in-out property <string> patches-details-source: "Source:";
+    in-out property <string> patches-details-games: "Supported games:";
+    in-out property <string> patches-readme-placeholder: "This patch has no README.";
     // settings
     in-out property <string> settings-general: "General";
     in-out property <string> settings-graphics: "Graphics";
@@ -614,6 +623,12 @@ export struct ReplayRow {
     line2: string,
 }
 
+// One patches-list row's display strings.
+export struct PatchRow {
+    title: string,
+    authors: string,
+}
+
 // ---- save viewer (read-only) ----
 // Model shapes are baked in Rust (src/loaded.rs) from tango's
 // save_view data; the layouts below are ports of
@@ -814,6 +829,26 @@ export component AppWindow inherits Window {
     in-out property <int> selected-replay-filter: 0;
     in property <string> replay-title: "";
     in property <[string]> replay-detail: [];
+    // ---- patches tab ----
+    // The (filtered) patch list; selection drives the detail pane's
+    // patch-* properties, all pushed from Rust.
+    in property <[PatchRow]> patch-list: [];
+    in-out property <int> selected-patch-item: -1;
+    in property <string> patch-title: "";
+    in property <string> patch-authors: "";
+    in property <string> patch-license: "";
+    in property <string> patch-source: "";
+    in property <string> patch-supported-games: "—";
+    in property <string> patch-readme: "";
+    // Detail version picker rows ("v1.2.3"), newest first.
+    in property <[string]> patch-versions: [];
+    in-out property <int> selected-patch-version: -1;
+    // Manual repo sync in flight (the Update button disables itself).
+    in property <bool> patches-updating: false;
+    // Status beside the Update button: "Updating…" / "Update failed: …"
+    // / the last-updated stamp.
+    in property <string> patches-update-status: "";
+    in property <bool> patches-status-error: false;
     in property <image> frame;
     in property <bool> in-session: false;
     in property <string> status: "";
@@ -911,6 +946,11 @@ export component AppWindow inherits Window {
     callback replay-selected(int);
     callback replay-filter-selected(int);
     callback replay-opponent-edited(string);
+    // patches tab
+    callback patch-list-selected(int);
+    callback patch-detail-version-selected(int);
+    callback patch-search-edited(string);
+    callback patch-update-clicked();
     callback play-clicked();
     callback fight-clicked();
     callback watch-clicked();
@@ -1665,9 +1705,223 @@ export component AppWindow inherits Window {
                 width: 100%;
                 height: 100%;
                 padding: 8px;
-                PanePrompt {
-                    // no tango key (tango-ng-only placeholder) — stays English
-                    message: "Patches coming soon";
+                spacing: 8px;
+
+                // Filter strip: name/title search on the left; sync
+                // status + Update button on the right.
+                Pane {
+                    HorizontalLayout {
+                        padding: 12px;
+                        spacing: 8px;
+                        ChunkyInput {
+                            width: 260px;
+                            placeholder: I18n.patches-search-placeholder;
+                            edited(t) => { root.patch-search-edited(t); }
+                        }
+                        // The status takes all the slack and right-
+                        // aligns beside the button; a long error
+                        // elides instead of pushing the button off
+                        // the pane.
+                        Text {
+                            text: root.patches-update-status;
+                            font-size: 11px;
+                            color: root.patches-status-error ? Theme.danger : Theme.text-muted;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                        PrimaryButton {
+                            glyph: Glyphs.refresh-cw;
+                            label: I18n.patches-update;
+                            enabled: !root.patches-updating;
+                            clicked => { root.patch-update-clicked(); }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    vertical-stretch: 1;
+
+                    // patch list (fixed 360, like the replay list)
+                    Pane {
+                        width: 360px;
+                        if root.patch-list.length == 0 : Text {
+                            width: 100%;
+                            height: 100%;
+                            // no tango key ("no patches" state) — stays English
+                            text: "No patches found";
+                            color: Theme.text-muted;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        if root.patch-list.length > 0 : ListView {
+                            x: 4px;
+                            y: 8px;
+                            width: parent.width - 8px;
+                            height: parent.height - 16px;
+                            for entry[i] in root.patch-list : Rectangle {
+                                height: 48px;
+                                border-radius: 4px;
+                                background: root.selected-patch-item == i
+                                    ? @linear-gradient(180deg, #ffd23d 0%, #e6b520 100%)
+                                    : (plta.has-hover
+                                        ? Theme.hover
+                                        : (Math.mod(i, 2) == 0 ? transparent : Theme.row-alt));
+                                plta := TouchArea {
+                                    clicked => {
+                                        root.selected-patch-item = i;
+                                        root.patch-list-selected(i);
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-left: 10px;
+                                    padding-right: 10px;
+                                    padding-top: 6px;
+                                    padding-bottom: 6px;
+                                    Text {
+                                        text: entry.title;
+                                        font-size: 13px;
+                                        color: root.selected-patch-item == i ? Theme.ink : Theme.text;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: entry.authors;
+                                        font-size: 11px;
+                                        color: root.selected-patch-item == i ? Theme.ink : Theme.text-muted;
+                                        overflow: elide;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // detail
+                    if root.selected-patch-item < 0 : PanePrompt {
+                        horizontal-stretch: 1;
+                        message: I18n.patches-select-prompt;
+                    }
+                    if root.selected-patch-item >= 0 : Pane {
+                        horizontal-stretch: 1;
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 8px;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text {
+                                    text: root.patch-title;
+                                    font-size: 18px;
+                                    color: Theme.text;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                }
+                                Picker {
+                                    width: 140px;
+                                    model: root.patch-versions;
+                                    placeholder: "—";
+                                    current <=> root.selected-patch-version;
+                                    selected(i) => { root.patch-detail-version-selected(i); }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 3px;
+                                if root.patch-authors != "" : HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: I18n.patches-details-authors;
+                                        font-size: 11px;
+                                        color: Theme.text-muted;
+                                        vertical-alignment: center;
+                                    }
+                                    Text {
+                                        text: root.patch-authors;
+                                        font-size: 11px;
+                                        color: Theme.text;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                                if root.patch-license != "" : HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: I18n.patches-details-license;
+                                        font-size: 11px;
+                                        color: Theme.text-muted;
+                                        vertical-alignment: center;
+                                    }
+                                    Text {
+                                        text: root.patch-license;
+                                        font-size: 11px;
+                                        color: Theme.text;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                                // Plain text for now — TODO: open the
+                                // source URL in the browser on click.
+                                if root.patch-source != "" : HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: I18n.patches-details-source;
+                                        font-size: 11px;
+                                        color: Theme.text-muted;
+                                        vertical-alignment: center;
+                                    }
+                                    Text {
+                                        text: root.patch-source;
+                                        font-size: 11px;
+                                        color: Theme.text;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                                // Supported games for the picked version.
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: I18n.patches-details-games;
+                                        font-size: 11px;
+                                        color: Theme.text-muted;
+                                        vertical-alignment: center;
+                                    }
+                                    Text {
+                                        text: root.patch-supported-games;
+                                        font-size: 11px;
+                                        color: Theme.text;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                            }
+                            // README as scrollable plain text — TODO:
+                            // markdown rendering (slint has no markdown
+                            // widget; tango parses it via iced's).
+                            if root.patch-readme == "" : Text {
+                                text: I18n.patches-readme-placeholder;
+                                font-size: 11px;
+                                color: Theme.text-muted;
+                            }
+                            if root.patch-readme != "" : Flickable {
+                                vertical-stretch: 1;
+                                viewport-height: readme-text.height;
+                                readme-text := Text {
+                                    x: 0;
+                                    y: 0;
+                                    width: parent.width;
+                                    height: self.preferred-height;
+                                    text: root.patch-readme;
+                                    font-size: 13px;
+                                    color: Theme.text;
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
