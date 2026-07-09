@@ -1233,6 +1233,7 @@ export component AppWindow inherits Window {
     callback replay-selected(int);
     callback replay-filter-selected(int);
     callback replay-opponent-edited(string);
+    callback replay-open-folder();
     // patches tab
     callback patch-list-selected(int);
     callback patch-detail-version-selected(int);
@@ -2423,6 +2424,10 @@ export component AppWindow inherits Window {
                                     vertical-alignment: center;
                                     overflow: elide;
                                     horizontal-stretch: 1;
+                                }
+                                NeutralTextButton {
+                                    label: I18n.save-open-folder;
+                                    clicked => { root.replay-open-folder(); }
                                 }
                                 PrimaryButton {
                                     glyph: Glyphs.play;

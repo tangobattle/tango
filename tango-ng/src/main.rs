@@ -2196,6 +2196,16 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    app.on_replay_open_folder({
+        let state = state.clone();
+        move || {
+            let st = state.borrow();
+            if let Some(dir) = st.replay_detail_path.as_ref().and_then(|p| p.parent()) {
+                open_path(dir);
+            }
+        }
+    });
+
     // ---- patches tab polish (favorites, open folder, source link) ----
 
     app.on_patch_favorite_toggle({
