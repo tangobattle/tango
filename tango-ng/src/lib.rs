@@ -3611,6 +3611,28 @@ pub fn run() -> anyhow::Result<()> {
         }
     });
 
+    app.on_scrub_hover({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |frac| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let st = state.borrow();
+            let Some(ActiveSession::Replay(session)) = &st.session else {
+                return;
+            };
+            let target = (frac.clamp(0.0, 1.0) * session.total_ticks() as f32) as u32;
+            match session.snapshot_rgba(target) {
+                Some((w, h, rgba)) => {
+                    let mut px = SharedPixelBuffer::<Rgba8Pixel>::new(w, h);
+                    px.make_mut_bytes().copy_from_slice(&rgba);
+                    app.set_replay_hover_thumb(Image::from_rgba8(px));
+                    app.set_replay_hover_has_thumb(true);
+                }
+                None => app.set_replay_hover_has_thumb(false),
+            }
+        }
+    });
+
     app.on_scrub_started({
         let state = state.clone();
         move || {

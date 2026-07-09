@@ -1770,6 +1770,9 @@ export component AppWindow inherits Window {
     in property <[InputChip]> input-chips: [];
     in property <bool> input-capturing: false;
     in property <bool> replay-paused: false;
+    // Scrubber hover thumbnail (nearest captured keyframe).
+    in property <image> replay-hover-thumb;
+    in property <bool> replay-hover-has-thumb: false;
     in property <string> replay-progress: "";
     in property <float> replay-scrub-pos: 0.0;
     in property <float> replay-prefetch: 0.0;
@@ -1826,6 +1829,8 @@ export component AppWindow inherits Window {
     callback toggle-pause();
     callback speed-selected(int);
     callback scrub-started();
+    // Pointer hovering the scrubber at this fraction (thumbnail fetch).
+    callback scrub-hover(float);
     callback scrub-moved(float);
     callback scrub-committed(float);
     callback stop-clicked();
@@ -3689,18 +3694,41 @@ export component AppWindow inherits Window {
                         border-width: 1px;
                         border-color: #00000040;
                     }
+                    // Hover thumbnail: the nearest keyframe to the
+                    // hovered position, floated above the bar.
+                    if sta.has-hover && !sta.pressed && root.replay-hover-has-thumb : Rectangle {
+                        x: max(0px, min(parent.width - self.width,
+                            sta.mouse-x - self.width / 2));
+                        y: -self.height - 10px;
+                        width: 168px;
+                        height: 112px;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: #ffffff33;
+                        clip: true;
+                        Image {
+                            width: 100%;
+                            height: 100%;
+                            source: root.replay-hover-thumb;
+                            image-fit: fill;
+                            image-rendering: pixelated;
+                        }
+                    }
                     sta := TouchArea {
+                        moved => {
+                            if (!self.pressed) {
+                                root.scrub-hover(max(0.0, min(1.0, self.mouse-x / scrub.width)));
+                            }
+                            if (self.pressed) {
+                                root.scrub-moved(max(0.0, min(1.0, self.mouse-x / scrub.width)));
+                            }
+                        }
                         pointer-event(event) => {
                             if (event.kind == PointerEventKind.down) {
                                 root.scrub-started();
                                 root.scrub-moved(max(0.0, min(1.0, self.mouse-x / scrub.width)));
                             } else if (event.kind == PointerEventKind.up) {
                                 root.scrub-committed(max(0.0, min(1.0, self.mouse-x / scrub.width)));
-                            }
-                        }
-                        moved => {
-                            if (self.pressed) {
-                                root.scrub-moved(max(0.0, min(1.0, self.mouse-x / scrub.width)));
                             }
                         }
                     }

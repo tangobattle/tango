@@ -396,6 +396,19 @@ impl ReplaySession {
         self.blit_snapshot(&snap)
     }
 
+    /// The nearest captured frame to `target` as RGBA, for the
+    /// scrubber's hover thumbnail. `None` before anything is captured.
+    pub fn snapshot_rgba(&self, target: u32) -> Option<(u32, u32, Vec<u8>)> {
+        let snap = self.nearest_snapshot(target)?;
+        let expected = SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * 2;
+        if snap.framebuffer.len() != expected {
+            return None;
+        }
+        let mut rgba = vec![0u8; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * 4];
+        tango_dataview::rom::bgr555_to_rgba8(&snap.framebuffer, &mut rgba);
+        Some((SCREEN_WIDTH, SCREEN_HEIGHT, rgba))
+    }
+
     fn nearest_snapshot(&self, target: u32) -> Option<Arc<tango_pvp::stepper::ReplaySnapshot>> {
         [self.snapshots.nearest(target), self.rewind.nearest(target)]
             .into_iter()
