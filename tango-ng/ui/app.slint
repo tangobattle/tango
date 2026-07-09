@@ -1705,6 +1705,9 @@ export component AppWindow inherits Window {
     in-out property <int> session-drawer: 0;
     // In-session quick-settings modal (the corner gear).
     in-out property <bool> session-settings-open: false;
+    // Floating controls fade out after ~2.5 s of pointer idle
+    // (main.rs owns the clock; overlays pin them visible).
+    in property <bool> session-controls-visible: true;
     in property <bool> pvp-opponent-blind: false;
     // ---- navicust section ----
     // ---- save management (save_manage.rs) ----
@@ -1830,6 +1833,8 @@ export component AppWindow inherits Window {
     // PvP in-session HUD.
     callback pvp-frame-delay-changed(float);
     callback session-drawer-changed(int);
+    // Any pointer motion over the session view — feeds the idle timer.
+    callback session-pointer-moved();
     // The confirm modal's / reconnect overlay's Disconnect: tear the
     // session down for real (stop-clicked only *requests*, and gets
     // gated behind the modal while a match is live).
@@ -3592,12 +3597,23 @@ export component AppWindow inherits Window {
             }
         }
 
+        // Pointer-idle tracker: sits beneath every floating control, so
+        // their own hits still land while any motion over the view
+        // refreshes the idle clock.
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            moved => { root.session-pointer-moved(); }
+            clicked => { root.session-pointer-moved(); }
+        }
+
         // Replay transport (floating_controls stand-in): play/pause,
         // tick readout, scrubber with prefetch fill + round marks,
         // speed picker.
         if root.session-kind == 1 : TechPlate {
             r: 10px;
             x: (parent.width - self.width) / 2;
+            visible: root.session-controls-visible;
             y: parent.height - self.height - 12px;
             width: min(parent.width - 24px, 680px);
             height: 56px;
@@ -3713,6 +3729,7 @@ export component AppWindow inherits Window {
         if root.session-kind == 2 : TechPlate {
             r: 10px;
             x: (parent.width - self.width) / 2;
+            visible: root.session-controls-visible;
             y: parent.height - self.height - 12px;
             width: min(parent.width - 24px, 680px);
             height: 48px;
@@ -3764,6 +3781,7 @@ export component AppWindow inherits Window {
             r: 10px;
             x: parent.width - self.width - 52px;
             y: 12px;
+            visible: root.session-controls-visible;
             background: gta.has-hover ? #4caf5033 : #00000080;
             border-width: 1px;
             border-color: #ffffff1a;
@@ -3848,6 +3866,7 @@ export component AppWindow inherits Window {
             r: 10px;
             x: parent.width - self.width - 12px;
             y: 12px;
+            visible: root.session-controls-visible;
             background: xta.has-hover ? #ff525233 : #00000080;
             border-width: 1px;
             border-color: xta.has-hover ? #ff5252aa : #ffffff1a;

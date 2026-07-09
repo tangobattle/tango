@@ -305,6 +305,9 @@ struct State {
     /// the timer re-pushes on tab switches; the session drawers switch
     /// explicitly.
     save_view_source: i32,
+    /// Last pointer motion over the session view — the floating
+    /// controls hide ~2.5 s after it goes stale.
+    session_last_pointer: std::time::Instant,
     /// The live match's setup views, baked at PvpBuilt from the
     /// committed save data (remote stays None when they blinded).
     pvp_local_loaded: Option<loaded::Loaded>,
@@ -2065,6 +2068,7 @@ pub fn run() -> anyhow::Result<()> {
         save_view_source: 0,
         pvp_local_loaded: None,
         pvp_remote_loaded: None,
+        session_last_pointer: std::time::Instant::now(),
         patches: patch::PatchMap::new(),
         patch_rows: Vec::new(),
         patch_list_rows: Vec::new(),
@@ -3713,6 +3717,13 @@ pub fn run() -> anyhow::Result<()> {
     app.on_stop_clicked(request_end_session.clone());
     app.on_exit_confirmed(end_session.clone());
 
+    app.on_session_pointer_moved({
+        let state = state.clone();
+        move || {
+            state.borrow_mut().session_last_pointer = std::time::Instant::now();
+        }
+    });
+
     app.on_session_drawer_changed({
         let state = state.clone();
         let app_weak = app.as_weak();
@@ -4391,6 +4402,16 @@ pub fn run() -> anyhow::Result<()> {
                         }
                         None => app.set_frame(Image::from_rgba8(pixels)),
                     }
+                }
+                let pinned = app.get_session_settings_open()
+                    || app.get_session_confirm_exit()
+                    || app.get_pvp_reconnecting()
+                    || app.get_session_drawer() != 0
+                    || matches!(session, ActiveSession::Replay(r) if r.is_paused());
+                let controls_visible =
+                    pinned || st.session_last_pointer.elapsed() < std::time::Duration::from_millis(2500);
+                if controls_visible != app.get_session_controls_visible() {
+                    app.set_session_controls_visible(controls_visible);
                 }
                 if let ActiveSession::Pvp(p) = session {
                     // Self-close once the match has wound down (completion +
