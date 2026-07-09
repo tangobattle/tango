@@ -141,6 +141,14 @@ fn apply_i18n(app: &AppWindow, config: &config::Config) {
     i18n.set_settings_data_folder(t!(lang, "settings-data-folder").into());
     i18n.set_settings_volume(t!(lang, "settings-volume").into());
     i18n.set_settings_fractional(t!(lang, "settings-fractional-scaling").into());
+    // input settings (the bezel caption + chip labels are per-key and
+    // per-binding — refresh_input_ui pushes those, re-resolved on the
+    // next tick after a language change)
+    i18n.set_input_select_hint(t!(lang, "settings-input-select-hint").into());
+    i18n.set_input_press_key(t!(lang, "settings-input-press-key").into());
+    i18n.set_input_add(t!(lang, "settings-input-add").into());
+    i18n.set_input_reset(t!(lang, "settings-input-reset").into());
+    i18n.set_input_speed_up(t!(lang, "input-key-speed-up").into());
     // about
     app.set_app_version(t!(lang, "updater-current-version", version = format!("v{}", env!("CARGO_PKG_VERSION"))).into());
 }
@@ -178,7 +186,24 @@ struct State {
     /// by [`refresh_loaded`]; `None` while nothing is selected.
     loaded: Option<loaded::Loaded>,
     session: Option<ActiveSession>,
-    joyflags: u32,
+    /// Currently-held physical inputs (keyboard via the FocusScopes'
+    /// key events, gamepad via the timer's gilrs poll). Combined with
+    /// `config.input_mapping` into session joyflags by
+    /// [`sync_session_input`].
+    held: input::Held,
+    /// Last speed-up (fast-forward) state pushed to the session —
+    /// [`sync_session_input`] only touches the session speed on edges.
+    speed_up: bool,
+    /// Input settings pane: the mapped key whose bindings the LCD
+    /// bezel is showing (`None` = the select hint).
+    input_selected: Option<input::MappedKey>,
+    /// Input settings pane: capture armed for this key — the next
+    /// keyboard press / gamepad button / axis crossing binds to it.
+    input_capture: Option<input::MappedKey>,
+    /// The input pane's last-pushed property values — diffed by
+    /// [`refresh_input_ui`] so idle ticks don't invalidate Slint
+    /// properties (same pattern as `lobby_ui`).
+    input_ui: InputUiSnapshot,
     /// Replay speed selected in the transport (fast-forward restores it).
     replay_speed: f32,
     /// Whether playback was running when a scrub drag started (the drag
@@ -992,6 +1017,152 @@ fn refresh_lobby_ui(app: &AppWindow, st: &mut State) {
     st.lobby_ui = snap;
 }
 
+/// Recompute the joyflags from the configured mapping + held inputs
+/// and push them to the active session; apply speed-up (fast-forward)
+/// on its edges. The single input funnel — both the key-event
+/// callback and the timer's gamepad poll end here.
+fn sync_session_input(st: &mut State) {
+    let joyflags = st.config.input_mapping.to_joyflags(&st.held);
+    match &st.session {
+        // PvP takes live input exactly like singleplayer — the
+        // netcode reads the joyflag atomic on the primary trap.
+        Some(ActiveSession::SinglePlayer(session)) => session.set_joyflags(joyflags),
+        Some(ActiveSession::Pvp(session)) => session.set_joyflags(joyflags),
+        _ => {}
+    }
+    let speed_up = st.config.input_mapping.speed_up_held(&st.held);
+    if speed_up != st.speed_up {
+        st.speed_up = speed_up;
+        match &st.session {
+            Some(ActiveSession::SinglePlayer(session)) => {
+                session.set_speed(if speed_up { 3.0 } else { 1.0 });
+            }
+            Some(ActiveSession::Replay(session)) => {
+                session.set_speed(if speed_up { 4.0 } else { st.replay_speed });
+            }
+            // PvP is throttled by the netcode's clock-sync — no
+            // fast-forward.
+            Some(ActiveSession::Pvp(_)) | None => {}
+        }
+    }
+}
+
+/// Localized display name for a mapped key — the bezel caption under
+/// the input pane's LCD.
+fn mapped_key_label(lang: &unic_langid::LanguageIdentifier, k: input::MappedKey) -> String {
+    match k {
+        input::MappedKey::Up => t!(lang, "input-key-up"),
+        input::MappedKey::Down => t!(lang, "input-key-down"),
+        input::MappedKey::Left => t!(lang, "input-key-left"),
+        input::MappedKey::Right => t!(lang, "input-key-right"),
+        input::MappedKey::A => t!(lang, "input-key-a"),
+        input::MappedKey::B => t!(lang, "input-key-b"),
+        input::MappedKey::L => t!(lang, "input-key-l"),
+        input::MappedKey::R => t!(lang, "input-key-r"),
+        input::MappedKey::Start => t!(lang, "input-key-start"),
+        input::MappedKey::Select => t!(lang, "input-key-select"),
+        input::MappedKey::SpeedUp => t!(lang, "input-key-speed-up"),
+    }
+}
+
+/// Everything the Input settings pane renders. Computed fresh each
+/// tick by [`compute_input_snapshot`] and diffed against the previous
+/// push in [`refresh_input_ui`].
+#[derive(Clone, PartialEq)]
+struct InputUiSnapshot {
+    /// Index into `input::MappedKey::ALL`; -1 = nothing selected.
+    selected: i32,
+    caption: String,
+    capturing: bool,
+    /// Per-key "a binding is held right now", parallel to `ALL`.
+    lit: Vec<bool>,
+    /// The selected key's bindings: (chip glyph, label, held).
+    chips: Vec<(SharedString, SharedString, bool)>,
+}
+
+impl Default for InputUiSnapshot {
+    /// Matches the `.slint` property defaults, so the first diff pass
+    /// pushes only what differs.
+    fn default() -> Self {
+        Self {
+            selected: -1,
+            caption: String::new(),
+            capturing: false,
+            lit: Vec::new(),
+            chips: Vec::new(),
+        }
+    }
+}
+
+fn compute_input_snapshot(st: &State) -> InputUiSnapshot {
+    let lang = &st.config.language;
+    let mapping = &st.config.input_mapping;
+    let lit = input::MappedKey::ALL
+        .iter()
+        .map(|&k| mapping.slot(k).iter().any(|b| st.held.is_active(b)))
+        .collect();
+    let (selected, caption, chips) = match st.input_selected {
+        Some(k) => {
+            let chips = mapping
+                .slot(k)
+                .iter()
+                .map(|b| {
+                    let (kind, label) = input::describe(lang, b);
+                    let glyph = match kind {
+                        // Lucide keyboard / gamepad-2 — same
+                        // codepoints as the Glyphs global.
+                        input::BindingKind::Keyboard => "\u{e284}",
+                        input::BindingKind::Gamepad => "\u{e0df}",
+                    };
+                    (glyph.into(), label.into(), st.held.is_active(b))
+                })
+                .collect();
+            (k.index() as i32, mapped_key_label(lang, k), chips)
+        }
+        None => (-1, String::new(), Vec::new()),
+    };
+    InputUiSnapshot {
+        selected,
+        caption,
+        capturing: st.input_capture.is_some(),
+        lit,
+        chips,
+    }
+}
+
+/// Refresh the Input settings pane: push only the properties whose
+/// values changed since the last push. Runs every tick (the live
+/// key-light feedback) — an idle tick pushes nothing.
+fn refresh_input_ui(app: &AppWindow, st: &mut State) {
+    let snap = compute_input_snapshot(st);
+    let prev = &st.input_ui;
+    if snap.selected != prev.selected {
+        app.set_input_selected(snap.selected);
+    }
+    if snap.caption != prev.caption {
+        app.set_input_selected_label(snap.caption.as_str().into());
+    }
+    if snap.capturing != prev.capturing {
+        app.set_input_capturing(snap.capturing);
+    }
+    if snap.lit != prev.lit {
+        app.set_input_lit(ModelRc::new(VecModel::from(snap.lit.clone())));
+    }
+    if snap.chips != prev.chips {
+        app.set_input_chips(ModelRc::new(VecModel::from(
+            snap.chips
+                .iter()
+                .map(|(glyph, label, lit)| InputChip {
+                    glyph: glyph.clone(),
+                    label: label.clone(),
+                    lit: *lit,
+                })
+                .collect::<Vec<_>>(),
+        )));
+    }
+    st.input_ui = snap;
+}
+
 /// `MatchHandoffReady`: drain the lobby state into a `PreMatchData`,
 /// resolve both sides' ROMs, and kick off the async PvP build on the
 /// runtime — its result lands back in the event loop as
@@ -1116,7 +1287,11 @@ fn main() -> anyhow::Result<()> {
         version_rows: Vec::new(),
         loaded: None,
         session: None,
-        joyflags: 0,
+        held: input::Held::default(),
+        speed_up: false,
+        input_selected: None,
+        input_capture: None,
+        input_ui: InputUiSnapshot::default(),
         replay_speed: 1.0,
         scrub_was_playing: false,
         scrub_forced: false,
@@ -1536,7 +1711,11 @@ fn main() -> anyhow::Result<()> {
             match session::SinglePlayerSession::new(&rom, &save.path, &st.audio_binder) {
                 Ok(session) => {
                     st.session = Some(ActiveSession::SinglePlayer(session));
-                    st.joyflags = 0;
+                    // Key releases outside a focused FocusScope are
+                    // never delivered — start from a clean keyboard
+                    // state (gamepad state is polled and stays valid).
+                    st.held.clear_keys();
+                    st.speed_up = false;
                     app.set_session_kind(0);
                     app.set_in_session(true);
                 }
@@ -1864,7 +2043,8 @@ fn main() -> anyhow::Result<()> {
                 p.request_close();
             }
             st.session = None;
-            st.joyflags = 0;
+            st.held.clear_keys();
+            st.speed_up = false;
             app.set_in_session(false);
             app.set_frame(Image::default());
         }
@@ -1872,73 +2052,164 @@ fn main() -> anyhow::Result<()> {
 
     app.on_stop_clicked(end_session.clone());
 
+    // Key events arrive from two FocusScopes that never coexist: the
+    // session view's (in-session) and the Input settings pane's (which
+    // feeds the capture flow + the live key-lights — no session can be
+    // active while settings are visible).
     app.on_key_event({
         let state = state.clone();
         let app_weak = app.as_weak();
         let end_session = end_session.clone();
         move |text, pressed| {
+            let Some(app) = app_weak.upgrade() else { return };
             let mut st = state.borrow_mut();
-            match input::classify(text.as_str()) {
-                Some(input::KeyAction::Joyflag(flag)) => {
-                    // PvP takes live input exactly like singleplayer — the
-                    // netcode reads the joyflag atomic on the primary trap.
-                    if matches!(
-                        &st.session,
-                        Some(ActiveSession::SinglePlayer(_) | ActiveSession::Pvp(_))
-                    ) {
-                        if pressed {
-                            st.joyflags |= flag;
-                        } else {
-                            st.joyflags &= !flag;
-                        }
-                        match &st.session {
-                            Some(ActiveSession::SinglePlayer(session)) => session.set_joyflags(st.joyflags),
-                            Some(ActiveSession::Pvp(session)) => session.set_joyflags(st.joyflags),
-                            _ => {}
-                        }
-                    } else if let Some(ActiveSession::Replay(session)) = &st.session {
-                        // Replays take no input; space doubles as pause toggle
-                        // (and play-at-end = rewind to the start).
-                        if flag == mgba::input::keys::SELECT && pressed {
-                            let paused = if session.is_complete() && session.is_paused() {
-                                session.seek_to(0, true);
-                                false
-                            } else {
-                                let paused = !session.is_paused();
-                                session.set_paused(paused);
-                                paused
-                            };
-                            if let Some(app) = app_weak.upgrade() {
-                                app.set_replay_paused(paused);
-                            }
-                        }
-                    }
+            let Some(c) = text.as_str().chars().next() else { return };
+            // Escape is not bindable: it cancels an in-flight binding
+            // capture, else ends the session (both hardcoded).
+            if c == char::from(slint::platform::Key::Escape) {
+                if !pressed {
+                    return;
                 }
-                Some(input::KeyAction::FastForward) => match &st.session {
-                    Some(ActiveSession::SinglePlayer(session)) => {
-                        session.set_speed(if pressed { 3.0 } else { 1.0 });
-                    }
-                    Some(ActiveSession::Replay(session)) => {
-                        let speed = if pressed { 4.0 } else { st.replay_speed };
-                        session.set_speed(speed);
-                    }
-                    // PvP is throttled by the netcode's clock-sync — no
-                    // fast-forward.
-                    Some(ActiveSession::Pvp(_)) | None => {}
-                },
-                Some(input::KeyAction::EndSession) => {
-                    if pressed {
-                        drop(st);
-                        end_session();
-                    }
+                if st.input_capture.take().is_some() {
+                    refresh_input_ui(&app, &mut st);
+                } else if st.session.is_some() {
+                    drop(st);
+                    end_session();
                 }
-                None => {}
+                return;
             }
+            let Some(name) = input::key_name(c) else { return };
+            let was_held = st.held.is_key_held(&name);
+            st.held.set_key(&name, pressed);
+            // Capture armed: the next fresh press binds instead of
+            // reaching the (nonexistent) session.
+            if let Some(k) = st.input_capture {
+                if pressed && !was_held {
+                    st.input_capture = None;
+                    let binding = input::Binding::Key(name);
+                    let slot = st.config.input_mapping.slot_mut(k);
+                    if !slot.contains(&binding) {
+                        slot.push(binding);
+                    }
+                    st.config.save();
+                    refresh_input_ui(&app, &mut st);
+                }
+                return;
+            }
+            // Replays take no joyflags; a fresh press of any
+            // Select-bound key doubles as pause toggle (and
+            // play-at-end = rewind to the start). Keyboard-only —
+            // gamepad stays joyflags + speed-up.
+            if let Some(ActiveSession::Replay(session)) = &st.session {
+                let is_select = st
+                    .config
+                    .input_mapping
+                    .select
+                    .iter()
+                    .any(|b| matches!(b, input::Binding::Key(n) if *n == name));
+                if is_select && pressed && !was_held {
+                    let paused = if session.is_complete() && session.is_paused() {
+                        session.seek_to(0, true);
+                        false
+                    } else {
+                        let paused = !session.is_paused();
+                        session.set_paused(paused);
+                        paused
+                    };
+                    app.set_replay_paused(paused);
+                }
+            }
+            sync_session_input(&mut st);
         }
     });
 
-    // Frame pump + event fold, ~60 Hz. Cheap when idle: a try_recv and a
-    // dirty-flag check.
+    // Input settings pane: key selection, chip removal, the capture
+    // flow (its keyboard side lands in on_key_event above; the
+    // gamepad side in the timer's gilrs poll below), reset. Every
+    // mapping change persists immediately.
+    app.on_input_key_selected({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |idx| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            st.input_selected = input::MappedKey::ALL.get(idx as usize).copied();
+            // Switching keys mid-capture doesn't retarget it — drop it.
+            st.input_capture = None;
+            refresh_input_ui(&app, &mut st);
+        }
+    });
+
+    app.on_input_binding_remove({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |idx| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Some(k) = st.input_selected else { return };
+            let slot = st.config.input_mapping.slot_mut(k);
+            if (idx as usize) < slot.len() {
+                slot.remove(idx as usize);
+                st.config.save();
+            }
+            refresh_input_ui(&app, &mut st);
+        }
+    });
+
+    app.on_input_capture_start({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            st.input_capture = st.input_selected;
+            refresh_input_ui(&app, &mut st);
+        }
+    });
+
+    app.on_input_capture_cancel({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            st.input_capture = None;
+            refresh_input_ui(&app, &mut st);
+        }
+    });
+
+    app.on_input_reset({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move || {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            st.config.input_mapping = input::Mapping::default();
+            st.input_capture = None;
+            st.config.save();
+            refresh_input_ui(&app, &mut st);
+        }
+    });
+
+    // Gamepad input. gilrs stays on the UI thread (its platform
+    // backends aren't Send) — created here, polled by the frame timer
+    // below. No backend is non-fatal: keyboard input still works, the
+    // Input pane just never sees gamepad events.
+    let mut gilrs = match gilrs::Gilrs::new() {
+        Ok(g) => {
+            for (_id, gamepad) in g.gamepads() {
+                log::info!("gamepad connected: {}", gamepad.name());
+            }
+            Some(g)
+        }
+        Err(e) => {
+            log::warn!("gamepad support unavailable: {e}");
+            None
+        }
+    };
+
+    // Frame pump + event fold, ~60 Hz. Cheap when idle: a gilrs poll,
+    // a try_recv and a dirty-flag check.
     let timer = slint::Timer::default();
     timer.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(16), {
         let state = state.clone();
@@ -1947,6 +2218,76 @@ fn main() -> anyhow::Result<()> {
         let end_session = end_session.clone();
         move || {
             let Some(app) = app_weak.upgrade() else { return };
+
+            // Gamepad poll: fold this tick's gilrs events into the
+            // held state (and the capture flow, when the Input pane
+            // has one armed), then recompute the session joyflags
+            // once if anything moved. The input pane refresh runs
+            // every tick — it's diffed, so idle ticks push nothing.
+            {
+                let mut st = state.borrow_mut();
+                let mut moved = false;
+                if let Some(gilrs) = gilrs.as_mut() {
+                    while let Some(ev) = gilrs.next_event() {
+                        match ev.event {
+                            gilrs::EventType::Connected => {
+                                log::info!("gamepad connected: {}", gilrs.gamepad(ev.id).name());
+                            }
+                            gilrs::EventType::Disconnected => {
+                                log::info!("gamepad disconnected");
+                                st.held.clear_gamepad();
+                                moved = true;
+                            }
+                            gilrs::EventType::ButtonPressed(b, _) => {
+                                let Some(name) = input::button_name(b) else { continue };
+                                if let Some(k) = st.input_capture.take() {
+                                    let binding = input::Binding::Button(name.clone());
+                                    let slot = st.config.input_mapping.slot_mut(k);
+                                    if !slot.contains(&binding) {
+                                        slot.push(binding);
+                                    }
+                                    st.config.save();
+                                }
+                                st.held.set_button(&name, true);
+                                moved = true;
+                            }
+                            gilrs::EventType::ButtonReleased(b, _) => {
+                                let Some(name) = input::button_name(b) else { continue };
+                                st.held.set_button(&name, false);
+                                moved = true;
+                            }
+                            gilrs::EventType::AxisChanged(a, value, _) => {
+                                let Some(name) = input::axis_name(a) else { continue };
+                                // Captures bind on the threshold
+                                // *crossing*, so a stick resting
+                                // off-center can't insta-bind.
+                                if st.input_capture.is_some()
+                                    && value.abs() > input::AXIS_THRESHOLD
+                                    && st.held.axis(&name).abs() <= input::AXIS_THRESHOLD
+                                {
+                                    let k = st.input_capture.take().expect("checked above");
+                                    let binding = input::Binding::Axis {
+                                        axis: name.clone(),
+                                        dir: if value > 0.0 { 1 } else { -1 },
+                                    };
+                                    let slot = st.config.input_mapping.slot_mut(k);
+                                    if !slot.contains(&binding) {
+                                        slot.push(binding);
+                                    }
+                                    st.config.save();
+                                }
+                                st.held.set_axis(&name, value);
+                                moved = true;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                if moved {
+                    sync_session_input(&mut st);
+                }
+                refresh_input_ui(&app, &mut st);
+            }
 
             while let Ok(event) = rx.try_recv() {
                 match event {
@@ -2004,7 +2345,8 @@ fn main() -> anyhow::Result<()> {
                         match *result {
                             Ok(session) => {
                                 st.session = Some(ActiveSession::Pvp(Box::new(session)));
-                                st.joyflags = 0;
+                                st.held.clear_keys();
+                                st.speed_up = false;
                                 app.set_session_kind(2);
                                 app.set_in_session(true);
                             }
@@ -2154,8 +2496,15 @@ fn main() -> anyhow::Result<()> {
                     }
                     85 => snapshot(&app, &dir.join("ui-replays.png")),
                     95 => app.set_active_tab(3),
-                    105 => {
-                        snapshot(&app, &dir.join("ui-settings.png"));
+                    105 => snapshot(&app, &dir.join("ui-settings.png")),
+                    // Input section with A selected, so the shot shows
+                    // the console shell + A's default binding chips.
+                    107 => {
+                        app.set_settings_section(3);
+                        app.invoke_input_key_selected(input::MappedKey::A.index() as i32);
+                    }
+                    117 => {
+                        snapshot(&app, &dir.join("ui-settings-input.png"));
                         let _ = slint::quit_event_loop();
                     }
                     _ => {}

@@ -57,6 +57,13 @@ export global Glyphs {
     out property <string> check: "\u{e06c}";
     out property <string> log-out: "\u{e10e}";
     out property <string> wand: "\u{e246}";
+    out property <string> chevron-up: "\u{e070}";
+    out property <string> chevron-left: "\u{e06e}";
+    out property <string> chevron-right: "\u{e06f}";
+    out property <string> keyboard: "\u{e284}";
+    out property <string> plus: "\u{e13d}";
+    out property <string> refresh-cw: "\u{e145}";
+    out property <string> fast-forward: "\u{e0bd}";
 }
 
 // User-facing strings, pushed from Rust (main.rs `apply_i18n`) out of
@@ -114,6 +121,12 @@ export global I18n {
     in-out property <string> settings-data-folder: "Data folder (Enter to apply + rescan)";
     in-out property <string> settings-volume: "Volume";
     in-out property <string> settings-fractional: "Fractional scaling";
+    // input settings
+    in-out property <string> input-select-hint: "Click a button to edit its bindings";
+    in-out property <string> input-press-key: "Press a key or button…";
+    in-out property <string> input-add: "Add binding";
+    in-out property <string> input-reset: "Reset to defaults";
+    in-out property <string> input-speed-up: "Fast-forward";
 }
 
 component LIcon inherits Text {
@@ -715,6 +728,72 @@ component SaveTab inherits TechPlate {
     }
 }
 
+// ---- input settings (the drawn GBA console shell) ----
+// Slint port of tango's tabs/settings.rs settings_input console: the
+// clickable keys select which slot the LCD bezel edits; a key lights
+// primary-flush while any of its bindings is physically held.
+
+// One binding chip shown on the LCD: source glyph (keyboard/gamepad,
+// resolved in Rust), display label, and live held state.
+export struct InputChip {
+    glyph: string,
+    label: string,
+    lit: bool,
+}
+
+// One clickable console key (tango's gba_key chrome): molded plate a
+// step above the shell, primary ring when selected (the LCD is
+// showing this key), primary flush while a binding is held. Both are
+// color-only so live input never shifts the layout. Corner radii are
+// set per instance (pills, D-pad arms, round A/B).
+component GbaKey inherits Rectangle {
+    in property <string> glyph;
+    in property <string> label;
+    in property <length> text-size: 13px;
+    // Horizontal content padding — 0 for the fixed-size keys (their
+    // box is the padding), set on content-sized ones (the
+    // fast-forward pill).
+    in property <length> pad-h: 0px;
+    in property <bool> selected;
+    in property <bool> lit;
+    callback clicked();
+
+    property <color> plate: Theme.light ? #fbf9f3 : #323434;
+    property <color> base: ta.pressed
+        ? plate.mix(#000000, 0.9)
+        : (ta.has-hover ? plate.mix(#ffffff, Theme.light ? 0.8 : 0.88) : plate);
+    background: root.lit ? base.mix(Theme.primary, 0.45) : base;
+    border-width: root.selected ? 2px : 1px;
+    border-color: root.selected
+        ? Theme.primary
+        : (ta.has-hover ? Theme.primary.transparentize(0.3) : Theme.input-border);
+    drop-shadow-blur: 6px;
+    drop-shadow-offset-y: ta.pressed ? 1px : 2px;
+    drop-shadow-color: Theme.light ? #0000001f : #00000059;
+
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        alignment: center;
+        padding-left: root.pad-h;
+        padding-right: root.pad-h;
+        spacing: root.glyph != "" && root.label != "" ? 6px : 0;
+        if root.glyph != "" : LIcon {
+            text: root.glyph;
+            font-size: root.text-size;
+        }
+        if root.label != "" : Text {
+            text: root.label;
+            font-size: root.text-size;
+            color: Theme.text;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "Tango";
     preferred-width: 960px;
@@ -797,6 +876,19 @@ export component AppWindow inherits Window {
     in property <int> lobby-ready-state: 0;
     in property <bool> lobby-ready-enabled: false;
     in property <bool> lobby-suggest-enabled: false;
+    // ---- input settings pane ----
+    // Selected mapped key: index into the Rust-side MappedKey::ALL
+    // order (Up,Down,Left,Right,A,B,L,R,Start,Select,SpeedUp); -1 =
+    // none (the LCD shows the select hint).
+    in property <int> input-selected: -1;
+    // Bezel caption: the selected key's localized name.
+    in property <string> input-selected-label: "";
+    // Per-key "a binding is physically held right now" flags, same
+    // order as input-selected — the live binding-test highlight.
+    in property <[bool]> input-lit: [];
+    // The selected key's bindings, as display chips on the LCD.
+    in property <[InputChip]> input-chips: [];
+    in property <bool> input-capturing: false;
     in property <bool> replay-paused: false;
     in property <string> replay-progress: "";
     in property <float> replay-scrub-pos: 0.0;
@@ -835,6 +927,12 @@ export component AppWindow inherits Window {
     callback volume-changed(float);
     callback fractional-changed(bool);
     callback data-path-changed(string);
+    // input settings pane
+    callback input-key-selected(int);
+    callback input-binding-remove(int);
+    callback input-capture-start();
+    callback input-capture-cancel();
+    callback input-reset();
     // Lobby band actions.
     callback lobby-leave();
     callback lobby-ready();
@@ -1712,7 +1810,453 @@ export component AppWindow inherits Window {
                             color: Theme.text-muted;
                         }
                     }
-                    if root.settings-section == 3 || root.settings-section == 4 : Text {
+                    // Input: the drawn GBA console shell (tango's
+                    // settings_input). The FocusScope keeps keyboard
+                    // focus while the pane is up so key events reach
+                    // the shared key-event callback — Rust routes
+                    // them to the capture flow when one is armed,
+                    // else just into the held set for the live
+                    // key-lights (no session can be active here).
+                    if root.settings-section == 3 : FocusScope {
+                        init => { self.focus(); }
+                        key-pressed(event) => {
+                            root.key-event(event.text, true);
+                            accept
+                        }
+                        key-released(event) => {
+                            root.key-event(event.text, false);
+                            accept
+                        }
+
+                        VerticalLayout {
+                            padding: 12px;
+                            alignment: start;
+                            HorizontalLayout {
+                                alignment: center;
+                                VerticalLayout {
+                                    spacing: 14px;
+
+                                    // The console shell: one lifted
+                                    // plate with the GBA silhouette
+                                    // (grip corners fuller than the
+                                    // top).
+                                    Rectangle {
+                                        width: 560px;
+                                        background: Theme.panel-bg;
+                                        border-width: 1.5px;
+                                        border-color: Theme.input-border;
+                                        border-top-left-radius: 24px;
+                                        border-top-right-radius: 24px;
+                                        border-bottom-right-radius: 34px;
+                                        border-bottom-left-radius: 34px;
+
+                                        VerticalLayout {
+                                            padding-top: 10px;
+                                            padding-right: 18px;
+                                            padding-bottom: 24px;
+                                            padding-left: 18px;
+                                            spacing: 10px;
+
+                                            // Shoulders: L/R pills at the far edges.
+                                            HorizontalLayout {
+                                                GbaKey {
+                                                    width: 84px;
+                                                    height: 22px;
+                                                    border-radius: 11px;
+                                                    label: "L";
+                                                    selected: root.input-selected == 6;
+                                                    lit: root.input-lit[6];
+                                                    clicked => { root.input-key-selected(6); }
+                                                }
+                                                Rectangle { horizontal-stretch: 1; }
+                                                GbaKey {
+                                                    width: 84px;
+                                                    height: 22px;
+                                                    border-radius: 11px;
+                                                    label: "R";
+                                                    selected: root.input-selected == 7;
+                                                    lit: root.input-lit[7];
+                                                    clicked => { root.input-key-selected(7); }
+                                                }
+                                            }
+
+                                            // Face row: D-pad + Start/Select | LCD bezel | A/B.
+                                            HorizontalLayout {
+                                                VerticalLayout {
+                                                    alignment: center;
+                                                    VerticalLayout {
+                                                        spacing: 16px;
+
+                                                        // D-pad: four arms around an inert
+                                                        // hub; outer corners take the big
+                                                        // radius so the cross reads as one
+                                                        // molded pad, 2px seams keep each
+                                                        // arm clickable on its own.
+                                                        VerticalLayout {
+                                                            spacing: 2px;
+                                                            HorizontalLayout {
+                                                                spacing: 2px;
+                                                                Rectangle { width: 34px; height: 34px; }
+                                                                GbaKey {
+                                                                    width: 34px;
+                                                                    height: 34px;
+                                                                    glyph: Glyphs.chevron-up;
+                                                                    text-size: 16px;
+                                                                    border-top-left-radius: 10px;
+                                                                    border-top-right-radius: 10px;
+                                                                    border-bottom-right-radius: 4px;
+                                                                    border-bottom-left-radius: 4px;
+                                                                    selected: root.input-selected == 0;
+                                                                    lit: root.input-lit[0];
+                                                                    clicked => { root.input-key-selected(0); }
+                                                                }
+                                                                Rectangle { width: 34px; height: 34px; }
+                                                            }
+                                                            HorizontalLayout {
+                                                                spacing: 2px;
+                                                                GbaKey {
+                                                                    width: 34px;
+                                                                    height: 34px;
+                                                                    glyph: Glyphs.chevron-left;
+                                                                    text-size: 16px;
+                                                                    border-top-left-radius: 10px;
+                                                                    border-top-right-radius: 4px;
+                                                                    border-bottom-right-radius: 4px;
+                                                                    border-bottom-left-radius: 10px;
+                                                                    selected: root.input-selected == 2;
+                                                                    lit: root.input-lit[2];
+                                                                    clicked => { root.input-key-selected(2); }
+                                                                }
+                                                                // hub (inert)
+                                                                Rectangle {
+                                                                    width: 34px;
+                                                                    height: 34px;
+                                                                    background: Theme.light ? #fbf9f3 : #323434;
+                                                                    border-radius: 4px;
+                                                                    border-width: 1px;
+                                                                    border-color: Theme.input-border;
+                                                                }
+                                                                GbaKey {
+                                                                    width: 34px;
+                                                                    height: 34px;
+                                                                    glyph: Glyphs.chevron-right;
+                                                                    text-size: 16px;
+                                                                    border-top-left-radius: 4px;
+                                                                    border-top-right-radius: 10px;
+                                                                    border-bottom-right-radius: 10px;
+                                                                    border-bottom-left-radius: 4px;
+                                                                    selected: root.input-selected == 3;
+                                                                    lit: root.input-lit[3];
+                                                                    clicked => { root.input-key-selected(3); }
+                                                                }
+                                                            }
+                                                            HorizontalLayout {
+                                                                spacing: 2px;
+                                                                Rectangle { width: 34px; height: 34px; }
+                                                                GbaKey {
+                                                                    width: 34px;
+                                                                    height: 34px;
+                                                                    glyph: Glyphs.chevron-down;
+                                                                    text-size: 16px;
+                                                                    border-top-left-radius: 4px;
+                                                                    border-top-right-radius: 4px;
+                                                                    border-bottom-right-radius: 10px;
+                                                                    border-bottom-left-radius: 10px;
+                                                                    selected: root.input-selected == 1;
+                                                                    lit: root.input-lit[1];
+                                                                    clicked => { root.input-key-selected(1); }
+                                                                }
+                                                                Rectangle { width: 34px; height: 34px; }
+                                                            }
+                                                        }
+
+                                                        // Start/Select: small pills, Start on
+                                                        // top and nudged right — flattening
+                                                        // the real console's slanted pair.
+                                                        // Face labels stay literal like the
+                                                        // silkscreen (the localized name
+                                                        // shows on the bezel caption).
+                                                        VerticalLayout {
+                                                            spacing: 5px;
+                                                            alignment: start;
+                                                            HorizontalLayout {
+                                                                alignment: start;
+                                                                Rectangle { width: 12px; }
+                                                                GbaKey {
+                                                                    width: 64px;
+                                                                    height: 20px;
+                                                                    border-radius: 10px;
+                                                                    label: "START";
+                                                                    text-size: 11px;
+                                                                    selected: root.input-selected == 8;
+                                                                    lit: root.input-lit[8];
+                                                                    clicked => { root.input-key-selected(8); }
+                                                                }
+                                                            }
+                                                            HorizontalLayout {
+                                                                alignment: start;
+                                                                GbaKey {
+                                                                    width: 64px;
+                                                                    height: 20px;
+                                                                    border-radius: 10px;
+                                                                    label: "SELECT";
+                                                                    text-size: 11px;
+                                                                    selected: root.input-selected == 9;
+                                                                    lit: root.input-lit[9];
+                                                                    clicked => { root.input-key-selected(9); }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                Rectangle { horizontal-stretch: 1; }
+
+                                                // The glass bezel + LCD: shows the
+                                                // selected key's binding chips and the
+                                                // add/capture flow.
+                                                VerticalLayout {
+                                                    alignment: center;
+                                                    Rectangle {
+                                                        background: Theme.light ? #26262e : #060707;
+                                                        border-radius: 14px;
+                                                        border-width: 1px;
+                                                        border-color: #00000080;
+
+                                                        VerticalLayout {
+                                                            padding-top: 12px;
+                                                            padding-right: 14px;
+                                                            padding-bottom: 4px;
+                                                            padding-left: 14px;
+                                                            spacing: 4px;
+
+                                                            // the LCD
+                                                            Rectangle {
+                                                                width: 252px;
+                                                                height: 168px;
+                                                                background: Theme.light ? #f7f3e6 : #0a0b0c;
+                                                                border-radius: 4px;
+                                                                border-width: 1px;
+                                                                border-color: #00000059;
+                                                                clip: true;
+
+                                                                if root.input-selected == -1 : Text {
+                                                                    width: 100%;
+                                                                    height: 100%;
+                                                                    text: I18n.input-select-hint;
+                                                                    wrap: word-wrap;
+                                                                    font-size: 13px;
+                                                                    color: Theme.text-muted;
+                                                                    horizontal-alignment: center;
+                                                                    vertical-alignment: center;
+                                                                }
+                                                                if root.input-selected >= 0 : VerticalLayout {
+                                                                    padding: 8px;
+                                                                    alignment: center;
+                                                                    spacing: 10px;
+
+                                                                    // Binding chips, stacked (the
+                                                                    // realistic 3-4 per key fit).
+                                                                    VerticalLayout {
+                                                                        spacing: 6px;
+                                                                        for chip[i] in root.input-chips : HorizontalLayout {
+                                                                            alignment: center;
+                                                                            Rectangle {
+                                                                                height: 24px;
+                                                                                border-radius: 12px;
+                                                                                background: chip.lit ? #4caf5040 : Theme.btn-plate;
+                                                                                border-width: 1px;
+                                                                                border-color: chip.lit ? Theme.primary : Theme.input-border;
+                                                                                HorizontalLayout {
+                                                                                    padding-left: 10px;
+                                                                                    padding-right: 5px;
+                                                                                    spacing: 6px;
+                                                                                    LIcon {
+                                                                                        text: chip.glyph;
+                                                                                        font-size: 12px;
+                                                                                        color: Theme.text-muted;
+                                                                                    }
+                                                                                    Text {
+                                                                                        text: chip.label;
+                                                                                        font-size: 12px;
+                                                                                        color: Theme.text;
+                                                                                        vertical-alignment: center;
+                                                                                        overflow: elide;
+                                                                                        max-width: 150px;
+                                                                                    }
+                                                                                    Rectangle {
+                                                                                        width: 18px;
+                                                                                        height: 18px;
+                                                                                        y: 3px;
+                                                                                        border-radius: 9px;
+                                                                                        background: cxta.has-hover ? Theme.hover : transparent;
+                                                                                        cxta := TouchArea {
+                                                                                            clicked => { root.input-binding-remove(i); }
+                                                                                        }
+                                                                                        LIcon {
+                                                                                            width: 100%;
+                                                                                            height: 100%;
+                                                                                            text: Glyphs.x;
+                                                                                            font-size: 10px;
+                                                                                            color: cxta.has-hover ? Theme.danger : Theme.text-muted;
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+
+                                                                    // Capture swaps the Add button for
+                                                                    // the prompt + a cancel chip.
+                                                                    if root.input-capturing : HorizontalLayout {
+                                                                        alignment: center;
+                                                                        spacing: 8px;
+                                                                        Text {
+                                                                            text: I18n.input-press-key;
+                                                                            font-size: 13px;
+                                                                            color: Theme.primary;
+                                                                            vertical-alignment: center;
+                                                                        }
+                                                                        NeutralButton {
+                                                                            glyph: Glyphs.x;
+                                                                            clicked => { root.input-capture-cancel(); }
+                                                                        }
+                                                                    }
+                                                                    if !root.input-capturing : HorizontalLayout {
+                                                                        alignment: center;
+                                                                        TechPlate {
+                                                                            r: 10px;
+                                                                            background: adta.has-hover ? Theme.hover : Theme.btn-plate;
+                                                                            border-width: 1px;
+                                                                            border-color: Theme.input-border;
+                                                                            adta := TouchArea {
+                                                                                clicked => { root.input-capture-start(); }
+                                                                            }
+                                                                            HorizontalLayout {
+                                                                                padding-top: 5px;
+                                                                                padding-bottom: 5px;
+                                                                                padding-left: 12px;
+                                                                                padding-right: 12px;
+                                                                                spacing: 6px;
+                                                                                LIcon {
+                                                                                    text: Glyphs.plus;
+                                                                                    font-size: 12px;
+                                                                                }
+                                                                                Text {
+                                                                                    text: I18n.input-add;
+                                                                                    font-size: 12px;
+                                                                                    color: Theme.text;
+                                                                                    vertical-alignment: center;
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+
+                                                            // Silkscreen caption: the selected
+                                                            // key's name in the UI language.
+                                                            // Fixed-height slot so selecting
+                                                            // never reflows the bezel.
+                                                            Text {
+                                                                height: 16px;
+                                                                text: root.input-selected-label;
+                                                                font-size: 11px;
+                                                                color: #d1d1dbe6;
+                                                                horizontal-alignment: center;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                Rectangle { horizontal-stretch: 1; }
+
+                                                // A/B: round keys on a diagonal, A
+                                                // raised on the right.
+                                                VerticalLayout {
+                                                    alignment: center;
+                                                    HorizontalLayout {
+                                                        spacing: 8px;
+                                                        VerticalLayout {
+                                                            Rectangle { height: 20px; }
+                                                            GbaKey {
+                                                                width: 46px;
+                                                                height: 46px;
+                                                                border-radius: 23px;
+                                                                label: "B";
+                                                                text-size: 18px;
+                                                                selected: root.input-selected == 5;
+                                                                lit: root.input-lit[5];
+                                                                clicked => { root.input-key-selected(5); }
+                                                            }
+                                                        }
+                                                        VerticalLayout {
+                                                            GbaKey {
+                                                                width: 46px;
+                                                                height: 46px;
+                                                                border-radius: 23px;
+                                                                label: "A";
+                                                                text-size: 18px;
+                                                                selected: root.input-selected == 4;
+                                                                lit: root.input-lit[4];
+                                                                clicked => { root.input-key-selected(4); }
+                                                            }
+                                                            Rectangle { height: 20px; }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Fast-forward isn't a console key; it sits
+                                    // under the shell as a pill sharing the key
+                                    // chrome, with Reset on the opposite edge.
+                                    HorizontalLayout {
+                                        width: 560px;
+                                        GbaKey {
+                                            height: 28px;
+                                            border-radius: 14px;
+                                            pad-h: 12px;
+                                            glyph: Glyphs.fast-forward;
+                                            label: I18n.input-speed-up;
+                                            selected: root.input-selected == 10;
+                                            lit: root.input-lit[10];
+                                            clicked => { root.input-key-selected(10); }
+                                        }
+                                        Rectangle { horizontal-stretch: 1; }
+                                        TechPlate {
+                                            r: 10px;
+                                            background: rsta.has-hover ? Theme.hover : Theme.btn-plate;
+                                            border-width: 1px;
+                                            border-color: Theme.input-border;
+                                            rsta := TouchArea {
+                                                clicked => { root.input-reset(); }
+                                            }
+                                            HorizontalLayout {
+                                                padding-top: 6px;
+                                                padding-bottom: 6px;
+                                                padding-left: 12px;
+                                                padding-right: 12px;
+                                                spacing: 6px;
+                                                LIcon {
+                                                    text: Glyphs.refresh-cw;
+                                                    font-size: 13px;
+                                                }
+                                                Text {
+                                                    text: I18n.input-reset;
+                                                    font-size: 13px;
+                                                    color: Theme.text;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if root.settings-section == 4 : Text {
                         width: 100%;
                         height: 100%;
                         // no tango key (tango-ng-only placeholder) — stays English

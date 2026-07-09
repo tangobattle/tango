@@ -61,6 +61,11 @@ pub struct Config {
     /// TURN relay policy for matchmaking connections. Sampled at
     /// connect time (see [`RelayMode::use_relay`]).
     pub relay_mode: RelayMode,
+    /// Keyboard + gamepad bindings for the emulator sessions, edited
+    /// by the Input settings pane. Not seeded from tango's config —
+    /// tango stores physical scancodes, which don't map onto the
+    /// logical key names tango-ng's Slint frontend sees.
+    pub input_mapping: crate::input::Mapping,
 }
 
 impl Default for Config {
@@ -79,6 +84,7 @@ impl Default for Config {
             disable_bgm_in_pvp: false,
             matchmaking_endpoint: DEFAULT_MATCHMAKING_ENDPOINT.to_string(),
             relay_mode: RelayMode::default(),
+            input_mapping: crate::input::Mapping::default(),
         }
     }
 }
