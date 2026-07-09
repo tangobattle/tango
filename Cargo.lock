@@ -8496,6 +8496,7 @@ name = "tango-ng"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bps",
  "bytemuck",
  "chrono",
  "cpal",
@@ -8505,6 +8506,8 @@ dependencies = [
  "image",
  "log",
  "mgba",
+ "semver",
+ "serde",
  "serde_json",
  "slint",
  "slint-build",

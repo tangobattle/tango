@@ -23,6 +23,8 @@ mgba = { path = "../mgba" }
 tango-dataview = { path = "../tango-dataview" }
 tango-gamesupport = { path = "../tango-gamesupport" }
 tango-pvp = { path = "../tango-pvp" }
+bps = { path = "../bps" }
+semver = "1"
 chrono = "0.4"
 tango-gamesupport-bn1 = { path = "../gamesupport/tango-gamesupport-bn1", optional = true }
 tango-gamesupport-bn2 = { path = "../gamesupport/tango-gamesupport-bn2", optional = true }
@@ -35,6 +37,7 @@ anyhow.workspace = true
 thiserror.workspace = true
 log.workspace = true
 env_logger = "0.9"
+serde.workspace = true
 serde_json.workspace = true
 bytemuck.workspace = true
 walkdir = "2"

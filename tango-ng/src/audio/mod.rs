@@ -63,7 +63,6 @@ impl LateBinder {
 
     /// Set the master output volume. Clamped to `[0.0, 1.0]`. Cheap
     /// (single atomic store) — safe to call from the UI thread.
-    #[allow(dead_code)] // wired up when the settings pane lands
     pub fn set_volume(&self, v: f32) {
         let v = v.clamp(0.0, 1.0);
         self.volume.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
