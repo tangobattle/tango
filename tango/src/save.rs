@@ -46,7 +46,6 @@ pub fn scan_saves(path: &std::path::Path) -> std::collections::HashMap<GameRef, 
         let mut matched = false;
         for game in crate::game::GAMES.iter().copied() {
             if let Ok(save) = game.parse_save(&buf) {
-                log::info!("save scan: {}: {:?}", p.display(), game.family_and_variant());
                 by_game.entry(game).or_default().push(ScannedSave {
                     path: p.to_path_buf(),
                     save,
@@ -56,7 +55,7 @@ pub fn scan_saves(path: &std::path::Path) -> std::collections::HashMap<GameRef, 
         }
 
         if !matched {
-            log::debug!("save scan: {}: no matching game", p.display());
+            log::warn!("save scan: {}: no matching game", p.display());
         }
     }
 
