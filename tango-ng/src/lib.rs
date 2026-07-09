@@ -3772,6 +3772,9 @@ pub fn run() -> anyhow::Result<()> {
                 }
                 if st.input_capture.take().is_some() {
                     refresh_input_ui(&app, &mut st);
+                } else if app.get_session_settings_open() {
+                    // Escape peels overlays before it asks to end.
+                    app.set_session_settings_open(false);
                 } else if app.get_session_confirm_exit() {
                     app.set_session_confirm_exit(false);
                 } else if st.session.is_some() {

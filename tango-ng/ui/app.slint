@@ -1703,6 +1703,8 @@ export component AppWindow inherits Window {
     // Setup drawers: 0 = closed, 1 = my setup (left), 2 = opponent
     // (right). One at a time — both render the shared SaveViewBody.
     in-out property <int> session-drawer: 0;
+    // In-session quick-settings modal (the corner gear).
+    in-out property <bool> session-settings-open: false;
     in property <bool> pvp-opponent-blind: false;
     // ---- navicust section ----
     // ---- save management (save_manage.rs) ----
@@ -3751,6 +3753,92 @@ export component AppWindow inherits Window {
                     font-size: 13px;
                     color: Theme.text;
                     vertical-alignment: center;
+                }
+            }
+        }
+
+        // Quiet corner settings gear — the in-session settings modal
+        // (session/view's gear): the audio/video quick settings over a
+        // dimmed backdrop while the emulator keeps running.
+        TechPlate {
+            r: 10px;
+            x: parent.width - self.width - 52px;
+            y: 12px;
+            background: gta.has-hover ? #4caf5033 : #00000080;
+            border-width: 1px;
+            border-color: #ffffff1a;
+            gta := TouchArea {
+                clicked => { root.session-settings-open = !root.session-settings-open; }
+            }
+            HorizontalLayout {
+                padding-top: 6px;
+                padding-bottom: 6px;
+                padding-left: 8px;
+                padding-right: 8px;
+                LIcon {
+                    text: Glyphs.settings;
+                    font-size: 13px;
+                    color: gta.has-hover ? #4caf50 : Theme.text-muted;
+                }
+            }
+        }
+
+        if root.session-settings-open : Rectangle {
+            width: 100%;
+            height: 100%;
+            background: #000000aa;
+            // Clicking the backdrop closes; the panel swallows its own.
+            TouchArea {
+                clicked => { root.session-settings-open = false; }
+            }
+            VerticalLayout {
+                alignment: center;
+                HorizontalLayout {
+                    alignment: center;
+                    Panel {
+                        width: 420px;
+                        TouchArea {}
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 14px;
+                            Labeled {
+                                label: I18n.settings-volume;
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    ChunkySlider {
+                                        value <=> root.settings-volume;
+                                        changed(v) => { root.volume-changed(v); }
+                                    }
+                                    Text {
+                                        text: root.settings-volume-label;
+                                        font-size: 13px;
+                                        color: Theme.text;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                            Labeled {
+                                label: I18n.settings-video-filter;
+                                Picker {
+                                    width: 240px;
+                                    model: ["—", "hq2x", "hq3x", "hq4x", "MMPX", "LCD"];
+                                    placeholder: "—";
+                                    current <=> root.settings-video-filter;
+                                    selected(i) => { root.video-filter-changed(i); }
+                                }
+                            }
+                            ChunkyCheckbox {
+                                label: I18n.settings-fractional;
+                                checked <=> root.fractional;
+                                toggled(b) => { root.fractional-changed(b); }
+                            }
+                            ChunkyCheckbox {
+                                label: I18n.settings-mute-bgm;
+                                checked <=> root.settings-mute-bgm;
+                                toggled(b) => { root.mute-bgm-changed(b); }
+                            }
+                        }
+                    }
                 }
             }
         }
