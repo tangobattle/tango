@@ -866,6 +866,13 @@ export struct PatchCardLine {
     bug-plain: bool,
 }
 
+// One cell of the navi picker's roster strip.
+export struct NaviCell {
+    emblem: image,
+    name: string,
+    selected: bool,
+}
+
 // One row of the ABD editor's use-count library.
 export struct AbdLibRow {
     icon: image,
@@ -1114,6 +1121,10 @@ export global SaveView {
     in-out property <[AbdLibRow]> edit-abd-rows: [];
     callback abd-edit-used(int, int);
     callback abd-edit-sec(int, int);
+    // Navi picker (shows while editing on navi-writable saves).
+    in-out property <bool> edit-navi-editable: false;
+    in-out property <[NaviCell]> edit-navi-cells: [];
+    callback edit-set-navi(int);
     callback folder-grouped-toggled(bool);
     // Copy the active section as TSV text / the NaviCust grid as an
     // image (tango's CopyTab/CopyTabImage).
@@ -1186,6 +1197,43 @@ component SaveViewBody inherits VerticalLayout {
                                 label: I18n.navi-buster-charge;
                                 value: SaveView.navi-header.buster-charge;
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Navi picker (render_navi_edit, condensed): the roster as an
+        // emblem strip; clicking a cell stages SetNavi — which can add
+        // or remove whole sections, so Rust re-pushes everything.
+        if SaveView.editing && SaveView.edit-navi-editable : Pane {
+            Flickable {
+                height: 64px;
+                viewport-width: self.width;
+                HorizontalLayout {
+                    padding: 8px;
+                    spacing: 8px;
+                    alignment: start;
+                    for cell[i] in SaveView.edit-navi-cells : Rectangle {
+                        width: 48px;
+                        height: 48px;
+                        border-radius: 8px;
+                        background: cell.selected
+                            ? #29a12133
+                            : (nvta.has-hover ? Theme.hover : Theme.btn-plate);
+                        border-width: cell.selected ? 2px : 1px;
+                        border-color: cell.selected ? #29a121 : Theme.input-border;
+                        nvta := TouchArea {
+                            clicked => { SaveView.edit-set-navi(i); }
+                        }
+                        Image {
+                            width: 30px;
+                            height: 30px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            source: cell.emblem;
+                            image-fit: contain;
+                            image-rendering: pixelated;
                         }
                     }
                 }

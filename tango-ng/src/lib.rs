@@ -359,6 +359,8 @@ struct State {
     edit_pc_values: Vec<usize>,
     /// The ABD editor's library values (chip ids).
     edit_abd_values: Vec<usize>,
+    /// The navi picker's roster values (navi ids).
+    edit_navi_values: Vec<usize>,
     /// The library pane's filter text.
     edit_library_filter: String,
     /// The new-save form's template picker values, parallel to the
@@ -1098,6 +1100,17 @@ fn push_pc_editor(app: &AppWindow, st: &mut State) {
     st.edit_pc_values = values;
     app.global::<SaveView>()
         .set_edit_library_rows(ModelRc::new(VecModel::from(rows)));
+}
+
+/// Push the navi picker's roster strip (shows while editing when the
+/// save's equipped navi is writable).
+fn push_navi_editor(app: &AppWindow, st: &mut State) {
+    let Some(l) = st.loaded.as_ref() else { return };
+    let sv = app.global::<SaveView>();
+    sv.set_edit_navi_editable(l.editability.navi);
+    let (cells, values) = loaded::navi_roster(l);
+    st.edit_navi_values = values;
+    sv.set_edit_navi_cells(ModelRc::new(VecModel::from(cells)));
 }
 
 /// Push the ABD editor's panes: the live grouped-deck preview (the
@@ -2201,6 +2214,7 @@ pub fn run() -> anyhow::Result<()> {
         edit_library_values: Vec::new(),
         edit_pc_values: Vec::new(),
         edit_abd_values: Vec::new(),
+        edit_navi_values: Vec::new(),
         edit_library_filter: String::new(),
         save_template_values: Vec::new(),
         save_new_auto_default: None,
@@ -2969,6 +2983,7 @@ pub fn run() -> anyhow::Result<()> {
             push_folder_editor(&app, &mut st);
             push_pc_editor(&app, &mut st);
             push_abd_editor(&app, &mut st);
+            push_navi_editor(&app, &mut st);
             app.global::<SaveView>().set_editing(true);
         }
     });
@@ -3165,6 +3180,33 @@ pub fn run() -> anyhow::Result<()> {
                     push_abd_editor(&app, &mut st);
                 }
                 _ => {}
+            }
+        }
+    });
+
+    app.global::<SaveView>().on_edit_set_navi({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |index| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Some(navi) = usize::try_from(index).ok().and_then(|i| st.edit_navi_values.get(i)).copied() else {
+                return;
+            };
+            if let Some(l) = st.loaded.as_mut() {
+                save_edit::apply_navi_edit(l, save_edit::NaviEdit::SetNavi(navi));
+            }
+            // A navi swap can add/remove whole sections (link navi ↔
+            // own navi) — rebuild the tab strip + every model, then
+            // re-enter the editors' models (the session stays open).
+            let editing = app.global::<SaveView>().get_editing();
+            push_save_view(&app, &st);
+            if editing {
+                push_folder_editor(&app, &mut st);
+                push_pc_editor(&app, &mut st);
+                push_abd_editor(&app, &mut st);
+                push_navi_editor(&app, &mut st);
+                app.global::<SaveView>().set_editing(true);
             }
         }
     });

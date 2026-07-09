@@ -917,6 +917,31 @@ pub fn abd_library(loaded: &Loaded, filter: &str) -> (Vec<crate::AbdLibRow>, Vec
     (rows, values)
 }
 
+/// The navi editor's roster: every navi in the ROM's own display
+/// order (tango's render_navi_edit), flattened. Returns display cells
+/// + parallel navi ids.
+pub fn navi_roster(loaded: &Loaded) -> (Vec<crate::NaviCell>, Vec<usize>) {
+    let assets = loaded.assets.as_ref();
+    let current = loaded.save.view_navi().map(|nv| nv.navi());
+    let mut cells = Vec::new();
+    let mut values = Vec::new();
+    for order_row in assets.navi_order() {
+        for &id in order_row.iter() {
+            let name = assets
+                .navi(id)
+                .and_then(|n| n.name())
+                .unwrap_or_else(|| format!("Navi #{id}"));
+            cells.push(crate::NaviCell {
+                emblem: loaded.navi_emblems.get(&id).cloned().unwrap_or_default(),
+                name: name.into(),
+                selected: current == Some(id),
+            });
+            values.push(id);
+        }
+    }
+    (cells, values)
+}
+
 // ----- copy-as-text renderings (tango's save_view tab_as_text) -----
 
 /// The active section as TSV text for the clipboard, keyed by the
