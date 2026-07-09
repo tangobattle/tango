@@ -236,8 +236,9 @@ pub fn view<'a>(
     if let Some(o) = reconnecting_overlay(lang, session) {
         stacked = stacked.push(o);
     }
-    // Topmost: the Esc hold-to-quit countdown (see `exit_hold_overlay`
-    // for why it outranks even the reconnect modal).
+    // Topmost: the Esc hold-to-quit countdown chip (see
+    // `exit_hold_overlay` for why it outranks even the reconnect
+    // modal).
     if let Some(o) = exit_hold_overlay(lang, state) {
         stacked = stacked.push(o);
     }
@@ -1029,7 +1030,17 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, session: &'a ActiveSes
     let progress = iced::widget::progress_bar(0.0..=1.0, time_left)
         .length(Fill)
         .girth(6.0)
-        .style(modal_progress_style);
+        .style(|theme: &iced::Theme| iced::widget::progress_bar::Style {
+            background: iced::Background::Color(iced::Color {
+                a: 0.12,
+                ..iced::Color::WHITE
+            }),
+            bar: iced::Background::Color(theme.extended_palette().primary.base.color),
+            border: iced::Border {
+                radius: 3.0.into(),
+                ..Default::default()
+            },
+        });
     let disconnect_btn = widgets::labeled_icon_button(
         Icon::Unplug,
         t!(lang, "playback-disconnect"),
@@ -1049,48 +1060,119 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, session: &'a ActiveSes
     Some(widgets::modal_layer(panel.into(), 0.55, Message::NoOp, None))
 }
 
-/// Progress-bar dressing shared by the modal notices (the reconnect
-/// countdown, the Esc hold-to-quit fill): faint white track, primary
-/// bar, rounded caps.
-fn modal_progress_style(theme: &iced::Theme) -> iced::widget::progress_bar::Style {
-    iced::widget::progress_bar::Style {
-        background: iced::Background::Color(iced::Color {
-            a: 0.12,
-            ..iced::Color::WHITE
-        }),
-        bar: iced::Background::Color(theme.extended_palette().primary.base.color),
-        border: iced::Border {
-            radius: 3.0.into(),
-            ..Default::default()
-        },
+/// Diameter of the exit chip's countdown dial.
+const HOLD_RING_SIZE: f32 = 28.0;
+
+/// Stroke width of the dial's track and arc.
+const HOLD_RING_WIDTH: f32 = 3.0;
+
+/// Countdown dial for the exit chip: a faint full-circle track with a
+/// danger-toned arc sweeping clockwise from 12 o'clock as the hold
+/// progresses — the radial twin of a hold-to-confirm button fill.
+struct HoldRing {
+    /// Arc fill fraction, 0 (just appeared) ..= 1 (quit fires).
+    progress: f32,
+}
+
+impl<M> canvas::Program<M> for HoldRing {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &Renderer,
+        theme: &Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        let mut frame = Frame::new(renderer, bounds.size());
+        let center = Point::new(bounds.width / 2.0, bounds.height / 2.0);
+        // Inset by the stroke so the arc's full width stays on-canvas.
+        let radius = (bounds.width.min(bounds.height) - HOLD_RING_WIDTH) / 2.0;
+        // Faint track so the dial's full extent reads before the arc
+        // fills it in.
+        frame.stroke(
+            &Path::circle(center, radius),
+            Stroke::default().with_width(HOLD_RING_WIDTH).with_color(iced::Color {
+                a: 0.20,
+                ..theme.palette().text
+            }),
+        );
+        let sweep = self.progress.clamp(0.0, 1.0) * std::f32::consts::TAU;
+        if sweep > 0.0 {
+            let arc = Path::new(|p| {
+                p.arc(canvas::path::Arc {
+                    center,
+                    radius,
+                    start_angle: iced::Radians(-std::f32::consts::FRAC_PI_2),
+                    end_angle: iced::Radians(-std::f32::consts::FRAC_PI_2 + sweep),
+                });
+            });
+            frame.stroke(
+                &arc,
+                Stroke::default()
+                    .with_width(HOLD_RING_WIDTH)
+                    .with_color(theme.palette().danger)
+                    .with_line_cap(LineCap::Round),
+            );
+        }
+        vec![frame.into_geometry()]
     }
 }
 
-/// The hold-Esc-to-quit notice: appears once Esc has been held past
-/// the [`ESC_QUIT_SHOW_AFTER`] grace and fills its bar toward the
+/// The hold-Esc-to-quit readout: appears once Esc has been held past
+/// the [`ESC_QUIT_SHOW_AFTER`] grace and counts down to the
 /// [`ESC_QUIT_HOLD`] deadline, where [`State::update`]'s wrapper
-/// closes the session. Pure presentation — releasing Esc disarms the
-/// hold and the overlay vanishes with it, so there are no buttons and
-/// no dismiss handler. Pushed last in [`view`]: the countdown must
-/// read over every other layer, the reconnect modal included (holding
-/// Esc through a stalled reconnect is exactly the bail-out case).
+/// closes the session. Deliberately NOT a modal — no dim wash, no
+/// panel, no buttons — but a compact top-center chip in the floating
+/// HUD family ([`hud_chip_plate`]), with a [`HoldRing`] dial filling
+/// around the close X: it's a transient status readout the user is
+/// already acting on, and releasing Esc disarms the hold and takes
+/// the chip with it. Pushed last in [`view`]: the countdown must read
+/// over every other layer, the reconnect modal included (holding Esc
+/// through a stalled reconnect is exactly the bail-out case).
 fn exit_hold_overlay<'a>(lang: &'a LanguageIdentifier, state: &'a State) -> Option<Element<'a, Message>> {
     let held = state.esc_hold?.elapsed();
     if held < ESC_QUIT_SHOW_AFTER {
         return None;
     }
-    // 0 when the overlay appears → 1 at the deadline, so the bar
-    // starts empty instead of pre-filled by the grace period.
-    let fill = (held - ESC_QUIT_SHOW_AFTER).as_secs_f32() / (ESC_QUIT_HOLD - ESC_QUIT_SHOW_AFTER).as_secs_f32();
-    let title = text(t!(lang, "playback-exit-hold")).size(TEXT_BODY + 4.0);
-    let body_text = text(t!(lang, "playback-exit-hold-detail")).style(widgets::muted_text_style);
-    let bar = iced::widget::progress_bar(0.0..=1.0, fill.min(1.0))
-        .length(Fill)
-        .girth(6.0)
-        .style(modal_progress_style);
-    let panel = container(column![title, body_text, bar].spacing(14).width(Fill))
-        .width(iced::Length::Fixed(420.0))
-        .padding(20)
-        .style(widgets::panel);
-    Some(widgets::modal_layer(panel.into(), 0.55, Message::NoOp, None))
+    // 0 when the chip appears → 1 at the deadline, so the dial starts
+    // empty instead of pre-filled by the grace period.
+    let progress =
+        (held - ESC_QUIT_SHOW_AFTER).as_secs_f32() / (ESC_QUIT_HOLD - ESC_QUIT_SHOW_AFTER).as_secs_f32();
+    // The close X centered in the dial — same glyph as the corner
+    // tear-down button this hold is a shortcut for, danger-tinted to
+    // carry the destructive framing.
+    let dial = stack![
+        Canvas::new(HoldRing {
+            progress: progress.min(1.0)
+        })
+        .width(Length::Fixed(HOLD_RING_SIZE))
+        .height(Length::Fixed(HOLD_RING_SIZE)),
+        container(Icon::X.widget().size(12.0).style(|theme: &iced::Theme| {
+            iced::widget::text::Style {
+                color: Some(theme.palette().danger),
+            }
+        }))
+        .center(Fill),
+    ];
+    let copy = column![
+        text(t!(lang, "playback-exit-hold")).size(TEXT_BODY),
+        text(t!(lang, "playback-exit-hold-detail"))
+            .size(TEXT_CAPTION)
+            .style(widgets::muted_text_style),
+    ]
+    .spacing(2);
+    let chip = container(row![Element::from(dial), copy].spacing(10).align_y(Alignment::Center))
+        .padding([8, 12])
+        .style(hud_chip_plate);
+    Some(
+        container(chip)
+            .width(Fill)
+            .height(Fill)
+            .align_x(iced::alignment::Horizontal::Center)
+            .align_y(iced::alignment::Vertical::Top)
+            .padding(12)
+            .into(),
+    )
 }

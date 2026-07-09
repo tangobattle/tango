@@ -841,7 +841,7 @@ fn background_handle(game: &'static crate::game::Game) -> Option<iced::widget::i
 const CONTROLS_HIDE_AFTER: std::time::Duration = std::time::Duration::from_millis(2500);
 
 /// How long Esc must be held down to quit the active session.
-const ESC_QUIT_HOLD: std::time::Duration = std::time::Duration::from_secs(5);
+const ESC_QUIT_HOLD: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// How far into the hold the exit overlay appears. A grace period
 /// rather than immediate so the overlay-peeling Esc tap (and plain
