@@ -6,8 +6,9 @@
 //! Singleplayer installs no hooks (vanilla emulator ride); replay playback
 //! installs the local game's stepper traps and feeds the recorded input
 //! pairs from inside tango-pvp — the frontend never injects input there.
-//! Replay seek/prefetch (SnapshotStore/SeekController) is not ported yet;
-//! this is the minimal watch-start-to-end + pause + speed subset.
+//! Replay seek/prefetch is fully ported: SnapshotStore/RewindBuffer feed
+//! the scrubber, a SeekController + worker chase seek targets, and a
+//! background prefetcher keeps keyframes ahead of the playhead.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
