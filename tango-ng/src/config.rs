@@ -49,6 +49,16 @@ pub struct Config {
     pub theme: ThemeMode,
     pub volume: f32,
     pub fractional_scaling: bool,
+    /// Hide identifying save details for streaming: masks the link-code
+    /// input and swaps the save viewer's data tabs behind a Cover tab
+    /// (tango's `streamer_mode`).
+    pub streamer_mode: bool,
+    /// Open the opponent's setup drawer automatically at match start
+    /// (tango's `show_opponent_setup`). Stored now; consumed when the
+    /// in-session setup drawers land.
+    pub show_opponent_setup: bool,
+    /// Start (and keep) the window fullscreen.
+    pub full_screen: bool,
     /// PvP presentation delay in frames: how far the display core trails
     /// the netcode frontier. Purely local (never negotiated with the
     /// peer); clamped to tango-pvp's supported [2, 10] range at use.
@@ -88,6 +98,9 @@ impl Default for Config {
             theme: ThemeMode::default(),
             volume: 1.0,
             fractional_scaling: false,
+            streamer_mode: false,
+            show_opponent_setup: false,
+            full_screen: false,
             frame_delay: 2,
             disable_bgm_in_pvp: false,
             matchmaking_endpoint: DEFAULT_MATCHMAKING_ENDPOINT.to_string(),
@@ -196,6 +209,15 @@ impl Config {
         }
         if let Some(volume) = v.get("volume").and_then(|x| x.as_f64()) {
             config.volume = (volume as f32).clamp(0.0, 1.0);
+        }
+        if let Some(streamer) = v.get("streamer_mode").and_then(|x| x.as_bool()) {
+            config.streamer_mode = streamer;
+        }
+        if let Some(show) = v.get("show_opponent_setup").and_then(|x| x.as_bool()) {
+            config.show_opponent_setup = show;
+        }
+        if let Some(fs) = v.get("full_screen").and_then(|x| x.as_bool()) {
+            config.full_screen = fs;
         }
         if let Some(endpoint) = v.get("matchmaking_endpoint").and_then(|x| x.as_str()) {
             if !endpoint.is_empty() {

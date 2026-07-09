@@ -41,6 +41,13 @@ pub static FAMILIES: LazyLock<Vec<&'static Family>> = LazyLock::new(|| {
 /// The flat game registry, derived from [`FAMILIES`].
 pub static GAMES: LazyLock<Vec<GameRef>> = LazyLock::new(|| tango_gamesupport::games_of(&FAMILIES));
 
+/// All registered games belonging to `family` — the color-variant
+/// siblings (tango's `games_in_family`; family strings are already
+/// region-specific, so members differ only by variant).
+pub fn games_in_family(family: &str) -> impl Iterator<Item = GameRef> + '_ {
+    GAMES.iter().copied().filter(move |g| g.family_and_variant().0 == family)
+}
+
 /// Identify a clean ROM dump against the registry.
 pub fn detect(rom: &[u8]) -> Option<GameRef> {
     tango_gamesupport::detect(&GAMES, rom)

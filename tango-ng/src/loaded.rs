@@ -20,6 +20,7 @@ const MAX_FOLDER_CHIPS: usize = 30;
 /// pre-baked sprite images. Rebuilt only when the (game, patch, save)
 /// selection changes, so pushing view models stays cheap.
 pub struct Loaded {
+    pub game: GameRef,
     pub save: Box<dyn tango_dataview::save::Save + Send + Sync>,
     pub assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     /// Chip icons, cropped to their visible 14×14 (from the 16×16
@@ -106,6 +107,7 @@ impl Loaded {
             started.elapsed()
         );
         Self {
+            game,
             save,
             assets,
             chip_icons,
@@ -113,6 +115,79 @@ impl Loaded {
             element_icons,
             navi_emblems,
         }
+    }
+}
+
+/// The Cover tab's logos, pre-positioned in Rust (tango's
+/// save_view/cover.rs): a single logo renders as a centered banner;
+/// twin-version families stack with a left/right stagger the way the
+/// Legacy Collection lays out twin covers. Coordinates are display px
+/// inside a `(lane_w, lane_h)` box the layout centers in the pane.
+pub struct CoverModel {
+    pub logos: Vec<crate::CoverLogo>,
+    pub lane_w: f32,
+    pub lane_h: f32,
+}
+
+pub fn cover_model(loaded: &Loaded) -> CoverModel {
+    // The loaded game's own variant first; any sibling variants in the
+    // family follow (Gregar/Falzar etc. fan both out).
+    let (family, variant) = loaded.game.family_and_variant();
+    let mut order: Vec<GameRef> = vec![loaded.game];
+    order.extend(crate::game::games_in_family(family).filter(|g| g.family_and_variant().1 != variant));
+    let images: Vec<image::RgbaImage> = order.iter().map(|g| g.logo_image.to_rgba8()).collect();
+
+    match images.as_slice() {
+        [top, bottom, ..] => {
+            const H: f32 = 140.0;
+            const STAGGER: f32 = 64.0;
+            const GAP: f32 = 20.0;
+            let disp_w = |img: &image::RgbaImage| H * img.width() as f32 / img.height() as f32;
+            let (top_w, bottom_w) = (disp_w(top), disp_w(bottom));
+            // Shared lane so the pair centers as a unit: top logo hugs
+            // the lane's left edge, bottom logo its right edge.
+            let lane_w = top_w.max(bottom_w) + STAGGER;
+            CoverModel {
+                logos: vec![
+                    crate::CoverLogo {
+                        img: slint_image(top.clone()),
+                        x: 0.0,
+                        y: 0.0,
+                        w: top_w,
+                        h: H,
+                    },
+                    crate::CoverLogo {
+                        img: slint_image(bottom.clone()),
+                        x: lane_w - bottom_w,
+                        y: H + GAP,
+                        w: bottom_w,
+                        h: H,
+                    },
+                ],
+                lane_w,
+                lane_h: H * 2.0 + GAP,
+            }
+        }
+        [only] => {
+            const H: f32 = 220.0;
+            let w = H * only.width() as f32 / only.height() as f32;
+            CoverModel {
+                logos: vec![crate::CoverLogo {
+                    img: slint_image(only.clone()),
+                    x: 0.0,
+                    y: 0.0,
+                    w,
+                    h: H,
+                }],
+                lane_w: w,
+                lane_h: H,
+            }
+        }
+        [] => CoverModel {
+            logos: Vec::new(),
+            lane_w: 0.0,
+            lane_h: 0.0,
+        },
     }
 }
 

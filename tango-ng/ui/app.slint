@@ -134,6 +134,17 @@ export global I18n {
     in-out property <string> settings-data-folder: "Data folder (Enter to apply + rescan)";
     in-out property <string> settings-volume: "Volume";
     in-out property <string> settings-fractional: "Fractional scaling";
+    in-out property <string> settings-streamer-mode: "Streamer privacy mode";
+    in-out property <string> settings-patch-repo: "Patches repository";
+    in-out property <string> settings-patch-autoupdate: "Automatically update patches in the background";
+    in-out property <string> settings-fullscreen: "Fullscreen";
+    in-out property <string> settings-mute-bgm: "Mute music in netplay";
+    in-out property <string> settings-matchmaking-endpoint: "Matchmaking endpoint";
+    in-out property <string> settings-use-relay: "Use relay server";
+    in-out property <string> settings-relay-auto: "Auto";
+    in-out property <string> settings-relay-always: "Always";
+    in-out property <string> settings-relay-never: "Never";
+    in-out property <string> settings-show-opponent-setup: "Show opponent's setup at match start";
     // input settings
     in-out property <string> input-select-hint: "Click a button to edit its bindings";
     in-out property <string> input-press-key: "Press a key or button…";
@@ -449,6 +460,8 @@ component ChunkyInput inherits TechPlate {
     in-out property <string> text <=> ti.text;
     in property <string> placeholder;
     in property <bool> enabled: true;
+    // Streamer privacy: render the content as password dots.
+    in property <bool> masked: false;
     callback accepted(string);
     callback edited(string);
 
@@ -478,6 +491,7 @@ component ChunkyInput inherits TechPlate {
         font-size: 13px;
         single-line: true;
         enabled: root.enabled;
+        input-type: root.masked ? InputType.password : InputType.text;
         accepted => { root.accepted(self.text); }
         edited => { root.edited(self.text); }
     }
@@ -755,6 +769,16 @@ export struct AbdRow {
     zebra: int,
 }
 
+// One Cover-tab logo, pre-positioned in Rust (save_view/cover.rs):
+// display-px coordinates inside the lane box the pane centers.
+export struct CoverLogo {
+    img: image,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+}
+
 // REG / TAG indicator chip (save_view's badge()).
 component Badge inherits Rectangle {
     in property <string> label;
@@ -945,6 +969,21 @@ export component AppWindow inherits Window {
     in-out property <float> settings-volume: 1.0;
     in property <string> settings-volume-label: "100%";
     in-out property <bool> fractional: false;
+    // ---- settings parity (tango's tabs/settings.rs) ----
+    in-out property <bool> settings-streamer: false;
+    in-out property <string> settings-patch-repo: "";
+    in-out property <bool> settings-patch-autoupdate: true;
+    in-out property <bool> settings-fullscreen: false;
+    in-out property <bool> settings-mute-bgm: false;
+    in-out property <string> settings-matchmaking-endpoint: "";
+    in-out property <int> settings-relay: 0;
+    in-out property <bool> settings-show-opponent-setup: false;
+    // About: CREDITS.md as pre-split lines (a ListView scrolls them).
+    in property <[string]> about-credits: [];
+    // Cover save-view section (streamer mode only).
+    in property <[CoverLogo]> cover-logos: [];
+    in property <float> cover-lane-w: 0.0;
+    in property <float> cover-lane-h: 0.0;
     // 0 = singleplayer, 1 = replay (shows the transport bar).
     in property <int> session-kind: 0;
     // ---- save viewer (read-only) ----
@@ -1085,6 +1124,15 @@ export component AppWindow inherits Window {
     callback volume-changed(float);
     callback fractional-changed(bool);
     callback data-path-changed(string);
+    // settings parity
+    callback streamer-changed(bool);
+    callback patch-repo-changed(string);
+    callback patch-autoupdate-changed(bool);
+    callback fullscreen-changed(bool);
+    callback mute-bgm-changed(bool);
+    callback matchmaking-endpoint-changed(string);
+    callback relay-changed(int);
+    callback show-opponent-setup-changed(bool);
     // input settings pane
     callback input-key-selected(int);
     callback input-binding-remove(int);
@@ -1353,6 +1401,28 @@ export component AppWindow inherits Window {
                                     NeutralTextButton {
                                         label: root.save-copy-flash ? I18n.copied : I18n.save-copy;
                                         clicked => { root.save-copy(); }
+                                    }
+                                }
+                            }
+
+                            // Cover (save_view/cover.rs, streamer mode
+                            // only): the game's logo(s), positioned in
+                            // Rust — single = centered banner, twin
+                            // versions = staggered pair.
+                            if root.save-kind == 4 : Pane {
+                                vertical-stretch: 1;
+                                Rectangle {
+                                    width: root.cover-lane-w * 1px;
+                                    height: root.cover-lane-h * 1px;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    for logo in root.cover-logos : Image {
+                                        x: logo.x * 1px;
+                                        y: logo.y * 1px;
+                                        width: logo.w * 1px;
+                                        height: logo.h * 1px;
+                                        source: logo.img;
+                                        image-fit: contain;
                                     }
                                 }
                             }
@@ -1814,6 +1884,8 @@ export component AppWindow inherits Window {
                             horizontal-stretch: 1;
                             text <=> root.link-code;
                             placeholder: I18n.play-link-code;
+                            // Streamer privacy: viewers must not read the code.
+                            masked: root.settings-streamer;
                             accepted(t) => { root.fight-clicked(); }
                         }
                         PrimaryButton {
@@ -2431,11 +2503,34 @@ export component AppWindow inherits Window {
                                 accepted(t) => { root.data-path-changed(t); }
                             }
                         }
+                        ChunkyCheckbox {
+                            label: I18n.settings-streamer-mode;
+                            checked <=> root.settings-streamer;
+                            toggled(b) => { root.streamer-changed(b); }
+                        }
+                        Labeled {
+                            label: I18n.settings-patch-repo;
+                            ChunkyInput {
+                                width: 480px;
+                                text <=> root.settings-patch-repo;
+                                accepted(t) => { root.patch-repo-changed(t); }
+                            }
+                        }
+                        ChunkyCheckbox {
+                            label: I18n.settings-patch-autoupdate;
+                            checked <=> root.settings-patch-autoupdate;
+                            toggled(b) => { root.patch-autoupdate-changed(b); }
+                        }
                     }
                     if root.settings-section == 1 : VerticalLayout {
                         padding: 12px;
                         spacing: 14px;
                         alignment: start;
+                        ChunkyCheckbox {
+                            label: I18n.settings-fullscreen;
+                            checked <=> root.settings-fullscreen;
+                            toggled(b) => { root.fullscreen-changed(b); }
+                        }
                         ChunkyCheckbox {
                             label: I18n.settings-fractional;
                             checked <=> root.fractional;
@@ -2462,11 +2557,43 @@ export component AppWindow inherits Window {
                                 }
                             }
                         }
+                        ChunkyCheckbox {
+                            label: I18n.settings-mute-bgm;
+                            checked <=> root.settings-mute-bgm;
+                            toggled(b) => { root.mute-bgm-changed(b); }
+                        }
+                    }
+                    if root.settings-section == 4 : VerticalLayout {
+                        padding: 12px;
+                        spacing: 14px;
+                        alignment: start;
+                        Labeled {
+                            label: I18n.settings-matchmaking-endpoint;
+                            ChunkyInput {
+                                width: 480px;
+                                text <=> root.settings-matchmaking-endpoint;
+                                accepted(t) => { root.matchmaking-endpoint-changed(t); }
+                            }
+                        }
+                        Labeled {
+                            label: I18n.settings-use-relay;
+                            Picker {
+                                width: 240px;
+                                model: [I18n.settings-relay-auto, I18n.settings-relay-always, I18n.settings-relay-never];
+                                placeholder: "—";
+                                current <=> root.settings-relay;
+                                selected(i) => { root.relay-changed(i); }
+                            }
+                        }
+                        ChunkyCheckbox {
+                            label: I18n.settings-show-opponent-setup;
+                            checked <=> root.settings-show-opponent-setup;
+                            toggled(b) => { root.show-opponent-setup-changed(b); }
+                        }
                     }
                     if root.settings-section == 5 : VerticalLayout {
                         padding: 12px;
                         spacing: 8px;
-                        alignment: start;
                         Text {
                             text: "Tango NG";
                             font-size: 18px;
@@ -2476,6 +2603,20 @@ export component AppWindow inherits Window {
                             text: root.app-version;
                             font-size: 11px;
                             color: Theme.text-muted;
+                        }
+                        // CREDITS.md, embedded at build time and split
+                        // into lines in Rust (a wrapped Text inside a
+                        // scrollable risks layout cycles; a line list
+                        // scrolls for free).
+                        ListView {
+                            vertical-stretch: 1;
+                            for line in root.about-credits : Text {
+                                height: 20px;
+                                text: line;
+                                font-size: 12px;
+                                color: Theme.text-muted;
+                                overflow: elide;
+                            }
                         }
                     }
                     // Input: the drawn GBA console shell (tango's
@@ -2923,16 +3064,6 @@ export component AppWindow inherits Window {
                                 }
                             }
                         }
-                    }
-                    if root.settings-section == 4 : Text {
-                        width: 100%;
-                        height: 100%;
-                        // no tango key (tango-ng-only placeholder) — stays English
-                        text: "Coming soon";
-                        font-size: 13px;
-                        color: Theme.text-muted;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
                     }
                 }
             }

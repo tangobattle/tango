@@ -166,6 +166,17 @@ fn apply_i18n(app: &AppWindow, config: &config::Config) {
     // localized label is just "Data folder".
     i18n.set_settings_data_folder(t!(lang, "settings-data-folder").into());
     i18n.set_settings_volume(t!(lang, "settings-volume").into());
+    i18n.set_settings_streamer_mode(t!(lang, "settings-streamer-mode").into());
+    i18n.set_settings_patch_repo(t!(lang, "settings-patch-repo").into());
+    i18n.set_settings_patch_autoupdate(t!(lang, "settings-enable-patch-autoupdate").into());
+    i18n.set_settings_fullscreen(t!(lang, "settings-fullscreen").into());
+    i18n.set_settings_mute_bgm(t!(lang, "settings-disable-bgm-in-pvp").into());
+    i18n.set_settings_matchmaking_endpoint(t!(lang, "settings-matchmaking-endpoint").into());
+    i18n.set_settings_use_relay(t!(lang, "settings-use-relay").into());
+    i18n.set_settings_relay_auto(t!(lang, "settings-use-relay-auto").into());
+    i18n.set_settings_relay_always(t!(lang, "settings-use-relay-always").into());
+    i18n.set_settings_relay_never(t!(lang, "settings-use-relay-never").into());
+    i18n.set_settings_show_opponent_setup(t!(lang, "settings-show-opponent-setup").into());
     i18n.set_settings_fractional(t!(lang, "settings-fractional-scaling").into());
     // input settings (the bezel caption + chip labels are per-key and
     // per-binding — refresh_input_ui pushes those, re-resolved on the
@@ -773,6 +784,18 @@ fn push_save_view(app: &AppWindow, st: &State) {
     // Auto Battle Data). The kind rides with the label so the bodies
     // don't depend on tab position.
     let mut tabs: Vec<SaveTabItem> = Vec::new();
+    // Streamer mode leads with the Cover tab (available_tabs), so the
+    // default view leaks nothing.
+    if st.config.streamer_mode {
+        let cover = loaded::cover_model(l);
+        app.set_cover_logos(ModelRc::new(VecModel::from(cover.logos)));
+        app.set_cover_lane_w(cover.lane_w);
+        app.set_cover_lane_h(cover.lane_h);
+        tabs.push(SaveTabItem {
+            label: t!(lang, "save-tab-cover").into(),
+            kind: 4,
+        });
+    }
     if let Some(nc) = loaded::navicust_model(l) {
         tabs.push(SaveTabItem {
             label: t!(lang, "save-tab-navicust").into(),
@@ -1692,6 +1715,29 @@ fn main() -> anyhow::Result<()> {
         app.set_settings_volume_label(format!("{}%", (st.config.volume * 100.0).round() as i32).into());
         app.set_fractional(st.config.fractional_scaling);
         st.audio_binder.set_volume(st.config.volume);
+        app.set_settings_streamer(st.config.streamer_mode);
+        app.set_settings_patch_repo(st.config.patch_repo.clone().into());
+        app.set_settings_patch_autoupdate(st.config.enable_patch_autoupdate);
+        app.set_settings_fullscreen(st.config.full_screen);
+        app.set_settings_mute_bgm(st.config.disable_bgm_in_pvp);
+        app.set_settings_matchmaking_endpoint(st.config.matchmaking_endpoint.clone().into());
+        app.set_settings_relay(match st.config.relay_mode {
+            config::RelayMode::Auto => 0,
+            config::RelayMode::Always => 1,
+            config::RelayMode::Never => 2,
+        });
+        app.set_settings_show_opponent_setup(st.config.show_opponent_setup);
+        if st.config.full_screen {
+            app.window().set_fullscreen(true);
+        }
+        // CREDITS.md, embedded at build time (same file the iced About
+        // renders); pre-split into lines for the ListView.
+        app.set_about_credits(ModelRc::new(VecModel::from(
+            include_str!("../../CREDITS.md")
+                .lines()
+                .map(SharedString::from)
+                .collect::<Vec<_>>(),
+        )));
     }
 
     app.on_nickname_changed({
@@ -1759,6 +1805,97 @@ fn main() -> anyhow::Result<()> {
         move |fractional| {
             let mut st = state.borrow_mut();
             st.config.fractional_scaling = fractional;
+            st.config.save();
+        }
+    });
+
+    app.on_streamer_changed({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |streamer| {
+            let Some(app) = app_weak.upgrade() else { return };
+            {
+                let mut st = state.borrow_mut();
+                st.config.streamer_mode = streamer;
+                st.config.save();
+            }
+            // The Cover tab appears/disappears with the mode.
+            let st = state.borrow();
+            push_save_view(&app, &st);
+        }
+    });
+
+    app.on_patch_repo_changed({
+        let state = state.clone();
+        move |repo| {
+            let mut st = state.borrow_mut();
+            st.config.patch_repo = repo.trim().to_string();
+            st.config.save();
+        }
+    });
+
+    app.on_patch_autoupdate_changed({
+        let state = state.clone();
+        move |enabled| {
+            let mut st = state.borrow_mut();
+            st.config.enable_patch_autoupdate = enabled;
+            st.config.save();
+        }
+    });
+
+    app.on_fullscreen_changed({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |fullscreen| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            st.config.full_screen = fullscreen;
+            st.config.save();
+            app.window().set_fullscreen(fullscreen);
+        }
+    });
+
+    app.on_mute_bgm_changed({
+        let state = state.clone();
+        move |mute| {
+            let mut st = state.borrow_mut();
+            st.config.disable_bgm_in_pvp = mute;
+            st.config.save();
+        }
+    });
+
+    app.on_matchmaking_endpoint_changed({
+        let state = state.clone();
+        move |endpoint| {
+            let mut st = state.borrow_mut();
+            let endpoint = endpoint.trim();
+            st.config.matchmaking_endpoint = if endpoint.is_empty() {
+                config::DEFAULT_MATCHMAKING_ENDPOINT.to_string()
+            } else {
+                endpoint.to_string()
+            };
+            st.config.save();
+        }
+    });
+
+    app.on_relay_changed({
+        let state = state.clone();
+        move |index| {
+            let mut st = state.borrow_mut();
+            st.config.relay_mode = match index {
+                1 => config::RelayMode::Always,
+                2 => config::RelayMode::Never,
+                _ => config::RelayMode::Auto,
+            };
+            st.config.save();
+        }
+    });
+
+    app.on_show_opponent_setup_changed({
+        let state = state.clone();
+        move |show| {
+            let mut st = state.borrow_mut();
+            st.config.show_opponent_setup = show;
             st.config.save();
         }
     });
