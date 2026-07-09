@@ -107,6 +107,7 @@ impl Round {
         let shadow = std::sync::Arc::new(crate::shadow::Worker::new(match_.shadow_handle()));
         let stepper = crate::stepper::Stepper::new(
             match_.rom(),
+            match_.local_sram(),
             hooks,
             match_.match_type(),
             self.local_player_index,

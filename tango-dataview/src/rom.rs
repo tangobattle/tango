@@ -380,7 +380,10 @@ pub type PatchCard56EffectTemplate = Vec<PatchCard56EffectTemplatePart>;
 
 pub trait Navi {
     fn name(&self) -> Option<String>;
-    fn emblem(&self) -> image::RgbaImage;
+    /// The navi's emblem icon, where the ROM keeps one in known form —
+    /// BN4's are not yet located, so its navis report `None` and the UI
+    /// falls back to a name-only presentation.
+    fn emblem(&self) -> Option<image::RgbaImage>;
 
     /// The navi's intrinsic base max HP, when the game keeps a navi HP table in
     /// the ROM. Games without one return `None`, and callers fall back to the
