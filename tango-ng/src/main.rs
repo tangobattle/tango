@@ -48,6 +48,9 @@ enum Event {
         path: std::path::PathBuf,
         stats: replays::ReplayStats,
     },
+    /// Netplay task results + lobby-loop observations, forwarded into
+    /// `netplay::State::update` by the timer below.
+    Netplay(netplay::Message),
 }
 
 /// Selectable UI languages, same set as tango's i18n::SUPPORTED_LANGS.
@@ -94,6 +97,9 @@ struct State {
     /// then on nearest-keyframe previews are forced (the live frame is
     /// no longer in the buffer).
     scrub_forced: bool,
+    /// Netplay connection state machine. Not yet driven by the UI —
+    /// the lobby pane lands with the /host + /connect vertical slice.
+    netplay: netplay::State,
 }
 
 /// At most one session is active at a time.
@@ -281,10 +287,10 @@ fn main() -> anyhow::Result<()> {
     log::info!("tango-ng {}", env!("CARGO_PKG_VERSION"));
 
     // The async (netplay) layer's runtime. Held for the program lifetime;
-    // tasks get the Handle — the emulator thread must never have the
-    // runtime *entered* (PvpSender::send uses blocking_send).
+    // tasks get the Handle (threaded into netplay::State below) — the
+    // emulator thread must never have the runtime *entered*
+    // (PvpSender::send uses blocking_send).
     let tokio_runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
-    let _tokio_handle = tokio_runtime.handle().clone();
 
     let config = config::Config::load();
     log::info!("data path: {}", config.data_path.display());
@@ -311,6 +317,12 @@ fn main() -> anyhow::Result<()> {
 
     let app = AppWindow::new()?;
     let shot_step = Rc::new(RefCell::new(0i32));
+
+    // Main-loop event channel: background work (the scanner, replay
+    // stats, netplay tasks + lobby loop) sends `Event`s; the 16ms timer
+    // below drains them on the UI thread.
+    let (tx, rx) = std::sync::mpsc::channel();
+
     let state = Rc::new(RefCell::new(State {
         config,
         audio_binder,
@@ -332,12 +344,12 @@ fn main() -> anyhow::Result<()> {
         replay_speed: 1.0,
         scrub_was_playing: false,
         scrub_forced: false,
+        netplay: netplay::State::new(tokio_runtime.handle().clone(), tx.clone()),
     }));
 
     // Background scan; results come back over the channel and are folded
     // into the UI by the frame timer below. Rc so the data-path setting
     // can retrigger it.
-    let (tx, rx) = std::sync::mpsc::channel();
     let stats_tx = tx.clone();
     let spawn_scan: Rc<dyn Fn()> = Rc::new({
         let state = state.clone();
@@ -928,6 +940,13 @@ fn main() -> anyhow::Result<()> {
                             );
                             app.set_replay_detail(ModelRc::new(VecModel::from(lines)));
                         }
+                    }
+                    Event::Netplay(msg) => {
+                        // Forwarded into the netplay state machine. Its
+                        // update() may spawn tasks / send further Events
+                        // (drained next tick) but never re-borrows this
+                        // RefCell — netplay::State is self-contained.
+                        state.borrow_mut().netplay.update(msg);
                     }
                 }
             }
