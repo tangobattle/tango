@@ -1,0 +1,281 @@
+// tango-ng shell: nav rail + Play/Replays/Settings panes, and the
+// in-session view (top bar + letterboxed emulator framebuffer).
+//
+// Layout rules of thumb for the eventual mobile port: hit targets are
+// 44px+ tall, everything is layout-driven (no absolute positioning
+// besides the rail width), and the session view reflows to any aspect.
+
+import { ListView } from "std-widgets.slint";
+
+export struct GameEntry {
+    name: string,
+    subtitle: string,
+}
+
+export struct SaveEntry {
+    name: string,
+}
+
+component NavButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    callback clicked();
+
+    height: 44px;
+    border-radius: 6px;
+    background: root.active ? #2a3350 : (ta.has-hover ? #1a2030 : transparent);
+
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    Text {
+        x: 14px;
+        width: parent.width - 28px;
+        height: parent.height;
+        text: root.label;
+        color: root.active ? #e8ecf4 : #9aa3b5;
+        font-size: 15px;
+        vertical-alignment: center;
+    }
+}
+
+component ActionButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 44px;
+    border-radius: 6px;
+    background: !root.enabled ? #1a1f2b : (ta.has-hover ? #3a4a7d : #2f3d68);
+
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    Text {
+        width: parent.width;
+        height: parent.height;
+        text: root.label;
+        color: root.enabled ? #e8ecf4 : #5a6274;
+        font-size: 15px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Tango NG";
+    preferred-width: 1000px;
+    preferred-height: 640px;
+    min-width: 480px;
+    min-height: 320px;
+    background: #0d1017;
+
+    in property <[GameEntry]> games: [];
+    in property <[SaveEntry]> saves: [];
+    in property <image> frame;
+    in property <bool> in-session: false;
+    in property <string> status: "";
+    in property <string> session-title: "";
+    in-out property <int> active-tab: 0;
+    in-out property <int> selected-game: -1;
+    in-out property <int> selected-save: -1;
+
+    callback game-selected(int);
+    callback play-clicked();
+    callback stop-clicked();
+    callback key-event(string, bool);
+
+    if !root.in-session : HorizontalLayout {
+        width: 100%;
+        height: 100%;
+
+        // nav rail
+        Rectangle {
+            width: 180px;
+            background: #12151d;
+            VerticalLayout {
+                padding: 10px;
+                spacing: 6px;
+                Text {
+                    height: 40px;
+                    text: "TANGO NG";
+                    color: #e8ecf4;
+                    font-size: 18px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+                NavButton { label: "Play"; active: root.active-tab == 0; clicked => { root.active-tab = 0; } }
+                NavButton { label: "Replays"; active: root.active-tab == 1; clicked => { root.active-tab = 1; } }
+                NavButton { label: "Settings"; active: root.active-tab == 2; clicked => { root.active-tab = 2; } }
+                Rectangle {}
+                Text {
+                    text: root.status;
+                    color: #6f7889;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                }
+            }
+        }
+
+        // Play
+        if root.active-tab == 0 : HorizontalLayout {
+            // games list
+            Rectangle {
+                background: #0d1017;
+                ListView {
+                    for entry[i] in root.games : Rectangle {
+                        height: 56px;
+                        border-radius: 8px;
+                        background: root.selected-game == i ? #223055 : (gta.has-hover ? #161b26 : transparent);
+                        gta := TouchArea {
+                            clicked => {
+                                root.selected-game = i;
+                                root.selected-save = -1;
+                                root.game-selected(i);
+                            }
+                        }
+                        VerticalLayout {
+                            padding-left: 14px;
+                            padding-right: 14px;
+                            padding-top: 9px;
+                            padding-bottom: 9px;
+                            Text {
+                                text: entry.name;
+                                color: #e8ecf4;
+                                font-size: 15px;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: entry.subtitle;
+                                color: #8a93a6;
+                                font-size: 12px;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // saves pane
+            Rectangle {
+                width: 34%;
+                background: #10131b;
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 8px;
+                    Text {
+                        height: 32px;
+                        text: root.selected-game >= 0 ? "Saves" : "Select a game";
+                        color: #9aa3b5;
+                        font-size: 14px;
+                        vertical-alignment: center;
+                    }
+                    ListView {
+                        for entry[i] in root.saves : Rectangle {
+                            height: 44px;
+                            border-radius: 6px;
+                            background: root.selected-save == i ? #223055 : (sta.has-hover ? #161b26 : transparent);
+                            sta := TouchArea {
+                                clicked => { root.selected-save = i; }
+                            }
+                            Text {
+                                x: 12px;
+                                width: parent.width - 24px;
+                                height: parent.height;
+                                text: entry.name;
+                                color: #d5dae4;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                    ActionButton {
+                        label: "Play";
+                        enabled: root.selected-save >= 0;
+                        clicked => { root.play-clicked(); }
+                    }
+                }
+            }
+        }
+
+        // Replays (placeholder until the playback port lands)
+        if root.active-tab == 1 : Rectangle {
+            Text {
+                width: 100%;
+                height: 100%;
+                text: "Replays — coming soon";
+                color: #6f7889;
+                font-size: 16px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        // Settings (placeholder until the config pane lands)
+        if root.active-tab == 2 : Rectangle {
+            Text {
+                width: 100%;
+                height: 100%;
+                text: "Settings — coming soon";
+                color: #6f7889;
+                font-size: 16px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    if root.in-session : VerticalLayout {
+        width: 100%;
+        height: 100%;
+
+        Rectangle {
+            height: 44px;
+            background: #12151d;
+            HorizontalLayout {
+                padding: 6px;
+                spacing: 10px;
+                ActionButton {
+                    width: 110px;
+                    label: "Stop (Esc)";
+                    clicked => { root.stop-clicked(); }
+                }
+                Text {
+                    text: root.session-title;
+                    color: #9aa3b5;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+
+        Rectangle {
+            background: #000000;
+            fs := FocusScope {
+                width: 100%;
+                height: 100%;
+                init => { self.focus(); }
+                key-pressed(event) => {
+                    root.key-event(event.text, true);
+                    accept
+                }
+                key-released(event) => {
+                    root.key-event(event.text, false);
+                    accept
+                }
+                Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.frame;
+                    image-fit: contain;
+                    image-rendering: pixelated;
+                }
+            }
+        }
+    }
+}

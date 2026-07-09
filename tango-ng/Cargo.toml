@@ -1,0 +1,70 @@
+[package]
+name = "tango-ng"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+build = "build.rs"
+
+[[bin]]
+name = "tango-ng"
+path = "src/main.rs"
+
+[build-dependencies]
+slint-build = "1.17"
+
+[dependencies]
+slint = "1.17"
+# Mobile-safe audio output (AAudio on Android, CoreAudio on macOS/iOS,
+# WASAPI on Windows) — deliberately not SDL, which is the one piece of
+# the old frontend's stack that doesn't travel to mobile cleanly.
+cpal = "0.18"
+mgba = { path = "../mgba" }
+tango-dataview = { path = "../tango-dataview" }
+tango-gamesupport = { path = "../tango-gamesupport" }
+tango-gamesupport-bn1 = { path = "../gamesupport/tango-gamesupport-bn1", optional = true }
+tango-gamesupport-bn2 = { path = "../gamesupport/tango-gamesupport-bn2", optional = true }
+tango-gamesupport-bn3 = { path = "../gamesupport/tango-gamesupport-bn3", optional = true }
+tango-gamesupport-bn4 = { path = "../gamesupport/tango-gamesupport-bn4", optional = true }
+tango-gamesupport-bn5 = { path = "../gamesupport/tango-gamesupport-bn5", optional = true }
+tango-gamesupport-bn6 = { path = "../gamesupport/tango-gamesupport-bn6", optional = true }
+tango-gamesupport-exe45 = { path = "../gamesupport/tango-gamesupport-exe45", optional = true }
+anyhow.workspace = true
+thiserror.workspace = true
+log.workspace = true
+env_logger = "0.9"
+serde_json.workspace = true
+bytemuck.workspace = true
+walkdir = "2"
+zip = "2"
+steamlocate = "2"
+directories-next = "2"
+fluent-templates = "0.14"
+unic-langid = { version = "0.9", features = ["likelysubtags"] }
+# png only, for the --smoke framebuffer dump.
+image = { workspace = true, features = ["png"] }
+
+[features]
+# Mirrors the tango crate: each game's support is an optional dependency
+# gated behind its own feature; no games compile in by default. Build with
+# `--features gamesupport-all`.
+default = []
+gamesupport-bn1 = ["dep:tango-gamesupport-bn1"]
+gamesupport-bn2 = ["dep:tango-gamesupport-bn2"]
+gamesupport-bn3 = ["dep:tango-gamesupport-bn3"]
+gamesupport-bn4 = ["dep:tango-gamesupport-bn4"]
+gamesupport-bn5 = ["dep:tango-gamesupport-bn5"]
+gamesupport-bn6 = ["dep:tango-gamesupport-bn6"]
+gamesupport-exe45 = ["dep:tango-gamesupport-exe45"]
+gamesupport-all = [
+    "gamesupport-bn1",
+    "gamesupport-bn2",
+    "gamesupport-bn3",
+    "gamesupport-bn4",
+    "gamesupport-bn5",
+    "gamesupport-bn6",
+    "gamesupport-exe45",
+]
+
+[lints]
+workspace = true
