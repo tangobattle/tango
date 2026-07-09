@@ -127,6 +127,12 @@ pub fn display_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> St
         .unwrap_or_else(|| format!("{family} v{variant}"))
 }
 
+/// Best-effort family display name (e.g. "Mega Man Battle Network 3") via
+/// the family's `name` string; falls back to the raw family string.
+pub fn family_display_name(lang: &unic_langid::LanguageIdentifier, family: &str) -> String {
+    family_str(family, lang, "name").unwrap_or_else(|| family.to_string())
+}
+
 /// Localized match-type label for a (mode, subtype) pair (e.g.
 /// "Single" / "Triple"). Falls back to "M.S" for pairs the locale
 /// doesn't name.

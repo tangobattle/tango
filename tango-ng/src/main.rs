@@ -53,8 +53,16 @@ struct State {
     game_rows: Vec<rom::GameRef>,
     /// Saves shown for the selected game, parallel to the `saves` model rows.
     save_rows: Vec<save::ScannedSave>,
-    /// Replays shown in the list, parallel to the `replays` model rows.
+    /// All scanned replays (newest first).
     replay_rows: Vec<replays::ScannedReplay>,
+    /// Indices into `replay_rows` currently shown, parallel to the
+    /// `replays` model rows (the filters narrow this).
+    replay_filtered: Vec<usize>,
+    /// Family ids behind the game-filter picker (model index i+1 —
+    /// index 0 is "All games").
+    replay_filter_families: Vec<String>,
+    /// Lowercased opponent substring filter.
+    replay_filter_opponent: String,
     patches: patch::PatchMap,
     /// Patch names shown in the patch picker (model index i+1 — index 0
     /// is the "No patch" sentinel).
@@ -150,7 +158,29 @@ fn refresh_models(app: &AppWindow, st: &mut State) {
     st.patch_rows.clear();
     st.version_rows.clear();
 
-    let replay_rows: Vec<ReplayRow> = st.replay_rows.iter().map(|r| replay_row(&lang, r)).collect();
+    // Family filter options, from the families actually seen in replays.
+    let mut families: Vec<String> = st
+        .replay_rows
+        .iter()
+        .filter_map(|r| {
+            r.metadata
+                .local_side
+                .as_ref()
+                .and_then(|s| s.game_info.as_ref())
+                .map(|gi| gi.rom_family.clone())
+        })
+        .collect();
+    families.sort();
+    families.dedup();
+    let mut filter_model: Vec<SharedString> = vec!["All games".into()];
+    filter_model.extend(
+        families
+            .iter()
+            .map(|f| SharedString::from(game::family_display_name(&lang, f))),
+    );
+    st.replay_filter_families = families;
+    app.set_replay_game_filters(ModelRc::new(VecModel::from(filter_model)));
+    app.set_selected_replay_filter(0);
 
     app.set_status(
         format!(
@@ -163,14 +193,49 @@ fn refresh_models(app: &AppWindow, st: &mut State) {
     );
     app.set_selected_game(-1);
     app.set_selected_save(-1);
-    app.set_selected_replay(-1);
     app.set_selected_patch(0);
     app.set_selected_version(-1);
     app.set_games(ModelRc::new(VecModel::from(rows)));
     app.set_saves(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
     app.set_patches(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
     app.set_versions(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
-    app.set_replays(ModelRc::new(VecModel::from(replay_rows)));
+    apply_replay_filter(app, st, None);
+}
+
+/// Rebuild the shown-replay indices + model from the current filters.
+/// `family` is the family-id filter (None = all).
+fn apply_replay_filter(app: &AppWindow, st: &mut State, family: Option<&str>) {
+    let lang = st.config.language.clone();
+    let opponent = st.replay_filter_opponent.clone();
+    st.replay_filtered = st
+        .replay_rows
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| {
+            let family_ok = family.is_none_or(|f| {
+                r.metadata
+                    .local_side
+                    .as_ref()
+                    .and_then(|s| s.game_info.as_ref())
+                    .is_some_and(|gi| gi.rom_family == f)
+            });
+            let opponent_ok = opponent.is_empty()
+                || r.metadata
+                    .remote_side
+                    .as_ref()
+                    .is_some_and(|s| s.nickname.to_lowercase().contains(&opponent));
+            family_ok && opponent_ok
+        })
+        .map(|(i, _)| i)
+        .collect();
+
+    let rows: Vec<ReplayRow> = st
+        .replay_filtered
+        .iter()
+        .map(|&i| replay_row(&lang, &st.replay_rows[i]))
+        .collect();
+    app.set_selected_replay(-1);
+    app.set_replays(ModelRc::new(VecModel::from(rows)));
 }
 
 /// One replay-list row's display strings: "timestamp" over
@@ -234,6 +299,9 @@ fn main() -> anyhow::Result<()> {
         game_rows: Vec::new(),
         save_rows: Vec::new(),
         replay_rows: Vec::new(),
+        replay_filtered: Vec::new(),
+        replay_filter_families: Vec::new(),
+        replay_filter_opponent: String::new(),
         patches: patch::PatchMap::new(),
         patch_rows: Vec::new(),
         version_rows: Vec::new(),
@@ -466,7 +534,11 @@ fn main() -> anyhow::Result<()> {
         move |index| {
             let Some(app) = app_weak.upgrade() else { return };
             let st = state.borrow();
-            let Some(replay) = st.replay_rows.get(index as usize) else {
+            let Some(replay) = st
+                .replay_filtered
+                .get(index as usize)
+                .and_then(|&ri| st.replay_rows.get(ri))
+            else {
                 return;
             };
             let md = &replay.metadata;
@@ -504,6 +576,38 @@ fn main() -> anyhow::Result<()> {
                     .into(),
             );
             app.set_replay_detail(ModelRc::new(VecModel::from(lines)));
+        }
+    });
+
+    app.on_replay_filter_selected({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |index| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let family = if index <= 0 {
+                None
+            } else {
+                st.replay_filter_families.get(index as usize - 1).cloned()
+            };
+            apply_replay_filter(&app, &mut st, family.as_deref());
+        }
+    });
+
+    app.on_replay_opponent_edited({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |text| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            st.replay_filter_opponent = text.trim().to_lowercase();
+            let index = app.get_selected_replay_filter();
+            let family = if index <= 0 {
+                None
+            } else {
+                st.replay_filter_families.get(index as usize - 1).cloned()
+            };
+            apply_replay_filter(&app, &mut st, family.as_deref());
         }
     });
 
@@ -567,7 +671,11 @@ fn main() -> anyhow::Result<()> {
         move || {
             let Some(app) = app_weak.upgrade() else { return };
             let mut st = state.borrow_mut();
-            let Some(scanned) = st.replay_rows.get(app.get_selected_replay() as usize) else {
+            let Some(scanned) = st
+                .replay_filtered
+                .get(app.get_selected_replay() as usize)
+                .and_then(|&ri| st.replay_rows.get(ri))
+            else {
                 return;
             };
             let start = start_replay(

@@ -299,6 +299,7 @@ component ChunkyInput inherits TechPlate {
     in-out property <string> text <=> ti.text;
     in property <bool> enabled: true;
     callback accepted(string);
+    callback edited(string);
 
     r: 10px;
     height: 34px;
@@ -316,6 +317,7 @@ component ChunkyInput inherits TechPlate {
         single-line: true;
         enabled: root.enabled;
         accepted => { root.accepted(self.text); }
+        edited => { root.edited(self.text); }
     }
 }
 
@@ -457,6 +459,8 @@ export component AppWindow inherits Window {
     in property <[string]> patches: [];
     in property <[string]> versions: [];
     in property <[ReplayRow]> replays: [];
+    in property <[string]> replay-game-filters: [];
+    in-out property <int> selected-replay-filter: 0;
     in property <string> replay-title: "";
     in property <[string]> replay-detail: [];
     in property <image> frame;
@@ -490,6 +494,8 @@ export component AppWindow inherits Window {
     callback game-selected(int);
     callback patch-selected(int);
     callback replay-selected(int);
+    callback replay-filter-selected(int);
+    callback replay-opponent-edited(string);
     callback play-clicked();
     callback watch-clicked();
     callback toggle-pause();
@@ -753,16 +759,15 @@ export component AppWindow inherits Window {
                         padding: 12px;
                         spacing: 8px;
                         Picker {
-                            model: [];
+                            model: root.replay-game-filters;
                             placeholder: "All games";
-                            enabled: false;
+                            current <=> root.selected-replay-filter;
                             width: 220px;
+                            selected(i) => { root.replay-filter-selected(i); }
                         }
-                        Picker {
-                            model: [];
-                            placeholder: "Opponent";
-                            enabled: false;
+                        ChunkyInput {
                             width: 220px;
+                            edited(t) => { root.replay-opponent-edited(t); }
                         }
                         Rectangle { horizontal-stretch: 1; }
                     }
