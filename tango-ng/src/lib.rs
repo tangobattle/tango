@@ -112,6 +112,12 @@ enum Event {
     /// `netplay::State::update` by the timer below (which intercepts
     /// `MatchHandoffReady` itself, mirroring tango's App).
     Netplay(netplay::Message),
+    /// A replay's decoded local-side SRAM, for the embedded save view
+    /// (decoded off-thread; the image bake runs on the UI thread).
+    ReplayLocalSram {
+        path: std::path::PathBuf,
+        sram: Vec<u8>,
+    },
     /// Replay video render progress (frames emitted / total).
     ExportProgress { current: usize, total: usize },
     /// Replay video render finished (the written path) or failed.
@@ -290,6 +296,13 @@ struct State {
     /// Replay shown in the detail pane + its lines (stats append lazily).
     replay_detail_path: Option<std::path::PathBuf>,
     replay_detail_lines: Vec<SharedString>,
+    /// The embedded save view for the selected replay's local side,
+    /// plus the path it was built for.
+    replay_loaded: Option<loaded::Loaded>,
+    replay_loaded_path: Option<std::path::PathBuf>,
+    /// Which tab's models were last pushed into the SaveView global
+    /// (0 = play, 1 = replays) — the timer re-pushes on tab switches.
+    save_view_source: i32,
     /// Lazy duration/round/completion stats keyed by replay path,
     /// filled by the background worker after each scan. The
     /// show-incomplete filter reads it; missing entries stay visible
@@ -906,7 +919,12 @@ fn refresh_loaded(app: &AppWindow, st: &mut State) {
 /// Push the save viewer's models — navi header, section tabs, folder
 /// rows — from `st.loaded`, or clear the whole viewer when it's gone.
 fn push_save_view(app: &AppWindow, st: &State) {
-    let Some(l) = st.loaded.as_ref() else {
+    let l = if st.save_view_source == 1 {
+        st.replay_loaded.as_ref()
+    } else {
+        st.loaded.as_ref()
+    };
+    let Some(l) = l else {
         app.global::<SaveView>().set_save_loaded(false);
         app.global::<SaveView>().set_navi_header(NaviHeader::default());
         app.global::<SaveView>().set_save_tabs(ModelRc::new(VecModel::from(Vec::<SaveTabItem>::new())));
@@ -2035,6 +2053,9 @@ pub fn run() -> anyhow::Result<()> {
         replay_detail_path: None,
         replay_detail_lines: Vec::new(),
         replay_stats: HashMap::new(),
+        replay_loaded: None,
+        replay_loaded_path: None,
+        save_view_source: 0,
         patches: patch::PatchMap::new(),
         patch_rows: Vec::new(),
         patch_list_rows: Vec::new(),
@@ -2558,7 +2579,12 @@ pub fn run() -> anyhow::Result<()> {
         move || {
             let Some(app) = app_weak.upgrade() else { return };
             let st = state.borrow();
-            let Some(l) = st.loaded.as_ref() else { return };
+            let l = if st.save_view_source == 1 {
+                st.replay_loaded.as_ref()
+            } else {
+                st.loaded.as_ref()
+            };
+            let Some(l) = l else { return };
             let kind = save_active_kind(&app);
             let Some(text) = loaded::section_as_text(l, kind, app.global::<SaveView>().get_folder_grouped()) else {
                 return;
@@ -2575,7 +2601,12 @@ pub fn run() -> anyhow::Result<()> {
         move || {
             let Some(app) = app_weak.upgrade() else { return };
             let st = state.borrow();
-            let Some(l) = st.loaded.as_ref() else { return };
+            let l = if st.save_view_source == 1 {
+                st.replay_loaded.as_ref()
+            } else {
+                st.loaded.as_ref()
+            };
+            let Some(l) = l else { return };
             let Some(img) = loaded::navicust_clipboard_image(l) else {
                 return;
             };
@@ -3066,7 +3097,12 @@ pub fn run() -> anyhow::Result<()> {
             let Some(app) = app_weak.upgrade() else { return };
             // Only the folder model depends on grouping — no rebake.
             let st = state.borrow();
-            if let Some(l) = st.loaded.as_ref() {
+            let l = if st.save_view_source == 1 {
+                st.replay_loaded.as_ref()
+            } else {
+                st.loaded.as_ref()
+            };
+            if let Some(l) = l {
                 app.global::<SaveView>().set_folder_chips(ModelRc::new(VecModel::from(loaded::folder_rows(l, grouped))));
             }
         }
@@ -3127,6 +3163,23 @@ pub fn run() -> anyhow::Result<()> {
             let path = replay.path.clone();
             st.replay_detail_path = Some(path.clone());
             st.replay_detail_lines = lines;
+            // Embedded save view: decode the replay's local SRAM
+            // off-thread; the fold bakes the Loaded (UI-thread images).
+            if st.replay_loaded_path.as_deref() != Some(path.as_path()) {
+                let sram_path = path.clone();
+                let sram_tx = stats_tx.clone();
+                std::thread::spawn(move || {
+                    let sram = std::fs::File::open(&sram_path)
+                        .map_err(anyhow::Error::from)
+                        .and_then(|f| Ok(tango_pvp::replay::Replay::decode(f)?.local_sram));
+                    match sram {
+                        Ok(sram) => {
+                            let _ = sram_tx.send(Event::ReplayLocalSram { path: sram_path, sram });
+                        }
+                        Err(e) => log::warn!("{}: local sram decode failed: {e}", sram_path.display()),
+                    }
+                });
+            }
             if let Some(stats) = st.replay_stats.get(&path).copied() {
                 let tx = stats_tx.clone();
                 let _ = tx.send(Event::ReplayStats { path, stats });
@@ -3901,6 +3954,13 @@ pub fn run() -> anyhow::Result<()> {
                     sync_session_input(&mut st);
                 }
                 refresh_input_ui(&app, &mut st);
+                // The SaveView global is shared by the play + replays
+                // tabs; whoever is visible owns it.
+                let wanted_source = if app.get_active_tab() == 1 { 1 } else { 0 };
+                if wanted_source != st.save_view_source {
+                    st.save_view_source = wanted_source;
+                    push_save_view(&app, &st);
+                }
                 update_discord_presence(&app, &st);
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 {
@@ -3997,6 +4057,37 @@ pub fn run() -> anyhow::Result<()> {
                                     app.invoke_save_selected(si as i32);
                                 }
                             }
+                        }
+                    }
+                    Event::ReplayLocalSram { path, sram } => {
+                        let mut st = state.borrow_mut();
+                        if st.replay_detail_path.as_deref() != Some(path.as_path()) {
+                            continue;
+                        }
+                        let row = st.replay_rows.iter().find(|r| r.path == path);
+                        let side = row.and_then(|r| r.metadata.local_side.clone());
+                        let patches_path = st.config.patches_path();
+                        let built = resolve_replay_rom(&st.roms, &patches_path, side.as_ref())
+                            .ok()
+                            .and_then(|(game, rom)| {
+                                let save = game.parse_save(&sram).ok()?;
+                                // The resolved ROM already has the side's
+                                // patch applied, so no patch pass here
+                                // (matches what playback boots).
+                                Some(loaded::Loaded::build(game, &rom, save, &patches_path, None))
+                            });
+                        match built {
+                            Some(l) => {
+                                st.replay_loaded = Some(l);
+                                st.replay_loaded_path = Some(path);
+                            }
+                            None => {
+                                st.replay_loaded = None;
+                                st.replay_loaded_path = None;
+                            }
+                        }
+                        if st.save_view_source == 1 {
+                            push_save_view(&app, &st);
                         }
                     }
                     Event::ReplayStats { path, stats } => {

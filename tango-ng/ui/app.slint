@@ -2511,7 +2511,13 @@ export component AppWindow inherits Window {
                                     overflow: elide;
                                 }
                             }
-                            Rectangle { vertical-stretch: 1; }
+                            // Embedded read-only save view of the
+                            // replay's local side (SaveView global —
+                            // the timer re-points it at replay models
+                            // while this tab is visible).
+                            SaveViewBody {
+                                vertical-stretch: 1;
+                            }
                             // Video export (tabs/replays/export.rs):
                             // scale (0 = lossless .mkv), mute, two-sided;
                             // progress + cancel while a render runs.
