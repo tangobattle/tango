@@ -1,0 +1,14 @@
+target
+chrome-user-data-dir
+.DS_Store
+tracing*
+*.svg
+xamples
+.vscode
+.idea
+fuzz/corpus
+fuzz/artifacts
+dimpl
+webrtc
+*.pcap
+.wt

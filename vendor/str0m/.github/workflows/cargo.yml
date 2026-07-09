@@ -1,0 +1,173 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  schedule:
+    - cron: "22 3 * * 5"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TOOLCHAINS: com.apple.dt.toolchain.XcodeDefault
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        rust: [stable, beta, 1.85.0]
+        crypto:
+          - name: openssl
+            os: ubuntu-latest
+          - name: openssl
+            os: macos-latest
+          - name: openssl-dimpl
+            os: ubuntu-latest
+          - name: openssl-dimpl
+            os: macos-latest
+          - name: aws-lc-rs
+            os: ubuntu-latest
+          - name: aws-lc-rs
+            os: macos-latest
+          - name: aws-lc-rs
+            os: windows-latest
+          - name: rust-crypto
+            os: ubuntu-latest
+          - name: rust-crypto
+            os: macos-latest
+          - name: rust-crypto
+            os: windows-latest
+          - name: wincrypto
+            os: windows-latest
+          - name: wincrypto-dimpl
+            os: windows-latest
+          - name: apple-crypto
+            os: macos-latest
+
+    runs-on: ${{ matrix.crypto.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        id: toolchain
+        with:
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Test with ${{ matrix.crypto.name }}
+        run: cargo +${{steps.toolchain.outputs.name}} test --no-default-features --features ${{ matrix.crypto.features || matrix.crypto.name }}
+
+  snowflake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Martin's snowflake formatting rules
+        uses: algesten/snowflake@v1.1.0
+        with:
+          check_diff: true
+          line_width_rules: "CHANGELOG.md:120;c_cpp_properties.json:160;Cargo.toml:150;README.md:180;README.tpl:180;*.md:110;*.rs:110;*.toml:110;*.lock:200;*.svg:1000;*.txt:9999;DEFAULT=110"
+
+  pii:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        id: toolchain
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test pii
+        run: cargo +${{steps.toolchain.outputs.name}} test --test pii --features pii
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        id: toolchain
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: fmt
+        run: cargo +${{steps.toolchain.outputs.name}} fmt --all -- --check
+      - name: clippy (default features)
+        run: cargo +${{steps.toolchain.outputs.name}} clippy -- -D warnings
+      - name: clippy (all crypto backends)
+        run: |
+          cargo +${{steps.toolchain.outputs.name}} clippy --no-default-features --features openssl -- -D warnings
+          cargo +${{steps.toolchain.outputs.name}} clippy --no-default-features --features aws-lc-rs -- -D warnings
+          cargo +${{steps.toolchain.outputs.name}} clippy --no-default-features --features rust-crypto -- -D warnings
+      - name: doc
+        run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: -Dwarnings
+
+  fuzz-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          components: rust-src
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+      - name: Build fuzz targets
+        run: cargo fuzz build --fuzz-dir crates/fuzz
+
+  related-crates:
+    strategy:
+      matrix:
+        rust: [stable, beta, 1.85.0]
+        dir:
+          - name: crates/proto
+            os: ubuntu-latest
+          - name: crates/is
+            os: ubuntu-latest
+          - name: crates/netem
+            os: ubuntu-latest
+          - name: crypto/apple-crypto
+            os: macos-latest
+          - name: crypto/aws-lc-rs
+            os: ubuntu-latest
+          - name: crypto/openssl
+            os: ubuntu-latest
+          - name: crypto/rust-crypto
+            os: ubuntu-latest
+          - name: crypto/wincrypto
+            os: windows-latest
+    runs-on: ${{ matrix.dir.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        id: toolchain
+        with:
+          toolchain: ${{ matrix.rust }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: fmt
+        if: matrix.rust == 'stable'
+        run: cargo +${{steps.toolchain.outputs.name}} fmt --manifest-path ${{ matrix.dir.name }}/Cargo.toml -- --check
+      - name: clippy
+        if: matrix.rust == 'stable'
+        run: cargo +${{steps.toolchain.outputs.name}} clippy --manifest-path ${{ matrix.dir.name }}/Cargo.toml -- -D warnings
+      - name: test
+        run: cargo +${{steps.toolchain.outputs.name}} test --manifest-path ${{ matrix.dir.name }}/Cargo.toml
+
+  cargo-deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          arguments: --all-features

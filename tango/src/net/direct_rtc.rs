@@ -193,3 +193,221 @@ mod tests {
         assert_eq!(at_host, b"reconnected-c2h");
     }
 }
+
+/// Synthetic skew A/B measurement, transport-stack-agnostic: everything it
+/// touches (`direct_rtc::{host,connect}` → [`Channels`] → the raw in-match
+/// byte pipe) exists identically on the libdatachannel and tango-rtc trees, so
+/// the same test compiled on each gives directly comparable numbers.
+///
+/// It models exactly what tango's in-match skew telemetry computes: two peers
+/// tick at 60Hz through a loss/delay/jitter-injecting UDP proxy; each tick a
+/// side samples `skew = lead − last_remote_lead` (before sending, as getgud
+/// reads it), then sends `(tick, lead)`; `lead` is its tick counter minus the
+/// remote tick frontier it has seen. Wobble = how much that skew series
+/// swings.
+///
+/// Run by hand: `cargo test -p tango --release skew_wobble -- --ignored --nocapture`
+#[cfg(test)]
+mod skew_ab {
+    use super::*;
+
+    struct Rng(u64);
+
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0.wrapping_mul(0x2545F4914F6CDD1D)
+        }
+
+        fn chance(&mut self, permille: u32) -> bool {
+            (self.next() >> 32) as u32 % 1000 < permille
+        }
+
+        fn unit(&mut self) -> f64 {
+            (self.next() >> 11) as f64 / (1u64 << 53) as f64
+        }
+    }
+
+    async fn lossy_proxy(
+        listen: std::sync::Arc<tokio::net::UdpSocket>,
+        forward_to: std::net::SocketAddr,
+        loss_permille: u32,
+        delay: std::time::Duration,
+        jitter: std::time::Duration,
+        seed: u64,
+    ) {
+        let host_side = std::sync::Arc::new(tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap());
+        let mut dialer: Option<std::net::SocketAddr> = None;
+        let mut rng = Rng(seed | 1);
+        let mut jitter_rng = Rng((seed ^ 0x9E3779B97F4A7C15) | 1);
+        let mut buf_a = vec![0u8; 2048];
+        let mut buf_b = vec![0u8; 2048];
+        let deliver = |sock: std::sync::Arc<tokio::net::UdpSocket>,
+                       payload: Vec<u8>,
+                       to: std::net::SocketAddr,
+                       wait: std::time::Duration| async move {
+            if !wait.is_zero() {
+                tokio::time::sleep(wait).await;
+            }
+            let _ = sock.send_to(&payload, to).await;
+        };
+        loop {
+            let extra = if jitter.is_zero() {
+                std::time::Duration::ZERO
+            } else {
+                jitter.mul_f64(jitter_rng.unit())
+            };
+            tokio::select! {
+                r = listen.recv_from(&mut buf_a) => {
+                    let Ok((n, from)) = r else { break };
+                    dialer = Some(from);
+                    if !rng.chance(loss_permille) {
+                        tokio::spawn(deliver(host_side.clone(), buf_a[..n].to_vec(), forward_to, delay + extra));
+                    }
+                }
+                r = host_side.recv_from(&mut buf_b) => {
+                    let Ok((n, _)) = r else { break };
+                    if let Some(dialer) = dialer {
+                        if !rng.chance(loss_permille) {
+                            tokio::spawn(deliver(listen.clone(), buf_b[..n].to_vec(), dialer, delay + extra));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// One peer's 60Hz tick loop over the raw in-match byte pipe.
+    async fn run_side(
+        mut tx: crate::net::data::Sender,
+        mut rx: crate::net::data::Receiver,
+        ticks: u32,
+        warmup: u32,
+    ) -> Vec<i32> {
+        let mut interval = tokio::time::interval(std::time::Duration::from_micros(16_667));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
+        let mut tick: u32 = 0;
+        // Highest remote tick seen + 1 (count of confirmed remote ticks).
+        let mut remote_frontier: u32 = 0;
+        let mut last_remote_lead: i32 = 0;
+        let mut skew_samples = vec![];
+        loop {
+            tokio::select! {
+                _ = interval.tick(), if tick < ticks => {
+                    let lead = tick as i32 - remote_frontier as i32;
+                    if tick >= warmup {
+                        skew_samples.push(lead - last_remote_lead);
+                    }
+                    let mut msg = [0u8; 8];
+                    msg[..4].copy_from_slice(&tick.to_le_bytes());
+                    msg[4..].copy_from_slice(&lead.to_le_bytes());
+                    tx.send(&msg).await.expect("send");
+                    tick += 1;
+                }
+                r = rx.recv() => {
+                    let msg = r.expect("recv");
+                    let rtick = u32::from_le_bytes(msg[..4].try_into().unwrap());
+                    let rlead = i32::from_le_bytes(msg[4..8].try_into().unwrap());
+                    if rtick + 1 > remote_frontier {
+                        remote_frontier = rtick + 1;
+                        last_remote_lead = rlead;
+                    }
+                    if remote_frontier >= ticks && tick >= ticks {
+                        break;
+                    }
+                }
+                _ = tokio::time::sleep(std::time::Duration::from_millis(500)), if tick >= ticks => break,
+            }
+        }
+        skew_samples
+    }
+
+    fn report(name: &str, samples: &[i32]) {
+        let n = samples.len() as f64;
+        let mean = samples.iter().map(|&s| s as f64).sum::<f64>() / n;
+        let var = samples.iter().map(|&s| (s as f64 - mean).powi(2)).sum::<f64>() / n;
+        // Mean over sliding 1s (60-sample) windows of the within-window swing
+        // (max − min): the "how much does the needle move per second" number.
+        let mut swings = vec![];
+        for w in samples.windows(60) {
+            let mx = *w.iter().max().unwrap();
+            let mn = *w.iter().min().unwrap();
+            swings.push((mx - mn) as f64);
+        }
+        let mean_swing = swings.iter().sum::<f64>() / swings.len() as f64;
+        let max_swing = swings.iter().cloned().fold(0.0, f64::max);
+        println!(
+            "  {name}: n={} mean={:+.2} std={:.2} min={:+} max={:+} | swing/1s mean={:.1} max={:.1}",
+            samples.len(),
+            mean,
+            var.sqrt(),
+            samples.iter().min().unwrap(),
+            samples.iter().max().unwrap(),
+            mean_swing,
+            max_swing,
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[ignore = "diagnostic measurement, run with --ignored --nocapture"]
+    async fn skew_wobble_synthetic() {
+        for (loss_permille, jitter_ms, seed) in [
+            (0u32, 0u64, 0x5EEDu64),
+            (100, 0, 0x5EED),
+            (100, 0, 0xACE),
+            (100, 10, 0x5EED),
+            (100, 10, 0xACE),
+        ] {
+            let port = 24990;
+            let delay = std::time::Duration::from_millis(30);
+            let jitter = std::time::Duration::from_millis(jitter_ms);
+            println!(
+                "=== {}‰ loss, 30ms one-way delay, {}ms jitter (seed {:#x}) ===",
+                loss_permille, jitter_ms, seed
+            );
+
+            let proxy_sock = std::sync::Arc::new(tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap());
+            let proxy_addr = proxy_sock.local_addr().unwrap();
+            let proxy = tokio::spawn(lossy_proxy(
+                proxy_sock,
+                format!("127.0.0.1:{port}").parse().unwrap(),
+                loss_permille,
+                delay,
+                jitter,
+                seed,
+            ));
+
+            let proxy_addr_str = proxy_addr.to_string();
+            let (host_res, conn_res) = tokio::join!(host(port), connect(&proxy_addr_str));
+            let mut host_ch = host_res.expect("host setup");
+            let mut conn_ch = conn_res.expect("connect setup");
+            let handshake = async {
+                tokio::try_join!(
+                    crate::net::negotiate(&mut host_ch.control.0, &mut host_ch.control.1),
+                    crate::net::negotiate(&mut conn_ch.control.0, &mut conn_ch.control.1),
+                )
+            };
+            tokio::time::timeout(std::time::Duration::from_secs(20), handshake)
+                .await
+                .expect("handshake timed out")
+                .expect("negotiate failed");
+
+            // 12s at 60Hz, first 2s discarded as warmup.
+            let ticks = 60 * 12;
+            let warmup = 120;
+            let (h, c) = tokio::join!(
+                run_side(host_ch.in_match.0, host_ch.in_match.1, ticks, warmup),
+                run_side(conn_ch.in_match.0, conn_ch.in_match.1, ticks, warmup),
+            );
+            report("host  ", &h);
+            report("dialer", &c);
+            proxy.abort();
+            drop(host_ch.peer_conn);
+            drop(conn_ch.peer_conn);
+            // Let the ports free up before the next scenario re-binds.
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    }
+}

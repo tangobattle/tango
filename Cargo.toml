@@ -24,6 +24,7 @@ exclude = ["vendor"]
 # vendor/sctp-proto/TANGO-PATCHES.md for the exact diff and rationale.
 [patch.crates-io]
 sctp-proto = { path = "vendor/sctp-proto" }
+str0m = { path = "vendor/str0m" }
 
 # One source of truth for every external dep shared by 2+ member crates,
 # so versions can't silently drift apart (we shipped four itertools and
