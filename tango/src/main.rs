@@ -113,8 +113,8 @@ pub fn main() {
 
 /// Parent half of the crash-handling trampoline. Mirrors
 /// `tango/src/main.rs`'s parent flow:
-///   1. Make sure the logs dir exists; open a timestamped log
-///      file inside it.
+///   1. Make sure the logs dir exists; rotate the previous
+///      sessions' logs and open a fresh `tango.log` inside it.
 ///   2. Spawn `current_exe()` again with `TANGO_CHILD=1` +
 ///      `RUST_BACKTRACE=1`, redirecting the child's stderr into
 ///      the log file so panics + mgba C-side stderr
@@ -122,6 +122,28 @@ pub fn main() {
 ///   3. Wait. On non-zero exit, pop up a localized rfd dialog
 ///      pointing at the log file path.
 ///
+/// How many rotated copies of each log-dir file to keep, i.e.
+/// `tango.log` plus `tango.log.1` ..= `tango.log.{MAX_ROTATED_LOGS}`.
+const MAX_ROTATED_LOGS: usize = 5;
+
+/// Shift `base` → `base.1` → `base.2` → …, dropping the oldest copy,
+/// so `base` is free for this session. The crash dump rotates through
+/// the same scheme as the log, so `tango.dmp.N` (if that session
+/// crashed) always pairs with `tango.log.N`.
+fn rotate_logs(dir: &std::path::Path, base: &str) {
+    let numbered = |n: usize| {
+        if n == 0 {
+            dir.join(base)
+        } else {
+            dir.join(format!("{base}.{n}"))
+        }
+    };
+    let _ = std::fs::remove_file(numbered(MAX_ROTATED_LOGS));
+    for n in (0..MAX_ROTATED_LOGS).rev() {
+        let _ = std::fs::rename(numbered(n), numbered(n + 1));
+    }
+}
+
 /// Returns the exit code we should propagate to the OS.
 fn supervisor_main() -> anyhow::Result<i32> {
     use std::io::Write;
@@ -130,9 +152,10 @@ fn supervisor_main() -> anyhow::Result<i32> {
 
     let logs_dir = config.logs_path();
     let _ = std::fs::create_dir_all(&logs_dir);
-    let ts = chrono::Local::now().format("%Y%m%d%H%M%S").to_string();
-    let log_path = logs_dir.join(format!("{ts}.log"));
-    let dump_path = logs_dir.join(format!("{ts}.dmp"));
+    rotate_logs(&logs_dir, "tango.log");
+    rotate_logs(&logs_dir, "tango.dmp");
+    let log_path = logs_dir.join("tango.log");
+    let dump_path = logs_dir.join("tango.dmp");
 
     let mut log_file = match std::fs::File::create(&log_path) {
         Ok(f) => f,
