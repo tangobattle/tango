@@ -23,8 +23,8 @@ workload, and this diff mirrors those values.
 ## The diff against upstream 0.10.1
 
 Everything else is byte-identical to the crates.io release. To upgrade: copy
-the new release over this directory and re-apply the two hunks (both are
-marked with `TANGO PATCH` comments).
+the new release over this directory and re-apply the hunks (all marked with
+`TANGO PATCH` comments).
 
 - `src/config.rs`: `RTO_INITIAL` 3000 → **1000**, `RTO_MIN` 1000 → **200**,
   `RTO_MAX` 60000 → **10000** (milliseconds). These consts are the defaults
@@ -33,6 +33,23 @@ marked with `TANGO PATCH` comments).
   SACK interval; 200ms inflates the sender's smoothed RTT (and therefore its
   RTO) on low-rate streams. Gap-triggered SACKs were already immediate
   upstream; this only affects in-order traffic.
+- `src/association/mod.rs` (`check_partial_reliability_status`): the
+  PR-SCTP Rexmit abandonment predicate `nsent >= reliability_value` →
+  **`nsent > reliability_value + 1`** (saturating). `reliability_value`
+  counts allowed *retransmissions* while `nsent` counts total sends, and
+  the check also runs at **first send** — so upstream marks every chunk of
+  a `max_retransmits: 0` stream abandoned the moment it is first
+  transmitted (`1 >= 0`). The sender then advances its FORWARD-TSN point
+  over data that is still in flight on every SACK arrival, and whenever a
+  FORWARD-TSN beats the data to the receiver, the receiver discards the
+  arriving data as a duplicate below its cumulative point. Measured with
+  `tango-rtc/tests/loss.rs` (`wobble_rtt60`): **25–40% of unreliable
+  messages silently dropped at 60ms RTT with zero packet loss**, in an
+  alternating pattern locked to the SACK-every-2nd-packet cadence — felt
+  in tango as constant in-match input holes and a swinging time-sync skew.
+  With the fix: 100% delivery at 0% loss, ~98–99.7% at 5–15% loss (a lost
+  chunk still gets one late retransmit before abandonment, as the
+  retransmit sites push the chunk after the check — same behavior as Pion).
 
 The right long-term fix is upstream plumbing (str0m `RtcConfig` →
 `TransportConfig`), at which point this vendored copy goes away and the

@@ -36,30 +36,45 @@ impl Rng {
     }
 }
 
-/// Bidirectional UDP forwarder that drops `loss_permille` of datagrams in
-/// each direction. The dialer talks to `listen`; the proxy relays to
-/// `forward_to` (the host) from a second socket, so the host sees the proxy
-/// as its peer.
-async fn lossy_proxy(listen: Arc<tokio::net::UdpSocket>, forward_to: SocketAddr, loss_permille: u32, seed: u64) {
-    let host_side = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+/// Bidirectional UDP forwarder that drops `loss_permille` of datagrams and
+/// delays the survivors by `delay` in each direction (so RTT = 2 × `delay`).
+/// The dialer talks to `listen`; the proxy relays to `forward_to` (the host)
+/// from a second socket, so the host sees the proxy as its peer.
+async fn lossy_proxy(
+    listen: Arc<tokio::net::UdpSocket>,
+    forward_to: SocketAddr,
+    loss_permille: u32,
+    delay: std::time::Duration,
+    seed: u64,
+) {
+    let host_side = Arc::new(tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap());
     let mut dialer: Option<SocketAddr> = None;
     let mut rng = Rng(seed | 1);
     let mut buf_a = vec![0u8; 2048];
     let mut buf_b = vec![0u8; 2048];
+    // Per-datagram delay tasks; tokio's timer wheel keeps per-sleep cost
+    // negligible at these rates, and independent sleeps model a fixed-latency
+    // (non-queuing) path.
+    let deliver = |sock: Arc<tokio::net::UdpSocket>, payload: Vec<u8>, to: SocketAddr| async move {
+        if !delay.is_zero() {
+            tokio::time::sleep(delay).await;
+        }
+        let _ = sock.send_to(&payload, to).await;
+    };
     loop {
         tokio::select! {
             r = listen.recv_from(&mut buf_a) => {
                 let Ok((n, from)) = r else { break };
                 dialer = Some(from);
                 if !rng.chance(loss_permille) {
-                    let _ = host_side.send_to(&buf_a[..n], forward_to).await;
+                    tokio::spawn(deliver(host_side.clone(), buf_a[..n].to_vec(), forward_to));
                 }
             }
             r = host_side.recv_from(&mut buf_b) => {
                 let Ok((n, _)) = r else { break };
                 if let Some(dialer) = dialer {
                     if !rng.chance(loss_permille) {
-                        let _ = listen.send_to(&buf_b[..n], dialer).await;
+                        tokio::spawn(deliver(listen.clone(), buf_b[..n].to_vec(), dialer));
                     }
                 }
             }
@@ -72,6 +87,7 @@ async fn lossy_proxy(listen: Arc<tokio::net::UdpSocket>, forward_to: SocketAddr,
 async fn connect_through_proxy(
     host_port: u16,
     loss_permille: u32,
+    delay: std::time::Duration,
     seed: u64,
 ) -> ((PeerConnection, Vec<DataChannel>), (PeerConnection, Vec<DataChannel>)) {
     let proxy_sock = Arc::new(tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap());
@@ -80,6 +96,7 @@ async fn connect_through_proxy(
         proxy_sock,
         format!("127.0.0.1:{}", host_port).parse().unwrap(),
         loss_permille,
+        delay,
         seed,
     ));
 
@@ -99,6 +116,7 @@ async fn connect_through_proxy(
 struct Stats {
     sent: usize,
     received: usize,
+    received_seqs: Vec<u32>,
     latencies_ms: Vec<f64>,
 }
 
@@ -122,6 +140,30 @@ impl Stats {
             pct(1.0),
             wall,
         );
+        // Missing-seq pattern: random singles vs episodic runs tell very
+        // different stories about where frames die.
+        let mut have = vec![false; self.sent];
+        for s in &self.received_seqs {
+            if (*s as usize) < have.len() {
+                have[*s as usize] = true;
+            }
+        }
+        let missing: Vec<usize> = (0..self.sent).filter(|i| !have[*i]).collect();
+        if !missing.is_empty() {
+            let mut runs: Vec<(usize, usize)> = vec![];
+            for &m in &missing {
+                match runs.last_mut() {
+                    Some((_, end)) if *end + 1 == m => *end = m,
+                    _ => runs.push((m, m)),
+                }
+            }
+            let shown: Vec<String> = runs
+                .iter()
+                .take(30)
+                .map(|(a, b)| if a == b { format!("{}", a) } else { format!("{}-{}", a, b) })
+                .collect();
+            println!("  missing {} in {} runs: {}{}", missing.len(), runs.len(), shown.join(","), if runs.len() > 30 { ",…" } else { "" });
+        }
     }
 }
 
@@ -139,6 +181,7 @@ async fn pump(
     let mut stats = Stats {
         sent: 0,
         received: 0,
+        received_seqs: vec![],
         latencies_ms: vec![],
     };
 
@@ -163,9 +206,11 @@ async fn pump(
             }
             got = rx.receive() => {
                 let got = got.expect("receive EOF");
+                let seq = u32::from_le_bytes(got[..4].try_into().unwrap());
                 let sent_us = u64::from_le_bytes(got[4..12].try_into().unwrap());
                 let latency_us = epoch.elapsed().as_micros() as u64 - sent_us;
                 stats.received += 1;
+                stats.received_seqs.push(seq);
                 stats.latencies_ms.push(latency_us as f64 / 1000.0);
                 if stats.received == stats.sent && sent == count {
                     break;
@@ -177,10 +222,13 @@ async fn pump(
     (stats, epoch.elapsed())
 }
 
-async fn run_scenario(host_port: u16, loss_permille: u32, seed: u64) {
-    println!("=== {}‰ loss in each direction (seed {:#x}) ===", loss_permille, seed);
+async fn run_scenario(host_port: u16, loss_permille: u32, delay: std::time::Duration, seed: u64) {
+    println!(
+        "=== {}‰ loss, {:?} one-way delay (seed {:#x}) ===",
+        loss_permille, delay, seed
+    );
     let ((_host, mut host_chans), (_dialer, mut dialer_chans)) =
-        connect_through_proxy(host_port, loss_permille, seed).await;
+        connect_through_proxy(host_port, loss_permille, delay, seed).await;
 
     // Warm the connection up (first send drives the whole bring-up).
     host_chans[0].send(b"warmup-h").await.unwrap();
@@ -240,14 +288,14 @@ async fn run_scenario(host_port: u16, loss_permille: u32, seed: u64) {
 #[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 #[ignore = "diagnostic measurement, run by hand with --ignored --nocapture"]
 async fn loss_0_baseline() {
-    run_scenario(28961, 0, 0x5EED).await;
+    run_scenario(28961, 0, std::time::Duration::ZERO, 0x5EED).await;
 }
 
 #[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 #[ignore = "diagnostic measurement, run by hand with --ignored --nocapture"]
 async fn loss_5pct() {
     for (i, seed) in [0x5EED, 0xACE, 0xBEEF].into_iter().enumerate() {
-        run_scenario(28910 + i as u16, 50, seed).await;
+        run_scenario(28910 + i as u16, 50, std::time::Duration::ZERO, seed).await;
     }
 }
 
@@ -255,6 +303,21 @@ async fn loss_5pct() {
 #[ignore = "diagnostic measurement, run by hand with --ignored --nocapture"]
 async fn loss_15pct() {
     for (i, seed) in [0x5EED, 0xACE, 0xBEEF].into_iter().enumerate() {
-        run_scenario(28920 + i as u16, 150, seed).await;
+        run_scenario(28920 + i as u16, 150, std::time::Duration::ZERO, seed).await;
+    }
+}
+
+/// The report that matters for in-match feel: with a real RTT in the path,
+/// does delivered-frame latency stay pinned at the transport delay, or does
+/// it wobble upward under loss? (On a zero-RTT loopback everything the
+/// congestion machinery does is invisible — SACKs return instantly.)
+#[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
+#[ignore = "diagnostic measurement, run by hand with --ignored --nocapture"]
+async fn wobble_rtt60() {
+    let delay = std::time::Duration::from_millis(30);
+    for (i, loss) in [0u32, 50, 150].into_iter().enumerate() {
+        for (j, seed) in [0x5EEDu64, 0xACE].into_iter().enumerate() {
+            run_scenario(28930 + (i * 2 + j) as u16, loss, delay, seed).await;
+        }
     }
 }

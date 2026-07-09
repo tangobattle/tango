@@ -2806,7 +2806,21 @@ impl Association {
             let reliability_value = s.reliability_value;
 
             if reliability_type == ReliabilityType::Rexmit {
-                if c.nsent >= reliability_value {
+                // TANGO PATCH (see /vendor/sctp-proto/TANGO-PATCHES.md):
+                // `reliability_value` counts allowed RETRANSMISSIONS, and
+                // `nsent` counts total sends (1 = the initial transmission) —
+                // so the abandonment condition is retransmissions-so-far
+                // (`nsent - 1`) exceeding the budget. The original
+                // `nsent >= reliability_value` marked every chunk of a
+                // `max_retransmits: 0` stream abandoned at its FIRST send
+                // (1 >= 0): this function runs from
+                // `move_pending_data_chunk_to_inflight_queue`, so the sender
+                // then advanced its FORWARD-TSN point over data still in
+                // flight, and any FORWARD-TSN beating that data to the
+                // receiver got it dropped as a duplicate — 25-40% of
+                // unreliable messages silently discarded at 60ms RTT with
+                // ZERO packet loss.
+                if c.nsent > reliability_value.saturating_add(1) {
                     c.set_abandoned(true);
                     trace!(
                         "[{}] marked as abandoned: tsn={} ppi={} (remix: {})",
