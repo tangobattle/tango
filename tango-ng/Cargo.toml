@@ -136,10 +136,26 @@ build_targets = ["aarch64-linux-android"]
 
 [package.metadata.android.sdk]
 min_sdk_version = 30
-target_sdk_version = 34
+target_sdk_version = 35
+
+# Netplay (matchmaking + ICE), patch repo sync, updater checks.
+[[package.metadata.android.uses_permission]]
+name = "android.permission.INTERNET"
+
+[[package.metadata.android.uses_permission]]
+name = "android.permission.ACCESS_NETWORK_STATE"
 
 [package.metadata.android.application]
 label = "Tango NG"
+
+# Dev-signing only (standard android debug key, storepass/keypass
+# "android"). Not checked in; regenerate with:
+#   keytool -genkeypair -keystore debug.keystore -storepass android \
+#     -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
+#     -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+[package.metadata.android.signing.release]
+path = "debug.keystore"
+keystore_password = "android"
 
 [features]
 # Mirrors the tango crate: each game's support is an optional dependency
