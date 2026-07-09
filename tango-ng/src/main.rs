@@ -22,6 +22,9 @@
 mod audio;
 mod bnlc;
 mod config;
+// Discord rich presence — desktop-only (no mobile Discord IPC).
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod discord;
 mod game;
 mod i18n;
 mod identity;
@@ -283,6 +286,13 @@ struct State {
     /// Select this (game, save path) once the post-operation rescan
     /// lands — how rename/duplicate/create keep the new file focused.
     pending_select_save: Option<(rom::GameRef, std::path::PathBuf)>,
+    /// When the active session started — the rich-presence elapsed
+    /// timer's anchor.
+    session_start: Option<std::time::SystemTime>,
+    /// Discord rich-presence client (background auto-reconnect task);
+    /// the timer pushes an activity snapshot each tick (deduped inside).
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    discord: discord::Client,
     session: Option<ActiveSession>,
     /// Currently-held physical inputs (keyboard via the FocusScopes'
     /// key events, gamepad via the timer's gilrs poll). Combined with
@@ -919,6 +929,39 @@ fn push_save_view(app: &AppWindow, st: &State) {
     ))));
     app.set_save_loaded(true);
 }
+
+/// Push the current app state into Discord rich presence (tango's
+/// App::update presence arm): in a session → single-player /
+/// match-in-progress with the elapsed timer; dialing / negotiating →
+/// "Looking for match" (matchmaking codes ride as the join secret);
+/// lobby → "In lobby"; else the base game card. The client dedupes,
+/// so the per-tick call is cheap.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn update_discord_presence(app: &AppWindow, st: &State) {
+    let lang = &st.config.language;
+    let game_info = selected_game(app, st).map(|g| {
+        discord::make_game_info(g, selected_patch(app, st).as_ref().map(|(n, v)| (n.as_str(), v)), lang)
+    });
+    let activity = if let Some(session) = &st.session {
+        let start = st.session_start.unwrap_or_else(std::time::SystemTime::now);
+        match session {
+            ActiveSession::Pvp(_) => discord::make_in_progress_activity(start, lang, game_info),
+            _ => discord::make_single_player_activity(start, lang, game_info),
+        }
+    } else {
+        match &st.netplay.phase {
+            netplay::Phase::Connecting { ident, .. } | netplay::Phase::Negotiating { ident } => {
+                discord::make_looking_activity(ident, lang, game_info)
+            }
+            netplay::Phase::Lobby { ident } => discord::make_in_lobby_activity(ident, lang, game_info),
+            netplay::Phase::Idle | netplay::Phase::Failed { .. } => discord::make_base_activity(game_info),
+        }
+    };
+    st.discord.set_current_activity(Some(activity));
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn update_discord_presence(_app: &AppWindow, _st: &State) {}
 
 /// The active save-view section's kind (-1 when none) — mirror of the
 /// .slint-side derived `save-kind` property, for the copy callbacks.
@@ -1712,6 +1755,9 @@ fn main() -> anyhow::Result<()> {
         save_template_values: Vec::new(),
         save_new_auto_default: None,
         pending_select_save: None,
+        session_start: None,
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        discord: discord::Client::new(tokio_runtime.handle().clone()),
     }));
 
     // Background scan; results come back over the channel and are folded
@@ -2691,6 +2737,7 @@ fn main() -> anyhow::Result<()> {
             match session::SinglePlayerSession::new(&rom, &save.path, &st.audio_binder) {
                 Ok(session) => {
                     st.session = Some(ActiveSession::SinglePlayer(session));
+                    st.session_start = Some(std::time::SystemTime::now());
                     // Key releases outside a focused FocusScope are
                     // never delivered — start from a clean keyboard
                     // state (gamepad state is polled and stays valid).
@@ -2925,6 +2972,7 @@ fn main() -> anyhow::Result<()> {
                         .collect();
                     app.set_replay_marks(ModelRc::new(VecModel::from(marks)));
                     st.session = Some(ActiveSession::Replay(session));
+                    st.session_start = Some(std::time::SystemTime::now());
                     st.replay_speed = 1.0;
                     app.set_replay_speed(1);
                     app.set_replay_paused(false);
@@ -3028,6 +3076,7 @@ fn main() -> anyhow::Result<()> {
                 p.request_close();
             }
             st.session = None;
+            st.session_start = None;
             st.held.clear_keys();
             st.speed_up = false;
             app.set_in_session(false);
@@ -3317,6 +3366,14 @@ fn main() -> anyhow::Result<()> {
                     sync_session_input(&mut st);
                 }
                 refresh_input_ui(&app, &mut st);
+                update_discord_presence(&app, &st);
+                // Accepting a Discord "Ask to Join" drops the code
+                // into Play, ready to Fight (tango's join handler).
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                if let Some(code) = st.discord.take_current_join_secret() {
+                    app.set_link_code(code.into());
+                    app.set_active_tab(0);
+                }
             }
 
             while let Ok(event) = rx.try_recv() {
@@ -3441,6 +3498,7 @@ fn main() -> anyhow::Result<()> {
                                 app.set_session_confirm_exit(false);
                                 app.set_pvp_reconnecting(false);
                                 st.session = Some(ActiveSession::Pvp(Box::new(session)));
+                                st.session_start = Some(std::time::SystemTime::now());
                                 st.held.clear_keys();
                                 st.speed_up = false;
                                 app.set_session_kind(2);

@@ -8569,6 +8569,7 @@ dependencies = [
  "chrono",
  "cpal",
  "directories-next",
+ "discord-ipc",
  "env_logger 0.9.3",
  "fluent-templates",
  "futures",
