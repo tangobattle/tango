@@ -7,9 +7,15 @@ edition = "2021"
 futures.workspace = true
 if-addrs = "0.15"
 log.workspace = true
-# rust-crypto only: keeps the whole WebRTC stack pure Rust (no OpenSSL),
-# which is the point of this crate replacing the C libdatachannel stack.
-str0m = { version = "0.21", default-features = false, features = ["rust-crypto"] }
+# tangobattle fork = upstream master + "sctp: apply reliability parameters
+# to a DCEP-receiving in-band channel" (37b5744): without it, the DCEP-
+# receiving side of every in-band channel sends ordered+reliable regardless
+# of the declared config, head-of-line-blocking its frames behind every
+# lost datagram (= the swingy in-match skew). Pin the fork until that fix
+# is upstream. rust-crypto keeps DTLS off OpenSSL.
+str0m = { git = "https://github.com/tangobattle/str0m", rev = "37b5744bbe099fe5c7367f9f6ccfbca51c99dff3", default-features = false, features = [
+  "rust-crypto",
+] }
 stun = "0.17"
 tokio = { workspace = true, features = ["full"] }
 turn = "0.17"

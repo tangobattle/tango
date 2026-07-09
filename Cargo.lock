@@ -3167,8 +3167,7 @@ checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 [[package]]
 name = "is"
 version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cff4e962dd367e3b1c478f67c24a35e7120ec767090cb61305b855db9a529c4"
+source = "git+https://github.com/tangobattle/str0m?rev=37b5744bbe099fe5c7367f9f6ccfbca51c99dff3#37b5744bbe099fe5c7367f9f6ccfbca51c99dff3"
 dependencies = [
  "crc",
  "serde",
@@ -5726,6 +5725,8 @@ dependencies = [
 [[package]]
 name = "sctp-proto"
 version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "199c5c38008c2c151e27afd228230b1b69f849b1f7629f5df86662ee1f456187"
 dependencies = [
  "bytes",
  "crc",
@@ -6287,6 +6288,7 @@ dependencies = [
 [[package]]
 name = "str0m"
 version = "0.21.0"
+source = "git+https://github.com/tangobattle/str0m?rev=37b5744bbe099fe5c7367f9f6ccfbca51c99dff3#37b5744bbe099fe5c7367f9f6ccfbca51c99dff3"
 dependencies = [
  "arrayvec",
  "base64ct",
@@ -6306,8 +6308,7 @@ dependencies = [
 [[package]]
 name = "str0m-proto"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c99c3d805532aebd04585ba54e97e958c382759fb8f52256e289a49233f7e05b"
+source = "git+https://github.com/tangobattle/str0m?rev=37b5744bbe099fe5c7367f9f6ccfbca51c99dff3#37b5744bbe099fe5c7367f9f6ccfbca51c99dff3"
 dependencies = [
  "base64ct",
  "dimpl",
@@ -6320,8 +6321,7 @@ dependencies = [
 [[package]]
 name = "str0m-rust-crypto"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72a06ee34fca79dcb9a635af82002de60e1a6f63fa1380adf7b479dcf3644eb5"
+source = "git+https://github.com/tangobattle/str0m?rev=37b5744bbe099fe5c7367f9f6ccfbca51c99dff3#37b5744bbe099fe5c7367f9f6ccfbca51c99dff3"
 dependencies = [
  "aes",
  "aes-gcm",

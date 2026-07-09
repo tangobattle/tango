@@ -14,18 +14,6 @@ members = [
     "tango-rtc",
     "tango-signaling",
 ]
-# vendor/ holds patched copies of external crates (see each crate's
-# TANGO-PATCHES.md); they're graph packages via [patch.crates-io], not
-# workspace members.
-exclude = ["vendor"]
-
-# sctp-proto with retransmission timers tuned for low-latency data channels
-# (str0m exposes no config surface for them). See
-# vendor/sctp-proto/TANGO-PATCHES.md for the exact diff and rationale.
-[patch.crates-io]
-sctp-proto = { path = "vendor/sctp-proto" }
-str0m = { path = "vendor/str0m" }
-
 # One source of truth for every external dep shared by 2+ member crates,
 # so versions can't silently drift apart (we shipped four itertools and
 # two statically-linked zstd C libraries before this existed). Members
