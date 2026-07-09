@@ -1020,6 +1020,13 @@ impl App {
                     self.config.frame_delay = *d;
                     self.persist_config();
                 }
+                // Replay input display toggle: the flag lives in config
+                // (so the choice sticks across replays); the session
+                // handler itself is a no-op.
+                if let session::Message::ToggleInputDisplay = &m {
+                    self.config.show_replay_inputs = !self.config.show_replay_inputs;
+                    self.persist_config();
+                }
                 // The active session may have mutated the user's
                 // save file on disk (single-player writes via
                 // mgba's RW VFile). When the session ends, drop it
@@ -1383,6 +1390,7 @@ impl App {
                 &self.session,
                 self.config.fractional_scaling,
                 self.config.hide_emulator_border,
+                self.config.show_replay_inputs,
                 crate::video::effects::effect_for(&self.config.video_filter),
             )
             .map(Message::Session);

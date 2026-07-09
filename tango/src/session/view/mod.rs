@@ -177,6 +177,7 @@ pub fn view<'a>(
     state: &'a State,
     fractional_scaling: bool,
     hide_emulator_border: bool,
+    show_replay_inputs: bool,
     effect: &'static Effect,
 ) -> Element<'a, Message> {
     let Some(session) = state.active.as_ref() else {
@@ -206,13 +207,20 @@ pub fn view<'a>(
         // Replay: transport bar; PvP: setup-drawer edge handles.
         // SP has nothing down here.
         if !matches!(session, ActiveSession::SinglePlayer(_)) {
-            stacked = stacked.push(floating_controls(lang, session, state));
+            stacked = stacked.push(floating_controls(lang, session, state, show_replay_inputs));
         }
         // Every session: Settings + tear-down, top-right (PvP's
         // tear-down routes through the disconnect confirm).
         // Pushed BEFORE the setup drawers so an open drawer layers
         // over them rather than the buttons intruding on the pane.
         stacked = stacked.push(corner_commands_overlay(lang, session, state));
+    }
+    // Replay input display, above the transport bar's resting spot.
+    // Deliberately outside the floating-controls gate — the whole
+    // point is reading inputs during playback, when the cursor (and
+    // the bar with it) has gone idle.
+    if let Some(o) = input_display_overlay(session, state, show_replay_inputs) {
+        stacked = stacked.push(o);
     }
     // PvP setup drawers — above the corner commands, below the
     // telemetry plate (see `setup_drawers_overlay`).
@@ -262,6 +270,7 @@ fn floating_controls<'a>(
     lang: &'a LanguageIdentifier,
     session: &'a ActiveSession,
     state: &'a State,
+    show_replay_inputs: bool,
 ) -> Element<'a, Message> {
     let now = iced::time::Instant::now();
     let hide_progress = state.controls_anim.progress(now);
@@ -271,7 +280,9 @@ fn floating_controls<'a>(
     let Some(r) = session.as_replay() else {
         return setup_handles_overlay(lang, session, state, hide_progress);
     };
-    let panel = container(replay_bar(lang, r, state)).width(Fill).style(hud_chip_plate);
+    let panel = container(replay_bar(lang, r, state, show_replay_inputs))
+        .width(Fill)
+        .style(hud_chip_plate);
     // iced's mouse_area — sweeten's `on_exit` never fires (see the
     // note in `view`), which left the hover pin stuck and the bar
     // permanently visible.
@@ -500,6 +511,7 @@ fn replay_bar<'a>(
     lang: &'a LanguageIdentifier,
     r: &'a replay::ReplaySession,
     state: &'a State,
+    show_replay_inputs: bool,
 ) -> sweeten::widget::Row<'a, Message> {
     // No ellipsis popover for replays — the speed picker sits
     // directly in the bar, and Settings + Close float top-right
@@ -527,9 +539,38 @@ fn replay_bar<'a>(
     .width(Length::Fixed(78.0))
     .style(flat_pick_list);
 
+    // Input display toggle: quiet plate at rest, lit glyph + tinted
+    // hairline while the overlay is on — the setup handles'
+    // "identity in the glyph" treatment, not a full CTA fill.
+    let input_toggle_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
+        let mut st = telemetry_plate_button(theme, status);
+        if show_replay_inputs {
+            let primary = theme.palette().primary;
+            st.text_color = primary;
+            st.border.color = iced::Color { a: 0.35, ..primary };
+        }
+        st
+    };
+    let input_toggle = iced::widget::tooltip(
+        button(
+            container(Icon::Gamepad2.widget().size(16.0))
+                .width(iced::Length::Fixed(18.0))
+                .height(iced::Length::Fixed(18.0))
+                .center(Fill),
+        )
+        .padding(0)
+        .width(iced::Length::Fixed(32.0))
+        .height(iced::Length::Fixed(32.0))
+        .style(input_toggle_style)
+        .on_press(Message::ToggleInputDisplay),
+        widgets::tooltip_bubble(t!(lang, "playback-input-display")),
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(4);
+
     let controls = row![].spacing(10).align_y(Alignment::Center).padding([8, 8]);
     let controls = replay_transport(lang, r, state, controls);
-    controls.push(speed_picker)
+    controls.push(speed_picker).push(input_toggle)
 }
 
 /// Hoist a persistent chrome layer into iced's floating layer —
@@ -797,6 +838,21 @@ fn setup_handles_overlay<'a>(
         .into()
 }
 
+/// The playhead position everything user-facing reads: the tick under
+/// an active drag, else the target of an in-flight seek (so readouts
+/// don't snap back while the chase catches up), else the emulator's
+/// actual position — clamped to the replay's length. Shared by the
+/// transport's readout/scrubber and the input display's lookup so
+/// they can never disagree.
+fn playhead_tick(r: &replay::ReplaySession, state: &State) -> u32 {
+    state
+        .scrub
+        .preview
+        .or_else(|| r.pending_seek_target())
+        .unwrap_or_else(|| r.current_tick())
+        .min(r.total_ticks().max(1))
+}
+
 /// The replay transport: circular play/pause, current tick, scrubber,
 /// total tick — pushed onto the strip in that order.
 fn replay_transport<'a>(
@@ -806,15 +862,7 @@ fn replay_transport<'a>(
     controls: sweeten::widget::Row<'a, Message>,
 ) -> sweeten::widget::Row<'a, Message> {
     let total = r.total_ticks().max(1);
-    // Playhead priority: the tick under an active drag, else the target
-    // of an in-flight seek (so the handle doesn't snap back while the
-    // chase catches up), else the emulator's actual position.
-    let cur = state
-        .scrub
-        .preview
-        .or_else(|| r.pending_seek_target())
-        .unwrap_or_else(|| r.current_tick())
-        .min(total);
+    let cur = playhead_tick(r, state);
     let prefetched = r.prefetch_progress().min(total);
     // The mgba thread is paused for the duration of a scrub drag and
     // the seek chase that follows it, but when playback resumes on
@@ -952,6 +1000,117 @@ fn scrub_thumbnail_overlay<'a>(session: &'a ActiveSession, state: &'a State) -> 
                     left,
                 })
                 .into()
+        })
+        .into(),
+    )
+}
+
+/// Canvas dimensions of one input-display pad.
+const PAD_W: f32 = 92.0;
+const PAD_H: f32 = 40.0;
+
+/// One side's recorded pad state, drawn as a compact GBA layout:
+/// L/R shoulder bars in the top corners, the d-pad cross left,
+/// Start/Select pills center, B/A buttons on the console's diagonal
+/// right. Every control is always drawn — pressed keys fill with
+/// palette primary, released ones with a faint text tint — so the
+/// chip never changes size or layout as inputs flip.
+struct InputPad {
+    joyflags: u16,
+}
+
+impl<M> canvas::Program<M> for InputPad {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &Renderer,
+        theme: &Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        use mgba::input::keys;
+        let mut frame = Frame::new(renderer, bounds.size());
+        let text = theme.palette().text;
+        let lit = theme.palette().primary;
+        let mut fill = |path: &Path, bit: u32| {
+            let color = if self.joyflags as u32 & bit != 0 {
+                lit
+            } else {
+                iced::Color { a: 0.15, ..text }
+            };
+            frame.fill(path, color);
+        };
+        let rect = |x: f32, y: f32, w: f32, h: f32| {
+            Path::rounded_rectangle(Point::new(x, y), iced::Size::new(w, h), 2.0.into())
+        };
+        // Shoulder bars cap the chip's far corners, like the console's.
+        fill(&rect(2.0, 2.0, 18.0, 5.0), keys::L);
+        fill(&rect(PAD_W - 20.0, 2.0, 18.0, 5.0), keys::R);
+        // D-pad cross, centered on (21, 23).
+        fill(&rect(16.5, 9.5, 9.0, 9.0), keys::UP);
+        fill(&rect(16.5, 27.5, 9.0, 9.0), keys::DOWN);
+        fill(&rect(7.5, 18.5, 9.0, 9.0), keys::LEFT);
+        fill(&rect(25.5, 18.5, 9.0, 9.0), keys::RIGHT);
+        // Start over Select, center.
+        fill(&rect(44.0, 17.0, 12.0, 5.0), keys::START);
+        fill(&rect(44.0, 26.0, 12.0, 5.0), keys::SELECT);
+        // B low-left, A high-right — the GBA's diagonal.
+        fill(&Path::circle(Point::new(66.0, 26.0), 6.5), keys::B);
+        fill(&Path::circle(Point::new(80.0, 17.0), 6.5), keys::A);
+        vec![frame.into_geometry()]
+    }
+}
+
+/// Replay-only: the input display overlay — one pad chip per side,
+/// the recorder bottom-left and their opponent bottom-right (matching
+/// the battle screen, which renders the recording side's navi on the
+/// left), each captioned with the side's nickname and lit with the
+/// recorded buttons at the playhead. Sampled through [`playhead_tick`]
+/// so scrubbing previews inputs along with the readout. Anchored at
+/// the transport bar's popover lift so it never moves — the bar
+/// auto-hides beneath it, the chips stay. Pure presentation: no mouse
+/// handlers anywhere in the chain.
+fn input_display_overlay<'a>(
+    session: &'a ActiveSession,
+    state: &'a State,
+    show_replay_inputs: bool,
+) -> Option<Element<'a, Message>> {
+    if !show_replay_inputs {
+        return None;
+    }
+    let r = session.as_replay()?;
+    let (local, remote) = r.input_at(playhead_tick(r, state));
+    let (local_nick, remote_nick) = r.nicknames();
+    let chip = |joyflags: u16, nick: &str| -> Element<'a, Message> {
+        let pad = Canvas::new(InputPad { joyflags })
+            .width(Length::Fixed(PAD_W))
+            .height(Length::Fixed(PAD_H));
+        // The caption renders even when the nickname is empty so the
+        // two chips always match heights.
+        let name = text(nick.to_string())
+            .size(TEXT_CAPTION)
+            .style(widgets::muted_text_style);
+        container(column![pad, name].spacing(2).align_x(Alignment::Center))
+            .padding([6, 10])
+            .style(hud_chip_plate)
+            .into()
+    };
+    Some(
+        container(row![
+            chip(local, local_nick),
+            horizontal_space(),
+            chip(remote, remote_nick)
+        ])
+        .width(Fill)
+        .height(Fill)
+        .align_y(iced::alignment::Vertical::Bottom)
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 12.0,
+            bottom: POPOVER_LIFT,
+            left: 12.0,
         })
         .into(),
     )

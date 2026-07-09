@@ -113,6 +113,15 @@ impl Scrub {
     }
 }
 
+/// What the input display overlay reads off a replay: every recorded
+/// (local, remote) joyflags pair, flattened across rounds in playhead
+/// order (index = the tick that consumed it) and masked to the
+/// hardware bits, plus the two sides' nicknames for the chip captions.
+struct InputDisplay {
+    pairs: Vec<(u16, u16)>,
+    nicknames: (String, String),
+}
+
 pub struct ReplaySession {
     game: &'static crate::game::Game,
     stepper_state: tango_pvp::stepper::State,
@@ -125,6 +134,10 @@ pub struct ReplaySession {
     /// computed once at construction (see [`Self::round_boundaries`]).
     round_boundaries: Vec<u32>,
     total_ticks: u32,
+    /// Input display lookup data ([`Self::input_at`] /
+    /// [`Self::nicknames`]). Boxed to keep this struct — and with it
+    /// the `ActiveSession` enum — small, same as the PvP variant.
+    input_display: Box<InputDisplay>,
     /// Shared display framebuffer + its wake handle, kept so
     /// [`Self::scrub_preview`] can blit snapshot framebuffers without
     /// going through the emulator at all.
@@ -204,6 +217,27 @@ impl ReplaySession {
                 Some(*acc)
             })
             .collect::<Vec<_>>();
+
+        let nickname_of = |side: &Option<tango_pvp::replay::metadata::Side>| {
+            side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default()
+        };
+        let input_display = Box::new(InputDisplay {
+            pairs: replay
+                .rounds
+                .iter()
+                .flatten()
+                .map(|(local, remote)| {
+                    (
+                        local.joyflags & tango_pvp::input::JOYFLAGS_MASK,
+                        remote.joyflags & tango_pvp::input::JOYFLAGS_MASK,
+                    )
+                })
+                .collect(),
+            nicknames: (
+                nickname_of(&replay.metadata.local_side),
+                nickname_of(&replay.metadata.remote_side),
+            ),
+        });
 
         let snapshots = SnapshotStore::new();
         let rewind = RewindBuffer::new();
@@ -322,6 +356,7 @@ impl ReplaySession {
             prefetch_progress,
             round_boundaries,
             total_ticks,
+            input_display,
             vbuf,
             frame_notify,
             seek,
@@ -377,6 +412,25 @@ impl ReplaySession {
 
     pub fn total_ticks(&self) -> u32 {
         self.total_ticks
+    }
+
+    /// The recorded (local, remote) joyflags behind the frame at
+    /// `tick`. The playhead coordinate counts input pairs consumed,
+    /// so the pair that produced tick `t` is index `t - 1`;
+    /// all-released at tick 0, before anything has been consumed.
+    /// While the playhead is frozen (the input-less inter-round
+    /// animation), this holds the round's last pair.
+    pub fn input_at(&self, tick: u32) -> (u16, u16) {
+        tick.checked_sub(1)
+            .and_then(|i| self.input_display.pairs.get(i as usize))
+            .copied()
+            .unwrap_or((0, 0))
+    }
+
+    /// (local, remote) nicknames from the replay metadata — the
+    /// input display chips' captions. Either may be empty.
+    pub fn nicknames(&self) -> (&str, &str) {
+        (&self.input_display.nicknames.0, &self.input_display.nicknames.1)
     }
 
     /// Highest tick the background prefetcher has reached, for the

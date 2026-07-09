@@ -145,6 +145,11 @@ pub struct Config {
     /// when the corresponding volume is installed.
     #[serde(default)]
     pub hide_emulator_border: bool,
+    /// When true, replay playback shows the input display overlay:
+    /// one pad chip per side with the recorded buttons lit at the
+    /// playhead. Toggled from the replay transport bar.
+    #[serde(default)]
+    pub show_replay_inputs: bool,
     /// When true, the self-updater (`updater::Updater`) runs in
     /// the background and downloads any newer GitHub release.
     /// Toggle takes effect immediately via Settings; downloaded
@@ -279,6 +284,7 @@ impl Default for Config {
             video_filter: String::new(),
             fractional_scaling: false,
             hide_emulator_border: false,
+            show_replay_inputs: false,
             enable_updater: true,
             allow_prerelease_upgrades: false,
             last_game: None,

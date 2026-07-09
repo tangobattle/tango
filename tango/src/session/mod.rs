@@ -310,6 +310,11 @@ pub enum Message {
     ScrubHover(Option<replay::scrubber::HoverInfo>),
     /// Set the playback speed factor (1.0 = realtime). Replay-only.
     SetSpeed(f32),
+    /// Toggle the input display overlay (the recorded pad state of
+    /// both sides, drawn over playback). Replay-only. The flag lives
+    /// in config — the App's wrapper flips + persists it, same as
+    /// [`Message::SetFrameDelay`]; nothing to do here.
+    ToggleInputDisplay,
     /// PvP-only: the match-settings frame-delay slider moved. Live-sets this
     /// side's local frame delay on the running session; the App also persists it
     /// to config. No peer coordination — it's purely a local display lag.
@@ -604,6 +609,10 @@ impl State {
                     }
                     None => {}
                 }
+            }
+            Message::ToggleInputDisplay => {
+                // Config-owned flag; the App wrapper flips + persists it
+                // before this dispatch. The view reads it from config.
             }
             Message::SetFrameDelay(d) => {
                 // Purely local frame delay — apply straight to the running

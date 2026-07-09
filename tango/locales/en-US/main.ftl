@@ -233,6 +233,7 @@ playback-play = Play
 playback-pause = Pause
 playback-options = Options
 playback-speed = Speed
+playback-input-display = Input display
 playback-disconnect = Disconnect
 playback-disconnect-prompt = Disconnect from this match?
 playback-disconnect-detail = You will end the match with your opponent.
