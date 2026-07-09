@@ -82,6 +82,13 @@ pub struct Config {
     /// Re-sync the patch repo in the background every 15 minutes
     /// (tango's `enable_patch_autoupdate`).
     pub enable_patch_autoupdate: bool,
+    /// Self-updater against tango's GitHub releases. Defaults OFF in
+    /// tango-ng (unlike tango): this crate is 0.1.0, so any 5.x tango
+    /// release "wins" the version compare and the updater would swap
+    /// the app out for the iced build. Flip on once tango-ng ships
+    /// under the shared version line.
+    pub enable_updater: bool,
+    pub allow_prerelease_upgrades: bool,
     /// Names of patches the user has favorited — they sort to the top
     /// of the patch pickers and the Patches tab, starred.
     pub favorite_patches: std::collections::BTreeSet<String>,
@@ -114,6 +121,8 @@ impl Default for Config {
             relay_mode: RelayMode::default(),
             patch_repo: DEFAULT_PATCH_REPO.to_string(),
             enable_patch_autoupdate: true,
+            enable_updater: false,
+            allow_prerelease_upgrades: false,
             favorite_patches: std::collections::BTreeSet::new(),
             input_mapping: crate::input::Mapping::default(),
         }

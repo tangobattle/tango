@@ -176,6 +176,9 @@ export global I18n {
     in-out property <string> settings-patch-autoupdate: "Automatically update patches in the background";
     in-out property <string> settings-fullscreen: "Fullscreen";
     in-out property <string> settings-video-filter: "Video filter";
+    in-out property <string> settings-enable-updater: "Automatically check for app updates";
+    in-out property <string> settings-allow-prerelease: "Include prereleases when checking for app updates";
+    in-out property <string> updater-update-now: "Update now";
     in-out property <string> settings-mute-bgm: "Mute music in netplay";
     in-out property <string> settings-matchmaking-endpoint: "Matchmaking endpoint";
     in-out property <string> settings-use-relay: "Use relay server";
@@ -1086,6 +1089,10 @@ export component AppWindow inherits Window {
     in-out property <bool> settings-patch-autoupdate: true;
     in-out property <bool> settings-fullscreen: false;
     in-out property <int> settings-video-filter: 0;
+    in-out property <bool> settings-updater-enabled: false;
+    in-out property <bool> settings-prerelease: false;
+    in property <string> about-updater-status: "";
+    in property <bool> about-update-ready: false;
     in-out property <bool> settings-mute-bgm: false;
     in-out property <string> settings-matchmaking-endpoint: "";
     in-out property <int> settings-relay: 0;
@@ -1295,6 +1302,9 @@ export component AppWindow inherits Window {
     callback patch-autoupdate-changed(bool);
     callback fullscreen-changed(bool);
     callback video-filter-changed(int);
+    callback updater-enabled-changed(bool);
+    callback prerelease-changed(bool);
+    callback update-now();
     callback mute-bgm-changed(bool);
     callback matchmaking-endpoint-changed(string);
     callback relay-changed(int);
@@ -2906,6 +2916,16 @@ export component AppWindow inherits Window {
                             checked <=> root.settings-patch-autoupdate;
                             toggled(b) => { root.patch-autoupdate-changed(b); }
                         }
+                        ChunkyCheckbox {
+                            label: I18n.settings-enable-updater;
+                            checked <=> root.settings-updater-enabled;
+                            toggled(b) => { root.updater-enabled-changed(b); }
+                        }
+                        ChunkyCheckbox {
+                            label: I18n.settings-allow-prerelease;
+                            checked <=> root.settings-prerelease;
+                            toggled(b) => { root.prerelease-changed(b); }
+                        }
                     }
                     if root.settings-section == 1 : VerticalLayout {
                         padding: 12px;
@@ -3000,6 +3020,22 @@ export component AppWindow inherits Window {
                             text: root.app-version;
                             font-size: 11px;
                             color: Theme.text-muted;
+                        }
+                        if root.about-updater-status != "" : HorizontalLayout {
+                            spacing: 10px;
+                            alignment: start;
+                            Text {
+                                text: root.about-updater-status;
+                                font-size: 12px;
+                                color: Theme.text-muted;
+                                vertical-alignment: center;
+                            }
+                            if root.about-update-ready : PrimaryButton {
+                                label: I18n.updater-update-now;
+                                pad-v: 4px;
+                                pad-h: 10px;
+                                clicked => { root.update-now(); }
+                            }
                         }
                         // CREDITS.md, embedded at build time and split
                         // into lines in Rust (a wrapped Text inside a

@@ -25,6 +25,9 @@ mod config;
 // Discord rich presence — desktop-only (no mobile Discord IPC).
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod discord;
+// Self-updater — desktop-only (mobile updates through the store).
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod updater;
 mod game;
 mod i18n;
 mod identity;
@@ -237,6 +240,9 @@ fn apply_i18n(app: &AppWindow, config: &config::Config) {
     i18n.set_settings_patch_autoupdate(t!(lang, "settings-enable-patch-autoupdate").into());
     i18n.set_settings_fullscreen(t!(lang, "settings-fullscreen").into());
     i18n.set_settings_video_filter(t!(lang, "settings-video-filter").into());
+    i18n.set_settings_enable_updater(t!(lang, "settings-enable-updater").into());
+    i18n.set_settings_allow_prerelease(t!(lang, "settings-allow-prerelease-upgrades").into());
+    i18n.set_updater_update_now(t!(lang, "updater-update-now").into());
     i18n.set_settings_mute_bgm(t!(lang, "settings-disable-bgm-in-pvp").into());
     i18n.set_settings_matchmaking_endpoint(t!(lang, "settings-matchmaking-endpoint").into());
     i18n.set_settings_use_relay(t!(lang, "settings-use-relay").into());
@@ -328,6 +334,9 @@ struct State {
     /// the timer pushes an activity snapshot each tick (deduped inside).
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     discord: discord::Client,
+    /// GitHub self-updater (default-off in tango-ng — see config.rs).
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    updater: updater::Updater,
     session: Option<ActiveSession>,
     /// Currently-held physical inputs (keyboard via the FocusScopes'
     /// key events, gamepad via the timer's gilrs poll). Combined with
@@ -1708,6 +1717,8 @@ pub fn run() -> anyhow::Result<()> {
     let tokio_runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
 
     let config = config::Config::load();
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let config_for_updater = (config.data_path.clone(), config.allow_prerelease_upgrades);
     log::info!("data path: {}", config.data_path.display());
 
     let mut audio_binder = audio::LateBinder::new();
@@ -1821,7 +1832,17 @@ pub fn run() -> anyhow::Result<()> {
         export_output: None,
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         discord: discord::Client::new(tokio_runtime.handle().clone()),
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        updater: updater::Updater::new(
+            tokio_runtime.handle().clone(),
+            &config_for_updater.0.join("updater"),
+            config_for_updater.1,
+        ),
     }));
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    if state.borrow().config.enable_updater {
+        state.borrow_mut().updater.set_enabled(true);
+    }
 
     // Background scan; results come back over the channel and are folded
     // into the UI by the frame timer below. Rc so the data-path setting
@@ -1932,6 +1953,8 @@ pub fn run() -> anyhow::Result<()> {
             config::RelayMode::Never => 2,
         });
         app.set_settings_show_opponent_setup(st.config.show_opponent_setup);
+        app.set_settings_updater_enabled(st.config.enable_updater);
+        app.set_settings_prerelease(st.config.allow_prerelease_upgrades);
         if st.config.full_screen {
             app.window().set_fullscreen(true);
         }
@@ -2111,6 +2134,40 @@ pub fn run() -> anyhow::Result<()> {
                 _ => config::RelayMode::Auto,
             };
             st.config.save();
+        }
+    });
+
+    app.on_updater_enabled_changed({
+        let state = state.clone();
+        move |enabled| {
+            let mut st = state.borrow_mut();
+            st.config.enable_updater = enabled;
+            st.config.save();
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            st.updater.set_enabled(enabled);
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            let _ = enabled;
+        }
+    });
+
+    app.on_prerelease_changed({
+        let state = state.clone();
+        move |allow| {
+            // Sampled by the updater at startup, like tango - takes
+            // effect next launch.
+            let mut st = state.borrow_mut();
+            st.config.allow_prerelease_upgrades = allow;
+            st.config.save();
+        }
+    });
+
+    app.on_update_now({
+        let state = state.clone();
+        move || {
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            state.borrow().updater.finish_update();
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            let _ = &state;
         }
     });
 
@@ -3587,6 +3644,38 @@ pub fn run() -> anyhow::Result<()> {
                 }
                 refresh_input_ui(&app, &mut st);
                 update_discord_presence(&app, &st);
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                {
+                    let lang = &st.config.language;
+                    let (line, ready) = if !st.config.enable_updater {
+                        (String::new(), false)
+                    } else {
+                        match st.updater.status_blocking() {
+                            updater::Status::UpToDate { release: None } => (t!(lang, "updater-loading"), false),
+                            updater::Status::UpToDate { release: Some(_) } => (
+                                t!(lang, "updater-up-to-date", version = env!("CARGO_PKG_VERSION")),
+                                false,
+                            ),
+                            updater::Status::UpdateAvailable { release } => (
+                                t!(lang, "updater-latest-version", version = release.version.to_string()),
+                                false,
+                            ),
+                            updater::Status::Downloading { current, total, .. } => (
+                                t!(
+                                    lang,
+                                    "updater-downloading",
+                                    pct = (if total > 0 { current * 100 / total } else { 0 }) as i64
+                                ),
+                                false,
+                            ),
+                            updater::Status::ReadyToUpdate { .. } => {
+                                (t!(lang, "updater-ready-to-update"), true)
+                            }
+                        }
+                    };
+                    app.set_about_updater_status(line.into());
+                    app.set_about_update_ready(ready);
+                }
                 // Accepting a Discord "Ask to Join" drops the code
                 // into Play, ready to Fight (tango's join handler).
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
