@@ -122,7 +122,8 @@ pub fn list_item(selected: bool, idx: usize) -> impl Fn(&Theme, button::Status) 
             // selection reads in its own register instead of
             // blending into the accent-colored CTAs. Yellow→amber
             // gradient with navy ink text, like the music player's
-            // active track bar.
+            // active track bar. Stays gold under every accent, the
+            // gold chrome included.
             let sel = crate::theme::SELECT_YELLOW;
             let amber = mix(sel, iced::Color::from_rgb(0.95, 0.55, 0.05), 0.40);
             let lighter = mix(sel, iced::Color::WHITE, 0.15);
@@ -186,6 +187,16 @@ pub fn list_item(selected: bool, idx: usize) -> impl Fn(&Theme, button::Status) 
                     radius: 0.0.into(),
                     width: 1.0,
                     color: iced::Color { a: 0.6, ..primary },
+                },
+                // Centered accent bloom so the hovered row reads as
+                // lit chrome, not just a tinted wash — the quiet
+                // cousin of the selected plate's gold glow. Zero
+                // offset: a dropped glow would smear onto the row
+                // below.
+                shadow: iced::Shadow {
+                    color: iced::Color { a: 0.30, ..primary },
+                    offset: iced::Vector::new(0.0, 0.0),
+                    blur_radius: 10.0,
                 },
                 ..base
             },
@@ -262,6 +273,16 @@ pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
             text,
         ),
     };
+    // On dark, hover warms the drop shadow most of the way toward
+    // the accent so the button blooms like the panel frames' glow
+    // instead of dropping a darker blob. Light theme keeps plain
+    // black — a colored glow on parchment reads as smudge (same
+    // rule as [`panel`]).
+    let shadow_base = if p.is_dark && matches!(status, button::Status::Hovered) {
+        mix(iced::Color::BLACK, primary, 0.65)
+    } else {
+        iced::Color::BLACK
+    };
     button::Style {
         background: Some(iced::Background::Gradient(iced::Gradient::Linear(
             iced::gradient::Linear::new(0.0)
@@ -277,7 +298,7 @@ pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
         shadow: iced::Shadow {
             color: iced::Color {
                 a: shadow_alpha,
-                ..iced::Color::BLACK
+                ..shadow_base
             },
             offset: iced::Vector::new(0.0, shadow_y),
             blur_radius: 10.0,
@@ -806,6 +827,45 @@ pub fn mix(a: iced::Color, b: iced::Color, t: f32) -> iced::Color {
     }
 }
 
+/// Rotate a color's hue by `deg` degrees (HSV space; saturation and
+/// value hold). This is how accent-relative companion tones are
+/// derived — e.g. the scanline's far stop sits a quarter-turn from
+/// the accent so the pair reads as one energy family no matter
+/// which chrome color the user picked.
+pub fn rotate_hue(c: iced::Color, deg: f32) -> iced::Color {
+    let max = c.r.max(c.g).max(c.b);
+    let min = c.r.min(c.g).min(c.b);
+    let d = max - min;
+    let h = if d == 0.0 {
+        0.0
+    } else if max == c.r {
+        60.0 * ((c.g - c.b) / d).rem_euclid(6.0)
+    } else if max == c.g {
+        60.0 * ((c.b - c.r) / d + 2.0)
+    } else {
+        60.0 * ((c.r - c.g) / d + 4.0)
+    };
+    let h = (h + deg).rem_euclid(360.0);
+    let (s, v) = (if max == 0.0 { 0.0 } else { d / max }, max);
+    let chroma = v * s;
+    let x = chroma * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+    let m = v - chroma;
+    let (r, g, b) = match (h / 60.0) as u32 {
+        0 => (chroma, x, 0.0),
+        1 => (x, chroma, 0.0),
+        2 => (0.0, chroma, x),
+        3 => (0.0, x, chroma),
+        4 => (x, 0.0, chroma),
+        _ => (chroma, 0.0, x),
+    };
+    iced::Color {
+        r: r + m,
+        g: g + m,
+        b: b + m,
+        a: c.a,
+    }
+}
+
 /// The signature "tech frame" corner treatment, after the Legacy
 /// Collection's PET panels: one diagonal pair of corners gets a
 /// big cut, the other stays nearly sharp, so plates lean like the
@@ -940,8 +1000,11 @@ pub fn cyber_backdrop<'a, M: 'a>() -> Element<'a, M> {
         cache: canvas::Cache,
         /// Palette fingerprint the cached geometry was drawn with.
         /// `Cache` only invalidates on size changes, so theme flips
-        /// have to clear it by hand or the old colors stick.
-        key: std::cell::Cell<u32>,
+        /// have to clear it by hand or the old colors stick. Covers
+        /// both the background AND the primary — an accent change
+        /// keeps the background identical, and the whole point of
+        /// the backdrop is the accent-colored glow.
+        key: std::cell::Cell<u64>,
     }
 
     impl<M> canvas::Program<M> for Backdrop {
@@ -958,10 +1021,10 @@ pub fn cyber_backdrop<'a, M: 'a>() -> Element<'a, M> {
             let bg = theme.palette().background;
             let primary = theme.palette().primary;
             let dark = theme.extended_palette().is_dark;
-            let key = (((bg.r * 255.0) as u32) << 24)
-                | (((bg.g * 255.0) as u32) << 16)
-                | (((bg.b * 255.0) as u32) << 8)
-                | dark as u32;
+            let fp = |c: iced::Color| {
+                (((c.r * 255.0) as u64) << 16) | (((c.g * 255.0) as u64) << 8) | ((c.b * 255.0) as u64)
+            };
+            let key = fp(bg) | (fp(primary) << 24) | ((dark as u64) << 63);
             if state.key.replace(key) != key {
                 state.cache.clear();
             }
@@ -970,8 +1033,10 @@ pub fn cyber_backdrop<'a, M: 'a>() -> Element<'a, M> {
                 let h = frame.height();
                 // Master intensity — the whole backdrop runs at a
                 // fraction of this on light so it stays a texture,
-                // not a watermark fighting dark text.
-                let lvl = if dark { 1.0 } else { 0.45 };
+                // not a watermark fighting dark text. Dialed down a
+                // notch from 0.45 when the lattice + traces landed:
+                // more geometry at the same alpha reads busier.
+                let lvl = if dark { 1.0 } else { 0.40 };
                 let glow = move |a: f32| iced::Color { a: a * lvl, ..primary };
 
                 // Base wash: a faint screen-glow at the top falling
@@ -1066,6 +1131,97 @@ pub fn cyber_backdrop<'a, M: 'a>() -> Element<'a, M> {
                 outline(frame, Point::new(w * 0.855, h * 0.295), 9.0, 0.08);
                 outline(frame, Point::new(w * 0.105, h * 0.80), 15.0, 0.10);
                 frame.fill(&hex(Point::new(w * 0.155, h * 0.875), 9.0), glow(0.06));
+
+                // Honeycomb lattice sunk into the bottom edge — a
+                // patch of the cyberworld's floor grid showing
+                // through between the ring clusters. Alpha falls
+                // off away from the center column and a few cells
+                // are skipped (deterministically — the cached
+                // geometry must redraw identically) so it reads as
+                // a ragged lit floor, not wallpaper tiling.
+                let lat_r = 16.0_f32;
+                let lat = Point::new(w * 0.52, h * 1.02);
+                for col in -4i32..=4 {
+                    for row in -1i32..=1 {
+                        if (col * 7 + row * 5).rem_euclid(5) == 0 {
+                            continue;
+                        }
+                        let c = Point::new(
+                            lat.x + 1.5 * lat_r * col as f32,
+                            lat.y
+                                + 3f32.sqrt()
+                                    * lat_r
+                                    * (row as f32 + if col.rem_euclid(2) == 1 { 0.5 } else { 0.0 }),
+                        );
+                        let fall = 1.0 - (col.abs() as f32 / 4.0) * 0.75;
+                        frame.stroke(
+                            &hex(c, lat_r),
+                            Stroke {
+                                style: Style::Solid(glow((0.10 * fall).max(0.02))),
+                                width: 1.0,
+                                ..Stroke::default()
+                            },
+                        );
+                    }
+                }
+                // One lit cell in the patch — the grid's "live node",
+                // same trick as the hex chain's lead hex.
+                frame.fill(&hex(Point::new(lat.x + 1.5 * lat_r, lat.y - 3f32.sqrt() * lat_r * 0.5), lat_r), glow(0.05));
+
+                // Circuit traces — the 45°-jog runs the HUD's hex
+                // chain ends in, etched big and faint across the
+                // flanks the rings leave empty, each terminating in
+                // a haloed node dot.
+                let trace = |frame: &mut canvas::Frame, pts: &[Point], a: f32| {
+                    let path = Path::new(|b| {
+                        b.move_to(pts[0]);
+                        for pt in &pts[1..] {
+                            b.line_to(*pt);
+                        }
+                    });
+                    frame.stroke(
+                        &path,
+                        Stroke {
+                            style: Style::Solid(glow(a)),
+                            width: 1.5,
+                            ..Stroke::default()
+                        },
+                    );
+                    let end = pts[pts.len() - 1];
+                    frame.fill(&Path::circle(end, 2.5), glow(a * 1.8));
+                    frame.stroke(
+                        &Path::circle(end, 5.5),
+                        Stroke {
+                            style: Style::Solid(glow(a)),
+                            width: 1.0,
+                            ..Stroke::default()
+                        },
+                    );
+                };
+                // Left flank, running in from the window edge; the
+                // jogs keep equal dx/dy so the diagonals hold 45°.
+                trace(
+                    frame,
+                    &[
+                        Point::new(0.0, h * 0.66),
+                        Point::new(w * 0.05, h * 0.66),
+                        Point::new(w * 0.05 + h * 0.06, h * 0.60),
+                        Point::new(w * 0.22, h * 0.60),
+                    ],
+                    0.10,
+                );
+                // Down from the top edge between the HUD and the
+                // small ring cluster.
+                trace(
+                    frame,
+                    &[
+                        Point::new(w * 0.70, 0.0),
+                        Point::new(w * 0.70, h * 0.10),
+                        Point::new(w * 0.70 - h * 0.05, h * 0.15),
+                        Point::new(w * 0.70 - h * 0.05, h * 0.24),
+                    ],
+                    0.08,
+                );
             });
             vec![geom]
         }
@@ -1247,13 +1403,20 @@ fn hud_scanline<'a, M: 'a>(override_bg: Option<iced::Background>) -> Element<'a,
     .style(move |theme: &Theme| {
         let background = override_bg.unwrap_or_else(|| {
             let primary = theme.palette().primary;
-            // Cool the right edge by pulling primary toward a
-            // cyan-ish tone — keeps the rule from looking like a
-            // dumb solid green bar, gives it a console-trim vibe.
+            // Shift the right edge a quarter-turn around the hue
+            // wheel (green→teal, blue→violet, red→orange…) so the
+            // rule has motion without leaving the accent's family —
+            // the old green-tuned channel math landed off-brand
+            // colors under other accents.
+            let shifted = rotate_hue(primary, 45.0);
+            // Re-punch the rotated stop: push it away from gray so
+            // the far end burns as hot as the old hand-tuned teal
+            // did, instead of a mid-tone accent fading politely.
+            let gray = (shifted.r + shifted.g + shifted.b) / 3.0;
             let right = iced::Color {
-                r: primary.r * 0.4,
-                g: primary.g * 0.85 + 0.15,
-                b: primary.b * 0.4 + 0.55,
+                r: (gray + (shifted.r - gray) * 1.4).clamp(0.0, 1.0),
+                g: (gray + (shifted.g - gray) * 1.4).clamp(0.0, 1.0),
+                b: (gray + (shifted.b - gray) * 1.4).clamp(0.0, 1.0),
                 a: 1.0,
             };
             iced::Background::Gradient(iced::Gradient::Linear(

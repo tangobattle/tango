@@ -744,6 +744,7 @@ impl App {
             // (Message::PvpSessionBuilt); nothing live to poke.
             C::ShowOpponentSetup(b) => self.config.show_opponent_setup = b,
             C::Theme(t) => self.config.theme = t,
+            C::Accent(a) => self.config.accent = a,
             C::AddInputBinding(slot, binding) => {
                 let bindings = self.config.input_mapping.slot_mut(slot);
                 // Avoid dupes — a single binding could be added

@@ -57,6 +57,21 @@ pub enum ThemeMode {
     Dark,
 }
 
+/// Which color the UI chrome runs in — the palette `primary` that
+/// paints CTA buttons, panel frames, glows, and the cyberworld
+/// backdrop. The structure never changes; only the accent swaps.
+/// Colors live in `theme::accent_color` (per dark/light shade),
+/// this enum is just the persisted choice.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub enum AccentColor {
+    #[default]
+    TangoGreen,
+    MegaManBlue,
+    ProtoManRed,
+    RollPink,
+    BassGold,
+}
+
 /// Whether matchmaking connections may/must go through the TURN
 /// relay. `Auto` lets ICE pick the best route (direct when possible,
 /// relay as fallback); `Always` forces every candidate through the
@@ -99,6 +114,7 @@ pub struct Config {
     pub language: unic_langid::LanguageIdentifier,
     pub streamer_mode: bool,
     pub theme: ThemeMode,
+    pub accent: AccentColor,
     pub data_path: std::path::PathBuf,
     pub matchmaking_endpoint: String,
     pub patch_repo: String,
@@ -255,6 +271,7 @@ impl Default for Config {
             language: default_language(),
             streamer_mode: false,
             theme: ThemeMode::default(),
+            accent: AccentColor::default(),
             data_path,
             matchmaking_endpoint: default_matchmaking_endpoint(),
             patch_repo: default_patch_repo(),

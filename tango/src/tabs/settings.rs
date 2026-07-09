@@ -22,6 +22,21 @@ fn theme_choice(lang: &LanguageIdentifier, mode: config::ThemeMode) -> Choice<co
     )
 }
 
+/// A [`config::AccentColor`] as a pick_list [`Choice`], labeled in
+/// the UI language.
+fn accent_choice(lang: &LanguageIdentifier, accent: config::AccentColor) -> Choice<config::AccentColor> {
+    Choice::new(
+        accent,
+        match accent {
+            config::AccentColor::TangoGreen => t!(lang, "settings-accent-tango-green"),
+            config::AccentColor::MegaManBlue => t!(lang, "settings-accent-megaman-blue"),
+            config::AccentColor::ProtoManRed => t!(lang, "settings-accent-protoman-red"),
+            config::AccentColor::RollPink => t!(lang, "settings-accent-roll-pink"),
+            config::AccentColor::BassGold => t!(lang, "settings-accent-bass-gold"),
+        },
+    )
+}
+
 /// A [`config::RelayMode`] as a pick_list [`Choice`], labeled in the
 /// UI language.
 fn relay_mode_choice(lang: &LanguageIdentifier, mode: config::RelayMode) -> Choice<config::RelayMode> {
@@ -131,6 +146,7 @@ pub enum Message {
     /// hands off to the installer + exits the process.
     UpdateNow,
     ThemeChanged(config::ThemeMode),
+    AccentChanged(config::AccentColor),
     /// User clicked key `k` on the drawn console — the screen
     /// switches to showing its bindings.
     BindingSlotSelected(input::MappedKey),
@@ -187,6 +203,7 @@ pub enum ConfigChange {
     Volume(f32),
     DisableBgmInPvp(bool),
     Theme(config::ThemeMode),
+    Accent(config::AccentColor),
     AddInputBinding(input::MappedKey, input::PhysicalInput),
     RemoveInputBinding(input::MappedKey, usize),
     ResetInputBindings,
@@ -247,6 +264,7 @@ impl State {
             // process on success. Nothing to fold into config.
             Message::UpdateNow => None,
             Message::ThemeChanged(t) => Some(ConfigChange::Theme(t)),
+            Message::AccentChanged(a) => Some(ConfigChange::Accent(a)),
             Message::BindingSlotSelected(k) => {
                 // Clicking a console key retargets the screen; any
                 // in-flight capture is dropped rather than silently
@@ -450,6 +468,19 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             let selected = options.iter().find(|c| c.value == config.theme).cloned();
             widgets::picker(options, selected, |c: Choice<config::ThemeMode>| {
                 Message::ThemeChanged(c.value)
+            })
+        }),
+        labeled::<Message>(t!(lang, "settings-accent"), {
+            let options = vec![
+                accent_choice(lang, config::AccentColor::TangoGreen),
+                accent_choice(lang, config::AccentColor::MegaManBlue),
+                accent_choice(lang, config::AccentColor::ProtoManRed),
+                accent_choice(lang, config::AccentColor::RollPink),
+                accent_choice(lang, config::AccentColor::BassGold),
+            ];
+            let selected = options.iter().find(|c| c.value == config.accent).cloned();
+            widgets::picker(options, selected, |c: Choice<config::AccentColor>| {
+                Message::AccentChanged(c.value)
             })
         }),
         widgets::checkbox(
