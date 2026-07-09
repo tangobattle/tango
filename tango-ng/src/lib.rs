@@ -28,6 +28,10 @@ mod discord;
 // Self-updater — desktop-only (mobile updates through the store).
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod updater;
+// Crash logging (panic hook + native crash handler) — desktop-only,
+// paired with the supervisor trampoline below.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod crash_log;
 mod game;
 mod i18n;
 mod identity;
@@ -1699,6 +1703,209 @@ fn start_pvp_handoff(app: &AppWindow, st: &mut State, rt: &tokio::runtime::Handl
     });
 }
 
+/// Marks a process as the supervised child (the actual UI); the
+/// supervisor sets it to "1" before respawning ourselves.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const TANGO_CHILD_ENV_VAR: &str = "TANGO_CHILD";
+
+/// Set by the supervisor to the `minidumper` IPC socket path the child
+/// connects to for out-of-process crash dumps.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const TANGO_CRASH_SOCKET_ENV_VAR: &str = "TANGO_CRASH_SOCKET";
+
+/// Desktop entry: the crash-handling trampoline (tango's main.rs).
+/// The parent spawns `current_exe()` again as the supervised child
+/// with stderr piped into a timestamped log, runs the out-of-process
+/// minidump server, and pops a localized dialog on a non-zero exit.
+/// The child branch just runs the app. Android enters via
+/// `android_main` → [`run`] directly — no trampoline there.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub fn main() -> anyhow::Result<()> {
+    if std::env::var(TANGO_CHILD_ENV_VAR).as_deref() == Ok("1") {
+        return run();
+    }
+    match supervisor_main() {
+        Ok(code) => std::process::exit(code),
+        Err(e) => {
+            eprintln!("crash supervisor failed: {e:?}");
+            std::process::exit(2);
+        }
+    }
+}
+
+/// Parent half of the trampoline — see [`main`].
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn supervisor_main() -> anyhow::Result<i32> {
+    use std::io::Write;
+    let config = config::Config::load();
+    let lang = config.language.clone();
+
+    let logs_dir = config.logs_path();
+    let _ = std::fs::create_dir_all(&logs_dir);
+    let ts = chrono::Local::now().format("%Y%m%d%H%M%S").to_string();
+    let log_path = logs_dir.join(format!("{ts}.log"));
+    let dump_path = logs_dir.join(format!("{ts}.dmp"));
+
+    let mut log_file = match std::fs::File::create(&log_path) {
+        Ok(f) => f,
+        Err(e) => {
+            rfd::MessageDialog::new()
+                .set_title(t!(&lang, "window-title"))
+                .set_description(t!(&lang, "crash-no-log", error = format!("{e:?}")))
+                .set_level(rfd::MessageLevel::Error)
+                .show();
+            return Err(e.into());
+        }
+    };
+
+    // The minidump server runs here, so route the supervisor's own
+    // logging into the log file too.
+    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .target(env_logger::Target::Pipe(Box::new(log_file.try_clone()?)))
+        .try_init();
+
+    // Start the dump server before spawning the child so the child's
+    // connect can't race the bind; on failure we still run, just
+    // without minidumps.
+    let sock_path = crash_socket_path();
+    let _ = std::fs::remove_file(&sock_path);
+    let crash_server = start_crash_server(&sock_path, log_file.try_clone()?, dump_path.clone());
+
+    let exe = std::env::current_exe()?;
+    let mut cmd = std::process::Command::new(exe);
+    cmd.args(std::env::args_os().skip(1).collect::<Vec<std::ffi::OsString>>())
+        .env(TANGO_CHILD_ENV_VAR, "1")
+        .env("RUST_BACKTRACE", "1")
+        .stderr(log_file.try_clone()?);
+    if crash_server.is_some() {
+        cmd.env(TANGO_CRASH_SOCKET_ENV_VAR, &sock_path);
+    }
+    let status = cmd.spawn()?.wait()?;
+
+    writeln!(&mut log_file, "exit status: {status:?}")?;
+
+    if let Some((handle, shutdown)) = crash_server {
+        shutdown.store(true, std::sync::atomic::Ordering::SeqCst);
+        let _ = handle.join();
+    }
+    let _ = std::fs::remove_file(&sock_path);
+
+    if !status.success() {
+        rfd::MessageDialog::new()
+            .set_title(t!(&lang, "window-title"))
+            .set_description(t!(&lang, "crash", path = log_path.display().to_string()))
+            .set_level(rfd::MessageLevel::Error)
+            .show();
+    }
+
+    Ok(status.code().unwrap_or(0))
+}
+
+/// Absolute AF_UNIX socket path for the crash IPC channel, per-pid.
+/// macOS pins it under short `/tmp` — the path doubles as the mach
+/// service name / `sun_path`, capped around 104 bytes.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn crash_socket_path() -> std::path::PathBuf {
+    let name = format!("tango-ng-crash-{}.sock", std::process::id());
+    #[cfg(target_os = "macos")]
+    {
+        std::path::PathBuf::from("/tmp").join(name)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        std::env::temp_dir().join(name)
+    }
+}
+
+/// Bind the `minidumper` server and run it on a background thread;
+/// `None` if it couldn't start (the child then gets no minidumps).
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn start_crash_server(
+    sock_path: &std::path::Path,
+    log: std::fs::File,
+    dump_path: std::path::PathBuf,
+) -> Option<(
+    std::thread::JoinHandle<()>,
+    std::sync::Arc<std::sync::atomic::AtomicBool>,
+)> {
+    let mut server = match minidumper::Server::with_name(sock_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("could not start crash dump server: {e:?}");
+            return None;
+        }
+    };
+    let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let shutdown_thread = shutdown.clone();
+    // Separate handle so a fatal `run()` error still lands in the log.
+    let mut err_log = log.try_clone().ok();
+    let handler = CrashServerHandler {
+        log: std::sync::Mutex::new(log),
+        dump_path,
+        sock_path: sock_path.to_path_buf(),
+    };
+    let handle = std::thread::spawn(move || {
+        if let Err(e) = server.run(Box::new(handler), &shutdown_thread, None) {
+            if let Some(l) = err_log.as_mut() {
+                use std::io::Write;
+                let _ = writeln!(l, "crash dump server error: {e:?}");
+                let _ = l.flush();
+            }
+        }
+    });
+    Some((handle, shutdown))
+}
+
+/// `minidumper` server-side hooks: dump location + crash-block logging
+/// into the same file the child's stderr streams into.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct CrashServerHandler {
+    log: std::sync::Mutex<std::fs::File>,
+    dump_path: std::path::PathBuf,
+    sock_path: std::path::PathBuf,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl minidumper::ServerHandler for CrashServerHandler {
+    fn create_minidump_file(&self) -> Result<(std::fs::File, std::path::PathBuf), std::io::Error> {
+        let file = std::fs::File::create(&self.dump_path)?;
+        Ok((file, self.dump_path.clone()))
+    }
+
+    fn on_minidump_created(
+        &self,
+        result: Result<minidumper::MinidumpBinary, minidumper::Error>,
+    ) -> minidumper::LoopAction {
+        use std::io::Write;
+        if let Ok(mut log) = self.log.lock() {
+            let _ = writeln!(log, "\n=== native crash ===");
+            match result {
+                Ok(md) => {
+                    let _ = writeln!(log, "minidump written: {}", md.path.display());
+                }
+                Err(e) => {
+                    let _ = writeln!(log, "minidump FAILED: {e:?}");
+                }
+            }
+            let _ = writeln!(log, "=== end native crash ===\n");
+            let _ = log.flush();
+        }
+        minidumper::LoopAction::Continue
+    }
+
+    fn on_message(&self, _kind: u32, _buffer: Vec<u8>) {}
+
+    fn on_client_connected(&self, _num_clients: usize) -> minidumper::LoopAction {
+        // The endpoint keeps working off open fds — unlink the name now.
+        let _ = std::fs::remove_file(&self.sock_path);
+        minidumper::LoopAction::Continue
+    }
+
+    fn on_client_disconnected(&self, _num_clients: usize) -> minidumper::LoopAction {
+        minidumper::LoopAction::Exit
+    }
+}
+
 /// The whole app: scan, window, event loop (and the --smoke/--ui-shot
 /// verification modes). The desktop binary calls this from `main`; the
 /// Android entry will call it from `android_main` once the NDK story
@@ -1708,6 +1915,24 @@ pub fn run() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     #[cfg(target_os = "android")]
     android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info));
+    // Catch native crashes (segfaults / SEH / mach exceptions) from the
+    // mgba C side: connect to the supervisor's out-of-process dump
+    // server when launched under one, and install the panic hook (full
+    // inline backtrace to stderr — the supervisor pipes it to the log).
+    // Leaked so it stays installed for the process's lifetime.
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let crash_client = std::env::var_os(TANGO_CRASH_SOCKET_ENV_VAR).and_then(|name| {
+            match minidumper::Client::with_name(std::path::Path::new(&name)) {
+                Ok(c) => Some(c),
+                Err(e) => {
+                    log::error!("could not connect to crash dump server: {e:?}");
+                    None
+                }
+            }
+        });
+        std::mem::forget(crash_log::install(crash_client));
+    }
     log::info!("tango-ng {}", env!("CARGO_PKG_VERSION"));
 
     // The async (netplay) layer's runtime. Held for the program lifetime;

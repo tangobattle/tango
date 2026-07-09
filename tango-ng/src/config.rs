@@ -287,6 +287,10 @@ impl Config {
         self.data_path.join("patches")
     }
 
+    pub fn logs_path(&self) -> std::path::PathBuf {
+        self.data_path.join("logs")
+    }
+
     /// The effective patch repo URL — the configured one, or the
     /// default when the config holds an empty string (tango's
     /// Autoupdater treats empty the same way).

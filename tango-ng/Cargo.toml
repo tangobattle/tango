@@ -106,6 +106,13 @@ arboard = "3"
 open = "5"
 # Discord rich presence (workspace IPC client) — no mobile Discord IPC.
 discord-ipc = { path = "../discord-ipc" }
+# Crash supervisor trampoline (lib.rs supervisor_main + crash_log.rs):
+# native crash dialogs, out-of-process minidumps. Same pins as tango.
+rfd = "0.14"
+crash-handler = "0.6"
+minidumper = "0.8"
+libc = "0.2"
+arrayvec = "0.7"
 
 # Android: the Slint android-activity backend (adds slint::android and
 # the android_main glue in lib.rs). Feature union only applies when
