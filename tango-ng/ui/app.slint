@@ -866,6 +866,15 @@ export struct PatchCardLine {
     bug-plain: bool,
 }
 
+// One row of the ABD editor's use-count library.
+export struct AbdLibRow {
+    icon: image,
+    name: string,
+    used: int,
+    sec: int,
+    has-sec: bool,
+}
+
 // One row of the Auto Battle Data section, flattened in Rust
 // (save_view/abd render_auto_battle_data): six titled sections whose
 // chip rows reuse the folder's ChipRow shape (code stays empty; the
@@ -1101,6 +1110,10 @@ export global SaveView {
     callback pc-edit-remove(int);
     callback pc-edit-move(int, int);
     callback pc-edit-toggle(int);
+    // ABD editor: (library index, ±delta) count steppers.
+    in-out property <[AbdLibRow]> edit-abd-rows: [];
+    callback abd-edit-used(int, int);
+    callback abd-edit-sec(int, int);
     callback folder-grouped-toggled(bool);
     // Copy the active section as TSV text / the NaviCust grid as an
     // image (tango's CopyTab/CopyTabImage).
@@ -1198,7 +1211,7 @@ component SaveViewBody inherits VerticalLayout {
                     toggled(g) => { SaveView.folder-grouped-toggled(g); }
                 }
             }
-            if SaveView.editable && (SaveView.save-kind == 1 || SaveView.save-kind == 2) && !SaveView.editing : VerticalLayout {
+            if SaveView.editable && SaveView.save-kind >= 1 && SaveView.save-kind <= 3 && !SaveView.editing : VerticalLayout {
                 alignment: center;
                 NeutralTextButton {
                     label: I18n.save-edit;
@@ -1632,7 +1645,209 @@ component SaveViewBody inherits VerticalLayout {
         // Auto Battle Data (save_view/abd): six
         // titled sections of chip rows (count ·
         // icon · name · element · ATK · MB).
-        if SaveView.save-kind == 3 : Pane {
+        // ABD editor: the live deck preview (the viewer's own rows,
+        // rebuilt from the staged counts) beside the use-count library.
+        if SaveView.save-kind == 3 && SaveView.editing : HorizontalLayout {
+            vertical-stretch: 1;
+            spacing: 8px;
+            Pane {
+                horizontal-stretch: 1;
+                ListView {
+                    x: 1px;
+                    y: 4px;
+                    width: parent.width - 2px;
+                    height: parent.height - 8px;
+                    for row in SaveView.abd-rows : Rectangle {
+                        height: row.is-header ? 30px : 32px;
+                        background: row.is-header || Math.mod(row.zebra, 2) == 0
+                            ? transparent : Theme.row-alt;
+                        if row.is-header : HorizontalLayout {
+                            padding-left: 10px;
+                            padding-top: 8px;
+                            Text {
+                                text: row.title;
+                                font-size: 12px;
+                                color: Theme.text;
+                                vertical-alignment: bottom;
+                            }
+                        }
+                        if !row.is-header : HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 8px;
+                            Text {
+                                width: 24px;
+                                text: row.chip.count;
+                                font-size: 12px;
+                                color: Theme.text-muted;
+                                vertical-alignment: center;
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                Image {
+                                    width: 24px;
+                                    height: 24px;
+                                    source: row.chip.icon;
+                                    image-fit: contain;
+                                    image-rendering: pixelated;
+                                }
+                            }
+                            Text {
+                                horizontal-stretch: 1;
+                                text: row.chip.name;
+                                font-size: 13px;
+                                color: row.chip.is-empty ? Theme.text-muted : Theme.text;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+            }
+            Pane {
+                horizontal-stretch: 1;
+                VerticalLayout {
+                    padding: 8px;
+                    spacing: 6px;
+                    ChunkyInput {
+                        placeholder: I18n.folder-edit-search;
+                        edited(t) => { SaveView.edit-filter-edited(t); }
+                    }
+                    ListView {
+                        vertical-stretch: 1;
+                        for row[i] in SaveView.edit-abd-rows : Rectangle {
+                            height: 32px;
+                            background: Math.mod(i, 2) == 0 ? transparent : Theme.row-alt;
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                spacing: 6px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Image {
+                                        width: 24px;
+                                        height: 24px;
+                                        source: row.icon;
+                                        image-fit: contain;
+                                        image-rendering: pixelated;
+                                    }
+                                }
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: row.name;
+                                    font-size: 13px;
+                                    color: Theme.text;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                Rectangle {
+                                    width: 22px;
+                                    height: 22px;
+                                    y: (parent.height - self.height) / 2;
+                                    border-radius: 6px;
+                                    background: um.has-hover ? Theme.hover : Theme.btn-plate;
+                                    border-width: 1px;
+                                    border-color: Theme.input-border;
+                                    um := TouchArea {
+                                        clicked => { SaveView.abd-edit-used(i, -1); }
+                                    }
+                                    Text {
+                                        width: 100%;
+                                        height: 100%;
+                                        text: "−";
+                                        font-size: 13px;
+                                        color: Theme.text;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                Text {
+                                    width: 26px;
+                                    text: row.used;
+                                    font-size: 13px;
+                                    color: Theme.text;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: center;
+                                }
+                                Rectangle {
+                                    width: 22px;
+                                    height: 22px;
+                                    y: (parent.height - self.height) / 2;
+                                    border-radius: 6px;
+                                    background: up.has-hover ? Theme.hover : Theme.btn-plate;
+                                    border-width: 1px;
+                                    border-color: Theme.input-border;
+                                    up := TouchArea {
+                                        clicked => { SaveView.abd-edit-used(i, 1); }
+                                    }
+                                    Text {
+                                        width: 100%;
+                                        height: 100%;
+                                        text: "+";
+                                        font-size: 13px;
+                                        color: Theme.text;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                if row.has-sec : Rectangle {
+                                    width: 22px;
+                                    height: 22px;
+                                    y: (parent.height - self.height) / 2;
+                                    border-radius: 6px;
+                                    background: sm.has-hover ? Theme.hover : Theme.btn-plate;
+                                    border-width: 1px;
+                                    border-color: Theme.input-border;
+                                    sm := TouchArea {
+                                        clicked => { SaveView.abd-edit-sec(i, -1); }
+                                    }
+                                    Text {
+                                        width: 100%;
+                                        height: 100%;
+                                        text: "−";
+                                        font-size: 13px;
+                                        color: #2984de;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                if row.has-sec : Text {
+                                    width: 26px;
+                                    text: row.sec;
+                                    font-size: 13px;
+                                    color: #2984de;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: center;
+                                }
+                                if row.has-sec : Rectangle {
+                                    width: 22px;
+                                    height: 22px;
+                                    y: (parent.height - self.height) / 2;
+                                    border-radius: 6px;
+                                    background: sp.has-hover ? Theme.hover : Theme.btn-plate;
+                                    border-width: 1px;
+                                    border-color: Theme.input-border;
+                                    sp := TouchArea {
+                                        clicked => { SaveView.abd-edit-sec(i, 1); }
+                                    }
+                                    Text {
+                                        width: 100%;
+                                        height: 100%;
+                                        text: "+";
+                                        font-size: 13px;
+                                        color: #2984de;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if SaveView.save-kind == 3 && !SaveView.editing : Pane {
             vertical-stretch: 1;
             ListView {
                 x: 1px;

@@ -861,6 +861,62 @@ pub fn patch_card_library(loaded: &Loaded, filter: &str) -> (Vec<ChipRow>, Vec<u
     (rows, values)
 }
 
+/// The auto-battle-data editor's library: program advances (always
+/// offered) plus every pack-owned Standard/Mega/Giga chip, id order,
+/// filtered by name (tango's sorted_auto_battle_data_chips). Returns
+/// display rows + parallel chip ids.
+pub fn abd_library(loaded: &Loaded, filter: &str) -> (Vec<crate::AbdLibRow>, Vec<usize>) {
+    use tango_dataview::rom::ChipClass as CC;
+    let assets = loaded.assets.as_ref();
+    let view = loaded.save.view_auto_battle_data();
+    let chips_view = loaded.save.view_chips();
+    let filter = filter.to_lowercase();
+    let mut rows = Vec::new();
+    let mut values = Vec::new();
+    for id in 0..assets.num_chips() {
+        let Some(info) = assets.chip(id) else { continue };
+        let class = info.class();
+        let is_pa = class == CC::ProgramAdvance;
+        if !is_pa && !matches!(class, CC::Standard | CC::Mega | CC::Giga) {
+            continue;
+        }
+        let Some(name) = info.name() else { continue };
+        if name.trim().is_empty() {
+            continue;
+        }
+        if !is_pa {
+            let in_pack = (0..info.codes().len()).any(|variant| {
+                chips_view
+                    .as_ref()
+                    .and_then(|v| v.pack_count(id, variant))
+                    .is_some_and(|c| c > 0)
+            });
+            if !in_pack {
+                continue;
+            }
+        }
+        if !filter.is_empty() && !name.to_lowercase().contains(&filter) {
+            continue;
+        }
+        let used = view.as_ref().and_then(|v| v.chip_use_count(id)).unwrap_or(0);
+        let is_standard = matches!(class, CC::Standard);
+        let sec = if is_standard {
+            view.as_ref().and_then(|v| v.secondary_chip_use_count(id)).unwrap_or(0)
+        } else {
+            0
+        };
+        rows.push(crate::AbdLibRow {
+            icon: loaded.chip_icons.get(id).cloned().flatten().unwrap_or_default(),
+            name: name.into(),
+            used: used as i32,
+            sec: sec as i32,
+            has_sec: is_standard,
+        });
+        values.push(id);
+    }
+    (rows, values)
+}
+
 // ----- copy-as-text renderings (tango's save_view tab_as_text) -----
 
 /// The active section as TSV text for the clipboard, keyed by the

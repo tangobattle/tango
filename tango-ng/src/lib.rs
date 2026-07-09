@@ -357,6 +357,8 @@ struct State {
     /// The patch-card editor's library values (card ids), parallel to
     /// its model rows.
     edit_pc_values: Vec<usize>,
+    /// The ABD editor's library values (chip ids).
+    edit_abd_values: Vec<usize>,
     /// The library pane's filter text.
     edit_library_filter: String,
     /// The new-save form's template picker values, parallel to the
@@ -1096,6 +1098,20 @@ fn push_pc_editor(app: &AppWindow, st: &mut State) {
     st.edit_pc_values = values;
     app.global::<SaveView>()
         .set_edit_library_rows(ModelRc::new(VecModel::from(rows)));
+}
+
+/// Push the ABD editor's panes: the live grouped-deck preview (the
+/// viewer's rows model, rebuilt from the staged counts) plus the
+/// use-count library.
+fn push_abd_editor(app: &AppWindow, st: &mut State) {
+    let lang = st.config.language.clone();
+    let Some(l) = st.loaded.as_ref() else { return };
+    app.global::<SaveView>()
+        .set_abd_rows(ModelRc::new(VecModel::from(loaded::abd_rows(&lang, l))));
+    let (rows, values) = loaded::abd_library(l, &st.edit_library_filter);
+    st.edit_abd_values = values;
+    app.global::<SaveView>()
+        .set_edit_abd_rows(ModelRc::new(VecModel::from(rows)));
 }
 
 /// The game's BNLC bezel art as a Slint image, cached per game: the
@@ -2184,6 +2200,7 @@ pub fn run() -> anyhow::Result<()> {
         edit_tags: Vec::new(),
         edit_library_values: Vec::new(),
         edit_pc_values: Vec::new(),
+        edit_abd_values: Vec::new(),
         edit_library_filter: String::new(),
         save_template_values: Vec::new(),
         save_new_auto_default: None,
@@ -2951,6 +2968,7 @@ pub fn run() -> anyhow::Result<()> {
             st.edit_library_filter.clear();
             push_folder_editor(&app, &mut st);
             push_pc_editor(&app, &mut st);
+            push_abd_editor(&app, &mut st);
             app.global::<SaveView>().set_editing(true);
         }
     });
@@ -3140,8 +3158,61 @@ pub fn run() -> anyhow::Result<()> {
                     }
                     push_pc_editor(&app, &mut st);
                 }
+                3 => {
+                    if let Some(l) = st.loaded.as_mut() {
+                        save_edit::apply_auto_battle_data_edit(l, save_edit::AutoBattleDataEdit::ClearAll);
+                    }
+                    push_abd_editor(&app, &mut st);
+                }
                 _ => {}
             }
+        }
+    });
+
+    app.global::<SaveView>().on_abd_edit_used({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |index, delta| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Some(id) = usize::try_from(index).ok().and_then(|i| st.edit_abd_values.get(i)).copied() else {
+                return;
+            };
+            if let Some(l) = st.loaded.as_mut() {
+                let cur = l
+                    .save
+                    .view_auto_battle_data()
+                    .and_then(|v| v.chip_use_count(id))
+                    .unwrap_or(0) as i64;
+                let count = (cur + delta as i64).clamp(0, u16::MAX as i64) as usize;
+                save_edit::apply_auto_battle_data_edit(l, save_edit::AutoBattleDataEdit::SetUseCount { id, count });
+            }
+            push_abd_editor(&app, &mut st);
+        }
+    });
+
+    app.global::<SaveView>().on_abd_edit_sec({
+        let state = state.clone();
+        let app_weak = app.as_weak();
+        move |index, delta| {
+            let Some(app) = app_weak.upgrade() else { return };
+            let mut st = state.borrow_mut();
+            let Some(id) = usize::try_from(index).ok().and_then(|i| st.edit_abd_values.get(i)).copied() else {
+                return;
+            };
+            if let Some(l) = st.loaded.as_mut() {
+                let cur = l
+                    .save
+                    .view_auto_battle_data()
+                    .and_then(|v| v.secondary_chip_use_count(id))
+                    .unwrap_or(0) as i64;
+                let count = (cur + delta as i64).clamp(0, u16::MAX as i64) as usize;
+                save_edit::apply_auto_battle_data_edit(
+                    l,
+                    save_edit::AutoBattleDataEdit::SetSecondaryUseCount { id, count },
+                );
+            }
+            push_abd_editor(&app, &mut st);
         }
     });
 
@@ -3215,6 +3286,7 @@ pub fn run() -> anyhow::Result<()> {
             st.edit_library_filter = text.to_lowercase();
             match save_active_kind(&app) {
                 2 => push_pc_editor(&app, &mut st),
+                3 => push_abd_editor(&app, &mut st),
                 _ => push_folder_editor(&app, &mut st),
             }
         }
