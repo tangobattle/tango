@@ -6,6 +6,14 @@ license = "MPL-2.0"
 publish = false
 build = "build.rs"
 
+# The app is a library so both entry points can share it: the desktop
+# bin below, and (once the NDK story lands) Android's android_main via
+# a cdylib. gamesupport features gate per-game deps, so the lib keeps
+# the same feature surface.
+[lib]
+name = "tango_ng"
+path = "src/lib.rs"
+
 [[bin]]
 name = "tango-ng"
 path = "src/main.rs"
