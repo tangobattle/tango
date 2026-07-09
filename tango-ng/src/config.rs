@@ -62,6 +62,9 @@ pub struct Config {
     pub show_opponent_setup: bool,
     /// Start (and keep) the window fullscreen.
     pub full_screen: bool,
+    /// Hide the BNLC bezel art behind the emulator (pure black
+    /// backdrop instead). Default shows the border when BNLC owns it.
+    pub hide_emulator_border: bool,
     /// PvP presentation delay in frames: how far the display core trails
     /// the netcode frontier. Purely local (never negotiated with the
     /// peer); clamped to tango-pvp's supported [2, 10] range at use.
@@ -115,6 +118,7 @@ impl Default for Config {
             streamer_mode: false,
             show_opponent_setup: false,
             full_screen: false,
+            hide_emulator_border: false,
             frame_delay: 2,
             disable_bgm_in_pvp: false,
             matchmaking_endpoint: DEFAULT_MATCHMAKING_ENDPOINT.to_string(),

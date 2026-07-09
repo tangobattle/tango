@@ -87,8 +87,8 @@ steamlocate = "2"
 directories-next = "2"
 fluent-templates = "0.14"
 unic-langid = { version = "0.9", features = ["likelysubtags"] }
-# png only, for the --smoke framebuffer dump.
-image = { workspace = true, features = ["png"] }
+# png for the --smoke framebuffer dump; tga for the BNLC bezel art.
+image = { workspace = true, features = ["png", "tga"] }
 hqx = "0.1"
 mmpx = "0.2"
 

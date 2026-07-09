@@ -177,6 +177,7 @@ export global I18n {
     in-out property <string> settings-patch-autoupdate: "Automatically update patches in the background";
     in-out property <string> settings-fullscreen: "Fullscreen";
     in-out property <string> settings-video-filter: "Video filter";
+    in-out property <string> settings-hide-border: "Hide emulator border";
     in-out property <string> settings-enable-updater: "Automatically check for app updates";
     in-out property <string> settings-allow-prerelease: "Include prereleases when checking for app updates";
     in-out property <string> updater-update-now: "Update now";
@@ -1676,6 +1677,10 @@ export component AppWindow inherits Window {
     in-out property <bool> settings-patch-autoupdate: true;
     in-out property <bool> settings-fullscreen: false;
     in-out property <int> settings-video-filter: 0;
+    in-out property <bool> settings-hide-border: false;
+    // BNLC bezel art behind the emulator, when the volume is owned.
+    in property <image> session-bg;
+    in property <bool> session-bg-has: false;
     in-out property <bool> settings-updater-enabled: false;
     in-out property <bool> settings-prerelease: false;
     in property <string> about-updater-status: "";
@@ -1856,6 +1861,7 @@ export component AppWindow inherits Window {
     callback patch-autoupdate-changed(bool);
     callback fullscreen-changed(bool);
     callback video-filter-changed(int);
+    callback hide-border-changed(bool);
     callback updater-enabled-changed(bool);
     callback prerelease-changed(bool);
     callback update-now();
@@ -2997,6 +3003,11 @@ export component AppWindow inherits Window {
                             checked <=> root.fractional;
                             toggled(b) => { root.fractional-changed(b); }
                         }
+                        ChunkyCheckbox {
+                            label: I18n.settings-hide-border;
+                            checked <=> root.settings-hide-border;
+                            toggled(b) => { root.hide-border-changed(b); }
+                        }
                         Labeled {
                             label: I18n.settings-video-filter;
                             Picker {
@@ -3564,6 +3575,16 @@ export component AppWindow inherits Window {
         width: 100%;
         height: 100%;
         background: black;
+
+        // BNLC bezel art (cover-fit, crops as needed) behind the
+        // framebuffer + every floating control; black when hidden or
+        // unavailable.
+        if root.session-bg-has && !root.settings-hide-border : Image {
+            width: 100%;
+            height: 100%;
+            source: root.session-bg;
+            image-fit: cover;
+        }
 
         fs := FocusScope {
             width: 100%;

@@ -251,6 +251,7 @@ fn apply_i18n(app: &AppWindow, config: &config::Config) {
     i18n.set_settings_patch_autoupdate(t!(lang, "settings-enable-patch-autoupdate").into());
     i18n.set_settings_fullscreen(t!(lang, "settings-fullscreen").into());
     i18n.set_settings_video_filter(t!(lang, "settings-video-filter").into());
+    i18n.set_settings_hide_border(t!(lang, "settings-hide-emulator-border").into());
     i18n.set_settings_enable_updater(t!(lang, "settings-enable-updater").into());
     i18n.set_settings_allow_prerelease(t!(lang, "settings-allow-prerelease-upgrades").into());
     i18n.set_updater_update_now(t!(lang, "updater-update-now").into());
@@ -308,6 +309,9 @@ struct State {
     /// Last pointer motion over the session view — the floating
     /// controls hide ~2.5 s after it goes stale.
     session_last_pointer: std::time::Instant,
+    /// Decoded BNLC bezel art per game (None = not available), so a
+    /// session restart never re-reads the archive.
+    bnlc_bg_cache: HashMap<rom::GameRef, Option<Image>>,
     /// The live match's setup views, baked at PvpBuilt from the
     /// committed save data (remote stays None when they blinded).
     pvp_local_loaded: Option<loaded::Loaded>,
@@ -470,12 +474,15 @@ fn start_replay(
     roms: &HashMap<rom::GameRef, Vec<u8>>,
     patches_path: &std::path::Path,
     audio_binder: &audio::LateBinder,
-) -> anyhow::Result<session::ReplaySession> {
+) -> anyhow::Result<(session::ReplaySession, rom::GameRef)> {
     let f = std::fs::File::open(path)?;
     let replay = tango_pvp::replay::Replay::decode(f)?;
     let (local_game, local_rom) = resolve_replay_rom(roms, patches_path, replay.metadata.local_side.as_ref())?;
     let (remote_game, remote_rom) = resolve_replay_rom(roms, patches_path, replay.metadata.remote_side.as_ref())?;
-    session::ReplaySession::new(replay, local_game, local_rom, remote_game, remote_rom, audio_binder)
+    Ok((
+        session::ReplaySession::new(replay, local_game, local_rom, remote_game, remote_rom, audio_binder)?,
+        local_game,
+    ))
 }
 
 /// Rebuild the games + replays models (and clear selections) from the
@@ -1048,6 +1055,43 @@ fn update_discord_presence(app: &AppWindow, st: &State) {
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 fn update_discord_presence(_app: &AppWindow, _st: &State) {}
+
+/// The game's BNLC bezel art as a Slint image, cached per game: the
+/// TGA pulled from the owning volume's shared `exe.dat` (tango's
+/// session background_handle). `None` when Steam / BNLC / the entry
+/// isn't available — the session keeps its black backdrop.
+fn session_background(st: &mut State, app: &AppWindow, game: rom::GameRef) {
+    let img = st
+        .bnlc_bg_cache
+        .entry(game)
+        .or_insert_with(|| {
+            let bg = game.background;
+            let path = format!("exe/data/bg/{}", bg.tga);
+            bnlc::get(bg.volume)
+                .and_then(|b| b.read_shared_file(&path))
+                .and_then(|bytes| {
+                    // TGA has no magic prefix; pass the format explicitly.
+                    image::load_from_memory_with_format(&bytes, image::ImageFormat::Tga)
+                        .inspect_err(|e| log::warn!("bnlc bg {:?}/{}: decode: {e}", bg.volume, bg.tga))
+                        .ok()
+                })
+                .map(|img| {
+                    let rgba = img.into_rgba8();
+                    let (w, h) = rgba.dimensions();
+                    let mut px = SharedPixelBuffer::<Rgba8Pixel>::new(w, h);
+                    px.make_mut_bytes().copy_from_slice(rgba.as_raw());
+                    Image::from_rgba8(px)
+                })
+        })
+        .clone();
+    match img {
+        Some(img) => {
+            app.set_session_bg(img);
+            app.set_session_bg_has(true);
+        }
+        None => app.set_session_bg_has(false),
+    }
+}
 
 /// The active save-view section's kind (-1 when none) — mirror of the
 /// .slint-side derived `save-kind` property, for the copy callbacks.
@@ -2069,6 +2113,7 @@ pub fn run() -> anyhow::Result<()> {
         pvp_local_loaded: None,
         pvp_remote_loaded: None,
         session_last_pointer: std::time::Instant::now(),
+        bnlc_bg_cache: HashMap::new(),
         patches: patch::PatchMap::new(),
         patch_rows: Vec::new(),
         patch_list_rows: Vec::new(),
@@ -2216,6 +2261,7 @@ pub fn run() -> anyhow::Result<()> {
         app.set_settings_patch_repo(st.config.patch_repo.clone().into());
         app.set_settings_patch_autoupdate(st.config.enable_patch_autoupdate);
         app.set_settings_fullscreen(st.config.full_screen);
+        app.set_settings_hide_border(st.config.hide_emulator_border);
         app.set_settings_mute_bgm(st.config.disable_bgm_in_pvp);
         app.set_settings_matchmaking_endpoint(st.config.matchmaking_endpoint.clone().into());
         app.set_settings_relay(match st.config.relay_mode {
@@ -2369,6 +2415,15 @@ pub fn run() -> anyhow::Result<()> {
             st.config.full_screen = fullscreen;
             st.config.save();
             app.window().set_fullscreen(fullscreen);
+        }
+    });
+
+    app.on_hide_border_changed({
+        let state = state.clone();
+        move |hide| {
+            let mut st = state.borrow_mut();
+            st.config.hide_emulator_border = hide;
+            st.config.save();
         }
     });
 
@@ -3340,6 +3395,7 @@ pub fn run() -> anyhow::Result<()> {
             };
             match session::SinglePlayerSession::new(&rom, &save.path, &st.audio_binder) {
                 Ok(session) => {
+                    session_background(&mut st, &app, game);
                     st.session = Some(ActiveSession::SinglePlayer(session));
                     st.session_start = Some(std::time::SystemTime::now());
                     // Key releases outside a focused FocusScope are
@@ -3568,7 +3624,8 @@ pub fn run() -> anyhow::Result<()> {
                 &st.audio_binder,
             );
             match start {
-                Ok(session) => {
+                Ok((session, replay_local_game)) => {
+                    session_background(&mut st, &app, replay_local_game);
                     let marks: Vec<f32> = session
                         .round_boundaries()
                         .iter()
@@ -4358,6 +4415,7 @@ pub fn run() -> anyhow::Result<()> {
                                             )
                                         })
                                 };
+                                session_background(&mut st, &app, session.setup.local_game);
                                 app.set_pvp_opponent_blind(st.pvp_remote_loaded.is_none());
                                 // Auto-open the opponent's setup at match
                                 // start when the setting asks for it.
@@ -4624,7 +4682,7 @@ fn smoke_replay(config: &config::Config, audio_binder: &audio::LateBinder, out: 
     let mut session = None;
     for candidate in scanned.iter().take(20) {
         match start_replay(&candidate.path, &roms, &patches_path, audio_binder) {
-            Ok(s) => {
+            Ok((s, _)) => {
                 println!("smoke-replay: playing {}", candidate.path.display());
                 session = Some(s);
                 break;

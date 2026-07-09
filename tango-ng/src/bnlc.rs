@@ -1,9 +1,10 @@
 //! Battle Network Legacy Collection (Steam) discovery, copied from
-//! `tango/src/bnlc.rs` and trimmed to ROM-archive discovery (the shared
-//! `exe.dat` asset access comes over when backgrounds/assets land).
+//! `tango/src/bnlc.rs`: per-game `exeN.dat` ROM archives plus the
+//! shared `exe.dat` asset archive (session background art).
 
+use std::io::Read;
 use std::path::PathBuf;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex};
 
 /// Which BNLC volume — Vol 1 (BN1-3) or Vol 2 (BN4-6).
 pub use tango_gamesupport::Volume;
@@ -12,6 +13,10 @@ pub use tango_gamesupport::Volume;
 pub struct Bnlc {
     volume: Volume,
     app_dir: PathBuf,
+    /// `exe.dat` archive kept open for the lifetime of this Bnlc.
+    /// `ZipArchive::by_name` seeks the underlying file, so every read
+    /// takes the lock.
+    shared: Mutex<zip::ZipArchive<std::fs::File>>,
 }
 
 impl Bnlc {
@@ -20,7 +25,34 @@ impl Bnlc {
     /// it caches the result for the process lifetime.
     pub fn open(volume: Volume) -> Option<Self> {
         let app_dir = locate_app_dir(volume)?;
-        Some(Bnlc { volume, app_dir })
+        let archive_path = app_dir.join("exe").join("data").join("exe.dat");
+        let file = std::fs::File::open(&archive_path)
+            .inspect_err(|e| log::debug!("bnlc {volume:?}: open {}: {e}", archive_path.display()))
+            .ok()?;
+        let za = zip::ZipArchive::new(file)
+            .inspect_err(|e| log::warn!("bnlc {volume:?}: open zip {}: {e}", archive_path.display()))
+            .ok()?;
+        Some(Bnlc {
+            volume,
+            app_dir,
+            shared: Mutex::new(za),
+        })
+    }
+
+    /// Read a single file out of the cached shared `exe.dat`.
+    /// `None` on missing entry / IO error.
+    pub fn read_shared_file(&self, path_in_zip: &str) -> Option<Vec<u8>> {
+        let mut za = self.shared.lock().unwrap();
+        let mut entry = za
+            .by_name(path_in_zip)
+            .inspect_err(|e| log::warn!("bnlc {:?}: read {path_in_zip}: {e}", self.volume))
+            .ok()?;
+        let mut buf = Vec::with_capacity(entry.size() as usize);
+        entry
+            .read_to_end(&mut buf)
+            .inspect_err(|e| log::warn!("bnlc {:?}: read {path_in_zip}: {e}", self.volume))
+            .ok()?;
+        Some(buf)
     }
 
     /// Paths of the per-game `exeN.dat` archives in the volume's
