@@ -49,6 +49,9 @@ pub struct Config {
     pub theme: ThemeMode,
     pub volume: f32,
     pub fractional_scaling: bool,
+    /// CPU video filter for the emulator frame ("", "hq2x", "hq3x",
+    /// "hq4x", "mmpx", "lcd") — see [`crate::video::Filter`].
+    pub video_filter: String,
     /// Hide identifying save details for streaming: masks the link-code
     /// input and swaps the save viewer's data tabs behind a Cover tab
     /// (tango's `streamer_mode`).
@@ -101,6 +104,7 @@ impl Default for Config {
             theme: ThemeMode::default(),
             volume: 1.0,
             fractional_scaling: false,
+            video_filter: String::new(),
             streamer_mode: false,
             show_opponent_setup: false,
             full_screen: false,

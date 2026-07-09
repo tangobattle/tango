@@ -52,6 +52,7 @@ mod randomcode;
 mod replays;
 mod rom;
 mod save;
+mod video;
 mod save_manage;
 mod session;
 
@@ -235,6 +236,7 @@ fn apply_i18n(app: &AppWindow, config: &config::Config) {
     i18n.set_settings_patch_repo(t!(lang, "settings-patch-repo").into());
     i18n.set_settings_patch_autoupdate(t!(lang, "settings-enable-patch-autoupdate").into());
     i18n.set_settings_fullscreen(t!(lang, "settings-fullscreen").into());
+    i18n.set_settings_video_filter(t!(lang, "settings-video-filter").into());
     i18n.set_settings_mute_bgm(t!(lang, "settings-disable-bgm-in-pvp").into());
     i18n.set_settings_matchmaking_endpoint(t!(lang, "settings-matchmaking-endpoint").into());
     i18n.set_settings_use_relay(t!(lang, "settings-use-relay").into());
@@ -1911,6 +1913,12 @@ pub fn run() -> anyhow::Result<()> {
         app.set_settings_volume(st.config.volume);
         app.set_settings_volume_label(format!("{}%", (st.config.volume * 100.0).round() as i32).into());
         app.set_fractional(st.config.fractional_scaling);
+        app.set_settings_video_filter(
+            video::Filter::ALL
+                .iter()
+                .position(|f| *f == video::Filter::from_config(&st.config.video_filter))
+                .unwrap_or(0) as i32,
+        );
         st.audio_binder.set_volume(st.config.volume);
         app.set_settings_streamer(st.config.streamer_mode);
         app.set_settings_patch_repo(st.config.patch_repo.clone().into());
@@ -2041,6 +2049,19 @@ pub fn run() -> anyhow::Result<()> {
         move |enabled| {
             let mut st = state.borrow_mut();
             st.config.enable_patch_autoupdate = enabled;
+            st.config.save();
+        }
+    });
+
+    app.on_video_filter_changed({
+        let state = state.clone();
+        move |index| {
+            let mut st = state.borrow_mut();
+            let filter = usize::try_from(index)
+                .ok()
+                .and_then(|i| video::Filter::ALL.get(i).copied())
+                .unwrap_or_default();
+            st.config.video_filter = filter.config_name().to_string();
             st.config.save();
         }
     });
@@ -3762,7 +3783,21 @@ pub fn run() -> anyhow::Result<()> {
                         session::SCREEN_HEIGHT,
                     );
                     session.read_frame(pixels.make_mut_bytes());
-                    app.set_frame(Image::from_rgba8(pixels));
+                    // CPU video filter (video.rs): scale/shape the frame
+                    // before upload; passthrough costs nothing.
+                    let filter = video::Filter::from_config(&st.config.video_filter);
+                    match filter.apply(
+                        pixels.as_bytes(),
+                        session::SCREEN_WIDTH,
+                        session::SCREEN_HEIGHT,
+                    ) {
+                        Some((fw, fh, buf)) => {
+                            let mut fp = SharedPixelBuffer::<Rgba8Pixel>::new(fw, fh);
+                            fp.make_mut_bytes().copy_from_slice(&buf);
+                            app.set_frame(Image::from_rgba8(fp));
+                        }
+                        None => app.set_frame(Image::from_rgba8(pixels)),
+                    }
                 }
                 if let ActiveSession::Pvp(p) = session {
                     // Self-close once the match has wound down (completion +

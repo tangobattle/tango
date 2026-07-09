@@ -175,6 +175,7 @@ export global I18n {
     in-out property <string> settings-patch-repo: "Patches repository";
     in-out property <string> settings-patch-autoupdate: "Automatically update patches in the background";
     in-out property <string> settings-fullscreen: "Fullscreen";
+    in-out property <string> settings-video-filter: "Video filter";
     in-out property <string> settings-mute-bgm: "Mute music in netplay";
     in-out property <string> settings-matchmaking-endpoint: "Matchmaking endpoint";
     in-out property <string> settings-use-relay: "Use relay server";
@@ -1084,6 +1085,7 @@ export component AppWindow inherits Window {
     in-out property <string> settings-patch-repo: "";
     in-out property <bool> settings-patch-autoupdate: true;
     in-out property <bool> settings-fullscreen: false;
+    in-out property <int> settings-video-filter: 0;
     in-out property <bool> settings-mute-bgm: false;
     in-out property <string> settings-matchmaking-endpoint: "";
     in-out property <int> settings-relay: 0;
@@ -1292,6 +1294,7 @@ export component AppWindow inherits Window {
     callback patch-repo-changed(string);
     callback patch-autoupdate-changed(bool);
     callback fullscreen-changed(bool);
+    callback video-filter-changed(int);
     callback mute-bgm-changed(bool);
     callback matchmaking-endpoint-changed(string);
     callback relay-changed(int);
@@ -2917,6 +2920,18 @@ export component AppWindow inherits Window {
                             label: I18n.settings-fractional;
                             checked <=> root.fractional;
                             toggled(b) => { root.fractional-changed(b); }
+                        }
+                        Labeled {
+                            label: I18n.settings-video-filter;
+                            Picker {
+                                width: 240px;
+                                // Filter names are proper nouns — not localized
+                                // (same as tango's picker).
+                                model: ["—", "hq2x", "hq3x", "hq4x", "MMPX", "LCD"];
+                                placeholder: "—";
+                                current <=> root.settings-video-filter;
+                                selected(i) => { root.video-filter-changed(i); }
+                            }
                         }
                     }
                     if root.settings-section == 2 : VerticalLayout {
