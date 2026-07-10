@@ -27,7 +27,10 @@ pub struct Round {
     /// ones belong to a future round a racing peer has started.
     round_idx: u32,
     /// Handoff queue from the net receive task, shared with the Match.
-    remote_inputs: Arc<super::match_::RemoteInputs>,
+    /// Where this round's remote inputs come from (a networked peer's
+    /// queue, or an in-process training source), shared from the
+    /// [`Match`](super::Match).
+    remote_source: Arc<super::match_::RemoteSource>,
     /// This side's player index. A game/host concept, not the engine's — the
     /// per-game traps read it to drive p1/p2 register writes.
     local_player_index: u8,
@@ -40,6 +43,10 @@ pub struct Round {
     /// change takes effect on the next render. The engine itself just holds a
     /// plain value; this atomic is purely the host-side sharing mechanism.
     frame_delay: Arc<AtomicU32>,
+    /// Simulation speed multiplier (`f32` bits), shared from the
+    /// [`Match`](super::Match). 1.0 in real PvP; training scales its per-frame
+    /// fps target through it. Re-read each frame like `frame_delay`.
+    speed_factor: Arc<AtomicU32>,
     /// Handle to the live core's mgba thread, held so `Drop` can reset its
     /// `fps_target` when the round ends.
     primary_thread_handle: mgba::thread::Handle,
@@ -71,10 +78,11 @@ impl Round {
         Self {
             session: None,
             round_idx: match_.current_local_round_idx(),
-            remote_inputs: match_.remote_inputs_handle(),
+            remote_source: match_.remote_source_handle(),
             local_player_index: match_.local_player_index(),
             hooks: match_.local_hooks(),
             frame_delay: match_.frame_delay(),
+            speed_factor: match_.speed_factor_handle(),
             primary_thread_handle: match_.primary_thread_handle(),
             throttler: super::throttler::Throttler::new(),
             last_loaded_tick: 0,
@@ -143,6 +151,33 @@ impl Round {
     /// first commit.
     pub(super) fn settled_shadow_snapshot(&self) -> Option<&crate::shadow::ShadowSnapshot> {
         self.session.as_ref().map(|s| &s.settled_state().shadow_snapshot)
+    }
+
+    /// Clone the settled state bundle + prediction seed for a training
+    /// checkpoint. `None` while armed or once the settled stream has ended the
+    /// round — see [`Match::training_checkpoint`](super::Match::training_checkpoint)
+    /// for why both are declined.
+    pub(super) fn training_state(&self) -> Option<(super::world::MgbaState, PartialInput)> {
+        let session = self.session.as_ref()?;
+        if session.terminal_reached() {
+            return None;
+        }
+        Some((session.settled_state().clone(), session.last_confirmed_remote().clone()))
+    }
+
+    /// Reset the rollback engine to a training checkpoint's state, force-
+    /// reloading the stepper + shadow cores. Returns `false` while armed
+    /// (no engine yet). A settled round end is fine — `Session::reset`
+    /// clears the terminal latch, and every restore path re-anchors the
+    /// live core explicitly, so the game resumes inside the battle loop
+    /// regardless of where it was.
+    pub(super) fn reset_to(&mut self, state: &super::world::MgbaState, remote: PartialInput) -> anyhow::Result<bool> {
+        let Some(session) = self.session.as_mut() else {
+            return Ok(false);
+        };
+        session.reset(state.clone(), state.tick, remote)?;
+        self.last_loaded_tick = state.tick;
+        Ok(true)
     }
 
     pub fn local_player_index(&self) -> u8 {
@@ -227,23 +262,36 @@ impl Round {
             self.stall_signaled = false;
         }
 
-        // Drain peer inputs that arrived since last frame into the engine.
-        // The engine only consults remote inputs inside `advance`, so
-        // draining here (instead of the net task pushing them the moment
-        // they arrive) changes nothing about when they take effect.
-        self.remote_inputs.drain(self.round_idx, |input| {
-            log::debug!("remote input: {:?}", input);
-            if session.remote_queue_length() >= MAX_QUEUE_LENGTH {
-                anyhow::bail!("remote overflowed our input buffer");
+        // Stage this tick's remote inputs into the engine, however this
+        // match sources them.
+        match &*self.remote_source {
+            // Drain peer inputs that arrived since last frame. The engine
+            // only consults remote inputs inside `advance`, so draining here
+            // (instead of the net task pushing them the moment they arrive)
+            // changes nothing about when they take effect.
+            super::match_::RemoteSource::Peer(queue) => queue.drain(self.round_idx, |input| {
+                log::debug!("remote input: {:?}", input);
+                if session.remote_queue_length() >= MAX_QUEUE_LENGTH {
+                    anyhow::bail!("remote overflowed our input buffer");
+                }
+                session.add_remote_input(
+                    PartialInput {
+                        joyflags: input.joyflags,
+                    },
+                    input.tick_advantage,
+                );
+                Ok(())
+            })?,
+            // Training's in-process peer: ask the source for the dummy's
+            // joyflags against the live core's settled pre-advance state —
+            // one remote per local input, confirming this tick with zero
+            // speculation. Echoing our own tick advantage back makes skew
+            // read 0, so the throttler never engages.
+            super::match_::RemoteSource::Training(source) => {
+                let joyflags = source.lock().unwrap().next_joyflags(core);
+                session.add_remote_input(PartialInput { joyflags }, tick_advantage);
             }
-            session.add_remote_input(
-                PartialInput {
-                    joyflags: input.joyflags,
-                },
-                input.tick_advantage,
-            );
-            Ok(())
-        })?;
+        }
 
         // Push the host-side live frame delay into the engine before stepping,
         // so a footer-slider change takes effect on this frame.
@@ -270,10 +318,11 @@ impl Round {
         // balance crosses the boundary, instead of shaving fps the player
         // can feel.
         let slowdown = self.throttler.step(skew, session.speculation_balance());
+        let speed = f32::from_bits(self.speed_factor.load(Ordering::Relaxed));
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")
-            .set_fps_target(EXPECTED_FPS - slowdown);
+            .set_fps_target((EXPECTED_FPS - slowdown) * speed);
         Ok(())
     }
 }

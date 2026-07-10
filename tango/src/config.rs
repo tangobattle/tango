@@ -328,6 +328,11 @@ impl Config {
     pub fn replays_path(&self) -> std::path::PathBuf {
         self.data_path.join("replays")
     }
+    /// User-authored training dummy scripts (`*.lua` / `*.rhai`), offered
+    /// by the training setup alongside the built-ins.
+    pub fn training_scripts_path(&self) -> std::path::PathBuf {
+        self.data_path.join("training-scripts")
+    }
     pub fn logs_path(&self) -> std::path::PathBuf {
         self.data_path.join("logs")
     }

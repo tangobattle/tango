@@ -366,6 +366,13 @@ pub struct Mapping {
     pub start: Vec<PhysicalInput>,
     pub select: Vec<PhysicalInput>,
     pub speed_up: Vec<PhysicalInput>,
+    // Training-session hotkeys. Not mgba keys: `to_mgba_keys` ignores
+    // them, and they only fire while a training session is active.
+    pub training_reset: Vec<PhysicalInput>,
+    pub training_reload_script: Vec<PhysicalInput>,
+    pub training_set_drill_point: Vec<PhysicalInput>,
+    pub training_pause: Vec<PhysicalInput>,
+    pub training_frame_advance: Vec<PhysicalInput>,
 }
 
 impl Default for Mapping {
@@ -405,6 +412,14 @@ impl Default for Mapping {
             start: vec![key(Code::Enter), btn(GamepadButton::Start)],
             select: vec![key(Code::Space), btn(GamepadButton::Select)],
             speed_up: vec![key(Code::ShiftLeft)],
+            // F-row defaults; inert outside training, so it's safe to
+            // claim. Reset is the most-pressed key of the drill loop;
+            // reload sits next to it for the edit-script-and-go cycle.
+            training_reset: vec![key(Code::F1)],
+            training_reload_script: vec![key(Code::F2)],
+            training_set_drill_point: vec![key(Code::F3)],
+            training_pause: vec![key(Code::F6)],
+            training_frame_advance: vec![key(Code::F8)],
         }
     }
 }
@@ -425,6 +440,11 @@ impl Mapping {
             MappedKey::Start => &self.start,
             MappedKey::Select => &self.select,
             MappedKey::SpeedUp => &self.speed_up,
+            MappedKey::TrainingReset => &self.training_reset,
+            MappedKey::TrainingReloadScript => &self.training_reload_script,
+            MappedKey::TrainingSetDrillPoint => &self.training_set_drill_point,
+            MappedKey::TrainingPause => &self.training_pause,
+            MappedKey::TrainingFrameAdvance => &self.training_frame_advance,
         }
     }
 
@@ -441,6 +461,11 @@ impl Mapping {
             MappedKey::Start => &mut self.start,
             MappedKey::Select => &mut self.select,
             MappedKey::SpeedUp => &mut self.speed_up,
+            MappedKey::TrainingReset => &mut self.training_reset,
+            MappedKey::TrainingReloadScript => &mut self.training_reload_script,
+            MappedKey::TrainingSetDrillPoint => &mut self.training_set_drill_point,
+            MappedKey::TrainingPause => &mut self.training_pause,
+            MappedKey::TrainingFrameAdvance => &mut self.training_frame_advance,
         }
     }
 
@@ -488,6 +513,11 @@ pub enum MappedKey {
     Start,
     Select,
     SpeedUp,
+    TrainingReset,
+    TrainingReloadScript,
+    TrainingSetDrillPoint,
+    TrainingPause,
+    TrainingFrameAdvance,
 }
 
 /// Atomic input event fed to the held-state tracker. Carries the raw

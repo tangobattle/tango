@@ -10,6 +10,7 @@
 pub mod pvp;
 pub mod replay;
 pub mod singleplayer;
+pub mod training;
 pub mod view;
 
 use crate::anim;
@@ -58,34 +59,47 @@ pub enum ActiveSession {
     /// Boxed: `PvpSession` is ~2.5 KB, an order of magnitude bigger
     /// than the other variants.
     PvP(Box<pvp::PvpSession>),
+    /// Boxed for the same reason as PvP — it carries the same panel
+    /// `Loaded` pair plus the match plumbing.
+    Training(Box<training::TrainingSession>),
 }
 
 impl ActiveSession {
-    /// Pre-drop teardown. Only PvP has any: it cancels its token so the
-    /// receive loop announces the quit to the peer instead of leaving them
-    /// hanging on a reconnect window. Replay and single-player sessions
+    /// Pre-drop teardown. PvP cancels its token so the receive loop
+    /// announces the quit to the peer instead of leaving them hanging on a
+    /// reconnect window; training cancels + unpauses so a paused emu
+    /// thread can reach its exit. Replay and single-player sessions
     /// close by being dropped (the mgba thread joins in Drop).
     pub fn request_close(&self) {
         match self {
             Self::PvP(s) => s.request_close(),
+            Self::Training(s) => s.request_close(),
             Self::Replay(_) | Self::SinglePlayer(_) => {}
         }
     }
 
-    /// True once the session has ended on its own — currently used
-    /// by PvP so a peer-disconnect / comm error tears the session
-    /// view down automatically instead of leaving the user staring
-    /// at a frozen frame.
+    /// True once the session has ended on its own — used by PvP so a
+    /// peer-disconnect / comm error tears the session view down
+    /// automatically instead of leaving the user staring at a frozen
+    /// frame, and by training when the match reaches its end screen.
     pub fn is_ended(&self) -> bool {
         match self {
             Self::Replay(_) | Self::SinglePlayer(_) => false,
             Self::PvP(s) => s.is_ended(),
+            Self::Training(s) => s.is_ended(),
         }
     }
 
     pub fn as_replay(&self) -> Option<&replay::ReplaySession> {
         match self {
             Self::Replay(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn as_training(&self) -> Option<&training::TrainingSession> {
+        match self {
+            Self::Training(s) => Some(s),
             _ => None,
         }
     }
@@ -98,6 +112,7 @@ impl ActiveSession {
             Self::Replay(s) => s.game(),
             Self::SinglePlayer(s) => s.game(),
             Self::PvP(s) => s.game(),
+            Self::Training(s) => s.game(),
         }
     }
 }
@@ -325,6 +340,9 @@ pub enum Message {
     /// in config — the App's wrapper flips + persists it, same as
     /// [`Message::SetFrameDelay`]; nothing to do here.
     ToggleInputDisplay,
+    /// Training-only: a training HUD control or hotkey fired. Applied to
+    /// the active [`training::TrainingSession`]; inert otherwise.
+    Training(training::Action),
     /// Replay-only: toggle the opponent-screen picture-in-picture (the
     /// transport bar's PiP button).
     TogglePip,
@@ -396,6 +414,43 @@ pub enum Message {
 /// settings input pane's live binding highlight consumes the same
 /// normalized stream.
 pub use crate::input::Event as InputEvent;
+
+/// Map a fresh press to the training action it's bound to, if any. Only
+/// key/button presses count (axes don't make sense for one-shot actions);
+/// OS key-repeat is filtered against the held set, which the caller
+/// updates *after* consulting this.
+fn training_action_for_event(
+    mapping: &crate::input::Mapping,
+    ev: &InputEvent,
+    held: &crate::input::HeldState,
+) -> Option<training::Action> {
+    let physical_input = match ev {
+        InputEvent::Key {
+            physical,
+            pressed: true,
+        } => {
+            if held.is_key_held(physical) {
+                return None;
+            }
+            crate::input::PhysicalInput::Key(crate::input::KeyPhysical(*physical))
+        }
+        InputEvent::Button { button, pressed: true } => crate::input::PhysicalInput::Button(*button),
+        _ => return None,
+    };
+    use crate::input::MappedKey;
+    use training::Action;
+    const BINDINGS: [(MappedKey, Action); 5] = [
+        (MappedKey::TrainingReset, Action::Reset),
+        (MappedKey::TrainingReloadScript, Action::ReloadScript),
+        (MappedKey::TrainingSetDrillPoint, Action::SetDrillPoint),
+        (MappedKey::TrainingPause, Action::TogglePause),
+        (MappedKey::TrainingFrameAdvance, Action::FrameAdvance),
+    ];
+    BINDINGS
+        .iter()
+        .find(|(key, _)| mapping.slot(*key).contains(&physical_input))
+        .map(|(_, action)| action.clone())
+}
 
 /// Per-keypress playhead delta for the replay seek keybinds, in recorded
 /// frames. Arrow keys jump ±5 seconds (300 frames at 60fps); comma/period
@@ -570,11 +625,22 @@ impl State {
                         }
                     }
                 }
+                // Training hotkeys (reset, script reload, drill point,
+                // pause, frame advance): rebindable via the Mapping,
+                // consulted before the held set records this press so OS
+                // key-repeat is filtered. Non-mgba keys, so whatever falls
+                // through to the joyflag pipeline below is inert.
+                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_training) {
+                    if let Some(action) = training_action_for_event(mapping, &ev, &self.input_held) {
+                        s.apply(action);
+                    }
+                }
                 self.input_held.apply(&ev);
                 let joyflags = mapping.to_mgba_keys(&self.input_held);
                 match self.active.as_ref() {
                     Some(ActiveSession::SinglePlayer(s)) => s.set_joyflags(joyflags),
                     Some(ActiveSession::PvP(s)) => s.set_joyflags(joyflags),
+                    Some(ActiveSession::Training(s)) => s.set_joyflags(joyflags),
                     _ => {}
                 }
                 // Speed-up: only fire set_speed on the rising or
@@ -587,8 +653,9 @@ impl State {
                     match self.active.as_ref() {
                         Some(ActiveSession::SinglePlayer(s)) => s.set_speed(factor),
                         Some(ActiveSession::Replay(s)) => s.set_speed(factor),
-                        // PvP runs at fixed EXPECTED_FPS.
-                        Some(ActiveSession::PvP(_)) | None => {}
+                        // PvP runs at fixed EXPECTED_FPS; training has its
+                        // own persistent speed control on the HUD.
+                        Some(ActiveSession::PvP(_)) | Some(ActiveSession::Training(_)) | None => {}
                     }
                 }
             }
@@ -617,11 +684,17 @@ impl State {
                 match self.active.as_ref() {
                     Some(ActiveSession::Replay(s)) => s.set_speed(factor),
                     Some(ActiveSession::SinglePlayer(s)) => s.set_speed(factor),
-                    Some(ActiveSession::PvP(_)) => {
+                    Some(ActiveSession::PvP(_)) | Some(ActiveSession::Training(_)) => {
                         // PvP runs at fixed EXPECTED_FPS so both sides
-                        // stay in sync — no speed control.
+                        // stay in sync — no speed control. Training's
+                        // speed rides Message::Training instead.
                     }
                     None => {}
+                }
+            }
+            Message::Training(action) => {
+                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_training) {
+                    s.apply(action);
                 }
             }
             Message::ToggleInputDisplay => {
@@ -698,10 +771,16 @@ impl State {
                 if let Some(ActiveSession::PvP(s)) = self.active.as_mut() {
                     let sv_task = s.opponent_save_view.fold(&action);
                     return sv_task.map(Message::OpponentSaveViewAction);
+                } else if let Some(ActiveSession::Training(s)) = self.active.as_mut() {
+                    let sv_task = s.opponent_save_view.fold(&action);
+                    return sv_task.map(Message::OpponentSaveViewAction);
                 }
             }
             Message::SelfSaveViewAction(action) => {
                 if let Some(ActiveSession::PvP(s)) = self.active.as_mut() {
+                    let sv_task = s.local_save_view.fold(&action);
+                    return sv_task.map(Message::SelfSaveViewAction);
+                } else if let Some(ActiveSession::Training(s)) = self.active.as_mut() {
                     let sv_task = s.local_save_view.fold(&action);
                     return sv_task.map(Message::SelfSaveViewAction);
                 }
@@ -745,9 +824,16 @@ impl State {
                         if let ActiveSession::PvP(pvp) = session {
                             sample = Some(MetricSample::capture(pvp));
                         }
-                        // Replay PiP: the opponent's screen while the bar
-                        // toggle is on.
-                        self.pip_frame = session.as_replay().and_then(|r| r.pip_pixels()).map(|pixels| {
+                        // Picture-in-picture: the opponent's screen while
+                        // the bar toggle is on — replays re-simulate their
+                        // core anyway, training shows the shadow (the
+                        // dummy's perspective).
+                        let pip_pixels = match session {
+                            ActiveSession::Replay(r) => r.pip_pixels(),
+                            ActiveSession::Training(t) => t.pip_pixels(),
+                            ActiveSession::SinglePlayer(_) | ActiveSession::PvP(_) => None,
+                        };
+                        self.pip_frame = pip_pixels.map(|pixels| {
                             self.pip_revision = self.pip_revision.wrapping_add(1);
                             crate::video::framebuffer::Frame {
                                 pixels: std::sync::Arc::new(pixels),
@@ -1135,6 +1221,107 @@ pub fn spawn_singleplayer(
         audio_binder,
         frame_notify,
         vbuf,
+    )
+}
+
+/// Boot a training session from the current selection plus the setup
+/// popover's options. Synchronous like [`spawn_singleplayer`] — the
+/// loopback "network" needs no handoff. The opponent (dummy) runs the
+/// same game + patch as the local side in v1; only its save differs.
+pub fn spawn_training(
+    scanners: &Scanners,
+    config: &config::Config,
+    audio_binder: &audio::LateBinder,
+    frame_notify: std::sync::Arc<tokio::sync::Notify>,
+    vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    loaded: &selection::Loaded,
+    opts: training::TrainingOptions,
+) -> anyhow::Result<training::TrainingSession> {
+    let game_impl = game::from_gamedb_entry(loaded.game)
+        .ok_or_else(|| anyhow::anyhow!("no game impl for {:?}", loaded.game.family_and_variant()))?;
+    let raw = scanners
+        .roms
+        .read()
+        .get(&loaded.game)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("rom not in scanner cache"))?;
+    let rom_bytes = if let Some(p) = loaded.patch.as_ref() {
+        patch::apply_patch_from_disk(&raw, loaded.game, &config.patches_path(), &p.name, &p.version)?
+    } else {
+        raw
+    };
+
+    let opponent_save = scanners
+        .saves
+        .read()
+        .get(&loaded.game)
+        .and_then(|saves| saves.iter().find(|s| s.path == opts.opponent_save_path))
+        .map(|s| s.save.clone_box())
+        .ok_or_else(|| anyhow::anyhow!("opponent save not scanned: {}", opts.opponent_save_path.display()))?;
+
+    let rng_seed = match opts.seed.as_deref().map(str::trim) {
+        Some(text) if !text.is_empty() => training::seed_from_text(text),
+        _ => rand::random(),
+    };
+
+    let game_info = crate::net::protocol::GameInfo {
+        family_and_variant: {
+            let (family, variant) = loaded.game.family_and_variant();
+            (family.to_string(), variant)
+        },
+        patch: loaded.patch.as_ref().map(|p| crate::net::protocol::PatchInfo {
+            name: p.name.clone(),
+            version: p.version.clone(),
+        }),
+    };
+    let local_settings = crate::net::protocol::Settings {
+        nickname: config.nickname.clone().unwrap_or_default(),
+        match_type: opts.match_type,
+        game_info: Some(game_info.clone()),
+        blind_setup: false,
+    };
+    let remote_settings = crate::net::protocol::Settings {
+        nickname: "dummy".to_string(),
+        match_type: opts.match_type,
+        game_info: Some(game_info),
+        blind_setup: false,
+    };
+
+    // Panel `Loaded`s for the in-session save-view drawers, mirroring
+    // spawn_pvp: `rom_bytes` is already patched, so `from_patched_rom`.
+    let local_loaded = Some(selection::Loaded::from_patched_rom(
+        loaded.game,
+        rom_bytes.clone(),
+        std::path::PathBuf::new(),
+        loaded.save.clone_box(),
+        loaded.patch.clone(),
+    ));
+    let opponent_loaded = Some(selection::Loaded::from_patched_rom(
+        loaded.game,
+        rom_bytes.clone(),
+        std::path::PathBuf::new(),
+        opponent_save.clone_box(),
+        loaded.patch.clone(),
+    ));
+
+    training::TrainingSession::new(
+        game_impl,
+        std::sync::Arc::new(rom_bytes),
+        loaded.save.clone_box(),
+        opponent_save,
+        opts.match_type,
+        opts.local_player_index,
+        rng_seed,
+        config.training_scripts_path(),
+        local_settings,
+        remote_settings,
+        &config.replays_path(),
+        config.disable_bgm_in_pvp,
+        audio_binder,
+        frame_notify,
+        vbuf,
+        local_loaded,
+        opponent_loaded,
     )
 }
 

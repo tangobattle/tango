@@ -1050,7 +1050,12 @@ impl App {
                 // grace timeout), not just from a Close message.
                 // We trigger the replay rescan whenever a PvP
                 // session was active before and isn't after.
-                let was_pvp = matches!(self.session.active, Some(ActiveSession::PvP(_)));
+                // Training counts too: it records replays the same way
+                // (and can self-close at match completion).
+                let was_pvp = matches!(
+                    self.session.active,
+                    Some(ActiveSession::PvP(_)) | Some(ActiveSession::Training(_))
+                );
                 let task = self.session.update(m, &self.config.input_mapping).map(Message::Session);
                 // Rescan + reload run off-thread; the Rescanned
                 // followup forces a `loaded` rebuild past the
@@ -1339,7 +1344,11 @@ impl App {
             let start = self.session_started_at.unwrap_or_else(std::time::SystemTime::now);
             return match active {
                 ActiveSession::Replay(_) => discord::make_base_activity(None),
-                ActiveSession::SinglePlayer(_) => discord::make_single_player_activity(start, lang, game_info),
+                // Training presents as single-player: it's solo practice,
+                // not a live match anyone could join.
+                ActiveSession::SinglePlayer(_) | ActiveSession::Training(_) => {
+                    discord::make_single_player_activity(start, lang, game_info)
+                }
                 ActiveSession::PvP(_) => discord::make_in_progress_activity(start, lang, game_info),
             };
         }
