@@ -328,6 +328,10 @@ pub enum Message {
     /// Replay-only: toggle the opponent-screen picture-in-picture (the
     /// transport bar's PiP button).
     TogglePip,
+    /// Replay-only: swap which perspective the main screen shows (the
+    /// transport bar's swap button). Per-session, unlike the PiP — it
+    /// isn't persisted to config.
+    ToggleSwapPerspective,
     /// PvP-only: the match-settings frame-delay slider moved. Live-sets this
     /// side's local frame delay on the running session; the App also persists it
     /// to config. No peer coordination — it's purely a local display lag.
@@ -631,6 +635,11 @@ impl State {
             Message::TogglePip => {
                 if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
                     s.toggle_pip();
+                }
+            }
+            Message::ToggleSwapPerspective => {
+                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+                    s.toggle_swap_perspective();
                 }
             }
             Message::SetFrameDelay(d) => {

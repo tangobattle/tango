@@ -151,6 +151,11 @@ pub struct ReplaySession {
     /// Whether the opponent-screen PiP is on (a per-session toggle on
     /// the transport bar).
     show_pip: Arc<AtomicBool>,
+    /// Whether the main screen shows the opponent's perspective (the
+    /// shadow's render) instead of the local one — a per-session toggle
+    /// on the transport bar. The PiP, when also on, carries the local
+    /// screen so the two surfaces always show both sides.
+    swap_perspective: Arc<AtomicBool>,
     /// The opponent's screen, copied once per published frame while the
     /// PiP is on. Same BGR555 layout as `vbuf`.
     pip_vbuf: Arc<Mutex<Vec<u8>>>,
@@ -277,6 +282,7 @@ impl ReplaySession {
             seek.set_emulate_landings(true);
         }
         let show_pip = Arc::new(AtomicBool::new(show_pip));
+        let swap_perspective = Arc::new(AtomicBool::new(false));
         let pip_vbuf = Arc::new(Mutex::new(vec![
             0u8;
             (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2) as usize
@@ -293,6 +299,7 @@ impl ReplaySession {
             let frame_notify = frame_notify.clone();
             let seek = seek.clone();
             let show_pip = show_pip.clone();
+            let swap_perspective = swap_perspective.clone();
             let pip_vbuf = pip_vbuf.clone();
             let pip_fresh = pip_fresh.clone();
             move |mut core, video_buffer, mut thread_handle| {
@@ -312,13 +319,28 @@ impl ReplaySession {
                 // display; publishing every intermediate catch-up frame
                 // would strobe a fast-forward of everything in between.
                 if seek.should_publish_frame(inputs_consumed) {
-                    // Copy mgba's native BGR555 straight through; the framebuffer
-                    // shader expands it to RGB on the GPU at draw time.
-                    vbuf.lock().unwrap().copy_from_slice(video_buffer);
-                    // Opponent-screen PiP: capture the shadow's render on the
-                    // same publish gate, so a seek chase doesn't strobe it.
+                    let swapped = swap_perspective.load(Ordering::Relaxed);
+                    {
+                        // Copy mgba's native BGR555 straight through; the
+                        // framebuffer shader expands it to RGB on the GPU at
+                        // draw time. While the perspective is swapped, the
+                        // main screen takes the shadow's render instead
+                        // (falling back to the local frame until its first
+                        // rasterized one lands).
+                        let mut vb = vbuf.lock().unwrap();
+                        if !(swapped && shadow.lock().unwrap().read_video_buffer(&mut vb)) {
+                            vb.copy_from_slice(video_buffer);
+                        }
+                    }
+                    // The PiP: the other perspective, captured on the same
+                    // publish gate so a seek chase doesn't strobe it — the
+                    // shadow's render normally, the local screen while
+                    // swapped.
                     if show_pip.load(Ordering::Relaxed) {
-                        if shadow.lock().unwrap().read_video_buffer(&mut pip_vbuf.lock().unwrap()) {
+                        if swapped {
+                            pip_vbuf.lock().unwrap().copy_from_slice(video_buffer);
+                            pip_fresh.store(true, Ordering::Relaxed);
+                        } else if shadow.lock().unwrap().read_video_buffer(&mut pip_vbuf.lock().unwrap()) {
                             pip_fresh.store(true, Ordering::Relaxed);
                         }
                     } else {
@@ -403,6 +425,7 @@ impl ReplaySession {
             seek,
             shadow,
             show_pip,
+            swap_perspective,
             pip_vbuf,
             pip_fresh,
             _audio_binding: audio_binding,
@@ -422,24 +445,42 @@ impl ReplaySession {
         self.show_pip.load(Ordering::Relaxed)
     }
 
-    /// Toggle the opponent-screen PiP: flips the shadow co-sim's
-    /// rasterization with it (its pixels are skipped entirely while off).
-    /// The overlay appears on the next published frame — on a paused
-    /// replay that's the next step/play, since the shadow hasn't rendered
-    /// anything yet.
+    /// Toggle the opponent-screen PiP. The overlay appears on the next
+    /// published frame — on a paused replay that's the next step/play,
+    /// since the shadow hasn't rendered anything yet.
     pub fn toggle_pip(&self) {
-        let on = !self.show_pip.load(Ordering::Relaxed);
-        self.show_pip.store(on, Ordering::Relaxed);
+        self.show_pip.fetch_xor(true, Ordering::Relaxed);
+        self.sync_shadow_reads();
+    }
+
+    /// Whether the main screen shows the opponent's perspective — drives
+    /// the transport bar toggle's lit state.
+    pub fn swap_perspective(&self) -> bool {
+        self.swap_perspective.load(Ordering::Relaxed)
+    }
+
+    /// Swap which perspective the main screen shows. Takes effect on the
+    /// next published frame, like the PiP.
+    pub fn toggle_swap_perspective(&self) {
+        self.swap_perspective.fetch_xor(true, Ordering::Relaxed);
+        self.sync_shadow_reads();
+    }
+
+    /// The shadow rasterizes (its pixels are skipped entirely otherwise)
+    /// whenever either surface shows it: the PiP, or the main screen
+    /// while swapped. Seeks must then land by emulating the landing
+    /// frame — the zero-frame snapshot shortcut blits only the primary's
+    /// stored framebuffer, which would leave the shadow's surface frozen
+    /// across frame steps.
+    fn sync_shadow_reads(&self) {
+        let on = self.show_pip.load(Ordering::Relaxed) || self.swap_perspective.load(Ordering::Relaxed);
         self.shadow.lock().unwrap().set_rendering(on);
-        // Seeks must land by emulating the landing frame while the PiP is
-        // on — the zero-frame snapshot shortcut blits only the primary's
-        // stored framebuffer, which would leave the PiP frozen across
-        // frame steps.
         self.seek.set_emulate_landings(on);
     }
 
-    /// Latest opponent-side frame for the PiP overlay, as raw BGR555 —
-    /// `None` while the PiP is off or before its first captured frame.
+    /// Latest other-perspective frame for the PiP overlay (the opponent's
+    /// screen, or the local one while swapped), as raw BGR555 — `None`
+    /// while the PiP is off or before its first captured frame.
     pub fn pip_pixels(&self) -> Option<Vec<u8>> {
         (self.show_pip.load(Ordering::Relaxed) && self.pip_fresh.load(Ordering::Relaxed))
             .then(|| self.pip_vbuf.lock().unwrap().clone())

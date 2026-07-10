@@ -235,6 +235,7 @@ playback-options = Options
 playback-speed = Speed
 playback-input-display = Input display
 playback-pip = Opponent screen
+playback-swap-perspective = Opponent's perspective
 playback-disconnect = Disconnect
 playback-disconnect-prompt = Disconnect from this match?
 playback-disconnect-detail = You will end the match with your opponent.

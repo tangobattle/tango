@@ -604,9 +604,42 @@ fn replay_bar<'a>(
     )
     .gap(4);
 
+    // Perspective swap: the main screen shows the opponent's re-simulated
+    // view; the PiP (if on) carries the local screen. Same chip recipe.
+    let swapped = r.swap_perspective();
+    let swap_toggle_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
+        let mut st = telemetry_plate_button(theme, status);
+        if swapped {
+            let primary = theme.palette().primary;
+            st.text_color = primary;
+            st.border.color = iced::Color { a: 0.35, ..primary };
+        }
+        st
+    };
+    let swap_toggle = iced::widget::tooltip(
+        button(
+            container(Icon::ArrowLeftRight.widget().size(16.0))
+                .width(iced::Length::Fixed(18.0))
+                .height(iced::Length::Fixed(18.0))
+                .center(Fill),
+        )
+        .padding(0)
+        .width(iced::Length::Fixed(32.0))
+        .height(iced::Length::Fixed(32.0))
+        .style(swap_toggle_style)
+        .on_press(Message::ToggleSwapPerspective),
+        widgets::tooltip_bubble(t!(lang, "playback-swap-perspective")),
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(4);
+
     let controls = row![].spacing(10).align_y(Alignment::Center).padding([8, 8]);
     let controls = replay_transport(lang, r, state, controls);
-    controls.push(speed_picker).push(input_toggle).push(pip_toggle)
+    controls
+        .push(speed_picker)
+        .push(input_toggle)
+        .push(pip_toggle)
+        .push(swap_toggle)
 }
 
 /// Hoist a persistent chrome layer into iced's floating layer —
