@@ -254,10 +254,18 @@ pub fn view<'a>(
     if let Some(o) = input_display_overlay(session, state, show_replay_inputs) {
         stacked = stacked.push(o);
     }
-    // Training PiP: the dummy's screen while the user possesses it.
-    // Also outside the controls gate — it's the view you're playing
-    // on, so it must not tuck away with the idle cursor.
+    // Picture-in-picture (training authoring shows the player's own
+    // screen here while the main view is the dummy's; replays show the
+    // opponent's screen). Also outside the controls gate — it's part of
+    // what you're playing on, so it must not tuck away with the idle
+    // cursor.
     if let Some(o) = training_pip_overlay(state) {
+        stacked = stacked.push(o);
+    }
+    // Training: while the user is acting as the dummy, say so — the
+    // swapped perspective plus this banner is the whole "authoring"
+    // state indicator.
+    if let Some(o) = training_authoring_overlay(lang, session) {
         stacked = stacked.push(o);
     }
     // PvP setup drawers — above the corner commands, below the
@@ -1202,12 +1210,48 @@ fn input_pad<'a>(joyflags: u16) -> Element<'a, Message> {
 /// the transport bar's popover lift so it never moves — the bar
 /// auto-hides beneath it, the chips stay. Pure presentation: no mouse
 /// handlers anywhere in the chain.
-/// Picture-in-picture view of the dummy's screen while the user is
-/// possessing it: the shadow co-sim's render, inset top-right below the
-/// corner commands. The main screen stays on the player's perspective —
-/// possession adds this view rather than swapping the whole display.
-/// Drawn through its own shader surface ([`PipProgram`]) because the main
-/// framebuffer's pipeline owns a single resident texture.
+/// Banner chip while the user is authoring the dummy (acting as it, main
+/// screen swapped to its perspective). Top-center, unmissable but small.
+fn training_authoring_overlay<'a>(
+    lang: &'a LanguageIdentifier,
+    session: &'a ActiveSession,
+) -> Option<Element<'a, Message>> {
+    let t = session.as_training()?;
+    if !t.is_authoring() {
+        return None;
+    }
+    let chip = container(
+        row![
+            Icon::Clapperboard.widget().size(14.0),
+            text(t!(lang, "training-authoring")).size(TEXT_CAPTION),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center),
+    )
+    .padding([6, 12])
+    .style(|theme: &iced::Theme| {
+        let mut st = widgets::panel(theme);
+        let primary = theme.palette().primary;
+        st.border.color = iced::Color { a: 0.5, ..primary };
+        st.text_color = Some(primary);
+        st
+    });
+    Some(
+        container(chip)
+            .width(Fill)
+            .height(Fill)
+            .align_x(iced::alignment::Horizontal::Center)
+            .align_y(iced::alignment::Vertical::Top)
+            .padding(12)
+            .into(),
+    )
+}
+
+/// Picture-in-picture inset, top-right below the corner commands: during
+/// training authoring it shows the player's own screen (the main view is
+/// the dummy's), and in replays the opponent's screen. Drawn through its
+/// own shader surface ([`PipProgram`]) because the main framebuffer's
+/// pipeline owns a single resident texture.
 ///
 /// [`PipProgram`]: crate::video::framebuffer::PipProgram
 fn training_pip_overlay(state: &State) -> Option<Element<'_, Message>> {

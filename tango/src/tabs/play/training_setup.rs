@@ -19,6 +19,8 @@ pub struct TrainingSetup {
     /// Free-text seed; empty = random. The same text always produces the
     /// same chip draws, so drills are repeatable and shareable.
     pub seed: String,
+    /// What the dummy does outside authored material.
+    pub behavior: crate::session::training::Behavior,
 }
 
 impl TrainingSetup {
@@ -39,6 +41,7 @@ impl TrainingSetup {
             match_type,
             side: 0,
             seed: String::new(),
+            behavior: crate::session::training::Behavior::Stand,
         }
     }
 }
@@ -49,6 +52,7 @@ pub enum TrainingSetupMessage {
     MatchTypeSelected((u8, u8)),
     SideSelected(u8),
     SeedChanged(String),
+    BehaviorSelected(crate::session::training::Behavior),
     Start,
     Cancel,
 }
@@ -80,6 +84,12 @@ impl State {
                 }
                 None
             }
+            TrainingSetupMessage::BehaviorSelected(behavior) => {
+                if let Some(setup) = self.training_setup.as_mut() {
+                    setup.behavior = behavior;
+                }
+                None
+            }
             TrainingSetupMessage::Cancel => {
                 self.training_setup = None;
                 None
@@ -92,6 +102,7 @@ impl State {
                     match_type: setup.match_type,
                     local_player_index: setup.side,
                     seed: (!seed.is_empty()).then(|| seed.to_string()),
+                    behavior: setup.behavior,
                 }))
             }
         }
@@ -166,6 +177,22 @@ impl State {
         })
         .width(Fill);
 
+        let behavior_options = vec![
+            widgets::Choice::new(
+                crate::session::training::Behavior::Stand,
+                t!(lang, "training-behavior-stand"),
+            ),
+            widgets::Choice::new(
+                crate::session::training::Behavior::UseChips,
+                t!(lang, "training-behavior-use-chips"),
+            ),
+        ];
+        let selected_behavior = behavior_options.iter().find(|c| c.value == setup.behavior).cloned();
+        let behavior_picker = widgets::picker(behavior_options, selected_behavior, move |c| {
+            msg(TrainingSetupMessage::BehaviorSelected(c.value))
+        })
+        .width(Fill);
+
         let seed_input = text_input(&t!(lang, "training-seed-placeholder"), &setup.seed)
             .on_input(move |s| msg(TrainingSetupMessage::SeedChanged(s)))
             .padding([6.0, 10.0])
@@ -190,6 +217,7 @@ impl State {
                 text(t!(lang, "training-setup-title")).size(TEXT_TITLE),
                 widgets::option_row(t!(lang, "training-opponent-save"), save_picker),
                 widgets::option_row(t!(lang, "lobby-match-type"), mt_picker),
+                widgets::option_row(t!(lang, "training-behavior"), behavior_picker),
                 widgets::option_row(t!(lang, "training-side"), side_picker),
                 widgets::option_row(t!(lang, "training-seed"), seed_input),
                 buttons,

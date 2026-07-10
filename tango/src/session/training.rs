@@ -1,6 +1,5 @@
-//! Training session: local sparring against a controllable dummy, run on
-//! the live PvP machinery with the network replaced by an in-process
-//! loopback.
+//! Training session: a drill loop against a dummy, run on the live PvP
+//! machinery with the network replaced by an in-process loopback.
 //!
 //! The whole PvP stack — [`tango_pvp::battle::Match`], the shadow co-sim,
 //! the re-sim stepper, the per-game traps, replay recording — is reused
@@ -8,127 +7,161 @@
 //! [`tango_pvp::net::Sender`] and answers each local input *synchronously,
 //! inside the same primary trap fire*: it asks the [`DummyController`] for
 //! the dummy's joyflags and injects them straight into the match's
-//! remote-input queue via [`Match::inject_remote_input`]. The injected
-//! input is drained later in the very same trap, so every tick confirms
-//! immediately — the rollback engine runs in pure lockstep with zero
-//! speculation, and there is no receive task, no async, and no reset race.
+//! remote-input queue via [`Match::inject_remote_input`]. Every tick
+//! confirms immediately — pure lockstep, no async, no rollbacks.
 //!
-//! On top of that sits the training toolkit: checkpoint save/restore
-//! (via [`Match::training_checkpoint`] / `restore_training_checkpoint`),
-//! an auto-captured round-start checkpoint for instant round restarts,
-//! pause + frame advance, and a speed factor.
+//! The user-facing model is one concept, the **drill**:
+//!
+//! - **Drill point** — one checkpoint (defaults to the auto-captured round
+//!   start). Everything snaps back to it.
+//! - **Author** — restart from the drill point with the user acting *as
+//!   the dummy* (screen swapped to its perspective), recording everything
+//!   it does — chip picks included. Toggling off snaps back, and the dummy
+//!   now replays the authored part every rep.
+//! - **Reset** — snap back to the drill point. Also automatic when a round
+//!   would end: the round-end trap is intercepted
+//!   ([`Match::set_training_round_end_reset`]) so a KO restarts the rep
+//!   instead of tearing the round down.
+//!
+//! Determinism is what makes this coherent: from a fixed checkpoint with a
+//! fixed seed, the chip draw and all game state repeat exactly, so the
+//! authored inputs — even menu cursor movement — replay faithfully.
+//! Authored scripts are additionally segmented by phase (field vs the
+//! dummy's chip pick, via the per-game custom-screen flags) and each
+//! segment plays aligned to its phase, so a rep whose custom timing
+//! drifts still lands picks in picks. Outside authored material the dummy
+//! falls back to a simple behavior: stand, or tap A to use its chips.
 //!
 //! [`Match`]: tango_pvp::battle::Match
 
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use tango_pvp::battle::TrainingCheckpoint;
 
 pub use tango_pvp::battle::EXPECTED_FPS;
 
-/// How many manual checkpoint slots a session offers. Fighting-game
-/// trainers converge on a small handful; the round-start restart is
-/// separate and free.
-pub const CHECKPOINT_SLOTS: usize = 3;
-
 /// Speed steps offered by the HUD control. 1.0 must be present (the
-/// default); PvP-style netplay never sees these — the factor only exists
-/// because the "peer" is in-process.
+/// default); real PvP never sees these — the factor only exists because
+/// the "peer" is in-process.
 pub const SPEED_STEPS: [f32; 5] = [0.25, 0.5, 1.0, 2.0, 4.0];
 
-/// What drives the dummy's joyflags each tick.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum DummyMode {
-    /// Neutral input.
-    Idle,
-    /// The user's controller drives the dummy; the player side holds
-    /// neutral. The classic single-controller trainer flow.
-    Possess,
-    /// Possess + capture the stream into the script.
-    Record,
-    /// Replay the recorded script (optionally looping); the user
-    /// controls their own side again.
-    Playback,
-    /// Fire the chips it's holding: tap A on a fixed cadence. Unlike a
-    /// recorded script this survives any situation divergence, so it
-    /// pairs with directing the dummy's hand at the custom screen.
-    Attack,
-}
-
-/// Attack-mode cadence, in ticks between A taps.
+/// UseChips cadence, in ticks between A taps.
 const ATTACK_INTERVAL: u32 = 40;
 
-/// Snapshot of the dummy's state for the HUD (mode chip highlights,
-/// record length, playback progress).
+/// What the dummy does outside authored material.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Behavior {
+    /// Neutral input.
+    Stand,
+    /// Tap A on a fixed cadence — fire whatever chips it's holding.
+    UseChips,
+}
+
+/// Snapshot of the drill state for the HUD (author chip lit, rep
+/// readout, behavior chip).
 #[derive(Clone, Copy)]
-pub struct DummyStatus {
-    pub mode: DummyMode,
-    pub script_len: usize,
-    pub play_pos: usize,
-    pub looping: bool,
+pub struct DrillStatus {
+    pub authoring: bool,
+    /// Total authored ticks across all segments.
+    pub script_ticks: usize,
+    /// Authored ticks consumed so far this rep.
+    pub played_ticks: usize,
+    pub behavior: Behavior,
 }
 
 /// Decides the dummy's joyflags, one tick at a time. Lives behind a
 /// mutex shared between the loopback sender (emulator thread, once per
-/// tick) and the UI (mode changes); neither holds it while calling into
+/// tick) and the UI (drill actions); neither holds it while calling into
 /// the match, so there is no lock-order cycle with the round-state lock.
 pub struct DummyController {
-    mode: DummyMode,
+    /// The user is acting as the dummy: capture their inputs as the
+    /// script instead of playing one back.
+    authoring: bool,
     /// mgba-keys bitmap the user's controller currently holds *for the
-    /// dummy* — written by the session's input routing while possessed
-    /// (Possess/Record), ignored otherwise.
+    /// dummy* — written by the session's input routing while authoring.
     held: u32,
-    /// Recorded joyflags, one per tick, in wire (u16) form.
-    script: Vec<u16>,
-    play_pos: usize,
-    looping: bool,
-    /// Tick counter for pattern modes (Attack's A-tap cadence).
+    /// The authored script, segmented by phase: `(is_pick, joyflags per
+    /// tick)`. Segments alternate by construction (a new one starts
+    /// whenever the phase flips during authoring).
+    segments: Vec<(bool, Vec<u16>)>,
+    /// Playback cursor.
+    seg: usize,
+    pos: usize,
+    behavior: Behavior,
+    /// Tick counter for the UseChips cadence.
     pattern_tick: u32,
-    /// The mode auto-direct suspended when it possessed the dummy for its
-    /// custom screen; restored (without entry bookkeeping — a playback or
-    /// take resumes where it left off) when the pick concludes. Cleared by
-    /// any manual mode change: the user took over.
-    stashed_mode: Option<DummyMode>,
 }
 
 impl DummyController {
-    fn new() -> Self {
+    fn new(behavior: Behavior) -> Self {
         Self {
-            mode: DummyMode::Idle,
+            authoring: false,
             held: 0,
-            script: Vec::new(),
-            play_pos: 0,
-            looping: true,
+            segments: Vec::new(),
+            seg: 0,
+            pos: 0,
+            behavior,
             pattern_tick: 0,
-            stashed_mode: None,
         }
     }
 
     /// One tick's dummy joyflags. Called from the loopback sender on the
-    /// emulator thread, exactly once per local input.
-    fn next(&mut self) -> u16 {
-        match self.mode {
-            DummyMode::Idle => 0,
-            DummyMode::Possess => self.held as u16,
-            DummyMode::Record => {
-                let joyflags = self.held as u16;
-                self.script.push(joyflags);
-                joyflags
+    /// emulator thread, exactly once per local input. `picking` is
+    /// whether the dummy's chip pick is open right now (always false on
+    /// games without the custom-screen flag wiring — playback is then
+    /// simply linear).
+    fn next(&mut self, picking: bool) -> u16 {
+        if self.authoring {
+            let joyflags = self.held as u16;
+            match self.segments.last_mut() {
+                Some((phase, ticks)) if *phase == picking => ticks.push(joyflags),
+                _ => self.segments.push((picking, vec![joyflags])),
             }
-            DummyMode::Playback => {
-                if self.play_pos >= self.script.len() {
-                    if self.looping && !self.script.is_empty() {
-                        self.play_pos = 0;
-                    } else {
-                        return 0;
-                    }
+            return joyflags;
+        }
+        // Phase-aligned playback. Rules, per tick with current phase P:
+        //   - a segment of phase P at the cursor plays;
+        //   - a *partially consumed* segment of the other phase was
+        //     interrupted by a phase change — abandon its remainder;
+        //   - an untouched segment of the other phase waits (the game
+        //     will reach that phase; e.g. an authored pick waits for the
+        //     custom screen to open);
+        //   - past the end of the script, fall back to the behavior.
+        for _ in 0..=self.segments.len() {
+            while self.pos > 0 && self.segments.get(self.seg).is_some_and(|(_, t)| self.pos >= t.len()) {
+                self.seg += 1;
+                self.pos = 0;
+            }
+            let Some((phase, ticks)) = self.segments.get(self.seg) else {
+                return self.fallback(picking);
+            };
+            if *phase == picking {
+                if let Some(&joyflags) = ticks.get(self.pos) {
+                    self.pos += 1;
+                    return joyflags;
                 }
-                let joyflags = self.script[self.play_pos];
-                self.play_pos += 1;
-                joyflags
+                // Empty/exhausted at pos 0 — step over it.
+                self.seg += 1;
+                continue;
             }
-            DummyMode::Attack => {
+            if self.pos > 0 {
+                self.seg += 1;
+                self.pos = 0;
+                continue;
+            }
+            return self.fallback(picking);
+        }
+        self.fallback(picking)
+    }
+
+    fn fallback(&mut self, picking: bool) -> u16 {
+        if picking {
+            return 0;
+        }
+        match self.behavior {
+            Behavior::Stand => 0,
+            Behavior::UseChips => {
                 self.pattern_tick = self.pattern_tick.wrapping_add(1);
                 if self.pattern_tick % ATTACK_INTERVAL == 0 {
                     mgba::input::keys::A as u16
@@ -139,70 +172,47 @@ impl DummyController {
         }
     }
 
-    /// Switch modes, with the transition bookkeeping each entry implies:
-    /// starting a recording begins a fresh take; starting playback rewinds
-    /// the script. A manual switch also cancels any auto-direct stash —
-    /// the user took over.
-    fn set_mode(&mut self, mode: DummyMode) {
-        match mode {
-            DummyMode::Record => {
-                self.script.clear();
-                self.play_pos = 0;
-            }
-            DummyMode::Playback => {
-                self.play_pos = 0;
-            }
-            DummyMode::Idle | DummyMode::Possess | DummyMode::Attack => {}
-        }
-        self.stashed_mode = None;
-        self.mode = mode;
-    }
-
-    /// Auto-direct: the dummy's custom screen opened — possess it so the
-    /// user picks its hand, suspending whatever it was doing. A take or
-    /// playback is *suspended*, not restarted: scripts stay field-phase
-    /// pure because their custom-screen stretch never reaches them.
-    fn auto_engage(&mut self) {
-        if self.mode != DummyMode::Possess {
-            self.stashed_mode = Some(self.mode);
-            self.mode = DummyMode::Possess;
-        }
-        self.held = 0;
-    }
-
-    /// Auto-direct: the dummy's pick concluded (its OK was pressed) —
-    /// resume what it was doing before the custom screen.
-    fn auto_release(&mut self) {
-        if let Some(mode) = self.stashed_mode.take() {
-            if self.mode == DummyMode::Possess {
-                self.mode = mode;
-            }
-        }
-        self.held = 0;
-    }
-
-    /// A round ended. Every active mode drops to Idle: a script (or a
-    /// take) is positional within a fight, and a held possession would
-    /// starve the real inter-round screens of local input. The recorded
-    /// script itself is kept for the next round.
-    fn on_round_end(&mut self) {
-        self.mode = DummyMode::Idle;
-        self.stashed_mode = None;
-        self.play_pos = 0;
+    /// Rewind the playback cursor to the top of the script — every
+    /// applied reset does this, so each rep replays from the start.
+    fn rewind(&mut self) {
+        self.seg = 0;
+        self.pos = 0;
         self.pattern_tick = 0;
+    }
+
+    /// Begin a fresh take (the previous script is discarded).
+    fn start_author(&mut self) {
+        self.segments.clear();
+        self.rewind();
+        self.authoring = true;
         self.held = 0;
     }
 
-    /// A checkpoint was restored. Restarting an active playback from the
-    /// top is the core practice loop (save a situation, record an answer,
-    /// re-run it against every retry); a recording mid-take is broken by
-    /// the timeline branch, so it stops. Patterns just keep running.
-    fn on_restore(&mut self) {
-        match self.mode {
-            DummyMode::Playback => self.play_pos = 0,
-            DummyMode::Record => self.mode = DummyMode::Idle,
-            DummyMode::Idle | DummyMode::Possess | DummyMode::Attack => {}
-        }
+    fn stop_author(&mut self) {
+        self.authoring = false;
+        self.rewind();
+        self.held = 0;
+    }
+
+    fn clear_script(&mut self) {
+        self.segments.clear();
+        self.rewind();
+    }
+
+    /// A round actually ended (auto-reset off, or nothing to reset to).
+    /// The take/script positions are meaningless across the boundary.
+    fn on_round_end(&mut self) {
+        self.authoring = false;
+        self.rewind();
+        self.held = 0;
+    }
+
+    fn script_ticks(&self) -> usize {
+        self.segments.iter().map(|(_, t)| t.len()).sum()
+    }
+
+    fn played_ticks(&self) -> usize {
+        self.segments.iter().take(self.seg).map(|(_, t)| t.len()).sum::<usize>() + self.pos
     }
 }
 
@@ -219,9 +229,14 @@ struct LoopbackSender {
     dummy: Arc<Mutex<DummyController>>,
     /// Last injected dummy joyflags, surfaced for the input display.
     last_dummy: Arc<AtomicU32>,
-    /// Mirror of "the user is driving the dummy" for the input routing
-    /// and the display swap — see [`TrainingSession::possessed`].
-    possessed: Arc<AtomicBool>,
+    /// Mirror of "the user is authoring the dummy" — see
+    /// [`TrainingSession::authoring`].
+    authoring: Arc<AtomicBool>,
+    /// Per-player custom-screen picking flags (see
+    /// [`tango_pvp::hooks::PrimaryState::custom_screen_flags`]).
+    custom_screen_flags: Arc<AtomicU8>,
+    /// The dummy's absolute player index (`1 - local_player_index`).
+    dummy_index: u8,
 }
 
 impl tango_pvp::net::Sender for LoopbackSender {
@@ -231,7 +246,9 @@ impl tango_pvp::net::Sender for LoopbackSender {
         };
         match event {
             tango_pvp::net::Event::Input(input) => {
-                let joyflags = self.dummy.lock().unwrap().next();
+                let picking =
+                    self.custom_screen_flags.load(Ordering::Relaxed) & (1 << self.dummy_index) != 0;
+                let joyflags = self.dummy.lock().unwrap().next(picking);
                 self.last_dummy.store(joyflags as u32, Ordering::Relaxed);
                 match_.inject_remote_input(tango_pvp::net::Input {
                     joyflags,
@@ -239,13 +256,13 @@ impl tango_pvp::net::Sender for LoopbackSender {
                 });
             }
             tango_pvp::net::Event::EndOfRound => {
+                // Only reachable when the drill loop didn't intercept the
+                // end (auto-reset off, or nothing to reset to). Unwind any
+                // authoring: the inter-round screens need the real
+                // controller back.
                 match_.inject_remote_end_of_round();
-                // Any active dummy mode drops at the round boundary —
-                // including possession: between rounds the local input
-                // drives the real inter-round screens, and a possessed
-                // controller would leave the user unable to advance them.
                 self.dummy.lock().unwrap().on_round_end();
-                self.possessed.store(false, Ordering::Relaxed);
+                self.authoring.store(false, Ordering::Relaxed);
                 match_.set_shadow_rendering(false);
             }
         }
@@ -253,22 +270,24 @@ impl tango_pvp::net::Sender for LoopbackSender {
     }
 }
 
-/// Everything the training HUD / keybinds can do to a running session.
+/// Everything the training HUD / hotkeys can do to a running session.
 /// Routed through `session::Message::Training`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Action {
-    SetDummyMode(DummyMode),
-    /// Toggle between a mode and Idle — what the keybinds want (press
-    /// possess again to release), while the HUD chips use `SetDummyMode`.
-    ToggleDummyMode(DummyMode),
-    ToggleLoop,
-    /// Toggle auto-direct (possess the dummy whenever its custom-screen
-    /// pick opens).
-    ToggleAutoDirect,
-    RestartRound,
-    SelectSlot(usize),
-    SaveSlot,
-    LoadSlot,
+    /// Snap back to the drill point (finishing an in-progress take
+    /// first — reset doubles as "done authoring, go").
+    Reset,
+    /// Toggle authoring: on = restart from the drill point acting as the
+    /// dummy; off = keep the take and restart the rep against it.
+    ToggleAuthor,
+    /// Checkpoint the current state as the drill point (replacing the
+    /// round-start default) and clear the authored script — it was
+    /// relative to the old point.
+    SetDrillPoint,
+    /// Flip the fallback behavior (stand ↔ use chips).
+    ToggleBehavior,
+    /// Toggle round-end interception (KO → reset instead of round end).
+    ToggleAutoReset,
     TogglePause,
     FrameAdvance,
     SetSpeed(f32),
@@ -293,47 +312,35 @@ pub struct TrainingSession {
     _audio_binding: Option<crate::audio::Binding>,
     thread: mgba::thread::Thread,
     /// Held directly (unlike PvP, where the receive task owns it): the
-    /// checkpoint / speed / restore calls all go straight to the match.
+    /// checkpoint / speed / reset calls all go straight to the match.
     inner_match: Arc<tango_pvp::battle::Match>,
     match_handle: tango_pvp::hooks::MatchHandle,
     /// Cancelling makes [`MatchHandle::get`] go inert, which is what lets
     /// the mgba thread tear down without traps touching a dying match.
     cancellation_token: tokio_util::sync::CancellationToken,
-    /// Auto-captured checkpoint at each round's first commit; cleared at
-    /// round end. Written by the frame callback (emulator thread), read
-    /// by [`Action::RestartRound`] (UI thread).
+    /// Auto-captured checkpoint at each round's first commit — the
+    /// default drill point. Written by the frame callback (emulator
+    /// thread), read by the drill actions (UI thread).
     round_start: Arc<Mutex<Option<TrainingCheckpoint>>>,
-    /// Manual checkpoint slots.
-    slots: Mutex<[Option<TrainingCheckpoint>; CHECKPOINT_SLOTS]>,
-    /// Which slot the save/load keybinds and HUD buttons operate on.
-    active_slot: AtomicUsize,
-    /// Which slots are occupied, mirrored out of `slots` as a bitmask so
-    /// the HUD can render fill state without taking the (checkpoint-sized)
-    /// mutex every frame.
-    slot_filled: AtomicUsize,
+    /// The user-set drill point, when they've placed one.
+    drill: Mutex<Option<TrainingCheckpoint>>,
+    /// Whether a round that would end resets the rep instead.
+    auto_reset: Arc<AtomicBool>,
+    /// Whether the user is currently acting as the dummy. While set, the
+    /// input routing drives the dummy, the main screen shows the dummy's
+    /// perspective, and the PiP shows the player's own.
+    authoring: Arc<AtomicBool>,
+    /// The *other* perspective's frame while authoring (the player's own
+    /// screen, for the PiP). Same BGR555 layout as the session vbuf.
+    alt_vbuf: Arc<Mutex<Vec<u8>>>,
+    /// Whether `alt_vbuf` holds a frame from the current authoring
+    /// stretch (cleared otherwise, so nothing stale ever shows).
+    pip_fresh: Arc<AtomicBool>,
     /// Speed factor as f32 bits — the HUD's view of what was last set on
     /// the match.
     speed: AtomicU32,
     /// Whether the input-display overlay is on.
     show_inputs: AtomicBool,
-    /// Whether the player's input routing is currently redirected to the
-    /// dummy. An atomic mirror of the dummy mode, shared with the loopback
-    /// sender (round-end drops possession) and the frame callback (which
-    /// captures the shadow's render while it's set) so neither takes the
-    /// controller mutex on their hot paths.
-    possessed: Arc<AtomicBool>,
-    /// The dummy's screen, copied from the shadow core once per frame
-    /// while possessed — the PiP overlay's producer. Same BGR555 layout
-    /// as the session vbuf.
-    shadow_vbuf: Arc<Mutex<Vec<u8>>>,
-    /// Whether `shadow_vbuf` holds a frame from the *current* possession
-    /// (cleared whenever a frame passes unpossessed, so a stale capture
-    /// never flashes when possession toggles back on).
-    pip_fresh: Arc<AtomicBool>,
-    /// Auto-direct: when the dummy's custom screen opens, possess it so
-    /// the user picks its hand, and hand control back at its OK. Only does
-    /// anything on games whose module mirrors the picking flags.
-    auto_direct: Arc<AtomicBool>,
     pub local_loaded: Option<crate::selection::Loaded>,
     pub local_save_view: crate::save_view::State,
     pub opponent_loaded: Option<crate::selection::Loaded>,
@@ -352,6 +359,7 @@ impl TrainingSession {
         match_type: (u8, u8),
         wanted_player_index: u8,
         rng_seed: [u8; 16],
+        behavior: Behavior,
         local_settings: crate::net::protocol::Settings,
         remote_settings: crate::net::protocol::Settings,
         replays_path: &std::path::Path,
@@ -385,7 +393,8 @@ impl TrainingSession {
 
         // Per-player custom-screen picking flags, mirrored out by game
         // modules that know where the game keeps them (bn6 today). Games
-        // without the wiring leave it zero and auto-direct never engages.
+        // without the wiring leave it zero: authored playback degrades to
+        // linear, which is still exact when the rep doesn't shift timing.
         let custom_screen_flags = Arc::new(AtomicU8::new(0));
         local_hooks.install_on_primary(
             &mut core,
@@ -445,15 +454,18 @@ impl TrainingSession {
             rtc_time,
         )?;
 
-        let dummy = Arc::new(Mutex::new(DummyController::new()));
+        let dummy = Arc::new(Mutex::new(DummyController::new(behavior)));
         let last_dummy = Arc::new(AtomicU32::new(0));
-        let possessed = Arc::new(AtomicBool::new(false));
+        let authoring = Arc::new(AtomicBool::new(false));
+        let dummy_index = 1 - local_player_index;
         let match_slot: Arc<OnceLock<Arc<tango_pvp::battle::Match>>> = Arc::new(OnceLock::new());
         let sender = LoopbackSender {
             match_: match_slot.clone(),
             dummy: dummy.clone(),
             last_dummy: last_dummy.clone(),
-            possessed: possessed.clone(),
+            authoring: authoring.clone(),
+            custom_screen_flags: custom_screen_flags.clone(),
+            dummy_index,
         };
 
         let cancellation_token = tokio_util::sync::CancellationToken::new();
@@ -488,14 +500,12 @@ impl TrainingSession {
         let audio_binding = audio_binder.bind_mgba(thread.handle(), "training");
 
         let round_start: Arc<Mutex<Option<TrainingCheckpoint>>> = Arc::default();
-
-        let shadow_vbuf = Arc::new(Mutex::new(vec![
+        let auto_reset = Arc::new(AtomicBool::new(true));
+        let alt_vbuf = Arc::new(Mutex::new(vec![
             0u8;
             (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2) as usize
         ]));
         let pip_fresh = Arc::new(AtomicBool::new(false));
-
-        let auto_direct = Arc::new(AtomicBool::new(true));
 
         thread.set_frame_callback({
             let joyflags = joyflags.clone();
@@ -504,64 +514,63 @@ impl TrainingSession {
             let completion_token = completion_token.clone();
             let inner_match = inner_match.clone();
             let round_start = round_start.clone();
-            let possessed = possessed.clone();
-            let shadow_vbuf = shadow_vbuf.clone();
+            let auto_reset = auto_reset.clone();
+            let authoring = authoring.clone();
+            let alt_vbuf = alt_vbuf.clone();
             let pip_fresh = pip_fresh.clone();
             let dummy = dummy.clone();
-            let custom_screen_flags = custom_screen_flags.clone();
-            let auto_direct = auto_direct.clone();
-            let dummy_index = 1 - local_player_index;
-            // Edge detector for the dummy's picking flag.
-            let was_picking = AtomicBool::new(false);
+            // Reset watchers (see below).
+            let last_resets = AtomicU32::new(0);
+            let last_round_end_resets = AtomicU32::new(0);
             // Finalize the replay exactly once when the match completes.
             let finished = AtomicBool::new(false);
             move |mut core, video_buffer, mut thread_handle| {
                 core.set_keys(joyflags.load(Ordering::Relaxed));
-                // The main screen always shows the player's perspective.
-                vbuf.lock().unwrap().copy_from_slice(video_buffer);
-                // Auto-direct: possess the dummy while ITS custom-screen
-                // pick is open (rising edge, if enabled), hand control
-                // back at its OK (falling edge, unconditionally — the
-                // stash must unwind even if the toggle flipped mid-pick).
-                // The suspended mode resumes where it left off, which is
-                // what keeps recorded scripts field-phase pure.
-                let picking = custom_screen_flags.load(Ordering::Relaxed) & (1 << dummy_index) != 0;
-                if picking != was_picking.swap(picking, Ordering::Relaxed)
-                    && (!picking || auto_direct.load(Ordering::Relaxed))
+                let is_authoring = authoring.load(Ordering::Relaxed);
                 {
-                    let possessing = {
-                        let mut dummy = dummy.lock().unwrap();
-                        if picking {
-                            dummy.auto_engage();
-                        } else {
-                            dummy.auto_release();
-                        }
-                        matches!(dummy.mode, DummyMode::Possess | DummyMode::Record)
-                    };
-                    possessed.store(possessing, Ordering::Relaxed);
-                    joyflags.store(0, Ordering::Relaxed);
-                    inner_match.set_shadow_rendering(possessing);
-                }
-                // While the user drives the dummy, capture the dummy's
-                // screen for the PiP overlay: the shadow co-sim IS the
-                // opponent's game, and its renderer is switched on for
-                // exactly these modes.
-                if possessed.load(Ordering::Relaxed) {
-                    let got = inner_match.read_shadow_video_buffer(&mut shadow_vbuf.lock().unwrap());
-                    if got {
-                        pip_fresh.store(true, Ordering::Relaxed);
+                    // While authoring, the main screen is the dummy's
+                    // perspective — the user is playing IT — and the
+                    // player's own screen goes to the PiP.
+                    let mut vb = vbuf.lock().unwrap();
+                    if !(is_authoring && inner_match.read_shadow_video_buffer(&mut vb)) {
+                        vb.copy_from_slice(video_buffer);
                     }
+                }
+                if is_authoring {
+                    alt_vbuf.lock().unwrap().copy_from_slice(video_buffer);
+                    pip_fresh.store(true, Ordering::Relaxed);
                 } else {
                     pip_fresh.store(false, Ordering::Relaxed);
                 }
-                // Round-start checkpoint upkeep. While a round exists but the
-                // capture hasn't landed (armed rounds decline), keep trying —
-                // the first post-commit frame succeeds, which is the tick-0
-                // settled bundle. When the round goes away, clear it.
+                // Every applied reset (manual or round-end interception)
+                // rewinds the script so the rep replays from the top…
+                let resets = inner_match.training_reset_count();
+                if resets != last_resets.swap(resets, Ordering::Relaxed) {
+                    dummy.lock().unwrap().rewind();
+                }
+                // …and an interception during authoring also ends the take
+                // (the KO ended it; the take up to here is kept).
+                let intercepts = inner_match.training_round_end_reset_count();
+                if intercepts != last_round_end_resets.swap(intercepts, Ordering::Relaxed)
+                    && authoring.load(Ordering::Relaxed)
+                {
+                    dummy.lock().unwrap().stop_author();
+                    authoring.store(false, Ordering::Relaxed);
+                    joyflags.store(0, Ordering::Relaxed);
+                    inner_match.set_shadow_rendering(false);
+                }
+                // Round-start checkpoint upkeep: the default drill point.
+                // Capturing it also arms the round-end interceptor when no
+                // user drill point overrides it.
                 if inner_match.round_metrics().is_some() {
                     let mut slot = round_start.lock().unwrap();
                     if slot.is_none() {
                         *slot = inner_match.training_checkpoint();
+                        if let Some(cp) = slot.as_ref() {
+                            if auto_reset.load(Ordering::Relaxed) {
+                                inner_match.set_training_round_end_reset(Some(cp.clone()));
+                            }
+                        }
                     }
                 } else {
                     round_start.lock().unwrap().take();
@@ -591,15 +600,13 @@ impl TrainingSession {
             match_handle,
             cancellation_token,
             round_start,
-            slots: Mutex::new(std::array::from_fn(|_| None)),
-            active_slot: AtomicUsize::new(0),
-            slot_filled: AtomicUsize::new(0),
+            drill: Mutex::new(None),
+            auto_reset,
+            authoring,
+            alt_vbuf,
+            pip_fresh,
             speed: AtomicU32::new(1.0f32.to_bits()),
             show_inputs: AtomicBool::new(false),
-            possessed,
-            shadow_vbuf,
-            pip_fresh,
-            auto_direct,
             local_loaded,
             local_save_view: crate::save_view::State::new(),
             opponent_loaded,
@@ -612,10 +619,9 @@ impl TrainingSession {
     }
 
     /// Route the resolved controller state to whichever side the user is
-    /// currently driving. While possessed the player side holds neutral
-    /// (already zeroed by the possess transition), and vice versa.
+    /// currently driving. While authoring, the player side holds neutral.
     pub fn set_joyflags(&self, mgba_keys: u32) {
-        if self.possessed.load(Ordering::Relaxed) {
+        if self.authoring.load(Ordering::Relaxed) {
             self.dummy.lock().unwrap().held = mgba_keys;
         } else {
             self.joyflags.store(mgba_keys, Ordering::Relaxed);
@@ -623,7 +629,9 @@ impl TrainingSession {
     }
 
     /// The match ends when the per-game match-end hook fires — there is no
-    /// peer to hand-shake with, so that's the whole story.
+    /// peer to hand-shake with, so that's the whole story. (With auto-reset
+    /// on, rounds never end, so this is reached via Esc-quit or with
+    /// auto-reset off.)
     pub fn is_ended(&self) -> bool {
         self.completion_token.is_complete()
     }
@@ -632,28 +640,34 @@ impl TrainingSession {
         self.thread.handle().is_paused()
     }
 
-    pub fn dummy_status(&self) -> DummyStatus {
+    pub fn is_authoring(&self) -> bool {
+        self.authoring.load(Ordering::Relaxed)
+    }
+
+    pub fn drill_status(&self) -> DrillStatus {
         let dummy = self.dummy.lock().unwrap();
-        DummyStatus {
-            mode: dummy.mode,
-            script_len: dummy.script.len(),
-            play_pos: dummy.play_pos,
-            looping: dummy.looping,
+        DrillStatus {
+            authoring: dummy.authoring,
+            script_ticks: dummy.script_ticks(),
+            played_ticks: dummy.played_ticks(),
+            behavior: dummy.behavior,
         }
     }
 
-    pub fn active_slot(&self) -> usize {
-        self.active_slot.load(Ordering::Relaxed)
-    }
-
-    pub fn slot_filled(&self, slot: usize) -> bool {
-        self.slot_filled.load(Ordering::Relaxed) & (1 << slot) != 0
-    }
-
-    /// Whether the current round can be checkpointed / restored right now —
-    /// drives the HUD buttons' enabled state.
+    /// Whether the drill actions have something to act on — the HUD
+    /// buttons' enabled state.
     pub fn round_live(&self) -> bool {
         self.round_start.lock().unwrap().is_some()
+    }
+
+    /// Whether the user has placed their own drill point (vs the
+    /// round-start default).
+    pub fn has_drill_point(&self) -> bool {
+        self.drill.lock().unwrap().is_some()
+    }
+
+    pub fn auto_reset(&self) -> bool {
+        self.auto_reset.load(Ordering::Relaxed)
     }
 
     pub fn speed(&self) -> f32 {
@@ -664,21 +678,15 @@ impl TrainingSession {
         self.show_inputs.load(Ordering::Relaxed)
     }
 
-    pub fn auto_direct(&self) -> bool {
-        self.auto_direct.load(Ordering::Relaxed)
-    }
-
-    /// Latest dummy-side frame for the PiP overlay, as raw BGR555 —
-    /// `None` whenever the dummy view isn't live (not possessing, or no
-    /// shadow frame captured yet this possession).
+    /// The player's own screen while authoring, for the PiP overlay —
+    /// `None` outside authoring.
     pub fn pip_pixels(&self) -> Option<Vec<u8>> {
-        (self.possessed.load(Ordering::Relaxed) && self.pip_fresh.load(Ordering::Relaxed))
-            .then(|| self.shadow_vbuf.lock().unwrap().clone())
+        (self.authoring.load(Ordering::Relaxed) && self.pip_fresh.load(Ordering::Relaxed))
+            .then(|| self.alt_vbuf.lock().unwrap().clone())
     }
 
     /// Current per-side joyflags for the input display: `(player, dummy)`,
-    /// in mgba-keys form. The player half reads the live atomic the trap
-    /// consumes; the dummy half is the last injected input.
+    /// in mgba-keys form.
     pub fn input_display(&self) -> (u32, u32) {
         (
             self.joyflags.load(Ordering::Relaxed),
@@ -686,44 +694,77 @@ impl TrainingSession {
         )
     }
 
-    pub fn dummy_mode(&self) -> DummyMode {
-        self.dummy.lock().unwrap().mode
+    /// The checkpoint drill actions operate on: the user's drill point,
+    /// else the round start.
+    fn drill_checkpoint(&self) -> Option<TrainingCheckpoint> {
+        self.drill
+            .lock()
+            .unwrap()
+            .clone()
+            .or_else(|| self.round_start.lock().unwrap().clone())
     }
 
-    fn set_dummy_mode(&self, mode: DummyMode) {
-        {
-            let mut dummy = self.dummy.lock().unwrap();
-            dummy.set_mode(mode);
-            // Zero both sides on any routing change so nothing stays
-            // latched on the side the user just stopped driving.
-            dummy.held = 0;
-        }
-        self.joyflags.store(0, Ordering::Relaxed);
-        let possessing = matches!(mode, DummyMode::Possess | DummyMode::Record);
-        self.possessed.store(possessing, Ordering::Relaxed);
-        // Driving the dummy shows the dummy's screen: rasterize the shadow
-        // for exactly these modes (it's frameskipped otherwise), and let
-        // the frame callback swap the display.
-        self.inner_match.set_shadow_rendering(possessing);
+    /// Push the current drill point / auto-reset state into the match's
+    /// round-end interceptor.
+    fn sync_interceptor(&self) {
+        let checkpoint = self
+            .auto_reset
+            .load(Ordering::Relaxed)
+            .then(|| self.drill_checkpoint())
+            .flatten();
+        self.inner_match.set_training_round_end_reset(checkpoint);
     }
 
-    /// Restore a checkpoint: the match rewinds engine + cores + RNG, the
-    /// dummy reacts (playback restarts, a live take stops), and — when
-    /// paused — one frame is stepped so the restored state actually shows.
     fn restore(&self, checkpoint: &TrainingCheckpoint) {
         match self.inner_match.restore_training_checkpoint(checkpoint) {
+            // The reset-counter watcher in the frame callback rewinds the
+            // script; when paused, step one frame so the restored state
+            // actually shows (and the watcher runs).
             Ok(true) => {
-                self.dummy.lock().unwrap().on_restore();
                 if self.is_paused() && !self.is_ended() {
                     self.frame_advance();
                 }
             }
-            // Nothing to restore into right now (between rounds, armed
-            // round, settled round end) — quietly do nothing; the HUD
-            // buttons are disabled in those states anyway.
+            // Nothing to restore into right now (armed round) — quietly do
+            // nothing; the HUD gates on round_live anyway.
             Ok(false) => {}
-            Err(e) => log::error!("training: restore failed: {e:#}"),
+            Err(e) => log::error!("training: reset failed: {e:#}"),
         }
+    }
+
+    /// End an in-progress take and stop routing input to the dummy.
+    /// Returns whether a take was actually in progress.
+    fn finish_authoring(&self) -> bool {
+        let was = {
+            let mut dummy = self.dummy.lock().unwrap();
+            let was = dummy.authoring;
+            if was {
+                dummy.stop_author();
+            }
+            was
+        };
+        if was {
+            self.authoring.store(false, Ordering::Relaxed);
+            self.joyflags.store(0, Ordering::Relaxed);
+            self.inner_match.set_shadow_rendering(false);
+        }
+        was
+    }
+
+    fn toggle_author(&self) {
+        let Some(checkpoint) = self.drill_checkpoint() else {
+            return;
+        };
+        if !self.finish_authoring() {
+            // Start a take: act as the dummy from the drill point.
+            self.dummy.lock().unwrap().start_author();
+            self.authoring.store(true, Ordering::Relaxed);
+            self.joyflags.store(0, Ordering::Relaxed);
+            self.inner_match.set_shadow_rendering(true);
+        }
+        // Either way the rep restarts from the drill point: into the take,
+        // or immediately against it.
+        self.restore(&checkpoint);
     }
 
     fn frame_advance(&self) {
@@ -740,41 +781,32 @@ impl TrainingSession {
 
     pub fn apply(&self, action: Action) {
         match action {
-            Action::SetDummyMode(mode) => self.set_dummy_mode(mode),
-            Action::ToggleDummyMode(mode) => {
-                let current = self.dummy_mode();
-                self.set_dummy_mode(if current == mode { DummyMode::Idle } else { mode });
-            }
-            Action::ToggleLoop => {
-                let mut dummy = self.dummy.lock().unwrap();
-                dummy.looping = !dummy.looping;
-            }
-            Action::ToggleAutoDirect => {
-                self.auto_direct.fetch_xor(true, Ordering::Relaxed);
-            }
-            Action::RestartRound => {
-                let checkpoint = self.round_start.lock().unwrap().clone();
-                if let Some(checkpoint) = checkpoint {
+            Action::Reset => {
+                // Reset doubles as "done authoring, go".
+                self.finish_authoring();
+                if let Some(checkpoint) = self.drill_checkpoint() {
                     self.restore(&checkpoint);
                 }
             }
-            Action::SelectSlot(slot) => {
-                if slot < CHECKPOINT_SLOTS {
-                    self.active_slot.store(slot, Ordering::Relaxed);
-                }
-            }
-            Action::SaveSlot => {
-                let slot = self.active_slot();
+            Action::ToggleAuthor => self.toggle_author(),
+            Action::SetDrillPoint => {
                 if let Some(checkpoint) = self.inner_match.training_checkpoint() {
-                    self.slots.lock().unwrap()[slot] = Some(checkpoint);
-                    self.slot_filled.fetch_or(1 << slot, Ordering::Relaxed);
+                    *self.drill.lock().unwrap() = Some(checkpoint);
+                    // The authored script was relative to the old point.
+                    self.dummy.lock().unwrap().clear_script();
+                    self.sync_interceptor();
                 }
             }
-            Action::LoadSlot => {
-                let checkpoint = self.slots.lock().unwrap()[self.active_slot()].clone();
-                if let Some(checkpoint) = checkpoint {
-                    self.restore(&checkpoint);
-                }
+            Action::ToggleBehavior => {
+                let mut dummy = self.dummy.lock().unwrap();
+                dummy.behavior = match dummy.behavior {
+                    Behavior::Stand => Behavior::UseChips,
+                    Behavior::UseChips => Behavior::Stand,
+                };
+            }
+            Action::ToggleAutoReset => {
+                self.auto_reset.fetch_xor(true, Ordering::Relaxed);
+                self.sync_interceptor();
             }
             Action::TogglePause => {
                 let handle = self.thread.handle();
@@ -840,6 +872,8 @@ pub struct TrainingOptions {
     /// Free-text seed; empty/None = random. The same text always derives
     /// the same match seed, so drills are shareable.
     pub seed: Option<String>,
+    /// What the dummy does outside authored material.
+    pub behavior: Behavior,
 }
 
 /// Derive the 16-byte match seed from free-form seed text: FNV-1a folded

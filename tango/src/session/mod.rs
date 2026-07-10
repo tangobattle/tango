@@ -439,19 +439,11 @@ fn training_action_for_event(
         _ => return None,
     };
     use crate::input::MappedKey;
-    use training::{Action, DummyMode};
-    // Hotkeys toggle modes (press possess again to release); the HUD chips
-    // set them absolutely.
-    const BINDINGS: [(MappedKey, Action); 8] = [
-        (MappedKey::TrainingPossess, Action::ToggleDummyMode(DummyMode::Possess)),
-        (MappedKey::TrainingRecord, Action::ToggleDummyMode(DummyMode::Record)),
-        (
-            MappedKey::TrainingPlayback,
-            Action::ToggleDummyMode(DummyMode::Playback),
-        ),
-        (MappedKey::TrainingRestart, Action::RestartRound),
-        (MappedKey::TrainingSaveState, Action::SaveSlot),
-        (MappedKey::TrainingLoadState, Action::LoadSlot),
+    use training::Action;
+    const BINDINGS: [(MappedKey, Action); 5] = [
+        (MappedKey::TrainingReset, Action::Reset),
+        (MappedKey::TrainingAuthor, Action::ToggleAuthor),
+        (MappedKey::TrainingSetDrillPoint, Action::SetDrillPoint),
         (MappedKey::TrainingPause, Action::TogglePause),
         (MappedKey::TrainingFrameAdvance, Action::FrameAdvance),
     ];
@@ -1320,6 +1312,7 @@ pub fn spawn_training(
         opts.match_type,
         opts.local_player_index,
         rng_seed,
+        opts.behavior,
         local_settings,
         remote_settings,
         &config.replays_path(),

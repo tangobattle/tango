@@ -1073,12 +1073,9 @@ fn settings_input<'a>(
         .into()
     };
     let training_keys = [
-        (Icon::Joystick, input::MappedKey::TrainingPossess),
-        (Icon::CircleDot, input::MappedKey::TrainingRecord),
-        (Icon::Play, input::MappedKey::TrainingPlayback),
-        (Icon::RotateCcw, input::MappedKey::TrainingRestart),
-        (Icon::Save, input::MappedKey::TrainingSaveState),
-        (Icon::Download, input::MappedKey::TrainingLoadState),
+        (Icon::RotateCcw, input::MappedKey::TrainingReset),
+        (Icon::Clapperboard, input::MappedKey::TrainingAuthor),
+        (Icon::Bookmark, input::MappedKey::TrainingSetDrillPoint),
         (Icon::Pause, input::MappedKey::TrainingPause),
         (Icon::StepForward, input::MappedKey::TrainingFrameAdvance),
     ];
@@ -1123,12 +1120,9 @@ fn mapped_key_label(lang: &LanguageIdentifier, k: input::MappedKey) -> String {
         input::MappedKey::Start => t!(lang, "input-key-start"),
         input::MappedKey::Select => t!(lang, "input-key-select"),
         input::MappedKey::SpeedUp => t!(lang, "input-key-speed-up"),
-        input::MappedKey::TrainingPossess => t!(lang, "input-key-training-possess"),
-        input::MappedKey::TrainingRecord => t!(lang, "input-key-training-record"),
-        input::MappedKey::TrainingPlayback => t!(lang, "input-key-training-playback"),
-        input::MappedKey::TrainingRestart => t!(lang, "input-key-training-restart"),
-        input::MappedKey::TrainingSaveState => t!(lang, "input-key-training-save-state"),
-        input::MappedKey::TrainingLoadState => t!(lang, "input-key-training-load-state"),
+        input::MappedKey::TrainingReset => t!(lang, "input-key-training-reset"),
+        input::MappedKey::TrainingAuthor => t!(lang, "input-key-training-author"),
+        input::MappedKey::TrainingSetDrillPoint => t!(lang, "input-key-training-set-drill-point"),
         input::MappedKey::TrainingPause => t!(lang, "input-key-training-pause"),
         input::MappedKey::TrainingFrameAdvance => t!(lang, "input-key-training-frame-advance"),
     }

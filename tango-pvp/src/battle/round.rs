@@ -163,16 +163,15 @@ impl Round {
     }
 
     /// Reset the rollback engine to a training checkpoint's state, force-
-    /// reloading the stepper + shadow cores. Returns `false` while armed or
-    /// past a settled round end (the restore has nothing sound to resume
-    /// into). The live core follows on its next trap fire.
+    /// reloading the stepper + shadow cores. Returns `false` while armed
+    /// (no engine yet). A settled round end is fine — `Session::reset`
+    /// clears the terminal latch, and every restore path re-anchors the
+    /// live core explicitly, so the game resumes inside the battle loop
+    /// regardless of where it was.
     pub(super) fn reset_to(&mut self, state: &super::world::MgbaState, remote: PartialInput) -> anyhow::Result<bool> {
         let Some(session) = self.session.as_mut() else {
             return Ok(false);
         };
-        if session.terminal_reached() {
-            return Ok(false);
-        }
         session.reset(state.clone(), state.tick, remote)?;
         self.last_loaded_tick = state.tick;
         Ok(true)

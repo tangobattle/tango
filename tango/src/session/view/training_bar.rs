@@ -1,16 +1,16 @@
-//! The training session's floating control bar: transport (pause /
-//! frame advance / restart), the dummy-mode chip group with its loop
-//! toggle and take readout, checkpoint slots with save/load, the speed
-//! picker, and the input-display toggle. Bottom-center over the
-//! emulator, riding the shared auto-hide like the replay transport.
-//! Every control fires `Message::Training(_)`; the hotkeys listed in
-//! the tooltips fire the same actions through the input mapping.
+//! The training session's floating control bar, built around the drill
+//! loop: reset / set drill point / author, the dummy's fallback behavior,
+//! auto-reset, and the passive utilities (pause, frame advance, speed,
+//! input display). Bottom-center over the emulator, riding the shared
+//! auto-hide like the replay transport. Every control fires
+//! `Message::Training(_)`; the hotkeys listed in the settings fire the
+//! same actions through the input mapping.
 
 use super::*;
 // Explicit so these win over iced's prelude `column!`/`row!` macros (see mod.rs).
 use sweeten::widget::row;
 
-use crate::session::training::{Action, DummyMode, TrainingSession, CHECKPOINT_SLOTS, SPEED_STEPS};
+use crate::session::training::{Action, Behavior, TrainingSession, SPEED_STEPS};
 
 /// One 32×32 icon chip in the bar. `lit` renders the "this is engaged"
 /// treatment (primary glyph + tinted hairline — the replay bar's
@@ -70,11 +70,75 @@ fn divider<'a>() -> Element<'a, Message> {
 
 pub(super) fn training_bar<'a>(lang: &'a LanguageIdentifier, t: &'a TrainingSession) -> Element<'a, Message> {
     let paused = t.is_paused();
-    let dummy = t.dummy_status();
+    let drill = t.drill_status();
     let round_live = t.round_live();
     let train = |action: Action| Message::Training(action);
 
-    // Transport: pause/resume, frame advance, restart round.
+    // The drill loop: reset, set drill point, author.
+    let drill_controls = [
+        chip(
+            Icon::RotateCcw,
+            t!(lang, "training-reset"),
+            false,
+            round_live.then_some(train(Action::Reset)),
+        ),
+        chip(
+            Icon::Bookmark,
+            t!(lang, "training-set-drill-point"),
+            t.has_drill_point(),
+            round_live.then_some(train(Action::SetDrillPoint)),
+        ),
+        chip(
+            Icon::Clapperboard,
+            t!(lang, "training-author"),
+            drill.authoring,
+            round_live.then_some(train(Action::ToggleAuthor)),
+        ),
+    ];
+
+    // Rep readout: authored material consumed / total. Fixed-width so
+    // ticking numbers don't wobble the bar.
+    let take_label = if drill.script_ticks > 0 {
+        format!(
+            "{}/{}f",
+            drill.played_ticks.min(drill.script_ticks),
+            drill.script_ticks
+        )
+    } else {
+        String::new()
+    };
+    let take_readout: Element<'a, Message> = container(
+        text(take_label)
+            .size(TEXT_CAPTION)
+            .style(widgets::muted_text_style),
+    )
+    .width(iced::Length::Fixed(72.0))
+    .align_x(iced::alignment::Horizontal::Center)
+    .into();
+
+    // Dummy fallback behavior + the round-end interception toggle.
+    let behavior_chip = match drill.behavior {
+        Behavior::Stand => chip(
+            Icon::Ghost,
+            t!(lang, "training-behavior-stand"),
+            false,
+            Some(train(Action::ToggleBehavior)),
+        ),
+        Behavior::UseChips => chip(
+            Icon::Swords,
+            t!(lang, "training-behavior-use-chips"),
+            true,
+            Some(train(Action::ToggleBehavior)),
+        ),
+    };
+    let auto_reset_chip = chip(
+        Icon::Repeat,
+        t!(lang, "training-auto-reset"),
+        t.auto_reset(),
+        Some(train(Action::ToggleAutoReset)),
+    );
+
+    // Passive utilities.
     let transport = [
         chip(
             if paused { Icon::Play } else { Icon::Pause },
@@ -88,83 +152,7 @@ pub(super) fn training_bar<'a>(lang: &'a LanguageIdentifier, t: &'a TrainingSess
             false,
             Some(train(Action::FrameAdvance)),
         ),
-        chip(
-            Icon::RotateCcw,
-            t!(lang, "training-restart"),
-            false,
-            round_live.then_some(train(Action::RestartRound)),
-        ),
     ];
-
-    // Dummy mode chips: exactly one is lit. The chips set modes
-    // absolutely; the hotkeys toggle the same modes against Idle.
-    let mode_chip = |icon: Icon, label: String, mode: DummyMode| {
-        chip(icon, label, dummy.mode == mode, Some(train(Action::SetDummyMode(mode))))
-    };
-    let modes = [
-        mode_chip(Icon::Ghost, t!(lang, "training-dummy-idle"), DummyMode::Idle),
-        mode_chip(Icon::Joystick, t!(lang, "training-dummy-possess"), DummyMode::Possess),
-        mode_chip(Icon::CircleDot, t!(lang, "training-dummy-record"), DummyMode::Record),
-        mode_chip(Icon::Play, t!(lang, "training-dummy-playback"), DummyMode::Playback),
-        mode_chip(Icon::Swords, t!(lang, "training-dummy-attack"), DummyMode::Attack),
-        chip(
-            Icon::Repeat,
-            t!(lang, "training-loop"),
-            dummy.looping,
-            Some(train(Action::ToggleLoop)),
-        ),
-        // Auto-direct: hand the dummy to the user whenever its chip pick
-        // opens. Only effective on games whose module mirrors the
-        // custom-screen flags (bn6 today) — harmless elsewhere.
-        chip(
-            Icon::Clapperboard,
-            t!(lang, "training-auto-direct"),
-            t.auto_direct(),
-            Some(train(Action::ToggleAutoDirect)),
-        ),
-    ];
-    // Take readout: recorded length (and playback progress while it
-    // plays). Fixed-width so ticking numbers don't wobble the bar.
-    let take_label = match dummy.mode {
-        DummyMode::Playback if dummy.script_len > 0 => {
-            format!("{}/{}f", dummy.play_pos.min(dummy.script_len), dummy.script_len)
-        }
-        _ if dummy.script_len > 0 => format!("{}f", dummy.script_len),
-        _ => String::new(),
-    };
-    let take_readout: Element<'a, Message> = container(
-        text(take_label)
-            .size(TEXT_CAPTION)
-            .style(widgets::muted_text_style),
-    )
-    .width(iced::Length::Fixed(64.0))
-    .align_x(iced::alignment::Horizontal::Center)
-    .into();
-
-    // Checkpoint slots: pick the active slot, then save/load it.
-    let mut slots = row![].spacing(6).align_y(Alignment::Center);
-    for slot in 0..CHECKPOINT_SLOTS {
-        let selected = t.active_slot() == slot;
-        let filled = t.slot_filled(slot);
-        slots = slots.push(chip(
-            if filled { Icon::BookmarkCheck } else { Icon::Bookmark },
-            t!(lang, "training-slot", number = (slot + 1) as i64),
-            selected,
-            Some(train(Action::SelectSlot(slot))),
-        ));
-    }
-    slots = slots.push(chip(
-        Icon::Save,
-        t!(lang, "training-save-state"),
-        false,
-        round_live.then_some(train(Action::SaveSlot)),
-    ));
-    slots = slots.push(chip(
-        Icon::Download,
-        t!(lang, "training-load-state"),
-        false,
-        t.slot_filled(t.active_slot()).then_some(train(Action::LoadSlot)),
-    ));
 
     // Speed picker, mirroring the replay bar's.
     let current = t.speed();
@@ -198,17 +186,17 @@ pub(super) fn training_bar<'a>(lang: &'a LanguageIdentifier, t: &'a TrainingSess
     );
 
     let mut bar = row![].spacing(8).align_y(Alignment::Center).padding([8, 10]);
-    for el in transport {
-        bar = bar.push(el);
-    }
-    bar = bar.push(divider());
-    for el in modes {
+    for el in drill_controls {
         bar = bar.push(el);
     }
     bar = bar.push(take_readout);
     bar = bar.push(divider());
-    bar = bar.push(slots);
+    bar = bar.push(behavior_chip);
+    bar = bar.push(auto_reset_chip);
     bar = bar.push(divider());
+    for el in transport {
+        bar = bar.push(el);
+    }
     bar = bar.push(speed_picker);
     bar = bar.push(input_toggle);
     bar.into()

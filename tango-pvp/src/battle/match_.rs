@@ -192,6 +192,18 @@ pub struct Match {
     /// training sessions, whose "peer" is in-process, may set it freely via
     /// [`set_speed_factor`](Self::set_speed_factor).
     speed_factor: Arc<AtomicU32>,
+    /// Training drill loop: when set, a round that is about to end is
+    /// instead reset to this checkpoint (see
+    /// [`end_round_or_cancel`](Self::end_round_or_cancel)) — a KO snaps the
+    /// rep back to its starting state rather than tearing the round down.
+    /// `None` (always, in real PvP) ends rounds normally.
+    training_round_end_reset: SyncMutex<Option<TrainingCheckpoint>>,
+    /// Counts every applied training reset (manual restores + round-end
+    /// interceptions). The host watches it to rewind its dummy scripting.
+    training_resets: AtomicU32,
+    /// Counts round-end interceptions only — the host additionally stops
+    /// an in-progress authoring take on these (the KO ended the take).
+    training_round_end_resets: AtomicU32,
 }
 
 impl Match {
@@ -226,6 +238,9 @@ impl Match {
             frame_delay,
             disable_bgm,
             speed_factor: Arc::new(AtomicU32::new(1.0f32.to_bits())),
+            training_round_end_reset: SyncMutex::new(None),
+            training_resets: AtomicU32::new(0),
+            training_round_end_resets: AtomicU32::new(0),
         })
     }
 
@@ -401,19 +416,7 @@ impl Match {
         let handle = self.primary_thread_handle.clone();
         let was_paused = handle.is_paused();
         handle.pause();
-        let reset = (|| {
-            let mut round_state = self.round_state.lock().unwrap();
-            let Some(round) = round_state.as_mut() else {
-                return Ok(false);
-            };
-            if !round.reset_to(&checkpoint.state, checkpoint.remote.clone())? {
-                return Ok(false);
-            }
-            *self.rng.lock().unwrap() = checkpoint.rng.clone();
-            self.remote_inputs.clear();
-            self.finish_replay()?;
-            anyhow::Ok(true)
-        })();
+        let reset = self.apply_training_checkpoint(checkpoint);
         if matches!(reset, Ok(true)) {
             // Re-anchor the live core on the restored timeline. The state is
             // poised at its boundary `main_read_joyflags` with r4 unset;
@@ -432,6 +435,83 @@ impl Match {
             handle.unpause();
         }
         reset
+    }
+
+    /// The engine-side half of a training restore: reset the rollback
+    /// engine (force-reloading stepper + shadow), rewind the match RNG,
+    /// drop in-flight remote inputs, finalize the replay. The caller is
+    /// responsible for re-anchoring the live core and for making sure no
+    /// trap can observe the intermediate state (a paused thread, or being
+    /// *inside* the one trap fire that called this). Bumps the reset
+    /// counter the host's dummy scripting watches.
+    fn apply_training_checkpoint(&self, checkpoint: &TrainingCheckpoint) -> anyhow::Result<bool> {
+        let applied = {
+            let mut round_state = self.round_state.lock().unwrap();
+            let Some(round) = round_state.as_mut() else {
+                return Ok(false);
+            };
+            if !round.reset_to(&checkpoint.state, checkpoint.remote.clone())? {
+                return Ok(false);
+            }
+            *self.rng.lock().unwrap() = checkpoint.rng.clone();
+            self.remote_inputs.clear();
+            self.finish_replay()?;
+            true
+        };
+        if applied {
+            self.training_resets.fetch_add(1, Ordering::Release);
+        }
+        Ok(applied)
+    }
+
+    /// Arm (or disarm) the training drill loop: with a checkpoint in the
+    /// slot, a round that is about to end resets to it instead of ending —
+    /// see [`end_round_or_cancel`](Self::end_round_or_cancel).
+    pub fn set_training_round_end_reset(&self, checkpoint: Option<TrainingCheckpoint>) {
+        *self.training_round_end_reset.lock().unwrap() = checkpoint;
+    }
+
+    /// Total applied training resets (manual + round-end). Monotonic;
+    /// hosts watch for changes to rewind their dummy scripting.
+    pub fn training_reset_count(&self) -> u32 {
+        self.training_resets.load(Ordering::Acquire)
+    }
+
+    /// Applied round-end interception resets only. Hosts additionally
+    /// stop an in-progress authoring take on these — the KO ended it.
+    pub fn training_round_end_reset_count(&self) -> u32 {
+        self.training_round_end_resets.load(Ordering::Acquire)
+    }
+
+    /// Round-end interception, called from the round-ending trap (on the
+    /// emulator thread, with the live core in hand). Applies the armed
+    /// checkpoint and re-anchors the live core directly — no pause /
+    /// run_on_core: being inside the trap already excludes every other
+    /// trap fire. Returns whether the end was intercepted.
+    fn try_training_round_end_reset(&self, mut core: mgba::core::CoreMutRef) -> bool {
+        let checkpoint = self.training_round_end_reset.lock().unwrap().clone();
+        let Some(checkpoint) = checkpoint else {
+            return false;
+        };
+        match self.apply_training_checkpoint(&checkpoint) {
+            Ok(true) => {}
+            Ok(false) => return false,
+            Err(e) => {
+                log::error!("training round-end reset failed: {e:#}");
+                return false;
+            }
+        }
+        // Loading the state inside the trap means execution resumes from
+        // the restored boundary the moment the trap returns — the round
+        // never reaches its ending path.
+        if let Err(e) = core.load_state(&checkpoint.state.primary) {
+            log::error!("training round-end reset: live core load failed: {e}");
+            self.cancel();
+            return true;
+        }
+        self.local_hooks.inject_joyflags_on_primary(core, 0);
+        self.training_round_end_resets.fetch_add(1, Ordering::Release);
+        true
     }
 
     /// Closes the replay file, if one is open.
@@ -522,8 +602,13 @@ impl Match {
 
     /// [`end_round`](Self::end_round) with the uniform primary-trap error
     /// policy applied: a failure logs and cancels the match (a panic would
-    /// abort the process from trap context).
-    pub(crate) fn end_round_or_cancel(&self) {
+    /// abort the process from trap context). Takes the trap's core so a
+    /// training drill loop can intercept the end and reset the rep in
+    /// place instead (never armed in real PvP).
+    pub(crate) fn end_round_or_cancel(&self, core: mgba::core::CoreMutRef) {
+        if self.try_training_round_end_reset(core) {
+            return;
+        }
         if let Err(e) = self.end_round() {
             log::error!("end round failed: {e:#}");
             self.cancel();
