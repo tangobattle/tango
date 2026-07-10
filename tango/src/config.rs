@@ -69,7 +69,11 @@ pub enum AccentColor {
     MegaManBlue,
     ProtoManRed,
     RollPink,
-    BassGold,
+    GutsManYellow,
+    /// Was `BassGold` before Bass went to his canon violet (the gold
+    /// moved to GutsMan); the alias keeps existing configs loading.
+    #[serde(alias = "BassGold")]
+    BassPurple,
 }
 
 /// Whether matchmaking connections may/must go through the TURN

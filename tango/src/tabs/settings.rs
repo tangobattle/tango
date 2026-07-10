@@ -32,7 +32,8 @@ fn accent_choice(lang: &LanguageIdentifier, accent: config::AccentColor) -> Choi
             config::AccentColor::MegaManBlue => t!(lang, "settings-accent-megaman-blue"),
             config::AccentColor::ProtoManRed => t!(lang, "settings-accent-protoman-red"),
             config::AccentColor::RollPink => t!(lang, "settings-accent-roll-pink"),
-            config::AccentColor::BassGold => t!(lang, "settings-accent-bass-gold"),
+            config::AccentColor::GutsManYellow => t!(lang, "settings-accent-gutsman-yellow"),
+            config::AccentColor::BassPurple => t!(lang, "settings-accent-bass-purple"),
         },
     )
 }
@@ -549,7 +550,8 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                         accent_choice(lang, config::AccentColor::MegaManBlue),
                         accent_choice(lang, config::AccentColor::ProtoManRed),
                         accent_choice(lang, config::AccentColor::RollPink),
-                        accent_choice(lang, config::AccentColor::BassGold),
+                        accent_choice(lang, config::AccentColor::GutsManYellow),
+                        accent_choice(lang, config::AccentColor::BassPurple),
                     ];
                     let selected = options.iter().find(|c| c.value == config.accent).cloned();
                     widgets::picker(options, selected, |c: Choice<config::AccentColor>| {

@@ -46,11 +46,15 @@ pub fn accent_color(accent: config::AccentColor, dark: bool) -> iced::Color {
         (config::AccentColor::ProtoManRed, false) => (0xb7, 0x1c, 0x30),
         (config::AccentColor::RollPink, true) => (0xff, 0x6e, 0xa8),
         (config::AccentColor::RollPink, false) => (0xc2, 0x2f, 0x6d),
-        // Bass's metallic amber-gold — deeper than the selection
+        // GutsMan's metallic amber-gold — deeper than the selection
         // gold, which deliberately stays gold alongside it. Light
         // mode runs bronze (bright gold on cream has no contrast).
-        (config::AccentColor::BassGold, true) => (0xe6, 0xb4, 0x22),
-        (config::AccentColor::BassGold, false) => (0x96, 0x71, 0x18),
+        (config::AccentColor::GutsManYellow, true) => (0xe6, 0xb4, 0x22),
+        (config::AccentColor::GutsManYellow, false) => (0x96, 0x71, 0x18),
+        // Bass's aura violet — bright enough to glow on charcoal;
+        // royal purple in daylight for the same reason as the blues.
+        (config::AccentColor::BassPurple, true) => (0xae, 0x6f, 0xf5),
+        (config::AccentColor::BassPurple, false) => (0x6a, 0x35, 0xb5),
     };
     iced::Color::from_rgb(rgb.0 as f32 / 255.0, rgb.1 as f32 / 255.0, rgb.2 as f32 / 255.0)
 }
