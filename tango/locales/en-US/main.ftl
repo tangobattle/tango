@@ -209,8 +209,6 @@ play-no-selection = Select a game and a save to inspect.
 
 # Replays
 replays-filter-all-games = All games
-replays-filter-all-patches = All patches
-replays-filter-no-patch = No patch
 replays-filter-any-time = Any time
 replays-filter-past-day = Past 24 hours
 replays-filter-past-week = Past week
