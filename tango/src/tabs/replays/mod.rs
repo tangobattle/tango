@@ -19,10 +19,16 @@ pub enum Message {
     /// "All games".
     /// `None` = "all games"; otherwise the ROM family (e.g. "bn6").
     GameFilterSelected(Option<String>),
-    /// Typed in the opponent-filter text input. Empty = no
-    /// filter; otherwise a substring (case-insensitive) match
-    /// against the remote side's nickname.
-    OpponentFilterChanged(String),
+    /// Picked an entry from the Patch filter dropdown.
+    PatchFilterSelected(PatchFilter),
+    /// Picked a recency window from the Date filter dropdown.
+    DateFilterSelected(DateFilter),
+    /// Typed in the search text input. Empty = no filter;
+    /// otherwise whitespace-separated terms, ANDed, each matched
+    /// case-insensitively against the replay's metadata (nicknames,
+    /// link code, game, patch, date, file path) — see
+    /// [`search_haystack`].
+    SearchChanged(String),
     /// User toggled the "show incomplete" checkbox in the top
     /// filter row. Off by default — incomplete replays (the
     /// recorded stream didn't reach `END_OF_REPLAY`) are hidden
@@ -49,6 +55,47 @@ pub enum Message {
     NoOp,
 }
 
+/// Patch-dropdown filter, keyed on the replay's local-side patch.
+/// `Named` carries the patch name only — versions of the same patch
+/// all match together, mirroring how the Game filter ignores variant.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum PatchFilter {
+    #[default]
+    Any,
+    /// Local side ran an unpatched ROM.
+    Vanilla,
+    Named(String),
+}
+
+/// Date-dropdown filter: the replay's timestamp must fall within
+/// the window ending now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DateFilter {
+    #[default]
+    Any,
+    PastDay,
+    PastWeek,
+    PastMonth,
+    PastYear,
+}
+
+impl DateFilter {
+    fn matches(self, ts_ms: u64) -> bool {
+        let window_secs: u64 = match self {
+            DateFilter::Any => return true,
+            DateFilter::PastDay => 60 * 60 * 24,
+            DateFilter::PastWeek => 60 * 60 * 24 * 7,
+            DateFilter::PastMonth => 60 * 60 * 24 * 30,
+            DateFilter::PastYear => 60 * 60 * 24 * 365,
+        };
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        ts_ms >= now_ms.saturating_sub(window_secs * 1000)
+    }
+}
+
 #[derive(Default)]
 pub struct ReplaysState {
     /// `(family, variant)` pair the replays' local-side must match.
@@ -60,9 +107,18 @@ pub struct ReplaysState {
     /// pull both Gregar and Falzar replays since the family is
     /// the matchmaking unit.
     pub game_filter: Option<String>,
-    /// Substring (case-insensitive) match against the remote
-    /// side's nickname. Empty = no filter.
-    pub opponent_filter: String,
+    /// Patch the replays' local side must have been running. Reset
+    /// to `Any` whenever the game filter changes — the dropdown's
+    /// options are derived from the game-filtered set, so a stale
+    /// selection could silently empty the list.
+    pub patch_filter: PatchFilter,
+    /// Recency window the replays' timestamp must fall in.
+    pub date_filter: DateFilter,
+    /// Free-text search over the replays' metadata. Empty = no
+    /// filter. Split on whitespace into terms; a replay matches
+    /// when every term appears somewhere in its haystack (see
+    /// [`search_haystack`]).
+    pub search: String,
     /// When false (the default), replays whose loaded stats say
     /// `is_complete = false` are hidden from the list. Replays
     /// without loaded stats yet are always shown — we only know
@@ -143,23 +199,38 @@ impl ReplaysState {
         match msg {
             Message::GameFilterSelected(pair) => {
                 self.game_filter = pair;
+                // Patch options are derived per-game; see the
+                // field doc for why a stale selection can't stay.
+                self.patch_filter = PatchFilter::Any;
                 // Filter change can hide the current selection;
                 // drop the cached Loaded so the next interaction
                 // doesn't show a now-filtered-out detail panel.
                 self.clear_selection();
                 None
             }
-            Message::OpponentFilterChanged(s) => {
+            Message::PatchFilterSelected(p) => {
+                self.patch_filter = p;
+                // Same rule as the game dropdown: a coarse filter
+                // change drops the selection.
+                self.clear_selection();
+                None
+            }
+            Message::DateFilterSelected(d) => {
+                self.date_filter = d;
+                self.clear_selection();
+                None
+            }
+            Message::SearchChanged(s) => {
                 // Don't clear the selection on every keystroke —
-                // the user might be refining the filter while
+                // the user might be refining the search while
                 // keeping a replay open. The view simply omits
                 // the detail panel when the selected path no
                 // longer matches the current filtered list.
-                self.opponent_filter = s;
+                self.search = s;
                 None
             }
             Message::ShowIncompleteToggled(v) => {
-                // Same rule as opponent-filter: don't clear the
+                // Same rule as the search box: don't clear the
                 // selection — the user might have an incomplete
                 // replay open while toggling. The detail panel
                 // re-checks membership itself, so a now-filtered-
@@ -267,8 +338,11 @@ impl ReplaysState {
 
         let top = self.filter_strip(lang, &replays);
 
-        // Left list — AND of game + opponent + completeness filters.
-        let filtered: Vec<&replays::ScannedReplay> = replays.iter().filter(|r| self.matches_filters(r)).collect();
+        // Left list — AND of game + search + completeness filters.
+        let filtered: Vec<&replays::ScannedReplay> = replays
+            .iter()
+            .filter(|r| self.matches_filters(lang, &replays_path, r))
+            .collect();
         let mut list = column![].spacing(2).padding([8, 0]);
         for (idx, r) in filtered.iter().enumerate() {
             list = list.push(self.replay_list_row(lang, r, idx));
@@ -301,10 +375,12 @@ impl ReplaysState {
         widgets::top_split_pane(top, left, right)
     }
 
-    /// Top strip: game + opponent filter dropdowns plus the
-    /// show-incomplete toggle. Options are derived from the distinct
-    /// values seen across the scanned replays' local/remote metadata;
-    /// "All …" is always the first option.
+    /// Top strip: game / patch / date filter dropdowns, the
+    /// free-text search box, and the show-incomplete toggle. Game
+    /// options are derived from the distinct families seen across
+    /// the scanned replays; patch options from the distinct
+    /// local-side patch names under the current game filter. "All …"
+    /// is always the first option.
     fn filter_strip<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
@@ -335,6 +411,57 @@ impl ReplaysState {
             .find(|o| o.value == self.game_filter)
             .cloned()
             .unwrap_or_else(|| game_options[0].clone());
+        // Patch options: distinct local-side patch names among the
+        // replays passing the game filter, plus "No patch" when any
+        // of them ran vanilla. Derived per-game since patches are
+        // per-game — an all-games patch list would mostly be noise.
+        let mut patch_options = vec![widgets::Choice::new(
+            PatchFilter::Any,
+            t!(lang, "replays-filter-all-patches"),
+        )];
+        {
+            use itertools::Itertools;
+            let mut vanilla_seen = false;
+            let mut names: Vec<String> = Vec::new();
+            for r in replays.iter().filter(|r| self.game_matches(r)) {
+                match r
+                    .metadata
+                    .local_side
+                    .as_ref()
+                    .and_then(|s| s.game_info.as_ref())
+                    .and_then(|gi| gi.patch.as_ref())
+                {
+                    Some(p) => names.push(p.name.clone()),
+                    None => vanilla_seen = true,
+                }
+            }
+            if vanilla_seen {
+                patch_options.push(widgets::Choice::new(
+                    PatchFilter::Vanilla,
+                    t!(lang, "replays-filter-no-patch"),
+                ));
+            }
+            for name in names.into_iter().unique().sorted() {
+                patch_options.push(widgets::Choice::new(PatchFilter::Named(name.clone()), name));
+            }
+        }
+        let selected_patch = patch_options
+            .iter()
+            .find(|o| o.value == self.patch_filter)
+            .cloned()
+            .unwrap_or_else(|| patch_options[0].clone());
+        let date_options = vec![
+            widgets::Choice::new(DateFilter::Any, t!(lang, "replays-filter-any-time")),
+            widgets::Choice::new(DateFilter::PastDay, t!(lang, "replays-filter-past-day")),
+            widgets::Choice::new(DateFilter::PastWeek, t!(lang, "replays-filter-past-week")),
+            widgets::Choice::new(DateFilter::PastMonth, t!(lang, "replays-filter-past-month")),
+            widgets::Choice::new(DateFilter::PastYear, t!(lang, "replays-filter-past-year")),
+        ];
+        let selected_date = date_options
+            .iter()
+            .find(|o| o.value == self.date_filter)
+            .cloned()
+            .unwrap_or_else(|| date_options[0].clone());
         let show_incomplete_toggle = iced::widget::checkbox(self.show_incomplete)
             .on_toggle(Message::ShowIncompleteToggled)
             .label(t!(lang, "replays-show-incomplete"))
@@ -348,8 +475,14 @@ impl ReplaysState {
                     Some(selected_game),
                     |o: widgets::Choice<Option<String>>| { Message::GameFilterSelected(o.value) }
                 ),
-                text_input(&t!(lang, "replays-filter-opponent-placeholder"), &self.opponent_filter,)
-                    .on_input(Message::OpponentFilterChanged)
+                widgets::picker(patch_options, Some(selected_patch), |o: widgets::Choice<PatchFilter>| {
+                    Message::PatchFilterSelected(o.value)
+                }),
+                widgets::picker(date_options, Some(selected_date), |o: widgets::Choice<DateFilter>| {
+                    Message::DateFilterSelected(o.value)
+                }),
+                text_input(&t!(lang, "replays-filter-search-placeholder"), &self.search,)
+                    .on_input(Message::SearchChanged)
                     .padding(STANDARD_PADDING)
                     .width(Length::Fixed(220.0))
                     .style(widgets::chunky_text_input),
@@ -364,14 +497,12 @@ impl ReplaysState {
         .into()
     }
 
-    /// AND of the game + opponent + completeness filters. Opponent
-    /// match is case-insensitive substring (mirrors the text-input
-    /// UX). Completeness only drops a row once its stats have actually
-    /// loaded — unloaded entries pass through so a freshly-scanned
-    /// replay isn't hidden during the lazy stats-worker window.
-    fn matches_filters(&self, r: &replays::ScannedReplay) -> bool {
-        let g_ok = self
-            .game_filter
+    /// Whether the replay's local-side family passes the Game
+    /// dropdown. Split out of [`Self::matches_filters`] because the
+    /// patch dropdown derives its options from the game-filtered
+    /// set.
+    fn game_matches(&self, r: &replays::ScannedReplay) -> bool {
+        self.game_filter
             .as_ref()
             .map(|family| {
                 r.metadata
@@ -381,19 +512,39 @@ impl ReplaysState {
                     .map(|gi| gi.rom_family == *family)
                     .unwrap_or(false)
             })
-            .unwrap_or(true);
-        let opp_needle = self.opponent_filter.trim().to_lowercase();
-        let o_ok = if opp_needle.is_empty() {
-            true
-        } else {
-            r.metadata
-                .remote_side
-                .as_ref()
-                .map(|s| s.nickname.to_lowercase().contains(&opp_needle))
-                .unwrap_or(false)
+            .unwrap_or(true)
+    }
+
+    /// AND of the game + patch + date + search + completeness
+    /// filters. Search splits into whitespace-separated terms, each
+    /// of which must appear (case-insensitive) somewhere in the
+    /// replay's haystack — see [`search_haystack`]. Completeness only
+    /// drops a row once its stats have actually loaded — unloaded
+    /// entries pass through so a freshly-scanned replay isn't hidden
+    /// during the lazy stats-worker window.
+    fn matches_filters(&self, lang: &LanguageIdentifier, replays_path: &std::path::Path, r: &replays::ScannedReplay) -> bool {
+        let local_gi = r.metadata.local_side.as_ref().and_then(|s| s.game_info.as_ref());
+        let p_ok = match &self.patch_filter {
+            PatchFilter::Any => true,
+            // A replay with no recorded game info can't name a
+            // patch either — count it as unpatched rather than
+            // hiding it from both patch buckets.
+            PatchFilter::Vanilla => local_gi.map(|gi| gi.patch.is_none()).unwrap_or(true),
+            PatchFilter::Named(name) => local_gi
+                .and_then(|gi| gi.patch.as_ref())
+                .map(|p| p.name == *name)
+                .unwrap_or(false),
+        };
+        let d_ok = self.date_filter.matches(r.metadata.ts);
+        let query = self.search.trim().to_lowercase();
+        let s_ok = query.is_empty() || {
+            // Haystack is only built for a non-empty query, so the
+            // idle (no-search) view pays nothing per row.
+            let hay = search_haystack(lang, replays_path, r);
+            query.split_whitespace().all(|term| hay.contains(term))
         };
         let c_ok = self.show_incomplete || self.stats.get(&r.path).map(|s| s.is_complete).unwrap_or(false);
-        g_ok && o_ok && c_ok
+        self.game_matches(r) && p_ok && d_ok && s_ok && c_ok
     }
 
     /// One row of the replay list: timestamp + status glyph, the
@@ -787,6 +938,47 @@ fn replay_detail<'a>(
         .width(Fill)
         .height(Fill)
         .into()
+}
+
+/// Everything the free-text search matches against, joined into one
+/// lowercased blob: both sides' nicknames, game names (raw family
+/// plus the localized display/short names, so "exe6" and "battle
+/// network" both hit), patch name + version, the link code, the
+/// date as `YYYY-MM-DD` (so "2026-07" matches a month), and the
+/// path relative to the replays root.
+fn search_haystack(lang: &LanguageIdentifier, replays_path: &std::path::Path, r: &replays::ScannedReplay) -> String {
+    let md = &r.metadata;
+    let mut parts: Vec<String> = Vec::new();
+    for side in [md.local_side.as_ref(), md.remote_side.as_ref()].into_iter().flatten() {
+        parts.push(side.nickname.clone());
+        if let Some(gi) = side.game_info.as_ref() {
+            parts.push(gi.rom_family.clone());
+            parts.push(family_display_name(lang, &gi.rom_family, gi.rom_variant));
+            if let Some(g) = u8::try_from(gi.rom_variant)
+                .ok()
+                .and_then(|v| crate::game::find_by_family_and_variant(&gi.rom_family, v))
+            {
+                parts.push(crate::game::short_name(lang, g));
+            }
+            if let Some(p) = gi.patch.as_ref() {
+                parts.push(format!("{} v{}", p.name, p.version));
+            }
+        }
+    }
+    parts.push(md.link_code.clone());
+    parts.push(format_ts(md.ts, "%Y-%m-%d"));
+    let parent = r
+        .path
+        .parent()
+        .map(|p| replays::format_rel_path(replays_path, p))
+        .unwrap_or_default();
+    let filename = r
+        .path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    parts.push(format!("{parent}{filename}"));
+    parts.join("\n").to_lowercase()
 }
 
 /// "Mega Man Battle Network 6" — family-only i18n lookup, matching
