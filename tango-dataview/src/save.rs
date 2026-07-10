@@ -55,15 +55,6 @@ where
     fn to_sram_dump(&self) -> Vec<u8>;
     fn as_raw_wram(&self) -> std::borrow::Cow<'_, [u8]>;
 
-    /// Mutable access to the save's WRAM image in its *native* layout
-    /// (unlike [`as_raw_wram`](Self::as_raw_wram), which some games remap
-    /// by region), for raw save editing — the training setup scripts.
-    /// Callers must [`rebuild_checksum`](Self::rebuild_checksum) once
-    /// they're done writing. `None` (the default) = not raw-editable.
-    fn as_raw_wram_mut(&mut self) -> Option<&mut [u8]> {
-        None
-    }
-
     fn rebuild_checksum(&mut self);
 
     fn view_chips(&self) -> Option<Box<dyn ChipsView<'_> + '_>> {

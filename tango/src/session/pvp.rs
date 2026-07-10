@@ -318,7 +318,6 @@ impl PvpSession {
             local_hooks,
             thread.handle(),
             Box::new(crate::net::PvpSender::new(in_match.clone())),
-            tango_pvp::battle::Remote::Peer,
             cancellation_token.clone(),
             rng,
             shadow,
@@ -1023,7 +1022,7 @@ async fn rebuild_connection(
 /// format mirrors the legacy app:
 /// `YYYYMMDDhhmmss-<link_code>-<compat>-vs-<opponent>-p<idx>.tangoreplay`.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn build_replay_writer(
+fn build_replay_writer(
     replays_path: &Path,
     link_code: &str,
     local_settings: &crate::net::protocol::Settings,

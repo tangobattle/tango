@@ -1050,43 +1050,8 @@ impl App {
                 // grace timeout), not just from a Close message.
                 // We trigger the replay rescan whenever a PvP
                 // session was active before and isn't after.
-                // Training counts too: it records replays the same way
-                // (and can self-close at match completion).
-                let was_pvp = matches!(
-                    self.session.active,
-                    Some(ActiveSession::PvP(_)) | Some(ActiveSession::Training(_))
-                );
+                let was_pvp = matches!(self.session.active, Some(ActiveSession::PvP(_)));
                 let task = self.session.update(m, &self.config.input_mapping).map(Message::Session);
-                // A save-defining training script was picked: the dummy's
-                // loadout crossed the link at battle start, so the session
-                // relaunches with the script baked in. Drop the old session
-                // first (the emulator threads join, the audio binding
-                // frees) and boot the replacement from the same options.
-                if let Some(ActiveSession::Training(t)) = &self.session.active {
-                    if let Some(opts) = t.take_pending_relaunch() {
-                        self.session.active = None;
-                        if let Some(loaded) = self.loaded.as_ref() {
-                            match session::spawn_training(
-                                &self.scanners,
-                                &self.config,
-                                &self.audio_binder,
-                                self.session.frame_notify.clone(),
-                                self.session.vbuf.clone(),
-                                loaded,
-                                opts,
-                            ) {
-                                Ok(s) => {
-                                    self.session.active = Some(ActiveSession::Training(Box::new(s)));
-                                    self.session.wake_controls();
-                                }
-                                Err(e) => {
-                                    log::warn!("training relaunch failed: {e:#}");
-                                    self.play.set_error(format!("{e:#}"));
-                                }
-                            }
-                        }
-                    }
-                }
                 // Rescan + reload run off-thread; the Rescanned
                 // followup forces a `loaded` rebuild past the
                 // same-key dedupe so the play tab's save view
@@ -1374,11 +1339,7 @@ impl App {
             let start = self.session_started_at.unwrap_or_else(std::time::SystemTime::now);
             return match active {
                 ActiveSession::Replay(_) => discord::make_base_activity(None),
-                // Training presents as single-player: it's solo practice,
-                // not a live match anyone could join.
-                ActiveSession::SinglePlayer(_) | ActiveSession::Training(_) => {
-                    discord::make_single_player_activity(start, lang, game_info)
-                }
+                ActiveSession::SinglePlayer(_) => discord::make_single_player_activity(start, lang, game_info),
                 ActiveSession::PvP(_) => discord::make_in_progress_activity(start, lang, game_info),
             };
         }

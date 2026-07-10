@@ -112,19 +112,6 @@ pub trait World {
     /// Used to rewind before re-simulating a mispredicted tail.
     fn load(&mut self, state: &Self::State) -> Result<(), Self::Error>;
 
-    /// [`load`](World::load), but unconditional: restore `state` even if the
-    /// world believes it is already parked at that snapshot's tick.
-    ///
-    /// `load` is allowed to no-op on a parked-tick match — sound while the
-    /// session only ever rewinds within one forward-only timeline, where equal
-    /// tick implies equal state. [`Session::reset`](crate::Session::reset)
-    /// branches the timeline (the same tick can name a different history), so
-    /// it restores through this instead. The default just forwards to `load`;
-    /// only worlds with a parked-tick shortcut need to override it.
-    fn reload(&mut self, state: &Self::State) -> Result<(), Self::Error> {
-        self.load(state)
-    }
-
     /// Take back ownership of a snapshot the session is discarding — an old
     /// settled state displaced by a promotion, or a speculative tail thrown
     /// away by a rollback. Purely an allocation-reuse hook: implementations

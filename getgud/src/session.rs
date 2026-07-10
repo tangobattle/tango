@@ -181,54 +181,6 @@ impl<W: World> Session<W> {
         &self.settled_state
     }
 
-    /// The last confirmed remote input — the current prediction seed. Exposed
-    /// so a host checkpointing the settled state can bundle the matching seed
-    /// and hand both back to [`reset`](Session::reset).
-    pub fn last_confirmed_remote(&self) -> &W::Input {
-        &self.last_confirmed_remote
-    }
-
-    /// Whether a settled step has already ended the round. Once true, the
-    /// round's recorded input stream is closed (see [`World::log`]) and the
-    /// remaining simulation is the post-round-end tail.
-    pub fn terminal_reached(&self) -> bool {
-        self.terminal_reached
-    }
-
-    /// Re-seed the session at `state`, poised at `tick`, discarding everything
-    /// in flight: queued local/remote inputs, the confirmed-but-unsettled
-    /// backlog, and the whole speculative tail. The world is restored via
-    /// [`World::reload`] — unconditionally, because a reset branches the
-    /// timeline and a parked-tick shortcut in [`World::load`] would wrongly
-    /// no-op when the new timeline revisits an old tick number.
-    ///
-    /// Both input streams restart from `tick`: the host must guarantee that
-    /// local and remote inputs produced after the reset pair up from that tick
-    /// on (e.g. by clearing any transport-side queue in the same critical
-    /// section). `initial_remote` re-seeds prediction, like
-    /// [`SessionParams::initial_remote`] did at construction.
-    pub fn reset(&mut self, state: W::State, tick: u32, initial_remote: W::Input) -> Result<(), W::Error> {
-        self.world.reload(&state)?;
-        for spec in self.speculations.drain(..) {
-            self.world.recycle(spec.state);
-        }
-        let displaced = std::mem::replace(&mut self.settled_state, state);
-        self.world.recycle(displaced);
-        self.settled_tick = tick;
-        // Invariant: confirm_frontier == settled_tick + settle_backlog.len(),
-        // and the frontier counts ticks advanced — all three restart at `tick`
-        // with empty queues, exactly as `new` seeds them at 0.
-        self.settle_backlog.clear();
-        self.confirm_frontier = tick;
-        self.local_frontier = tick;
-        self.input_queue = Queue::new();
-        self.last_confirmed_remote = initial_remote;
-        self.terminal_reached = false;
-        self.last_misprediction_depth = 0;
-        self.last_remote_tick_advantage = 0;
-        Ok(())
-    }
-
     /// Advance the simulation by one local tick and return the [`Frame`] to
     /// present.
     ///
@@ -566,14 +518,6 @@ mod tests {
         fn predict(&self, last: &u8) -> u8 {
             *last
         }
-        // Forced restore for session resets: unlike `load`, no parked-len
-        // shortcut — a reset can branch the timeline, where equal length no
-        // longer implies equal history.
-        fn reload(&mut self, state: &Vec<(u8, u8)>) -> Result<(), std::convert::Infallible> {
-            self.counters.lock().unwrap().restores += 1;
-            self.parked = state.clone();
-            Ok(())
-        }
         fn recycle(&mut self, _state: Vec<(u8, u8)>) {
             self.counters.lock().unwrap().recycles += 1;
         }
@@ -751,57 +695,6 @@ mod tests {
         }
         assert_eq!(s.settled_state().as_slice(), truth.as_slice());
         assert_eq!(logged.lock().unwrap().as_slice(), &truth[..3]);
-    }
-
-    /// A training-style reset mid-session: the session re-seeds at a
-    /// checkpointed state, both input streams restart from its tick, and the
-    /// world is restored through [`World::reload`]. The middle leg replays a
-    /// *different* timeline to the same tick number the checkpoint names, so
-    /// the final leg only stays correct if the reset restores the world
-    /// unconditionally (a parked-tick `load` shortcut would wrongly no-op).
-    #[test]
-    fn reset_rebases_session_and_forces_reload() {
-        let counters = Arc::new(Mutex::new(Counters::default()));
-        let logged = Arc::new(Mutex::new(Vec::new()));
-        let mut s = session(0, counters.clone(), logged.clone(), None);
-
-        // One confirmed tick per advance (remote lands same-frame), plus a
-        // flush pair to pull the settled cap up to the play ticks (the
-        // present target trails the frontier by one at delay 0).
-        let play = |s: &mut Session<W>, locals: &[u8], remotes: &[u8]| {
-            for (&l, &r) in std::iter::zip(locals, remotes) {
-                s.add_remote_input(r, 0);
-                s.advance(l).unwrap();
-            }
-            s.add_remote_input(0, 0);
-            s.advance(0).unwrap();
-        };
-
-        // Timeline A, checkpointed at its settled tick 4.
-        play(&mut s, &[10, 11, 12, 13], &[20, 21, 22, 23]);
-        let want_a = truth(&[10, 11, 12, 13], &[20, 21, 22, 23]);
-        assert_eq!(s.settled_state().as_slice(), want_a.as_slice());
-        let cp_state = s.settled_state().clone();
-        let cp_tick = cp_state.len() as u32;
-        let cp_remote = *s.last_confirmed_remote();
-
-        // "Restart round": reset to an empty tick-0 state and play timeline
-        // B out to the same tick number with different inputs.
-        s.reset(vec![], 0, 0).unwrap();
-        play(&mut s, &[30, 31, 32, 33], &[40, 41, 42, 43]);
-        assert_eq!(
-            s.settled_state().as_slice(),
-            truth(&[30, 31, 32, 33], &[40, 41, 42, 43]).as_slice()
-        );
-
-        // "Load checkpoint": same tick number, different history — the
-        // branch-timeline case the forced reload exists for. Continuing
-        // must extend timeline A, not B.
-        s.reset(cp_state, cp_tick, cp_remote).unwrap();
-        play(&mut s, &[98], &[99]);
-        let mut want = want_a;
-        want.push((98, 99));
-        assert_eq!(s.settled_state().as_slice(), want.as_slice());
     }
 
     /// Raising `present_delay` mid-session shrinks `target` below the speculation

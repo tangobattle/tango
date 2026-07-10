@@ -137,8 +137,6 @@ libc = "0.2"
 arrayvec = "0.7"
 indexmap = "2"
 clap = { version = "4", features = ["derive"] }
-mlua = { version = "0.12.0", features = ["lua54", "vendored", "send"] }
-rhai = { version = "1.25.1", features = ["sync"] }
 
 [features]
 # Each game's support (dataview + PvP hooks + saves + logos) is an

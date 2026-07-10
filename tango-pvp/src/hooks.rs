@@ -129,8 +129,8 @@ impl TrapMatch {
         self.0.record_first_commit(round, core, first_packet)
     }
 
-    pub fn end_round_or_cancel(&self, core: mgba::core::CoreMutRef) {
-        self.0.end_round_or_cancel(core)
+    pub fn end_round_or_cancel(&self) {
+        self.0.end_round_or_cancel()
     }
 
     pub fn start_round_or_cancel(&self) {
