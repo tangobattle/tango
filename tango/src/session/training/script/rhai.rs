@@ -64,6 +64,13 @@ impl RhaiBackend {
         engine.register_fn("save_len", move || -> Result<i64, Box<rhai::EvalAltResult>> {
             h.save_len().map_err(|e| e.to_string().into())
         });
+        let h = host.clone();
+        engine.register_fn(
+            "save_write_hex",
+            move |offset: i64, hex: &str| -> Result<(), Box<rhai::EvalAltResult>> {
+                h.save_write_hex(offset, hex).map_err(|e| e.to_string().into())
+            },
+        );
 
         // Scope constants aren't visible inside rhai functions; a global
         // module is what makes `K` reachable from `on_tick`.

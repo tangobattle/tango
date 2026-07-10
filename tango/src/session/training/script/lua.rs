@@ -86,6 +86,13 @@ impl LuaBackend {
                 "save_len",
                 lua.create_function(move |_, ()| h.save_len().map_err(mlua::Error::external))?,
             )?;
+            let h = host.clone();
+            globals.set(
+                "save_write_hex",
+                lua.create_function(move |_, (offset, hex): (i64, String)| {
+                    h.save_write_hex(offset, &hex).map_err(mlua::Error::external)
+                })?,
+            )?;
             let log_fn = lua.create_function(|_, msg: String| {
                 log::info!("training script: {msg}");
                 Ok(())

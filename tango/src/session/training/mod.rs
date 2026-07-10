@@ -907,9 +907,9 @@ impl std::fmt::Debug for TrainingSession {
 
 /// User-facing knobs collected by the Play tab's training setup and
 /// consumed by [`crate::session::spawn_training`]. There is no dummy
-/// save here: the dummy starts as a mirror of the local save, and a
-/// script's `on_setup` reshapes it from there — a script alone is a
-/// complete, shareable drill.
+/// save here: scriptless, the dummy mirrors the local save; a script's
+/// `on_setup` instead defines the save from a zeroed image — a script
+/// alone is a complete, shareable, deterministic drill.
 #[derive(Clone, Debug)]
 pub struct TrainingOptions {
     pub match_type: (u8, u8),

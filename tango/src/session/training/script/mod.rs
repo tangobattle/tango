@@ -11,14 +11,18 @@
 //! - `on_reset(t)` (optional): the drill point was restored — rewind any
 //!   script state that tracks the abandoned rep.
 //! - `on_setup(t)` (optional): define the dummy's save. Runs once, before
-//!   the cores boot, against a copy of the *player's own* save —
-//!   `save_read8/16/32(offset)` and `save_write8/16/32(offset, value)`
-//!   address the save's native WRAM image, and `save_len()` is its size.
-//!   Tango rebuilds the checksum afterwards, so a script + a seed is a
-//!   complete, shareable drill: no save file needs to travel with it.
-//!   Picking (or reloading) a script that defines `on_setup` mid-session
-//!   relaunches the match — the loadout crosses the link at battle start
-//!   and can't be swapped under a live round.
+//!   the cores boot, against an **all-zeroes** save image — nothing of
+//!   the player's own save leaks in, so the same script produces the
+//!   same dummy on every machine. `save_write8/16/32(offset, value)`,
+//!   `save_write_hex(offset, "AABB…")` (bulk; whitespace ignored — the
+//!   usual shape is one embedded known-good save plus targeted patches),
+//!   `save_read8/16/32(offset)` and `save_len()` address the save's
+//!   native WRAM image. Tango rebuilds the checksum afterwards, so a
+//!   script + a seed is a complete, shareable, deterministic drill: no
+//!   save file travels with it. Picking (or reloading) a script that
+//!   defines `on_setup` mid-session relaunches the match — the loadout
+//!   crosses the link at battle start and can't be swapped under a live
+//!   round.
 //! - `read8(addr)` / `read16(addr)` / `read32(addr)`: read the game's
 //!   memory through the live core's bus, valid inside callbacks only. The
 //!   core sits at its settled pre-advance boundary, so the script sees the
@@ -173,6 +177,30 @@ impl HostState {
         })
     }
 
+    fn save_write_hex(&self, offset: i64, hex: &str) -> anyhow::Result<()> {
+        let digits: Vec<u8> = hex
+            .bytes()
+            .filter(|b| !b.is_ascii_whitespace())
+            .map(|b| {
+                (b as char)
+                    .to_digit(16)
+                    .map(|d| d as u8)
+                    .ok_or_else(|| anyhow::anyhow!("save_write_hex: not a hex digit: {:?}", b as char))
+            })
+            .collect::<anyhow::Result<_>>()?;
+        if digits.len() % 2 != 0 {
+            anyhow::bail!("save_write_hex: odd number of hex digits");
+        }
+        let bytes: Vec<u8> = digits.chunks(2).map(|d| (d[0] << 4) | d[1]).collect();
+        self.with_save_wram(|wram| {
+            let Some(idx) = usize::try_from(offset).ok().filter(|o| o + bytes.len() <= wram.len()) else {
+                anyhow::bail!("save write out of range: {offset:#x}+{}", bytes.len());
+            };
+            wram[idx..idx + bytes.len()].copy_from_slice(&bytes);
+            Ok(())
+        })
+    }
+
     fn save_write(&self, offset: i64, size: usize, value: i64) -> anyhow::Result<()> {
         self.with_save_wram(|wram| {
             let Some(idx) = usize::try_from(offset).ok().filter(|o| o + size <= wram.len()) else {
@@ -241,13 +269,21 @@ impl LoadedScript {
     }
 
     /// Run `on_setup` over `save`, rebuild its checksum, and hand it
-    /// back. The save rides the host slot for the duration so the
-    /// registered `save_*` functions can reach it; it comes back out on
-    /// every path, error included.
+    /// back. The image is **zeroed first**: the script is the sole source
+    /// of the dummy's identity, so the same script yields the same dummy
+    /// on every machine — a save that merely mirrored the player's own
+    /// would make shared drills nondeterministic. The save rides the host
+    /// slot for the duration so the registered `save_*` functions can
+    /// reach it; it comes back out on every path, error included.
     pub fn run_setup(
         &mut self,
-        save: Box<dyn tango_dataview::save::Save + Send + Sync>,
+        mut save: Box<dyn tango_dataview::save::Save + Send + Sync>,
     ) -> (Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Result<()>) {
+        if let Some(wram) = save.as_raw_wram_mut() {
+            wram.fill(0);
+        } else {
+            return (save, Err(anyhow::anyhow!("this game's save doesn't support raw editing")));
+        }
         *self.host.save.lock().unwrap() = Some(save);
         let result = self.backend.on_setup();
         let mut save = self.host.save.lock().unwrap().take().expect("setup save");
@@ -416,11 +452,11 @@ mod tests {
         for (name, src) in [
             (
                 "t.lua",
-                "function on_setup(t)\n  save_write8(0x10, save_read8(0x10) + 1)\n  save_write16(0x20, 0xBEEF)\nend\nfunction on_tick(t)\n  return 0\nend",
+                "function on_setup(t)\n  save_write8(0x10, save_read8(0x10) + 1)\n  save_write16(0x20, 0xBEEF)\n  save_write_hex(0x30, \"de AD\\nbe ef\")\nend\nfunction on_tick(t)\n  return 0\nend",
             ),
             (
                 "t.rhai",
-                "fn on_setup(t) {\n  save_write8(0x10, save_read8(0x10) + 1);\n  save_write16(0x20, 0xBEEF);\n}\nfn on_tick(t) {\n  0\n}",
+                "fn on_setup(t) {\n  save_write8(0x10, save_read8(0x10) + 1);\n  save_write16(0x20, 0xBEEF);\n  save_write_hex(0x30, \"de AD\\nbe ef\");\n}\nfn on_tick(t) {\n  0\n}",
             ),
         ] {
             let mut s = load(name, src);
@@ -428,8 +464,13 @@ mod tests {
             let (save, result) = s.run_setup(fake_save());
             result.unwrap();
             let dump = save.to_sram_dump();
-            assert_eq!(dump[0x10], 8, "{name}");
+            // The base is zeroed — the fake's 7-fill must not survive
+            // into the script's view (shared drills are deterministic).
+            assert_eq!(dump[0x10], 1, "{name}");
+            assert_eq!(dump[0x11], 0, "{name}");
             assert_eq!(&dump[0x20..0x22], &[0xEF, 0xBE], "{name}");
+            // Bulk hex, case- and whitespace-tolerant.
+            assert_eq!(&dump[0x30..0x34], &[0xDE, 0xAD, 0xBE, 0xEF], "{name}");
             // rebuild_checksum ran after the edits.
             assert_eq!(dump[0], 0xCC, "{name}");
         }
@@ -449,7 +490,8 @@ mod tests {
         let (save, result) = s.run_setup(fake_save());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("out of range"), "{err}");
-        assert_eq!(save.to_sram_dump()[0], 7);
+        // Zeroed base, un-checksummed (the drill failed; don't bless it).
+        assert_eq!(save.to_sram_dump()[0], 0);
     }
 
     #[test]

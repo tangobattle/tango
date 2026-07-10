@@ -1227,9 +1227,10 @@ pub fn spawn_singleplayer(
 /// Boot a training session from the current selection plus the setup
 /// popover's options. Synchronous like [`spawn_singleplayer`] — the
 /// loopback "network" needs no handoff. The opponent (dummy) runs the
-/// same game + patch as the local side, starting from a copy of the
-/// local save; a script with `on_setup` reshapes that copy before the
-/// cores boot, so a script alone fully defines the dummy.
+/// same game + patch as the local side. Scriptless, its save is a copy
+/// of the local one (a mirror match); a script with `on_setup` instead
+/// defines the save from a zeroed image before the cores boot, so a
+/// script alone fully — and deterministically — defines the dummy.
 pub fn spawn_training(
     scanners: &Scanners,
     config: &config::Config,
@@ -1259,8 +1260,10 @@ pub fn spawn_training(
     };
 
     // The dummy starts as a mirror of the local save; a setup script
-    // rewrites it from there. Loading (and setup-running) the script
-    // before anything heavyweight so a broken drill fails fast.
+    // replaces that wholesale (run_setup zeroes the image first — a
+    // shared drill must not depend on whoever's save happens to be
+    // loaded). Loading and setup-running the script before anything
+    // heavyweight so a broken drill fails fast.
     let mut opponent_save = loaded.save.clone_box();
     let script = match &opts.script {
         None => None,

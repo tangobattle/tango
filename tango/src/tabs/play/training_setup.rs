@@ -1,10 +1,10 @@
 //! Training-mode setup for the Play tab: the modal opened by the save
 //! view's Training button, where the user picks the match type, their
 //! side, and an optional seed before launching a
-//! [`crate::session::training::TrainingSession`]. The dummy always
-//! starts as a mirror of the local save; its script — picked live from
-//! the training bar — can reshape that save via `on_setup`, so neither
-//! save nor script is chosen here. Pure setup UI; the launch itself
+//! [`crate::session::training::TrainingSession`]. The scriptless dummy
+//! mirrors the local save; a script — picked live from the training
+//! bar — defines the save itself via `on_setup` (from a zeroed image,
+//! deterministically), so neither save nor script is chosen here. Pure setup UI; the launch itself
 //! rides [`Effect::StartTraining`] up to the App.
 
 use super::*;
