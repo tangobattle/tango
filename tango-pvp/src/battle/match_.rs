@@ -343,6 +343,14 @@ impl Match {
         self.shadow.lock().unwrap().read_video_buffer(buf)
     }
 
+    /// Run `f` over the shadow core's audio buffer — see
+    /// [`Shadow::with_audio_buffer`](crate::shadow::Shadow::with_audio_buffer).
+    /// Training-only (possession plays the dummy's perspective); may
+    /// briefly block on an in-flight shadow tick like the video read.
+    pub fn with_shadow_audio_buffer<R>(&self, f: impl FnOnce(&mut mgba::audio::AudioBufferMutRef<'_>) -> R) -> R {
+        self.shadow.lock().unwrap().with_audio_buffer(f)
+    }
+
     pub(super) fn local_stall_handle(&self) -> Arc<tokio::sync::Notify> {
         self.local_stall.clone()
     }

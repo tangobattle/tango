@@ -37,6 +37,7 @@
 //! [`Match`]: tango_pvp::battle::Match
 //! [`Match::set_training_round_end_reset`]: tango_pvp::battle::Match::set_training_round_end_reset
 
+mod audio;
 pub mod script;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -399,7 +400,20 @@ impl TrainingSession {
         thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
 
         vbuf.lock().unwrap().fill(0);
-        let audio_binding = audio_binder.bind_mgba(thread.handle(), "training");
+        // Possession-aware audio: the primary's samples pace the emulator
+        // either way; while possessing, the shadow's play instead.
+        let audio_binding = match audio_binder.bind(Some(Box::new(audio::TrainingStream::new(
+            thread.handle(),
+            inner_match.clone(),
+            possess.clone(),
+            audio_binder.sample_rate(),
+        )))) {
+            Ok(b) => Some(b),
+            Err(e) => {
+                log::warn!("training: audio bind failed: {e:?}");
+                None
+            }
+        };
 
         let round_start: Arc<Mutex<Option<TrainingCheckpoint>>> = Arc::default();
         let auto_reset = Arc::new(AtomicBool::new(true));
