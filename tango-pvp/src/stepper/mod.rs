@@ -32,7 +32,7 @@ impl RemotePacketSource for std::sync::Mutex<crate::shadow::Shadow> {
 }
 
 /// Outcome of a single round, as detected by the per-game `round_end_*` traps.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde_repr::Serialize_repr)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde_repr::Serialize_repr, serde_repr::Deserialize_repr)]
 #[repr(i8)]
 pub enum BattleOutcome {
     Draw = -1,

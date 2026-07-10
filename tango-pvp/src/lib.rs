@@ -62,6 +62,7 @@
 //!    the per-game trap calls `Match::end_round`, which drops the round
 //!    and advances the shadow past its matching round end.
 
+pub mod analysis;
 pub mod battle;
 pub mod hooks;
 pub mod input;

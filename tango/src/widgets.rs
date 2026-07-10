@@ -2342,3 +2342,139 @@ pub fn error_banner<'a, M: Clone + 'a>(
     })
     .into()
 }
+
+/// This side's HP-trace color — the theme accent, same ink as the rest
+/// of the player's own UI. Paired with [`hp_opponent_color`] wherever an
+/// HP graph or its legend is drawn (results card, replays tab).
+pub fn hp_you_color(theme: &Theme) -> iced::Color {
+    theme.extended_palette().primary.strong.color
+}
+
+/// The opponent's HP-trace color — the danger hue, matching the
+/// defeat/loss ink used around the graphs.
+pub fn hp_opponent_color(theme: &Theme) -> iced::Color {
+    theme.extended_palette().danger.strong.color
+}
+
+/// The list-row / results-card mark for a round outcome.
+pub fn outcome_mark(outcome: tango_pvp::stepper::BattleOutcome) -> (Icon, fn(&Theme) -> iced::widget::text::Style) {
+    match outcome {
+        tango_pvp::stepper::BattleOutcome::Win => (Icon::Check, success_text_style),
+        tango_pvp::stepper::BattleOutcome::Loss => (Icon::X, danger_text_style),
+        tango_pvp::stepper::BattleOutcome::Draw => (Icon::Minus, muted_text_style),
+    }
+}
+
+/// One round's HP graph: both navis' HP over the round as step-lines (HP
+/// holds between hits — a diagonal would invent a ramp that never
+/// happened), swept in from the left by `sweep` (1.0 = fully drawn) with
+/// a head dot on each line while mid-sweep. Recessive chrome: an inset
+/// wash and the zero baseline, nothing else. `trace` points are
+/// `(x, you, opponent)`, all normalized to 0..=1; identity is carried by
+/// [`hp_you_color`]/[`hp_opponent_color`] plus whatever legend or labels
+/// the caller draws beside it.
+pub fn hp_graph<'a, M: 'a>(trace: &'a [(f32, f32, f32)], sweep: f32, height: f32) -> Element<'a, M> {
+    use iced::widget::canvas;
+
+    struct HpGraph<'a> {
+        trace: &'a [(f32, f32, f32)],
+        sweep: f32,
+    }
+
+    impl<M> canvas::Program<M> for HpGraph<'_> {
+        type State = ();
+
+        fn draw(
+            &self,
+            _state: &(),
+            renderer: &iced::Renderer,
+            theme: &Theme,
+            bounds: iced::Rectangle,
+            _cursor: iced::mouse::Cursor,
+        ) -> Vec<canvas::Geometry> {
+            use canvas::{Frame, LineCap, Path, Stroke};
+            use iced::Point;
+
+            let mut frame = Frame::new(renderer, bounds.size());
+            let palette = theme.extended_palette();
+            let text_color = theme.palette().text;
+            let (w, h) = (bounds.width, bounds.height);
+            // Inset vertically so full-HP traces keep their line width
+            // on-canvas.
+            const PAD: f32 = 3.0;
+            let x_at = |xf: f32| xf * w;
+            let y_at = |yf: f32| PAD + (1.0 - yf.clamp(0.0, 1.0)) * (h - 2.0 * PAD);
+
+            // Recessed background so the graph reads as its own inset panel.
+            let bg = Path::rounded_rectangle(Point::new(0.0, 0.0), bounds.size(), 3.0.into());
+            frame.fill(
+                &bg,
+                iced::Color {
+                    a: if palette.is_dark { 0.10 } else { 0.05 },
+                    ..text_color
+                },
+            );
+
+            // Zero baseline — where a KO'd navi's trace lands.
+            let base_y = y_at(0.0);
+            frame.stroke(
+                &Path::line(Point::new(0.0, base_y), Point::new(w, base_y)),
+                Stroke::default()
+                    .with_color(iced::Color { a: 0.22, ..text_color })
+                    .with_width(1.0),
+            );
+
+            if self.trace.len() < 2 || self.sweep <= 0.0 {
+                return vec![frame.into_geometry()];
+            }
+
+            // Draw the opponent under this side, so "you" stays legible
+            // where the traces overlap (equal HP at round start).
+            for you in [false, true] {
+                let color = if you {
+                    hp_you_color(theme)
+                } else {
+                    hp_opponent_color(theme)
+                };
+                let value = |p: &(f32, f32, f32)| if you { p.1 } else { p.2 };
+                let mut head = None;
+                let path = Path::new(|b| {
+                    let mut prev_y = y_at(value(&self.trace[0]));
+                    b.move_to(Point::new(x_at(self.trace[0].0), prev_y));
+                    for point in &self.trace[1..] {
+                        let x = x_at(point.0.min(self.sweep));
+                        // Step-line: run flat to the new x, then drop/rise there.
+                        b.line_to(Point::new(x, prev_y));
+                        if point.0 > self.sweep {
+                            head = Some(Point::new(x, prev_y));
+                            break;
+                        }
+                        prev_y = y_at(value(point));
+                        b.line_to(Point::new(x, prev_y));
+                        head = Some(Point::new(x, prev_y));
+                    }
+                });
+                frame.stroke(
+                    &path,
+                    Stroke::default()
+                        .with_color(color)
+                        .with_width(2.0)
+                        .with_line_cap(LineCap::Round),
+                );
+                // Sweep-head dot: the "now" cursor of the miniature replay.
+                if self.sweep < 1.0 {
+                    if let Some(head) = head {
+                        frame.fill(&Path::circle(head, 2.5), color);
+                    }
+                }
+            }
+
+            vec![frame.into_geometry()]
+        }
+    }
+
+    iced::widget::canvas::Canvas::new(HpGraph { trace, sweep })
+        .width(Length::Fill)
+        .height(Length::Fixed(height))
+        .into()
+}

@@ -15,9 +15,8 @@
 use crate::i18n::t;
 use crate::style::{STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY};
 use crate::widgets;
-use iced::widget::canvas::{self, Canvas, Frame, LineCap, Path, Stroke};
 use iced::widget::{button, container, text};
-use iced::{mouse, Alignment, Color, Element, Fill, Length, Point, Rectangle, Renderer, Theme};
+use iced::{Alignment, Color, Element, Fill, Length, Theme};
 use lucide_icons::Icon;
 use sweeten::widget::{column, row};
 use tango_pvp::stepper::BattleOutcome;
@@ -199,8 +198,8 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
         };
         body = body.push(iced::widget::Space::new().height(10)).push(
             row![
-                legend_entry(you_color, t!(lang, "session-results-you")),
-                legend_entry(opponent_color, results.remote_nickname.clone()),
+                legend_entry(widgets::hp_you_color, t!(lang, "session-results-you")),
+                legend_entry(widgets::hp_opponent_color, results.remote_nickname.clone()),
             ]
             .spacing(14)
             .align_y(Alignment::Center),
@@ -210,7 +209,7 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
         for (i, round) in results.rounds.iter().enumerate() {
             let sweep = segment(elapsed_ms, i as f32 * SWEEP_MS, SWEEP_MS);
             let done = segment(elapsed_ms, (i + 1) as f32 * SWEEP_MS, POP_MS);
-            let (icon, style) = outcome_mark(round.outcome);
+            let (icon, style) = widgets::outcome_mark(round.outcome);
             let mark: Element<'_, Message> = if done <= 0.0 {
                 iced::widget::Space::new().into()
             } else {
@@ -231,12 +230,7 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
                         container(mark).width(Length::Fixed(14.0)).align_x(Alignment::Center),
                     ]
                     .align_y(Alignment::Center),
-                    Canvas::new(HpGraph {
-                        trace: &round.trace,
-                        sweep,
-                    })
-                    .width(Fill)
-                    .height(Length::Fixed(GRAPH_H)),
+                    widgets::hp_graph(&round.trace, sweep, GRAPH_H),
                 ]
                 .spacing(2)
                 .width(Fill),
@@ -273,7 +267,7 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
         if results.rounds.len() > 1 {
             let mut marks = row![].spacing(10).align_y(Alignment::Center);
             for round in &results.rounds {
-                let (icon, style) = outcome_mark(round.outcome);
+                let (icon, style) = widgets::outcome_mark(round.outcome);
                 marks = marks.push(icon.widget().size(TEXT_BODY).style(style));
             }
             body = body.push(iced::widget::Space::new().height(8)).push(marks);
@@ -326,123 +320,8 @@ fn count(results: &MatchResults, which: BattleOutcome) -> usize {
     results.rounds.iter().filter(|r| r.outcome == which).count()
 }
 
-fn outcome_mark(outcome: BattleOutcome) -> (Icon, fn(&iced::Theme) -> iced::widget::text::Style) {
-    match outcome {
-        BattleOutcome::Win => (Icon::Check, widgets::success_text_style),
-        BattleOutcome::Loss => (Icon::X, widgets::danger_text_style),
-        BattleOutcome::Draw => (Icon::Minus, widgets::muted_text_style),
-    }
-}
-
 /// Plain-muted text style with the same fn-pointer type as the
 /// success/danger styles, so the verdict styling stays one `match`.
 fn muted_style() -> fn(&iced::Theme) -> iced::widget::text::Style {
     widgets::muted_text_style
-}
-
-/// This side's trace color — the theme accent, same ink as the rest of the
-/// player's own UI.
-fn you_color(theme: &Theme) -> Color {
-    theme.extended_palette().primary.strong.color
-}
-
-/// The opponent's trace color — the danger hue, matching the defeat/loss
-/// ink used across the card.
-fn opponent_color(theme: &Theme) -> Color {
-    theme.extended_palette().danger.strong.color
-}
-
-/// One round's HP graph: both navis' HP over the round as step-lines (HP
-/// holds between hits — a diagonal would invent a ramp that never
-/// happened), swept in from the left by `sweep` with a head dot on each
-/// line while mid-flight. Recessive chrome: an inset wash and the zero
-/// baseline, nothing else.
-struct HpGraph<'a> {
-    /// `(x, you, opponent)`, all 0..=1 (see `RoundCard::trace`).
-    trace: &'a [(f32, f32, f32)],
-    sweep: f32,
-}
-
-impl canvas::Program<Message> for HpGraph<'_> {
-    type State = ();
-
-    fn draw(
-        &self,
-        _state: &(),
-        renderer: &Renderer,
-        theme: &Theme,
-        bounds: Rectangle,
-        _cursor: mouse::Cursor,
-    ) -> Vec<canvas::Geometry> {
-        let mut frame = Frame::new(renderer, bounds.size());
-        let palette = theme.extended_palette();
-        let text_color = theme.palette().text;
-        let (w, h) = (bounds.width, bounds.height);
-        // Inset vertically so full-HP traces keep their line width on-canvas.
-        const PAD: f32 = 3.0;
-        let x_at = |xf: f32| xf * w;
-        let y_at = |yf: f32| PAD + (1.0 - yf.clamp(0.0, 1.0)) * (h - 2.0 * PAD);
-
-        // Recessed background so the graph reads as its own inset panel.
-        let bg = Path::rounded_rectangle(Point::new(0.0, 0.0), bounds.size(), 3.0.into());
-        frame.fill(
-            &bg,
-            Color {
-                a: if palette.is_dark { 0.10 } else { 0.05 },
-                ..text_color
-            },
-        );
-
-        // Zero baseline — where a KO'd navi's trace lands.
-        let base_y = y_at(0.0);
-        frame.stroke(
-            &Path::line(Point::new(0.0, base_y), Point::new(w, base_y)),
-            Stroke::default()
-                .with_color(Color { a: 0.22, ..text_color })
-                .with_width(1.0),
-        );
-
-        if self.trace.len() < 2 || self.sweep <= 0.0 {
-            return vec![frame.into_geometry()];
-        }
-
-        // Draw the opponent under this side, so "you" stays legible where
-        // the traces overlap (equal HP at round start).
-        for you in [false, true] {
-            let color = if you { you_color(theme) } else { opponent_color(theme) };
-            let value = |p: &(f32, f32, f32)| if you { p.1 } else { p.2 };
-            let mut head = None;
-            let path = Path::new(|b| {
-                let mut prev_y = y_at(value(&self.trace[0]));
-                b.move_to(Point::new(x_at(self.trace[0].0), prev_y));
-                for point in &self.trace[1..] {
-                    let x = x_at(point.0.min(self.sweep));
-                    // Step-line: run flat to the new x, then drop/rise there.
-                    b.line_to(Point::new(x, prev_y));
-                    if point.0 > self.sweep {
-                        head = Some(Point::new(x, prev_y));
-                        break;
-                    }
-                    prev_y = y_at(value(point));
-                    b.line_to(Point::new(x, prev_y));
-                    head = Some(Point::new(x, prev_y));
-                }
-            });
-            frame.stroke(
-                &path,
-                Stroke::default()
-                    .with_color(color)
-                    .with_width(2.0)
-                    .with_line_cap(LineCap::Round),
-            );
-            // Sweep-head dot: the "now" cursor of the miniature replay.
-            if self.sweep < 1.0 {
-                if let Some(head) = head {
-                    frame.fill(&Path::circle(head, 2.5), color);
-                }
-            }
-        }
-
-        vec![frame.into_geometry()]
-    }
 }

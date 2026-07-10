@@ -230,6 +230,7 @@ replays-filter-past-week = Past week
 replays-filter-past-month = Past month
 replays-filter-past-year = Past year
 replays-filter-search-placeholder = Search replays…
+replays-analyzing = Analyzing replay…
 replays-show-incomplete = Show incomplete
 replays-direct-marker = (direct)
 replays-watch = Watch

@@ -378,6 +378,8 @@ impl PvpSession {
             let mut reconnect = pre_match.reconnect.clone();
             let rng_seed = pre_match.rng_seed;
             let handle = thread.handle();
+            let round_results = round_results.clone();
+            let replay_path = replay_path.clone();
             let peer_conn = peer_conn.clone();
             let reconnect_window = reconnect_window.clone();
             let cancel = cancellation_token.clone();
@@ -575,6 +577,18 @@ impl PvpSession {
                 if completion_token.is_complete() {
                     if let Err(e) = inner_match.finish_replay() {
                         log::error!("finish replay failed: {e}");
+                    }
+                    // Cache the match stats next to the finished replay — the
+                    // rollback engine already collected the HP series, so the
+                    // Replays tab never has to re-simulate this one.
+                    if let Some(path) = replay_path.as_ref() {
+                        let stats = tango_pvp::analysis::MatchStats::from_round_reports(&round_results.lock().unwrap());
+                        if let Err(e) = std::fs::File::create(crate::replays::stats_path(path))
+                            .map_err(anyhow::Error::from)
+                            .and_then(|f| stats.write(std::io::BufWriter::new(f)))
+                        {
+                            log::warn!("failed to write replay stats sidecar: {e}");
+                        }
                     }
                 }
                 match_handle.clear();

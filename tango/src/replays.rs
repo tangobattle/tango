@@ -96,6 +96,69 @@ pub fn compute_stats(path: &std::path::Path) -> std::io::Result<ReplayStats> {
     })
 }
 
+/// Where a replay's cached match stats live: `<name>.tangoreplay.stats`
+/// next to the replay. Written at match teardown for live matches and by
+/// [`compute_and_cache_match_stats`] for everything else.
+pub fn stats_path(replay_path: &std::path::Path) -> std::path::PathBuf {
+    let mut s = replay_path.as_os_str().to_owned();
+    s.push(".stats");
+    std::path::PathBuf::from(s)
+}
+
+/// The cached match stats for a replay, if a readable sidecar of the
+/// current format version is on disk. Any failure (missing, malformed,
+/// stale version) is just `None` — the caller recomputes.
+pub fn load_match_stats(replay_path: &std::path::Path) -> Option<tango_pvp::analysis::MatchStats> {
+    let f = std::fs::File::open(stats_path(replay_path)).ok()?;
+    tango_pvp::analysis::MatchStats::read(std::io::BufReader::new(f)).ok()
+}
+
+/// Re-simulate a replay to produce its match stats and write the sidecar.
+/// A full replay simulation — seconds of CPU; spawn on a blocking worker.
+/// Resolves both sides' ROMs (with recorded patches applied) the same way
+/// playback does, so it fails cleanly when a ROM or patch isn't installed.
+pub fn compute_and_cache_match_stats(
+    scanners: crate::app::Scanners,
+    patches_path: std::path::PathBuf,
+    path: std::path::PathBuf,
+) -> anyhow::Result<tango_pvp::analysis::MatchStats> {
+    let f = std::fs::File::open(&path)?;
+    let replay = tango_pvp::replay::Replay::decode(f)?;
+
+    let resolve = |side: Option<&tango_pvp::replay::metadata::Side>| -> anyhow::Result<(
+        &'static (dyn tango_pvp::hooks::Hooks + Send + Sync),
+        Vec<u8>,
+    )> {
+        let gi = side
+            .and_then(|s| s.game_info.as_ref())
+            .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
+        let variant = u8::try_from(gi.rom_variant)
+            .map_err(|_| anyhow::anyhow!("variant {} out of range", gi.rom_variant))?;
+        let entry = crate::game::find_by_family_and_variant(&gi.rom_family, variant)
+            .ok_or_else(|| anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, gi.rom_variant))?;
+        let rom = scanners
+            .roms
+            .read()
+            .get(&entry)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("rom for {}/{} not scanned", gi.rom_family, gi.rom_variant))?;
+        let rom = if let Some(patch_info) = gi.patch.as_ref() {
+            let v = semver::Version::parse(&patch_info.version)?;
+            crate::patch::apply_patch_from_disk(&rom, entry, &patches_path, &patch_info.name, &v)?
+        } else {
+            rom
+        };
+        Ok((entry.hooks, rom))
+    };
+    let (local_hooks, local_rom) = resolve(replay.metadata.local_side.as_ref())?;
+    let (remote_hooks, remote_rom) = resolve(replay.metadata.remote_side.as_ref())?;
+
+    let stats = tango_pvp::analysis::analyze(&replay, &local_rom, &remote_rom, local_hooks, remote_hooks)?;
+    let f = std::fs::File::create(stats_path(&path))?;
+    stats.write(std::io::BufWriter::new(f))?;
+    Ok(stats)
+}
+
 /// Pretty path relative to the replays root.
 pub fn format_rel_path(replays_path: &std::path::Path, path: &std::path::Path) -> String {
     let s = path.strip_prefix(replays_path).unwrap_or(path).to_string_lossy();

@@ -441,6 +441,7 @@ impl App {
         let live: std::collections::HashSet<std::path::PathBuf> =
             self.scanners.replays.read().iter().map(|r| r.path.clone()).collect();
         self.replays.stats.retain(|p, _| live.contains(p));
+        self.replays.hp_charts.retain(|p, _| live.contains(p));
         self.kick_replay_stats_loader()
     }
 

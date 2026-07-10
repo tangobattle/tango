@@ -45,6 +45,11 @@ pub enum Message {
     /// arrives as one of these messages and lands in
     /// [`ReplaysState::stats`].
     StatsLoaded(std::path::PathBuf, crate::replays::ReplayStats),
+    /// An [`Effect::AnalyzeReplay`] re-simulation finished. `None` =
+    /// analysis failed (missing ROM, undecodable) — clears the pending
+    /// marker so a later re-focus can retry (e.g. after the user
+    /// installs the ROM).
+    HpStatsLoaded(std::path::PathBuf, Option<tango_pvp::analysis::MatchStats>),
     SaveViewAction(save_view::Action),
     /// Used by Tasks that need a Message to return but want no
     /// state mutation. Currently: the user dismissed the Save As
@@ -128,9 +133,70 @@ pub struct ReplaysState {
     /// Missing entries just hide that line until the worker fills
     /// them in.
     pub stats: std::collections::HashMap<std::path::PathBuf, crate::replays::ReplayStats>,
+    /// Normalized per-round HP charts keyed by replay path, built on
+    /// focus from the replay's `.stats` sidecar when one exists (written
+    /// at match teardown, or by an earlier focus) and re-simulated
+    /// otherwise — see [`Effect::AnalyzeReplay`]. The detail panel draws
+    /// its HP pane from this; paths without an entry just don't get one.
+    pub hp_charts: std::collections::HashMap<std::path::PathBuf, HpChart>,
+    /// Replays with an analysis in flight, so re-focusing one doesn't
+    /// stack a second multi-second re-simulation behind the first.
+    pub hp_pending: std::collections::HashSet<std::path::PathBuf>,
     /// Entrance restarted when a different replay is selected —
     /// the detail panel slides in from the right.
     pub detail_enter: crate::anim::Enter,
+}
+
+/// A replay's match stats, cooked for drawing: per round, the outcome
+/// plus the HP trace as `(x, you, opponent)` points normalized to 0..=1
+/// (x over the round's sampled ticks, HP against the match-wide maximum
+/// so every round shares one vertical scale). Built once per replay when
+/// its [`tango_pvp::analysis::MatchStats`] arrive.
+pub struct HpChart {
+    pub rounds: Vec<(Option<tango_pvp::stepper::BattleOutcome>, Vec<(f32, f32, f32)>)>,
+}
+
+impl HpChart {
+    fn new(stats: &tango_pvp::analysis::MatchStats) -> Self {
+        let max_hp = stats
+            .rounds
+            .iter()
+            .flat_map(|r| r.hp.iter())
+            .map(|p| p.local.max(p.remote))
+            .max()
+            .unwrap_or(0)
+            .max(1) as f32;
+        Self {
+            rounds: stats
+                .rounds
+                .iter()
+                .map(|r| {
+                    let (Some(first), Some(last)) = (r.hp.first(), r.hp.last()) else {
+                        return (r.outcome, vec![]);
+                    };
+                    let t0 = first.tick as f32;
+                    let span = (last.tick as f32 - t0).max(1.0);
+                    let trace =
+                        r.hp.iter()
+                            .map(|p| {
+                                (
+                                    (p.tick as f32 - t0) / span,
+                                    p.local as f32 / max_hp,
+                                    p.remote as f32 / max_hp,
+                                )
+                            })
+                            .collect();
+                    (r.outcome, trace)
+                })
+                .collect(),
+        }
+    }
+
+    /// Whether there's anything to draw at all — at least one round
+    /// with a non-empty trace.
+    fn has_traces(&self) -> bool {
+        self.rounds.iter().any(|(_, t)| t.len() >= 2)
+    }
 }
 
 /// Side-effects the tab can't perform itself (because they touch
@@ -144,6 +210,10 @@ pub enum Effect {
     /// User clicked Watch on a replay; App spawns the playback
     /// session and stuffs it into `session.active`.
     Watch(std::path::PathBuf),
+    /// A focused replay has no stats sidecar — App spawns
+    /// `replays::compute_and_cache_match_stats` on a blocking worker
+    /// and posts the result back as [`Message::HpStatsLoaded`].
+    AnalyzeReplay(std::path::PathBuf),
     /// Copy plain text to the clipboard.
     CopyText(String),
     /// Copy a raster image to the clipboard.
@@ -215,9 +285,22 @@ impl ReplaysState {
                 if self.selected.as_ref() != Some(&p) {
                     self.detail_enter.start(iced::time::Instant::now());
                 }
-                self.selected = Some(p);
+                self.selected = Some(p.clone());
                 self.refresh_loaded(scanners, config);
                 self.sweep_idle_entries();
+                // First focus builds the replay's match stats: try the
+                // sidecar (cheap; e.g. written at match teardown, or by a
+                // previous focus), and only re-simulate when there isn't
+                // one. Failures clear `hp_pending` via the result message,
+                // so a later focus retries.
+                if !self.hp_charts.contains_key(&p) && !self.hp_pending.contains(&p) {
+                    if let Some(stats) = crate::replays::load_match_stats(&p) {
+                        self.hp_charts.insert(p, HpChart::new(&stats));
+                    } else {
+                        self.hp_pending.insert(p.clone());
+                        return Some(Effect::AnalyzeReplay(p));
+                    }
+                }
                 None
             }
             Message::OpenFolder(p) => Some(Effect::OpenPath(p)),
@@ -240,6 +323,13 @@ impl ReplaysState {
             Message::Export(m) => self.update_export(m),
             Message::StatsLoaded(path, s) => {
                 self.stats.insert(path, s);
+                None
+            }
+            Message::HpStatsLoaded(path, stats) => {
+                self.hp_pending.remove(&path);
+                if let Some(stats) = stats {
+                    self.hp_charts.insert(path, HpChart::new(&stats));
+                }
                 None
             }
             Message::NoOp => None,
@@ -433,7 +523,12 @@ impl ReplaysState {
     /// row once its stats have actually loaded — unloaded entries
     /// pass through so a freshly-scanned replay isn't hidden during
     /// the lazy stats-worker window.
-    fn matches_filters(&self, lang: &LanguageIdentifier, replays_path: &std::path::Path, r: &replays::ScannedReplay) -> bool {
+    fn matches_filters(
+        &self,
+        lang: &LanguageIdentifier,
+        replays_path: &std::path::Path,
+        r: &replays::ScannedReplay,
+    ) -> bool {
         let g_ok = self
             .game_filter
             .as_ref()
@@ -827,6 +922,86 @@ fn replay_detail<'a>(
         row_for_side(t!(lang, "play-opponent"), md.remote_side.as_ref()),
     );
 
+    // HP-over-time pane: one graph per round with its outcome mark, plus a
+    // legend naming the traces after the two sides. While the stats are
+    // still being re-simulated (first focus of a replay with no sidecar)
+    // the pane holds a quiet analyzing line instead, so the panel says why
+    // there's no chart yet.
+    let analyzing: Option<Element<'_, Message>> = state.hp_pending.contains(&r.path).then(|| {
+        container(
+            row![
+                Icon::Hourglass
+                    .widget()
+                    .size(TEXT_CAPTION)
+                    .style(widgets::muted_text_style),
+                text(t!(lang, "replays-analyzing"))
+                    .size(TEXT_CAPTION)
+                    .style(widgets::muted_text_style),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center),
+        )
+        .width(Fill)
+        .padding(style::PANE_PADDING)
+        .style(widgets::pane)
+        .into()
+    });
+    let hp_pane: Option<Element<'_, Message>> = state.hp_charts.get(&r.path).filter(|c| c.has_traces()).map(|chart| {
+        let legend_entry = |color: fn(&iced::Theme) -> iced::Color, label: String| {
+            row![
+                container(Space::new().width(10).height(3)).style(move |theme: &iced::Theme| {
+                    iced::widget::container::Style {
+                        background: Some(color(theme).into()),
+                        border: iced::border::rounded(1.5),
+                        ..Default::default()
+                    }
+                }),
+                text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
+            ]
+            .spacing(5)
+            .align_y(Alignment::Center)
+        };
+        let local_nick = md.local_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
+        let remote_nick = md.remote_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
+        let mut body = column![row![
+            legend_entry(widgets::hp_you_color, local_nick),
+            legend_entry(widgets::hp_opponent_color, remote_nick),
+        ]
+        .spacing(14)
+        .align_y(Alignment::Center)]
+        .spacing(8)
+        .width(Fill);
+        for (i, (outcome, trace)) in chart.rounds.iter().enumerate() {
+            let mark: Element<'_, Message> = match outcome {
+                Some(o) => {
+                    let (icon, style) = widgets::outcome_mark(*o);
+                    icon.widget().size(TEXT_CAPTION).style(style).into()
+                }
+                None => Space::new().into(),
+            };
+            body = body.push(
+                column![
+                    row![
+                        text(t!(lang, "session-results-round", number = (i + 1) as i64))
+                            .size(TEXT_CAPTION)
+                            .style(widgets::muted_text_style),
+                        Space::new().width(Fill),
+                        container(mark).width(Length::Fixed(14.0)).align_x(Alignment::Center),
+                    ]
+                    .align_y(Alignment::Center),
+                    widgets::hp_graph(trace, 1.0, DETAIL_HP_GRAPH_H),
+                ]
+                .spacing(2)
+                .width(Fill),
+            );
+        }
+        container(body)
+            .width(Fill)
+            .padding(style::PANE_PADDING)
+            .style(widgets::pane)
+            .into()
+    });
+
     // Save view contributes its own pane pair (tab strip + body)
     // when a save is loaded; otherwise a single placeholder pane
     // explaining the empty state.
@@ -844,12 +1019,15 @@ fn replay_detail<'a>(
         .into()
     };
 
-    column![title_pane, matchup_pane, preview]
-        .spacing(style::PANE_GAP)
-        .width(Fill)
-        .height(Fill)
-        .into()
+    let mut panes = column![title_pane, matchup_pane].spacing(style::PANE_GAP).width(Fill);
+    if let Some(pane) = hp_pane.or(analyzing) {
+        panes = panes.push(pane);
+    }
+    panes.push(preview).height(Fill).into()
 }
+
+/// Height of each per-round HP graph in the detail panel.
+const DETAIL_HP_GRAPH_H: f32 = 44.0;
 
 /// Everything the free-text search matches against, joined into one
 /// lowercased blob: both sides' nicknames, game names (raw family

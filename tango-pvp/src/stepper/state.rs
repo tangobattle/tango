@@ -668,6 +668,13 @@ impl InnerState {
         self.battle_hp = Some(hp);
     }
 
+    /// The most recent per-tick HP report, if the current round's traps have
+    /// made one (see [`Self::set_battle_hp`]). Replay analysis polls this
+    /// per frame.
+    pub fn battle_hp(&self) -> Option<super::BattleHp> {
+        self.battle_hp
+    }
+
     pub fn set_round_ending(&mut self) {
         let shadow_to_advance = match &mut self.mode {
             Mode::Fastforward(ff) => {
@@ -814,6 +821,10 @@ impl InnerState {
         self.input_pairs = round_inputs.into_iter().collect();
         self.output_pairs = vec![];
         self.round_result = None;
+        // Traps only report HP while the unit slots are live, so without
+        // this the previous round's final reading would leak into the next
+        // round's intro window.
+        self.battle_hp = None;
     }
 }
 

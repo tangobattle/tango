@@ -399,6 +399,30 @@ impl App {
             } => self
                 .spawn_replay_export(replay, output, settings, rounds)
                 .map(Message::Replays),
+            E::AnalyzeReplay(path) => {
+                // Full re-simulation of the replay — seconds of CPU on a
+                // blocking worker. The result message clears the tab's
+                // pending marker either way; failure (missing ROM/patch,
+                // undecodable) just means no chart, retried on re-focus.
+                let scanners = self.scanners.clone();
+                let patches_path = self.config.patches_path();
+                iced::Task::perform(
+                    async move {
+                        let p = path.clone();
+                        let stats = tokio::task::spawn_blocking(move || {
+                            replays::compute_and_cache_match_stats(scanners, patches_path, p.clone())
+                                .map_err(|e| log::warn!("replay analysis failed for {}: {e}", p.display()))
+                                .ok()
+                        })
+                        .await
+                        .ok()
+                        .flatten();
+                        (path, stats)
+                    },
+                    |(path, stats)| tabs::replays::Message::HpStatsLoaded(path, stats),
+                )
+                .map(Message::Replays)
+            }
             E::SaveViewTask(t) => t.map(Message::Replays),
         }
     }
