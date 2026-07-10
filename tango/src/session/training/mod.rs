@@ -198,6 +198,13 @@ pub struct TrainingSession {
     local_player_index: u8,
     /// Player-side joyflags (the primary trap's input source).
     joyflags: Arc<AtomicU32>,
+    /// The spawn recipe, kept so a save-defining script switch can
+    /// relaunch the session (see [`Self::take_pending_relaunch`]).
+    options: TrainingOptions,
+    /// Set when the user picks a script whose `on_setup` defines the
+    /// dummy's save: the loadout crossed the link at battle start, so the
+    /// App tears this session down and respawns with these options.
+    pending_relaunch: Mutex<Option<TrainingOptions>>,
     /// The dummy's current script — `None` is the scriptless stand-still
     /// dummy. Picked and switched live from the training bar.
     script_source: Mutex<Option<ScriptSource>>,
@@ -261,17 +268,20 @@ pub struct TrainingSession {
 
 impl TrainingSession {
     /// Build and start the session. Fully synchronous: the loopback needs
-    /// no handoff, so unlike PvP there is nothing to await. The dummy
-    /// starts scriptless; the training bar picks its script live.
+    /// no handoff, so unlike PvP there is nothing to await. `script` is
+    /// the already-loaded (and setup-run — see
+    /// [`spawn_training`](crate::session::spawn_training)) drill script,
+    /// or `None` for the scriptless dummy; either way the bar switches
+    /// scripts live from there.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         local_game: &'static crate::game::Game,
         rom: Arc<Vec<u8>>,
         local_save: Box<dyn tango_dataview::save::Save + Send + Sync>,
         opponent_save: Box<dyn tango_dataview::save::Save + Send + Sync>,
-        match_type: (u8, u8),
-        wanted_player_index: u8,
+        options: TrainingOptions,
         rng_seed: [u8; 16],
+        script: Option<(ScriptSource, script::LoadedScript)>,
         scripts_dir: std::path::PathBuf,
         local_settings: crate::net::protocol::Settings,
         remote_settings: crate::net::protocol::Settings,
@@ -283,6 +293,8 @@ impl TrainingSession {
         local_loaded: Option<crate::selection::Loaded>,
         opponent_loaded: Option<crate::selection::Loaded>,
     ) -> anyhow::Result<Self> {
+        let match_type = options.match_type;
+        let wanted_player_index = options.local_player_index;
         let mut core = crate::session::new_gba_core(rom.as_ref())?;
         // In-memory SRAM like PvP: nothing a training match does should
         // write back to the user's .sav.
@@ -363,6 +375,20 @@ impl TrainingSession {
 
         let rounds_ended = Arc::new(AtomicU32::new(0));
         let possess: Arc<PossessState> = Arc::default();
+        let reset_epoch = Arc::new(AtomicU32::new(0));
+        let script_status = Arc::new(script::ScriptStatus::default());
+        let (script_source_init, script_mtime_init, initial_brain): (
+            Option<ScriptSource>,
+            Option<std::time::SystemTime>,
+            Box<dyn tango_pvp::battle::TrainingRemoteSource>,
+        ) = match script {
+            Some((src, loaded)) => {
+                let mtime = src.mtime();
+                let dummy = script::ScriptDummy::new(loaded, rng_seed, reset_epoch.clone(), script_status.clone());
+                (Some(src), mtime, Box::new(dummy))
+            }
+            None => (None, None, Box::new(NeutralDummy)),
+        };
         let cancellation_token = tokio_util::sync::CancellationToken::new();
         let identity = tango_pvp::battle::MatchIdentity {
             match_type,
@@ -378,7 +404,7 @@ impl TrainingSession {
                 rounds_ended: rounds_ended.clone(),
             }),
             tango_pvp::battle::Remote::Training(Box::new(DummySource {
-                inner: Box::new(NeutralDummy),
+                inner: initial_brain,
                 possess: possess.clone(),
             })),
             cancellation_token.clone(),
@@ -392,9 +418,6 @@ impl TrainingSession {
             disable_bgm,
         );
         match_handle.set(inner_match.clone());
-
-        let reset_epoch = Arc::new(AtomicU32::new(0));
-        let script_status = Arc::new(script::ScriptStatus::default());
 
         thread.start()?;
         thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
@@ -518,8 +541,10 @@ impl TrainingSession {
             local_game,
             local_player_index,
             joyflags,
-            script_source: Mutex::new(None),
-            script_mtime: Mutex::new(None),
+            options,
+            pending_relaunch: Mutex::new(None),
+            script_source: Mutex::new(script_source_init),
+            script_mtime: Mutex::new(script_mtime_init),
             scripts_dir,
             available_scripts,
             script_status,
@@ -691,36 +716,56 @@ impl TrainingSession {
 
     /// Load `source` and install it as the dummy's brain. On a load
     /// failure the dummy goes neutral with the error latched on the HUD —
-    /// the selection sticks, so the user sees which file is broken.
+    /// the selection sticks, so the user sees which file is broken. A
+    /// script that defines `on_setup` can't hot-swap (its save crossed
+    /// the link at battle start): it stages a session relaunch instead,
+    /// which the App picks up via [`Self::take_pending_relaunch`].
     fn set_script(&self, source: Option<ScriptSource>) {
-        *self.script_mtime.lock().unwrap() = source.as_ref().and_then(|s| s.mtime());
-        *self.script_source.lock().unwrap() = source.clone();
-        let inner: Box<dyn tango_pvp::battle::TrainingRemoteSource> = match &source {
-            None => Box::new(NeutralDummy),
-            Some(src) => {
-                let loaded = src
-                    .read()
-                    .and_then(|text| script::load_script(&src.label(), &text, 1 - self.local_player_index, self.rng_seed));
-                match loaded {
-                    Ok(loaded) => Box::new(script::ScriptDummy::new(
-                        loaded,
-                        self.rng_seed,
-                        self.reset_epoch.clone(),
-                        self.script_status.clone(),
-                    )),
-                    Err(e) => {
-                        log::warn!("training: script load failed: {e:#}");
-                        *self.script_status.error.lock().unwrap() = Some(format!("{e:#}"));
-                        self.script_status.last_joyflags.store(0, Ordering::Relaxed);
-                        self.install_source(Box::new(NeutralDummy));
-                        return;
-                    }
-                }
-            }
+        let Some(src) = source else {
+            *self.script_mtime.lock().unwrap() = None;
+            *self.script_source.lock().unwrap() = None;
+            *self.script_status.error.lock().unwrap() = None;
+            self.script_status.last_joyflags.store(0, Ordering::Relaxed);
+            self.install_source(Box::new(NeutralDummy));
+            return;
         };
-        *self.script_status.error.lock().unwrap() = None;
-        self.script_status.last_joyflags.store(0, Ordering::Relaxed);
-        self.install_source(inner);
+        let loaded = src
+            .read()
+            .and_then(|text| script::load_script(&src.label(), &text, 1 - self.local_player_index, self.rng_seed));
+        match loaded {
+            Ok(loaded) if loaded.has_setup() => {
+                let mut options = self.options.clone();
+                options.script = Some(src);
+                *self.pending_relaunch.lock().unwrap() = Some(options);
+            }
+            Ok(loaded) => {
+                *self.script_mtime.lock().unwrap() = src.mtime();
+                *self.script_source.lock().unwrap() = Some(src);
+                *self.script_status.error.lock().unwrap() = None;
+                self.script_status.last_joyflags.store(0, Ordering::Relaxed);
+                self.install_source(Box::new(script::ScriptDummy::new(
+                    loaded,
+                    self.rng_seed,
+                    self.reset_epoch.clone(),
+                    self.script_status.clone(),
+                )));
+            }
+            Err(e) => {
+                log::warn!("training: script load failed: {e:#}");
+                *self.script_mtime.lock().unwrap() = src.mtime();
+                *self.script_source.lock().unwrap() = Some(src);
+                *self.script_status.error.lock().unwrap() = Some(format!("{e:#}"));
+                self.script_status.last_joyflags.store(0, Ordering::Relaxed);
+                self.install_source(Box::new(NeutralDummy));
+            }
+        }
+    }
+
+    /// A staged relaunch (a save-defining script was picked), if any.
+    /// The App polls this after session updates: it tears the session
+    /// down and respawns it with the returned options.
+    pub fn take_pending_relaunch(&self) -> Option<TrainingOptions> {
+        self.pending_relaunch.lock().unwrap().take()
     }
 
     /// Wrap a brain in the possession layer and swap it into the match.
@@ -861,21 +906,22 @@ impl std::fmt::Debug for TrainingSession {
 }
 
 /// User-facing knobs collected by the Play tab's training setup and
-/// consumed by [`crate::session::spawn_training`]. The dummy's script
-/// isn't one of them — it's picked live from the training bar.
+/// consumed by [`crate::session::spawn_training`]. There is no dummy
+/// save here: the dummy starts as a mirror of the local save, and a
+/// script's `on_setup` reshapes it from there — a script alone is a
+/// complete, shareable drill.
 #[derive(Clone, Debug)]
 pub struct TrainingOptions {
-    /// The dummy's save. Must be one of the scanner's saves for the same
-    /// game (v1 keeps the opponent on the local game + patch; the session
-    /// machinery itself already supports diverging ROMs when the setup UI
-    /// grows that far).
-    pub opponent_save_path: std::path::PathBuf,
     pub match_type: (u8, u8),
     /// Which side the user plays (0 = P1, 1 = P2).
     pub local_player_index: u8,
     /// Free-text seed; empty/None = random. The same text always derives
     /// the same match seed, so drills are shareable.
     pub seed: Option<String>,
+    /// The dummy's script at launch. `None` from the setup modal (the
+    /// bar picks scripts live); `Some` on the relaunch path, where a
+    /// save-defining script needs to be baked in before the cores boot.
+    pub script: Option<ScriptSource>,
 }
 
 /// Derive the 16-byte match seed from free-form seed text: FNV-1a folded

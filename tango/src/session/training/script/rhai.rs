@@ -15,6 +15,7 @@ pub(super) struct RhaiBackend {
     /// callback (`this.foo = ...`). Lua scripts just use globals.
     state: rhai::Dynamic,
     has_on_reset: bool,
+    has_on_setup: bool,
     dummy_index: u8,
 }
 
@@ -47,6 +48,22 @@ impl RhaiBackend {
             h.rand_int(lo, hi).map_err(|e| e.to_string().into())
         });
         engine.register_fn("log", |msg: &str| log::info!("training script: {msg}"));
+        for (name, size) in [("save_read8", 1usize), ("save_read16", 2), ("save_read32", 4)] {
+            let h = host.clone();
+            engine.register_fn(name, move |offset: i64| -> Result<i64, Box<rhai::EvalAltResult>> {
+                h.save_read(offset, size).map_err(|e| e.to_string().into())
+            });
+        }
+        for (name, size) in [("save_write8", 1usize), ("save_write16", 2), ("save_write32", 4)] {
+            let h = host.clone();
+            engine.register_fn(name, move |offset: i64, value: i64| -> Result<(), Box<rhai::EvalAltResult>> {
+                h.save_write(offset, size, value).map_err(|e| e.to_string().into())
+            });
+        }
+        let h = host.clone();
+        engine.register_fn("save_len", move || -> Result<i64, Box<rhai::EvalAltResult>> {
+            h.save_len().map_err(|e| e.to_string().into())
+        });
 
         // Scope constants aren't visible inside rhai functions; a global
         // module is what makes `K` reachable from `on_tick`.
@@ -70,12 +87,14 @@ impl RhaiBackend {
             anyhow::bail!("script must define an on_tick function");
         }
         let has_on_reset = ast.iter_functions().any(|f| f.name == "on_reset");
+        let has_on_setup = ast.iter_functions().any(|f| f.name == "on_setup");
         Ok(Self {
             engine,
             ast,
             scope,
             state: rhai::Dynamic::from_map(rhai::Map::new()),
             has_on_reset,
+            has_on_setup,
             dummy_index,
         })
     }
@@ -116,6 +135,18 @@ impl ScriptBackend for RhaiBackend {
             return Ok(());
         }
         let _ = self.call("on_reset", tick, rep)?;
+        Ok(())
+    }
+
+    fn has_setup(&self) -> bool {
+        self.has_on_setup
+    }
+
+    fn on_setup(&mut self) -> anyhow::Result<()> {
+        if !self.has_on_setup {
+            return Ok(());
+        }
+        let _ = self.call("on_setup", 0, 0)?;
         Ok(())
     }
 }

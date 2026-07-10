@@ -239,7 +239,6 @@ playback-pip = Opponent screen
 ## Training mode
 training-train = Train
 training-setup-title = Training
-training-opponent-save = Dummy save
 training-script-none = No script (stand still)
 training-side = Play as
 training-side-p1 = Player 1

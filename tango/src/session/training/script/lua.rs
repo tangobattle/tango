@@ -10,6 +10,7 @@ pub(super) struct LuaBackend {
     _lua: mlua::Lua,
     on_tick: mlua::Function,
     on_reset: Option<mlua::Function>,
+    on_setup: Option<mlua::Function>,
     ctx: mlua::Table,
     budget: Arc<AtomicU32>,
     dummy_index: u8,
@@ -62,6 +63,29 @@ impl LuaBackend {
                 "rand_int",
                 lua.create_function(move |_, (lo, hi): (i64, i64)| h.rand_int(lo, hi).map_err(mlua::Error::external))?,
             )?;
+            for (name, size) in [("save_read8", 1usize), ("save_read16", 2), ("save_read32", 4)] {
+                let h = host.clone();
+                globals.set(
+                    name,
+                    lua.create_function(move |_, offset: i64| {
+                        h.save_read(offset, size).map_err(mlua::Error::external)
+                    })?,
+                )?;
+            }
+            for (name, size) in [("save_write8", 1usize), ("save_write16", 2), ("save_write32", 4)] {
+                let h = host.clone();
+                globals.set(
+                    name,
+                    lua.create_function(move |_, (offset, value): (i64, i64)| {
+                        h.save_write(offset, size, value).map_err(mlua::Error::external)
+                    })?,
+                )?;
+            }
+            let h = host.clone();
+            globals.set(
+                "save_len",
+                lua.create_function(move |_, ()| h.save_len().map_err(mlua::Error::external))?,
+            )?;
             let log_fn = lua.create_function(|_, msg: String| {
                 log::info!("training script: {msg}");
                 Ok(())
@@ -99,6 +123,7 @@ impl LuaBackend {
             .get::<Option<mlua::Function>>("on_tick")?
             .ok_or_else(|| anyhow::anyhow!("script must define an on_tick function"))?;
         let on_reset: Option<mlua::Function> = lua.globals().get("on_reset")?;
+        let on_setup: Option<mlua::Function> = lua.globals().get("on_setup")?;
         // One ctx table, reused every tick — scripts see fresh values, we
         // skip a per-tick allocation.
         let ctx = lua.create_table()?;
@@ -106,6 +131,7 @@ impl LuaBackend {
             _lua: lua,
             on_tick,
             on_reset,
+            on_setup,
             ctx,
             budget,
             dummy_index,
@@ -133,6 +159,19 @@ impl ScriptBackend for LuaBackend {
         };
         self.budget.store(0, Ordering::Relaxed);
         on_reset.call::<()>(self.ctx(tick, rep)?)?;
+        Ok(())
+    }
+
+    fn has_setup(&self) -> bool {
+        self.on_setup.is_some()
+    }
+
+    fn on_setup(&mut self) -> anyhow::Result<()> {
+        let Some(on_setup) = &self.on_setup else {
+            return Ok(());
+        };
+        self.budget.store(0, Ordering::Relaxed);
+        on_setup.call::<()>(self.ctx(0, 0)?)?;
         Ok(())
     }
 }

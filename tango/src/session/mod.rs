@@ -1227,7 +1227,9 @@ pub fn spawn_singleplayer(
 /// Boot a training session from the current selection plus the setup
 /// popover's options. Synchronous like [`spawn_singleplayer`] — the
 /// loopback "network" needs no handoff. The opponent (dummy) runs the
-/// same game + patch as the local side in v1; only its save differs.
+/// same game + patch as the local side, starting from a copy of the
+/// local save; a script with `on_setup` reshapes that copy before the
+/// cores boot, so a script alone fully defines the dummy.
 pub fn spawn_training(
     scanners: &Scanners,
     config: &config::Config,
@@ -1251,17 +1253,32 @@ pub fn spawn_training(
         raw
     };
 
-    let opponent_save = scanners
-        .saves
-        .read()
-        .get(&loaded.game)
-        .and_then(|saves| saves.iter().find(|s| s.path == opts.opponent_save_path))
-        .map(|s| s.save.clone_box())
-        .ok_or_else(|| anyhow::anyhow!("opponent save not scanned: {}", opts.opponent_save_path.display()))?;
-
     let rng_seed = match opts.seed.as_deref().map(str::trim) {
         Some(text) if !text.is_empty() => training::seed_from_text(text),
         _ => rand::random(),
+    };
+
+    // The dummy starts as a mirror of the local save; a setup script
+    // rewrites it from there. Loading (and setup-running) the script
+    // before anything heavyweight so a broken drill fails fast.
+    let mut opponent_save = loaded.save.clone_box();
+    let script = match &opts.script {
+        None => None,
+        Some(src) => {
+            let text = std::fs::read_to_string(&src.0)?;
+            let mut loaded_script = training::script::load_script(
+                &src.label(),
+                &text,
+                1 - opts.local_player_index,
+                rng_seed,
+            )?;
+            if loaded_script.has_setup() {
+                let (save, result) = loaded_script.run_setup(opponent_save);
+                opponent_save = save;
+                result.map_err(|e| anyhow::anyhow!("{}: on_setup failed: {e:#}", src.label()))?;
+            }
+            Some((src.clone(), loaded_script))
+        }
     };
 
     let game_info = crate::net::protocol::GameInfo {
@@ -1309,9 +1326,9 @@ pub fn spawn_training(
         std::sync::Arc::new(rom_bytes),
         loaded.save.clone_box(),
         opponent_save,
-        opts.match_type,
-        opts.local_player_index,
+        opts.clone(),
         rng_seed,
+        script,
         config.training_scripts_path(),
         local_settings,
         remote_settings,

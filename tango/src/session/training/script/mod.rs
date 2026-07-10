@@ -10,6 +10,15 @@
 //!   counts as neutral).
 //! - `on_reset(t)` (optional): the drill point was restored — rewind any
 //!   script state that tracks the abandoned rep.
+//! - `on_setup(t)` (optional): define the dummy's save. Runs once, before
+//!   the cores boot, against a copy of the *player's own* save —
+//!   `save_read8/16/32(offset)` and `save_write8/16/32(offset, value)`
+//!   address the save's native WRAM image, and `save_len()` is its size.
+//!   Tango rebuilds the checksum afterwards, so a script + a seed is a
+//!   complete, shareable drill: no save file needs to travel with it.
+//!   Picking (or reloading) a script that defines `on_setup` mid-session
+//!   relaunches the match — the loadout crosses the link at battle start
+//!   and can't be swapped under a live round.
 //! - `read8(addr)` / `read16(addr)` / `read32(addr)`: read the game's
 //!   memory through the live core's bus, valid inside callbacks only. The
 //!   core sits at its settled pre-advance boundary, so the script sees the
@@ -113,11 +122,16 @@ impl Drop for CoreSlotGuard {
 }
 
 /// State shared between a backend's registered functions and the
-/// [`ScriptDummy`] driving it: the published core and the script-visible
-/// RNG. One per loaded script.
+/// [`ScriptDummy`] driving it: the published core, the script-visible
+/// RNG, and — during `on_setup` only — the dummy's save being defined.
+/// One per loaded script.
 struct HostState {
     core: CoreSlot,
     rng: Mutex<rand_pcg::Mcg128Xsl64>,
+    /// The dummy's save, present only while `on_setup` runs (see
+    /// [`LoadedScript::run_setup`]); the `save_*` functions error at any
+    /// other time.
+    save: Mutex<Option<Box<dyn tango_dataview::save::Save + Send + Sync>>>,
 }
 
 impl HostState {
@@ -125,6 +139,49 @@ impl HostState {
         Arc::new(Self {
             core: CoreSlot::default(),
             rng: Mutex::new(rand_pcg::Mcg128Xsl64::from_seed(seed)),
+            save: Mutex::new(None),
+        })
+    }
+
+    /// Run `f` over the setup save's native WRAM image. Errors outside
+    /// `on_setup` and on saves that don't support raw editing.
+    fn with_save_wram<R>(&self, f: impl FnOnce(&mut [u8]) -> anyhow::Result<R>) -> anyhow::Result<R> {
+        let mut slot = self.save.lock().unwrap();
+        let save = slot
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("save access is only valid inside on_setup"))?;
+        let wram = save
+            .as_raw_wram_mut()
+            .ok_or_else(|| anyhow::anyhow!("this game's save doesn't support raw editing"))?;
+        f(wram)
+    }
+
+    fn save_len(&self) -> anyhow::Result<i64> {
+        self.with_save_wram(|wram| Ok(wram.len() as i64))
+    }
+
+    fn save_read(&self, offset: i64, size: usize) -> anyhow::Result<i64> {
+        self.with_save_wram(|wram| {
+            let Some(idx) = usize::try_from(offset).ok().filter(|o| o + size <= wram.len()) else {
+                anyhow::bail!("save read out of range: {offset:#x}+{size}");
+            };
+            let mut v: i64 = 0;
+            for (i, b) in wram[idx..idx + size].iter().enumerate() {
+                v |= (*b as i64) << (i * 8);
+            }
+            Ok(v)
+        })
+    }
+
+    fn save_write(&self, offset: i64, size: usize, value: i64) -> anyhow::Result<()> {
+        self.with_save_wram(|wram| {
+            let Some(idx) = usize::try_from(offset).ok().filter(|o| o + size <= wram.len()) else {
+                anyhow::bail!("save write out of range: {offset:#x}+{size}");
+            };
+            for (i, b) in wram[idx..idx + size].iter_mut().enumerate() {
+                *b = (value >> (i * 8)) as u8;
+            }
+            Ok(())
         })
     }
 
@@ -162,6 +219,12 @@ impl HostState {
 trait ScriptBackend: Send {
     fn on_tick(&mut self, tick: u32, rep: u32) -> anyhow::Result<u16>;
     fn on_reset(&mut self, tick: u32, rep: u32) -> anyhow::Result<()>;
+    /// Whether the script defines `on_setup` — decides between a live
+    /// hot-swap and a session relaunch when it's picked.
+    fn has_setup(&self) -> bool;
+    /// Run `on_setup`. The save is reachable through the host's slot;
+    /// [`LoadedScript::run_setup`] is the owner of that dance.
+    fn on_setup(&mut self) -> anyhow::Result<()>;
 }
 
 /// A loaded, ready-to-run script: the backend plus the host state its
@@ -169,6 +232,30 @@ trait ScriptBackend: Send {
 pub struct LoadedScript {
     backend: Box<dyn ScriptBackend>,
     host: Arc<HostState>,
+}
+
+impl LoadedScript {
+    /// Whether the script defines `on_setup` (a save-defining drill).
+    pub fn has_setup(&self) -> bool {
+        self.backend.has_setup()
+    }
+
+    /// Run `on_setup` over `save`, rebuild its checksum, and hand it
+    /// back. The save rides the host slot for the duration so the
+    /// registered `save_*` functions can reach it; it comes back out on
+    /// every path, error included.
+    pub fn run_setup(
+        &mut self,
+        save: Box<dyn tango_dataview::save::Save + Send + Sync>,
+    ) -> (Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Result<()>) {
+        *self.host.save.lock().unwrap() = Some(save);
+        let result = self.backend.on_setup();
+        let mut save = self.host.save.lock().unwrap().take().expect("setup save");
+        if result.is_ok() {
+            save.rebuild_checksum();
+        }
+        (save, result)
+    }
 }
 
 /// Compile `source` under the backend `name`'s extension picks (`.lua` /
@@ -293,6 +380,86 @@ mod tests {
 
     fn load(name: &str, source: &str) -> LoadedScript {
         load_script(name, source, 1, SEED).unwrap()
+    }
+
+    /// Raw-editable stand-in for a game save. `rebuild_checksum` stamps a
+    /// marker byte so the tests can see it ran through the `dyn Save`.
+    #[derive(Clone)]
+    struct FakeSave {
+        wram: Vec<u8>,
+    }
+
+    impl tango_dataview::save::Save for FakeSave {
+        fn to_sram_dump(&self) -> Vec<u8> {
+            self.wram.clone()
+        }
+
+        fn as_raw_wram(&self) -> std::borrow::Cow<'_, [u8]> {
+            std::borrow::Cow::Borrowed(&self.wram)
+        }
+
+        fn as_raw_wram_mut(&mut self) -> Option<&mut [u8]> {
+            Some(&mut self.wram)
+        }
+
+        fn rebuild_checksum(&mut self) {
+            self.wram[0] = 0xCC;
+        }
+    }
+
+    fn fake_save() -> Box<dyn tango_dataview::save::Save + Send + Sync> {
+        Box::new(FakeSave { wram: vec![7; 0x100] })
+    }
+
+    #[test]
+    fn setup_edits_save_and_rebuilds_checksum() {
+        for (name, src) in [
+            (
+                "t.lua",
+                "function on_setup(t)\n  save_write8(0x10, save_read8(0x10) + 1)\n  save_write16(0x20, 0xBEEF)\nend\nfunction on_tick(t)\n  return 0\nend",
+            ),
+            (
+                "t.rhai",
+                "fn on_setup(t) {\n  save_write8(0x10, save_read8(0x10) + 1);\n  save_write16(0x20, 0xBEEF);\n}\nfn on_tick(t) {\n  0\n}",
+            ),
+        ] {
+            let mut s = load(name, src);
+            assert!(s.has_setup(), "{name}");
+            let (save, result) = s.run_setup(fake_save());
+            result.unwrap();
+            let dump = save.to_sram_dump();
+            assert_eq!(dump[0x10], 8, "{name}");
+            assert_eq!(&dump[0x20..0x22], &[0xEF, 0xBE], "{name}");
+            // rebuild_checksum ran after the edits.
+            assert_eq!(dump[0], 0xCC, "{name}");
+        }
+    }
+
+    #[test]
+    fn setup_absent_and_failing() {
+        // No on_setup: has_setup is false and run_setup is a no-op pass.
+        let mut s = load("t.lua", "function on_tick(t) return 0 end");
+        assert!(!s.has_setup());
+        // An out-of-range write errors and the save still comes back,
+        // un-checksummed (the drill failed; don't bless the result).
+        let mut s = load(
+            "t.lua",
+            "function on_setup(t)\n  save_write8(save_len(), 1)\nend\nfunction on_tick(t)\n  return 0\nend",
+        );
+        let (save, result) = s.run_setup(fake_save());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("out of range"), "{err}");
+        assert_eq!(save.to_sram_dump()[0], 7);
+    }
+
+    #[test]
+    fn save_access_outside_setup_errors() {
+        let mut s = load(
+            "t.lua",
+            "function on_tick(t)\n  return save_read8(0)\nend",
+        );
+        let err = s.backend.on_tick(0, 0).unwrap_err().to_string();
+        assert!(err.contains("on_setup"), "{err}");
     }
 
     #[test]

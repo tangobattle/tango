@@ -563,7 +563,7 @@ impl State {
         if let (Some(setup), Some(loaded)) = (self.training_setup.as_ref(), loaded) {
             return iced::widget::stack![
                 Element::from(col),
-                self.training_setup_modal(lang, scanners, loaded, setup)
+                self.training_setup_modal(lang, loaded, setup)
             ]
             .into();
         }

@@ -1057,6 +1057,36 @@ impl App {
                     Some(ActiveSession::PvP(_)) | Some(ActiveSession::Training(_))
                 );
                 let task = self.session.update(m, &self.config.input_mapping).map(Message::Session);
+                // A save-defining training script was picked: the dummy's
+                // loadout crossed the link at battle start, so the session
+                // relaunches with the script baked in. Drop the old session
+                // first (the emulator threads join, the audio binding
+                // frees) and boot the replacement from the same options.
+                if let Some(ActiveSession::Training(t)) = &self.session.active {
+                    if let Some(opts) = t.take_pending_relaunch() {
+                        self.session.active = None;
+                        if let Some(loaded) = self.loaded.as_ref() {
+                            match session::spawn_training(
+                                &self.scanners,
+                                &self.config,
+                                &self.audio_binder,
+                                self.session.frame_notify.clone(),
+                                self.session.vbuf.clone(),
+                                loaded,
+                                opts,
+                            ) {
+                                Ok(s) => {
+                                    self.session.active = Some(ActiveSession::Training(Box::new(s)));
+                                    self.session.wake_controls();
+                                }
+                                Err(e) => {
+                                    log::warn!("training relaunch failed: {e:#}");
+                                    self.play.set_error(format!("{e:#}"));
+                                }
+                            }
+                        }
+                    }
+                }
                 // Rescan + reload run off-thread; the Rescanned
                 // followup forces a `loaded` rebuild past the
                 // same-key dedupe so the play tab's save view
