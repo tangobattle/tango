@@ -162,6 +162,16 @@ impl Shadow {
         }
     }
 
+    /// Run `f` over the shadow core's audio buffer — the remote-perspective
+    /// samples, accumulating whether or not anyone reads them. Closure
+    /// style because the buffer ref borrows from a temporary
+    /// [`CoreMutRef`](mgba::core::CoreMutRef).
+    pub fn with_audio_buffer<R>(&mut self, f: impl FnOnce(&mut mgba::audio::AudioBufferMutRef<'_>) -> R) -> R {
+        let mut core = self.core.as_mut();
+        let mut buf = core.audio_buffer();
+        f(&mut buf)
+    }
+
     pub fn save_state(&mut self) -> anyhow::Result<ShadowSnapshot> {
         self.save_state_reusing(mgba::state::State::new_uninit())
     }

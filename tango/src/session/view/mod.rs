@@ -1223,8 +1223,15 @@ fn input_display_overlay<'a>(
         return None;
     }
     let r = session.as_replay()?;
-    let (local, remote) = r.input_at(playhead_tick(r, state));
-    let (local_nick, remote_nick) = r.nicknames();
+    let (mut local, mut remote) = r.input_at(playhead_tick(r, state));
+    let (mut local_nick, mut remote_nick) = r.nicknames();
+    // While the perspective is swapped, the main screen is the opponent's
+    // — the pads follow it, so the left chip always belongs to whoever is
+    // on the big screen.
+    if r.swap_perspective() {
+        std::mem::swap(&mut local, &mut remote);
+        std::mem::swap(&mut local_nick, &mut remote_nick);
+    }
     let chip = |joyflags: u16, nick: &str| -> Element<'a, Message> {
         // The caption renders even when the nickname is empty so the
         // two chips always match heights.

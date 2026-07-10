@@ -12,6 +12,7 @@
 //! blocks on catch-up emulation. Audio is bound via the shared
 //! [`crate::audio::LateBinder`].
 
+mod audio;
 pub mod scrubber;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -409,7 +410,21 @@ impl ReplaySession {
             },
         );
 
-        let audio_binding = audio_binder.bind_mgba(thread.handle(), "replay");
+        // Swap-aware audio: the primary's samples pace the emulator
+        // either way; while the perspective is swapped, the shadow's
+        // play instead.
+        let audio_binding = match audio_binder.bind(Some(Box::new(audio::ReplayStream::new(
+            thread.handle(),
+            shadow.clone(),
+            swap_perspective.clone(),
+            audio_binder.sample_rate(),
+        )))) {
+            Ok(b) => Some(b),
+            Err(e) => {
+                log::warn!("replay: audio bind failed: {e:?}");
+                None
+            }
+        };
 
         Ok(Self {
             game,
