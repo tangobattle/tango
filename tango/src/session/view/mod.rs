@@ -520,7 +520,7 @@ fn replay_bar<'a>(
     let speed_items: Vec<widgets::MenuItem<Message>> = SPEED_STEPS
         .iter()
         .enumerate()
-        .map(|(i, &v)| widgets::MenuItem::toggle(Icon::Gauge, speed_step_label(v), Message::SetSpeed(v), i == speed_idx))
+        .map(|(i, &v)| widgets::MenuItem::toggle(speed_step_label(v), Message::SetSpeed(v), i == speed_idx))
         .collect();
     let speed_menu = iced::widget::tooltip(
         widgets::MenuButton::new(
@@ -533,7 +533,9 @@ fn replay_bar<'a>(
             [7.0, 7.0],
             crate::style::STANDARD_PADDING,
             speed_style,
-        ),
+        )
+        // Short labels + a check: the default pane would be mostly air.
+        .menu_width(88.0),
         widgets::tooltip_bubble(format!(
             "{}: {}",
             t!(lang, "playback-speed"),

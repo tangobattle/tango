@@ -32,7 +32,9 @@ use sweeten::widget::overlay::menu;
 /// width) while off.
 #[derive(Clone)]
 pub struct MenuItem<M> {
-    icon: Icon,
+    /// `None` rows are label-only — selection menus whose choices are
+    /// self-describing (the speed steps) skip the glyph column.
+    icon: Option<Icon>,
     label: String,
     message: M,
     danger: bool,
@@ -42,7 +44,7 @@ pub struct MenuItem<M> {
 impl<M> MenuItem<M> {
     pub fn new(icon: Icon, label: String, message: M) -> Self {
         Self {
-            icon,
+            icon: Some(icon),
             label,
             message,
             danger: false,
@@ -53,7 +55,7 @@ impl<M> MenuItem<M> {
     /// [`new`](Self::new), tinted as a destructive action.
     pub fn danger(icon: Icon, label: String, message: M) -> Self {
         Self {
-            icon,
+            icon: Some(icon),
             label,
             message,
             danger: true,
@@ -61,12 +63,12 @@ impl<M> MenuItem<M> {
         }
     }
 
-    /// [`new`](Self::new), as a selection row: a trailing check marks
-    /// it while `on`. Selecting it still just emits `message` (and
-    /// closes the menu) — state lives with the caller.
-    pub fn toggle(icon: Icon, label: String, message: M, on: bool) -> Self {
+    /// A label-only selection row: a trailing check marks it while
+    /// `on`. Selecting it still just emits `message` (and closes the
+    /// menu) — state lives with the caller.
+    pub fn toggle(label: String, message: M, on: bool) -> Self {
         Self {
-            icon,
+            icon: None,
             label,
             message,
             danger: false,
@@ -75,9 +77,11 @@ impl<M> MenuItem<M> {
     }
 }
 
-/// Width of the dropdown pane. Independent of the trigger's width —
-/// the whole point of an icon-sized trigger — and right-aligned with
-/// it, since the trigger usually sits at a row's right edge.
+/// Default width of the dropdown pane. Independent of the trigger's
+/// width — the whole point of an icon-sized trigger — and
+/// right-aligned with it, since the trigger usually sits at a row's
+/// right edge. Narrow selection menus override it via
+/// [`MenuButton::menu_width`].
 const MENU_WIDTH: f32 = 180.0;
 
 /// Gap between a row's icon and its label.
@@ -97,6 +101,7 @@ pub struct MenuButton<'a, M> {
     style: Box<dyn Fn(&Theme, button::Status) -> button::Style + 'a>,
     menu_class: <Theme as menu::Catalog>::Class<'a>,
     last_status: Option<button::Status>,
+    menu_width: f32,
 }
 
 impl<'a, M> MenuButton<'a, M> {
@@ -117,7 +122,15 @@ impl<'a, M> MenuButton<'a, M> {
             style: Box::new(style),
             menu_class: <Theme as menu::Catalog>::default(),
             last_status: None,
+            menu_width: MENU_WIDTH,
         }
+    }
+
+    /// Override the dropdown pane's width — for narrow selection menus
+    /// whose rows are a short label + check.
+    pub fn menu_width(mut self, width: f32) -> Self {
+        self.menu_width = width;
+        self
     }
 }
 
@@ -283,7 +296,7 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for MenuButton<'_, M> {
         // sits at a row's right edge where a left-aligned pane would
         // run off screen).
         let position = layout.position() + translation;
-        let position = Point::new((position.x - (MENU_WIDTH - bounds.width)).max(0.0), position.y);
+        let position = Point::new((position.x - (self.menu_width - bounds.width)).max(0.0), position.y);
         Some(overlay::Element::new(Box::new(MenuOverlay {
             items: &self.items,
             hovered_option: &mut state.hovered_option,
@@ -292,6 +305,7 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for MenuButton<'_, M> {
             position,
             target_height: bounds.height,
             item_padding: self.item_padding,
+            width: self.menu_width,
             class: &self.menu_class,
             below: true,
         })))
@@ -320,6 +334,7 @@ struct MenuOverlay<'a, 'b: 'a, M> {
     /// position (or flips above when there's more room there).
     target_height: f32,
     item_padding: iced::Padding,
+    width: f32,
     class: &'a <Theme as menu::Catalog>::Class<'b>,
     /// Whether layout placed the pane below the trigger (vs flipped
     /// above). Set by `layout`, read by `draw` so the entrance
@@ -348,7 +363,7 @@ impl<M: Clone> overlay::Overlay<M, Theme, iced::Renderer> for MenuOverlay<'_, '_
         let space_below = bounds.height - (self.position.y + self.target_height);
         let space_above = self.position.y;
         self.below = space_below > space_above || space_below >= height;
-        let node = layout::Node::new(Size::new(MENU_WIDTH, height));
+        let node = layout::Node::new(Size::new(self.width, height));
         node.move_to(if self.below {
             self.position + Vector::new(0.0, self.target_height)
         } else {
@@ -495,22 +510,23 @@ impl<M: Clone> overlay::Overlay<M, Theme, iced::Renderer> for MenuOverlay<'_, '_
                     shaping,
                     wrapping: text::Wrapping::default(),
                 };
-                renderer.fill_text(
-                    text_at(
-                        char::from(item.icon).to_string(),
-                        iced::Font::with_name("lucide"),
-                        text::Shaping::Basic,
-                    ),
-                    Point::new(row.x + self.item_padding.left, row.center_y()),
-                    color,
-                    bounds,
-                );
+                let mut label_x = row.x + self.item_padding.left;
+                if let Some(icon) = item.icon {
+                    renderer.fill_text(
+                        text_at(
+                            char::from(icon).to_string(),
+                            iced::Font::with_name("lucide"),
+                            text::Shaping::Basic,
+                        ),
+                        Point::new(label_x, row.center_y()),
+                        color,
+                        bounds,
+                    );
+                    label_x += f32::from(text_size) + ICON_GAP;
+                }
                 renderer.fill_text(
                     text_at(item.label.clone(), renderer.default_font(), text::Shaping::Advanced),
-                    Point::new(
-                        row.x + self.item_padding.left + f32::from(text_size) + ICON_GAP,
-                        row.center_y(),
-                    ),
+                    Point::new(label_x, row.center_y()),
                     color,
                     bounds,
                 );
