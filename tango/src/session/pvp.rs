@@ -255,6 +255,8 @@ impl PvpSession {
                 match_: match_handle.clone(),
                 completion_token: completion_token.clone(),
                 disable_bgm,
+                // Training-only channel; nothing reads it in PvP.
+                custom_screen_flags: Arc::new(std::sync::atomic::AtomicU8::new(0)),
             },
         );
 

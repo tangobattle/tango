@@ -154,6 +154,13 @@ pub struct PrimaryState {
     pub match_: MatchHandle,
     pub completion_token: CompletionToken,
     pub disable_bgm: bool,
+    /// Training-only side channel: per-player "picking in the custom
+    /// screen" flags (bit 0 = player 1, bit 1 = player 2), kept updated by
+    /// game modules that know where the game stores them — from their
+    /// per-frame primary trap, so the value tracks the displayed state.
+    /// Modules without that knowledge leave it zero, and the training
+    /// session's auto-direct simply never engages there. Ignored by PvP.
+    pub custom_screen_flags: std::sync::Arc<std::sync::atomic::AtomicU8>,
 }
 
 pub trait Hooks {

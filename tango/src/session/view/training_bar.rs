@@ -106,11 +106,21 @@ pub(super) fn training_bar<'a>(lang: &'a LanguageIdentifier, t: &'a TrainingSess
         mode_chip(Icon::Joystick, t!(lang, "training-dummy-possess"), DummyMode::Possess),
         mode_chip(Icon::CircleDot, t!(lang, "training-dummy-record"), DummyMode::Record),
         mode_chip(Icon::Play, t!(lang, "training-dummy-playback"), DummyMode::Playback),
+        mode_chip(Icon::Swords, t!(lang, "training-dummy-attack"), DummyMode::Attack),
         chip(
             Icon::Repeat,
             t!(lang, "training-loop"),
             dummy.looping,
             Some(train(Action::ToggleLoop)),
+        ),
+        // Auto-direct: hand the dummy to the user whenever its chip pick
+        // opens. Only effective on games whose module mirrors the
+        // custom-screen flags (bn6 today) — harmless elsewhere.
+        chip(
+            Icon::Clapperboard,
+            t!(lang, "training-auto-direct"),
+            t.auto_direct(),
+            Some(train(Action::ToggleAutoDirect)),
         ),
     ];
     // Take readout: recorded length (and playback progress while it
