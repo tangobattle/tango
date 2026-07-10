@@ -13,7 +13,7 @@ use lucide_icons::Icon;
 use sweeten::widget::{column, row};
 
 mod menu_button;
-pub use menu_button::MenuItem;
+pub use menu_button::{MenuButton, MenuItem};
 
 /// Icon-only button for low-emphasis toolbar actions (rescan,
 /// copy, open-folder, etc.). Uses [`neutral`] — a soft, theme-

@@ -490,18 +490,17 @@ fn replay_bar<'a>(
     // No ellipsis popover for replays — the speed picker sits
     // directly in the bar, and Settings + Close float top-right
     // (see `corner_commands_overlay`).
-    // Speed: the same chip chrome as the toggles beside it, cycling
-    // through the steps on each press. Lit while off realtime, with the
-    // current step spelled out in the tooltip.
+    // Speed: a dropdown of the steps, triggered by a chip wearing the
+    // same plate chrome as the toggles beside it. The current step
+    // carries the menu's check and the tooltip names it; the plate
+    // lights up while off realtime.
     const SPEED_STEPS: [f32; 4] = [0.5, 1.0, 2.0, 4.0];
     let current = r.speed();
     let speed_idx = SPEED_STEPS
         .iter()
         .position(|&v| (current - v).abs() < 0.05)
         .unwrap_or(1);
-    let next_speed = SPEED_STEPS[(speed_idx + 1) % SPEED_STEPS.len()];
-    let speed_label = {
-        let v = SPEED_STEPS[speed_idx];
+    let speed_step_label = |v: f32| {
         if (v - v.trunc()).abs() < 1e-3 {
             format!("{}×", v as i32)
         } else {
@@ -518,19 +517,28 @@ fn replay_bar<'a>(
         }
         st
     };
-    let speed_chip = iced::widget::tooltip(
-        button(
+    let speed_items: Vec<widgets::MenuItem<Message>> = SPEED_STEPS
+        .iter()
+        .enumerate()
+        .map(|(i, &v)| widgets::MenuItem::toggle(Icon::Gauge, speed_step_label(v), Message::SetSpeed(v), i == speed_idx))
+        .collect();
+    let speed_menu = iced::widget::tooltip(
+        widgets::MenuButton::new(
             container(Icon::Gauge.widget().size(16.0))
                 .width(iced::Length::Fixed(18.0))
                 .height(iced::Length::Fixed(18.0))
                 .center(Fill),
-        )
-        .padding(0)
-        .width(iced::Length::Fixed(32.0))
-        .height(iced::Length::Fixed(32.0))
-        .style(speed_style)
-        .on_press(Message::SetSpeed(next_speed)),
-        widgets::tooltip_bubble(format!("{}: {}", t!(lang, "playback-speed"), speed_label)),
+            speed_items,
+            true,
+            [7.0, 7.0],
+            crate::style::STANDARD_PADDING,
+            speed_style,
+        ),
+        widgets::tooltip_bubble(format!(
+            "{}: {}",
+            t!(lang, "playback-speed"),
+            speed_step_label(SPEED_STEPS[speed_idx])
+        )),
         iced::widget::tooltip::Position::Top,
     )
     .gap(4);
@@ -626,7 +634,7 @@ fn replay_bar<'a>(
     let controls = row![].spacing(10).align_y(Alignment::Center).padding([8, 8]);
     let controls = replay_transport(lang, r, state, controls);
     controls
-        .push(speed_chip)
+        .push(speed_menu)
         .push(input_toggle)
         .push(pip_toggle)
         .push(swap_toggle)
