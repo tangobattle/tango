@@ -401,6 +401,13 @@ pub struct SeekController {
     resume: AtomicBool,
     /// Tells the worker and any in-flight chase to exit.
     cancel: AtomicBool,
+    /// Chases must land by running at least one emulated frame instead of
+    /// loading a snapshot exactly at the target and blitting its stored
+    /// framebuffer. The zero-frame shortcut only refreshes the *primary*
+    /// display; with the opponent-screen PiP on, the landing frame has to
+    /// be emulated so the shadow rasterizes it too. Costs one frame of
+    /// emulation per exact hit — set only while the PiP is visible.
+    emulate_landings: AtomicBool,
     wake_mutex: Mutex<()>,
     wake_cv: Condvar,
 }
@@ -419,9 +426,16 @@ impl SeekController {
             chasing: AtomicBool::new(false),
             resume: AtomicBool::new(false),
             cancel: AtomicBool::new(false),
+            emulate_landings: AtomicBool::new(false),
             wake_mutex: Mutex::new(()),
             wake_cv: Condvar::new(),
         }
+    }
+
+    /// Toggle emulated landings — see the field docs. Takes effect on the
+    /// next chase; an in-flight one keeps its plan.
+    pub fn set_emulate_landings(&self, on: bool) {
+        self.emulate_landings.store(on, Ordering::Release);
     }
 
     /// Record `target` as the newest seek request and wake the worker.
@@ -708,9 +722,17 @@ fn chase_on_core(
         // The rewind buffer's per-frame window usually holds the target
         // exactly (zero catch-up); the keyframe store bounds the chase
         // at an interval everywhere else. Best = highest frame index.
+        // With emulated landings on, aim the lookup one frame short so
+        // the landing frame always runs through the emulator (the frame
+        // callback then publishes live renders of BOTH cores).
+        let lookup = if ctrl.emulate_landings.load(Ordering::Acquire) {
+            target.saturating_sub(1)
+        } else {
+            target
+        };
         let cur = stepper_state.lock_inner().inputs_consumed();
         let start_snap = if target < cur {
-            let best = [rewind.best_at_or_before(target), store.best_at_or_before(target)]
+            let best = [rewind.best_at_or_before(lookup), store.best_at_or_before(lookup)]
                 .into_iter()
                 .flatten()
                 .max_by_key(|s| s.checkpoint.frame_index);
@@ -728,10 +750,13 @@ fn chase_on_core(
                 }
             }
         } else {
-            [rewind.best_in_range(cur, target), store.best_in_range(cur, target)]
-                .into_iter()
-                .flatten()
-                .max_by_key(|s| s.checkpoint.frame_index)
+            [
+                rewind.best_in_range(cur, lookup.max(cur)),
+                store.best_in_range(cur, lookup.max(cur)),
+            ]
+            .into_iter()
+            .flatten()
+            .max_by_key(|s| s.checkpoint.frame_index)
         };
 
         if let Some(snap) = &start_snap {

@@ -422,6 +422,11 @@ impl ReplaySession {
         let on = !self.show_pip.load(Ordering::Relaxed);
         self.show_pip.store(on, Ordering::Relaxed);
         self.shadow.lock().unwrap().set_rendering(on);
+        // Seeks must land by emulating the landing frame while the PiP is
+        // on — the zero-frame snapshot shortcut blits only the primary's
+        // stored framebuffer, which would leave the PiP frozen across
+        // frame steps.
+        self.seek.set_emulate_landings(on);
     }
 
     /// Latest opponent-side frame for the PiP overlay, as raw BGR555 —
