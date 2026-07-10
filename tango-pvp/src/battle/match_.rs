@@ -45,6 +45,24 @@ impl RemoteInputs {
         self.queue.lock().unwrap().push_back((peer_round, input));
     }
 
+    /// Synchronous, non-blocking [`push`](Self::push) for an in-process
+    /// remote: the training loopback injects the dummy's input from inside
+    /// the primary trap (the same trap fire drains it), so the queue can
+    /// never legitimately be full and the flow-control park is unreachable.
+    pub(super) fn push_now(&self, peer_round: u32, input: crate::net::Input) {
+        let mut queue = self.queue.lock().unwrap();
+        debug_assert!(queue.len() < Self::CAPACITY);
+        queue.push_back((peer_round, input));
+    }
+
+    /// Drop everything queued. Used by a training reset: both input streams
+    /// restart from the reset tick, so anything in flight belongs to the
+    /// abandoned timeline. Wakes a parked push for form's sake.
+    pub(super) fn clear(&self) {
+        self.queue.lock().unwrap().clear();
+        self.drained.notify_one();
+    }
+
     /// Drain entries for local round `round_idx` into `f` (the engine
     /// push): stale tags drop, future tags stay queued for the round
     /// they belong to.
@@ -95,6 +113,18 @@ pub struct RoundMetrics {
     /// Speculative frames the most recent step discarded and re-simulated
     /// because a confirmed remote input contradicted the prediction.
     pub misprediction_depth: u32,
+}
+
+/// A restorable snapshot of a live training round: the engine's settled state
+/// bundle, the match RNG at capture, and the prediction seed. Opaque to the
+/// host — produced by [`Match::training_checkpoint`] and consumed by
+/// [`Match::restore_training_checkpoint`]. ~Two core states big; hosts keep a
+/// handful of slots, not a stream.
+#[derive(Clone)]
+pub struct TrainingCheckpoint {
+    state: super::world::MgbaState,
+    rng: rand_pcg::Mcg128Xsl64,
+    remote: crate::input::PartialInput,
 }
 
 /// The outbound network channel. Locked only from the emulator thread —
@@ -156,6 +186,12 @@ pub struct Match {
     /// since its snapshots (carrying the sound driver's RAM) are loaded into
     /// the live core every frame. Local-only, like `frame_delay`.
     disable_bgm: bool,
+    /// Simulation speed multiplier as `f32` bits, applied by the live round to
+    /// its per-frame fps target. 1.0 (the default) for real PvP — the peers
+    /// must run at [`EXPECTED_FPS`](super::EXPECTED_FPS) to stay in sync;
+    /// training sessions, whose "peer" is in-process, may set it freely via
+    /// [`set_speed_factor`](Self::set_speed_factor).
+    speed_factor: Arc<AtomicU32>,
 }
 
 impl Match {
@@ -189,6 +225,7 @@ impl Match {
             replay_writer: Arc::new(SyncMutex::new(replay.writer)),
             frame_delay,
             disable_bgm,
+            speed_factor: Arc::new(AtomicU32::new(1.0f32.to_bits())),
         })
     }
 
@@ -236,6 +273,53 @@ impl Match {
         self.remote_inputs.clone()
     }
 
+    pub(super) fn speed_factor_handle(&self) -> Arc<AtomicU32> {
+        self.speed_factor.clone()
+    }
+
+    /// Set the simulation speed multiplier (1.0 = realtime). Training-only:
+    /// the live round scales its per-frame fps target by this, which is only
+    /// sound when the "peer" is in-process — a networked peer must stay at
+    /// [`EXPECTED_FPS`](super::EXPECTED_FPS). Takes effect on the next frame.
+    pub fn set_speed_factor(&self, factor: f32) {
+        self.speed_factor.store(factor.to_bits(), Ordering::Relaxed);
+    }
+
+    /// Inject one remote input directly into the handoff queue, tagged for
+    /// the peer round the remote is currently in — the synchronous, in-process
+    /// equivalent of [`run`](Self::run)'s receive-and-push. The training
+    /// loopback sender calls this from inside the primary trap, so the input
+    /// lands before the same trap fire's drain and every tick confirms with
+    /// zero speculation.
+    pub fn inject_remote_input(&self, input: crate::net::Input) {
+        let peer_round = self.peer_round_idx.load(Ordering::Acquire);
+        self.remote_inputs.push_now(peer_round, input);
+    }
+
+    /// The in-process equivalent of receiving `EndOfRound`: subsequent
+    /// injected inputs tag for the next peer round. The training loopback
+    /// echoes the local `EndOfRound` through this — both sims are the same
+    /// deterministic match, so their rounds end on the same tick.
+    pub fn inject_remote_end_of_round(&self) {
+        self.peer_round_idx.fetch_add(1, Ordering::Release);
+    }
+
+    /// Turn the shadow core's rasterization on/off — see
+    /// [`Shadow::set_rendering`](crate::shadow::Shadow::set_rendering).
+    /// Training-only: shows the opponent's perspective while the user
+    /// possesses the dummy.
+    pub fn set_shadow_rendering(&self, on: bool) {
+        self.shadow.lock().unwrap().set_rendering(on);
+    }
+
+    /// Copy the shadow core's latest rendered frame into `buf` — see
+    /// [`Shadow::read_video_buffer`](crate::shadow::Shadow::read_video_buffer).
+    /// May briefly block on an in-flight shadow tick (the co-sim worker
+    /// holds the same lock while stepping).
+    pub fn read_shadow_video_buffer(&self, buf: &mut [u8]) -> bool {
+        self.shadow.lock().unwrap().read_video_buffer(buf)
+    }
+
     pub(super) fn local_stall_handle(&self) -> Arc<tokio::sync::Notify> {
         self.local_stall.clone()
     }
@@ -266,6 +350,88 @@ impl Match {
         } else {
             1
         }
+    }
+
+    /// Snapshot the live round's authoritative settled state as a training
+    /// checkpoint. `None` while no round is running, while the round is still
+    /// armed (pre first-commit — there is no engine state yet), or once the
+    /// settled stream has already ended the round (the tail after a round end
+    /// is not a useful place to come back to, and the live core may have left
+    /// the battle loop that restores would resume through).
+    ///
+    /// Bundles the match RNG alongside the state so a restore rewinds any
+    /// shared-stream draws with it. Cheap-ish (~two core states' memcpy);
+    /// callable from any thread — the round lock serializes it against traps.
+    pub fn training_checkpoint(&self) -> Option<TrainingCheckpoint> {
+        let round_state = self.round_state.lock().unwrap();
+        let (state, remote) = round_state.as_ref()?.training_state()?;
+        Some(TrainingCheckpoint {
+            state,
+            rng: self.rng.lock().unwrap().clone(),
+            remote,
+        })
+    }
+
+    /// Restore the live round to a training checkpoint: reset the rollback
+    /// engine (which force-reloads the stepper + shadow cores), rewind the
+    /// match RNG, drop any in-flight remote inputs — they belong to the
+    /// abandoned timeline — and load the checkpoint's state into the live
+    /// core itself.
+    ///
+    /// That last step matters: the per-game `main_read_joyflags` traps
+    /// verify tick continuity between the game and the last engine-loaded
+    /// state, and the live core is still on the abandoned timeline until
+    /// something replaces it. The whole operation runs with the emulator
+    /// thread paused, so no trap can observe the half-restored state:
+    /// pause → reset engine (round-state lock, uncontended) → `run_on_core`
+    /// load + neutral r4 prime → resume. The one bridging tick the live
+    /// core then runs ahead of the engine is display-only — the next trap
+    /// fire overwrites it with the engine's chosen frame, as every frame
+    /// does.
+    ///
+    /// Returns `false` (without touching anything) when there is nothing to
+    /// restore into: no live round, an armed round, or a settled round end —
+    /// the same conditions under which [`training_checkpoint`](Self::training_checkpoint)
+    /// declines to capture. Restoring also invalidates the linear replay
+    /// record, so the writer is finalized (its prefix stays playable) and
+    /// recording stops for the rest of the match.
+    ///
+    /// Only sound for training: a networked peer's sim would not follow.
+    pub fn restore_training_checkpoint(&self, checkpoint: &TrainingCheckpoint) -> anyhow::Result<bool> {
+        let handle = self.primary_thread_handle.clone();
+        let was_paused = handle.is_paused();
+        handle.pause();
+        let reset = (|| {
+            let mut round_state = self.round_state.lock().unwrap();
+            let Some(round) = round_state.as_mut() else {
+                return Ok(false);
+            };
+            if !round.reset_to(&checkpoint.state, checkpoint.remote.clone())? {
+                return Ok(false);
+            }
+            *self.rng.lock().unwrap() = checkpoint.rng.clone();
+            self.remote_inputs.clear();
+            self.finish_replay()?;
+            anyhow::Ok(true)
+        })();
+        if matches!(reset, Ok(true)) {
+            // Re-anchor the live core on the restored timeline. The state is
+            // poised at its boundary `main_read_joyflags` with r4 unset;
+            // prime it neutral so the bridging tick runs with no input.
+            let state = checkpoint.state.primary.clone();
+            let hooks = self.local_hooks;
+            handle.run_on_core(move |mut core| {
+                if let Err(e) = core.load_state(&state) {
+                    log::error!("training restore: live core load failed: {e}");
+                    return;
+                }
+                hooks.inject_joyflags_on_primary(core, 0);
+            });
+        }
+        if !was_paused {
+            handle.unpause();
+        }
+        reset
     }
 
     /// Closes the replay file, if one is open.

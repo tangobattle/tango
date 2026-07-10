@@ -112,6 +112,11 @@ impl Shadow {
         rtc_time: std::time::SystemTime,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
+        // A video buffer is always attached (it's just a render target;
+        // game logic never sees it), but rasterization stays off via the
+        // frameskip below. Training turns rendering on while the user
+        // possesses the dummy, to show the opponent's perspective.
+        core.enable_video_buffer();
 
         core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
         core.as_mut()
@@ -131,6 +136,30 @@ impl Shadow {
         core.as_mut().gba_mut().set_frameskip(i32::MAX);
 
         Ok(Shadow { core, hooks, state })
+    }
+
+    /// Turn rasterization on/off. Off (the default) skips drawScanline
+    /// entirely — the shadow's pixels are normally never shown. Training
+    /// flips it on while the user possesses the dummy. Frameskip isn't
+    /// serialized, so the setting survives every `load_state`.
+    pub fn set_rendering(&mut self, on: bool) {
+        self.core
+            .as_mut()
+            .gba_mut()
+            .set_frameskip(if on { 0 } else { i32::MAX });
+    }
+
+    /// Copy the shadow's most recently rendered frame into `buf`.
+    /// `false` (buf untouched) when no buffer is attached or sizes
+    /// mismatch. Only meaningful while rendering is on.
+    pub fn read_video_buffer(&self, buf: &mut [u8]) -> bool {
+        match self.core.video_buffer() {
+            Some(vb) if vb.len() == buf.len() => {
+                buf.copy_from_slice(vb);
+                true
+            }
+            _ => false,
+        }
     }
 
     pub fn save_state(&mut self) -> anyhow::Result<ShadowSnapshot> {

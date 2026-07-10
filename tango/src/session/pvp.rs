@@ -1022,7 +1022,7 @@ async fn rebuild_connection(
 /// format mirrors the legacy app:
 /// `YYYYMMDDhhmmss-<link_code>-<compat>-vs-<opponent>-p<idx>.tangoreplay`.
 #[allow(clippy::too_many_arguments)]
-fn build_replay_writer(
+pub(crate) fn build_replay_writer(
     replays_path: &Path,
     link_code: &str,
     local_settings: &crate::net::protocol::Settings,

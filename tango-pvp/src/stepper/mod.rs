@@ -173,6 +173,16 @@ impl Stepper {
         Ok(true)
     }
 
+    /// [`restore`](Self::restore) without the parked-tick shortcut: reload the
+    /// core even when it claims to already be parked at `tick`. A training
+    /// reset branches the timeline — the same tick number can name a different
+    /// history — so equal tick no longer implies equal state.
+    pub fn force_restore(&mut self, state: &mgba::state::State, tick: u32) -> anyhow::Result<()> {
+        self.core.as_mut().load_state(state)?;
+        self.parked_tick = tick;
+        Ok(())
+    }
+
     /// Advance exactly one tick from where the core is parked, applying `input`
     /// and halting at the next boundary (`parked_tick + 1`). `last_local_packet`
     /// is this side's outgoing link packet at the parked tick (seeds the link

@@ -6,6 +6,38 @@ use sweeten::widget::{column, row};
 mod telemetry;
 use telemetry::telemetry_overlay;
 
+mod training_bar;
+use training_bar::training_bar;
+
+/// The setup side panels (local + opponent save views) of a session that
+/// has them. PvP and training carry the exact same field shape; this is
+/// the one place the drawer/handle/slot machinery looks it up, so both
+/// session kinds share all of it.
+struct SetupPanels<'a> {
+    local_loaded: &'a Option<crate::selection::Loaded>,
+    local_save_view: &'a save_view::State,
+    opponent_loaded: &'a Option<crate::selection::Loaded>,
+    opponent_save_view: &'a save_view::State,
+}
+
+fn setup_panels(session: &ActiveSession) -> Option<SetupPanels<'_>> {
+    match session {
+        ActiveSession::PvP(s) => Some(SetupPanels {
+            local_loaded: &s.local_loaded,
+            local_save_view: &s.local_save_view,
+            opponent_loaded: &s.opponent_loaded,
+            opponent_save_view: &s.opponent_save_view,
+        }),
+        ActiveSession::Training(s) => Some(SetupPanels {
+            local_loaded: &s.local_loaded,
+            local_save_view: &s.local_save_view,
+            opponent_loaded: &s.opponent_loaded,
+            opponent_save_view: &s.opponent_save_view,
+        }),
+        ActiveSession::Replay(_) | ActiveSession::SinglePlayer(_) => None,
+    }
+}
+
 /// One telemetry cell: a label `icon` and the current `value`, both
 /// color-coded by the health `tone`. The full metric name lives in the
 /// match-settings panel's captions, so the cell carries no hover tooltip.
@@ -222,6 +254,12 @@ pub fn view<'a>(
     if let Some(o) = input_display_overlay(session, state, show_replay_inputs) {
         stacked = stacked.push(o);
     }
+    // Training PiP: the dummy's screen while the user possesses it.
+    // Also outside the controls gate — it's the view you're playing
+    // on, so it must not tuck away with the idle cursor.
+    if let Some(o) = training_pip_overlay(state) {
+        stacked = stacked.push(o);
+    }
     // PvP setup drawers — above the corner commands, below the
     // telemetry plate (see `setup_drawers_overlay`).
     for pane in setup_drawers_overlay(lang, session, state) {
@@ -277,6 +315,27 @@ fn floating_controls<'a>(
     // Replay transport carries a Fill-width scrubber, so its bar
     // spans the window; PvP's setup toggles ride the screen edges
     // as drawer handles instead — see `setup_handles_overlay`.
+    // Training gets both: the drawer handles plus its own
+    // bottom-center control bar.
+    if let Some(t) = session.as_training() {
+        let panel = container(training_bar(lang, t)).style(hud_chip_plate);
+        let hover_pin = iced::widget::mouse_area(panel)
+            .on_enter(Message::ControlsHovered(true))
+            .on_exit(Message::ControlsHovered(false));
+        let slid = anim::slide_in(hover_pin, hide_progress, iced::Vector::new(0.0, CONTROLS_SLIDE));
+        let bar_layer: Element<'a, Message> = container(slid)
+            .width(Fill)
+            .height(Fill)
+            .align_x(iced::alignment::Horizontal::Center)
+            .align_y(iced::alignment::Vertical::Bottom)
+            .padding(12)
+            .into();
+        return stack![
+            Element::from(bar_layer),
+            setup_handles_overlay(lang, session, state, hide_progress)
+        ]
+        .into();
+    }
     let Some(r) = session.as_replay() else {
         return setup_handles_overlay(lang, session, state, hide_progress);
     };
@@ -418,14 +477,14 @@ fn emulator_body<'a>(
             .height(Fill)
     };
     let mut content_row = row![].spacing(0).height(Fill).width(Fill);
-    if let ActiveSession::PvP(s) = session {
-        if s.local_loaded.is_some() && state.self_panel.shown() {
+    if let Some(panels) = setup_panels(session) {
+        if panels.local_loaded.is_some() && state.self_panel.shown() {
             content_row = content_row.push(drawer_slot());
         }
     }
     content_row = content_row.push(container(frame_container).width(Fill).height(Fill));
-    if let ActiveSession::PvP(s) = session {
-        if s.opponent_loaded.is_some() && state.opponent_panel.shown() {
+    if let Some(panels) = setup_panels(session) {
+        if panels.opponent_loaded.is_some() && state.opponent_panel.shown() {
             content_row = content_row.push(drawer_slot());
         }
     }
@@ -449,7 +508,7 @@ fn setup_drawers_overlay<'a>(
     session: &'a ActiveSession,
     state: &'a State,
 ) -> Vec<Element<'a, Message>> {
-    let ActiveSession::PvP(s) = session else {
+    let Some(s) = setup_panels(session) else {
         return Vec::new();
     };
     let now = iced::time::Instant::now();
@@ -474,7 +533,7 @@ fn setup_drawers_overlay<'a>(
         .filter(|_| state.self_panel.shown() || state.self_panel.is_animating(now))
     {
         let panel =
-            save_view::view(lang, me, &s.local_save_view, true, None, false, false).map(Message::SelfSaveViewAction);
+            save_view::view(lang, me, s.local_save_view, true, None, false, false).map(Message::SelfSaveViewAction);
         let pane = setup_pane(panel, -SETUP_DRAWER_TRAVEL, state.self_panel.progress(now));
         panes.push(
             container(pane)
@@ -489,7 +548,7 @@ fn setup_drawers_overlay<'a>(
         .as_ref()
         .filter(|_| state.opponent_panel.shown() || state.opponent_panel.is_animating(now))
     {
-        let panel = save_view::view(lang, opponent, &s.opponent_save_view, true, None, false, false)
+        let panel = save_view::view(lang, opponent, s.opponent_save_view, true, None, false, false)
             .map(Message::OpponentSaveViewAction);
         let pane = setup_pane(panel, SETUP_DRAWER_TRAVEL, state.opponent_panel.progress(now));
         panes.push(
@@ -568,9 +627,39 @@ fn replay_bar<'a>(
     )
     .gap(4);
 
+    // Opponent-screen PiP toggle: same chip treatment as the input
+    // display. The replay re-simulates the opponent's core anyway; this
+    // just turns its renderer on and insets the result top-right.
+    let pip_on = r.show_pip();
+    let pip_toggle_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
+        let mut st = telemetry_plate_button(theme, status);
+        if pip_on {
+            let primary = theme.palette().primary;
+            st.text_color = primary;
+            st.border.color = iced::Color { a: 0.35, ..primary };
+        }
+        st
+    };
+    let pip_toggle = iced::widget::tooltip(
+        button(
+            container(Icon::PictureInPicture2.widget().size(16.0))
+                .width(iced::Length::Fixed(18.0))
+                .height(iced::Length::Fixed(18.0))
+                .center(Fill),
+        )
+        .padding(0)
+        .width(iced::Length::Fixed(32.0))
+        .height(iced::Length::Fixed(32.0))
+        .style(pip_toggle_style)
+        .on_press(Message::TogglePip),
+        widgets::tooltip_bubble(t!(lang, "playback-pip")),
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(4);
+
     let controls = row![].spacing(10).align_y(Alignment::Center).padding([8, 8]);
     let controls = replay_transport(lang, r, state, controls);
-    controls.push(speed_picker).push(input_toggle)
+    controls.push(speed_picker).push(input_toggle).push(pip_toggle)
 }
 
 /// Hoist a persistent chrome layer into iced's floating layer —
@@ -687,7 +776,7 @@ fn setup_handles_overlay<'a>(
     state: &'a State,
     hide_progress: f32,
 ) -> Element<'a, Message> {
-    let ActiveSession::PvP(pvp) = session else {
+    let Some(panels) = setup_panels(session) else {
         return iced::widget::Space::new().into();
     };
 
@@ -807,7 +896,7 @@ fn setup_handles_overlay<'a>(
     const FIELD_BLUE: Color = Color::from_rgb(0.18, 0.40, 0.85);
 
     let mut edges = row![].width(Fill).align_y(Alignment::Center);
-    if pvp.local_loaded.is_some() {
+    if panels.local_loaded.is_some() {
         edges = edges.push(handle(
             true,
             state.self_panel.shown(),
@@ -820,7 +909,7 @@ fn setup_handles_overlay<'a>(
     edges = edges.push(horizontal_space());
     // No tab at all when the peer blinded their setup — a
     // permanently dead handle is just clutter on the edge.
-    if pvp.opponent_loaded.is_some() {
+    if panels.opponent_loaded.is_some() {
         edges = edges.push(handle(
             false,
             state.opponent_panel.shown(),
@@ -1113,17 +1202,68 @@ fn input_pad<'a>(joyflags: u16) -> Element<'a, Message> {
 /// the transport bar's popover lift so it never moves — the bar
 /// auto-hides beneath it, the chips stay. Pure presentation: no mouse
 /// handlers anywhere in the chain.
+/// Picture-in-picture view of the dummy's screen while the user is
+/// possessing it: the shadow co-sim's render, inset top-right below the
+/// corner commands. The main screen stays on the player's perspective —
+/// possession adds this view rather than swapping the whole display.
+/// Drawn through its own shader surface ([`PipProgram`]) because the main
+/// framebuffer's pipeline owns a single resident texture.
+///
+/// [`PipProgram`]: crate::video::framebuffer::PipProgram
+fn training_pip_overlay(state: &State) -> Option<Element<'_, Message>> {
+    let frame = state.pip_frame.clone()?;
+    // 1.5× native: big enough to actually play the dummy off, small
+    // enough to read as an inset.
+    let (w, h) = (frame.width as f32 * 1.5, frame.height as f32 * 1.5);
+    let fb = iced::widget::shader::Shader::new(crate::video::framebuffer::PipProgram::new(frame))
+        .width(Length::Fixed(w))
+        .height(Length::Fixed(h));
+    let plate = container(fb).padding(3).style(hud_chip_plate);
+    Some(
+        container(plate)
+            .width(Fill)
+            .height(Fill)
+            .align_x(iced::alignment::Horizontal::Right)
+            .align_y(iced::alignment::Vertical::Top)
+            .padding(iced::Padding {
+                // Clear the corner commands' resting spot.
+                top: 56.0,
+                right: 12.0,
+                bottom: 0.0,
+                left: 0.0,
+            })
+            .into(),
+    )
+}
+
 fn input_display_overlay<'a>(
     session: &'a ActiveSession,
     state: &'a State,
     show_replay_inputs: bool,
 ) -> Option<Element<'a, Message>> {
-    if !show_replay_inputs {
-        return None;
-    }
-    let r = session.as_replay()?;
-    let (local, remote) = r.input_at(playhead_tick(r, state));
-    let (local_nick, remote_nick) = r.nicknames();
+    // Replay reads the config toggle; training carries its own (flipped
+    // from the training bar), since it's per-drill, not a preference.
+    let (local, remote, local_nick, remote_nick): (u16, u16, String, String) = match session {
+        ActiveSession::Replay(r) => {
+            if !show_replay_inputs {
+                return None;
+            }
+            let (local, remote) = r.input_at(playhead_tick(r, state));
+            let (local_nick, remote_nick) = r.nicknames();
+            (local, remote, local_nick.to_string(), remote_nick.to_string())
+        }
+        ActiveSession::Training(t) => {
+            if !t.show_inputs() {
+                return None;
+            }
+            let (player, dummy) = t.input_display();
+            // Same truncation the primary trap applies when it ships
+            // joyflags to the engine.
+            (player as u16, dummy as u16, String::new(), String::new())
+        }
+        _ => return None,
+    };
+    let (local_nick, remote_nick) = (local_nick.as_str(), remote_nick.as_str());
     let chip = |joyflags: u16, nick: &str| -> Element<'a, Message> {
         // The caption renders even when the nickname is empty so the
         // two chips always match heights.

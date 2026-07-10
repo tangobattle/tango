@@ -198,9 +198,71 @@ impl<Message> shader::Program<Message> for Program {
     }
 }
 
+/// A second, independent framebuffer surface — the training PiP (the
+/// dummy's screen while the user possesses it).
+///
+/// `iced_wgpu` keys persistent pipeline state by primitive *type*: all
+/// primitives of one type share a single [`Pipeline`], and ours holds a
+/// single resident texture. Two [`Program`] widgets in one window would
+/// therefore fight over that texture — each `prepare` uploads its own
+/// frame and both draws sample whichever landed last. The PiP instead
+/// draws through these delegation newtypes: identical logic, distinct
+/// `TypeId`, so iced gives it its own [`Pipeline`] (and texture).
+#[derive(Debug)]
+pub struct PipProgram(Program);
+
+impl PipProgram {
+    pub fn new(frame: Frame) -> Self {
+        Self(Program::new(frame))
+    }
+}
+
+impl<Message> shader::Program<Message> for PipProgram {
+    type State = ();
+    type Primitive = PipPrimitive;
+
+    fn draw(&self, state: &(), cursor: mouse::Cursor, bounds: Rectangle) -> PipPrimitive {
+        PipPrimitive(shader::Program::<Message>::draw(&self.0, state, cursor, bounds))
+    }
+}
+
+/// See [`PipProgram`].
+#[derive(Debug)]
+pub struct PipPrimitive(Primitive);
+
+impl shader::Primitive for PipPrimitive {
+    type Pipeline = PipPipeline;
+
+    fn prepare(
+        &self,
+        pipeline: &mut PipPipeline,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        bounds: &Rectangle,
+        viewport: &Viewport,
+    ) {
+        self.0.prepare(&mut pipeline.0, device, queue, bounds, viewport);
+    }
+
+    fn draw(&self, pipeline: &PipPipeline, render_pass: &mut wgpu::RenderPass<'_>) -> bool {
+        shader::Primitive::draw(&self.0, &pipeline.0, render_pass)
+    }
+}
+
+/// See [`PipProgram`].
+#[derive(Debug)]
+pub struct PipPipeline(Pipeline);
+
+impl shader::Pipeline for PipPipeline {
+    fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
+        Self(<Pipeline as shader::Pipeline>::new(device, queue, format))
+    }
+}
+
 /// The per-frame primitive. Carries the frame into `prepare`/`draw`; the
 /// persistent GPU resources live in [`Pipeline`] (one per primitive type,
-/// shared across all instances — we only ever show one framebuffer).
+/// shared across all instances of that type — the main screen and the
+/// training PiP are distinct types for exactly this reason).
 #[derive(Debug)]
 pub struct Primitive {
     frame: Frame,

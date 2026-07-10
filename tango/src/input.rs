@@ -366,6 +366,16 @@ pub struct Mapping {
     pub start: Vec<PhysicalInput>,
     pub select: Vec<PhysicalInput>,
     pub speed_up: Vec<PhysicalInput>,
+    // Training-session hotkeys. Not mgba keys: `to_mgba_keys` ignores
+    // them, and they only fire while a training session is active.
+    pub training_possess: Vec<PhysicalInput>,
+    pub training_record: Vec<PhysicalInput>,
+    pub training_playback: Vec<PhysicalInput>,
+    pub training_restart: Vec<PhysicalInput>,
+    pub training_save_state: Vec<PhysicalInput>,
+    pub training_load_state: Vec<PhysicalInput>,
+    pub training_pause: Vec<PhysicalInput>,
+    pub training_frame_advance: Vec<PhysicalInput>,
 }
 
 impl Default for Mapping {
@@ -405,6 +415,16 @@ impl Default for Mapping {
             start: vec![key(Code::Enter), btn(GamepadButton::Start)],
             select: vec![key(Code::Space), btn(GamepadButton::Select)],
             speed_up: vec![key(Code::ShiftLeft)],
+            // Emulator-conventional defaults; inert outside training, so
+            // the F-row is safe to claim.
+            training_possess: vec![key(Code::F1)],
+            training_record: vec![key(Code::F2)],
+            training_playback: vec![key(Code::F3)],
+            training_restart: vec![key(Code::F4)],
+            training_save_state: vec![key(Code::F5)],
+            training_load_state: vec![key(Code::F7)],
+            training_pause: vec![key(Code::F6)],
+            training_frame_advance: vec![key(Code::F8)],
         }
     }
 }
@@ -425,6 +445,14 @@ impl Mapping {
             MappedKey::Start => &self.start,
             MappedKey::Select => &self.select,
             MappedKey::SpeedUp => &self.speed_up,
+            MappedKey::TrainingPossess => &self.training_possess,
+            MappedKey::TrainingRecord => &self.training_record,
+            MappedKey::TrainingPlayback => &self.training_playback,
+            MappedKey::TrainingRestart => &self.training_restart,
+            MappedKey::TrainingSaveState => &self.training_save_state,
+            MappedKey::TrainingLoadState => &self.training_load_state,
+            MappedKey::TrainingPause => &self.training_pause,
+            MappedKey::TrainingFrameAdvance => &self.training_frame_advance,
         }
     }
 
@@ -441,6 +469,14 @@ impl Mapping {
             MappedKey::Start => &mut self.start,
             MappedKey::Select => &mut self.select,
             MappedKey::SpeedUp => &mut self.speed_up,
+            MappedKey::TrainingPossess => &mut self.training_possess,
+            MappedKey::TrainingRecord => &mut self.training_record,
+            MappedKey::TrainingPlayback => &mut self.training_playback,
+            MappedKey::TrainingRestart => &mut self.training_restart,
+            MappedKey::TrainingSaveState => &mut self.training_save_state,
+            MappedKey::TrainingLoadState => &mut self.training_load_state,
+            MappedKey::TrainingPause => &mut self.training_pause,
+            MappedKey::TrainingFrameAdvance => &mut self.training_frame_advance,
         }
     }
 
@@ -488,6 +524,14 @@ pub enum MappedKey {
     Start,
     Select,
     SpeedUp,
+    TrainingPossess,
+    TrainingRecord,
+    TrainingPlayback,
+    TrainingRestart,
+    TrainingSaveState,
+    TrainingLoadState,
+    TrainingPause,
+    TrainingFrameAdvance,
 }
 
 /// Atomic input event fed to the held-state tracker. Carries the raw
