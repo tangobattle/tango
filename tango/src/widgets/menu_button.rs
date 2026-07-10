@@ -27,16 +27,12 @@ use sweeten::widget::overlay::menu;
 /// message selecting it emits. `danger` tints the row's resting
 /// icon + label in the theme's danger color — for destructive
 /// actions, matching the red their standalone buttons used to wear.
-/// `checked` rows are toggles/selections: they wear a trailing
-/// primary check while on, and nothing (the slot stays reserved by
-/// the fixed menu width) while off.
 #[derive(Clone)]
 pub struct MenuItem<M> {
     icon: Icon,
     label: String,
     message: M,
     danger: bool,
-    checked: Option<bool>,
 }
 
 impl<M> MenuItem<M> {
@@ -46,7 +42,6 @@ impl<M> MenuItem<M> {
             label,
             message,
             danger: false,
-            checked: None,
         }
     }
 
@@ -57,20 +52,6 @@ impl<M> MenuItem<M> {
             label,
             message,
             danger: true,
-            checked: None,
-        }
-    }
-
-    /// [`new`](Self::new), as a toggle/selection row: a trailing check
-    /// marks it while `on`. Selecting it still just emits `message`
-    /// (and closes the menu) — state lives with the caller.
-    pub fn toggle(icon: Icon, label: String, message: M, on: bool) -> Self {
-        Self {
-            icon,
-            label,
-            message,
-            danger: false,
-            checked: Some(on),
         }
     }
 }
@@ -423,7 +404,6 @@ impl<M: Clone> overlay::Overlay<M, Theme, iced::Renderer> for MenuOverlay<'_, '_
         let text_size = renderer.default_size();
         let row_height = self.row_height(renderer);
         let danger = theme.palette().danger;
-        let primary = theme.palette().primary;
 
         // Entrance: glide out of the trigger's edge while scaling
         // 0.96 → 1.0 about the pane's center — the overlay cousin of
@@ -514,24 +494,6 @@ impl<M: Clone> overlay::Overlay<M, Theme, iced::Renderer> for MenuOverlay<'_, '_
                     color,
                     bounds,
                 );
-                // Toggle rows: a trailing check while on. Primary at
-                // rest so the on-state reads at a glance; the hover
-                // color takes over with the rest of the row.
-                if item.checked == Some(true) {
-                    renderer.fill_text(
-                        text_at(
-                            char::from(Icon::Check).to_string(),
-                            iced::Font::with_name("lucide"),
-                            text::Shaping::Basic,
-                        ),
-                        Point::new(
-                            row.x + row.width - self.item_padding.right - f32::from(text_size),
-                            row.center_y(),
-                        ),
-                        if hovered { style.selected_text_color } else { primary },
-                        bounds,
-                    );
-                }
             }
         });
     }

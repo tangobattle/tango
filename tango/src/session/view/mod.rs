@@ -490,51 +490,146 @@ fn replay_bar<'a>(
     // No ellipsis popover for replays — the speed picker sits
     // directly in the bar, and Settings + Close float top-right
     // (see `corner_commands_overlay`).
-    // The bar's right side, consolidated into one options menu: the
-    // speed steps plus the display toggles, each row wearing a check
-    // for its current state. One trigger instead of four controls —
-    // the transport keys keep the bar; the knobs live behind ⋮.
+    // Speed: the same chip chrome as the toggles beside it, cycling
+    // through the steps on each press. Lit while off realtime, with the
+    // current step spelled out in the tooltip.
+    const SPEED_STEPS: [f32; 4] = [0.5, 1.0, 2.0, 4.0];
     let current = r.speed();
-    let mut items: Vec<widgets::MenuItem<Message>> = [0.5f32, 1.0, 2.0, 4.0]
+    let speed_idx = SPEED_STEPS
         .iter()
-        .map(|&v| {
-            let label = if (v - v.trunc()).abs() < 1e-3 {
-                format!("{}×", v as i32)
-            } else {
-                format!("{:.1}×", v)
-            };
-            widgets::MenuItem::toggle(Icon::Gauge, label, Message::SetSpeed(v), (current - v).abs() < 0.05)
-        })
-        .collect();
-    items.push(widgets::MenuItem::toggle(
-        Icon::Gamepad2,
-        t!(lang, "playback-input-display"),
-        Message::ToggleInputDisplay,
-        show_replay_inputs,
-    ));
-    items.push(widgets::MenuItem::toggle(
-        Icon::PictureInPicture2,
-        t!(lang, "playback-pip"),
-        Message::TogglePip,
-        r.show_pip(),
-    ));
-    items.push(widgets::MenuItem::toggle(
-        Icon::ArrowLeftRight,
-        t!(lang, "playback-swap-perspective"),
-        Message::ToggleSwapPerspective,
-        r.swap_perspective(),
-    ));
-    let options_menu = widgets::menu_button(
-        Icon::SlidersHorizontal,
-        t!(lang, "playback-options"),
-        items,
-        true,
-        [5.0, 8.0],
-    );
+        .position(|&v| (current - v).abs() < 0.05)
+        .unwrap_or(1);
+    let next_speed = SPEED_STEPS[(speed_idx + 1) % SPEED_STEPS.len()];
+    let speed_label = {
+        let v = SPEED_STEPS[speed_idx];
+        if (v - v.trunc()).abs() < 1e-3 {
+            format!("{}×", v as i32)
+        } else {
+            format!("{:.1}×", v)
+        }
+    };
+    let speed_engaged = speed_idx != 1;
+    let speed_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
+        let mut st = telemetry_plate_button(theme, status);
+        if speed_engaged {
+            let primary = theme.palette().primary;
+            st.text_color = primary;
+            st.border.color = iced::Color { a: 0.35, ..primary };
+        }
+        st
+    };
+    let speed_chip = iced::widget::tooltip(
+        button(
+            container(Icon::Gauge.widget().size(16.0))
+                .width(iced::Length::Fixed(18.0))
+                .height(iced::Length::Fixed(18.0))
+                .center(Fill),
+        )
+        .padding(0)
+        .width(iced::Length::Fixed(32.0))
+        .height(iced::Length::Fixed(32.0))
+        .style(speed_style)
+        .on_press(Message::SetSpeed(next_speed)),
+        widgets::tooltip_bubble(format!("{}: {}", t!(lang, "playback-speed"), speed_label)),
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(4);
+
+    // Input display toggle: quiet plate at rest, lit glyph + tinted
+    // hairline while the overlay is on — the setup handles'
+    // "identity in the glyph" treatment, not a full CTA fill.
+    let input_toggle_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
+        let mut st = telemetry_plate_button(theme, status);
+        if show_replay_inputs {
+            let primary = theme.palette().primary;
+            st.text_color = primary;
+            st.border.color = iced::Color { a: 0.35, ..primary };
+        }
+        st
+    };
+    let input_toggle = iced::widget::tooltip(
+        button(
+            container(Icon::Gamepad2.widget().size(16.0))
+                .width(iced::Length::Fixed(18.0))
+                .height(iced::Length::Fixed(18.0))
+                .center(Fill),
+        )
+        .padding(0)
+        .width(iced::Length::Fixed(32.0))
+        .height(iced::Length::Fixed(32.0))
+        .style(input_toggle_style)
+        .on_press(Message::ToggleInputDisplay),
+        widgets::tooltip_bubble(t!(lang, "playback-input-display")),
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(4);
+
+    // Opponent-screen PiP toggle: same chip treatment as the input
+    // display. The replay re-simulates the opponent's core anyway; this
+    // just turns its renderer on and insets the result top-right.
+    let pip_on = r.show_pip();
+    let pip_toggle_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
+        let mut st = telemetry_plate_button(theme, status);
+        if pip_on {
+            let primary = theme.palette().primary;
+            st.text_color = primary;
+            st.border.color = iced::Color { a: 0.35, ..primary };
+        }
+        st
+    };
+    let pip_toggle = iced::widget::tooltip(
+        button(
+            container(Icon::PictureInPicture2.widget().size(16.0))
+                .width(iced::Length::Fixed(18.0))
+                .height(iced::Length::Fixed(18.0))
+                .center(Fill),
+        )
+        .padding(0)
+        .width(iced::Length::Fixed(32.0))
+        .height(iced::Length::Fixed(32.0))
+        .style(pip_toggle_style)
+        .on_press(Message::TogglePip),
+        widgets::tooltip_bubble(t!(lang, "playback-pip")),
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(4);
+
+    // Perspective swap: the main screen shows the opponent's re-simulated
+    // view; the PiP (if on) carries the local screen. Same chip recipe.
+    let swapped = r.swap_perspective();
+    let swap_toggle_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
+        let mut st = telemetry_plate_button(theme, status);
+        if swapped {
+            let primary = theme.palette().primary;
+            st.text_color = primary;
+            st.border.color = iced::Color { a: 0.35, ..primary };
+        }
+        st
+    };
+    let swap_toggle = iced::widget::tooltip(
+        button(
+            container(Icon::ArrowLeftRight.widget().size(16.0))
+                .width(iced::Length::Fixed(18.0))
+                .height(iced::Length::Fixed(18.0))
+                .center(Fill),
+        )
+        .padding(0)
+        .width(iced::Length::Fixed(32.0))
+        .height(iced::Length::Fixed(32.0))
+        .style(swap_toggle_style)
+        .on_press(Message::ToggleSwapPerspective),
+        widgets::tooltip_bubble(t!(lang, "playback-swap-perspective")),
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(4);
 
     let controls = row![].spacing(10).align_y(Alignment::Center).padding([8, 8]);
     let controls = replay_transport(lang, r, state, controls);
-    controls.push(options_menu)
+    controls
+        .push(speed_chip)
+        .push(input_toggle)
+        .push(pip_toggle)
+        .push(swap_toggle)
 }
 
 /// Hoist a persistent chrome layer into iced's floating layer —
