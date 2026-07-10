@@ -133,6 +133,36 @@ impl MetricSample {
 /// How many frames of telemetry the sparklines retain (~3 s at 60 fps).
 const METRIC_HISTORY_LEN: usize = 180;
 
+/// Snapshot of a finished PvP match, taken at the natural-end teardown
+/// (`is_ended`) and shown as the post-match results screen until dismissed.
+/// Owned data only — the session (and everything network-side) is already
+/// gone while this is on screen. User-initiated quits (Esc hold, disconnect
+/// confirm) skip the capture: the player chose to leave, so they go straight
+/// back to the menu.
+pub struct MatchResults {
+    pub remote_nickname: String,
+    /// Local-perspective outcome of each completed round, in play order.
+    /// Empty when the match tore down before any round finished (e.g. a
+    /// comm error mid-round-1) — the screen shows a neutral headline then.
+    pub outcomes: Vec<tango_pvp::stepper::BattleOutcome>,
+    /// Session start to local completion.
+    pub duration: std::time::Duration,
+    /// The replay recorded for this match, for the Watch button. `None` if
+    /// the writer failed to open at match start.
+    pub replay_path: Option<std::path::PathBuf>,
+}
+
+impl MatchResults {
+    fn capture(pvp: &pvp::PvpSession) -> Self {
+        Self {
+            remote_nickname: pvp.remote_nickname.clone(),
+            outcomes: pvp.round_results(),
+            duration: pvp.match_duration(),
+            replay_path: pvp.replay_path.clone(),
+        }
+    }
+}
+
 /// Per-session UI state. App holds `session: State`; the Play and
 /// Replays tabs swap an `ActiveSession` into `active` to start a
 /// session, then [`State::update`] handles the rest until [`Close`]
@@ -156,6 +186,13 @@ pub struct State {
     /// `ActiveSession`.
     pub vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     pub active: Option<ActiveSession>,
+    /// Post-match results, `Some` from a PvP session's natural end until the
+    /// user dismisses the results screen. Deliberately not cleared by
+    /// [`close_session`](State::close_session): watching the recorded replay
+    /// from the results screen runs a whole replay session, and closing that
+    /// should land back on the results. The App's view routes here whenever
+    /// no session is active.
+    pub results: Option<MatchResults>,
     /// PvP-only: the opponent's save-view side panel, shown when
     /// they haven't blinded their setup. Defaults to hidden; user
     /// opens it via the edge handle. The drawer slides in from the
@@ -253,6 +290,7 @@ impl Default for State {
                     as usize
             ])),
             active: None,
+            results: None,
             opponent_panel: anim::Overlay::new(false),
             self_panel: anim::Overlay::new(false),
             input_held: crate::input::HeldState::default(),
@@ -389,6 +427,13 @@ pub enum Message {
     /// `notify_one()`'d by both the frame callback and the PvP
     /// end-detection wires.
     UpdateFramebuffer,
+    /// Dismiss the post-match results screen (its Done button, or Esc
+    /// while it's on screen) — back to the tabs.
+    DismissResults,
+    /// Play back the replay recorded for the match on the results screen.
+    /// Handled by the App wrapper (building a playback session needs the
+    /// scanners + config); a no-op here.
+    WatchResultsReplay,
     /// Click-swallower for modal panel chrome — keeps presses
     /// on the panel's inert regions from falling through to the
     /// dismiss-on-press backdrop layer beneath it.
@@ -690,6 +735,13 @@ impl State {
             Message::CloseDisconnectConfirm => {
                 self.disconnect.close();
             }
+            Message::DismissResults => {
+                self.results = None;
+            }
+            Message::WatchResultsReplay => {
+                // App-level: the wrapper intercepts this and builds the
+                // playback session (needs scanners + config).
+            }
             Message::MouseMoved => {
                 self.last_mouse_move = std::time::Instant::now();
             }
@@ -734,7 +786,16 @@ impl State {
                     // each call `notify_one()` so this branch fires
                     // even after the emu thread has paused.
                     if session.is_ended() {
+                        // Natural end — snapshot the finished match for the
+                        // results screen before the teardown drops it. Only
+                        // here: the user-quit paths call close_session
+                        // directly and go straight back to the menu.
+                        let results = match session {
+                            ActiveSession::PvP(pvp) => Some(MatchResults::capture(pvp)),
+                            _ => None,
+                        };
                         self.close_session();
+                        self.results = results;
                     } else {
                         // Upload the native frame as-is; the selected effect
                         // magnifies it on the GPU at draw time.

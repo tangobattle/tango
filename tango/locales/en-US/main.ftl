@@ -108,6 +108,20 @@ session-stat-skew = Skew
 session-stat-lead = Lead
 session-stat-depth = Misprediction depth
 session-stat-ping = Network latency
+# Post-match results screen
+session-results-victory = Victory!
+session-results-defeat = Defeat
+session-results-draw = Draw
+session-results-no-contest = Match ended
+session-results-no-rounds = The match ended before a round was decided.
+session-results-vs = vs { $nickname }
+session-results-you = You
+session-results-draws = { $count ->
+    [one] 1 round ended in a draw
+   *[other] { $count } rounds ended in a draw
+}
+session-results-watch-replay = Watch replay
+session-results-done = Done
 
 # Save view sub-tabs
 save-tab-cover = Cover

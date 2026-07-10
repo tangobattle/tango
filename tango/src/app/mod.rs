@@ -227,6 +227,9 @@ const ROOT_SLIDE: f32 = 10.0;
 enum ScreenKey {
     Welcome,
     Session,
+    /// The post-match results card (no session active, but
+    /// `session.results` is set).
+    Results,
     Tabs(Tab),
 }
 
@@ -809,6 +812,8 @@ impl App {
             ScreenKey::Welcome
         } else if self.session.is_active() {
             ScreenKey::Session
+        } else if self.session.results.is_some() {
+            ScreenKey::Results
         } else {
             ScreenKey::Tabs(self.tab)
         }
@@ -1033,6 +1038,31 @@ impl App {
                 if let session::Message::TogglePip = &m {
                     self.config.show_opponent_pip = !self.config.show_opponent_pip;
                     self.persist_config();
+                }
+                // Results screen's Watch button: building a playback session
+                // needs the scanners + config, so it's handled here (the
+                // session module's handler is a no-op). The results stay set
+                // underneath — closing the replay lands back on them. On
+                // failure (e.g. the replay is still flushing or unreadable),
+                // log and leave the results screen up.
+                if let session::Message::WatchResultsReplay = &m {
+                    if let Some(path) = self.session.results.as_ref().and_then(|r| r.replay_path.clone()) {
+                        match session::build_playback(
+                            &self.scanners,
+                            &self.config,
+                            &self.audio_binder,
+                            self.session.frame_notify.clone(),
+                            self.session.vbuf.clone(),
+                            &path,
+                        ) {
+                            Ok(s) => {
+                                self.session.active = Some(ActiveSession::Replay(s));
+                                self.session.wake_controls();
+                            }
+                            Err(e) => log::warn!("failed to play replay {}: {e}", path.display()),
+                        }
+                    }
+                    return iced::Task::none();
                 }
                 // The active session may have mutated the user's
                 // save file on disk (single-player writes via
@@ -1498,6 +1528,38 @@ impl App {
                     }
                 }
                 input.to_event().map(|ev| Message::Session(session::Message::Input(ev)))
+            })
+            .into();
+        }
+
+        // Post-match results: a full-screen moment between the session and
+        // the tabs — same chrome-less cyberworld composition as the welcome
+        // screen. The ScreenKey change animates the swap in both directions.
+        if let Some(results) = self.session.results.as_ref() {
+            let results_view = session::view::results_view(lang, results).map(Message::Session);
+            let composed: Element<'_, Message> = iced::widget::stack![widgets::cyber_backdrop(), results_view]
+                .width(Fill)
+                .height(Fill)
+                .into();
+            let composed = match (enter, self.screen_enter_scope) {
+                (Some(p), EnterScope::Root { dy }) => anim::slide_in(composed, p, iced::Vector::new(0.0, dy)),
+                _ => composed,
+            };
+            // Esc dismisses — through the same synchronous capture wrapper
+            // the session uses, so it works without any widget focused.
+            return crate::input_capture::InputCapture::new(composed, |input| {
+                if let crate::input_capture::Input::Keyboard(iced::keyboard::Event::KeyPressed {
+                    physical_key, ..
+                }) = &input
+                {
+                    if matches!(
+                        physical_key,
+                        iced::keyboard::key::Physical::Code(iced::keyboard::key::Code::Escape)
+                    ) {
+                        return Some(Message::Session(session::Message::DismissResults));
+                    }
+                }
+                None
             })
             .into();
         }

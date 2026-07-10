@@ -162,6 +162,16 @@ pub struct PvpSession {
     /// The footer slider writes it via [`set_frame_delay`]; the netcode reads it
     /// each rendered frame. Purely local — never negotiated or sent to the peer.
     frame_delay: Arc<AtomicU32>,
+    /// Local-perspective outcome of each completed round, appended by the
+    /// match as rounds close. Our own `Arc` (the match holds a clone), so the
+    /// post-match results snapshot can read it during teardown regardless of
+    /// how far the match's background tasks have already wound down.
+    round_results: Arc<Mutex<Vec<tango_pvp::stepper::BattleOutcome>>>,
+    /// Where this match's replay is being recorded, or `None` if the writer
+    /// failed to open. The post-match results screen offers to play it back.
+    pub replay_path: Option<std::path::PathBuf>,
+    /// When the session was built, for the results screen's match duration.
+    started_at: std::time::Instant,
 }
 
 impl PvpSession {
@@ -269,7 +279,7 @@ impl PvpSession {
 
         // Replay writer. Failing to open it shouldn't kill the
         // match — log and continue without recording.
-        let replay_writer = build_replay_writer(
+        let (replay_writer, replay_path) = match build_replay_writer(
             replays_path,
             &pre_match.link_code,
             &pre_match.local_settings,
@@ -281,12 +291,13 @@ impl PvpSession {
             pre_match.match_ts,
             local_save.as_ref(),
             remote_save.as_ref(),
-        )
-        .map_err(|e| {
-            log::warn!("pvp: replay writer open failed: {e}");
-            e
-        })
-        .ok();
+        ) {
+            Ok((writer, path)) => (Some(writer), Some(path)),
+            Err(e) => {
+                log::warn!("pvp: replay writer open failed: {e}");
+                (None, None)
+            }
+        };
 
         let remote_hooks = remote_game.hooks;
         let identity = tango_pvp::battle::MatchIdentity {
@@ -313,6 +324,10 @@ impl PvpSession {
         // part of the deterministic simulation and never crosses the wire. Shared
         // as an atomic so the footer slider can live-adjust it mid-match.
         let frame_delay = Arc::new(AtomicU32::new(frame_delay));
+        // Per-round outcome log, shared with the match (which appends as
+        // rounds close). We keep our own handle so the post-match results
+        // snapshot survives the match teardown.
+        let round_results = Arc::new(Mutex::new(Vec::new()));
         let inner_match = tango_pvp::battle::Match::new(
             local_rom.as_ref().clone(),
             local_hooks,
@@ -325,6 +340,7 @@ impl PvpSession {
             tango_pvp::battle::ReplayConfig { writer: replay_writer },
             frame_delay.clone(),
             disable_bgm,
+            round_results.clone(),
         );
         match_handle.set(inner_match.clone());
 
@@ -675,6 +691,9 @@ impl PvpSession {
             local_loaded,
             local_save_view: crate::save_view::State::new(),
             frame_delay,
+            round_results,
+            replay_path,
+            started_at: std::time::Instant::now(),
         })
     }
 
@@ -829,6 +848,23 @@ impl PvpSession {
     /// the cause of a slow tps or just observing one.
     pub fn fps_target(&self) -> f32 {
         self._thread.handle().lock_audio().sync().fps_target()
+    }
+
+    /// Local-perspective outcome of each round completed so far, in play
+    /// order. Read at teardown for the post-match results screen; rounds the
+    /// match never finished (mid-round disconnect) simply aren't in it.
+    pub fn round_results(&self) -> Vec<tango_pvp::stepper::BattleOutcome> {
+        self.round_results.lock().unwrap().clone()
+    }
+
+    /// How long the match ran, start of session to local completion — or to
+    /// now, if completion hasn't been observed yet (it is stamped a frame
+    /// after the completion token flips). For the results screen.
+    pub fn match_duration(&self) -> std::time::Duration {
+        match *self.end.local_ended_at.lock().unwrap() {
+            Some(ended_at) => ended_at.duration_since(self.started_at),
+            None => self.started_at.elapsed(),
+        }
     }
 
     /// Snapshot of the current round's metrics for the status bar
@@ -1018,8 +1054,10 @@ async fn rebuild_connection(
     }
 }
 
-/// Open the replay file + write its metadata frame. Filename
-/// format mirrors the legacy app:
+/// Open the replay file + write its metadata frame, returning the writer
+/// along with the path it records to (surfaced on the session so the
+/// post-match results screen can offer playback). Filename format mirrors
+/// the legacy app:
 /// `YYYYMMDDhhmmss-<link_code>-<compat>-vs-<opponent>-p<idx>.tangoreplay`.
 #[allow(clippy::too_many_arguments)]
 fn build_replay_writer(
@@ -1034,7 +1072,7 @@ fn build_replay_writer(
     match_ts: u64,
     local_save: &(dyn tango_dataview::save::Save + Send + Sync),
     remote_save: &(dyn tango_dataview::save::Save + Send + Sync),
-) -> anyhow::Result<tango_pvp::replay::Writer> {
+) -> anyhow::Result<(tango_pvp::replay::Writer, std::path::PathBuf)> {
     std::fs::create_dir_all(replays_path)?;
     let local_gi = local_settings
         .game_info
@@ -1070,7 +1108,7 @@ fn build_replay_writer(
         .open(&replay_filename)?;
     let local_sram = local_save.to_sram_dump();
     let remote_sram = remote_save.to_sram_dump();
-    Ok(tango_pvp::replay::Writer::new(
+    let writer = tango_pvp::replay::Writer::new(
         // Buffered: write_input runs on the emulator thread once per
         // confirmed frame, and unbuffered it costs a few small write
         // syscalls each time. The format already recovers truncated tails,
@@ -1126,5 +1164,6 @@ fn build_replay_writer(
         rng_seed,
         &local_sram,
         &remote_sram,
-    )?)
+    )?;
+    Ok((writer, replay_filename))
 }

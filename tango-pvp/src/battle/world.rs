@@ -67,6 +67,16 @@ pub struct MgbaWorld {
     pub last_outgoing: Vec<u8>,
     pub replay_writer: Arc<SyncMutex<Option<crate::replay::Writer>>>,
     pub local_player_index: u8,
+    /// The standing round outcome, shared with the owning
+    /// [`Round`](super::Round) so `Match::end_round` can read it when the live
+    /// core reaches the round-end screen. Written by [`step`](getgud::World::step)
+    /// whenever the per-game round-end traps report one — including on
+    /// speculative ticks, so [`load`](getgud::World::load) revokes it again when
+    /// a rollback rewinds past the step that reported it (the re-sim decides
+    /// afresh whether the round really ended). The stored tick is the reporting
+    /// step's *boundary* tick, which is what makes that comparison exact; a
+    /// result whose boundary settled or promoted is never revoked.
+    pub round_result: Arc<SyncMutex<Option<crate::stepper::RoundResult>>>,
     /// Spent ~400KB mgba state buffers harvested from snapshots the engine
     /// discards ([`recycle`](getgud::World::recycle)), handed back out by
     /// [`save`](getgud::World::save). In steady state every frame discards one
@@ -107,7 +117,15 @@ impl getgud::World for MgbaWorld {
         // which input pairs are no longer part of the recorded round. The state
         // itself is still valid (the post-round-end animation), and the engine
         // keeps simulating it so the live core can reach the end.
-        Ok(if result.round_result.is_some() {
+        Ok(if let Some(rr) = result.round_result {
+            // Stamp the outcome with this step's boundary tick (not the
+            // trap-time game tick, whose position relative to the tick
+            // increment is ROM-dependent) so `load` can tell exactly whether
+            // a rewind discards the reporting step.
+            *self.round_result.lock().unwrap() = Some(crate::stepper::RoundResult {
+                tick: result.boundary.tick,
+                outcome: rr.outcome,
+            });
             getgud::RoundState::Ended
         } else {
             getgud::RoundState::Ongoing
@@ -161,6 +179,16 @@ impl getgud::World for MgbaWorld {
         if self.stepper.restore(&state.primary, state.tick)? {
             self.shadow.load_state(&state.shadow_snapshot)?;
             self.last_outgoing = state.outgoing.clone();
+            // A genuine rewind discards every step past `state.tick` — if the
+            // standing round result came from one of them (a speculative KO
+            // built on mispredicted remote input), revoke it; the re-sim
+            // decides afresh whether the round really ended. A result whose
+            // reporting step lies at or before the restore point is settled
+            // history and stands.
+            let mut round_result = self.round_result.lock().unwrap();
+            if round_result.is_some_and(|rr| rr.tick > state.tick) {
+                *round_result = None;
+            }
         }
         Ok(())
     }

@@ -3,7 +3,9 @@ use super::*;
 // would otherwise clash with the sweeten ones re-exported via `super::*`.
 use sweeten::widget::{column, row};
 
+mod results;
 mod telemetry;
+pub use results::results_view;
 use telemetry::telemetry_overlay;
 
 /// One telemetry cell: a label `icon` and the current `value`, both

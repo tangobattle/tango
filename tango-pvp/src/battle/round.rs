@@ -64,6 +64,13 @@ pub struct Round {
     /// signal for any later drop. Persisting on the round (which survives the
     /// reconnect pause) is what makes that re-arm automatic.
     stall_signaled: bool,
+    /// The round's standing outcome, shared into the engine's [`MgbaWorld`] at
+    /// [`start_session`](Self::start_session): its steps report it, its
+    /// rollbacks revoke it (see the field on [`MgbaWorld`]). `Match::end_round`
+    /// reads it through [`result`](Self::result) when the live core reaches the
+    /// round-end screen — by which point the KO tick is long settled, so what's
+    /// standing here is the confirmed outcome.
+    result: Arc<std::sync::Mutex<Option<crate::stepper::RoundResult>>>,
 }
 
 impl Round {
@@ -80,6 +87,7 @@ impl Round {
             last_loaded_tick: 0,
             local_stall: match_.local_stall_handle(),
             stall_signaled: false,
+            result: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -122,6 +130,7 @@ impl Round {
             replay_writer: match_.replay_writer_handle(),
             local_player_index: self.local_player_index,
             state_pool: Vec::new(),
+            round_result: self.result.clone(),
         };
         self.session = Some(getgud::Session::new(getgud::SessionParams {
             present_delay: self.frame_delay.load(Ordering::Relaxed),
@@ -147,6 +156,13 @@ impl Round {
 
     pub fn local_player_index(&self) -> u8 {
         self.local_player_index
+    }
+
+    /// The round's standing (settled) outcome, from the local player's
+    /// perspective. `None` while the round is in progress or if it never
+    /// reached a KO (e.g. the match was torn down mid-round).
+    pub(super) fn result(&self) -> Option<crate::stepper::RoundResult> {
+        *self.result.lock().unwrap()
     }
 
     /// Netcode frontier — advances one per wall-frame via the live core's
