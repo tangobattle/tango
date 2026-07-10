@@ -180,6 +180,9 @@ impl ReplaySession {
         audio_binder: &crate::audio::LateBinder,
         frame_notify: Arc<tokio::sync::Notify>,
         vbuf: Arc<Mutex<Vec<u8>>>,
+        // Start with the opponent-screen PiP on (`config.show_opponent_pip`
+        // — the persisted transport-bar toggle).
+        show_pip: bool,
     ) -> anyhow::Result<Self> {
         let mut core = crate::session::new_gba_core(rom.as_ref())?;
         core.as_mut()
@@ -267,7 +270,13 @@ impl ReplaySession {
 
         let seek = Arc::new(SeekController::new());
 
-        let show_pip = Arc::new(AtomicBool::new(false));
+        // The persisted preference applies from the first frame: rendering
+        // and emulated landings come on with it (see `toggle_pip`).
+        if show_pip {
+            shadow.lock().unwrap().set_rendering(true);
+            seek.set_emulate_landings(true);
+        }
+        let show_pip = Arc::new(AtomicBool::new(show_pip));
         let pip_vbuf = Arc::new(Mutex::new(vec![
             0u8;
             (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2) as usize

@@ -1027,6 +1027,13 @@ impl App {
                     self.config.show_replay_inputs = !self.config.show_replay_inputs;
                     self.persist_config();
                 }
+                // Same deal for the opponent-screen PiP toggle — the session
+                // handler flips the live session's state; this keeps the
+                // choice sticking across replays.
+                if let session::Message::TogglePip = &m {
+                    self.config.show_opponent_pip = !self.config.show_opponent_pip;
+                    self.persist_config();
+                }
                 // The active session may have mutated the user's
                 // save file on disk (single-player writes via
                 // mgba's RW VFile). When the session ends, drop it

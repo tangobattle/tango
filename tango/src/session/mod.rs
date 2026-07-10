@@ -955,6 +955,7 @@ pub fn build_playback(
         audio_binder,
         frame_notify,
         vbuf,
+        config.show_opponent_pip,
     )
 }
 

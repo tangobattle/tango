@@ -150,6 +150,12 @@ pub struct Config {
     /// playhead. Toggled from the replay transport bar.
     #[serde(default)]
     pub show_replay_inputs: bool,
+    /// When true, replay playback shows the opponent's screen as a
+    /// picture-in-picture inset (their perspective is re-simulated
+    /// anyway; this turns its renderer on). Toggled from the replay
+    /// transport bar, like [`show_replay_inputs`](Self::show_replay_inputs).
+    #[serde(default)]
+    pub show_opponent_pip: bool,
     /// When true, the self-updater (`updater::Updater`) runs in
     /// the background and downloads any newer GitHub release.
     /// Toggle takes effect immediately via Settings; downloaded
@@ -285,6 +291,7 @@ impl Default for Config {
             fractional_scaling: false,
             hide_emulator_border: false,
             show_replay_inputs: false,
+            show_opponent_pip: false,
             enable_updater: true,
             allow_prerelease_upgrades: false,
             last_game: None,
