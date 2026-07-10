@@ -179,6 +179,10 @@ pub struct InnerState {
     packet_source: Arc<dyn super::RemotePacketSource>,
     local_packet: Option<LocalPacket>,
     round_result: Option<RoundResult>,
+    /// Latest per-tick HP report from the per-game traps (see
+    /// [`super::BattleHp`]). Overwritten every reporting tick; stays `None`
+    /// for games without HP offsets.
+    battle_hp: Option<super::BattleHp>,
     error: Option<anyhow::Error>,
     mode: Mode,
 }
@@ -268,6 +272,7 @@ impl InnerState {
             packet_source,
             local_packet,
             round_result: None,
+            battle_hp: None,
             error: None,
             mode: Mode::Replay(ReplayExtras {
                 phase,
@@ -317,6 +322,7 @@ impl InnerState {
                 packet: last_local_packet,
             }),
             round_result: None,
+            battle_hp: None,
             error: None,
             mode: Mode::Fastforward(FastforwardExtras {
                 capture_tick,
@@ -637,6 +643,7 @@ impl InnerState {
         super::StepperResult {
             boundary: ff.captured.expect("captured boundary"),
             round_result: self.round_result,
+            hp: self.battle_hp,
         }
     }
 
@@ -651,6 +658,14 @@ impl InnerState {
 
     pub fn round_result(&self) -> Option<RoundResult> {
         self.round_result
+    }
+
+    /// Report both players' HP for the tick being simulated. Called by
+    /// per-game per-tick traps on games with known HP offsets; skipping the
+    /// call on ticks where the unit structs aren't valid (battle intro) just
+    /// leaves the previous report standing.
+    pub fn set_battle_hp(&mut self, hp: super::BattleHp) {
+        self.battle_hp = Some(hp);
     }
 
     pub fn set_round_ending(&mut self) {

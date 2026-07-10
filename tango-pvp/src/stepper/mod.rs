@@ -58,6 +58,12 @@ pub struct RoundResult {
     pub outcome: BattleOutcome,
 }
 
+/// Both players' in-battle HP at one tick, indexed by absolute player
+/// index (not local/remote). Reported by the per-game stepper traps via
+/// [`InnerState::set_battle_hp`] on games with known HP offsets; games
+/// without them simply never report and consumers see no samples.
+pub type BattleHp = [u16; 2];
+
 /// Output of a single stepper run.
 pub struct StepperResult {
     /// The boundary the run halted at: its tick and outgoing packet. The per-game
@@ -75,6 +81,9 @@ pub struct StepperResult {
     /// `main_read_joyflags` (its PC is rewound there by `prepare_for_next_input`).
     pub boundary: CapturedBoundary,
     pub round_result: Option<RoundResult>,
+    /// Both players' HP during the tick this run simulated, if the per-game
+    /// traps reported it (see [`BattleHp`]).
+    pub hp: Option<BattleHp>,
 }
 
 /// Single per-frame re-sim core for the rollback engine: a dedicated headless

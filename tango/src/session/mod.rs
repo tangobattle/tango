@@ -141,26 +141,100 @@ const METRIC_HISTORY_LEN: usize = 180;
 /// back to the menu.
 pub struct MatchResults {
     pub remote_nickname: String,
-    /// Local-perspective outcome of each completed round, in play order.
-    /// Empty when the match tore down before any round finished (e.g. a
-    /// comm error mid-round-1) — the screen shows a neutral headline then.
-    pub outcomes: Vec<tango_pvp::stepper::BattleOutcome>,
+    /// Per-round outcome + presentation-ready HP trace, in play order. Empty
+    /// when the match tore down before any round finished (e.g. a comm error
+    /// mid-round-1) — the screen shows a neutral headline then.
+    pub rounds: Vec<RoundCard>,
     /// Session start to local completion.
     pub duration: std::time::Duration,
     /// The replay recorded for this match, for the Watch button. `None` if
     /// the writer failed to open at match start.
     pub replay_path: Option<std::path::PathBuf>,
+    /// When the results screen was put up — the zero point of its reveal
+    /// choreography (per-round HP sweeps, then the verdict stamp). One-shot:
+    /// returning from a replay watch finds it long elapsed, so the card sits
+    /// at rest instead of replaying its entrance.
+    pub revealed_at: iced::time::Instant,
 }
+
+/// One round on the results card: the outcome plus a decimated HP trace for
+/// the round graph. `trace` points are `(x, you, opponent)`, all normalized —
+/// x over the round's sampled ticks, HP against the match-wide maximum so
+/// every round shares one vertical scale. Empty when the round produced no
+/// HP samples (torn down mid-intro).
+pub struct RoundCard {
+    pub outcome: tango_pvp::stepper::BattleOutcome,
+    pub trace: Vec<(f32, f32, f32)>,
+}
+
+/// Cap on points per round trace. HP holds values for long stretches, so a
+/// few hundred step-points reproduce the curve exactly enough at card scale.
+const TRACE_POINTS: usize = 240;
 
 impl MatchResults {
     fn capture(pvp: &pvp::PvpSession) -> Self {
-        Self {
+        let reports = pvp.round_results();
+        // One shared vertical scale across the whole match, so a 1000 HP navi
+        // reads as taller than a 300 HP one in every round.
+        let max_hp = reports
+            .iter()
+            .flat_map(|r| r.hp.iter())
+            .map(|s| s.local.max(s.remote))
+            .max()
+            .unwrap_or(0)
+            .max(1) as f32;
+        let rounds = reports
+            .into_iter()
+            .map(|r| RoundCard {
+                outcome: r.outcome,
+                trace: decimate_trace(&r.hp, max_hp),
+            })
+            .collect::<Vec<_>>();
+        let results = Self {
             remote_nickname: pvp.remote_nickname.clone(),
-            outcomes: pvp.round_results(),
+            rounds,
             duration: pvp.match_duration(),
             replay_path: pvp.replay_path.clone(),
-        }
+            revealed_at: iced::time::Instant::now(),
+        };
+        anim::kick(view::results::reveal_duration(&results));
+        results
     }
+}
+
+/// Thin a round's HP series to at most [`TRACE_POINTS`] normalized points,
+/// always keeping the final sample (the KO floor). Ticks map to x by their
+/// position in the round's sampled span.
+fn decimate_trace(hp: &[tango_pvp::battle::HpSample], max_hp: f32) -> Vec<(f32, f32, f32)> {
+    // Some games' unit slots go live a few ticks before their HP is set
+    // (bn1); a round never actually starts at 0–0, so a both-zero prefix is
+    // pre-init noise, not data. (A double KO's zeros are at the end.)
+    let live = hp
+        .iter()
+        .position(|s| s.local != 0 || s.remote != 0)
+        .unwrap_or(hp.len());
+    let hp = &hp[live..];
+    let (Some(first), Some(last)) = (hp.first(), hp.last()) else {
+        return vec![];
+    };
+    if hp.len() < 2 {
+        return vec![];
+    }
+    let t0 = first.tick as f32;
+    let span = (last.tick as f32 - t0).max(1.0);
+    let at = |s: &tango_pvp::battle::HpSample| {
+        (
+            (s.tick as f32 - t0) / span,
+            s.local as f32 / max_hp,
+            s.remote as f32 / max_hp,
+        )
+    };
+    let step = hp.len().div_ceil(TRACE_POINTS).max(1);
+    let mut points: Vec<_> = hp.iter().step_by(step).map(at).collect();
+    if !(hp.len() - 1).is_multiple_of(step) {
+        points.push(at(last));
+    }
+    points
 }
 
 /// Per-session UI state. App holds `session: State`; the Play and

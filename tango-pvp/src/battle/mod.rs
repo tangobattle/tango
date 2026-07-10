@@ -15,8 +15,9 @@ mod throttler;
 mod world;
 
 pub(crate) use match_::SenderMutex;
-pub use match_::{Match, RoundMetrics};
+pub use match_::{Match, RoundMetrics, RoundReport};
 pub(crate) use round::Round;
+pub use world::HpSample;
 
 /// Match-wide identity. Both peers compute these to identical values from the
 /// shared protocol state, then carry them through Match → Shadow → Round.

@@ -162,11 +162,12 @@ pub struct PvpSession {
     /// The footer slider writes it via [`set_frame_delay`]; the netcode reads it
     /// each rendered frame. Purely local — never negotiated or sent to the peer.
     frame_delay: Arc<AtomicU32>,
-    /// Local-perspective outcome of each completed round, appended by the
-    /// match as rounds close. Our own `Arc` (the match holds a clone), so the
-    /// post-match results snapshot can read it during teardown regardless of
-    /// how far the match's background tasks have already wound down.
-    round_results: Arc<Mutex<Vec<tango_pvp::stepper::BattleOutcome>>>,
+    /// Local-perspective report (outcome + HP series) of each completed
+    /// round, appended by the match as rounds close. Our own `Arc` (the match
+    /// holds a clone), so the post-match results snapshot can read it during
+    /// teardown regardless of how far the match's background tasks have
+    /// already wound down.
+    round_results: Arc<Mutex<Vec<tango_pvp::battle::RoundReport>>>,
     /// Where this match's replay is being recorded, or `None` if the writer
     /// failed to open. The post-match results screen offers to play it back.
     pub replay_path: Option<std::path::PathBuf>,
@@ -850,10 +851,10 @@ impl PvpSession {
         self._thread.handle().lock_audio().sync().fps_target()
     }
 
-    /// Local-perspective outcome of each round completed so far, in play
+    /// Local-perspective report of each round completed so far, in play
     /// order. Read at teardown for the post-match results screen; rounds the
     /// match never finished (mid-round disconnect) simply aren't in it.
-    pub fn round_results(&self) -> Vec<tango_pvp::stepper::BattleOutcome> {
+    pub fn round_results(&self) -> Vec<tango_pvp::battle::RoundReport> {
         self.round_results.lock().unwrap().clone()
     }
 

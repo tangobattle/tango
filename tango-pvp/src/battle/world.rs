@@ -77,6 +77,16 @@ pub struct MgbaWorld {
     /// step's *boundary* tick, which is what makes that comparison exact; a
     /// result whose boundary settled or promoted is never revoked.
     pub round_result: Arc<SyncMutex<Option<crate::stepper::RoundResult>>>,
+    /// Local/remote-oriented HP per simulated tick, shared with the owning
+    /// [`Round`](super::Round) the same way `round_result` is: [`step`]
+    /// appends (including on speculative ticks) and [`load`] truncates the
+    /// speculative tail on a genuine rewind, so what stands at any moment is
+    /// exactly the ticks the current timeline has simulated. `Match::end_round`
+    /// drains it into the round's report.
+    ///
+    /// [`step`]: getgud::World::step
+    /// [`load`]: getgud::World::load
+    pub hp_series: Arc<SyncMutex<Vec<HpSample>>>,
     /// Spent ~400KB mgba state buffers harvested from snapshots the engine
     /// discards ([`recycle`](getgud::World::recycle)), handed back out by
     /// [`save`](getgud::World::save). In steady state every frame discards one
@@ -89,6 +99,17 @@ pub struct MgbaWorld {
 /// tail's worth in one frame (a rollback); anything past this is genuinely
 /// surplus and is returned to the allocator.
 const STATE_POOL_CAP: usize = 16;
+
+/// One simulated tick's HP reading, oriented to this side of the match.
+/// `tick` is the tick that was simulated (not the boundary it produced), so
+/// consecutive samples are dense except for ticks the per-game traps skipped
+/// (battle intro, before the unit structs are live).
+#[derive(Clone, Copy)]
+pub struct HpSample {
+    pub tick: u32,
+    pub local: u16,
+    pub remote: u16,
+}
 
 impl getgud::World for MgbaWorld {
     /// Joyflags — what's queued and what crosses the wire.
@@ -111,6 +132,19 @@ impl getgud::World for MgbaWorld {
         // does that on demand, so a re-stepped rollback tail doesn't pay a
         // save_state per intermediate tick.
         self.last_outgoing = result.boundary.packet;
+
+        // The tick just simulated is the one before the boundary. Samples from
+        // a mispredicted speculation get appended here too — `load` truncates
+        // them again when the rollback rewinds, and the re-sim re-appends the
+        // corrected values.
+        if let Some(hp) = result.hp {
+            let lpi = self.local_player_index as usize;
+            self.hp_series.lock().unwrap().push(HpSample {
+                tick: result.boundary.tick - 1,
+                local: hp[lpi],
+                remote: hp[1 - lpi],
+            });
+        }
 
         // The per-game round-end traps fire while running the round-ending tick's
         // body, so the step that reports a round result marks the boundary after
@@ -188,6 +222,13 @@ impl getgud::World for MgbaWorld {
             let mut round_result = self.round_result.lock().unwrap();
             if round_result.is_some_and(|rr| rr.tick > state.tick) {
                 *round_result = None;
+            }
+            // Same revocation for the HP series: a sample for tick t came from
+            // the step that produced boundary t+1, so everything at or past the
+            // restore point is speculative history the re-sim will redo.
+            let mut hp_series = self.hp_series.lock().unwrap();
+            while hp_series.last().is_some_and(|s| s.tick >= state.tick) {
+                hp_series.pop();
             }
         }
         Ok(())

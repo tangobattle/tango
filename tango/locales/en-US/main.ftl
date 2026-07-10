@@ -116,6 +116,7 @@ session-results-no-contest = Match ended
 session-results-no-rounds = The match ended before a round was decided.
 session-results-vs = vs { $nickname }
 session-results-you = You
+session-results-round = Round { $number }
 session-results-draws = { $count ->
     [one] 1 round ended in a draw
    *[other] { $count } rounds ended in a draw

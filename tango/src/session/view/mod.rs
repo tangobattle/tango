@@ -3,7 +3,7 @@ use super::*;
 // would otherwise clash with the sweeten ones re-exported via `super::*`.
 use sweeten::widget::{column, row};
 
-mod results;
+pub(crate) mod results;
 mod telemetry;
 pub use results::results_view;
 use telemetry::telemetry_overlay;
