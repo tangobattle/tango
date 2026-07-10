@@ -1054,51 +1054,7 @@ fn settings_input<'a>(
         .width(Length::Fixed(GBA_SHELL_WIDTH))
         .align_y(iced::Alignment::Center);
 
-    // Training hotkeys: not console keys either — a wrapping strip of
-    // pills under the fast-forward row, sharing the same key chrome.
-    // They only fire inside a training session, so this group reads as
-    // its own cluster rather than part of the pad.
-    let training_pill = |icon: Icon, key: input::MappedKey| -> Element<'a, Message> {
-        button(
-            row![
-                icon.widget().size(TEXT_BODY),
-                text(mapped_key_label(lang, key)).size(TEXT_BODY),
-            ]
-            .spacing(6)
-            .align_y(iced::Alignment::Center),
-        )
-        .padding([5.0, 12.0])
-        .style(gba_key(state.selected_key == Some(key), lit(key), 999.0.into()))
-        .on_press(Message::BindingSlotSelected(key))
-        .into()
-    };
-    let training_keys = [
-        (Icon::RotateCcw, input::MappedKey::TrainingReset),
-        (Icon::Clapperboard, input::MappedKey::TrainingAuthor),
-        (Icon::Bookmark, input::MappedKey::TrainingSetDrillPoint),
-        (Icon::Pause, input::MappedKey::TrainingPause),
-        (Icon::StepForward, input::MappedKey::TrainingFrameAdvance),
-    ];
-    let mut training_rows = column![].spacing(8).width(Length::Fixed(GBA_SHELL_WIDTH));
-    let mut training_row = row![].spacing(8).align_y(iced::Alignment::Center);
-    for (i, (icon, key)) in training_keys.into_iter().enumerate() {
-        training_row = training_row.push(training_pill(icon, key));
-        // Four pills per row keeps them inside the shell's width.
-        if i % 4 == 3 {
-            training_rows = training_rows.push(training_row);
-            training_row = row![].spacing(8).align_y(iced::Alignment::Center);
-        }
-    }
-    let training_group = column![
-        text(t!(lang, "settings-input-training"))
-            .size(TEXT_CAPTION)
-            .style(widgets::muted_text_style),
-        training_rows,
-    ]
-    .spacing(8)
-    .width(Length::Fixed(GBA_SHELL_WIDTH));
-
-    container(column![shell, below, training_group].spacing(14))
+    container(column![shell, below].spacing(14))
         .width(Fill)
         .align_x(iced::alignment::Horizontal::Center)
         .padding(style::PANE_PADDING)
@@ -1120,11 +1076,6 @@ fn mapped_key_label(lang: &LanguageIdentifier, k: input::MappedKey) -> String {
         input::MappedKey::Start => t!(lang, "input-key-start"),
         input::MappedKey::Select => t!(lang, "input-key-select"),
         input::MappedKey::SpeedUp => t!(lang, "input-key-speed-up"),
-        input::MappedKey::TrainingReset => t!(lang, "input-key-training-reset"),
-        input::MappedKey::TrainingAuthor => t!(lang, "input-key-training-author"),
-        input::MappedKey::TrainingSetDrillPoint => t!(lang, "input-key-training-set-drill-point"),
-        input::MappedKey::TrainingPause => t!(lang, "input-key-training-pause"),
-        input::MappedKey::TrainingFrameAdvance => t!(lang, "input-key-training-frame-advance"),
     }
 }
 

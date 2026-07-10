@@ -114,8 +114,8 @@ impl Shadow {
         let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
         // A video buffer is always attached (it's just a render target;
         // game logic never sees it), but rasterization stays off via the
-        // frameskip below. Training turns rendering on while the user
-        // possesses the dummy, to show the opponent's perspective.
+        // frameskip below. The replay PiP turns rendering on to show the
+        // opponent's perspective.
         core.enable_video_buffer();
 
         core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
@@ -139,9 +139,9 @@ impl Shadow {
     }
 
     /// Turn rasterization on/off. Off (the default) skips drawScanline
-    /// entirely — the shadow's pixels are normally never shown. Training
-    /// flips it on while the user possesses the dummy. Frameskip isn't
-    /// serialized, so the setting survives every `load_state`.
+    /// entirely — the shadow's pixels are normally never shown. The
+    /// replay PiP flips it on to show the opponent's screen. Frameskip
+    /// isn't serialized, so the setting survives every `load_state`.
     pub fn set_rendering(&mut self, on: bool) {
         self.core
             .as_mut()

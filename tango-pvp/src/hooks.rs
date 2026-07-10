@@ -129,8 +129,8 @@ impl TrapMatch {
         self.0.record_first_commit(round, core, first_packet)
     }
 
-    pub fn end_round_or_cancel(&self, core: mgba::core::CoreMutRef) {
-        self.0.end_round_or_cancel(core)
+    pub fn end_round_or_cancel(&self) {
+        self.0.end_round_or_cancel()
     }
 
     pub fn start_round_or_cancel(&self) {
@@ -154,13 +154,6 @@ pub struct PrimaryState {
     pub match_: MatchHandle,
     pub completion_token: CompletionToken,
     pub disable_bgm: bool,
-    /// Training-only side channel: per-player "picking in the custom
-    /// screen" flags (bit 0 = player 1, bit 1 = player 2), kept updated by
-    /// game modules that know where the game stores them — from their
-    /// per-frame primary trap, so the value tracks the displayed state.
-    /// Modules without that knowledge leave it zero, and the training
-    /// session's auto-direct simply never engages there. Ignored by PvP.
-    pub custom_screen_flags: std::sync::Arc<std::sync::atomic::AtomicU8>,
 }
 
 pub trait Hooks {

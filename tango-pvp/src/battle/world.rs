@@ -33,10 +33,6 @@ use crate::input::PartialInput;
 /// exchange on resume), and the tick the bundle is poised at. The engine treats
 /// this as a blob; [`MgbaWorld`] reads `tick` to decide whether a `load` is a
 /// real rewind or a no-op resume.
-///
-/// `Clone` exists for training checkpoints (capturing the settled bundle out
-/// of the engine); the engine itself never clones states.
-#[derive(Clone)]
 pub struct MgbaState {
     pub primary: Box<mgba::state::State>,
     pub outgoing: Vec<u8>,
@@ -166,16 +162,6 @@ impl getgud::World for MgbaWorld {
             self.shadow.load_state(&state.shadow_snapshot)?;
             self.last_outgoing = state.outgoing.clone();
         }
-        Ok(())
-    }
-
-    fn reload(&mut self, state: &MgbaState) -> anyhow::Result<()> {
-        // A training reset branches the timeline, so the parked-tick shortcut
-        // in `load` is unsound here (the same tick number can name a different
-        // history). Restore both cores unconditionally.
-        self.stepper.force_restore(&state.primary, state.tick)?;
-        self.shadow.load_state(&state.shadow_snapshot)?;
-        self.last_outgoing = state.outgoing.clone();
         Ok(())
     }
 

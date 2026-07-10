@@ -40,10 +40,6 @@ pub struct Round {
     /// change takes effect on the next render. The engine itself just holds a
     /// plain value; this atomic is purely the host-side sharing mechanism.
     frame_delay: Arc<AtomicU32>,
-    /// Simulation speed multiplier (`f32` bits), shared from the
-    /// [`Match`](super::Match). 1.0 in real PvP; training scales its per-frame
-    /// fps target through it. Re-read each frame like `frame_delay`.
-    speed_factor: Arc<AtomicU32>,
     /// Handle to the live core's mgba thread, held so `Drop` can reset its
     /// `fps_target` when the round ends.
     primary_thread_handle: mgba::thread::Handle,
@@ -79,7 +75,6 @@ impl Round {
             local_player_index: match_.local_player_index(),
             hooks: match_.local_hooks(),
             frame_delay: match_.frame_delay(),
-            speed_factor: match_.speed_factor_handle(),
             primary_thread_handle: match_.primary_thread_handle(),
             throttler: super::throttler::Throttler::new(),
             last_loaded_tick: 0,
@@ -148,33 +143,6 @@ impl Round {
     /// first commit.
     pub(super) fn settled_shadow_snapshot(&self) -> Option<&crate::shadow::ShadowSnapshot> {
         self.session.as_ref().map(|s| &s.settled_state().shadow_snapshot)
-    }
-
-    /// Clone the settled state bundle + prediction seed for a training
-    /// checkpoint. `None` while armed or once the settled stream has ended the
-    /// round — see [`Match::training_checkpoint`](super::Match::training_checkpoint)
-    /// for why both are declined.
-    pub(super) fn training_state(&self) -> Option<(super::world::MgbaState, PartialInput)> {
-        let session = self.session.as_ref()?;
-        if session.terminal_reached() {
-            return None;
-        }
-        Some((session.settled_state().clone(), session.last_confirmed_remote().clone()))
-    }
-
-    /// Reset the rollback engine to a training checkpoint's state, force-
-    /// reloading the stepper + shadow cores. Returns `false` while armed
-    /// (no engine yet). A settled round end is fine — `Session::reset`
-    /// clears the terminal latch, and every restore path re-anchors the
-    /// live core explicitly, so the game resumes inside the battle loop
-    /// regardless of where it was.
-    pub(super) fn reset_to(&mut self, state: &super::world::MgbaState, remote: PartialInput) -> anyhow::Result<bool> {
-        let Some(session) = self.session.as_mut() else {
-            return Ok(false);
-        };
-        session.reset(state.clone(), state.tick, remote)?;
-        self.last_loaded_tick = state.tick;
-        Ok(true)
     }
 
     pub fn local_player_index(&self) -> u8 {
@@ -302,11 +270,10 @@ impl Round {
         // balance crosses the boundary, instead of shaving fps the player
         // can feel.
         let slowdown = self.throttler.step(skew, session.speculation_balance());
-        let speed = f32::from_bits(self.speed_factor.load(Ordering::Relaxed));
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")
-            .set_fps_target((EXPECTED_FPS - slowdown) * speed);
+            .set_fps_target(EXPECTED_FPS - slowdown);
         Ok(())
     }
 }

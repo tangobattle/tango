@@ -11,8 +11,6 @@
 
 mod lobby;
 mod save_manage;
-mod training_setup;
-pub use training_setup::{TrainingSetup, TrainingSetupMessage};
 
 pub use save_manage::{create_new_save, creation_template, duplicate_save, rename_save, SaveAction};
 
@@ -93,10 +91,6 @@ pub enum Message {
     /// User clicked × on the inline error banner; clears
     /// `State::last_error`.
     DismissError,
-
-    /// Training setup modal interaction (opened by the save view's
-    /// Training button; see [`training_setup`]).
-    TrainingSetup(TrainingSetupMessage),
 }
 
 // ---------- Play tab state ----------
@@ -141,8 +135,6 @@ pub struct State {
     /// render (the live form — including the rename draft — is
     /// already gone).
     save_action_exit: SaveAction,
-    /// Training setup draft — `Some` while the modal is open.
-    training_setup: Option<TrainingSetup>,
 }
 
 impl Default for State {
@@ -156,7 +148,6 @@ impl Default for State {
             save_body_enter: crate::anim::Enter::default(),
             save_form: crate::anim::Transition::swap(false),
             save_action_exit: SaveAction::None,
-            training_setup: None,
         }
     }
 }
@@ -196,9 +187,6 @@ pub enum Effect {
     /// User pressed Play → start a single-player session from the
     /// current selection.
     StartSinglePlayer,
-    /// Training setup confirmed → boot a training session from the
-    /// current selection plus these options.
-    StartTraining(crate::session::training::TrainingOptions),
     /// Duplicate the currently-selected save file as `new_stem` (no
     /// extension; the handler keeps the source's).
     SaveDuplicate { new_stem: String },
@@ -400,11 +388,6 @@ impl State {
                         self.last_error = None;
                         Some(Effect::StartSinglePlayer)
                     }
-                    Some(save_view::Outcome::Train) => {
-                        self.last_error = None;
-                        self.training_setup = loaded.map(TrainingSetup::for_selection);
-                        None
-                    }
                     Some(save_view::Outcome::Commit) => Some(Effect::SaveEditCommit),
                     Some(save_view::Outcome::Cancel) => Some(Effect::SaveEditCancel),
                     None => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
@@ -414,7 +397,6 @@ impl State {
                 self.last_error = None;
                 None
             }
-            Message::TrainingSetup(m) => self.update_training_setup(m),
             m @ (Message::SaveOpenFolder
             | Message::OpenSavesFolder(_)
             | Message::SaveDuplicateStart
@@ -558,15 +540,6 @@ impl State {
             });
         }
         col = col.push(group);
-        // Training setup rides above the whole tab as a modal while a
-        // draft is open (its Start/Cancel/backdrop all close it).
-        if let (Some(setup), Some(loaded)) = (self.training_setup.as_ref(), loaded) {
-            return iced::widget::stack![
-                Element::from(col),
-                self.training_setup_modal(lang, scanners, loaded, setup)
-            ]
-            .into();
-        }
         col.into()
     }
 

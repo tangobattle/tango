@@ -137,34 +137,6 @@ impl App {
                 }
                 iced::Task::none()
             }
-            E::StartTraining(opts) => {
-                let Some(loaded) = self.loaded.as_ref() else {
-                    return iced::Task::none();
-                };
-                match session::spawn_training(
-                    &self.scanners,
-                    &self.config,
-                    &self.audio_binder,
-                    self.session.frame_notify.clone(),
-                    self.session.vbuf.clone(),
-                    loaded,
-                    opts,
-                ) {
-                    Ok(s) => {
-                        self.session.active = Some(ActiveSession::Training(Box::new(s)));
-                        // Both drawers start closed; the edge handles are
-                        // there when the user wants the folders.
-                        self.session.self_panel.close();
-                        self.session.opponent_panel.close();
-                        self.session.wake_controls();
-                    }
-                    Err(e) => {
-                        log::warn!("training start failed: {e}");
-                        self.play.set_error(format!("{e}"));
-                    }
-                }
-                iced::Task::none()
-            }
             E::SaveDuplicate { new_stem } => {
                 if let Some(src) = self.loadout.save.clone() {
                     match duplicate_save(&src, &new_stem) {

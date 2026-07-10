@@ -149,14 +149,14 @@ pub struct ReplaySession {
     /// callback reads its render out of the same handle.
     shadow: Arc<Mutex<Shadow>>,
     /// Whether the opponent-screen PiP is on (a per-session toggle on
-    /// the transport bar, like training's input display).
-    show_pip: Arc<std::sync::atomic::AtomicBool>,
+    /// the transport bar).
+    show_pip: Arc<AtomicBool>,
     /// The opponent's screen, copied once per published frame while the
     /// PiP is on. Same BGR555 layout as `vbuf`.
     pip_vbuf: Arc<Mutex<Vec<u8>>>,
     /// Whether `pip_vbuf` holds a frame from the current PiP activation
     /// (cleared while off, so a stale capture never flashes on re-toggle).
-    pip_fresh: Arc<std::sync::atomic::AtomicBool>,
+    pip_fresh: Arc<AtomicBool>,
     /// Held so the audio binding survives for the session's lifetime;
     /// the LateBinder swaps back to silence when this Drops.
     _audio_binding: Option<crate::audio::Binding>,
@@ -267,12 +267,12 @@ impl ReplaySession {
 
         let seek = Arc::new(SeekController::new());
 
-        let show_pip = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let show_pip = Arc::new(AtomicBool::new(false));
         let pip_vbuf = Arc::new(Mutex::new(vec![
             0u8;
             (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2) as usize
         ]));
-        let pip_fresh = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let pip_fresh = Arc::new(AtomicBool::new(false));
 
         thread.set_frame_callback({
             let vbuf = vbuf.clone();
@@ -308,7 +308,6 @@ impl ReplaySession {
                     vbuf.lock().unwrap().copy_from_slice(video_buffer);
                     // Opponent-screen PiP: capture the shadow's render on the
                     // same publish gate, so a seek chase doesn't strobe it.
-                    use std::sync::atomic::Ordering;
                     if show_pip.load(Ordering::Relaxed) {
                         if shadow.lock().unwrap().read_video_buffer(&mut pip_vbuf.lock().unwrap()) {
                             pip_fresh.store(true, Ordering::Relaxed);
@@ -411,7 +410,7 @@ impl ReplaySession {
     /// Whether the opponent-screen PiP is on — drives the transport bar
     /// toggle's lit state.
     pub fn show_pip(&self) -> bool {
-        self.show_pip.load(std::sync::atomic::Ordering::Relaxed)
+        self.show_pip.load(Ordering::Relaxed)
     }
 
     /// Toggle the opponent-screen PiP: flips the shadow co-sim's
@@ -420,7 +419,6 @@ impl ReplaySession {
     /// replay that's the next step/play, since the shadow hasn't rendered
     /// anything yet.
     pub fn toggle_pip(&self) {
-        use std::sync::atomic::Ordering;
         let on = !self.show_pip.load(Ordering::Relaxed);
         self.show_pip.store(on, Ordering::Relaxed);
         self.shadow.lock().unwrap().set_rendering(on);
@@ -429,7 +427,6 @@ impl ReplaySession {
     /// Latest opponent-side frame for the PiP overlay, as raw BGR555 —
     /// `None` while the PiP is off or before its first captured frame.
     pub fn pip_pixels(&self) -> Option<Vec<u8>> {
-        use std::sync::atomic::Ordering;
         (self.show_pip.load(Ordering::Relaxed) && self.pip_fresh.load(Ordering::Relaxed))
             .then(|| self.pip_vbuf.lock().unwrap().clone())
     }

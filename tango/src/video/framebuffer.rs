@@ -198,8 +198,8 @@ impl<Message> shader::Program<Message> for Program {
     }
 }
 
-/// A second, independent framebuffer surface — the training PiP (the
-/// dummy's screen while the user possesses it).
+/// A second, independent framebuffer surface — the replay PiP (the
+/// opponent's screen).
 ///
 /// `iced_wgpu` keys persistent pipeline state by primitive *type*: all
 /// primitives of one type share a single [`Pipeline`], and ours holds a
@@ -262,7 +262,7 @@ impl shader::Pipeline for PipPipeline {
 /// The per-frame primitive. Carries the frame into `prepare`/`draw`; the
 /// persistent GPU resources live in [`Pipeline`] (one per primitive type,
 /// shared across all instances of that type — the main screen and the
-/// training PiP are distinct types for exactly this reason).
+/// replay PiP are distinct types for exactly this reason).
 #[derive(Debug)]
 pub struct Primitive {
     frame: Frame,

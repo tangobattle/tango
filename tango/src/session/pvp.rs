@@ -255,8 +255,6 @@ impl PvpSession {
                 match_: match_handle.clone(),
                 completion_token: completion_token.clone(),
                 disable_bgm,
-                // Training-only channel; nothing reads it in PvP.
-                custom_screen_flags: Arc::new(std::sync::atomic::AtomicU8::new(0)),
             },
         );
 
@@ -1024,7 +1022,7 @@ async fn rebuild_connection(
 /// format mirrors the legacy app:
 /// `YYYYMMDDhhmmss-<link_code>-<compat>-vs-<opponent>-p<idx>.tangoreplay`.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn build_replay_writer(
+fn build_replay_writer(
     replays_path: &Path,
     link_code: &str,
     local_settings: &crate::net::protocol::Settings,
