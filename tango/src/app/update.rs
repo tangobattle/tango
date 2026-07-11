@@ -407,18 +407,26 @@ impl App {
                 // undecodable) just means no chart, retried on re-focus.
                 let scanners = self.scanners.clone();
                 let patches_path = self.config.patches_path();
+                let cache_path = self.config.cache_path();
+                let replays_path = self.config.replays_path();
                 let (progress_tx, progress_rx) = futures::channel::mpsc::unbounded::<(u32, u32)>();
                 let done: std::sync::Arc<std::sync::Mutex<Option<tango_pvp::analysis::MatchStats>>> =
                     std::sync::Arc::new(std::sync::Mutex::new(None));
                 let done_worker = done.clone();
                 let p = path.clone();
                 tokio::task::spawn_blocking(move || {
-                    let result =
-                        replays::compute_and_cache_match_stats(scanners, patches_path, p.clone(), &mut |d, t| {
+                    let result = replays::compute_and_cache_match_stats(
+                        scanners,
+                        patches_path,
+                        cache_path,
+                        replays_path,
+                        p.clone(),
+                        &mut |d, t| {
                             let _ = progress_tx.unbounded_send((d, t));
-                        })
-                        .map_err(|e| log::warn!("replay analysis failed for {}: {e}", p.display()))
-                        .ok();
+                        },
+                    )
+                    .map_err(|e| log::warn!("replay analysis failed for {}: {e}", p.display()))
+                    .ok();
                     // Park the result before the sender (captured by the
                     // closure above) drops and closes the channel — the
                     // chained completion message below reads it on close.

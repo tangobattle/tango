@@ -200,6 +200,7 @@ impl PvpSession {
         // config at match start.
         disable_bgm: bool,
         replays_path: &Path,
+        cache_path: &Path,
         audio_binder: &crate::audio::LateBinder,
         opponent_loaded: Option<crate::selection::Loaded>,
         local_loaded: Option<crate::selection::Loaded>,
@@ -379,7 +380,9 @@ impl PvpSession {
             let rng_seed = pre_match.rng_seed;
             let handle = thread.handle();
             let round_results = round_results.clone();
-            let replay_path = replay_path.clone();
+            let stats_path = replay_path
+                .as_ref()
+                .map(|p| crate::replays::stats_path(cache_path, replays_path, p));
             let peer_conn = peer_conn.clone();
             let reconnect_window = reconnect_window.clone();
             let cancel = cancellation_token.clone();
@@ -578,16 +581,13 @@ impl PvpSession {
                     if let Err(e) = inner_match.finish_replay() {
                         log::error!("finish replay failed: {e}");
                     }
-                    // Cache the match stats next to the finished replay — the
-                    // rollback engine already collected the HP series, so the
-                    // Replays tab never has to re-simulate this one.
-                    if let Some(path) = replay_path.as_ref() {
+                    // Cache the finished match's stats — the rollback engine
+                    // already collected the HP series, so the Replays tab
+                    // never has to re-simulate this one.
+                    if let Some(stats_path) = stats_path.as_ref() {
                         let stats = tango_pvp::analysis::MatchStats::from_round_reports(&round_results.lock().unwrap());
-                        if let Err(e) = std::fs::File::create(crate::replays::stats_path(path))
-                            .map_err(anyhow::Error::from)
-                            .and_then(|f| stats.write(std::io::BufWriter::new(f)))
-                        {
-                            log::warn!("failed to write replay stats sidecar: {e}");
+                        if let Err(e) = crate::replays::write_match_stats(stats_path, &stats) {
+                            log::warn!("failed to write replay stats cache entry: {e}");
                         }
                     }
                 }

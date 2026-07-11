@@ -335,6 +335,16 @@ impl Config {
     pub fn logs_path(&self) -> std::path::PathBuf {
         self.data_path.join("logs")
     }
+    /// The platform cache directory (e.g. `~/Library/Caches/net.n1gp.tango`
+    /// on macOS, `~/.cache/tango` on Linux) for derived data the app can
+    /// always recompute (replay match stats, …) — safe to delete wholesale.
+    /// Falls back to `<data>/cache` in the same degraded no-user-dirs case
+    /// [`config_dir`] tolerates.
+    pub fn cache_path(&self) -> std::path::PathBuf {
+        directories_next::ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
+            .map(|d| d.cache_dir().to_path_buf())
+            .unwrap_or_else(|| self.data_path.join("cache"))
+    }
 
     /// Convert an absolute path under `data_path` to the
     /// forward-slash-separated relative string used as a value in

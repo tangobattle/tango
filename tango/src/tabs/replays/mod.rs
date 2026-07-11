@@ -318,7 +318,9 @@ impl ReplaysState {
                 // one. Failures clear `hp_pending` via the result message,
                 // so a later focus retries.
                 if !self.hp_charts.contains_key(&p) && !self.hp_pending.contains_key(&p) {
-                    if let Some(stats) = crate::replays::load_match_stats(&p) {
+                    if let Some(stats) =
+                        crate::replays::load_match_stats(&config.cache_path(), &config.replays_path(), &p)
+                    {
                         self.hp_charts.insert(p, HpChart::new(&stats));
                     } else {
                         self.hp_pending.insert(p.clone(), None);
