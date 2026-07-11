@@ -17,15 +17,17 @@
 
 use crate::stepper::BattleOutcome;
 
-/// Bumped whenever the sidecar format changes shape — or meaning: v6
-/// fixes exe45's custom spans to track the battle-pausing tactics/chip
+/// Bumped whenever the sidecar format changes shape — or meaning: v7
+/// adds chip events for exe45's community PvP patch (per-screen hands)
+/// and drops vanilla exe45's buster events (B is a menu key there); v6
+/// fixed exe45's custom spans to track the battle-pausing tactics/chip
 /// screens (the old source was the non-pausing operation-gauge cycle);
 /// v5 extends chip-use events to bn2/bn3/bn4/exe45 (v4 introduced them
 /// for bn5/bn6; v3's HP series became lossless change-point curves
 /// where v2's were decimated; bumps make older files recompute).
 /// Readers reject other versions (and anything without the magic, e.g.
 /// the short-lived JSON v1 sidecars) and recompute.
-pub const FORMAT_VERSION: u32 = 6;
+pub const FORMAT_VERSION: u32 = 7;
 
 /// Sidecar file magic.
 const MAGIC: &[u8; 4] = b"TGST";
@@ -104,6 +106,7 @@ fn usage_events(
     samples: &[RoundSample],
     custom: &[(u32, u32)],
     semantics: ChipSemantics,
+    counts_buster: bool,
 ) -> ([Vec<(u32, u16)>; 2], [Vec<u32>; 2]) {
     /// Sanity bound on a chip id: `QueueSum` drops above this are queue
     /// clears (KO, round end), not uses.
@@ -163,7 +166,7 @@ fn usage_events(
                     }
                 }
             }
-            if !s.custom && s.buttons & b_bit != 0 && prev_buttons & b_bit == 0 {
+            if counts_buster && !s.custom && s.buttons & b_bit != 0 && prev_buttons & b_bit == 0 {
                 buster[side].push(s.tick);
             }
             prev_buttons = s.buttons;
@@ -191,6 +194,9 @@ pub struct HpPoint {
 /// threads each round's final HP pair into the next round's fold.
 pub struct MatchStatsBuilder {
     semantics: ChipSemantics,
+    /// Whether B-press edges are buster shots on this game/ROM (see
+    /// [`Hooks::counts_buster`](crate::hooks::Hooks::counts_buster)).
+    counts_buster: bool,
     prev_final: Option<(u16, u16)>,
     rounds: Vec<RoundStats>,
     /// Samples of the round in progress, in tick order.
@@ -198,9 +204,10 @@ pub struct MatchStatsBuilder {
 }
 
 impl MatchStatsBuilder {
-    pub fn new(semantics: ChipSemantics) -> Self {
+    pub fn new(semantics: ChipSemantics, counts_buster: bool) -> Self {
         Self {
             semantics,
+            counts_buster,
             prev_final: None,
             rounds: vec![],
             current: vec![],
@@ -249,7 +256,7 @@ impl MatchStatsBuilder {
         self.prev_final = samples.last().map(|s| (s.local, s.remote)).or(self.prev_final);
         let samples = &samples[start..];
         let custom = custom_spans(samples.iter().map(|s| (s.tick, s.custom)));
-        let (chip_uses, buster) = usage_events(samples, &custom, self.semantics);
+        let (chip_uses, buster) = usage_events(samples, &custom, self.semantics, self.counts_buster);
         self.rounds.push(RoundStats {
             outcome,
             hp: compress(samples.iter().map(|s| HpPoint {
@@ -518,14 +525,15 @@ pub fn analyze(
         crate::stepper::State::new_for_replay(replay, remote_rom, remote_hooks, Box::new(|| {}))?;
     local_hooks.install_on_stepper(&mut core, stepper_state.clone());
 
-    let semantics = local_hooks.chip_semantics();
+    let semantics = local_hooks.chip_semantics(local_rom);
+    let counts_buster = local_hooks.counts_buster(local_rom);
     let total_ticks: u32 = replay.rounds.iter().map(|r| r.len() as u32).sum();
     let mut last_reported: u32 = 0;
 
     let lpi = replay.local_player_index as usize;
     // The same incremental aggregation a live match performs: push each
     // simulated tick's sample, close each round as it ends.
-    let mut builder = MatchStatsBuilder::new(semantics);
+    let mut builder = MatchStatsBuilder::new(semantics, counts_buster);
     // Latest result seen for the round in progress. `round_result()`
     // clears across the round transition, so it's committed on the
     // round-index edge (or at the end of the drain for the last round).

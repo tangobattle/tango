@@ -254,7 +254,10 @@ impl PvpSession {
 
         let joyflags = Arc::new(AtomicU32::new(0));
         let local_hooks = local_game.hooks;
-        let chip_semantics = local_hooks.chip_semantics();
+        // Usage semantics can depend on the applied patch (exe45's PvP
+        // patch), so they're probed off the patched ROM.
+        let chip_semantics = local_hooks.chip_semantics(local_rom.as_ref());
+        let counts_buster = local_hooks.counts_buster(local_rom.as_ref());
 
         let match_handle = tango_pvp::hooks::MatchHandle::new();
         let completion_token = tango_pvp::hooks::CompletionToken::new();
@@ -330,7 +333,10 @@ impl PvpSession {
         // Incremental match stats, shared with the match (which folds each
         // round in as it closes). We keep our own handle so the post-match
         // results snapshot survives the match teardown.
-        let stats = Arc::new(Mutex::new(tango_pvp::analysis::MatchStatsBuilder::new(chip_semantics)));
+        let stats = Arc::new(Mutex::new(tango_pvp::analysis::MatchStatsBuilder::new(
+            chip_semantics,
+            counts_buster,
+        )));
         let inner_match = tango_pvp::battle::Match::new(
             local_rom.as_ref().clone(),
             local_hooks,

@@ -170,10 +170,23 @@ pub trait Hooks {
     /// How this game's per-tick chip reports (see
     /// [`InnerState::set_loaded_chips`](crate::stepper::InnerState::set_loaded_chips))
     /// are to be decoded into chip-use events -- see [`ChipSemantics`]'s
-    /// variants for the two reporting contracts.
+    /// variants for the two reporting contracts. Takes the (patched)
+    /// local ROM because the contract can depend on the applied patch:
+    /// exe45's community PvP patch replaces the dealt-queue system with
+    /// per-screen hands, flipping it from `QueueSum` to `LoadedChip`.
     ///
     /// [`ChipSemantics`]: crate::analysis::ChipSemantics
-    fn chip_semantics(&self) -> crate::analysis::ChipSemantics {
+    fn chip_semantics(&self, rom: &[u8]) -> crate::analysis::ChipSemantics {
+        let _ = rom;
         crate::analysis::ChipSemantics::LoadedChip
+    }
+
+    /// Whether B presses are buster shots in this game on this (patched)
+    /// ROM. Vanilla exe45's navi fights autonomously -- B is a menu key
+    /// there, so its edges aren't buster events; the PvP patch's manual
+    /// control makes them real again.
+    fn counts_buster(&self, rom: &[u8]) -> bool {
+        let _ = rom;
+        true
     }
 }
