@@ -988,11 +988,10 @@ fn replay_detail<'a>(
                 hasher.finish()
             }),
         );
-        container(body)
-            .width(Fill)
-            .padding(style::PANE_PADDING)
-            .style(widgets::pane)
-            .into()
+        // No pane padding: the chart's own per-round inset panels are the
+        // content, so the canvas runs edge to edge and the pane background
+        // only peeks through the round dividers.
+        container(body).width(Fill).style(widgets::pane).into()
     });
 
     // Save view contributes its own pane pair (tab strip + body)
