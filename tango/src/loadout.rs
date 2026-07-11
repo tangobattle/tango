@@ -402,7 +402,11 @@ pub fn save_options(loadout: &Loadout, scanners: &Scanners, config: &config::Con
     // Folder-first recursive sort: at the first differing path
     // component, whichever side still has components after it
     // (i.e. is "inside a folder at this level") wins. Files at
-    // a given level sort below any subfolders at that level.
+    // a given level sort below any subfolders at that level, and
+    // order among themselves by their extensionless name — so
+    // "Blue.sav" sits next to "Blue Moon.sav" instead of wherever
+    // the '.' happens to fall against spaces and digits — with the
+    // raw name breaking stem ties.
     save_options.sort_by(|a, b| {
         let av: Vec<&std::ffi::OsStr> = a.path.strip_prefix(&saves_path).unwrap_or(&a.path).iter().collect();
         let bv: Vec<&std::ffi::OsStr> = b.path.strip_prefix(&saves_path).unwrap_or(&b.path).iter().collect();
@@ -413,7 +417,11 @@ pub fn save_options(loadout: &Loadout, scanners: &Scanners, config: &config::Con
                 return match (a_is_dir, b_is_dir) {
                     (true, false) => std::cmp::Ordering::Less,
                     (false, true) => std::cmp::Ordering::Greater,
-                    _ => av[i].cmp(bv[i]),
+                    (true, true) => av[i].cmp(bv[i]),
+                    (false, false) => std::path::Path::new(av[i])
+                        .file_stem()
+                        .cmp(&std::path::Path::new(bv[i]).file_stem())
+                        .then_with(|| av[i].cmp(bv[i])),
                 };
             }
         }
@@ -559,10 +567,11 @@ fn resolve_family_save(
     first_available_family_save(scanners, family)
 }
 
-/// First owned-ROM save across every game in `family`, path-sorted.
-/// Used as the family auto-pick fallback (and by the App's post-delete
-/// auto-pick). Returns the concrete game alongside the path so callers
-/// can set `game` without re-sniffing the save.
+/// First owned-ROM save across every game in `family`, ordered by
+/// extensionless name like the picker. Used as the family auto-pick
+/// fallback (and by the App's post-delete auto-pick). Returns the
+/// concrete game alongside the path so callers can set `game` without
+/// re-sniffing the save.
 pub fn first_available_family_save(scanners: &Scanners, family: &str) -> Option<(rom::GameRef, std::path::PathBuf)> {
     let roms = scanners.roms.read();
     let saves = scanners.saves.read();
@@ -577,7 +586,11 @@ pub fn first_available_family_save(scanners: &Scanners, family: &str) -> Option<
             }
         }
     }
-    candidates.sort_by(|a, b| a.1.cmp(&b.1));
+    candidates.sort_by(|a, b| {
+        a.1.file_stem()
+            .cmp(&b.1.file_stem())
+            .then_with(|| a.1.cmp(&b.1))
+    });
     candidates.into_iter().next()
 }
 

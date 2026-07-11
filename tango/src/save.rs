@@ -60,7 +60,16 @@ pub fn scan_saves(path: &std::path::Path) -> std::collections::HashMap<GameRef, 
     }
 
     for (_, saves) in by_game.iter_mut() {
-        saves.sort_by_key(|s| s.path.clone());
+        // Order by extensionless name (full path as the tiebreak), the
+        // same way the save picker displays rows — consumers take the
+        // first entry as a default pick, and that should agree with
+        // what the picker shows first.
+        saves.sort_by(|a, b| {
+            a.path
+                .file_stem()
+                .cmp(&b.path.file_stem())
+                .then_with(|| a.path.cmp(&b.path))
+        });
     }
 
     by_game
