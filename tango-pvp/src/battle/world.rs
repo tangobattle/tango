@@ -109,6 +109,9 @@ pub struct HpSample {
     pub tick: u32,
     pub local: u16,
     pub remote: u16,
+    /// Whether the custom screen (chip select) was open this tick — false
+    /// on games whose traps don't report it.
+    pub custom: bool,
 }
 
 impl getgud::World for MgbaWorld {
@@ -143,6 +146,7 @@ impl getgud::World for MgbaWorld {
                 tick: result.boundary.tick - 1,
                 local: hp[lpi],
                 remote: hp[1 - lpi],
+                custom: result.custom.unwrap_or(false),
             });
         }
 

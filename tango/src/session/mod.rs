@@ -160,11 +160,13 @@ pub struct MatchResults {
 /// One round on the results card: the outcome plus a decimated HP trace for
 /// the round graph. `trace` points are `(x, you, opponent)`, all normalized —
 /// x over the round's sampled ticks, HP against the match-wide maximum so
-/// every round shares one vertical scale. Empty when the round produced no
-/// HP samples (torn down mid-intro).
+/// every round shares one vertical scale; `custom` is the normalized
+/// `[start, end)` x spans where the custom screen stood open. Empty when the
+/// round produced no HP samples (torn down mid-intro).
 pub struct RoundCard {
     pub outcome: tango_pvp::stepper::BattleOutcome,
     pub trace: Vec<(f32, f32, f32)>,
+    pub custom: Vec<(f32, f32)>,
 }
 
 /// Cap on points per round trace. HP holds values for long stretches, so a
@@ -185,9 +187,13 @@ impl MatchResults {
             .max(1) as f32;
         let rounds = reports
             .into_iter()
-            .map(|r| RoundCard {
-                outcome: r.outcome,
-                trace: decimate_trace(&r.hp, max_hp),
+            .map(|r| {
+                let (trace, custom) = decimate_trace(&r.hp, max_hp);
+                RoundCard {
+                    outcome: r.outcome,
+                    trace,
+                    custom,
+                }
             })
             .collect::<Vec<_>>();
         let results = Self {
@@ -203,9 +209,10 @@ impl MatchResults {
 }
 
 /// Thin a round's HP series to at most [`TRACE_POINTS`] normalized points,
-/// always keeping the final sample (the KO floor). Ticks map to x by their
-/// position in the round's sampled span.
-fn decimate_trace(hp: &[tango_pvp::battle::HpSample], max_hp: f32) -> Vec<(f32, f32, f32)> {
+/// always keeping the final sample (the KO floor), plus the normalized
+/// custom-screen spans. Ticks map to x by their position in the round's
+/// sampled span.
+fn decimate_trace(hp: &[tango_pvp::battle::HpSample], max_hp: f32) -> (Vec<(f32, f32, f32)>, Vec<(f32, f32)>) {
     // Some games' unit slots go live a few ticks before their HP is set
     // (bn1); a round never actually starts at 0–0, so a both-zero prefix is
     // pre-init noise, not data. (A double KO's zeros are at the end.)
@@ -215,10 +222,10 @@ fn decimate_trace(hp: &[tango_pvp::battle::HpSample], max_hp: f32) -> Vec<(f32, 
         .unwrap_or(hp.len());
     let hp = &hp[live..];
     let (Some(first), Some(last)) = (hp.first(), hp.last()) else {
-        return vec![];
+        return (vec![], vec![]);
     };
     if hp.len() < 2 {
-        return vec![];
+        return (vec![], vec![]);
     }
     let t0 = first.tick as f32;
     let span = (last.tick as f32 - t0).max(1.0);
@@ -234,7 +241,25 @@ fn decimate_trace(hp: &[tango_pvp::battle::HpSample], max_hp: f32) -> Vec<(f32, 
     if !(hp.len() - 1).is_multiple_of(step) {
         points.push(at(last));
     }
-    points
+    // Custom-screen spans, normalized like the points: contiguous runs of
+    // `custom` samples become one [start, end) band.
+    let x_of = |tick: u32| (tick as f32 - t0) / span;
+    let mut custom: Vec<(f32, f32)> = vec![];
+    let mut open: Option<u32> = None;
+    for s in hp {
+        match (s.custom, open) {
+            (true, None) => open = Some(s.tick),
+            (false, Some(start)) => {
+                custom.push((x_of(start), x_of(s.tick)));
+                open = None;
+            }
+            _ => {}
+        }
+    }
+    if let Some(start) = open {
+        custom.push((x_of(start), 1.0));
+    }
+    (points, custom)
 }
 
 /// Per-session UI state. App holds `session: State`; the Play and

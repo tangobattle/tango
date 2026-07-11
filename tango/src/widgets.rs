@@ -2369,15 +2369,23 @@ pub fn outcome_mark(outcome: tango_pvp::stepper::BattleOutcome) -> (Icon, fn(&Th
 /// holds between hits — a diagonal would invent a ramp that never
 /// happened), swept in from the left by `sweep` (1.0 = fully drawn) with
 /// a head dot on each line while mid-sweep. Recessive chrome: an inset
-/// wash and the zero baseline, nothing else. `trace` points are
+/// wash, the zero baseline, and a slightly lighter band under each
+/// `custom` span (normalized `[start, end)` x ranges) marking where the
+/// battle stood paused in the custom screen. `trace` points are
 /// `(x, you, opponent)`, all normalized to 0..=1; identity is carried by
 /// [`hp_you_color`]/[`hp_opponent_color`] plus whatever legend or labels
 /// the caller draws beside it.
-pub fn hp_graph<'a, M: 'a>(trace: &'a [(f32, f32, f32)], sweep: f32, height: f32) -> Element<'a, M> {
+pub fn hp_graph<'a, M: 'a>(
+    trace: &'a [(f32, f32, f32)],
+    custom: &'a [(f32, f32)],
+    sweep: f32,
+    height: f32,
+) -> Element<'a, M> {
     use iced::widget::canvas;
 
     struct HpGraph<'a> {
         trace: &'a [(f32, f32, f32)],
+        custom: &'a [(f32, f32)],
         sweep: f32,
     }
 
@@ -2414,6 +2422,21 @@ pub fn hp_graph<'a, M: 'a>(trace: &'a [(f32, f32, f32)], sweep: f32, height: f32
                     ..text_color
                 },
             );
+
+            // Custom-screen bands: the stretches where the battle stood
+            // paused while chips were being picked. Revealed by the sweep
+            // along with everything else.
+            for &(x0, x1) in self.custom {
+                let x0 = x_at(x0.clamp(0.0, 1.0).min(self.sweep));
+                let x1 = x_at(x1.clamp(0.0, 1.0).min(self.sweep));
+                if x1 > x0 {
+                    frame.fill_rectangle(
+                        Point::new(x0, 0.0),
+                        iced::Size::new(x1 - x0, h),
+                        iced::Color { a: 0.07, ..text_color },
+                    );
+                }
+            }
 
             // Zero baseline — where a KO'd navi's trace lands.
             let base_y = y_at(0.0);
@@ -2473,7 +2496,7 @@ pub fn hp_graph<'a, M: 'a>(trace: &'a [(f32, f32, f32)], sweep: f32, height: f32
         }
     }
 
-    iced::widget::canvas::Canvas::new(HpGraph { trace, sweep })
+    iced::widget::canvas::Canvas::new(HpGraph { trace, custom, sweep })
         .width(Length::Fill)
         .height(Length::Fixed(height))
         .into()

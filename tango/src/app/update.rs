@@ -401,27 +401,37 @@ impl App {
                 .map(Message::Replays),
             E::AnalyzeReplay(path) => {
                 // Full re-simulation of the replay — seconds of CPU on a
-                // blocking worker. The result message clears the tab's
+                // blocking worker, with per-tick progress streamed back for
+                // the detail pane's bar. The final message clears the tab's
                 // pending marker either way; failure (missing ROM/patch,
                 // undecodable) just means no chart, retried on re-focus.
                 let scanners = self.scanners.clone();
                 let patches_path = self.config.patches_path();
-                iced::Task::perform(
-                    async move {
-                        let p = path.clone();
-                        let stats = tokio::task::spawn_blocking(move || {
-                            replays::compute_and_cache_match_stats(scanners, patches_path, p.clone())
-                                .map_err(|e| log::warn!("replay analysis failed for {}: {e}", p.display()))
-                                .ok()
+                let (progress_tx, progress_rx) = futures::channel::mpsc::unbounded::<(u32, u32)>();
+                let done: std::sync::Arc<std::sync::Mutex<Option<tango_pvp::analysis::MatchStats>>> =
+                    std::sync::Arc::new(std::sync::Mutex::new(None));
+                let done_worker = done.clone();
+                let p = path.clone();
+                tokio::task::spawn_blocking(move || {
+                    let result =
+                        replays::compute_and_cache_match_stats(scanners, patches_path, p.clone(), &mut |d, t| {
+                            let _ = progress_tx.unbounded_send((d, t));
                         })
-                        .await
-                        .ok()
-                        .flatten();
-                        (path, stats)
-                    },
-                    |(path, stats)| tabs::replays::Message::HpStatsLoaded(path, stats),
-                )
-                .map(Message::Replays)
+                        .map_err(|e| log::warn!("replay analysis failed for {}: {e}", p.display()))
+                        .ok();
+                    // Park the result before the sender (captured by the
+                    // closure above) drops and closes the channel — the
+                    // chained completion message below reads it on close.
+                    *done_worker.lock().unwrap() = result;
+                });
+                use futures::StreamExt;
+                let progress_path = path.clone();
+                let stream = progress_rx
+                    .map(move |(d, t)| tabs::replays::Message::HpStatsProgress(progress_path.clone(), d, t))
+                    .chain(futures::stream::once(async move {
+                        tabs::replays::Message::HpStatsLoaded(path, done.lock().unwrap().take())
+                    }));
+                iced::Task::stream(stream).map(Message::Replays)
             }
             E::SaveViewTask(t) => t.map(Message::Replays),
         }

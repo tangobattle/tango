@@ -230,7 +230,7 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
                         container(mark).width(Length::Fixed(14.0)).align_x(Alignment::Center),
                     ]
                     .align_y(Alignment::Center),
-                    widgets::hp_graph(&round.trace, sweep, GRAPH_H),
+                    widgets::hp_graph(&round.trace, &round.custom, sweep, GRAPH_H),
                 ]
                 .spacing(2)
                 .width(Fill),

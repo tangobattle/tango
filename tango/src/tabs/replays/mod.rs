@@ -45,6 +45,10 @@ pub enum Message {
     /// arrives as one of these messages and lands in
     /// [`ReplaysState::stats`].
     StatsLoaded(std::path::PathBuf, crate::replays::ReplayStats),
+    /// An [`Effect::AnalyzeReplay`] re-simulation reporting per-tick
+    /// progress: `(path, ticks done, ticks total)`. Drives the analyzing
+    /// pane's bar; ignored when the path is no longer pending.
+    HpStatsProgress(std::path::PathBuf, u32, u32),
     /// An [`Effect::AnalyzeReplay`] re-simulation finished. `None` =
     /// analysis failed (missing ROM, undecodable) — clears the pending
     /// marker so a later re-focus can retry (e.g. after the user
@@ -139,21 +143,30 @@ pub struct ReplaysState {
     /// otherwise — see [`Effect::AnalyzeReplay`]. The detail panel draws
     /// its HP pane from this; paths without an entry just don't get one.
     pub hp_charts: std::collections::HashMap<std::path::PathBuf, HpChart>,
-    /// Replays with an analysis in flight, so re-focusing one doesn't
-    /// stack a second multi-second re-simulation behind the first.
-    pub hp_pending: std::collections::HashSet<std::path::PathBuf>,
+    /// Replays with an analysis in flight — keyed presence stops a
+    /// re-focus from stacking a second multi-second re-simulation, and
+    /// the value carries the latest `(ticks done, ticks total)` progress
+    /// (`None` until the first report) for the analyzing pane's bar.
+    pub hp_pending: std::collections::HashMap<std::path::PathBuf, Option<(u32, u32)>>,
     /// Entrance restarted when a different replay is selected —
     /// the detail panel slides in from the right.
     pub detail_enter: crate::anim::Enter,
 }
 
-/// A replay's match stats, cooked for drawing: per round, the outcome
-/// plus the HP trace as `(x, you, opponent)` points normalized to 0..=1
-/// (x over the round's sampled ticks, HP against the match-wide maximum
-/// so every round shares one vertical scale). Built once per replay when
-/// its [`tango_pvp::analysis::MatchStats`] arrive.
+/// A replay's match stats, cooked for drawing. Per round: the outcome,
+/// the HP trace as `(x, you, opponent)` points normalized to 0..=1 (x
+/// over the round's sampled ticks, HP against the match-wide maximum so
+/// every round shares one vertical scale), and the normalized custom-
+/// screen spans. Built once per replay when its
+/// [`tango_pvp::analysis::MatchStats`] arrive.
 pub struct HpChart {
-    pub rounds: Vec<(Option<tango_pvp::stepper::BattleOutcome>, Vec<(f32, f32, f32)>)>,
+    pub rounds: Vec<HpChartRound>,
+}
+
+pub struct HpChartRound {
+    pub outcome: Option<tango_pvp::stepper::BattleOutcome>,
+    pub trace: Vec<(f32, f32, f32)>,
+    pub custom: Vec<(f32, f32)>,
 }
 
 impl HpChart {
@@ -172,21 +185,24 @@ impl HpChart {
                 .iter()
                 .map(|r| {
                     let (Some(first), Some(last)) = (r.hp.first(), r.hp.last()) else {
-                        return (r.outcome, vec![]);
+                        return HpChartRound {
+                            outcome: r.outcome,
+                            trace: vec![],
+                            custom: vec![],
+                        };
                     };
                     let t0 = first.tick as f32;
                     let span = (last.tick as f32 - t0).max(1.0);
-                    let trace =
-                        r.hp.iter()
-                            .map(|p| {
-                                (
-                                    (p.tick as f32 - t0) / span,
-                                    p.local as f32 / max_hp,
-                                    p.remote as f32 / max_hp,
-                                )
-                            })
-                            .collect();
-                    (r.outcome, trace)
+                    let x_of = |tick: u32| ((tick as f32 - t0) / span).clamp(0.0, 1.0);
+                    HpChartRound {
+                        outcome: r.outcome,
+                        trace: r
+                            .hp
+                            .iter()
+                            .map(|p| (x_of(p.tick), p.local as f32 / max_hp, p.remote as f32 / max_hp))
+                            .collect(),
+                        custom: r.custom.iter().map(|&(a, b)| (x_of(a), x_of(b))).collect(),
+                    }
                 })
                 .collect(),
         }
@@ -195,7 +211,7 @@ impl HpChart {
     /// Whether there's anything to draw at all — at least one round
     /// with a non-empty trace.
     fn has_traces(&self) -> bool {
-        self.rounds.iter().any(|(_, t)| t.len() >= 2)
+        self.rounds.iter().any(|r| r.trace.len() >= 2)
     }
 }
 
@@ -293,11 +309,11 @@ impl ReplaysState {
                 // previous focus), and only re-simulate when there isn't
                 // one. Failures clear `hp_pending` via the result message,
                 // so a later focus retries.
-                if !self.hp_charts.contains_key(&p) && !self.hp_pending.contains(&p) {
+                if !self.hp_charts.contains_key(&p) && !self.hp_pending.contains_key(&p) {
                     if let Some(stats) = crate::replays::load_match_stats(&p) {
                         self.hp_charts.insert(p, HpChart::new(&stats));
                     } else {
-                        self.hp_pending.insert(p.clone());
+                        self.hp_pending.insert(p.clone(), None);
                         return Some(Effect::AnalyzeReplay(p));
                     }
                 }
@@ -323,6 +339,12 @@ impl ReplaysState {
             Message::Export(m) => self.update_export(m),
             Message::StatsLoaded(path, s) => {
                 self.stats.insert(path, s);
+                None
+            }
+            Message::HpStatsProgress(path, done, total) => {
+                if let Some(progress) = self.hp_pending.get_mut(&path) {
+                    *progress = Some((done, total));
+                }
                 None
             }
             Message::HpStatsLoaded(path, stats) => {
@@ -927,19 +949,28 @@ fn replay_detail<'a>(
     // still being re-simulated (first focus of a replay with no sidecar)
     // the pane holds a quiet analyzing line instead, so the panel says why
     // there's no chart yet.
-    let analyzing: Option<Element<'_, Message>> = state.hp_pending.contains(&r.path).then(|| {
+    let analyzing: Option<Element<'_, Message>> = state.hp_pending.get(&r.path).map(|progress| {
+        let fraction = match progress {
+            Some((done, total)) if *total > 0 => (*done as f32 / *total as f32).clamp(0.0, 1.0),
+            _ => 0.0,
+        };
         container(
-            row![
-                Icon::Hourglass
-                    .widget()
-                    .size(TEXT_CAPTION)
-                    .style(widgets::muted_text_style),
-                text(t!(lang, "replays-analyzing"))
-                    .size(TEXT_CAPTION)
-                    .style(widgets::muted_text_style),
+            column![
+                row![
+                    Icon::Hourglass
+                        .widget()
+                        .size(TEXT_CAPTION)
+                        .style(widgets::muted_text_style),
+                    text(t!(lang, "replays-analyzing"))
+                        .size(TEXT_CAPTION)
+                        .style(widgets::muted_text_style),
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center),
+                iced::widget::progress_bar(0.0..=1.0, fraction).girth(Length::Fixed(4.0)),
             ]
             .spacing(6)
-            .align_y(Alignment::Center),
+            .width(Fill),
         )
         .width(Fill)
         .padding(style::PANE_PADDING)
@@ -963,38 +994,45 @@ fn replay_detail<'a>(
         };
         let local_nick = md.local_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
         let remote_nick = md.remote_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
-        let mut body = column![row![
-            legend_entry(widgets::hp_you_color, local_nick),
-            legend_entry(widgets::hp_opponent_color, remote_nick),
-        ]
-        .spacing(14)
-        .align_y(Alignment::Center)]
-        .spacing(8)
-        .width(Fill);
-        for (i, (outcome, trace)) in chart.rounds.iter().enumerate() {
-            let mark: Element<'_, Message> = match outcome {
+        // All rounds share one row — each an equal-width cell with a tiny
+        // "N ✓" header — so the pane costs one graph of vertical space no
+        // matter how many rounds the match went.
+        let mut rounds_row = row![].spacing(8).width(Fill);
+        for (i, round) in chart.rounds.iter().enumerate() {
+            let mark: Element<'_, Message> = match round.outcome {
                 Some(o) => {
-                    let (icon, style) = widgets::outcome_mark(*o);
+                    let (icon, style) = widgets::outcome_mark(o);
                     icon.widget().size(TEXT_CAPTION).style(style).into()
                 }
                 None => Space::new().into(),
             };
-            body = body.push(
+            rounds_row = rounds_row.push(
                 column![
                     row![
-                        text(t!(lang, "session-results-round", number = (i + 1) as i64))
+                        text((i + 1).to_string())
                             .size(TEXT_CAPTION)
                             .style(widgets::muted_text_style),
-                        Space::new().width(Fill),
-                        container(mark).width(Length::Fixed(14.0)).align_x(Alignment::Center),
+                        mark,
                     ]
+                    .spacing(4)
                     .align_y(Alignment::Center),
-                    widgets::hp_graph(trace, 1.0, DETAIL_HP_GRAPH_H),
+                    widgets::hp_graph(&round.trace, &round.custom, 1.0, DETAIL_HP_GRAPH_H),
                 ]
                 .spacing(2)
                 .width(Fill),
             );
         }
+        let body = column![
+            row![
+                legend_entry(widgets::hp_you_color, local_nick),
+                legend_entry(widgets::hp_opponent_color, remote_nick),
+            ]
+            .spacing(14)
+            .align_y(Alignment::Center),
+            rounds_row,
+        ]
+        .spacing(8)
+        .width(Fill);
         container(body)
             .width(Fill)
             .padding(style::PANE_PADDING)

@@ -40,6 +40,13 @@ pub struct RoundStats {
     /// sample always kept. Empty on rounds that never got past the
     /// battle intro (and for replays predating HP reporting).
     pub hp: Vec<HpPoint>,
+    /// `[start, end)` tick spans during which the custom screen (chip
+    /// select) was open. Empty on games whose traps don't report the
+    /// flag, and absent entirely in sidecars written before it existed
+    /// (defaulted for compatibility rather than a version bump — the
+    /// field is additive).
+    #[serde(default)]
+    pub custom: Vec<(u32, u32)>,
 }
 
 /// One HP reading; serialized as a compact `[tick, local, remote]`
@@ -86,6 +93,7 @@ impl MatchStats {
                         local: s.local,
                         remote: s.remote,
                     })),
+                    custom: custom_spans(r.hp.iter().map(|s| (s.tick, s.custom))),
                 })
                 .collect(),
         }
@@ -123,6 +131,28 @@ impl MatchStats {
     }
 }
 
+/// Fold a per-tick custom-screen stream into `[start, end)` spans.
+fn custom_spans(ticks: impl Iterator<Item = (u32, bool)>) -> Vec<(u32, u32)> {
+    let mut spans: Vec<(u32, u32)> = vec![];
+    let mut open: Option<u32> = None;
+    let mut last_tick = 0;
+    for (tick, custom) in ticks {
+        last_tick = tick;
+        match (custom, open) {
+            (true, None) => open = Some(tick),
+            (false, Some(start)) => {
+                spans.push((start, tick));
+                open = None;
+            }
+            _ => {}
+        }
+    }
+    if let Some(start) = open {
+        spans.push((start, last_tick + 1));
+    }
+    spans
+}
+
 /// Thin `points` to at most [`HP_POINTS_PER_ROUND`], always keeping the
 /// final sample (the KO floor).
 fn decimate(points: impl ExactSizeIterator<Item = HpPoint> + Clone) -> Vec<HpPoint> {
@@ -149,12 +179,15 @@ const MAX_DRAIN_FRAMES: u32 = 600;
 /// the same replay-mode stepper + shadow pair as the viewer, headless
 /// and unthrottled with rasterization off; expect it to take seconds of
 /// CPU per minute of match, so run it on a worker and cache the result.
+/// `on_progress` receives `(ticks simulated, total recorded ticks)`
+/// every simulated tick.
 pub fn analyze(
     replay: &crate::replay::Replay,
     local_rom: &[u8],
     remote_rom: &[u8],
     local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     remote_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
+    on_progress: &mut dyn FnMut(u32, u32),
 ) -> anyhow::Result<MatchStats> {
     let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
     core.enable_video_buffer();
@@ -174,8 +207,12 @@ pub fn analyze(
         crate::stepper::State::new_for_replay(replay, remote_rom, remote_hooks, Box::new(|| {}))?;
     local_hooks.install_on_stepper(&mut core, stepper_state.clone());
 
+    let total_ticks: u32 = replay.rounds.iter().map(|r| r.len() as u32).sum();
+    let mut last_reported: u32 = 0;
+
     let lpi = replay.local_player_index as usize;
     let mut rounds: Vec<Vec<HpPoint>> = vec![vec![]];
+    let mut customs: Vec<Vec<(u32, bool)>> = vec![vec![]];
     let mut outcomes: Vec<Option<BattleOutcome>> = vec![];
     // Latest result seen for the round in progress. `round_result()`
     // clears across the round transition, so it's committed on the
@@ -185,7 +222,7 @@ pub fn analyze(
     let mut frames_after_drain: u32 = 0;
 
     loop {
-        let (total_left, abs_tick, round_idx, ended, result, tick, hp) = {
+        let (total_left, abs_tick, round_idx, ended, result, tick, hp, custom) = {
             let inner = stepper_state.lock_inner();
             (
                 inner.total_input_pairs_left(),
@@ -195,12 +232,19 @@ pub fn analyze(
                 inner.round_result(),
                 inner.current_tick(),
                 inner.battle_hp(),
+                inner.custom_screen(),
             )
         };
+
+        if abs_tick != last_reported {
+            last_reported = abs_tick;
+            on_progress(abs_tick, total_ticks);
+        }
 
         if round_idx != last_round_idx {
             outcomes.push(current_result.take());
             rounds.push(vec![]);
+            customs.push(vec![]);
             last_round_idx = round_idx;
         }
         if let Some(rr) = result {
@@ -218,6 +262,7 @@ pub fn analyze(
                     local: hp[lpi],
                     remote: hp[1 - lpi],
                 });
+                customs.last_mut().unwrap().push((tick, custom.unwrap_or(false)));
             }
         }
 
@@ -235,10 +280,11 @@ pub fn analyze(
     Ok(MatchStats {
         rounds: outcomes
             .into_iter()
-            .zip(rounds)
-            .map(|(outcome, hp)| RoundStats {
+            .zip(rounds.into_iter().zip(customs))
+            .map(|(outcome, (hp, custom))| RoundStats {
                 outcome,
                 hp: decimate(hp.into_iter()),
+                custom: custom_spans(custom.into_iter()),
             })
             .collect(),
     })

@@ -183,6 +183,10 @@ pub struct InnerState {
     /// [`super::BattleHp`]). Overwritten every reporting tick; stays `None`
     /// for games without HP offsets.
     battle_hp: Option<super::BattleHp>,
+    /// Latest per-tick custom-screen report from the per-game traps —
+    /// `Some(true)` while either player has the chip-select open. Stays
+    /// `None` for games without the flag offsets wired.
+    battle_custom: Option<bool>,
     error: Option<anyhow::Error>,
     mode: Mode,
 }
@@ -273,6 +277,7 @@ impl InnerState {
             local_packet,
             round_result: None,
             battle_hp: None,
+            battle_custom: None,
             error: None,
             mode: Mode::Replay(ReplayExtras {
                 phase,
@@ -323,6 +328,7 @@ impl InnerState {
             }),
             round_result: None,
             battle_hp: None,
+            battle_custom: None,
             error: None,
             mode: Mode::Fastforward(FastforwardExtras {
                 capture_tick,
@@ -644,6 +650,7 @@ impl InnerState {
             boundary: ff.captured.expect("captured boundary"),
             round_result: self.round_result,
             hp: self.battle_hp,
+            custom: self.battle_custom,
         }
     }
 
@@ -673,6 +680,18 @@ impl InnerState {
     /// per frame.
     pub fn battle_hp(&self) -> Option<super::BattleHp> {
         self.battle_hp
+    }
+
+    /// Report whether the custom screen (chip select) is open this tick.
+    /// Called by per-game per-tick traps on games with known flag offsets.
+    pub fn set_custom_screen(&mut self, open: bool) {
+        self.battle_custom = Some(open);
+    }
+
+    /// The most recent per-tick custom-screen report, if the current
+    /// round's traps have made one (see [`Self::set_custom_screen`]).
+    pub fn custom_screen(&self) -> Option<bool> {
+        self.battle_custom
     }
 
     pub fn set_round_ending(&mut self) {
@@ -823,8 +842,9 @@ impl InnerState {
         self.round_result = None;
         // Traps only report HP while the unit slots are live, so without
         // this the previous round's final reading would leak into the next
-        // round's intro window.
+        // round's intro window. Same for the custom-screen flag.
         self.battle_hp = None;
+        self.battle_custom = None;
     }
 }
 

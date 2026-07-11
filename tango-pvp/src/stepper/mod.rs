@@ -84,6 +84,9 @@ pub struct StepperResult {
     /// Both players' HP during the tick this run simulated, if the per-game
     /// traps reported it (see [`BattleHp`]).
     pub hp: Option<BattleHp>,
+    /// Whether the custom screen was open during the tick this run
+    /// simulated, if the per-game traps reported it.
+    pub custom: Option<bool>,
 }
 
 /// Single per-frame re-sim core for the rollback engine: a dedicated headless
