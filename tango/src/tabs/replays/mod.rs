@@ -170,7 +170,7 @@ pub struct HpChartRound {
     pub outcome: Option<tango_pvp::stepper::BattleOutcome>,
     pub trace: Vec<(f32, f32, f32)>,
     pub custom: Vec<(f32, f32)>,
-    /// Chip-use beads per side (`[you, opponent]`): normalized x within
+    /// Chip-use events per side (`[you, opponent]`): normalized x within
     /// the round plus the chip's display name and icon, resolved against
     /// the local side's assets when the chart was built (`"???"`/no icon
     /// when the ROM/patch wasn't loadable or the game doesn't know that
@@ -1064,7 +1064,16 @@ fn replay_detail<'a>(
             ]
             .spacing(14)
             .align_y(Alignment::Center),
-            widgets::hp_match_graph(chart_rounds, chart.max_hp, 1.0, DETAIL_HP_GRAPH_H),
+            widgets::hp_match_graph(
+                chart_rounds,
+                chart.max_hp,
+                1.0,
+                if chart.rounds.iter().any(|r| r.chip_uses.iter().any(|l| !l.is_empty())) {
+                    DETAIL_HP_GRAPH_WITH_LANES_H
+                } else {
+                    DETAIL_HP_GRAPH_H
+                },
+            ),
         ]
         .spacing(8)
         .width(Fill);
@@ -1099,8 +1108,14 @@ fn replay_detail<'a>(
     panes.push(preview).height(Fill).into()
 }
 
-/// Height of each per-round HP graph in the detail panel.
+/// Height of the HP graph in the detail panel when it's traces only.
 const DETAIL_HP_GRAPH_H: f32 = 44.0;
+
+/// Taller variant when the chart also carries chip-use events: a
+/// roomier trace field plus the widget's two per-side event lanes
+/// (18 px), which also leaves enough height for the four-line icon
+/// readout — the canvas clips anything that hangs past its bounds.
+const DETAIL_HP_GRAPH_WITH_LANES_H: f32 = 72.0;
 
 /// Everything the free-text search matches against, joined into one
 /// lowercased blob: both sides' nicknames, game names (raw family
