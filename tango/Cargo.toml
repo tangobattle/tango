@@ -137,6 +137,7 @@ libc = "0.2"
 arrayvec = "0.7"
 indexmap = "2"
 clap = { version = "4", features = ["derive"] }
+showfile = "0.1.1"
 
 [features]
 # Each game's support (dataview + PvP hooks + saves + logos) is an

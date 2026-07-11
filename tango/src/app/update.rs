@@ -109,6 +109,7 @@ impl App {
                     .map(Message::Netplay)
             }
             E::OpenPath(p) => open_path(p),
+            E::RevealPath(p) => reveal_path(p),
             E::CopyText(s) => iced::clipboard::write(s),
             E::CopyImage(img) => {
                 copy_image_to_clipboard(img);
@@ -327,6 +328,7 @@ impl App {
         use tabs::replays::Effect as E;
         match effect {
             E::OpenPath(p) => open_path(p),
+            E::RevealPath(p) => reveal_path(p),
             E::Watch(p) => {
                 match session::build_playback(
                     &self.scanners,

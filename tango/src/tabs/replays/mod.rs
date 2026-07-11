@@ -34,7 +34,8 @@ pub enum Message {
     /// only.
     ShowIncompleteToggled(bool),
     Selected(std::path::PathBuf),
-    OpenFolder(std::path::PathBuf),
+    /// Reveal the replay file in the OS file manager, selected.
+    RevealReplay(std::path::PathBuf),
     Watch(std::path::PathBuf),
     /// Export-panel interactions (form, render lifecycle, round
     /// mask), folded under one variant — see [`ExportMessage`] and
@@ -188,6 +189,8 @@ impl HpChart {
 pub enum Effect {
     /// `open::that(_)` — folder or rendered video.
     OpenPath(std::path::PathBuf),
+    /// Reveal in the OS file manager with the file selected.
+    RevealPath(std::path::PathBuf),
     /// User clicked Watch on a replay; App spawns the playback
     /// session and stuffs it into `session.active`.
     Watch(std::path::PathBuf),
@@ -288,7 +291,7 @@ impl ReplaysState {
                 }
                 None
             }
-            Message::OpenFolder(p) => Some(Effect::OpenPath(p)),
+            Message::RevealReplay(p) => Some(Effect::RevealPath(p)),
             Message::Watch(p) => Some(Effect::Watch(p)),
             Message::SaveViewAction(action) => {
                 // Clipboard outcomes need the App's clipboard collaborator
@@ -797,7 +800,7 @@ fn replay_detail<'a>(
                 widgets::icon_button(
                     Icon::FolderOpen,
                     t!(lang, "patches-open-folder"),
-                    Message::OpenFolder(r.path.parent().map(|p| p.to_path_buf()).unwrap_or_default(),),
+                    Message::RevealReplay(r.path.clone()),
                     STANDARD_PADDING,
                 ),
                 // Watch is the main action of the detail view —

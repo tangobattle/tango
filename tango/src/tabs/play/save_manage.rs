@@ -55,11 +55,7 @@ impl State {
         loadout: &Loadout,
     ) -> Option<Effect> {
         match msg {
-            Message::SaveOpenFolder => loadout
-                .save
-                .as_ref()
-                .and_then(|p| p.parent())
-                .map(|p| Effect::OpenPath(p.to_path_buf())),
+            Message::SaveOpenFolder => loadout.save.as_ref().map(|p| Effect::RevealPath(p.to_path_buf())),
             Message::OpenSavesFolder(path) => Some(Effect::OpenPath(path)),
             Message::SaveDuplicateStart => {
                 // Prefill with the next free "<stem> (copy)" name so a

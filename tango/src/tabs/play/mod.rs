@@ -180,6 +180,8 @@ pub enum Effect {
     ReadyWithSave,
     /// `open::that(_)` on a file or folder.
     OpenPath(std::path::PathBuf),
+    /// Reveal in the OS file manager with the file selected.
+    RevealPath(std::path::PathBuf),
     /// Copy plain text to the clipboard.
     CopyText(String),
     /// Copy a raster image to the clipboard.

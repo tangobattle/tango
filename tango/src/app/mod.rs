@@ -261,6 +261,14 @@ fn open_path(path: impl AsRef<std::path::Path>) -> iced::Task<Message> {
     iced::Task::none()
 }
 
+/// Reveal a file in the OS file manager with the file itself selected,
+/// rather than opening its containing folder anonymously. Shared by the
+/// per-tab `RevealPath` effects (replays, saves).
+fn reveal_path(path: impl AsRef<std::path::Path>) -> iced::Task<Message> {
+    showfile::show_path_in_file_manager(path.as_ref());
+    iced::Task::none()
+}
+
 impl App {
     pub fn new() -> (Self, iced::Task<Message>) {
         let config = config::Config::load_or_create();
