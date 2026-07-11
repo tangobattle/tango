@@ -2374,8 +2374,9 @@ pub fn outcome_mark(outcome: tango_pvp::stepper::BattleOutcome) -> (Icon, fn(&Th
 /// separated by small gaps. Within a segment both navis' HP run as
 /// step-lines (HP holds between hits — a diagonal would invent a ramp
 /// that never happened) over an inset wash, a zero baseline, and a
-/// slightly lighter band under each custom-screen span; a small dot in
-/// the segment's top-right corner carries the round's outcome. When any
+/// slightly lighter band under each custom-screen span; the segment's
+/// background carries the round's outcome as a tint (win = success
+/// wash, loss = danger wash, draw/undecided = neutral). When any
 /// round has chip-use events, the bottom of the canvas becomes two thin
 /// per-side event lanes ("you" over the opponent, in the trace colors)
 /// and each use is a tick in its owner's lane — exact timing without
@@ -2637,11 +2638,22 @@ pub fn hp_match_graph<'a, M: 'a>(
                 segments.push((seg_x, seg_w));
                 let x_at = |xf: f32| seg_x + xf.clamp(0.0, 1.0) * seg_w - offset;
                 // Local reveal fraction of this segment under the global
-                // px cursor.
-                let local_sweep = ((sweep_px - seg_x) / seg_w).clamp(0.0, 1.0);
+                // px cursor. A finished sweep pins this to exactly 1.0:
+                // `seg_x` accumulates float error across the earlier
+                // segments, so the last segment's ratio can land a hair
+                // below 1.0 and would otherwise never count as fully swept
+                // (which used to hide the final round's outcome mark).
+                let local_sweep = if self.sweep >= 1.0 {
+                    1.0
+                } else {
+                    ((sweep_px - seg_x) / seg_w).clamp(0.0, 1.0)
+                };
 
                 // Recessed background so each round reads as its own inset
-                // panel; the gaps between them are the round dividers.
+                // panel; the gaps between them are the round dividers. Once
+                // the sweep has fully crossed a round, its outcome tints the
+                // whole panel — win reads green, loss red; draws and rounds
+                // the recording never resolved stay neutral.
                 let bg = Path::rounded_rectangle(Point::new(seg_x - offset, 0.0), iced::Size::new(seg_w, h), 3.0.into());
                 frame.fill(
                     &bg,
@@ -2650,6 +2662,22 @@ pub fn hp_match_graph<'a, M: 'a>(
                         ..text_color
                     },
                 );
+                if local_sweep >= 1.0 {
+                    let tint = match round.outcome {
+                        Some(tango_pvp::stepper::BattleOutcome::Win) => Some(palette.success.base.color),
+                        Some(tango_pvp::stepper::BattleOutcome::Loss) => Some(palette.danger.base.color),
+                        _ => None,
+                    };
+                    if let Some(color) = tint {
+                        frame.fill(
+                            &bg,
+                            iced::Color {
+                                a: if palette.is_dark { 0.14 } else { 0.08 },
+                                ..color
+                            },
+                        );
+                    }
+                }
 
                 // Custom-screen bands: the stretches where the battle stood
                 // paused while chips were picked. They mark time in the
@@ -2741,19 +2769,6 @@ pub fn hp_match_graph<'a, M: 'a>(
                             ),
                             color,
                         );
-                    }
-                }
-
-                // Outcome dot, top-right of the segment, once the sweep has
-                // fully crossed it.
-                if local_sweep >= 1.0 {
-                    if let Some(outcome) = round.outcome {
-                        let color = match outcome {
-                            tango_pvp::stepper::BattleOutcome::Win => palette.success.strong.color,
-                            tango_pvp::stepper::BattleOutcome::Loss => palette.danger.strong.color,
-                            tango_pvp::stepper::BattleOutcome::Draw => muted_color(theme),
-                        };
-                        frame.fill(&Path::circle(Point::new(seg_x + seg_w - offset - 6.0, 6.0), 2.5), color);
                     }
                 }
 
