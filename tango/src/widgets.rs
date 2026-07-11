@@ -2369,31 +2369,34 @@ pub fn outcome_mark(outcome: tango_pvp::stepper::BattleOutcome) -> (Icon, fn(&Th
     }
 }
 
-/// One round's HP graph: both navis' HP over the round as step-lines (HP
-/// holds between hits — a diagonal would invent a ramp that never
-/// happened), swept in from the left by `sweep` (1.0 = fully drawn) with
-/// a head dot on each line while mid-sweep. Recessive chrome: an inset
-/// wash, the zero baseline, and a slightly lighter band under each
-/// `custom` span (normalized `[start, end)` x ranges) marking where the
-/// battle stood paused in the custom screen. `trace` points are
-/// `(x, you, opponent)`, all normalized to 0..=1; identity is carried by
-/// [`hp_you_color`]/[`hp_opponent_color`] plus whatever legend or labels
-/// the caller draws beside it.
-pub fn hp_graph<'a, M: 'a>(
-    trace: &'a [(f32, f32, f32)],
-    custom: &'a [(f32, f32)],
-    sweep: f32,
-    height: f32,
-) -> Element<'a, M> {
+/// One match's HP graph: every round on a single continuous timeline,
+/// each round a segment whose width is proportional to its tick span,
+/// separated by small gaps. Within a segment both navis' HP run as
+/// step-lines (HP holds between hits — a diagonal would invent a ramp
+/// that never happened) over an inset wash, a zero baseline, and a
+/// slightly lighter band under each custom-screen span; a small dot in
+/// the segment's top-right corner carries the round's outcome. `sweep`
+/// (0..=1 of the whole timeline) reveals the chart left to right with a
+/// head dot on each line while mid-sweep. Trace/custom x values are
+/// 0..=1 within their round; HP values are normalized to the match-wide
+/// maximum by the caller, so every segment shares one vertical scale.
+pub struct HpGraphRound<'a> {
+    pub trace: &'a [(f32, f32, f32)],
+    pub custom: &'a [(f32, f32)],
+    pub outcome: Option<tango_pvp::stepper::BattleOutcome>,
+    /// Tick span of the round — its share of the timeline's width.
+    pub weight: f32,
+}
+
+pub fn hp_match_graph<'a, M: 'a>(rounds: Vec<HpGraphRound<'a>>, sweep: f32, height: f32) -> Element<'a, M> {
     use iced::widget::canvas;
 
-    struct HpGraph<'a> {
-        trace: &'a [(f32, f32, f32)],
-        custom: &'a [(f32, f32)],
+    struct HpMatchGraph<'a> {
+        rounds: Vec<HpGraphRound<'a>>,
         sweep: f32,
     }
 
-    impl<M> canvas::Program<M> for HpGraph<'_> {
+    impl<M> canvas::Program<M> for HpMatchGraph<'_> {
         type State = ();
 
         fn draw(
@@ -2414,93 +2417,124 @@ pub fn hp_graph<'a, M: 'a>(
             // Inset vertically so full-HP traces keep their line width
             // on-canvas.
             const PAD: f32 = 3.0;
-            let x_at = |xf: f32| xf * w;
+            const GAP: f32 = 3.0;
             let y_at = |yf: f32| PAD + (1.0 - yf.clamp(0.0, 1.0)) * (h - 2.0 * PAD);
 
-            // Recessed background so the graph reads as its own inset panel.
-            let bg = Path::rounded_rectangle(Point::new(0.0, 0.0), bounds.size(), 3.0.into());
-            frame.fill(
-                &bg,
-                iced::Color {
-                    a: if palette.is_dark { 0.10 } else { 0.05 },
-                    ..text_color
-                },
-            );
+            let total: f32 = self.rounds.iter().map(|r| r.weight.max(1.0)).sum::<f32>().max(1.0);
+            let gaps = GAP * (self.rounds.len().saturating_sub(1)) as f32;
+            let usable = (w - gaps).max(1.0);
 
-            // Custom-screen bands: the stretches where the battle stood
-            // paused while chips were being picked. Revealed by the sweep
-            // along with everything else.
-            for &(x0, x1) in self.custom {
-                let x0 = x_at(x0.clamp(0.0, 1.0).min(self.sweep));
-                let x1 = x_at(x1.clamp(0.0, 1.0).min(self.sweep));
-                if x1 > x0 {
-                    frame.fill_rectangle(
-                        Point::new(x0, 0.0),
-                        iced::Size::new(x1 - x0, h),
-                        iced::Color { a: 0.07, ..text_color },
-                    );
-                }
-            }
+            let mut seg_x = 0.0f32;
+            // The sweep runs over the whole timeline; convert to a px
+            // cursor so segment boundaries don't distort its pace.
+            let sweep_px = self.sweep.clamp(0.0, 1.0) * w;
+            for round in &self.rounds {
+                let seg_w = round.weight.max(1.0) / total * usable;
+                let x_at = |xf: f32| seg_x + xf.clamp(0.0, 1.0) * seg_w;
+                // Local reveal fraction of this segment under the global
+                // px cursor.
+                let local_sweep = ((sweep_px - seg_x) / seg_w).clamp(0.0, 1.0);
 
-            // Zero baseline — where a KO'd navi's trace lands.
-            let base_y = y_at(0.0);
-            frame.stroke(
-                &Path::line(Point::new(0.0, base_y), Point::new(w, base_y)),
-                Stroke::default()
-                    .with_color(iced::Color { a: 0.22, ..text_color })
-                    .with_width(1.0),
-            );
-
-            if self.trace.len() < 2 || self.sweep <= 0.0 {
-                return vec![frame.into_geometry()];
-            }
-
-            // Draw the opponent under this side, so "you" stays legible
-            // where the traces overlap (equal HP at round start).
-            for you in [false, true] {
-                let color = if you {
-                    hp_you_color(theme)
-                } else {
-                    hp_opponent_color(theme)
-                };
-                let value = |p: &(f32, f32, f32)| if you { p.1 } else { p.2 };
-                let mut head = None;
-                let path = Path::new(|b| {
-                    let mut prev_y = y_at(value(&self.trace[0]));
-                    b.move_to(Point::new(x_at(self.trace[0].0), prev_y));
-                    for point in &self.trace[1..] {
-                        let x = x_at(point.0.min(self.sweep));
-                        // Step-line: run flat to the new x, then drop/rise there.
-                        b.line_to(Point::new(x, prev_y));
-                        if point.0 > self.sweep {
-                            head = Some(Point::new(x, prev_y));
-                            break;
-                        }
-                        prev_y = y_at(value(point));
-                        b.line_to(Point::new(x, prev_y));
-                        head = Some(Point::new(x, prev_y));
-                    }
-                });
-                frame.stroke(
-                    &path,
-                    Stroke::default()
-                        .with_color(color)
-                        .with_width(1.5)
-                        .with_line_cap(LineCap::Round),
+                // Recessed background so each round reads as its own inset
+                // panel; the gaps between them are the round dividers.
+                let bg = Path::rounded_rectangle(Point::new(seg_x, 0.0), iced::Size::new(seg_w, h), 3.0.into());
+                frame.fill(
+                    &bg,
+                    iced::Color {
+                        a: if palette.is_dark { 0.10 } else { 0.05 },
+                        ..text_color
+                    },
                 );
-                // Sweep-head dot: the "now" cursor of the miniature replay.
-                if self.sweep < 1.0 {
-                    if let Some(head) = head {
-                        frame.fill(&Path::circle(head, 2.0), color);
+
+                // Custom-screen bands: the stretches where the battle stood
+                // paused while chips were picked.
+                for &(x0, x1) in round.custom {
+                    let (bx0, bx1) = (x_at(x0.min(local_sweep)), x_at(x1.min(local_sweep)));
+                    if bx1 > bx0 {
+                        frame.fill_rectangle(
+                            Point::new(bx0, 0.0),
+                            iced::Size::new(bx1 - bx0, h),
+                            iced::Color { a: 0.07, ..text_color },
+                        );
                     }
                 }
+
+                // Zero baseline — where a KO'd navi's trace lands.
+                let base_y = y_at(0.0);
+                frame.stroke(
+                    &Path::line(Point::new(seg_x, base_y), Point::new(seg_x + seg_w, base_y)),
+                    Stroke::default()
+                        .with_color(iced::Color { a: 0.22, ..text_color })
+                        .with_width(1.0),
+                );
+
+                if round.trace.len() >= 2 && local_sweep > 0.0 {
+                    // Draw the opponent under this side, so "you" stays
+                    // legible where the traces overlap (equal HP at round
+                    // start).
+                    for you in [false, true] {
+                        let color = if you {
+                            hp_you_color(theme)
+                        } else {
+                            hp_opponent_color(theme)
+                        };
+                        let value = |p: &(f32, f32, f32)| if you { p.1 } else { p.2 };
+                        let mut head = None;
+                        let path = Path::new(|b| {
+                            let mut prev_y = y_at(value(&round.trace[0]));
+                            b.move_to(Point::new(x_at(round.trace[0].0), prev_y));
+                            for point in &round.trace[1..] {
+                                let x = x_at(point.0.min(local_sweep));
+                                // Step-line: run flat to the new x, then
+                                // drop/rise there.
+                                b.line_to(Point::new(x, prev_y));
+                                if point.0 > local_sweep {
+                                    head = Some(Point::new(x, prev_y));
+                                    break;
+                                }
+                                prev_y = y_at(value(point));
+                                b.line_to(Point::new(x, prev_y));
+                                head = Some(Point::new(x, prev_y));
+                            }
+                        });
+                        frame.stroke(
+                            &path,
+                            Stroke::default()
+                                .with_color(color)
+                                .with_width(1.5)
+                                .with_line_cap(LineCap::Round),
+                        );
+                        // Sweep-head dot: the "now" cursor of the miniature
+                        // replay.
+                        if local_sweep < 1.0 && local_sweep > 0.0 {
+                            if let Some(head) = head {
+                                frame.fill(&Path::circle(head, 2.0), color);
+                            }
+                        }
+                    }
+                }
+
+                // Outcome dot, top-right of the segment, once the sweep has
+                // fully crossed it.
+                if local_sweep >= 1.0 {
+                    if let Some(outcome) = round.outcome {
+                        let color = match outcome {
+                            tango_pvp::stepper::BattleOutcome::Win => palette.success.strong.color,
+                            tango_pvp::stepper::BattleOutcome::Loss => palette.danger.strong.color,
+                            tango_pvp::stepper::BattleOutcome::Draw => muted_color(theme),
+                        };
+                        frame.fill(&Path::circle(Point::new(seg_x + seg_w - 6.0, 6.0), 2.5), color);
+                    }
+                }
+
+                seg_x += seg_w + GAP;
             }
 
             vec![frame.into_geometry()]
         }
     }
 
-    iced::widget::canvas::Canvas::new(HpGraph { trace, custom, sweep })
+    iced::widget::canvas::Canvas::new(HpMatchGraph { rounds, sweep })
         .width(Length::Fill)
         .height(Length::Fixed(height))
         .into()

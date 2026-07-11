@@ -6,7 +6,7 @@
 //! outcome and both players' HP over the round, as reported by the
 //! per-game traps via [`InnerState::set_battle_hp`]. That's a full
 //! replay simulation — seconds of CPU — so stats are meant to be
-//! computed once and cached in a versioned sidecar file
+//! computed once and cached in a small versioned binary sidecar
 //! (`<replay>.stats`, see [`MatchStats::read`]/[`MatchStats::write`]).
 //! Live matches skip the re-simulation entirely: the rollback engine
 //! already collected the same series, and
@@ -16,9 +16,13 @@
 
 use crate::stepper::BattleOutcome;
 
-/// Bumped whenever the sidecar schema changes shape; readers reject
-/// other versions and recompute.
-pub const FORMAT_VERSION: u32 = 1;
+/// Bumped whenever the sidecar format changes shape; readers reject
+/// other versions (and anything without the magic, e.g. the short-lived
+/// JSON v1 sidecars) and recompute.
+pub const FORMAT_VERSION: u32 = 2;
+
+/// Sidecar file magic.
+const MAGIC: &[u8; 4] = b"TGST";
 
 /// Cap on stored HP points per round. HP is a step function that holds
 /// for long stretches, so a few hundred points reproduce the curve
@@ -27,12 +31,12 @@ pub const HP_POINTS_PER_ROUND: usize = 512;
 
 /// Per-match statistics, from the local player's perspective of the
 /// replay (or live session) they came from.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct MatchStats {
     pub rounds: Vec<RoundStats>,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct RoundStats {
     /// `None` when the recording ended before the round reached a KO.
     pub outcome: Option<BattleOutcome>,
@@ -42,41 +46,16 @@ pub struct RoundStats {
     pub hp: Vec<HpPoint>,
     /// `[start, end)` tick spans during which the custom screen (chip
     /// select) was open. Empty on games whose traps don't report the
-    /// flag, and absent entirely in sidecars written before it existed
-    /// (defaulted for compatibility rather than a version bump — the
-    /// field is additive).
-    #[serde(default)]
+    /// flag.
     pub custom: Vec<(u32, u32)>,
 }
 
-/// One HP reading; serialized as a compact `[tick, local, remote]`
-/// triple.
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(into = "(u32, u16, u16)", from = "(u32, u16, u16)")]
+/// One HP reading.
+#[derive(Clone, Copy, Debug)]
 pub struct HpPoint {
     pub tick: u32,
     pub local: u16,
     pub remote: u16,
-}
-
-impl From<HpPoint> for (u32, u16, u16) {
-    fn from(p: HpPoint) -> Self {
-        (p.tick, p.local, p.remote)
-    }
-}
-
-impl From<(u32, u16, u16)> for HpPoint {
-    fn from((tick, local, remote): (u32, u16, u16)) -> Self {
-        Self { tick, local, remote }
-    }
-}
-
-/// The sidecar envelope: [`MatchStats`] plus the format version.
-#[derive(serde::Serialize, serde::Deserialize)]
-struct StatsFile {
-    version: u32,
-    #[serde(flatten)]
-    stats: MatchStats,
 }
 
 impl MatchStats {
@@ -86,49 +65,139 @@ impl MatchStats {
         Self {
             rounds: reports
                 .iter()
-                .map(|r| RoundStats {
-                    outcome: Some(r.outcome),
-                    hp: decimate(r.hp.iter().map(|s| HpPoint {
-                        tick: s.tick,
-                        local: s.local,
-                        remote: s.remote,
-                    })),
-                    custom: custom_spans(r.hp.iter().map(|s| (s.tick, s.custom))),
+                .map(|r| {
+                    let raw: Vec<(u32, u16, u16)> = r.hp.iter().map(|s| (s.tick, s.local, s.remote)).collect();
+                    let start = round_intro_len(&raw);
+                    let hp = &r.hp[start..];
+                    RoundStats {
+                        outcome: Some(r.outcome),
+                        hp: decimate(hp.iter().map(|s| HpPoint {
+                            tick: s.tick,
+                            local: s.local,
+                            remote: s.remote,
+                        })),
+                        custom: custom_spans(hp.iter().map(|s| (s.tick, s.custom))),
+                    }
                 })
                 .collect(),
         }
     }
 
-    /// Parse a sidecar. Errors on malformed input or a version other
-    /// than [`FORMAT_VERSION`] — callers treat both as "recompute".
+    /// Parse a sidecar. Errors on malformed input, a missing magic, or a
+    /// version other than [`FORMAT_VERSION`] — callers treat all of these
+    /// as "recompute".
     pub fn read(mut r: impl std::io::Read) -> anyhow::Result<Self> {
-        let mut buf = String::new();
-        r.read_to_string(&mut buf)?;
-        // Probe the version alone first: a future format's body may not
-        // parse at all, and "unsupported version" is the better error.
-        #[derive(serde::Deserialize)]
-        struct Probe {
-            version: u32,
+        fn u32_of(r: &mut impl std::io::Read) -> anyhow::Result<u32> {
+            let mut b = [0u8; 4];
+            r.read_exact(&mut b)?;
+            Ok(u32::from_le_bytes(b))
         }
-        let probe: Probe = serde_json::from_str(&buf)?;
-        if probe.version != FORMAT_VERSION {
-            anyhow::bail!("unsupported stats version {} (want {})", probe.version, FORMAT_VERSION);
+        fn u16_of(r: &mut impl std::io::Read) -> anyhow::Result<u16> {
+            let mut b = [0u8; 2];
+            r.read_exact(&mut b)?;
+            Ok(u16::from_le_bytes(b))
         }
-        Ok(serde_json::from_str::<StatsFile>(&buf)?.stats)
+        let mut magic = [0u8; 4];
+        r.read_exact(&mut magic)?;
+        if &magic != MAGIC {
+            anyhow::bail!("not a stats sidecar (bad magic)");
+        }
+        let version = u32_of(&mut r)?;
+        if version != FORMAT_VERSION {
+            anyhow::bail!("unsupported stats version {} (want {})", version, FORMAT_VERSION);
+        }
+        let n_rounds = u32_of(&mut r)?;
+        // A best-of-3 match writes 2-3 rounds; anything huge is a
+        // corrupt count, better rejected than allocated.
+        if n_rounds > 64 {
+            anyhow::bail!("implausible round count {}", n_rounds);
+        }
+        let mut rounds = Vec::with_capacity(n_rounds as usize);
+        for _ in 0..n_rounds {
+            let mut tag = [0u8; 1];
+            r.read_exact(&mut tag)?;
+            let outcome = match tag[0] as i8 {
+                -2 => None,
+                -1 => Some(BattleOutcome::Draw),
+                0 => Some(BattleOutcome::Loss),
+                1 => Some(BattleOutcome::Win),
+                other => anyhow::bail!("bad outcome tag {}", other),
+            };
+            let n_hp = u32_of(&mut r)?;
+            if n_hp as usize > HP_POINTS_PER_ROUND {
+                anyhow::bail!("implausible hp point count {}", n_hp);
+            }
+            let mut hp = Vec::with_capacity(n_hp as usize);
+            for _ in 0..n_hp {
+                hp.push(HpPoint {
+                    tick: u32_of(&mut r)?,
+                    local: u16_of(&mut r)?,
+                    remote: u16_of(&mut r)?,
+                });
+            }
+            let n_custom = u32_of(&mut r)?;
+            if n_custom > 1024 {
+                anyhow::bail!("implausible custom span count {}", n_custom);
+            }
+            let mut custom = Vec::with_capacity(n_custom as usize);
+            for _ in 0..n_custom {
+                custom.push((u32_of(&mut r)?, u32_of(&mut r)?));
+            }
+            rounds.push(RoundStats { outcome, hp, custom });
+        }
+        Ok(MatchStats { rounds })
     }
 
-    pub fn write(&self, w: impl std::io::Write) -> anyhow::Result<()> {
-        serde_json::to_writer(
-            w,
-            &StatsFile {
-                version: FORMAT_VERSION,
-                // Decimation happens at construction; a straight
-                // clone here keeps `write` cheap and lossless.
-                stats: self.clone(),
-            },
-        )?;
+    pub fn write(&self, mut w: impl std::io::Write) -> anyhow::Result<()> {
+        w.write_all(MAGIC)?;
+        w.write_all(&FORMAT_VERSION.to_le_bytes())?;
+        w.write_all(&(self.rounds.len() as u32).to_le_bytes())?;
+        for round in &self.rounds {
+            let tag: i8 = match round.outcome {
+                None => -2,
+                Some(o) => o as i8,
+            };
+            w.write_all(&tag.to_le_bytes())?;
+            w.write_all(&(round.hp.len() as u32).to_le_bytes())?;
+            for p in &round.hp {
+                w.write_all(&p.tick.to_le_bytes())?;
+                w.write_all(&p.local.to_le_bytes())?;
+                w.write_all(&p.remote.to_le_bytes())?;
+            }
+            w.write_all(&(round.custom.len() as u32).to_le_bytes())?;
+            for &(a, b) in &round.custom {
+                w.write_all(&a.to_le_bytes())?;
+                w.write_all(&b.to_le_bytes())?;
+            }
+        }
         Ok(())
     }
+}
+
+/// How many of a round's first sampled ticks can carry stale readings:
+/// the unit slots re-initialize partway into the battle intro, so the
+/// traps briefly report the PREVIOUS round's final values (or bn1's
+/// pre-init zeros) until then. Real HP can't rise this early — the
+/// custom screen hasn't produced a chip yet — so everything up to the
+/// last increase inside this window is the stale prefix.
+const INTRO_WINDOW_TICKS: u32 = 240;
+
+/// Index of the first trustworthy sample of a round (see
+/// [`INTRO_WINDOW_TICKS`]). Public so the live results card can cut the
+/// same prefix from its raw round reports.
+pub fn round_intro_len(hp: &[(u32, u16, u16)]) -> usize {
+    let Some(&(t0, ..)) = hp.first() else { return 0 };
+    let mut start = 0;
+    for (i, w) in hp.windows(2).enumerate() {
+        let ((_, l0, r0), (t1, l1, r1)) = (w[0], w[1]);
+        if t1 > t0 + INTRO_WINDOW_TICKS {
+            break;
+        }
+        if l1 > l0 || r1 > r0 {
+            start = i + 1;
+        }
+    }
+    start
 }
 
 /// Fold a per-tick custom-screen stream into `[start, end)` spans.
@@ -281,10 +350,16 @@ pub fn analyze(
         rounds: outcomes
             .into_iter()
             .zip(rounds.into_iter().zip(customs))
-            .map(|(outcome, (hp, custom))| RoundStats {
-                outcome,
-                hp: decimate(hp.into_iter()),
-                custom: custom_spans(custom.into_iter()),
+            .map(|(outcome, (hp, custom))| {
+                // Drop the stale intro prefix (customs were pushed in
+                // lockstep with hp, so the same cut applies).
+                let raw: Vec<(u32, u16, u16)> = hp.iter().map(|p| (p.tick, p.local, p.remote)).collect();
+                let start = round_intro_len(&raw);
+                RoundStats {
+                    outcome,
+                    hp: decimate(hp[start..].iter().copied()),
+                    custom: custom_spans(custom[start.min(custom.len())..].iter().copied()),
+                }
             })
             .collect(),
     })

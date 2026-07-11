@@ -167,6 +167,8 @@ pub struct HpChartRound {
     pub outcome: Option<tango_pvp::stepper::BattleOutcome>,
     pub trace: Vec<(f32, f32, f32)>,
     pub custom: Vec<(f32, f32)>,
+    /// Tick span of the round — its share of the continuous timeline.
+    pub weight: f32,
 }
 
 impl HpChart {
@@ -189,6 +191,7 @@ impl HpChart {
                             outcome: r.outcome,
                             trace: vec![],
                             custom: vec![],
+                            weight: 0.0,
                         };
                     };
                     let t0 = first.tick as f32;
@@ -202,6 +205,7 @@ impl HpChart {
                             .map(|p| (x_of(p.tick), p.local as f32 / max_hp, p.remote as f32 / max_hp))
                             .collect(),
                         custom: r.custom.iter().map(|&(a, b)| (x_of(a), x_of(b))).collect(),
+                        weight: span,
                     }
                 })
                 .collect(),
@@ -994,34 +998,19 @@ fn replay_detail<'a>(
         };
         let local_nick = md.local_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
         let remote_nick = md.remote_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
-        // All rounds share one row — each an equal-width cell with a tiny
-        // "N ✓" header — so the pane costs one graph of vertical space no
-        // matter how many rounds the match went.
-        let mut rounds_row = row![].spacing(8).width(Fill);
-        for (i, round) in chart.rounds.iter().enumerate() {
-            let mark: Element<'_, Message> = match round.outcome {
-                Some(o) => {
-                    let (icon, style) = widgets::outcome_mark(o);
-                    icon.widget().size(TEXT_CAPTION).style(style).into()
-                }
-                None => Space::new().into(),
-            };
-            rounds_row = rounds_row.push(
-                column![
-                    row![
-                        text((i + 1).to_string())
-                            .size(TEXT_CAPTION)
-                            .style(widgets::muted_text_style),
-                        mark,
-                    ]
-                    .spacing(4)
-                    .align_y(Alignment::Center),
-                    widgets::hp_graph(&round.trace, &round.custom, 1.0, DETAIL_HP_GRAPH_H),
-                ]
-                .spacing(2)
-                .width(Fill),
-            );
-        }
+        // The whole match on one continuous chart: rounds side by side in
+        // proportion to their length, gaps as the dividers, an outcome dot
+        // in each round's corner.
+        let chart_rounds: Vec<widgets::HpGraphRound<'_>> = chart
+            .rounds
+            .iter()
+            .map(|r| widgets::HpGraphRound {
+                trace: &r.trace,
+                custom: &r.custom,
+                outcome: r.outcome,
+                weight: r.weight,
+            })
+            .collect();
         let body = column![
             row![
                 legend_entry(widgets::hp_you_color, local_nick),
@@ -1029,7 +1018,7 @@ fn replay_detail<'a>(
             ]
             .spacing(14)
             .align_y(Alignment::Center),
-            rounds_row,
+            widgets::hp_match_graph(chart_rounds, 1.0, DETAIL_HP_GRAPH_H),
         ]
         .spacing(8)
         .width(Fill);

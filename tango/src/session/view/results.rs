@@ -28,8 +28,9 @@ use super::super::{MatchResults, Message};
 const SCORE_SIZE: f32 = 44.0;
 
 // Reveal timeline: one linear clock from `MatchResults::revealed_at`.
-// Round graph i sweeps over [i·SWEEP, (i+1)·SWEEP]; its outcome icon and
-// score tick pop over the POP that follows; the verdict stamps in last.
+// The whole match sweeps once across the continuous chart (each round's
+// share proportional to its length); the score ticks pop as the sweep
+// crosses each round boundary, and the verdict stamps in last.
 const SWEEP_MS: f32 = 850.0;
 const POP_MS: f32 = 250.0;
 const STAMP_MS: f32 = 400.0;
@@ -120,12 +121,16 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
                 .style(widgets::muted_text_style),
         );
     } else if animated {
-        // Score tallies up as each round's graph finishes its sweep; a
+        // Score tallies up as the sweep crosses each round's boundary; a
         // freshly-counted round bounces the numeral it incremented.
+        let total_sweep_ms = results.rounds.len() as f32 * SWEEP_MS;
+        let total_weight: f32 = results.rounds.iter().map(|r| r.weight.max(1.0)).sum::<f32>().max(1.0);
         let mut shown = [0usize; 3]; // wins, losses, draws
         let mut pops = [1.0f32; 3];
-        for (i, round) in results.rounds.iter().enumerate() {
-            let pop = segment(elapsed_ms, (i + 1) as f32 * SWEEP_MS, POP_MS);
+        let mut cum_weight = 0.0f32;
+        for round in results.rounds.iter() {
+            cum_weight += round.weight.max(1.0);
+            let pop = segment(elapsed_ms, cum_weight / total_weight * total_sweep_ms, POP_MS);
             if pop <= 0.0 {
                 break;
             }
@@ -179,9 +184,10 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
             );
         }
 
-        // The round graphs, one under the other in play order, sweeping in
-        // sequence. A legend row names the two traces once — text carries
-        // identity in ink, the colored chips beside it carry the hue.
+        // The whole match on one continuous chart — rounds side by side in
+        // proportion to their length, swept once left to right. A legend row
+        // names the two traces — text carries identity in ink, the colored
+        // chips beside it carry the hue.
         let legend_entry = |color: fn(&Theme) -> Color, label: String| {
             row![
                 container(iced::widget::Space::new().width(10).height(3)).style(move |theme: &Theme| {
@@ -204,39 +210,20 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
             .spacing(14)
             .align_y(Alignment::Center),
         );
-
-        let mut graphs = column![].spacing(8).width(Fill);
-        for (i, round) in results.rounds.iter().enumerate() {
-            let sweep = segment(elapsed_ms, i as f32 * SWEEP_MS, SWEEP_MS);
-            let done = segment(elapsed_ms, (i + 1) as f32 * SWEEP_MS, POP_MS);
-            let (icon, style) = widgets::outcome_mark(round.outcome);
-            let mark: Element<'_, Message> = if done <= 0.0 {
-                iced::widget::Space::new().into()
-            } else {
-                let mark = icon.widget().size(TEXT_CAPTION).style(style);
-                if done < 1.0 {
-                    crate::anim::pop(mark, done, 3.0)
-                } else {
-                    mark.into()
-                }
-            };
-            graphs = graphs.push(
-                column![
-                    row![
-                        text(t!(lang, "session-results-round", number = (i + 1) as i64))
-                            .size(TEXT_CAPTION)
-                            .style(widgets::muted_text_style),
-                        iced::widget::Space::new().width(Fill),
-                        container(mark).width(Length::Fixed(14.0)).align_x(Alignment::Center),
-                    ]
-                    .align_y(Alignment::Center),
-                    widgets::hp_graph(&round.trace, &round.custom, sweep, GRAPH_H),
-                ]
-                .spacing(2)
-                .width(Fill),
-            );
-        }
-        body = body.push(iced::widget::Space::new().height(6)).push(graphs);
+        let sweep = segment(elapsed_ms, 0.0, total_sweep_ms);
+        let chart_rounds: Vec<widgets::HpGraphRound<'_>> = results
+            .rounds
+            .iter()
+            .map(|r| widgets::HpGraphRound {
+                trace: &r.trace,
+                custom: &r.custom,
+                outcome: Some(r.outcome),
+                weight: r.weight,
+            })
+            .collect();
+        body = body
+            .push(iced::widget::Space::new().height(6))
+            .push(widgets::hp_match_graph(chart_rounds, sweep, GRAPH_H));
     } else {
         // Static fallback: the pre-trace layout — full score up front, plus a
         // marks row when there was more than one round to sequence.
