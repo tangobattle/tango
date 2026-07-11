@@ -2343,17 +2343,21 @@ pub fn error_banner<'a, M: Clone + 'a>(
     .into()
 }
 
-/// This side's HP-trace color — the theme accent, same ink as the rest
-/// of the player's own UI. Paired with [`hp_opponent_color`] wherever an
-/// HP graph or its legend is drawn (results card, replays tab).
-pub fn hp_you_color(theme: &Theme) -> iced::Color {
-    theme.extended_palette().primary.strong.color
+/// The battlefield seat colors: this side reads red, the opponent blue —
+/// one pair everywhere a you-vs-opponent split is drawn (the PvP
+/// telemetry header's seat dots, the HP graphs and their legends).
+pub const FIELD_RED: iced::Color = iced::Color::from_rgb(0.85, 0.22, 0.28);
+pub const FIELD_BLUE: iced::Color = iced::Color::from_rgb(0.18, 0.40, 0.85);
+
+/// This side's HP-trace color (see [`FIELD_RED`]). Kept as a style fn so
+/// legend chips and canvas draws share one signature.
+pub fn hp_you_color(_theme: &Theme) -> iced::Color {
+    FIELD_RED
 }
 
-/// The opponent's HP-trace color — the danger hue, matching the
-/// defeat/loss ink used around the graphs.
-pub fn hp_opponent_color(theme: &Theme) -> iced::Color {
-    theme.extended_palette().danger.strong.color
+/// The opponent's HP-trace color (see [`FIELD_BLUE`]).
+pub fn hp_opponent_color(_theme: &Theme) -> iced::Color {
+    FIELD_BLUE
 }
 
 /// The list-row / results-card mark for a round outcome.
@@ -2481,13 +2485,13 @@ pub fn hp_graph<'a, M: 'a>(
                     &path,
                     Stroke::default()
                         .with_color(color)
-                        .with_width(2.0)
+                        .with_width(1.5)
                         .with_line_cap(LineCap::Round),
                 );
                 // Sweep-head dot: the "now" cursor of the miniature replay.
                 if self.sweep < 1.0 {
                     if let Some(head) = head {
-                        frame.fill(&Path::circle(head, 2.5), color);
+                        frame.fill(&Path::circle(head, 2.0), color);
                     }
                 }
             }

@@ -610,8 +610,7 @@ pub(super) fn telemetry_overlay<'a>(
             .align_y(Alignment::Center)
             .into()
         };
-        const FIELD_RED: Color = Color::from_rgb(0.85, 0.22, 0.28);
-        const FIELD_BLUE: Color = Color::from_rgb(0.18, 0.40, 0.85);
+        use widgets::{FIELD_BLUE, FIELD_RED};
         let (local_seat, remote_seat) = if pvp.local_player_index() == 0 {
             ("P1", "P2")
         } else {
