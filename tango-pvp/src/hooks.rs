@@ -166,4 +166,14 @@ pub trait Hooks {
     fn prepare_for_next_input(&self, core: mgba::core::CoreMutRef);
 
     fn inject_joyflags_on_primary(&self, core: mgba::core::CoreMutRef, joyflags: u16);
+
+    /// How this game's per-tick chip reports (see
+    /// [`InnerState::set_loaded_chips`](crate::stepper::InnerState::set_loaded_chips))
+    /// are to be decoded into chip-use events -- see [`ChipSemantics`]'s
+    /// variants for the two reporting contracts.
+    ///
+    /// [`ChipSemantics`]: crate::analysis::ChipSemantics
+    fn chip_semantics(&self) -> crate::analysis::ChipSemantics {
+        crate::analysis::ChipSemantics::LoadedChip
+    }
 }

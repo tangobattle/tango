@@ -16,13 +16,13 @@
 
 use crate::stepper::BattleOutcome;
 
-/// Bumped whenever the sidecar format changes shape — or meaning: v4 adds
-/// per-round chip-use and buster events (v3's HP series became lossless
-/// change-point curves where v2's were decimated; bumps make older
-/// files recompute). Readers reject
-/// other versions (and anything without the magic, e.g. the short-lived
-/// JSON v1 sidecars) and recompute.
-pub const FORMAT_VERSION: u32 = 4;
+/// Bumped whenever the sidecar format changes shape — or meaning: v5
+/// extends chip-use events to bn2/bn3/bn4/exe45 (v4 introduced them for
+/// bn5/bn6; v3's HP series became lossless change-point curves where
+/// v2's were decimated; bumps make older files recompute). Readers
+/// reject other versions (and anything without the magic, e.g. the
+/// short-lived JSON v1 sidecars) and recompute.
+pub const FORMAT_VERSION: u32 = 5;
 
 /// Sidecar file magic.
 const MAGIC: &[u8; 4] = b"TGST";
@@ -65,6 +65,31 @@ pub struct RoundStats {
 pub use crate::battle::NO_CHIP;
 use crate::battle::{BUTTON_LOCAL_A, BUTTON_LOCAL_B, BUTTON_REMOTE_A, BUTTON_REMOTE_B, JOY_A, JOY_B};
 
+/// Low bits of a `LoadedChip` report that carry the chip id; the rest is
+/// the fire-sequence tag (see [`ChipSemantics::LoadedChip`]).
+pub const CHIP_ID_MASK: u16 = 0x0fff;
+
+/// The decoding contract for per-tick chip reports, declared per game by
+/// [`Hooks::chip_semantics`](crate::hooks::Hooks::chip_semantics).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ChipSemantics {
+    /// Each report is the player's loaded chip as `id | (seq << 12)`,
+    /// [`NO_CHIP`] when none: the id the player will use next, tagged
+    /// with a fire-sequence counter so back-to-back duplicate picks
+    /// still produce a visible transition per use (bn5/bn6 report a
+    /// raw cell with seq 0 — no counter is known for them). A value
+    /// departing = that chip being used, EXCEPT the first departure
+    /// after each custom close (the new selection landing).
+    LoadedChip,
+    /// Each report is the sum of the ids remaining in the player's
+    /// dealt queue (exe45). The queue only ever gains chips (deals) or
+    /// loses exactly the fired chip, so a drop in the sum IS a use
+    /// event and the delta IS the chip id; increases are deals and are
+    /// ignored. Chosen over reporting the queue head because exe45
+    /// players fire from a hand in an order the head doesn't determine.
+    QueueSum,
+}
+
 /// One per-tick usage observation, oriented `[local, remote]` — the raw
 /// stream [`usage_events`] folds into chip/buster events.
 #[derive(Clone, Copy)]
@@ -76,10 +101,21 @@ struct UsageSample {
 }
 
 /// Fold a round's per-tick usage stream into chip-use and buster events.
-/// A loaded chip departing = that chip being used — EXCEPT the first
-/// departure after each custom close, which is the new selection landing
-/// on top of whatever was left (see the per-game `unit_chip` docs).
-fn usage_events(samples: &[UsageSample], custom: &[(u32, u32)]) -> ([Vec<(u32, u16)>; 2], [Vec<u32>; 2]) {
+///
+/// [`ChipSemantics::LoadedChip`]: a loaded chip departing = that chip
+/// being used — EXCEPT the first departure after each custom close,
+/// which is the new selection landing on top of whatever was left (see
+/// the per-game chip-block docs). [`ChipSemantics::QueueSum`]: a drop
+/// in the reported sum is a use of the delta.
+fn usage_events(
+    samples: &[UsageSample],
+    custom: &[(u32, u32)],
+    semantics: ChipSemantics,
+) -> ([Vec<(u32, u16)>; 2], [Vec<u32>; 2]) {
+    /// Sanity bound on a chip id: `QueueSum` drops above this are queue
+    /// clears (KO, round end), not uses.
+    const MAX_CHIP_ID: u16 = 0x1ff;
+
     let mut chip_uses: [Vec<(u32, u16)>; 2] = [vec![], vec![]];
     let mut buster: [Vec<u32>; 2] = [vec![], vec![]];
     for side in 0..2 {
@@ -91,27 +127,48 @@ fn usage_events(samples: &[UsageSample], custom: &[(u32, u32)]) -> ([Vec<(u32, u
         let b_bit = if side == 0 { 1u8 << 1 } else { 1u8 << 3 };
         for s in samples {
             let chip = s.chips[side];
-            if chip != prev_chip {
-                // Skip spans whose load window has fully passed (a side
-                // that picked nothing produces no load transition).
-                while next_load_span < custom.len()
-                    && custom.get(next_load_span + 1).is_some_and(|&(s2, _)| s.tick >= s2)
-                {
-                    next_load_span += 1;
+            match semantics {
+                ChipSemantics::LoadedChip => {
+                    if chip != prev_chip {
+                        // Skip spans whose load window has fully passed
+                        // (a side that picked nothing produces no load
+                        // transition).
+                        while next_load_span < custom.len()
+                            && custom.get(next_load_span + 1).is_some_and(|&(s2, _)| s.tick >= s2)
+                        {
+                            next_load_span += 1;
+                        }
+                        // A load consumes the pending span: the selection
+                        // can land while the span is still open (bn6
+                        // writes the block mid-pick; bn1-3's local-only
+                        // spans outlast the other side's commit) or right
+                        // after its close. Anything else departing a real
+                        // chip is a use.
+                        let is_load = custom.get(next_load_span).is_some_and(|&(s0, _)| s.tick >= s0);
+                        if is_load {
+                            next_load_span += 1;
+                        } else if next_load_span > 0 && prev_chip != NO_CHIP {
+                            // next_load_span == 0 means no selection has
+                            // landed yet — the cell still holds round-init
+                            // garbage (bn5 inits it to 0 before first
+                            // flipping to the sentinel), which can't be a
+                            // real use.
+                            chip_uses[side].push((s.tick, prev_chip & CHIP_ID_MASK));
+                        }
+                        prev_chip = chip;
+                    }
                 }
-                // A load consumes the pending span close; anything else
-                // departing a real chip is a use.
-                let is_load = custom.get(next_load_span).is_some_and(|&(_, e)| s.tick >= e);
-                if is_load {
-                    next_load_span += 1;
-                } else if next_load_span > 0 && prev_chip != NO_CHIP {
-                    // next_load_span == 0 means no selection has landed
-                    // yet — the cell still holds round-init garbage (bn5
-                    // inits it to 0 before first flipping to the
-                    // sentinel), which can't be a real use.
-                    chip_uses[side].push((s.tick, prev_chip));
+                ChipSemantics::QueueSum => {
+                    if chip != NO_CHIP {
+                        if prev_chip != NO_CHIP && chip < prev_chip {
+                            let delta = prev_chip - chip;
+                            if delta <= MAX_CHIP_ID {
+                                chip_uses[side].push((s.tick, delta));
+                            }
+                        }
+                        prev_chip = chip;
+                    }
                 }
-                prev_chip = chip;
             }
             if !s.custom && s.buttons & b_bit != 0 && prev_buttons & b_bit == 0 {
                 buster[side].push(s.tick);
@@ -133,7 +190,7 @@ pub struct HpPoint {
 impl MatchStats {
     /// Convert a live match's per-round reports (see
     /// [`crate::battle::RoundReport`]) — no re-simulation.
-    pub fn from_round_reports(reports: &[crate::battle::RoundReport]) -> Self {
+    pub fn from_round_reports(reports: &[crate::battle::RoundReport], semantics: ChipSemantics) -> Self {
         let mut prev_final: Option<(u16, u16)> = None;
         Self {
             rounds: reports
@@ -153,7 +210,7 @@ impl MatchStats {
                             buttons: s.buttons,
                         })
                         .collect();
-                    let (chip_uses, buster) = usage_events(&usage, &custom);
+                    let (chip_uses, buster) = usage_events(&usage, &custom, semantics);
                     RoundStats {
                         outcome: Some(r.outcome),
                         hp: compress(hp.iter().map(|s| HpPoint {
@@ -405,6 +462,7 @@ pub fn analyze(
         crate::stepper::State::new_for_replay(replay, remote_rom, remote_hooks, Box::new(|| {}))?;
     local_hooks.install_on_stepper(&mut core, stepper_state.clone());
 
+    let semantics = local_hooks.chip_semantics();
     let total_ticks: u32 = replay.rounds.iter().map(|r| r.len() as u32).sum();
     let mut last_reported: u32 = 0;
 
@@ -522,7 +580,7 @@ pub fn analyze(
                 let start = stale_prefix_len(prev_final, &raw);
                 prev_final = hp.last().map(|p| (p.local, p.remote)).or(prev_final);
                 let custom = custom_spans(custom[start.min(custom.len())..].iter().copied());
-                let (chip_uses, buster) = usage_events(&usage[start.min(usage.len())..], &custom);
+                let (chip_uses, buster) = usage_events(&usage[start.min(usage.len())..], &custom, semantics);
                 RoundStats {
                     outcome,
                     hp: compress(hp[start..].iter().copied()),

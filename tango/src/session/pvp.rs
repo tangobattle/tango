@@ -254,6 +254,7 @@ impl PvpSession {
 
         let joyflags = Arc::new(AtomicU32::new(0));
         let local_hooks = local_game.hooks;
+        let chip_semantics = local_hooks.chip_semantics();
 
         let match_handle = tango_pvp::hooks::MatchHandle::new();
         let completion_token = tango_pvp::hooks::CompletionToken::new();
@@ -585,7 +586,10 @@ impl PvpSession {
                     // already collected the HP series, so the Replays tab
                     // never has to re-simulate this one.
                     if let Some(stats_path) = stats_path.as_ref() {
-                        let stats = tango_pvp::analysis::MatchStats::from_round_reports(&round_results.lock().unwrap());
+                        let stats = tango_pvp::analysis::MatchStats::from_round_reports(
+                            &round_results.lock().unwrap(),
+                            chip_semantics,
+                        );
                         if let Err(e) = crate::replays::write_match_stats(stats_path, &stats) {
                             log::warn!("failed to write replay stats cache entry: {e}");
                         }
