@@ -16,7 +16,7 @@ use crate::i18n::t;
 use crate::style::{STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY};
 use crate::widgets;
 use iced::widget::{button, container, text};
-use iced::{Alignment, Color, Element, Fill, Length, Theme};
+use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
 use sweeten::widget::{column, row};
 use tango_pvp::stepper::BattleOutcome;
@@ -40,6 +40,12 @@ const STAMP_MS: f32 = 400.0;
 const HEADLINE_SLOT_H: f32 = 30.0;
 const DRAWS_SLOT_H: f32 = 16.0;
 const GRAPH_H: f32 = 48.0;
+
+/// Taller graph slot when the match carries chip-use events: a roomier
+/// trace field plus the widget's two per-side event lanes (matches the
+/// replays tab's zoomed-out proportions). Per-match constant, so the
+/// card's layout is still complete from the first frame.
+const GRAPH_WITH_LANES_H: f32 = 72.0;
 
 /// How long [`MatchResults::capture`] must keep redraws flowing to play the
 /// whole reveal.
@@ -185,31 +191,9 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
         }
 
         // The whole match on one continuous chart — rounds side by side in
-        // proportion to their length, swept once left to right. A legend row
-        // names the two traces — text carries identity in ink, the colored
-        // chips beside it carry the hue.
-        let legend_entry = |color: fn(&Theme) -> Color, label: String| {
-            row![
-                container(iced::widget::Space::new().width(10).height(3)).style(move |theme: &Theme| {
-                    iced::widget::container::Style {
-                        background: Some(color(theme).into()),
-                        border: iced::border::rounded(1.5),
-                        ..Default::default()
-                    }
-                }),
-                text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
-            ]
-            .spacing(5)
-            .align_y(Alignment::Center)
-        };
-        body = body.push(iced::widget::Space::new().height(10)).push(
-            row![
-                legend_entry(widgets::hp_you_color, t!(lang, "session-results-you")),
-                legend_entry(widgets::hp_opponent_color, results.remote_nickname.clone()),
-            ]
-            .spacing(14)
-            .align_y(Alignment::Center),
-        );
+        // proportion to their length, swept once left to right. No legend:
+        // red-is-you / blue-is-them is the fixed seat-color convention, and
+        // the score row above already names the opponent.
         let sweep = segment(elapsed_ms, 0.0, total_sweep_ms);
         let chart_rounds: Vec<widgets::HpGraphRound<'_>> = results
             .rounds
@@ -217,18 +201,21 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
             .map(|r| widgets::HpGraphRound {
                 trace: &r.trace,
                 custom: &r.custom,
-                // The live capture path doesn't carry chip-use events (only
-                // the replay stats do), so the results card draws no beads.
-                chip_uses: [&[], &[]],
+                chip_uses: [&r.chip_uses[0], &r.chip_uses[1]],
                 outcome: Some(r.outcome),
                 weight: r.weight,
             })
             .collect();
+        let graph_h = if results.rounds.iter().any(|r| r.chip_uses.iter().any(|l| !l.is_empty())) {
+            GRAPH_WITH_LANES_H
+        } else {
+            GRAPH_H
+        };
         body = body
-            .push(iced::widget::Space::new().height(6))
+            .push(iced::widget::Space::new().height(10))
             // Not zoomable: the card is a fixed reveal choreography, not a
             // scrubbing surface — the replays tab is where inspection lives.
-            .push(widgets::hp_match_graph(chart_rounds, results.max_hp, sweep, GRAPH_H, None));
+            .push(widgets::hp_match_graph(chart_rounds, results.max_hp, sweep, graph_h, None));
     } else {
         // Static fallback: the pre-trace layout — full score up front, plus a
         // marks row when there was more than one round to sequence.

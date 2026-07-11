@@ -15,9 +15,9 @@ mod throttler;
 mod world;
 
 pub(crate) use match_::SenderMutex;
-pub use match_::{Match, RoundMetrics, RoundReport};
+pub use match_::{Match, RoundMetrics};
 pub(crate) use round::Round;
-pub use world::{HpSample, BUTTON_LOCAL_A, BUTTON_LOCAL_B, BUTTON_REMOTE_A, BUTTON_REMOTE_B, NO_CHIP};
+pub use world::{RoundSample, BUTTON_LOCAL_A, BUTTON_LOCAL_B, BUTTON_REMOTE_A, BUTTON_REMOTE_B, NO_CHIP};
 pub(crate) use world::{JOY_A, JOY_B};
 
 /// Match-wide identity. Both peers compute these to identical values from the

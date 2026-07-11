@@ -160,7 +160,7 @@ pub struct MatchResults {
     pub revealed_at: iced::time::Instant,
 }
 
-/// One round on the results card: the outcome plus a decimated HP trace for
+/// One round on the results card: the outcome plus the cooked series for
 /// the round graph. `trace` points are `(x, you, opponent)`, all normalized —
 /// x over the round's sampled ticks, HP against the match-wide maximum so
 /// every round shares one vertical scale; `custom` is the normalized
@@ -170,34 +170,41 @@ pub struct RoundCard {
     pub outcome: tango_pvp::stepper::BattleOutcome,
     pub trace: Vec<(f32, f32, f32)>,
     pub custom: Vec<(f32, f32)>,
+    /// Chip-use events per side (`[you, opponent]`), cooked for the
+    /// graph's event lanes. Names/icons are resolved at capture time —
+    /// the session (and both sides' Loadeds) is gone while the card is
+    /// on screen — each side through its own Loaded, the opponent
+    /// falling back to the local game's table when they blinded their
+    /// setup. Empty on games whose traps don't report chips (bn1).
+    pub chip_uses: [Vec<crate::widgets::ChipUseMark>; 2],
     /// Tick span of the round — its share of the continuous timeline.
     pub weight: f32,
 }
 
 impl MatchResults {
     fn capture(pvp: &pvp::PvpSession) -> Self {
-        let reports = pvp.round_results();
-        // One shared vertical scale across the whole match, so a 1000 HP navi
-        // reads as taller than a 300 HP one in every round.
-        let max_hp = reports
-            .iter()
-            .flat_map(|r| r.hp.iter())
-            .map(|s| s.local.max(s.remote))
-            .max()
-            .unwrap_or(0)
-            .max(1) as f32;
-        let mut prev_final: Option<(u16, u16)> = None;
-        let rounds = reports
+        // The same aggregation the replay sidecar gets: the match folded
+        // each round into its MatchStatsBuilder as it ended, so this snapshot
+        // can never disagree with what the Replays tab later shows for
+        // the same match.
+        let stats = pvp.stats_snapshot();
+        let loadeds = [
+            pvp.local_loaded.as_ref(),
+            pvp.opponent_loaded.as_ref().or(pvp.local_loaded.as_ref()),
+        ];
+        let (cooked, max_hp) = crate::widgets::cook_hp_rounds(&stats, loadeds);
+        let rounds = cooked
             .into_iter()
-            .map(|r| {
-                let (trace, custom, weight) = prepare_trace(&r.hp, prev_final, max_hp);
-                prev_final = r.hp.last().map(|s| (s.local, s.remote)).or(prev_final);
-                RoundCard {
-                    outcome: r.outcome,
-                    trace,
-                    custom,
-                    weight,
-                }
+            .filter_map(|c| {
+                // Live reports always carry an outcome — the match only
+                // pushes them when a round actually ends.
+                Some(RoundCard {
+                    outcome: c.outcome?,
+                    trace: c.trace,
+                    custom: c.custom,
+                    chip_uses: c.chip_uses,
+                    weight: c.weight,
+                })
             })
             .collect::<Vec<_>>();
         let results = Self {
@@ -211,66 +218,6 @@ impl MatchResults {
         anim::kick(view::results::reveal_duration(&results));
         results
     }
-}
-
-/// A round's HP series as normalized change-points (first and last samples
-/// plus every HP move — lossless, matching the sidecar encoding), plus the
-/// normalized custom-screen spans. Ticks map to x by their position in the
-/// round's sampled span.
-fn prepare_trace(
-    hp: &[tango_pvp::battle::HpSample],
-    prev_final: Option<(u16, u16)>,
-    max_hp: f32,
-) -> (Vec<(f32, f32, f32)>, Vec<(f32, f32)>, f32) {
-    // The traps relay stale values during the battle intro (the previous
-    // round's finals, or pre-init zeros) until the unit slots re-init; cut
-    // the same stale prefix the sidecar path does.
-    let raw: Vec<(u32, u16, u16)> = hp.iter().map(|s| (s.tick, s.local, s.remote)).collect();
-    let hp = &hp[tango_pvp::analysis::stale_prefix_len(prev_final, &raw)..];
-    let (Some(first), Some(last)) = (hp.first(), hp.last()) else {
-        return (vec![], vec![], 0.0);
-    };
-    if hp.len() < 2 {
-        return (vec![], vec![], 0.0);
-    }
-    let t0 = first.tick as f32;
-    let span = (last.tick as f32 - t0).max(1.0);
-    let at = |s: &tango_pvp::battle::HpSample| {
-        (
-            (s.tick as f32 - t0) / span,
-            s.local as f32 / max_hp,
-            s.remote as f32 / max_hp,
-        )
-    };
-    // Change-point encode: keep the first and last samples plus every HP
-    // move — lossless under step semantics, same as the sidecar.
-    let mut points: Vec<(f32, f32, f32)> = vec![at(first)];
-    let mut prev = (first.local, first.remote);
-    for (i, s) in hp.iter().enumerate().skip(1) {
-        if (s.local, s.remote) != prev || i == hp.len() - 1 {
-            points.push(at(s));
-            prev = (s.local, s.remote);
-        }
-    }
-    // Custom-screen spans, normalized like the points: contiguous runs of
-    // `custom` samples become one [start, end) band.
-    let x_of = |tick: u32| (tick as f32 - t0) / span;
-    let mut custom: Vec<(f32, f32)> = vec![];
-    let mut open: Option<u32> = None;
-    for s in hp {
-        match (s.custom, open) {
-            (true, None) => open = Some(s.tick),
-            (false, Some(start)) => {
-                custom.push((x_of(start), x_of(s.tick)));
-                open = None;
-            }
-            _ => {}
-        }
-    }
-    if let Some(start) = open {
-        custom.push((x_of(start), 1.0));
-    }
-    (points, custom, span)
 }
 
 /// Per-session UI state. App holds `session: State`; the Play and

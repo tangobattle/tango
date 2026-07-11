@@ -156,21 +156,13 @@ pub struct Match {
     /// since its snapshots (carrying the sound driver's RAM) are loaded into
     /// the live core every frame. Local-only, like `frame_delay`.
     disable_bgm: bool,
-    /// Local-perspective report of each completed round, appended by
-    /// [`end_round`](Self::end_round) as rounds close. Shared with the host
-    /// (like `frame_delay`) rather than owned outright so a post-match
-    /// results display outlives the match teardown — the host keeps its own
-    /// `Arc` and reads it after the `MatchHandle` clears.
-    round_results: Arc<SyncMutex<Vec<RoundReport>>>,
-}
-
-/// What one finished round leaves behind for the post-match results display:
-/// the outcome plus the round's HP-over-ticks series (empty on games whose
-/// traps don't report HP). Local-perspective, like everything the host sees.
-#[derive(Clone)]
-pub struct RoundReport {
-    pub outcome: crate::stepper::BattleOutcome,
-    pub hp: Vec<super::world::HpSample>,
+    /// Incremental local-perspective match stats, fed one round at a time
+    /// by [`end_round`](Self::end_round) as rounds close. Shared with the
+    /// host (like `frame_delay`) rather than owned outright so the
+    /// post-match results display and the sidecar write outlive the match
+    /// teardown — the host keeps its own `Arc` and snapshots it after the
+    /// `MatchHandle` clears.
+    stats: Arc<SyncMutex<crate::analysis::MatchStatsBuilder>>,
 }
 
 impl Match {
@@ -186,7 +178,7 @@ impl Match {
         replay: ReplayConfig,
         frame_delay: Arc<AtomicU32>,
         disable_bgm: bool,
-        round_results: Arc<SyncMutex<Vec<RoundReport>>>,
+        stats: Arc<SyncMutex<crate::analysis::MatchStatsBuilder>>,
     ) -> Arc<Self> {
         Arc::new(Self {
             shadow: Arc::new(SyncMutex::new(shadow)),
@@ -205,12 +197,18 @@ impl Match {
             replay_writer: Arc::new(SyncMutex::new(replay.writer)),
             frame_delay,
             disable_bgm,
-            round_results,
+            stats,
         })
     }
 
     pub(super) fn disable_bgm(&self) -> bool {
         self.disable_bgm
+    }
+
+    /// The shared match-stats builder, for wiring each round's
+    /// [`MgbaWorld`](super::world::MgbaWorld) sample feed.
+    pub(super) fn stats_handle(&self) -> Arc<SyncMutex<crate::analysis::MatchStatsBuilder>> {
+        self.stats.clone()
     }
 
     pub(super) fn rtc_time(&self) -> std::time::SystemTime {
@@ -353,18 +351,17 @@ impl Match {
                 return Ok(());
             };
             log::info!("round ended at {:x}", round.frontier());
-            // Record the round's outcome for the host's post-match results.
-            // By the time the game's round-end screen fires this trap, the KO
+            // Fold the round in progress into the host's match stats. By
+            // the time the game's round-end screen fires this trap, the KO
             // tick is settled, so what stands on the round is confirmed. A
-            // missing result (a round torn down without reaching a KO) is
-            // just skipped — the results display shows what's known.
-            match round.result() {
-                Some(rr) => self.round_results.lock().unwrap().push(RoundReport {
-                    outcome: rr.outcome,
-                    hp: round.take_hp_series(),
-                }),
-                None => log::warn!("round ended without a recorded outcome"),
+            // missing result folds as an undecided round — the same shape
+            // the offline analyzer emits for a recording that ends
+            // mid-round.
+            let result = round.result();
+            if result.is_none() {
+                log::warn!("round ended without a recorded outcome");
             }
+            self.stats.lock().unwrap().end_round(result.map(|rr| rr.outcome));
             round.settled_shadow_snapshot().cloned()
         };
         {

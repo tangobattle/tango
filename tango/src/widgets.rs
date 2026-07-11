@@ -2408,6 +2408,100 @@ pub struct ChipUseMark {
     pub icon: Option<iced::widget::image::Handle>,
 }
 
+/// Cook one side's chip-use events (`(tick, chip id)` as the stats
+/// record them) into [`ChipUseMark`]s: x normalized via `x_of`, name and
+/// icon resolved through `loaded`'s assets (`"???"`/no icon when no
+/// Loaded is available or the game doesn't know that id). The pre-baked
+/// icon handles are Arc-backed — cloning one per use is a refcount bump.
+fn chip_use_marks(
+    uses: &[(u32, u16)],
+    loaded: Option<&crate::selection::Loaded>,
+    x_of: impl Fn(u32) -> f32,
+) -> Vec<ChipUseMark> {
+    uses.iter()
+        .map(|&(t, id)| ChipUseMark {
+            x: x_of(t),
+            name: loaded
+                .and_then(|l| l.assets.chip(id as usize))
+                .and_then(|c| c.name())
+                .unwrap_or_else(|| "???".to_string()),
+            icon: loaded.and_then(|l| l.chip_icons.get(id as usize).cloned().flatten()),
+        })
+        .collect()
+}
+
+/// A round of [`tango_pvp::analysis::MatchStats`] cooked for
+/// [`hp_match_graph`]: the outcome carried through, everything else
+/// normalized — trace `(x, you, opponent)` with x 0..=1 over the round's
+/// sampled span and HP against the match-wide maximum, custom spans and
+/// chip-use marks on the same x scale. Rounds with fewer than two HP
+/// points (torn down mid-intro) cook to an empty trace with weight 0.
+pub struct CookedHpRound {
+    pub outcome: Option<tango_pvp::stepper::BattleOutcome>,
+    pub trace: Vec<(f32, f32, f32)>,
+    pub custom: Vec<(f32, f32)>,
+    pub chip_uses: [Vec<ChipUseMark>; 2],
+    /// Tick span of the round — its share of the continuous timeline.
+    pub weight: f32,
+}
+
+/// Cook a match's stats for [`hp_match_graph`], returning the rounds and
+/// the match-wide max HP the traces were normalized against (the chart's
+/// hover readout multiplies back through it). This is the one
+/// stats-to-chart path — the replays detail pane and the post-match
+/// results card both go through it. `loadeds` resolve chip names/icons
+/// per side (`[you, opponent]`); pass the local side's twice when only
+/// it is available.
+pub fn cook_hp_rounds(
+    stats: &tango_pvp::analysis::MatchStats,
+    loadeds: [Option<&crate::selection::Loaded>; 2],
+) -> (Vec<CookedHpRound>, f32) {
+    let max_hp = stats
+        .rounds
+        .iter()
+        .flat_map(|r| r.hp.iter())
+        .map(|p| p.local.max(p.remote))
+        .max()
+        .unwrap_or(0)
+        .max(1) as f32;
+    let rounds = stats
+        .rounds
+        .iter()
+        .map(|r| {
+            let (first, last) = match (r.hp.first(), r.hp.last()) {
+                (Some(first), Some(last)) if r.hp.len() >= 2 => (first, last),
+                _ => {
+                    return CookedHpRound {
+                        outcome: r.outcome,
+                        trace: vec![],
+                        custom: vec![],
+                        chip_uses: [vec![], vec![]],
+                        weight: 0.0,
+                    };
+                }
+            };
+            let t0 = first.tick as f32;
+            let span = (last.tick as f32 - t0).max(1.0);
+            let x_of = |tick: u32| ((tick as f32 - t0) / span).clamp(0.0, 1.0);
+            CookedHpRound {
+                outcome: r.outcome,
+                trace: r
+                    .hp
+                    .iter()
+                    .map(|p| (x_of(p.tick), p.local as f32 / max_hp, p.remote as f32 / max_hp))
+                    .collect(),
+                custom: r.custom.iter().map(|&(a, b)| (x_of(a), x_of(b))).collect(),
+                chip_uses: [
+                    chip_use_marks(&r.chip_uses[0], loadeds[0], x_of),
+                    chip_use_marks(&r.chip_uses[1], loadeds[1], x_of),
+                ],
+                weight: span,
+            }
+        })
+        .collect();
+    (rounds, max_hp)
+}
+
 /// `max_hp` is the match-wide scale the traces were normalized against;
 /// hovering the chart shows a crosshair with both navis' HP numbers read
 /// back through it, plus the name of any chip-use tick near the cursor.

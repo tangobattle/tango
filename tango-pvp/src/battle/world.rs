@@ -77,16 +77,16 @@ pub struct MgbaWorld {
     /// step's *boundary* tick, which is what makes that comparison exact; a
     /// result whose boundary settled or promoted is never revoked.
     pub round_result: Arc<SyncMutex<Option<crate::stepper::RoundResult>>>,
-    /// Local/remote-oriented HP per simulated tick, shared with the owning
-    /// [`Round`](super::Round) the same way `round_result` is: [`step`]
-    /// appends (including on speculative ticks) and [`load`] truncates the
-    /// speculative tail on a genuine rewind, so what stands at any moment is
-    /// exactly the ticks the current timeline has simulated. `Match::end_round`
-    /// drains it into the round's report.
+    /// The host's incremental match stats, shared with the owning
+    /// [`Match`](super::Match): [`step`] pushes each simulated tick's
+    /// [`RoundSample`] into the round in progress (including on speculative
+    /// ticks) and [`load`] revokes the speculative tail on a genuine rewind,
+    /// so what stands at any moment is exactly the ticks the current
+    /// timeline has simulated. `Match::end_round` folds the round.
     ///
     /// [`step`]: getgud::World::step
     /// [`load`]: getgud::World::load
-    pub hp_series: Arc<SyncMutex<Vec<HpSample>>>,
+    pub stats: Arc<SyncMutex<crate::analysis::MatchStatsBuilder>>,
     /// Spent ~400KB mgba state buffers harvested from snapshots the engine
     /// discards ([`recycle`](getgud::World::recycle)), handed back out by
     /// [`save`](getgud::World::save). In steady state every frame discards one
@@ -100,12 +100,14 @@ pub struct MgbaWorld {
 /// surplus and is returned to the allocator.
 const STATE_POOL_CAP: usize = 16;
 
-/// One simulated tick's HP reading, oriented to this side of the match.
-/// `tick` is the tick that was simulated (not the boundary it produced), so
-/// consecutive samples are dense except for ticks the per-game traps skipped
-/// (battle intro, before the unit structs are live).
+/// One simulated tick's event sample, oriented to this side of the match —
+/// everything the stats fold consumes: both navis' HP, the custom-screen
+/// flag, the A/B button states, and the loaded-chip reports. `tick` is the
+/// tick that was simulated (not the boundary it produced), so consecutive
+/// samples are dense except for ticks the per-game traps skipped (battle
+/// intro, before the unit structs are live).
 #[derive(Clone, Copy)]
-pub struct HpSample {
+pub struct RoundSample {
     pub tick: u32,
     pub local: u16,
     pub remote: u16,
@@ -121,11 +123,11 @@ pub struct HpSample {
     pub chips: [u16; 2],
 }
 
-/// Sentinel for "no chip loaded" in [`HpSample::chips`] — the games' own
+/// Sentinel for "no chip loaded" in [`RoundSample::chips`] — the games' own
 /// in-memory sentinel.
 pub const NO_CHIP: u16 = 0xffff;
 
-/// Bits of [`HpSample::buttons`].
+/// Bits of [`RoundSample::buttons`].
 pub const BUTTON_LOCAL_A: u8 = 1 << 0;
 pub const BUTTON_LOCAL_B: u8 = 1 << 1;
 pub const BUTTON_REMOTE_A: u8 = 1 << 2;
@@ -170,7 +172,7 @@ impl getgud::World for MgbaWorld {
             buttons |= if local_joy & JOY_B != 0 { BUTTON_LOCAL_B } else { 0 };
             buttons |= if remote_joy & JOY_A != 0 { BUTTON_REMOTE_A } else { 0 };
             buttons |= if remote_joy & JOY_B != 0 { BUTTON_REMOTE_B } else { 0 };
-            self.hp_series.lock().unwrap().push(HpSample {
+            self.stats.lock().unwrap().push_sample(RoundSample {
                 tick: result.boundary.tick - 1,
                 local: hp[lpi],
                 remote: hp[1 - lpi],
@@ -257,13 +259,11 @@ impl getgud::World for MgbaWorld {
             if round_result.is_some_and(|rr| rr.tick > state.tick) {
                 *round_result = None;
             }
-            // Same revocation for the HP series: a sample for tick t came from
-            // the step that produced boundary t+1, so everything at or past the
-            // restore point is speculative history the re-sim will redo.
-            let mut hp_series = self.hp_series.lock().unwrap();
-            while hp_series.last().is_some_and(|s| s.tick >= state.tick) {
-                hp_series.pop();
-            }
+            // Same revocation for the stats samples: a sample for tick t came
+            // from the step that produced boundary t+1, so everything at or
+            // past the restore point is speculative history the re-sim will
+            // redo.
+            self.stats.lock().unwrap().revoke_samples_at(state.tick);
         }
         Ok(())
     }

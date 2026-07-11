@@ -71,11 +71,6 @@ pub struct Round {
     /// round-end screen — by which point the KO tick is long settled, so what's
     /// standing here is the confirmed outcome.
     result: Arc<std::sync::Mutex<Option<crate::stepper::RoundResult>>>,
-    /// The round's HP-over-ticks series, shared into the [`MgbaWorld`] at
-    /// [`start_session`](Self::start_session) alongside `result` and read by
-    /// `Match::end_round` for the round report. Empty on games whose traps
-    /// don't report HP.
-    hp_series: Arc<std::sync::Mutex<Vec<super::world::HpSample>>>,
 }
 
 impl Round {
@@ -93,7 +88,6 @@ impl Round {
             local_stall: match_.local_stall_handle(),
             stall_signaled: false,
             result: Arc::new(std::sync::Mutex::new(None)),
-            hp_series: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }
 
@@ -137,7 +131,7 @@ impl Round {
             local_player_index: self.local_player_index,
             state_pool: Vec::new(),
             round_result: self.result.clone(),
-            hp_series: self.hp_series.clone(),
+            stats: match_.stats_handle(),
         };
         self.session = Some(getgud::Session::new(getgud::SessionParams {
             present_delay: self.frame_delay.load(Ordering::Relaxed),
@@ -170,12 +164,6 @@ impl Round {
     /// reached a KO (e.g. the match was torn down mid-round).
     pub(super) fn result(&self) -> Option<crate::stepper::RoundResult> {
         *self.result.lock().unwrap()
-    }
-
-    /// The round's settled HP series (see the field). Taken rather than
-    /// cloned: the round is over when `Match::end_round` reads it.
-    pub(super) fn take_hp_series(&self) -> Vec<super::world::HpSample> {
-        std::mem::take(&mut *self.hp_series.lock().unwrap())
     }
 
     /// Netcode frontier — advances one per wall-frame via the live core's

@@ -9,8 +9,9 @@
 //! computed once and cached in a small versioned binary sidecar
 //! (`<replay>.stats`, see [`MatchStats::read`]/[`MatchStats::write`]).
 //! Live matches skip the re-simulation entirely: the rollback engine
-//! already collected the same series, and
-//! [`MatchStats::from_round_reports`] converts it at teardown.
+//! collects the same per-tick samples, and the match folds each round
+//! into the same [`MatchStatsBuilder`] the moment it ends — one aggregation
+//! path, whichever side of the replay boundary the samples come from.
 //!
 //! [`InnerState::set_battle_hp`]: crate::stepper::InnerState::set_battle_hp
 
@@ -62,7 +63,7 @@ pub struct RoundStats {
     pub buster: [Vec<u32>; 2],
 }
 
-pub use crate::battle::NO_CHIP;
+pub use crate::battle::{RoundSample, NO_CHIP};
 use crate::battle::{BUTTON_LOCAL_A, BUTTON_LOCAL_B, BUTTON_REMOTE_A, BUTTON_REMOTE_B, JOY_A, JOY_B};
 
 /// Low bits of a `LoadedChip` report that carry the chip id; the rest is
@@ -90,17 +91,7 @@ pub enum ChipSemantics {
     QueueSum,
 }
 
-/// One per-tick usage observation, oriented `[local, remote]` — the raw
-/// stream [`usage_events`] folds into chip/buster events.
-#[derive(Clone, Copy)]
-struct UsageSample {
-    tick: u32,
-    chips: [u16; 2],
-    custom: bool,
-    buttons: u8,
-}
-
-/// Fold a round's per-tick usage stream into chip-use and buster events.
+/// Fold a round's per-tick samples into chip-use and buster events.
 ///
 /// [`ChipSemantics::LoadedChip`]: a loaded chip departing = that chip
 /// being used — EXCEPT the first departure after each custom close,
@@ -108,7 +99,7 @@ struct UsageSample {
 /// the per-game chip-block docs). [`ChipSemantics::QueueSum`]: a drop
 /// in the reported sum is a use of the delta.
 fn usage_events(
-    samples: &[UsageSample],
+    samples: &[RoundSample],
     custom: &[(u32, u32)],
     semantics: ChipSemantics,
 ) -> ([Vec<(u32, u16)>; 2], [Vec<u32>; 2]) {
@@ -187,45 +178,108 @@ pub struct HpPoint {
     pub remote: u16,
 }
 
-impl MatchStats {
-    /// Convert a live match's per-round reports (see
-    /// [`crate::battle::RoundReport`]) — no re-simulation.
-    pub fn from_round_reports(reports: &[crate::battle::RoundReport], semantics: ChipSemantics) -> Self {
-        let mut prev_final: Option<(u16, u16)> = None;
+/// Incremental [`MatchStats`] aggregator — THE stats construction path,
+/// live or offline. Feed it every simulated tick's [`RoundSample`] as it
+/// happens and close each round with [`end_round`](Self::end_round). The
+/// live engine pushes from its rollback world — speculative ticks
+/// included, revoked again via
+/// [`revoke_samples_at`](Self::revoke_samples_at) when a rollback
+/// rewinds — and the replay re-simulation ([`analyze`]) pushes from its
+/// playback loop. Rounds fold in play order: the stale-intro trim
+/// threads each round's final HP pair into the next round's fold.
+pub struct MatchStatsBuilder {
+    semantics: ChipSemantics,
+    prev_final: Option<(u16, u16)>,
+    rounds: Vec<RoundStats>,
+    /// Samples of the round in progress, in tick order.
+    current: Vec<RoundSample>,
+}
+
+impl MatchStatsBuilder {
+    pub fn new(semantics: ChipSemantics) -> Self {
         Self {
-            rounds: reports
-                .iter()
-                .map(|r| {
-                    let raw: Vec<(u32, u16, u16)> = r.hp.iter().map(|s| (s.tick, s.local, s.remote)).collect();
-                    let start = stale_prefix_len(prev_final, &raw);
-                    prev_final = r.hp.last().map(|s| (s.local, s.remote)).or(prev_final);
-                    let hp = &r.hp[start..];
-                    let custom = custom_spans(hp.iter().map(|s| (s.tick, s.custom)));
-                    let usage: Vec<UsageSample> = hp
-                        .iter()
-                        .map(|s| UsageSample {
-                            tick: s.tick,
-                            chips: s.chips,
-                            custom: s.custom,
-                            buttons: s.buttons,
-                        })
-                        .collect();
-                    let (chip_uses, buster) = usage_events(&usage, &custom, semantics);
-                    RoundStats {
-                        outcome: Some(r.outcome),
-                        hp: compress(hp.iter().map(|s| HpPoint {
-                            tick: s.tick,
-                            local: s.local,
-                            remote: s.remote,
-                        })),
-                        custom,
-                        chip_uses,
-                        buster,
-                    }
-                })
-                .collect(),
+            semantics,
+            prev_final: None,
+            rounds: vec![],
+            current: vec![],
         }
     }
+
+    /// Append one simulated tick's sample to the round in progress. A
+    /// sample for the same tick as the last one is ignored — the offline
+    /// analyzer polls once per frame and can observe a tick twice.
+    pub fn push_sample(&mut self, sample: RoundSample) {
+        if self.current.last().map(|s| s.tick) != Some(sample.tick) {
+            self.current.push(sample);
+        }
+    }
+
+    /// Revoke in-progress samples at or after `tick` — rollback support
+    /// for the live engine, whose steps push speculatively: a rewind to
+    /// `tick` discards exactly what the re-sim is about to redo.
+    ///
+    /// Speculative-then-revoke is unavoidable, not an optimization: a
+    /// step can't tell a predicted remote input from a confirmed one,
+    /// and a correctly-predicted tick is *promoted* to settled without
+    /// ever being re-simulated — there is no committed re-execution to
+    /// sample instead. Buffering until settlement elsewhere would just
+    /// move this same revocation out of sight, and flushing on the
+    /// engine's confirmed-input stream would shave the round's
+    /// end-animation tail (settlement trails the live core by the
+    /// speculation depth, and input logging stops at the round-ending
+    /// tick), breaking the byte-equivalence between live stats and
+    /// offline re-analysis.
+    pub fn revoke_samples_at(&mut self, tick: u32) {
+        while self.current.last().is_some_and(|s| s.tick >= tick) {
+            self.current.pop();
+        }
+    }
+
+    /// Close the round in progress, folding its samples into a
+    /// [`RoundStats`]: stale-intro trim, custom spans, chip/buster usage
+    /// events, and the lossless change-point HP curve. `outcome` is
+    /// `None` when the round was never decided (the recording ended
+    /// mid-round, or a live round was torn down without reaching a KO).
+    pub fn end_round(&mut self, outcome: Option<BattleOutcome>) {
+        let samples = std::mem::take(&mut self.current);
+        let raw: Vec<(u32, u16, u16)> = samples.iter().map(|s| (s.tick, s.local, s.remote)).collect();
+        let start = stale_prefix_len(self.prev_final, &raw);
+        self.prev_final = samples.last().map(|s| (s.local, s.remote)).or(self.prev_final);
+        let samples = &samples[start..];
+        let custom = custom_spans(samples.iter().map(|s| (s.tick, s.custom)));
+        let (chip_uses, buster) = usage_events(samples, &custom, self.semantics);
+        self.rounds.push(RoundStats {
+            outcome,
+            hp: compress(samples.iter().map(|s| HpPoint {
+                tick: s.tick,
+                local: s.local,
+                remote: s.remote,
+            })),
+            custom,
+            chip_uses,
+            buster,
+        });
+    }
+
+    /// The rounds folded so far — the round in progress isn't included.
+    /// A clone (cheap: change-point curves and event lists, not raw
+    /// samples), so the live teardown can hand one copy to the sidecar
+    /// writer and another to the results card while the builder stays in
+    /// place.
+    pub fn snapshot(&self) -> MatchStats {
+        MatchStats {
+            rounds: self.rounds.clone(),
+        }
+    }
+
+    /// Finish, discarding any round still in progress — callers that
+    /// want it folded call [`end_round`](Self::end_round) first.
+    pub fn finish(self) -> MatchStats {
+        MatchStats { rounds: self.rounds }
+    }
+}
+
+impl MatchStats {
 
     /// Parse a sidecar. Errors on malformed input, a missing magic, or a
     /// version other than [`FORMAT_VERSION`] — callers treat all of these
@@ -467,10 +521,9 @@ pub fn analyze(
     let mut last_reported: u32 = 0;
 
     let lpi = replay.local_player_index as usize;
-    let mut rounds: Vec<Vec<HpPoint>> = vec![vec![]];
-    let mut customs: Vec<Vec<(u32, bool)>> = vec![vec![]];
-    let mut usages: Vec<Vec<UsageSample>> = vec![vec![]];
-    let mut outcomes: Vec<Option<BattleOutcome>> = vec![];
+    // The same incremental aggregation a live match performs: push each
+    // simulated tick's sample, close each round as it ends.
+    let mut builder = MatchStatsBuilder::new(semantics);
     // Latest result seen for the round in progress. `round_result()`
     // clears across the round transition, so it's committed on the
     // round-index edge (or at the end of the drain for the last round).
@@ -500,66 +553,55 @@ pub fn analyze(
         }
 
         if round_idx != last_round_idx {
-            outcomes.push(current_result.take());
-            rounds.push(vec![]);
-            customs.push(vec![]);
-            usages.push(vec![]);
+            builder.end_round(current_result.take());
             last_round_idx = round_idx;
         }
         if let Some(rr) = result {
             current_result = Some(rr.outcome);
         }
-        // One point per tick: the traps re-report every tick, so a new
-        // tick with a reading is exactly one sample. (`battle_hp` is
-        // cleared across round transitions and stays `None` through
-        // each battle intro.)
+        // The traps re-report every tick, so a new tick with a reading is
+        // exactly one sample — the builder drops repeat polls of the same
+        // tick. (`battle_hp` is cleared across round transitions and
+        // stays `None` through each battle intro.)
         if let Some(hp) = hp {
-            let series = rounds.last_mut().unwrap();
-            if series.last().map(|p| p.tick) != Some(tick) {
-                series.push(HpPoint {
-                    tick,
-                    local: hp[lpi],
-                    remote: hp[1 - lpi],
-                });
-                let custom = custom.unwrap_or(false);
-                customs.last_mut().unwrap().push((tick, custom));
-                // Buttons come straight off the recorded input pairs
-                // (already `(local, remote)`-oriented): the sample at
-                // `tick` reflects the state after the pair at `tick - 1`
-                // was applied, matching the live path's labeling of "the
-                // pair that produced the sampled state".
-                let mut buttons = 0u8;
-                if let Some((local, remote)) = replay
-                    .rounds
-                    .get(round_idx as usize)
-                    .and_then(|r| r.get((tick as usize).wrapping_sub(1)))
-                {
-                    buttons |= if local.joyflags & JOY_A != 0 { BUTTON_LOCAL_A } else { 0 };
-                    buttons |= if local.joyflags & JOY_B != 0 { BUTTON_LOCAL_B } else { 0 };
-                    buttons |= if remote.joyflags & JOY_A != 0 {
-                        BUTTON_REMOTE_A
-                    } else {
-                        0
-                    };
-                    buttons |= if remote.joyflags & JOY_B != 0 {
-                        BUTTON_REMOTE_B
-                    } else {
-                        0
-                    };
-                }
-                let chips = chips.unwrap_or([NO_CHIP; 2]);
-                usages.last_mut().unwrap().push(UsageSample {
-                    tick,
-                    chips: [chips[lpi], chips[1 - lpi]],
-                    custom,
-                    buttons,
-                });
+            // Buttons come straight off the recorded input pairs
+            // (already `(local, remote)`-oriented): the sample at
+            // `tick` reflects the state after the pair at `tick - 1`
+            // was applied, matching the live path's labeling of "the
+            // pair that produced the sampled state".
+            let mut buttons = 0u8;
+            if let Some((local, remote)) = replay
+                .rounds
+                .get(round_idx as usize)
+                .and_then(|r| r.get((tick as usize).wrapping_sub(1)))
+            {
+                buttons |= if local.joyflags & JOY_A != 0 { BUTTON_LOCAL_A } else { 0 };
+                buttons |= if local.joyflags & JOY_B != 0 { BUTTON_LOCAL_B } else { 0 };
+                buttons |= if remote.joyflags & JOY_A != 0 {
+                    BUTTON_REMOTE_A
+                } else {
+                    0
+                };
+                buttons |= if remote.joyflags & JOY_B != 0 {
+                    BUTTON_REMOTE_B
+                } else {
+                    0
+                };
             }
+            let chips = chips.unwrap_or([NO_CHIP; 2]);
+            builder.push_sample(RoundSample {
+                tick,
+                local: hp[lpi],
+                remote: hp[1 - lpi],
+                custom: custom.unwrap_or(false),
+                buttons,
+                chips: [chips[lpi], chips[1 - lpi]],
+            });
         }
 
         if total_left == 0 && abs_tick > 0 {
             if (ended && current_result.is_some()) || frames_after_drain >= MAX_DRAIN_FRAMES {
-                outcomes.push(current_result.take());
+                builder.end_round(current_result.take());
                 break;
             }
             frames_after_drain += 1;
@@ -568,27 +610,5 @@ pub fn analyze(
         core.as_mut().run_frame();
     }
 
-    let mut prev_final: Option<(u16, u16)> = None;
-    Ok(MatchStats {
-        rounds: outcomes
-            .into_iter()
-            .zip(rounds.into_iter().zip(customs.into_iter().zip(usages)))
-            .map(|(outcome, (hp, (custom, usage)))| {
-                // Drop the stale intro prefix (customs and usages were
-                // pushed in lockstep with hp, so the same cut applies).
-                let raw: Vec<(u32, u16, u16)> = hp.iter().map(|p| (p.tick, p.local, p.remote)).collect();
-                let start = stale_prefix_len(prev_final, &raw);
-                prev_final = hp.last().map(|p| (p.local, p.remote)).or(prev_final);
-                let custom = custom_spans(custom[start.min(custom.len())..].iter().copied());
-                let (chip_uses, buster) = usage_events(&usage[start.min(usage.len())..], &custom, semantics);
-                RoundStats {
-                    outcome,
-                    hp: compress(hp[start..].iter().copied()),
-                    custom,
-                    chip_uses,
-                    buster,
-                }
-            })
-            .collect(),
-    })
+    Ok(builder.finish())
 }

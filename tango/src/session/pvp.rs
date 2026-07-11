@@ -162,12 +162,12 @@ pub struct PvpSession {
     /// The footer slider writes it via [`set_frame_delay`]; the netcode reads it
     /// each rendered frame. Purely local — never negotiated or sent to the peer.
     frame_delay: Arc<AtomicU32>,
-    /// Local-perspective report (outcome + HP series) of each completed
-    /// round, appended by the match as rounds close. Our own `Arc` (the match
-    /// holds a clone), so the post-match results snapshot can read it during
-    /// teardown regardless of how far the match's background tasks have
-    /// already wound down.
-    round_results: Arc<Mutex<Vec<tango_pvp::battle::RoundReport>>>,
+    /// Incremental local-perspective match stats, fed by the match as
+    /// rounds close. Our own `Arc` (the match holds a clone), so the
+    /// post-match results snapshot and the sidecar write can read it
+    /// during teardown regardless of how far the match's background tasks
+    /// have already wound down.
+    stats: Arc<Mutex<tango_pvp::analysis::MatchStatsBuilder>>,
     /// Where this match's replay is being recorded, or `None` if the writer
     /// failed to open. The post-match results screen offers to play it back.
     pub replay_path: Option<std::path::PathBuf>,
@@ -327,10 +327,10 @@ impl PvpSession {
         // part of the deterministic simulation and never crosses the wire. Shared
         // as an atomic so the footer slider can live-adjust it mid-match.
         let frame_delay = Arc::new(AtomicU32::new(frame_delay));
-        // Per-round outcome log, shared with the match (which appends as
-        // rounds close). We keep our own handle so the post-match results
-        // snapshot survives the match teardown.
-        let round_results = Arc::new(Mutex::new(Vec::new()));
+        // Incremental match stats, shared with the match (which folds each
+        // round in as it closes). We keep our own handle so the post-match
+        // results snapshot survives the match teardown.
+        let stats = Arc::new(Mutex::new(tango_pvp::analysis::MatchStatsBuilder::new(chip_semantics)));
         let inner_match = tango_pvp::battle::Match::new(
             local_rom.as_ref().clone(),
             local_hooks,
@@ -343,7 +343,7 @@ impl PvpSession {
             tango_pvp::battle::ReplayConfig { writer: replay_writer },
             frame_delay.clone(),
             disable_bgm,
-            round_results.clone(),
+            stats.clone(),
         );
         match_handle.set(inner_match.clone());
 
@@ -380,7 +380,7 @@ impl PvpSession {
             let mut reconnect = pre_match.reconnect.clone();
             let rng_seed = pre_match.rng_seed;
             let handle = thread.handle();
-            let round_results = round_results.clone();
+            let stats = stats.clone();
             let stats_path = replay_path
                 .as_ref()
                 .map(|p| crate::replays::stats_path(cache_path, replays_path, p));
@@ -582,15 +582,12 @@ impl PvpSession {
                     if let Err(e) = inner_match.finish_replay() {
                         log::error!("finish replay failed: {e}");
                     }
-                    // Cache the finished match's stats — the rollback engine
-                    // already collected the HP series, so the Replays tab
+                    // Cache the finished match's stats — the match already
+                    // folded each round as it ended, so the Replays tab
                     // never has to re-simulate this one.
                     if let Some(stats_path) = stats_path.as_ref() {
-                        let stats = tango_pvp::analysis::MatchStats::from_round_reports(
-                            &round_results.lock().unwrap(),
-                            chip_semantics,
-                        );
-                        if let Err(e) = crate::replays::write_match_stats(stats_path, &stats) {
+                        let snapshot = stats.lock().unwrap().snapshot();
+                        if let Err(e) = crate::replays::write_match_stats(stats_path, &snapshot) {
                             log::warn!("failed to write replay stats cache entry: {e}");
                         }
                     }
@@ -710,7 +707,7 @@ impl PvpSession {
             local_loaded,
             local_save_view: crate::save_view::State::new(),
             frame_delay,
-            round_results,
+            stats,
             replay_path,
             started_at: std::time::Instant::now(),
         })
@@ -869,11 +866,11 @@ impl PvpSession {
         self._thread.handle().lock_audio().sync().fps_target()
     }
 
-    /// Local-perspective report of each round completed so far, in play
-    /// order. Read at teardown for the post-match results screen; rounds the
-    /// match never finished (mid-round disconnect) simply aren't in it.
-    pub fn round_results(&self) -> Vec<tango_pvp::battle::RoundReport> {
-        self.round_results.lock().unwrap().clone()
+    /// The match stats aggregated so far, in play order. Read at teardown
+    /// for the post-match results screen; rounds the match never finished
+    /// (mid-round disconnect) simply aren't in it.
+    pub fn stats_snapshot(&self) -> tango_pvp::analysis::MatchStats {
+        self.stats.lock().unwrap().snapshot()
     }
 
     /// How long the match ran, start of session to local completion — or to

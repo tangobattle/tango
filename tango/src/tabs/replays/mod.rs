@@ -153,96 +153,24 @@ pub struct ReplaysState {
     pub detail_enter: crate::anim::Enter,
 }
 
-/// A replay's match stats, cooked for drawing. Per round: the outcome,
-/// the HP trace as `(x, you, opponent)` points normalized to 0..=1 (x
-/// over the round's sampled ticks, HP against the match-wide maximum so
-/// every round shares one vertical scale), and the normalized custom-
-/// screen spans. Built once per replay when its
+/// A replay's match stats, cooked for drawing (see
+/// [`widgets::cook_hp_rounds`]). Built once per replay when its
 /// [`tango_pvp::analysis::MatchStats`] arrive.
 pub struct HpChart {
-    pub rounds: Vec<HpChartRound>,
+    pub rounds: Vec<widgets::CookedHpRound>,
     /// The match-wide HP scale the traces were normalized against — the
     /// chart's hover readout multiplies back through it.
     pub max_hp: f32,
 }
 
-pub struct HpChartRound {
-    pub outcome: Option<tango_pvp::stepper::BattleOutcome>,
-    pub trace: Vec<(f32, f32, f32)>,
-    pub custom: Vec<(f32, f32)>,
-    /// Chip-use events per side (`[you, opponent]`): normalized x within
-    /// the round plus the chip's display name and icon, resolved against
-    /// the local side's assets when the chart was built (`"???"`/no icon
-    /// when the ROM/patch wasn't loadable or the game doesn't know that
-    /// id; the opponent's ids are read through the *local* game's chip
-    /// table, which is right for same-version matches and best-effort
-    /// across versions/patches). Empty on games whose traps don't report
-    /// chips (bn1).
-    pub chip_uses: [Vec<widgets::ChipUseMark>; 2],
-    /// Tick span of the round — its share of the continuous timeline.
-    pub weight: f32,
-}
-
 impl HpChart {
     fn new(stats: &tango_pvp::analysis::MatchStats, loaded: Option<&crate::selection::Loaded>) -> Self {
-        let chip_name = |id: u16| {
-            loaded
-                .and_then(|l| l.assets.chip(id as usize))
-                .and_then(|c| c.name())
-                .unwrap_or_else(|| "???".to_string())
-        };
-        // The pre-baked 14×14 icon handles are Arc-backed — cloning one
-        // per use is just a refcount bump, not a re-crop.
-        let chip_icon = |id: u16| loaded.and_then(|l| l.chip_icons.get(id as usize).cloned().flatten());
-        let max_hp = stats
-            .rounds
-            .iter()
-            .flat_map(|r| r.hp.iter())
-            .map(|p| p.local.max(p.remote))
-            .max()
-            .unwrap_or(0)
-            .max(1) as f32;
-        Self {
-            max_hp,
-            rounds: stats
-                .rounds
-                .iter()
-                .map(|r| {
-                    let (Some(first), Some(last)) = (r.hp.first(), r.hp.last()) else {
-                        return HpChartRound {
-                            outcome: r.outcome,
-                            trace: vec![],
-                            custom: vec![],
-                            chip_uses: [vec![], vec![]],
-                            weight: 0.0,
-                        };
-                    };
-                    let t0 = first.tick as f32;
-                    let span = (last.tick as f32 - t0).max(1.0);
-                    let x_of = |tick: u32| ((tick as f32 - t0) / span).clamp(0.0, 1.0);
-                    let cook_uses = |uses: &[(u32, u16)]| {
-                        uses.iter()
-                            .map(|&(t, id)| widgets::ChipUseMark {
-                                x: x_of(t),
-                                name: chip_name(id),
-                                icon: chip_icon(id),
-                            })
-                            .collect()
-                    };
-                    HpChartRound {
-                        outcome: r.outcome,
-                        trace: r
-                            .hp
-                            .iter()
-                            .map(|p| (x_of(p.tick), p.local as f32 / max_hp, p.remote as f32 / max_hp))
-                            .collect(),
-                        custom: r.custom.iter().map(|&(a, b)| (x_of(a), x_of(b))).collect(),
-                        chip_uses: [cook_uses(&r.chip_uses[0]), cook_uses(&r.chip_uses[1])],
-                        weight: span,
-                    }
-                })
-                .collect(),
-        }
+        // Both sides' chip ids resolve through the LOCAL side's chip
+        // table (`"???"`/no icon when the ROM/patch wasn't loadable) —
+        // right for same-version matches, best-effort across
+        // versions/patches. bn1 records no chip events at all.
+        let (rounds, max_hp) = widgets::cook_hp_rounds(stats, [loaded, loaded]);
+        Self { rounds, max_hp }
     }
 
     /// Whether there's anything to draw at all — at least one round
@@ -993,11 +921,10 @@ fn replay_detail<'a>(
         row_for_side(t!(lang, "play-opponent"), md.remote_side.as_ref()),
     );
 
-    // HP-over-time pane: one graph per round with its outcome mark, plus a
-    // legend naming the traces after the two sides. While the stats are
-    // still being re-simulated (first focus of a replay with no sidecar)
-    // the pane holds a quiet analyzing line instead, so the panel says why
-    // there's no chart yet.
+    // HP-over-time pane: the match graph. While the stats are still being
+    // re-simulated (first focus of a replay with no sidecar) the pane
+    // holds a quiet analyzing line instead, so the panel says why there's
+    // no chart yet.
     let analyzing: Option<Element<'_, Message>> = state.hp_pending.get(&r.path).map(|progress| {
         let fraction = match progress {
             Some((done, total)) if *total > 0 => (*done as f32 / *total as f32).clamp(0.0, 1.0),
@@ -1027,25 +954,11 @@ fn replay_detail<'a>(
         .into()
     });
     let hp_pane: Option<Element<'_, Message>> = state.hp_charts.get(&r.path).filter(|c| c.has_traces()).map(|chart| {
-        let legend_entry = |color: fn(&iced::Theme) -> iced::Color, label: String| {
-            row![
-                container(Space::new().width(10).height(3)).style(move |theme: &iced::Theme| {
-                    iced::widget::container::Style {
-                        background: Some(color(theme).into()),
-                        border: iced::border::rounded(1.5),
-                        ..Default::default()
-                    }
-                }),
-                text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
-            ]
-            .spacing(5)
-            .align_y(Alignment::Center)
-        };
-        let local_nick = md.local_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
-        let remote_nick = md.remote_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
         // The whole match on one continuous chart: rounds side by side in
-        // proportion to their length, gaps as the dividers, an outcome dot
-        // in each round's corner.
+        // proportion to their length, gaps as the dividers, outcomes as
+        // the segment tints. No legend — red-is-you / blue-is-them is the
+        // fixed seat-color convention, and the matchup pane above already
+        // names both sides.
         let chart_rounds: Vec<widgets::HpGraphRound<'_>> = chart
             .rounds
             .iter()
@@ -1057,34 +970,24 @@ fn replay_detail<'a>(
                 weight: r.weight,
             })
             .collect();
-        let body = column![
-            row![
-                legend_entry(widgets::hp_you_color, local_nick),
-                legend_entry(widgets::hp_opponent_color, remote_nick),
-            ]
-            .spacing(14)
-            .align_y(Alignment::Center),
-            widgets::hp_match_graph(
-                chart_rounds,
-                chart.max_hp,
-                1.0,
-                if chart.rounds.iter().any(|r| r.chip_uses.iter().any(|l| !l.is_empty())) {
-                    DETAIL_HP_GRAPH_WITH_LANES_H
-                } else {
-                    DETAIL_HP_GRAPH_H
-                },
-                // Zoomable, keyed on the replay path so switching replays
-                // resets the view.
-                Some({
-                    use std::hash::{Hash, Hasher};
-                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                    r.path.hash(&mut hasher);
-                    hasher.finish()
-                }),
-            ),
-        ]
-        .spacing(8)
-        .width(Fill);
+        let body = widgets::hp_match_graph(
+            chart_rounds,
+            chart.max_hp,
+            1.0,
+            if chart.rounds.iter().any(|r| r.chip_uses.iter().any(|l| !l.is_empty())) {
+                DETAIL_HP_GRAPH_WITH_LANES_H
+            } else {
+                DETAIL_HP_GRAPH_H
+            },
+            // Zoomable, keyed on the replay path so switching replays
+            // resets the view.
+            Some({
+                use std::hash::{Hash, Hasher};
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                r.path.hash(&mut hasher);
+                hasher.finish()
+            }),
+        );
         container(body)
             .width(Fill)
             .padding(style::PANE_PADDING)
