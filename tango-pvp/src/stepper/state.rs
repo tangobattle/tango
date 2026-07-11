@@ -187,6 +187,10 @@ pub struct InnerState {
     /// `Some(true)` while either player has the chip-select open. Stays
     /// `None` for games without the flag offsets wired.
     battle_custom: Option<bool>,
+    /// Latest per-tick loaded-chip report from the per-game traps —
+    /// each player's queued chip id (0xFFFF = none). Stays `None` for
+    /// games without the chip offsets wired.
+    battle_chips: Option<[u16; 2]>,
     error: Option<anyhow::Error>,
     mode: Mode,
 }
@@ -278,6 +282,7 @@ impl InnerState {
             round_result: None,
             battle_hp: None,
             battle_custom: None,
+            battle_chips: None,
             error: None,
             mode: Mode::Replay(ReplayExtras {
                 phase,
@@ -329,6 +334,7 @@ impl InnerState {
             round_result: None,
             battle_hp: None,
             battle_custom: None,
+            battle_chips: None,
             error: None,
             mode: Mode::Fastforward(FastforwardExtras {
                 capture_tick,
@@ -651,6 +657,7 @@ impl InnerState {
             round_result: self.round_result,
             hp: self.battle_hp,
             custom: self.battle_custom,
+            chips: self.battle_chips,
         }
     }
 
@@ -692,6 +699,18 @@ impl InnerState {
     /// round's traps have made one (see [`Self::set_custom_screen`]).
     pub fn custom_screen(&self) -> Option<bool> {
         self.battle_custom
+    }
+
+    /// Report each player's loaded chip id for this tick (0xFFFF = none).
+    /// Called by per-game per-tick traps on games with known chip offsets.
+    pub fn set_loaded_chips(&mut self, chips: [u16; 2]) {
+        self.battle_chips = Some(chips);
+    }
+
+    /// The most recent per-tick loaded-chip report, if the current
+    /// round's traps have made one (see [`Self::set_loaded_chips`]).
+    pub fn loaded_chips(&self) -> Option<[u16; 2]> {
+        self.battle_chips
     }
 
     pub fn set_round_ending(&mut self) {
@@ -842,9 +861,11 @@ impl InnerState {
         self.round_result = None;
         // Traps only report HP while the unit slots are live, so without
         // this the previous round's final reading would leak into the next
-        // round's intro window. Same for the custom-screen flag.
+        // round's intro window. Same for the custom-screen flag and the
+        // loaded chips.
         self.battle_hp = None;
         self.battle_custom = None;
+        self.battle_chips = None;
     }
 }
 

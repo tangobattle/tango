@@ -87,6 +87,9 @@ pub struct StepperResult {
     /// Whether the custom screen was open during the tick this run
     /// simulated, if the per-game traps reported it.
     pub custom: Option<bool>,
+    /// Each player's loaded chip id during the tick this run simulated
+    /// (0xFFFF = none), if the per-game traps reported it.
+    pub chips: Option<[u16; 2]>,
 }
 
 /// Single per-frame re-sim core for the rollback engine: a dedicated headless

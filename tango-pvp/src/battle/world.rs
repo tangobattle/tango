@@ -112,7 +112,28 @@ pub struct HpSample {
     /// Whether the custom screen (chip select) was open this tick — false
     /// on games whose traps don't report it.
     pub custom: bool,
+    /// Both players' A/B button state this tick (see the `BUTTON_*` bit
+    /// constants) — the raw held bits from the tick's confirmed input
+    /// pair, from which buster usage events are derived downstream.
+    pub buttons: u8,
+    /// `[local, remote]` loaded chip ids this tick ([`NO_CHIP`] = none or
+    /// not reported) — chip-use events are their departures downstream.
+    pub chips: [u16; 2],
 }
+
+/// Sentinel for "no chip loaded" in [`HpSample::chips`] — the games' own
+/// in-memory sentinel.
+pub const NO_CHIP: u16 = 0xffff;
+
+/// Bits of [`HpSample::buttons`].
+pub const BUTTON_LOCAL_A: u8 = 1 << 0;
+pub const BUTTON_LOCAL_B: u8 = 1 << 1;
+pub const BUTTON_REMOTE_A: u8 = 1 << 2;
+pub const BUTTON_REMOTE_B: u8 = 1 << 3;
+
+/// GBA KEYINPUT bits for A and B in the joyflags word.
+pub(crate) const JOY_A: u16 = 0x0001;
+pub(crate) const JOY_B: u16 = 0x0002;
 
 impl getgud::World for MgbaWorld {
     /// Joyflags — what's queued and what crosses the wire.
@@ -121,6 +142,7 @@ impl getgud::World for MgbaWorld {
     type Error = anyhow::Error;
 
     fn step(&mut self, input: (PartialInput, PartialInput)) -> anyhow::Result<getgud::RoundState> {
+        let (local_joy, remote_joy) = (input.0.joyflags, input.1.joyflags);
         // Co-simulate the opponent for this tick: the stepper's
         // [`RemotePacketSource`](crate::stepper::RemotePacketSource) — our shared
         // shadow handle, set at construction — runs the shadow forward over the
@@ -142,11 +164,19 @@ impl getgud::World for MgbaWorld {
         // corrected values.
         if let Some(hp) = result.hp {
             let lpi = self.local_player_index as usize;
+            let chips = result.chips.unwrap_or([NO_CHIP; 2]);
+            let mut buttons = 0u8;
+            buttons |= if local_joy & JOY_A != 0 { BUTTON_LOCAL_A } else { 0 };
+            buttons |= if local_joy & JOY_B != 0 { BUTTON_LOCAL_B } else { 0 };
+            buttons |= if remote_joy & JOY_A != 0 { BUTTON_REMOTE_A } else { 0 };
+            buttons |= if remote_joy & JOY_B != 0 { BUTTON_REMOTE_B } else { 0 };
             self.hp_series.lock().unwrap().push(HpSample {
                 tick: result.boundary.tick - 1,
                 local: hp[lpi],
                 remote: hp[1 - lpi],
                 custom: result.custom.unwrap_or(false),
+                buttons,
+                chips: [chips[lpi], chips[1 - lpi]],
             });
         }
 

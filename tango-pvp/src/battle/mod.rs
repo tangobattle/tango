@@ -17,7 +17,8 @@ mod world;
 pub(crate) use match_::SenderMutex;
 pub use match_::{Match, RoundMetrics, RoundReport};
 pub(crate) use round::Round;
-pub use world::HpSample;
+pub use world::{HpSample, BUTTON_LOCAL_A, BUTTON_LOCAL_B, BUTTON_REMOTE_A, BUTTON_REMOTE_B, NO_CHIP};
+pub(crate) use world::{JOY_A, JOY_B};
 
 /// Match-wide identity. Both peers compute these to identical values from the
 /// shared protocol state, then carry them through Match → Shadow → Round.

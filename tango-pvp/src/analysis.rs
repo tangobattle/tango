@@ -16,13 +16,13 @@
 
 use crate::stepper::BattleOutcome;
 
-/// Bumped whenever the sidecar format changes shape — or meaning: v3's
-/// encoding is identical to v2's, but its HP series are lossless
-/// change-point curves where v2's were decimated, and the bump is what
-/// makes existing v2 files recompute at full fidelity. Readers reject
+/// Bumped whenever the sidecar format changes shape — or meaning: v4 adds
+/// per-round chip-use and buster events (v3's HP series became lossless
+/// change-point curves where v2's were decimated; bumps make older
+/// files recompute). Readers reject
 /// other versions (and anything without the magic, e.g. the short-lived
 /// JSON v1 sidecars) and recompute.
-pub const FORMAT_VERSION: u32 = 3;
+pub const FORMAT_VERSION: u32 = 4;
 
 /// Sidecar file magic.
 const MAGIC: &[u8; 4] = b"TGST";
@@ -53,6 +53,73 @@ pub struct RoundStats {
     /// select) was open. Empty on games whose traps don't report the
     /// flag.
     pub custom: Vec<(u32, u32)>,
+    /// Chip-use events per side (`[local, remote]`): `(tick, chip id)`
+    /// at the moment the unit's loaded chip departed by being used.
+    /// Empty on games whose traps don't report loaded chips.
+    pub chip_uses: [Vec<(u32, u16)>; 2],
+    /// Buster-press ticks per side (`[local, remote]`): B press edges
+    /// outside the custom screen.
+    pub buster: [Vec<u32>; 2],
+}
+
+pub use crate::battle::NO_CHIP;
+use crate::battle::{BUTTON_LOCAL_A, BUTTON_LOCAL_B, BUTTON_REMOTE_A, BUTTON_REMOTE_B, JOY_A, JOY_B};
+
+/// One per-tick usage observation, oriented `[local, remote]` — the raw
+/// stream [`usage_events`] folds into chip/buster events.
+#[derive(Clone, Copy)]
+struct UsageSample {
+    tick: u32,
+    chips: [u16; 2],
+    custom: bool,
+    buttons: u8,
+}
+
+/// Fold a round's per-tick usage stream into chip-use and buster events.
+/// A loaded chip departing = that chip being used — EXCEPT the first
+/// departure after each custom close, which is the new selection landing
+/// on top of whatever was left (see the per-game `unit_chip` docs).
+fn usage_events(samples: &[UsageSample], custom: &[(u32, u32)]) -> ([Vec<(u32, u16)>; 2], [Vec<u32>; 2]) {
+    let mut chip_uses: [Vec<(u32, u16)>; 2] = [vec![], vec![]];
+    let mut buster: [Vec<u32>; 2] = [vec![], vec![]];
+    for side in 0..2 {
+        let mut prev_chip = NO_CHIP;
+        let mut prev_buttons = 0u8;
+        // Index of the next custom span whose close hasn't had its
+        // selection-load transition yet.
+        let mut next_load_span = 0usize;
+        let b_bit = if side == 0 { 1u8 << 1 } else { 1u8 << 3 };
+        for s in samples {
+            let chip = s.chips[side];
+            if chip != prev_chip {
+                // Skip spans whose load window has fully passed (a side
+                // that picked nothing produces no load transition).
+                while next_load_span < custom.len()
+                    && custom.get(next_load_span + 1).is_some_and(|&(s2, _)| s.tick >= s2)
+                {
+                    next_load_span += 1;
+                }
+                // A load consumes the pending span close; anything else
+                // departing a real chip is a use.
+                let is_load = custom.get(next_load_span).is_some_and(|&(_, e)| s.tick >= e);
+                if is_load {
+                    next_load_span += 1;
+                } else if next_load_span > 0 && prev_chip != NO_CHIP {
+                    // next_load_span == 0 means no selection has landed
+                    // yet — the cell still holds round-init garbage (bn5
+                    // inits it to 0 before first flipping to the
+                    // sentinel), which can't be a real use.
+                    chip_uses[side].push((s.tick, prev_chip));
+                }
+                prev_chip = chip;
+            }
+            if !s.custom && s.buttons & b_bit != 0 && prev_buttons & b_bit == 0 {
+                buster[side].push(s.tick);
+            }
+            prev_buttons = s.buttons;
+        }
+    }
+    (chip_uses, buster)
 }
 
 /// One HP reading.
@@ -76,6 +143,17 @@ impl MatchStats {
                     let start = stale_prefix_len(prev_final, &raw);
                     prev_final = r.hp.last().map(|s| (s.local, s.remote)).or(prev_final);
                     let hp = &r.hp[start..];
+                    let custom = custom_spans(hp.iter().map(|s| (s.tick, s.custom)));
+                    let usage: Vec<UsageSample> = hp
+                        .iter()
+                        .map(|s| UsageSample {
+                            tick: s.tick,
+                            chips: s.chips,
+                            custom: s.custom,
+                            buttons: s.buttons,
+                        })
+                        .collect();
+                    let (chip_uses, buster) = usage_events(&usage, &custom);
                     RoundStats {
                         outcome: Some(r.outcome),
                         hp: compress(hp.iter().map(|s| HpPoint {
@@ -83,7 +161,9 @@ impl MatchStats {
                             local: s.local,
                             remote: s.remote,
                         })),
-                        custom: custom_spans(hp.iter().map(|s| (s.tick, s.custom))),
+                        custom,
+                        chip_uses,
+                        buster,
                     }
                 })
                 .collect(),
@@ -150,7 +230,33 @@ impl MatchStats {
             for _ in 0..n_custom {
                 custom.push((u32_of(&mut r)?, u32_of(&mut r)?));
             }
-            rounds.push(RoundStats { outcome, hp, custom });
+            let mut chip_uses: [Vec<(u32, u16)>; 2] = [vec![], vec![]];
+            for side in &mut chip_uses {
+                let n = u32_of(&mut r)?;
+                if n > 4096 {
+                    anyhow::bail!("implausible chip-use count {}", n);
+                }
+                for _ in 0..n {
+                    side.push((u32_of(&mut r)?, u16_of(&mut r)?));
+                }
+            }
+            let mut buster: [Vec<u32>; 2] = [vec![], vec![]];
+            for side in &mut buster {
+                let n = u32_of(&mut r)?;
+                if n > 65536 {
+                    anyhow::bail!("implausible buster count {}", n);
+                }
+                for _ in 0..n {
+                    side.push(u32_of(&mut r)?);
+                }
+            }
+            rounds.push(RoundStats {
+                outcome,
+                hp,
+                custom,
+                chip_uses,
+                buster,
+            });
         }
         Ok(MatchStats { rounds })
     }
@@ -175,6 +281,19 @@ impl MatchStats {
             for &(a, b) in &round.custom {
                 w.write_all(&a.to_le_bytes())?;
                 w.write_all(&b.to_le_bytes())?;
+            }
+            for side in &round.chip_uses {
+                w.write_all(&(side.len() as u32).to_le_bytes())?;
+                for &(t, id) in side {
+                    w.write_all(&t.to_le_bytes())?;
+                    w.write_all(&id.to_le_bytes())?;
+                }
+            }
+            for side in &round.buster {
+                w.write_all(&(side.len() as u32).to_le_bytes())?;
+                for &t in side {
+                    w.write_all(&t.to_le_bytes())?;
+                }
             }
         }
         Ok(())
@@ -292,6 +411,7 @@ pub fn analyze(
     let lpi = replay.local_player_index as usize;
     let mut rounds: Vec<Vec<HpPoint>> = vec![vec![]];
     let mut customs: Vec<Vec<(u32, bool)>> = vec![vec![]];
+    let mut usages: Vec<Vec<UsageSample>> = vec![vec![]];
     let mut outcomes: Vec<Option<BattleOutcome>> = vec![];
     // Latest result seen for the round in progress. `round_result()`
     // clears across the round transition, so it's committed on the
@@ -301,7 +421,7 @@ pub fn analyze(
     let mut frames_after_drain: u32 = 0;
 
     loop {
-        let (total_left, abs_tick, round_idx, ended, result, tick, hp, custom) = {
+        let (total_left, abs_tick, round_idx, ended, result, tick, hp, custom, chips) = {
             let inner = stepper_state.lock_inner();
             (
                 inner.total_input_pairs_left(),
@@ -312,6 +432,7 @@ pub fn analyze(
                 inner.current_tick(),
                 inner.battle_hp(),
                 inner.custom_screen(),
+                inner.loaded_chips(),
             )
         };
 
@@ -324,6 +445,7 @@ pub fn analyze(
             outcomes.push(current_result.take());
             rounds.push(vec![]);
             customs.push(vec![]);
+            usages.push(vec![]);
             last_round_idx = round_idx;
         }
         if let Some(rr) = result {
@@ -341,7 +463,39 @@ pub fn analyze(
                     local: hp[lpi],
                     remote: hp[1 - lpi],
                 });
-                customs.last_mut().unwrap().push((tick, custom.unwrap_or(false)));
+                let custom = custom.unwrap_or(false);
+                customs.last_mut().unwrap().push((tick, custom));
+                // Buttons come straight off the recorded input pairs
+                // (already `(local, remote)`-oriented): the sample at
+                // `tick` reflects the state after the pair at `tick - 1`
+                // was applied, matching the live path's labeling of "the
+                // pair that produced the sampled state".
+                let mut buttons = 0u8;
+                if let Some((local, remote)) = replay
+                    .rounds
+                    .get(round_idx as usize)
+                    .and_then(|r| r.get((tick as usize).wrapping_sub(1)))
+                {
+                    buttons |= if local.joyflags & JOY_A != 0 { BUTTON_LOCAL_A } else { 0 };
+                    buttons |= if local.joyflags & JOY_B != 0 { BUTTON_LOCAL_B } else { 0 };
+                    buttons |= if remote.joyflags & JOY_A != 0 {
+                        BUTTON_REMOTE_A
+                    } else {
+                        0
+                    };
+                    buttons |= if remote.joyflags & JOY_B != 0 {
+                        BUTTON_REMOTE_B
+                    } else {
+                        0
+                    };
+                }
+                let chips = chips.unwrap_or([NO_CHIP; 2]);
+                usages.last_mut().unwrap().push(UsageSample {
+                    tick,
+                    chips: [chips[lpi], chips[1 - lpi]],
+                    custom,
+                    buttons,
+                });
             }
         }
 
@@ -360,17 +514,21 @@ pub fn analyze(
     Ok(MatchStats {
         rounds: outcomes
             .into_iter()
-            .zip(rounds.into_iter().zip(customs))
-            .map(|(outcome, (hp, custom))| {
-                // Drop the stale intro prefix (customs were pushed in
-                // lockstep with hp, so the same cut applies).
+            .zip(rounds.into_iter().zip(customs.into_iter().zip(usages)))
+            .map(|(outcome, (hp, (custom, usage)))| {
+                // Drop the stale intro prefix (customs and usages were
+                // pushed in lockstep with hp, so the same cut applies).
                 let raw: Vec<(u32, u16, u16)> = hp.iter().map(|p| (p.tick, p.local, p.remote)).collect();
                 let start = stale_prefix_len(prev_final, &raw);
                 prev_final = hp.last().map(|p| (p.local, p.remote)).or(prev_final);
+                let custom = custom_spans(custom[start.min(custom.len())..].iter().copied());
+                let (chip_uses, buster) = usage_events(&usage[start.min(usage.len())..], &custom);
                 RoundStats {
                     outcome,
                     hp: compress(hp[start..].iter().copied()),
-                    custom: custom_spans(custom[start.min(custom.len())..].iter().copied()),
+                    custom,
+                    chip_uses,
+                    buster,
                 }
             })
             .collect(),
