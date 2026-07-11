@@ -217,6 +217,9 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
             .map(|r| widgets::HpGraphRound {
                 trace: &r.trace,
                 custom: &r.custom,
+                // The live capture path doesn't carry chip-use events (only
+                // the replay stats do), so the results card draws no beads.
+                chip_uses: [&[], &[]],
                 outcome: Some(r.outcome),
                 weight: r.weight,
             })

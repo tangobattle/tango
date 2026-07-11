@@ -170,12 +170,27 @@ pub struct HpChartRound {
     pub outcome: Option<tango_pvp::stepper::BattleOutcome>,
     pub trace: Vec<(f32, f32, f32)>,
     pub custom: Vec<(f32, f32)>,
+    /// Chip-use beads per side (`[you, opponent]`): normalized x within
+    /// the round plus the chip's display name, resolved against the
+    /// local side's assets when the chart was built (`"???"` when the
+    /// ROM/patch wasn't loadable or the game doesn't name that id; the
+    /// opponent's ids are read through the *local* game's chip table,
+    /// which is right for same-version matches and best-effort across
+    /// versions/patches). Empty on games whose traps don't report chips
+    /// (bn1).
+    pub chip_uses: [Vec<(f32, String)>; 2],
     /// Tick span of the round — its share of the continuous timeline.
     pub weight: f32,
 }
 
 impl HpChart {
-    fn new(stats: &tango_pvp::analysis::MatchStats) -> Self {
+    fn new(stats: &tango_pvp::analysis::MatchStats, loaded: Option<&crate::selection::Loaded>) -> Self {
+        let chip_name = |id: u16| {
+            loaded
+                .and_then(|l| l.assets.chip(id as usize))
+                .and_then(|c| c.name())
+                .unwrap_or_else(|| "???".to_string())
+        };
         let max_hp = stats
             .rounds
             .iter()
@@ -195,12 +210,15 @@ impl HpChart {
                             outcome: r.outcome,
                             trace: vec![],
                             custom: vec![],
+                            chip_uses: [vec![], vec![]],
                             weight: 0.0,
                         };
                     };
                     let t0 = first.tick as f32;
                     let span = (last.tick as f32 - t0).max(1.0);
                     let x_of = |tick: u32| ((tick as f32 - t0) / span).clamp(0.0, 1.0);
+                    let cook_uses =
+                        |uses: &[(u32, u16)]| uses.iter().map(|&(t, id)| (x_of(t), chip_name(id))).collect();
                     HpChartRound {
                         outcome: r.outcome,
                         trace: r
@@ -209,6 +227,7 @@ impl HpChart {
                             .map(|p| (x_of(p.tick), p.local as f32 / max_hp, p.remote as f32 / max_hp))
                             .collect(),
                         custom: r.custom.iter().map(|&(a, b)| (x_of(a), x_of(b))).collect(),
+                        chip_uses: [cook_uses(&r.chip_uses[0]), cook_uses(&r.chip_uses[1])],
                         weight: span,
                     }
                 })
@@ -321,7 +340,9 @@ impl ReplaysState {
                     if let Some(stats) =
                         crate::replays::load_match_stats(&config.cache_path(), &config.replays_path(), &p)
                     {
-                        self.hp_charts.insert(p, HpChart::new(&stats));
+                        // `refresh_loaded` above already pointed `loaded` at
+                        // this replay, so chip beads get the right names.
+                        self.hp_charts.insert(p, HpChart::new(&stats, self.loaded.as_ref()));
                     } else {
                         self.hp_pending.insert(p.clone(), None);
                         return Some(Effect::AnalyzeReplay(p));
@@ -360,7 +381,15 @@ impl ReplaysState {
             Message::HpStatsLoaded(path, stats) => {
                 self.hp_pending.remove(&path);
                 if let Some(stats) = stats {
-                    self.hp_charts.insert(path, HpChart::new(&stats));
+                    // Chip beads bake names through the selected replay's
+                    // Loaded; if the user has moved on to another replay by
+                    // the time the analysis lands, drop the result rather
+                    // than resolving through the wrong game's chip table —
+                    // the analysis already wrote the sidecar, so
+                    // re-selecting rebuilds the chart straight from disk.
+                    if self.selected.as_ref() == Some(&path) {
+                        self.hp_charts.insert(path, HpChart::new(&stats, self.loaded.as_ref()));
+                    }
                 }
                 None
             }
@@ -1013,6 +1042,7 @@ fn replay_detail<'a>(
             .map(|r| widgets::HpGraphRound {
                 trace: &r.trace,
                 custom: &r.custom,
+                chip_uses: [&r.chip_uses[0], &r.chip_uses[1]],
                 outcome: r.outcome,
                 weight: r.weight,
             })
