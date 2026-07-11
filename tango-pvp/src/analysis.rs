@@ -16,18 +16,21 @@
 
 use crate::stepper::BattleOutcome;
 
-/// Bumped whenever the sidecar format changes shape; readers reject
+/// Bumped whenever the sidecar format changes shape — or meaning: v3's
+/// encoding is identical to v2's, but its HP series are lossless
+/// change-point curves where v2's were decimated, and the bump is what
+/// makes existing v2 files recompute at full fidelity. Readers reject
 /// other versions (and anything without the magic, e.g. the short-lived
 /// JSON v1 sidecars) and recompute.
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 3;
 
 /// Sidecar file magic.
 const MAGIC: &[u8; 4] = b"TGST";
 
-/// Cap on stored HP points per round. HP is a step function that holds
-/// for long stretches, so a few hundred points reproduce the curve
-/// exactly enough for any UI-scale chart while keeping sidecars small.
-pub const HP_POINTS_PER_ROUND: usize = 512;
+/// Reader-side sanity cap on stored HP points per round — far above any
+/// real round (HP changes a few dozen times), it only rejects corrupt
+/// counts before allocating for them.
+const MAX_HP_POINTS_PER_ROUND: usize = 65536;
 
 /// Per-match statistics, from the local player's perspective of the
 /// replay (or live session) they came from.
@@ -40,9 +43,11 @@ pub struct MatchStats {
 pub struct RoundStats {
     /// `None` when the recording ended before the round reached a KO.
     pub outcome: Option<BattleOutcome>,
-    /// Decimated to at most [`HP_POINTS_PER_ROUND`] points, final
-    /// sample always kept. Empty on rounds that never got past the
-    /// battle intro (and for replays predating HP reporting).
+    /// The round's full HP curve, losslessly change-point encoded: the
+    /// first and last samples plus every sample whose `(local, remote)`
+    /// pair differs from the one before it. HP holds between entries
+    /// (step semantics), so the per-tick series reconstructs exactly.
+    /// Empty on rounds that never got past the battle intro.
     pub hp: Vec<HpPoint>,
     /// `[start, end)` tick spans during which the custom screen (chip
     /// select) was open. Empty on games whose traps don't report the
@@ -73,7 +78,7 @@ impl MatchStats {
                     let hp = &r.hp[start..];
                     RoundStats {
                         outcome: Some(r.outcome),
-                        hp: decimate(hp.iter().map(|s| HpPoint {
+                        hp: compress(hp.iter().map(|s| HpPoint {
                             tick: s.tick,
                             local: s.local,
                             remote: s.remote,
@@ -126,7 +131,7 @@ impl MatchStats {
                 other => anyhow::bail!("bad outcome tag {}", other),
             };
             let n_hp = u32_of(&mut r)?;
-            if n_hp as usize > HP_POINTS_PER_ROUND {
+            if n_hp as usize > MAX_HP_POINTS_PER_ROUND {
                 anyhow::bail!("implausible hp point count {}", n_hp);
             }
             let mut hp = Vec::with_capacity(n_hp as usize);
@@ -219,17 +224,25 @@ fn custom_spans(ticks: impl Iterator<Item = (u32, bool)>) -> Vec<(u32, u32)> {
     spans
 }
 
-/// Thin `points` to at most [`HP_POINTS_PER_ROUND`], always keeping the
-/// final sample (the KO floor).
-fn decimate(points: impl ExactSizeIterator<Item = HpPoint> + Clone) -> Vec<HpPoint> {
-    let n = points.len();
-    if n == 0 {
-        return vec![];
+/// Change-point encode `points`: keep the first and last samples plus
+/// every sample whose `(local, remote)` pair moved. Lossless — HP holds
+/// between entries, so the dropped samples are byte-identical repeats.
+fn compress(points: impl Iterator<Item = HpPoint>) -> Vec<HpPoint> {
+    let mut out: Vec<HpPoint> = vec![];
+    let mut pending: Option<HpPoint> = None;
+    for p in points {
+        match out.last() {
+            Some(prev) if (prev.local, prev.remote) == (p.local, p.remote) => {
+                // A repeat: remember it as the candidate final sample.
+                pending = Some(p);
+            }
+            _ => {
+                out.push(p);
+                pending = None;
+            }
+        }
     }
-    let step = n.div_ceil(HP_POINTS_PER_ROUND).max(1);
-    let last = points.clone().last().unwrap();
-    let mut out: Vec<HpPoint> = points.step_by(step).collect();
-    if !(n - 1).is_multiple_of(step) {
+    if let Some(last) = pending {
         out.push(last);
     }
     out
@@ -356,7 +369,7 @@ pub fn analyze(
                 prev_final = hp.last().map(|p| (p.local, p.remote)).or(prev_final);
                 RoundStats {
                     outcome,
-                    hp: decimate(hp[start..].iter().copied()),
+                    hp: compress(hp[start..].iter().copied()),
                     custom: custom_spans(custom[start.min(custom.len())..].iter().copied()),
                 }
             })

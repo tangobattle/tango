@@ -174,10 +174,6 @@ pub struct RoundCard {
     pub weight: f32,
 }
 
-/// Cap on points per round trace. HP holds values for long stretches, so a
-/// few hundred step-points reproduce the curve exactly enough at card scale.
-const TRACE_POINTS: usize = 240;
-
 impl MatchResults {
     fn capture(pvp: &pvp::PvpSession) -> Self {
         let reports = pvp.round_results();
@@ -194,7 +190,7 @@ impl MatchResults {
         let rounds = reports
             .into_iter()
             .map(|r| {
-                let (trace, custom, weight) = decimate_trace(&r.hp, prev_final, max_hp);
+                let (trace, custom, weight) = prepare_trace(&r.hp, prev_final, max_hp);
                 prev_final = r.hp.last().map(|s| (s.local, s.remote)).or(prev_final);
                 RoundCard {
                     outcome: r.outcome,
@@ -217,11 +213,11 @@ impl MatchResults {
     }
 }
 
-/// Thin a round's HP series to at most [`TRACE_POINTS`] normalized points,
-/// always keeping the final sample (the KO floor), plus the normalized
-/// custom-screen spans. Ticks map to x by their position in the round's
-/// sampled span.
-fn decimate_trace(
+/// A round's HP series as normalized change-points (first and last samples
+/// plus every HP move — lossless, matching the sidecar encoding), plus the
+/// normalized custom-screen spans. Ticks map to x by their position in the
+/// round's sampled span.
+fn prepare_trace(
     hp: &[tango_pvp::battle::HpSample],
     prev_final: Option<(u16, u16)>,
     max_hp: f32,
@@ -246,10 +242,15 @@ fn decimate_trace(
             s.remote as f32 / max_hp,
         )
     };
-    let step = hp.len().div_ceil(TRACE_POINTS).max(1);
-    let mut points: Vec<_> = hp.iter().step_by(step).map(at).collect();
-    if !(hp.len() - 1).is_multiple_of(step) {
-        points.push(at(last));
+    // Change-point encode: keep the first and last samples plus every HP
+    // move — lossless under step semantics, same as the sidecar.
+    let mut points: Vec<(f32, f32, f32)> = vec![at(first)];
+    let mut prev = (first.local, first.remote);
+    for (i, s) in hp.iter().enumerate().skip(1) {
+        if (s.local, s.remote) != prev || i == hp.len() - 1 {
+            points.push(at(s));
+            prev = (s.local, s.remote);
+        }
     }
     // Custom-screen spans, normalized like the points: contiguous runs of
     // `custom` samples become one [start, end) band.
