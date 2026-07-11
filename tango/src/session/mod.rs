@@ -190,10 +190,12 @@ impl MatchResults {
             .max()
             .unwrap_or(0)
             .max(1) as f32;
+        let mut prev_final: Option<(u16, u16)> = None;
         let rounds = reports
             .into_iter()
             .map(|r| {
-                let (trace, custom, weight) = decimate_trace(&r.hp, max_hp);
+                let (trace, custom, weight) = decimate_trace(&r.hp, prev_final, max_hp);
+                prev_final = r.hp.last().map(|s| (s.local, s.remote)).or(prev_final);
                 RoundCard {
                     outcome: r.outcome,
                     trace,
@@ -219,12 +221,16 @@ impl MatchResults {
 /// always keeping the final sample (the KO floor), plus the normalized
 /// custom-screen spans. Ticks map to x by their position in the round's
 /// sampled span.
-fn decimate_trace(hp: &[tango_pvp::battle::HpSample], max_hp: f32) -> (Vec<(f32, f32, f32)>, Vec<(f32, f32)>, f32) {
-    // The traps can briefly report stale values during the battle intro
-    // (the previous round's finals, or bn1's pre-init zeros) until the unit
-    // slots re-initialize; cut the same stale prefix the sidecar path does.
+fn decimate_trace(
+    hp: &[tango_pvp::battle::HpSample],
+    prev_final: Option<(u16, u16)>,
+    max_hp: f32,
+) -> (Vec<(f32, f32, f32)>, Vec<(f32, f32)>, f32) {
+    // The traps relay stale values during the battle intro (the previous
+    // round's finals, or pre-init zeros) until the unit slots re-init; cut
+    // the same stale prefix the sidecar path does.
     let raw: Vec<(u32, u16, u16)> = hp.iter().map(|s| (s.tick, s.local, s.remote)).collect();
-    let hp = &hp[tango_pvp::analysis::round_intro_len(&raw)..];
+    let hp = &hp[tango_pvp::analysis::stale_prefix_len(prev_final, &raw)..];
     let (Some(first), Some(last)) = (hp.first(), hp.last()) else {
         return (vec![], vec![], 0.0);
     };

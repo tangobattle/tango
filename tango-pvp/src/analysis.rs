@@ -62,12 +62,14 @@ impl MatchStats {
     /// Convert a live match's per-round reports (see
     /// [`crate::battle::RoundReport`]) — no re-simulation.
     pub fn from_round_reports(reports: &[crate::battle::RoundReport]) -> Self {
+        let mut prev_final: Option<(u16, u16)> = None;
         Self {
             rounds: reports
                 .iter()
                 .map(|r| {
                     let raw: Vec<(u32, u16, u16)> = r.hp.iter().map(|s| (s.tick, s.local, s.remote)).collect();
-                    let start = round_intro_len(&raw);
+                    let start = stale_prefix_len(prev_final, &raw);
+                    prev_final = r.hp.last().map(|s| (s.local, s.remote)).or(prev_final);
                     let hp = &r.hp[start..];
                     RoundStats {
                         outcome: Some(r.outcome),
@@ -174,30 +176,25 @@ impl MatchStats {
     }
 }
 
-/// How many of a round's first sampled ticks can carry stale readings:
-/// the unit slots re-initialize partway into the battle intro, so the
-/// traps briefly report the PREVIOUS round's final values (or bn1's
-/// pre-init zeros) until then. Real HP can't rise this early — the
-/// custom screen hasn't produced a chip yet — so everything up to the
-/// last increase inside this window is the stale prefix.
-const INTRO_WINDOW_TICKS: u32 = 240;
-
-/// Index of the first trustworthy sample of a round (see
-/// [`INTRO_WINDOW_TICKS`]). Public so the live results card can cut the
-/// same prefix from its raw round reports.
-pub fn round_intro_len(hp: &[(u32, u16, u16)]) -> usize {
-    let Some(&(t0, ..)) = hp.first() else { return 0 };
-    let mut start = 0;
-    for (i, w) in hp.windows(2).enumerate() {
-        let ((_, l0, r0), (t1, l1, r1)) = (w[0], w[1]);
-        if t1 > t0 + INTRO_WINDOW_TICKS {
-            break;
-        }
-        if l1 > l0 || r1 > r0 {
-            start = i + 1;
-        }
-    }
-    start
+/// Length of a round's stale sample prefix. The unit slots re-initialize
+/// partway into the battle intro, so until then the traps relay whatever
+/// the slots still hold: the PREVIOUS round's final values (or, for the
+/// first round on games whose slots map immediately, the zeroed fresh
+/// memory). That prefix is exactly the samples equal to the previous
+/// round's final `(local, remote)` pair — the first differing sample IS
+/// the re-init write. `prev_final` is `None` for a match's first round,
+/// where the stale state is the zero pair (a live round never starts at
+/// 0–0). Public so the live results card cuts the same prefix from its
+/// raw round reports.
+///
+/// Assumes rounds restore HP (true of every supported game's link
+/// battles): under a hypothetical carry-over rule the first round-open
+/// samples would be indistinguishable from the stale prefix.
+pub fn stale_prefix_len(prev_final: Option<(u16, u16)>, hp: &[(u32, u16, u16)]) -> usize {
+    let stale = prev_final.unwrap_or((0, 0));
+    hp.iter()
+        .take_while(|&&(_, local, remote)| (local, remote) == stale)
+        .count()
 }
 
 /// Fold a per-tick custom-screen stream into `[start, end)` spans.
@@ -346,6 +343,7 @@ pub fn analyze(
         core.as_mut().run_frame();
     }
 
+    let mut prev_final: Option<(u16, u16)> = None;
     Ok(MatchStats {
         rounds: outcomes
             .into_iter()
@@ -354,7 +352,8 @@ pub fn analyze(
                 // Drop the stale intro prefix (customs were pushed in
                 // lockstep with hp, so the same cut applies).
                 let raw: Vec<(u32, u16, u16)> = hp.iter().map(|p| (p.tick, p.local, p.remote)).collect();
-                let start = round_intro_len(&raw);
+                let start = stale_prefix_len(prev_final, &raw);
+                prev_final = hp.last().map(|p| (p.local, p.remote)).or(prev_final);
                 RoundStats {
                     outcome,
                     hp: decimate(hp[start..].iter().copied()),

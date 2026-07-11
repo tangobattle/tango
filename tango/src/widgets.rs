@@ -2403,10 +2403,32 @@ pub fn hp_match_graph<'a, M: 'a>(
         rounds: Vec<HpGraphRound<'a>>,
         max_hp: f32,
         sweep: f32,
+        /// Whether the cursor was over the chart on the last mouse event —
+        /// lets the leave-event redraw clear the crosshair.
+        was_hovered: std::cell::Cell<bool>,
     }
 
     impl<M> canvas::Program<M> for HpMatchGraph<'_> {
         type State = ();
+
+        fn update(
+            &self,
+            _state: &mut (),
+            event: &iced::Event,
+            bounds: iced::Rectangle,
+            cursor: iced::mouse::Cursor,
+        ) -> Option<canvas::Action<M>> {
+            // The hover crosshair is drawn straight from the cursor in
+            // `draw`, so cursor motion over (or off) the chart must trigger
+            // a redraw — without this the readout only refreshes when
+            // something else invalidates the view (e.g. a click).
+            if !matches!(event, iced::Event::Mouse(iced::mouse::Event::CursorMoved { .. })) {
+                return None;
+            }
+            let over = cursor.is_over(bounds);
+            let was_over = self.was_hovered.replace(over);
+            (over || was_over).then(canvas::Action::request_redraw)
+        }
 
         fn draw(
             &self,
@@ -2614,8 +2636,13 @@ pub fn hp_match_graph<'a, M: 'a>(
         }
     }
 
-    iced::widget::canvas::Canvas::new(HpMatchGraph { rounds, max_hp, sweep })
-        .width(Length::Fill)
-        .height(Length::Fixed(height))
-        .into()
+    iced::widget::canvas::Canvas::new(HpMatchGraph {
+        rounds,
+        max_hp,
+        sweep,
+        was_hovered: std::cell::Cell::new(false),
+    })
+    .width(Length::Fill)
+    .height(Length::Fixed(height))
+    .into()
 }
