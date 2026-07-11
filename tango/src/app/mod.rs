@@ -265,7 +265,19 @@ fn open_path(path: impl AsRef<std::path::Path>) -> iced::Task<Message> {
 /// rather than opening its containing folder anonymously. Shared by the
 /// per-tab `RevealPath` effects (replays, saves).
 fn reveal_path(path: impl AsRef<std::path::Path>) -> iced::Task<Message> {
-    showfile::show_path_in_file_manager(path.as_ref());
+    let path = path.as_ref();
+    // showfile 0.1.1's macOS backend double-autoreleases the URL array
+    // (`arrayWithObject:` already returns an autoreleased object), which
+    // over-releases and crashes once the app's per-frame autorelease
+    // pool drains — so use Finder's reveal flag directly there. showfile
+    // stays for Windows (SHOpenFolderAndSelectItems) and Linux (D-Bus
+    // ShowItems).
+    #[cfg(target_os = "macos")]
+    if let Err(e) = std::process::Command::new("open").arg("-R").arg(path).spawn() {
+        log::error!("reveal {}: {e}", path.display());
+    }
+    #[cfg(not(target_os = "macos"))]
+    showfile::show_path_in_file_manager(path);
     iced::Task::none()
 }
 
