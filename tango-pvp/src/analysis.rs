@@ -17,13 +17,15 @@
 
 use crate::stepper::BattleOutcome;
 
-/// Bumped whenever the sidecar format changes shape — or meaning: v5
-/// extends chip-use events to bn2/bn3/bn4/exe45 (v4 introduced them for
-/// bn5/bn6; v3's HP series became lossless change-point curves where
-/// v2's were decimated; bumps make older files recompute). Readers
-/// reject other versions (and anything without the magic, e.g. the
-/// short-lived JSON v1 sidecars) and recompute.
-pub const FORMAT_VERSION: u32 = 5;
+/// Bumped whenever the sidecar format changes shape — or meaning: v6
+/// fixes exe45's custom spans to track the battle-pausing tactics/chip
+/// screens (the old source was the non-pausing operation-gauge cycle);
+/// v5 extends chip-use events to bn2/bn3/bn4/exe45 (v4 introduced them
+/// for bn5/bn6; v3's HP series became lossless change-point curves
+/// where v2's were decimated; bumps make older files recompute).
+/// Readers reject other versions (and anything without the magic, e.g.
+/// the short-lived JSON v1 sidecars) and recompute.
+pub const FORMAT_VERSION: u32 = 6;
 
 /// Sidecar file magic.
 const MAGIC: &[u8; 4] = b"TGST";
