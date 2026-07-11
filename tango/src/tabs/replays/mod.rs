@@ -1073,6 +1073,14 @@ fn replay_detail<'a>(
                 } else {
                     DETAIL_HP_GRAPH_H
                 },
+                // Zoomable, keyed on the replay path so switching replays
+                // resets the view.
+                Some({
+                    use std::hash::{Hash, Hasher};
+                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                    r.path.hash(&mut hasher);
+                    hasher.finish()
+                }),
             ),
         ]
         .spacing(8)
