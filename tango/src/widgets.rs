@@ -2384,15 +2384,23 @@ pub fn outcome_mark(outcome: tango_pvp::stepper::BattleOutcome) -> (Icon, fn(&Th
 pub struct HpGraphRound<'a> {
     pub trace: &'a [(f32, f32, f32)],
     pub custom: &'a [(f32, f32)],
-    /// Chip-use events per side (`[you, opponent]`), sorted by x:
-    /// normalized x within the round plus the chip's display name.
-    /// Drawn as beads on that side's trace; the hover readout names
-    /// the bead nearest the cursor. Empty on games whose traps don't
-    /// report chips.
-    pub chip_uses: [&'a [(f32, String)]; 2],
+    /// Chip-use events per side (`[you, opponent]`), sorted by x.
+    /// Drawn as beads on that side's trace; the hover readout shows
+    /// the icon + name of the bead nearest the cursor. Empty on games
+    /// whose traps don't report chips.
+    pub chip_uses: [&'a [ChipUseMark]; 2],
     pub outcome: Option<tango_pvp::stepper::BattleOutcome>,
     /// Tick span of the round — its share of the timeline's width.
     pub weight: f32,
+}
+
+/// One chip-use event on an [`HpGraphRound`] trace: normalized x within
+/// the round, plus the chip's display name and its 14×14 icon (when the
+/// game's assets provide one) for the hover readout.
+pub struct ChipUseMark {
+    pub x: f32,
+    pub name: String,
+    pub icon: Option<iced::widget::image::Handle>,
 }
 
 /// `max_hp` is the match-wide scale the traces were normalized against;
@@ -2552,7 +2560,7 @@ pub fn hp_match_graph<'a, M: 'a>(
                         let side = if you { 0 } else { 1 };
                         for cx in round.chip_uses[side]
                             .iter()
-                            .map(|(x, _)| *x)
+                            .map(|m| m.x)
                             .take_while(|&x| x <= local_sweep)
                         {
                             let yf = round
@@ -2621,22 +2629,23 @@ pub fn hp_match_graph<'a, M: 'a>(
 
                         let you_hp = (you * self.max_hp).round() as u32;
                         let opp_hp = (opp * self.max_hp).round() as u32;
-                        // Readout lines: both HP numbers, plus the name of
-                        // any chip-use bead within grabbing distance of the
-                        // cursor (nearest per side). The named bead gets a
-                        // ring so the label visibly points at a mark.
-                        let mut lines: Vec<(String, iced::Color)> = vec![
-                            (you_hp.to_string(), hp_you_color(theme)),
-                            (opp_hp.to_string(), hp_opponent_color(theme)),
+                        // Readout lines: both HP numbers, plus the icon and
+                        // name of any chip-use bead within grabbing distance
+                        // of the cursor (nearest per side). The named bead
+                        // gets a ring so the label visibly points at a mark.
+                        type ReadoutLine = (String, iced::Color, Option<iced::widget::image::Handle>);
+                        let mut lines: Vec<ReadoutLine> = vec![
+                            (you_hp.to_string(), hp_you_color(theme), None),
+                            (opp_hp.to_string(), hp_opponent_color(theme), None),
                         ];
                         const NEAR_PX: f32 = 4.0;
                         for (side, color) in [(0, hp_you_color(theme)), (1, hp_opponent_color(theme))] {
                             let near = round.chip_uses[side]
                                 .iter()
-                                .map(|(x, name)| (sx + x * sw, name))
+                                .map(|m| (sx + m.x * sw, m))
                                 .filter(|(px, _)| (px - pos.x).abs() <= NEAR_PX && *px <= sweep_px)
                                 .min_by(|a, b| (a.0 - pos.x).abs().total_cmp(&(b.0 - pos.x).abs()));
-                            if let Some((px, name)) = near {
+                            if let Some((px, mark)) = near {
                                 let xf_e = ((px - sx) / sw).clamp(0.0, 1.0);
                                 let yf = round
                                     .trace
@@ -2649,16 +2658,28 @@ pub fn hp_match_graph<'a, M: 'a>(
                                     &Path::circle(Point::new(px, y_at(yf)), 3.5),
                                     Stroke::default().with_color(color).with_width(1.0),
                                 );
-                                lines.push((name.clone(), color));
+                                lines.push((mark.name.clone(), color, mark.icon.clone()));
                             }
                         }
 
-                        // Per-char width is an estimate tuned for digits and
-                        // short latin chip names; long names just run a bit
-                        // snug rather than being measured.
-                        let widest = lines.iter().map(|(s, _)| s.chars().count()).max().unwrap_or(1) as f32;
-                        let box_w = 16.0 + widest * 7.0;
-                        let box_h = lines.len() as f32 * 14.0 + 2.0;
+                        // Chip lines carry a 14 px icon, so give every row a
+                        // little more pitch when one is present. Per-char
+                        // width is an estimate tuned for digits and short
+                        // latin chip names; long names just run a bit snug
+                        // rather than being measured.
+                        const ICON: f32 = 14.0;
+                        let pitch = if lines.iter().any(|(_, _, icon)| icon.is_some()) {
+                            16.0
+                        } else {
+                            14.0
+                        };
+                        let box_w = lines
+                            .iter()
+                            .map(|(s, _, icon)| {
+                                16.0 + if icon.is_some() { ICON + 3.0 } else { 0.0 } + s.chars().count() as f32 * 7.0
+                            })
+                            .fold(1.0f32, f32::max);
+                        let box_h = lines.len() as f32 * pitch + 2.0;
                         // Flip to the cursor's left near the right edge so
                         // the readout stays on-canvas.
                         let bx = if pos.x + 10.0 + box_w > w {
@@ -2674,12 +2695,25 @@ pub fn hp_match_graph<'a, M: 'a>(
                                 ..theme.palette().background
                             },
                         );
-                        for (i, (content, color)) in lines.into_iter().enumerate() {
-                            let line_y = by + 8.0 + i as f32 * 14.0;
+                        for (i, (content, color, icon)) in lines.into_iter().enumerate() {
+                            let line_y = by + 1.0 + pitch / 2.0 + i as f32 * pitch;
                             frame.fill(&Path::circle(Point::new(bx + 7.0, line_y), 2.5), color);
+                            let mut text_x = bx + 13.0;
+                            if let Some(handle) = icon {
+                                frame.draw_image(
+                                    iced::Rectangle::new(
+                                        Point::new(text_x, line_y - ICON / 2.0),
+                                        iced::Size::new(ICON, ICON),
+                                    ),
+                                    canvas::Image::new(handle)
+                                        .filter_method(iced::widget::image::FilterMethod::Nearest)
+                                        .snap(true),
+                                );
+                                text_x += ICON + 3.0;
+                            }
                             frame.fill_text(canvas::Text {
                                 content,
-                                position: Point::new(bx + 13.0, line_y),
+                                position: Point::new(text_x, line_y),
                                 color: text_color,
                                 size: 11.0.into(),
                                 align_y: iced::alignment::Vertical::Center.into(),

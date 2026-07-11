@@ -171,14 +171,14 @@ pub struct HpChartRound {
     pub trace: Vec<(f32, f32, f32)>,
     pub custom: Vec<(f32, f32)>,
     /// Chip-use beads per side (`[you, opponent]`): normalized x within
-    /// the round plus the chip's display name, resolved against the
-    /// local side's assets when the chart was built (`"???"` when the
-    /// ROM/patch wasn't loadable or the game doesn't name that id; the
-    /// opponent's ids are read through the *local* game's chip table,
-    /// which is right for same-version matches and best-effort across
-    /// versions/patches). Empty on games whose traps don't report chips
-    /// (bn1).
-    pub chip_uses: [Vec<(f32, String)>; 2],
+    /// the round plus the chip's display name and icon, resolved against
+    /// the local side's assets when the chart was built (`"???"`/no icon
+    /// when the ROM/patch wasn't loadable or the game doesn't know that
+    /// id; the opponent's ids are read through the *local* game's chip
+    /// table, which is right for same-version matches and best-effort
+    /// across versions/patches). Empty on games whose traps don't report
+    /// chips (bn1).
+    pub chip_uses: [Vec<widgets::ChipUseMark>; 2],
     /// Tick span of the round — its share of the continuous timeline.
     pub weight: f32,
 }
@@ -191,6 +191,9 @@ impl HpChart {
                 .and_then(|c| c.name())
                 .unwrap_or_else(|| "???".to_string())
         };
+        // The pre-baked 14×14 icon handles are Arc-backed — cloning one
+        // per use is just a refcount bump, not a re-crop.
+        let chip_icon = |id: u16| loaded.and_then(|l| l.chip_icons.get(id as usize).cloned().flatten());
         let max_hp = stats
             .rounds
             .iter()
@@ -217,8 +220,15 @@ impl HpChart {
                     let t0 = first.tick as f32;
                     let span = (last.tick as f32 - t0).max(1.0);
                     let x_of = |tick: u32| ((tick as f32 - t0) / span).clamp(0.0, 1.0);
-                    let cook_uses =
-                        |uses: &[(u32, u16)]| uses.iter().map(|&(t, id)| (x_of(t), chip_name(id))).collect();
+                    let cook_uses = |uses: &[(u32, u16)]| {
+                        uses.iter()
+                            .map(|&(t, id)| widgets::ChipUseMark {
+                                x: x_of(t),
+                                name: chip_name(id),
+                                icon: chip_icon(id),
+                            })
+                            .collect()
+                    };
                     HpChartRound {
                         outcome: r.outcome,
                         trace: r
