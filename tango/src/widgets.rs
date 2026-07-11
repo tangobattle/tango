@@ -2388,11 +2388,20 @@ pub struct HpGraphRound<'a> {
     pub weight: f32,
 }
 
-pub fn hp_match_graph<'a, M: 'a>(rounds: Vec<HpGraphRound<'a>>, sweep: f32, height: f32) -> Element<'a, M> {
+/// `max_hp` is the match-wide scale the traces were normalized against;
+/// hovering the chart shows a crosshair with both navis' HP numbers read
+/// back through it.
+pub fn hp_match_graph<'a, M: 'a>(
+    rounds: Vec<HpGraphRound<'a>>,
+    max_hp: f32,
+    sweep: f32,
+    height: f32,
+) -> Element<'a, M> {
     use iced::widget::canvas;
 
     struct HpMatchGraph<'a> {
         rounds: Vec<HpGraphRound<'a>>,
+        max_hp: f32,
         sweep: f32,
     }
 
@@ -2405,7 +2414,7 @@ pub fn hp_match_graph<'a, M: 'a>(rounds: Vec<HpGraphRound<'a>>, sweep: f32, heig
             renderer: &iced::Renderer,
             theme: &Theme,
             bounds: iced::Rectangle,
-            _cursor: iced::mouse::Cursor,
+            cursor: iced::mouse::Cursor,
         ) -> Vec<canvas::Geometry> {
             use canvas::{Frame, LineCap, Path, Stroke};
             use iced::Point;
@@ -2424,12 +2433,14 @@ pub fn hp_match_graph<'a, M: 'a>(rounds: Vec<HpGraphRound<'a>>, sweep: f32, heig
             let gaps = GAP * (self.rounds.len().saturating_sub(1)) as f32;
             let usable = (w - gaps).max(1.0);
 
+            let mut segments: Vec<(f32, f32)> = Vec::with_capacity(self.rounds.len());
             let mut seg_x = 0.0f32;
             // The sweep runs over the whole timeline; convert to a px
             // cursor so segment boundaries don't distort its pace.
             let sweep_px = self.sweep.clamp(0.0, 1.0) * w;
             for round in &self.rounds {
                 let seg_w = round.weight.max(1.0) / total * usable;
+                segments.push((seg_x, seg_w));
                 let x_at = |xf: f32| seg_x + xf.clamp(0.0, 1.0) * seg_w;
                 // Local reveal fraction of this segment under the global
                 // px cursor.
@@ -2530,11 +2541,80 @@ pub fn hp_match_graph<'a, M: 'a>(rounds: Vec<HpGraphRound<'a>>, sweep: f32, heig
                 seg_x += seg_w + GAP;
             }
 
+            // Hover readout: a crosshair over the hovered segment with the
+            // step values under the cursor, read back through the shared
+            // scale — dots carry which number is whose, ink stays neutral.
+            if let Some(pos) = cursor.position_in(bounds) {
+                let hovered = segments
+                    .iter()
+                    .zip(&self.rounds)
+                    .find(|((sx, sw), _)| pos.x >= *sx && pos.x < sx + sw && pos.x <= sweep_px);
+                if let Some((&(sx, sw), round)) = hovered {
+                    let xf = ((pos.x - sx) / sw).clamp(0.0, 1.0);
+                    // Step semantics: the value in force at xf is the last
+                    // point at or before it.
+                    let at = round
+                        .trace
+                        .iter()
+                        .take_while(|p| p.0 <= xf)
+                        .last()
+                        .or(round.trace.first());
+                    if let Some(&(_, you, opp)) = at {
+                        frame.stroke(
+                            &Path::line(Point::new(pos.x, 0.0), Point::new(pos.x, h)),
+                            Stroke::default()
+                                .with_color(iced::Color { a: 0.35, ..text_color })
+                                .with_width(1.0),
+                        );
+                        for (yf, color) in [(opp, hp_opponent_color(theme)), (you, hp_you_color(theme))] {
+                            frame.fill(&Path::circle(Point::new(pos.x, y_at(yf)), 2.5), color);
+                        }
+
+                        let you_hp = (you * self.max_hp).round() as u32;
+                        let opp_hp = (opp * self.max_hp).round() as u32;
+                        let label = |hp: u32| hp.to_string();
+                        let widest = label(you_hp).len().max(label(opp_hp).len()) as f32;
+                        let box_w = 16.0 + widest * 7.0;
+                        let box_h = 30.0;
+                        // Flip to the cursor's left near the right edge so
+                        // the readout stays on-canvas.
+                        let bx = if pos.x + 10.0 + box_w > w {
+                            pos.x - 10.0 - box_w
+                        } else {
+                            pos.x + 10.0
+                        };
+                        let by = (pos.y - box_h / 2.0).clamp(0.0, (h - box_h).max(0.0));
+                        frame.fill(
+                            &Path::rounded_rectangle(Point::new(bx, by), iced::Size::new(box_w, box_h), 4.0.into()),
+                            iced::Color {
+                                a: 0.92,
+                                ..theme.palette().background
+                            },
+                        );
+                        for (i, (hp, color)) in [(you_hp, hp_you_color(theme)), (opp_hp, hp_opponent_color(theme))]
+                            .into_iter()
+                            .enumerate()
+                        {
+                            let line_y = by + 8.0 + i as f32 * 14.0;
+                            frame.fill(&Path::circle(Point::new(bx + 7.0, line_y), 2.5), color);
+                            frame.fill_text(canvas::Text {
+                                content: label(hp),
+                                position: Point::new(bx + 13.0, line_y),
+                                color: text_color,
+                                size: 11.0.into(),
+                                align_y: iced::alignment::Vertical::Center.into(),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+
             vec![frame.into_geometry()]
         }
     }
 
-    iced::widget::canvas::Canvas::new(HpMatchGraph { rounds, sweep })
+    iced::widget::canvas::Canvas::new(HpMatchGraph { rounds, max_hp, sweep })
         .width(Length::Fill)
         .height(Length::Fixed(height))
         .into()

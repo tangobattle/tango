@@ -150,6 +150,9 @@ pub struct MatchResults {
     /// The replay recorded for this match, for the Watch button. `None` if
     /// the writer failed to open at match start.
     pub replay_path: Option<std::path::PathBuf>,
+    /// The match-wide HP scale the round traces were normalized against —
+    /// the chart's hover readout multiplies back through it.
+    pub max_hp: f32,
     /// When the results screen was put up — the zero point of its reveal
     /// choreography (per-round HP sweeps, then the verdict stamp). One-shot:
     /// returning from a replay watch finds it long elapsed, so the card sits
@@ -204,6 +207,7 @@ impl MatchResults {
             rounds,
             duration: pvp.match_duration(),
             replay_path: pvp.replay_path.clone(),
+            max_hp,
             revealed_at: iced::time::Instant::now(),
         };
         anim::kick(view::results::reveal_duration(&results));

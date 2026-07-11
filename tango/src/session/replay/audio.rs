@@ -125,7 +125,8 @@ impl crate::audio::Stream for ReplayStream {
             // The shadow ticks in lockstep with the primary — same game,
             // same clock — so the primary's rates apply as-is.
             self.shadow_resampler.set_source(source, core_rate, true);
-            self.shadow_resampler.set_destination(&mut self.shadow_dest_buffer, dest_rate);
+            self.shadow_resampler
+                .set_destination(&mut self.shadow_dest_buffer, dest_rate);
             self.shadow_resampler.process();
         });
 

@@ -118,7 +118,6 @@ fn setup_sidebar_plate(theme: &iced::Theme) -> iced::widget::container::Style {
     }
 }
 
-
 /// Render the active session — framebuffer, header, and (for replays
 /// only) the transport row with play/pause + scrubber + prefetch %.
 /// Pass the App's `session: State` borrow.

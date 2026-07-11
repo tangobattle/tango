@@ -161,6 +161,9 @@ pub struct ReplaysState {
 /// [`tango_pvp::analysis::MatchStats`] arrive.
 pub struct HpChart {
     pub rounds: Vec<HpChartRound>,
+    /// The match-wide HP scale the traces were normalized against — the
+    /// chart's hover readout multiplies back through it.
+    pub max_hp: f32,
 }
 
 pub struct HpChartRound {
@@ -182,6 +185,7 @@ impl HpChart {
             .unwrap_or(0)
             .max(1) as f32;
         Self {
+            max_hp,
             rounds: stats
                 .rounds
                 .iter()
@@ -1018,7 +1022,7 @@ fn replay_detail<'a>(
             ]
             .spacing(14)
             .align_y(Alignment::Center),
-            widgets::hp_match_graph(chart_rounds, 1.0, DETAIL_HP_GRAPH_H),
+            widgets::hp_match_graph(chart_rounds, chart.max_hp, 1.0, DETAIL_HP_GRAPH_H),
         ]
         .spacing(8)
         .width(Fill);

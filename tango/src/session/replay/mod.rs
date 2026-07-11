@@ -286,7 +286,8 @@ impl ReplaySession {
         let swap_perspective = Arc::new(AtomicBool::new(false));
         let pip_vbuf = Arc::new(Mutex::new(vec![
             0u8;
-            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2) as usize
+            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2)
+                as usize
         ]));
         let pip_fresh = Arc::new(AtomicBool::new(false));
 

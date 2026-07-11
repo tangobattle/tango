@@ -223,7 +223,7 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
             .collect();
         body = body
             .push(iced::widget::Space::new().height(6))
-            .push(widgets::hp_match_graph(chart_rounds, sweep, GRAPH_H));
+            .push(widgets::hp_match_graph(chart_rounds, results.max_hp, sweep, GRAPH_H));
     } else {
         // Static fallback: the pre-trace layout — full score up front, plus a
         // marks row when there was more than one round to sequence.
