@@ -2376,15 +2376,14 @@ pub fn outcome_mark(outcome: tango_pvp::stepper::BattleOutcome) -> (Icon, fn(&Th
 /// that never happened) over an inset wash, a zero baseline, and a
 /// slightly lighter band under each custom-screen span; the segment's
 /// background carries the round's outcome as a tint (win = success
-/// wash, loss = danger wash, draw/undecided = neutral). When any
-/// round has chip-use events, the bottom of the canvas becomes two thin
-/// per-side event lanes ("you" over the opponent, in the trace colors)
-/// and each use is a tick in its owner's lane — exact timing without
-/// crowding the traces; chip-less charts keep the full height for the
-/// field. `sweep` (0..=1 of the whole timeline) reveals the chart left
-/// to right with a head dot on each line while mid-sweep. Trace/custom/
-/// chip x values are 0..=1 within their round; HP values are normalized
-/// to the match-wide maximum by the caller, so every segment shares one
+/// wash, loss = danger wash, draw/undecided = neutral). The bottom of
+/// the canvas is always two thin per-side chip-event lanes ("you" over
+/// the opponent, in the trace colors); each use is a tick in its
+/// owner's lane — exact timing without crowding the traces. `sweep`
+/// (0..=1 of the whole timeline) reveals the chart left to right with a
+/// head dot on each line while mid-sweep. Trace/custom/chip x values
+/// are 0..=1 within their round; HP values are normalized to the
+/// match-wide maximum by the caller, so every segment shares one
 /// vertical scale.
 pub struct HpGraphRound<'a> {
     pub trace: &'a [(f32, f32, f32)],
@@ -2452,9 +2451,18 @@ pub struct CookedHpRound {
 /// results card both go through it. `loadeds` resolve chip names/icons
 /// per side (`[you, opponent]`); pass the local side's twice when only
 /// it is available.
+///
+/// `planned` fixes the layout upfront for stats still being computed:
+/// per-round final tick counts (the replay's recorded input pairs).
+/// Rounds the stats don't cover yet are padded in as empty segments at
+/// their planned width, and partial rounds normalize x against their
+/// planned span rather than what's simulated so far — so a live
+/// analysis draws into a stable frame instead of continually rescaling
+/// it.
 pub fn cook_hp_rounds(
     stats: &tango_pvp::analysis::MatchStats,
     loadeds: [Option<&crate::selection::Loaded>; 2],
+    planned: Option<&[u32]>,
 ) -> (Vec<CookedHpRound>, f32) {
     let max_hp = stats
         .rounds
@@ -2464,10 +2472,20 @@ pub fn cook_hp_rounds(
         .max()
         .unwrap_or(0)
         .max(1) as f32;
-    let rounds = stats
-        .rounds
-        .iter()
-        .map(|r| {
+    let n = stats.rounds.len().max(planned.map(|p| p.len()).unwrap_or(0));
+    let rounds = (0..n)
+        .map(|i| {
+            let full = planned.and_then(|p| p.get(i)).map(|&t| t as f32);
+            let Some(r) = stats.rounds.get(i) else {
+                // Not simulated yet: an empty segment at its final width.
+                return CookedHpRound {
+                    outcome: None,
+                    trace: vec![],
+                    custom: vec![],
+                    chip_uses: [vec![], vec![]],
+                    weight: full.unwrap_or(0.0),
+                };
+            };
             let (first, last) = match (r.hp.first(), r.hp.last()) {
                 (Some(first), Some(last)) if r.hp.len() >= 2 => (first, last),
                 _ => {
@@ -2476,12 +2494,15 @@ pub fn cook_hp_rounds(
                         trace: vec![],
                         custom: vec![],
                         chip_uses: [vec![], vec![]],
-                        weight: 0.0,
+                        weight: full.unwrap_or(0.0),
                     };
                 }
             };
             let t0 = first.tick as f32;
-            let span = (last.tick as f32 - t0).max(1.0);
+            // The last round's real span can slightly exceed the recorded
+            // input count (the sim runs a beat past the drain), so the
+            // planned span only ever widens, never clips.
+            let span = (last.tick as f32 - t0).max(1.0).max(full.map_or(0.0, |f| f - t0));
             let x_of = |tick: u32| ((tick as f32 - t0) / span).clamp(0.0, 1.0);
             CookedHpRound {
                 outcome: r.outcome,
@@ -2694,14 +2715,13 @@ pub fn hp_match_graph<'a, M: 'a>(
             // on-canvas.
             const PAD: f32 = 3.0;
             const GAP: f32 = 3.0;
-            // When any round carries chip-use events, the bottom of the
-            // canvas is reserved for two thin per-side event lanes and
-            // the trace field ends above them; chip-less charts keep the
-            // full height. Callers size the canvas accordingly (see the
-            // replays tab's graph-height pick).
+            // The bottom of the canvas is always reserved for the two
+            // thin per-side chip-event lanes — a fixed layout, whether or
+            // not this game/moment has events to show (an analysis
+            // renders into this chart live, and the canvas must not jump
+            // when the first event lands).
             const LANES_H: f32 = 18.0;
-            let has_chips = self.rounds.iter().any(|r| r.chip_uses.iter().any(|l| !l.is_empty()));
-            let field_h = h - if has_chips { LANES_H } else { 0.0 };
+            let field_h = h - LANES_H;
             let y_at = |yf: f32| PAD + (1.0 - yf.clamp(0.0, 1.0)) * (field_h - 2.0 * PAD);
             // Center line of a side's event lane (0 = you, 1 = opponent).
             let lane_y = |side: usize| field_h + 5.0 + side as f32 * 8.0;

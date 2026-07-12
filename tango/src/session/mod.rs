@@ -192,7 +192,7 @@ impl MatchResults {
             pvp.local_loaded.as_ref(),
             pvp.opponent_loaded.as_ref().or(pvp.local_loaded.as_ref()),
         ];
-        let (cooked, max_hp) = crate::widgets::cook_hp_rounds(&stats, loadeds);
+        let (cooked, max_hp) = crate::widgets::cook_hp_rounds(&stats, loadeds, None);
         let rounds = cooked
             .into_iter()
             .filter_map(|c| {

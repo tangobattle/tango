@@ -412,7 +412,7 @@ impl App {
                 let cache_path = self.config.cache_path();
                 let replays_path = self.config.replays_path();
                 let (progress_tx, progress_rx) =
-                    futures::channel::mpsc::unbounded::<(u32, u32, tango_pvp::analysis::MatchStats)>();
+                    futures::channel::mpsc::unbounded::<tango_pvp::analysis::MatchStats>();
                 let done: std::sync::Arc<std::sync::Mutex<Option<tango_pvp::analysis::MatchStats>>> =
                     std::sync::Arc::new(std::sync::Mutex::new(None));
                 let done_worker = done.clone();
@@ -430,13 +430,13 @@ impl App {
                         cache_path,
                         replays_path,
                         p.clone(),
-                        &mut |d, t, builder| {
+                        &mut |_d, _t, builder| {
                             let now = std::time::Instant::now();
                             if now.duration_since(last_preview) < PREVIEW_EVERY {
                                 return;
                             }
                             last_preview = now;
-                            let _ = progress_tx.unbounded_send((d, t, builder.preview()));
+                            let _ = progress_tx.unbounded_send(builder.preview());
                         },
                     )
                     .map_err(|e| log::warn!("replay analysis failed for {}: {e}", p.display()))
@@ -449,9 +449,7 @@ impl App {
                 use futures::StreamExt;
                 let progress_path = path.clone();
                 let stream = progress_rx
-                    .map(move |(d, t, partial)| {
-                        tabs::replays::Message::HpStatsProgress(progress_path.clone(), d, t, partial)
-                    })
+                    .map(move |partial| tabs::replays::Message::HpStatsPartial(progress_path.clone(), partial))
                     .chain(futures::stream::once(async move {
                         tabs::replays::Message::HpStatsLoaded(path, done.lock().unwrap().take())
                     }));

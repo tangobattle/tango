@@ -46,12 +46,10 @@ pub enum Message {
     /// arrives as one of these messages and lands in
     /// [`ReplaysState::stats`].
     StatsLoaded(std::path::PathBuf, crate::replays::ReplayStats),
-    /// An [`Effect::AnalyzeReplay`] re-simulation reporting throttled
-    /// progress: `(path, ticks done, ticks total, partial stats)`. The
-    /// partial stats render as a live chart that draws itself in while
-    /// the analysis runs; done/total drive the analyzing pane's bar
-    /// until the chart has something to show.
-    HpStatsProgress(std::path::PathBuf, u32, u32, tango_pvp::analysis::MatchStats),
+    /// An [`Effect::AnalyzeReplay`] re-simulation reporting a throttled
+    /// partial result, rendered as a live chart that draws itself in
+    /// while the analysis runs.
+    HpStatsPartial(std::path::PathBuf, tango_pvp::analysis::MatchStats),
     /// An [`Effect::AnalyzeReplay`] re-simulation finished. `None` =
     /// analysis failed (missing ROM, undecodable) — clears the pending
     /// marker so a later re-focus can retry (e.g. after the user
@@ -124,6 +122,10 @@ pub struct ReplaysState {
     /// Path the cached `loaded` was built for. Used to invalidate the
     /// cache when the selection changes.
     pub loaded_cache_path: Option<std::path::PathBuf>,
+    /// Recorded input-pair count per round of the selected replay, from
+    /// the same decode that builds `loaded` — the planned segment widths
+    /// a live analysis renders into (see [`widgets::cook_hp_rounds`]).
+    pub loaded_round_ticks: Vec<u32>,
     pub save_view: save_view::State,
     /// Per-replay UI state, keyed by replay path. Entries appear
     /// on first interaction (Selected, ExportPanelOpen, or
@@ -146,11 +148,9 @@ pub struct ReplaysState {
     /// otherwise — see [`Effect::AnalyzeReplay`]. The detail panel draws
     /// its HP pane from this; paths without an entry just don't get one.
     pub hp_charts: std::collections::HashMap<std::path::PathBuf, HpChart>,
-    /// Replays with an analysis in flight — keyed presence stops a
-    /// re-focus from stacking a second multi-second re-simulation, and
-    /// the value carries the latest `(ticks done, ticks total)` progress
-    /// (`None` until the first report) for the analyzing pane's bar.
-    pub hp_pending: std::collections::HashMap<std::path::PathBuf, Option<(u32, u32)>>,
+    /// Replays with an analysis in flight — presence stops a re-focus
+    /// from stacking a second multi-second re-simulation.
+    pub hp_pending: std::collections::HashSet<std::path::PathBuf>,
     /// Entrance restarted when a different replay is selected —
     /// the detail panel slides in from the right.
     pub detail_enter: crate::anim::Enter,
@@ -167,19 +167,17 @@ pub struct HpChart {
 }
 
 impl HpChart {
-    fn new(stats: &tango_pvp::analysis::MatchStats, loaded: Option<&crate::selection::Loaded>) -> Self {
+    fn new(
+        stats: &tango_pvp::analysis::MatchStats,
+        loaded: Option<&crate::selection::Loaded>,
+        planned: Option<&[u32]>,
+    ) -> Self {
         // Both sides' chip ids resolve through the LOCAL side's chip
         // table (`"???"`/no icon when the ROM/patch wasn't loadable) —
         // right for same-version matches, best-effort across
         // versions/patches. bn1 records no chip events at all.
-        let (rounds, max_hp) = widgets::cook_hp_rounds(stats, [loaded, loaded]);
+        let (rounds, max_hp) = widgets::cook_hp_rounds(stats, [loaded, loaded], planned);
         Self { rounds, max_hp }
-    }
-
-    /// Whether there's anything to draw at all — at least one round
-    /// with a non-empty trace.
-    fn has_traces(&self) -> bool {
-        self.rounds.iter().any(|r| r.trace.len() >= 2)
     }
 }
 
@@ -279,15 +277,26 @@ impl ReplaysState {
                 // previous focus), and only re-simulate when there isn't
                 // one. Failures clear `hp_pending` via the result message,
                 // so a later focus retries.
-                if !self.hp_charts.contains_key(&p) && !self.hp_pending.contains_key(&p) {
+                if !self.hp_charts.contains_key(&p) && !self.hp_pending.contains(&p) {
                     if let Some(stats) =
                         crate::replays::load_match_stats(&config.cache_path(), &config.replays_path(), &p)
                     {
                         // `refresh_loaded` above already pointed `loaded` at
                         // this replay, so chip beads get the right names.
-                        self.hp_charts.insert(p, HpChart::new(&stats, self.loaded.as_ref()));
+                        self.hp_charts.insert(p, HpChart::new(&stats, self.loaded.as_ref(), None));
                     } else {
-                        self.hp_pending.insert(p.clone(), None);
+                        // Seed an empty chart immediately — segments at
+                        // their final widths, ready for the analysis to
+                        // draw into. No placeholder state.
+                        self.hp_charts.insert(
+                            p.clone(),
+                            HpChart::new(
+                                &tango_pvp::analysis::MatchStats { rounds: vec![] },
+                                self.loaded.as_ref(),
+                                Some(&self.loaded_round_ticks),
+                            ),
+                        );
+                        self.hp_pending.insert(p.clone());
                         return Some(Effect::AnalyzeReplay(p));
                     }
                 }
@@ -315,15 +324,16 @@ impl ReplaysState {
                 self.stats.insert(path, s);
                 None
             }
-            Message::HpStatsProgress(path, done, total, partial) => {
-                if let Some(progress) = self.hp_pending.get_mut(&path) {
-                    *progress = Some((done, total));
-                }
+            Message::HpStatsPartial(path, partial) => {
                 // Live preview: the in-flight analysis renders as a growing
-                // chart. Selected-only, like `HpStatsLoaded` — chip names
-                // resolve through the selected replay's Loaded.
+                // chart inside the layout fixed by the planned round spans.
+                // Selected-only, like `HpStatsLoaded` — chip names resolve
+                // through the selected replay's Loaded.
                 if self.selected.as_ref() == Some(&path) {
-                    self.hp_charts.insert(path, HpChart::new(&partial, self.loaded.as_ref()));
+                    self.hp_charts.insert(
+                        path,
+                        HpChart::new(&partial, self.loaded.as_ref(), Some(&self.loaded_round_ticks)),
+                    );
                 }
                 None
             }
@@ -337,7 +347,7 @@ impl ReplaysState {
                     // the analysis already wrote the sidecar, so
                     // re-selecting rebuilds the chart straight from disk.
                     Some(stats) if self.selected.as_ref() == Some(&path) => {
-                        self.hp_charts.insert(path, HpChart::new(&stats, self.loaded.as_ref()));
+                        self.hp_charts.insert(path, HpChart::new(&stats, self.loaded.as_ref(), None));
                     }
                     // Deselected or failed: also drop any live-preview chart
                     // so a later focus rebuilds from the sidecar (or retries
@@ -356,6 +366,7 @@ impl ReplaysState {
         self.selected = None;
         self.loaded = None;
         self.loaded_cache_path = None;
+        self.loaded_round_ticks.clear();
         self.sweep_idle_entries();
     }
 
@@ -372,17 +383,19 @@ impl ReplaysState {
         if self.loaded_cache_path.as_ref() == Some(&path) {
             return;
         }
-        let res = (|| -> anyhow::Result<(crate::selection::Loaded, usize)> {
+        let res = (|| -> anyhow::Result<(crate::selection::Loaded, Vec<u32>)> {
             let f = std::fs::File::open(&path)?;
             let replay = tango_pvp::replay::Replay::decode(f)?;
-            let rounds = replay.rounds.len();
+            let round_ticks = replay.rounds.iter().map(|r| r.len() as u32).collect();
             let loaded = crate::selection::Loaded::for_replay_local(scanners, config, &replay)?;
-            Ok((loaded, rounds))
+            Ok((loaded, round_ticks))
         })();
         match res {
-            Ok((loaded, rounds)) => {
+            Ok((loaded, round_ticks)) => {
                 self.loaded = Some(loaded);
                 self.loaded_cache_path = Some(path.clone());
+                let rounds = round_ticks.len();
+                self.loaded_round_ticks = round_ticks;
                 // Default to all-rounds-checked on every fresh
                 // selection; export form reads this snapshot.
                 self.per.entry(path).or_default().rounds = vec![true; rounds];
@@ -391,6 +404,7 @@ impl ReplaysState {
                 log::warn!("replay save preview failed: {e}");
                 self.loaded = None;
                 self.loaded_cache_path = None;
+                self.loaded_round_ticks.clear();
                 if let Some(p) = self.selected.as_ref() {
                     if let Some(entry) = self.per.get_mut(p) {
                         entry.rounds.clear();
@@ -938,39 +952,12 @@ fn replay_detail<'a>(
         row_for_side(t!(lang, "play-opponent"), md.remote_side.as_ref()),
     );
 
-    // HP-over-time pane: the match graph. While the stats are still being
-    // re-simulated (first focus of a replay with no sidecar) the pane
-    // holds a quiet analyzing line instead, so the panel says why there's
-    // no chart yet.
-    let analyzing: Option<Element<'_, Message>> = state.hp_pending.get(&r.path).map(|progress| {
-        let fraction = match progress {
-            Some((done, total)) if *total > 0 => (*done as f32 / *total as f32).clamp(0.0, 1.0),
-            _ => 0.0,
-        };
-        container(
-            column![
-                row![
-                    Icon::Hourglass
-                        .widget()
-                        .size(TEXT_CAPTION)
-                        .style(widgets::muted_text_style),
-                    text(t!(lang, "replays-analyzing"))
-                        .size(TEXT_CAPTION)
-                        .style(widgets::muted_text_style),
-                ]
-                .spacing(6)
-                .align_y(Alignment::Center),
-                iced::widget::progress_bar(0.0..=1.0, fraction).girth(Length::Fixed(4.0)),
-            ]
-            .spacing(6)
-            .width(Fill),
-        )
-        .width(Fill)
-        .padding(style::PANE_PADDING)
-        .style(widgets::pane)
-        .into()
-    });
-    let hp_pane: Option<Element<'_, Message>> = state.hp_charts.get(&r.path).filter(|c| c.has_traces()).map(|chart| {
+    // HP-over-time pane: the match graph, at a fixed height with the
+    // chip-event lanes always present. During a first-focus analysis the
+    // chart exists from the start (empty segments at their final widths,
+    // seeded on selection) and the re-simulation draws into it live — no
+    // placeholder state.
+    let hp_pane: Option<Element<'_, Message>> = state.hp_charts.get(&r.path).map(|chart| {
         // The whole match on one continuous chart: rounds side by side in
         // proportion to their length, gaps as the dividers, outcomes as
         // the segment tints. No legend — red-is-you / blue-is-them is the
@@ -1029,7 +1016,7 @@ fn replay_detail<'a>(
     };
 
     let mut panes = column![title_pane, matchup_pane].spacing(style::PANE_GAP).width(Fill);
-    if let Some(pane) = hp_pane.or(analyzing) {
+    if let Some(pane) = hp_pane {
         panes = panes.push(pane);
     }
     panes.push(preview).height(Fill).into()

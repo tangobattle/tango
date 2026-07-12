@@ -39,13 +39,9 @@ const STAMP_MS: f32 = 400.0;
 /// card's layout is complete from the first frame.
 const HEADLINE_SLOT_H: f32 = 30.0;
 const DRAWS_SLOT_H: f32 = 16.0;
-const GRAPH_H: f32 = 48.0;
-
-/// Taller graph slot when the match carries chip-use events: a roomier
-/// trace field plus the widget's two per-side event lanes (matches the
-/// replays tab's zoomed-out proportions). Per-match constant, so the
-/// card's layout is still complete from the first frame.
-const GRAPH_WITH_LANES_H: f32 = 72.0;
+/// Trace field plus the widget's two per-side chip-event lanes (always
+/// present), matching the replays tab's proportions.
+const GRAPH_H: f32 = 72.0;
 
 /// How long [`MatchResults::capture`] must keep redraws flowing to play the
 /// whole reveal.
@@ -206,16 +202,11 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
                 weight: r.weight,
             })
             .collect();
-        let graph_h = if results.rounds.iter().any(|r| r.chip_uses.iter().any(|l| !l.is_empty())) {
-            GRAPH_WITH_LANES_H
-        } else {
-            GRAPH_H
-        };
         body = body
             .push(iced::widget::Space::new().height(10))
             // Not zoomable: the card is a fixed reveal choreography, not a
             // scrubbing surface — the replays tab is where inspection lives.
-            .push(widgets::hp_match_graph(chart_rounds, results.max_hp, sweep, graph_h, None));
+            .push(widgets::hp_match_graph(chart_rounds, results.max_hp, sweep, GRAPH_H, None));
     } else {
         // Static fallback: the pre-trace layout — full score up front, plus a
         // marks row when there was more than one round to sequence.
