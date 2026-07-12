@@ -2401,6 +2401,7 @@ pub struct HpGraphRound<'a> {
 /// One chip-use event on an [`HpGraphRound`] trace: normalized x within
 /// the round, plus the chip's display name and its 14×14 icon (when the
 /// game's assets provide one) for the hover readout.
+#[derive(Clone)]
 pub struct ChipUseMark {
     pub x: f32,
     pub name: String,
@@ -2432,9 +2433,10 @@ fn chip_use_marks(
 /// A round of [`tango_pvp::analysis::MatchStats`] cooked for
 /// [`hp_match_graph`]: the outcome carried through, everything else
 /// normalized — trace `(x, you, opponent)` with x 0..=1 over the round's
-/// sampled span and HP against the match-wide maximum, custom spans and
+/// span and HP against the match-wide maximum, custom spans and
 /// chip-use marks on the same x scale. Rounds with fewer than two HP
 /// points (torn down mid-intro) cook to an empty trace with weight 0.
+#[derive(Clone)]
 pub struct CookedHpRound {
     pub outcome: Option<tango_pvp::stepper::BattleOutcome>,
     pub trace: Vec<(f32, f32, f32)>,
@@ -2486,8 +2488,8 @@ pub fn cook_hp_rounds(
                     weight: full.unwrap_or(0.0),
                 };
             };
-            let (first, last) = match (r.hp.first(), r.hp.last()) {
-                (Some(first), Some(last)) if r.hp.len() >= 2 => (first, last),
+            let last = match r.hp.last() {
+                Some(last) if r.hp.len() >= 2 => last,
                 _ => {
                     return CookedHpRound {
                         outcome: r.outcome,
@@ -2500,23 +2502,23 @@ pub fn cook_hp_rounds(
             };
             // With a planned layout the span is exactly the planned tick
             // count, so the frame is identical across empty -> partial ->
-            // final states of the same round; x anchors at the first
-            // sample so the trace starts flush with the segment's left
-            // edge (no empty intro gap). The simulation runs PAST the
-            // recorded input count (the round-end animation isn't
-            // recorded, and its length is only known by simulating), so
-            // the plan is always overshot: those tail ticks — plus the
-            // intro's worth of anchor shift — clamp onto the segment's
-            // right edge instead of widening it. The tail is inert
-            // (post-KO: HP frozen, no chips, no customs), so nothing
-            // visible distorts. Without a plan, normalize to the sampled
-            // span as before.
-            let t0 = first.tick as f32;
+            // final states of the same round. x runs from the round's
+            // real start: the input-less round intro reads as trace-free
+            // space before the first sample — the same convention the
+            // playback transport draws (its strip shares the scrubber's
+            // linear tick timeline), so the chart starts identically
+            // everywhere. The simulation runs PAST the recorded input
+            // count (the round-end animation isn't recorded, and its
+            // length is only known by simulating), so the plan is always
+            // overshot: those tail ticks clamp onto the segment's right
+            // edge instead of widening it. The tail is inert (post-KO:
+            // HP frozen, no chips, no customs), so nothing visible
+            // distorts. Without a plan, normalize to the sampled extent.
             let span = match full {
                 Some(f) => f.max(1.0),
-                None => (last.tick as f32 - t0).max(1.0),
+                None => (last.tick as f32).max(1.0),
             };
-            let x_of = |tick: u32| ((tick as f32 - t0) / span).clamp(0.0, 1.0);
+            let x_of = |tick: u32| (tick as f32 / span).clamp(0.0, 1.0);
             CookedHpRound {
                 outcome: r.outcome,
                 trace: r
@@ -2536,6 +2538,120 @@ pub fn cook_hp_rounds(
     (rounds, max_hp)
 }
 
+/// Minimal match-analysis strip for the replay transport — the
+/// YouTube-heatmap treatment of [`hp_match_graph`]: just the two HP
+/// step-traces and the custom-screen bands under them, no panels,
+/// lanes, playhead, readouts, or interactions.
+/// Ticks map to x linearly across the full width, exactly like the
+/// scrubber below it ([`crate::session::replay::scrubber`]), so every
+/// point of the trace sits directly over the bar position a click
+/// there would seek to. The cooked x already runs from each round's
+/// real start (see [`cook_hp_rounds`]); round intros just read as
+/// trace-free space, here and in every other chart.
+pub fn hp_hover_strip<'a, M: 'a>(rounds: &'a [CookedHpRound], height: f32) -> Element<'a, M> {
+    use iced::widget::canvas;
+
+    struct Strip<'a> {
+        rounds: &'a [CookedHpRound],
+    }
+
+    impl<M> canvas::Program<M> for Strip<'_> {
+        type State = ();
+
+        fn draw(
+            &self,
+            _state: &(),
+            renderer: &iced::Renderer,
+            theme: &Theme,
+            bounds: iced::Rectangle,
+            _cursor: iced::mouse::Cursor,
+        ) -> Vec<canvas::Geometry> {
+            use canvas::{Frame, LineCap, Path, Stroke};
+            use iced::Point;
+
+            // Vertical inset so full-HP traces keep their line width
+            // on-canvas.
+            const PAD: f32 = 2.0;
+
+            let mut frame = Frame::new(renderer, bounds.size());
+            let text_color = theme.palette().text;
+            let (w, h) = (bounds.width, bounds.height);
+            let total: f32 = self.rounds.iter().map(|r| r.weight).sum::<f32>().max(1.0);
+            let y_at = |yf: f32| PAD + (1.0 - yf.clamp(0.0, 1.0)) * (h - 2.0 * PAD);
+
+            let mut start = 0.0f32;
+            for round in self.rounds {
+                let span = round.weight.max(1.0);
+                let x_at = |xf: f32| (start + xf.clamp(0.0, 1.0) * span) / total * w;
+
+                // Custom-screen bands under the traces, same treatment
+                // as the full chart: the stretches where the battle
+                // stood paused while chips were picked.
+                for &(x0, x1) in &round.custom {
+                    let (bx0, bx1) = (x_at(x0), x_at(x1));
+                    if bx1 > bx0 {
+                        frame.fill_rectangle(
+                            Point::new(bx0, 0.0),
+                            iced::Size::new(bx1 - bx0, h),
+                            iced::Color { a: 0.07, ..text_color },
+                        );
+                    }
+                }
+
+                if round.trace.len() >= 2 {
+                    // Opponent under "you", same as the full chart, so
+                    // the local trace stays legible where they overlap.
+                    for you in [false, true] {
+                        let color = if you {
+                            hp_you_color(theme)
+                        } else {
+                            hp_opponent_color(theme)
+                        };
+                        let value = |p: &(f32, f32, f32)| if you { p.1 } else { p.2 };
+                        let path = Path::new(|b| {
+                            let mut prev_y = y_at(value(&round.trace[0]));
+                            b.move_to(Point::new(x_at(round.trace[0].0), prev_y));
+                            for point in &round.trace[1..] {
+                                let x = x_at(point.0);
+                                // Step-line: run flat to the new x, then
+                                // drop/rise there.
+                                b.line_to(Point::new(x, prev_y));
+                                prev_y = y_at(value(point));
+                                b.line_to(Point::new(x, prev_y));
+                            }
+                        });
+                        frame.stroke(
+                            &path,
+                            Stroke::default()
+                                .with_color(color)
+                                .with_width(1.5)
+                                .with_line_cap(LineCap::Round),
+                        );
+                    }
+                }
+
+                start += round.weight;
+            }
+
+            vec![frame.into_geometry()]
+        }
+    }
+
+    canvas::Canvas::new(Strip { rounds })
+        .width(Length::Fill)
+        // Never exactly 0: `Row/Column::push` silently ELIDES children
+        // whose size hint is void (either dimension == Fixed(0.0), see
+        // `Size::is_void` — sweeten and iced both do it). An elided
+        // child shifts every later sibling's tree position, and iced's
+        // positional diff then resets their widget state — collapsing
+        // the strip mid-session would wipe the scrubber's drag state
+        // and close the speed menu's open dropdown. A sub-pixel sliver
+        // keeps the child (and the tree) in place while drawing
+        // nothing.
+        .height(Length::Fixed(height.max(0.001)))
+        .into()
+}
+
 /// `max_hp` is the match-wide scale the traces were normalized against;
 /// hovering the chart shows a crosshair with both navis' HP numbers read
 /// back through it, plus the name of any chip-use tick near the cursor.
@@ -2548,6 +2664,7 @@ pub fn cook_hp_rounds(
 /// leak across selection changes; a key change resets the view. `None`
 /// draws a static chart (the results card, whose reveal choreography
 /// shouldn't be scrubbed around in).
+///
 pub fn hp_match_graph<'a, M: 'a>(
     rounds: Vec<HpGraphRound<'a>>,
     max_hp: f32,

@@ -124,6 +124,13 @@ pub struct App {
     loadout: loadout::Loadout,
     play: tabs::play::State,
     replays: ReplaysState,
+    /// In-flight replay-analysis workers ([`Effect::AnalyzeReplay`]),
+    /// keyed by replay path: the flag stops the blocking simulation,
+    /// the handle aborts its progress stream. Removed when the worker
+    /// completes naturally, or cancelled by `replay_stats_takeover`
+    /// when a playback session's prefetcher takes the same work over.
+    replay_analysis_jobs:
+        std::collections::HashMap<std::path::PathBuf, (std::sync::Arc<std::sync::atomic::AtomicBool>, iced::task::Handle)>,
     patches: PatchesState,
     settings: tabs::settings::State,
     welcome: tabs::welcome::State,
@@ -259,6 +266,88 @@ fn open_path(path: impl AsRef<std::path::Path>) -> iced::Task<Message> {
         log::error!("open {}: {e}", path.display());
     }
     iced::Task::none()
+}
+
+impl App {
+    /// The analysis rounds to draw as a playback session's hover strip:
+    /// the Replays tab's already-cooked chart when it has one (that
+    /// covers an in-flight analysis too — the tab seeds a planned empty
+    /// frame and re-cooks on every progress message), else cooked fresh
+    /// from the stats sidecar, else empty (no stats — no strip). `s` is
+    /// the replay's session: the fresh cook reconstructs the planned
+    /// round spans from its boundary map, keeping the strip on the
+    /// scrubber's exact tick scale even when the tab never cooked this
+    /// replay (e.g. watched straight from the results screen).
+    fn replay_chart_for(&self, path: &std::path::Path, s: &session::replay::ReplaySession) -> session::ReplayChart {
+        if let Some(c) = self.replays.hp_charts.get(path) {
+            return session::ReplayChart {
+                path: path.to_path_buf(),
+                rounds: c.rounds.clone(),
+            };
+        }
+        let rounds = replays::load_match_stats(&self.config.cache_path(), &self.config.replays_path(), path)
+            .map(|stats| widgets::cook_hp_rounds(&stats, [None, None], Some(&planned_spans(s))).0)
+            .unwrap_or_default();
+        session::ReplayChart {
+            path: path.to_path_buf(),
+            rounds,
+        }
+    }
+
+    /// Stats duty for a playback session about to start on `path`. With
+    /// no readable stats sidecar, the session's prefetcher — which runs
+    /// the very simulation the analysis needs anyway — takes the
+    /// analysis over: any in-flight tab worker for this replay is
+    /// cancelled (its simulation stops, its progress stream aborts
+    /// mid-air so the tab's pending marker survives the handover), and
+    /// the returned job + progress-stream task plug the prefetcher into
+    /// the tab's usual `HpStatsPartial`/`HpStatsLoaded` pipeline. With
+    /// a sidecar on disk there is nothing to compute — `(None, none)`.
+    fn replay_stats_takeover(
+        &mut self,
+        path: &std::path::Path,
+    ) -> (Option<session::replay::PrefetchStatsJob>, iced::Task<Message>) {
+        if replays::load_match_stats(&self.config.cache_path(), &self.config.replays_path(), path).is_some() {
+            return (None, iced::Task::none());
+        }
+        if let Some((cancel, handle)) = self.replay_analysis_jobs.remove(path) {
+            cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            handle.abort();
+        }
+        // Marked pending so a tab focus during playback doesn't spawn a
+        // duplicate worker; the prefetch stream's completion clears it.
+        self.replays.hp_pending.insert(path.to_path_buf());
+
+        let (partial_tx, partial_rx) = futures::channel::mpsc::unbounded::<tango_pvp::analysis::MatchStats>();
+        let done: std::sync::Arc<std::sync::Mutex<Option<tango_pvp::analysis::MatchStats>>> = Default::default();
+        let job = session::replay::PrefetchStatsJob {
+            partial_tx,
+            done: done.clone(),
+            stats_file: replays::stats_path(&self.config.cache_path(), &self.config.replays_path(), path),
+        };
+        use futures::StreamExt;
+        let progress_path = path.to_path_buf();
+        let path = path.to_path_buf();
+        let stream = partial_rx
+            .map(move |partial| tabs::replays::Message::HpStatsPartial(progress_path.clone(), partial))
+            .chain(futures::stream::once(async move {
+                tabs::replays::Message::HpStatsLoaded(path, done.lock().unwrap().take())
+            }));
+        (Some(job), iced::Task::stream(stream).map(Message::Replays))
+    }
+}
+
+/// The planned per-round tick spans (= the recorded round lengths) of a
+/// playback session, reconstructed from its boundary map — the layout
+/// frame `widgets::cook_hp_rounds` needs so a chart cooked for the
+/// session's analysis strip shares the scrubber's exact tick scale.
+fn planned_spans(s: &session::replay::ReplaySession) -> Vec<u32> {
+    let boundaries = s.round_boundaries();
+    std::iter::once(0)
+        .chain(boundaries.iter().copied())
+        .zip(boundaries.iter().copied().chain(std::iter::once(s.total_ticks())))
+        .map(|(a, b)| b.saturating_sub(a))
+        .collect()
 }
 
 /// Reveal a file in the OS file manager with the file itself selected,
@@ -432,6 +521,7 @@ impl App {
             loadout: restored,
             play,
             replays: ReplaysState::default(),
+            replay_analysis_jobs: Default::default(),
             patches: PatchesState::default(),
             session: session::State::new(),
             netplay: netplay::State::new(),
@@ -1068,6 +1158,7 @@ impl App {
                 // log and leave the results screen up.
                 if let session::Message::WatchResultsReplay = &m {
                     if let Some(path) = self.session.results.as_ref().and_then(|r| r.replay_path.clone()) {
+                        let (stats_job, stats_task) = self.replay_stats_takeover(&path);
                         match session::build_playback(
                             &self.scanners,
                             &self.config,
@@ -1075,13 +1166,19 @@ impl App {
                             self.session.frame_notify.clone(),
                             self.session.vbuf.clone(),
                             &path,
+                            stats_job,
                         ) {
                             Ok(s) => {
+                                self.session.replay_chart = Some(self.replay_chart_for(&path, &s));
                                 self.session.active = Some(ActiveSession::Replay(s));
                                 self.session.wake_controls();
                             }
+                            // The dropped job closes its stream, whose
+                            // completion message clears the tab's pending
+                            // marker — a later focus retries the analysis.
                             Err(e) => log::warn!("failed to play replay {}: {e}", path.display()),
                         }
+                        return stats_task;
                     }
                     return iced::Task::none();
                 }

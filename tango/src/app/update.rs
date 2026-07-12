@@ -318,11 +318,39 @@ impl App {
     }
 
     pub(super) fn update_replays(&mut self, msg: tabs::replays::Message) -> iced::Task<Message> {
+        // A replay being watched follows its analysis live: whether the
+        // stats come from the tab's worker or the session's own
+        // prefetcher, they arrive as these progress messages, and the
+        // strip re-cooks straight from the carried stats — no detour
+        // through the tab's chart cache, which only holds the selected
+        // replay (a results-screen watch may not be selected at all).
+        let stats_progress = match &msg {
+            tabs::replays::Message::HpStatsPartial(p, partial) => Some((p.clone(), Some(partial.clone()), false)),
+            tabs::replays::Message::HpStatsLoaded(p, stats) => Some((p.clone(), stats.clone(), true)),
+            _ => None,
+        };
+        let effect = self.replays.update(msg, &self.scanners, &self.config);
+        if let Some((p, stats, is_final)) = stats_progress {
+            if is_final {
+                // Worker ran to completion on its own — drop its cancel
+                // handles.
+                self.replay_analysis_jobs.remove(&p);
+            }
+            if self.session.replay_chart.as_ref().is_some_and(|c| c.path == p) {
+                if let (Some(stats), Some(s)) = (
+                    &stats,
+                    self.session.active.as_ref().and_then(ActiveSession::as_replay),
+                ) {
+                    let rounds = widgets::cook_hp_rounds(stats, [None, None], Some(&planned_spans(s))).0;
+                    self.session.replay_chart = Some(session::ReplayChart { path: p, rounds });
+                }
+            }
+        }
         // Pure state mutations live in the tab module; only side
         // effects (clipboard, OS open, session host handoff,
         // file dialog, export task spawn) come back here as an
         // Effect for the App to interpret.
-        let Some(effect) = self.replays.update(msg, &self.scanners, &self.config) else {
+        let Some(effect) = effect else {
             return iced::Task::none();
         };
         use tabs::replays::Effect as E;
@@ -330,6 +358,7 @@ impl App {
             E::OpenPath(p) => open_path(p),
             E::RevealPath(p) => reveal_path(p),
             E::Watch(p) => {
+                let (stats_job, stats_task) = self.replay_stats_takeover(&p);
                 match session::build_playback(
                     &self.scanners,
                     &self.config,
@@ -337,14 +366,19 @@ impl App {
                     self.session.frame_notify.clone(),
                     self.session.vbuf.clone(),
                     &p,
+                    stats_job,
                 ) {
                     Ok(s) => {
+                        self.session.replay_chart = Some(self.replay_chart_for(&p, &s));
                         self.session.active = Some(ActiveSession::Replay(s));
                         self.session.wake_controls();
                     }
+                    // The dropped job closes its stream, whose completion
+                    // message clears the tab's pending marker — a later
+                    // focus retries the analysis.
                     Err(e) => log::warn!("failed to play replay {}: {e}", p.display()),
                 }
-                iced::Task::none()
+                stats_task
             }
             E::CopyText(s) => iced::clipboard::write(s),
             E::CopyImage(img) => {
@@ -407,6 +441,8 @@ impl App {
                 // the detail pane's bar. The final message clears the tab's
                 // pending marker either way; failure (missing ROM/patch,
                 // undecodable) just means no chart, retried on re-focus.
+                // `replay_stats_takeover` can cancel the whole job mid-pass
+                // when a playback session's prefetcher takes the work over.
                 let scanners = self.scanners.clone();
                 let patches_path = self.config.patches_path();
                 let cache_path = self.config.cache_path();
@@ -416,6 +452,8 @@ impl App {
                 let done: std::sync::Arc<std::sync::Mutex<Option<tango_pvp::analysis::MatchStats>>> =
                     std::sync::Arc::new(std::sync::Mutex::new(None));
                 let done_worker = done.clone();
+                let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                let cancel_worker = cancel.clone();
                 let p = path.clone();
                 tokio::task::spawn_blocking(move || {
                     // Live preview cadence: each report clones the folded
@@ -440,8 +478,15 @@ impl App {
                             last_preview = now;
                             let _ = progress_tx.unbounded_send(builder.preview());
                         },
+                        &cancel_worker,
                     )
-                    .map_err(|e| log::warn!("replay analysis failed for {}: {e}", p.display()))
+                    .map_err(|e| {
+                        if cancel_worker.load(std::sync::atomic::Ordering::Relaxed) {
+                            log::debug!("replay analysis cancelled for {}", p.display());
+                        } else {
+                            log::warn!("replay analysis failed for {}: {e}", p.display());
+                        }
+                    })
                     .ok();
                     // Park the result before the sender (captured by the
                     // closure above) drops and closes the channel — the
@@ -450,12 +495,15 @@ impl App {
                 });
                 use futures::StreamExt;
                 let progress_path = path.clone();
+                let loaded_path = path.clone();
                 let stream = progress_rx
                     .map(move |partial| tabs::replays::Message::HpStatsPartial(progress_path.clone(), partial))
                     .chain(futures::stream::once(async move {
-                        tabs::replays::Message::HpStatsLoaded(path, done.lock().unwrap().take())
+                        tabs::replays::Message::HpStatsLoaded(loaded_path, done.lock().unwrap().take())
                     }));
-                iced::Task::stream(stream).map(Message::Replays)
+                let (task, handle) = iced::Task::stream(stream).map(Message::Replays).abortable();
+                self.replay_analysis_jobs.insert(path, (cancel, handle));
+                task
             }
             E::SaveViewTask(t) => t.map(Message::Replays),
         }

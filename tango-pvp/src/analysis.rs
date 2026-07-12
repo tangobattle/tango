@@ -539,6 +539,134 @@ const MAX_DRAIN_FRAMES: u32 = 600;
 /// render live partial stats ([`MatchStatsBuilder::preview`]) at
 /// whatever cadence suits them — a preview clones the folded rounds,
 /// so per-tick would be wasteful.
+/// Per-frame sampling glue shared by [`analyze`] and the playback
+/// prefetcher ([`crate::replay::playback::run_prefetch`]): watches a
+/// replay stepper's parked state once per frame, pushes each tick's
+/// [`RoundSample`] into the same incremental [`MatchStatsBuilder`] a
+/// live match feeds, closes rounds on the round-index edge, and drains
+/// past input exhaustion until the final round's outcome lands (or the
+/// [`MAX_DRAIN_FRAMES`] budget runs out).
+pub struct ReplaySampler<'a> {
+    replay: &'a crate::replay::Replay,
+    builder: MatchStatsBuilder,
+    /// Latest result seen for the round in progress. `round_result()`
+    /// clears across the round transition, so it's committed on the
+    /// round-index edge (or at the end of the drain for the last round).
+    current_result: Option<BattleOutcome>,
+    last_round_idx: u32,
+    frames_after_drain: u32,
+    lpi: usize,
+}
+
+impl<'a> ReplaySampler<'a> {
+    pub fn new(
+        replay: &'a crate::replay::Replay,
+        local_rom: &[u8],
+        local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
+    ) -> Self {
+        Self {
+            replay,
+            // The same incremental aggregation a live match performs:
+            // push each simulated tick's sample, close each round as it
+            // ends.
+            builder: MatchStatsBuilder::new(local_hooks.chip_semantics(local_rom), local_hooks.counts_buster(local_rom)),
+            current_result: None,
+            last_round_idx: 0,
+            frames_after_drain: 0,
+            lpi: replay.local_player_index as usize,
+        }
+    }
+
+    pub fn builder(&self) -> &MatchStatsBuilder {
+        &self.builder
+    }
+
+    /// Sample the stepper's parked state — call once per frame, before
+    /// running it. Returns `(absolute tick, more)`: once `more` is
+    /// false the match is fully sampled (recorded inputs exhausted and
+    /// the round-end drain settled) and the caller should stop stepping
+    /// for stats' sake and [`finish`](Self::finish).
+    pub fn sample(&mut self, stepper_state: &crate::stepper::State) -> (u32, bool) {
+        let (total_left, abs_tick, round_idx, ended, result, tick, hp, custom, chips) = {
+            let inner = stepper_state.lock_inner();
+            (
+                inner.total_input_pairs_left(),
+                inner.absolute_tick(),
+                inner.current_round_index(),
+                inner.is_round_ended(),
+                inner.round_result(),
+                inner.current_tick(),
+                inner.battle_hp(),
+                inner.custom_screen(),
+                inner.loaded_chips(),
+            )
+        };
+
+        if round_idx != self.last_round_idx {
+            self.builder.end_round(self.current_result.take());
+            self.last_round_idx = round_idx;
+        }
+        if let Some(rr) = result {
+            self.current_result = Some(rr.outcome);
+        }
+        // The traps re-report every tick, so a new tick with a reading is
+        // exactly one sample — the builder drops repeat polls of the same
+        // tick. (`battle_hp` is cleared across round transitions and
+        // stays `None` through each battle intro.)
+        if let Some(hp) = hp {
+            // Buttons come straight off the recorded input pairs
+            // (already `(local, remote)`-oriented): the sample at
+            // `tick` reflects the state after the pair at `tick - 1`
+            // was applied, matching the live path's labeling of "the
+            // pair that produced the sampled state".
+            let mut buttons = 0u8;
+            if let Some((local, remote)) = self
+                .replay
+                .rounds
+                .get(round_idx as usize)
+                .and_then(|r| r.get((tick as usize).wrapping_sub(1)))
+            {
+                buttons |= if local.joyflags & JOY_A != 0 { BUTTON_LOCAL_A } else { 0 };
+                buttons |= if local.joyflags & JOY_B != 0 { BUTTON_LOCAL_B } else { 0 };
+                buttons |= if remote.joyflags & JOY_A != 0 {
+                    BUTTON_REMOTE_A
+                } else {
+                    0
+                };
+                buttons |= if remote.joyflags & JOY_B != 0 {
+                    BUTTON_REMOTE_B
+                } else {
+                    0
+                };
+            }
+            let chips = chips.unwrap_or([NO_CHIP; 2]);
+            self.builder.push_sample(RoundSample {
+                tick,
+                local: hp[self.lpi],
+                remote: hp[1 - self.lpi],
+                custom: custom.unwrap_or(false),
+                buttons,
+                chips: [chips[self.lpi], chips[1 - self.lpi]],
+            });
+        }
+
+        if total_left == 0 && abs_tick > 0 {
+            if (ended && self.current_result.is_some()) || self.frames_after_drain >= MAX_DRAIN_FRAMES {
+                return (abs_tick, false);
+            }
+            self.frames_after_drain += 1;
+        }
+
+        (abs_tick, true)
+    }
+
+    /// Close the final round and fold the stats.
+    pub fn finish(mut self) -> MatchStats {
+        self.builder.end_round(self.current_result.take());
+        self.builder.finish()
+    }
+}
+
 pub fn analyze(
     replay: &crate::replay::Replay,
     local_rom: &[u8],
@@ -546,6 +674,11 @@ pub fn analyze(
     local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     remote_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     on_progress: &mut dyn FnMut(u32, u32, &MatchStatsBuilder),
+    // Checked once per frame; when it flips true the simulation stops
+    // and `analyze` bails with a "cancelled" error (nothing partial is
+    // returned — the playback prefetcher takes over the same work when
+    // this is how the analysis ends).
+    cancel: &std::sync::atomic::AtomicBool,
 ) -> anyhow::Result<MatchStats> {
     let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
     core.enable_video_buffer();
@@ -565,100 +698,24 @@ pub fn analyze(
         crate::stepper::State::new_for_replay(replay, remote_rom, remote_hooks, Box::new(|| {}))?;
     local_hooks.install_on_stepper(&mut core, stepper_state.clone());
 
-    let semantics = local_hooks.chip_semantics(local_rom);
-    let counts_buster = local_hooks.counts_buster(local_rom);
     let total_ticks: u32 = replay.rounds.iter().map(|r| r.len() as u32).sum();
     let mut last_reported: u32 = 0;
-
-    let lpi = replay.local_player_index as usize;
-    // The same incremental aggregation a live match performs: push each
-    // simulated tick's sample, close each round as it ends.
-    let mut builder = MatchStatsBuilder::new(semantics, counts_buster);
-    // Latest result seen for the round in progress. `round_result()`
-    // clears across the round transition, so it's committed on the
-    // round-index edge (or at the end of the drain for the last round).
-    let mut current_result: Option<BattleOutcome> = None;
-    let mut last_round_idx: u32 = 0;
-    let mut frames_after_drain: u32 = 0;
+    let mut sampler = ReplaySampler::new(replay, local_rom, local_hooks);
 
     loop {
-        let (total_left, abs_tick, round_idx, ended, result, tick, hp, custom, chips) = {
-            let inner = stepper_state.lock_inner();
-            (
-                inner.total_input_pairs_left(),
-                inner.absolute_tick(),
-                inner.current_round_index(),
-                inner.is_round_ended(),
-                inner.round_result(),
-                inner.current_tick(),
-                inner.battle_hp(),
-                inner.custom_screen(),
-                inner.loaded_chips(),
-            )
-        };
-
+        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            anyhow::bail!("cancelled");
+        }
+        let (abs_tick, more) = sampler.sample(&stepper_state);
         if abs_tick != last_reported {
             last_reported = abs_tick;
-            on_progress(abs_tick, total_ticks, &builder);
+            on_progress(abs_tick, total_ticks, sampler.builder());
         }
-
-        if round_idx != last_round_idx {
-            builder.end_round(current_result.take());
-            last_round_idx = round_idx;
+        if !more {
+            break;
         }
-        if let Some(rr) = result {
-            current_result = Some(rr.outcome);
-        }
-        // The traps re-report every tick, so a new tick with a reading is
-        // exactly one sample — the builder drops repeat polls of the same
-        // tick. (`battle_hp` is cleared across round transitions and
-        // stays `None` through each battle intro.)
-        if let Some(hp) = hp {
-            // Buttons come straight off the recorded input pairs
-            // (already `(local, remote)`-oriented): the sample at
-            // `tick` reflects the state after the pair at `tick - 1`
-            // was applied, matching the live path's labeling of "the
-            // pair that produced the sampled state".
-            let mut buttons = 0u8;
-            if let Some((local, remote)) = replay
-                .rounds
-                .get(round_idx as usize)
-                .and_then(|r| r.get((tick as usize).wrapping_sub(1)))
-            {
-                buttons |= if local.joyflags & JOY_A != 0 { BUTTON_LOCAL_A } else { 0 };
-                buttons |= if local.joyflags & JOY_B != 0 { BUTTON_LOCAL_B } else { 0 };
-                buttons |= if remote.joyflags & JOY_A != 0 {
-                    BUTTON_REMOTE_A
-                } else {
-                    0
-                };
-                buttons |= if remote.joyflags & JOY_B != 0 {
-                    BUTTON_REMOTE_B
-                } else {
-                    0
-                };
-            }
-            let chips = chips.unwrap_or([NO_CHIP; 2]);
-            builder.push_sample(RoundSample {
-                tick,
-                local: hp[lpi],
-                remote: hp[1 - lpi],
-                custom: custom.unwrap_or(false),
-                buttons,
-                chips: [chips[lpi], chips[1 - lpi]],
-            });
-        }
-
-        if total_left == 0 && abs_tick > 0 {
-            if (ended && current_result.is_some()) || frames_after_drain >= MAX_DRAIN_FRAMES {
-                builder.end_round(current_result.take());
-                break;
-            }
-            frames_after_drain += 1;
-        }
-
         core.as_mut().run_frame();
     }
 
-    Ok(builder.finish())
+    Ok(sampler.finish())
 }

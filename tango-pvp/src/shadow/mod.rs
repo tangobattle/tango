@@ -26,6 +26,14 @@ pub struct ShadowSnapshot {
     pub rng: rand_pcg::Mcg128Xsl64,
     pub round: Option<Round>,
     pub result_is_in: bool,
+    /// The shadow's most recently rasterized frame at capture time;
+    /// `None` while rendering is off (the buffer holds stale pixels
+    /// then — see [`Shadow::set_rendering`]). Purely a preview asset,
+    /// ignored by [`Shadow::load_state`]: it lets replay snapshot blits
+    /// refresh shadow-showing surfaces (the scrub drag's PiP) without
+    /// emulating a frame, mirroring `ReplaySnapshot::framebuffer` on
+    /// the primary side.
+    pub framebuffer: Option<Vec<u8>>,
 }
 
 use crate::input::{Input, PartialInput};
@@ -38,6 +46,10 @@ pub struct Shadow {
     core: mgba::core::Core,
     state: State,
     hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
+    /// Whether rasterization is on (see [`Self::set_rendering`]) —
+    /// gates the framebuffer capture in [`Self::save_state`], since the
+    /// video buffer holds stale pixels while frameskip is active.
+    rendering: bool,
 }
 
 impl Shadow {
@@ -114,8 +126,9 @@ impl Shadow {
         let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
         // A video buffer is always attached (it's just a render target;
         // game logic never sees it), but rasterization stays off via the
-        // frameskip below. The replay PiP turns rendering on to show the
-        // opponent's perspective.
+        // frameskip below. Replay playback and prefetch turn rendering on
+        // so the opponent's perspective can be shown (the PiP) and
+        // captured into snapshots.
         core.enable_video_buffer();
 
         core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
@@ -135,14 +148,21 @@ impl Shadow {
         // zeroes frameskip); it sticks, as frameskip isn't serialized.
         core.as_mut().gba_mut().set_frameskip(i32::MAX);
 
-        Ok(Shadow { core, hooks, state })
+        Ok(Shadow {
+            core,
+            hooks,
+            state,
+            rendering: false,
+        })
     }
 
     /// Turn rasterization on/off. Off (the default) skips drawScanline
-    /// entirely — the shadow's pixels are normally never shown. The
-    /// replay PiP flips it on to show the opponent's screen. Frameskip
-    /// isn't serialized, so the setting survives every `load_state`.
+    /// entirely — live PvP never shows the shadow's pixels. Replay
+    /// playback and prefetch flip it on so the opponent's screen can be
+    /// shown (the PiP) and captured into snapshots. Frameskip isn't
+    /// serialized, so the setting survives every `load_state`.
     pub fn set_rendering(&mut self, on: bool) {
+        self.rendering = on;
         self.core
             .as_mut()
             .gba_mut()
@@ -183,12 +203,21 @@ impl Shadow {
         buf: Box<std::mem::MaybeUninit<mgba::state::State>>,
     ) -> anyhow::Result<ShadowSnapshot> {
         let mgba_state = self.core.as_mut().save_state_reusing(buf)?;
+        // Only meaningful while rasterizing — under frameskip the buffer
+        // still holds whatever frame last rendered, which may be from a
+        // different tick entirely.
+        let framebuffer = if self.rendering {
+            self.core.video_buffer().map(|vb| vb.to_vec())
+        } else {
+            None
+        };
         let shared = self.state.lock();
         Ok(ShadowSnapshot {
             mgba_state,
             rng: shared.rng.clone(),
             round: shared.round.clone(),
             result_is_in: shared.result_is_in,
+            framebuffer,
         })
     }
 
@@ -227,7 +256,6 @@ impl Shadow {
     /// committed state. `end_run_loop` parks the core right there, so there's
     /// nothing to load back — the next apply_input run continues from here.
     pub fn advance_until_first_committed_state(&mut self) -> anyhow::Result<()> {
-        log::info!("advancing shadow until first committed state");
         self.run_core_until(|state| {
             let mut shared = state.lock();
             let Some(round) = shared.round.as_mut() else {
@@ -245,7 +273,6 @@ impl Shadow {
     /// in `round_end_entry` parks the core right at round end, so there's
     /// nothing to load back.
     pub fn advance_until_round_end(&mut self) -> anyhow::Result<()> {
-        log::info!("advancing shadow until round end");
         self.hooks.prepare_for_next_input(self.core.as_mut());
         self.run_core_until(|state| state.lock().round.is_none())
     }

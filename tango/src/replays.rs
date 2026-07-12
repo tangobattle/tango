@@ -158,6 +158,10 @@ pub fn compute_and_cache_match_stats(
     replays_path: std::path::PathBuf,
     path: std::path::PathBuf,
     on_progress: &mut dyn FnMut(u32, u32, &tango_pvp::analysis::MatchStatsBuilder),
+    // Flipping this aborts the simulation mid-pass with a "cancelled"
+    // error and nothing cached — used when a playback session's
+    // prefetcher takes over the same analysis.
+    cancel: &std::sync::atomic::AtomicBool,
 ) -> anyhow::Result<tango_pvp::analysis::MatchStats> {
     let f = std::fs::File::open(&path)?;
     let replay = tango_pvp::replay::Replay::decode(f)?;
@@ -190,7 +194,15 @@ pub fn compute_and_cache_match_stats(
     let (local_hooks, local_rom) = resolve(replay.metadata.local_side.as_ref())?;
     let (remote_hooks, remote_rom) = resolve(replay.metadata.remote_side.as_ref())?;
 
-    let stats = tango_pvp::analysis::analyze(&replay, &local_rom, &remote_rom, local_hooks, remote_hooks, on_progress)?;
+    let stats = tango_pvp::analysis::analyze(
+        &replay,
+        &local_rom,
+        &remote_rom,
+        local_hooks,
+        remote_hooks,
+        on_progress,
+        cancel,
+    )?;
     write_match_stats(&stats_path(&cache_path, &replays_path, &path), &stats)?;
     Ok(stats)
 }

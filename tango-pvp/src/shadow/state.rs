@@ -103,14 +103,12 @@ impl State {
     /// peer's perspective.
     pub fn start_round(&self) {
         let local_player_index = self.0.local_player_index;
-        log::info!("starting shadow round: local_player_index = {}", local_player_index);
         let mut shared = self.lock();
         shared.round = Some(Round::new(local_player_index));
         shared.result_is_in = false;
     }
 
     pub fn end_round(&self) {
-        log::info!("shadow round ended");
         let mut shared = self.lock();
         shared.round = None;
         shared.result_is_in = false;

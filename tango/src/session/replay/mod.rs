@@ -145,10 +145,6 @@ pub struct ReplaySession {
     vbuf: Arc<Mutex<Vec<u8>>>,
     frame_notify: Arc<tokio::sync::Notify>,
     seek: Arc<SeekController>,
-    /// The opponent co-sim, held for the PiP: toggling the overlay flips
-    /// its rasterization on/off ([`Shadow::set_rendering`]) and the frame
-    /// callback reads its render out of the same handle.
-    shadow: Arc<Mutex<Shadow>>,
     /// Whether the opponent-screen PiP is on (a per-session toggle on
     /// the transport bar).
     show_pip: Arc<AtomicBool>,
@@ -189,6 +185,9 @@ impl ReplaySession {
         // Start with the opponent-screen PiP on (`config.show_opponent_pip`
         // — the persisted transport-bar toggle).
         show_pip: bool,
+        // Have the prefetch pass double as the match-stats analysis —
+        // see [`PrefetchStatsJob`].
+        stats_job: Option<PrefetchStatsJob>,
     ) -> anyhow::Result<Self> {
         let mut core = crate::session::new_gba_core(rom.as_ref())?;
         core.as_mut()
@@ -272,16 +271,17 @@ impl ReplaySession {
             remote_game,
             snapshots.clone(),
             prefetch_progress.clone(),
+            stats_job,
         );
 
         let seek = Arc::new(SeekController::new());
 
-        // The persisted preference applies from the first frame: rendering
-        // and emulated landings come on with it (see `toggle_pip`).
-        if show_pip {
-            shadow.lock().unwrap().set_rendering(true);
-            seek.set_emulate_landings(true);
-        }
+        // The shadow always rasterizes during playback (the prefetcher's
+        // does too), so every snapshot carries the opponent's pixels
+        // (`ShadowSnapshot::framebuffer`) — snapshot blits can then
+        // refresh the PiP / swapped main screen no matter when those
+        // toggles flip. Live PvP shadows keep rendering off.
+        shadow.lock().unwrap().set_rendering(true);
         let show_pip = Arc::new(AtomicBool::new(show_pip));
         let swap_perspective = Arc::new(AtomicBool::new(false));
         let pip_vbuf = Arc::new(Mutex::new(vec![
@@ -395,18 +395,24 @@ impl ReplaySession {
             {
                 // Zero-frame seek landings (exact snapshot hits) never run
                 // a frame, so the frame callback can't publish them — the
-                // chase blits the snapshot's stored framebuffer instead.
+                // chase blits the snapshot's stored framebuffers (both
+                // perspectives) instead.
                 let vbuf = vbuf.clone();
+                let pip_vbuf = pip_vbuf.clone();
+                let pip_fresh = pip_fresh.clone();
+                let show_pip = show_pip.clone();
+                let swap_perspective = swap_perspective.clone();
                 let frame_notify = frame_notify.clone();
                 move |snap: &tango_pvp::stepper::ReplaySnapshot| {
-                    {
-                        let mut vbuf = vbuf.lock().unwrap();
-                        if vbuf.len() != snap.framebuffer.len() {
-                            return;
-                        }
-                        vbuf.copy_from_slice(&snap.framebuffer);
-                    }
-                    frame_notify.notify_one();
+                    blit_snapshot_surfaces(
+                        snap,
+                        &vbuf,
+                        &pip_vbuf,
+                        &pip_fresh,
+                        &show_pip,
+                        &swap_perspective,
+                        &frame_notify,
+                    );
                 }
             },
         );
@@ -439,7 +445,6 @@ impl ReplaySession {
             vbuf,
             frame_notify,
             seek,
-            shadow,
             show_pip,
             swap_perspective,
             pip_vbuf,
@@ -461,12 +466,12 @@ impl ReplaySession {
         self.show_pip.load(Ordering::Relaxed)
     }
 
-    /// Toggle the opponent-screen PiP. The overlay appears on the next
-    /// published frame — on a paused replay that's the next step/play,
-    /// since the shadow hasn't rendered anything yet.
+    /// Toggle the opponent-screen PiP. While playing, the overlay
+    /// appears on the next published frame; on a paused replay it's
+    /// re-blitted from the current frame's snapshot immediately.
     pub fn toggle_pip(&self) {
         self.show_pip.fetch_xor(true, Ordering::Relaxed);
-        self.sync_shadow_reads();
+        self.refresh_paused_frame();
     }
 
     /// Whether the main screen shows the opponent's perspective — drives
@@ -475,23 +480,40 @@ impl ReplaySession {
         self.swap_perspective.load(Ordering::Relaxed)
     }
 
-    /// Swap which perspective the main screen shows. Takes effect on the
-    /// next published frame, like the PiP.
+    /// Swap which perspective the main screen shows. Takes effect on
+    /// the next published frame while playing, immediately while paused
+    /// — like the PiP.
     pub fn toggle_swap_perspective(&self) {
         self.swap_perspective.fetch_xor(true, Ordering::Relaxed);
-        self.sync_shadow_reads();
+        self.refresh_paused_frame();
     }
 
-    /// The shadow rasterizes (its pixels are skipped entirely otherwise)
-    /// whenever either surface shows it: the PiP, or the main screen
-    /// while swapped. Seeks must then land by emulating the landing
-    /// frame — the zero-frame snapshot shortcut blits only the primary's
-    /// stored framebuffer, which would leave the shadow's surface frozen
-    /// across frame steps.
-    fn sync_shadow_reads(&self) {
-        let on = self.show_pip.load(Ordering::Relaxed) || self.swap_perspective.load(Ordering::Relaxed);
-        self.shadow.lock().unwrap().set_rendering(on);
-        self.seek.set_emulate_landings(on);
+    /// Re-blit the current frame's snapshot so a perspective toggle
+    /// takes effect immediately on a paused replay — the frame callback
+    /// won't run to repaint the surfaces until playback resumes.
+    /// Reading the shadow's live video buffer instead would be wrong
+    /// here: after a zero-frame seek landing the shadow core has loaded
+    /// state but never run, so its buffer still holds pre-seek pixels.
+    ///
+    /// Nearest-within-2 rather than exact: a pause can land after the
+    /// next frame's input was consumed but before that frame completed
+    /// and published, leaving the playhead one tick ahead of both the
+    /// displayed frame and the last capture — an exact lookup misses
+    /// there (and the surfaces would silently stay stale, which is the
+    /// bug this fixes). The bound keeps a genuine miss (the pre-round
+    /// boot window, where no snapshots exist) from jumping the paused
+    /// screen to some distant keyframe; those toggles just wait for the
+    /// next published frame as before.
+    fn refresh_paused_frame(&self) {
+        if !self.is_paused() {
+            return;
+        }
+        let tick = self.current_tick();
+        if let Some(snap) = self.nearest_snapshot(tick) {
+            if snap.checkpoint.frame_index.abs_diff(tick) <= 2 {
+                self.blit_snapshot(&snap);
+            }
+        }
     }
 
     /// Latest other-perspective frame for the PiP overlay (the opponent's
@@ -663,19 +685,74 @@ impl ReplaySession {
         }
     }
 
-    /// Copy `snap`'s stored framebuffer into the shared display buffer
-    /// and wake the renderer. False if the buffer sizes disagree.
+    /// Copy `snap`'s stored framebuffers into the display surfaces —
+    /// see [`blit_snapshot_surfaces`].
     fn blit_snapshot(&self, snap: &tango_pvp::stepper::ReplaySnapshot) -> bool {
-        {
-            let mut vbuf = self.vbuf.lock().unwrap();
-            if vbuf.len() != snap.framebuffer.len() {
-                return false;
-            }
-            vbuf.copy_from_slice(&snap.framebuffer);
-        }
-        self.frame_notify.notify_one();
-        true
+        blit_snapshot_surfaces(
+            snap,
+            &self.vbuf,
+            &self.pip_vbuf,
+            &self.pip_fresh,
+            &self.show_pip,
+            &self.swap_perspective,
+            &self.frame_notify,
+        )
     }
+}
+
+/// Copy `snap`'s stored framebuffers into the display surfaces and wake
+/// the renderer: the main screen gets whichever perspective it's showing
+/// (see [`ReplaySession::toggle_swap_perspective`]) and the PiP gets the
+/// other one — so emulation-free previews (scrub drags, exact-hit seek
+/// landings) refresh both sides, not just the primary. Shared between
+/// [`ReplaySession::blit_snapshot`] and the seek worker's landing
+/// publisher so the two paths can't drift. The playback and prefetch
+/// shadows always rasterize, so snapshots without a shadow frame don't
+/// arise in practice; if one did, the surface showing the shadow keeps
+/// its last frame rather than flashing a wrong perspective. False if
+/// the main buffer sizes disagree.
+fn blit_snapshot_surfaces(
+    snap: &tango_pvp::stepper::ReplaySnapshot,
+    vbuf: &Mutex<Vec<u8>>,
+    pip_vbuf: &Mutex<Vec<u8>>,
+    pip_fresh: &AtomicBool,
+    show_pip: &AtomicBool,
+    swap_perspective: &AtomicBool,
+    frame_notify: &tokio::sync::Notify,
+) -> bool {
+    let swapped = swap_perspective.load(Ordering::Relaxed);
+    let shadow_fb = snap.shadow_snapshot.framebuffer.as_deref();
+    {
+        let mut vbuf = vbuf.lock().unwrap();
+        // While swapped the main screen carries the shadow's render,
+        // falling back to the local frame until a shadow frame is
+        // available — same fallback as the frame callback.
+        let main = if swapped {
+            shadow_fb.unwrap_or(&snap.framebuffer)
+        } else {
+            &snap.framebuffer
+        };
+        if vbuf.len() != main.len() {
+            return false;
+        }
+        vbuf.copy_from_slice(main);
+    }
+    if show_pip.load(Ordering::Relaxed) {
+        let pip_src = if swapped {
+            Some(snap.framebuffer.as_slice())
+        } else {
+            shadow_fb
+        };
+        if let Some(src) = pip_src {
+            let mut pip_vbuf = pip_vbuf.lock().unwrap();
+            if pip_vbuf.len() == src.len() {
+                pip_vbuf.copy_from_slice(src);
+                pip_fresh.store(true, Ordering::Relaxed);
+            }
+        }
+    }
+    frame_notify.notify_one();
+    true
 }
 
 /// Owns the seek worker thread driving [`SeekController`] requests
@@ -739,6 +816,22 @@ impl Drop for SeekWorker {
 /// (and long-forward) seeks have a nearby jumping-off point.
 ///
 /// Drop cancels the worker and joins.
+/// Stats duty handed to the [`Prefetcher`]: its pass doubles as the
+/// replay's match-stats analysis (the same simulation the Replays tab's
+/// analysis worker would run — the App cancels that worker when it
+/// hands this over, so the work never runs twice). Throttled partial
+/// snapshots stream through `partial_tx` (the App maps them onto the
+/// tab's `HpStatsPartial` messages); on completion the final stats are
+/// written to the `stats_file` sidecar and parked in `done` for the
+/// stream's trailing `HpStatsLoaded`. A cancelled pass (session closed
+/// early) parks nothing — the tab's pending marker clears through the
+/// same trailing message and a later focus retries the analysis.
+pub struct PrefetchStatsJob {
+    pub partial_tx: futures::channel::mpsc::UnboundedSender<tango_pvp::analysis::MatchStats>,
+    pub done: Arc<Mutex<Option<tango_pvp::analysis::MatchStats>>>,
+    pub stats_file: std::path::PathBuf,
+}
+
 pub struct Prefetcher {
     cancel: Arc<AtomicBool>,
     join_handle: Option<std::thread::JoinHandle<()>>,
@@ -753,13 +846,28 @@ impl Prefetcher {
         remote_game: &'static crate::game::Game,
         snapshots: SnapshotStore,
         progress: Arc<AtomicU32>,
+        stats_job: Option<PrefetchStatsJob>,
     ) -> Self {
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_for_thread = cancel.clone();
         let hooks = game.hooks;
         let remote_hooks = remote_game.hooks;
         let join_handle = std::thread::spawn(move || {
-            if let Err(e) = tango_pvp::replay::playback::run_prefetch(
+            // Live preview cadence, same as the tab's analysis worker:
+            // each report clones the folded rounds, so pace it to the
+            // display rather than the simulation.
+            const PREVIEW_EVERY: std::time::Duration = std::time::Duration::from_millis(33);
+            let mut last_preview = std::time::Instant::now();
+            let mut on_stats_progress = |_tick: u32, _total: u32, builder: &tango_pvp::analysis::MatchStatsBuilder| {
+                let Some(job) = &stats_job else { return };
+                let now = std::time::Instant::now();
+                if now.duration_since(last_preview) < PREVIEW_EVERY {
+                    return;
+                }
+                last_preview = now;
+                let _ = job.partial_tx.unbounded_send(builder.preview());
+            };
+            match tango_pvp::replay::playback::run_prefetch(
                 rom.as_ref(),
                 remote_rom.as_ref(),
                 &replay,
@@ -768,8 +876,23 @@ impl Prefetcher {
                 snapshots,
                 cancel_for_thread,
                 progress,
+                stats_job
+                    .is_some()
+                    .then_some(&mut on_stats_progress as &mut dyn FnMut(u32, u32, &tango_pvp::analysis::MatchStatsBuilder)),
             ) {
-                log::error!("replay prefetch worker exited with error: {e:?}");
+                Ok(Some(stats)) => {
+                    // Completed with stats duty: cache them like the
+                    // analysis worker would, then park the result for
+                    // the progress stream's trailing completion message.
+                    if let Some(job) = &stats_job {
+                        if let Err(e) = crate::replays::write_match_stats(&job.stats_file, &stats) {
+                            log::warn!("prefetch stats cache write failed: {e:?}");
+                        }
+                        *job.done.lock().unwrap() = Some(stats);
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => log::error!("replay prefetch worker exited with error: {e:?}"),
             }
         });
         Self {
@@ -785,5 +908,191 @@ impl Drop for Prefetcher {
         if let Some(h) = self.join_handle.take() {
             let _ = h.join();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The bn6 golden replay plus both sides' resolved (game, ROM),
+    /// with ROMs discovered by content from `TANGO_TEST_ROMS_DIR` like
+    /// the golden suite — `None` (test skips) when that's unset.
+    #[allow(clippy::type_complexity)]
+    fn golden_fixture() -> Option<(
+        Arc<tango_pvp::replay::Replay>,
+        (&'static crate::game::Game, Arc<Vec<u8>>),
+        (&'static crate::game::Game, Arc<Vec<u8>>),
+    )> {
+        let Some(roms_dir) = std::env::var_os("TANGO_TEST_ROMS_DIR").map(std::path::PathBuf::from) else {
+            eprintln!("skip: TANGO_TEST_ROMS_DIR unset");
+            return None;
+        };
+        let replay_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../gamesupport/tango-gamesupport-bn6/tests/golden/20260516051717-test123-bn6-vs-weenie-p1.tangoreplay"
+        );
+        let f = std::fs::File::open(replay_path).unwrap();
+        let replay = Arc::new(tango_pvp::replay::Replay::decode(f).unwrap());
+
+        let mut roms = std::collections::HashMap::new();
+        for entry in std::fs::read_dir(&roms_dir).unwrap().flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|s| s.to_str()) != Some("gba") {
+                continue;
+            }
+            let Ok(bytes) = std::fs::read(&p) else { continue };
+            if let Some(g) = crate::game::detect(&bytes) {
+                roms.insert(g.family_and_variant(), bytes);
+            }
+        }
+        let resolve = |side: Option<&tango_pvp::replay::metadata::Side>| {
+            let gi = side.and_then(|s| s.game_info.as_ref()).expect("game info");
+            let entry =
+                crate::game::find_by_family_and_variant(&gi.rom_family, gi.rom_variant as u8).expect("known game");
+            let game = crate::game::from_gamedb_entry(entry).expect("game impl");
+            let rom = roms.get(&entry.family_and_variant()).expect("rom staged").clone();
+            (game, Arc::new(rom))
+        };
+        let local = resolve(replay.metadata.local_side.as_ref());
+        let remote = resolve(replay.metadata.remote_side.as_ref());
+        Some((replay, local, remote))
+    }
+
+    /// Headless repro of the paused-toggle flow: play a bit, pause,
+    /// then assert the PiP and swap-perspective toggles refresh the
+    /// display surfaces without a frame running. Guards the playhead
+    /// off-by-one (see [`ReplaySession::refresh_paused_frame`]): a
+    /// pause can leave `current_tick` one ahead of the last captured
+    /// frame, which an exact snapshot lookup silently misses. Skips
+    /// when `TANGO_TEST_ROMS_DIR` is unset, like the golden suite.
+    #[test]
+    fn pip_and_swap_toggles_refresh_while_paused() {
+        let Some((replay, (local_game, local_rom), (remote_game, remote_rom))) = golden_fixture() else {
+            return;
+        };
+
+        let mut binder = crate::audio::LateBinder::new();
+        binder.set_sample_rate(48000);
+        let frame_notify = Arc::new(tokio::sync::Notify::new());
+        let vbuf = Arc::new(Mutex::new(vec![
+            0u8;
+            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2) as usize
+        ]));
+
+        let session = ReplaySession::new(
+            local_game,
+            local_rom,
+            remote_game,
+            remote_rom,
+            replay,
+            &binder,
+            frame_notify,
+            vbuf.clone(),
+            // PiP starts OFF — the mid-session-toggle flow under test.
+            false,
+            None,
+        )
+        .unwrap();
+
+        // Emulate the audio device: the emulator is audio-paced and
+        // freezes if nothing drains the stream.
+        let stop = Arc::new(AtomicBool::new(false));
+        let puller = std::thread::spawn({
+            let stop = stop.clone();
+            let mut binder = binder.clone();
+            move || {
+                use crate::audio::Stream as _;
+                let mut buf = [[0i16; crate::audio::NUM_CHANNELS]; crate::audio::SAMPLES];
+                while !stop.load(Ordering::Relaxed) {
+                    binder.fill(&mut buf);
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+            }
+        });
+
+        session.set_speed(4.0);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+        while session.current_tick() < 600 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "playback never reached tick 600 (at {})",
+                session.current_tick()
+            );
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        session.set_paused(true);
+        while !session.is_paused() {
+            assert!(std::time::Instant::now() < deadline, "pause never landed");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let paused_tick = session.current_tick();
+
+        assert!(session.pip_pixels().is_none(), "PiP off yet pixels present");
+
+        // PiP on while paused: pixels must appear immediately.
+        session.toggle_pip();
+        assert!(
+            session.pip_pixels().is_some(),
+            "PiP toggled on while paused but no pixels (tick {paused_tick})"
+        );
+
+        // Swap while paused: the main screen must repaint with the other
+        // perspective, and the PiP must pick up the local frame (the
+        // pre-swap main screen).
+        let before = vbuf.lock().unwrap().clone();
+        session.toggle_swap_perspective();
+        let after = vbuf.lock().unwrap().clone();
+        assert_ne!(before, after, "swap-perspective while paused left the main screen untouched");
+        assert_eq!(session.pip_pixels().as_deref(), Some(before.as_slice()));
+
+        stop.store(true, Ordering::Relaxed);
+        puller.join().unwrap();
+    }
+
+    /// The prefetch pass doubling as the stats analysis must produce
+    /// byte-identical stats to a dedicated `analyze()` run — they share
+    /// `ReplaySampler`, but drive it from two different loops (analyze
+    /// runs frames until the sampler is done; the prefetcher interleaves
+    /// snapshot captures and keeps its own end-of-input bookkeeping).
+    /// Byte-diffing the encoded stats is the prescribed verification
+    /// for any stats-pipeline change.
+    #[test]
+    fn prefetch_stats_match_analyze() {
+        let Some((replay, (local_game, local_rom), (remote_game, remote_rom))) = golden_fixture() else {
+            return;
+        };
+
+        let analyzed = tango_pvp::analysis::analyze(
+            &replay,
+            &local_rom,
+            &remote_rom,
+            local_game.hooks,
+            remote_game.hooks,
+            &mut |_, _, _| {},
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+
+        let mut on_progress = |_: u32, _: u32, _: &tango_pvp::analysis::MatchStatsBuilder| {};
+        let prefetched = tango_pvp::replay::playback::run_prefetch(
+            &local_rom,
+            &remote_rom,
+            &replay,
+            local_game.hooks,
+            remote_game.hooks,
+            SnapshotStore::new(),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU32::new(0)),
+            Some(&mut on_progress),
+        )
+        .unwrap()
+        .expect("prefetch with stats duty returns stats");
+
+        let mut a = vec![];
+        analyzed.write(&mut a).unwrap();
+        let mut b = vec![];
+        prefetched.write(&mut b).unwrap();
+        assert_eq!(a, b, "prefetch-produced stats diverge from analyze()");
     }
 }

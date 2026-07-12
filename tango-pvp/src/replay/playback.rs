@@ -319,8 +319,16 @@ impl RewindBuffer {
 /// Body of the background prefetch worker. Spins up a fresh mgba core +
 /// shadow and runs forward against `replay` as fast as the host CPU
 /// allows, pushing snapshots into `store` and writing the latest
-/// `absolute_tick` to `progress` after every frame. Returns `Ok(())` when
-/// the replay is exhausted or `cancel` flips true.
+/// `absolute_tick` to `progress` after every frame.
+///
+/// With `stats_progress` set, the pass doubles as the stats analysis:
+/// it feeds a [`crate::analysis::ReplaySampler`] each frame — the exact
+/// per-tick sampling [`crate::analysis::analyze`] performs — calls the
+/// hook once per simulated tick (throttle host-side), keeps stepping
+/// through the round-end drain the sampler asks for, and returns the
+/// finished [`MatchStats`]. One simulation, both products; the host
+/// cancels any separate analysis it had in flight. Returns `Ok(None)`
+/// when stats weren't requested or `cancel` cut the pass short.
 ///
 /// The host spawns the thread that drives this — this function takes no
 /// thread handle and never blocks except on its own work loop.
@@ -333,7 +341,8 @@ pub fn run_prefetch(
     store: SnapshotStore,
     cancel: Arc<AtomicBool>,
     progress: Arc<AtomicU32>,
-) -> anyhow::Result<()> {
+    mut stats_progress: Option<&mut dyn FnMut(u32, u32, &crate::analysis::MatchStatsBuilder)>,
+) -> anyhow::Result<Option<crate::analysis::MatchStats>> {
     let mut core = mgba::core::Core::new_gba("tango-prefetch", &mgba::core::Options { ..Default::default() })?;
     core.enable_video_buffer();
     core.as_mut()
@@ -349,11 +358,21 @@ pub fn run_prefetch(
     core.as_mut().reset();
 
     let (stepper_state, shadow) = stepper::State::new_for_replay(replay, remote_rom, remote_hooks, Box::new(|| {}))?;
+    // Rasterize the shadow too, so every prefetched keyframe carries the
+    // opponent's pixels (`ShadowSnapshot::framebuffer`) and snapshot
+    // blits (scrub drags, exact-hit seek landings) can refresh
+    // shadow-showing surfaces no matter when the PiP was toggled on.
+    shadow.lock().unwrap().set_rendering(true);
     local_hooks.install_on_stepper(&mut core, stepper_state.clone());
+
+    let mut sampler = stats_progress
+        .is_some()
+        .then(|| crate::analysis::ReplaySampler::new(replay, local_rom, local_hooks));
+    let total_ticks: u32 = replay.rounds.iter().map(|r| r.len() as u32).sum();
 
     loop {
         if cancel.load(Ordering::Relaxed) {
-            return Ok(());
+            return Ok(None);
         }
 
         let (total_left, inputs_consumed, total_replay_ticks) = {
@@ -364,23 +383,40 @@ pub fn run_prefetch(
                 inner.total_replay_ticks(),
             )
         };
-        if total_left == 0 && inputs_consumed > 0 {
-            // Reached end-of-replay. Mark the bar fully buffered and exit —
-            // the playback thread will pick up from existing snapshots from
-            // here on out.
-            progress.store(total_replay_ticks, Ordering::Relaxed);
-            return Ok(());
-        }
+        let inputs_done = total_left == 0 && inputs_consumed > 0;
 
-        if let Some(cp) = stepper_state.capture_replay_checkpoint() {
-            if store.snapshot_needed(&cp) {
-                let framebuffer = core.video_buffer().map(|b| b.to_vec()).unwrap_or_default();
-                let mut core_ref = core.as_mut();
-                store.capture(cp, &mut core_ref, &shadow, framebuffer);
+        // Stats sampling of the parked state, before this iteration's
+        // frame runs — the sampler keeps asking for frames through the
+        // input-less round-end drain, past the snapshot pass's own
+        // needs.
+        let mut sampling = false;
+        if let Some(s) = &mut sampler {
+            let (abs_tick, more) = s.sample(&stepper_state);
+            if let Some(hook) = stats_progress.as_deref_mut() {
+                hook(abs_tick, total_ticks, s.builder());
             }
+            sampling = more;
         }
 
-        progress.store(inputs_consumed, Ordering::Relaxed);
+        if inputs_done {
+            // Reached end-of-replay: mark the bar fully buffered — the
+            // playback thread picks up from existing snapshots from
+            // here on out — and exit once the sampler has drained too.
+            progress.store(total_replay_ticks, Ordering::Relaxed);
+            if !sampling {
+                return Ok(sampler.map(|s| s.finish()));
+            }
+        } else {
+            if let Some(cp) = stepper_state.capture_replay_checkpoint() {
+                if store.snapshot_needed(&cp) {
+                    let framebuffer = core.video_buffer().map(|b| b.to_vec()).unwrap_or_default();
+                    let mut core_ref = core.as_mut();
+                    store.capture(cp, &mut core_ref, &shadow, framebuffer);
+                }
+            }
+            progress.store(inputs_consumed, Ordering::Relaxed);
+        }
+
         core.as_mut().run_frame();
     }
 }
@@ -401,13 +437,6 @@ pub struct SeekController {
     resume: AtomicBool,
     /// Tells the worker and any in-flight chase to exit.
     cancel: AtomicBool,
-    /// Chases must land by running at least one emulated frame instead of
-    /// loading a snapshot exactly at the target and blitting its stored
-    /// framebuffer. The zero-frame shortcut only refreshes the *primary*
-    /// display; with the opponent-screen PiP on, the landing frame has to
-    /// be emulated so the shadow rasterizes it too. Costs one frame of
-    /// emulation per exact hit — set only while the PiP is visible.
-    emulate_landings: AtomicBool,
     wake_mutex: Mutex<()>,
     wake_cv: Condvar,
 }
@@ -426,16 +455,9 @@ impl SeekController {
             chasing: AtomicBool::new(false),
             resume: AtomicBool::new(false),
             cancel: AtomicBool::new(false),
-            emulate_landings: AtomicBool::new(false),
             wake_mutex: Mutex::new(()),
             wake_cv: Condvar::new(),
         }
-    }
-
-    /// Toggle emulated landings — see the field docs. Takes effect on the
-    /// next chase; an in-flight one keeps its plan.
-    pub fn set_emulate_landings(&self, on: bool) {
-        self.emulate_landings.store(on, Ordering::Release);
     }
 
     /// Record `target` as the newest seek request and wake the worker.
@@ -504,10 +526,11 @@ impl SeekController {
 /// newer request aborts it at the next frame boundary and the pass
 /// resumes where it left off after that seek lands.
 ///
-/// `publish_landing` displays a snapshot's stored framebuffer. Chases
-/// that land by loading a snapshot exactly at the target never run a
-/// frame, so the frame callback can't publish the landing — the chase
-/// hands the host the pixels directly instead.
+/// `publish_landing` displays a snapshot's stored framebuffers (both
+/// perspectives — see `ShadowSnapshot::framebuffer`). Chases that land
+/// by loading a snapshot exactly at the target never run a frame, so
+/// the frame callback can't publish the landing — the chase hands the
+/// host the pixels directly instead.
 pub fn run_seek_worker(
     handle: mgba::thread::Handle,
     ctrl: Arc<SeekController>,
@@ -722,17 +745,9 @@ fn chase_on_core(
         // The rewind buffer's per-frame window usually holds the target
         // exactly (zero catch-up); the keyframe store bounds the chase
         // at an interval everywhere else. Best = highest frame index.
-        // With emulated landings on, aim the lookup one frame short so
-        // the landing frame always runs through the emulator (the frame
-        // callback then publishes live renders of BOTH cores).
-        let lookup = if ctrl.emulate_landings.load(Ordering::Acquire) {
-            target.saturating_sub(1)
-        } else {
-            target
-        };
         let cur = stepper_state.lock_inner().inputs_consumed();
         let start_snap = if target < cur {
-            let best = [rewind.best_at_or_before(lookup), store.best_at_or_before(lookup)]
+            let best = [rewind.best_at_or_before(target), store.best_at_or_before(target)]
                 .into_iter()
                 .flatten()
                 .max_by_key(|s| s.checkpoint.frame_index);
@@ -751,8 +766,8 @@ fn chase_on_core(
             }
         } else {
             [
-                rewind.best_in_range(cur, lookup.max(cur)),
-                store.best_in_range(cur, lookup.max(cur)),
+                rewind.best_in_range(cur, target.max(cur)),
+                store.best_in_range(cur, target.max(cur)),
             ]
             .into_iter()
             .flatten()

@@ -123,8 +123,29 @@ fn setup_sidebar_plate(theme: &iced::Theme) -> iced::widget::container::Style {
 /// Pass the App's `session: State` borrow.
 /// Vertical clearance that floats a bottom-anchored popover just
 /// above the replay transport bar (bottom margin + strip padding
-/// + control height + plate border + gap).
-const POPOVER_LIFT: f32 = 12.0 + 16.0 + 32.0 + 2.0 + 6.0;
+/// + control height + row spacing + scrub bar + row spacing to the
+/// collapsed analysis-strip slot + plate border + gap).
+const POPOVER_LIFT: f32 = 12.0 + 16.0 + 32.0 + 4.0 + 26.0 + 4.0 + 2.0 + 6.0;
+
+/// Height of the hover analysis strip above the scrubber — what the
+/// bar (and anything floating above it) grows by while the strip is
+/// expanded (its slot and row spacing are always in the layout; see
+/// `replay_bar` for why it collapses instead of unmounting).
+const HOVER_CHART_LIFT: f32 = 40.0;
+
+/// Extra clearance for bottom-anchored floats while the analysis strip
+/// is expanded above the scrubber (see `replay_bar`): the strip shows
+/// while the transport is engaged — cursor on the bar, or a drag in
+/// flight — and anything sitting just above the bar has to ride up
+/// with it or the taller plate slides underneath.
+fn hover_chart_lift(state: &State) -> f32 {
+    let engaged = state.controls_hovered || state.bar_menu_open || state.scrub.preview.is_some();
+    if engaged && state.replay_chart.as_ref().is_some_and(|c| !c.rounds.is_empty()) {
+        HOVER_CHART_LIFT
+    } else {
+        0.0
+    }
+}
 
 /// Width of a PvP setup side pane (the save view inside the
 /// drawer).
@@ -139,7 +160,7 @@ const SETUP_DRAWER_TRAVEL: f32 = SETUP_PANE_WIDTH;
 /// How far the floating controls sink when hiding — past the
 /// window's bottom edge (panel height + bottom margin, with a
 /// little extra for the drop shadow).
-const CONTROLS_SLIDE: f32 = 90.0;
+const CONTROLS_SLIDE: f32 = 120.0;
 
 pub fn view<'a>(
     lang: &'a LanguageIdentifier,
@@ -157,12 +178,23 @@ pub fn view<'a>(
     let mut layout = column![].spacing(0).width(Fill).height(Fill);
     layout = layout.push(emulator_body(session, state, frame, hide_emulator_border));
 
+    // Replays: clicking the screen itself plays/pauses, like any video
+    // player. This is the stack's bottom layer, and iced dispatches
+    // presses topmost-first with capture — so the transport bar's
+    // controls (and its plate, via the hover pin's press sink) never
+    // leak a click down here.
+    let base: Element<'a, Message> = if session.as_replay().is_some() {
+        iced::widget::mouse_area(layout).on_press(Message::TogglePlay).into()
+    } else {
+        layout.into()
+    };
+
     // The controls live in a floating bar over the emulator (no
     // reserved bottom strip), sliding away after the cursor sits
     // still — see `floating_controls`. When fully hidden it isn't
     // in the tree at all, so no invisible buttons linger where it
     // used to be.
-    let mut stacked = stack![Element::from(layout)];
+    let mut stacked = stack![base];
     // A drawer pane mid-animation draws in iced's floating layer,
     // above every base stack layer — so for those moments the
     // telemetry plate is hoisted into the floating layer too, where
@@ -260,10 +292,13 @@ fn floating_controls<'a>(
         .style(hud_chip_plate);
     // iced's mouse_area — sweeten's `on_exit` never fires (see the
     // note in `view`), which left the hover pin stuck and the bar
-    // permanently visible.
+    // permanently visible. `on_press` is a capture sink: a click on
+    // the bar's plate (between controls) re-asserts the pin instead
+    // of falling through to the screen's play/pause toggle.
     let hover_pin = iced::widget::mouse_area(panel)
         .on_enter(Message::ControlsHovered(true))
-        .on_exit(Message::ControlsHovered(false));
+        .on_exit(Message::ControlsHovered(false))
+        .on_press(Message::ControlsHovered(true));
     let slid = anim::slide_in(hover_pin, hide_progress, iced::Vector::new(0.0, CONTROLS_SLIDE));
     container(slid)
         .width(Fill)
@@ -487,7 +522,7 @@ fn replay_bar<'a>(
     r: &'a replay::ReplaySession,
     state: &'a State,
     show_replay_inputs: bool,
-) -> sweeten::widget::Row<'a, Message> {
+) -> Element<'a, Message> {
     // No ellipsis popover for replays — the speed picker sits
     // directly in the bar, and Settings + Close float top-right
     // (see `corner_commands_overlay`).
@@ -536,7 +571,13 @@ fn replay_bar<'a>(
             speed_style,
         )
         // Short labels + a check: the default pane would be mostly air.
-        .menu_width(88.0),
+        .menu_width(88.0)
+        // Pin the bar + keep the strip expanded while the pane is up:
+        // iced hides the cursor from the base tree while any overlay
+        // is open (Cursor::Unavailable), so the hover pin goes blind —
+        // and gets actively cleared by its own on_exit — exactly when
+        // the chrome must not hide or collapse under the open menu.
+        .on_toggle(Message::BarMenuToggled),
         widgets::tooltip_bubble(format!(
             "{}: {}",
             t!(lang, "playback-speed"),
@@ -634,13 +675,60 @@ fn replay_bar<'a>(
     )
     .gap(4);
 
-    let controls = row![].spacing(10).align_y(Alignment::Center).padding([8, 8]);
-    let controls = replay_transport(lang, r, state, controls);
-    controls
+    // The analysis strip, YouTube-style: a minimal trace chart
+    // ([`widgets::hp_hover_strip`]) that expands directly above the
+    // scrubber while the cursor rests on the bar (the panel's hover
+    // pin) or a scrub drag is in flight. Both rows span the bar and
+    // map ticks linearly across it, so every trace point sits directly
+    // over the scrubber position that seeks to it. Passive: the
+    // scrubber below stays the seek surface and its handle is the
+    // position indicator.
+    //
+    // The strip is ALWAYS in the tree, collapsing to zero height
+    // rather than unmounting: iced diffs widget state by tree
+    // position, so mounting it on hover would shift the scrubber +
+    // controls subtree and reset their widget state mid-interaction —
+    // the speed menu's open dropdown (which reaches above the panel,
+    // where the cursor drops the hover pin) died exactly that way.
+    // Empty rounds = no stats at all (and none building), so the slot
+    // just never expands; an in-flight analysis has planned-width
+    // rounds from its first progress message, so it draws (and fills
+    // in live) from the start.
+    let bar_engaged = state.controls_hovered || state.bar_menu_open || state.scrub.preview.is_some();
+    let rounds = state
+        .replay_chart
+        .as_ref()
+        .map(|c| c.rounds.as_slice())
+        .unwrap_or_default();
+    let strip_h = if bar_engaged && !rounds.is_empty() {
+        HOVER_CHART_LIFT
+    } else {
+        0.0
+    };
+    let graph = crate::widgets::hp_hover_strip::<Message>(rounds, strip_h);
+
+    // YouTube-style rows: [strip] / [scrubber, full width] / [play +
+    // readout + spacer + chips].
+    let total = r.total_ticks().max(1);
+    let scrub = replay::scrubber::Scrubber::new(
+        playhead_tick(r, state),
+        total,
+        r.prefetch_progress().min(total),
+        Message::ScrubPreview,
+        Message::ScrubCommit,
+        Message::ScrubHover,
+    )
+    .round_boundaries(r.round_boundaries())
+    .view();
+
+    let controls = row![].spacing(10).align_y(Alignment::Center);
+    let controls = replay_transport(lang, r, state, controls)
         .push(speed_menu)
         .push(input_toggle)
         .push(pip_toggle)
-        .push(swap_toggle)
+        .push(swap_toggle);
+
+    column![].spacing(4).padding([8, 8]).width(Fill).push(graph).push(scrub).push(controls).into()
 }
 
 /// Hoist a persistent chrome layer into iced's floating layer —
@@ -933,7 +1021,6 @@ fn replay_transport<'a>(
 ) -> sweeten::widget::Row<'a, Message> {
     let total = r.total_ticks().max(1);
     let cur = playhead_tick(r, state);
-    let prefetched = r.prefetch_progress().min(total);
     // The mgba thread is paused for the duration of a scrub drag and
     // the seek chase that follows it, but when playback resumes on
     // landing the session is logically still *playing* — flipping the
@@ -944,16 +1031,6 @@ fn replay_transport<'a>(
     } else {
         (Icon::Pause, t!(lang, "playback-pause"), false)
     };
-    let scrub = replay::scrubber::Scrubber::new(
-        cur,
-        total,
-        prefetched,
-        Message::ScrubPreview,
-        Message::ScrubCommit,
-        Message::ScrubHover,
-    )
-    .round_boundaries(r.round_boundaries())
-    .view();
 
     // Play/Pause is the transport's centerpiece — promote to
     // the primary-button style when paused (the affordance
@@ -995,28 +1072,33 @@ fn replay_transport<'a>(
     )
     .gap(4);
 
-    // Tick readouts: monospaced + bumped one tier above caption
-    // so they read as digital-clock numerals rather than
-    // metadata, primary-tinted so the eye picks them up as
-    // playback state.
+    // Tick readout, YouTube-style "cur / total" beside the play
+    // button: monospaced + bumped one tier above caption so it reads
+    // as digital-clock numerals, the current tick primary-tinted so
+    // the eye picks it up as playback state.
     let tick_style = |theme: &iced::Theme| iced::widget::text::Style {
         color: Some(theme.palette().primary),
     };
     controls
         .push(play_pause_btn)
         .push(
-            text(format_tick(cur))
-                .size(14)
-                .font(iced::Font::MONOSPACE)
-                .style(tick_style),
+            row![
+                text(format_tick(cur))
+                    .size(14)
+                    .font(iced::Font::MONOSPACE)
+                    .style(tick_style),
+                text("/").size(14).style(widgets::muted_text_style),
+                text(format_tick(total))
+                    .size(14)
+                    .font(iced::Font::MONOSPACE)
+                    .style(widgets::muted_text_style),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center),
         )
-        .push(scrub)
-        .push(
-            text(format_tick(total))
-                .size(14)
-                .font(iced::Font::MONOSPACE)
-                .style(widgets::muted_text_style),
-        )
+        // The chips ride the bar's right edge; the transport cluster
+        // stays left, split apart by this filler.
+        .push(iced::widget::space::horizontal())
 }
 
 /// Floating keyframe thumbnail + timestamp, hovering above the scrub
@@ -1038,6 +1120,10 @@ fn scrub_thumbnail_overlay<'a>(session: &'a ActiveSession, state: &'a State) -> 
     const THUMB_H: f32 = 120.0;
     const CARD_PAD: f32 = 4.0;
     const EDGE_MARGIN: f32 = 8.0;
+    // A visible hover means the bar is engaged, which is exactly when
+    // the analysis strip expands above the scrubber — lift the card
+    // over it so they never overlap.
+    let lift = POPOVER_LIFT + hover_chart_lift(state);
     Some(
         iced::widget::responsive(move |size| {
             let img = iced::widget::image(handle.clone())
@@ -1066,7 +1152,7 @@ fn scrub_thumbnail_overlay<'a>(session: &'a ActiveSession, state: &'a State) -> 
                 .padding(iced::Padding {
                     top: 0.0,
                     right: 0.0,
-                    bottom: POPOVER_LIFT,
+                    bottom: lift,
                     left,
                 })
                 .into()
@@ -1256,7 +1342,9 @@ fn input_display_overlay<'a>(
         .padding(iced::Padding {
             top: 0.0,
             right: 12.0,
-            bottom: POPOVER_LIFT,
+            // Rides up with the analysis strip so the engaged bar's
+            // taller plate never slides underneath the pads.
+            bottom: POPOVER_LIFT + hover_chart_lift(state),
             left: 12.0,
         })
         .into(),

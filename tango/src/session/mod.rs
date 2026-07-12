@@ -133,6 +133,19 @@ impl MetricSample {
 /// How many frames of telemetry the sparklines retain (~3 s at 60 fps).
 const METRIC_HISTORY_LEN: usize = 180;
 
+/// The watched replay's cooked analysis rounds, drawn as the minimal
+/// hover strip above the playback transport's scrubber
+/// ([`crate::widgets::hp_hover_strip`]). Cooked by the App when the
+/// playback session starts (from the Replays tab's already-cooked
+/// chart when available, else from the stats sidecar) and re-cooked
+/// live while a background analysis is still building this replay's
+/// stats — the App watches the tab's progress messages for `path`.
+/// Empty `rounds` (no stats at all) draw no strip.
+pub struct ReplayChart {
+    pub path: std::path::PathBuf,
+    pub rounds: Vec<crate::widgets::CookedHpRound>,
+}
+
 /// Snapshot of a finished PvP match, taken at the natural-end teardown
 /// (`is_ended`) and shown as the post-match results screen until dismissed.
 /// Owned data only — the session (and everything network-side) is already
@@ -243,6 +256,10 @@ pub struct State {
     /// `ActiveSession`.
     pub vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     pub active: Option<ActiveSession>,
+    /// Analysis chart for the active replay-playback session — see
+    /// [`ReplayChart`]. Set alongside `active` on watch, cleared on
+    /// close.
+    pub replay_chart: Option<ReplayChart>,
     /// Post-match results, `Some` from a PvP session's natural end until the
     /// user dismisses the results screen. Deliberately not cleared by
     /// [`close_session`](State::close_session): watching the recorded replay
@@ -319,6 +336,10 @@ pub struct State {
     /// Cursor is currently over the floating controls bar — pins
     /// it visible regardless of the idle timer.
     pub controls_hovered: bool,
+    /// A transport-bar dropdown is open — pins the bar (and its hover
+    /// strip) like `controls_hovered` does, which can't cover this
+    /// case itself: see [`Message::BarMenuToggled`].
+    pub bar_menu_open: bool,
     /// Instant the current Esc hold started, `None` while Esc is up.
     /// Armed on the first [`Message::EscPressed`] of a physical hold
     /// (key repeat re-fires the message but not the arm), cleared on
@@ -347,6 +368,7 @@ impl Default for State {
                     as usize
             ])),
             active: None,
+            replay_chart: None,
             results: None,
             opponent_panel: anim::Overlay::new(false),
             self_panel: anim::Overlay::new(false),
@@ -363,6 +385,7 @@ impl Default for State {
             scrub: replay::Scrub::default(),
             last_mouse_move: std::time::Instant::now(),
             controls_hovered: false,
+            bar_menu_open: false,
             esc_hold: None,
             controls_anim: anim::Transition::new(true),
         }
@@ -427,6 +450,13 @@ pub enum Message {
     /// transport bar's swap button). Per-session, unlike the PiP — it
     /// isn't persisted to config.
     ToggleSwapPerspective,
+    /// A transport-bar dropdown (the speed menu) opened (`true`) or
+    /// closed (`false`) — [`crate::widgets::MenuButton::on_toggle`].
+    /// While any overlay pane is up, iced hides the cursor from the
+    /// base tree (`Cursor::Unavailable`), so the bar's hover pin goes
+    /// blind exactly when the chrome must not hide or collapse under
+    /// the open pane — the dropdown reports its state instead.
+    BarMenuToggled(bool),
     /// PvP-only: the match-settings frame-delay slider moved. Live-sets this
     /// side's local frame delay on the running session; the App also persists it
     /// to config. No peer coordination — it's purely a local display lag.
@@ -566,6 +596,7 @@ impl State {
         // so leaving the graph open shouldn't pin the chips up.
         let overlay_open = self.settings.shown() || self.disconnect.shown();
         let show_controls = self.controls_hovered
+            || self.bar_menu_open
             || overlay_open
             || replay_paused
             || self.scrub.preview.is_some()
@@ -584,6 +615,9 @@ impl State {
     pub fn wake_controls(&mut self) {
         self.last_mouse_move = std::time::Instant::now();
         self.controls_hovered = false;
+        // Same reasoning as the hover pin — a menu whose widget went
+        // away with the old session never publishes its close.
+        self.bar_menu_open = false;
         // Belt-and-braces: a hold left over from a previous session
         // (its release swallowed with the session view) must not
         // count against the new one.
@@ -600,9 +634,11 @@ impl State {
             s.request_close();
         }
         self.active = None;
+        self.replay_chart = None;
         self.current_frame = None;
         self.pip_frame = None;
         self.controls_hovered = false;
+        self.bar_menu_open = false;
         self.disconnect.close();
         self.match_settings.close();
         self.scrub.clear();
@@ -804,6 +840,9 @@ impl State {
             }
             Message::ControlsHovered(h) => {
                 self.controls_hovered = h;
+            }
+            Message::BarMenuToggled(open) => {
+                self.bar_menu_open = open;
             }
             Message::NoOp => {}
             Message::ToggleOpponentPanel => {
@@ -1038,6 +1077,9 @@ pub fn build_playback(
     frame_notify: std::sync::Arc<tokio::sync::Notify>,
     vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     path: &std::path::Path,
+    // Have the prefetch pass double as the match-stats analysis — see
+    // [`replay::PrefetchStatsJob`] and `App::replay_stats_takeover`.
+    stats_job: Option<replay::PrefetchStatsJob>,
 ) -> anyhow::Result<replay::ReplaySession> {
     let f = std::fs::File::open(path)?;
     let replay = std::sync::Arc::new(tango_pvp::replay::Replay::decode(f)?);
@@ -1083,6 +1125,7 @@ pub fn build_playback(
         frame_notify,
         vbuf,
         config.show_opponent_pip,
+        stats_job,
     )
 }
 

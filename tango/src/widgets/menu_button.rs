@@ -102,6 +102,11 @@ pub struct MenuButton<'a, M> {
     menu_class: <Theme as menu::Catalog>::Class<'a>,
     last_status: Option<button::Status>,
     menu_width: f32,
+    /// Published whenever the dropdown opens (`true`) or closes
+    /// (`false`) — lets the host pin surrounding chrome (e.g. the
+    /// replay transport bar and its hover strip) while the pane, which
+    /// can reach outside its host's hover region, is up.
+    on_toggle: Option<Box<dyn Fn(bool) -> M + 'a>>,
 }
 
 impl<'a, M> MenuButton<'a, M> {
@@ -123,6 +128,7 @@ impl<'a, M> MenuButton<'a, M> {
             menu_class: <Theme as menu::Catalog>::default(),
             last_status: None,
             menu_width: MENU_WIDTH,
+            on_toggle: None,
         }
     }
 
@@ -130,6 +136,13 @@ impl<'a, M> MenuButton<'a, M> {
     /// whose rows are a short label + check.
     pub fn menu_width(mut self, width: f32) -> Self {
         self.menu_width = width;
+        self
+    }
+
+    /// Publish a message when the dropdown opens/closes — see
+    /// [`Self::on_toggle`](field).
+    pub fn on_toggle(mut self, f: impl Fn(bool) -> M + 'a) -> Self {
+        self.on_toggle = Some(Box::new(f));
         self
     }
 }
@@ -194,11 +207,17 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for MenuButton<'_, M> {
                     // row is consumed by the overlay itself, which
                     // also closes.)
                     state.is_open = false;
+                    if let Some(f) = &self.on_toggle {
+                        shell.publish(f(false));
+                    }
                     shell.capture_event();
                 } else if self.enabled && !self.items.is_empty() && cursor.is_over(layout.bounds()) {
                     state.is_open = true;
                     state.hovered_option = None;
                     state.opened_at = Some(iced::time::Instant::now());
+                    if let Some(f) = &self.on_toggle {
+                        shell.publish(f(true));
+                    }
                     // Keep the app's per-frame redraw subscription
                     // alive for the entrance (the overlay also
                     // self-requests frames as a local fallback).
@@ -301,6 +320,7 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for MenuButton<'_, M> {
             items: &self.items,
             hovered_option: &mut state.hovered_option,
             is_open: &mut state.is_open,
+            on_toggle: self.on_toggle.as_deref(),
             opened_at: state.opened_at.unwrap_or_else(iced::time::Instant::now),
             position,
             target_height: bounds.height,
@@ -327,6 +347,9 @@ struct MenuOverlay<'a, 'b: 'a, M> {
     items: &'a [MenuItem<M>],
     hovered_option: &'a mut Option<usize>,
     is_open: &'a mut bool,
+    /// See [`MenuButton::on_toggle`] — a row press closes the pane
+    /// from inside the overlay, and the host hears about it here.
+    on_toggle: Option<&'a (dyn Fn(bool) -> M + 'a)>,
     opened_at: iced::time::Instant,
     /// Top-left of the trigger, already shifted for right-alignment.
     position: Point,
@@ -397,6 +420,9 @@ impl<M: Clone> overlay::Overlay<M, Theme, iced::Renderer> for MenuOverlay<'_, '_
                     let index = ((position.y / self.row_height(renderer)) as usize).min(self.items.len() - 1);
                     shell.publish(self.items[index].message.clone());
                     *self.is_open = false;
+                    if let Some(f) = self.on_toggle {
+                        shell.publish(f(false));
+                    }
                     shell.capture_event();
                 }
             }
