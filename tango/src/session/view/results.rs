@@ -199,6 +199,8 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
                 custom: &r.custom,
                 chip_uses: [&r.chip_uses[0], &r.chip_uses[1]],
                 outcome: Some(r.outcome),
+                // Neither the playhead nor the transport run here.
+                t0: 0.0,
                 weight: r.weight,
             })
             .collect();
@@ -206,7 +208,7 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
             .push(iced::widget::Space::new().height(10))
             // Not zoomable: the card is a fixed reveal choreography, not a
             // scrubbing surface — the replays tab is where inspection lives.
-            .push(widgets::hp_match_graph(chart_rounds, results.max_hp, sweep, GRAPH_H, None, None));
+            .push(widgets::hp_match_graph(chart_rounds, results.max_hp, sweep, GRAPH_H, None, None, None));
     } else {
         // Static fallback: the pre-trace layout — full score up front, plus a
         // marks row when there was more than one round to sequence.

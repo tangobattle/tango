@@ -977,6 +977,7 @@ fn replay_detail<'a>(
                 custom: &r.custom,
                 chip_uses: [&r.chip_uses[0], &r.chip_uses[1]],
                 outcome: r.outcome,
+                t0: r.t0,
                 weight: r.weight,
             })
             .collect();
@@ -993,6 +994,7 @@ fn replay_detail<'a>(
                 r.path.hash(&mut hasher);
                 hasher.finish()
             }),
+            None,
             None,
         );
         // No pane padding: the chart's own per-round inset panels are the
