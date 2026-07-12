@@ -2388,9 +2388,6 @@ pub fn outcome_mark(outcome: tango_pvp::stepper::BattleOutcome) -> (Icon, fn(&Th
 pub struct HpGraphRound<'a> {
     pub trace: &'a [(f32, f32, f32)],
     pub custom: &'a [(f32, f32)],
-    /// The round tick at x = 0 (see [`CookedHpRound::t0`]) — used by the
-    /// playhead and transport tick mapping; 0.0 is fine otherwise.
-    pub t0: f32,
     /// Chip-use events per side (`[you, opponent]`), sorted by x.
     /// Drawn as ticks in that side's event lane; the hover readout
     /// shows the icon + name of the tick nearest the cursor. Empty on
@@ -2404,7 +2401,6 @@ pub struct HpGraphRound<'a> {
 /// One chip-use event on an [`HpGraphRound`] trace: normalized x within
 /// the round, plus the chip's display name and its 14×14 icon (when the
 /// game's assets provide one) for the hover readout.
-#[derive(Clone)]
 pub struct ChipUseMark {
     pub x: f32,
     pub name: String,
@@ -2439,16 +2435,11 @@ fn chip_use_marks(
 /// sampled span and HP against the match-wide maximum, custom spans and
 /// chip-use marks on the same x scale. Rounds with fewer than two HP
 /// points (torn down mid-intro) cook to an empty trace with weight 0.
-#[derive(Clone)]
 pub struct CookedHpRound {
     pub outcome: Option<tango_pvp::stepper::BattleOutcome>,
     pub trace: Vec<(f32, f32, f32)>,
     pub custom: Vec<(f32, f32)>,
     pub chip_uses: [Vec<ChipUseMark>; 2],
-    /// The round tick that sits at x = 0 (the first sample's tick, from
-    /// the trace anchoring) — lets callers map a tick back to an x, e.g.
-    /// the playback playhead.
-    pub t0: f32,
     /// Tick span of the round — its share of the continuous timeline.
     pub weight: f32,
 }
@@ -2492,7 +2483,6 @@ pub fn cook_hp_rounds(
                     trace: vec![],
                     custom: vec![],
                     chip_uses: [vec![], vec![]],
-                    t0: 0.0,
                     weight: full.unwrap_or(0.0),
                 };
             };
@@ -2504,7 +2494,6 @@ pub fn cook_hp_rounds(
                         trace: vec![],
                         custom: vec![],
                         chip_uses: [vec![], vec![]],
-                        t0: 0.0,
                         weight: full.unwrap_or(0.0),
                     };
                 }
@@ -2530,7 +2519,6 @@ pub fn cook_hp_rounds(
             let x_of = |tick: u32| ((tick as f32 - t0) / span).clamp(0.0, 1.0);
             CookedHpRound {
                 outcome: r.outcome,
-                t0,
                 trace: r
                     .hp
                     .iter()
@@ -2560,104 +2548,20 @@ pub fn cook_hp_rounds(
 /// leak across selection changes; a key change resets the view. `None`
 /// draws a static chart (the results card, whose reveal choreography
 /// shouldn't be scrubbed around in).
-/// Seek wiring that makes the chart the playback transport's scrub
-/// surface: press/drag emits `on_seek` per tick change (clamped to the
-/// `prefetched` watermark), release emits `on_commit` with the last
-/// previewed tick, and plain mouseover publishes `on_hover` with
-/// `(tick, absolute cursor x)` — `None` past the watermark or on leave —
-/// for the floating keyframe thumbnail. Tick mapping runs through the
-/// chart's own segment layout, so with planned frames (cumulative
-/// weights = the recorded round lengths) it is exact.
-pub struct ChartTransport<M> {
-    pub prefetched: u32,
-    pub on_seek: Box<dyn Fn(u32) -> M>,
-    pub on_commit: Box<dyn Fn(u32) -> M>,
-    pub on_hover: Box<dyn Fn(Option<(u32, f32)>) -> M>,
-}
-
-/// `playhead` marks a playback position on the chart: `(round index,
-/// 0..=1 within that round)`, drawn as a vertical primary-colored line.
 pub fn hp_match_graph<'a, M: 'a>(
     rounds: Vec<HpGraphRound<'a>>,
     max_hp: f32,
     sweep: f32,
     height: f32,
     zoom_key: Option<u64>,
-    playhead: Option<(usize, f32)>,
-    transport: Option<ChartTransport<M>>,
 ) -> Element<'a, M> {
     use iced::widget::canvas;
 
-    /// Divider width between round segments — layout shared by draw and
-    /// the transport's tick mapping.
-    const GAP: f32 = 3.0;
-
-    struct HpMatchGraph<'a, M> {
+    struct HpMatchGraph<'a> {
         rounds: Vec<HpGraphRound<'a>>,
         max_hp: f32,
         sweep: f32,
         zoom_key: Option<u64>,
-        playhead: Option<(usize, f32)>,
-        transport: Option<ChartTransport<M>>,
-    }
-
-    impl<M> HpMatchGraph<'_, M> {
-        /// Per-segment layout at the current zoom: `(virtual x, width,
-        /// starting tick)` per round, plus the total virtual width.
-        fn segments(&self, w: f32, state: &ZoomState) -> (Vec<(f32, f32, f32)>, f32) {
-            let zoom = state.zoom.get().max(1.0);
-            let vw = w * zoom;
-            let gaps = GAP * (self.rounds.len().saturating_sub(1)) as f32;
-            let usable = (vw - gaps).max(1.0);
-            let total: f32 = self.rounds.iter().map(|r| r.weight.max(1.0)).sum::<f32>().max(1.0);
-            let mut out = Vec::with_capacity(self.rounds.len());
-            let mut seg_x = 0.0f32;
-            let mut start_ticks = 0.0f32;
-            for round in &self.rounds {
-                let seg_w = round.weight.max(1.0) / total * usable;
-                out.push((seg_x, seg_w, start_ticks));
-                seg_x += seg_w + GAP;
-                start_ticks += round.weight;
-            }
-            (out, vw)
-        }
-
-        /// Absolute replay tick at screen x — the inverse of the trace's
-        /// x mapping, so a click lands where the playhead will draw.
-        /// Gaps snap to the following round's start.
-        fn tick_at(&self, x: f32, w: f32, state: &ZoomState) -> u32 {
-            let offset = state.offset.get();
-            let (segs, vw) = self.segments(w, state);
-            let vx = (x + offset).clamp(0.0, vw);
-            let mut result = 0.0f32;
-            for (round, &(sx, sw, start)) in self.rounds.iter().zip(&segs) {
-                if vx < sx {
-                    // In the divider before this segment.
-                    return (start as f32).max(0.0) as u32;
-                }
-                result = start + round.t0 + ((vx - sx) / sw).clamp(0.0, 1.0) * round.weight;
-                if vx <= sx + sw {
-                    break;
-                }
-            }
-            result.max(0.0) as u32
-        }
-
-        /// Screen x of an absolute replay tick, through the same map.
-        fn x_of_tick(&self, tick: u32, w: f32, state: &ZoomState) -> f32 {
-            let offset = state.offset.get();
-            let (segs, _) = self.segments(w, state);
-            let t = tick as f32;
-            let mut x = 0.0f32;
-            for (round, &(sx, sw, start)) in self.rounds.iter().zip(&segs) {
-                let frac = ((t - start - round.t0) / round.weight.max(1.0)).clamp(0.0, 1.0);
-                x = sx + frac * sw - offset;
-                if t < start + round.weight {
-                    break;
-                }
-            }
-            x
-        }
     }
 
     /// Interaction state, persisted by iced across frames. Everything is
@@ -2680,13 +2584,6 @@ pub fn hp_match_graph<'a, M: 'a>(
         /// Whether the cursor was over the chart on the last mouse event —
         /// lets the leave-event redraw clear the crosshair.
         hovered: std::cell::Cell<bool>,
-        /// Transport: mid seek-drag.
-        seek_drag: std::cell::Cell<bool>,
-        /// Transport: last tick published through `on_seek` this drag —
-        /// dedups per-pixel moves and is what `on_commit` lands on.
-        last_seek: std::cell::Cell<Option<u32>>,
-        /// Transport: last tick published through `on_hover`.
-        hover_tick: std::cell::Cell<Option<u32>>,
     }
 
     impl Default for ZoomState {
@@ -2698,9 +2595,6 @@ pub fn hp_match_graph<'a, M: 'a>(
                 drag: Default::default(),
                 last_press: Default::default(),
                 hovered: Default::default(),
-                seek_drag: Default::default(),
-                last_seek: Default::default(),
-                hover_tick: Default::default(),
             }
         }
     }
@@ -2718,7 +2612,7 @@ pub fn hp_match_graph<'a, M: 'a>(
         }
     }
 
-    impl<M> canvas::Program<M> for HpMatchGraph<'_, M> {
+    impl<M> canvas::Program<M> for HpMatchGraph<'_> {
         type State = ZoomState;
 
         fn update(
@@ -2732,70 +2626,6 @@ pub fn hp_match_graph<'a, M: 'a>(
             let iced::Event::Mouse(mouse_event) = event else {
                 return None;
             };
-            // Transport (scrub) interactions take the event first when
-            // wired — mirroring the old dedicated scrubber's semantics.
-            if let Some(t) = &self.transport {
-                match *mouse_event {
-                    iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left) => {
-                        if let Some(p) = cursor.position_in(bounds) {
-                            state.seek_drag.set(true);
-                            state.hover_tick.set(None);
-                            let tick = self.tick_at(p.x, bounds.width, state).min(t.prefetched);
-                            state.last_seek.set(Some(tick));
-                            return Some(canvas::Action::publish((t.on_seek)(tick)).and_capture());
-                        }
-                    }
-                    iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left) if state.seek_drag.get() => {
-                        state.seek_drag.set(false);
-                        // Commit lands on the tick the user last saw
-                        // previewed, even released outside the bounds.
-                        if let Some(tick) = state.last_seek.take() {
-                            return Some(canvas::Action::publish((t.on_commit)(tick)).and_capture());
-                        }
-                    }
-                    iced::mouse::Event::CursorMoved { .. } if state.seek_drag.get() => {
-                        // Track past the edges too, clamping instead of
-                        // stalling where the cursor crossed out.
-                        if let Some(raw) = cursor.position() {
-                            let tick = self.tick_at(raw.x - bounds.x, bounds.width, state).min(t.prefetched);
-                            if state.last_seek.get() == Some(tick) {
-                                return Some(canvas::Action::capture());
-                            }
-                            state.last_seek.set(Some(tick));
-                            return Some(canvas::Action::publish((t.on_seek)(tick)).and_capture());
-                        }
-                    }
-                    iced::mouse::Event::CursorMoved { .. } => {
-                        // Plain mouseover: publish per tick change for the
-                        // floating thumbnail; the unloaded region counts as
-                        // not hovering. Not captured, and unchanged ticks
-                        // fall through to the crosshair redraw below.
-                        let inside = cursor.position_in(bounds);
-                        let tick = inside
-                            .map(|p| self.tick_at(p.x, bounds.width, state))
-                            .filter(|&tk| tk <= t.prefetched);
-                        match (inside, tick) {
-                            (Some(p), Some(tk)) if state.hover_tick.get() != Some(tk) => {
-                                state.hover_tick.set(Some(tk));
-                                let x = bounds.x + p.x.clamp(0.0, bounds.width);
-                                return Some(canvas::Action::publish((t.on_hover)(Some((tk, x)))));
-                            }
-                            (Some(_), Some(_)) => {}
-                            _ => {
-                                if state.hover_tick.take().is_some() {
-                                    return Some(canvas::Action::publish((t.on_hover)(None)));
-                                }
-                            }
-                        }
-                    }
-                    iced::mouse::Event::CursorLeft => {
-                        if state.hover_tick.take().is_some() {
-                            return Some(canvas::Action::publish((t.on_hover)(None)));
-                        }
-                    }
-                    _ => {}
-                }
-            }
             let zoomable = self.zoom_key.is_some();
             match *mouse_event {
                 iced::mouse::Event::CursorMoved { .. } => {
@@ -2872,8 +2702,6 @@ pub fn hp_match_graph<'a, M: 'a>(
         ) -> iced::mouse::Interaction {
             if state.drag.get().is_some() {
                 iced::mouse::Interaction::Grabbing
-            } else if self.transport.is_some() && (state.seek_drag.get() || cursor.is_over(bounds)) {
-                iced::mouse::Interaction::Pointer
             } else if state.zoom.get() > 1.0 && cursor.is_over(bounds) {
                 iced::mouse::Interaction::Grab
             } else {
@@ -2899,6 +2727,7 @@ pub fn hp_match_graph<'a, M: 'a>(
             // Inset vertically so full-HP traces keep their line width
             // on-canvas.
             const PAD: f32 = 3.0;
+            const GAP: f32 = 3.0;
             // The bottom of the canvas is always reserved for the two
             // thin per-side chip-event lanes — a fixed layout, whether or
             // not this game/moment has events to show (an analysis
@@ -2931,7 +2760,7 @@ pub fn hp_match_graph<'a, M: 'a>(
             // The sweep runs over the whole (virtual) timeline; convert to
             // a px cursor so segment boundaries don't distort its pace.
             let sweep_px = self.sweep.clamp(0.0, 1.0) * vw;
-            for (round_idx, round) in self.rounds.iter().enumerate() {
+            for round in &self.rounds {
                 let seg_w = round.weight.max(1.0) / total * usable;
                 segments.push((seg_x, seg_w));
                 let x_at = |xf: f32| seg_x + xf.clamp(0.0, 1.0) * seg_w - offset;
@@ -3070,40 +2899,7 @@ pub fn hp_match_graph<'a, M: 'a>(
                     }
                 }
 
-                // Playback playhead: a vertical primary line at the
-                // playing tick's x.
-                if let Some((pi, frac)) = self.playhead {
-                    if pi == round_idx {
-                        let x = x_at(frac);
-                        frame.stroke(
-                            &Path::line(Point::new(x, 0.0), Point::new(x, h)),
-                            Stroke::default()
-                                .with_color(palette.primary.strong.color)
-                                .with_width(1.5),
-                        );
-                    }
-                }
-
                 seg_x += seg_w + GAP;
-            }
-
-            // Transport: dim everything past the prefetch watermark — the
-            // region a seek can't reach yet while the decoder catches up.
-            if let Some(t) = &self.transport {
-                let total_ticks: f32 = self.rounds.iter().map(|r| r.weight).sum();
-                if (t.prefetched as f32) < total_ticks {
-                    let x = self.x_of_tick(t.prefetched, w, state).clamp(0.0, w);
-                    if x < w {
-                        frame.fill_rectangle(
-                            Point::new(x, 0.0),
-                            iced::Size::new(w - x, h),
-                            iced::Color {
-                                a: 0.25,
-                                ..iced::Color::BLACK
-                            },
-                        );
-                    }
-                }
             }
 
             // Viewport indicator: while zoomed in, a thin bar along the top
@@ -3250,8 +3046,6 @@ pub fn hp_match_graph<'a, M: 'a>(
         max_hp,
         sweep,
         zoom_key,
-        playhead,
-        transport,
     })
     .width(Length::Fill)
     .height(Length::Fixed(height))

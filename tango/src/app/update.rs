@@ -339,7 +339,6 @@ impl App {
                     &p,
                 ) {
                     Ok(s) => {
-                        self.session.replay_chart = self.replay_chart_for(&p);
                         self.session.active = Some(ActiveSession::Replay(s));
                         self.session.wake_controls();
                     }

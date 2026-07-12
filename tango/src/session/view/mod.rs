@@ -487,7 +487,7 @@ fn replay_bar<'a>(
     r: &'a replay::ReplaySession,
     state: &'a State,
     show_replay_inputs: bool,
-) -> Element<'a, Message> {
+) -> sweeten::widget::Row<'a, Message> {
     // No ellipsis popover for replays — the speed picker sits
     // directly in the bar, and Settings + Close float top-right
     // (see `corner_commands_overlay`).
@@ -636,91 +636,11 @@ fn replay_bar<'a>(
 
     let controls = row![].spacing(10).align_y(Alignment::Center).padding([8, 8]);
     let controls = replay_transport(lang, r, state, controls);
-    let controls = controls
+    controls
         .push(speed_menu)
         .push(input_toggle)
         .push(pip_toggle)
-        .push(swap_toggle);
-
-    // Analysis timeline above the transport: the replay's cooked match
-    // chart with a playhead, doubling as the scrub surface (press/drag
-    // seeks, hover floats the keyframe thumbnail — the old dedicated
-    // scrubber is gone). When the replay has no stats, a synthesized
-    // empty frame (round segments from the recorded boundaries) keeps
-    // seeking available.
-    let cur = playhead_tick(r, state);
-    let total = r.total_ticks().max(1);
-    // Boundaries are the cumulative ends of all but the last round; the
-    // playing round = how many of them the playhead has passed.
-    let boundaries = r.round_boundaries();
-    let idx = boundaries.iter().filter(|&&b| b <= cur).count();
-    let round_start = if idx == 0 { 0 } else { boundaries[idx - 1] };
-    let (chart_rounds, max_hp): (Vec<crate::widgets::HpGraphRound<'_>>, f32) = match state.replay_chart.as_ref() {
-        Some(chart) => (
-            chart
-                .rounds
-                .iter()
-                .map(|ro| crate::widgets::HpGraphRound {
-                    trace: &ro.trace,
-                    custom: &ro.custom,
-                    chip_uses: [&ro.chip_uses[0], &ro.chip_uses[1]],
-                    outcome: ro.outcome,
-                    t0: ro.t0,
-                    weight: ro.weight,
-                })
-                .collect(),
-            chart.max_hp,
-        ),
-        None => {
-            let starts: Vec<u32> = std::iter::once(0).chain(boundaries.iter().copied()).collect();
-            (
-                starts
-                    .iter()
-                    .enumerate()
-                    .map(|(i, &start)| {
-                        let end = boundaries.get(i).copied().unwrap_or(total);
-                        crate::widgets::HpGraphRound {
-                            trace: &[],
-                            custom: &[],
-                            chip_uses: [&[], &[]],
-                            outcome: None,
-                            t0: 0.0,
-                            weight: (end.saturating_sub(start)).max(1) as f32,
-                        }
-                    })
-                    .collect(),
-                1.0,
-            )
-        }
-    };
-    let playhead = chart_rounds.get(idx).map(|ro| {
-        let frac = if ro.weight > 0.0 {
-            ((cur - round_start) as f32 - ro.t0) / ro.weight
-        } else {
-            0.0
-        };
-        (idx, frac.clamp(0.0, 1.0))
-    });
-    let graph = crate::widgets::hp_match_graph(
-        chart_rounds,
-        max_hp,
-        1.0,
-        // Same fixed proportions as the replays tab's chart.
-        72.0,
-        None,
-        playhead,
-        Some(crate::widgets::ChartTransport {
-            prefetched: r.prefetch_progress().min(total),
-            on_seek: Box::new(Message::ScrubPreview),
-            on_commit: Box::new(Message::ScrubCommit),
-            on_hover: Box::new(|h| {
-                Message::ScrubHover(h.map(|(tick, x)| replay::scrubber::HoverInfo { tick, x }))
-            }),
-        }),
-    );
-    column![container(graph).width(Fill).padding([8, 8]), controls]
-        .spacing(0)
-        .into()
+        .push(swap_toggle)
 }
 
 /// Hoist a persistent chrome layer into iced's floating layer —
@@ -1013,6 +933,7 @@ fn replay_transport<'a>(
 ) -> sweeten::widget::Row<'a, Message> {
     let total = r.total_ticks().max(1);
     let cur = playhead_tick(r, state);
+    let prefetched = r.prefetch_progress().min(total);
     // The mgba thread is paused for the duration of a scrub drag and
     // the seek chase that follows it, but when playback resumes on
     // landing the session is logically still *playing* — flipping the
@@ -1023,6 +944,17 @@ fn replay_transport<'a>(
     } else {
         (Icon::Pause, t!(lang, "playback-pause"), false)
     };
+    let scrub = replay::scrubber::Scrubber::new(
+        cur,
+        total,
+        prefetched,
+        Message::ScrubPreview,
+        Message::ScrubCommit,
+        Message::ScrubHover,
+    )
+    .round_boundaries(r.round_boundaries())
+    .view();
+
     // Play/Pause is the transport's centerpiece — promote to
     // the primary-button style when paused (the affordance
     // the user is most likely looking for at rest) and keep
@@ -1078,16 +1010,13 @@ fn replay_transport<'a>(
                 .font(iced::Font::MONOSPACE)
                 .style(tick_style),
         )
-        .push(text("/").size(14).style(widgets::muted_text_style))
+        .push(scrub)
         .push(
             text(format_tick(total))
                 .size(14)
                 .font(iced::Font::MONOSPACE)
                 .style(widgets::muted_text_style),
         )
-        // The chart above is the scrub surface now — the readouts just
-        // ride left of the toggles, spaced apart by this filler.
-        .push(iced::widget::space::horizontal())
 }
 
 /// Floating keyframe thumbnail + timestamp, hovering above the scrub
