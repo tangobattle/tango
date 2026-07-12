@@ -420,9 +420,11 @@ impl App {
                 tokio::task::spawn_blocking(move || {
                     // Live preview cadence: each report clones the folded
                     // rounds and folds the round in progress, and each one
-                    // becomes a chart rebuild on the UI thread — so send a
-                    // few per second, not one per simulated tick.
-                    const PREVIEW_EVERY: std::time::Duration = std::time::Duration::from_millis(100);
+                    // becomes a chart rebuild on the UI thread — so pace it
+                    // to the display, not to the simulation. ~30/s keeps
+                    // the growth reading as continuous motion (at 100ms
+                    // the sim advances a visible chunk between frames).
+                    const PREVIEW_EVERY: std::time::Duration = std::time::Duration::from_millis(33);
                     let mut last_preview = std::time::Instant::now();
                     let result = replays::compute_and_cache_match_stats(
                         scanners,
