@@ -3167,7 +3167,7 @@ checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 [[package]]
 name = "is"
 version = "0.10.0"
-source = "git+https://github.com/tangobattle/str0m?rev=37b5744bbe099fe5c7367f9f6ccfbca51c99dff3#37b5744bbe099fe5c7367f9f6ccfbca51c99dff3"
+source = "git+https://github.com/algesten/str0m?rev=c1306cf432efd905e93c93353133f00f3369daae#c1306cf432efd905e93c93353133f00f3369daae"
 dependencies = [
  "crc",
  "serde",
@@ -6322,7 +6322,7 @@ dependencies = [
 [[package]]
 name = "str0m"
 version = "0.21.0"
-source = "git+https://github.com/tangobattle/str0m?rev=37b5744bbe099fe5c7367f9f6ccfbca51c99dff3#37b5744bbe099fe5c7367f9f6ccfbca51c99dff3"
+source = "git+https://github.com/algesten/str0m?rev=c1306cf432efd905e93c93353133f00f3369daae#c1306cf432efd905e93c93353133f00f3369daae"
 dependencies = [
  "arrayvec",
  "base64ct",
@@ -6342,7 +6342,7 @@ dependencies = [
 [[package]]
 name = "str0m-proto"
 version = "0.6.0"
-source = "git+https://github.com/tangobattle/str0m?rev=37b5744bbe099fe5c7367f9f6ccfbca51c99dff3#37b5744bbe099fe5c7367f9f6ccfbca51c99dff3"
+source = "git+https://github.com/algesten/str0m?rev=c1306cf432efd905e93c93353133f00f3369daae#c1306cf432efd905e93c93353133f00f3369daae"
 dependencies = [
  "base64ct",
  "dimpl",
@@ -6355,7 +6355,7 @@ dependencies = [
 [[package]]
 name = "str0m-rust-crypto"
 version = "0.5.0"
-source = "git+https://github.com/tangobattle/str0m?rev=37b5744bbe099fe5c7367f9f6ccfbca51c99dff3#37b5744bbe099fe5c7367f9f6ccfbca51c99dff3"
+source = "git+https://github.com/algesten/str0m?rev=c1306cf432efd905e93c93353133f00f3369daae#c1306cf432efd905e93c93353133f00f3369daae"
 dependencies = [
  "aes",
  "aes-gcm",
