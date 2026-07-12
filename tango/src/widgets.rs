@@ -2401,6 +2401,7 @@ pub struct HpGraphRound<'a> {
 /// One chip-use event on an [`HpGraphRound`] trace: normalized x within
 /// the round, plus the chip's display name and its 14×14 icon (when the
 /// game's assets provide one) for the hover readout.
+#[derive(Clone)]
 pub struct ChipUseMark {
     pub x: f32,
     pub name: String,
@@ -2435,11 +2436,16 @@ fn chip_use_marks(
 /// sampled span and HP against the match-wide maximum, custom spans and
 /// chip-use marks on the same x scale. Rounds with fewer than two HP
 /// points (torn down mid-intro) cook to an empty trace with weight 0.
+#[derive(Clone)]
 pub struct CookedHpRound {
     pub outcome: Option<tango_pvp::stepper::BattleOutcome>,
     pub trace: Vec<(f32, f32, f32)>,
     pub custom: Vec<(f32, f32)>,
     pub chip_uses: [Vec<ChipUseMark>; 2],
+    /// The round tick that sits at x = 0 (the first sample's tick, from
+    /// the trace anchoring) — lets callers map a tick back to an x, e.g.
+    /// the playback playhead.
+    pub t0: f32,
     /// Tick span of the round — its share of the continuous timeline.
     pub weight: f32,
 }
@@ -2483,6 +2489,7 @@ pub fn cook_hp_rounds(
                     trace: vec![],
                     custom: vec![],
                     chip_uses: [vec![], vec![]],
+                    t0: 0.0,
                     weight: full.unwrap_or(0.0),
                 };
             };
@@ -2494,6 +2501,7 @@ pub fn cook_hp_rounds(
                         trace: vec![],
                         custom: vec![],
                         chip_uses: [vec![], vec![]],
+                        t0: 0.0,
                         weight: full.unwrap_or(0.0),
                     };
                 }
@@ -2519,6 +2527,7 @@ pub fn cook_hp_rounds(
             let x_of = |tick: u32| ((tick as f32 - t0) / span).clamp(0.0, 1.0);
             CookedHpRound {
                 outcome: r.outcome,
+                t0,
                 trace: r
                     .hp
                     .iter()
@@ -2548,12 +2557,15 @@ pub fn cook_hp_rounds(
 /// leak across selection changes; a key change resets the view. `None`
 /// draws a static chart (the results card, whose reveal choreography
 /// shouldn't be scrubbed around in).
+/// `playhead` marks a playback position on the chart: `(round index,
+/// 0..=1 within that round)`, drawn as a vertical primary-colored line.
 pub fn hp_match_graph<'a, M: 'a>(
     rounds: Vec<HpGraphRound<'a>>,
     max_hp: f32,
     sweep: f32,
     height: f32,
     zoom_key: Option<u64>,
+    playhead: Option<(usize, f32)>,
 ) -> Element<'a, M> {
     use iced::widget::canvas;
 
@@ -2562,6 +2574,7 @@ pub fn hp_match_graph<'a, M: 'a>(
         max_hp: f32,
         sweep: f32,
         zoom_key: Option<u64>,
+        playhead: Option<(usize, f32)>,
     }
 
     /// Interaction state, persisted by iced across frames. Everything is
@@ -2760,7 +2773,7 @@ pub fn hp_match_graph<'a, M: 'a>(
             // The sweep runs over the whole (virtual) timeline; convert to
             // a px cursor so segment boundaries don't distort its pace.
             let sweep_px = self.sweep.clamp(0.0, 1.0) * vw;
-            for round in &self.rounds {
+            for (round_idx, round) in self.rounds.iter().enumerate() {
                 let seg_w = round.weight.max(1.0) / total * usable;
                 segments.push((seg_x, seg_w));
                 let x_at = |xf: f32| seg_x + xf.clamp(0.0, 1.0) * seg_w - offset;
@@ -2895,6 +2908,20 @@ pub fn hp_match_graph<'a, M: 'a>(
                                 0.75.into(),
                             ),
                             color,
+                        );
+                    }
+                }
+
+                // Playback playhead: a vertical primary line at the
+                // playing tick's x.
+                if let Some((pi, frac)) = self.playhead {
+                    if pi == round_idx {
+                        let x = x_at(frac);
+                        frame.stroke(
+                            &Path::line(Point::new(x, 0.0), Point::new(x, h)),
+                            Stroke::default()
+                                .with_color(palette.primary.strong.color)
+                                .with_width(1.5),
                         );
                     }
                 }
@@ -3046,6 +3073,7 @@ pub fn hp_match_graph<'a, M: 'a>(
         max_hp,
         sweep,
         zoom_key,
+        playhead,
     })
     .width(Length::Fill)
     .height(Length::Fixed(height))

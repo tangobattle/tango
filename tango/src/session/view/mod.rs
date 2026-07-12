@@ -487,7 +487,7 @@ fn replay_bar<'a>(
     r: &'a replay::ReplaySession,
     state: &'a State,
     show_replay_inputs: bool,
-) -> sweeten::widget::Row<'a, Message> {
+) -> Element<'a, Message> {
     // No ellipsis popover for replays — the speed picker sits
     // directly in the bar, and Settings + Close float top-right
     // (see `corner_commands_overlay`).
@@ -636,11 +636,56 @@ fn replay_bar<'a>(
 
     let controls = row![].spacing(10).align_y(Alignment::Center).padding([8, 8]);
     let controls = replay_transport(lang, r, state, controls);
-    controls
+    let controls = controls
         .push(speed_menu)
         .push(input_toggle)
         .push(pip_toggle)
-        .push(swap_toggle)
+        .push(swap_toggle);
+
+    // Analysis timeline above the transport: the replay's cooked match
+    // chart with a playhead pinned to the same tick the scrubber below
+    // reads, so events (traces, custom bands, chip ticks) are visible in
+    // playback context. Absent when the replay has no stats.
+    let Some(chart) = state.replay_chart.as_ref() else {
+        return controls.into();
+    };
+    let cur = playhead_tick(r, state);
+    // Boundaries are the cumulative ends of all but the last round; the
+    // playing round = how many of them the playhead has passed.
+    let boundaries = r.round_boundaries();
+    let idx = boundaries.iter().filter(|&&b| b <= cur).count();
+    let round_start = if idx == 0 { 0 } else { boundaries[idx - 1] };
+    let playhead = chart.rounds.get(idx).map(|ro| {
+        let frac = if ro.weight > 0.0 {
+            ((cur - round_start) as f32 - ro.t0) / ro.weight
+        } else {
+            0.0
+        };
+        (idx, frac.clamp(0.0, 1.0))
+    });
+    let chart_rounds: Vec<crate::widgets::HpGraphRound<'_>> = chart
+        .rounds
+        .iter()
+        .map(|ro| crate::widgets::HpGraphRound {
+            trace: &ro.trace,
+            custom: &ro.custom,
+            chip_uses: [&ro.chip_uses[0], &ro.chip_uses[1]],
+            outcome: ro.outcome,
+            weight: ro.weight,
+        })
+        .collect();
+    let graph = crate::widgets::hp_match_graph(
+        chart_rounds,
+        chart.max_hp,
+        1.0,
+        // Same fixed proportions as the replays tab's chart.
+        72.0,
+        None,
+        playhead,
+    );
+    column![container(graph).width(Fill).padding([8, 8]), controls]
+        .spacing(0)
+        .into()
 }
 
 /// Hoist a persistent chrome layer into iced's floating layer —

@@ -993,6 +993,7 @@ fn replay_detail<'a>(
                 r.path.hash(&mut hasher);
                 hasher.finish()
             }),
+            None,
         );
         // No pane padding: the chart's own per-round inset panels are the
         // content, so the canvas runs edge to edge and the pane background

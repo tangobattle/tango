@@ -261,6 +261,25 @@ fn open_path(path: impl AsRef<std::path::Path>) -> iced::Task<Message> {
     iced::Task::none()
 }
 
+impl App {
+    /// The analysis chart to show in a playback session of `path`: the
+    /// Replays tab's already-cooked chart when it has one (chip
+    /// names/icons resolved through the replay's Loaded), else cooked
+    /// fresh from the stats sidecar, else `None` (no stats — the
+    /// transport just shows no timeline).
+    fn replay_chart_for(&self, path: &std::path::Path) -> Option<session::ReplayChart> {
+        if let Some(c) = self.replays.hp_charts.get(path) {
+            return Some(session::ReplayChart {
+                rounds: c.rounds.clone(),
+                max_hp: c.max_hp,
+            });
+        }
+        let stats = replays::load_match_stats(&self.config.cache_path(), &self.config.replays_path(), path)?;
+        let (rounds, max_hp) = widgets::cook_hp_rounds(&stats, [None, None], None);
+        Some(session::ReplayChart { rounds, max_hp })
+    }
+}
+
 /// Reveal a file in the OS file manager with the file itself selected,
 /// rather than opening its containing folder anonymously. Shared by the
 /// per-tab `RevealPath` effects (replays, saves).
@@ -1077,6 +1096,7 @@ impl App {
                             &path,
                         ) {
                             Ok(s) => {
+                                self.session.replay_chart = self.replay_chart_for(&path);
                                 self.session.active = Some(ActiveSession::Replay(s));
                                 self.session.wake_controls();
                             }

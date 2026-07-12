@@ -133,6 +133,16 @@ impl MetricSample {
 /// How many frames of telemetry the sparklines retain (~3 s at 60 fps).
 const METRIC_HISTORY_LEN: usize = 180;
 
+/// The watched replay's cooked analysis chart, shown as the playback
+/// transport's timeline with a playhead. Snapshotted by the App when the
+/// playback session starts (from the Replays tab's already-cooked chart
+/// when available — it has chip names/icons resolved — else cooked fresh
+/// from the stats sidecar); `None` when no stats exist for the replay.
+pub struct ReplayChart {
+    pub rounds: Vec<crate::widgets::CookedHpRound>,
+    pub max_hp: f32,
+}
+
 /// Snapshot of a finished PvP match, taken at the natural-end teardown
 /// (`is_ended`) and shown as the post-match results screen until dismissed.
 /// Owned data only — the session (and everything network-side) is already
@@ -243,6 +253,10 @@ pub struct State {
     /// `ActiveSession`.
     pub vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     pub active: Option<ActiveSession>,
+    /// Analysis timeline for the active replay-playback session — see
+    /// [`ReplayChart`]. Set alongside `active` on watch, cleared on
+    /// close.
+    pub replay_chart: Option<ReplayChart>,
     /// Post-match results, `Some` from a PvP session's natural end until the
     /// user dismisses the results screen. Deliberately not cleared by
     /// [`close_session`](State::close_session): watching the recorded replay
@@ -347,6 +361,7 @@ impl Default for State {
                     as usize
             ])),
             active: None,
+            replay_chart: None,
             results: None,
             opponent_panel: anim::Overlay::new(false),
             self_panel: anim::Overlay::new(false),
@@ -600,6 +615,7 @@ impl State {
             s.request_close();
         }
         self.active = None;
+        self.replay_chart = None;
         self.current_frame = None;
         self.pip_frame = None;
         self.controls_hovered = false;
