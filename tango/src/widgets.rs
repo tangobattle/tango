@@ -2498,11 +2498,19 @@ pub fn cook_hp_rounds(
                     };
                 }
             };
-            let t0 = first.tick as f32;
-            // The last round's real span can slightly exceed the recorded
-            // input count (the sim runs a beat past the drain), so the
-            // planned span only ever widens, never clips.
-            let span = (last.tick as f32 - t0).max(1.0).max(full.map_or(0.0, |f| f - t0));
+            // With a planned layout, x runs in raw tick space (0 = round
+            // start) against the planned span, so the frame is identical
+            // across empty -> partial -> final states of the same round —
+            // the trace just starts a hair right of the segment edge (the
+            // intro trim). Without one, normalize to the sampled span as
+            // before. The last round's real span can slightly exceed the
+            // recorded input count (the sim runs a beat past the drain),
+            // so the planned span only ever widens, never clips.
+            let (x0, span) = match full {
+                Some(f) => (0.0, f.max(last.tick as f32).max(1.0)),
+                None => (first.tick as f32, (last.tick as f32 - first.tick as f32).max(1.0)),
+            };
+            let t0 = x0;
             let x_of = |tick: u32| ((tick as f32 - t0) / span).clamp(0.0, 1.0);
             CookedHpRound {
                 outcome: r.outcome,

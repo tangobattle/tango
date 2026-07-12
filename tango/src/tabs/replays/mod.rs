@@ -282,8 +282,11 @@ impl ReplaysState {
                         crate::replays::load_match_stats(&config.cache_path(), &config.replays_path(), &p)
                     {
                         // `refresh_loaded` above already pointed `loaded` at
-                        // this replay, so chip beads get the right names.
-                        self.hp_charts.insert(p, HpChart::new(&stats, self.loaded.as_ref(), None));
+                        // this replay, so chip beads get the right names;
+                        // the planned frame keeps every chart of this replay
+                        // on one layout convention.
+                        self.hp_charts
+                            .insert(p.clone(), HpChart::new(&stats, self.loaded.as_ref(), Some(&self.loaded_round_ticks)));
                     } else {
                         // Seed an empty chart immediately — segments at
                         // their final widths, ready for the analysis to
@@ -347,7 +350,10 @@ impl ReplaysState {
                     // the analysis already wrote the sidecar, so
                     // re-selecting rebuilds the chart straight from disk.
                     Some(stats) if self.selected.as_ref() == Some(&path) => {
-                        self.hp_charts.insert(path, HpChart::new(&stats, self.loaded.as_ref(), None));
+                        // Keep the planned frame the live preview rendered
+                        // into — the completed chart must not reflow it.
+                        self.hp_charts
+                            .insert(path, HpChart::new(&stats, self.loaded.as_ref(), Some(&self.loaded_round_ticks)));
                     }
                     // Deselected or failed: also drop any live-preview chart
                     // so a later focus rebuilds from the sidecar (or retries
@@ -957,14 +963,14 @@ fn replay_detail<'a>(
     // chart exists from the start (empty segments at their final widths,
     // seeded on selection) and the re-simulation draws into it live — no
     // placeholder state.
-    let hp_pane: Option<Element<'_, Message>> = state.hp_charts.get(&r.path).map(|chart| {
-        // The whole match on one continuous chart: rounds side by side in
-        // proportion to their length, gaps as the dividers, outcomes as
-        // the segment tints. No legend — red-is-you / blue-is-them is the
-        // fixed seat-color convention, and the matchup pane above already
-        // names both sides.
+    let hp_pane: Element<'_, Message> = {
+        // The pane renders whether or not a chart exists yet (a missing
+        // entry — e.g. a failed analysis — draws as an empty frame), so
+        // the detail column's layout never shifts with analysis state.
+        let chart = state.hp_charts.get(&r.path);
         let chart_rounds: Vec<widgets::HpGraphRound<'_>> = chart
-            .rounds
+            .map(|c| c.rounds.as_slice())
+            .unwrap_or(&[])
             .iter()
             .map(|r| widgets::HpGraphRound {
                 trace: &r.trace,
@@ -976,13 +982,9 @@ fn replay_detail<'a>(
             .collect();
         let body = widgets::hp_match_graph(
             chart_rounds,
-            chart.max_hp,
+            chart.map(|c| c.max_hp).unwrap_or(1.0),
             1.0,
-            if chart.rounds.iter().any(|r| r.chip_uses.iter().any(|l| !l.is_empty())) {
-                DETAIL_HP_GRAPH_WITH_LANES_H
-            } else {
-                DETAIL_HP_GRAPH_H
-            },
+            DETAIL_HP_GRAPH_H,
             // Zoomable, keyed on the replay path so switching replays
             // resets the view.
             Some({
@@ -996,7 +998,7 @@ fn replay_detail<'a>(
         // content, so the canvas runs edge to edge and the pane background
         // only peeks through the round dividers.
         container(body).width(Fill).style(widgets::pane).into()
-    });
+    };
 
     // Save view contributes its own pane pair (tab strip + body)
     // when a save is loaded; otherwise a single placeholder pane
@@ -1015,21 +1017,19 @@ fn replay_detail<'a>(
         .into()
     };
 
-    let mut panes = column![title_pane, matchup_pane].spacing(style::PANE_GAP).width(Fill);
-    if let Some(pane) = hp_pane {
-        panes = panes.push(pane);
-    }
+    let panes = column![title_pane, matchup_pane, hp_pane]
+        .spacing(style::PANE_GAP)
+        .width(Fill);
     panes.push(preview).height(Fill).into()
 }
 
-/// Height of the HP graph in the detail panel when it's traces only.
-const DETAIL_HP_GRAPH_H: f32 = 44.0;
-
-/// Taller variant when the chart also carries chip-use events: a
-/// roomier trace field plus the widget's two per-side event lanes
-/// (18 px), which also leaves enough height for the four-line icon
-/// readout — the canvas clips anything that hangs past its bounds.
-const DETAIL_HP_GRAPH_WITH_LANES_H: f32 = 72.0;
+/// Height of the HP graph in the detail panel: a 54 px trace field plus
+/// the widget's two per-side chip-event lanes (18 px, always present),
+/// which also leaves room for the four-line icon hover readout — the
+/// canvas clips anything that hangs past its bounds. One fixed height
+/// for every chart state, so the layout never jerks as an analysis
+/// renders in.
+const DETAIL_HP_GRAPH_H: f32 = 72.0;
 
 /// Everything the free-text search matches against, joined into one
 /// lowercased blob: both sides' nicknames, game names (raw family
