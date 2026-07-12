@@ -1,6 +1,6 @@
 //! Canvas-based scrub bar with overlays the stock `iced::widget::slider`
-//! can't render: a dimmer fill for the prefetched range and vertical
-//! tick marks at round boundaries. Mouse press + drag inside the bar
+//! can't render: a dimmer fill for the prefetched range and a track
+//! segmented per round. Mouse press + drag inside the bar
 //! emits the caller's preview message per position change (deduped, so
 //! sub-pixel mouse moves don't spam); release emits the commit message
 //! with the last previewed tick and ends the drag. Plain mouseover
@@ -156,56 +156,63 @@ impl<M> canvas::Program<M> for Scrubber<M> {
         let track_y = ((h - track_h) / 2.0).round();
         let track_radius = track_h / 2.0;
 
-        // Full-width unplayed/unprefetched track.
-        let track = Path::rounded_rectangle(Point::new(0.0, track_y), Size::new(w, track_h), track_radius.into());
-        frame.fill(&track, track_color);
-
-        // Prefetched range — primary hue at weak strength so it reads
-        // as a lower-contrast underlay beneath the played fill.
-        let prefetched_w = (self.prefetched as f32 / total).clamp(0.0, 1.0) * w;
-        if prefetched_w > 0.0 {
-            let prefetched = Path::rounded_rectangle(
-                Point::new(0.0, track_y),
-                Size::new(prefetched_w, track_h),
-                track_radius.into(),
-            );
-            frame.fill(&prefetched, palette.primary.weak.color);
-        }
-
-        // Played portion.
-        let played_w = (self.current as f32 / total).clamp(0.0, 1.0) * w;
-        if played_w > 0.0 {
-            let played = Path::rounded_rectangle(
-                Point::new(0.0, track_y),
-                Size::new(played_w, track_h),
-                track_radius.into(),
-            );
-            frame.fill(&played, fill_color);
-        }
-
-        // Round-boundary pips. Drawn as 2-px-wide full-height
-        // notches so they pop on both the unplayed (light) track
-        // and the played fill, with the color tuned for contrast
-        // against whichever band they cross. Using `text` (= the
-        // theme's body text color, near-white on Dark / near-black
-        // on Light) gives reliable visibility everywhere — the
-        // previous mid-bg-tone notches dissolved into the
-        // unprefetched section.
-        let notch_color = palette.background.strong.text;
-        let notch_w = 2.0;
-        let notch_h = track_h + 4.0;
-        let notch_top = ((h - notch_h) / 2.0).round();
+        // The track is segmented per round, chapter-style: a small gap
+        // at each round boundary splits the bar into sections, and
+        // every layer (track, prefetched underlay, played fill) is
+        // drawn per segment so the gaps cut through all of them.
+        // Boundaries are cumulative round lengths, so they arrive
+        // sorted; interior duplicates or near-coincident boundaries
+        // just produce sub-pixel segments, which are skipped.
+        let mut edges = vec![0.0f32];
         for &b in &self.round_boundaries {
             // Skip 0 + total — they overlap the track ends.
             if b == 0 || b >= self.total {
                 continue;
             }
-            let x = (b as f32 / total).clamp(0.0, 1.0) * w;
-            frame.fill_rectangle(
-                Point::new((x - notch_w / 2.0).round(), notch_top),
-                Size::new(notch_w, notch_h),
-                notch_color,
-            );
+            edges.push((b as f32 / total).clamp(0.0, 1.0) * w);
+        }
+        edges.push(w);
+
+        let prefetched_w = (self.prefetched as f32 / total).clamp(0.0, 1.0) * w;
+        let played_w = (self.current as f32 / total).clamp(0.0, 1.0) * w;
+        let gap = 3.0;
+        for (i, pair) in edges.windows(2).enumerate() {
+            // Half the gap on each side of a boundary; the bar's outer
+            // ends stay flush with the canvas.
+            let x0 = if i == 0 { pair[0] } else { pair[0] + gap / 2.0 };
+            let x1 = if i == edges.len() - 2 { pair[1] } else { pair[1] - gap / 2.0 };
+            if x1 - x0 < 1.0 {
+                continue;
+            }
+
+            // Full segment: unplayed/unprefetched track.
+            let track =
+                Path::rounded_rectangle(Point::new(x0, track_y), Size::new(x1 - x0, track_h), track_radius.into());
+            frame.fill(&track, track_color);
+
+            // Prefetched range — primary hue at weak strength so it
+            // reads as a lower-contrast underlay beneath the played
+            // fill.
+            let seg_prefetched_w = prefetched_w.min(x1) - x0;
+            if seg_prefetched_w > 0.0 {
+                let prefetched = Path::rounded_rectangle(
+                    Point::new(x0, track_y),
+                    Size::new(seg_prefetched_w, track_h),
+                    track_radius.into(),
+                );
+                frame.fill(&prefetched, palette.primary.weak.color);
+            }
+
+            // Played portion.
+            let seg_played_w = played_w.min(x1) - x0;
+            if seg_played_w > 0.0 {
+                let played = Path::rounded_rectangle(
+                    Point::new(x0, track_y),
+                    Size::new(seg_played_w, track_h),
+                    track_radius.into(),
+                );
+                frame.fill(&played, fill_color);
+            }
         }
 
         // Ghost notch under the cursor while merely hovering — ties
@@ -216,6 +223,9 @@ impl<M> canvas::Program<M> for Scrubber<M> {
             if let Some(p) = cursor.position_in(bounds) {
                 let tick = self.raw_tick_at_x(p.x, w);
                 if tick <= self.prefetched {
+                    let notch_w = 2.0;
+                    let notch_h = track_h + 4.0;
+                    let notch_top = ((h - notch_h) / 2.0).round();
                     let x = (tick as f32 / total).clamp(0.0, 1.0) * w;
                     frame.fill_rectangle(
                         Point::new((x - notch_w / 2.0).round(), notch_top),
