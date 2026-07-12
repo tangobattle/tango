@@ -2924,15 +2924,20 @@ pub fn hp_match_graph<'a, M: 'a>(
                     .find(|((sx, sw), _)| vx >= *sx && vx < sx + sw && vx <= sweep_px);
                 if let Some((&(sx, sw), round)) = hovered {
                     let xf = ((vx - sx) / sw).clamp(0.0, 1.0);
+                    // Only read out where the line actually is: past the
+                    // trace's sampled extent (the planned tail an analysis
+                    // hasn't reached yet, or the clamped round-end stretch)
+                    // there's nothing under the cursor, so no crosshair,
+                    // dots, or tooltip.
+                    let in_trace = round
+                        .trace
+                        .first()
+                        .zip(round.trace.last())
+                        .is_some_and(|(a, b)| xf >= a.0 && xf <= b.0);
                     // Step semantics: the value in force at xf is the last
                     // point at or before it.
-                    let at = round
-                        .trace
-                        .iter()
-                        .take_while(|p| p.0 <= xf)
-                        .last()
-                        .or(round.trace.first());
-                    if let Some(&(_, you, opp)) = at {
+                    let at = round.trace.iter().take_while(|p| p.0 <= xf).last();
+                    if let Some(&(_, you, opp)) = at.filter(|_| in_trace) {
                         frame.stroke(
                             &Path::line(Point::new(pos.x, 0.0), Point::new(pos.x, h)),
                             Stroke::default()
