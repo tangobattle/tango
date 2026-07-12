@@ -411,20 +411,32 @@ impl App {
                 let patches_path = self.config.patches_path();
                 let cache_path = self.config.cache_path();
                 let replays_path = self.config.replays_path();
-                let (progress_tx, progress_rx) = futures::channel::mpsc::unbounded::<(u32, u32)>();
+                let (progress_tx, progress_rx) =
+                    futures::channel::mpsc::unbounded::<(u32, u32, tango_pvp::analysis::MatchStats)>();
                 let done: std::sync::Arc<std::sync::Mutex<Option<tango_pvp::analysis::MatchStats>>> =
                     std::sync::Arc::new(std::sync::Mutex::new(None));
                 let done_worker = done.clone();
                 let p = path.clone();
                 tokio::task::spawn_blocking(move || {
+                    // Live preview cadence: each report clones the folded
+                    // rounds and folds the round in progress, and each one
+                    // becomes a chart rebuild on the UI thread — so send a
+                    // few per second, not one per simulated tick.
+                    const PREVIEW_EVERY: std::time::Duration = std::time::Duration::from_millis(100);
+                    let mut last_preview = std::time::Instant::now();
                     let result = replays::compute_and_cache_match_stats(
                         scanners,
                         patches_path,
                         cache_path,
                         replays_path,
                         p.clone(),
-                        &mut |d, t| {
-                            let _ = progress_tx.unbounded_send((d, t));
+                        &mut |d, t, builder| {
+                            let now = std::time::Instant::now();
+                            if now.duration_since(last_preview) < PREVIEW_EVERY {
+                                return;
+                            }
+                            last_preview = now;
+                            let _ = progress_tx.unbounded_send((d, t, builder.preview()));
                         },
                     )
                     .map_err(|e| log::warn!("replay analysis failed for {}: {e}", p.display()))
@@ -437,7 +449,9 @@ impl App {
                 use futures::StreamExt;
                 let progress_path = path.clone();
                 let stream = progress_rx
-                    .map(move |(d, t)| tabs::replays::Message::HpStatsProgress(progress_path.clone(), d, t))
+                    .map(move |(d, t, partial)| {
+                        tabs::replays::Message::HpStatsProgress(progress_path.clone(), d, t, partial)
+                    })
                     .chain(futures::stream::once(async move {
                         tabs::replays::Message::HpStatsLoaded(path, done.lock().unwrap().take())
                     }));

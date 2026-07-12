@@ -149,14 +149,15 @@ pub fn write_match_stats(stats_file: &std::path::Path, stats: &tango_pvp::analys
 /// A full replay simulation — seconds of CPU; spawn on a blocking worker.
 /// Resolves both sides' ROMs (with recorded patches applied) the same way
 /// playback does, so it fails cleanly when a ROM or patch isn't installed.
-/// `on_progress` is the analysis's `(ticks done, ticks total)` reporter.
+/// `on_progress` is the analysis's per-tick reporter: `(ticks done,
+/// ticks total)` plus the in-flight builder for live partial previews.
 pub fn compute_and_cache_match_stats(
     scanners: crate::app::Scanners,
     patches_path: std::path::PathBuf,
     cache_path: std::path::PathBuf,
     replays_path: std::path::PathBuf,
     path: std::path::PathBuf,
-    on_progress: &mut dyn FnMut(u32, u32),
+    on_progress: &mut dyn FnMut(u32, u32, &tango_pvp::analysis::MatchStatsBuilder),
 ) -> anyhow::Result<tango_pvp::analysis::MatchStats> {
     let f = std::fs::File::open(&path)?;
     let replay = tango_pvp::replay::Replay::decode(f)?;

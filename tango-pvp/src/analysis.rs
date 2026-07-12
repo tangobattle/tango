@@ -251,23 +251,8 @@ impl MatchStatsBuilder {
     /// mid-round, or a live round was torn down without reaching a KO).
     pub fn end_round(&mut self, outcome: Option<BattleOutcome>) {
         let samples = std::mem::take(&mut self.current);
-        let raw: Vec<(u32, u16, u16)> = samples.iter().map(|s| (s.tick, s.local, s.remote)).collect();
-        let start = stale_prefix_len(self.prev_final, &raw);
-        self.prev_final = samples.last().map(|s| (s.local, s.remote)).or(self.prev_final);
-        let samples = &samples[start..];
-        let custom = custom_spans(samples.iter().map(|s| (s.tick, s.custom)));
-        let (chip_uses, buster) = usage_events(samples, &custom, self.semantics, self.counts_buster);
-        self.rounds.push(RoundStats {
-            outcome,
-            hp: compress(samples.iter().map(|s| HpPoint {
-                tick: s.tick,
-                local: s.local,
-                remote: s.remote,
-            })),
-            custom,
-            chip_uses,
-            buster,
-        });
+        self.rounds
+            .push(fold_round(outcome, &samples, &mut self.prev_final, self.semantics, self.counts_buster));
     }
 
     /// The rounds folded so far — the round in progress isn't included.
@@ -281,10 +266,62 @@ impl MatchStatsBuilder {
         }
     }
 
+    /// [`snapshot`](Self::snapshot) plus the round in progress folded as
+    /// an undecided round — the live preview an in-flight analysis
+    /// renders from. Non-mutating: the in-progress fold runs on a
+    /// scratch copy of the stale-trim state, so a later
+    /// [`end_round`](Self::end_round) produces the identical final
+    /// round.
+    pub fn preview(&self) -> MatchStats {
+        let mut rounds = self.rounds.clone();
+        if !self.current.is_empty() {
+            let mut prev_final = self.prev_final;
+            rounds.push(fold_round(
+                None,
+                &self.current,
+                &mut prev_final,
+                self.semantics,
+                self.counts_buster,
+            ));
+        }
+        MatchStats { rounds }
+    }
+
     /// Finish, discarding any round still in progress — callers that
     /// want it folded call [`end_round`](Self::end_round) first.
     pub fn finish(self) -> MatchStats {
         MatchStats { rounds: self.rounds }
+    }
+}
+
+/// One round's fold: stale-intro trim (`prev_final` threads the previous
+/// round's final HP pair into the next fold), custom spans, chip/buster
+/// usage events, and the lossless change-point HP curve. Shared by
+/// [`MatchStatsBuilder::end_round`] and the non-mutating
+/// [`MatchStatsBuilder::preview`].
+fn fold_round(
+    outcome: Option<BattleOutcome>,
+    samples: &[RoundSample],
+    prev_final: &mut Option<(u16, u16)>,
+    semantics: ChipSemantics,
+    counts_buster: bool,
+) -> RoundStats {
+    let raw: Vec<(u32, u16, u16)> = samples.iter().map(|s| (s.tick, s.local, s.remote)).collect();
+    let start = stale_prefix_len(*prev_final, &raw);
+    *prev_final = samples.last().map(|s| (s.local, s.remote)).or(*prev_final);
+    let samples = &samples[start..];
+    let custom = custom_spans(samples.iter().map(|s| (s.tick, s.custom)));
+    let (chip_uses, buster) = usage_events(samples, &custom, semantics, counts_buster);
+    RoundStats {
+        outcome,
+        hp: compress(samples.iter().map(|s| HpPoint {
+            tick: s.tick,
+            local: s.local,
+            remote: s.remote,
+        })),
+        custom,
+        chip_uses,
+        buster,
     }
 }
 
@@ -498,14 +535,17 @@ const MAX_DRAIN_FRAMES: u32 = 600;
 /// and unthrottled with rasterization off; expect it to take seconds of
 /// CPU per minute of match, so run it on a worker and cache the result.
 /// `on_progress` receives `(ticks simulated, total recorded ticks)`
-/// every simulated tick.
+/// every simulated tick, plus the in-flight builder so callers can
+/// render live partial stats ([`MatchStatsBuilder::preview`]) at
+/// whatever cadence suits them — a preview clones the folded rounds,
+/// so per-tick would be wasteful.
 pub fn analyze(
     replay: &crate::replay::Replay,
     local_rom: &[u8],
     remote_rom: &[u8],
     local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     remote_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-    on_progress: &mut dyn FnMut(u32, u32),
+    on_progress: &mut dyn FnMut(u32, u32, &MatchStatsBuilder),
 ) -> anyhow::Result<MatchStats> {
     let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
     core.enable_video_buffer();
@@ -559,7 +599,7 @@ pub fn analyze(
 
         if abs_tick != last_reported {
             last_reported = abs_tick;
-            on_progress(abs_tick, total_ticks);
+            on_progress(abs_tick, total_ticks, &builder);
         }
 
         if round_idx != last_round_idx {

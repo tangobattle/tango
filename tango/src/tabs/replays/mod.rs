@@ -46,10 +46,12 @@ pub enum Message {
     /// arrives as one of these messages and lands in
     /// [`ReplaysState::stats`].
     StatsLoaded(std::path::PathBuf, crate::replays::ReplayStats),
-    /// An [`Effect::AnalyzeReplay`] re-simulation reporting per-tick
-    /// progress: `(path, ticks done, ticks total)`. Drives the analyzing
-    /// pane's bar; ignored when the path is no longer pending.
-    HpStatsProgress(std::path::PathBuf, u32, u32),
+    /// An [`Effect::AnalyzeReplay`] re-simulation reporting throttled
+    /// progress: `(path, ticks done, ticks total, partial stats)`. The
+    /// partial stats render as a live chart that draws itself in while
+    /// the analysis runs; done/total drive the analyzing pane's bar
+    /// until the chart has something to show.
+    HpStatsProgress(std::path::PathBuf, u32, u32, tango_pvp::analysis::MatchStats),
     /// An [`Effect::AnalyzeReplay`] re-simulation finished. `None` =
     /// analysis failed (missing ROM, undecodable) — clears the pending
     /// marker so a later re-focus can retry (e.g. after the user
@@ -313,23 +315,35 @@ impl ReplaysState {
                 self.stats.insert(path, s);
                 None
             }
-            Message::HpStatsProgress(path, done, total) => {
+            Message::HpStatsProgress(path, done, total, partial) => {
                 if let Some(progress) = self.hp_pending.get_mut(&path) {
                     *progress = Some((done, total));
+                }
+                // Live preview: the in-flight analysis renders as a growing
+                // chart. Selected-only, like `HpStatsLoaded` — chip names
+                // resolve through the selected replay's Loaded.
+                if self.selected.as_ref() == Some(&path) {
+                    self.hp_charts.insert(path, HpChart::new(&partial, self.loaded.as_ref()));
                 }
                 None
             }
             Message::HpStatsLoaded(path, stats) => {
                 self.hp_pending.remove(&path);
-                if let Some(stats) = stats {
+                match stats {
                     // Chip beads bake names through the selected replay's
                     // Loaded; if the user has moved on to another replay by
                     // the time the analysis lands, drop the result rather
                     // than resolving through the wrong game's chip table —
                     // the analysis already wrote the sidecar, so
                     // re-selecting rebuilds the chart straight from disk.
-                    if self.selected.as_ref() == Some(&path) {
+                    Some(stats) if self.selected.as_ref() == Some(&path) => {
                         self.hp_charts.insert(path, HpChart::new(&stats, self.loaded.as_ref()));
+                    }
+                    // Deselected or failed: also drop any live-preview chart
+                    // so a later focus rebuilds from the sidecar (or retries
+                    // the analysis) instead of showing a stale partial.
+                    _ => {
+                        self.hp_charts.remove(&path);
                     }
                 }
                 None
