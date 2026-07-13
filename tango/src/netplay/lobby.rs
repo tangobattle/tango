@@ -95,7 +95,7 @@ pub(super) async fn run_lobby_loop(
                 let now_short = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u16;
                 if let Err(e) = sender.lock().await.send_ping(now_short).await {
                     log::warn!("lobby: send_ping failed: {e}");
-                    let _ = tx.unbounded_send(Message::Failed(format!("ping: {e}")));
+                    let _ = tx.unbounded_send(Message::Failed(super::Error::Other(format!("ping: {e}"))));
                     return receiver;
                 }
             }
@@ -104,7 +104,7 @@ pub(super) async fn run_lobby_loop(
                     Ok(crate::net::protocol::Packet::Ping(p)) => {
                         if let Err(e) = sender.lock().await.send_pong(p.ts).await {
                             log::warn!("lobby: send_pong failed: {e}");
-                            let _ = tx.unbounded_send(Message::Failed(format!("pong: {e}")));
+                            let _ = tx.unbounded_send(Message::Failed(super::Error::Other(format!("pong: {e}"))));
                             return receiver;
                         }
                     }
@@ -142,7 +142,7 @@ pub(super) async fn run_lobby_loop(
                     }
                     Err(e) => {
                         log::warn!("lobby: receive failed: {e}");
-                        let _ = tx.unbounded_send(Message::Failed(format!("recv: {e}")));
+                        let _ = tx.unbounded_send(Message::Failed(super::Error::Other(format!("recv: {e}"))));
                         return receiver;
                     }
                 }

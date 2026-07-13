@@ -278,7 +278,7 @@ async fn run_signaling_connect(
             identity,
         )
         .await
-        .map_err(|e| AsyncError::Failed(format!("signaling: {e}")))?;
+        .map_err(|e| AsyncError::Failed(super::Error::Other(format!("signaling: {e}"))))?;
         Ok::<_, AsyncError>(SignalingHello { connecting })
     };
     tokio::select! {
@@ -298,10 +298,11 @@ async fn run_await_peer(
         let connected = hello
             .connecting
             .await
-            .map_err(|e| AsyncError::Failed(format!("webrtc: {e}")))?;
+            .map_err(|e| AsyncError::Failed(super::Error::Other(format!("webrtc: {e}"))))?;
         // Same split + pairing a mid-match reconnect uses, so both bundle a
         // matchmaking connection identically (see [`Channels::from_signaling`]).
-        crate::net::channel::Channels::from_signaling(connected).map_err(|e| AsyncError::Failed(e.to_string()))
+        crate::net::channel::Channels::from_signaling(connected)
+            .map_err(|e| AsyncError::Failed(super::Error::Other(e.to_string())))
     };
     tokio::select! {
         biased;
@@ -331,10 +332,10 @@ async fn run_direct_rtc_negotiate(
         let channels = match role {
             DirectRole::Host { port } => crate::net::direct_rtc::host(port)
                 .await
-                .map_err(|e| AsyncError::Failed(format!("direct host: {e}")))?,
+                .map_err(|e| AsyncError::Failed(super::Error::Other(format!("direct host: {e}"))))?,
             DirectRole::Connect { addr } => crate::net::direct_rtc::connect(&addr)
                 .await
-                .map_err(|e| AsyncError::Failed(format!("direct connect: {e}")))?,
+                .map_err(|e| AsyncError::Failed(super::Error::Other(format!("direct connect: {e}"))))?,
         };
         let crate::net::channel::Channels {
             control: (mut sender, mut receiver),
@@ -349,7 +350,7 @@ async fn run_direct_rtc_negotiate(
         // shares the association and is open by the time the match starts.
         crate::net::negotiate(&mut sender, &mut receiver)
             .await
-            .map_err(negotiation_error_sentinel)?;
+            .map_err(negotiation_error)?;
         Ok::<_, AsyncError>(NegotiationOutput {
             sender: Arc::new(tokio::sync::Mutex::new(sender)),
             receiver,
@@ -369,17 +370,17 @@ async fn run_direct_rtc_negotiate(
     }
 }
 
-/// Map `net::NegotiationError` to a sentinel string the UI can route to
-/// a localized template. The three named variants get fixed-format
-/// sentinels; the `Other` catch-all keeps the raw error text so a
-/// transport-level failure is still surfaced (just unlocalized).
-fn negotiation_error_sentinel(e: crate::net::NegotiationError) -> AsyncError {
+/// Map `net::NegotiationError` to the typed netplay [`super::Error`]
+/// the UI routes to a localized template. The three named variants get
+/// dedicated variants; the `Other` catch-all keeps the raw error text
+/// so a transport-level failure is still surfaced (just unlocalized).
+fn negotiation_error(e: crate::net::NegotiationError) -> AsyncError {
     use crate::net::NegotiationError as N;
     AsyncError::Failed(match e {
-        N::ExpectedHello => "negotiate-expected-hello".to_string(),
-        N::RemoteProtocolVersionTooOld => "negotiate-version-too-old".to_string(),
-        N::RemoteProtocolVersionTooNew => "negotiate-version-too-new".to_string(),
-        N::Other(inner) => format!("negotiate-other: {inner}"),
+        N::ExpectedHello => super::Error::NegotiateExpectedHello,
+        N::RemoteProtocolVersionTooOld => super::Error::NegotiateVersionTooOld,
+        N::RemoteProtocolVersionTooNew => super::Error::NegotiateVersionTooNew,
+        N::Other(inner) => super::Error::Negotiate(inner.to_string()),
     })
 }
 
@@ -403,7 +404,7 @@ async fn run_negotiate(
         biased;
         _ = cancel.cancelled() => Err(AsyncError::Cancelled),
         result = work => {
-            result.map_err(negotiation_error_sentinel)?;
+            result.map_err(negotiation_error)?;
             let is_offerer = peer_conn
                 .local_description()
                 .map(|d| matches!(d.sdp_type, tango_rtc::SdpType::Offer))

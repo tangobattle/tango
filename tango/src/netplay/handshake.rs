@@ -69,7 +69,7 @@ impl State {
                     .await
                     .send_uncommit()
                     .await
-                    .map_err(|e| format!("send_uncommit: {e}"))
+                    .map_err(|e| super::Error::Other(format!("send_uncommit: {e}")))
             },
             |r| match r {
                 Ok(()) => Message::WireOpDone,
@@ -102,13 +102,13 @@ impl State {
         let bin = match state.serialize() {
             Ok(b) => b,
             Err(e) => {
-                return iced::Task::done(Message::Failed(format!("serialize state: {e}")));
+                return iced::Task::done(Message::Failed(super::Error::Other(format!("serialize state: {e}"))));
             }
         };
         let compressed = match zstd::stream::encode_all(std::io::Cursor::new(&bin), 3) {
             Ok(c) => c,
             Err(e) => {
-                return iced::Task::done(Message::Failed(format!("zstd encode: {e}")));
+                return iced::Task::done(Message::Failed(super::Error::Other(format!("zstd encode: {e}"))));
             }
         };
         let commitment = make_commitment(&compressed);
@@ -123,7 +123,7 @@ impl State {
                     .await
                     .send_commit(commitment)
                     .await
-                    .map_err(|e| format!("send_commit: {e}"))
+                    .map_err(|e| super::Error::Other(format!("send_commit: {e}")))
             },
             |r| match r {
                 Ok(()) => Message::WireOpDone,
@@ -164,7 +164,7 @@ impl State {
                         _ = cancel.cancelled() => return Err(AsyncError::Cancelled),
                         r = async move { sender.lock().await.send_chunk(buf).await } => r,
                     };
-                    result.map_err(|e| AsyncError::Failed(format!("send_chunk: {e}")))?;
+                    result.map_err(|e| AsyncError::Failed(super::Error::Other(format!("send_chunk: {e}"))))?;
                 }
                 // Empty sentinel = end-of-stream.
                 sender
@@ -172,7 +172,7 @@ impl State {
                     .await
                     .send_chunk(Vec::new())
                     .await
-                    .map_err(|e| AsyncError::Failed(format!("send_chunk-end: {e}")))?;
+                    .map_err(|e| AsyncError::Failed(super::Error::Other(format!("send_chunk-end: {e}"))))?;
                 Ok::<(), AsyncError>(())
             },
             |r| match r {
@@ -188,7 +188,7 @@ impl State {
     /// `match_ready`, then fires StartMatch.
     pub(super) fn try_finish_handshake(&mut self) -> iced::Task<Message> {
         let Some(remote_commitment) = self.handshake.remote_commitment else {
-            return iced::Task::done(Message::Failed("peer sent end-of-chunks before Commit".to_string()));
+            return iced::Task::done(Message::Failed(super::Error::Other("peer sent end-of-chunks before Commit".to_string())));
         };
         if self.handshake.local_commit.is_none() {
             // Their stream is here but we haven't committed yet —
@@ -200,7 +200,7 @@ impl State {
         }
         let actual = make_commitment(&self.handshake.remote_chunks);
         if !bool::from(actual.ct_eq(&remote_commitment)) {
-            return iced::Task::done(Message::Failed("peer commitment mismatch".to_string()));
+            return iced::Task::done(Message::Failed(super::Error::Other("peer commitment mismatch".to_string())));
         }
         // Decompress + decode the peer's NegotiatedState. We
         // don't use it for anything until round 6 (PvP session
@@ -209,11 +209,11 @@ impl State {
         let peer_state_bytes = match zstd::stream::decode_all(std::io::Cursor::new(&self.handshake.remote_chunks)) {
             Ok(b) => b,
             Err(e) => {
-                return iced::Task::done(Message::Failed(format!("zstd decode: {e}")));
+                return iced::Task::done(Message::Failed(super::Error::Other(format!("zstd decode: {e}"))));
             }
         };
         if let Err(e) = crate::net::protocol::NegotiatedState::deserialize(&peer_state_bytes) {
-            return iced::Task::done(Message::Failed(format!("decode peer state: {e}")));
+            return iced::Task::done(Message::Failed(super::Error::Other(format!("decode peer state: {e}"))));
         }
         self.lobby.match_ready = true;
 
@@ -227,7 +227,7 @@ impl State {
                     .await
                     .send_start_match()
                     .await
-                    .map_err(|e| format!("send_start_match: {e}"))
+                    .map_err(|e| super::Error::Other(format!("send_start_match: {e}")))
             },
             |r| match r {
                 Ok(()) => Message::WireOpDone,

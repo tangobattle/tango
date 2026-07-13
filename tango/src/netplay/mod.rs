@@ -62,6 +62,27 @@ use handshake::Handshake;
 // mid-match reliable-channel watch ignores.)
 pub const PROTOCOL_VERSION: u32 = 0x4c;
 
+/// Why a netplay session failed — typed so the UI can route each
+/// failure mode to its own localized copy instead of string-matching
+/// sentinel values out of a flat string.
+#[derive(Debug, Clone)]
+pub enum Error {
+    /// Peer closed the connection cleanly (left the lobby / quit).
+    PeerDisconnected,
+    /// Version negotiate: the first packet wasn't a Hello.
+    NegotiateExpectedHello,
+    /// Peer speaks an older protocol version than ours.
+    NegotiateVersionTooOld,
+    /// Peer speaks a newer protocol version than ours.
+    NegotiateVersionTooNew,
+    /// Negotiate failed below the version check (transport error).
+    Negotiate(String),
+    /// Any other failure, with a short context prefix baked into the
+    /// text (e.g. "signaling: …", "send_chunk: …"). Surfaced raw
+    /// through the generic "Connection failed:" template.
+    Other(String),
+}
+
 /// Where the lifecycle is right now. Drives the Play tab's status
 /// bar + the Cancel button's visibility.
 #[derive(Clone, Debug, Default)]
@@ -85,7 +106,7 @@ pub enum Phase {
     Lobby { ident: LinkIdent },
     /// Last attempt failed. Stays here until the user starts a new
     /// connection or clears the field.
-    Failed { error: String },
+    Failed { error: Error },
 }
 
 /// Structured identifier for the current connection. Kept in
@@ -319,9 +340,9 @@ pub enum Message {
     /// in the slot for the lobby subscription to take.
     NegotiationDone(Slot<NegotiationOutput>),
     /// Internal: any step (signaling, WebRTC, negotiate, or
-    /// lobby loop) failed. Includes the user-readable error
-    /// message.
-    Failed(String),
+    /// lobby loop) failed. Carries the typed failure the UI
+    /// localizes.
+    Failed(Error),
     /// Internal: the running async task short-circuited because the
     /// cancellation token fired (user clicked Disconnect, or a
     /// fresh Connect superseded us). No-op — phase has already
@@ -545,7 +566,7 @@ impl State {
                     .await
                     .send_settings(*settings)
                     .await
-                    .map_err(|e| format!("send_settings: {e}"))
+                    .map_err(|e| Error::Other(format!("send_settings: {e}")))
             },
             |r| match r {
                 Ok(()) => Message::WireOpDone,
@@ -621,7 +642,7 @@ impl State {
         self.conn = None;
         self.handshake = Handshake::default();
         self.phase = Phase::Failed {
-            error: "peer-disconnected".to_string(),
+            error: Error::PeerDisconnected,
         };
         iced::Task::none()
     }
@@ -654,11 +675,11 @@ impl State {
         // to recover the nonce + save_data.
         let peer_state_bytes = match zstd::stream::decode_all(std::io::Cursor::new(&self.handshake.remote_chunks)) {
             Ok(b) => b,
-            Err(e) => return self.fail_handoff(format!("zstd decode: {e}")),
+            Err(e) => return self.fail_handoff(Error::Other(format!("zstd decode: {e}"))),
         };
         let peer_state = match crate::net::protocol::NegotiatedState::deserialize(&peer_state_bytes) {
             Ok(s) => s,
-            Err(e) => return self.fail_handoff(format!("decode peer state: {e}")),
+            Err(e) => return self.fail_handoff(Error::Other(format!("decode peer state: {e}"))),
         };
         // Direct-TCP codes carry no remote-discoverable identity,
         // so the replay metadata's `link_code` slot is left empty
@@ -739,7 +760,7 @@ impl State {
     /// down into a visible Failed banner. Returning a bare `None` instead
     /// would read as "already drained" to the App, leaving the lobby stuck on
     /// its "Starting match…" chrome with no error.
-    fn fail_handoff(&mut self, error: String) -> Option<PreMatchData> {
+    fn fail_handoff(&mut self, error: Error) -> Option<PreMatchData> {
         self.cancel_and_renew();
         self.phase = Phase::Failed { error };
         None
@@ -819,7 +840,7 @@ fn slot<T>(payload: T) -> Slot<T> {
 /// UI noise) from a real error (Failed, surface to the user).
 enum AsyncError {
     Cancelled,
-    Failed(String),
+    Failed(Error),
 }
 
 fn map_async_err(e: AsyncError) -> Message {

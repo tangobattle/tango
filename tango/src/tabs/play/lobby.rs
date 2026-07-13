@@ -277,21 +277,17 @@ impl<'a> Lobby<'a> {
             move |label: String| -> Element<'a, Message> { text(label).size(TEXT_BODY).style(pulsing_style).into() };
         match status {
             Status::Failed { error } => {
-                // Route the netplay error tag through Fluent so each
-                // failure mode can carry its own translated copy.
-                // Anything we don't have a dedicated key for falls
-                // back to the generic "Connection failed: <raw>".
-                let label = match *error {
-                    "peer-disconnected" => t!(lang, "play-status-peer-disconnected"),
-                    "negotiate-expected-hello" => t!(lang, "play-status-negotiate-expected-hello"),
-                    "negotiate-version-too-old" => t!(lang, "play-status-negotiate-version-too-old"),
-                    "negotiate-version-too-new" => t!(lang, "play-status-negotiate-version-too-new"),
-                    other if other.starts_with("negotiate-other: ") => t!(
-                        lang,
-                        "play-status-negotiate-failed",
-                        error = other.trim_start_matches("negotiate-other: ").to_string(),
-                    ),
-                    _ => t!(lang, "play-status-failed", error = error.to_string()),
+                // Route the typed netplay error through Fluent so each
+                // failure mode carries its own translated copy. The
+                // catch-alls fall back to templates that embed the raw
+                // error text.
+                let label = match error {
+                    netplay::Error::PeerDisconnected => t!(lang, "play-status-peer-disconnected"),
+                    netplay::Error::NegotiateExpectedHello => t!(lang, "play-status-negotiate-expected-hello"),
+                    netplay::Error::NegotiateVersionTooOld => t!(lang, "play-status-negotiate-version-too-old"),
+                    netplay::Error::NegotiateVersionTooNew => t!(lang, "play-status-negotiate-version-too-new"),
+                    netplay::Error::Negotiate(e) => t!(lang, "play-status-negotiate-failed", error = e.clone()),
+                    netplay::Error::Other(e) => t!(lang, "play-status-failed", error = e.clone()),
                 };
                 // The lobby is dead at this point but its chrome is
                 // still on screen — cue it with an alert icon next to
@@ -631,10 +627,10 @@ impl<'a> Lobby<'a> {
 /// so the user has something to read through the handshake; once both
 /// sides' settings are on hand it's the compat verdict.
 enum Status<'a> {
-    /// Terminal: the connection is gone. Carries the netplay error
-    /// tag, sticky until the user cancels out via the leave button.
+    /// Terminal: the connection is gone. Carries the typed netplay
+    /// error, sticky until the user cancels out via the leave button.
     Failed {
-        error: &'a str,
+        error: &'a netplay::Error,
     },
     /// Dialing out. `direct` = a `/connect` dial straight at the peer,
     /// as opposed to the matchmaking server.
