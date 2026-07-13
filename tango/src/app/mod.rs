@@ -199,7 +199,7 @@ pub struct App {
     /// band swap renders from this so the verdict (e.g. the failure
     /// banner being dismissed) holds steady through the dissolve
     /// instead of flashing to the idle handshake line.
-    lobby_exit_snapshot: Option<(netplay::Phase, netplay::LobbyState)>,
+    lobby_exit_snapshot: Option<(netplay::Phase, netplay::LobbyState, netplay::ReadyView)>,
 }
 
 /// See [`App::screen_enter_scope`].
@@ -711,7 +711,7 @@ impl App {
         if !matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) {
             return iced::Task::none();
         }
-        if !self.netplay.lobby.local_ready {
+        if !self.netplay.local_ready() {
             return iced::Task::none();
         }
         let (Some(local), Some(remote)) = (self.netplay.lobby.local.as_ref(), self.netplay.lobby.remote.as_ref())
@@ -956,7 +956,7 @@ impl App {
         // phase/lobby), kept only if the lobby actually left.
         let lobby_live = self
             .lobby_on_screen()
-            .then(|| (self.netplay.phase.clone(), self.netplay.lobby.clone()));
+            .then(|| (self.netplay.phase.clone(), self.netplay.lobby.clone(), self.netplay.ready_view()));
         let task = self.update_inner(message);
         let now = iced::time::Instant::now();
         let screen_after = self.screen_key();
@@ -1697,6 +1697,7 @@ impl App {
                         tabs::play::LobbyBandCtx {
                             phase: &self.netplay.phase,
                             lobby: &self.netplay.lobby,
+                            ready: self.netplay.ready_view(),
                             handoff_pending: self.netplay.handoff_pending(),
                             swap: &self.lobby_swap,
                             exit_snapshot: self.lobby_exit_snapshot.as_ref(),

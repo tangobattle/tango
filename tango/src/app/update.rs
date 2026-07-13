@@ -269,7 +269,7 @@ impl App {
                 // so the opponent gets the new commitment (and chunks) instead of
                 // a hash of our pre-edit save.
                 let recommit =
-                    if matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) && self.netplay.lobby.local_ready {
+                    if matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) && self.netplay.local_ready() {
                         self.netplay
                             .update(netplay::Message::Commit { save_sram: sram })
                             .map(Message::Netplay)

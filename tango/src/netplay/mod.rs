@@ -38,7 +38,8 @@ pub use connect::{NegotiationOutput, SignalingHello};
 pub use crate::net::link::{DirectRole, LinkParts, ReconnectRecipe};
 pub use lobby::subscription;
 
-use handshake::Handshake;
+pub use handshake::ReadyView;
+use handshake::{Handshake, LocalReady, RemoteReady};
 
 // 0x47: in-match Input/EndOfRound/EndOfMatch moved off the reliable lobby
 // channel onto a separate unreliable channel with the `data::wire` redundancy
@@ -142,10 +143,9 @@ pub struct State {
     /// Live connection objects, when post-negotiate. Cleared on
     /// Disconnect / Failed / on the next Connect.
     conn: Option<ConnectionHandles>,
-    /// The "ready" commitment exchange — our commit, the peer's
-    /// commitment + reassembled chunks, and the chunk-send guard.
-    /// Reset together on every session boundary (see
-    /// [`Handshake::reset`]).
+    /// The "ready" commitment exchange — the local + remote ready
+    /// ladders. Reset together (`Handshake::default()`) on every
+    /// session boundary.
     handshake: Handshake,
     /// Cancellation token shared with every in-flight async task
     /// (signaling, negotiate, lobby loop). `Disconnect` calls
@@ -195,17 +195,6 @@ pub struct LobbyState {
     /// default — unless the peer flips this on, the match start
     /// renders their save view alongside ours in the session pane.
     pub blind_setup: bool,
-    /// We've sent a Commit packet — flagged in the UI as
-    /// "you: ready". Cleared on Uncommit + on every settings
-    /// change (any selection move invalidates the commitment).
-    pub local_ready: bool,
-    /// Peer has sent us a Commit packet. Same semantics.
-    pub remote_ready: bool,
-    /// We've verified peer's chunks + sent our StartMatch. Half
-    /// of the "both sides ready" condition for PvP handoff.
-    pub match_ready: bool,
-    /// Peer sent us a StartMatch packet. Other half.
-    pub remote_match_ready: bool,
     /// Last `(family, variant)` the App's resend pass applied a
     /// "default match type" for. Used so that switching games
     /// triggers a re-default to Triple (when supported), while
@@ -235,10 +224,6 @@ impl Default for LobbyState {
             latency_counter: crate::net::LatencyCounter::new(5),
             match_type: (0, 0),
             blind_setup: false,
-            local_ready: false,
-            remote_ready: false,
-            match_ready: false,
-            remote_match_ready: false,
             default_mt_for_game: None,
             connection_kind: None,
         }
@@ -475,35 +460,62 @@ impl State {
             Message::Commit { save_sram } => self.commit_local(save_sram),
             Message::Uncommit => self.invalidate_local_commit(),
             Message::RemoteCommit(c) => {
-                self.handshake.remote_commitment = Some(c);
-                self.handshake.remote_chunks.clear();
-                self.lobby.remote_ready = true;
+                // A fresh commitment starts a fresh reveal — any prior
+                // chunks / StartMatch belonged to the pairing it replaces.
+                self.handshake.remote = RemoteReady::Committed {
+                    commitment: c,
+                    chunks: Vec::new(),
+                    revealed: false,
+                    start_match: false,
+                };
                 // First chunk send happens once both sides have
                 // committed. Until then we just sit ready.
                 self.maybe_kick_chunk_exchange()
             }
             Message::RemoteUncommit => {
-                self.handshake.remote_commitment = None;
-                self.handshake.remote_chunks.clear();
-                self.lobby.remote_ready = false;
-                self.lobby.match_ready = false;
+                // Their reveal (and any StartMatch riding on the voided
+                // pairing) goes with the commitment; our own StartMatch
+                // was predicated on that reveal, so it regresses too.
+                self.handshake.remote = RemoteReady::NotReady;
+                self.handshake.local.revoke_start_match();
                 iced::Task::none()
             }
             Message::RemoteChunk(c) => {
                 // Empty chunk = end-of-stream sentinel. Anything
-                // non-empty just accumulates into remote_chunks.
-                // NB: empty-sentinel flushing; lets us stream
-                // save states of any size in single-byte-of-
+                // non-empty just accumulates into the remote ladder's
+                // reveal buffer. NB: empty-sentinel flushing; lets us
+                // stream save states of any size in single-byte-of-
                 // overhead chunks.
-                if c.is_empty() {
-                    self.try_finish_handshake()
-                } else {
-                    self.handshake.remote_chunks.extend_from_slice(&c);
-                    iced::Task::none()
+                match &mut self.handshake.remote {
+                    RemoteReady::Committed { chunks, revealed, .. } => {
+                        if c.is_empty() {
+                            *revealed = true;
+                            self.maybe_finish_handshake()
+                        } else {
+                            chunks.extend_from_slice(&c);
+                            iced::Task::none()
+                        }
+                    }
+                    RemoteReady::NotReady if c.is_empty() => iced::Task::done(Message::Failed(Error::Other(
+                        "peer sent end-of-chunks before Commit".to_string(),
+                    ))),
+                    RemoteReady::NotReady => {
+                        // Chunks with no commitment to verify against —
+                        // protocol violation; drop them.
+                        log::warn!("netplay: ignoring chunk received before Commit");
+                        iced::Task::none()
+                    }
                 }
             }
             Message::RemoteStartMatch => {
-                self.lobby.remote_match_ready = true;
+                match &mut self.handshake.remote {
+                    RemoteReady::Committed { start_match, .. } => *start_match = true,
+                    RemoteReady::NotReady => {
+                        // StartMatch can only follow the peer's Commit on
+                        // the ordered channel — protocol violation; drop it.
+                        log::warn!("netplay: ignoring StartMatch received before Commit");
+                    }
+                }
                 self.maybe_signal_pvp_handoff()
             }
             Message::MatchHandoffReady => {
@@ -606,13 +618,12 @@ impl State {
         // Downgrading our own visibility (blind flips on):
         // drop the *peer's* commit so they re-commit under
         // the new visibility contract. Matches legacy
-        // `set_reveal_setup` in gui/play_pane.rs.
+        // `set_reveal_setup` in gui/play_pane.rs. Our own
+        // StartMatch was predicated on their now-voided
+        // reveal, so it regresses a rung with it.
         if !prev && v {
-            self.handshake.remote_commitment = None;
-            self.handshake.remote_chunks.clear();
-            self.lobby.remote_ready = false;
-            self.lobby.remote_match_ready = false;
-            self.lobby.match_ready = false;
+            self.handshake.remote = RemoteReady::NotReady;
+            self.handshake.local.revoke_start_match();
         }
         // App fires a settings resend after this. The
         // SendLocalSettings material-diff check doesn't
@@ -663,17 +674,30 @@ impl State {
     /// [`finish_handoff`] when the PvP session is built (or its
     /// build fails) to clear that state.
     pub fn take_pre_match(&mut self) -> Option<PreMatchData> {
-        if !(self.lobby.match_ready && self.lobby.remote_match_ready) {
+        if !(self.handshake.local.match_ready() && self.handshake.remote.start_match()) {
             return None;
         }
         let handles = self.conn.take()?;
-        let local_commit = self.handshake.local_commit.take()?;
+        // Drain our commit off the ladder; the `HandedOff` rung keeps
+        // the lobby chrome rendering ready-state until finish_handoff.
+        let local_commit = match std::mem::replace(&mut self.handshake.local, LocalReady::HandedOff) {
+            LocalReady::StartMatchSent(commit) => commit,
+            // Already drained (match_ready() also covers HandedOff) —
+            // but conn.take() above already returned None in that case.
+            _ => return None,
+        };
+        let RemoteReady::Committed {
+            chunks: remote_chunks, ..
+        } = &self.handshake.remote
+        else {
+            return None;
+        };
         let local_settings = self.lobby.local.clone()?;
         let remote_settings = self.lobby.remote.clone()?;
         // Decompress + decode peer's NegotiatedState — we already
-        // verified its hash in try_finish_handshake; this is just
+        // verified its hash in maybe_finish_handshake; this is just
         // to recover the nonce + save_data.
-        let peer_state_bytes = match zstd::stream::decode_all(std::io::Cursor::new(&self.handshake.remote_chunks)) {
+        let peer_state_bytes = match zstd::stream::decode_all(std::io::Cursor::new(remote_chunks)) {
             Ok(b) => b,
             Err(e) => return self.fail_handoff(Error::Other(format!("zstd decode: {e}"))),
         };
@@ -773,9 +797,7 @@ impl State {
     pub fn finish_handoff(&mut self) {
         self.phase = Phase::Idle;
         self.lobby = LobbyState::default();
-        self.handshake.remote_commitment = None;
-        self.handshake.remote_chunks.clear();
-        self.handshake.local_chunks_sent = false;
+        self.handshake = Handshake::default();
     }
 
     /// True once both sides have exchanged StartMatch and the
@@ -784,7 +806,7 @@ impl State {
     /// this to disable the ready / cancel chrome and show a
     /// "Starting match…" placeholder while `spawn_pvp` runs.
     pub fn handoff_pending(&self) -> bool {
-        self.lobby.match_ready && self.lobby.remote_match_ready && self.conn.is_none()
+        matches!(self.handshake.local, LocalReady::HandedOff) && self.handshake.remote.start_match()
     }
 }
 

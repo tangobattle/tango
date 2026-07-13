@@ -424,6 +424,9 @@ impl State {
 pub struct LobbyBandCtx<'a> {
     pub phase: &'a crate::netplay::Phase,
     pub lobby: &'a crate::netplay::LobbyState,
+    /// Derived ready-ladder projection (who's committed / match
+    /// starting), same per-frame vintage as `lobby`.
+    pub ready: crate::netplay::ReadyView,
     /// True between "both sides exchanged StartMatch" and the PvP
     /// session taking over: the selector strip goes inert and the
     /// lobby shows its "Starting match…" chrome.
@@ -437,7 +440,7 @@ pub struct LobbyBandCtx<'a> {
     /// frame the band left — the exiting band renders from
     /// this so the verdict (e.g. the failure banner) doesn't
     /// flash to the idle handshake line mid-dissolve.
-    pub exit_snapshot: Option<&'a (crate::netplay::Phase, crate::netplay::LobbyState)>,
+    pub exit_snapshot: Option<&'a (crate::netplay::Phase, crate::netplay::LobbyState, crate::netplay::ReadyView)>,
 }
 
 impl State {
@@ -503,12 +506,12 @@ impl State {
             // already gone Idle (and the lobby may be wiped) — use
             // the snapshot the App froze on the band's last live
             // frame so the verdict doesn't flash mid-dissolve.
-            let (band_phase, band_lobby) = if !band.swap.shown() {
+            let (band_phase, band_lobby, band_ready) = if !band.swap.shown() {
                 band.exit_snapshot
-                    .map(|(p, l)| (p, l))
-                    .unwrap_or((band.phase, band.lobby))
+                    .map(|(p, l, r)| (p, l, *r))
+                    .unwrap_or((band.phase, band.lobby, band.ready))
             } else {
-                (band.phase, band.lobby)
+                (band.phase, band.lobby, band.ready)
             };
             // Synthesize the local side's Settings from the current
             // loadout so the "You" slot fills in immediately —
@@ -521,6 +524,7 @@ impl State {
             lobby::Lobby {
                 lang,
                 state: band_lobby,
+                ready: band_ready,
                 phase: band_phase,
                 local_game: loadout.game,
                 scanners,

@@ -54,6 +54,9 @@ pub(super) struct Lobby<'a> {
     /// the lobby body is animating out — see `lobby_exit_snapshot` in
     /// [`super::State::view`]. Same goes for `phase`.
     pub(super) state: &'a netplay::LobbyState,
+    /// Ready-ladder projection matching `state`'s vintage (live or
+    /// exit-snapshot).
+    pub(super) ready: netplay::ReadyView,
     pub(super) phase: &'a netplay::Phase,
     pub(super) local_game: Option<rom::GameRef>,
     pub(super) scanners: &'a Scanners,
@@ -365,14 +368,14 @@ impl<'a> Lobby<'a> {
                 t!(lang, "play-you"),
                 t!(lang, "lobby-blind-self-on"),
                 Some(self.state.local.as_ref().unwrap_or(&self.local_fallback)),
-                self.state.local_ready && !failed,
+                self.ready.local_ready && !failed,
             ),
             side_card(
                 lang,
                 t!(lang, "play-opponent"),
                 t!(lang, "lobby-blind-peer-on"),
                 self.state.remote.as_ref(),
-                self.state.remote_ready && !failed,
+                self.ready.remote_ready && !failed,
             ),
         )
     }
@@ -540,7 +543,7 @@ impl<'a> Lobby<'a> {
         const READY_TEXT: f32 = 16.0;
         const READY_PAD: [f32; 2] = [10.0, 16.0];
         let lang = self.lang;
-        let (icon, label, msg, palette): (Icon, String, Option<Message>, ReadyPalette) = if self.state.match_ready {
+        let (icon, label, msg, palette): (Icon, String, Option<Message>, ReadyPalette) = if self.ready.match_ready {
             // Both committed — match is spinning up. Button is purely
             // a status indicator; no click target until the session
             // actually opens.
@@ -550,7 +553,7 @@ impl<'a> Lobby<'a> {
                 None,
                 ReadyPalette::Starting,
             )
-        } else if self.state.local_ready {
+        } else if self.ready.local_ready {
             // Locally committed, waiting on peer. Action = unready.
             // Gray / neutral so it doesn't masquerade as a primary CTA.
             (
