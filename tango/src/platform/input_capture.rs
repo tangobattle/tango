@@ -16,7 +16,7 @@
 //! Keyboard events arrive as `Event::Keyboard` and are forwarded
 //! verbatim. Gamepads aren't part of iced's event stream, so we
 //! drain SDL3's event pump (via the thread-local helper in
-//! [`crate::gamepad`]) on every `RedrawRequested` — which
+//! [`crate::platform::gamepad`]) on every `RedrawRequested` — which
 //! `interface.update` synthesizes once per redraw (see the
 //! `let redraw_event` block in `iced_winit::run_with_executor`).
 //!
@@ -32,12 +32,12 @@ use iced::advanced::widget::{Operation, Tree};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::{mouse, window, Element, Event, Length, Rectangle, Size, Vector};
 
-use crate::gamepad::GamepadEvent;
+use crate::platform::gamepad::GamepadEvent;
 
 /// Tagged input handed to the [`InputCapture`] callback. Keyboard
 /// events borrow the iced event so the caller can pattern-match
 /// without cloning; gamepad events come pre-normalized from
-/// [`crate::gamepad`] (SDL3-derived but with the call-site facing
+/// [`crate::platform::gamepad`] (SDL3-derived but with the call-site facing
 /// surface narrowed).
 pub enum Input<'a> {
     Keyboard(&'a iced::keyboard::Event),
@@ -45,33 +45,33 @@ pub enum Input<'a> {
 }
 
 impl Input<'_> {
-    /// Normalize to the shared [`crate::input::Event`] stream the
+    /// Normalize to the shared [`crate::platform::input::Event`] stream the
     /// held-state trackers consume. `None` for keyboard events that
     /// aren't a key press/release (modifiers-changed, IME, …).
-    pub fn to_event(&self) -> Option<crate::input::Event> {
+    pub fn to_event(&self) -> Option<crate::platform::input::Event> {
         Some(match self {
             Input::Keyboard(kb) => match kb {
-                iced::keyboard::Event::KeyPressed { physical_key, .. } => crate::input::Event::Key {
+                iced::keyboard::Event::KeyPressed { physical_key, .. } => crate::platform::input::Event::Key {
                     physical: *physical_key,
                     pressed: true,
                 },
-                iced::keyboard::Event::KeyReleased { physical_key, .. } => crate::input::Event::Key {
+                iced::keyboard::Event::KeyReleased { physical_key, .. } => crate::platform::input::Event::Key {
                     physical: *physical_key,
                     pressed: false,
                 },
                 _ => return None,
             },
             Input::Gamepad(ev) => match **ev {
-                GamepadEvent::ButtonDown(b) => crate::input::Event::Button {
-                    button: crate::input::GamepadButton::from_sdl3(b),
+                GamepadEvent::ButtonDown(b) => crate::platform::input::Event::Button {
+                    button: crate::platform::input::GamepadButton::from_sdl3(b),
                     pressed: true,
                 },
-                GamepadEvent::ButtonUp(b) => crate::input::Event::Button {
-                    button: crate::input::GamepadButton::from_sdl3(b),
+                GamepadEvent::ButtonUp(b) => crate::platform::input::Event::Button {
+                    button: crate::platform::input::GamepadButton::from_sdl3(b),
                     pressed: false,
                 },
-                GamepadEvent::AxisMotion { axis, value } => crate::input::Event::Axis { axis, value },
-                GamepadEvent::DeviceRemoved => crate::input::Event::GamepadDisconnected,
+                GamepadEvent::AxisMotion { axis, value } => crate::platform::input::Event::Axis { axis, value },
+                GamepadEvent::DeviceRemoved => crate::platform::input::Event::GamepadDisconnected,
             },
         })
     }
@@ -157,7 +157,7 @@ where
                 }
             }
             Event::Window(window::Event::RedrawRequested(_)) => {
-                crate::gamepad::pump(|ev| {
+                crate::platform::gamepad::pump(|ev| {
                     if let Some(message) = (self.on_input)(Input::Gamepad(&ev)) {
                         shell.publish(message);
                     }

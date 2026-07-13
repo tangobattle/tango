@@ -64,7 +64,7 @@ struct EndState {
 }
 
 pub struct PvpSession {
-    local_game: &'static crate::game::Game,
+    local_game: &'static crate::library::game::Game,
     /// This side's player index (P1 = 0, P2 = 1), picked once at match start and
     /// stable for the whole match. Match-level, not round-level — the instrument
     /// panel's P1/P2 tag reads it directly so it shows even between rounds, when
@@ -86,8 +86,8 @@ pub struct PvpSession {
     /// frame_callback — yields the true emulator TPS regardless
     /// of how often the UI polls. Equivalent to legacy
     /// `tango::stats::Counter` driven by the same callback site.
-    tps_counter: Arc<std::sync::Mutex<crate::stats::Counter>>,
-    _audio_binding: Option<crate::audio::Binding>,
+    tps_counter: Arc<std::sync::Mutex<crate::session::stats::Counter>>,
+    _audio_binding: Option<crate::platform::audio::Binding>,
     _thread: mgba::thread::Thread,
     /// Drops fire-cancellation through the match background tasks
     /// (`Match::run`, `Match::cancel`). On Close we cancel + drop
@@ -147,9 +147,9 @@ pub struct PvpSession {
 /// [`spawn_pvp`](crate::session::spawn_pvp).
 pub struct PvpSessionArgs<'a> {
     /// Local/remote game impls; the roms must already have any patch applied.
-    pub local_game: &'static crate::game::Game,
+    pub local_game: &'static crate::library::game::Game,
     pub local_rom: Arc<Vec<u8>>,
-    pub remote_game: &'static crate::game::Game,
+    pub remote_game: &'static crate::library::game::Game,
     pub remote_rom: Arc<Vec<u8>>,
     /// The netplay handoff: negotiated terms + the transport bundle.
     pub pre_match: crate::netplay::PreMatchData,
@@ -164,7 +164,7 @@ pub struct PvpSessionArgs<'a> {
     pub disable_bgm: bool,
     pub replays_path: &'a Path,
     pub cache_path: &'a Path,
-    pub audio_binder: &'a crate::audio::LateBinder,
+    pub audio_binder: &'a crate::platform::audio::LateBinder,
     pub opponent_loaded: Option<crate::selection::Loaded>,
     pub local_loaded: Option<crate::selection::Loaded>,
     pub frame_notify: Arc<tokio::sync::Notify>,
@@ -266,15 +266,19 @@ impl PvpSession {
 
         // Replay writer. Failing to open it shouldn't kill the
         // match — log and continue without recording.
-        let (replay_writer, replay_path) =
-            match build_replay_writer(replays_path, &pre_match, &identity, local_save.as_ref(), remote_save.as_ref())
-            {
-                Ok((writer, path)) => (Some(writer), Some(path)),
-                Err(e) => {
-                    log::warn!("pvp: replay writer open failed: {e}");
-                    (None, None)
-                }
-            };
+        let (replay_writer, replay_path) = match build_replay_writer(
+            replays_path,
+            &pre_match,
+            &identity,
+            local_save.as_ref(),
+            remote_save.as_ref(),
+        ) {
+            Ok((writer, path)) => (Some(writer), Some(path)),
+            Err(e) => {
+                log::warn!("pvp: replay writer open failed: {e}");
+                (None, None)
+            }
+        };
 
         let remote_hooks = remote_game.hooks;
         let shadow = tango_pvp::shadow::Shadow::new(
@@ -348,10 +352,11 @@ impl PvpSession {
             let stats = stats.clone();
             let stats_path = replay_path
                 .as_ref()
-                .map(|p| crate::replays::stats_path(cache_path, replays_path, p));
+                .map(|p| crate::library::replays::stats_path(cache_path, replays_path, p));
             let cancel = cancellation_token.clone();
             let mut receiver: Box<dyn tango_pvp::net::Receiver + Send + Sync> = Box::new(crate::net::PvpReceiver::new(
-                link.take_match_receiver().expect("bring_up parks the in-match receiver"),
+                link.take_match_receiver()
+                    .expect("bring_up parks the in-match receiver"),
                 in_match.clone(),
                 link.latency_handle(),
                 end.remote_ended.clone(),
@@ -483,7 +488,7 @@ impl PvpSession {
                     // never has to re-simulate this one.
                     if let Some(stats_path) = stats_path.as_ref() {
                         let snapshot = stats.lock().unwrap().snapshot();
-                        if let Err(e) = crate::replays::write_match_stats(stats_path, &snapshot) {
+                        if let Err(e) = crate::library::replays::write_match_stats(stats_path, &snapshot) {
                             log::warn!("failed to write replay stats cache entry: {e}");
                         }
                     }
@@ -496,7 +501,7 @@ impl PvpSession {
         thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
 
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
-        let tps_counter = Arc::new(std::sync::Mutex::new(crate::stats::Counter::new(60)));
+        let tps_counter = Arc::new(std::sync::Mutex::new(crate::session::stats::Counter::new(60)));
         vbuf.lock().unwrap().fill(0);
 
         // Single-core PvP: the live mgba thread is the only core — it runs the
@@ -605,7 +610,7 @@ impl PvpSession {
         })
     }
 
-    pub fn game(&self) -> &'static crate::game::Game {
+    pub fn game(&self) -> &'static crate::library::game::Game {
         self.local_game
     }
 

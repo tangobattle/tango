@@ -12,7 +12,7 @@
 //! **freed** the previous frame's region. Frames at or above
 //! `MAX_SYNC_SIZE` (2 MiB — i.e. hq4x) additionally detoured through the
 //! async upload worker thread, whose upload racing the vsync-off present
-//! is exactly the hq4x flicker documented in [`crate::video`].
+//! is exactly the hq4x flicker documented in [`crate::platform::video`].
 //!
 //! A *stable* handle id can't fix this: iced only (re)uploads when its
 //! cache doesn't already contain the id (`load_image` → `!cache.contains`),
@@ -58,7 +58,7 @@ use iced::Rectangle;
 const BYTES_PER_PIXEL: u32 = 2;
 
 /// A selectable GPU upscaler, defined as a named constant in
-/// [`crate::video::effects`] (e.g. `effects::hqx::HQ2X`). `id` is the
+/// [`crate::platform::video::effects`] (e.g. `effects::hqx::HQ2X`). `id` is the
 /// `config.video_filter` key; `name` is the picker label; `scale` is the
 /// integer magnification the fragment shader emulates (used by
 /// `session::view` to size the widget to the same rectangle the old CPU
@@ -74,7 +74,7 @@ pub struct Effect {
     pub name: &'static str,
     pub scale: u32,
     /// The ordered WGSL pieces concatenated into the shader module. Built by
-    /// the effect constants in [`crate::video::effects`].
+    /// the effect constants in [`crate::platform::video::effects`].
     pub(crate) parts: &'static [&'static str],
 }
 
@@ -169,7 +169,7 @@ impl Frame {
             width: 1,
             height: 1,
             revision: u64::MAX,
-            effect: &crate::video::effects::PASSTHROUGH,
+            effect: &crate::platform::video::effects::PASSTHROUGH,
         }
     }
 }

@@ -2,7 +2,7 @@
 //! [`COMMON`] (the YUV metric and interpolation rules) + the generated
 //! per-scale table (`hq{2,3,4}x.wgsl` in this directory).
 
-use crate::video::framebuffer::Effect;
+use crate::platform::video::framebuffer::Effect;
 
 /// hqx-family prelude (`yuv_diff`/`diff`, `interp1..10`); pulled in only by
 /// the hqx effects, between [`COMMON`] and the generated table.

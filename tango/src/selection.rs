@@ -1,5 +1,5 @@
-use crate::rom::GameRef;
-use crate::rom_overrides::OverridenAssets;
+use crate::library::rom::GameRef;
+use crate::library::rom_overrides::OverridenAssets;
 use iced::widget::image as iced_image;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -17,7 +17,7 @@ use std::sync::Arc;
 pub struct AppliedPatch {
     pub name: String,
     pub version: semver::Version,
-    pub version_meta: Arc<crate::patch::Version>,
+    pub version_meta: Arc<crate::library::patch::Version>,
 }
 
 /// Which sections of a loaded save can be edited in place. Each flag is a
@@ -150,11 +150,11 @@ impl Loaded {
         save_path: std::path::PathBuf,
         save: Box<dyn tango_dataview::save::Save + Send + Sync>,
         patches_path: &std::path::Path,
-        patch: Option<(String, semver::Version, Arc<crate::patch::Version>)>,
+        patch: Option<(String, semver::Version, Arc<crate::library::patch::Version>)>,
     ) -> Self {
         let (rom, applied_patch) = match patch {
             Some((name, version, meta)) => {
-                match crate::patch::apply_patch_from_disk(&rom, game, patches_path, &name, &version) {
+                match crate::library::patch::apply_patch_from_disk(&rom, game, patches_path, &name, &version) {
                     Ok(patched) => (
                         patched,
                         Some(AppliedPatch {
@@ -282,14 +282,14 @@ impl Loaded {
         // run once here so the per-frame view() just clones handles.
         let (family, variant) = game.family_and_variant();
         let mut logo_order: Vec<GameRef> = vec![game];
-        for g in crate::game::games_in_family(family) {
+        for g in crate::library::game::games_in_family(family) {
             if g.family_and_variant().1 != variant {
                 logo_order.push(g);
             }
         }
         let logos: Vec<(u32, u32, iced_image::Handle)> = logo_order
             .into_iter()
-            .filter_map(|g| crate::game::from_gamedb_entry(g))
+            .filter_map(|g| crate::library::game::from_gamedb_entry(g))
             .map(|gi| {
                 let img = gi.logo_image.to_rgba8();
                 let (w, h) = img.dimensions();
@@ -354,7 +354,7 @@ impl Loaded {
             .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
         let variant =
             u8::try_from(gi.rom_variant).map_err(|_| anyhow::anyhow!("variant {} out of range", gi.rom_variant))?;
-        let game = crate::game::find_by_family_and_variant(&gi.rom_family, variant)
+        let game = crate::library::game::find_by_family_and_variant(&gi.rom_family, variant)
             .ok_or_else(|| anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, gi.rom_variant))?;
         let rom = scanners
             .roms
@@ -403,7 +403,7 @@ fn build_navicust_render(
     const BORDER_WIDTH: f32 = crate::save_view::navicust::grid::BORDER_WIDTH;
     let (rows, cols) = materialized.dim();
 
-    let lang = crate::game::region_to_language(game.region());
+    let lang = crate::library::game::region_to_language(game.region());
     // Render at native resolution; the iced widget paints it at the same
     // display width as the interactive editor, so iced scales the high-res
     // source down — keeping it crisp on HiDPI.

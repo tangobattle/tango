@@ -1,8 +1,9 @@
 use crate::app::Scanners;
 use crate::i18n::t;
-use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
-use crate::widgets;
-use crate::{config, replays, save_view};
+use crate::library::replays;
+use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
+use crate::ui::widgets;
+use crate::{config, save_view};
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, scrollable, text, Space};
 use iced::{Alignment, Element, Fill, Length};
@@ -45,7 +46,7 @@ pub enum Message {
     /// kicks one worker per missing path post-scan; each result
     /// arrives as one of these messages and lands in
     /// [`ReplaysState::stats`].
-    StatsLoaded(std::path::PathBuf, crate::replays::ReplayStats),
+    StatsLoaded(std::path::PathBuf, crate::library::replays::ReplayStats),
     /// An [`Effect::AnalyzeReplay`] re-simulation reporting a throttled
     /// partial result, rendered as a live chart that draws itself in
     /// while the analysis runs.
@@ -141,7 +142,7 @@ pub struct ReplaysState {
     /// scan; sidebar reads it to render the second caption line.
     /// Missing entries just hide that line until the worker fills
     /// them in.
-    pub stats: std::collections::HashMap<std::path::PathBuf, crate::replays::ReplayStats>,
+    pub stats: std::collections::HashMap<std::path::PathBuf, crate::library::replays::ReplayStats>,
     /// Normalized per-round HP charts keyed by replay path, built on
     /// focus from the replay's `.stats` sidecar when one exists (written
     /// at match teardown, or by an earlier focus) and re-simulated
@@ -153,7 +154,7 @@ pub struct ReplaysState {
     pub hp_pending: std::collections::HashSet<std::path::PathBuf>,
     /// Entrance restarted when a different replay is selected —
     /// the detail panel slides in from the right.
-    pub detail_enter: crate::anim::Enter,
+    pub detail_enter: crate::ui::anim::Enter,
 }
 
 /// A replay's match stats, cooked for drawing (see
@@ -279,14 +280,16 @@ impl ReplaysState {
                 // so a later focus retries.
                 if !self.hp_charts.contains_key(&p) && !self.hp_pending.contains(&p) {
                     if let Some(stats) =
-                        crate::replays::load_match_stats(&config.cache_path(), &config.replays_path(), &p)
+                        crate::library::replays::load_match_stats(&config.cache_path(), &config.replays_path(), &p)
                     {
                         // `refresh_loaded` above already pointed `loaded` at
                         // this replay, so chip beads get the right names;
                         // the planned frame keeps every chart of this replay
                         // on one layout convention.
-                        self.hp_charts
-                            .insert(p.clone(), HpChart::new(&stats, self.loaded.as_ref(), Some(&self.loaded_round_ticks)));
+                        self.hp_charts.insert(
+                            p.clone(),
+                            HpChart::new(&stats, self.loaded.as_ref(), Some(&self.loaded_round_ticks)),
+                        );
                     } else {
                         // Seed an empty chart immediately — segments at
                         // their final widths, ready for the analysis to
@@ -352,8 +355,10 @@ impl ReplaysState {
                     Some(stats) if self.selected.as_ref() == Some(&path) => {
                         // Keep the planned frame the live preview rendered
                         // into — the completed chart must not reflow it.
-                        self.hp_charts
-                            .insert(path, HpChart::new(&stats, self.loaded.as_ref(), Some(&self.loaded_round_ticks)));
+                        self.hp_charts.insert(
+                            path,
+                            HpChart::new(&stats, self.loaded.as_ref(), Some(&self.loaded_round_ticks)),
+                        );
                     }
                     // Deselected or failed: also drop any live-preview chart
                     // so a later focus rebuilds from the sidecar (or retries
@@ -462,7 +467,7 @@ impl ReplaysState {
             let detail = replay_detail(lang, r, &replays_path, self, scanners, netplay_active);
             // Selection entrance: the detail panel rises up into
             // place.
-            crate::anim::slide_in_opt(
+            crate::ui::anim::slide_in_opt(
                 detail,
                 self.detail_enter.progress(iced::time::Instant::now()),
                 iced::Vector::new(0.0, 28.0),
@@ -608,8 +613,8 @@ impl ReplaysState {
         let local_gi = md.local_side.as_ref().and_then(|s| s.game_info.as_ref());
         let game_label = local_gi
             .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
-            .and_then(|(family, variant)| crate::game::find_by_family_and_variant(family, variant))
-            .map(|g| crate::game::short_name(lang, g))
+            .and_then(|(family, variant)| crate::library::game::find_by_family_and_variant(family, variant))
+            .map(|g| crate::library::game::short_name(lang, g))
             .or_else(|| local_gi.map(|g| g.rom_family.clone()))
             .unwrap_or_default();
         let nick_pair = if remote_nick.is_empty() && local_nick.is_empty() {
@@ -682,7 +687,8 @@ impl ReplaysState {
         };
         // Match-type name (e.g. "Triple") for the stats line.
         let family = local_gi.map(|g| g.rom_family.clone()).unwrap_or_default();
-        let type_name = crate::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
+        let type_name =
+            crate::library::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
         // Stats line: "Triple (2 rounds) · 0:42" once the lazy
         // stats worker gets here, with " · incomplete" tacked on
         // when the recorded stream didn't reach END_OF_REPLAY.
@@ -759,7 +765,7 @@ fn replay_detail<'a>(
         .as_ref()
         .and_then(|s| s.game_info.as_ref())
         .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
-        .and_then(|(family, variant)| crate::game::find_by_family_and_variant(family, variant))
+        .and_then(|(family, variant)| crate::library::game::find_by_family_and_variant(family, variant))
         .map(|g| scanners.roms.read().contains_key(&g))
         .unwrap_or(false);
     let md = &r.metadata;
@@ -802,8 +808,8 @@ fn replay_detail<'a>(
         .as_ref()
         .and_then(|s| s.game_info.as_ref())
         .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
-        .and_then(|(family, variant)| crate::game::find_by_family_and_variant(family, variant))
-        .map(|g| crate::game::short_name(lang, g))
+        .and_then(|(family, variant)| crate::library::game::find_by_family_and_variant(family, variant))
+        .map(|g| crate::library::game::short_name(lang, g))
         .unwrap_or_else(|| "?".to_string());
     let title = format!("{game_short} @ {}", link_code_display(lang, &md.link_code));
 
@@ -896,8 +902,12 @@ fn replay_detail<'a>(
                         .and_then(|s| s.game_info.as_ref())
                         .map(|g| g.rom_family.clone())
                         .unwrap_or_default();
-                    let type_name =
-                        crate::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
+                    let type_name = crate::library::game::match_type_name(
+                        lang,
+                        &family,
+                        md.match_type as u8,
+                        md.match_subtype as u8,
+                    );
                     // "Triple (2 rounds)" once the lazy stats
                     // worker gets here; just "Triple" until then,
                     // so the row doesn't pop when the count loads.
@@ -1047,9 +1057,9 @@ fn search_haystack(lang: &LanguageIdentifier, replays_path: &std::path::Path, r:
             parts.push(family_display_name(lang, &gi.rom_family, gi.rom_variant));
             if let Some(g) = u8::try_from(gi.rom_variant)
                 .ok()
-                .and_then(|v| crate::game::find_by_family_and_variant(&gi.rom_family, v))
+                .and_then(|v| crate::library::game::find_by_family_and_variant(&gi.rom_family, v))
             {
-                parts.push(crate::game::short_name(lang, g));
+                parts.push(crate::library::game::short_name(lang, g));
             }
             if let Some(p) = gi.patch.as_ref() {
                 parts.push(format!("{} v{}", p.name, p.version));
@@ -1076,7 +1086,7 @@ fn search_haystack(lang: &LanguageIdentifier, replays_path: &std::path::Path, r:
 /// how the lobby renders the game line. Falls back to "{family}
 /// v{variant}" for unrecognized families.
 fn family_display_name(lang: &LanguageIdentifier, family: &str, variant: u32) -> String {
-    crate::game::family_str(family, lang, "name").unwrap_or_else(|| format!("{family} v{variant}"))
+    crate::library::game::family_str(family, lang, "name").unwrap_or_else(|| format!("{family} v{variant}"))
 }
 
 /// A replay's millis-since-epoch timestamp, formatted per `fmt` in

@@ -1,8 +1,9 @@
+use crate::config;
 use crate::i18n::{t, SUPPORTED_LANGS};
-use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION};
-use crate::widgets;
-use crate::widgets::{option_row, Choice};
-use crate::{config, input};
+use crate::platform::input;
+use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION};
+use crate::ui::widgets;
+use crate::ui::widgets::{option_row, Choice};
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, scrollable, text, Space};
 use iced::{Alignment, Element, Fill, Length};
@@ -78,12 +79,13 @@ fn accent_hairline<'a>() -> Element<'a, Message> {
 fn settings_group<'a>(title: String, rows: Vec<Element<'a, Message>>) -> Element<'a, Message> {
     // Accent tick ahead of the title — the small "this is a
     // section" mark game menus hang their headers on.
-    let tick = container(Space::new().width(Length::Fixed(3.0)).height(Length::Fixed(11.0))).style(
-        |theme: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(theme.palette().primary)),
-            ..Default::default()
-        },
-    );
+    let tick =
+        container(Space::new().width(Length::Fixed(3.0)).height(Length::Fixed(11.0))).style(|theme: &iced::Theme| {
+            iced::widget::container::Style {
+                background: Some(iced::Background::Color(theme.palette().primary)),
+                ..Default::default()
+            }
+        });
     // Uppercased in code so every locale's Fluent string stays
     // natural-case for reuse elsewhere; CJK passes through
     // unchanged.
@@ -139,7 +141,7 @@ pub struct State {
     /// order. Owned here (not by the App's screen-enter
     /// machinery) so it also plays inside the in-session settings
     /// modal.
-    pub pane_enter: crate::anim::Enter,
+    pub pane_enter: crate::ui::anim::Enter,
     /// Starting vertical offset for `pane_enter` — sign picked
     /// from the direction of travel along the sidebar. The
     /// `Default` of 0.0 is never seen: a direction is always set
@@ -428,7 +430,7 @@ pub fn view<'a>(
     .style(widgets::pane);
     // Section-switch entrance: just this pane glides in,
     // vertically along the direction of travel in the sidebar.
-    let body_wrap: Element<'a, Message> = crate::anim::slide_in_opt(
+    let body_wrap: Element<'a, Message> = crate::ui::anim::slide_in_opt(
         body_wrap,
         state.pane_enter.progress(iced::time::Instant::now()),
         iced::Vector::new(0.0, state.pane_enter_dy),
@@ -452,18 +454,19 @@ pub fn view<'a>(
     // no wrapper here (see `session_held` on [`view`]).
     let capturing = state.capture_target.is_some();
     if capturing || (state.active_tab == SettingsTab::Input && session_held.is_none()) {
-        crate::input_capture::InputCapture::new(root, move |input| {
+        crate::platform::input_capture::InputCapture::new(root, move |input| {
             if capturing {
                 let captured = match input {
-                    crate::input_capture::Input::Keyboard(iced::keyboard::Event::KeyPressed {
-                        physical_key, ..
+                    crate::platform::input_capture::Input::Keyboard(iced::keyboard::Event::KeyPressed {
+                        physical_key,
+                        ..
                     }) => Some(input::PhysicalInput::Key(input::KeyPhysical(*physical_key))),
-                    crate::input_capture::Input::Keyboard(_) => None,
-                    crate::input_capture::Input::Gamepad(ev) => match *ev {
-                        crate::gamepad::GamepadEvent::ButtonDown(b) => {
+                    crate::platform::input_capture::Input::Keyboard(_) => None,
+                    crate::platform::input_capture::Input::Gamepad(ev) => match *ev {
+                        crate::platform::gamepad::GamepadEvent::ButtonDown(b) => {
                             Some(input::PhysicalInput::Button(input::GamepadButton::from_sdl3(b)))
                         }
-                        crate::gamepad::GamepadEvent::AxisMotion { axis, value } => {
+                        crate::platform::gamepad::GamepadEvent::AxisMotion { axis, value } => {
                             (value.abs() > input::AXIS_THRESHOLD).then_some(input::PhysicalInput::Axis {
                                 axis,
                                 dir: if value > 0.0 {
@@ -736,7 +739,7 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
             vec![
                 option_row::<Message>(t!(lang, "settings-video-filter"), {
                     // `value` is the `config.video_filter` key (`""`, `"hq2x"`, …).
-                    let options: Vec<Choice<String>> = crate::video::effects::EFFECTS
+                    let options: Vec<Choice<String>> = crate::platform::video::effects::EFFECTS
                         .iter()
                         .map(|effect| Choice::new(effect.id.into(), effect.name))
                         .collect();
@@ -1295,13 +1298,13 @@ fn settings_about<'a>(
         .width(Fill)
         .align_x(iced::alignment::Horizontal::Center);
 
-    // Pull the live Theme from the same `crate::theme::theme_for` the
+    // Pull the live Theme from the same `crate::ui::theme::theme_for` the
     // App's theme callback uses — keeps link color in sync with
     // the rest of the app instead of pinning to DARK + TANGO_GREEN
     // by hand. `Settings::from(&Theme)` defaults to text-size 16,
     // so wrap to also pin the app's body text size.
-    let theme = crate::theme::theme_for(config);
-    let style = crate::theme::markdown_style(&theme);
+    let theme = crate::ui::theme::theme_for(config);
+    let style = crate::ui::theme::markdown_style(&theme);
     let settings = markdown::Settings::with_text_size(TEXT_BODY, style);
     let body: Element<'a, Message> = markdown::view(about.content().items(), settings).map(Message::OpenUrl);
 

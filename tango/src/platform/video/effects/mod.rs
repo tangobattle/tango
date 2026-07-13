@@ -3,7 +3,7 @@
 //! — `hqx::HQ2X`, `mmpx::MMPX`, etc. — built from the WGSL `.wgsl` files in
 //! this directory. [`EFFECTS`] maps the `config.video_filter` key to each.
 
-use crate::video::framebuffer::Effect;
+use crate::platform::video::framebuffer::Effect;
 
 pub mod hqx;
 pub mod lcd;

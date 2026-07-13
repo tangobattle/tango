@@ -3,7 +3,7 @@
 //! produces — and pumps whatever `Stream` you hand it through
 //! SDL's mixer.
 //!
-//! SDL itself is initialized in [`crate::sdl_init`]; this module
+//! SDL itself is initialized in [`crate::platform::sdl_init`]; this module
 //! just borrows the global `Sdl` to grab an `AudioSubsystem` and
 //! open the stream. The resulting backend lives on the main
 //! thread inside `App._audio_backend` — `AudioStreamWithCallback`
@@ -21,8 +21,8 @@
 
 use sdl3::audio::{AudioCallback, AudioFormat, AudioSpec, AudioStream, AudioStreamWithCallback};
 
-use crate::audio;
-use crate::sdl_init;
+use crate::platform::audio;
+use crate::platform::sdl_init;
 
 /// Current playback-device topology, sorted for order-insensitive
 /// comparison; the app's 1 Hz housekeeping tick diffs successive

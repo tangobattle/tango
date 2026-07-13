@@ -16,7 +16,7 @@
 //! `save-<template>`), so there's no `game-<family>` key prefix to keep in
 //! sync — the family supplies the namespace.
 
-use crate::rom::GameRef;
+use crate::library::rom::GameRef;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 

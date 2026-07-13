@@ -1,7 +1,7 @@
 //! Global SDL3 gamepad helper. Replaces the previous `gilrs`
 //! dependency.
 //!
-//! SDL3 itself is initialized in [`crate::sdl_init`] — this module
+//! SDL3 itself is initialized in [`crate::platform::sdl_init`] — this module
 //! borrows the global `Sdl` to spin up a `GamepadSubsystem` on the
 //! main thread, and borrows the global `EventPump` (owned by
 //! `sdl_init`) to drain input. Both are `!Send`, so the local
@@ -27,8 +27,8 @@ use sdl3::sys::joystick::SDL_JoystickID;
 use sdl3::GamepadSubsystem;
 use send_wrapper::SendWrapper;
 
-use crate::input::GamepadAxis;
-use crate::sdl_init;
+use crate::platform::input::GamepadAxis;
+use crate::platform::sdl_init;
 
 /// What `input_capture` / settings binding-capture care about. Keeps
 /// the surface narrow so we don't propagate `sdl3` types into the
@@ -55,7 +55,7 @@ struct Context {
 static GAMEPAD_CONTEXT: Mutex<Option<SendWrapper<Context>>> = Mutex::new(None);
 
 /// Open every attached gamepad and stash the context in the global.
-/// Call this once at startup, after [`crate::sdl_init::init`], on the
+/// Call this once at startup, after [`crate::platform::sdl_init::init`], on the
 /// iced/winit main thread. Failures are logged and turn subsequent
 /// [`pump`] calls into no-ops — the app keeps running without gamepad
 /// support.
@@ -94,7 +94,7 @@ fn build_context(sdl: &sdl3::Sdl) -> Result<Context, String> {
 /// Drain every event currently queued in SDL and emit the
 /// gamepad-relevant ones via `on_event`. Handles device add/remove
 /// internally — callers only see the narrow [`GamepadEvent`]. No-op
-/// if [`crate::sdl_init::init`] / [`init`] never succeeded.
+/// if [`crate::platform::sdl_init::init`] / [`init`] never succeeded.
 pub fn pump(mut on_event: impl FnMut(GamepadEvent)) {
     // Event pump lives in `sdl_init` (it's an SDL singleton); borrow
     // it for the drain, plus our own gamepad context for hotplug.

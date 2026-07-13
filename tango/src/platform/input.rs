@@ -494,7 +494,7 @@ pub enum MappedKey {
 /// key/button/axis info so both consumers — the session's joyflag
 /// pipeline and the input settings pane's live binding highlight —
 /// share one normalized stream (see
-/// [`crate::input_capture::Input::to_event`]).
+/// [`crate::platform::input_capture::Input::to_event`]).
 #[derive(Debug, Clone)]
 pub enum Event {
     Key {

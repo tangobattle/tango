@@ -1,42 +1,30 @@
 #![windows_subsystem = "windows"]
 
-mod anim;
-mod audio;
-mod bnlc;
+// Foundations.
 mod config;
-mod copy_feedback;
-mod discord;
-mod game;
-mod gamepad;
 mod i18n;
-mod identity;
-mod input;
-mod input_capture;
-mod loadout;
+mod library; // the on-disk game library: registry + ROM/save/patch/replay scanning
+mod platform; // host-machine glue: SDL, input devices, AV output, crash capture
+mod ui; // look-and-feel toolkit: widgets, style, theme, animation
+
+// Netplay: `net` owns the wire protocols, `netplay` the connection lifecycle.
 mod net;
 mod netplay;
-mod patch;
-mod randomcode;
-mod replays;
-mod rom;
-mod rom_overrides;
-mod save;
-mod save_edit;
-mod save_view;
-mod scanner;
-mod sdl_init;
-mod selection;
-mod session;
-mod stats;
-mod tabs;
-mod updater;
-mod video;
-mod widgets;
 
+// App-level state the tabs share.
+mod loadout;
+mod save_edit;
+mod selection;
+
+// Screens.
+mod save_view;
+mod session;
+mod tabs;
+
+// Side services, and the app shell that ties everything together.
 mod app;
-mod crash_log;
-mod style;
-mod theme;
+mod discord;
+mod updater;
 
 use app::App;
 
@@ -370,7 +358,7 @@ fn run_app() -> iced::Result {
                 }
             }
         });
-    std::mem::forget(crash_log::install(crash_client));
+    std::mem::forget(platform::crash_log::install(crash_client));
 
     // Re-parse the CLI in the child (the supervisor doesn't pass
     // it through). Bad args here would have failed in the
@@ -392,8 +380,8 @@ fn run_app() -> iced::Result {
     // already-initialized Sdl. sdl3 enforces "first thread to call
     // init owns the pump", so this has to happen on the iced/winit
     // main thread.
-    sdl_init::init();
-    gamepad::init();
+    platform::sdl_init::init();
+    platform::gamepad::init();
 
     // Windows-only auto-fallback to ANGLE for old Intel iGPUs.
     // We enumerate `Backends::PRIMARY` (DX12 + Vulkan) up front
@@ -455,7 +443,7 @@ fn run_app() -> iced::Result {
         // Same constant the typographic scale + every markdown
         // Settings::with_text_size call uses, so the body text
         // size is in one place.
-        default_text_size: iced::Pixels(style::TEXT_BODY),
+        default_text_size: iced::Pixels(ui::style::TEXT_BODY),
         vsync: false,
         ..iced::Settings::default()
     };
@@ -510,6 +498,6 @@ fn run_app() -> iced::Result {
         // faces, so we can default to the Latin Noto Sans and let
         // CJK / emoji glyphs come from the JP / SC / TC / Emoji
         // fonts above.
-        .default_font(style::DEFAULT_FONT)
+        .default_font(ui::style::DEFAULT_FONT)
         .run()
 }

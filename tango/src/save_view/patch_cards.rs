@@ -36,7 +36,7 @@ pub(super) fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: 
                 list = list.push(
                     container(row)
                         .padding(style::ROW_PADDING)
-                        .style(crate::widgets::zebra_row(i)),
+                        .style(crate::ui::widgets::zebra_row(i)),
                 );
             }
         }
@@ -102,13 +102,13 @@ pub(super) fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: 
                     container(cell)
                         .width(Fill)
                         .padding([8, 10])
-                        .style(crate::widgets::zebra_row(slot)),
+                        .style(crate::ui::widgets::zebra_row(slot)),
                 );
             }
         }
     }
 
-    container(list).width(Fill).style(crate::widgets::pane).into()
+    container(list).width(Fill).style(crate::ui::widgets::pane).into()
 }
 
 /// Every PatchCard56 the ROM defines, as `(id, name, mb)`, in `sort`
@@ -217,7 +217,7 @@ fn patch_card56_list_row<'a>(
             bottom: 6.0,
             left: 6.0,
         })
-        .style(crate::widgets::zebra_row(slot))
+        .style(crate::ui::widgets::zebra_row(slot))
         .into()
 }
 
@@ -246,7 +246,7 @@ fn patch_card56_library_row<'a>(
     let mut b = button(row)
         .width(Fill)
         .padding(style::ROW_PADDING)
-        .style(crate::widgets::list_item(false, row_idx));
+        .style(crate::ui::widgets::list_item(false, row_idx));
     if selectable {
         b = b.on_press(Action::AddPatchCard56 { id });
     }
@@ -385,7 +385,7 @@ fn patch_card4_slot_row<'a>(
     installed: Option<tango_dataview::save::PatchCard>,
     choices: Vec<PatchCard4Choice>,
 ) -> Element<'a, Action> {
-    use crate::widgets;
+    use crate::ui::widgets;
     let badge = container(
         text(PATCH_CARD4_SLOT_LABELS[slot])
             .size(TEXT_BODY)
@@ -438,7 +438,7 @@ fn patch_card4_slot_row<'a>(
     container(cell)
         .width(Fill)
         .padding([8, 10])
-        .style(crate::widgets::zebra_row(slot))
+        .style(crate::ui::widgets::zebra_row(slot))
         .into()
 }
 
@@ -453,7 +453,7 @@ fn render_patch_card4s_edit<'a>(
     loaded: &'a Loaded,
     state: &'a State,
 ) -> Element<'a, Action> {
-    use crate::widgets;
+    use crate::ui::widgets;
     // Only reached while editing, so the EditState is present.
     if state.editing.is_none() {
         return placeholder(t!(lang, "save-empty"));
@@ -500,7 +500,7 @@ fn render_patch_card4s_edit<'a>(
     container(column![
         header,
         scrollable(rows)
-            .style(crate::widgets::chunky_scrollable)
+            .style(crate::ui::widgets::chunky_scrollable)
             .height(Fill)
             .width(Fill)
     ])

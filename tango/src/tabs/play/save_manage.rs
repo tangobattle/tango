@@ -240,7 +240,7 @@ impl State {
         // out it has already been reset to `None`, so the exit
         // half renders the frozen copy.
         let now = iced::time::Instant::now();
-        let (render_form, form_swap) = crate::anim::swap_phase(&self.save_form, now);
+        let (render_form, form_swap) = crate::ui::anim::swap_phase(&self.save_form, now);
         let action = if render_form && self.save_action == SaveAction::None {
             &self.save_action_exit
         } else {
@@ -249,7 +249,7 @@ impl State {
         let mut row_el: Element<'a, Message> =
             self.save_action_row_inner(lang, scanners, loadout, save_picker, render_form, action);
         if let Some(phase) = form_swap {
-            row_el = crate::anim::swap_transform(row_el, phase, iced::Vector::new(24.0, 0.0), widgets::plate_color);
+            row_el = crate::ui::anim::swap_transform(row_el, phase, iced::Vector::new(24.0, 0.0), widgets::plate_color);
         }
         row_el
     }
@@ -483,7 +483,7 @@ fn save_name_input<'a>(
 /// Uses the full variant-aware display name so multi-version games like
 /// BN6 Gregar/Falzar get disambiguated.
 fn suggest_save_name(lang: &unic_langid::LanguageIdentifier, game: rom::GameRef, template: Option<&str>) -> String {
-    let game_name = crate::game::display_name(lang, game);
+    let game_name = crate::library::game::display_name(lang, game);
     let family = game.family_and_variant().0;
     let name = match template {
         Some(raw) => {
@@ -647,7 +647,11 @@ fn save_template_choice(
     // Always prefix with the short variant tag (e.g. "Blue – Heat
     // Guts"), even for single-owned-variant or single-variant
     // families, so the picker reads consistently.
-    let display = format!("{} \u{2013} {}", crate::game::variant_short_name(lang, game), label);
+    let display = format!(
+        "{} \u{2013} {}",
+        crate::library::game::variant_short_name(lang, game),
+        label
+    );
     widgets::Choice::new((game, raw.to_string()), display)
 }
 

@@ -221,7 +221,7 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for MenuButton<'_, M> {
                     // Keep the app's per-frame redraw subscription
                     // alive for the entrance (the overlay also
                     // self-requests frames as a local fallback).
-                    crate::anim::kick(crate::anim::TRANSITION);
+                    crate::ui::anim::kick(crate::ui::anim::TRANSITION);
                     shell.capture_event();
                 }
             }
@@ -372,10 +372,10 @@ impl<M> MenuOverlay<'_, '_, M> {
     }
 
     /// Entrance progress, eased — 1.0 once at rest. Same curve and
-    /// duration as the app-wide [`crate::anim`] entrances
+    /// duration as the app-wide [`crate::ui::anim`] entrances
     /// (EaseOutCubic over TRANSITION).
     fn entrance(&self, now: iced::time::Instant) -> f32 {
-        let t = (now.duration_since(self.opened_at).as_secs_f32() / crate::anim::TRANSITION.as_secs_f32()).min(1.0);
+        let t = (now.duration_since(self.opened_at).as_secs_f32() / crate::ui::anim::TRANSITION.as_secs_f32()).min(1.0);
         1.0 - (1.0 - t).powi(3)
     }
 }
@@ -468,7 +468,7 @@ impl<M: Clone> overlay::Overlay<M, Theme, iced::Renderer> for MenuOverlay<'_, '_
 
         // Entrance: glide out of the trigger's edge while scaling
         // 0.96 → 1.0 about the pane's center — the overlay cousin of
-        // [`crate::anim::pop`]. Layout and hit-testing stay at the
+        // [`crate::ui::anim::pop`]. Layout and hit-testing stay at the
         // rest position; only the drawing moves.
         let progress = self.entrance(iced::time::Instant::now());
         let travel = if self.below { -ENTER_TRAVEL } else { ENTER_TRAVEL };

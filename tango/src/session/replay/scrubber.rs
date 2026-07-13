@@ -136,7 +136,7 @@ impl<M> canvas::Program<M> for Scrubber<M> {
         } else {
             iced::widget::slider::Status::Active
         };
-        let style = crate::widgets::chunky_slider(theme, status);
+        let style = crate::ui::widgets::chunky_slider(theme, status);
         let color_of = |bg: &iced::Background, fallback: iced::Color| match bg {
             iced::Background::Color(c) => *c,
             _ => fallback,
@@ -180,14 +180,21 @@ impl<M> canvas::Program<M> for Scrubber<M> {
             // Half the gap on each side of a boundary; the bar's outer
             // ends stay flush with the canvas.
             let x0 = if i == 0 { pair[0] } else { pair[0] + gap / 2.0 };
-            let x1 = if i == edges.len() - 2 { pair[1] } else { pair[1] - gap / 2.0 };
+            let x1 = if i == edges.len() - 2 {
+                pair[1]
+            } else {
+                pair[1] - gap / 2.0
+            };
             if x1 - x0 < 1.0 {
                 continue;
             }
 
             // Full segment: unplayed/unprefetched track.
-            let track =
-                Path::rounded_rectangle(Point::new(x0, track_y), Size::new(x1 - x0, track_h), track_radius.into());
+            let track = Path::rounded_rectangle(
+                Point::new(x0, track_y),
+                Size::new(x1 - x0, track_h),
+                track_radius.into(),
+            );
             frame.fill(&track, track_color);
 
             // Prefetched range — primary hue at weak strength so it

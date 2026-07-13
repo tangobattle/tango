@@ -10,7 +10,7 @@
 //! on a [`SeekController`] and a dedicated [`SeekWorker`] thread
 //! chases the newest target on the mgba thread, so the UI never
 //! blocks on catch-up emulation. Audio is bound via the shared
-//! [`crate::audio::LateBinder`].
+//! [`crate::platform::audio::LateBinder`].
 
 mod audio;
 pub mod scrubber;
@@ -124,7 +124,7 @@ struct InputDisplay {
 }
 
 pub struct ReplaySession {
-    game: &'static crate::game::Game,
+    game: &'static crate::library::game::Game,
     stepper_state: tango_pvp::stepper::State,
     snapshots: SnapshotStore,
     /// Dense per-frame snapshot window trailing the playhead (see
@@ -161,7 +161,7 @@ pub struct ReplaySession {
     pip_fresh: Arc<AtomicBool>,
     /// Held so the audio binding survives for the session's lifetime;
     /// the LateBinder swaps back to silence when this Drops.
-    _audio_binding: Option<crate::audio::Binding>,
+    _audio_binding: Option<crate::platform::audio::Binding>,
     /// Field order matters — `_prefetcher`'s and `_seek_worker`'s Drops
     /// signal cancel and join their background threads before `thread`
     /// is torn down. All three come last so the frame callback and any
@@ -174,12 +174,12 @@ pub struct ReplaySession {
 
 impl ReplaySession {
     pub fn new(
-        game: &'static crate::game::Game,
+        game: &'static crate::library::game::Game,
         rom: Arc<Vec<u8>>,
-        remote_game: &'static crate::game::Game,
+        remote_game: &'static crate::library::game::Game,
         remote_rom: Arc<Vec<u8>>,
         replay: Arc<tango_pvp::replay::Replay>,
-        audio_binder: &crate::audio::LateBinder,
+        audio_binder: &crate::platform::audio::LateBinder,
         frame_notify: Arc<tokio::sync::Notify>,
         vbuf: Arc<Mutex<Vec<u8>>>,
         // Start with the opponent-screen PiP on (`config.show_opponent_pip`
@@ -456,7 +456,7 @@ impl ReplaySession {
         })
     }
 
-    pub fn game(&self) -> &'static crate::game::Game {
+    pub fn game(&self) -> &'static crate::library::game::Game {
         self.game
     }
 
@@ -842,8 +842,8 @@ impl Prefetcher {
         rom: Arc<Vec<u8>>,
         remote_rom: Arc<Vec<u8>>,
         replay: Arc<tango_pvp::replay::Replay>,
-        game: &'static crate::game::Game,
-        remote_game: &'static crate::game::Game,
+        game: &'static crate::library::game::Game,
+        remote_game: &'static crate::library::game::Game,
         snapshots: SnapshotStore,
         progress: Arc<AtomicU32>,
         stats_job: Option<PrefetchStatsJob>,
@@ -876,16 +876,16 @@ impl Prefetcher {
                 snapshots,
                 cancel_for_thread,
                 progress,
-                stats_job
-                    .is_some()
-                    .then_some(&mut on_stats_progress as &mut dyn FnMut(u32, u32, &tango_pvp::analysis::MatchStatsBuilder)),
+                stats_job.is_some().then_some(
+                    &mut on_stats_progress as &mut dyn FnMut(u32, u32, &tango_pvp::analysis::MatchStatsBuilder),
+                ),
             ) {
                 Ok(Some(stats)) => {
                     // Completed with stats duty: cache them like the
                     // analysis worker would, then park the result for
                     // the progress stream's trailing completion message.
                     if let Some(job) = &stats_job {
-                        if let Err(e) = crate::replays::write_match_stats(&job.stats_file, &stats) {
+                        if let Err(e) = crate::library::replays::write_match_stats(&job.stats_file, &stats) {
                             log::warn!("prefetch stats cache write failed: {e:?}");
                         }
                         *job.done.lock().unwrap() = Some(stats);
@@ -921,8 +921,8 @@ mod tests {
     #[allow(clippy::type_complexity)]
     fn golden_fixture() -> Option<(
         Arc<tango_pvp::replay::Replay>,
-        (&'static crate::game::Game, Arc<Vec<u8>>),
-        (&'static crate::game::Game, Arc<Vec<u8>>),
+        (&'static crate::library::game::Game, Arc<Vec<u8>>),
+        (&'static crate::library::game::Game, Arc<Vec<u8>>),
     )> {
         let Some(roms_dir) = std::env::var_os("TANGO_TEST_ROMS_DIR").map(std::path::PathBuf::from) else {
             eprintln!("skip: TANGO_TEST_ROMS_DIR unset");
@@ -942,15 +942,15 @@ mod tests {
                 continue;
             }
             let Ok(bytes) = std::fs::read(&p) else { continue };
-            if let Some(g) = crate::game::detect(&bytes) {
+            if let Some(g) = crate::library::game::detect(&bytes) {
                 roms.insert(g.family_and_variant(), bytes);
             }
         }
         let resolve = |side: Option<&tango_pvp::replay::metadata::Side>| {
             let gi = side.and_then(|s| s.game_info.as_ref()).expect("game info");
-            let entry =
-                crate::game::find_by_family_and_variant(&gi.rom_family, gi.rom_variant as u8).expect("known game");
-            let game = crate::game::from_gamedb_entry(entry).expect("game impl");
+            let entry = crate::library::game::find_by_family_and_variant(&gi.rom_family, gi.rom_variant as u8)
+                .expect("known game");
+            let game = crate::library::game::from_gamedb_entry(entry).expect("game impl");
             let rom = roms.get(&entry.family_and_variant()).expect("rom staged").clone();
             (game, Arc::new(rom))
         };
@@ -972,12 +972,13 @@ mod tests {
             return;
         };
 
-        let mut binder = crate::audio::LateBinder::new();
+        let mut binder = crate::platform::audio::LateBinder::new();
         binder.set_sample_rate(48000);
         let frame_notify = Arc::new(tokio::sync::Notify::new());
         let vbuf = Arc::new(Mutex::new(vec![
             0u8;
-            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2) as usize
+            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2)
+                as usize
         ]));
 
         let session = ReplaySession::new(
@@ -1002,8 +1003,8 @@ mod tests {
             let stop = stop.clone();
             let mut binder = binder.clone();
             move || {
-                use crate::audio::Stream as _;
-                let mut buf = [[0i16; crate::audio::NUM_CHANNELS]; crate::audio::SAMPLES];
+                use crate::platform::audio::Stream as _;
+                let mut buf = [[0i16; crate::platform::audio::NUM_CHANNELS]; crate::platform::audio::SAMPLES];
                 while !stop.load(Ordering::Relaxed) {
                     binder.fill(&mut buf);
                     std::thread::sleep(std::time::Duration::from_millis(1));
@@ -1043,7 +1044,10 @@ mod tests {
         let before = vbuf.lock().unwrap().clone();
         session.toggle_swap_perspective();
         let after = vbuf.lock().unwrap().clone();
-        assert_ne!(before, after, "swap-perspective while paused left the main screen untouched");
+        assert_ne!(
+            before, after,
+            "swap-perspective while paused left the main screen untouched"
+        );
         assert_eq!(session.pip_pixels().as_deref(), Some(before.as_slice()));
 
         stop.store(true, Ordering::Relaxed);

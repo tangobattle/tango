@@ -1,5 +1,5 @@
-use crate::bnlc;
-use crate::scanner;
+use crate::library::bnlc;
+use crate::library::scanner;
 use std::io::Read;
 
 pub type GameRef = tango_gamesupport::GameRef;
@@ -52,7 +52,7 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<GameR
                 continue;
             }
         };
-        let Some(game) = crate::game::detect(&buf) else {
+        let Some(game) = crate::library::game::detect(&buf) else {
             log::debug!("rom scan: {}: not a recognized rom", path.display());
             continue;
         };
@@ -64,7 +64,7 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<GameR
 
 /// Pull every recognized .srl ROM out of each BNLC volume's
 /// per-game `exeN.dat` archives. Steam discovery + the per-volume
-/// `Bnlc` handle live in `crate::bnlc`.
+/// `Bnlc` handle live in `crate::library::bnlc`.
 fn scan_bnlc_steam_roms() -> std::collections::HashMap<GameRef, Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
     for volume in [bnlc::Volume::Vol1, bnlc::Volume::Vol2] {
@@ -114,7 +114,7 @@ fn scan_bnlc_rom_archive(path: &std::path::Path) -> std::collections::HashMap<Ga
             log::warn!("bnlc: {}/{}: {e}", path.display(), entry_path.display());
             continue;
         }
-        let Some(game) = crate::game::detect(&rom) else {
+        let Some(game) = crate::library::game::detect(&rom) else {
             log::warn!("bnlc: {}/{}: not recognized", path.display(), entry_path.display());
             continue;
         };

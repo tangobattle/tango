@@ -5,8 +5,8 @@ pub(super) fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded
     container(navi_card_content::<M>(lang, loaded, false))
         .width(Fill)
         .align_x(Alignment::Center)
-        .padding(crate::style::PANE_PADDING)
-        .style(crate::widgets::pane)
+        .padding(crate::ui::style::PANE_PADDING)
+        .style(crate::ui::widgets::pane)
         .into()
 }
 
@@ -130,7 +130,7 @@ pub(super) fn render_navi_strip<'a>(
     let card: Element<'a, Action> = match edit {
         Some(action) => button(navi_card_content::<Action>(lang, loaded, true))
             .padding([4.0, 6.0])
-            .style(crate::widgets::flat)
+            .style(crate::ui::widgets::flat)
             .on_press(action)
             .into(),
         None => container(navi_card_content::<Action>(lang, loaded, false))
@@ -147,7 +147,7 @@ pub(super) fn render_navi_strip<'a>(
     )
     .padding(6.0)
     .width(Fill)
-    .style(crate::widgets::pane)
+    .style(crate::ui::widgets::pane)
     .into()
 }
 
@@ -223,12 +223,12 @@ pub(super) fn render_navi_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loa
     // pane's right edge like every other editor pane (a `.padding()` on the
     // outer container would inset the whole scrollable, scrollbar included).
     container(
-        scrollable(container(body).padding(crate::style::PANE_PADDING).width(Fill))
-            .style(crate::widgets::chunky_scrollable)
+        scrollable(container(body).padding(crate::ui::style::PANE_PADDING).width(Fill))
+            .style(crate::ui::widgets::chunky_scrollable)
             .height(Fill)
             .width(Fill),
     )
-    .style(crate::widgets::pane)
+    .style(crate::ui::widgets::pane)
     .width(Fill)
     .height(Fill)
     .into()
@@ -274,7 +274,7 @@ fn navi_cell(loaded: &Loaded, id: usize, name: String, selected: bool) -> Elemen
         .style(move |theme: &iced::Theme| {
             let bg = theme.palette().background;
             container::Style {
-                background: Some(iced::Background::Color(crate::widgets::mix(
+                background: Some(iced::Background::Color(crate::ui::widgets::mix(
                     bg,
                     accent,
                     if selected { 0.40 } else { 0.14 },

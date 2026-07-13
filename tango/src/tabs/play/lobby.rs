@@ -14,13 +14,13 @@
 //! gate in agreement.
 
 use crate::app::Scanners;
-use crate::game;
 use crate::i18n::t;
+use crate::library::game;
+use crate::library::rom;
 use crate::net::protocol::Settings;
 use crate::netplay::{self, Phase};
-use crate::rom;
-use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
-use crate::widgets;
+use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
+use crate::ui::widgets;
 use iced::widget::{button, container, text};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
@@ -268,7 +268,7 @@ impl<'a> Lobby<'a> {
     /// is on screen; terminal states (verdicts, failures) stay static.
     fn status_line(&self, status: &Status<'_>) -> Element<'a, Message> {
         let lang = self.lang;
-        let pulse = crate::anim::pulse();
+        let pulse = crate::ui::anim::pulse();
         let pulsing_style = move |theme: &iced::Theme| iced::widget::text::Style {
             color: Some(widgets::mix(
                 widgets::muted_color(theme),

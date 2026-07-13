@@ -339,14 +339,14 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
         let mut frame = state
             .current_frame
             .clone()
-            .unwrap_or_else(crate::video::framebuffer::Frame::black);
+            .unwrap_or_else(crate::platform::video::framebuffer::Frame::black);
         // The uploaded texture is always the native frame; the effect is just
         // the draw-time pipeline pick. Take it live from config here (not from
         // whatever was current when the frame was produced) so switching the
         // video filter re-renders immediately — even on a paused replay that
         // isn't producing new frames.
         frame.effect = effect;
-        let fb = iced::widget::shader::Shader::new(crate::video::framebuffer::Program::new(frame))
+        let fb = iced::widget::shader::Shader::new(crate::platform::video::framebuffer::Program::new(frame))
             .width(Length::Fixed(w))
             .height(Length::Fixed(h));
 
@@ -567,7 +567,7 @@ fn replay_bar<'a>(
             speed_items,
             true,
             [7.0, 7.0],
-            crate::style::STANDARD_PADDING,
+            crate::ui::style::STANDARD_PADDING,
             speed_style,
         )
         // Short labels + a check: the default pane would be mostly air.
@@ -705,7 +705,7 @@ fn replay_bar<'a>(
     } else {
         0.0
     };
-    let graph = crate::widgets::hp_hover_strip::<Message>(rounds, strip_h);
+    let graph = crate::ui::widgets::hp_hover_strip::<Message>(rounds, strip_h);
 
     // YouTube-style rows: [strip] / [scrubber, full width] / [play +
     // readout + spacer + chips].
@@ -728,7 +728,14 @@ fn replay_bar<'a>(
         .push(pip_toggle)
         .push(swap_toggle);
 
-    column![].spacing(4).padding([8, 8]).width(Fill).push(graph).push(scrub).push(controls).into()
+    column![]
+        .spacing(4)
+        .padding([8, 8])
+        .width(Fill)
+        .push(graph)
+        .push(scrub)
+        .push(controls)
+        .into()
 }
 
 /// Hoist a persistent chrome layer into iced's floating layer —
@@ -1275,12 +1282,12 @@ fn input_pad<'a>(joyflags: u16) -> Element<'a, Message> {
 /// its own shader surface ([`PipProgram`]) because the main framebuffer's
 /// pipeline owns a single resident texture.
 ///
-/// [`PipProgram`]: crate::video::framebuffer::PipProgram
+/// [`PipProgram`]: crate::platform::video::framebuffer::PipProgram
 fn pip_overlay(state: &State) -> Option<Element<'_, Message>> {
     let frame = state.pip_frame.clone()?;
     // 1.5x native: readable without dominating the main view.
     let (w, h) = (frame.width as f32 * 1.5, frame.height as f32 * 1.5);
-    let fb = iced::widget::shader::Shader::new(crate::video::framebuffer::PipProgram::new(frame))
+    let fb = iced::widget::shader::Shader::new(crate::platform::video::framebuffer::PipProgram::new(frame))
         .width(Length::Fixed(w))
         .height(Length::Fixed(h));
     let plate = container(fb).padding(3).style(hud_chip_plate);

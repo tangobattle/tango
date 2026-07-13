@@ -2,9 +2,9 @@
 //! sync / patch application yet. Just reads `info.toml`, README, and the
 //! per-version directory to discover which games each version supports.
 
-use crate::rom::GameRef;
-use crate::rom_overrides::Overrides;
-use crate::scanner;
+use crate::library::rom::GameRef;
+use crate::library::rom_overrides::Overrides;
+use crate::library::scanner;
 use futures::StreamExt;
 use itertools::Itertools;
 use serde::Deserialize;
@@ -335,7 +335,7 @@ pub fn scan(path: &std::path::Path) -> std::io::Result<PatchMap> {
                     let Ok(revision) = captures[2].parse::<u8>() else {
                         continue;
                     };
-                    let Some(game) = crate::game::find_by_rom_info(&rom_code, revision) else {
+                    let Some(game) = crate::library::game::find_by_rom_info(&rom_code, revision) else {
                         continue;
                     };
                     supported_games.insert(game);
@@ -347,7 +347,7 @@ pub fn scan(path: &std::path::Path) -> std::io::Result<PatchMap> {
                     let Ok(revision) = captures[2].parse::<u8>() else {
                         continue;
                     };
-                    let Some(game) = crate::game::find_by_rom_info(&rom_code, revision) else {
+                    let Some(game) = crate::library::game::find_by_rom_info(&rom_code, revision) else {
                         continue;
                     };
                     let template_name = captures.get(3).map(|m| m.as_str().to_string()).unwrap_or_default();

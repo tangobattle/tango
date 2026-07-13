@@ -274,7 +274,7 @@ async fn run_signaling_connect(
             // presented as the websocket's mTLS client certificate so the
             // server can log our fingerprint. `None` when it couldn't be
             // loaded — the dial still succeeds, just without a client cert
-            // (see `crate::identity`).
+            // (see `crate::netplay::identity`).
             identity,
         )
         .await

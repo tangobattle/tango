@@ -1,5 +1,5 @@
 use super::COMMON;
-use crate::video::framebuffer::Effect;
+use crate::platform::video::framebuffer::Effect;
 
 pub const LCD: Effect = Effect {
     id: "lcd",

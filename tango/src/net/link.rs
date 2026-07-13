@@ -352,7 +352,8 @@ impl Link {
             ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_TIMEOUT,
         };
         let give_up_at = started + timeout;
-        self.health.send_replace(LinkHealth::Reconnecting { started, give_up_at });
+        self.health
+            .send_replace(LinkHealth::Reconnecting { started, give_up_at });
         self.retire_latency();
 
         // Tear the old peer connection down *before* rebuilding so the host's
@@ -391,8 +392,7 @@ impl Link {
         // host/connect) needs no fingerprints, so its empty pair leaves the
         // seed-only fallback in place harmlessly.
         if let Some(ReconnectRecipe::Matchmaking { session_id, .. }) = self.recipe.lock().unwrap().as_mut() {
-            *session_id =
-                derive_reconnect_session_id(&self.rng_seed, &local_dtls_fingerprint, &peer_dtls_fingerprint);
+            *session_id = derive_reconnect_session_id(&self.rng_seed, &local_dtls_fingerprint, &peer_dtls_fingerprint);
         }
         *self.peer_conn.lock().unwrap() = Some(new_peer_conn);
         // Retarget the out-stream sink (pump + heartbeat both send through the
@@ -600,9 +600,8 @@ mod tests {
             .expect("negotiate failed");
 
         let cancel = CancellationToken::new();
-        let host_link = Arc::new(
-            link_from_channels(host_ch, ReconnectRecipe::Direct(DirectRole::Host { port }), &cancel).await,
-        );
+        let host_link =
+            Arc::new(link_from_channels(host_ch, ReconnectRecipe::Direct(DirectRole::Host { port }), &cancel).await);
         let conn_link = Arc::new(
             link_from_channels(
                 conn_ch,

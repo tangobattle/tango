@@ -620,7 +620,6 @@ pub fn apply_patch_card4_edit(loaded: &mut selection::Loaded, edit: PatchCard4Ed
 /// commit path checksums and writes. A no-op on saves without a writable
 /// auto-battle-data view (only BN4/BN5 have one).
 pub fn apply_auto_battle_data_edit(loaded: &mut selection::Loaded, edit: AutoBattleDataEdit) {
-
     match edit {
         AutoBattleDataEdit::SetUseCount { id, count } => {
             if let Some(mut v) = loaded.save.view_auto_battle_data_mut() {

@@ -1,7 +1,7 @@
 use crate::i18n::t;
 use crate::selection::Loaded;
-use crate::style::{self, TEXT_BODY, TEXT_CAPTION};
-use crate::widgets::{muted_color, muted_text_style};
+use crate::ui::style::{self, TEXT_BODY, TEXT_CAPTION};
+use crate::ui::widgets::{muted_color, muted_text_style};
 use iced::widget::{button, container, image as iced_image, scrollable, stack, text, tooltip, Image, Space};
 use sweeten::widget::{column, pick_list, row, text_input};
 
@@ -78,7 +78,7 @@ fn library_header<'a, S: Copy + PartialEq + 'static>(
         .padding(style::CONTROL_PADDING)
         .size(TEXT_BODY)
         .width(Fill)
-        .style(crate::widgets::chunky_text_input);
+        .style(crate::ui::widgets::chunky_text_input);
     let sort_options: Vec<SortChoice<S>> = sorts
         .iter()
         .map(|&sort| SortChoice {
@@ -90,7 +90,7 @@ fn library_header<'a, S: Copy + PartialEq + 'static>(
     let sort_pick = pick_list(sort_options, sort_selected, move |c: SortChoice<S>| on_sort(c.sort))
         .padding(style::CONTROL_PADDING)
         .text_size(TEXT_BODY)
-        .style(crate::widgets::chunky_pick_list);
+        .style(crate::ui::widgets::chunky_pick_list);
     container(
         row![
             filter_input,
@@ -117,13 +117,13 @@ fn editor_pane<'a>(
     container(column![
         header.into(),
         scrollable(body.into())
-            .style(crate::widgets::chunky_scrollable)
+            .style(crate::ui::widgets::chunky_scrollable)
             .height(Fill)
             .width(Fill)
     ])
     .width(Fill)
     .height(Fill)
-    .style(crate::widgets::pane)
+    .style(crate::ui::widgets::pane)
     .into()
 }
 
@@ -141,12 +141,12 @@ fn editor_panes<'a>(left: Element<'a, Action>, right: Element<'a, Action>) -> El
 /// folder / navicust / patch-card / auto-battle-data panes apart from the
 /// action it fires.
 fn clear_all_button<'a>(lang: &LanguageIdentifier, action: Action) -> Element<'a, Action> {
-    crate::widgets::labeled_icon_button(
+    crate::ui::widgets::labeled_icon_button(
         lucide_icons::Icon::Trash2,
         t!(lang, "save-edit-clear"),
         action,
         style::CONTROL_PADDING,
-        crate::widgets::danger_button,
+        crate::ui::widgets::danger_button,
     )
 }
 
@@ -202,7 +202,7 @@ fn tab_fade_right(theme: &iced::Theme) -> container::Style {
 /// A one-sided fade from the pane plate (at the `angle`-direction edge) to
 /// transparent, for the tab strip's scroll-edge fades.
 fn edge_fade(theme: &iced::Theme, angle: f32) -> container::Style {
-    let plate = crate::widgets::plate_color(theme);
+    let plate = crate::ui::widgets::plate_color(theme);
     let transparent = iced::Color { a: 0.0, ..plate };
     container::Style {
         background: Some(iced::Background::Gradient(iced::Gradient::Linear(
@@ -218,7 +218,7 @@ fn edge_fade(theme: &iced::Theme, angle: f32) -> container::Style {
 /// the resting affordance) and revealing the standard chunky scrollbar only
 /// while the strip is hovered or dragged.
 fn tab_scrollbar(theme: &iced::Theme, status: iced::widget::scrollable::Status) -> iced::widget::scrollable::Style {
-    let mut style = crate::widgets::chunky_scrollable(theme, status);
+    let mut style = crate::ui::widgets::chunky_scrollable(theme, status);
     if matches!(status, iced::widget::scrollable::Status::Active { .. }) {
         for rail in [&mut style.horizontal_rail, &mut style.vertical_rail] {
             rail.background = None;
@@ -316,7 +316,7 @@ pub struct State {
     /// (and the per-tab extras in the strip's tail) slides in,
     /// direction following the strip's order like the app's
     /// top-level tabs.
-    pub enter: crate::anim::Enter,
+    pub enter: crate::ui::anim::Enter,
     /// Starting offset for `enter`. Horizontal (sign following
     /// the direction of travel along the strip) for sub-tab
     /// switches; vertical for whole-body swaps (edit mode toggles,
@@ -332,13 +332,13 @@ pub struct State {
     /// mode opens and back out when it closes — and because this
     /// is keyed on the mode (not the sub-tab), they stay planted
     /// while the user flips between editor tabs.
-    pub edit_anim: crate::anim::Transition,
+    pub edit_anim: crate::ui::anim::Transition,
     /// Show/hide transition for the navi picker over the [tab strip + body]
     /// region. Driven in lockstep with `active_tab == Some(Tab::Navi)` as the
     /// change-navi card toggles it; the incoming side (the picker on open, the
     /// tab strip + body on dismiss) slides up into place — a plain vertical
     /// slide, matching every other screen/tab transition (no fade).
-    pub navi_select: crate::anim::Transition,
+    pub navi_select: crate::ui::anim::Transition,
     /// Horizontal scroll offset of the sub-tab strip (relative, 0..=1). Tracked
     /// so the strip's edge fades only appear on the side that has hidden tabs.
     tab_scroll: f32,
@@ -416,11 +416,11 @@ impl State {
             navicust_sort: navicust::NavicustSort::Id,
             patch_card56_sort: patch_cards::PatchCard56Sort::Id,
             auto_battle_data_sort: abd::AutoBattleDataSort::Id,
-            enter: crate::anim::Enter::default(),
+            enter: crate::ui::anim::Enter::default(),
             enter_from: iced::Vector::new(24.0, 0.0),
             prev_tab: None,
-            edit_anim: crate::anim::Transition::swap(false),
-            navi_select: crate::anim::Transition::new(false),
+            edit_anim: crate::ui::anim::Transition::swap(false),
+            navi_select: crate::ui::anim::Transition::new(false),
             tab_scroll: 0.0,
         }
     }
@@ -800,12 +800,12 @@ impl State {
                 // Only a copy that actually produced text earns the
                 // "Copied!" flash.
                 let text = loaded.and_then(|l| tab_as_text(lang, *tab, l, opts))?;
-                crate::copy_feedback::flash(&copy_flash_key(*tab, false));
+                crate::ui::copy_feedback::flash(&copy_flash_key(*tab, false));
                 Some(Outcome::CopyText(text))
             }
             Action::CopyTabImage(tab) => {
                 let img = loaded.and_then(|l| tab_as_image(*tab, l))?;
-                crate::copy_feedback::flash(&copy_flash_key(*tab, true));
+                crate::ui::copy_feedback::flash(&copy_flash_key(*tab, true));
                 Some(Outcome::CopyImage(img))
             }
             Action::PlayClicked => Some(Outcome::Play),
@@ -957,31 +957,31 @@ impl State {
                 Some(Outcome::Edit(Edit::Navicust(NavicustEdit::ClearAll)))
             }
             // ----- BN5/BN6 patch-card editor -----
-            Action::AddPatchCard56 { id } => Some(Outcome::Edit(Edit::PatchCard56s(PatchCard56Edit::AddCard {
-                id: *id,
-            }))),
-            Action::RemovePatchCard56 { slot } => Some(Outcome::Edit(Edit::PatchCard56s(
-                PatchCard56Edit::RemoveCard { slot: *slot },
-            ))),
+            Action::AddPatchCard56 { id } => {
+                Some(Outcome::Edit(Edit::PatchCard56s(PatchCard56Edit::AddCard { id: *id })))
+            }
+            Action::RemovePatchCard56 { slot } => {
+                Some(Outcome::Edit(Edit::PatchCard56s(PatchCard56Edit::RemoveCard {
+                    slot: *slot,
+                })))
+            }
             Action::ClearPatchCard56s => Some(Outcome::Edit(Edit::PatchCard56s(PatchCard56Edit::ClearAll))),
             Action::ReorderPatchCard56s(ev) => {
                 // Registered list is dense, so any drop is a valid ordered
                 // move; pick-up / cancel are visual-only.
                 use sweeten::widget::drag::DragEvent;
                 match ev {
-                    DragEvent::Dropped { index, target_index } if index != target_index => Some(Outcome::Edit(
-                        Edit::PatchCard56s(PatchCard56Edit::MoveCard {
+                    DragEvent::Dropped { index, target_index } if index != target_index => {
+                        Some(Outcome::Edit(Edit::PatchCard56s(PatchCard56Edit::MoveCard {
                             from: *index,
                             to: *target_index,
-                        }),
-                    )),
+                        })))
+                    }
                     _ => None,
                 }
             }
             // ----- BN4 patch-card editor -----
-            Action::AddPatchCard4 { id } => Some(Outcome::Edit(Edit::PatchCard4s(PatchCard4Edit::AddCard {
-                id: *id,
-            }))),
+            Action::AddPatchCard4 { id } => Some(Outcome::Edit(Edit::PatchCard4s(PatchCard4Edit::AddCard { id: *id }))),
             Action::RemovePatchCard4 { slot } => Some(Outcome::Edit(Edit::PatchCard4s(PatchCard4Edit::RemoveCard {
                 slot: *slot,
             }))),
@@ -990,9 +990,12 @@ impl State {
             }))),
             Action::ClearPatchCard4s => Some(Outcome::Edit(Edit::PatchCard4s(PatchCard4Edit::ClearAll))),
             // ----- Auto Battle Data editor -----
-            Action::SetChipUseCount { id, count } => Some(Outcome::Edit(Edit::AutoBattleData(
-                AutoBattleDataEdit::SetUseCount { id: *id, count: *count },
-            ))),
+            Action::SetChipUseCount { id, count } => {
+                Some(Outcome::Edit(Edit::AutoBattleData(AutoBattleDataEdit::SetUseCount {
+                    id: *id,
+                    count: *count,
+                })))
+            }
             Action::SetSecondaryChipUseCount { id, count } => Some(Outcome::Edit(Edit::AutoBattleData(
                 AutoBattleDataEdit::SetSecondaryUseCount { id: *id, count: *count },
             ))),
@@ -1212,7 +1215,7 @@ pub fn view<'a>(
     inline_actions: bool,
     editable: bool,
 ) -> Element<'a, Action> {
-    use crate::widgets;
+    use crate::ui::widgets;
     use iced::{Alignment, Fill};
 
     let available = available_tabs(loaded.save.as_ref(), streamer_mode);
@@ -1223,7 +1226,7 @@ pub fn view<'a>(
     // vertically).
     let enter = state.enter.progress(now);
     let enter_from = state.enter_from;
-    let entered = move |el: Element<'a, Action>| crate::anim::slide_in_opt(el, enter, enter_from);
+    let entered = move |el: Element<'a, Action>| crate::ui::anim::slide_in_opt(el, enter, enter_from);
     // Tab-tail extras animate only when their content actually changed — a
     // sub-tab switch (horizontal enter). A game/save swap rises the body in, but
     // the extras are typically identical across saves, and re-animating them
@@ -1231,11 +1234,11 @@ pub fn view<'a>(
     let tail_slide = enter.filter(|_| enter_from.x != 0.0);
     let extras_dx = if enter_from.x != 0.0 { enter_from.x } else { 24.0 };
     let extras_entered =
-        move |el: Element<'a, Action>| crate::anim::slide_in_opt(el, tail_slide, iced::Vector::new(extras_dx, 0.0));
+        move |el: Element<'a, Action>| crate::ui::anim::slide_in_opt(el, tail_slide, iced::Vector::new(extras_dx, 0.0));
     // Edit-mode morph: the navi header's Edit / Play and the Save / Cancel pair
     // fade-through swap in both directions, so Edit visibly turns into Save /
     // Cancel and back.
-    let (edit_side, edit_swap) = crate::anim::swap_phase(&state.edit_anim, now);
+    let (edit_side, edit_swap) = crate::ui::anim::swap_phase(&state.edit_anim, now);
     let render_edit_buttons = editable && edit_side;
     // One global edit session covers the whole save (entered from the Edit button
     // in the navi header); `editing_session` is on whenever it's open and selects
@@ -1281,11 +1284,11 @@ pub fn view<'a>(
     }
     let mut actions_tail: Element<'a, Action> = actions.into();
     if let Some(phase) = edit_swap {
-        actions_tail = crate::anim::swap_transform(
+        actions_tail = crate::ui::anim::swap_transform(
             actions_tail,
             phase,
             iced::Vector::new(32.0, 0.0),
-            crate::widgets::plate_color,
+            crate::ui::widgets::plate_color,
         );
     }
 
@@ -1410,7 +1413,12 @@ pub fn view<'a>(
     }
     let mut tail: Element<'a, Action> = side.into();
     if let Some(phase) = edit_swap {
-        tail = crate::anim::swap_transform(tail, phase, iced::Vector::new(32.0, 0.0), crate::widgets::plate_color);
+        tail = crate::ui::anim::swap_transform(
+            tail,
+            phase,
+            iced::Vector::new(32.0, 0.0),
+            crate::ui::widgets::plate_color,
+        );
     }
     let tab_row = row![
         container(tabs_only).width(Fill),
@@ -1466,7 +1474,7 @@ pub fn view<'a>(
             // to the top on tab changes.
             let body_scrollable = scrollable(body)
                 .id(state.body_scroll_id.clone())
-                .style(crate::widgets::chunky_scrollable)
+                .style(crate::ui::widgets::chunky_scrollable)
                 .width(Fill);
             (body_scrollable.into(), false)
         };
@@ -1493,7 +1501,7 @@ pub fn view<'a>(
         } else {
             1.0 - progress
         };
-        crate::anim::slide_in(region, entrance, iced::Vector::new(0.0, 20.0))
+        crate::ui::anim::slide_in(region, entrance, iced::Vector::new(0.0, 20.0))
     } else {
         region
     };
@@ -1518,7 +1526,7 @@ pub fn view<'a>(
 /// incomplete or over-limit folder can't be written over the
 /// save); navicust / patch-card layouts are always valid to write.
 fn edit_buttons<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded) -> Element<'a, Action> {
-    use crate::widgets;
+    use crate::ui::widgets;
     use lucide_icons::Icon;
     let can_save = !loaded.editability.folder || {
         let full = loaded.save.view_chips().is_none_or(|v| {
@@ -1582,7 +1590,7 @@ fn extra_kinds(tab: Tab) -> Vec<ExtraKind> {
 /// Stable copy-feedback key for a tab's copy buttons — shared between
 /// the view (which renders the "Copied!" flash) and the host tabs'
 /// update paths (which fire it once the copy actually lands on the
-/// clipboard). See [`crate::copy_feedback`].
+/// clipboard). See [`crate::ui::copy_feedback`].
 pub fn copy_flash_key(tab: Tab, image: bool) -> String {
     format!("save-view-copy-{}-{}", if image { "image" } else { "text" }, tab as u8)
 }
@@ -1590,7 +1598,7 @@ pub fn copy_flash_key(tab: Tab, image: bool) -> String {
 /// Build one tail control. `tab` parameterizes the copy actions'
 /// target.
 fn render_extra<'a>(lang: &'a LanguageIdentifier, state: &'a State, tab: Tab, kind: ExtraKind) -> Element<'a, Action> {
-    use crate::widgets;
+    use crate::ui::widgets;
     use lucide_icons::Icon;
     match kind {
         ExtraKind::FolderGroup => iced::widget::checkbox(state.folder_grouped)
@@ -1598,7 +1606,7 @@ fn render_extra<'a>(lang: &'a LanguageIdentifier, state: &'a State, tab: Tab, ki
             .on_toggle(Action::ToggleFolderGrouped)
             .size(TEXT_BODY)
             .text_size(12)
-            .style(crate::widgets::chunky_checkbox)
+            .style(crate::ui::widgets::chunky_checkbox)
             .into(),
         ExtraKind::CopyImage => widgets::copy_icon_button(
             &copy_flash_key(tab, true),
@@ -1649,7 +1657,7 @@ pub fn tab_as_image(tab: Tab, loaded: &Loaded) -> Option<image::RgbaImage> {
 fn remove_button<'a>(action: Action) -> Element<'a, Action> {
     button(lucide_icons::Icon::X.widget().size(TEXT_BODY))
         .padding([3, 8])
-        .style(crate::widgets::neutral)
+        .style(crate::ui::widgets::neutral)
         .on_press(action)
         .into()
 }
@@ -1679,7 +1687,7 @@ fn edit_row_wrap<'a>(
     r = r.push(stripe).push(container(inner).width(Fill));
     container(r)
         .width(Fill)
-        .style(crate::widgets::zebra_row(row_idx))
+        .style(crate::ui::widgets::zebra_row(row_idx))
         .into()
 }
 
@@ -1739,10 +1747,10 @@ fn edit_toggle_maybe<'a>(
         b = b.on_press(msg);
     }
     if on {
-        b.style(move |theme: &iced::Theme, status| crate::widgets::tinted_button(theme, status, on_color))
+        b.style(move |theme: &iced::Theme, status| crate::ui::widgets::tinted_button(theme, status, on_color))
             .into()
     } else {
-        b.style(crate::widgets::neutral).into()
+        b.style(crate::ui::widgets::neutral).into()
     }
 }
 
@@ -1795,7 +1803,7 @@ fn card_wrap<M: 'static>(
     container(row![strip, body].height(Length::Shrink))
         .width(Fill)
         .style(move |theme: &iced::Theme| {
-            let mut s = crate::widgets::zebra_row(row_idx)(theme);
+            let mut s = crate::ui::widgets::zebra_row(row_idx)(theme);
             s.border.radius = outer_radius;
             s
         })
@@ -1847,7 +1855,7 @@ fn colored_badge_sized<M: 'static>(
 }
 
 // muted_color / muted_text_style / success_text_style /
-// danger_text_style now live in `crate::widgets`. Kept here as
+// danger_text_style now live in `crate::ui::widgets`. Kept here as
 // nothing — every call site outside this module reaches the
 // widgets module directly.
 
@@ -1874,7 +1882,7 @@ fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {
                 .widget()
                 .size(36.0)
                 .style(muted_text_style),
-            text(msg).size(crate::style::TEXT_HEADING).style(muted_text_style),
+            text(msg).size(crate::ui::style::TEXT_HEADING).style(muted_text_style),
         ]
         .spacing(8)
         .align_x(Alignment::Center),
@@ -1882,6 +1890,6 @@ fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {
     .width(Fill)
     .align_x(Alignment::Center)
     .padding(32)
-    .style(crate::widgets::pane)
+    .style(crate::ui::widgets::pane)
     .into()
 }

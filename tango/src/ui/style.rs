@@ -45,7 +45,7 @@ pub const ROW_PADDING: [f32; 2] = [6.0, 10.0];
 /// same height naturally (no outer container pinning needed).
 pub const BAR_CONTROL_HEIGHT: f32 = 40.0;
 
-/// Standard internal padding for [`crate::widgets::pane`] containers.
+/// Standard internal padding for [`crate::ui::widgets::pane`] containers.
 /// Use this on `.padding(...)` so every demarcation pane has the same
 /// gap between its edge and its content.
 pub const PANE_PADDING: f32 = 12.0;

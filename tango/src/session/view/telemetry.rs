@@ -51,7 +51,7 @@ fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp::PvpSessio
         Icon::Wand,
         t!(lang, "lobby-frame-delay-suggest"),
         suggest_msg,
-        crate::style::STANDARD_PADDING,
+        crate::ui::style::STANDARD_PADDING,
     );
 
     let control = row![

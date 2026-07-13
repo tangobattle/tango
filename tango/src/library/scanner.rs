@@ -17,7 +17,10 @@ impl Fingerprint {
                 if !entry.file_type().is_file() {
                     continue;
                 }
-                let (len, mtime) = entry.metadata().map(|m| (m.len(), m.modified().ok())).unwrap_or((0, None));
+                let (len, mtime) = entry
+                    .metadata()
+                    .map(|m| (m.len(), m.modified().ok()))
+                    .unwrap_or((0, None));
                 files.push((entry.into_path(), len, mtime));
             }
         }

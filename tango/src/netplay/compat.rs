@@ -18,8 +18,8 @@
 //! Used by the lobby pane to gate the Ready button + the green
 //! "compatible" indicator.
 
+use crate::library::patch::PatchMap;
 use crate::net::protocol;
-use crate::patch::PatchMap;
 
 /// Resolve the netplay_compatibility tag for a `(game, patch)`
 /// pair. For patched games it's the patch's
@@ -27,7 +27,7 @@ use crate::patch::PatchMap;
 /// family ("bn6", "exe6", etc). Returns None when the patch info
 /// references a name + version that isn't in our scanner cache.
 pub fn netplay_compatibility(
-    game: crate::rom::GameRef,
+    game: crate::library::rom::GameRef,
     patch: Option<(&str, &semver::Version)>,
     patches: &PatchMap,
 ) -> Option<String> {
@@ -43,7 +43,8 @@ pub fn netplay_compatibility(
 /// Same as `netplay_compatibility` but starting from a
 /// `protocol::GameInfo` (what we receive from the peer).
 pub fn netplay_compatibility_from_game_info(g: &protocol::GameInfo, patches: &PatchMap) -> Option<String> {
-    let game = crate::game::find_by_family_and_variant(g.family_and_variant.0.as_str(), g.family_and_variant.1)?;
+    let game =
+        crate::library::game::find_by_family_and_variant(g.family_and_variant.0.as_str(), g.family_and_variant.1)?;
     netplay_compatibility(game, g.patch.as_ref().map(|p| (p.name.as_str(), &p.version)), patches)
 }
 
@@ -74,7 +75,7 @@ pub enum Verdict {
 pub fn check(
     local: &protocol::Settings,
     remote: &protocol::Settings,
-    roms: &std::collections::HashMap<crate::rom::GameRef, Vec<u8>>,
+    roms: &std::collections::HashMap<crate::library::rom::GameRef, Vec<u8>>,
     patches: &PatchMap,
 ) -> Verdict {
     let (Some(local_gi), Some(remote_gi)) = (local.game_info.as_ref(), remote.game_info.as_ref()) else {
@@ -85,16 +86,21 @@ pub fn check(
     // applied to our copy of their rom at spawn), so their rom must be
     // scanned and their exact patch version installed. An unknown
     // family/variant reads as "not installed" too.
-    let Some(remote_game) =
-        crate::game::find_by_family_and_variant(remote_gi.family_and_variant.0.as_str(), remote_gi.family_and_variant.1)
-    else {
+    let Some(remote_game) = crate::library::game::find_by_family_and_variant(
+        remote_gi.family_and_variant.0.as_str(),
+        remote_gi.family_and_variant.1,
+    ) else {
         return Verdict::MissingRom;
     };
     if !roms.contains_key(&remote_game) {
         return Verdict::MissingRom;
     }
     if let Some(p) = remote_gi.patch.as_ref() {
-        if patches.get(&p.name).and_then(|patch| patch.versions.get(&p.version)).is_none() {
+        if patches
+            .get(&p.name)
+            .and_then(|patch| patch.versions.get(&p.version))
+            .is_none()
+        {
             return Verdict::MissingRom;
         }
     }

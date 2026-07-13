@@ -235,7 +235,11 @@ impl State {
                 Err(e) => Message::Failed(e),
             },
         );
-        iced::Task::batch([send_commit, self.maybe_kick_chunk_exchange(), self.maybe_finish_handshake()])
+        iced::Task::batch([
+            send_commit,
+            self.maybe_kick_chunk_exchange(),
+            self.maybe_finish_handshake(),
+        ])
     }
 
     /// If both sides have committed and we haven't sent our

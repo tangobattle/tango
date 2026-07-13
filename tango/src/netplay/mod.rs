@@ -29,13 +29,15 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 pub mod compat;
+pub mod identity;
+pub mod randomcode;
 
 mod connect;
 mod handshake;
 mod lobby;
 
-pub use connect::{NegotiationOutput, SignalingHello};
 pub use crate::net::link::{DirectRole, LinkParts, ReconnectRecipe};
+pub use connect::{NegotiationOutput, SignalingHello};
 pub use lobby::subscription;
 
 pub use handshake::ReadyView;

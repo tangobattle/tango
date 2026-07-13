@@ -105,7 +105,7 @@ pub(super) fn render_folder<M: 'static>(
     // Rows are flush to the pane edges; the outer scrollable in
     // `view` handles vertical overflow once total content exceeds
     // the available height.
-    container(body).width(Fill).style(crate::widgets::pane).into()
+    container(body).width(Fill).style(crate::ui::widgets::pane).into()
 }
 
 /// Editable folder view: the folder (left) beside the chip library
@@ -409,7 +409,7 @@ fn library_entry_row<'a>(
     chips_have_mb: bool,
     addable: bool,
 ) -> Element<'a, Action> {
-    use crate::widgets;
+    use crate::ui::widgets;
     let info = loaded.assets.chip(chip_id);
     let accent = class_accent(
         info.as_ref().map(|i| i.class()),

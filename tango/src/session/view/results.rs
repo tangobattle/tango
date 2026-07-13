@@ -13,8 +13,8 @@
 //! fall back to a static card with per-round outcome marks.
 
 use crate::i18n::t;
-use crate::style::{STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY};
-use crate::widgets;
+use crate::ui::style::{STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY};
+use crate::ui::widgets;
 use iced::widget::{button, container, text};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
@@ -147,7 +147,7 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
 
         let side = |n: usize, pop: f32, label: String| {
             let numeral: Element<'_, Message> = if pop < 1.0 {
-                crate::anim::pop(text(n.to_string()).size(SCORE_SIZE), pop, 4.0)
+                crate::ui::anim::pop(text(n.to_string()).size(SCORE_SIZE), pop, 4.0)
             } else {
                 text(n.to_string()).size(SCORE_SIZE).into()
             };
@@ -172,7 +172,7 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
                     .size(TEXT_CAPTION)
                     .style(widgets::muted_text_style);
                 if pops[2] < 1.0 {
-                    crate::anim::pop(caption, pops[2], 3.0)
+                    crate::ui::anim::pop(caption, pops[2], 3.0)
                 } else {
                     caption.into()
                 }
@@ -206,7 +206,13 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
             .push(iced::widget::Space::new().height(10))
             // Not zoomable: the card is a fixed reveal choreography, not a
             // scrubbing surface — the replays tab is where inspection lives.
-            .push(widgets::hp_match_graph(chart_rounds, results.max_hp, sweep, GRAPH_H, None));
+            .push(widgets::hp_match_graph(
+                chart_rounds,
+                results.max_hp,
+                sweep,
+                GRAPH_H,
+                None,
+            ));
     } else {
         // Static fallback: the pre-trace layout — full score up front, plus a
         // marks row when there was more than one round to sequence.

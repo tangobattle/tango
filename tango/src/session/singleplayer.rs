@@ -15,18 +15,18 @@ use std::sync::Mutex;
 const EXPECTED_FPS: f32 = 60.0;
 
 pub struct SinglePlayerSession {
-    game: &'static crate::game::Game,
+    game: &'static crate::library::game::Game,
     joyflags: Arc<AtomicU32>,
-    _audio_binding: Option<crate::audio::Binding>,
+    _audio_binding: Option<crate::platform::audio::Binding>,
     _thread: mgba::thread::Thread,
 }
 
 impl SinglePlayerSession {
     pub fn new(
-        game: &'static crate::game::Game,
+        game: &'static crate::library::game::Game,
         rom: Arc<Vec<u8>>,
         save_path: &std::path::Path,
-        audio_binder: &crate::audio::LateBinder,
+        audio_binder: &crate::platform::audio::LateBinder,
         frame_notify: Arc<tokio::sync::Notify>,
         vbuf: Arc<Mutex<Vec<u8>>>,
     ) -> anyhow::Result<Self> {
@@ -73,7 +73,7 @@ impl SinglePlayerSession {
         })
     }
 
-    pub fn game(&self) -> &'static crate::game::Game {
+    pub fn game(&self) -> &'static crate::library::game::Game {
         self.game
     }
 

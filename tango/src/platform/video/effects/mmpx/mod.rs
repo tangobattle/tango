@@ -2,7 +2,7 @@
 //! `mmpx.wgsl` rule cascade (which defines its own `luma`/equality helpers).
 
 use super::COMMON;
-use crate::video::framebuffer::Effect;
+use crate::platform::video::framebuffer::Effect;
 
 pub const MMPX: Effect = Effect {
     id: "mmpx",

@@ -10,20 +10,21 @@
 pub mod pvp;
 pub mod replay;
 pub mod singleplayer;
+pub mod stats;
 pub mod view;
 
-use crate::anim;
 use crate::app::Scanners;
-use crate::audio;
 use crate::config;
-use crate::game;
 use crate::i18n::t;
-use crate::patch;
+use crate::library::game;
+use crate::library::patch;
+use crate::platform::audio;
+use crate::platform::video::framebuffer::Effect;
 use crate::save_view;
 use crate::selection;
-use crate::style::{self, TEXT_BODY, TEXT_CAPTION};
-use crate::video::framebuffer::Effect;
-use crate::widgets;
+use crate::ui::anim;
+use crate::ui::style::{self, TEXT_BODY, TEXT_CAPTION};
+use crate::ui::widgets;
 use iced::widget::canvas::{self, Canvas, Frame, LineCap, Path, Stroke};
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, stack, text};
@@ -93,7 +94,7 @@ impl ActiveSession {
     /// Local-perspective Game registration for this session. Used by
     /// the session view to pull per-game chrome (background image,
     /// logo) into the emulator pane.
-    pub fn local_game(&self) -> &'static crate::game::Game {
+    pub fn local_game(&self) -> &'static crate::library::game::Game {
         match self {
             Self::Replay(s) => s.game(),
             Self::SinglePlayer(s) => s.game(),
@@ -135,7 +136,7 @@ const METRIC_HISTORY_LEN: usize = 180;
 
 /// The watched replay's cooked analysis rounds, drawn as the minimal
 /// hover strip above the playback transport's scrubber
-/// ([`crate::widgets::hp_hover_strip`]). Cooked by the App when the
+/// ([`crate::ui::widgets::hp_hover_strip`]). Cooked by the App when the
 /// playback session starts (from the Replays tab's already-cooked
 /// chart when available, else from the stats sidecar) and re-cooked
 /// live while a background analysis is still building this replay's
@@ -143,7 +144,7 @@ const METRIC_HISTORY_LEN: usize = 180;
 /// Empty `rounds` (no stats at all) draw no strip.
 pub struct ReplayChart {
     pub path: std::path::PathBuf,
-    pub rounds: Vec<crate::widgets::CookedHpRound>,
+    pub rounds: Vec<crate::ui::widgets::CookedHpRound>,
 }
 
 /// Snapshot of a finished PvP match, taken at the natural-end teardown
@@ -189,7 +190,7 @@ pub struct RoundCard {
     /// on screen — each side through its own Loaded, the opponent
     /// falling back to the local game's table when they blinded their
     /// setup. Empty on games whose traps don't report chips (bn1).
-    pub chip_uses: [Vec<crate::widgets::ChipUseMark>; 2],
+    pub chip_uses: [Vec<crate::ui::widgets::ChipUseMark>; 2],
     /// Tick span of the round — its share of the continuous timeline.
     pub weight: f32,
 }
@@ -205,7 +206,7 @@ impl MatchResults {
             pvp.local_loaded.as_ref(),
             pvp.opponent_loaded.as_ref().or(pvp.local_loaded.as_ref()),
         ];
-        let (cooked, max_hp) = crate::widgets::cook_hp_rounds(&stats, loadeds, None);
+        let (cooked, max_hp) = crate::ui::widgets::cook_hp_rounds(&stats, loadeds, None);
         let rounds = cooked
             .into_iter()
             .filter_map(|c| {
@@ -279,7 +280,7 @@ pub struct State {
     /// Combined keyboard + gamepad held state. Updated from
     /// the input event stream; the user's Mapping resolves it
     /// into mgba joyflags each event.
-    pub input_held: crate::input::HeldState,
+    pub input_held: crate::platform::input::HeldState,
     /// Last value of `mapping.speed_up_held(...)` so we can
     /// detect the falling/rising edge and only call set_speed
     /// when it actually flips.
@@ -301,11 +302,11 @@ pub struct State {
     /// Mutually exclusive with the options menu.
     pub match_settings: anim::Overlay,
     /// Latest GBA framebuffer (post upscale filter), presented by the
-    /// [`crate::video::framebuffer`] shader widget. Refreshed in
+    /// [`crate::platform::video::framebuffer`] shader widget. Refreshed in
     /// [`Message::UpdateFramebuffer`] (which the session subscription
     /// fires once per emulator vblank). `None` between sessions and
     /// before the first frame lands.
-    pub current_frame: Option<crate::video::framebuffer::Frame>,
+    pub current_frame: Option<crate::platform::video::framebuffer::Frame>,
     /// Monotonic counter stamped into each [`current_frame`] so the
     /// framebuffer pipeline can skip re-uploading when the same frame
     /// is presented twice (a UI redraw with no new emu frame).
@@ -314,7 +315,7 @@ pub struct State {
     /// drawn as a picture-in-picture inset by the session view. `None`
     /// whenever the PiP isn't live. Rebuilt alongside
     /// [`current_frame`](Self::current_frame) each emu frame.
-    pub pip_frame: Option<crate::video::framebuffer::Frame>,
+    pub pip_frame: Option<crate::platform::video::framebuffer::Frame>,
     /// [`frame_revision`](Self::frame_revision)'s twin for the PiP
     /// surface (a separate GPU texture with its own upload dedupe).
     pub pip_revision: u64,
@@ -372,7 +373,7 @@ impl Default for State {
             results: None,
             opponent_panel: anim::Overlay::new(false),
             self_panel: anim::Overlay::new(false),
-            input_held: crate::input::HeldState::default(),
+            input_held: crate::platform::input::HeldState::default(),
             speed_up_engaged: false,
             settings: anim::Overlay::new(false),
             disconnect: anim::Overlay::new(false),
@@ -451,7 +452,7 @@ pub enum Message {
     /// isn't persisted to config.
     ToggleSwapPerspective,
     /// A transport-bar dropdown (the speed menu) opened (`true`) or
-    /// closed (`false`) — [`crate::widgets::MenuButton::on_toggle`].
+    /// closed (`false`) — [`crate::ui::widgets::MenuButton::on_toggle`].
     /// While any overlay pane is up, iced hides the cursor from the
     /// base tree (`Cursor::Unavailable`), so the bar's hover pin goes
     /// blind exactly when the chrome must not hide or collapse under
@@ -528,10 +529,10 @@ pub enum Message {
 }
 
 /// Atomic input event we feed to the mapping resolver. Lives in
-/// [`crate::input`] (as [`Event`](crate::input::Event)) because the
+/// [`crate::platform::input`] (as [`Event`](crate::platform::input::Event)) because the
 /// settings input pane's live binding highlight consumes the same
 /// normalized stream.
-pub use crate::input::Event as InputEvent;
+pub use crate::platform::input::Event as InputEvent;
 
 /// Per-keypress playhead delta for the replay seek keybinds, in recorded
 /// frames. Arrow keys jump ±5 seconds (300 frames at 60fps); comma/period
@@ -553,7 +554,7 @@ impl State {
     /// Apply a session message to the state. Returns the iced Task
     /// that should be scheduled (always Task::none today — kept for
     /// API parity with the other tabs).
-    pub fn update(&mut self, msg: Message, mapping: &crate::input::Mapping) -> iced::Task<Message> {
+    pub fn update(&mut self, msg: Message, mapping: &crate::platform::input::Mapping) -> iced::Task<Message> {
         let task = self.update_inner(msg, mapping);
         // Hold-to-quit: Esc held to the threshold tears the session
         // down, same as the Close button. Checked here on every
@@ -671,7 +672,7 @@ impl State {
         }
     }
 
-    fn update_inner(&mut self, msg: Message, mapping: &crate::input::Mapping) -> iced::Task<Message> {
+    fn update_inner(&mut self, msg: Message, mapping: &crate::platform::input::Mapping) -> iced::Task<Message> {
         match msg {
             Message::Close => {
                 self.close_session();
@@ -897,7 +898,7 @@ impl State {
                         // magnifies it on the GPU at draw time.
                         let pixels = self.vbuf.lock().unwrap().clone();
                         self.frame_revision = self.frame_revision.wrapping_add(1);
-                        self.current_frame = Some(crate::video::framebuffer::Frame {
+                        self.current_frame = Some(crate::platform::video::framebuffer::Frame {
                             pixels: std::sync::Arc::new(pixels),
                             width: replay::SCREEN_WIDTH,
                             height: replay::SCREEN_HEIGHT,
@@ -906,7 +907,7 @@ impl State {
                             // effect from config at draw time (see
                             // `framebuffer_view`), so the producer doesn't need
                             // to know the current filter.
-                            effect: &crate::video::effects::PASSTHROUGH,
+                            effect: &crate::platform::video::effects::PASSTHROUGH,
                         });
                         if let ActiveSession::PvP(pvp) = session {
                             sample = Some(MetricSample::capture(pvp));
@@ -915,14 +916,14 @@ impl State {
                         // toggle is on.
                         self.pip_frame = session.as_replay().and_then(|r| r.pip_pixels()).map(|pixels| {
                             self.pip_revision = self.pip_revision.wrapping_add(1);
-                            crate::video::framebuffer::Frame {
+                            crate::platform::video::framebuffer::Frame {
                                 pixels: std::sync::Arc::new(pixels),
                                 width: replay::SCREEN_WIDTH,
                                 height: replay::SCREEN_HEIGHT,
                                 revision: self.pip_revision,
                                 // The PiP draws at a small fixed size; no
                                 // upscale filter, just the plain surface.
-                                effect: &crate::video::effects::PASSTHROUGH,
+                                effect: &crate::platform::video::effects::PASSTHROUGH,
                             }
                         });
                     }
@@ -950,7 +951,7 @@ impl State {
 /// state-transition checks. Always-on across the program's
 /// lifetime; parks silently with no active session because
 /// nothing fires the notify. Keyboard input still flows through
-/// [`crate::input_capture`] — see that module's docs for why the
+/// [`crate::platform::input_capture`] — see that module's docs for why the
 /// subscription path is too laggy for joypad state.
 pub fn subscription(state: &State) -> iced::Subscription<Message> {
     let frames = iced::Subscription::run_with(
@@ -1013,7 +1014,7 @@ fn build_frame_stream(tag: &FrameTag) -> impl futures::Stream<Item = Message> {
 /// caches the decoded iced `Handle` per game. `None` whenever Steam
 /// / BNLC / the target entry can't be read — caller drops the
 /// background widget instead of degrading to a placeholder.
-fn background_handle(game: &'static crate::game::Game) -> Option<iced::widget::image::Handle> {
+fn background_handle(game: &'static crate::library::game::Game) -> Option<iced::widget::image::Handle> {
     use std::collections::HashMap;
     use std::sync::LazyLock;
     static CACHE: LazyLock<std::sync::Mutex<HashMap<usize, Option<iced::widget::image::Handle>>>> =
@@ -1024,7 +1025,7 @@ fn background_handle(game: &'static crate::game::Game) -> Option<iced::widget::i
     }
     let bg = game.background;
     let path = format!("exe/data/bg/{}", bg.tga);
-    let handle = crate::bnlc::get(bg.volume)
+    let handle = crate::library::bnlc::get(bg.volume)
         .and_then(|b| b.read_shared_file(&path))
         .and_then(|bytes| {
             // TGA has no magic prefix, so the image crate's
@@ -1093,7 +1094,7 @@ pub fn build_playback(
             .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
         let variant = u8::try_from(gi.rom_variant)
             .map_err(|_| anyhow::anyhow!("variant {} out of range", gi.rom_variant))?;
-        let entry = crate::game::find_by_family_and_variant(&gi.rom_family, variant)
+        let entry = crate::library::game::find_by_family_and_variant(&gi.rom_family, variant)
             .ok_or_else(|| anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, gi.rom_variant))?;
         let g = game::from_gamedb_entry(entry).ok_or_else(|| {
             anyhow::anyhow!("no impl for {}/{}", gi.rom_family, gi.rom_variant)
@@ -1139,7 +1140,7 @@ pub async fn spawn_pvp(
     audio_binder: audio::LateBinder,
     frame_notify: std::sync::Arc<tokio::sync::Notify>,
     vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
-    local_game: crate::rom::GameRef,
+    local_game: crate::library::rom::GameRef,
     local_patch: Option<(String, semver::Version)>,
     pre_match: crate::netplay::PreMatchData,
 ) -> anyhow::Result<pvp::PvpSession> {
@@ -1165,9 +1166,11 @@ pub async fn spawn_pvp(
         .game_info
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("remote settings missing game info"))?;
-    let remote_game =
-        crate::game::find_by_family_and_variant(&remote_gi.family_and_variant.0, remote_gi.family_and_variant.1)
-            .ok_or_else(|| anyhow::anyhow!("unknown remote rom"))?;
+    let remote_game = crate::library::game::find_by_family_and_variant(
+        &remote_gi.family_and_variant.0,
+        remote_gi.family_and_variant.1,
+    )
+    .ok_or_else(|| anyhow::anyhow!("unknown remote rom"))?;
     let remote_game_impl =
         game::from_gamedb_entry(remote_game).ok_or_else(|| anyhow::anyhow!("no impl for remote game"))?;
     let remote_rom_raw = scanners

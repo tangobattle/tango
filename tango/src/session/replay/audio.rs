@@ -7,14 +7,14 @@
 //! perspective: their cursor, their chip sounds) is resampled to the
 //! output instead.
 //!
-//! [`MGBAStream`]: crate::audio::MGBAStream
+//! [`MGBAStream`]: crate::platform::audio::MGBAStream
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tango_pvp::shadow::Shadow;
 
-use crate::audio::{NUM_CHANNELS, SAMPLES};
+use crate::platform::audio::{NUM_CHANNELS, SAMPLES};
 
 pub(super) struct ReplayStream {
     handle: mgba::thread::Handle,
@@ -60,7 +60,7 @@ impl ReplayStream {
     }
 }
 
-impl crate::audio::Stream for ReplayStream {
+impl crate::platform::audio::Stream for ReplayStream {
     fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize {
         let frame_count = buf.len();
         let linear_buf: &mut [i16] = bytemuck::cast_slice_mut(buf);

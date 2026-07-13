@@ -340,10 +340,9 @@ impl App {
                 self.replay_analysis_jobs.remove(&p);
             }
             if self.session.replay_chart.as_ref().is_some_and(|c| c.path == p) {
-                if let (Some(stats), Some(s)) = (
-                    &stats,
-                    self.session.active.as_ref().and_then(ActiveSession::as_replay),
-                ) {
+                if let (Some(stats), Some(s)) =
+                    (&stats, self.session.active.as_ref().and_then(ActiveSession::as_replay))
+                {
                     let rounds = widgets::cook_hp_rounds(stats, [None, None], Some(&planned_spans(s))).0;
                     self.session.replay_chart = Some(session::ReplayChart { path: p, rounds });
                 }
@@ -450,8 +449,7 @@ impl App {
                 let patches_path = self.config.patches_path();
                 let cache_path = self.config.cache_path();
                 let replays_path = self.config.replays_path();
-                let (progress_tx, progress_rx) =
-                    futures::channel::mpsc::unbounded::<tango_pvp::analysis::MatchStats>();
+                let (progress_tx, progress_rx) = futures::channel::mpsc::unbounded::<tango_pvp::analysis::MatchStats>();
                 let done: std::sync::Arc<std::sync::Mutex<Option<tango_pvp::analysis::MatchStats>>> =
                     std::sync::Arc::new(std::sync::Mutex::new(None));
                 let done_worker = done.clone();
@@ -547,7 +545,7 @@ impl App {
                     .and_then(|s| s.game_info.as_ref())
                     .ok_or_else(|| anyhow::anyhow!("replay side missing game info"))?;
                 let variant = u8::try_from(gi.rom_variant)?;
-                let entry = crate::game::find_by_family_and_variant(&gi.rom_family, variant)
+                let entry = crate::library::game::find_by_family_and_variant(&gi.rom_family, variant)
                     .ok_or_else(|| {
                         anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, variant)
                     })?;

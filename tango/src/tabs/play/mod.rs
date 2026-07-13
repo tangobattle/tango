@@ -16,10 +16,11 @@ pub use save_manage::{create_new_save, creation_template, duplicate_save, rename
 
 use crate::app::Scanners;
 use crate::i18n::t;
+use crate::library::{game, rom};
 use crate::loadout::{self, Loadout};
-use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
-use crate::widgets;
-use crate::{config, game, rom, save_view, selection};
+use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
+use crate::ui::widgets;
+use crate::{config, save_view, selection};
 use iced::widget::{button, container, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
@@ -115,11 +116,11 @@ pub struct State {
     /// within the family plays the smaller [`save_view::State`]
     /// entrance instead, which only moves the panes under the save
     /// view's sub-tab strip.
-    save_body_enter: crate::anim::Enter,
+    save_body_enter: crate::ui::anim::Enter,
     /// Fade-through swap for the save-action row: the picker row
     /// morphs into whichever rename / delete / create form opens
     /// ([`State::save_action`]) and back.
-    save_form: crate::anim::Transition,
+    save_form: crate::ui::anim::Transition,
     /// The form that was open before `save_action` reset to
     /// `None`, frozen so the swap's exit half has something to
     /// render (the live form — including the rename draft — is
@@ -134,8 +135,8 @@ impl Default for State {
             pending_generated_code: None,
             save_view: save_view::State::new(),
             save_action: SaveAction::None,
-            save_body_enter: crate::anim::Enter::default(),
-            save_form: crate::anim::Transition::swap(false),
+            save_body_enter: crate::ui::anim::Enter::default(),
+            save_form: crate::ui::anim::Transition::swap(false),
             save_action_exit: SaveAction::None,
         }
     }
@@ -314,7 +315,7 @@ impl State {
                 // The lobby's copy-link-code button is the only
                 // sender — light its "Copied!" flash as the text
                 // heads for the clipboard.
-                crate::copy_feedback::flash(lobby::LINK_CODE_FLASH_KEY);
+                crate::ui::copy_feedback::flash(lobby::LINK_CODE_FLASH_KEY);
                 Some(Effect::CopyText(s))
             }
             Message::FightPressed => {
@@ -331,7 +332,7 @@ impl State {
                     .link_code
                     .trim()
                     .is_empty()
-                    .then(|| crate::randomcode::generate(&config.language));
+                    .then(|| crate::netplay::randomcode::generate(&config.language));
                 // The Fight CTA is gated at the view layer to require
                 // an empty or submittable link code, so reaching this
                 // handler with a malformed one is a stale message +
@@ -342,7 +343,7 @@ impl State {
                     // Light the lobby copy button's "Copied!" flash as
                     // the band rises — the cue that the code is already
                     // in hand.
-                    crate::copy_feedback::flash(lobby::LINK_CODE_FLASH_KEY);
+                    crate::ui::copy_feedback::flash(lobby::LINK_CODE_FLASH_KEY);
                 }
                 Some(Effect::Connect {
                     ident,
@@ -408,12 +409,16 @@ pub struct LobbyBandCtx<'a> {
     /// lobby), driven by the App (which sees the netplay phase
     /// flip): first half sinks + dissolves the outgoing band,
     /// second half rises the incoming one out of the page surface.
-    pub swap: &'a crate::anim::Transition,
+    pub swap: &'a crate::ui::anim::Transition,
     /// The lobby's last live state, frozen by the App on the
     /// frame the band left — the exiting band renders from
     /// this so the verdict (e.g. the failure banner) doesn't
     /// flash to the idle handshake line mid-dissolve.
-    pub exit_snapshot: Option<&'a (crate::netplay::Phase, crate::netplay::LobbyState, crate::netplay::ReadyView)>,
+    pub exit_snapshot: Option<&'a (
+        crate::netplay::Phase,
+        crate::netplay::LobbyState,
+        crate::netplay::ReadyView,
+    )>,
 }
 
 impl State {
@@ -434,7 +439,7 @@ impl State {
         // when `loadout.family` flips); save switches within the
         // family animate inside the save view instead.
         if let Some(p) = self.save_body_enter.progress(now) {
-            save_body = crate::anim::slide_in(save_body, p, iced::Vector::new(0.0, 20.0));
+            save_body = crate::ui::anim::slide_in(save_body, p, iced::Vector::new(0.0, 20.0));
         }
 
         // Selector strip + save-view body live inside a single
@@ -470,7 +475,7 @@ impl State {
         // other arriving. The bottom HUD scanline is grouped into the
         // moving band so it rides the motion instead of staying
         // pinned above it.
-        let (render_lobby, swap) = crate::anim::swap_phase(band.swap, now);
+        let (render_lobby, swap) = crate::ui::anim::swap_phase(band.swap, now);
         let bottom: Element<'a, Message> = if render_lobby {
             // While the band is on its way OUT, the live phase has
             // already gone Idle (and the lobby may be wiped) — use
@@ -511,9 +516,10 @@ impl State {
         let mut group: Element<'a, Message> = column![widgets::hud_scanline_bottom(), bottom].width(Fill).into();
         if let Some(phase) = swap {
             let dist = if render_lobby { 48.0 } else { 24.0 };
-            group = crate::anim::swap_transform(group, phase, iced::Vector::new(0.0, dist), |theme: &iced::Theme| {
-                theme.palette().background
-            });
+            group =
+                crate::ui::anim::swap_transform(group, phase, iced::Vector::new(0.0, dist), |theme: &iced::Theme| {
+                    theme.palette().background
+                });
         }
         col = col.push(group);
         col.into()
@@ -643,7 +649,7 @@ impl State {
             .align_y(Alignment::Center);
             let mut btn = button(label)
                 .padding(BOTTOM_CTA_PAD)
-                .height(Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
+                .height(Length::Fixed(crate::ui::style::BAR_CONTROL_HEIGHT))
                 .style(|theme: &iced::Theme, status| ready_button_style(theme, status, ReadyPalette::Idle));
             if can_submit {
                 btn = btn.on_press(Message::FightPressed);
@@ -664,7 +670,7 @@ impl State {
                 .width(Length::Fill)
                 .style(widgets::chunky_text_input),
         )
-        .height(Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
+        .height(Length::Fixed(crate::ui::style::BAR_CONTROL_HEIGHT))
         .width(Length::Fill)
         .into();
 
@@ -771,7 +777,7 @@ fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: Read
             // Defer to the shared beveled neutral so the
             // un-ready toggle looks like a sibling of the other
             // chunky neutral buttons in the lobby strip.
-            crate::widgets::neutral(theme, status)
+            crate::ui::widgets::neutral(theme, status)
         }
         ReadyPalette::Idle => {
             // Disabled state defers to the standard neutral
@@ -780,7 +786,7 @@ fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: Read
             // render looked like a corrupted variant of the
             // lit-up state rather than a disabled affordance.
             if matches!(status, button::Status::Disabled) {
-                return crate::widgets::neutral(theme, status);
+                return crate::ui::widgets::neutral(theme, status);
             }
             // Inline expansion of the battle-button kernel with
             // every dial cranked: bigger glow, brighter top stop,

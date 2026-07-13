@@ -88,7 +88,7 @@ pub(super) fn render_navicust_edit<'a>(
     loaded: &'a Loaded,
     state: &'a State,
 ) -> Element<'a, Action> {
-    use crate::widgets;
+    use crate::ui::widgets;
     // Only reached while editing, so the EditState is present.
     let Some(edit) = state.editing.as_ref() else {
         return placeholder(t!(lang, "save-empty"));
@@ -583,8 +583,8 @@ fn render_navicust<M: 'static>(
 
     let _ = (cols, rows_n);
     container(content)
-        .padding(crate::style::PANE_PADDING)
-        .style(crate::widgets::pane)
+        .padding(crate::ui::style::PANE_PADDING)
+        .style(crate::ui::widgets::pane)
         .into()
 }
 
@@ -755,7 +755,7 @@ pub(crate) fn as_image(loaded: &Loaded) -> Option<image::RgbaImage> {
     let v = loaded.save.view_navicust()?;
     let layout = loaded.assets.navicust_layout()?;
     let materialized = v.materialized();
-    let lang = crate::game::region_to_language(loaded.game.region());
+    let lang = crate::library::game::region_to_language(loaded.game.region());
     // Clipboard / export path: render at native (high) resolution.
     Some(grid::render(
         &materialized,

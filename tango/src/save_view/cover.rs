@@ -57,7 +57,10 @@ pub(super) fn render_cover<M: 'static>(_lang: &LanguageIdentifier, loaded: &Load
         .align_y(iced::alignment::Vertical::Center)
         // Extra breathing room above/below the logo(s); standard
         // horizontal inset.
-        .padding([crate::style::PANE_PADDING + 24.0, crate::style::PANE_PADDING + 24.0])
-        .style(crate::widgets::pane)
+        .padding([
+            crate::ui::style::PANE_PADDING + 24.0,
+            crate::ui::style::PANE_PADDING + 24.0,
+        ])
+        .style(crate::ui::widgets::pane)
         .into()
 }

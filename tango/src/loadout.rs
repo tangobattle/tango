@@ -14,8 +14,10 @@
 //! under.
 
 use crate::app::Scanners;
+use crate::config;
 use crate::i18n::t;
-use crate::{config, game, rom, widgets};
+use crate::library::{game, rom};
+use crate::ui::widgets;
 use iced::widget::row;
 use iced::{Alignment, Element, Length};
 use unic_langid::LanguageIdentifier;
@@ -346,7 +348,7 @@ impl std::fmt::Display for SaveOption {
 pub fn family_options(lang: &LanguageIdentifier, scanners: &Scanners) -> Vec<FamilyOption> {
     let roms = scanners.roms.read();
     let mut families: Vec<&'static str> = Vec::new();
-    for g in crate::game::GAMES.iter() {
+    for g in crate::library::game::GAMES.iter() {
         let fam = g.family_and_variant().0;
         if !families.contains(&fam) {
             families.push(fam);
@@ -586,11 +588,7 @@ pub fn first_available_family_save(scanners: &Scanners, family: &str) -> Option<
             }
         }
     }
-    candidates.sort_by(|a, b| {
-        a.1.file_stem()
-            .cmp(&b.1.file_stem())
-            .then_with(|| a.1.cmp(&b.1))
-    });
+    candidates.sort_by(|a, b| a.1.file_stem().cmp(&b.1.file_stem()).then_with(|| a.1.cmp(&b.1)));
     candidates.into_iter().next()
 }
 

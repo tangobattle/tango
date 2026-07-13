@@ -236,12 +236,12 @@ pub struct Config {
     pub ui_scale: f32,
 
     /// User-editable input bindings (keyboard + gamepad). See
-    /// [`crate::input::Mapping::default`] for the out-of-the-box
+    /// [`crate::platform::input::Mapping::default`] for the out-of-the-box
     /// layout. Each mgba key can have multiple bindings.
     #[serde(default)]
-    pub input_mapping: crate::input::Mapping,
+    pub input_mapping: crate::platform::input::Mapping,
     /// Master output volume in `[0.0, 1.0]`. Multiplied into each
-    /// audio sample by [`crate::audio::LateBinder`]; takes effect on
+    /// audio sample by [`crate::platform::audio::LateBinder`]; takes effect on
     /// the next buffer fill.
     #[serde(default = "default_volume")]
     pub volume: f32,
@@ -308,7 +308,7 @@ impl Default for Config {
             last_window_position: None,
             fullscreen: false,
             ui_scale: default_ui_scale(),
-            input_mapping: crate::input::Mapping::default(),
+            input_mapping: crate::platform::input::Mapping::default(),
             volume: 1.0,
             disable_bgm_in_pvp: false,
             frame_delay: default_frame_delay(),
@@ -494,13 +494,13 @@ impl Drop for Writer {
 }
 
 /// Build the lookup key used by `Config::last_save_per_game`.
-pub fn game_key(game: crate::rom::GameRef) -> String {
+pub fn game_key(game: crate::library::rom::GameRef) -> String {
     let (family, variant) = game.family_and_variant();
     format!("{family}/{variant}")
 }
 
 /// The platform config directory Tango stores `config.json` (and the
-/// persistent client identity — see [`crate::identity`]) under. `None` only
+/// persistent client identity — see [`crate::netplay::identity`]) under. `None` only
 /// when the OS user-dirs lookup fails, the same degraded case
 /// [`Config::load_or_create`] already tolerates.
 pub fn config_dir() -> Option<std::path::PathBuf> {

@@ -1,8 +1,8 @@
 use crate::app::Scanners;
-use crate::game;
 use crate::i18n::t;
-use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
-use crate::widgets;
+use crate::library::game;
+use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
+use crate::ui::widgets;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, scrollable, text};
 use iced::{Alignment, Element, Fill, Length};
@@ -44,7 +44,7 @@ pub struct PatchesState {
     pub search: String,
     /// Entrance restarted when a different patch is selected —
     /// the detail panel slides in from the right.
-    pub detail_enter: crate::anim::Enter,
+    pub detail_enter: crate::ui::anim::Enter,
 }
 
 /// Side-effects bubble-up. See [`crate::tabs::replays::Effect`]
@@ -159,7 +159,7 @@ impl PatchesState {
                 let detail = self.patch_detail(lang, config, name, patch);
                 // Selection entrance: the detail panel rises up
                 // into place.
-                crate::anim::slide_in_opt(
+                crate::ui::anim::slide_in_opt(
                     detail,
                     self.detail_enter.progress(iced::time::Instant::now()),
                     iced::Vector::new(0.0, 28.0),
@@ -219,13 +219,13 @@ impl PatchesState {
     /// in the detail header).
     fn patch_list<'a>(
         &'a self,
-        patches: &crate::patch::PatchMap,
+        patches: &crate::library::patch::PatchMap,
         config: &crate::config::Config,
     ) -> Element<'a, Message> {
         // Apply the search filter case-insensitively against both
         // the patch name (e.g. `bn6-foo`) and human title.
         let query = self.search.trim().to_lowercase();
-        let mut ordered_patches: Vec<(&String, &std::sync::Arc<crate::patch::Patch>)> = patches
+        let mut ordered_patches: Vec<(&String, &std::sync::Arc<crate::library::patch::Patch>)> = patches
             .iter()
             .filter(|(n, p)| {
                 query.is_empty() || n.to_lowercase().contains(&query) || p.title.to_lowercase().contains(&query)
@@ -288,7 +288,7 @@ impl PatchesState {
         lang: &'a LanguageIdentifier,
         config: &crate::config::Config,
         name: &str,
-        patch: &crate::patch::Patch,
+        patch: &crate::library::patch::Patch,
     ) -> Element<'a, Message> {
         let mut versions: Vec<semver::Version> = patch.versions.keys().cloned().collect();
         versions.sort_by(|a, b| b.cmp(a));
@@ -408,7 +408,7 @@ impl PatchesState {
         }
 
         // Markdown README, parsed and cached in self.readme_items.
-        // Pull the live Theme from `crate::theme::theme_for(config)`
+        // Pull the live Theme from `crate::ui::theme::theme_for(config)`
         // so link color tracks the active palette, and pin
         // the body text to the app's TEXT_BODY size (default
         // Settings::from would otherwise use 16 px and make
@@ -417,8 +417,8 @@ impl PatchesState {
         let readme_body: Element<'_, Message> = if self.readme_items.is_empty() {
             text(t!(lang, "patches-readme-placeholder")).size(TEXT_CAPTION).into()
         } else {
-            let theme = crate::theme::theme_for(config);
-            let style = crate::theme::markdown_style(&theme);
+            let theme = crate::ui::theme::theme_for(config);
+            let style = crate::ui::theme::markdown_style(&theme);
             iced::widget::markdown::view(
                 &self.readme_items,
                 iced::widget::markdown::Settings::with_text_size(TEXT_BODY, style),

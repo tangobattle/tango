@@ -18,7 +18,7 @@ pub struct GameInfo {
 }
 
 pub fn make_game_info(
-    game: crate::rom::GameRef,
+    game: crate::library::rom::GameRef,
     patch: Option<(&str, &semver::Version)>,
     language: &unic_langid::LanguageIdentifier,
 ) -> GameInfo {
@@ -27,7 +27,8 @@ pub fn make_game_info(
     let family = game.family_and_variant().0.to_string();
     // Game-name localization goes through the per-family path, not the
     // app's general i18n loader.
-    let mut title = crate::game::family_str(&family, language, "name").unwrap_or_else(|| format!("⟦game-{family}⟧"));
+    let mut title =
+        crate::library::game::family_str(&family, language, "name").unwrap_or_else(|| format!("⟦game-{family}⟧"));
     if let Some((patch_name, patch_version)) = patch.as_ref() {
         title.push_str(&format!(" + {} v{}", patch_name, patch_version));
     }

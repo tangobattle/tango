@@ -13,12 +13,13 @@
 //! `view` modules render the tab body, which `App::view` chooses
 //! between based on `self.tab`.
 
+use crate::library::{game, patch, replays, rom, save};
+use crate::netplay::identity;
+use crate::platform::{audio, input, sdl_init};
 use crate::session::ActiveSession;
-use crate::theme::theme_for;
-use crate::{
-    anim, audio, config, discord, game, i18n, identity, input, loadout, net, netplay, patch, replays, rom, save,
-    sdl_init, selection, session, tabs, updater, widgets, INIT_LINK_CODE,
-};
+use crate::ui::theme::theme_for;
+use crate::ui::{anim, widgets};
+use crate::{config, discord, i18n, loadout, net, netplay, selection, session, tabs, updater, INIT_LINK_CODE};
 use i18n::t;
 use iced::widget::container;
 use iced::widget::space::horizontal as horizontal_space;
@@ -74,14 +75,14 @@ impl Scanners {
         let replays_path = config.replays_path();
         self.roms
             .rescan_if_changed(&rom::scan_roots(&roms_path), || Some(rom::scan_roms(&roms_path)));
-        self.saves
-            .rescan_if_changed(std::slice::from_ref(&saves_path), || Some(save::scan_saves(&saves_path)));
+        self.saves.rescan_if_changed(std::slice::from_ref(&saves_path), || {
+            Some(save::scan_saves(&saves_path))
+        });
         self.patches
             .rescan_if_changed(std::slice::from_ref(&patches_path), || patch::scan(&patches_path).ok());
-        self.replays
-            .rescan_if_changed(std::slice::from_ref(&replays_path), || {
-                Some(replays::scan_replays(&replays_path))
-            });
+        self.replays.rescan_if_changed(std::slice::from_ref(&replays_path), || {
+            Some(replays::scan_replays(&replays_path))
+        });
     }
 }
 
@@ -129,14 +130,16 @@ pub struct App {
     /// the handle aborts its progress stream. Removed when the worker
     /// completes naturally, or cancelled by `replay_stats_takeover`
     /// when a playback session's prefetcher takes the same work over.
-    replay_analysis_jobs:
-        std::collections::HashMap<std::path::PathBuf, (std::sync::Arc<std::sync::atomic::AtomicBool>, iced::task::Handle)>,
+    replay_analysis_jobs: std::collections::HashMap<
+        std::path::PathBuf,
+        (std::sync::Arc<std::sync::atomic::AtomicBool>, iced::task::Handle),
+    >,
     patches: PatchesState,
     settings: tabs::settings::State,
     welcome: tabs::welcome::State,
     netplay: netplay::State,
     /// Persistent self-signed client identity, loaded once at startup
-    /// (see [`crate::identity`]). Cloned into each matchmaking
+    /// (see [`crate::netplay::identity`]). Cloned into each matchmaking
     /// `Connect` so the lobby websocket presents it as the mTLS client
     /// certificate. `None` if it couldn't be loaded/created — netplay
     /// then dials without a client cert.
@@ -399,7 +402,7 @@ impl App {
             ..Default::default()
         };
         if let Some((family, variant)) = config.last_game.as_ref() {
-            if let Some(game) = crate::game::find_by_family_and_variant(family, *variant) {
+            if let Some(game) = crate::library::game::find_by_family_and_variant(family, *variant) {
                 if scanners.roms.read().contains_key(&game) {
                     restored.game = Some(game);
                     restored.family = Some(game.family_and_variant().0);
@@ -954,9 +957,13 @@ impl App {
         // Candidate snapshot for the lobby's exit animation — taken
         // before dispatch (the handler about to run may reset the
         // phase/lobby), kept only if the lobby actually left.
-        let lobby_live = self
-            .lobby_on_screen()
-            .then(|| (self.netplay.phase.clone(), self.netplay.lobby.clone(), self.netplay.ready_view()));
+        let lobby_live = self.lobby_on_screen().then(|| {
+            (
+                self.netplay.phase.clone(),
+                self.netplay.lobby.clone(),
+                self.netplay.ready_view(),
+            )
+        });
         let task = self.update_inner(message);
         let now = iced::time::Instant::now();
         let screen_after = self.screen_key();
@@ -1551,7 +1558,7 @@ impl App {
                 self.config.fractional_scaling,
                 self.config.hide_emulator_border,
                 self.config.show_replay_inputs,
-                crate::video::effects::effect_for(&self.config.video_filter),
+                crate::platform::video::effects::effect_for(&self.config.video_filter),
             )
             .map(Message::Session);
             // In-session settings modal: floats centered over the
@@ -1587,7 +1594,7 @@ impl App {
                     [4.0, 8.0],
                     widgets::window_close,
                 );
-                let heading = iced::widget::text(t!(lang, "tab-settings")).size(crate::style::TEXT_HEADING);
+                let heading = iced::widget::text(t!(lang, "tab-settings")).size(crate::ui::style::TEXT_HEADING);
                 let header = iced::widget::container(
                     row![heading, iced::widget::space::horizontal(), close_btn]
                         .padding(iced::Padding {
@@ -1627,7 +1634,7 @@ impl App {
                 (Some(p), EnterScope::Root { dy }) => anim::slide_in(composed, p, iced::Vector::new(0.0, dy)),
                 _ => composed,
             };
-            return crate::input_capture::InputCapture::new(composed, |input| {
+            return crate::platform::input_capture::InputCapture::new(composed, |input| {
                 // Esc is reserved as the in-session escape/menu key —
                 // it never reaches the joyflag pipeline so the user
                 // can't accidentally hide it behind a mapping. Both
@@ -1639,7 +1646,7 @@ impl App {
                         iced::keyboard::key::Physical::Code(iced::keyboard::key::Code::Escape)
                     )
                 };
-                if let crate::input_capture::Input::Keyboard(kb) = &input {
+                if let crate::platform::input_capture::Input::Keyboard(kb) = &input {
                     match kb {
                         iced::keyboard::Event::KeyPressed { physical_key, .. } if is_escape(physical_key) => {
                             return Some(Message::Session(session::Message::EscPressed));
@@ -1670,9 +1677,10 @@ impl App {
             };
             // Esc dismisses — through the same synchronous capture wrapper
             // the session uses, so it works without any widget focused.
-            return crate::input_capture::InputCapture::new(composed, |input| {
-                if let crate::input_capture::Input::Keyboard(iced::keyboard::Event::KeyPressed {
-                    physical_key, ..
+            return crate::platform::input_capture::InputCapture::new(composed, |input| {
+                if let crate::platform::input_capture::Input::Keyboard(iced::keyboard::Event::KeyPressed {
+                    physical_key,
+                    ..
                 }) = &input
                 {
                     if matches!(

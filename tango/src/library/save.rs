@@ -1,4 +1,4 @@
-use crate::{rom::GameRef, scanner};
+use crate::library::{rom::GameRef, scanner};
 
 pub struct ScannedSave {
     pub path: std::path::PathBuf,
@@ -44,7 +44,7 @@ pub fn scan_saves(path: &std::path::Path) -> std::collections::HashMap<GameRef, 
         };
 
         let mut matched = false;
-        for game in crate::game::GAMES.iter().copied() {
+        for game in crate::library::game::GAMES.iter().copied() {
             if let Ok(save) = game.parse_save(&buf) {
                 by_game.entry(game).or_default().push(ScannedSave {
                     path: p.to_path_buf(),

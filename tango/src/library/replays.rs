@@ -1,4 +1,4 @@
-use crate::scanner;
+use crate::library::scanner;
 
 pub struct ScannedReplay {
     pub path: std::path::PathBuf,
@@ -30,7 +30,7 @@ fn local_game_registered(metadata: &tango_pvp::replay::Metadata) -> bool {
         None => true,
         Some(gi) => u8::try_from(gi.rom_variant)
             .ok()
-            .and_then(|variant| crate::game::find_by_family_and_variant(&gi.rom_family, variant))
+            .and_then(|variant| crate::library::game::find_by_family_and_variant(&gi.rom_family, variant))
             .is_some(),
     }
 }
@@ -175,7 +175,7 @@ pub fn compute_and_cache_match_stats(
             .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
         let variant = u8::try_from(gi.rom_variant)
             .map_err(|_| anyhow::anyhow!("variant {} out of range", gi.rom_variant))?;
-        let entry = crate::game::find_by_family_and_variant(&gi.rom_family, variant)
+        let entry = crate::library::game::find_by_family_and_variant(&gi.rom_family, variant)
             .ok_or_else(|| anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, gi.rom_variant))?;
         let rom = scanners
             .roms
@@ -185,7 +185,7 @@ pub fn compute_and_cache_match_stats(
             .ok_or_else(|| anyhow::anyhow!("rom for {}/{} not scanned", gi.rom_family, gi.rom_variant))?;
         let rom = if let Some(patch_info) = gi.patch.as_ref() {
             let v = semver::Version::parse(&patch_info.version)?;
-            crate::patch::apply_patch_from_disk(&rom, entry, &patches_path, &patch_info.name, &v)?
+            crate::library::patch::apply_patch_from_disk(&rom, entry, &patches_path, &patch_info.name, &v)?
         } else {
             rom
         };

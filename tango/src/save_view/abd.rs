@@ -85,10 +85,10 @@ pub(super) fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loa
 
     // Each section becomes its own pane so the outer scrollable in `view`
     // shows them as distinct demarcated regions.
-    let mut col = column![].spacing(crate::style::PANE_GAP).width(Fill);
+    let mut col = column![].spacing(crate::ui::style::PANE_GAP).width(Fill);
     for (title, runs) in abd_grouped_sections(lang, &grouped) {
         let rows = abd_grouped_section_rows::<M>(loaded, title, &runs, chips_have_mb);
-        col = col.push(container(rows).width(Fill).style(crate::widgets::pane));
+        col = col.push(container(rows).width(Fill).style(crate::ui::widgets::pane));
     }
     col.into()
 }
@@ -164,7 +164,7 @@ fn abd_count_input<'a>(value: usize, make: impl Fn(usize) -> Action + 'a) -> Ele
         .width(Length::Fixed(54.0))
         .padding([4, 8])
         .size(TEXT_BODY)
-        .style(crate::widgets::chunky_text_input)
+        .style(crate::ui::widgets::chunky_text_input)
         .into()
 }
 

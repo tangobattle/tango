@@ -22,7 +22,7 @@ use std::sync::{Mutex, MutexGuard};
 use sdl3::{EventPump, Sdl};
 use send_wrapper::SendWrapper;
 
-use crate::audio;
+use crate::platform::audio;
 
 static SDL: Mutex<Option<SendWrapper<Sdl>>> = Mutex::new(None);
 static EVENT_PUMP: Mutex<Option<SendWrapper<EventPump>>> = Mutex::new(None);
