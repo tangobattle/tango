@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "bps",
     "discord-ipc",
-    "mgba",
     "getgud",
     "rennet",
     "tango",
@@ -11,8 +10,6 @@ members = [
     "tango-filesync",
     "tango-gamesupport",
     "tango-pvp",
-    "tango-rtc",
-    "tango-signaling",
 ]
 # One source of truth for every external dep shared by 2+ member crates,
 # so versions can't silently drift apart (we shipped four itertools and
@@ -28,6 +25,7 @@ futures = "0.3"
 image = { version = "0.25", default-features = false }
 itertools = "0.13"
 log = "0.4"
+mgba = { git = "https://github.com/tangobattle/mgba-rs" }
 num-derive = "0.4.2"
 num-traits = "0.2"
 prost = "0.14"

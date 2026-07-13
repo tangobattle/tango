@@ -10,7 +10,7 @@ byteorder.workspace = true
 bytemuck.workspace = true
 log.workspace = true
 image.workspace = true
-mgba = { path = "../mgba" }
+mgba.workspace = true
 prost.workspace = true
 rand.workspace = true
 rand_pcg.workspace = true

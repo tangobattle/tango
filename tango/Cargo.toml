@@ -49,12 +49,12 @@ mailparse = "0.14"
 open = "5"
 bps = { path = "../bps" }
 discord-ipc = { path = "../discord-ipc" }
-mgba = { path = "../mgba" }
+mgba.workspace = true
 rennet = { path = "../rennet" }
 tango-pvp = { path = "../tango-pvp" }
 tango-filesync = { path = "../tango-filesync" }
-tango-signaling = { path = "../tango-signaling" }
-tango-rtc = { path = "../tango-rtc" }
+tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
+tango-rtc = { git = "https://github.com/tangobattle/tango-rtc" }
 bincode = "1"
 async-trait.workspace = true
 sdl3 = { version = "0.18", default-features = false, features = ["build-from-source-static"] }
