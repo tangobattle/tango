@@ -55,6 +55,10 @@ use handshake::Handshake;
 // Data channels are now negotiated in-band (DCEP) instead of pre-agreed
 // stream ids, so a 0x4b peer's channels would never open against ours; the
 // version gate keeps the two stacks from ever pairing.
+// (Still 0x4c: the `Closing` marker was removed — the transport's own DTLS
+// close_notify already hands the peer a prompt EOF on a deliberate quit. No
+// bump: an older 0x4c peer's marker decodes as stray traffic, which the
+// mid-match reliable-channel watch ignores.)
 pub const PROTOCOL_VERSION: u32 = 0x4c;
 
 /// Where the lifecycle is right now. Drives the Play tab's status

@@ -101,13 +101,6 @@ impl Sender {
             .await
     }
 
-    /// Tell the peer we're leaving the match on purpose (quit / app exit), so it
-    /// ends immediately instead of waiting out the reconnect window. See
-    /// [`protocol::Packet::Closing`].
-    pub async fn send_closing(&mut self) -> std::io::Result<()> {
-        self.send_packet(&protocol::Packet::Closing(protocol::Closing {})).await
-    }
-
     // EndOfRound / EndOfMatch are no longer reliable-channel packets — they
     // ride in-band as `data::wire` markers on the unreliable in-match channel
     // (see [`super::data::InMatchTx`]), so their old send helpers are gone.
@@ -125,7 +118,7 @@ impl Receiver {
     /// Read one message off the transport and decode it as a `Packet`. A
     /// transport-level close surfaces as `io::ErrorKind::UnexpectedEof`;
     /// undecodable bytes as `io::ErrorKind::InvalidData` — callers that tolerate
-    /// stray traffic (e.g. the mid-match `Closing` watch) discriminate on the
+    /// stray traffic (e.g. the mid-match close watch) discriminate on the
     /// error kind.
     pub async fn receive(&mut self) -> std::io::Result<protocol::Packet> {
         let bytes = self.stream.recv().await?;

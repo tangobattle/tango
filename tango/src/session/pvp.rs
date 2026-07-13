@@ -407,32 +407,25 @@ impl PvpSession {
                     /// Clean local teardown (user closed / cancelled). Never reconnects.
                     Cancelled,
                     /// A channel hit EOF — the peer *told* us something: a deliberate
-                    /// quit (usually preceded by its `Closing` marker), the peer's
-                    /// reconnect coordinator giving up, or its transport declaring the
-                    /// link dead. All of those mean the match is over; a mere link
-                    /// outage never produces an EOF (our own reconnect teardown is
-                    /// silent — see below — and a dead network delivers nothing).
+                    /// quit (its peer connection's graceful drop sends DTLS
+                    /// close_notify), the peer's reconnect coordinator giving up, or
+                    /// its transport declaring the link dead. All of those mean the
+                    /// match is over; a mere link outage never produces an EOF (our
+                    /// own reconnect teardown is silent — see below — and a dead
+                    /// network delivers nothing).
                     Closed,
                     /// The local input queue climbed to `RECONNECT_QUEUE_LENGTH`:
                     /// the peer stopped matching our inputs, i.e. a quiet/dead link.
                     /// The one trip that reconnects.
                     Stalled,
                 }
-                // Latched by `watch_reliable` when the peer sends a `Closing`
-                // marker ahead of its disconnect: it's leaving on purpose, so we
-                // end rather than spend the reconnect window on it.
-                let peer_closing = AtomicBool::new(false);
                 loop {
                     // `run` takes `receiver` by move, which is fine — every
                     // looping path rebuilds it.
                     let trip = tokio::select! {
                         biased;
                         _ = cancel.cancelled() => Trip::Cancelled,
-                        // Ahead of the in-match EOF: a `Closing` marker rides the
-                        // reliable channel just before the close it announces, so
-                        // reading it first latches `peer_closing` before the close
-                        // trips.
-                        _ = watch_reliable(&mut reliable_receiver, &peer_closing) => Trip::Closed,
+                        _ = watch_reliable(&mut reliable_receiver) => Trip::Closed,
                         r = inner_match.run(receiver) => {
                             log::info!("pvp in-match channel closed: {r:?}");
                             Trip::Closed
@@ -440,24 +433,22 @@ impl PvpSession {
                         _ = inner_match.stalled() => Trip::Stalled,
                     };
 
-                    // Our own deliberate close: tell the peer (a `Closing` marker)
-                    // so it ends immediately instead of waiting out its reconnect
-                    // window, then stop. (`cancel` is already tripped.)
+                    // Our own deliberate close: just stop. The session's teardown
+                    // drops the peer connection gracefully, and its DTLS
+                    // close_notify hands the peer a prompt EOF (`Trip::Closed`
+                    // over there — it ends instead of reconnecting).
                     if matches!(trip, Trip::Cancelled) {
-                        let _ = lobby_sender.lock().await.send_closing().await;
                         break;
                     }
 
                     // Reconnect only on the stall watchdog — the one signal that
                     // means "the link went quiet under a live match" — and only if
-                    // the transport can rebuild, the match isn't ending (our
-                    // completion or the peer's EndOfMatch), and the peer didn't
-                    // announce a deliberate close.
+                    // the transport can rebuild and the match isn't ending (our
+                    // completion or the peer's EndOfMatch).
                     let reconnectable = matches!(trip, Trip::Stalled)
                         && reconnect.is_some()
                         && !completion_token.is_complete()
-                        && !end.remote_ended.load(Ordering::Acquire)
-                        && !peer_closing.load(Ordering::Acquire);
+                        && !end.remote_ended.load(Ordering::Acquire);
                     if !reconnectable {
                         end.remote_disconnected.store(true, Ordering::Release);
                         cancel.cancel();
@@ -962,21 +953,14 @@ async fn drain_receiver<R>(slot: &Arc<std::sync::Mutex<Option<R>>>) -> anyhow::R
     }
 }
 
-/// Watch the reliable channel mid-match for the peer's deliberate-close marker.
-/// On a [`Closing`] packet it latches `peer_closing` — the peer is leaving on
-/// purpose, so the disconnect it's about to send is clean and we should end
-/// rather than reconnect — and keeps watching. It only returns when the channel
-/// actually closes (a recv error). Nothing else legitimately flows here
-/// mid-match, so stray traffic / undecodable bytes are ignored.
-///
-/// [`Closing`]: crate::net::protocol::Packet::Closing
-async fn watch_reliable(receiver: &mut crate::net::Receiver, peer_closing: &AtomicBool) {
-    use crate::net::protocol::Packet;
+/// Watch the reliable channel mid-match for its close. Nothing legitimately
+/// flows here mid-match, so packets and stray/undecodable bytes are ignored;
+/// it only returns when the channel actually closes (a recv error).
+async fn watch_reliable(receiver: &mut crate::net::Receiver) {
     loop {
         match receiver.receive().await {
-            Ok(Packet::Closing(_)) => peer_closing.store(true, Ordering::Release),
-            // Some other packet — nothing else legitimately flows here mid-match,
-            // but ignore it and keep watching.
+            // Some packet — nothing legitimately flows here mid-match, but
+            // ignore it and keep watching.
             Ok(_) => {}
             // Undecodable bytes (`InvalidData`) are stray traffic, not a close —
             // ignore and keep watching. Any other error (notably the channel's
