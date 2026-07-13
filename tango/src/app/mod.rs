@@ -718,8 +718,9 @@ impl App {
         else {
             return iced::Task::none();
         };
+        let roms = self.scanners.roms.read();
         let patches = self.scanners.patches.read();
-        let verdict = netplay::compat::check(local, remote, &patches);
+        let verdict = netplay::compat::check(local, remote, &roms, &patches);
         if matches!(verdict, netplay::compat::Verdict::Compatible) {
             return iced::Task::none();
         }
@@ -728,9 +729,9 @@ impl App {
 
     /// Build a `protocol::Settings` packet from the App's current
     /// state: nickname from config, match_type defaults to (0, 0),
-    /// game_info from the local loadout, and the available_games /
-    /// available_patches lists from the scanners so the peer can see
-    /// what we have locally.
+    /// game_info from the local loadout. (No available-games /
+    /// available-patches lists cross the wire — possession of the
+    /// peer's setup is checked locally by `compat::check`.)
     fn make_local_settings(&self) -> net::protocol::Settings {
         self.loadout.make_local_settings(&self.config, &self.netplay.lobby)
     }

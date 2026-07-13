@@ -118,8 +118,9 @@ impl<'a> Lobby<'a> {
             Phase::Negotiating { .. } => Status::Negotiating,
             _ => match (self.state.local.as_ref(), self.state.remote.as_ref()) {
                 (Some(l), Some(r)) => {
+                    let roms = self.scanners.roms.read();
                     let patches = self.scanners.patches.read();
-                    Status::Verdict(netplay::compat::check(l, r, &patches))
+                    Status::Verdict(netplay::compat::check(l, r, &roms, &patches))
                 }
                 _ => Status::Handshake,
             },
@@ -319,6 +320,7 @@ impl<'a> Lobby<'a> {
                 let label = match verdict {
                     Verdict::Compatible => t!(lang, "lobby-compat-ok"),
                     Verdict::MissingGame => t!(lang, "lobby-compat-missing-game"),
+                    Verdict::MissingRom => t!(lang, "lobby-compat-missing-rom"),
                     Verdict::DifferentVersions => t!(lang, "lobby-compat-version-mismatch"),
                     Verdict::DifferentMatchTypes => t!(lang, "lobby-compat-match-mismatch"),
                 };
