@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::input::{Input, PartialInput};
 
-use super::{BattleOutcome, RoundPhase, RoundResult};
+use super::{BattleOutcome, EndingProgress, RoundResult};
 
 type InputPair = (Input, Input);
 type PartialInputPair = (PartialInput, PartialInput);
@@ -25,7 +25,7 @@ pub struct LocalPacket {
 
 /// Where replay playback is in its per-round lifecycle. One explicit machine
 /// instead of the old `round_active` + `has_committed_this_round` +
-/// `shadow_round_ended` booleans plus a shared `RoundPhase`:
+/// `shadow_round_ended` booleans plus a shared `EndingProgress`:
 ///
 /// ```text
 /// AwaitingRoundStart ──round_start_ret──► AwaitingFirstCommit
@@ -150,7 +150,7 @@ struct FastforwardExtras {
     /// flows through the same `set_round_ending` / `is_round_ending` trap
     /// gates as replay; [`InnerState::round_result`] is how the result
     /// reaches the rollback engine.
-    ending: RoundPhase,
+    ending: EndingProgress,
 }
 
 /// Which of the stepper's two jobs this state is driving. The per-game stepper
@@ -339,7 +339,7 @@ impl InnerState {
             mode: Mode::Fastforward(FastforwardExtras {
                 capture_tick,
                 captured: None,
-                ending: RoundPhase::InProgress,
+                ending: EndingProgress::InProgress,
             }),
         }
     }
@@ -729,7 +729,7 @@ impl InnerState {
     pub fn set_round_ending(&mut self) {
         let shadow_to_advance = match &mut self.mode {
             Mode::Fastforward(ff) => {
-                ff.ending = RoundPhase::Ending;
+                ff.ending = EndingProgress::Ending;
                 None
             }
             Mode::Replay(replay) => {
@@ -758,7 +758,7 @@ impl InnerState {
     pub fn set_round_ended(&mut self) {
         match &mut self.mode {
             Mode::Fastforward(ff) => {
-                ff.ending = RoundPhase::Ended;
+                ff.ending = EndingProgress::Ended;
             }
             Mode::Replay(replay) => {
                 // Finished is sticky so the terminal state stays obvious.
@@ -780,14 +780,14 @@ impl InnerState {
 
     pub fn is_round_ending(&self) -> bool {
         match &self.mode {
-            Mode::Fastforward(ff) => ff.ending != RoundPhase::InProgress,
+            Mode::Fastforward(ff) => ff.ending != EndingProgress::InProgress,
             Mode::Replay(replay) => replay.phase.has_ended_or_is_ending(),
         }
     }
 
     pub fn is_round_ended(&self) -> bool {
         match &self.mode {
-            Mode::Fastforward(ff) => ff.ending == RoundPhase::Ended,
+            Mode::Fastforward(ff) => ff.ending == EndingProgress::Ended,
             Mode::Replay(replay) => {
                 matches!(replay.phase, PlaybackPhase::RoundEnded | PlaybackPhase::Finished)
             }

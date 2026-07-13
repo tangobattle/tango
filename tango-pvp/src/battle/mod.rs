@@ -17,6 +17,7 @@ mod world;
 
 pub(crate) use match_::SenderMutex;
 pub use match_::{Match, MatchConfig, RoundMetrics};
+pub use round::RoundPhase;
 pub(crate) use round::Round;
 pub use world::{RoundSample, BUTTON_LOCAL_A, BUTTON_LOCAL_B, BUTTON_REMOTE_A, BUTTON_REMOTE_B, NO_CHIP};
 pub(crate) use world::{JOY_A, JOY_B};

@@ -6,6 +6,24 @@ use crate::input::PartialInput;
 use super::world::{MgbaState, MgbaWorld};
 use super::{EXPECTED_FPS, MAX_QUEUE_LENGTH, RECONNECT_QUEUE_LENGTH};
 
+/// Which of its two lives a [`Round`] is in. A round is allocated at the
+/// game's `round_start_ret` but its rollback engine can't be built until the
+/// live core reaches the round's first commit tick, so it starts `Armed`;
+/// the first `main_read_joyflags` fire performs the commit
+/// ([`Match::record_first_commit`](super::Match::record_first_commit)) and
+/// the round is `Live` from then on. Per-game primary traps match on this:
+/// `Armed` is the round's very first fire (seed the RNGs, commit tick 0),
+/// `Live` means the session is running (and the game's tick must track the
+/// engine's loads exactly).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RoundPhase {
+    /// Allocated, waiting for the live core to reach the first commit tick.
+    /// Engine-metric accessors answer 0 and remote inputs are held off.
+    Armed,
+    /// The rollback session is running, seeded at the first committed state.
+    Live,
+}
+
 /// One round of live PvP. A thin shell around the generic
 /// [`getgud::Session`]: it owns the rollback state machine plus the
 /// mgba-specific I/O the engine deliberately knows nothing about — the network
@@ -176,10 +194,14 @@ impl Round {
         self.last_loaded_tick
     }
 
-    /// Whether the round has reached its first commit and the rollback session
-    /// is live. Until then the round is armed but not yet running.
-    pub fn has_settled_snapshot(&self) -> bool {
-        self.session.is_some()
+    /// See [`RoundPhase`]. Derived from whether the rollback session has
+    /// been built yet — the session *is* the substance of the `Live` phase.
+    pub fn phase(&self) -> RoundPhase {
+        if self.session.is_some() {
+            RoundPhase::Live
+        } else {
+            RoundPhase::Armed
+        }
     }
 
     fn local_tick_advantage(&self) -> i16 {

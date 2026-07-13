@@ -45,7 +45,7 @@ pub enum BattleOutcome {
 /// this one only answers the per-game `is_round_ending` / `is_round_ended`
 /// gates during a re-sim step.)
 #[derive(Clone, Copy, PartialEq)]
-pub(super) enum RoundPhase {
+pub(super) enum EndingProgress {
     InProgress,
     Ending,
     Ended,
