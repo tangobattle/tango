@@ -142,51 +142,63 @@ pub struct PvpSession {
     started_at: std::time::Instant,
 }
 
+/// Everything [`PvpSession::new`] needs, as named fields (the positional
+/// form had grown past a dozen arguments). Assembled by
+/// [`spawn_pvp`](crate::session::spawn_pvp).
+pub struct PvpSessionArgs<'a> {
+    /// Local/remote game impls; the roms must already have any patch applied.
+    pub local_game: &'static crate::game::Game,
+    pub local_rom: Arc<Vec<u8>>,
+    pub remote_game: &'static crate::game::Game,
+    pub remote_rom: Arc<Vec<u8>>,
+    /// The netplay handoff: negotiated terms + the transport bundle.
+    pub pre_match: crate::netplay::PreMatchData,
+    /// This side's frame delay — realized purely as local display lag (how
+    /// far the display core trails the netcode frontier). Comes straight from
+    /// local config; never negotiated with or sent to the peer.
+    pub frame_delay: u32,
+    /// Whether to skip the game's battle BGM for this match. Local-only
+    /// like the volume — the peer is unaffected, and the recorded replay
+    /// keeps its music (export has its own mute toggle). Sampled from
+    /// config at match start.
+    pub disable_bgm: bool,
+    pub replays_path: &'a Path,
+    pub cache_path: &'a Path,
+    pub audio_binder: &'a crate::audio::LateBinder,
+    pub opponent_loaded: Option<crate::selection::Loaded>,
+    pub local_loaded: Option<crate::selection::Loaded>,
+    pub frame_notify: Arc<tokio::sync::Notify>,
+    pub vbuf: Arc<Mutex<Vec<u8>>>,
+}
+
 impl PvpSession {
-    /// Build the live match. `local_rom` must already have any
-    /// patch applied; `pre_match` carries every other piece of
-    /// state we negotiated with the peer.
+    /// Build the live match from [`PvpSessionArgs`].
     ///
     /// Async because the lobby loop holds the data-channel
     /// `Receiver` until it observes its cancellation and exits;
     /// `Link::bring_up` awaits its handback (worst case a few ms
     /// after `take_pre_match` flips the cancel flag).
-    pub async fn new(
-        local_game: &'static crate::game::Game,
-        local_rom: Arc<Vec<u8>>,
-        remote_game: &'static crate::game::Game,
-        remote_rom: Arc<Vec<u8>>,
-        pre_match: crate::netplay::PreMatchData,
-        // This side's frame delay — realized purely as local display lag (how
-        // far the display core trails the netcode frontier). Comes straight from
-        // local config; never negotiated with or sent to the peer.
-        frame_delay: u32,
-        // Whether to skip the game's battle BGM for this match. Local-only
-        // like the volume — the peer is unaffected, and the recorded replay
-        // keeps its music (export has its own mute toggle). Sampled from
-        // config at match start.
-        disable_bgm: bool,
-        replays_path: &Path,
-        cache_path: &Path,
-        audio_binder: &crate::audio::LateBinder,
-        opponent_loaded: Option<crate::selection::Loaded>,
-        local_loaded: Option<crate::selection::Loaded>,
-        frame_notify: Arc<tokio::sync::Notify>,
-        vbuf: Arc<Mutex<Vec<u8>>>,
-    ) -> anyhow::Result<Self> {
+    pub async fn new(args: PvpSessionArgs<'_>) -> anyhow::Result<Self> {
+        let PvpSessionArgs {
+            local_game,
+            local_rom,
+            remote_game,
+            remote_rom,
+            pre_match,
+            frame_delay,
+            disable_bgm,
+            replays_path,
+            cache_path,
+            audio_binder,
+            opponent_loaded,
+            local_loaded,
+            frame_notify,
+            vbuf,
+        } = args;
         // Created up front: the link keys the in-match heartbeat's lifetime to
         // this token so it survives transport errors during a reconnect
         // (ending only at teardown). Shared with the Match and the supervisor.
         let cancellation_token = tokio_util::sync::CancellationToken::new();
-        // Assemble the peer link from the lobby handoff — this awaits the
-        // lobby loop releasing the reliable receiver (typically a few ms after
-        // take_pre_match flipped the cancel) and starts the in-match
-        // retransmit heartbeat.
-        let link = Arc::new(
-            crate::net::link::Link::bring_up(pre_match.link_parts, IN_MATCH_HEARTBEAT, cancellation_token.clone())
-                .await?,
-        );
-        let in_match = link.in_match().clone();
 
         // Parse the peer's raw SRAM into a Save object. Needed
         // by the Shadow constructor (its primary trap needs
@@ -245,46 +257,45 @@ impl PvpSession {
         use rand::SeedableRng;
         let mut rng = rand_pcg::Mcg128Xsl64::from_seed(pre_match.rng_seed);
         let local_player_index = tango_pvp::battle::Match::pick_local_player_index(&mut rng, pre_match.is_offerer);
-
-        // Replay writer. Failing to open it shouldn't kill the
-        // match — log and continue without recording.
-        let (replay_writer, replay_path) = match build_replay_writer(
-            replays_path,
-            &pre_match.link_code,
-            &pre_match.local_settings,
-            &pre_match.remote_settings,
-            pre_match.match_type,
-            pre_match.is_offerer,
-            local_player_index,
-            pre_match.rng_seed,
-            pre_match.match_ts,
-            local_save.as_ref(),
-            remote_save.as_ref(),
-        ) {
-            Ok((writer, path)) => (Some(writer), Some(path)),
-            Err(e) => {
-                log::warn!("pvp: replay writer open failed: {e}");
-                (None, None)
-            }
-        };
-
-        let remote_hooks = remote_game.hooks;
         let identity = tango_pvp::battle::MatchIdentity {
             match_type: pre_match.match_type,
             is_offerer: pre_match.is_offerer,
             local_player_index,
             rtc_time,
         };
+
+        // Replay writer. Failing to open it shouldn't kill the
+        // match — log and continue without recording.
+        let (replay_writer, replay_path) =
+            match build_replay_writer(replays_path, &pre_match, &identity, local_save.as_ref(), remote_save.as_ref())
+            {
+                Ok((writer, path)) => (Some(writer), Some(path)),
+                Err(e) => {
+                    log::warn!("pvp: replay writer open failed: {e}");
+                    (None, None)
+                }
+            };
+
+        let remote_hooks = remote_game.hooks;
         let shadow = tango_pvp::shadow::Shadow::new(
             remote_rom.as_ref(),
             remote_save.as_ref(),
             remote_hooks,
-            pre_match.match_type,
-            pre_match.is_offerer,
-            local_player_index,
+            identity,
             rng.clone(),
-            rtc_time,
         )?;
+
+        // Assemble the peer link from the lobby handoff — this awaits the
+        // lobby loop releasing the reliable receiver (typically a few ms after
+        // take_pre_match flipped the cancel) and starts the in-match
+        // retransmit heartbeat. Consumes `link_parts` off `pre_match`, so it
+        // runs after everything that borrows the handoff whole (the replay
+        // writer's metadata).
+        let link = Arc::new(
+            crate::net::link::Link::bring_up(pre_match.link_parts, IN_MATCH_HEARTBEAT, cancellation_token.clone())
+                .await?,
+        );
+        let in_match = link.in_match().clone();
 
         let end = EndState::default();
         // `frame_delay` (this side's frame delay) is realized entirely
@@ -299,20 +310,20 @@ impl PvpSession {
             chip_semantics,
             counts_buster,
         )));
-        let inner_match = tango_pvp::battle::Match::new(
-            local_rom.as_ref().clone(),
+        let inner_match = tango_pvp::battle::Match::new(tango_pvp::battle::MatchConfig {
+            rom: local_rom.as_ref().clone(),
             local_hooks,
-            thread.handle(),
-            Box::new(crate::net::PvpSender::new(in_match.clone())),
-            cancellation_token.clone(),
+            primary_thread_handle: thread.handle(),
+            sender: Box::new(crate::net::PvpSender::new(in_match.clone())),
+            cancellation_token: cancellation_token.clone(),
             rng,
             shadow,
             identity,
-            tango_pvp::battle::ReplayConfig { writer: replay_writer },
-            frame_delay.clone(),
+            replay: tango_pvp::battle::ReplayConfig { writer: replay_writer },
+            frame_delay: frame_delay.clone(),
             disable_bgm,
-            stats.clone(),
-        );
+            stats: stats.clone(),
+        });
         match_handle.set(inner_match.clone());
 
         // Match receive loop + link supervisor. Holds inner_match alive until
@@ -545,10 +556,9 @@ impl PvpSession {
         };
 
         // Single core: feeds local input from the user's atomic, marks TPS,
-        // pushes its rendered frame straight to the UI, drives completion. The
-        // display now follows the network frontier (no frame_delay
-        // mitigation yet — that comes back in Stage 1c when the Round loads the
-        // FF's at-present_tick state instead of the at-frontier one).
+        // pushes its rendered frame straight to the UI, drives completion.
+        // The display trails the network frontier by `frame_delay`: the Round
+        // loads the engine's at-present_tick state into this core each frame.
         thread.set_frame_callback({
             let joyflags = joyflags.clone();
             let tps_counter = tps_counter.clone();
@@ -783,7 +793,7 @@ impl PvpSession {
 #[derive(Clone, Copy, Debug)]
 pub struct RoundStats {
     /// Real-time clock skew the throttler reacts to: `local_advantage −
-    /// remote_advantage` (see `Round::update_fps_target`). The symmetric
+    /// remote_advantage` (see `tango_pvp::battle::Throttler`). The symmetric
     /// network term cancels in the difference, so this reads ~0 at clock
     /// sync, positive when we're leading (and being slowed), and negative
     /// when the peer is leading.
@@ -820,23 +830,20 @@ impl Drop for PvpSession {
 
 /// Open the replay file + write its metadata frame, returning the writer
 /// along with the path it records to (surfaced on the session so the
-/// post-match results screen can offer playback). Filename format mirrors
-/// the legacy app:
-/// `YYYYMMDDhhmmss-<link_code>-<compat>-vs-<opponent>-p<idx>.tangoreplay`.
-#[allow(clippy::too_many_arguments)]
+/// post-match results screen can offer playback). Everything the metadata
+/// needs lives on `pre_match` (settings, seed, match clock, link code) and
+/// `identity` (roles + player index). Filename format mirrors the legacy
+/// app: `YYYYMMDDhhmmss-<link_code>-<compat>-vs-<opponent>-p<idx>.tangoreplay`.
 fn build_replay_writer(
     replays_path: &Path,
-    link_code: &str,
-    local_settings: &crate::net::protocol::Settings,
-    remote_settings: &crate::net::protocol::Settings,
-    match_type: (u8, u8),
-    is_offerer: bool,
-    local_player_index: u8,
-    rng_seed: [u8; 16],
-    match_ts: u64,
+    pre_match: &crate::netplay::PreMatchData,
+    identity: &tango_pvp::battle::MatchIdentity,
     local_save: &(dyn tango_dataview::save::Save + Send + Sync),
     remote_save: &(dyn tango_dataview::save::Save + Send + Sync),
 ) -> anyhow::Result<(tango_pvp::replay::Writer, std::path::PathBuf)> {
+    let link_code = &pre_match.link_code;
+    let local_settings = &pre_match.local_settings;
+    let remote_settings = &pre_match.remote_settings;
     std::fs::create_dir_all(replays_path)?;
     let local_gi = local_settings
         .game_info
@@ -859,7 +866,7 @@ fn build_replay_writer(
     let raw_name = format!(
         "{ts}-{filename_link_code}-{netplay_compat}-vs-{}-p{}",
         remote_settings.nickname,
-        local_player_index + 1
+        identity.local_player_index + 1
     );
     let safe_name: String = raw_name.chars().filter(|c| !"/\\?%*:|\"<>. ".contains(*c)).collect();
     let replay_filename = replays_path.join(format!("{safe_name}.tangoreplay"));
@@ -885,8 +892,8 @@ fn build_replay_writer(
             // `metadata.ts` (see `Replay::rtc_time`), so recording the same
             // value is what makes exe45 replays reproduce the live match. Both
             // peers' replays of one match carry the identical ts.
-            ts: match_ts,
-            link_code: link_code.to_string(),
+            ts: pre_match.match_ts,
+            link_code: link_code.clone(),
             local_side: Some(tango_pvp::replay::metadata::Side {
                 nickname: local_settings.nickname.clone(),
                 game_info: Some(tango_pvp::replay::metadata::GameInfo {
@@ -920,12 +927,12 @@ fn build_replay_writer(
                 }),
                 reveal_setup: !remote_settings.blind_setup,
             }),
-            match_type: match_type.0 as u32,
-            match_subtype: match_type.1 as u32,
+            match_type: identity.match_type.0 as u32,
+            match_subtype: identity.match_type.1 as u32,
         },
-        is_offerer,
-        local_player_index,
-        rng_seed,
+        identity.is_offerer,
+        identity.local_player_index,
+        pre_match.rng_seed,
         &local_sram,
         &remote_sram,
     )?;

@@ -106,16 +106,16 @@ pub(crate) type SenderMutex = SyncMutex<Box<dyn crate::net::Sender + Send + Sync
 
 /// Connection-level state for a single PvP match.
 pub struct Match {
-    shadow: Arc<SyncMutex<crate::shadow::Shadow>>,
-    rom: Vec<u8>,
-    local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
+    pub(super) shadow: Arc<SyncMutex<crate::shadow::Shadow>>,
+    pub(super) rom: Vec<u8>,
+    pub(super) local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     sender: SenderMutex,
     /// Shared match RNG (both peers hold the same stream and must draw in
     /// lockstep). Only ever locked from trap closures on the emulator
     /// thread, hence a plain std mutex.
     rng: SyncMutex<rand_pcg::Mcg128Xsl64>,
     cancellation_token: tokio_util::sync::CancellationToken,
-    identity: MatchIdentity,
+    pub(super) identity: MatchIdentity,
     /// The in-progress round, if any. Locked only from the emulator thread
     /// (traps) and the UI's stats scrape — the net receive task talks to the
     /// round exclusively through [`SharedRemoteInputs`], which is what lets
@@ -129,10 +129,10 @@ pub struct Match {
     /// [`stalled`](Self::stalled) to pause and rebuild before the queue can
     /// reach the overflow bail. Detecting the stall where the queue grows beats
     /// polling its depth — no latency, no cross-thread round-state lock.
-    local_stall: Arc<tokio::sync::Notify>,
-    primary_thread_handle: mgba::thread::Handle,
+    pub(super) local_stall: Arc<tokio::sync::Notify>,
+    pub(super) primary_thread_handle: mgba::thread::Handle,
     /// Handoff queue from the net receive task to the live round.
-    remote_inputs: Arc<RemoteInputs>,
+    pub(super) remote_inputs: Arc<RemoteInputs>,
     /// Count of local `end_round` calls. Each remote Input is tagged with
     /// `peer_round_idx` at receive time; each [`Round`] is stamped with this
     /// counter at creation, and drains only matching entries — a stale tail
@@ -142,117 +142,72 @@ pub struct Match {
     /// Count of `EndOfRound` packets received from the peer. Loaded at
     /// receive time to stamp each Input with the round it belongs to.
     peer_round_idx: AtomicU32,
-    replay_writer: Arc<SyncMutex<Option<crate::replay::Writer>>>,
+    pub(super) replay_writer: Arc<SyncMutex<Option<crate::replay::Writer>>>,
     /// This side's frame delay, in frames. Realized purely locally by the
     /// `Round` rendering `frontier − frame_delay`; never touches the netcode or
     /// the wire. Shared atomic so the owning `PvpSession` can live-adjust it
     /// mid-match (footer slider) and every round reads the current value each
     /// frame.
-    frame_delay: Arc<AtomicU32>,
+    pub(super) frame_delay: Arc<AtomicU32>,
     /// Whether this side mutes battle BGM. Reaches the game through the
     /// battle-start play-music traps on both cores that execute ticks: the
     /// live primary's (via `install_on_primary`) and each round's re-sim
     /// [`Stepper`](crate::stepper::Stepper)'s — the stepper's matters most,
     /// since its snapshots (carrying the sound driver's RAM) are loaded into
     /// the live core every frame. Local-only, like `frame_delay`.
-    disable_bgm: bool,
+    pub(super) disable_bgm: bool,
     /// Incremental local-perspective match stats, fed one round at a time
     /// by [`end_round`](Self::end_round) as rounds close. Shared with the
     /// host (like `frame_delay`) rather than owned outright so the
     /// post-match results display and the sidecar write outlive the match
     /// teardown — the host keeps its own `Arc` and snapshots it after the
     /// `MatchHandle` clears.
-    stats: Arc<SyncMutex<crate::analysis::MatchStatsBuilder>>,
+    pub(super) stats: Arc<SyncMutex<crate::analysis::MatchStatsBuilder>>,
+}
+
+/// Everything [`Match::new`] needs, as named fields — the loose-positional
+/// form had a dozen arguments whose call site read as a pure ordering
+/// puzzle.
+pub struct MatchConfig {
+    pub rom: Vec<u8>,
+    pub local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
+    pub primary_thread_handle: mgba::thread::Handle,
+    pub sender: Box<dyn crate::net::Sender + Send + Sync>,
+    pub cancellation_token: tokio_util::sync::CancellationToken,
+    pub rng: rand_pcg::Mcg128Xsl64,
+    pub shadow: crate::shadow::Shadow,
+    pub identity: MatchIdentity,
+    pub replay: ReplayConfig,
+    pub frame_delay: Arc<AtomicU32>,
+    pub disable_bgm: bool,
+    pub stats: Arc<SyncMutex<crate::analysis::MatchStatsBuilder>>,
 }
 
 impl Match {
-    pub fn new(
-        rom: Vec<u8>,
-        local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-        primary_thread_handle: mgba::thread::Handle,
-        sender: Box<dyn crate::net::Sender + Send + Sync>,
-        cancellation_token: tokio_util::sync::CancellationToken,
-        rng: rand_pcg::Mcg128Xsl64,
-        shadow: crate::shadow::Shadow,
-        identity: MatchIdentity,
-        replay: ReplayConfig,
-        frame_delay: Arc<AtomicU32>,
-        disable_bgm: bool,
-        stats: Arc<SyncMutex<crate::analysis::MatchStatsBuilder>>,
-    ) -> Arc<Self> {
+    pub fn new(config: MatchConfig) -> Arc<Self> {
         Arc::new(Self {
-            shadow: Arc::new(SyncMutex::new(shadow)),
-            local_hooks,
-            rom,
-            sender: SyncMutex::new(sender),
-            rng: SyncMutex::new(rng),
-            cancellation_token,
-            identity,
+            shadow: Arc::new(SyncMutex::new(config.shadow)),
+            local_hooks: config.local_hooks,
+            rom: config.rom,
+            sender: SyncMutex::new(config.sender),
+            rng: SyncMutex::new(config.rng),
+            cancellation_token: config.cancellation_token,
+            identity: config.identity,
             round_state: SyncMutex::new(None),
             local_stall: Arc::new(tokio::sync::Notify::new()),
-            primary_thread_handle,
+            primary_thread_handle: config.primary_thread_handle,
             remote_inputs: Arc::default(),
             local_round_idx: AtomicU32::new(0),
             peer_round_idx: AtomicU32::new(0),
-            replay_writer: Arc::new(SyncMutex::new(replay.writer)),
-            frame_delay,
-            disable_bgm,
-            stats,
+            replay_writer: Arc::new(SyncMutex::new(config.replay.writer)),
+            frame_delay: config.frame_delay,
+            disable_bgm: config.disable_bgm,
+            stats: config.stats,
         })
-    }
-
-    pub(super) fn disable_bgm(&self) -> bool {
-        self.disable_bgm
-    }
-
-    /// The shared match-stats builder, for wiring each round's
-    /// [`MgbaWorld`](super::world::MgbaWorld) sample feed.
-    pub(super) fn stats_handle(&self) -> Arc<SyncMutex<crate::analysis::MatchStatsBuilder>> {
-        self.stats.clone()
-    }
-
-    pub(super) fn rtc_time(&self) -> std::time::SystemTime {
-        self.identity.rtc_time
-    }
-
-    pub(super) fn rom(&self) -> &[u8] {
-        &self.rom
-    }
-
-    pub(super) fn local_hooks(&self) -> &'static (dyn crate::hooks::Hooks + Send + Sync) {
-        self.local_hooks
-    }
-
-    pub(super) fn local_player_index(&self) -> u8 {
-        self.identity.local_player_index
-    }
-
-    pub(super) fn shadow_handle(&self) -> Arc<SyncMutex<crate::shadow::Shadow>> {
-        self.shadow.clone()
     }
 
     pub(crate) fn sender(&self) -> &SenderMutex {
         &self.sender
-    }
-
-    pub(super) fn replay_writer_handle(&self) -> Arc<SyncMutex<Option<crate::replay::Writer>>> {
-        self.replay_writer.clone()
-    }
-
-    pub(super) fn primary_thread_handle(&self) -> mgba::thread::Handle {
-        self.primary_thread_handle.clone()
-    }
-
-    pub(super) fn frame_delay(&self) -> Arc<AtomicU32> {
-        self.frame_delay.clone()
-    }
-
-    pub(super) fn remote_inputs_handle(&self) -> Arc<RemoteInputs> {
-        self.remote_inputs.clone()
-    }
-
-    pub(super) fn local_stall_handle(&self) -> Arc<tokio::sync::Notify> {
-        self.local_stall.clone()
     }
 
     /// The local round counter a [`Round`] created right now belongs to.

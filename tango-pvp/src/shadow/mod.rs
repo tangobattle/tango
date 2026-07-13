@@ -57,22 +57,10 @@ impl Shadow {
         rom: &[u8],
         save: &(dyn tango_dataview::save::Save + Send + Sync),
         hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-        match_type: (u8, u8),
-        is_offerer: bool,
-        local_player_index: u8,
+        identity: crate::battle::MatchIdentity,
         rng: rand_pcg::Mcg128Xsl64,
-        rtc_time: std::time::SystemTime,
     ) -> anyhow::Result<Self> {
-        Self::new_from_sram(
-            rom,
-            &save.to_sram_dump(),
-            hooks,
-            match_type,
-            is_offerer,
-            local_player_index,
-            rng,
-            rtc_time,
-        )
+        Self::new_from_sram(rom, &save.to_sram_dump(), hooks, identity, rng)
     }
 
     /// Build a shadow for replay-style reconstruction (playback, export,
@@ -96,17 +84,13 @@ impl Shadow {
         // Advance past the one-bool polite-win draw that the live match made
         // in `pick_local_player_index`; the index itself comes from `replay`.
         let _ = crate::battle::Match::pick_local_player_index(&mut rng, replay.is_offerer);
-        let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
-        Self::new_from_sram(
-            rom,
-            &replay.remote_sram,
-            hooks,
-            match_type,
-            replay.is_offerer,
-            replay.local_player_index,
-            rng,
-            replay.rtc_time(),
-        )
+        let identity = crate::battle::MatchIdentity {
+            match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
+            is_offerer: replay.is_offerer,
+            local_player_index: replay.local_player_index,
+            rtc_time: replay.rtc_time(),
+        };
+        Self::new_from_sram(rom, &replay.remote_sram, hooks, identity, rng)
     }
 
     /// Same as [`Shadow::new`] but takes the SRAM dump directly. Used by the
@@ -117,11 +101,8 @@ impl Shadow {
         rom: &[u8],
         save_sram: &[u8],
         hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-        match_type: (u8, u8),
-        is_offerer: bool,
-        local_player_index: u8,
+        identity: crate::battle::MatchIdentity,
         rng: rand_pcg::Mcg128Xsl64,
-        rtc_time: std::time::SystemTime,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
         // A video buffer is always attached (it's just a render target;
@@ -137,9 +118,14 @@ impl Shadow {
         // Pin the cart RTC to the match clock so RTC-reading games (exe45)
         // derive the same values here as on the primary — and as on the
         // peer's pair of cores.
-        core.set_rtc_fixed(rtc_time);
+        core.set_rtc_fixed(identity.rtc_time);
 
-        let state = State::new(match_type, is_offerer, local_player_index, rng);
+        let state = State::new(
+            identity.match_type,
+            identity.is_offerer,
+            identity.local_player_index,
+            rng,
+        );
 
         hooks.install_on_shadow(&mut core, state.clone());
         core.as_mut().reset();

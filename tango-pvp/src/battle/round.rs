@@ -78,14 +78,14 @@ impl Round {
         Self {
             session: None,
             round_idx: match_.current_local_round_idx(),
-            remote_inputs: match_.remote_inputs_handle(),
-            local_player_index: match_.local_player_index(),
-            hooks: match_.local_hooks(),
-            frame_delay: match_.frame_delay(),
-            primary_thread_handle: match_.primary_thread_handle(),
+            remote_inputs: match_.remote_inputs.clone(),
+            local_player_index: match_.identity.local_player_index,
+            hooks: match_.local_hooks,
+            frame_delay: match_.frame_delay.clone(),
+            primary_thread_handle: match_.primary_thread_handle.clone(),
             throttler: super::throttler::Throttler::new(),
             last_loaded_tick: 0,
-            local_stall: match_.local_stall_handle(),
+            local_stall: match_.local_stall.clone(),
             stall_signaled: false,
             result: Arc::new(std::sync::Mutex::new(None)),
         }
@@ -106,32 +106,29 @@ impl Round {
         first_packet: &[u8],
         shadow_snapshot: crate::shadow::ShadowSnapshot,
     ) -> anyhow::Result<()> {
-        let hooks = match_.local_hooks();
         // Wrap the shared shadow in its concurrent driver for the round. As
         // the stepper's remote-packet source it answers each re-sim tick's
         // trap immediately (the packet is buffered by the shadow's previous
         // run) and completes the shadow's own tick on its worker thread,
         // overlapping the rest of the primary's tick.
-        let shadow = std::sync::Arc::new(crate::shadow::Worker::new(match_.shadow_handle()));
+        let shadow = std::sync::Arc::new(crate::shadow::Worker::new(match_.shadow.clone()));
         let stepper = crate::stepper::Stepper::new(
-            match_.rom(),
-            hooks,
-            match_.match_type(),
-            self.local_player_index,
+            &match_.rom,
+            match_.local_hooks,
+            match_.identity,
             local_state.as_ref(),
             shadow.clone(),
-            match_.disable_bgm(),
-            match_.rtc_time(),
+            match_.disable_bgm,
         )?;
         let world = MgbaWorld {
             stepper,
             shadow,
             last_outgoing: first_packet.to_vec(),
-            replay_writer: match_.replay_writer_handle(),
+            replay_writer: match_.replay_writer.clone(),
             local_player_index: self.local_player_index,
             state_pool: Vec::new(),
             round_result: self.result.clone(),
-            stats: match_.stats_handle(),
+            stats: match_.stats.clone(),
         };
         self.session = Some(getgud::Session::new(getgud::SessionParams {
             present_delay: self.frame_delay.load(Ordering::Relaxed),

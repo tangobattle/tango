@@ -1248,26 +1248,26 @@ pub async fn spawn_pvp(
         ))
     };
 
-    pvp::PvpSession::new(
-        local_game_impl,
-        std::sync::Arc::new(local_rom_bytes),
-        remote_game_impl,
-        std::sync::Arc::new(remote_rom_bytes),
+    pvp::PvpSession::new(pvp::PvpSessionArgs {
+        local_game: local_game_impl,
+        local_rom: std::sync::Arc::new(local_rom_bytes),
+        remote_game: remote_game_impl,
+        remote_rom: std::sync::Arc::new(remote_rom_bytes),
         pre_match,
         // Presentation delay is purely local — read straight from config (clamped
         // to the supported range), not negotiated with the peer.
-        config
+        frame_delay: config
             .frame_delay
             .clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY),
-        config.disable_bgm_in_pvp,
-        &config.replays_path(),
-        &config.cache_path(),
-        &audio_binder,
+        disable_bgm: config.disable_bgm_in_pvp,
+        replays_path: &config.replays_path(),
+        cache_path: &config.cache_path(),
+        audio_binder: &audio_binder,
         opponent_loaded,
         local_loaded,
         frame_notify,
         vbuf,
-    )
+    })
     .await
 }
 

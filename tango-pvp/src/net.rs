@@ -4,7 +4,7 @@ pub struct Input {
     /// Sender's local tick advantage at send time — how far its local input
     /// leads the remote input it has received (the input queue's signed lead).
     /// The receiver subtracts this from its own advantage to get the raw skew
-    /// that drives the time-sync throttler (see `Round::update_fps_target`).
+    /// that drives the time-sync throttler (see `battle::throttler::Throttler`).
     pub tick_advantage: i16,
 }
 

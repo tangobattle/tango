@@ -107,8 +107,7 @@ pub struct Stepper {
     core: mgba::core::Core,
     state: State,
     hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-    match_type: (u8, u8),
-    local_player_index: u8,
+    identity: crate::battle::MatchIdentity,
     /// The tick the core is currently parked at — advanced by one per
     /// [`step`](Self::step) and reset by [`restore`](Self::restore). [`step`]
     /// re-sims from here, so the caller never threads the tick back in.
@@ -131,12 +130,10 @@ impl Stepper {
     pub fn new(
         rom: &[u8],
         hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-        match_type: (u8, u8),
-        local_player_index: u8,
+        identity: crate::battle::MatchIdentity,
         initial_state: &mgba::state::State,
         packet_source: std::sync::Arc<dyn RemotePacketSource>,
         disable_bgm: bool,
-        rtc_time: std::time::SystemTime,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
         let rom_vf = mgba::vfile::VFile::from_vec(rom.to_vec());
@@ -148,7 +145,7 @@ impl Stepper {
         // Pin the cart RTC to the match clock: re-sim ticks must read the
         // same values the live core (and the peer) read, or RTC-reading
         // games (exe45) diverge on every rollback.
-        core.set_rtc_fixed(rtc_time);
+        core.set_rtc_fixed(identity.rtc_time);
         core.as_mut().reset();
         // Headless re-sim core: never rasterize. Its pixels are never shown, so
         // skipping drawScanline cuts a large constant off the dominant cost. Set
@@ -162,8 +159,7 @@ impl Stepper {
             core,
             state,
             hooks,
-            match_type,
-            local_player_index,
+            identity,
             parked_tick: 0,
             packet_source,
             disable_bgm,
@@ -203,8 +199,8 @@ impl Stepper {
     ) -> anyhow::Result<StepperResult> {
         self.hooks.prepare_for_next_input(self.core.as_mut());
         *self.state.0.lock().unwrap() = Some(InnerState::for_fastforward(
-            self.match_type,
-            self.local_player_index,
+            self.identity.match_type,
+            self.identity.local_player_index,
             vec![input],
             self.parked_tick,
             last_local_packet.to_vec(),

@@ -5,9 +5,10 @@
 //! [`Round`]) and `run` (the network receive loop that feeds remote inputs
 //! into the in-progress round).
 //!
-//! [`Round`] owns one round's worth of state: the local input queue, the
-//! Fastforwarder instance that drives per-frame simulation, and the helpers
-//! that wire remote-side prediction into FF.
+//! [`Round`] owns one round's worth of state: a thin shell around the
+//! generic [`getgud::Session`] rollback engine, wiring it to the re-sim
+//! [`Stepper`](crate::stepper::Stepper), the opponent co-sim shadow, and
+//! the time-sync throttler.
 
 mod match_;
 mod round;
@@ -15,7 +16,7 @@ mod throttler;
 mod world;
 
 pub(crate) use match_::SenderMutex;
-pub use match_::{Match, RoundMetrics};
+pub use match_::{Match, MatchConfig, RoundMetrics};
 pub(crate) use round::Round;
 pub use world::{RoundSample, BUTTON_LOCAL_A, BUTTON_LOCAL_B, BUTTON_REMOTE_A, BUTTON_REMOTE_B, NO_CHIP};
 pub(crate) use world::{JOY_A, JOY_B};
