@@ -36,6 +36,7 @@ fn open(role: DirectRole) -> std::io::Result<Channels> {
         // path rebuilds via re-run, not a fingerprint-derived session_id.
         local_dtls_fingerprint: Vec::new(),
         peer_dtls_fingerprint: Vec::new(),
+        peer_client_cert_fingerprint: Vec::new(),
     })
 }
 

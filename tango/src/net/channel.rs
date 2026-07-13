@@ -40,6 +40,12 @@ pub struct Channels {
     /// and runs with fingerprint verification off.
     pub local_dtls_fingerprint: Vec<u8>,
     pub peer_dtls_fingerprint: Vec<u8>,
+    /// SHA-256 fingerprint (raw digest bytes) of the mTLS client certificate
+    /// the peer presented on its signaling websocket — its persistent install
+    /// identity (see `netplay::identity`), server-attested and relayed with
+    /// the offer/answer. Empty on the direct path (no signaling server to
+    /// attest) or when the peer presented no certificate.
+    pub peer_client_cert_fingerprint: Vec<u8>,
 }
 
 impl Channels {
@@ -55,6 +61,7 @@ impl Channels {
             peer_conn,
             local_dtls_fingerprint,
             peer_dtls_fingerprint,
+            peer_client_cert_fingerprint,
         } = connected;
         let [control_dc, in_match_dc] = <[_; 2]>::try_from(dcs)
             .map_err(|dcs: Vec<_>| std::io::Error::other(format!("expected 2 data channels, got {}", dcs.len())))?;
@@ -64,6 +71,7 @@ impl Channels {
             peer_conn,
             local_dtls_fingerprint,
             peer_dtls_fingerprint,
+            peer_client_cert_fingerprint,
         })
     }
 }

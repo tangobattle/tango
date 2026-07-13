@@ -382,7 +382,18 @@ impl Link {
             peer_conn: new_peer_conn,
             local_dtls_fingerprint,
             peer_dtls_fingerprint,
+            // Informational on a reconnect: the rendezvous is already bound to
+            // this match by the derived session_id. Logged so a hijack attempt
+            // (same session_id, different install) at least leaves a trace.
+            peer_client_cert_fingerprint,
         } = channels;
+
+        if !peer_client_cert_fingerprint.is_empty() {
+            log::info!(
+                "reconnected peer client identity (sha256 fingerprint: {})",
+                crate::netplay::identity::hex(&peer_client_cert_fingerprint)
+            );
+        }
 
         // Refresh the matchmaking rendezvous so the *next* drop re-dials a
         // fresh, unguessable `session_id` derived from this new connection's

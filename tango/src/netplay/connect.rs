@@ -57,6 +57,11 @@ pub struct NegotiationOutput {
     /// SDP carries no meaningful fingerprint, and it reconnects via `reconnect`).
     pub local_dtls_fingerprint: Vec<u8>,
     pub peer_dtls_fingerprint: Vec<u8>,
+    /// The peer's persistent install identity: SHA-256 of the mTLS client
+    /// certificate it presented on its signaling websocket, server-attested
+    /// (see [`crate::net::channel::Channels::peer_client_cert_fingerprint`]).
+    /// Empty on the direct path or when the peer presented none.
+    pub peer_client_cert_fingerprint: Vec<u8>,
 }
 
 impl std::fmt::Debug for NegotiationOutput {
@@ -163,6 +168,15 @@ impl State {
         let Some(out) = slot_rx.lock().unwrap().take() else {
             return iced::Task::none();
         };
+        // The peer's install identity, as attested by the matchmaking server —
+        // the counterpart of the "client identity loaded" line we log for our
+        // own certificate at startup (see [`crate::netplay::identity`]).
+        if !out.peer_client_cert_fingerprint.is_empty() {
+            log::info!(
+                "peer client identity (sha256 fingerprint: {})",
+                super::identity::hex(&out.peer_client_cert_fingerprint)
+            );
+        }
         let sender = out.sender.clone();
         // Resolve how the transport actually flows for the
         // lobby's ping line. We read the selected ICE pair — a
@@ -345,6 +359,8 @@ async fn run_direct_rtc_negotiate(
             // off); it rebuilds via `reconnect`, not a derived session_id.
             local_dtls_fingerprint,
             peer_dtls_fingerprint,
+            // Also empty: there's no signaling server to attest an identity.
+            peer_client_cert_fingerprint,
         } = channels;
         // Handshake on the reliable channel; the unreliable in-match channel
         // shares the association and is open by the time the match starts.
@@ -361,6 +377,7 @@ async fn run_direct_rtc_negotiate(
             reconnect,
             local_dtls_fingerprint,
             peer_dtls_fingerprint,
+            peer_client_cert_fingerprint,
         })
     };
     tokio::select! {
@@ -396,6 +413,7 @@ async fn run_negotiate(
         peer_conn,
         local_dtls_fingerprint,
         peer_dtls_fingerprint,
+        peer_client_cert_fingerprint,
     } = channels;
     // The channels were paired when the connection was bundled; the handshake
     // runs on the reliable channel.
@@ -422,6 +440,7 @@ async fn run_negotiate(
                 reconnect: None,
                 local_dtls_fingerprint,
                 peer_dtls_fingerprint,
+                peer_client_cert_fingerprint,
             })
         }
     }
