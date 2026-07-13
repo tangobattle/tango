@@ -1,16 +1,23 @@
-//! Wire protocol for the netplay data channel. Slim port of
-//! `tango/src/net/protocol.rs` — same `Packet` enum + bincode framing,
-//! but the bincode option builders are `std::sync::LazyLock` instead
-//! of the legacy `lazy_static!` macro.
+//! Wire protocol for the reliable control/lobby channel. Slim port of
+//! the legacy `tango/src/net/protocol.rs` — same `Packet` enum + bincode
+//! framing, but the bincode option builders are `std::sync::LazyLock`
+//! instead of the legacy `lazy_static!` macro.
 //!
-//! `VERSION` is shared with [`crate::netplay::PROTOCOL_VERSION`] — keep
-//! the two in sync so the signaling-server reject path and the per-
-//! peer hello path can't ever disagree.
+//! `VERSION` is derived from [`crate::netplay::PROTOCOL_VERSION`] (the
+//! signaling-server reject path sends the full u32; the per-peer Hello
+//! sends this u8), so the two can't disagree — but the Hello field is a
+//! byte, so the version must stay ≤ 0xff. The assert below turns the
+//! eventual overflow into a build failure instead of a silent wrap that
+//! would let peers 256 versions apart negotiate as "equal".
 
 use bincode::Options;
 use std::sync::LazyLock;
 
 pub const VERSION: u8 = crate::netplay::PROTOCOL_VERSION as u8;
+const _: () = assert!(
+    crate::netplay::PROTOCOL_VERSION <= u8::MAX as u32,
+    "PROTOCOL_VERSION no longer fits the Hello packet's u8; widen the wire field before bumping past 0xff"
+);
 
 static BINCODE_OPTIONS: LazyLock<
     bincode::config::WithOtherLimit<
