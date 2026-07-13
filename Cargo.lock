@@ -1600,6 +1600,7 @@ dependencies = [
 [[package]]
 name = "discord-ipc"
 version = "0.1.0"
+source = "git+https://github.com/tangobattle/discord-ipc#c41884ad4207d5b2d6655624d6db4bfdaa1969a9"
 dependencies = [
  "byteorder",
  "bytes",
@@ -6570,6 +6571,7 @@ dependencies = [
 [[package]]
 name = "tango-filesync"
 version = "0.1.0"
+source = "git+https://github.com/tangobattle/tango-filesync#1c72a637d2e3d363b6a613198911a5cb1cfd2ebc"
 dependencies = [
  "async-recursion",
  "futures",

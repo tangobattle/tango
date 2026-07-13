@@ -2,12 +2,10 @@
 resolver = "2"
 members = [
     "bps",
-    "discord-ipc",
     "getgud",
     "rennet",
     "tango",
     "tango-dataview",
-    "tango-filesync",
     "tango-gamesupport",
     "tango-pvp",
 ]

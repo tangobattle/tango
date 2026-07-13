@@ -48,11 +48,11 @@ regex = "1"
 mailparse = "0.14"
 open = "5"
 bps = { path = "../bps" }
-discord-ipc = { path = "../discord-ipc" }
+discord-ipc = { git = "https://github.com/tangobattle/discord-ipc" }
 mgba.workspace = true
 rennet = { path = "../rennet" }
 tango-pvp = { path = "../tango-pvp" }
-tango-filesync = { path = "../tango-filesync" }
+tango-filesync = { git = "https://github.com/tangobattle/tango-filesync" }
 tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
 tango-rtc = { git = "https://github.com/tangobattle/tango-rtc" }
 bincode = "1"
