@@ -1307,18 +1307,22 @@ impl App {
                         }
                         self.session.self_panel.close();
                         self.session.wake_controls();
+                        // Drop the post-handoff lobby snapshot now
+                        // that the PvP view is taking over the
+                        // screen. take_pre_match deliberately left
+                        // it in place so the bottom strip didn't
+                        // flash blank while spawn_pvp ran.
+                        self.netplay.finish_handoff();
                     }
                     Err(e) => {
-                        log::error!("pvp session build failed: {e}");
-                        self.play.set_error(format!("{e}"));
+                        // Surface the failure where every other netplay
+                        // failure lands: the lobby band's sticky Failed
+                        // status, which is still on screen (the handoff
+                        // kept it up while the session was built).
+                        log::error!("pvp session build failed: {e:#}");
+                        self.netplay.fail_session_build(netplay::Error::Other(format!("{e:#}")));
                     }
                 }
-                // Drop the post-handoff lobby snapshot now that the
-                // PvP view (or the error banner) is taking over the
-                // screen. take_pre_match deliberately left it in
-                // place so the bottom strip didn't flash blank
-                // while spawn_pvp ran.
-                self.netplay.finish_handoff();
                 iced::Task::none()
             }
             Message::Rescanned(followup) => {

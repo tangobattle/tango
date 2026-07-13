@@ -2297,52 +2297,6 @@ pub fn vs_splitter<'a, M: 'a>() -> Element<'a, M> {
     Canvas::new(VsDiagonal).width(Length::Fill).height(Length::Fill).into()
 }
 
-/// Full-width inline banner for after-the-fact action failures
-/// (singleplayer launch, PvP session build). Softer styling than a
-/// hard-bordered chrome: a danger-tinted wash, rounded corners, an
-/// AlertTriangle glyph, danger-colored body text, and a quiet × the
-/// user can click to dismiss (`on_dismiss`). Callers also auto-clear
-/// on the next Fight or Play retry, so the user isn't forced into
-/// the × path.
-pub fn error_banner<'a, M: Clone + 'a>(
-    lang: &'a unic_langid::LanguageIdentifier,
-    err: &'a str,
-    on_dismiss: M,
-) -> Element<'a, M> {
-    container(
-        row![
-            Icon::AlertTriangle.widget(),
-            text(err.to_string()).size(TEXT_BODY).style(danger_text_style),
-            iced::widget::space::horizontal(),
-            icon_button(Icon::X, crate::t!(lang, "save-action-cancel"), on_dismiss, [4.0, 8.0],),
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center),
-    )
-    .width(Length::Fill)
-    .padding([8, 16])
-    .style(|theme: &Theme| {
-        let p = theme.extended_palette();
-        // Soft danger-tinted wash — readable against both light and
-        // dark themes without the hard border that made the old
-        // banner feel like an OS-level dialog.
-        let alpha = if p.is_dark { 0.18 } else { 0.10 };
-        container::Style {
-            background: Some(iced::Background::Color(iced::Color {
-                a: alpha,
-                ..p.danger.base.color
-            })),
-            text_color: Some(theme.palette().text),
-            border: iced::Border {
-                radius: 6.0.into(),
-                ..Default::default()
-            },
-            ..Default::default()
-        }
-    })
-    .into()
-}
-
 /// The battlefield seat colors: this side reads red, the opponent blue —
 /// one pair everywhere a you-vs-opponent split is drawn (the PvP
 /// telemetry header's seat dots, the HP graphs and their legends).

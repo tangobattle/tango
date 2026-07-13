@@ -88,9 +88,6 @@ pub enum Message {
     /// since the family's variants each ship their own templates.
     SaveNewTemplateSelected(rom::GameRef, String),
     SaveNewConfirm,
-    /// User clicked × on the inline error banner; clears
-    /// `State::last_error`.
-    DismissError,
 }
 
 // ---------- Play tab state ----------
@@ -112,13 +109,6 @@ pub struct State {
     save_view: save_view::State,
     /// Inline state for the save-management actions (rename / delete).
     save_action: SaveAction,
-    /// Last after-the-fact action failure (singleplayer launch
-    /// errored, PvP session build failed, …) — rendered as a
-    /// dismissable banner at the top of the tab. Pre-condition errors
-    /// ("you need a save first") are NOT funneled here; they're
-    /// handled by view-time button gating + inline hints, because
-    /// graying out the action surface explains itself.
-    last_error: Option<String>,
     /// Entrance glide for the whole save-view pane under the selector
     /// strip, played by the App when the *family* changes — a family
     /// switch replaces the entire bottom of the tab. A save switch
@@ -144,7 +134,6 @@ impl Default for State {
             pending_generated_code: None,
             save_view: save_view::State::new(),
             save_action: SaveAction::None,
-            last_error: None,
             save_body_enter: crate::anim::Enter::default(),
             save_form: crate::anim::Transition::swap(false),
             save_action_exit: SaveAction::None,
@@ -267,10 +256,6 @@ impl State {
 
     /// Surface an after-the-fact action failure (session launch / PvP
     /// build errored) as the tab's dismissable banner.
-    pub fn set_error(&mut self, message: String) {
-        self.last_error = Some(message);
-    }
-
     /// Leave any in-progress save-edit session. The App calls this when
     /// the loaded save is rebuilt out from under the view, where staged
     /// edits (which lived in the previous in-memory save) are already
@@ -359,9 +344,6 @@ impl State {
                     // in hand.
                     crate::copy_feedback::flash(lobby::LINK_CODE_FLASH_KEY);
                 }
-                // Clear any leftover after-the-fact error from a prior
-                // attempt — the new attempt's outcome will replace it.
-                self.last_error = None;
                 Some(Effect::Connect {
                     ident,
                     copy_code: generated,
@@ -384,20 +366,11 @@ impl State {
                     Some(save_view::Outcome::Edit(edit)) => Some(Effect::Edit(edit)),
                     Some(save_view::Outcome::CopyText(s)) => Some(Effect::CopyText(s)),
                     Some(save_view::Outcome::CopyImage(img)) => Some(Effect::CopyImage(img)),
-                    Some(save_view::Outcome::Play) => {
-                        // Clear stale error from a prior attempt; the
-                        // new launch's outcome takes its place.
-                        self.last_error = None;
-                        Some(Effect::StartSinglePlayer)
-                    }
+                    Some(save_view::Outcome::Play) => Some(Effect::StartSinglePlayer),
                     Some(save_view::Outcome::Commit) => Some(Effect::SaveEditCommit),
                     Some(save_view::Outcome::Cancel) => Some(Effect::SaveEditCancel),
                     None => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
                 }
-            }
-            Message::DismissError => {
-                self.last_error = None;
-                None
             }
             m @ (Message::SaveOpenFolder
             | Message::OpenSavesFolder(_)
@@ -481,9 +454,6 @@ impl State {
         .height(Fill);
 
         let mut col = column![].width(Fill).height(Fill);
-        if let Some(err) = &self.last_error {
-            col = col.push(widgets::error_banner(lang, err, Message::DismissError));
-        }
         col = col.push(inner);
         // While a netplay attempt is in flight (Connecting /
         // Negotiating / Lobby, sticky Failed, handoff) the lobby IS

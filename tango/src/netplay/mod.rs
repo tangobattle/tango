@@ -636,26 +636,36 @@ impl State {
     /// Tear the live connection down into a sticky Failed banner, but keep
     /// `self.lobby` so the opponent card still has a face on it.
     fn on_peer_disconnected(&mut self) -> iced::Task<Message> {
-        // Remote side cancelled / closed the data channel.
-        // Park netplay in Failed (with a peer-cancelled
-        // marker the UI surfaces) instead of silently
-        // dropping back to Idle, so the user sees what
-        // happened and clears it explicitly. We tear
-        // down the live connection here but deliberately
-        // do NOT wipe `self.lobby` — the opponent's
-        // card stays populated with their last-known
-        // nickname / game so the "they left" banner has
-        // a face attached to it.
+        // Remote side cancelled / closed the data channel. Park
+        // netplay in Failed (with a peer-cancelled marker the UI
+        // surfaces) instead of silently dropping back to Idle, so
+        // the user sees what happened and clears it explicitly.
+        self.fail_keeping_lobby(Error::PeerDisconnected);
+        iced::Task::none()
+    }
+
+    /// The App failed to build the PvP session after the handoff (rom /
+    /// patch / core construction). Park netplay in the same sticky Failed
+    /// state every other netplay failure lands in — the lobby chrome is
+    /// still on screen at this point (`handoff_pending` kept it up while
+    /// the session was being built), so the failure shows in the status
+    /// line the user is already looking at.
+    pub fn fail_session_build(&mut self, error: Error) {
+        self.fail_keeping_lobby(error);
+    }
+
+    /// Tear the live connection down into a sticky `Phase::Failed`, but
+    /// deliberately do NOT wipe `self.lobby` — the opponent's card stays
+    /// populated with their last-known nickname / game so the failure
+    /// banner has a face attached to it.
+    fn fail_keeping_lobby(&mut self, error: Error) {
         self.cancel.cancel();
         self.cancel = CancellationToken::new();
         self.session_id = self.session_id.wrapping_add(1);
         self.lobby_event_rx_slot = Arc::new(std::sync::Mutex::new(None));
         self.conn = None;
         self.handshake = Handshake::default();
-        self.phase = Phase::Failed {
-            error: Error::PeerDisconnected,
-        };
-        iced::Task::none()
+        self.phase = Phase::Failed { error };
     }
 
     /// Drain everything the PvP session needs to take over the
@@ -671,8 +681,10 @@ impl State {
     /// `spawn_pvp` builds the live session in the background, so
     /// the user doesn't see the bottom strip flash back to the
     /// singleplayer Fight/link-code chrome. The App calls
-    /// [`finish_handoff`] when the PvP session is built (or its
-    /// build fails) to clear that state.
+    /// [`finish_handoff`] once the PvP session is built — or
+    /// [`fail_session_build`](State::fail_session_build) if the
+    /// build fails, parking the failure in the lobby's sticky
+    /// Failed status.
     pub fn take_pre_match(&mut self) -> Option<PreMatchData> {
         if !(self.handshake.local.match_ready() && self.handshake.remote.start_match()) {
             return None;

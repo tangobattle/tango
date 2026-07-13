@@ -132,8 +132,11 @@ impl App {
                         self.session.wake_controls();
                     }
                     Err(e) => {
-                        log::warn!("singleplayer start failed: {e}");
-                        self.play.set_error(format!("{e}"));
+                        // Log-only: the Play button is gated on a fully
+                        // parsed rom + save (`self.loaded`), so what's left
+                        // here is core construction failing — exceptional
+                        // enough that the log is the right home for it.
+                        log::error!("singleplayer start failed: {e:#}");
                     }
                 }
                 iced::Task::none()
