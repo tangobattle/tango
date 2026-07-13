@@ -278,8 +278,17 @@ impl getgud::World for MgbaWorld {
     }
 
     fn log(&mut self, pair: &(PartialInput, PartialInput)) {
-        if let Some(writer) = self.replay_writer.lock().unwrap().as_mut() {
-            writer.write_input(self.local_player_index, pair).expect("write input");
+        // A write failure (disk full, file yanked) stops the recording, not
+        // the match: drop the writer so the rest of the match plays out
+        // unrecorded, rather than panicking the emulator thread mid-step.
+        // The replay format recovers truncated tails, so what was already
+        // flushed stays playable.
+        let mut writer = self.replay_writer.lock().unwrap();
+        if let Some(w) = writer.as_mut() {
+            if let Err(e) = w.write_input(self.local_player_index, pair) {
+                log::error!("pvp: replay write failed; stopping recording: {e:#}");
+                *writer = None;
+            }
         }
     }
 }

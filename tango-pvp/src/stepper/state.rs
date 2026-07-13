@@ -591,10 +591,16 @@ impl InnerState {
         let p = self.local_packet.clone().expect("local packet");
         let expected = self.output_pairs.len() as u32;
         if p.send_count != expected {
-            panic!(
+            // Trap-ordering invariant violation. Routed through the error
+            // channel (the run loop turns it into an `Err` from the step)
+            // instead of panicking — a panic here unwinds the emulator
+            // thread from re-sim context and aborts the process.
+            self.set_anyhow_error(anyhow::anyhow!(
                 "local packet send mismatch at first commit: stored for send {}, current send {}",
-                p.send_count, expected,
-            );
+                p.send_count,
+                expected,
+            ));
+            return;
         }
         let shadow_to_advance = self.replay_mut().and_then(|replay| {
             let needs_advance = !replay.phase.has_committed();
@@ -620,13 +626,20 @@ impl InnerState {
         let p = self.local_packet.clone().expect("local packet");
         let expected = self.output_pairs.len() as u32;
         if p.send_count != expected {
-            panic!(
+            // Same policy as `on_first_commit`: surface through the error
+            // channel, not a process-aborting panic on the emulator thread.
+            // With no boundary captured, the step's run loop exits on the
+            // error check right after `run_loop` returns.
+            self.set_anyhow_error(anyhow::anyhow!(
                 "local packet send mismatch at capture: stored for send {}, current send {}",
-                p.send_count, expected,
-            );
+                p.send_count,
+                expected,
+            ));
+            return;
         }
         let Mode::Fastforward(ff) = &mut self.mode else {
-            panic!("capture is Fastforwarder-mode-only");
+            self.set_anyhow_error(anyhow::anyhow!("capture is Fastforwarder-mode-only"));
+            return;
         };
         ff.captured = Some(CapturedBoundary {
             tick: self.current_tick,
