@@ -12,7 +12,7 @@ mod state;
 mod worker;
 
 pub use round::Round;
-pub use state::State;
+pub use state::{Halt, State};
 pub use worker::Worker;
 
 /// Captures the full shadow-side state for replay-mode seeking. The
@@ -213,28 +213,29 @@ impl Shadow {
         shared.rng = snapshot.rng.clone();
         shared.round = snapshot.round.clone();
         shared.result_is_in = snapshot.result_is_in;
-        // input_applied and error are per-run scratch; clear so the next
-        // apply_input / round-end run doesn't pick up stale values that don't
-        // correspond to the just-restored core state.
-        shared.input_applied = false;
         drop(shared);
-        self.state.clear_error();
+        // A pending halt or error is per-run scratch belonging to the run
+        // this restore just threw away; clear it so the next drive loop
+        // doesn't consume a reason that doesn't correspond to the restored
+        // core state.
+        self.state.clear_halt();
         Ok(())
     }
 
-    /// The shared drive-loop shape: run the core in bursts, draining the
-    /// trap error channel after each, until `done` observes the wanted
-    /// state transition. The per-game traps perform the transitions while
-    /// the core runs; this just polls for them.
-    fn run_core_until(&mut self, mut done: impl FnMut(&State) -> bool) -> anyhow::Result<()> {
+    /// Run the core until a per-game trap parks it with a typed [`Halt`] (or
+    /// reports an error, which rides the same slot). The per-game traps
+    /// perform the state transitions while the core runs; every
+    /// `end_run_loop` in the shadow traps goes through [`State::halt`], so a
+    /// return from here always says *why* the core stopped — the drive
+    /// methods below match on it instead of polling flags.
+    fn run(&mut self) -> anyhow::Result<Halt> {
         loop {
             self.core.as_mut().run_loop();
-            if let Some(err) = self.state.0.error.lock().unwrap().take() {
-                return Err(anyhow::format_err!("shadow: {}", err));
+            if let Some(halt) = self.state.take_halt() {
+                return halt.map_err(|err| anyhow::format_err!("shadow: {}", err));
             }
-            if done(&self.state) {
-                return Ok(());
-            }
+            // The burst hit its natural event-batch end without any trap
+            // parking the core; keep running.
         }
     }
 
@@ -242,25 +243,40 @@ impl Shadow {
     /// committed state. `end_run_loop` parks the core right there, so there's
     /// nothing to load back — the next apply_input run continues from here.
     pub fn advance_until_first_committed_state(&mut self) -> anyhow::Result<()> {
-        self.run_core_until(|state| {
-            let mut shared = state.lock();
-            let Some(round) = shared.round.as_mut() else {
-                return false;
-            };
-            if !round.has_first_committed_state() {
-                return false;
+        match self.run()? {
+            Halt::FirstCommit => {
+                // The commit trap fires with the game's own tick still mid-
+                // transition; anchor the round at tick 0, where the packet
+                // buffered by set_first_committed is stamped to land.
+                let mut shared = self.state.lock();
+                shared.round.as_mut().expect("round").current_tick = 0;
+                Ok(())
             }
-            round.current_tick = 0;
-            true
-        })
+            halt => Err(anyhow::format_err!(
+                "shadow: unexpected halt before first commit: {halt:?}"
+            )),
+        }
     }
 
     /// Run the shadow until `end_round` drops the round state. `end_run_loop`
-    /// in `round_end_entry` parks the core right at round end, so there's
-    /// nothing to load back.
+    /// in the round-end trap parks the core right at round end, so there's
+    /// nothing to load back. The game keeps exchanging link data through the
+    /// round-end screens, so completed exchanges ([`Halt::InputApplied`])
+    /// park the core along the way — nobody is waiting on them here; just
+    /// keep running.
     pub fn advance_until_round_end(&mut self) -> anyhow::Result<()> {
         self.hooks.prepare_for_next_input(self.core.as_mut());
-        self.run_core_until(|state| state.lock().round.is_none())
+        loop {
+            match self.run()? {
+                Halt::RoundEnded => return Ok(()),
+                Halt::InputApplied => continue,
+                halt => {
+                    return Err(anyhow::format_err!(
+                        "shadow: unexpected halt while advancing to round end: {halt:?}"
+                    ))
+                }
+            }
+        }
     }
 
     /// Inject the given input pair as the next shadow input, then run the
@@ -294,26 +310,26 @@ impl Shadow {
             round.set_pending_shadow_input(ip);
             round.peek_remote_packet().expect("pending remote packet").to_vec()
         };
-        // Discard any stale "input applied" signal before the coming run. The
-        // per-game trap sets it whenever `take_input_injected()` fires, which
-        // also happens outside apply_input — e.g. while
-        // `advance_until_round_end` runs the game through round-end link-cable
-        // exchanges. The old shared `applied_snapshot` signal was cleared by
-        // whichever of apply_input / advance_until_round_end `.take()`'d it;
-        // the split into `input_applied` lost that, so a leftover `true` would
-        // make the next round's first apply_input return before it actually
-        // applied its input. (Nothing runs the core between this clear and
-        // `finish_apply_input`, so clearing here covers the split path too.)
-        self.state.take_input_applied();
+        // No stale-signal clear needed: every halt — including the
+        // `InputApplied`s raised by round-end link chatter outside
+        // apply_input — is consumed by the drive loop of the very run that
+        // produced it, so nothing can linger into the run
+        // `finish_apply_input` is about to make.
         Ok(pending_remote_packet)
     }
 
     /// Second half of [`apply_input`](Self::apply_input): run the shadow
-    /// forward from wherever it is parked until the per-game trap signals the
+    /// forward from wherever it is parked until the per-game trap reports the
     /// input queued by [`begin_apply_input`](Self::begin_apply_input) was
-    /// applied, parking the core at the next tick's boundary.
+    /// applied ([`Halt::InputApplied`]), parking the core at the next tick's
+    /// boundary.
     pub fn finish_apply_input(&mut self) -> anyhow::Result<()> {
         self.hooks.prepare_for_next_input(self.core.as_mut());
-        self.run_core_until(|state| state.take_input_applied())
+        match self.run()? {
+            Halt::InputApplied => Ok(()),
+            halt => Err(anyhow::format_err!(
+                "shadow: unexpected halt while applying input: {halt:?}"
+            )),
+        }
     }
 }

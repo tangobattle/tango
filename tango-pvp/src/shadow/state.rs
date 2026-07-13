@@ -2,6 +2,37 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::round::Round;
 
+/// Why a per-game shadow trap parked the core, ending a drive-loop burst.
+/// The one channel between trap bodies and the linear drive loops in
+/// [`Shadow`](super::Shadow): every `end_run_loop` in the shadow traps goes
+/// through [`State::halt`], so each burst the drive loops run comes back
+/// with one of these (or the trap error, which rides the same slot) — the
+/// loops match on the reason instead of polling flags.
+#[derive(Debug)]
+pub enum Halt {
+    /// The round's first committed state was recorded
+    /// (`Round::set_first_committed`); the core is parked exactly there.
+    /// Awaited by [`Shadow::advance_until_first_committed_state`].
+    ///
+    /// [`Shadow::advance_until_first_committed_state`]: super::Shadow::advance_until_first_committed_state
+    FirstCommit,
+    /// The pending shadow input was consumed, the exchange completed, and
+    /// the core has come back around to the next tick's boundary
+    /// (`Round::take_input_injected` returned true at `main_read_joyflags`).
+    /// Awaited by [`Shadow::finish_apply_input`]; the round-end advance sees
+    /// it too (the game keeps exchanging link data through the round-end
+    /// screens) and just keeps running.
+    ///
+    /// [`Shadow::finish_apply_input`]: super::Shadow::finish_apply_input
+    InputApplied,
+    /// The game reached its round-end entry and the round state was dropped
+    /// ([`State::end_round`]); the core is parked at round end. Awaited by
+    /// [`Shadow::advance_until_round_end`].
+    ///
+    /// [`Shadow::advance_until_round_end`]: super::Shadow::advance_until_round_end
+    RoundEnded,
+}
+
 /// The shadow's mutable engine state, all behind [`State`]'s single lock.
 /// The shadow only ever runs on one thread at a time — cross-thread access
 /// goes through the `Mutex<Shadow>` around the whole emulator — so this lock
@@ -19,23 +50,9 @@ pub struct Shared {
     /// [`Shared::result_reported`] rather than touching the flag directly.
     pub(super) result_is_in: bool,
     pub rng: rand_pcg::Mcg128Xsl64,
-    /// Signal that the pending shadow input has been consumed and the core
-    /// has run forward to the next tick's `main_read_joyflags`, where the
-    /// per-game trap raises this (via [`Shared::signal_input_applied`]) and
-    /// calls `end_run_loop` (which parks the core at that tick boundary).
-    /// [`Shadow::apply_input`](super::Shadow::apply_input) polls it via
-    /// [`State::take_input_applied`] to know its run is done.
-    pub(super) input_applied: bool,
 }
 
 impl Shared {
-    /// Flag that the pending shadow input has been consumed and the core has
-    /// reached the next tick's `main_read_joyflags`. Raised by the per-game
-    /// shadow trap (which then calls `end_run_loop`).
-    pub fn signal_input_applied(&mut self) {
-        self.input_applied = true;
-    }
-
     /// Flag that the game's round-end traps have reported a round result.
     pub fn signal_result_in(&mut self) {
         self.result_is_in = true;
@@ -53,11 +70,11 @@ pub(super) struct InnerState {
     is_offerer: bool,
     local_player_index: u8,
     pub(super) shared: Mutex<Shared>,
-    /// Trap error channel, drained by the drive loops after each run burst.
-    /// Deliberately outside [`Shared`]: traps report errors mid-body while
-    /// holding `&mut Round` borrows into the shared state, so the channel
-    /// must not route through that lock.
-    pub(super) error: Mutex<Option<anyhow::Error>>,
+    /// Single-slot halt/error channel, taken by the drive loops after each
+    /// run burst. Deliberately outside [`Shared`]: traps halt and report
+    /// errors mid-body while holding `&mut Round` borrows into the shared
+    /// state, so the channel must not route through that lock.
+    halt: Mutex<Option<anyhow::Result<Halt>>>,
 }
 
 /// Shared handle to the shadow emulator's `InnerState`. Per-game shadow
@@ -75,9 +92,8 @@ impl State {
                 round: None,
                 result_is_in: false,
                 rng,
-                input_applied: false,
             }),
-            error: Mutex::new(None),
+            halt: Mutex::new(None),
         }))
     }
 
@@ -114,21 +130,42 @@ impl State {
         shared.result_is_in = false;
     }
 
+    /// Park the core here and say why: record `halt` and end the current
+    /// `run_loop` burst. The driving [`Shadow`](super::Shadow) run loop takes
+    /// the reason and returns it to its caller, so the linear drive code gets
+    /// a typed answer instead of polling flags. `end_run_loop` truncates the
+    /// burst at the current instruction, so no further trap can fire before
+    /// the drive loop consumes the slot. Safe to call while holding the
+    /// [`Shared`] lock (the slot is its own lock).
+    pub fn halt(&self, mut core: mgba::core::CoreMutRef, halt: Halt) {
+        let mut slot = self.0.halt.lock().unwrap();
+        // An error already in the slot wins: the trap that reported it did
+        // NOT end the burst, so a later trap in the same burst can land here
+        // — its halt describes a run the error has already condemned.
+        if !matches!(slot.as_ref(), Some(Err(_))) {
+            *slot = Some(Ok(halt));
+        }
+        drop(slot);
+        core.end_run_loop();
+    }
+
+    /// Report a trap-invariant failure. Rides the halt slot (overwriting any
+    /// pending reason) but does *not* end the burst — the core runs on to the
+    /// current batch's natural end, where the drive loop takes the slot and
+    /// fails the run.
     pub fn set_anyhow_error(&self, err: anyhow::Error) {
-        *self.0.error.lock().unwrap() = Some(err);
+        *self.0.halt.lock().unwrap() = Some(Err(err));
     }
 
-    /// Discard any queued trap error — used when restoring a snapshot,
-    /// where a pending error belongs to the run the restore just threw away.
-    pub fn clear_error(&self) {
-        *self.0.error.lock().unwrap() = None;
+    /// Take-and-clear the halt slot; the drive loops call this after every
+    /// burst.
+    pub(super) fn take_halt(&self) -> Option<anyhow::Result<Halt>> {
+        self.0.halt.lock().unwrap().take()
     }
 
-    /// Take-and-clear the [`Shared::input_applied`] signal.
-    /// [`super::Shadow::apply_input`] polls this to know its run is done —
-    /// no snapshot needed, since `end_run_loop` already parked the core at
-    /// the tick boundary.
-    pub fn take_input_applied(&self) -> bool {
-        std::mem::take(&mut self.lock().input_applied)
+    /// Discard any queued halt or error — used when restoring a snapshot,
+    /// where a pending reason belongs to the run the restore just threw away.
+    pub(super) fn clear_halt(&self) {
+        *self.0.halt.lock().unwrap() = None;
     }
 }

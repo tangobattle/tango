@@ -41,10 +41,11 @@ pub(super) struct RemotePacket {
 ///
 /// The "exchange applied AND core parked at the next tick boundary" signal
 /// that [`Shadow::apply_input`](super::Shadow::apply_input)'s drive loop
-/// polls is deliberately NOT a variant here: it is the `input_applied` flag
-/// beside the round in the shadow's shared state — per-game traps raise it
-/// in the same locked scope that drives the exchange, and the drive loop
-/// polls it between run bursts.
+/// awaits is deliberately NOT a variant here: it is
+/// [`Halt::InputApplied`](super::Halt::InputApplied), reported through
+/// [`State::halt`](super::State::halt) by the per-game trap that observes
+/// `take_input_injected` — in the same locked scope that drives the
+/// exchange.
 #[derive(Clone)]
 enum Exchange {
     Idle,

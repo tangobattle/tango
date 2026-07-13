@@ -208,20 +208,22 @@ impl Stepper {
             self.disable_bgm,
         ));
 
+        // Run until the per-game trap records the boundary and parks the core
+        // there (its `end_run_loop` ends the burst; a burst can also end at a
+        // natural event-batch boundary with nothing to report — keep going).
+        // An error wins over a capture from the same burst: the run is
+        // condemned either way, and the capture may itself be downstream of
+        // the failure.
         let result = loop {
-            {
-                let mut guard = self.state.0.lock().unwrap();
-                let inner = guard.as_mut().unwrap();
-                if inner.has_captured_snapshot() {
-                    break guard.take().expect("state").into_stepper_result();
-                }
-                let _ = inner.take_error();
-            }
             self.core.as_mut().run_loop();
             let mut guard = self.state.0.lock().unwrap();
-            if let Some(err) = guard.as_mut().expect("state").take_error() {
+            let inner = guard.as_mut().expect("state");
+            if let Some(err) = inner.take_error() {
                 guard.take();
-                return Err(anyhow::format_err!("replayer: {}", err));
+                return Err(anyhow::format_err!("stepper: {}", err));
+            }
+            if inner.has_captured_snapshot() {
+                break guard.take().expect("state").into_stepper_result();
             }
         };
 
