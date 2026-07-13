@@ -18,7 +18,9 @@
 //!   - per-round outcomes — (index, tick, Win/Loss/Draw).
 //!
 //! Set `TANGO_GOLDEN_BLESS=1` to overwrite the sidecars from the current
-//! run instead of asserting. ROMs are sourced from `$TANGO_TEST_ROMS_DIR`
+//! run instead of asserting. Set `TANGO_GOLDEN_FILTER=<substring>` to run
+//! only the replays whose file name contains the substring (composes with
+//! bless mode). ROMs are sourced from `$TANGO_TEST_ROMS_DIR`
 //! (default: `repo/roms/`). Copyrighted ROMs aren't committed, so a
 //! replay whose ROM isn't on disk is reported as `skip`; with no ROMs at
 //! all the run short-circuits to a skip.
@@ -456,6 +458,19 @@ pub fn run(families: &[&'static Family], golden_dir: &Path) {
         .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("tangoreplay"))
         .collect();
     replays.sort();
+
+    if let Ok(filter) = std::env::var("TANGO_GOLDEN_FILTER") {
+        if !filter.is_empty() {
+            let total = replays.len();
+            replays.retain(|p| p.file_name().unwrap().to_string_lossy().contains(&filter));
+            eprintln!(
+                "TANGO_GOLDEN_FILTER={:?}: running {} of {} replay(s)",
+                filter,
+                replays.len(),
+                total
+            );
+        }
+    }
 
     let bless = bless_mode();
 
