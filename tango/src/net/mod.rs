@@ -28,6 +28,7 @@ pub mod channel;
 pub mod control;
 pub mod data;
 pub mod direct_rtc;
+pub mod link;
 
 pub use control::protocol;
 pub use control::{negotiate, NegotiationError, Receiver, Sender};

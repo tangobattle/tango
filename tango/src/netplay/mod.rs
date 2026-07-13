@@ -22,8 +22,8 @@
 //! incidental subscription drop (phase change → re-render) can no
 //! longer abort the loop mid-`.await` and lose the data-channel
 //! receiver. The detached task exits only when the cancellation
-//! token fires, and on exit it deposits the receiver into the
-//! per-session post slot for the PvP handoff to take.
+//! token fires, and on exit it sends the receiver down the
+//! per-session oneshot for the PvP handoff to take.
 
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
@@ -35,6 +35,7 @@ mod handshake;
 mod lobby;
 
 pub use connect::{NegotiationOutput, SignalingHello};
+pub use crate::net::link::{DirectRole, LinkParts, ReconnectRecipe};
 pub use lobby::subscription;
 
 use handshake::Handshake;
@@ -141,19 +142,6 @@ pub struct State {
     /// `rx` out on first poll. Stored as a once-take slot so the
     /// subscription's `fn(&D)` builder can consume without `&mut`.
     lobby_event_rx_slot: Arc<std::sync::Mutex<Option<futures::channel::mpsc::UnboundedReceiver<Message>>>>,
-    /// Receiver handed back from the lobby loop on cancel-exit.
-    /// PvP handoff (`take_pre_match`) drains this into the
-    /// PvpReceiver adapter; otherwise it just sits None. Reset to
-    /// a fresh `Arc` on every session boundary so a dying loop
-    /// from a previous session can't deposit a stale receiver
-    /// into the next one.
-    post_lobby_receiver: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
-    /// Receive half of the unreliable in-match channel, parked here the moment
-    /// `NegotiationDone` fires (nothing flows on it during the lobby, so it
-    /// isn't owned by the lobby loop). PvP handoff (`take_pre_match`) hands the
-    /// slot to the PvpReceiver. Reset to a fresh `Arc` on every session
-    /// boundary alongside [`post_lobby_receiver`].
-    in_match_receiver_slot: Arc<std::sync::Mutex<Option<crate::net::data::Receiver>>>,
     /// Lobby-only state — what each side has advertised so far.
     /// `local` is what we sent; `remote` is what came in over the
     /// Settings packet. Both being `Some` means the lobby pane
@@ -244,8 +232,6 @@ impl Default for State {
             cancel: CancellationToken::new(),
             session_id: 0,
             lobby_event_rx_slot: Arc::new(std::sync::Mutex::new(None)),
-            post_lobby_receiver: Arc::new(std::sync::Mutex::new(None)),
-            in_match_receiver_slot: Arc::new(std::sync::Mutex::new(None)),
             lobby: LobbyState::default(),
             handshake: Handshake::default(),
             matchmaking_reconnect: None,
@@ -264,7 +250,15 @@ struct ConnectionHandles {
     sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     /// Unreliable, unordered in-match channel sender — idle during the lobby,
     /// handed to the PvP session to carry the live `data::wire` datagrams.
-    in_match_sender: Arc<tokio::sync::Mutex<crate::net::data::Sender>>,
+    in_match_sender: crate::net::data::Sender,
+    /// Unreliable in-match channel's receive half, parked here the moment
+    /// `NegotiationDone` fires (nothing flows on it during the lobby, so it
+    /// isn't owned by the lobby loop).
+    in_match_receiver: crate::net::data::Receiver,
+    /// The reliable receiver, sent by the lobby loop on cancel-exit. One
+    /// oneshot per session, so a dying loop from a previous session can't
+    /// deposit a stale receiver into the next one.
+    post_lobby_rx: tokio::sync::oneshot::Receiver<crate::net::Receiver>,
     /// The peer connection, kept alive for the duration of the
     /// session. Both transports (matchmaking WebRTC and the
     /// signaling-free direct link) bring one up.
@@ -389,95 +383,16 @@ pub enum Message {
 /// taking the inner once on receipt and going None afterwards.
 pub type Slot<T> = Arc<std::sync::Mutex<Option<T>>>;
 
-/// Which side of a direct (signaling-free) connection the local
-/// instance is. Drives the offer/answer symmetry breaker, and which
-/// side pins the UDP port vs. dials it.
-#[derive(Debug, Clone)]
-pub enum DirectRole {
-    /// Pin the given UDP port and accept the first inbound peer.
-    Host { port: u16 },
-    /// Dial the given `host:port` string.
-    Connect { addr: String },
-}
-
-/// How to rebuild a dropped connection mid-match. Carried in [`PreMatchData`]
-/// and consumed by the in-match reconnect coordinator (`session::pvp`); `None`
-/// there means the transport can't be transparently rebuilt.
-#[derive(Debug, Clone)]
-pub enum ReconnectRecipe {
-    /// Signaling-free direct link: re-run the same `host`/`connect`.
-    Direct(DirectRole),
-    /// Matchmaking link: re-rendezvous on the signaling server. Both peers
-    /// reconnect to `session_id` — derived from the shared match RNG seed (see
-    /// [`derive_reconnect_session_id`]) so it's unguessable and can't collide
-    /// with a stranger on the original link code — and re-exchange fresh SDP.
-    /// The server keeps no per-session state once a pair's sockets close, so it
-    /// re-pairs them with no server-side changes. `is_offerer`/player index stay
-    /// fixed from the original match, so the re-assigned offerer/answerer roles
-    /// here don't matter.
-    Matchmaking {
-        endpoint: String,
-        session_id: String,
-        use_relay: Option<bool>,
-        identity: Option<tango_signaling::ClientIdentity>,
-    },
-}
-
 /// Matchmaking connection params stashed at `Connect` (before the shared RNG
 /// seed exists), combined with the derived `session_id` in [`take_pre_match`]
 /// to form a [`ReconnectRecipe::Matchmaking`].
+///
+/// [`take_pre_match`]: State::take_pre_match
 #[derive(Clone)]
 struct MatchmakingReconnect {
     endpoint: String,
     use_relay: Option<bool>,
     identity: Option<tango_signaling::ClientIdentity>,
-}
-
-/// Derive the matchmaking reconnect `session_id`, the rendezvous code both peers
-/// re-dial after a mid-match drop. It must be reproducible by either peer yet
-/// unguessable to anyone else (so a stranger can't camp the rendezvous and
-/// hijack the reconnect).
-///
-/// Two independent secrets are mixed in, neither sufficient alone:
-///
-/// * `rng_seed` — the shared match RNG seed (XOR of both commit nonces, exchanged
-///   over the encrypted data channel). The *signaling server* never sees it.
-/// * the two DTLS certificate fingerprints — per-connection, high-entropy, and
-///   verified during the handshake, but unlike `rng_seed` never written to disk
-///   (the seed doubles as the in-match RNG seed, so it lands in replay files). A
-///   *replay holder* never sees the fingerprints.
-///
-/// So no single party outside the two peers can reproduce the id: the server has
-/// the fingerprints but not the seed; a replay leaks the seed but not the
-/// fingerprints. The two fingerprints are folded together by XOR — commutative,
-/// so both peers reach the same value without having to agree on an order (which
-/// is "local" vs "remote" is swapped between them).
-///
-/// Falls back to seed-only (the original construction) when a fingerprint is
-/// missing or the two differ in length — e.g. a peer whose signaling stack didn't
-/// surface one — so the two ends still agree on an id rather than silently
-/// diverging. Domain-separated from the lobby commitment (same `Shake128`, over
-/// `"tango:lobby:"`).
-///
-/// We also prefix it with _ as the client does not allow construction of
-/// link codes containing _, but the server does permit them.
-pub(crate) fn derive_reconnect_session_id(rng_seed: &[u8; 16], fp_a: &[u8], fp_b: &[u8]) -> String {
-    use sha3::digest::{ExtendableOutput, Update, XofReader};
-    let mut h = sha3::Shake128::default();
-    h.update(b"tango:reconnect:");
-    h.update(rng_seed);
-    // Both fingerprints are SHA-256 digests (equal length); the empty / unequal
-    // guard keeps the two peers in lockstep on the seed-only fallback when one is
-    // absent rather than mixing in a lopsided value.
-    if !fp_a.is_empty() && fp_a.len() == fp_b.len() {
-        let folded: Vec<u8> = fp_a.iter().zip(fp_b).map(|(a, b)| a ^ b).collect();
-        h.update(&folded);
-    }
-    let mut out = [0u8; 16];
-    h.finalize_xof().read(&mut out);
-    let mut code: String = "_".into();
-    code.extend(out.iter().map(|b| format!("{b:02x}")));
-    code
 }
 
 impl State {
@@ -488,18 +403,18 @@ impl State {
     /// Reset the cancellation token + bump session_id. Called from
     /// every transition that starts or stops async work so the
     /// background tasks notice and the subscription rekeys. We
-    /// replace the per-session Arcs (event-rx slot and post slot)
-    /// rather than clearing them, so a dying lobby task from the
-    /// previous session can't deposit its receiver into the next
-    /// session's slot — it scribbles into the orphaned Arc and
-    /// the receiver gets dropped along with the Arc.
+    /// replace the per-session event-rx slot Arc rather than
+    /// clearing it, so a dying lobby task from the previous session
+    /// can't deposit into the next session's slot — it scribbles
+    /// into the orphaned Arc and the payload gets dropped along
+    /// with it. (The receiver handback needs no such guard: its
+    /// oneshot is per-session by construction, and dropping `conn`
+    /// drops the receiving end.)
     fn cancel_and_renew(&mut self) {
         self.cancel.cancel();
         self.cancel = CancellationToken::new();
         self.session_id = self.session_id.wrapping_add(1);
         self.lobby_event_rx_slot = Arc::new(std::sync::Mutex::new(None));
-        self.post_lobby_receiver = Arc::new(std::sync::Mutex::new(None));
-        self.in_match_receiver_slot = Arc::new(std::sync::Mutex::new(None));
         self.conn = None;
         self.lobby = LobbyState::default();
         self.handshake = Handshake::default();
@@ -703,8 +618,6 @@ impl State {
         self.cancel = CancellationToken::new();
         self.session_id = self.session_id.wrapping_add(1);
         self.lobby_event_rx_slot = Arc::new(std::sync::Mutex::new(None));
-        self.post_lobby_receiver = Arc::new(std::sync::Mutex::new(None));
-        self.in_match_receiver_slot = Arc::new(std::sync::Mutex::new(None));
         self.conn = None;
         self.handshake = Handshake::default();
         self.phase = Phase::Failed {
@@ -772,22 +685,22 @@ impl State {
         } else {
             peer_state.ts
         };
-        // Cancel the lobby loop so it returns ownership of the
-        // receiver via post_lobby_receiver. The loop drops the
-        // receiver into that slot on cancel-exit.
+        // Cancel the lobby loop so it returns ownership of the receiver via
+        // the handles' oneshot. The loop sends the receiver down it on
+        // cancel-exit; `Link::bring_up` awaits it.
         self.cancel.cancel();
         // Build the mid-match reconnect recipe. The direct path carries its
         // recipe on ConnectionHandles; the matchmaking path combines the params
         // stashed at Connect with a session_id derived from the shared RNG seed
         // (now known), so both peers re-rendezvous on the same secret id.
-        let reconnect = if let Some(role) = handles.reconnect {
+        let recipe = if let Some(role) = handles.reconnect {
             Some(ReconnectRecipe::Direct(role))
         } else {
             self.matchmaking_reconnect
                 .take()
                 .map(|mm| ReconnectRecipe::Matchmaking {
                     endpoint: mm.endpoint,
-                    session_id: derive_reconnect_session_id(
+                    session_id: crate::net::link::derive_reconnect_session_id(
                         &rng_seed,
                         &handles.local_dtls_fingerprint,
                         &handles.peer_dtls_fingerprint,
@@ -796,17 +709,17 @@ impl State {
                     identity: mm.identity,
                 })
         };
-        // The receiver might not be in post_lobby_receiver yet
-        // (the loop hasn't observed the cancel) — but the App
-        // also takes a clone of the slot Arc and reads
-        // asynchronously below.
         let pre_match = PreMatchData {
-            lobby_sender: handles.sender,
-            in_match_sender: handles.in_match_sender,
-            peer_conn: handles.peer_conn,
+            link_parts: LinkParts {
+                control_sender: handles.sender,
+                control_receiver_rx: handles.post_lobby_rx,
+                in_match_sender: handles.in_match_sender,
+                in_match_receiver: handles.in_match_receiver,
+                peer_conn: handles.peer_conn,
+                recipe,
+                rng_seed,
+            },
             is_offerer: handles.is_offerer,
-            reliable_receiver_slot: self.post_lobby_receiver.clone(),
-            in_match_receiver_slot: self.in_match_receiver_slot.clone(),
             rng_seed,
             match_ts,
             local_save_data: local_commit.state.save_data,
@@ -815,7 +728,6 @@ impl State {
             remote_settings,
             link_code,
             match_type: self.lobby.match_type,
-            reconnect,
         };
         Some(pre_match)
     }
@@ -858,24 +770,11 @@ impl State {
 /// Everything the App needs to build a PvpSession. Drained
 /// from netplay::State after both sides exchanged StartMatch.
 pub struct PreMatchData {
-    /// Reliable control/lobby channel sender. Idle in-match (all live traffic
-    /// is on the unreliable channel), but held open so its close doesn't
-    /// surface as a spurious disconnect on the peer's reliable-channel watch.
-    pub lobby_sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
-    /// Unreliable in-match channel sender — the live match's `data::wire`
-    /// datagrams.
-    pub in_match_sender: Arc<tokio::sync::Mutex<crate::net::data::Sender>>,
-    /// The peer connection; brought up by both transports. See
-    /// [`ConnectionHandles::peer_conn`].
-    pub peer_conn: tango_rtc::PeerConnection,
+    /// The transport bundle — every live handle the peer link owns for the
+    /// match's lifetime (channels, peer connection, reconnect recipe).
+    /// `Link::bring_up` assembles it.
+    pub link_parts: LinkParts,
     pub is_offerer: bool,
-    /// Reliable receiver slot the lobby loop drops into on cancel-exit. The PvP
-    /// session watches it only for the disconnect signal (the unreliable
-    /// datagram channel has no clean close event).
-    pub reliable_receiver_slot: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
-    /// Unreliable in-match receiver slot, parked at negotiate time. PvP setup
-    /// waits on this (one-shot poll on a tick).
-    pub in_match_receiver_slot: Arc<std::sync::Mutex<Option<crate::net::data::Receiver>>>,
     pub rng_seed: [u8; 16],
     /// The match clock, milliseconds since the unix epoch: the offerer's
     /// commit-time wall clock, identical on both peers. Every core (primary,
@@ -889,10 +788,6 @@ pub struct PreMatchData {
     pub remote_settings: crate::net::protocol::Settings,
     pub link_code: String,
     pub match_type: (u8, u8),
-    /// Recipe for transparently rebuilding the connection if it drops mid-match
-    /// (direct or matchmaking), or `None` for a transport that can't be rebuilt.
-    /// Consumed by the in-match reconnect coordinator.
-    pub reconnect: Option<ReconnectRecipe>,
 }
 
 // The channel/peer-conn handles aren't `Debug`; a placeholder keeps the

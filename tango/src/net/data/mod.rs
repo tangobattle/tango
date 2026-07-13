@@ -122,23 +122,26 @@ impl InMatchTx {
     /// resending the moment the coordinator swaps a live `sink` back in.
     ///
     /// Must be called within a Tokio runtime (it spawns the heartbeat task).
-    pub fn new(
-        sink: std::sync::Arc<tokio::sync::Mutex<Sender>>,
-        heartbeat: std::time::Duration,
-        cancel: tokio_util::sync::CancellationToken,
-    ) -> Self {
+    pub fn new(sink: Sender, heartbeat: std::time::Duration, cancel: tokio_util::sync::CancellationToken) -> Self {
         let this = Self {
             state: std::sync::Arc::new(std::sync::Mutex::new(InMatchState {
                 out: OutStream::new(protocol::HORIZON),
                 inn: InStream::new(protocol::HORIZON),
                 sent_times: std::collections::VecDeque::new(),
             })),
-            sink,
+            sink: std::sync::Arc::new(tokio::sync::Mutex::new(sink)),
             data_sends: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
             heartbeat,
         };
         tokio::spawn(this.clone().run_heartbeat(cancel));
         this
+    }
+
+    /// Retarget the sink at a rebuilt transport — the reconnect hot-swap. The
+    /// out/in streams (and the unacked window) are untouched: the heartbeat's
+    /// next resend through the new sink bridges the whole outage.
+    pub async fn swap_sink(&self, new: Sender) {
+        *self.sink.lock().await = new;
     }
 
     /// Push an element, snapshot the current redundancy window + cumulative ack into

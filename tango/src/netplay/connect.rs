@@ -33,8 +33,9 @@ impl std::fmt::Debug for SignalingHello {
 pub struct NegotiationOutput {
     pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     pub receiver: crate::net::Receiver,
-    /// Unreliable in-match channel's send half. Idle until the match starts.
-    pub in_match_sender: Arc<tokio::sync::Mutex<crate::net::data::Sender>>,
+    /// Unreliable in-match channel's send half. Idle until the match starts,
+    /// when it becomes the `Link`'s `InMatchTx` sink.
+    pub in_match_sender: crate::net::data::Sender,
     /// Unreliable in-match channel's receive half. Parked for the PvP handoff
     /// the moment negotiate completes — nothing flows on it during the lobby,
     /// so unlike the reliable receiver it isn't owned by the lobby loop.
@@ -175,15 +176,21 @@ impl State {
                 ConnectionKind::Direct
             }
         });
-        // Park the unreliable in-match receiver for the PvP handoff.
-        // Nothing flows on it during the lobby (all lobby traffic is on
-        // the reliable channel), so — unlike the reliable receiver — it
-        // isn't owned by the lobby loop and can be stashed here right
-        // away.
-        *self.in_match_receiver_slot.lock().unwrap() = Some(out.in_match_receiver);
+        // Channel for the lobby loop to hand the reliable receiver back on
+        // cancel-exit. One per session, so a dying loop from a previous
+        // session can't deposit a stale receiver into the next one — its send
+        // lands on a dropped rx and the receiver is dropped with it.
+        let (post_lobby_tx, post_lobby_rx) = tokio::sync::oneshot::channel();
         self.conn = Some(ConnectionHandles {
             sender: out.sender,
             in_match_sender: out.in_match_sender,
+            // The unreliable in-match receiver, parked for the PvP handoff.
+            // Nothing flows on it during the lobby (all lobby traffic is on
+            // the reliable channel), so — unlike the reliable receiver — it
+            // isn't owned by the lobby loop and can be stashed here right
+            // away.
+            in_match_receiver: out.in_match_receiver,
+            post_lobby_rx,
             peer_conn: out.peer_conn,
             is_offerer: out.is_offerer,
             reconnect: out.reconnect,
@@ -202,11 +209,10 @@ impl State {
         let (event_tx, event_rx) = futures::channel::mpsc::unbounded();
         *self.lobby_event_rx_slot.lock().unwrap() = Some(event_rx);
         let cancel = self.cancel.clone();
-        let post = self.post_lobby_receiver.clone();
         let receiver = out.receiver;
         tokio::spawn(async move {
             let receiver = run_lobby_loop(receiver, sender, event_tx, cancel).await;
-            *post.lock().unwrap() = Some(receiver);
+            let _ = post_lobby_tx.send(receiver);
         });
         self.phase = Phase::Lobby { ident };
         iced::Task::none()
@@ -347,7 +353,7 @@ async fn run_direct_rtc_negotiate(
         Ok::<_, AsyncError>(NegotiationOutput {
             sender: Arc::new(tokio::sync::Mutex::new(sender)),
             receiver,
-            in_match_sender: Arc::new(tokio::sync::Mutex::new(in_match_sender)),
+            in_match_sender,
             in_match_receiver,
             peer_conn,
             is_offerer,
@@ -405,7 +411,7 @@ async fn run_negotiate(
             Ok(NegotiationOutput {
                 sender: Arc::new(tokio::sync::Mutex::new(sender)),
                 receiver,
-                in_match_sender: Arc::new(tokio::sync::Mutex::new(in_match_sender)),
+                in_match_sender,
                 in_match_receiver,
                 peer_conn,
                 is_offerer,
