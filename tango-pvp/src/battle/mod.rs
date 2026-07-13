@@ -1,14 +1,44 @@
 //! Live PvP match orchestration.
 //!
 //! [`Match`] owns the connection-level state: shadow emulator, RNG, sender,
-//! replay writer, round counter. It exposes `start_round` (creates a fresh
-//! [`Round`]) and `run` (the network receive loop that feeds remote inputs
-//! into the in-progress round).
+//! replay writer, round counter. `Round` owns one round's worth of state: a
+//! thin shell around the generic [`getgud::Session`] rollback engine, wiring
+//! it to the re-sim [`Stepper`](crate::stepper::Stepper), the opponent
+//! co-sim shadow, and the time-sync throttler.
 //!
-//! [`Round`] owns one round's worth of state: a thin shell around the
-//! generic [`getgud::Session`] rollback engine, wiring it to the re-sim
-//! [`Stepper`](crate::stepper::Stepper), the opponent co-sim shadow, and
-//! the time-sync throttler.
+//! # The life of a round
+//!
+//! Execution is trap-driven: the per-game hooks fire at ROM addresses on
+//! the live core's emulator thread and drive every transition. In the
+//! order the game reaches them:
+//!
+//! 1. **`round_start_ret`** → `Match::start_round`: allocate the round
+//!    ([`RoundPhase::Armed`] — no engine yet, metrics answer zero, remote
+//!    inputs wait in the queue).
+//! 2. **first `main_read_joyflags`** → `Match::record_first_commit`: the
+//!    per-game trap seeds the battle RNGs, then the engine snapshots the
+//!    live core, advances the shadow to its matching commit and snapshots
+//!    it too, and builds the rollback session seeded with that tick-0 pair
+//!    ([`RoundPhase::Live`]).
+//! 3. **every `main_read_joyflags`** →
+//!    `Round::add_local_input_and_fastforward`: ship the local input to the
+//!    peer, drain received remote inputs into the engine, advance it one
+//!    displayed frame, and load the chosen snapshot into the live core.
+//!    Each engine step re-simulates a tick on the [`Stepper`] core and
+//!    co-simulates the opponent's tick on the shadow (see [`world`]), so a
+//!    rollback rewinds both in lockstep.
+//! 4. **`round_set_ending`** (or the game's equivalent) →
+//!    `Match::end_round`: fold the round's outcome into the match stats,
+//!    drop the round, advance the shadow through its own round end, and
+//!    emit the `EndOfRound` marker that keys the peer's input queue.
+//!
+//! Off the emulator thread: `Match::run` (the net receive task) tags and
+//! queues remote inputs — step 3 drains them — and the host observes the
+//! live round through
+//! [`MatchHandle::round_metrics`](crate::hooks::MatchHandle::round_metrics)
+//! rather than locking round state itself.
+//!
+//! [`Stepper`]: crate::stepper::Stepper
 
 mod match_;
 mod round;

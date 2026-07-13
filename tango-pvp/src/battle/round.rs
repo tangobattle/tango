@@ -36,8 +36,9 @@ pub struct Round {
     /// ("armed") for the round's early frames, until
     /// [`start_session`](Round::start_session) runs on the first
     /// `main_read_joyflags`. While armed, engine-metric accessors answer 0
-    /// and remote inputs are held off
-    /// ([`try_add_remote_input`](Round::try_add_remote_input)).
+    /// and remote inputs wait in the handoff queue (the drain only runs
+    /// from [`add_local_input_and_fastforward`](Round::add_local_input_and_fastforward),
+    /// which starts firing at first commit).
     session: Option<getgud::Session<MgbaWorld>>,
     /// Which local round this is (count of locally-ended rounds at creation).
     /// The drain below admits only queue entries tagged with this index:
@@ -162,60 +163,7 @@ impl Round {
         Ok(())
     }
 
-    /// The opponent co-sim snapshot at the authoritative settled tick, cloned for
-    /// re-anchoring the shared shadow before its round-end advance (the simulator
-    /// may have parked the shadow ahead on a speculative tick). `None` before the
-    /// first commit.
-    pub(super) fn settled_shadow_snapshot(&self) -> Option<&crate::shadow::ShadowSnapshot> {
-        self.session.as_ref().map(|s| &s.settled_state().shadow_snapshot)
-    }
-
-    pub fn local_player_index(&self) -> u8 {
-        self.local_player_index
-    }
-
-    /// The round's standing (settled) outcome, from the local player's
-    /// perspective. `None` while the round is in progress or if it never
-    /// reached a KO (e.g. the match was torn down mid-round).
-    pub(super) fn result(&self) -> Option<crate::stepper::RoundResult> {
-        *self.result.lock().unwrap()
-    }
-
-    /// Netcode frontier — advances one per wall-frame via the live core's
-    /// post-tick hook.
-    pub(crate) fn frontier(&self) -> u32 {
-        self.session.as_ref().map_or(0, |s| s.local_frontier())
-    }
-
-    /// Tick of the last `present_state` loaded into the live core (0 before any
-    /// load). Per-game `round_post_increment_tick` traps compare the game's
-    /// tick against this.
-    pub fn last_loaded_tick(&self) -> u32 {
-        self.last_loaded_tick
-    }
-
-    /// See [`RoundPhase`]. Derived from whether the rollback session has
-    /// been built yet — the session *is* the substance of the `Live` phase.
-    pub fn phase(&self) -> RoundPhase {
-        if self.session.is_some() {
-            RoundPhase::Live
-        } else {
-            RoundPhase::Armed
-        }
-    }
-
-    fn local_tick_advantage(&self) -> i16 {
-        self.session.as_ref().map_or(0, |s| s.local_tick_advantage())
-    }
-
-    /// Engine metrics for the host status bar; all zero while armed.
-    pub(super) fn metrics(&self) -> super::RoundMetrics {
-        super::RoundMetrics {
-            local_tick_advantage: self.local_tick_advantage(),
-            remote_tick_advantage: self.session.as_ref().map_or(0, |s| s.last_remote_tick_advantage()),
-            misprediction_depth: self.session.as_ref().map_or(0, |s| s.last_misprediction_depth()),
-        }
-    }
+    // ----- the per-frame step (every main_read_joyflags fire) -----
 
     /// Called once per `main_read_joyflags` fire on the live primary. Ships the
     /// local input over `sender` (the match's outbound channel, with the
@@ -311,6 +259,65 @@ impl Round {
             .expect("set fps target")
             .set_fps_target(EXPECTED_FPS - slowdown);
         Ok(())
+    }
+
+    // ----- trap-side accessors -----
+
+    /// See [`RoundPhase`]. Derived from whether the rollback session has
+    /// been built yet — the session *is* the substance of the `Live` phase.
+    pub fn phase(&self) -> RoundPhase {
+        if self.session.is_some() {
+            RoundPhase::Live
+        } else {
+            RoundPhase::Armed
+        }
+    }
+
+    pub fn local_player_index(&self) -> u8 {
+        self.local_player_index
+    }
+
+    /// Tick of the last `present_state` loaded into the live core (0 before any
+    /// load). Per-game `round_post_increment_tick` traps compare the game's
+    /// tick against this.
+    pub fn last_loaded_tick(&self) -> u32 {
+        self.last_loaded_tick
+    }
+
+    // ----- engine-side accessors -----
+
+    /// Netcode frontier — advances one per wall-frame via the live core's
+    /// post-tick hook.
+    pub(crate) fn frontier(&self) -> u32 {
+        self.session.as_ref().map_or(0, |s| s.local_frontier())
+    }
+
+    /// The opponent co-sim snapshot at the authoritative settled tick, cloned for
+    /// re-anchoring the shared shadow before its round-end advance (the simulator
+    /// may have parked the shadow ahead on a speculative tick). `None` before the
+    /// first commit.
+    pub(super) fn settled_shadow_snapshot(&self) -> Option<&crate::shadow::ShadowSnapshot> {
+        self.session.as_ref().map(|s| &s.settled_state().shadow_snapshot)
+    }
+
+    /// The round's standing (settled) outcome, from the local player's
+    /// perspective. `None` while the round is in progress or if it never
+    /// reached a KO (e.g. the match was torn down mid-round).
+    pub(super) fn result(&self) -> Option<crate::stepper::RoundResult> {
+        *self.result.lock().unwrap()
+    }
+
+    fn local_tick_advantage(&self) -> i16 {
+        self.session.as_ref().map_or(0, |s| s.local_tick_advantage())
+    }
+
+    /// Engine metrics for the host status bar; all zero while armed.
+    pub(super) fn metrics(&self) -> super::RoundMetrics {
+        super::RoundMetrics {
+            local_tick_advantage: self.local_tick_advantage(),
+            remote_tick_advantage: self.session.as_ref().map_or(0, |s| s.last_remote_tick_advantage()),
+            misprediction_depth: self.session.as_ref().map_or(0, |s| s.last_misprediction_depth()),
+        }
     }
 }
 

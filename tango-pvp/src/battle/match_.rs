@@ -206,25 +206,6 @@ impl Match {
         })
     }
 
-    pub(crate) fn sender(&self) -> &SenderMutex {
-        &self.sender
-    }
-
-    /// The local round counter a [`Round`] created right now belongs to.
-    pub(crate) fn current_local_round_idx(&self) -> u32 {
-        self.local_round_idx.load(Ordering::Acquire)
-    }
-
-    /// Host-facing snapshot of the live round's engine metrics, for the
-    /// status bar. The host reads these through
-    /// [`MatchHandle::round_metrics`](crate::hooks::MatchHandle::round_metrics)
-    /// instead of locking round state — the round object itself is
-    /// trap-side API.
-    pub fn round_metrics(&self) -> Option<RoundMetrics> {
-        let round_state = self.round_state.lock().unwrap();
-        round_state.as_ref().map(|round| round.metrics())
-    }
-
     /// Picks the per-match local_player_index. Both peers must call this with
     /// the same shared RNG state at the same point in the protocol so they end
     /// up on opposite sides. Advances the RNG by one draw.
@@ -238,34 +219,36 @@ impl Match {
         }
     }
 
-    /// Closes the replay file, if one is open.
-    pub fn finish_replay(&self) -> anyhow::Result<()> {
-        let writer = self.replay_writer.lock().unwrap().take();
-        let Some(writer) = writer else { return Ok(()) };
-        writer.finish()?;
+    // ----- the round lifecycle, in the order the primary traps drive it -----
+
+    /// Allocates a new [`Round`] in the round_state.
+    fn start_round(self: &Arc<Self>) -> anyhow::Result<()> {
+        let mut round_state = self.round_state.lock().unwrap();
+        log::info!(
+            "starting round: local_player_index = {}",
+            self.identity.local_player_index
+        );
+
+        // Mark a new round in the replay file. The body is a stream of
+        // marker-prefixed records, so no count is needed up front.
+        if let Some(writer) = self.replay_writer.lock().unwrap().as_mut() {
+            writer.start_round()?;
+        }
+
+        log::info!("preparing round state");
+
+        *round_state = Some(Round::new(self));
+        log::info!("round has started");
         Ok(())
     }
 
-    pub fn cancel(&self) {
-        self.cancellation_token.cancel()
-    }
-
-    pub fn is_cancelled(&self) -> bool {
-        self.cancellation_token.is_cancelled()
-    }
-
-    pub fn cancelled(&self) -> tokio_util::sync::WaitForCancellationFuture<'_> {
-        self.cancellation_token.cancelled()
-    }
-
-    /// Resolves the next time the live round's local input queue crosses up to
-    /// [`RECONNECT_QUEUE_LENGTH`](crate::battle::RECONNECT_QUEUE_LENGTH) — a dead
-    /// link. The reconnect coordinator selects on this to pause and rebuild. The
-    /// signal is rising-edge, so a queue that sits above the threshold (e.g. just
-    /// after a reconnect, before the resent inputs drain it) fires once, not
-    /// every frame; it re-arms once the queue drops back below.
-    pub fn stalled(&self) -> tokio::sync::futures::Notified<'_> {
-        self.local_stall.notified()
+    /// [`start_round`](Self::start_round) for trap context, applying the
+    /// same log + cancel error policy.
+    pub(crate) fn start_round_or_cancel(self: &Arc<Self>) {
+        if let Err(e) = self.start_round() {
+            log::error!("start round failed: {e:#}");
+            self.cancel();
+        }
     }
 
     /// Called from the primary main_read_joyflags trap when the live core
@@ -345,14 +328,7 @@ impl Match {
         }
     }
 
-    /// [`start_round`](Self::start_round) for trap context, applying the
-    /// same log + cancel error policy.
-    pub(crate) fn start_round_or_cancel(self: &Arc<Self>) {
-        if let Err(e) = self.start_round() {
-            log::error!("start round failed: {e:#}");
-            self.cancel();
-        }
-    }
+    // ----- the net receive task -----
 
     /// Network receive loop. Pure producer: stamps each remote input with
     /// the peer-round it belongs to and queues it; the live round drains the
@@ -377,12 +353,18 @@ impl Match {
         }
     }
 
+    // ----- trap-side accessors -----
+
     pub(crate) fn lock_round_state(&self) -> std::sync::MutexGuard<'_, Option<Round>> {
         self.round_state.lock().unwrap()
     }
 
     pub(crate) fn lock_rng(&self) -> std::sync::MutexGuard<'_, rand_pcg::Mcg128Xsl64> {
         self.rng.lock().unwrap()
+    }
+
+    pub(crate) fn sender(&self) -> &SenderMutex {
+        &self.sender
     }
 
     pub(crate) fn match_type(&self) -> (u8, u8) {
@@ -393,24 +375,50 @@ impl Match {
         self.identity.is_offerer
     }
 
-    /// Allocates a new [`Round`] in the round_state.
-    fn start_round(self: &Arc<Self>) -> anyhow::Result<()> {
-        let mut round_state = self.round_state.lock().unwrap();
-        log::info!(
-            "starting round: local_player_index = {}",
-            self.identity.local_player_index
-        );
+    /// The local round counter a [`Round`] created right now belongs to.
+    pub(crate) fn current_local_round_idx(&self) -> u32 {
+        self.local_round_idx.load(Ordering::Acquire)
+    }
 
-        // Mark a new round in the replay file. The body is a stream of
-        // marker-prefixed records, so no count is needed up front.
-        if let Some(writer) = self.replay_writer.lock().unwrap().as_mut() {
-            writer.start_round()?;
-        }
+    // ----- host-facing -----
 
-        log::info!("preparing round state");
+    /// Host-facing snapshot of the live round's engine metrics, for the
+    /// status bar. The host reads these through
+    /// [`MatchHandle::round_metrics`](crate::hooks::MatchHandle::round_metrics)
+    /// instead of locking round state — the round object itself is
+    /// trap-side API.
+    pub fn round_metrics(&self) -> Option<RoundMetrics> {
+        let round_state = self.round_state.lock().unwrap();
+        round_state.as_ref().map(|round| round.metrics())
+    }
 
-        *round_state = Some(Round::new(self));
-        log::info!("round has started");
+    /// Resolves the next time the live round's local input queue crosses up to
+    /// [`RECONNECT_QUEUE_LENGTH`](crate::battle::RECONNECT_QUEUE_LENGTH) — a dead
+    /// link. The reconnect coordinator selects on this to pause and rebuild. The
+    /// signal is rising-edge, so a queue that sits above the threshold (e.g. just
+    /// after a reconnect, before the resent inputs drain it) fires once, not
+    /// every frame; it re-arms once the queue drops back below.
+    pub fn stalled(&self) -> tokio::sync::futures::Notified<'_> {
+        self.local_stall.notified()
+    }
+
+    pub fn cancel(&self) {
+        self.cancellation_token.cancel()
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancellation_token.is_cancelled()
+    }
+
+    pub fn cancelled(&self) -> tokio_util::sync::WaitForCancellationFuture<'_> {
+        self.cancellation_token.cancelled()
+    }
+
+    /// Closes the replay file, if one is open.
+    pub fn finish_replay(&self) -> anyhow::Result<()> {
+        let writer = self.replay_writer.lock().unwrap().take();
+        let Some(writer) = writer else { return Ok(()) };
+        writer.finish()?;
         Ok(())
     }
 }
