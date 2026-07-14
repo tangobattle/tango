@@ -18,9 +18,12 @@
 //! Controls: arrows = D-pad, X = A, Z = B, A = L, S = R,
 //! Return = Start, Backspace = Select, Escape = quit.
 //!
-//! Flags: --save FILE (this side's SRAM), --delay N (input delay, player
-//! 1's value wins), --signaling URL (default: tango's public matchmaking
-//! server), --show-remote (render the opponent's screen too), --mute,
+//! Flags: --save FILE (this side's SRAM), --remote-rom FILE (your copy
+//! of the opponent's game when it differs from yours — crossplay, e.g.
+//! Gregar vs Falzar; ROM bytes never cross the wire, each side must own
+//! both games), --delay N (input delay, player 1's value wins),
+//! --signaling URL (default: tango's public matchmaking server),
+//! --show-remote (render the opponent's screen too), --mute,
 //! --headless (no window/audio), --frames N (auto-exit), --wiggle
 //! (deterministic key mashing, for exercising rollback), --rom testrom
 //! (built-in SIO ping-pong ROM instead of a file).
@@ -57,6 +60,7 @@ struct Args {
     session: Option<String>,
     signaling: String,
     rom: Option<String>,
+    remote_rom: Option<String>,
     save: Option<String>,
     delay: u32,
     frames: Option<u32>,
@@ -75,6 +79,7 @@ fn parse_args() -> Args {
         session: None,
         signaling: DEFAULT_SIGNALING.to_owned(),
         rom: None,
+        remote_rom: None,
         save: None,
         delay: 2,
         frames: None,
@@ -91,6 +96,7 @@ fn parse_args() -> Args {
             "--connect" => args.connect = Some(val()),
             "--session" => args.session = Some(val()),
             "--signaling" => args.signaling = val(),
+            "--remote-rom" => args.remote_rom = Some(val()),
             "--save" => args.save = Some(val()),
             "--delay" => args.delay = val().parse().unwrap_or_else(|_| die("bad --delay")),
             "--frames" => args.frames = Some(val().parse().unwrap_or_else(|_| die("bad --frames"))),
@@ -418,19 +424,31 @@ const GBA_W: u32 = 240;
 const GBA_H: u32 = 160;
 const SCALE: u32 = 3;
 
+const AUDIO_OUT_RATE: u32 = 48000;
+/// ~200ms of queued output; rollback re-simulation bursts past this get
+/// dropped rather than heard twice (or queued into the future).
+const AUDIO_MAX_QUEUED_BYTES: i32 = (AUDIO_OUT_RATE * 2 * 2 / 5) as i32;
+
 struct Frontend {
     sdl: sdl3::Sdl,
     canvas: sdl3::render::WindowCanvas,
     creator: sdl3::render::TextureCreator<sdl3::video::WindowContext>,
     audio: Option<sdl3::audio::AudioStreamOwner>,
+    /// Core samples -> AUDIO_OUT_RATE. The core's production rate follows
+    /// the game's SOUNDBIAS resolution and CHANGES at runtime (BN4+ flip
+    /// from 32768 to 65536 Hz after boot), so the SDL stream stays at one
+    /// fixed rate and this tracks the moving source rate — same shape as
+    /// tango's MGBAStream.
+    resampler: mgba::audio::AudioResampler,
+    resampled: mgba::audio::AudioBuffer,
     audio_scratch: Vec<i16>,
-    /// ~200ms at the core's sample rate; SDL converts to the device rate.
-    audio_max_queued_bytes: i32,
+    /// Last core rate seen, to log transitions.
+    audio_src_rate: u32,
     screens: usize,
 }
 
 impl Frontend {
-    fn new(title: &str, screens: usize, mute: bool, audio_rate: u32) -> Self {
+    fn new(title: &str, screens: usize, mute: bool) -> Self {
         let sdl = sdl3::init().unwrap_or_else(|e| die(&format!("sdl init: {e}")));
         let video = sdl.video().unwrap_or_else(|e| die(&format!("sdl video: {e}")));
         let window = video
@@ -446,11 +464,8 @@ impl Frontend {
         } else {
             match sdl.audio() {
                 Ok(subsystem) => {
-                    // The core produces at its own rate (not the 48kHz the
-                    // Options struct suggests); declare that rate and let
-                    // SDL's stream resample to whatever the device runs.
                     let spec = sdl3::audio::AudioSpec::new(
-                        Some(audio_rate as i32),
+                        Some(AUDIO_OUT_RATE as i32),
                         Some(2),
                         Some(sdl3::audio::AudioFormat::S16LE),
                     );
@@ -477,8 +492,12 @@ impl Frontend {
             canvas,
             creator,
             audio,
+            resampler: mgba::audio::AudioResampler::new(),
+            // A tick is ~1100 frames at the highest GBA rate; rollback
+            // bursts multiply that, and overflow just drops.
+            resampled: mgba::audio::AudioBuffer::new(32768, 2),
             audio_scratch: Vec::new(),
-            audio_max_queued_bytes: (audio_rate * 2 * 2 / 5) as i32,
+            audio_src_rate: 0,
             screens,
         }
     }
@@ -529,21 +548,37 @@ impl Frontend {
         self.canvas.present();
     }
 
-    /// Move whatever audio the local core produced this tick to SDL,
-    /// dropping it when the output queue is comfortably full (rollback
-    /// re-simulation produces bursts we don't want to hear twice... or
-    /// queue into the future).
+    /// Resample whatever the local core produced this tick to the fixed
+    /// output rate and hand it to SDL.
     fn pump_audio(&mut self, pair: &mut Pair, local: usize) {
+        if self.audio.is_none() {
+            return;
+        }
         let mut core = pair.core_mut(local);
-        let mut audio_buffer = core.audio_buffer();
-        let frames = audio_buffer.available();
+        let rate = core.as_ref().audio_sample_rate();
+        if rate != self.audio_src_rate {
+            if self.audio_src_rate != 0 {
+                eprintln!("audio rate changed: {} -> {rate} Hz", self.audio_src_rate);
+            }
+            self.audio_src_rate = rate;
+        }
+        let mut source = core.audio_buffer();
+        if source.available() == 0 {
+            return;
+        }
+        self.resampler.set_source(&mut source, rate as f64, true);
+        self.resampler
+            .set_destination(&mut self.resampled, AUDIO_OUT_RATE as f64);
+        self.resampler.process();
+
+        let frames = self.resampled.available();
         if frames == 0 {
             return;
         }
         self.audio_scratch.resize(frames * 2, 0);
-        let read = audio_buffer.read(&mut self.audio_scratch, frames);
+        let read = self.resampled.read(&mut self.audio_scratch, frames);
         if let Some(stream) = &self.audio {
-            if stream.queued_bytes().unwrap_or(0) < self.audio_max_queued_bytes {
+            if stream.queued_bytes().unwrap_or(0) < AUDIO_MAX_QUEUED_BYTES {
                 let _ = stream.put_data_i16(&self.audio_scratch[..read * 2]);
             }
         }
@@ -556,12 +591,16 @@ fn main() {
     mgba::log::install_default_logger();
     let args = parse_args();
 
-    let rom = match args.rom.as_deref() {
-        Some("testrom") => testrom::build(),
-        Some(path) => std::fs::read(path).unwrap_or_else(|e| die(&format!("read {path}: {e}"))),
-        None => unreachable!(),
+    let read_rom = |path: &str| match path {
+        "testrom" => testrom::build(),
+        path => std::fs::read(path).unwrap_or_else(|e| die(&format!("read {path}: {e}"))),
     };
+    let rom = read_rom(args.rom.as_deref().unwrap());
+    // Crossplay: the peer plays a different game, and we need our own copy
+    // of it for their side of the pair (ROM bytes never cross the wire).
+    let remote_rom = args.remote_rom.as_deref().map_or_else(|| rom.clone(), read_rom);
     let rom_crc = crc32fast::hash(&rom);
+    let remote_rom_crc = crc32fast::hash(&remote_rom);
     let save = args
         .save
         .as_deref()
@@ -579,9 +618,10 @@ fn main() {
     send_hello(&net, rom_crc, args.delay, rtc_now, &save);
     let mut pending_data = Vec::new();
     let hello = recv_hello(&net, &mut pending_data);
-    if hello.rom_crc != rom_crc {
+    if hello.rom_crc != remote_rom_crc {
         die(&format!(
-            "ROM mismatch: ours {rom_crc:08x}, peer's {:08x} — both sides need the same ROM",
+            "ROM mismatch: the peer is playing {:08x} but our copy of their game is {remote_rom_crc:08x} \
+             — point --remote-rom at your copy of the game they're playing",
             hello.rom_crc
         ));
     }
@@ -591,19 +631,25 @@ fn main() {
         (hello.delay, hello.rtc)
     };
 
-    let (side0_save, side1_save) = if net.is_player_0 {
-        (save, hello.save)
+    let (side0, side1) = if net.is_player_0 {
+        (
+            SideOptions { rom, save },
+            SideOptions {
+                rom: remote_rom,
+                save: hello.save,
+            },
+        )
     } else {
-        (hello.save, save)
+        (
+            SideOptions {
+                rom: remote_rom,
+                save: hello.save,
+            },
+            SideOptions { rom, save },
+        )
     };
     let pair = Pair::with_options(PairOptions {
-        sides: [
-            SideOptions {
-                rom: rom.clone(),
-                save: side0_save,
-            },
-            SideOptions { rom, save: side1_save },
-        ],
+        sides: [side0, side1],
         rtc: Some(std::time::UNIX_EPOCH + std::time::Duration::from_micros(rtc)),
     })
     .unwrap_or_else(|e| die(&format!("pair boot: {e}")));
@@ -612,13 +658,11 @@ fn main() {
     let mut out_stream = rennet::OutStream::<DemoProto>::new(HORIZON);
     let mut in_stream = rennet::InStream::<DemoProto>::new(HORIZON);
 
-    let audio_rate = session.pair().core(local_player).audio_sample_rate();
     let mut frontend = (!args.headless).then(|| {
         Frontend::new(
             &format!("tango-siolink demo — player {}", local_player + 1),
             if args.show_remote { 2 } else { 1 },
             args.mute,
-            audio_rate,
         )
     });
     let mut pump = frontend
