@@ -55,8 +55,6 @@ pub enum Outcome {
 /// field covers both players.
 #[derive(Clone, Copy, Debug)]
 pub struct CoreObs {
-    /// The game's own battle-tick counter.
-    pub game_tick: u32,
     /// Both players' in-battle HP.
     pub hp: [u16; 2],
     /// Whether **this core's own player** has the custom (chip-select)
@@ -170,7 +168,6 @@ impl LifecycleSink {
 /// own core.
 #[derive(Clone, Copy, Debug)]
 pub struct BattleObs {
-    pub game_tick: u32,
     pub hp: [u16; 2],
     pub custom: [bool; 2],
     pub chips: [u16; 2],
@@ -319,7 +316,6 @@ impl mgba_siolink::session::TickObserver for Telemetry {
         let obs1 = self.pollers[1].poll(pair.core_mut(1));
         let obs = match (obs0, obs1) {
             (Some(c0), Some(c1)) => Some(BattleObs {
-                game_tick: c0.game_tick,
                 hp: c0.hp,
                 custom: [c0.custom_self, c1.custom_self],
                 chips: c0.chips,
