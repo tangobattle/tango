@@ -164,8 +164,7 @@ gamesupport-all = [
 [lints]
 workspace = true
 
-# Reveal-in-file-manager for the RevealPath effects. Not used on macOS:
-# its 0.1.1 backend double-autoreleases and crashes there (see
-# `app::reveal_path`, which shells out to `open -R` instead).
-[target.'cfg(not(target_os = "macos"))'.dependencies]
-showfile = "0.1.1"
+# Reveal-in-file-manager for the RevealPath effects (see `app::reveal_path`).
+[dependencies.opener]
+version = "0.8"
+features = ["reveal"]
