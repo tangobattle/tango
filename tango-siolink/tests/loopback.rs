@@ -68,8 +68,12 @@ fn exchange_and_rollback_determinism() {
     while exchanges(&read_log(&mut pair, 0, 64)) < 16 || exchanges(&read_log(&mut pair, 1, 64)) < 16 {
         pair.tick(keys_for_tick(tick));
         tick += 1;
-        assert!(tick < 600, "link never came up: logs {:04x?} / {:04x?}",
-            &read_log(&mut pair, 0, 16), &read_log(&mut pair, 1, 16));
+        assert!(
+            tick < 600,
+            "link never came up: logs {:04x?} / {:04x?}",
+            &read_log(&mut pair, 0, 16),
+            &read_log(&mut pair, 1, 16)
+        );
     }
     // Both sides observed the identical exchange sequence.
     assert_eq!(read_log(&mut pair, 0, 32), read_log(&mut pair, 1, 32));
@@ -104,9 +108,17 @@ fn exchange_and_rollback_determinism() {
         );
         pair.tick(keys_for_tick(tick + k as u32));
     }
-    assert_eq!(digest(&mut pair), final_digest, "replay diverged at the end of the span");
+    assert_eq!(
+        digest(&mut pair),
+        final_digest,
+        "replay diverged at the end of the span"
+    );
 
     // The exchange kept running after the rollback replay.
     let log = read_log(&mut pair, 0, 128);
-    assert!(exchanges(&log) > 16, "no further exchanges after rollback: {:04x?}", &log[..32]);
+    assert!(
+        exchanges(&log) > 16,
+        "no further exchanges after rollback: {:04x?}",
+        &log[..32]
+    );
 }

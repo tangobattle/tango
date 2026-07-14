@@ -4,11 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-mgba.workspace = true
-
-[dev-dependencies]
-byteorder.workspace = true
 crc32fast.workspace = true
+mgba.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

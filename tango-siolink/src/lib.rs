@@ -16,6 +16,8 @@
 //! that partial progress is exactly captured by the pair snapshot, so the
 //! interleave replays identically after a restore.
 
+pub mod replay;
+pub mod session;
 pub mod testrom;
 
 /// Which core a tick treats as the frame-boundary reference. Player 0 is
@@ -56,28 +58,85 @@ impl Snapshot {
     pub fn driver_blob(&self, i: usize) -> &[u8] {
         &self.drivers[i]
     }
+
+    /// Digest of the rollback-relevant state, comparable across peers
+    /// simulating the same pair (the desync canary). Deliberately built
+    /// from discrete savestate fields rather than raw state bytes: mgba
+    /// serializes into an uninitialized buffer without touching reserved
+    /// regions, so whole-struct bytes are not comparable. CPU registers
+    /// plus both RAMs plus the lockstep blobs expose any trajectory
+    /// divergence within a tick or two.
+    pub fn digest(&self) -> u32 {
+        let mut h = crc32fast::Hasher::new();
+        for i in 0..2 {
+            let s = self.core_state(i);
+            for r in 0..16 {
+                h.update(&s.gpr(r).to_le_bytes());
+            }
+            h.update(&s.cpsr().to_le_bytes());
+            h.update(s.wram());
+            h.update(s.iwram());
+            h.update(self.driver_blob(i));
+        }
+        h.finalize()
+    }
+}
+
+/// Per-core boot configuration beyond the ROM itself.
+#[derive(Default)]
+pub struct SideOptions {
+    pub rom: Vec<u8>,
+    /// SRAM/flash image, if resuming from an existing save.
+    pub save: Option<Vec<u8>>,
+}
+
+#[derive(Default)]
+pub struct PairOptions {
+    pub sides: [SideOptions; 2],
+    /// Pin both carts' RTC to a fixed clock. Mandatory for netplay/replay
+    /// of RTC-bearing games (e.g. BN4.5): both peers must negotiate the
+    /// same match clock or the pair diverges on the first RTC read.
+    pub rtc: Option<std::time::SystemTime>,
 }
 
 impl Pair {
     /// Boot a linked pair from two ROM images. Core 0 requests lockstep
     /// player 0 (primary/master side), core 1 requests player 1.
     pub fn new(roms: [Vec<u8>; 2]) -> Result<Self, mgba::Error> {
+        let [rom0, rom1] = roms;
+        Self::with_options(PairOptions {
+            sides: [
+                SideOptions { rom: rom0, save: None },
+                SideOptions { rom: rom1, save: None },
+            ],
+            rtc: None,
+        })
+    }
+
+    pub fn with_options(options: PairOptions) -> Result<Self, mgba::Error> {
         let mut coordinator = mgba::sio::Coordinator::new();
-        let options = mgba::core::Options::default();
+        let core_options = mgba::core::Options::default();
 
         let mut cores = [
-            mgba::core::Core::new_gba("tango-siolink", &options)?,
-            mgba::core::Core::new_gba("tango-siolink", &options)?,
+            mgba::core::Core::new_gba("tango-siolink", &core_options)?,
+            mgba::core::Core::new_gba("tango-siolink", &core_options)?,
         ];
         let mut drivers = [
             mgba::sio::Driver::new(&mut coordinator, 0),
             mgba::sio::Driver::new(&mut coordinator, 1),
         ];
 
-        let mut roms = roms.into_iter();
+        let mut sides = options.sides.into_iter();
         for (core, driver) in cores.iter_mut().zip(drivers.iter_mut()) {
+            let side = sides.next().unwrap();
             core.enable_video_buffer();
-            core.as_mut().load_rom(mgba::vfile::VFile::from_vec(roms.next().unwrap()))?;
+            core.as_mut().load_rom(mgba::vfile::VFile::from_vec(side.rom))?;
+            if let Some(save) = side.save {
+                core.as_mut().load_save(mgba::vfile::VFile::from_vec(save))?;
+            }
+            if let Some(rtc) = options.rtc {
+                core.set_rtc_fixed(rtc);
+            }
             driver.install(&mut core.as_mut());
             core.as_mut().reset();
         }
@@ -148,7 +207,10 @@ impl Pair {
     /// transfer in flight or either core parked by the lockstep protocol.
     pub fn save(&mut self) -> Result<Snapshot, mgba::Error> {
         Ok(Snapshot {
-            cores: [self.cores[0].as_mut().save_state()?, self.cores[1].as_mut().save_state()?],
+            cores: [
+                self.cores[0].as_mut().save_state()?,
+                self.cores[1].as_mut().save_state()?,
+            ],
             drivers: [self.drivers[0].save_state(), self.drivers[1].save_state()],
         })
     }

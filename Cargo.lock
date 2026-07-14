@@ -3351,7 +3351,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.53.3",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -3651,7 +3651,7 @@ dependencies = [
 [[package]]
 name = "mgba"
 version = "4.0.32"
-source = "git+https://github.com/tangobattle/mgba-rs?branch=mgba-sio-rollback#62e35cb92445fc12ca9417bf468785d9f75346aa"
+source = "git+https://github.com/tangobattle/mgba-rs?branch=mgba-sio-rollback#b3ad9c8ef4bf278882d67e4887b0436a6db38d8d"
 dependencies = [
  "log",
  "mgba-sys",
@@ -3662,7 +3662,7 @@ dependencies = [
 [[package]]
 name = "mgba-sys"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/mgba-rs?branch=mgba-sio-rollback#62e35cb92445fc12ca9417bf468785d9f75346aa"
+source = "git+https://github.com/tangobattle/mgba-rs?branch=mgba-sio-rollback#b3ad9c8ef4bf278882d67e4887b0436a6db38d8d"
 dependencies = [
  "bindgen",
  "cmake",
@@ -6753,9 +6753,9 @@ dependencies = [
 name = "tango-siolink"
 version = "0.1.0"
 dependencies = [
- "byteorder",
  "crc32fast",
  "mgba",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
