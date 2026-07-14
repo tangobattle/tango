@@ -160,6 +160,12 @@ impl Pair {
         self.drivers[i].player_id()
     }
 
+    /// Core `i`'s rendered frame (240x160, mgba's native 16-bit XBGR1555),
+    /// for frontends.
+    pub fn video_buffer(&self, i: usize) -> Option<&[u8]> {
+        self.cores[i].video_buffer()
+    }
+
     /// Advance the pair by one frame of the reference core, interleaving
     /// run_loop slices between whichever cores the lockstep protocol
     /// currently allows to run. `keys[i]` is latched for core `i` at the

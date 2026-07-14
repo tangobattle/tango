@@ -8,5 +8,13 @@ crc32fast.workspace = true
 mgba.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+rennet = { path = "../rennet" }
+# Same spec as the tango app so the from-source SDL build is shared.
+sdl3 = { version = "0.18", default-features = false, features = ["build-from-source-static"] }
+tango-rtc = { git = "https://github.com/tangobattle/tango-rtc" }
+tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time"] }
+
 [lints]
 workspace = true

@@ -116,6 +116,12 @@ impl Session {
         self.local_player
     }
 
+    /// Number of ticks simulated so far (the pair state is "after ticks
+    /// [0, frontier)"). Ticks in [confirmed, frontier) are speculative.
+    pub fn frontier(&self) -> u32 {
+        self.frontier
+    }
+
     fn remote_player(&self) -> usize {
         1 - self.local_player
     }
@@ -261,6 +267,19 @@ impl Session {
             .rev()
             .find(|(t, _)| *t <= confirmed)
             .map(|(t, snap)| (*t, snap.digest()))
+    }
+
+    /// Digest of the ring snapshot at exactly `tick`, if it's still in the
+    /// ring and within the trustworthy confirmed range — the receive side
+    /// of cross-peer desync checking (compare against a peer's
+    /// [`checkpoint`](Self::checkpoint)). None means "can't check this
+    /// one", not "mismatch".
+    pub fn digest_at(&self, tick: u32) -> Option<u32> {
+        let confirmed = self.confirmed().min(self.dirty_from.unwrap_or(u32::MAX));
+        if tick > confirmed {
+            return None;
+        }
+        self.ring.iter().find(|(t, _)| *t == tick).map(|(_, s)| s.digest())
     }
 
     /// Drain newly-confirmed ticks as (tick, [p0 keys, p1 keys]) — final

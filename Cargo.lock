@@ -6755,7 +6755,12 @@ version = "0.1.0"
 dependencies = [
  "crc32fast",
  "mgba",
+ "rennet",
+ "sdl3",
+ "tango-rtc",
+ "tango-signaling",
  "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]
