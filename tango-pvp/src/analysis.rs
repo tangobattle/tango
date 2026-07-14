@@ -251,8 +251,13 @@ impl MatchStatsBuilder {
     /// mid-round, or a live round was torn down without reaching a KO).
     pub fn end_round(&mut self, outcome: Option<BattleOutcome>) {
         let samples = std::mem::take(&mut self.current);
-        self.rounds
-            .push(fold_round(outcome, &samples, &mut self.prev_final, self.semantics, self.counts_buster));
+        self.rounds.push(fold_round(
+            outcome,
+            &samples,
+            &mut self.prev_final,
+            self.semantics,
+            self.counts_buster,
+        ));
     }
 
     /// The rounds folded so far — the round in progress isn't included.
@@ -326,7 +331,6 @@ fn fold_round(
 }
 
 impl MatchStats {
-
     /// Parse a sidecar. Errors on malformed input, a missing magic, or a
     /// version other than [`FORMAT_VERSION`] — callers treat all of these
     /// as "recompute".
@@ -569,7 +573,10 @@ impl<'a> ReplaySampler<'a> {
             // The same incremental aggregation a live match performs:
             // push each simulated tick's sample, close each round as it
             // ends.
-            builder: MatchStatsBuilder::new(local_hooks.chip_semantics(local_rom), local_hooks.counts_buster(local_rom)),
+            builder: MatchStatsBuilder::new(
+                local_hooks.chip_semantics(local_rom),
+                local_hooks.counts_buster(local_rom),
+            ),
             current_result: None,
             last_round_idx: 0,
             frames_after_drain: 0,
