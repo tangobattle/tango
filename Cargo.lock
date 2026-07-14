@@ -3651,7 +3651,7 @@ dependencies = [
 [[package]]
 name = "mgba"
 version = "4.0.32"
-source = "git+https://github.com/tangobattle/mgba-rs#fcb01699c99b8a11331c354ab04f5e70ea75feb6"
+source = "git+https://github.com/tangobattle/mgba-rs?branch=mgba-sio-rollback#62e35cb92445fc12ca9417bf468785d9f75346aa"
 dependencies = [
  "log",
  "mgba-sys",
@@ -3662,7 +3662,7 @@ dependencies = [
 [[package]]
 name = "mgba-sys"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/mgba-rs#fcb01699c99b8a11331c354ab04f5e70ea75feb6"
+source = "git+https://github.com/tangobattle/mgba-rs?branch=mgba-sio-rollback#62e35cb92445fc12ca9417bf468785d9f75346aa"
 dependencies = [
  "bindgen",
  "cmake",
@@ -6747,6 +6747,15 @@ dependencies = [
  "tokio-tungstenite",
  "url",
  "webpki-roots",
+]
+
+[[package]]
+name = "tango-siolink"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "crc32fast",
+ "mgba",
 ]
 
 [[package]]
