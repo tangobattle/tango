@@ -14,7 +14,6 @@ pub struct Input {
 #[derive(Clone, Debug)]
 pub enum Event {
     Input(Input),
-    EndOfRound,
 }
 
 pub trait Sender {

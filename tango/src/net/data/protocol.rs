@@ -32,7 +32,6 @@ use tango_pvp::input::JOYFLAGS_MASK;
 const MARKER_FLAG: u8 = 0x80;
 
 /// Marker kind, carried in the low bits of a marker byte.
-const KIND_END_OF_ROUND: u8 = 0;
 const KIND_END_OF_MATCH: u8 = 1;
 
 /// Hard cap on elements decoded from one datagram. A legitimate redundancy
@@ -100,8 +99,6 @@ impl rennet::Codec for Meta {
 pub enum Element {
     /// Joyflags for this tick (10-bit GBA keypad; the top 6 bits must be 0).
     Input(u16),
-    /// End-of-round boundary — the round its preceding inputs belong to ends here.
-    EndOfRound,
     /// End-of-match boundary.
     EndOfMatch,
 }
@@ -119,7 +116,6 @@ impl rennet::Codec for Element {
                 // which is what tells an input from a marker on the way back in.
                 w.write_all(&[(joyflags >> 8) as u8, joyflags as u8])
             }
-            Element::EndOfRound => w.write_all(&[MARKER_FLAG | KIND_END_OF_ROUND]),
             Element::EndOfMatch => w.write_all(&[MARKER_FLAG | KIND_END_OF_MATCH]),
         }
     }
@@ -136,7 +132,6 @@ impl rennet::Codec for Element {
         let b0 = b0[0];
         let element = if b0 & MARKER_FLAG != 0 {
             match b0 & !MARKER_FLAG {
-                KIND_END_OF_ROUND => Element::EndOfRound,
                 KIND_END_OF_MATCH => Element::EndOfMatch,
                 other => return Err(invalid(format!("unknown marker kind: {other}"))),
             }
@@ -176,7 +171,7 @@ mod tests {
             12345,
             12345,
             Meta { tick_advantage: 2 },
-            vec![Element::Input(0x010), Element::EndOfRound, Element::Input(0x001)],
+            vec![Element::Input(0x010), Element::Input(0x001)],
         );
         assert_eq!(f.to_vec(), vec![0xB9, 0x60, 0x00, 0x04, 0x00, 0x10, 0x80, 0x00, 0x01]);
     }
@@ -187,12 +182,7 @@ mod tests {
             7,
             6,
             Meta { tick_advantage: -3 },
-            vec![
-                Element::Input(0x3ff),
-                Element::EndOfRound,
-                Element::Input(0),
-                Element::EndOfMatch,
-            ],
+            vec![Element::Input(0x3ff), Element::Input(0), Element::EndOfMatch],
         );
         assert_eq!(Frame::decode(&mut &f.to_vec()[..]).unwrap(), f);
     }

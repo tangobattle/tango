@@ -758,10 +758,6 @@ impl DriveContext {
                     tango_pvp::net::Event::Input(input) => {
                         match_.add_remote_input(input.joyflags as u32, input.tick_advantage);
                     }
-                    // The SIO engine has no wire-level round concept; a
-                    // trap-engine peer can't be paired with us (protocol
-                    // version gates), so this is just future-proofing.
-                    tango_pvp::net::Event::EndOfRound => {}
                 }
             }
 

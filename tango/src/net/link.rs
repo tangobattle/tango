@@ -571,7 +571,6 @@ mod tests {
         while got.len() < n {
             match rx.receive().await.expect("receive") {
                 tango_pvp::net::Event::Input(input) => got.push(input.joyflags),
-                other => panic!("unexpected event: {other:?}"),
             }
         }
         got

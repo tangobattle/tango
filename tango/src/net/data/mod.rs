@@ -179,13 +179,6 @@ impl InMatchTx {
         .await
     }
 
-    pub async fn send_end_of_round(&self) -> std::io::Result<()> {
-        self.send_frame_with(move |out| {
-            out.push(protocol::Element::EndOfRound);
-        })
-        .await
-    }
-
     /// In-band match-end: rides the same ordered seq stream as inputs, so the
     /// peer sees it exactly once and only after every preceding input.
     pub async fn send_end_of_match(&self) -> std::io::Result<()> {
@@ -296,7 +289,6 @@ impl PvpSender {
             while let Some(event) = rx.recv().await {
                 let result = match event {
                     tango_pvp::net::Event::Input(input) => im.send_input(input.joyflags, input.tick_advantage).await,
-                    tango_pvp::net::Event::EndOfRound => im.send_end_of_round().await,
                 };
                 if let Err(e) = result {
                     // Non-terminal: the element was pushed into the out-stream's
@@ -401,9 +393,6 @@ impl tango_pvp::net::Receiver for PvpReceiver {
                                 joyflags,
                                 tick_advantage: delivery.meta.tick_advantage,
                             }));
-                    }
-                    protocol::Element::EndOfRound => {
-                        self.pending.push_back(tango_pvp::net::Event::EndOfRound);
                     }
                     protocol::Element::EndOfMatch => {
                         self.remote_ended.store(true, std::sync::atomic::Ordering::Release);
