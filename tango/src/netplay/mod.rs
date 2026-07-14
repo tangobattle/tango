@@ -286,6 +286,11 @@ struct ConnectionHandles {
     /// direct path.
     local_dtls_fingerprint: Vec<u8>,
     peer_dtls_fingerprint: Vec<u8>,
+    /// The peer's install identity: SHA-256 of the mTLS client certificate it
+    /// presented on its signaling websocket, server-attested (see
+    /// [`NegotiationOutput::peer_client_cert_fingerprint`]). Recorded into the
+    /// replay metadata's remote side. Empty on the direct path.
+    peer_client_cert_fingerprint: Vec<u8>,
 }
 
 /// Messages the netplay subsystem emits + accepts. App routes
@@ -748,6 +753,16 @@ impl State {
         // the handles' oneshot. The loop sends the receiver down it on
         // cancel-exit; `Link::bring_up` awaits it.
         self.cancel.cancel();
+        // Both install identities, for the replay metadata: ours recomputed
+        // from the certificate this connection actually presented (stashed at
+        // Connect), the peer's as the server attested it during signaling.
+        // Direct connections have neither — no signaling identity in play.
+        let local_client_cert_fingerprint = self
+            .matchmaking_reconnect
+            .as_ref()
+            .and_then(|mm| mm.identity.as_ref())
+            .map(|id| identity::fingerprint(&id.cert_der))
+            .unwrap_or_default();
         // Build the mid-match reconnect recipe. The direct path carries its
         // recipe on ConnectionHandles; the matchmaking path combines the params
         // stashed at Connect with a session_id derived from the shared RNG seed
@@ -787,6 +802,8 @@ impl State {
             remote_settings,
             link_code,
             match_type: self.lobby.match_type,
+            local_client_cert_fingerprint,
+            peer_client_cert_fingerprint: handles.peer_client_cert_fingerprint,
         };
         Some(pre_match)
     }
@@ -845,6 +862,12 @@ pub struct PreMatchData {
     pub remote_settings: crate::net::protocol::Settings,
     pub link_code: String,
     pub match_type: (u8, u8),
+    /// Both sides' install identities (SHA-256 of the mTLS client certificate
+    /// presented to the matchmaking server), recorded into the replay
+    /// metadata: ours self-computed, the peer's server-attested. Empty on
+    /// direct connections or when a side presented no certificate.
+    pub local_client_cert_fingerprint: Vec<u8>,
+    pub peer_client_cert_fingerprint: Vec<u8>,
 }
 
 // The channel/peer-conn handles aren't `Debug`; a placeholder keeps the

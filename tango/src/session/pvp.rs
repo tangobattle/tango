@@ -916,6 +916,7 @@ fn build_replay_writer(
                 // blind-setup inversion and still stores the
                 // positive "reveal" sense.
                 reveal_setup: !local_settings.blind_setup,
+                client_cert_fingerprint_sha256: pre_match.local_client_cert_fingerprint.clone(),
             }),
             remote_side: Some(tango_pvp::replay::metadata::Side {
                 nickname: remote_settings.nickname.clone(),
@@ -931,6 +932,7 @@ fn build_replay_writer(
                         }),
                 }),
                 reveal_setup: !remote_settings.blind_setup,
+                client_cert_fingerprint_sha256: pre_match.peer_client_cert_fingerprint.clone(),
             }),
             match_type: identity.match_type.0 as u32,
             match_subtype: identity.match_type.1 as u32,

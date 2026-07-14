@@ -17,6 +17,14 @@ message Metadata {
     string nickname = 1;
     GameInfo game_info = 2;
     bool reveal_setup = 3;
+    // SHA-256 fingerprint (raw digest bytes) of this side's persistent mTLS
+    // client certificate — the install identity presented to the matchmaking
+    // server. The recorder fills its own side from its own certificate and
+    // the remote side from the server-attested value relayed during
+    // signaling; like everything else in this metadata, it's recorded on the
+    // recorder's honor. Empty when unknown: direct connections, no
+    // certificate presented, or a recorder that predates the field.
+    bytes client_cert_fingerprint_sha256 = 4;
   }
 
   uint64 ts = 1;

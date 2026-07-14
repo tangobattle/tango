@@ -210,6 +210,7 @@ impl State {
             reconnect: out.reconnect,
             local_dtls_fingerprint: out.local_dtls_fingerprint,
             peer_dtls_fingerprint: out.peer_dtls_fingerprint,
+            peer_client_cert_fingerprint: out.peer_client_cert_fingerprint,
         });
         // Spawn the lobby loop as a detached tokio task.
         // It owns the data-channel receiver and bridges

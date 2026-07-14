@@ -65,7 +65,7 @@ fn load_or_create() -> anyhow::Result<(tango_signaling::ClientIdentity, String)>
 
     let cert_der = parse_single_cert(&cert_pem)?;
     let key_der = parse_single_key(&key_pem)?;
-    let fingerprint = hex(Sha256::digest(&cert_der).as_slice());
+    let fingerprint = hex(&fingerprint(&cert_der));
     Ok((tango_signaling::ClientIdentity { cert_der, key_der }, fingerprint))
 }
 
@@ -132,6 +132,13 @@ fn parse_single_key(pem: &str) -> anyhow::Result<Vec<u8>> {
 }
 
 /// Lowercase hex, no separators — the SHA-256 of the DER certificate.
+/// Raw SHA-256 digest of a DER certificate — the fingerprint bytes the
+/// signaling server observes on the TLS handshake and the replay metadata
+/// records per side.
+pub(crate) fn fingerprint(cert_der: &[u8]) -> Vec<u8> {
+    Sha256::digest(cert_der).to_vec()
+}
+
 pub(crate) fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
     let mut s = String::with_capacity(bytes.len() * 2);
