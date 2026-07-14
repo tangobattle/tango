@@ -1,19 +1,29 @@
-//! Live PvP emulator session — peer-paired netplay sibling of
-//! [`crate::session::singleplayer::SinglePlayerSession`]. Owns the
-//! mgba thread driven by the local ROM + save, hooks the primary
-//! traps that talk to the shared `tango_pvp::battle::Match`, and
-//! spawns the background match-run task that pumps remote inputs
-//! into the in-progress round.
+//! Live PvP emulator session on the SIO-lockstep engine — peer-paired
+//! netplay sibling of
+//! [`crate::session::singleplayer::SinglePlayerSession`].
+//!
+//! Both games run locally as an [`mgba_siolink::Pair`] linked through
+//! mgba's lockstep SIO driver (see [`tango_pvp::sio`]): the games speak
+//! their *real* link protocol over the emulated cable, and the pair is
+//! the rollback unit. There is no mgba thread, no traps, and no shadow —
+//! a dedicated drive thread paces the [`Match`] at the GBA frame
+//! rate, feeding the local joypad in and shipping each tick's input to
+//! the peer. HP/custom/chip telemetry is RAM-polled out of the
+//! simulation by the engine's per-tick observer; round starts and the
+//! match end are trap-driven off the games' own code paths.
 //!
 //! Construction is async because it has to wait for the lobby
-//! background loop to release the data-channel `Receiver` (it
-//! holds it through the cancel-exit path). Once the receiver
-//! arrives, this is the same kind of session the UI tick loop
-//! already knows how to draw.
+//! background loop to release the data-channel `Receiver` (it holds it
+//! through the cancel-exit path), and then for the drive thread to boot
+//! and prime the pair to a live link battle. Once up, this is the same
+//! kind of session the UI tick loop already knows how to draw.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
+
+use tango_pvp::engine::{Match, MatchConfig};
+use tango_pvp::telemetry;
 
 pub use tango_pvp::battle::EXPECTED_FPS;
 
@@ -31,9 +41,14 @@ const IN_MATCH_HEARTBEAT: std::time::Duration =
     std::time::Duration::from_nanos((1_000_000_000.0 / EXPECTED_FPS as f64) as u64);
 
 /// Session-redraw cadence while reconnecting (~30 fps), so the give-up progress
-/// bar drains smoothly even though the paused emulator emits no frames. Purely
+/// bar drains smoothly even though the paused drive loop emits no frames. Purely
 /// cosmetic.
 const RECONNECT_UI_TICK: std::time::Duration = std::time::Duration::from_millis(33);
+
+/// How long the drive loop sleeps per iteration while paused (reconnect) or
+/// stalled (peer far behind) — just short enough to react promptly when the
+/// condition clears.
+const PAUSED_TICK: std::time::Duration = std::time::Duration::from_millis(10);
 
 /// The latching end-of-match signals, grouped so the teardown policy
 /// lives in one place instead of four loose atomics on the session.
@@ -41,8 +56,8 @@ const RECONNECT_UI_TICK: std::time::Duration = std::time::Duration::from_millis(
 /// Each field starts cleared and flips exactly once as the match winds
 /// down; [`PvpSession::is_ended`] combines them with the completion +
 /// cancellation tokens. Every field is an `Arc`, so [`Clone`] hands out a
-/// shared handle: the net receive task, the match-run task, and the
-/// frame_callback each keep one and raise their own signal.
+/// shared handle: the net receive task, the supervisor, and the drive
+/// thread each keep one and raise their own signal.
 #[derive(Clone, Default)]
 struct EndState {
     /// Remote's in-game match-end handshake (the in-band `data::wire`
@@ -52,46 +67,53 @@ struct EndState {
     /// replay tail before we drop the data channel.
     remote_ended: Arc<AtomicBool>,
     /// Remote's data channel closed (clean RTC `on_closed` or receiver
-    /// `Err`) — raised by the match-run task. No more packets are coming,
+    /// `Err`) — raised by the supervisor. No more packets are coming,
     /// so `is_ended` skips straight past the grace window.
     remote_disconnected: Arc<AtomicBool>,
     /// Wall-clock instant we first observed local completion, or `None`
-    /// until then. Pulls double duty: the frame_callback fires our
+    /// until then. Pulls double duty: the drive thread fires our
     /// `EndOfMatch` exactly once on the `None → Some` edge, and `is_ended`
     /// reads the stamp as the fallback grace deadline so a silent peer
     /// can't pin us forever.
     local_ended_at: Arc<Mutex<Option<std::time::Instant>>>,
 }
 
+/// Live per-frame readouts the drive thread publishes for the UI —
+/// the instrument panel and sparklines read these between frames.
+#[derive(Default)]
+struct Metrics {
+    /// Clock-sync skew the throttler reacts to (positive = we lead).
+    skew: std::sync::atomic::AtomicI32,
+    /// Local inputs not yet matched by a remote input.
+    queue_len: AtomicU32,
+    /// Speculative ticks the last advance rolled back.
+    depth: AtomicU32,
+    /// What the pacing loop currently targets, f32 bits (base rate minus
+    /// the throttler's shave).
+    fps_target: AtomicU32,
+}
+
 pub struct PvpSession {
     local_game: &'static crate::library::game::Game,
     /// This side's player index (P1 = 0, P2 = 1), picked once at match start and
-    /// stable for the whole match. Match-level, not round-level — the instrument
-    /// panel's P1/P2 tag reads it directly so it shows even between rounds, when
-    /// there's no live [`RoundStats`].
+    /// stable for the whole match. The pair is symmetric — core 0 always runs
+    /// player 0's game on both peers — so this is also which core is "ours".
     local_player_index: u8,
     joyflags: Arc<AtomicU32>,
-    /// Per-game in-match hook fires `completion_token.complete()`
-    /// once the match has actually reached its end-game screen.
-    /// We hold a handle to poll it from the UI tick so the
-    /// session can self-close — same trigger as the legacy
-    /// `Session::completed()` check (see `tango/src/gui.rs`'s
-    /// `should_close` block).
-    completion_token: tango_pvp::hooks::CompletionToken,
+    /// Flipped once the games' own match-end path is confirmed — the
+    /// direct successor of the trap engine's per-game completion hook.
+    completed: Arc<AtomicBool>,
     /// Latching end-of-match signals (remote-ended / remote-disconnected /
     /// local-ended). Grouped in [`EndState`]; `is_ended` reads them
-    /// alongside `completion_token` and `cancellation_token`.
+    /// alongside `completed` and `cancellation_token`.
     end: EndState,
-    /// Sliding-window timestamp counter marked once per emulator
-    /// frame_callback — yields the true emulator TPS regardless
-    /// of how often the UI polls. Equivalent to legacy
-    /// `tango::stats::Counter` driven by the same callback site.
-    tps_counter: Arc<std::sync::Mutex<crate::session::stats::Counter>>,
+    /// Sliding-window timestamp counter marked once per drive-loop frame —
+    /// yields the true simulation TPS regardless of how often the UI polls.
+    tps_counter: Arc<Mutex<crate::session::stats::Counter>>,
     _audio_binding: Option<crate::platform::audio::Binding>,
-    _thread: mgba::thread::Thread,
-    /// Drops fire-cancellation through the match background tasks
-    /// (`Match::run`, `Match::cancel`). On Close we cancel + drop
-    /// the session, which tears the network loop down cleanly.
+    /// Drops fire-cancellation through the drive thread and the network
+    /// tasks. On Close we cancel + drop the session, which tears the
+    /// network loop down cleanly.
     cancellation_token: tokio_util::sync::CancellationToken,
     /// The peer link: owns the peer connection, both channels' halves, the
     /// latency readout, and the transparent mid-match reconnect (see
@@ -100,11 +122,8 @@ pub struct PvpSession {
     /// eventual drop closes the connection gracefully (DTLS close_notify → the
     /// peer's prompt EOF).
     link: Arc<crate::net::link::Link>,
-    /// Kept alive so the background `match_.run(receiver)` task
-    /// has a referent. Cleared by that task when it exits. The UI
-    /// also reads this each tick to scrape the current round's
-    /// player-index / queue-lengths for the status bar.
-    match_handle: tango_pvp::hooks::MatchHandle,
+    /// Live UI readouts published by the drive thread.
+    metrics: Arc<Metrics>,
     pub link_code: String,
     pub remote_nickname: String,
     /// Opponent's fully-loaded selection (rom + parsed save +
@@ -118,22 +137,20 @@ pub struct PvpSession {
     pub opponent_save_view: crate::save_view::State,
     /// Local side's fully-loaded selection — mirror of
     /// [`opponent_loaded`] for the in-session "my setup" toggle.
-    /// Always present in PvP (the user always has access to
-    /// their own save); kept Optional only to match the shape
-    /// of the opponent field for the shared rendering path.
     pub local_loaded: Option<crate::selection::Loaded>,
     /// Active-tab / grouping state for the in-match self
     /// save-view panel. Mirror of [`opponent_save_view`].
     pub local_save_view: crate::save_view::State,
-    /// Live local frame delay, shared with the running `Match`.
-    /// The footer slider writes it via [`set_frame_delay`]; the netcode reads it
-    /// each rendered frame. Purely local — never negotiated or sent to the peer.
+    /// Live local frame delay — realized as the engine's present delay
+    /// (how far the displayed tick trails the local input frontier). The
+    /// footer slider writes it; the drive loop applies changes each frame.
+    /// Purely local — never negotiated or sent to the peer.
     frame_delay: Arc<AtomicU32>,
-    /// Incremental local-perspective match stats, fed by the match as
-    /// rounds close. Our own `Arc` (the match holds a clone), so the
-    /// post-match results snapshot and the sidecar write can read it
-    /// during teardown regardless of how far the match's background tasks
-    /// have already wound down.
+    /// Incremental local-perspective match stats, fed by the drive thread
+    /// from confirmed telemetry as rounds close. Our own `Arc` (the drive
+    /// thread holds a clone), so the post-match results snapshot and the
+    /// sidecar write can read it during teardown regardless of how far the
+    /// background tasks have already wound down.
     stats: Arc<Mutex<tango_pvp::analysis::MatchStatsBuilder>>,
     /// Where this match's replay is being recorded, or `None` if the writer
     /// failed to open. The post-match results screen offers to play it back.
@@ -142,8 +159,7 @@ pub struct PvpSession {
     started_at: std::time::Instant,
 }
 
-/// Everything [`PvpSession::new`] needs, as named fields (the positional
-/// form had grown past a dozen arguments). Assembled by
+/// Everything [`PvpSession::new`] needs, as named fields. Assembled by
 /// [`spawn_pvp`](crate::session::spawn_pvp).
 pub struct PvpSessionArgs<'a> {
     /// Local/remote game impls; the roms must already have any patch applied.
@@ -153,15 +169,10 @@ pub struct PvpSessionArgs<'a> {
     pub remote_rom: Arc<Vec<u8>>,
     /// The netplay handoff: negotiated terms + the transport bundle.
     pub pre_match: crate::netplay::PreMatchData,
-    /// This side's frame delay — realized purely as local display lag (how
-    /// far the display core trails the netcode frontier). Comes straight from
-    /// local config; never negotiated with or sent to the peer.
+    /// This side's frame delay — realized purely as local display lag (the
+    /// engine's present delay). Comes straight from local config; never
+    /// negotiated with or sent to the peer.
     pub frame_delay: u32,
-    /// Whether to skip the game's battle BGM for this match. Local-only
-    /// like the volume — the peer is unaffected, and the recorded replay
-    /// keeps its music (export has its own mute toggle). Sampled from
-    /// config at match start.
-    pub disable_bgm: bool,
     pub replays_path: &'a Path,
     pub cache_path: &'a Path,
     pub audio_binder: &'a crate::platform::audio::LateBinder,
@@ -174,10 +185,11 @@ pub struct PvpSessionArgs<'a> {
 impl PvpSession {
     /// Build the live match from [`PvpSessionArgs`].
     ///
-    /// Async because the lobby loop holds the data-channel
-    /// `Receiver` until it observes its cancellation and exits;
-    /// `Link::bring_up` awaits its handback (worst case a few ms
-    /// after `take_pre_match` flips the cancel flag).
+    /// Async because the lobby loop holds the data-channel `Receiver`
+    /// until it observes its cancellation and exits (`Link::bring_up`
+    /// awaits its handback), and because the drive thread then boots and
+    /// primes the pair — a couple of seconds of emulation — before the
+    /// session is live.
     pub async fn new(args: PvpSessionArgs<'_>) -> anyhow::Result<Self> {
         let PvpSessionArgs {
             local_game,
@@ -186,7 +198,6 @@ impl PvpSession {
             remote_rom,
             pre_match,
             frame_delay,
-            disable_bgm,
             replays_path,
             cache_path,
             audio_binder,
@@ -195,81 +206,37 @@ impl PvpSession {
             frame_notify,
             vbuf,
         } = args;
-        // Created up front: the link keys the in-match heartbeat's lifetime to
-        // this token so it survives transport errors during a reconnect
-        // (ending only at teardown). Shared with the Match and the supervisor.
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
-        // Parse the peer's raw SRAM into a Save object. Needed
-        // by the Shadow constructor (its primary trap needs
-        // remote_save.as_raw_wram()).
+        // Parse both sides' committed SRAM dumps. PvP runs entirely off
+        // these in-memory images — writes don't persist back to anyone's
+        // .sav file.
         let remote_save = remote_game
             .parse_save(&pre_match.remote_save_data)
             .map_err(|e| anyhow::anyhow!("parse remote save: {e:?}"))?;
-        // Local save is whatever we committed; same path.
         let local_save = local_game
             .parse_save(&pre_match.local_save_data)
             .map_err(|e| anyhow::anyhow!("parse local save: {e:?}"))?;
 
-        let mut core = crate::session::new_gba_core(local_rom.as_ref())?;
-        // PvP runs entirely off the in-memory SRAM dump from the
-        // commitment — writes don't persist back to the user's
-        // .sav file (matches legacy behavior; the only PvP-side
-        // mutations are stat/zenny stuff which the user shouldn't
-        // be carrying over from netplay anyway).
-        core.as_mut()
-            .load_save(mgba::vfile::VFile::from_vec(local_save.to_sram_dump()))?;
-        // Pin the cart RTC to the negotiated match clock. Both peers pin all
-        // their cores (primary here; shadow + re-sim stepper below via
-        // Shadow::new / MatchIdentity) to this same instant, so RTC-reading
-        // games (exe45) can't desync on it; the replay metadata records it
-        // (build_replay_writer) so playback pins to the identical value.
-        let rtc_time = std::time::UNIX_EPOCH + std::time::Duration::from_millis(pre_match.match_ts);
-        core.set_rtc_fixed(rtc_time);
+        let local_sio = local_game.pvp;
+        let remote_sio = remote_game.pvp;
 
-        let joyflags = Arc::new(AtomicU32::new(0));
-        let local_hooks = local_game.hooks;
-        // Usage semantics can depend on the applied patch (exe45's PvP
-        // patch), so they're probed off the patched ROM.
-        let chip_semantics = local_hooks.chip_semantics(local_rom.as_ref());
-        let counts_buster = local_hooks.counts_buster(local_rom.as_ref());
-
-        let match_handle = tango_pvp::hooks::MatchHandle::new();
-        let completion_token = tango_pvp::hooks::CompletionToken::new();
-
-        // Install the live-primary trap set (common + primary), wired to the
-        // running Match through the shared joyflags / handle / completion token.
-        local_hooks.install_on_primary(
-            &mut core,
-            tango_pvp::hooks::PrimaryState {
-                joyflags: joyflags.clone(),
-                match_: match_handle.clone(),
-                completion_token: completion_token.clone(),
-                disable_bgm,
-            },
-        );
-
-        let thread = mgba::thread::Thread::new(core);
-
-        // RNG seeded from the XOR'd nonces. Match::new clones the
-        // Mcg into its own state; we also need a clone for the
-        // Shadow side so both sides have the same prefix.
+        // Player index off the shared RNG seed, same negotiation as ever:
+        // both peers derive the same assignment, mirrored.
         use rand::SeedableRng;
         let mut rng = rand_pcg::Mcg128Xsl64::from_seed(pre_match.rng_seed);
-        let local_player_index = tango_pvp::battle::Match::pick_local_player_index(&mut rng, pre_match.is_offerer);
-        let identity = tango_pvp::battle::MatchIdentity {
-            match_type: pre_match.match_type,
-            is_offerer: pre_match.is_offerer,
-            local_player_index,
-            rtc_time,
-        };
+        let local_player_index = tango_pvp::battle::pick_local_player_index(&mut rng, pre_match.is_offerer);
+
+        // The match clock, pinned into both carts' RTC and recorded in the
+        // replay metadata so playback re-primes to the identical state.
+        let rtc_time = std::time::UNIX_EPOCH + std::time::Duration::from_millis(pre_match.match_ts);
 
         // Replay writer. Failing to open it shouldn't kill the
         // match — log and continue without recording.
         let (replay_writer, replay_path) = match build_replay_writer(
             replays_path,
             &pre_match,
-            &identity,
+            local_player_index,
             local_save.as_ref(),
             remote_save.as_ref(),
         ) {
@@ -280,21 +247,10 @@ impl PvpSession {
             }
         };
 
-        let remote_hooks = remote_game.hooks;
-        let shadow = tango_pvp::shadow::Shadow::new(
-            remote_rom.as_ref(),
-            remote_save.as_ref(),
-            remote_hooks,
-            identity,
-            rng.clone(),
-        )?;
-
         // Assemble the peer link from the lobby handoff — this awaits the
         // lobby loop releasing the reliable receiver (typically a few ms after
         // take_pre_match flipped the cancel) and starts the in-match
-        // retransmit heartbeat. Consumes `link_parts` off `pre_match`, so it
-        // runs after everything that borrows the handoff whole (the replay
-        // writer's metadata).
+        // retransmit heartbeat.
         let link = Arc::new(
             crate::net::link::Link::bring_up(pre_match.link_parts, IN_MATCH_HEARTBEAT, cancellation_token.clone())
                 .await?,
@@ -302,301 +258,144 @@ impl PvpSession {
         let in_match = link.in_match().clone();
 
         let end = EndState::default();
-        // `frame_delay` (this side's frame delay) is realized entirely
-        // locally by the display core trailing the netcode frontier; it's not
-        // part of the deterministic simulation and never crosses the wire. Shared
-        // as an atomic so the footer slider can live-adjust it mid-match.
+        let joyflags = Arc::new(AtomicU32::new(0));
+        let completed = Arc::new(AtomicBool::new(false));
         let frame_delay = Arc::new(AtomicU32::new(frame_delay));
-        // Incremental match stats, shared with the match (which folds each
-        // round in as it closes). We keep our own handle so the post-match
-        // results snapshot survives the match teardown.
-        let stats = Arc::new(Mutex::new(tango_pvp::analysis::MatchStatsBuilder::new(
-            chip_semantics,
-            counts_buster,
-        )));
-        let inner_match = tango_pvp::battle::Match::new(tango_pvp::battle::MatchConfig {
-            rom: local_rom.as_ref().clone(),
-            local_hooks,
-            primary_thread_handle: thread.handle(),
-            sender: Box::new(crate::net::PvpSender::new(in_match.clone())),
-            cancellation_token: cancellation_token.clone(),
-            rng,
-            shadow,
-            identity,
-            replay: tango_pvp::battle::ReplayConfig { writer: replay_writer },
-            frame_delay: frame_delay.clone(),
-            disable_bgm,
-            stats: stats.clone(),
-        });
-        match_handle.set(inner_match.clone());
-
-        // Match receive loop + link supervisor. Holds inner_match alive until
-        // the match ends (completion / cancel) or, when the link drops, until
-        // reconnection gives up. Policy lives here — deciding when a trip is
-        // worth reconnecting (that needs match-level knowledge: completion,
-        // the peer's EndOfMatch) and freezing/unfreezing the emulator around
-        // the attempt. The transport surgery (silent teardown, rebuild,
-        // hot-swap under the persistent rennet streams) is [`Link::reconnect`]'s;
-        // the lockstep sim treats the whole gap as a pause, so no state resync
-        // is needed. A link without a rebuild recipe ends the match on the
-        // first drop exactly as before.
-        {
-            let inner_match = inner_match.clone();
-            let match_handle = match_handle.clone();
-            let completion_token = completion_token.clone();
-            let end = end.clone();
-            let frame_notify = frame_notify.clone();
-            let in_match = in_match.clone();
-            let link = link.clone();
-            let handle = thread.handle();
-            let stats = stats.clone();
-            let stats_path = replay_path
-                .as_ref()
-                .map(|p| crate::library::replays::stats_path(cache_path, replays_path, p));
-            let cancel = cancellation_token.clone();
-            let mut receiver: Box<dyn tango_pvp::net::Receiver + Send + Sync> = Box::new(crate::net::PvpReceiver::new(
-                link.take_match_receiver()
-                    .expect("bring_up parks the in-match receiver"),
-                in_match.clone(),
-                link.latency_handle(),
-                end.remote_ended.clone(),
-                frame_notify.clone(),
-            ));
-            tokio::task::spawn(async move {
-                // Why the receive loop ended this iteration.
-                enum Trip {
-                    /// Clean local teardown (user closed / cancelled). Never reconnects.
-                    Cancelled,
-                    /// A channel hit EOF — the peer *told* us something: a deliberate
-                    /// quit (its peer connection's graceful drop sends DTLS
-                    /// close_notify), the peer's reconnect giving up, or its
-                    /// transport declaring the link dead. All of those mean the
-                    /// match is over; a mere link outage never produces an EOF (our
-                    /// own reconnect teardown is silent — `Link::reconnect` abandons
-                    /// rather than closes — and a dead network delivers nothing).
-                    Closed,
-                    /// The local input queue climbed to `RECONNECT_QUEUE_LENGTH`:
-                    /// the peer stopped matching our inputs, i.e. a quiet/dead link.
-                    /// The one trip that reconnects.
-                    Stalled,
-                }
-                loop {
-                    // `run` takes `receiver` by move, which is fine — every
-                    // looping path rebuilds it.
-                    let trip = tokio::select! {
-                        biased;
-                        _ = cancel.cancelled() => Trip::Cancelled,
-                        _ = link.watch_control_eof() => Trip::Closed,
-                        r = inner_match.run(receiver) => {
-                            log::info!("pvp in-match channel closed: {r:?}");
-                            Trip::Closed
-                        }
-                        _ = inner_match.stalled() => Trip::Stalled,
-                    };
-
-                    // Our own deliberate close: just stop. The session's teardown
-                    // drops the peer connection gracefully, and its DTLS
-                    // close_notify hands the peer a prompt EOF (`Trip::Closed`
-                    // over there — it ends instead of reconnecting).
-                    if matches!(trip, Trip::Cancelled) {
-                        break;
-                    }
-
-                    // Reconnect only on the stall watchdog — the one signal that
-                    // means "the link went quiet under a live match" — and only if
-                    // the transport can rebuild and the match isn't ending (our
-                    // completion or the peer's EndOfMatch).
-                    let reconnectable = matches!(trip, Trip::Stalled)
-                        && link.can_reconnect()
-                        && !completion_token.is_complete()
-                        && !end.remote_ended.load(Ordering::Acquire);
-                    if !reconnectable {
-                        end.remote_disconnected.store(true, Ordering::Release);
-                        cancel.cancel();
-                        break;
-                    }
-
-                    // Freeze the sim so its speculative lead can't run past the
-                    // rollback horizon (and overflow-bail) while the link is down.
-                    // Both peers converge on the rebuild: whoever trips first goes
-                    // silent, which stall-trips the other within
-                    // `RECONNECT_QUEUE_LENGTH` frames.
-                    handle.pause();
-                    frame_notify.notify_one();
-                    log::info!("pvp link dropped — pausing to reconnect");
-
-                    // Rebuild + hot-swap (the link's job), ticking the UI at
-                    // ~30 fps so the give-up bar drains smoothly while the paused
-                    // emulator produces no frames. The ticker never completes; it
-                    // just keeps redraws coming while `reconnect` runs.
-                    let restored = {
-                        let ui_tick = async {
-                            let mut iv = tokio::time::interval(RECONNECT_UI_TICK);
-                            loop {
-                                iv.tick().await;
-                                frame_notify.notify_one();
-                            }
-                        };
-                        tokio::select! {
-                            restored = link.reconnect() => restored,
-                            _ = ui_tick => unreachable!(),
-                        }
-                    };
-
-                    if !restored {
-                        // Timed out or cancelled — give up and end the match.
-                        end.remote_disconnected.store(true, Ordering::Release);
-                        cancel.cancel();
-                        handle.unpause();
-                        break;
-                    }
-
-                    // Fresh receiver over the swapped channel, same `in_match` —
-                    // the rennet in-stream (seq/ack) carries across the swap, so
-                    // the peer's resent window fills our gap contiguously.
-                    receiver = Box::new(crate::net::PvpReceiver::new(
-                        link.take_match_receiver().expect("reconnect parks a fresh receiver"),
-                        in_match.clone(),
-                        link.latency_handle(),
-                        end.remote_ended.clone(),
-                        frame_notify.clone(),
-                    ));
-                    // The queue watchdog re-arms itself on the next loop turn (it
-                    // builds fresh each `select!`): it waits for the rebuilt link's
-                    // resent inputs to drain the standing queue back below the
-                    // threshold before it can trip again, so it re-trips and
-                    // reconnects once more (self-healing) if the link falls silent
-                    // anew, without instantly re-firing on the not-yet-drained queue.
-                    handle.unpause();
-                    frame_notify.notify_one();
-                    log::info!("pvp transparently reconnected the link");
-                }
-
-                // Teardown: retire latency so `latency()` reads `None` and the
-                // telemetry panel retires, wake the session to re-check
-                // `is_ended` (the emu thread may be paused, so no vblank is
-                // coming), finalize the replay iff the match reached its end
-                // screen, and release the match handle.
-                link.retire_latency();
-                frame_notify.notify_one();
-                if completion_token.is_complete() {
-                    if let Err(e) = inner_match.finish_replay() {
-                        log::error!("finish replay failed: {e}");
-                    }
-                    // Cache the finished match's stats — the match already
-                    // folded each round as it ended, so the Replays tab
-                    // never has to re-simulate this one.
-                    if let Some(stats_path) = stats_path.as_ref() {
-                        let snapshot = stats.lock().unwrap().snapshot();
-                        if let Err(e) = crate::library::replays::write_match_stats(stats_path, &snapshot) {
-                            log::warn!("failed to write replay stats cache entry: {e}");
-                        }
-                    }
-                }
-                match_handle.clear();
-            });
-        }
-
-        thread.start()?;
-        thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
-
+        let metrics = Arc::new(Metrics::default());
+        let drive_paused = Arc::new(AtomicBool::new(false));
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
-        let tps_counter = Arc::new(std::sync::Mutex::new(crate::session::stats::Counter::new(60)));
+        let tps_counter = Arc::new(Mutex::new(crate::session::stats::Counter::new(60)));
         vbuf.lock().unwrap().fill(0);
 
-        // Single-core PvP: the live mgba thread is the only core — it runs the
-        // netcode and renders straight to the UI. The `Round` loads the FF's
-        // computed `present_state` into it each frame, so the live core's game
-        // tick lags `current_tick` by `frame_delay`.
-        let audio_binding = audio_binder.bind_mgba(thread.handle(), "pvp");
+        // Usage semantics can depend on the applied patch (exe45's PvP
+        // patch), so they're probed off the patched ROM.
+        let stats = Arc::new(Mutex::new(tango_pvp::analysis::MatchStatsBuilder::new(
+            local_game.pvp.chip_semantics(local_rom.as_ref()),
+            local_game.pvp.counts_buster(local_rom.as_ref()),
+        )));
 
-        // Completion / EndOfMatch handling, shared by both core layouts. Runs
-        // on the live core's frame_callback: returns whether the match has
-        // completed (caller pauses the live emulator if so) and fires the
-        // EndOfMatch packet + grace-window wake exactly once on the edge.
-        let handle_completion = {
-            let completion_token = completion_token.clone();
-            let frame_notify = frame_notify.clone();
-            let end = end.clone();
-            let in_match_for_eom = in_match.clone();
-            let rt_handle = tokio::runtime::Handle::current();
-            move || -> bool {
-                if !completion_token.is_complete() {
-                    return false;
-                }
-                // First frame on which local completion is visible: stamp the
-                // grace deadline and fire our EndOfMatch + fallback wake exactly
-                // once. The `None → Some` transition under the lock is the guard
-                // (the frame_callback is the only writer, so check-then-set is
-                // sound).
-                let first_completion = {
-                    let mut completed_at = end.local_ended_at.lock().unwrap();
-                    if completed_at.is_some() {
-                        false
-                    } else {
-                        *completed_at = Some(std::time::Instant::now());
-                        true
-                    }
-                };
-                if first_completion {
-                    // In-band EndOfMatch: rides the same ordered seq stream as
-                    // inputs over the unreliable channel, so the peer sees it
-                    // exactly once and only after every preceding input.
-                    let in_match = in_match_for_eom.clone();
-                    rt_handle.spawn(async move {
-                        if let Err(e) = in_match.send_end_of_match().await {
-                            log::warn!("pvp: send EndOfMatch failed: {e}");
-                        }
-                    });
-                    // Wall-clock fallback wake so `is_ended` is rechecked even
-                    // if the peer never sends EndOfMatch / the channel errors.
-                    let notify = frame_notify.clone();
-                    rt_handle.spawn(async move {
-                        tokio::time::sleep(PEER_END_GRACE).await;
-                        notify.notify_one();
-                    });
-                }
-                true
+        // Remote input events flow receive-task → drive thread over this
+        // queue; the rennet reassembly in PvpReceiver already ordered and
+        // deduplicated them (one Input per remote tick, in tick order).
+        let (event_tx, event_rx) = std::sync::mpsc::channel::<tango_pvp::net::Event>();
+
+        // The sender pump: the drive thread pushes one Input per advance;
+        // the pump ships each as a rennet frame over the unreliable channel.
+        let sender = crate::net::PvpSender::new(in_match.clone());
+
+        // Pair-order arrays: core 0 always runs player 0's game, on both
+        // peers, so priming and simulation are bit-identical across the pair.
+        let (roms, saves, supports) = if local_player_index == 0 {
+            (
+                [local_rom.as_ref().clone(), remote_rom.as_ref().clone()],
+                [local_save.to_sram_dump(), remote_save.to_sram_dump()],
+                [local_sio, remote_sio],
+            )
+        } else {
+            (
+                [remote_rom.as_ref().clone(), local_rom.as_ref().clone()],
+                [remote_save.to_sram_dump(), local_save.to_sram_dump()],
+                [remote_sio, local_sio],
+            )
+        };
+
+        // Boot + prime + run on a dedicated drive thread (the pair is
+        // single-threaded by design). Construction happens on the thread —
+        // priming is a couple seconds of emulation — and readiness comes
+        // back over a oneshot so `new` can fail cleanly.
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<anyhow::Result<tango_pvp::PairHandle>>();
+        {
+            let boot = BootPieces {
+                roms,
+                saves,
+                supports,
+                match_type: pre_match.match_type,
+                rng_seed: pre_match.rng_seed,
+                rtc: rtc_time,
+                local_player: local_player_index as usize,
+                present_delay: frame_delay.load(Ordering::Relaxed),
+            };
+            let drive = DriveContext {
+                joyflags: joyflags.clone(),
+                frame_delay: frame_delay.clone(),
+                metrics: metrics.clone(),
+                drive_paused: drive_paused.clone(),
+                cancel: cancellation_token.clone(),
+                completed: completed.clone(),
+                end: end.clone(),
+                event_rx,
+                sender,
+                in_match: in_match.clone(),
+                replay_writer,
+                stats: stats.clone(),
+                stats_path: replay_path
+                    .as_ref()
+                    .map(|p| crate::library::replays::stats_path(cache_path, replays_path, p)),
+                tps_counter: tps_counter.clone(),
+                vbuf: vbuf.clone(),
+                frame_notify: frame_notify.clone(),
+                local_player: local_player_index as usize,
+                rt: tokio::runtime::Handle::current(),
+            };
+            std::thread::Builder::new()
+                .name("tango-sio-drive".to_owned())
+                .spawn(move || drive.run(boot, ready_tx))?;
+        }
+
+        // Wait for boot + priming before declaring the session live. Ready
+        // hands back the handle to the live pair for the audio stream.
+        let pair_handle = ready_rx
+            .await
+            .map_err(|_| anyhow::anyhow!("sio drive thread died during boot"))??;
+
+        // Audio: the host output stream plays the local core directly,
+        // pulling and resampling its samples straight off the pair (rate
+        // control follows the drive loop's published fps target) — see
+        // [`crate::session::pair_stream::PairStream`].
+        let audio_binding = match audio_binder.bind(Some(Box::new(crate::session::pair_stream::PairStream::new(
+            pair_handle,
+            {
+                let local_player = local_player_index as usize;
+                move || local_player
+            },
+            {
+                let metrics = metrics.clone();
+                move || f32::from_bits(metrics.fps_target.load(Ordering::Relaxed))
+            },
+            audio_binder.sample_rate(),
+        )))) {
+            Ok(b) => Some(b),
+            Err(e) => {
+                log::warn!("pvp: audio bind failed: {e:?}");
+                None
             }
         };
 
-        // Single core: feeds local input from the user's atomic, marks TPS,
-        // pushes its rendered frame straight to the UI, drives completion.
-        // The display trails the network frontier by `frame_delay`: the Round
-        // loads the engine's at-present_tick state into this core each frame.
-        thread.set_frame_callback({
-            let joyflags = joyflags.clone();
-            let tps_counter = tps_counter.clone();
-            let handle_completion = handle_completion.clone();
-            let vbuf = vbuf.clone();
-            let frame_notify = frame_notify.clone();
-            move |mut core, video_buffer, mut thread_handle| {
-                core.set_keys(joyflags.load(Ordering::Relaxed));
-                tps_counter.lock().unwrap().mark();
-                {
-                    // Copy mgba's native BGR555 straight through; the
-                    // framebuffer shader expands it to RGB on the GPU.
-                    vbuf.lock().unwrap().copy_from_slice(video_buffer);
-                }
-                frame_notify.notify_one();
-                if handle_completion() {
-                    thread_handle.pause();
-                }
-            }
+        // Receive pump + link supervisor: reads peer frames into the event
+        // queue, watches for stalls, and runs the transparent reconnect.
+        spawn_supervisor(SupervisorContext {
+            link: link.clone(),
+            in_match,
+            event_tx,
+            end: end.clone(),
+            completed: completed.clone(),
+            cancel: cancellation_token.clone(),
+            metrics: metrics.clone(),
+            drive_paused: drive_paused.clone(),
+            frame_notify: frame_notify.clone(),
         });
 
         Ok(Self {
             local_game,
             local_player_index,
             joyflags,
-            completion_token,
+            completed,
             end,
             tps_counter,
             _audio_binding: audio_binding,
-            _thread: thread,
             cancellation_token,
             link,
-            match_handle,
+            metrics,
             link_code: pre_match.link_code,
             remote_nickname: pre_match.remote_settings.nickname,
             opponent_loaded,
@@ -627,9 +426,10 @@ impl PvpSession {
         self.frame_delay.load(Ordering::Relaxed)
     }
 
-    /// Live-set the local frame delay. Purely local: takes effect
-    /// on the next rendered frame, no peer coordination. Clamped to the supported
-    /// range as a guard against an out-of-range caller.
+    /// Live-set the local frame delay. Purely local: the drive loop applies
+    /// it as the engine's present delay on the next frame, no peer
+    /// coordination. Clamped to the supported range as a guard against an
+    /// out-of-range caller.
     pub fn set_frame_delay(&self, frame_delay: u32) {
         self.frame_delay.store(
             frame_delay.clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY),
@@ -644,15 +444,14 @@ impl PvpSession {
     }
 
     pub fn request_close(&self) {
-        // Cancelling the token is the whole close signal: it unblocks the
-        // match-run task's `cancelled()` arm and flips `is_ended`'s
-        // cancellation check. (The grace gate there still holds, so the
-        // match-end screen plays out before the view tears down.)
+        // Cancelling the token is the whole close signal: it stops the
+        // drive thread and the supervisor and flips `is_ended`'s
+        // cancellation check.
         self.cancellation_token.cancel();
     }
 
     /// `true` while the link has dropped and the session is transparently
-    /// rebuilding it (direct or matchmaking) — the emulator is paused and the
+    /// rebuilding it (direct or matchmaking) — the drive loop is paused and the
     /// PvP view shows a "Reconnecting…" overlay.
     pub fn is_reconnecting(&self) -> bool {
         matches!(self.link.health(), crate::net::link::LinkHealth::Reconnecting { .. })
@@ -678,43 +477,44 @@ impl PvpSession {
     }
 
     /// True once it's safe to tear the session down. Requires
-    /// local completion (per-game `match_end_ret` hook fired)
+    /// local completion (the deciding round's end confirmed + runout)
     /// PLUS one of:
     ///   * the peer also sent us `EndOfMatch`, or
     ///   * `PEER_END_GRACE` has elapsed since local completion
     ///     (peer crashed / disconnected — give up waiting).
     ///
     /// The handshake keeps the data channel alive long enough
-    /// for the lagging side to also reach its hook and write
-    /// `END_OF_REPLAY` before we drop `_peer_conn`. Without it,
+    /// for the lagging side to also confirm its end and write
+    /// its replay tail before we drop the connection. Without it,
     /// whichever side finishes first kills the connection out
     /// from under the other and the other side's replay ends up
     /// truncated.
     pub fn is_ended(&self) -> bool {
-        if !self.completion_token.is_complete() {
+        // The dead-link checks come before the completion gate: a match
+        // that ends by disconnect (the peer quit, the reconnect window
+        // expired, our own netcode tore down) is over whether or not it
+        // ever completed — leaving these behind `completed` stranded
+        // mid-match disconnects on a frozen session forever.
+        //
+        // Remote's data channel closed (RTCPeerConnection drop or
+        // SCTP-level disconnect): no EndOfMatch is ever coming, so skip
+        // straight to teardown without burning the grace window.
+        if self.end.remote_disconnected.load(Ordering::Acquire) {
+            return true;
+        }
+        // We tore our own netcode down. Same rationale, from our side.
+        if self.cancellation_token.is_cancelled() {
+            return true;
+        }
+        if !self.completed.load(Ordering::Acquire) {
             return false;
         }
         if self.end.remote_ended.load(Ordering::Acquire) {
             return true;
         }
-        // Remote's data channel closed (RTCPeerConnection drop or
-        // SCTP-level disconnect). No EndOfMatch is ever coming
-        // so skip straight to teardown without burning the
-        // grace window.
-        if self.end.remote_disconnected.load(Ordering::Acquire) {
-            return true;
-        }
-        // We tore our own netcode down (local input-buffer overflow cancels the
-        // match via the primary `main_read_joyflags` hook). Same rationale as
-        // `remote_disconnected`, from our side: no useful EndOfMatch is coming, so
-        // skip the grace window. The completion gate above still holds, so the
-        // comm-error / match-end screen runs to completion as normal first.
-        if self.cancellation_token.is_cancelled() {
-            return true;
-        }
         match *self.end.local_ended_at.lock().unwrap() {
             Some(t) => t.elapsed() >= PEER_END_GRACE,
-            // Completion-token can flip before the frame_callback
+            // The completion flag can flip before the drive loop
             // observes it and stamps the deadline. Hold off
             // teardown for one extra tick rather than firing the
             // grace timer from t=0.
@@ -722,14 +522,19 @@ impl PvpSession {
         }
     }
 
+    /// Whether the match ran to its natural end (a final round ended and
+    /// the runout elapsed) — as opposed to ending by disconnect or quit.
+    /// Gates the post-match results screen.
+    pub fn is_completed(&self) -> bool {
+        self.completed.load(Ordering::Acquire)
+    }
+
     /// Median ping over the last few seconds — drives the frame-delay
     /// suggestion, where smoothing out a transient spike is what we want.
     /// `Some(ZERO)` until the first sample arrives, then `Some(median)`
     /// while the link is up; `None` once the remote drops (the supervisor
     /// retires the link's counter). The UI keys the instrument panel off this:
-    /// `None` means "no live link", which `remote_disconnected` (still used
-    /// internally by [`is_ended`](Self::is_ended)) can't distinguish from a
-    /// legitimate 0 ms LAN ping that sticks at its last reading after a drop.
+    /// `None` means "no live link".
     pub fn latency(&self) -> Option<std::time::Duration> {
         self.link.latency()
     }
@@ -743,9 +548,9 @@ impl PvpSession {
         self.link.latency_raw()
     }
 
-    /// Smoothed emulator ticks-per-second from the per-frame
-    /// callback's interval samples. Independent of UI refresh
-    /// rate. ZERO until the second sample lands.
+    /// Smoothed simulation ticks-per-second from the drive loop's
+    /// per-frame marks. Independent of UI refresh rate. ZERO until the
+    /// second sample lands.
     pub fn tps(&self) -> f32 {
         let mean = self.tps_counter.lock().unwrap().mean_duration();
         if mean.is_zero() {
@@ -755,11 +560,11 @@ impl PvpSession {
         }
     }
 
-    /// What the throttler is currently asking mgba to run at. Pairs with
-    /// `tps()` — gap between the two tells you whether the throttler is
-    /// the cause of a slow tps or just observing one.
+    /// What the pacing loop is currently targeting. Pairs with `tps()` —
+    /// gap between the two tells you whether the throttler is the cause of
+    /// a slow tps or just observing one.
     pub fn fps_target(&self) -> f32 {
-        self._thread.handle().lock_audio().sync().fps_target()
+        f32::from_bits(self.metrics.fps_target.load(Ordering::Relaxed))
     }
 
     /// The match stats aggregated so far, in play order. Read at teardown
@@ -771,7 +576,7 @@ impl PvpSession {
 
     /// How long the match ran, start of session to local completion — or to
     /// now, if completion hasn't been observed yet (it is stamped a frame
-    /// after the completion token flips). For the results screen.
+    /// after the completion flag flips). For the results screen.
     pub fn match_duration(&self) -> std::time::Duration {
         match *self.end.local_ended_at.lock().unwrap() {
             Some(ended_at) => ended_at.duration_since(self.started_at),
@@ -779,38 +584,37 @@ impl PvpSession {
         }
     }
 
-    /// Snapshot of the current round's metrics for the status bar
-    /// (P1/P2, frame advantage). `None` between rounds or before
-    /// the first round starts.
+    /// Snapshot of the live netcode metrics for the status bar
+    /// (skew, lead, rollback depth). Always available while the
+    /// session runs — the SIO engine's simulation never stops
+    /// between rounds.
     pub fn round_stats(&self) -> Option<RoundStats> {
-        let metrics = self.match_handle.round_metrics()?;
         Some(RoundStats {
-            skew: metrics.local_tick_advantage as i32 - metrics.remote_tick_advantage as i32,
-            lead: metrics.local_tick_advantage as i32,
-            depth: metrics.misprediction_depth,
+            skew: self.metrics.skew.load(Ordering::Relaxed),
+            lead: self.metrics.queue_len.load(Ordering::Relaxed) as i32,
+            depth: self.metrics.depth.load(Ordering::Relaxed),
         })
     }
 }
 
-/// Subset of `tango_pvp::battle::Round` metrics surfaced in the
-/// status bar. Per-round and `None` between rounds; the match-level
-/// player index lives on [`PvpSession::local_player_index`] instead.
+/// Subset of the engine's per-frame metrics surfaced in the status bar.
 #[derive(Clone, Copy, Debug)]
 pub struct RoundStats {
-    /// Real-time clock skew the throttler reacts to: `local_advantage −
-    /// remote_advantage` (see `tango_pvp::battle::Throttler`). The symmetric
-    /// network term cancels in the difference, so this reads ~0 at clock
-    /// sync, positive when we're leading (and being slowed), and negative
-    /// when the peer is leading.
+    /// Real-time clock skew the throttler reacts to (see
+    /// [`tango_pvp::Throttler`]). The symmetric network term cancels
+    /// in the difference, so this reads ~0 at clock sync, positive when
+    /// we're leading (and being slowed), and negative when the peer is
+    /// leading.
     pub skew: i32,
-    /// Local tick lead: how far the local frontier runs ahead of the confirmed
-    /// remote input (the raw `local_tick_advantage`, one side of the skew pair).
-    /// Steady around `present_delay` at clock sync; ramps up when the remote falls
-    /// behind or a delivery stall holds its confirmed frontier still.
+    /// Local tick lead: how many local inputs are still unmatched by a
+    /// confirmed remote input. Steady around the wire latency at clock
+    /// sync; ramps up when the remote falls behind or a delivery stall
+    /// holds its confirmed frontier still.
     pub lead: i32,
-    /// Misprediction depth: how many speculative frames this frame discarded and
-    /// re-simulated because a confirmed remote input contradicted the prediction.
-    /// 0 on a clean frame; spikes mark the size of each rollback.
+    /// Misprediction depth: how many speculative frames the last advance
+    /// discarded and re-simulated because a confirmed remote input
+    /// contradicted the prediction. 0 on a clean frame; spikes mark the
+    /// size of each rollback.
     pub depth: u32,
 }
 
@@ -826,23 +630,555 @@ impl std::fmt::Debug for PvpSession {
 impl Drop for PvpSession {
     fn drop(&mut self) {
         // Belt-and-suspenders: even if request_close wasn't
-        // called, cancelling the token signals the
-        // network/match tasks to wind down before the mgba
-        // thread joins.
+        // called, cancelling the token signals the drive thread and
+        // network tasks to wind down.
         self.cancellation_token.cancel();
     }
+}
+
+// ---------------------------------------------------------------------------
+// The drive thread: boots + primes the pair, then paces the session.
+
+/// What the drive thread needs to boot the [`Match`].
+struct BootPieces {
+    roms: [Vec<u8>; 2],
+    saves: [Vec<u8>; 2],
+    supports: [&'static (dyn tango_pvp::GameSupport + Send + Sync); 2],
+    match_type: (u8, u8),
+    rng_seed: [u8; 16],
+    rtc: std::time::SystemTime,
+    local_player: usize,
+    present_delay: u32,
+}
+
+struct DriveContext {
+    joyflags: Arc<AtomicU32>,
+    frame_delay: Arc<AtomicU32>,
+    metrics: Arc<Metrics>,
+    drive_paused: Arc<AtomicBool>,
+    cancel: tokio_util::sync::CancellationToken,
+    completed: Arc<AtomicBool>,
+    end: EndState,
+    event_rx: std::sync::mpsc::Receiver<tango_pvp::net::Event>,
+    sender: crate::net::PvpSender,
+    in_match: crate::net::InMatchTx,
+    replay_writer: Option<tango_pvp::replay::Writer>,
+    stats: Arc<Mutex<tango_pvp::analysis::MatchStatsBuilder>>,
+    stats_path: Option<std::path::PathBuf>,
+    tps_counter: Arc<Mutex<crate::session::stats::Counter>>,
+    vbuf: Arc<Mutex<Vec<u8>>>,
+    frame_notify: Arc<tokio::sync::Notify>,
+    local_player: usize,
+    rt: tokio::runtime::Handle,
+}
+
+impl DriveContext {
+    fn run(
+        mut self,
+        pieces: BootPieces,
+        ready_tx: tokio::sync::oneshot::Sender<anyhow::Result<tango_pvp::PairHandle>>,
+    ) {
+        let mut match_ = match Match::new(MatchConfig {
+            roms: pieces.roms,
+            saves: pieces.saves,
+            support: [pieces.supports[0], pieces.supports[1]],
+            match_type: pieces.match_type,
+            rng_seed: pieces.rng_seed,
+            rtc: pieces.rtc,
+            local_player: pieces.local_player,
+            present_delay: pieces
+                .present_delay
+                .clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY),
+        }) {
+            Ok(m) => m,
+            Err(e) => {
+                let _ = ready_tx.send(Err(e));
+                return;
+            }
+        };
+        let _ = ready_tx.send(Ok(match_.pair_handle()));
+
+        if let Some(w) = self.replay_writer.as_mut() {
+            // The SIO stream is one continuous run of pair ticks; the
+            // container wants at least one open round.
+            let _ = w.start_round();
+        }
+
+        let mut throttler = tango_pvp::Throttler::new();
+        let mut next_tick = std::time::Instant::now();
+        // (tick, [p0, p1]) confirmed input pairs not yet folded into
+        // stats (the telemetry for those ticks may confirm later).
+        let mut pending_buttons: std::collections::VecDeque<(u32, [u32; 2])> = std::collections::VecDeque::new();
+        // Whether the first round's Started has been seen. Later Started
+        // events stamp round markers into the replay stream.
+        let mut first_round_started = false;
+        // Confirmed ticks whose replay input record must carry a
+        // round-start marker (see the write loop below).
+        let mut pending_round_marks: std::collections::VecDeque<u32> = std::collections::VecDeque::new();
+        let mut fired_end_of_match = false;
+
+        loop {
+            if self.cancel.is_cancelled() {
+                break;
+            }
+            if self.drive_paused.load(Ordering::Relaxed) {
+                std::thread::sleep(PAUSED_TICK);
+                next_tick = std::time::Instant::now();
+                continue;
+            }
+
+            // Live present-delay adjustment from the footer slider.
+            let pd = self.frame_delay.load(Ordering::Relaxed);
+            if pd != match_.present_delay() {
+                match_.set_present_delay(pd);
+            }
+
+            // Drain the network before advancing: every confirmed tick we
+            // ingest now is a rollback we don't take deeper.
+            for event in self.event_rx.try_iter() {
+                match event {
+                    tango_pvp::net::Event::Input(input) => {
+                        match_.add_remote_input(input.joyflags as u32, input.tick_advantage);
+                    }
+                    // The SIO engine has no wire-level round concept; a
+                    // trap-engine peer can't be paired with us (protocol
+                    // version gates), so this is just future-proofing.
+                    tango_pvp::net::Event::EndOfRound => {}
+                }
+            }
+
+            // Stall guard: the peer is too far behind (or gone) — advancing
+            // further would run the input stream past the rennet horizon.
+            // The in-match heartbeat keeps the redundancy window + acks
+            // flowing while we wait; the supervisor watches queue_len and
+            // decides whether this is a reconnect.
+            let queue_len = match_.local_queue_length() as u32;
+            self.metrics.queue_len.store(queue_len, Ordering::Relaxed);
+            if queue_len as usize >= tango_pvp::battle::RECONNECT_QUEUE_LENGTH {
+                std::thread::sleep(PAUSED_TICK);
+                next_tick = std::time::Instant::now();
+                continue;
+            }
+
+            // Sample the skew before `advance` enqueues this tick's local
+            // input, so our half matches the advantage we ship the peer.
+            let skew = match_.skew();
+            self.metrics.skew.store(skew, Ordering::Relaxed);
+
+            let keys = self.joyflags.load(Ordering::Relaxed) & tango_pvp::input::JOYFLAGS_MASK as u32;
+            let (outgoing, report) = match match_.advance(keys) {
+                Ok(r) => r,
+                Err(e) => {
+                    log::error!("pvp: sio advance failed: {e}");
+                    self.cancel.cancel();
+                    break;
+                }
+            };
+            self.metrics.depth.store(report.rolled_back, Ordering::Relaxed);
+
+            // Ship this tick's local input. Push-before-send semantics live
+            // in the pump; a transport error is non-terminal (the heartbeat
+            // retransmits once the reconnect swaps a live channel back in).
+            if tango_pvp::net::Sender::send(
+                &mut self.sender,
+                &tango_pvp::net::Event::Input(tango_pvp::net::Input {
+                    joyflags: outgoing.keys as u16,
+                    tick_advantage: outgoing.tick_advantage,
+                }),
+            )
+            .is_err()
+            {
+                log::warn!("pvp: send pump terminated; ending match");
+                self.end.remote_disconnected.store(true, Ordering::Release);
+                self.cancel.cancel();
+                break;
+            }
+
+            // Confirmed telemetry, drained before the replay write so this
+            // batch's round-start events can stamp markers onto this
+            // batch's input records. Everything at or below the confirmed
+            // boundary is final — no revocation bookkeeping needed on this
+            // side of the engine.
+            let (samples, events) = match_.telemetry().lock().unwrap().drain_confirmed(report.confirmed);
+
+            // Round lifecycle, trap-driven off the games' own code paths:
+            // a round start (after the first) stamps a marker into the
+            // replay; the match-end anchor firing means the players left
+            // the battle loop for good — the direct successor of the trap
+            // engine's match-end hook.
+            let mut match_ended = false;
+            for (tick, event) in &events {
+                match event {
+                    telemetry::RoundEvent::Started => {
+                        if first_round_started {
+                            pending_round_marks.push_back(*tick);
+                        }
+                        first_round_started = true;
+                    }
+                    telemetry::RoundEvent::Ended { .. } => {}
+                    telemetry::RoundEvent::MatchEnded => {
+                        match_ended = true;
+                    }
+                }
+            }
+
+            // Confirmed inputs: replay sink + the buttons half of the
+            // stats merge below.
+            let confirmed_inputs = match_.drain_confirmed();
+            if let Some(w) = self.replay_writer.as_mut() {
+                for (tick, keys) in &confirmed_inputs {
+                    if pending_round_marks.front().is_some_and(|t| t <= tick) {
+                        pending_round_marks.pop_front();
+                        let _ = w.start_round();
+                    }
+                    let (p0, p1) = (keys[0] as u16, keys[1] as u16);
+                    let (local, remote) = if self.local_player == 0 { (p0, p1) } else { (p1, p0) };
+                    if let Err(e) = w.write_input(
+                        self.local_player as u8,
+                        &(
+                            tango_pvp::input::PartialInput { joyflags: local },
+                            tango_pvp::input::PartialInput { joyflags: remote },
+                        ),
+                    ) {
+                        log::warn!("pvp: replay write failed (recording stops): {e}");
+                        self.replay_writer = None;
+                        break;
+                    }
+                }
+            }
+            pending_buttons.extend(confirmed_inputs);
+
+            if !samples.is_empty() || !events.is_empty() {
+                self.fold_confirmed_telemetry(samples, events, &mut pending_buttons);
+            }
+
+            // Completion: the games' own match-end path ran (confirmed —
+            // both peers see it at the same pair tick). No runout needed:
+            // the anchor fires after the result screens have played.
+            if match_ended {
+                self.completed.store(true, Ordering::Release);
+            }
+            if self.completed.load(Ordering::Acquire) && !fired_end_of_match {
+                fired_end_of_match = true;
+                let first_completion = {
+                    let mut completed_at = self.end.local_ended_at.lock().unwrap();
+                    if completed_at.is_some() {
+                        false
+                    } else {
+                        *completed_at = Some(std::time::Instant::now());
+                        true
+                    }
+                };
+                if first_completion {
+                    // In-band EndOfMatch: rides the same ordered seq stream
+                    // as inputs, so the peer sees it exactly once and only
+                    // after every preceding input.
+                    let in_match = self.in_match.clone();
+                    self.rt.spawn(async move {
+                        if let Err(e) = in_match.send_end_of_match().await {
+                            log::warn!("pvp: send EndOfMatch failed: {e}");
+                        }
+                    });
+                    // Wall-clock fallback wake so `is_ended` is rechecked
+                    // even if the peer never sends EndOfMatch.
+                    let notify = self.frame_notify.clone();
+                    self.rt.spawn(async move {
+                        tokio::time::sleep(PEER_END_GRACE).await;
+                        notify.notify_one();
+                    });
+                }
+            }
+
+            // Present the local screen to the UI. (Audio needs no push —
+            // the output stream pulls it straight off the pair.)
+            if let Some(buf) = match_.local_video_buffer() {
+                let mut vbuf = self.vbuf.lock().unwrap();
+                if vbuf.len() == buf.len() {
+                    vbuf.copy_from_slice(&buf);
+                }
+            }
+            self.tps_counter.lock().unwrap().mark();
+            self.frame_notify.notify_one();
+
+            // Clock sync: only the leading peer shaves tick rate, and only
+            // once the presented frame actually speculates past the present
+            // delay.
+            let slowdown = throttler.step(skew, match_.speculation_balance());
+            let target = EXPECTED_FPS - slowdown;
+            self.metrics.fps_target.store(target.to_bits(), Ordering::Relaxed);
+
+            // Pace at the base rate minus whatever the throttler shaved.
+            next_tick += std::time::Duration::from_secs_f64(1.0 / target as f64);
+            let now = std::time::Instant::now();
+            if next_tick > now {
+                std::thread::sleep(next_tick - now);
+            } else if now - next_tick > std::time::Duration::from_millis(250) {
+                // Fell way behind (debugger, laptop lid, ...): don't sprint
+                // to catch up, just resynchronize the cadence.
+                next_tick = now;
+            }
+        }
+
+        // Teardown: flush the replay tail. Finalize (write the EOR
+        // sentinel) only if the match completed — same policy as the trap
+        // engine, so an aborted match leaves a truncated-but-parseable
+        // recording.
+        if let Some(mut w) = self.replay_writer.take() {
+            for (_, keys) in match_.drain_confirmed() {
+                let (p0, p1) = (keys[0] as u16, keys[1] as u16);
+                let (local, remote) = if self.local_player == 0 { (p0, p1) } else { (p1, p0) };
+                let _ = w.write_input(
+                    self.local_player as u8,
+                    &(
+                        tango_pvp::input::PartialInput { joyflags: local },
+                        tango_pvp::input::PartialInput { joyflags: remote },
+                    ),
+                );
+            }
+            if self.completed.load(Ordering::Acquire) {
+                if let Err(e) = w.finish() {
+                    log::error!("finish replay failed: {e}");
+                }
+                // Cache the finished match's stats — each round already
+                // folded as it ended, so the Replays tab never has to
+                // re-simulate this one.
+                if let Some(stats_path) = self.stats_path.as_ref() {
+                    let snapshot = self.stats.lock().unwrap().snapshot();
+                    if let Err(e) = crate::library::replays::write_match_stats(stats_path, &snapshot) {
+                        log::warn!("failed to write replay stats cache entry: {e}");
+                    }
+                }
+            }
+        }
+    }
+
+    /// Fold a batch of confirmed telemetry into the stats builder (the
+    /// shared [`tango_pvp::analysis::fold_confirmed`], so live stats
+    /// and offline re-analysis stay byte-equivalent) and drive the round
+    /// lifecycle off the events.
+    fn fold_confirmed_telemetry(
+        &mut self,
+        samples: Vec<(u32, telemetry::BattleObs)>,
+        events: Vec<(u32, telemetry::RoundEvent)>,
+        pending_buttons: &mut std::collections::VecDeque<(u32, [u32; 2])>,
+    ) {
+        let mut stats = self.stats.lock().unwrap();
+        tango_pvp::analysis::fold_confirmed(&mut stats, self.local_player, samples, events, &mut |tick| {
+            // Discard input pairs older than this sample; the front pair
+            // at the sample's tick carries its buttons. Samples arrive
+            // tick-ascending, so this never skips a later sample's pair.
+            while pending_buttons.front().is_some_and(|(t, _)| *t < tick) {
+                pending_buttons.pop_front();
+            }
+            match pending_buttons.front() {
+                Some(&(t, keys)) if t == tick => Some(keys),
+                _ => None,
+            }
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The receive pump + link supervisor.
+
+struct SupervisorContext {
+    link: Arc<crate::net::link::Link>,
+    in_match: crate::net::InMatchTx,
+    event_tx: std::sync::mpsc::Sender<tango_pvp::net::Event>,
+    end: EndState,
+    completed: Arc<AtomicBool>,
+    cancel: tokio_util::sync::CancellationToken,
+    metrics: Arc<Metrics>,
+    drive_paused: Arc<AtomicBool>,
+    frame_notify: Arc<tokio::sync::Notify>,
+}
+
+/// Pump one receiver until error/EOF, forwarding events to the drive
+/// thread. Returns when the channel dies (the reconnect decision is the
+/// supervisor's).
+async fn run_receive_pump(
+    mut receiver: crate::net::PvpReceiver,
+    event_tx: std::sync::mpsc::Sender<tango_pvp::net::Event>,
+    frame_notify: Arc<tokio::sync::Notify>,
+) -> std::io::Error {
+    loop {
+        match tango_pvp::net::Receiver::receive(&mut receiver).await {
+            Ok(event) => {
+                if event_tx.send(event).is_err() {
+                    return std::io::Error::new(std::io::ErrorKind::BrokenPipe, "drive thread gone");
+                }
+                // Remote inputs settle ticks; make sure a paused/idle UI
+                // still observes progress.
+                frame_notify.notify_one();
+            }
+            Err(e) => return e,
+        }
+    }
+}
+
+/// Receive loop + link supervisor. Reads peer frames into the drive
+/// thread's queue until the match ends (completion / cancel) or, when the
+/// link drops, until reconnection gives up. Policy lives here — deciding
+/// when a trip is worth reconnecting and freezing/unfreezing the drive
+/// loop around the attempt. The transport surgery (silent teardown,
+/// rebuild, hot-swap under the persistent rennet streams) is
+/// [`crate::net::link::Link::reconnect`]'s; the lockstep sim treats the
+/// whole gap as a pause, so no state resync is needed.
+fn spawn_supervisor(ctx: SupervisorContext) {
+    let SupervisorContext {
+        link,
+        in_match,
+        event_tx,
+        end,
+        completed,
+        cancel,
+        metrics,
+        drive_paused,
+        frame_notify,
+    } = ctx;
+
+    let make_receiver = {
+        let link = link.clone();
+        let in_match = in_match.clone();
+        let end = end.clone();
+        let frame_notify = frame_notify.clone();
+        move || -> Option<crate::net::PvpReceiver> {
+            Some(crate::net::PvpReceiver::new(
+                link.take_match_receiver()?,
+                in_match.clone(),
+                link.latency_handle(),
+                end.remote_ended.clone(),
+                frame_notify.clone(),
+            ))
+        }
+    };
+
+    tokio::task::spawn(async move {
+        // Why the receive loop ended this iteration.
+        enum Trip {
+            /// Clean local teardown (user closed / cancelled). Never reconnects.
+            Cancelled,
+            /// A channel hit EOF — the peer *told* us something: a deliberate
+            /// quit, the peer's reconnect giving up, or its transport
+            /// declaring the link dead. All of those mean the match is over;
+            /// a mere link outage never produces an EOF.
+            Closed,
+            /// The local input queue climbed to `RECONNECT_QUEUE_LENGTH`:
+            /// the peer stopped matching our inputs, i.e. a quiet/dead link.
+            /// The one trip that reconnects.
+            Stalled,
+        }
+
+        let mut receiver = make_receiver().expect("bring_up parks the in-match receiver");
+        loop {
+            // The stall watch: poll the drive thread's published queue
+            // length. Coarse (10 Hz) is fine — the queue takes seconds to
+            // climb to the trip point.
+            let stall_watch = async {
+                loop {
+                    if metrics.queue_len.load(Ordering::Relaxed) as usize >= tango_pvp::battle::RECONNECT_QUEUE_LENGTH {
+                        return;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+            };
+            let trip = tokio::select! {
+                biased;
+                _ = cancel.cancelled() => Trip::Cancelled,
+                _ = link.watch_control_eof() => Trip::Closed,
+                e = run_receive_pump(receiver, event_tx.clone(), frame_notify.clone()) => {
+                    log::info!("pvp in-match channel closed: {e:?}");
+                    Trip::Closed
+                }
+                _ = stall_watch => Trip::Stalled,
+            };
+
+            // Our own deliberate close: just stop. The session's teardown
+            // drops the peer connection gracefully, and its DTLS
+            // close_notify hands the peer a prompt EOF.
+            if matches!(trip, Trip::Cancelled) {
+                break;
+            }
+
+            // Reconnect only on the stall watchdog — the one signal that
+            // means "the link went quiet under a live match" — and only if
+            // the transport can rebuild and the match isn't ending (our
+            // completion or the peer's EndOfMatch).
+            let reconnectable = matches!(trip, Trip::Stalled)
+                && link.can_reconnect()
+                && !completed.load(Ordering::Acquire)
+                && !end.remote_ended.load(Ordering::Acquire);
+            if !reconnectable {
+                end.remote_disconnected.store(true, Ordering::Release);
+                cancel.cancel();
+                break;
+            }
+
+            // Freeze the drive loop so its speculative lead can't run past
+            // the rollback horizon while the link is down. Both peers
+            // converge on the rebuild: whoever trips first goes silent,
+            // which stall-trips the other within RECONNECT_QUEUE_LENGTH
+            // frames.
+            drive_paused.store(true, Ordering::Relaxed);
+            frame_notify.notify_one();
+            log::info!("pvp link dropped — pausing to reconnect");
+
+            // Rebuild + hot-swap (the link's job), ticking the UI at
+            // ~30 fps so the give-up bar drains smoothly while the paused
+            // drive loop produces no frames.
+            let restored = {
+                let ui_tick = async {
+                    let mut iv = tokio::time::interval(RECONNECT_UI_TICK);
+                    loop {
+                        iv.tick().await;
+                        frame_notify.notify_one();
+                    }
+                };
+                tokio::select! {
+                    restored = link.reconnect() => restored,
+                    _ = ui_tick => unreachable!(),
+                }
+            };
+
+            if !restored {
+                // Timed out or cancelled — give up and end the match.
+                end.remote_disconnected.store(true, Ordering::Release);
+                cancel.cancel();
+                drive_paused.store(false, Ordering::Relaxed);
+                break;
+            }
+
+            // Fresh receiver over the swapped channel, same `in_match` —
+            // the rennet in-stream (seq/ack) carries across the swap, so
+            // the peer's resent window fills our gap contiguously. The
+            // drive loop resumes; its stall guard holds it below the
+            // horizon until the resends drain the queue.
+            receiver = make_receiver().expect("reconnect parks a fresh receiver");
+            drive_paused.store(false, Ordering::Relaxed);
+            frame_notify.notify_one();
+            log::info!("pvp transparently reconnected the link");
+        }
+
+        // Teardown: retire latency so `latency()` reads `None` and the
+        // telemetry panel retires, and wake the session to re-check
+        // `is_ended` (the drive loop may already be gone, so no frame is
+        // coming).
+        link.retire_latency();
+        drive_paused.store(false, Ordering::Relaxed);
+        frame_notify.notify_one();
+    });
 }
 
 /// Open the replay file + write its metadata frame, returning the writer
 /// along with the path it records to (surfaced on the session so the
 /// post-match results screen can offer playback). Everything the metadata
-/// needs lives on `pre_match` (settings, seed, match clock, link code) and
-/// `identity` (roles + player index). Filename format mirrors the legacy
-/// app: `YYYYMMDDhhmmss-<link_code>-<compat>-vs-<opponent>-p<idx>.tangoreplay`.
+/// needs lives on `pre_match` (settings, seed, match clock, link code).
+/// Filename format mirrors the legacy app:
+/// `YYYYMMDDhhmmss-<link_code>-<compat>-vs-<opponent>-p<idx>.tangoreplay`.
 fn build_replay_writer(
     replays_path: &Path,
     pre_match: &crate::netplay::PreMatchData,
-    identity: &tango_pvp::battle::MatchIdentity,
+    local_player_index: u8,
     local_save: &(dyn tango_dataview::save::Save + Send + Sync),
     remote_save: &(dyn tango_dataview::save::Save + Send + Sync),
 ) -> anyhow::Result<(tango_pvp::replay::Writer, std::path::PathBuf)> {
@@ -864,14 +1200,14 @@ fn build_replay_writer(
         .map(|p| p.name.clone())
         .unwrap_or_else(|| local_gi.family_and_variant.0.clone());
     let ts = chrono::Local::now().format("%Y%m%d%H%M%S");
-    // Direct-TCP sessions have no link code in their metadata —
+    // Direct sessions have no link code in their metadata —
     // substitute a stable placeholder here so the filename
     // doesn't end up with a double-dash where the slot would be.
     let filename_link_code = if link_code.is_empty() { "direct" } else { link_code };
     let raw_name = format!(
         "{ts}-{filename_link_code}-{netplay_compat}-vs-{}-p{}",
         remote_settings.nickname,
-        identity.local_player_index + 1
+        local_player_index + 1
     );
     let safe_name: String = raw_name.chars().filter(|c| !"/\\?%*:|\"<>. ".contains(*c)).collect();
     let replay_filename = replays_path.join(format!("{safe_name}.tangoreplay"));
@@ -885,17 +1221,19 @@ fn build_replay_writer(
     let local_sram = local_save.to_sram_dump();
     let remote_sram = remote_save.to_sram_dump();
     let writer = tango_pvp::replay::Writer::new(
-        // Buffered: write_input runs on the emulator thread once per
-        // confirmed frame, and unbuffered it costs a few small write
+        // Buffered: write_input runs on the drive thread once per
+        // confirmed tick, and unbuffered it costs a few small write
         // syscalls each time. The format already recovers truncated tails,
         // so a hard crash losing the buffered tail of an (already
         // incomplete) replay changes nothing; finish() flushes.
         std::io::BufWriter::new(file),
+        // SIO-engine stream: one continuous run of pair ticks.
+        tango_pvp::replay::VERSION,
         tango_pvp::replay::Metadata {
-            // The negotiated match clock, not the local wall clock: every live
-            // core's cart RTC is pinned to this instant, and playback pins to
-            // `metadata.ts` (see `Replay::rtc_time`), so recording the same
-            // value is what makes exe45 replays reproduce the live match. Both
+            // The negotiated match clock, not the local wall clock: both
+            // cores' cart RTC is pinned to this instant, and playback
+            // re-primes pinned to `metadata.ts`, so recording the same
+            // value is what makes playback reproduce the live match. Both
             // peers' replays of one match carry the identical ts.
             ts: pre_match.match_ts,
             link_code: link_code.clone(),
@@ -934,11 +1272,11 @@ fn build_replay_writer(
                 reveal_setup: !remote_settings.blind_setup,
                 client_cert_fingerprint_sha256: pre_match.peer_client_cert_fingerprint.clone(),
             }),
-            match_type: identity.match_type.0 as u32,
-            match_subtype: identity.match_type.1 as u32,
+            match_type: pre_match.match_type.0 as u32,
+            match_subtype: pre_match.match_type.1 as u32,
         },
-        identity.is_offerer,
-        identity.local_player_index,
+        pre_match.is_offerer,
+        local_player_index,
         pre_match.rng_seed,
         &local_sram,
         &remote_sram,

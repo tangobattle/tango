@@ -5,3 +5,10 @@ rustflags = ["-C", "link-args=-weak_framework CoreHaptics"]
 # https://github.com/Rust-SDL2/rust-sdl2/issues/1241
 [target.aarch64-apple-darwin]
 rustflags = ["-C", "link-args=-weak_framework CoreHaptics"]
+
+# mgba-sys calls SHGetKnownFolderPath (shell32) but doesn't emit a
+# rustc-link-lib for it; app binaries pick shell32 up transitively via
+# SDL, but headless example/test binaries (e.g. the gamesupport sio
+# probes) don't — link it explicitly.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=shell32.lib"]

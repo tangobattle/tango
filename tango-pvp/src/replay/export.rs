@@ -126,73 +126,7 @@ impl Settings {
 
 const SAMPLE_RATE: f64 = 48000.0;
 
-fn make_core_and_state(
-    rom: &[u8],
-    sram: &[u8],
-    hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-    shadow_rom: &[u8],
-    shadow_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-    replay: &crate::replay::Replay,
-    settings: &Settings,
-) -> anyhow::Result<(mgba::core::Core, crate::stepper::State)> {
-    let mut core = mgba::core::Core::new_gba(
-        "tango",
-        &mgba::core::Options {
-            audio_sync: true,
-            ..Default::default()
-        },
-    )?;
-    core.enable_video_buffer();
-
-    core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
-    core.as_mut().load_save(mgba::vfile::VFile::from_vec(sram.to_vec()))?;
-    // Pin the cart RTC to the recorded match clock so RTC-reading games
-    // (exe45) export the same frames the live match produced.
-    core.set_rtc_fixed(replay.rtc_time());
-    core.as_mut().reset();
-
-    if replay.rounds.is_empty() {
-        return Err(anyhow::anyhow!("replay has no rounds"));
-    }
-
-    let (stepper_state, _shadow) =
-        crate::stepper::State::new_for_replay(replay, shadow_rom, shadow_hooks, Box::new(|| {}))?;
-    stepper_state.lock_inner().set_disable_bgm(settings.disable_bgm);
-
-    hooks.install_on_stepper(&mut core, stepper_state.clone());
-
-    Ok((core, stepper_state))
-}
-
 const AUDIO_CHANNELS: usize = 2;
-
-fn run_frame<'a>(
-    core: &mut mgba::core::Core,
-    resampler: &mut mgba::audio::AudioResampler,
-    dest_buffer: &mut mgba::audio::AudioBuffer,
-    samples: &'a mut [i16],
-    emu_vbuf: &mut [u8],
-) -> &'a [i16] {
-    core.as_mut().run_frame();
-
-    let n = {
-        let mut core = core.as_mut();
-        let core_rate = core.as_ref().audio_sample_rate() as f64;
-        let mut core_buffer = core.audio_buffer();
-        resampler.set_source(&mut core_buffer, core_rate, true);
-        resampler.set_destination(dest_buffer, SAMPLE_RATE);
-        resampler.process();
-        let cap = samples.len() / AUDIO_CHANNELS;
-        let frames = dest_buffer.available().min(cap);
-        dest_buffer.read(&mut samples[..frames * AUDIO_CHANNELS], frames);
-        frames
-    };
-
-    let samples = &samples[..n * AUDIO_CHANNELS];
-
-    tango_dataview::rom::bgr555_to_rgba8(core.video_buffer().unwrap(), emu_vbuf);
-    samples
-}
 
 fn resolve_ffmpeg_path(ffmpeg: &Option<std::path::PathBuf>) -> std::path::PathBuf {
     ffmpeg.clone().unwrap_or_else(|| {
@@ -351,81 +285,11 @@ fn make_mux_ffmpeg(
     Ok(FfmpegChild::from_spawn(child.spawn()?, canceller))
 }
 
-fn kept_input_pairs(replay: &crate::replay::Replay, selected: &[bool]) -> usize {
-    match selected.iter().rposition(|&s| s) {
-        Some(last) => replay.rounds.iter().take(last + 1).map(|r| r.len()).sum(),
-        None => 0,
-    }
-}
-
 fn split_flags(flags: &str) -> anyhow::Result<Vec<std::ffi::OsString>> {
     Ok(shell_words::split(flags)?
         .into_iter()
         .map(std::ffi::OsString::from)
         .collect())
-}
-
-/// Progress denominator: kept input pairs across every replay.
-fn total_kept_frames(replays: &[crate::replay::Replay], selected_rounds: &[Vec<bool>]) -> usize {
-    replays
-        .iter()
-        .enumerate()
-        .map(|(idx, replay)| kept_input_pairs(replay, selected_rounds.get(idx).map(Vec::as_slice).unwrap_or(&[])))
-        .sum()
-}
-
-/// Whether playback of this replay is done. An incomplete replay stops
-/// the moment the stepper has fed the last queued pair (no
-/// fade-to-black tail to wait for); a complete one waits for the final
-/// round to actually end + play through the fade. `is_complete` here
-/// means "the match was played out", not "the writer finished cleanly"
-/// — see `Match::finish_replay`'s call site in pvp_session.rs.
-fn playback_finished(
-    replay: &crate::replay::Replay,
-    state: &crate::stepper::State,
-    cur_round_idx: usize,
-    last_round_idx: usize,
-) -> bool {
-    let state = state.lock_inner();
-    (!replay.is_complete && state.total_input_pairs_left() == 0)
-        || (state.is_round_ended() && cur_round_idx >= last_round_idx)
-}
-
-/// Per-replay bookkeeping derived from the export's round selection.
-struct ReplayPlan<'a> {
-    /// Which rounds get written. Unselected rounds still simulate (the
-    /// sim state has to advance through them) — they just don't reach
-    /// the encoders.
-    selected: &'a [bool],
-    last_selected_round: Option<usize>,
-    /// Input pairs counted toward progress: every round up to and
-    /// including the last selected one.
-    kept_replay_len: usize,
-    full_replay_len: usize,
-    last_round_idx: usize,
-}
-
-impl<'a> ReplayPlan<'a> {
-    fn new(replay: &crate::replay::Replay, selected_rounds: &'a [Vec<bool>], replay_idx: usize) -> Self {
-        let selected = selected_rounds.get(replay_idx).map(Vec::as_slice).unwrap_or(&[]);
-        Self {
-            selected,
-            last_selected_round: selected.iter().rposition(|&s| s),
-            kept_replay_len: kept_input_pairs(replay, selected),
-            full_replay_len: replay.total_input_pairs(),
-            last_round_idx: replay.rounds.len().saturating_sub(1),
-        }
-    }
-
-    fn should_write(&self, round_idx: usize) -> bool {
-        self.selected.get(round_idx).copied().unwrap_or(false)
-    }
-
-    /// True once the playhead has passed the last selected round —
-    /// nothing further will be written, so the run can stop.
-    fn past_selection(&self, round_idx: usize) -> bool {
-        self.last_selected_round.is_none_or(|last| round_idx > last)
-    }
 }
 
 /// The ffmpeg leg of an export: one video encoder + N audio encoders
@@ -516,265 +380,128 @@ impl EncodePipeline {
     }
 }
 
+/// Export an SIO replay ([`crate::replay::VERSION`]): one linear
+/// pair re-sim produces both perspectives at once, so the two-sided
+/// layout is a compose of the two framebuffers rather than a second
+/// simulation. Round boundaries come from RAM-poll telemetry (the
+/// stream itself is one continuous run), and `rounds_mask` gates which
+/// telemetry rounds reach the encoders — indices match the stats/tab
+/// round ordering. Unselected spans still simulate; they just aren't
+/// written.
+#[allow(clippy::too_many_arguments)]
 pub fn export(
-    local_rom: &[u8],
-    local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-    remote_rom: &[u8],
-    remote_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-    replays: &[crate::replay::Replay],
-    selected_rounds: &[Vec<bool>],
+    config: &crate::playback::BootConfig,
+    inputs: &[[u32; 2]],
+    local_player: usize,
+    rounds_mask: &[bool],
     output_path: &std::path::Path,
     settings: &Settings,
     canceller: &Canceller,
     progress_callback: impl Fn(usize, usize),
+    twosided: bool,
 ) -> anyhow::Result<()> {
-    // Boundary check: caller may have flipped the canceller before
-    // we got here. Without this, a cancel that arrives in the gap
-    // between thread spawn and the first ffmpeg subprocess running
-    // has nothing to act on.
     if canceller.is_cancelled() {
         anyhow::bail!("cancelled");
     }
-    let mut vbuf = image::RgbaImage::new(mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT);
-    let mut pipeline = EncodePipeline::spawn(settings, canceller, 1, 1)?;
+    anyhow::ensure!(local_player < 2, "bad local player index");
+    let last_selected = rounds_mask.iter().rposition(|&s| s);
 
-    let total_frames = total_kept_frames(replays, selected_rounds);
-    let mut completed_total = 0;
+    let (w, h) = (mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT);
+    let mut vbuf = image::RgbaImage::new(w, h);
+    let mut composed_vbuf = image::RgbaImage::new(w * 2, h);
+    let (width_screens, audio_tracks) = if twosided { (2, 2) } else { (1, 1) };
+    let mut pipeline = EncodePipeline::spawn(settings, canceller, width_screens, audio_tracks)?;
+
+    // Boot + prime. This is ffmpeg-free but bounded (~a few hundred
+    // ticks), so a cancel lands at the next loop check.
+    let lifecycle = crate::telemetry::LifecycleSink::new();
+    let mut pb = crate::playback::Playback::new(config, Arc::new(inputs.to_vec()), &lifecycle)?;
+    // Drop the audio priming piled up (nothing drained during boot).
+    for i in 0..2 {
+        pb.pair_mut().core_mut(i).audio_buffer().clear();
+    }
+
+    let (mut observer, telemetry_store) = crate::telemetry::Telemetry::new(
+        [config.support[0].core_poller(0), config.support[1].core_poller(1)],
+        lifecycle,
+    );
+
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
-
-    let mut resampler = mgba::audio::AudioResampler::new();
-    let mut dest_buffer = mgba::audio::AudioBuffer::new(0x4000, AUDIO_CHANNELS as u32);
+    let mut resamplers = [mgba::audio::AudioResampler::new(), mgba::audio::AudioResampler::new()];
+    let mut dest_buffers = [
+        mgba::audio::AudioBuffer::new(0x4000, AUDIO_CHANNELS as u32),
+        mgba::audio::AudioBuffer::new(0x4000, AUDIO_CHANNELS as u32),
+    ];
     let mut prev_should_write = false;
+    // Telemetry round ordinal: Started events increment it; frames
+    // before the first Started belong to round 0.
+    let mut rounds_started = 0usize;
 
-    for (replay_idx, replay) in replays.iter().enumerate() {
-        // Boundary check: per-replay setup (core init + shadow stepper
-        // construction) runs ffmpeg-free, so the kill mechanism can't
-        // reach it. One check before each setup is enough.
+    let total = pb.total() as usize;
+    while pb.step() {
         if canceller.is_cancelled() {
             anyhow::bail!("cancelled");
         }
-        let (mut core, state) = make_core_and_state(
-            local_rom,
-            &replay.local_sram,
-            local_hooks,
-            remote_rom,
-            remote_hooks,
-            replay,
-            settings,
-        )?;
-        let plan = ReplayPlan::new(replay, selected_rounds, replay_idx);
-
-        loop {
-            if canceller.is_cancelled() {
-                anyhow::bail!("cancelled");
+        let tick = pb.cursor();
+        mgba_siolink::session::TickObserver::on_tick(&mut observer, pb.pair_mut(), tick);
+        let (_, events) = telemetry_store.lock().unwrap().drain_confirmed(tick);
+        for (_, event) in events {
+            if let crate::telemetry::RoundEvent::Started = event {
+                rounds_started += 1;
             }
-            let cur_round_idx = state.lock_inner().current_round_index() as usize;
-            if playback_finished(replay, &state, cur_round_idx, plan.last_round_idx) {
+        }
+        let cur_round = rounds_started.saturating_sub(1);
+        if last_selected.is_none_or(|last| cur_round > last) {
+            break;
+        }
+
+        let should_write = rounds_mask.get(cur_round).copied().unwrap_or(false);
+        if should_write && !prev_should_write {
+            for (r, d) in resamplers.iter_mut().zip(dest_buffers.iter_mut()) {
+                *r = mgba::audio::AudioResampler::new();
+                d.clear();
+            }
+        }
+        prev_should_write = should_write;
+
+        // Drain + resample each core's tick of audio; blit its frame.
+        // Track/screen order: local perspective first.
+        let order: [usize; 2] = [local_player, 1 - local_player];
+        for (slot, &core_idx) in order.iter().enumerate() {
+            if !twosided && slot > 0 {
                 break;
             }
-
-            if plan.past_selection(cur_round_idx) {
-                break;
-            }
-
-            if let Some(err) = state.lock_inner().take_error() {
-                Err(err)?;
-            }
-
-            let should_write = plan.should_write(cur_round_idx);
-            if should_write && !prev_should_write {
-                resampler = mgba::audio::AudioResampler::new();
-                dest_buffer.clear();
-            }
-            prev_should_write = should_write;
-
-            let samples = run_frame(&mut core, &mut resampler, &mut dest_buffer, &mut samples, &mut vbuf);
-
+            let pair = pb.pair_mut();
+            let n = {
+                let mut core = pair.core_mut(core_idx);
+                let core_rate = core.as_ref().audio_sample_rate() as f64;
+                let mut core_buffer = core.audio_buffer();
+                resamplers[slot].set_source(&mut core_buffer, core_rate, true);
+                resamplers[slot].set_destination(&mut dest_buffers[slot], SAMPLE_RATE);
+                resamplers[slot].process();
+                let cap = samples.len() / AUDIO_CHANNELS;
+                let frames = dest_buffers[slot].available().min(cap);
+                dest_buffers[slot].read(&mut samples[..frames * AUDIO_CHANNELS], frames);
+                frames
+            };
             if should_write {
+                pipeline.write_audio(slot, &samples[..n * AUDIO_CHANNELS])?;
+                if let Some(fb) = pair.video_buffer(core_idx) {
+                    tango_dataview::rom::bgr555_to_rgba8(fb, &mut vbuf);
+                    if twosided {
+                        image::imageops::replace(&mut composed_vbuf, &vbuf, (slot as i64) * w as i64, 0);
+                    }
+                }
+            }
+        }
+        if should_write {
+            if twosided {
+                pipeline.write_video(composed_vbuf.as_bytes())?;
+            } else {
                 pipeline.write_video(&vbuf)?;
-                pipeline.write_audio(0, samples)?;
             }
-            progress_callback(
-                plan.full_replay_len - state.lock_inner().total_input_pairs_left() + completed_total,
-                total_frames,
-            );
         }
-
-        completed_total += plan.kept_replay_len;
-    }
-
-    pipeline.finish(settings, canceller, output_path)
-}
-
-pub fn export_twosided(
-    local_rom: &[u8],
-    local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-    remote_rom: &[u8],
-    remote_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-    replays: &[crate::replay::Replay],
-    selected_rounds: &[Vec<bool>],
-    output_path: &std::path::Path,
-    settings: &Settings,
-    canceller: &Canceller,
-    progress_callback: impl Fn(usize, usize),
-) -> anyhow::Result<()> {
-    // See `export` — boundary check before the first ffmpeg spawns.
-    if canceller.is_cancelled() {
-        anyhow::bail!("cancelled");
-    }
-    let mut vbuf = image::RgbaImage::new(mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT);
-    let mut composed_vbuf = image::RgbaImage::new(mgba::gba::SCREEN_WIDTH * 2, mgba::gba::SCREEN_HEIGHT);
-
-    // Side-by-side video, two audio tracks: local first, remote second
-    // — the mux maps them in spawn order.
-    let mut pipeline = EncodePipeline::spawn(settings, canceller, 2, 2)?;
-
-    let total_frames = total_kept_frames(replays, selected_rounds);
-    let mut completed_total = 0;
-    let mut samples = vec![0i16; SAMPLE_RATE as usize];
-
-    let mut local_resampler = mgba::audio::AudioResampler::new();
-    let mut local_dest_buffer = mgba::audio::AudioBuffer::new(0x4000, AUDIO_CHANNELS as u32);
-    let mut remote_resampler = mgba::audio::AudioResampler::new();
-    let mut remote_dest_buffer = mgba::audio::AudioBuffer::new(0x4000, AUDIO_CHANNELS as u32);
-    let mut prev_should_write = false;
-
-    for (replay_idx, replay) in replays.iter().enumerate() {
-        // See `export` — boundary check before each ffmpeg-free
-        // per-replay setup.
-        if canceller.is_cancelled() {
-            anyhow::bail!("cancelled");
-        }
-        let local_replay = replay.clone();
-        let remote_replay = local_replay.clone().into_remote();
-
-        // For each side's primary core, the shadow runs the OTHER side's
-        // ROM + the recording peer's view of their opponent's SRAM.
-        let (mut local_core, local_state) = make_core_and_state(
-            local_rom,
-            &local_replay.local_sram,
-            local_hooks,
-            remote_rom,
-            remote_hooks,
-            &local_replay,
-            settings,
-        )?;
-        let (mut remote_core, remote_state) = make_core_and_state(
-            remote_rom,
-            &remote_replay.local_sram,
-            remote_hooks,
-            local_rom,
-            local_hooks,
-            &remote_replay,
-            settings,
-        )?;
-
-        let plan = ReplayPlan::new(replay, selected_rounds, replay_idx);
-
-        loop {
-            if canceller.is_cancelled() {
-                anyhow::bail!("cancelled");
-            }
-            let cur_round_idx = local_state.lock_inner().current_round_index() as usize;
-
-            if playback_finished(&local_replay, &local_state, cur_round_idx, plan.last_round_idx)
-                || playback_finished(&remote_replay, &remote_state, cur_round_idx, plan.last_round_idx)
-            {
-                break;
-            }
-
-            if plan.past_selection(cur_round_idx) {
-                break;
-            }
-            let should_write = plan.should_write(cur_round_idx);
-            if should_write && !prev_should_write {
-                local_resampler = mgba::audio::AudioResampler::new();
-                local_dest_buffer.clear();
-                remote_resampler = mgba::audio::AudioResampler::new();
-                remote_dest_buffer.clear();
-            }
-            prev_should_write = should_write;
-
-            let current_tick = local_state.lock_inner().current_tick();
-            if remote_state.lock_inner().current_tick() != current_tick {
-                anyhow::bail!(
-                    "tick misaligned! {} vs {}",
-                    current_tick,
-                    remote_state.lock_inner().current_tick()
-                );
-            }
-
-            while local_state.lock_inner().current_tick() == current_tick
-                && remote_state.lock_inner().current_tick() == current_tick
-            {
-                if let Some(err) = local_state.lock_inner().take_error() {
-                    Err(err)?;
-                }
-
-                if let Some(err) = remote_state.lock_inner().take_error() {
-                    Err(err)?;
-                }
-
-                {
-                    let local_samples = run_frame(
-                        &mut local_core,
-                        &mut local_resampler,
-                        &mut local_dest_buffer,
-                        &mut samples,
-                        &mut vbuf,
-                    );
-                    if should_write {
-                        image::imageops::replace(&mut composed_vbuf, &vbuf, 0, 0);
-                        pipeline.write_audio(0, local_samples)?;
-                    }
-                }
-
-                {
-                    let remote_samples = run_frame(
-                        &mut remote_core,
-                        &mut remote_resampler,
-                        &mut remote_dest_buffer,
-                        &mut samples,
-                        &mut vbuf,
-                    );
-                    if should_write {
-                        image::imageops::replace(&mut composed_vbuf, &vbuf, mgba::gba::SCREEN_WIDTH as i64, 0);
-                        pipeline.write_audio(1, remote_samples)?;
-                    }
-                }
-
-                if should_write {
-                    pipeline.write_video(composed_vbuf.as_bytes())?;
-                }
-            }
-
-            while local_state.lock_inner().current_tick() == current_tick {
-                run_frame(
-                    &mut local_core,
-                    &mut local_resampler,
-                    &mut local_dest_buffer,
-                    &mut samples,
-                    &mut vbuf,
-                );
-            }
-
-            while remote_state.lock_inner().current_tick() == current_tick {
-                run_frame(
-                    &mut remote_core,
-                    &mut remote_resampler,
-                    &mut remote_dest_buffer,
-                    &mut samples,
-                    &mut vbuf,
-                );
-            }
-
-            progress_callback(
-                plan.full_replay_len - local_state.lock_inner().total_input_pairs_left() + completed_total,
-                total_frames,
-            );
-        }
-
-        completed_total += plan.kept_replay_len;
+        progress_callback(tick as usize, total);
     }
 
     pipeline.finish(settings, canceller, output_path)

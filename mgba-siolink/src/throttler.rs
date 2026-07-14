@@ -1,7 +1,9 @@
-//! Time-sync throttler. Converts the engine's raw per-frame skew
-//! (`local_advantage - remote_advantage`) into a slowdown in fps below the base
-//! rate; [`Round`](super::Round) turns that into an absolute fps target for the
-//! live core. Only the leading peer slows down — the trailing peer runs at full
+//! Time-sync throttler, copied verbatim from tango-pvp's (which is not
+//! public). Converts the engine's raw per-frame skew
+//! (`local_advantage - remote_advantage`, i.e. [`Session::skew`](crate::session::Session::skew))
+//! into a slowdown in fps below the base rate; the host turns that into an
+//! absolute fps target for the live simulation.
+//! Only the leading peer slows down — the trailing peer runs at full
 //! rate and lets the leader ease back toward it. Throttling also only engages
 //! once the presented frame actually speculates past the present delay: while
 //! the lead still fits inside it, running ahead costs no presentation quality,
@@ -41,9 +43,10 @@ const MAX_SLOWDOWN: f32 = 30.0;
 /// absorb bursty-arrival flutter.
 const BALANCE_FLOOR: f32 = -(MAX_SLOWDOWN / ENGAGEMENT_SLOPE);
 
-/// Per-round time-sync throttler. [`Round`](super::Round) owns one and feeds it
-/// the engine's raw skew and speculation balance each frame.
-pub(crate) struct Throttler {
+/// Per-session time-sync throttler. The host owns one alongside its
+/// [`Session`](crate::session::Session) and feeds it the session's raw skew
+/// and speculation balance each frame; its EMA state carries across frames.
+pub struct Throttler {
     /// Asymmetric-EMA-smoothed skew, carried across frames. Floored at zero:
     /// negative skew (the peer leading) would otherwise wind the average down —
     /// the fast fall digs the hole in under a second, and the slow rise then
@@ -62,7 +65,7 @@ pub(crate) struct Throttler {
 }
 
 impl Throttler {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             smoothed: 0.0,
             smoothed_balance: 0.0,
@@ -83,7 +86,7 @@ impl Throttler {
     /// ramps up at ENGAGEMENT_SLOPE fps per tick of smoothed depth until the
     /// smoothed skew takes over. The result is always in `[0, MAX_SLOWDOWN]`
     /// (0 = run at full speed).
-    pub(crate) fn step(&mut self, skew: i32, speculation_balance: i32) -> f32 {
+    pub fn step(&mut self, skew: i32, speculation_balance: i32) -> f32 {
         let skew = skew as f32;
         let alpha = if skew > self.smoothed {
             ALPHA_SLOWDOWN

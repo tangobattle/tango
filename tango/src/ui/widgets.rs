@@ -2315,11 +2315,11 @@ pub fn hp_opponent_color(_theme: &Theme) -> iced::Color {
 }
 
 /// The list-row / results-card mark for a round outcome.
-pub fn outcome_mark(outcome: tango_pvp::stepper::BattleOutcome) -> (Icon, fn(&Theme) -> iced::widget::text::Style) {
+pub fn outcome_mark(outcome: tango_pvp::analysis::BattleOutcome) -> (Icon, fn(&Theme) -> iced::widget::text::Style) {
     match outcome {
-        tango_pvp::stepper::BattleOutcome::Win => (Icon::Check, success_text_style),
-        tango_pvp::stepper::BattleOutcome::Loss => (Icon::X, danger_text_style),
-        tango_pvp::stepper::BattleOutcome::Draw => (Icon::Minus, muted_text_style),
+        tango_pvp::analysis::BattleOutcome::Win => (Icon::Check, success_text_style),
+        tango_pvp::analysis::BattleOutcome::Loss => (Icon::X, danger_text_style),
+        tango_pvp::analysis::BattleOutcome::Draw => (Icon::Minus, muted_text_style),
     }
 }
 
@@ -2347,7 +2347,7 @@ pub struct HpGraphRound<'a> {
     /// shows the icon + name of the tick nearest the cursor. Empty on
     /// games whose traps don't report chips.
     pub chip_uses: [&'a [ChipUseMark]; 2],
-    pub outcome: Option<tango_pvp::stepper::BattleOutcome>,
+    pub outcome: Option<tango_pvp::analysis::BattleOutcome>,
     /// Tick span of the round — its share of the timeline's width.
     pub weight: f32,
 }
@@ -2392,7 +2392,7 @@ fn chip_use_marks(
 /// points (torn down mid-intro) cook to an empty trace with weight 0.
 #[derive(Clone)]
 pub struct CookedHpRound {
-    pub outcome: Option<tango_pvp::stepper::BattleOutcome>,
+    pub outcome: Option<tango_pvp::analysis::BattleOutcome>,
     pub trace: Vec<(f32, f32, f32)>,
     pub custom: Vec<(f32, f32)>,
     pub chip_uses: [Vec<ChipUseMark>; 2],
@@ -2408,13 +2408,17 @@ pub struct CookedHpRound {
 /// per side (`[you, opponent]`); pass the local side's twice when only
 /// it is available.
 ///
-/// `planned` fixes the layout upfront for stats still being computed:
-/// per-round final tick counts (the replay's recorded input pairs).
-/// Rounds the stats don't cover yet are padded in as empty segments at
-/// their planned width, and partial rounds normalize x against their
-/// planned span rather than what's simulated so far — so a live
-/// analysis draws into a stable frame instead of continually rescaling
-/// it.
+/// `planned` fixes the layout upfront: per-round tick counts from the
+/// recording's round markers (the recorded input pairs per round).
+/// Stats ticks are session-absolute — the recording is one contiguous
+/// stream — so the markers' cumulative boundaries are the rounds'
+/// positions on that same timebase: round `i` spans
+/// `[Σ planned[..i], Σ planned[..=i])`, and every chart cooked with the
+/// same plan shares the scrubber's tick scale by construction. Rounds
+/// the stats don't cover yet are padded in as empty segments at their
+/// planned width, so a live analysis draws into a stable frame instead
+/// of continually rescaling it. Without a plan, each round anchors at
+/// its own first sample.
 pub fn cook_hp_rounds(
     stats: &tango_pvp::analysis::MatchStats,
     loadeds: [Option<&crate::selection::Loaded>; 2],
@@ -2429,6 +2433,18 @@ pub fn cook_hp_rounds(
         .unwrap_or(0)
         .max(1) as f32;
     let n = stats.rounds.len().max(planned.map(|p| p.len()).unwrap_or(0));
+    // Cumulative round boundaries on the recording's timebase.
+    let starts: Vec<u32> = planned
+        .map(|p| {
+            p.iter()
+                .scan(0u32, |acc, &len| {
+                    let start = *acc;
+                    *acc += len;
+                    Some(start)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let rounds = (0..n)
         .map(|i| {
             let full = planned.and_then(|p| p.get(i)).map(|&t| t as f32);
@@ -2468,11 +2484,18 @@ pub fn cook_hp_rounds(
             // edge instead of widening it. The tail is inert (post-KO:
             // HP frozen, no chips, no customs), so nothing visible
             // distorts. Without a plan, normalize to the sampled extent.
+            // The round's position on the recording's timebase: its
+            // marker boundary when the plan carries one, else its own
+            // first sample.
+            let base = starts
+                .get(i)
+                .copied()
+                .unwrap_or_else(|| r.hp.first().map(|p| p.tick).unwrap_or(0));
             let span = match full {
                 Some(f) => f.max(1.0),
-                None => (last.tick as f32).max(1.0),
+                None => (last.tick.saturating_sub(base) as f32).max(1.0),
             };
-            let x_of = |tick: u32| (tick as f32 / span).clamp(0.0, 1.0);
+            let x_of = |tick: u32| (tick.saturating_sub(base) as f32 / span).clamp(0.0, 1.0);
             CookedHpRound {
                 outcome: r.outcome,
                 trace: r
@@ -2865,8 +2888,8 @@ pub fn hp_match_graph<'a, M: 'a>(
                 );
                 if local_sweep >= 1.0 {
                     let tint = match round.outcome {
-                        Some(tango_pvp::stepper::BattleOutcome::Win) => Some(palette.success.base.color),
-                        Some(tango_pvp::stepper::BattleOutcome::Loss) => Some(palette.danger.base.color),
+                        Some(tango_pvp::analysis::BattleOutcome::Win) => Some(palette.success.base.color),
+                        Some(tango_pvp::analysis::BattleOutcome::Loss) => Some(palette.danger.base.color),
                         _ => None,
                     };
                     if let Some(color) = tint {

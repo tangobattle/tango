@@ -63,7 +63,12 @@ use handshake::{Handshake, LocalReady, RemoteReady};
 // close_notify already hands the peer a prompt EOF on a deliberate quit. No
 // bump: an older 0x4c peer's marker decodes as stray traffic, which the
 // mid-match reliable-channel watch ignores.)
-pub const PROTOCOL_VERSION: u32 = 0x4c;
+// 0x4d: live PvP moved from the trap engine to the SIO-lockstep engine.
+// The in-match frame layout is unchanged, but its semantics aren't: seq n
+// now carries the joypad for pair tick n from session start (previously
+// per-battle-tick, rounds delimited by EndOfRound), and the simulations
+// are mutually incompatible — a 0x4c peer would desync instantly.
+pub const PROTOCOL_VERSION: u32 = 0x4d;
 
 /// Why a netplay session failed — typed so the UI can route each
 /// failure mode to its own localized copy instead of string-matching

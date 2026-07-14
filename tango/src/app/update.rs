@@ -521,24 +521,21 @@ impl App {
         user_settings: tabs::replays::ExportSettings,
         rounds_mask: Vec<bool>,
     ) -> iced::Task<tabs::replays::Message> {
-        // Decode just enough of the replay to get the local side's
-        // metadata + hook lookups + raw ROM bytes. Failures show up
-        // as a Done(Err) status — same as runtime errors below.
+        // Decode just enough of the replay to get both sides' game
+        // registrations + raw ROM bytes. Failures show up as a
+        // Done(Err) status — same as runtime errors below.
         let prep = (|| -> anyhow::Result<ExportPrep> {
             let f = std::fs::File::open(&replay_path)?;
             let replay = tango_pvp::replay::Replay::decode(f)?;
-            // The export re-simulates both sides (the local-perspective
-            // core plus the opponent shadow) from the recorded inputs, so
-            // each side's ROM must be the exact patched ROM that was used
-            // when the match was recorded — otherwise the re-sim desyncs.
-            // Mirror `session::build_playback`'s `resolve_rom`: apply the
-            // side's patch from disk before handing the bytes to export.
-            // (Without this a cross-patch replay renders desynced garbage
-            // or stalls partway, while playback — which does patch — is
-            // fine.)
+            // The export re-simulates both sides from the recorded
+            // inputs, so each side's ROM must be the exact patched ROM
+            // that was used when the match was recorded — otherwise the
+            // re-sim desyncs. Mirror `session::build_playback`'s
+            // `resolve_rom`: apply the side's patch from disk before
+            // handing the bytes to export.
             let patches_path = self.config.patches_path();
             let resolve = |side: Option<&tango_pvp::replay::metadata::Side>| -> anyhow::Result<(
-                &'static (dyn tango_pvp::hooks::Hooks + Send + Sync),
+                crate::library::rom::GameRef,
                 Vec<u8>,
             )> {
                 let gi = side
@@ -549,7 +546,6 @@ impl App {
                     .ok_or_else(|| {
                         anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, variant)
                     })?;
-                let hooks = entry.hooks;
                 let rom = self
                     .scanners
                     .roms
@@ -563,14 +559,14 @@ impl App {
                 } else {
                     rom
                 };
-                Ok((hooks, rom))
+                Ok((entry, rom))
             };
-            let (local_hooks, local_rom) = resolve(replay.metadata.local_side.as_ref())?;
-            let (remote_hooks, remote_rom) = resolve(replay.metadata.remote_side.as_ref())?;
+            let (local_game, local_rom) = resolve(replay.metadata.local_side.as_ref())?;
+            let (remote_game, remote_rom) = resolve(replay.metadata.remote_side.as_ref())?;
             Ok(ExportPrep {
-                local_hooks,
+                local_game,
                 local_rom,
-                remote_hooks,
+                remote_game,
                 remote_rom,
                 replay,
             })
@@ -616,9 +612,9 @@ impl App {
             .name("replay-export".to_string())
             .spawn(move || {
                 let ExportPrep {
-                    local_hooks,
+                    local_game,
                     local_rom,
-                    remote_hooks,
+                    remote_game,
                     remote_rom,
                     replay,
                 } = prep;
@@ -633,7 +629,6 @@ impl App {
                 };
                 let mut settings = tango_pvp::replay::export::Settings::default_with_scale(scale_arg);
                 settings.disable_bgm = user_settings.disable_bgm;
-                let selected_rounds = vec![rounds_mask];
                 // Clone the sender into the callback. The original
                 // `progress_tx` stays alive on the thread scope until
                 // *after* `done_arc_thread` is set; otherwise the
@@ -646,33 +641,52 @@ impl App {
                 let cb = move |current: usize, total: usize| {
                     let _ = cb_tx.unbounded_send((current, total));
                 };
-                let result = if user_settings.twosided {
-                    tango_pvp::replay::export::export_twosided(
-                        &local_rom,
-                        local_hooks,
-                        &remote_rom,
-                        remote_hooks,
-                        &[replay],
-                        &selected_rounds,
-                        &output_for_thread,
-                        &settings,
-                        &canceller_thread,
-                        cb,
+                // Orient the replay's local/remote pairs back to absolute
+                // pair order — same contract as playback and analysis.
+                let local_player = replay.local_player_index as usize;
+                let inputs: Vec<[u32; 2]> = replay
+                    .rounds
+                    .iter()
+                    .flatten()
+                    .map(|(local, remote)| {
+                        let mut keys = [0u32; 2];
+                        keys[local_player] = local.joyflags as u32;
+                        keys[1 - local_player] = remote.joyflags as u32;
+                        keys
+                    })
+                    .collect();
+                let (roms, saves, support): ([Vec<u8>; 2], [Vec<u8>; 2], _) = if local_player == 0 {
+                    (
+                        [local_rom, remote_rom],
+                        [replay.local_sram.clone(), replay.remote_sram.clone()],
+                        [local_game.pvp, remote_game.pvp],
                     )
                 } else {
-                    tango_pvp::replay::export::export(
-                        &local_rom,
-                        local_hooks,
-                        &remote_rom,
-                        remote_hooks,
-                        &[replay],
-                        &selected_rounds,
-                        &output_for_thread,
-                        &settings,
-                        &canceller_thread,
-                        cb,
+                    (
+                        [remote_rom, local_rom],
+                        [replay.remote_sram.clone(), replay.local_sram.clone()],
+                        [remote_game.pvp, local_game.pvp],
                     )
-                }
+                };
+                let config = tango_pvp::playback::BootConfig {
+                    roms,
+                    saves,
+                    support,
+                    match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
+                    rng_seed: replay.rng_seed,
+                    rtc: replay.rtc_time(),
+                };
+                let result = tango_pvp::replay::export::export(
+                    &config,
+                    &inputs,
+                    local_player,
+                    &rounds_mask,
+                    &output_for_thread,
+                    &settings,
+                    &canceller_thread,
+                    cb,
+                    user_settings.twosided,
+                )
                 .map(|()| output_for_thread)
                 .map_err(|e| format!("{e}"));
                 *done_arc_thread.lock().unwrap() = Some(result);

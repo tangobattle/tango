@@ -7,6 +7,7 @@
 //! [`spawn_singleplayer`] and stuff it into `state.active`); this
 //! module handles everything that happens after.
 
+pub mod pair_stream;
 pub mod pvp;
 pub mod replay;
 pub mod singleplayer;
@@ -181,7 +182,7 @@ pub struct MatchResults {
 /// `[start, end)` x spans where the custom screen stood open. Empty when the
 /// round produced no HP samples (torn down mid-intro).
 pub struct RoundCard {
-    pub outcome: tango_pvp::stepper::BattleOutcome,
+    pub outcome: tango_pvp::analysis::BattleOutcome,
     pub trace: Vec<(f32, f32, f32)>,
     pub custom: Vec<(f32, f32)>,
     /// Chip-use events per side (`[you, opponent]`), cooked for the
@@ -206,6 +207,8 @@ impl MatchResults {
             pvp.local_loaded.as_ref(),
             pvp.opponent_loaded.as_ref().or(pvp.local_loaded.as_ref()),
         ];
+        // No plan: the results cards are per-round, so each round's
+        // trace anchors at its own first sample.
         let (cooked, max_hp) = crate::ui::widgets::cook_hp_rounds(&stats, loadeds, None);
         let rounds = cooked
             .into_iter()
@@ -883,12 +886,14 @@ impl State {
                     // each call `notify_one()` so this branch fires
                     // even after the emu thread has paused.
                     if session.is_ended() {
-                        // Natural end — snapshot the finished match for the
-                        // results screen before the teardown drops it. Only
-                        // here: the user-quit paths call close_session
-                        // directly and go straight back to the menu.
+                        // Snapshot the finished match for the results screen
+                        // before the teardown drops it — but only on a
+                        // natural end. A session can now end incomplete too
+                        // (mid-match disconnect, reconnect window expired);
+                        // those go straight back to the menu, same as the
+                        // user-quit paths.
                         let results = match session {
-                            ActiveSession::PvP(pvp) => Some(MatchResults::capture(pvp)),
+                            ActiveSession::PvP(pvp) if pvp.is_completed() => Some(MatchResults::capture(pvp)),
                             _ => None,
                         };
                         self.close_session();
@@ -1262,7 +1267,6 @@ pub async fn spawn_pvp(
         frame_delay: config
             .frame_delay
             .clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY),
-        disable_bgm: config.disable_bgm_in_pvp,
         replays_path: &config.replays_path(),
         cache_path: &config.cache_path(),
         audio_binder: &audio_binder,

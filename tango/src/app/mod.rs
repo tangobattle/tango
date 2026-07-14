@@ -38,9 +38,9 @@ mod update;
 /// Pulled together synchronously in `start_replay_export` so the
 /// spawned future doesn't have to touch `&self`.
 struct ExportPrep {
-    local_hooks: &'static (dyn tango_pvp::hooks::Hooks + Send + Sync),
+    local_game: crate::library::rom::GameRef,
     local_rom: Vec<u8>,
-    remote_hooks: &'static (dyn tango_pvp::hooks::Hooks + Send + Sync),
+    remote_game: crate::library::rom::GameRef,
     remote_rom: Vec<u8>,
     replay: tango_pvp::replay::Replay,
 }

@@ -1,21 +1,25 @@
-//! Post-hoc replay analysis and its cached on-disk form.
+//! Match statistics and their cached on-disk form.
 //!
-//! [`analyze`] re-simulates a recorded replay on a headless core pair
-//! (playback stepper + shadow, the same machinery the viewer and the
-//! golden suites drive) and extracts per-round [`MatchStats`]: the
-//! outcome and both players' HP over the round, as reported by the
-//! per-game traps via [`InnerState::set_battle_hp`]. That's a full
-//! replay simulation — seconds of CPU — so stats are meant to be
-//! computed once and cached in a small versioned binary sidecar
-//! (`<replay>.stats`, see [`MatchStats::read`]/[`MatchStats::write`]).
-//! Live matches skip the re-simulation entirely: the rollback engine
-//! collects the same per-tick samples, and the match folds each round
-//! into the same [`MatchStatsBuilder`] the moment it ends — one aggregation
-//! path, whichever side of the replay boundary the samples come from.
-//!
-//! [`InnerState::set_battle_hp`]: crate::stepper::InnerState::set_battle_hp
+//! [`crate::analysis::analyze`] re-simulates a recorded replay on
+//! a headless pair and extracts per-round [`MatchStats`]: the outcome
+//! and both players' HP over the round, from the same RAM-poll
+//! telemetry the live engine collects. That's a full replay simulation
+//! — seconds of CPU — so stats are meant to be computed once and
+//! cached in a small versioned binary sidecar (`<replay>.stats`, see
+//! [`MatchStats::read`]/[`MatchStats::write`]). Live matches skip the
+//! re-simulation entirely: the session folds each confirmed telemetry
+//! batch into the same [`MatchStatsBuilder`] as it plays — one
+//! aggregation path, whichever side of the replay boundary the samples
+//! come from.
 
-use crate::stepper::BattleOutcome;
+/// Outcome of a single round, from this side's perspective.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde_repr::Serialize_repr, serde_repr::Deserialize_repr)]
+#[repr(i8)]
+pub enum BattleOutcome {
+    Draw = -1,
+    Loss = 0,
+    Win = 1,
+}
 
 /// Bumped whenever the sidecar format changes shape — or meaning: v7
 /// adds chip events for exe45's community PvP patch (per-screen hands)
@@ -27,7 +31,11 @@ use crate::stepper::BattleOutcome;
 /// where v2's were decimated; bumps make older files recompute).
 /// Readers reject other versions (and anything without the magic, e.g.
 /// the short-lived JSON v1 sidecars) and recompute.
-pub const FORMAT_VERSION: u32 = 7;
+// v8: fold fixes — samples/events now interleave by tick (a batch
+// spanning a round boundary no longer folds the next round's first
+// samples into the closing one) and samples stop at the round's
+// announced verdict. Older sidecars recompute.
+pub const FORMAT_VERSION: u32 = 8;
 
 /// Sidecar file magic.
 const MAGIC: &[u8; 4] = b"TGST";
@@ -68,14 +76,13 @@ pub struct RoundStats {
 }
 
 pub use crate::battle::{RoundSample, NO_CHIP};
-use crate::battle::{BUTTON_LOCAL_A, BUTTON_LOCAL_B, BUTTON_REMOTE_A, BUTTON_REMOTE_B, JOY_A, JOY_B};
 
 /// Low bits of a `LoadedChip` report that carry the chip id; the rest is
 /// the fire-sequence tag (see [`ChipSemantics::LoadedChip`]).
 pub const CHIP_ID_MASK: u16 = 0x0fff;
 
 /// The decoding contract for per-tick chip reports, declared per game by
-/// [`Hooks::chip_semantics`](crate::hooks::Hooks::chip_semantics).
+/// [`GameSupport::chip_semantics`](crate::GameSupport::chip_semantics).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ChipSemantics {
     /// Each report is the player's loaded chip as `id | (seq << 12)`,
@@ -195,11 +202,15 @@ pub struct HpPoint {
 pub struct MatchStatsBuilder {
     semantics: ChipSemantics,
     /// Whether B-press edges are buster shots on this game/ROM (see
-    /// [`Hooks::counts_buster`](crate::hooks::Hooks::counts_buster)).
+    /// [`GameSupport::counts_buster`](crate::GameSupport::counts_buster)).
     counts_buster: bool,
     prev_final: Option<(u16, u16)>,
     rounds: Vec<RoundStats>,
-    /// Samples of the round in progress, in tick order.
+    /// Samples of the round in progress, in tick order. Ticks are
+    /// session-absolute throughout — the recording is one contiguous
+    /// stream and the stats stay on its timebase; round boundaries on
+    /// that same timebase come from the replay's round markers, not
+    /// from the stats.
     current: Vec<RoundSample>,
 }
 
@@ -528,201 +539,216 @@ fn compress(points: impl Iterator<Item = HpPoint>) -> Vec<HpPoint> {
     out
 }
 
-/// Cap on frames to keep simulating after the last recorded input while
-/// waiting for the final round's `round_end_*` trap — 10 s of game time
-/// covers every end-of-round animation; genuinely incomplete replays
-/// give up and report what they have.
-const MAX_DRAIN_FRAMES: u32 = 600;
+// ---------------------------------------------------------------------------
+// Replay re-analysis: linear re-simulation + the telemetry -> stats fold
+// shared with the live session (so live stats and offline re-analysis stay
+// byte-equivalent).
 
-/// Re-simulate `replay` end-to-end and collect [`MatchStats`]. Drives
-/// the same replay-mode stepper + shadow pair as the viewer, headless
-/// and unthrottled with rasterization off; expect it to take seconds of
-/// CPU per minute of match, so run it on a worker and cache the result.
-/// `on_progress` receives `(ticks simulated, total recorded ticks)`
-/// every simulated tick, plus the in-flight builder so callers can
-/// render live partial stats ([`MatchStatsBuilder::preview`]) at
-/// whatever cadence suits them — a preview clones the folded rounds,
-/// so per-tick would be wasteful.
-/// Per-frame sampling glue shared by [`analyze`] and the playback
-/// prefetcher ([`crate::replay::playback::run_prefetch`]): watches a
-/// replay stepper's parked state once per frame, pushes each tick's
-/// [`RoundSample`] into the same incremental [`MatchStatsBuilder`] a
-/// live match feeds, closes rounds on the round-index edge, and drains
-/// past input exhaustion until the final round's outcome lands (or the
-/// [`MAX_DRAIN_FRAMES`] budget runs out).
-pub struct ReplaySampler<'a> {
-    replay: &'a crate::replay::Replay,
-    builder: MatchStatsBuilder,
-    /// Latest result seen for the round in progress. `round_result()`
-    /// clears across the round transition, so it's committed on the
-    /// round-index edge (or at the end of the drain for the last round).
-    current_result: Option<BattleOutcome>,
-    last_round_idx: u32,
-    frames_after_drain: u32,
-    lpi: usize,
+use crate::telemetry::{self, Telemetry};
+use crate::{GameSupport, PrimeConfig};
+
+/// Cap on priming ticks, mirroring the live engine's bound.
+const MAX_PRIME_TICKS: u32 = 3600;
+
+/// Everything [`analyze`] needs. All fields are in **absolute** player
+/// order (core 0 runs player 0's game), which is how the caller should
+/// orient the replay's local/remote pairs using
+/// [`Replay::local_player_index`](crate::replay::Replay::local_player_index).
+pub struct AnalyzeConfig<'a> {
+    pub roms: [Vec<u8>; 2],
+    pub saves: [Vec<u8>; 2],
+    pub support: [&'a dyn GameSupport; 2],
+    pub match_type: (u8, u8),
+    pub rng_seed: [u8; 16],
+    pub rtc: std::time::SystemTime,
+    /// Which side the stats should be from the perspective of.
+    pub local_player: usize,
+    /// `[p0, p1]` joypad pairs, one per pair tick from session start.
+    pub inputs: &'a [[u32; 2]],
+    /// Chip-report semantics + buster counting for the local game (see
+    /// [`Hooks::chip_semantics`](crate::hooks::Hooks::chip_semantics)).
+    pub chip_semantics: crate::analysis::ChipSemantics,
+    pub counts_buster: bool,
 }
 
-impl<'a> ReplaySampler<'a> {
-    pub fn new(
-        replay: &'a crate::replay::Replay,
-        local_rom: &[u8],
-        local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-    ) -> Self {
-        Self {
-            replay,
-            // The same incremental aggregation a live match performs:
-            // push each simulated tick's sample, close each round as it
-            // ends.
-            builder: MatchStatsBuilder::new(
-                local_hooks.chip_semantics(local_rom),
-                local_hooks.counts_buster(local_rom),
-            ),
-            current_result: None,
-            last_round_idx: 0,
-            frames_after_drain: 0,
-            lpi: replay.local_player_index as usize,
-        }
-    }
-
-    pub fn builder(&self) -> &MatchStatsBuilder {
-        &self.builder
-    }
-
-    /// Sample the stepper's parked state — call once per frame, before
-    /// running it. Returns `(absolute tick, more)`: once `more` is
-    /// false the match is fully sampled (recorded inputs exhausted and
-    /// the round-end drain settled) and the caller should stop stepping
-    /// for stats' sake and [`finish`](Self::finish).
-    pub fn sample(&mut self, stepper_state: &crate::stepper::State) -> (u32, bool) {
-        let (total_left, abs_tick, round_idx, ended, result, tick, hp, custom, chips) = {
-            let inner = stepper_state.lock_inner();
-            (
-                inner.total_input_pairs_left(),
-                inner.absolute_tick(),
-                inner.current_round_index(),
-                inner.is_round_ended(),
-                inner.round_result(),
-                inner.current_tick(),
-                inner.battle_hp(),
-                inner.custom_screen(),
-                inner.loaded_chips(),
-            )
-        };
-
-        if round_idx != self.last_round_idx {
-            self.builder.end_round(self.current_result.take());
-            self.last_round_idx = round_idx;
-        }
-        if let Some(rr) = result {
-            self.current_result = Some(rr.outcome);
-        }
-        // The traps re-report every tick, so a new tick with a reading is
-        // exactly one sample — the builder drops repeat polls of the same
-        // tick. (`battle_hp` is cleared across round transitions and
-        // stays `None` through each battle intro.)
-        if let Some(hp) = hp {
-            // Buttons come straight off the recorded input pairs
-            // (already `(local, remote)`-oriented): the sample at
-            // `tick` reflects the state after the pair at `tick - 1`
-            // was applied, matching the live path's labeling of "the
-            // pair that produced the sampled state".
-            let mut buttons = 0u8;
-            if let Some((local, remote)) = self
-                .replay
-                .rounds
-                .get(round_idx as usize)
-                .and_then(|r| r.get((tick as usize).wrapping_sub(1)))
-            {
-                buttons |= if local.joyflags & JOY_A != 0 { BUTTON_LOCAL_A } else { 0 };
-                buttons |= if local.joyflags & JOY_B != 0 { BUTTON_LOCAL_B } else { 0 };
-                buttons |= if remote.joyflags & JOY_A != 0 {
-                    BUTTON_REMOTE_A
-                } else {
-                    0
-                };
-                buttons |= if remote.joyflags & JOY_B != 0 {
-                    BUTTON_REMOTE_B
-                } else {
-                    0
-                };
-            }
-            let chips = chips.unwrap_or([NO_CHIP; 2]);
-            self.builder.push_sample(RoundSample {
-                tick,
-                local: hp[self.lpi],
-                remote: hp[1 - self.lpi],
-                custom: custom.unwrap_or(false),
-                buttons,
-                chips: [chips[self.lpi], chips[1 - self.lpi]],
-            });
-        }
-
-        if total_left == 0 && abs_tick > 0 {
-            if (ended && self.current_result.is_some()) || self.frames_after_drain >= MAX_DRAIN_FRAMES {
-                return (abs_tick, false);
-            }
-            self.frames_after_drain += 1;
-        }
-
-        (abs_tick, true)
-    }
-
-    /// Close the final round and fold the stats.
-    pub fn finish(mut self) -> MatchStats {
-        self.builder.end_round(self.current_result.take());
-        self.builder.finish()
-    }
-}
-
+/// Re-simulate an SIO replay and fold its telemetry into [`MatchStats`].
+/// `on_progress` is called once per simulated tick with `(done, total)`
+/// and the in-flight builder; flipping `cancel` aborts with an error and
+/// nothing partial.
 pub fn analyze(
-    replay: &crate::replay::Replay,
-    local_rom: &[u8],
-    remote_rom: &[u8],
-    local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-    remote_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
+    config: AnalyzeConfig<'_>,
     on_progress: &mut dyn FnMut(u32, u32, &MatchStatsBuilder),
-    // Checked once per frame; when it flips true the simulation stops
-    // and `analyze` bails with a "cancelled" error (nothing partial is
-    // returned — the playback prefetcher takes over the same work when
-    // this is how the analysis ends).
     cancel: &std::sync::atomic::AtomicBool,
 ) -> anyhow::Result<MatchStats> {
-    let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
-    core.enable_video_buffer();
-    core.as_mut()
-        .load_rom(mgba::vfile::VFile::from_vec(local_rom.to_vec()))?;
-    core.as_mut()
-        .load_save(mgba::vfile::VFile::from_vec(replay.local_sram.clone()))?;
-    // Pin the cart RTC to the recorded clock so RTC-reading games
-    // (exe45) simulate the same values they saw live.
-    core.set_rtc_fixed(replay.rtc_time());
-    core.as_mut().reset();
-    // Nothing reads the pixels — skip rasterization, like the PvP
-    // re-sim stepper does. Set after reset(), which zeroes frameskip.
-    core.as_mut().gba_mut().set_frameskip(i32::MAX);
+    let AnalyzeConfig {
+        roms,
+        saves,
+        support,
+        match_type,
+        rng_seed,
+        rtc,
+        local_player,
+        inputs,
+        chip_semantics,
+        counts_buster,
+    } = config;
+    let [rom0, rom1] = roms;
+    let [save0, save1] = saves;
 
-    let (stepper_state, _shadow) =
-        crate::stepper::State::new_for_replay(replay, remote_rom, remote_hooks, Box::new(|| {}))?;
-    local_hooks.install_on_stepper(&mut core, stepper_state.clone());
+    let mut pair = mgba_siolink::Pair::with_options(mgba_siolink::PairOptions {
+        sides: [
+            mgba_siolink::SideOptions {
+                rom: rom0,
+                save: Some(save0),
+            },
+            mgba_siolink::SideOptions {
+                rom: rom1,
+                save: Some(save1),
+            },
+        ],
+        rtc: Some(rtc),
+    })?;
+    // Nothing reads the pixels — skip rasterization on both cores.
+    pair.set_frameskip(0, i32::MAX);
+    pair.set_frameskip(1, i32::MAX);
 
-    let total_ticks: u32 = replay.rounds.iter().map(|r| r.len() as u32).sum();
-    let mut last_reported: u32 = 0;
-    let mut sampler = ReplaySampler::new(replay, local_rom, local_hooks);
+    let prime_config = PrimeConfig { match_type, rng_seed };
+    let lifecycle = crate::telemetry::LifecycleSink::new();
+    let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
+    let _trappers = [
+        mgba::trapper::Trapper::new(
+            pair.core_mut(0),
+            support[0].primer_traps(&prime_config, 0, &lifecycle, &primed[0]),
+        ),
+        mgba::trapper::Trapper::new(
+            pair.core_mut(1),
+            support[1].primer_traps(&prime_config, 1, &lifecycle, &primed[1]),
+        ),
+    ];
 
-    loop {
+    let mut prime_ticks = 0;
+    while !(primed[0].is_set() && primed[1].is_set()) {
+        if prime_ticks >= MAX_PRIME_TICKS {
+            anyhow::bail!("pvp analyze: priming did not reach a link battle within {MAX_PRIME_TICKS} ticks");
+        }
         if cancel.load(std::sync::atomic::Ordering::Relaxed) {
             anyhow::bail!("cancelled");
         }
-        let (abs_tick, more) = sampler.sample(&stepper_state);
-        if abs_tick != last_reported {
-            last_reported = abs_tick;
-            on_progress(abs_tick, total_ticks, sampler.builder());
-        }
-        if !more {
-            break;
-        }
-        core.as_mut().run_frame();
+        pair.tick([0, 0]);
+        prime_ticks += 1;
     }
 
-    Ok(sampler.finish())
+    let (mut observer, store) = Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
+    let mut builder = MatchStatsBuilder::new(chip_semantics, counts_buster);
+    let total = inputs.len() as u32;
+    for (i, &keys) in inputs.iter().enumerate() {
+        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            anyhow::bail!("cancelled");
+        }
+        let tick = i as u32 + 1;
+        pair.tick(keys);
+        // Everything is final on a linear re-sim — fold as we go.
+        mgba_siolink::session::TickObserver::on_tick(&mut observer, &mut pair, tick);
+        let (samples, events) = store.lock().unwrap().drain_confirmed(tick);
+        fold_confirmed(&mut builder, local_player, samples, events, &mut |t| {
+            (t == tick).then_some(keys)
+        });
+        on_progress(tick, total, &builder);
+    }
+
+    Ok(builder.finish())
+}
+
+/// Fold a batch of **confirmed** telemetry into a [`MatchStatsBuilder`]:
+/// per-tick samples become [`RoundSample`]s (with the A/B button bits
+/// merged back in from the confirmed input pairs via `keys_at`), and
+/// `Ended` events close rounds with their outcome oriented to
+/// `local_player`. Shared by the live drive loop and [`analyze`], so the
+/// two produce identical stats for the same match.
+///
+/// Samples and events merge in tick order, events first at a shared
+/// tick: the `Ended` that closes a round at tick T must fold before T's
+/// own sample — which belongs to the NEW round — is pushed, or a batch
+/// spanning a round boundary would fold the next round's first samples
+/// into the closing one.
+pub fn fold_confirmed(
+    builder: &mut MatchStatsBuilder,
+    local_player: usize,
+    samples: Vec<(u32, telemetry::BattleObs)>,
+    events: Vec<(u32, telemetry::RoundEvent)>,
+    keys_at: &mut dyn FnMut(u32) -> Option<[u32; 2]>,
+) {
+    let mut push = |builder: &mut MatchStatsBuilder, tick: u32, obs: telemetry::BattleObs| {
+        let mut buttons = 0u8;
+        if let Some(keys) = keys_at(tick) {
+            let (lk, rk) = (keys[local_player] as u16, keys[1 - local_player] as u16);
+            // KEYINPUT bit 0 = A, bit 1 = B, mirrored into the sample's
+            // packed button bits.
+            if lk & 0x1 != 0 {
+                buttons |= crate::battle::BUTTON_LOCAL_A;
+            }
+            if lk & 0x2 != 0 {
+                buttons |= crate::battle::BUTTON_LOCAL_B;
+            }
+            if rk & 0x1 != 0 {
+                buttons |= crate::battle::BUTTON_REMOTE_A;
+            }
+            if rk & 0x2 != 0 {
+                buttons |= crate::battle::BUTTON_REMOTE_B;
+            }
+        }
+        builder.push_sample(RoundSample {
+            tick,
+            local: obs.hp[local_player],
+            remote: obs.hp[1 - local_player],
+            custom: obs.custom[local_player],
+            buttons,
+            chips: [obs.chips[local_player], obs.chips[1 - local_player]],
+        });
+    };
+
+    let mut samples = samples.into_iter().peekable();
+    for (etick, event) in events {
+        while let Some(&(tick, obs)) = samples.peek() {
+            if tick >= etick {
+                break;
+            }
+            samples.next();
+            push(builder, tick, obs);
+        }
+        match event {
+            // Rounds are delimited by `Ended`; the `Started` event only
+            // matters here for the merge ordering above (its tick is
+            // the boundary samples must not cross).
+            telemetry::RoundEvent::Started => {}
+            telemetry::RoundEvent::Ended { outcome } => {
+                builder.end_round(outcome.map(|o| orient_outcome(o, local_player)));
+            }
+            telemetry::RoundEvent::MatchEnded => {}
+        }
+    }
+    for (tick, obs) in samples {
+        push(builder, tick, obs);
+    }
+}
+
+/// Absolute player outcome → `local_player`'s perspective.
+pub fn orient_outcome(o: telemetry::Outcome, local_player: usize) -> BattleOutcome {
+    match o {
+        telemetry::Outcome::Draw => BattleOutcome::Draw,
+        telemetry::Outcome::P0Win => {
+            if local_player == 0 {
+                BattleOutcome::Win
+            } else {
+                BattleOutcome::Loss
+            }
+        }
+        telemetry::Outcome::P1Win => {
+            if local_player == 1 {
+                BattleOutcome::Win
+            } else {
+                BattleOutcome::Loss
+            }
+        }
+    }
 }

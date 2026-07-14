@@ -10,16 +10,6 @@ image.workspace = true
 tango-dataview = { path = "../tango-dataview" }
 tango-pvp = { path = "../tango-pvp" }
 thiserror.workspace = true
-# Only pulled in by the `testing` feature, for the golden-replay
-# determinism harness the per-game crates run in their tests.
-anyhow = { workspace = true, optional = true }
-mgba = { workspace = true, optional = true }
-sha2 = { workspace = true, optional = true }
-
-[features]
-# Exposes `golden`, the shared determinism harness each
-# `tango-gamesupport-<game>` crate drives from its own golden replays.
-testing = ["dep:anyhow", "dep:mgba", "dep:sha2"]
 
 [lints]
 workspace = true

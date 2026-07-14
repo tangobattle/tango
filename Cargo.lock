@@ -619,7 +619,7 @@ dependencies = [
  "bitflags 2.11.1",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -3351,7 +3351,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.53.3",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -3651,7 +3651,7 @@ dependencies = [
 [[package]]
 name = "mgba"
 version = "4.0.32"
-source = "git+https://github.com/tangobattle/mgba-rs#fcb01699c99b8a11331c354ab04f5e70ea75feb6"
+source = "git+https://github.com/tangobattle/mgba-rs#b3ad9c8ef4bf278882d67e4887b0436a6db38d8d"
 dependencies = [
  "log",
  "mgba-sys",
@@ -3660,9 +3660,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "mgba-siolink"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "getgud",
+ "mgba",
+ "mgba-sys",
+ "rennet",
+ "sdl3",
+ "tango-rtc",
+ "tango-signaling",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
 name = "mgba-sys"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/mgba-rs#fcb01699c99b8a11331c354ab04f5e70ea75feb6"
+source = "git+https://github.com/tangobattle/mgba-rs#b3ad9c8ef4bf278882d67e4887b0436a6db38d8d"
 dependencies = [
  "bindgen",
  "cmake",
@@ -5012,7 +5028,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6c3320f9abac597dcbc668774ef006702672474aad53c6d596b62e487b40b1"
 dependencies = [
  "heck",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "multimap",
  "once_cell",
@@ -5032,7 +5048,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9120690fafc389a67ba3803df527d0ec9cbbc9cc45e4cc20b332996dfb672425"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "syn",
@@ -6563,11 +6579,8 @@ dependencies = [
 name = "tango-gamesupport"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "crc32fast",
  "image",
- "mgba",
- "sha2",
  "tango-dataview",
  "tango-pvp",
  "thiserror 1.0.69",
@@ -6579,8 +6592,10 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "byteorder",
+ "env_logger",
  "image",
  "mgba",
+ "mgba-siolink",
  "num-traits",
  "rand 0.8.5",
  "tango-dataview",
@@ -6595,8 +6610,10 @@ dependencies = [
  "bytemuck",
  "byteorder",
  "c2rust-bitfields",
+ "env_logger",
  "image",
  "mgba",
+ "mgba-siolink",
  "num-traits",
  "rand 0.8.5",
  "tango-dataview",
@@ -6612,8 +6629,10 @@ dependencies = [
  "bytemuck",
  "byteorder",
  "c2rust-bitfields",
+ "env_logger",
  "image",
  "mgba",
+ "mgba-siolink",
  "ndarray",
  "num-traits",
  "rand 0.8.5",
@@ -6628,8 +6647,10 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "c2rust-bitfields",
+ "env_logger",
  "image",
  "mgba",
+ "mgba-siolink",
  "ndarray",
  "num-traits",
  "rand 0.8.5",
@@ -6645,8 +6666,10 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "c2rust-bitfields",
+ "env_logger",
  "image",
  "mgba",
+ "mgba-siolink",
  "ndarray",
  "num-traits",
  "rand 0.8.5",
@@ -6662,8 +6685,10 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "c2rust-bitfields",
+ "env_logger",
  "image",
  "mgba",
+ "mgba-siolink",
  "ndarray",
  "num-traits",
  "rand 0.8.5",
@@ -6678,8 +6703,10 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "c2rust-bitfields",
+ "env_logger",
  "image",
  "mgba",
+ "mgba-siolink",
  "num-traits",
  "rand 0.8.5",
  "tango-dataview",
@@ -6699,6 +6726,7 @@ dependencies = [
  "image",
  "log",
  "mgba",
+ "mgba-siolink",
  "prost",
  "prost-build",
  "rand 0.8.5",

@@ -1,5 +1,4 @@
 pub mod export;
-pub mod playback;
 mod protos;
 
 use byteorder::ReadBytesExt;
@@ -11,7 +10,14 @@ pub use protos::replay11::metadata;
 pub type Metadata = protos::replay11::Metadata;
 
 pub const HEADER: &[u8] = b"TOOT";
-pub const VERSION: u8 = 0x1B;
+/// SIO-engine replays — the only readable schema. The input stream is
+/// one continuous run of pair ticks from session start (a ROUND_START
+/// on the first record and on each later round's first record),
+/// replayed by rebooting and re-priming an [`mgba_siolink::Pair`] and
+/// feeding it the (p1, p2) stream verbatim. Trap-engine recordings
+/// (schema 0x1B and older) are not supported — the engine that played
+/// them is gone, and [`decode_metadata`] rejects them.
+pub const VERSION: u8 = 0x1C;
 
 /// Per-input record encoding. GBA joyflags use 10 bits, so each side packs
 /// into 2 high bits in the tag's payload nibble plus 1 low byte that
@@ -69,13 +75,13 @@ pub fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Err
         _ => {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("invalid version: {:02x}", version),
+                format!("unsupported replay version: {:02x}", version),
             ));
         }
     })
 }
 
-pub fn read_metadata(r: &mut impl std::io::Read) -> Result<Metadata, std::io::Error> {
+pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(u8, Metadata), std::io::Error> {
     let mut header = [0u8; 4];
     r.read_exact(&mut header)?;
     if header != HEADER {
@@ -86,7 +92,7 @@ pub fn read_metadata(r: &mut impl std::io::Read) -> Result<Metadata, std::io::Er
     let metadata_len = r.read_u32::<byteorder::LittleEndian>()?;
     let mut raw = vec![0u8; metadata_len as usize];
     r.read_exact(&mut raw[..])?;
-    decode_metadata(version, &raw)
+    Ok((version, decode_metadata(version, &raw)?))
 }
 
 // The local and remote SRAM dumps are stored as two zstd frames
@@ -139,7 +145,8 @@ impl Replay {
 
     pub fn decode(r: impl std::io::Read) -> std::io::Result<Self> {
         let mut r = std::io::BufReader::new(r);
-        let metadata = read_metadata(&mut r)?;
+        // Rejects anything but VERSION.
+        let (_version, metadata) = read_metadata(&mut r)?;
 
         let is_offerer = r.read_u8()? != 0;
         let local_player_index = r.read_u8()?;
@@ -229,8 +236,11 @@ impl Replay {
 }
 
 impl Writer {
+    /// `version` is the container schema to stamp — [`VERSION`] is
+    /// the only one readers accept.
     pub fn new(
         mut writer: impl Write + Send + 'static,
+        version: u8,
         metadata: Metadata,
         is_offerer: bool,
         local_player_index: u8,
@@ -239,7 +249,7 @@ impl Writer {
         remote_sram: &[u8],
     ) -> std::io::Result<Self> {
         writer.write_all(HEADER)?;
-        writer.write_u8(VERSION)?;
+        writer.write_u8(version)?;
         let raw_metadata = metadata.encode_to_vec();
         writer.write_u32::<byteorder::LittleEndian>(raw_metadata.len() as u32)?;
         writer.write_all(&raw_metadata[..])?;

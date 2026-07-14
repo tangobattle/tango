@@ -19,7 +19,7 @@ use iced::widget::{button, container, text};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
 use sweeten::widget::{column, row};
-use tango_pvp::stepper::BattleOutcome;
+use tango_pvp::analysis::BattleOutcome;
 use unic_langid::LanguageIdentifier;
 
 use super::super::{MatchResults, Message};

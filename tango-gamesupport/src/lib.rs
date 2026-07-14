@@ -6,13 +6,13 @@
 //! - ROM identity (`family`/`variant`, `rom_code`/`revision`, `crc32`,
 //!   `region`) — formerly the `tango-gamedb` crate.
 //! - The save/ROM parsers (`parse_save_fn` / `load_rom_assets_fn`).
-//! - The PvP rollback [`hooks`](tango_pvp::hooks::Hooks).
+//! - The PvP engine support ([`tango_pvp::GameSupport`]).
 //! - The app-facing presentation bits (`match_types`, `save_templates`,
 //!   `logo_image`, `background`).
 //!
 //! Each `tango-gamesupport-<game>` crate builds the `&'static Game`
 //! registrations for its ROM revisions out of its own `dataview` and
-//! `pvp_hooks` submodules. The application collects those statics into a
+//! `pvp` submodules. The application collects those statics into a
 //! single registry slice and drives lookup through [`detect`],
 //! [`find_by_family_and_variant`], and [`find_by_rom_info`]. That registry
 //! is the only place that needs editing to enable a game.
@@ -24,9 +24,6 @@
 //! moved off its static and lose its identity.)
 
 use std::sync::LazyLock;
-
-#[cfg(feature = "testing")]
-pub mod golden;
 
 /// Region a ROM revision targets.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -112,8 +109,9 @@ pub struct Game {
     /// per-game default character set; pass `None` for the default.
     pub load_rom_assets_fn: fn(rom: &[u8], wram: &[u8], charset: Option<&[&str]>) -> BoxedAssets,
 
-    /// PvP / replay rollback hooks for this ROM.
-    pub hooks: &'static (dyn tango_pvp::hooks::Hooks + Send + Sync),
+    /// SIO-engine support (menu priming + RAM-poll telemetry) for this
+    /// ROM. Live netplay and SIO-replay playback both run on it.
+    pub pvp: &'static (dyn tango_pvp::GameSupport + Send + Sync),
 
     /// Length-per-mode list. Entry `i` is how many subtypes mode `i` has —
     /// e.g. BN6 is `[1, 1]`. Drives the match-type pick_list in the lobby.
