@@ -397,7 +397,7 @@ impl ReplaysState {
         let res = (|| -> anyhow::Result<(crate::selection::Loaded, Vec<u32>)> {
             let f = std::fs::File::open(&path)?;
             let replay = tango_pvp::replay::Replay::decode(f)?;
-            let round_ticks = replay.rounds.iter().map(|r| r.len() as u32).collect();
+            let round_ticks = replay.round_ranges().map(|r| r.len() as u32).collect();
             let loaded = crate::selection::Loaded::for_replay_local(scanners, config, &replay)?;
             Ok((loaded, round_ticks))
         })();

@@ -41,9 +41,9 @@ fn main() {
         );
         println!(
             "  rounds={} lens={:?} total_inputs={}",
-            replay.rounds.len(),
-            replay.rounds.iter().map(|r| r.len()).collect::<Vec<_>>(),
-            replay.total_input_pairs(),
+            replay.round_starts.len(),
+            replay.round_ranges().map(|r| r.len()).collect::<Vec<_>>(),
+            replay.inputs.len(),
         );
     }
 }

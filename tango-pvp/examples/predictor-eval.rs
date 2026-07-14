@@ -304,7 +304,8 @@ fn load_corpus(paths: &[std::path::PathBuf]) -> Corpus {
             continue;
         }
         corpus.matches += 1;
-        for round in &replay.rounds {
+        for range in replay.round_ranges() {
+            let round = &replay.inputs[range];
             if round.len() < MIN_ROUND_TICKS {
                 continue;
             }

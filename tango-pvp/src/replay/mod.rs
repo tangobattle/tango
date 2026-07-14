@@ -66,7 +66,15 @@ pub struct Replay {
     /// WRAM here and reassembled SRAM on read.
     pub local_sram: Vec<u8>,
     pub remote_sram: Vec<u8>,
-    pub rounds: Vec<Vec<(crate::input::PartialInput, crate::input::PartialInput)>>,
+    /// One continuous run of (local, remote) pair ticks from session
+    /// start — the stream as recorded, not segmented.
+    pub inputs: Vec<(crate::input::PartialInput, crate::input::PartialInput)>,
+    /// Indices into `inputs` where a round starts (records whose
+    /// ROUND_START flag was set). The first entry is always 0 when
+    /// `inputs` is non-empty — recordings that predate the markers
+    /// decode as one round — so consecutive entries (and the stream
+    /// end) delimit the rounds.
+    pub round_starts: Vec<usize>,
 }
 
 pub fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Error> {
@@ -131,16 +139,26 @@ impl Replay {
         self.local_player_index = 1 - self.local_player_index;
         self.is_offerer = !self.is_offerer;
         std::mem::swap(&mut self.local_sram, &mut self.remote_sram);
-        for round in self.rounds.iter_mut() {
-            for (local, remote) in round.iter_mut() {
-                std::mem::swap(local, remote);
-            }
+        for (local, remote) in self.inputs.iter_mut() {
+            std::mem::swap(local, remote);
         }
         self
     }
 
-    pub fn total_input_pairs(&self) -> usize {
-        self.rounds.iter().map(|r| r.len()).sum()
+    /// The rounds as spans of `inputs`: each round runs from its
+    /// round-start mark to the next (the last to the end of the stream).
+    pub fn round_ranges(&self) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
+        let ends = self
+            .round_starts
+            .iter()
+            .skip(1)
+            .copied()
+            .chain(std::iter::once(self.inputs.len()));
+        self.round_starts
+            .iter()
+            .copied()
+            .zip(ends)
+            .map(|(start, end)| start..end)
     }
 
     pub fn decode(r: impl std::io::Read) -> std::io::Result<Self> {
@@ -157,12 +175,12 @@ impl Replay {
         let local_sram = read_zstd_frame(&mut r)?;
         let remote_sram = read_zstd_frame(&mut r)?;
 
-        // Streaming round decode: see the tag-byte layout doc near
-        // `OP_PREV` for the per-record encoding. `0x00` ends the stream
-        // cleanly; any unexpected EOF mid-record drops the partial record
-        // and leaves is_complete=false.
-        let mut rounds: Vec<Vec<(crate::input::PartialInput, crate::input::PartialInput)>> = Vec::new();
-        let mut current_round: Vec<(crate::input::PartialInput, crate::input::PartialInput)> = Vec::new();
+        // Streaming decode: see the tag-byte layout doc near `OP_PREV`
+        // for the per-record encoding. `0x00` ends the stream cleanly;
+        // any unexpected EOF mid-record drops the partial record and
+        // leaves is_complete=false.
+        let mut inputs: Vec<(crate::input::PartialInput, crate::input::PartialInput)> = Vec::new();
+        let mut round_starts: Vec<usize> = Vec::new();
         let mut is_complete = false;
         let mut prev: (u16, u16) = (0, 0);
 
@@ -173,9 +191,7 @@ impl Replay {
             }
 
             if tag & ROUND_START_FLAG != 0 {
-                if !current_round.is_empty() {
-                    rounds.push(std::mem::take(&mut current_round));
-                }
+                round_starts.push(inputs.len());
                 prev = (0, 0);
             }
 
@@ -215,11 +231,13 @@ impl Replay {
             } else {
                 (p2_input, p1_input)
             };
-            current_round.push((local, remote));
+            inputs.push((local, remote));
         }
 
-        if !current_round.is_empty() {
-            rounds.push(current_round);
+        // A leading unmarked run — recordings that predate the markers,
+        // or a crash-recovered partial round — still counts as a round.
+        if !inputs.is_empty() && round_starts.first() != Some(&0) {
+            round_starts.insert(0, 0);
         }
 
         Ok(Self {
@@ -230,7 +248,8 @@ impl Replay {
             rng_seed,
             local_sram,
             remote_sram,
-            rounds,
+            inputs,
+            round_starts,
         })
     }
 }

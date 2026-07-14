@@ -645,9 +645,8 @@ impl App {
                 // pair order — same contract as playback and analysis.
                 let local_player = replay.local_player_index as usize;
                 let inputs: Vec<[u32; 2]> = replay
-                    .rounds
+                    .inputs
                     .iter()
-                    .flatten()
                     .map(|(local, remote)| {
                         let mut keys = [0u32; 2];
                         keys[local_player] = local.joyflags as u32;

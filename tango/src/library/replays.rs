@@ -90,8 +90,8 @@ pub fn compute_stats(path: &std::path::Path) -> std::io::Result<ReplayStats> {
     let f = std::fs::File::open(path)?;
     let replay = tango_pvp::replay::Replay::decode(f)?;
     Ok(ReplayStats {
-        tick_count: replay.rounds.iter().map(|r| r.len() as u32).sum(),
-        round_count: replay.rounds.len() as u32,
+        tick_count: replay.inputs.len() as u32,
+        round_count: replay.round_starts.len() as u32,
         is_complete: replay.is_complete,
     })
 }
@@ -220,12 +220,11 @@ fn analyze_replay(
     let local_sio = local_game.pvp;
     let remote_sio = remote_game.pvp;
     let local_player = replay.local_player_index as usize;
-    // An SIO replay's input stream is one continuous run; decode
-    // presents it as a single round of (local, remote) pairs.
+    // An SIO replay's input stream is one continuous run of
+    // (local, remote) pairs; reorient to absolute pair order.
     let inputs: Vec<[u32; 2]> = replay
-        .rounds
+        .inputs
         .iter()
-        .flatten()
         .map(|(local, remote)| {
             let mut keys = [0u32; 2];
             keys[local_player] = local.joyflags as u32;

@@ -245,9 +245,8 @@ impl ReplaySession {
         // analysis path.
         let inputs: Arc<Vec<[u32; 2]>> = Arc::new(
             replay
-                .rounds
+                .inputs
                 .iter()
-                .flatten()
                 .map(|(local, remote)| {
                     let mut keys = [0u32; 2];
                     keys[local_player] = local.joyflags as u32;
@@ -292,9 +291,8 @@ impl ReplaySession {
         };
         let input_display = Box::new(InputDisplay {
             pairs: replay
-                .rounds
+                .inputs
                 .iter()
-                .flatten()
                 .map(|(local, remote)| {
                     (
                         local.joyflags & tango_pvp::input::JOYFLAGS_MASK,
@@ -318,20 +316,12 @@ impl ReplaySession {
         let rewind = sio_playback::RewindRing::new();
         let prefetch_progress = Arc::new(AtomicU32::new(0));
         // Inter-round marks: the recorder stamps round-start markers into
-        // the stream (each chunk after the first begins at a telemetry
-        // round start), so a multi-chunk replay carries its marks — the
-        // cumulative chunk lengths. Single-chunk replays predate the
-        // markers; for those the prefetch pass re-derives the marks from
-        // telemetry as it runs.
-        let file_marks: Vec<u32> = replay
-            .rounds
-            .iter()
-            .take(replay.rounds.len().saturating_sub(1))
-            .scan(0u32, |acc, r| {
-                *acc += r.len() as u32;
-                Some(*acc)
-            })
-            .collect();
+        // the stream and decode surfaces them as `round_starts`. The
+        // first round's start (tick 0) isn't an inter-round boundary, so
+        // the marks are the rest. Single-round results also cover
+        // recordings that predate the markers; for those the prefetch
+        // pass re-derives the marks from telemetry as it runs.
+        let file_marks: Vec<u32> = replay.round_starts.iter().skip(1).map(|&i| i as u32).collect();
         let discover_marks = file_marks.is_empty();
         let round_marks = Arc::new(Mutex::new(file_marks));
         let seek = Arc::new(SeekController::new());
