@@ -1292,6 +1292,7 @@ pub async fn spawn_pvp(
         frame_delay: config
             .frame_delay
             .clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY),
+        disable_bgm: config.disable_bgm_in_pvp,
         replays_path: &config.replays_path(),
         cache_path: &config.cache_path(),
         audio_binder: &audio_binder,

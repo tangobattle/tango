@@ -173,6 +173,11 @@ pub struct PvpSessionArgs<'a> {
     /// engine's present delay). Comes straight from local config; never
     /// negotiated with or sent to the peer.
     pub frame_delay: u32,
+    /// Silence the battle BGM (the primers skip the games' battle-start
+    /// music call). Comes straight from local config; never negotiated
+    /// with or sent to the peer — sound-driver state never feeds battle
+    /// logic.
+    pub disable_bgm: bool,
     pub replays_path: &'a Path,
     pub cache_path: &'a Path,
     pub audio_binder: &'a crate::platform::audio::LateBinder,
@@ -198,6 +203,7 @@ impl PvpSession {
             remote_rom,
             pre_match,
             frame_delay,
+            disable_bgm,
             replays_path,
             cache_path,
             audio_binder,
@@ -314,6 +320,7 @@ impl PvpSession {
                 rtc: rtc_time,
                 local_player: local_player_index as usize,
                 present_delay: frame_delay.load(Ordering::Relaxed),
+                disable_bgm,
             };
             let drive = DriveContext {
                 joyflags: joyflags.clone(),
@@ -658,6 +665,7 @@ struct BootPieces {
     rtc: std::time::SystemTime,
     local_player: usize,
     present_delay: u32,
+    disable_bgm: bool,
 }
 
 struct DriveContext {
@@ -698,6 +706,7 @@ impl DriveContext {
             present_delay: pieces
                 .present_delay
                 .clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY),
+            disable_bgm: pieces.disable_bgm,
         }) {
             Ok(m) => m,
             Err(e) => {

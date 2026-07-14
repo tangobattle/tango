@@ -47,6 +47,9 @@ pub struct MatchConfig<'a> {
     pub local_player: usize,
     /// How many ticks behind the local frontier to present. Purely local.
     pub present_delay: u32,
+    /// Silence the battle BGM (see [`PrimeConfig::disable_bgm`]). Purely
+    /// local.
+    pub disable_bgm: bool,
 }
 
 /// A booted, primed, running SIO match.
@@ -75,6 +78,7 @@ impl Match {
             rtc,
             local_player,
             present_delay,
+            disable_bgm,
         } = config;
         assert!(local_player < 2);
         let [rom0, rom1] = roms;
@@ -94,7 +98,11 @@ impl Match {
             rtc: Some(rtc),
         })?;
 
-        let prime_config = PrimeConfig { match_type, rng_seed };
+        let prime_config = PrimeConfig {
+            match_type,
+            rng_seed,
+            disable_bgm,
+        };
         let lifecycle = crate::telemetry::LifecycleSink::new();
         let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
         let trappers = [

@@ -100,6 +100,13 @@ pub struct PrimeConfig {
     /// core's RNGs with values derived from this and the core index
     /// (identical on both peers, distinct between the two cores).
     pub rng_seed: [u8; 16],
+    /// Silence the games' battle BGM: each game's primer installs a trap
+    /// that skips the battle-start music call (on both cores of this
+    /// pair). Purely local presentation — the sound driver's state never
+    /// feeds battle logic, so peers are free to disagree and replays
+    /// don't record it (trap-era semantics: a local setting, never
+    /// negotiated).
+    pub disable_bgm: bool,
 }
 
 impl PrimeConfig {

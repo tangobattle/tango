@@ -612,7 +612,13 @@ pub fn analyze(
     pair.set_frameskip(0, i32::MAX);
     pair.set_frameskip(1, i32::MAX);
 
-    let prime_config = PrimeConfig { match_type, rng_seed };
+    let prime_config = PrimeConfig {
+        match_type,
+        rng_seed,
+        // Presentation-only (audio is never read here), and gameplay-neutral
+        // either way — see `PrimeConfig::disable_bgm`.
+        disable_bgm: false,
+    };
     let lifecycle = crate::telemetry::LifecycleSink::new();
     let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
     let _trappers = [

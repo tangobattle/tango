@@ -213,6 +213,11 @@ pub struct BootConfig {
     pub match_type: (u8, u8),
     pub rng_seed: [u8; 16],
     pub rtc: std::time::SystemTime,
+    /// Silence the battle BGM (see [`PrimeConfig::disable_bgm`]) — the
+    /// export path's "disable BGM" render option. Doesn't need to match
+    /// the recorded session's setting: the sound driver's state never
+    /// feeds battle logic, so the input stream re-simulates identically.
+    pub disable_bgm: bool,
 }
 
 /// Boot and prime a pair per `config`. With `render` unset, both cores
@@ -245,6 +250,7 @@ fn boot_and_prime(
     let prime_config = PrimeConfig {
         match_type: config.match_type,
         rng_seed: config.rng_seed,
+        disable_bgm: config.disable_bgm,
     };
     let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
     let trappers = [

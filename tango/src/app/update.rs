@@ -674,6 +674,7 @@ impl App {
                     match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
                     rng_seed: replay.rng_seed,
                     rtc: replay.rtc_time(),
+                    disable_bgm: user_settings.disable_bgm,
                 };
                 let result = tango_pvp::replay::export::export(
                     &config,

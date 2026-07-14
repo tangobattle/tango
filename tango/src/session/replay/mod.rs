@@ -282,6 +282,9 @@ impl ReplaySession {
                     match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
                     rng_seed: replay.rng_seed,
                     rtc: replay.rtc_time(),
+                    // The viewer always plays the games' own audio; the
+                    // BGM-disable knob is the export path's.
+                    disable_bgm: false,
                 }
             }
         };
