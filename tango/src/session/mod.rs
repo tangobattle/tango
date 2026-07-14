@@ -148,14 +148,31 @@ pub struct ReplayChart {
     pub rounds: Vec<crate::ui::widgets::CookedHpRound>,
 }
 
-/// Snapshot of a finished PvP match, taken at the natural-end teardown
-/// (`is_ended`) and shown as the post-match results screen until dismissed.
-/// Owned data only — the session (and everything network-side) is already
-/// gone while this is on screen. User-initiated quits (Esc hold, disconnect
-/// confirm) skip the capture: the player chose to leave, so they go straight
-/// back to the menu.
+/// How the match on the results screen came to its end. The disconnect
+/// variant renders the same card at rest — no reveal choreography, and a
+/// "connection lost" headline instead of a verdict (the match never
+/// finished, so declaring victory or defeat would be a lie).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum MatchEnd {
+    /// Natural end: the deciding round finished and the runout elapsed.
+    Completed,
+    /// The remote vanished mid-match: their channel EOF'd or the
+    /// reconnect window expired.
+    Disconnected,
+}
+
+/// Snapshot of a finished PvP match, taken at the session teardown
+/// (`is_ended`) and shown as the post-match results screen until dismissed:
+/// on a natural end, and on a remote disconnect (the match state as it
+/// stood — see [`MatchEnd`]). Owned data only — the session (and everything
+/// network-side) is already gone while this is on screen. User-initiated
+/// quits (Esc hold, disconnect confirm) skip the capture: the player chose
+/// to leave, so they go straight back to the menu.
 pub struct MatchResults {
     pub remote_nickname: String,
+    /// How the match ended — picks the card's dress (verdict reveal vs
+    /// the quiet disconnect layout).
+    pub end: MatchEnd,
     /// Per-round outcome + presentation-ready HP trace, in play order. Empty
     /// when the match tore down before any round finished (e.g. a comm error
     /// mid-round-1) — the screen shows a neutral headline then.
@@ -197,7 +214,7 @@ pub struct RoundCard {
 }
 
 impl MatchResults {
-    fn capture(pvp: &pvp::PvpSession) -> Self {
+    fn capture(pvp: &pvp::PvpSession, end: MatchEnd) -> Self {
         // The same aggregation the replay sidecar gets: the match folded
         // each round into its MatchStatsBuilder as it ended, so this snapshot
         // can never disagree with what the Replays tab later shows for
@@ -226,6 +243,7 @@ impl MatchResults {
             .collect::<Vec<_>>();
         let results = Self {
             remote_nickname: pvp.remote_nickname.clone(),
+            end,
             rounds,
             duration: pvp.match_duration(),
             replay_path: pvp.replay_path.clone(),
@@ -887,13 +905,20 @@ impl State {
                     // even after the emu thread has paused.
                     if session.is_ended() {
                         // Snapshot the finished match for the results screen
-                        // before the teardown drops it — but only on a
-                        // natural end. A session can now end incomplete too
-                        // (mid-match disconnect, reconnect window expired);
-                        // those go straight back to the menu, same as the
-                        // user-quit paths.
+                        // before the teardown drops it: on a natural end,
+                        // and on a remote disconnect (their channel EOF'd
+                        // or the reconnect window expired) — the card comes
+                        // up in its disconnect dress with the match as it
+                        // stood. Our own quit paths (Esc hold, disconnect
+                        // confirm) set neither flag and go straight back to
+                        // the menu: the player chose to leave.
                         let results = match session {
-                            ActiveSession::PvP(pvp) if pvp.is_completed() => Some(MatchResults::capture(pvp)),
+                            ActiveSession::PvP(pvp) if pvp.is_completed() => {
+                                Some(MatchResults::capture(pvp, MatchEnd::Completed))
+                            }
+                            ActiveSession::PvP(pvp) if pvp.remote_disconnected() => {
+                                Some(MatchResults::capture(pvp, MatchEnd::Disconnected))
+                            }
                             _ => None,
                         };
                         self.close_session();

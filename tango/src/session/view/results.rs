@@ -22,7 +22,7 @@ use sweeten::widget::{column, row};
 use tango_pvp::analysis::BattleOutcome;
 use unic_langid::LanguageIdentifier;
 
-use super::super::{MatchResults, Message};
+use super::super::{MatchEnd, MatchResults, Message};
 
 /// Point size of the two score numerals — the card's centerpiece.
 const SCORE_SIZE: f32 = 44.0;
@@ -44,8 +44,11 @@ const DRAWS_SLOT_H: f32 = 16.0;
 const GRAPH_H: f32 = 72.0;
 
 /// How long [`MatchResults::capture`] must keep redraws flowing to play the
-/// whole reveal.
+/// whole reveal. Zero on a disconnect — that card comes up at rest.
 pub(crate) fn reveal_duration(results: &MatchResults) -> std::time::Duration {
+    if results.end == MatchEnd::Disconnected {
+        return std::time::Duration::ZERO;
+    }
     let sweeps = if animated(results) { results.rounds.len() } else { 0 };
     std::time::Duration::from_millis((sweeps as f32 * SWEEP_MS + STAMP_MS) as u64)
 }
@@ -58,17 +61,28 @@ fn animated(results: &MatchResults) -> bool {
 
 pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults) -> Element<'a, Message> {
     let now = iced::time::Instant::now();
-    let elapsed_ms = now.duration_since(results.revealed_at).as_secs_f32() * 1000.0;
+    // A disconnected match's card comes up at rest — the timeline reads as
+    // long elapsed, so the chart, score and headline are all just there
+    // (quiet, no celebration for a match that never finished).
+    let elapsed_ms = if results.end == MatchEnd::Disconnected {
+        f32::INFINITY
+    } else {
+        now.duration_since(results.revealed_at).as_secs_f32() * 1000.0
+    };
     let animated = animated(results);
 
     // Verdict = round majority, matching the game's own call. A match that
     // tore down before any round was decided (comm error mid-round-1) gets a
-    // neutral headline instead of a fake draw.
+    // neutral headline instead of a fake draw — and a match the remote
+    // dropped out of gets "connection lost" instead of a verdict, whatever
+    // the score stood at.
     let no_contest = results.rounds.is_empty();
     let wins = count(results, BattleOutcome::Win);
     let losses = count(results, BattleOutcome::Loss);
     let draws = count(results, BattleOutcome::Draw);
-    let (headline, headline_style) = if no_contest {
+    let (headline, headline_style) = if results.end == MatchEnd::Disconnected {
+        (t!(lang, "session-results-disconnected"), muted_style())
+    } else if no_contest {
         (t!(lang, "session-results-no-contest"), muted_style())
     } else if wins > losses {
         (

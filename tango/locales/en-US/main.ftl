@@ -113,6 +113,7 @@ session-results-victory = Victory!
 session-results-defeat = Defeat
 session-results-draw = Draw
 session-results-no-contest = Match ended
+session-results-disconnected = Connection lost
 session-results-no-rounds = The match ended before a round was decided.
 session-results-vs = vs { $nickname }
 session-results-you = You

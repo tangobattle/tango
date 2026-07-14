@@ -529,6 +529,15 @@ impl PvpSession {
         self.completed.load(Ordering::Acquire)
     }
 
+    /// Whether the match ended because the remote vanished mid-match —
+    /// the peer's channel EOF'd (quit, crash, its own give-up) or the
+    /// reconnect window expired (see the link supervisor). Never set by
+    /// our own quit paths. Gates the disconnect dress of the results
+    /// screen.
+    pub fn remote_disconnected(&self) -> bool {
+        self.end.remote_disconnected.load(Ordering::Acquire)
+    }
+
     /// Median ping over the last few seconds — drives the frame-delay
     /// suggestion, where smoothing out a transient spike is what we want.
     /// `Some(ZERO)` until the first sample arrives, then `Some(median)`
