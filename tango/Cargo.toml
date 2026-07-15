@@ -47,14 +47,14 @@ semver = { version = "1", features = ["serde"] }
 regex = "1"
 mailparse = "0.14"
 open = "5"
-bps = { path = "../bps" }
+bps = { git = "https://github.com/tangobattle/bps" }
 discord-ipc = { git = "https://github.com/tangobattle/discord-ipc" }
 mgba.workspace = true
 rennet = { path = "../rennet" }
 tango-pvp = { path = "../tango-pvp" }
 tango-filesync = { git = "https://github.com/tangobattle/tango-filesync" }
-tango-signaling = { path = "../tango-signaling" }
-datachannel-wrapper = { path = "../datachannel-wrapper" }
+tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
+datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }
 bincode = "1"
 async-trait.workspace = true
 sdl3 = { version = "0.18", default-features = false, features = ["build-from-source-static"] }

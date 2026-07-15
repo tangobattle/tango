@@ -16,14 +16,6 @@ mgba.workspace = true
 mgba-sys = { git = "https://github.com/tangobattle/mgba-rs" }
 thiserror.workspace = true
 
-[dev-dependencies]
-rennet = { path = "../rennet" }
-# Same spec as the tango app so the from-source SDL build is shared.
-sdl3 = { version = "0.18", default-features = false, features = ["build-from-source-static"] }
-tango-rtc = { git = "https://github.com/tangobattle/tango-rtc" }
-tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
-tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time"] }
-
 [lints.clippy]
 # The throttler is a verbatim copy from the tango workspace, which allows
 # this crate-wide; keep the copy byte-identical rather than "fixing" it.
