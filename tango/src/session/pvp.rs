@@ -152,7 +152,7 @@ pub struct PvpSession {
     /// thread holds a clone), so the post-match results snapshot and the
     /// sidecar write can read it during teardown regardless of how far the
     /// background tasks have already wound down.
-    stats: Arc<Mutex<tango_pvp::analysis::MatchStatsBuilder>>,
+    stats: Arc<Mutex<tango_pvp::analysis::StatsBuilder>>,
     /// Where this match's replay is being recorded, or `None` if the writer
     /// failed to open. The post-match results screen offers to play it back.
     pub replay_path: Option<std::path::PathBuf>,
@@ -276,7 +276,7 @@ impl PvpSession {
 
         // Usage semantics can depend on the applied patch (exe45's PvP
         // patch), so they're probed off the patched ROM.
-        let stats = Arc::new(Mutex::new(tango_pvp::analysis::MatchStatsBuilder::new(
+        let stats = Arc::new(Mutex::new(tango_pvp::analysis::StatsBuilder::new(
             local_game.pvp.chip_semantics(local_rom.as_ref()),
             local_game.pvp.counts_buster(local_rom.as_ref()),
         )));
@@ -683,7 +683,7 @@ struct DriveContext {
     sender: crate::net::PvpSender,
     in_match: crate::net::InMatchTx,
     replay_writer: Option<tango_pvp::replay::Writer>,
-    stats: Arc<Mutex<tango_pvp::analysis::MatchStatsBuilder>>,
+    stats: Arc<Mutex<tango_pvp::analysis::StatsBuilder>>,
     stats_path: Option<std::path::PathBuf>,
     tps_counter: Arc<Mutex<crate::session::stats::Counter>>,
     vbuf: Arc<Mutex<Vec<u8>>>,

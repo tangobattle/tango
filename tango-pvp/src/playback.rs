@@ -255,8 +255,14 @@ fn boot_and_prime(
     let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
     // Cores own their primer traps — see [`mgba_siolink::Link::set_traps`]
     // for why any other ownership dangles at core teardown.
-    pair.set_traps(0, config.support[0].primer_traps(&prime_config, 0, lifecycle, &primed[0]));
-    pair.set_traps(1, config.support[1].primer_traps(&prime_config, 1, lifecycle, &primed[1]));
+    pair.set_traps(
+        0,
+        config.support[0].primer_traps(&prime_config, 0, lifecycle, &primed[0]),
+    );
+    pair.set_traps(
+        1,
+        config.support[1].primer_traps(&prime_config, 1, lifecycle, &primed[1]),
+    );
 
     let mut prime_ticks = 0;
     while !(primed[0].is_set() && primed[1].is_set()) {
@@ -293,7 +299,11 @@ impl Playback {
         lifecycle: &crate::telemetry::LifecycleSink,
     ) -> anyhow::Result<Self> {
         let pair = boot_and_prime(config, true, None, lifecycle)?;
-        Ok(Self { pair, inputs, cursor: 0 })
+        Ok(Self {
+            pair,
+            inputs,
+            cursor: 0,
+        })
     }
 
     /// Input pairs consumed so far = the playhead tick.
@@ -489,7 +499,7 @@ pub fn run_prefetch(
     stats: Option<(
         crate::analysis::ChipSemantics,
         bool,
-        &mut dyn FnMut(u32, u32, &crate::analysis::MatchStatsBuilder),
+        &mut dyn FnMut(u32, u32, &crate::analysis::StatsBuilder),
     )>,
 ) -> anyhow::Result<Option<crate::analysis::MatchStats>> {
     let lifecycle = crate::telemetry::LifecycleSink::new();
@@ -501,7 +511,7 @@ pub fn run_prefetch(
     );
     let (mut builder, mut on_progress) = match stats {
         Some((chip_semantics, counts_buster, hook)) => (
-            Some(crate::analysis::MatchStatsBuilder::new(chip_semantics, counts_buster)),
+            Some(crate::analysis::StatsBuilder::new(chip_semantics, counts_buster)),
             Some(hook),
         ),
         None => (None, None),

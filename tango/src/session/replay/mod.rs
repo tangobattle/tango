@@ -404,7 +404,7 @@ impl ReplaySession {
                         const PREVIEW_EVERY: std::time::Duration = std::time::Duration::from_millis(33);
                         let mut last_preview = std::time::Instant::now();
                         let mut on_stats_progress =
-                            |_tick: u32, _total: u32, builder: &tango_pvp::analysis::MatchStatsBuilder| {
+                            |_tick: u32, _total: u32, builder: &tango_pvp::analysis::StatsBuilder| {
                                 let Some(job) = &stats_job else { return };
                                 let now = std::time::Instant::now();
                                 if now.duration_since(last_preview) < PREVIEW_EVERY {
@@ -424,8 +424,7 @@ impl ReplaySession {
                             stats_job.is_some().then_some((
                                 chip_semantics,
                                 counts_buster,
-                                &mut on_stats_progress
-                                    as &mut dyn FnMut(u32, u32, &tango_pvp::analysis::MatchStatsBuilder),
+                                &mut on_stats_progress as &mut dyn FnMut(u32, u32, &tango_pvp::analysis::StatsBuilder),
                             )),
                         ) {
                             Ok(Some(stats)) => {

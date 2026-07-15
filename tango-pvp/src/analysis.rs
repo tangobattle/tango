@@ -8,7 +8,7 @@
 //! cached in a small versioned binary sidecar (`<replay>.stats`, see
 //! [`MatchStats::read`]/[`MatchStats::write`]). Live matches skip the
 //! re-simulation entirely: the session folds each confirmed telemetry
-//! batch into the same [`MatchStatsBuilder`] as it plays — one
+//! batch into the same [`StatsBuilder`] as it plays — one
 //! aggregation path, whichever side of the replay boundary the samples
 //! come from.
 
@@ -201,7 +201,7 @@ pub struct HpPoint {
 /// rewinds — and the replay re-simulation ([`analyze`]) pushes from its
 /// playback loop. Rounds fold in play order: the stale-intro trim
 /// threads each round's final HP pair into the next round's fold.
-pub struct MatchStatsBuilder {
+pub struct StatsBuilder {
     semantics: ChipSemantics,
     /// Whether B-press edges are buster shots on this game/ROM (see
     /// [`GameSupport::counts_buster`](crate::GameSupport::counts_buster)).
@@ -216,7 +216,7 @@ pub struct MatchStatsBuilder {
     current: Vec<RoundSample>,
 }
 
-impl MatchStatsBuilder {
+impl StatsBuilder {
     pub fn new(semantics: ChipSemantics, counts_buster: bool) -> Self {
         Self {
             semantics,
@@ -315,8 +315,8 @@ impl MatchStatsBuilder {
 /// One round's fold: stale-intro trim (`prev_final` threads the previous
 /// round's final HP pair into the next fold), custom spans, chip/buster
 /// usage events, and the lossless change-point HP curve. Shared by
-/// [`MatchStatsBuilder::end_round`] and the non-mutating
-/// [`MatchStatsBuilder::preview`].
+/// [`StatsBuilder::end_round`] and the non-mutating
+/// [`StatsBuilder::preview`].
 fn fold_round(
     outcome: Option<BattleOutcome>,
     samples: &[RoundSample],
@@ -579,7 +579,7 @@ pub struct AnalyzeConfig<'a> {
 /// nothing partial.
 pub fn analyze(
     config: AnalyzeConfig<'_>,
-    on_progress: &mut dyn FnMut(u32, u32, &MatchStatsBuilder),
+    on_progress: &mut dyn FnMut(u32, u32, &StatsBuilder),
     cancel: &std::sync::atomic::AtomicBool,
 ) -> anyhow::Result<MatchStats> {
     let AnalyzeConfig {
@@ -641,7 +641,7 @@ pub fn analyze(
     }
 
     let (mut observer, store) = Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
-    let mut builder = MatchStatsBuilder::new(chip_semantics, counts_buster);
+    let mut builder = StatsBuilder::new(chip_semantics, counts_buster);
     let total = inputs.len() as u32;
     for (i, &keys) in inputs.iter().enumerate() {
         if cancel.load(std::sync::atomic::Ordering::Relaxed) {
@@ -661,7 +661,7 @@ pub fn analyze(
     Ok(builder.finish())
 }
 
-/// Fold a batch of **confirmed** telemetry into a [`MatchStatsBuilder`]:
+/// Fold a batch of **confirmed** telemetry into a [`StatsBuilder`]:
 /// per-tick samples become [`RoundSample`]s (with the A/B button bits
 /// merged back in from the confirmed input pairs via `keys_at`), and
 /// `Ended` events close rounds with their outcome oriented to
@@ -674,13 +674,13 @@ pub fn analyze(
 /// spanning a round boundary would fold the next round's first samples
 /// into the closing one.
 pub fn fold_confirmed(
-    builder: &mut MatchStatsBuilder,
+    builder: &mut StatsBuilder,
     local_player: usize,
     samples: Vec<(u32, telemetry::BattleObs)>,
     events: Vec<(u32, telemetry::RoundEvent)>,
     keys_at: &mut dyn FnMut(u32) -> Option<[u32; 2]>,
 ) {
-    let mut push = |builder: &mut MatchStatsBuilder, tick: u32, obs: telemetry::BattleObs| {
+    let mut push = |builder: &mut StatsBuilder, tick: u32, obs: telemetry::BattleObs| {
         let mut buttons = 0u8;
         if let Some(keys) = keys_at(tick) {
             let (lk, rk) = (keys[local_player] as u16, keys[1 - local_player] as u16);

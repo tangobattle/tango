@@ -157,7 +157,7 @@ pub fn compute_and_cache_match_stats(
     cache_path: std::path::PathBuf,
     replays_path: std::path::PathBuf,
     path: std::path::PathBuf,
-    on_progress: &mut dyn FnMut(u32, u32, &tango_pvp::analysis::MatchStatsBuilder),
+    on_progress: &mut dyn FnMut(u32, u32, &tango_pvp::analysis::StatsBuilder),
     // Flipping this aborts the simulation mid-pass with a "cancelled"
     // error and nothing cached — used when a playback session's
     // prefetcher takes over the same analysis.
@@ -214,7 +214,7 @@ fn analyze_replay(
     local_rom: Vec<u8>,
     remote_game: crate::library::rom::GameRef,
     remote_rom: Vec<u8>,
-    on_progress: &mut dyn FnMut(u32, u32, &tango_pvp::analysis::MatchStatsBuilder),
+    on_progress: &mut dyn FnMut(u32, u32, &tango_pvp::analysis::StatsBuilder),
     cancel: &std::sync::atomic::AtomicBool,
 ) -> anyhow::Result<tango_pvp::analysis::MatchStats> {
     let local_sio = local_game.pvp;
