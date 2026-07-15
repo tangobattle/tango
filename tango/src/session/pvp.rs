@@ -42,6 +42,14 @@ const RECONNECT_DIRECT_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duratio
 /// attempt re-rendezvouses on the signaling server then re-gathers ICE (and
 /// possibly TURN), which is much slower than re-binding a known local port.
 const RECONNECT_MATCHMAKING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+/// Give-up window for a reconnect triggered by a channel *close* (rather than a
+/// stalled input queue). A close is most often a deliberate quit, so we wait
+/// only briefly:
+/// a genuine asymmetric drop has the peer already at the rendezvous and rejoins
+/// almost at once, while a quit finds no peer and ends without a long
+/// "Reconnecting…". Applies to both transports (the cost of a needless wait is
+/// the same either way).
+const RECONNECT_CLEAN_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
 /// Per-attempt cap for a matchmaking rebuild (signaling rendezvous + ICE/TURN
 /// gathering + negotiate).
 const RECONNECT_MATCHMAKING_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
@@ -406,16 +414,15 @@ impl PvpSession {
                 enum Trip {
                     /// Clean local teardown (user closed / cancelled). Never reconnects.
                     Cancelled,
-                    /// A channel hit EOF — the peer *told* us something: a deliberate
-                    /// quit (usually preceded by its `Closing` marker), the peer's
-                    /// reconnect coordinator giving up, or its transport declaring the
-                    /// link dead. All of those mean the match is over; a mere link
-                    /// outage never produces an EOF (our own reconnect teardown is
-                    /// silent — see below — and a dead network delivers nothing).
-                    Closed,
-                    /// The local input queue climbed to `RECONNECT_QUEUE_LENGTH`:
-                    /// the peer stopped matching our inputs, i.e. a quiet/dead link.
-                    /// The one trip that reconnects.
+                    /// A channel hit EOF — a deliberate quit, or a drop the RTC stack
+                    /// detected and closed. We can't tell those apart, so we reconnect
+                    /// on a *short* window: a real (asymmetric) drop has the peer
+                    /// already waiting at the rendezvous, so it rejoins in a second or
+                    /// two, while a genuine quit finds no one there and ends quickly.
+                    CleanClose,
+                    /// The local input queue climbed to [`RECONNECT_QUEUE_LENGTH`]:
+                    /// the peer stopped matching our inputs, i.e. a dead link
+                    /// (drop/timeout). Reconnects on the full per-transport window.
                     Stalled,
                 }
                 // Latched by `watch_reliable` when the peer sends a `Closing`
@@ -432,10 +439,10 @@ impl PvpSession {
                         // reliable channel just before the close it announces, so
                         // reading it first latches `peer_closing` before the close
                         // trips.
-                        _ = watch_reliable(&mut reliable_receiver, &peer_closing) => Trip::Closed,
+                        _ = watch_reliable(&mut reliable_receiver, &peer_closing) => Trip::CleanClose,
                         r = inner_match.run(receiver) => {
                             log::info!("pvp in-match channel closed: {r:?}");
-                            Trip::Closed
+                            Trip::CleanClose
                         }
                         _ = inner_match.stalled() => Trip::Stalled,
                     };
@@ -448,12 +455,13 @@ impl PvpSession {
                         break;
                     }
 
-                    // Reconnect only on the stall watchdog — the one signal that
-                    // means "the link went quiet under a live match" — and only if
-                    // the transport can rebuild, the match isn't ending (our
-                    // completion or the peer's EndOfMatch), and the peer didn't
-                    // announce a deliberate close.
-                    let reconnectable = matches!(trip, Trip::Stalled)
+                    // Reconnect on any other mid-match link loss — a stalled input
+                    // queue *or* a channel close — as long as the transport can
+                    // rebuild, the match isn't ending (our completion or the peer's
+                    // EndOfMatch), and the peer didn't announce a deliberate close.
+                    // A close uses the short window below, so a real drop reconnects
+                    // fast while a (markerless) quit ends quickly anyway.
+                    let reconnectable = matches!(trip, Trip::Stalled | Trip::CleanClose)
                         && reconnect.is_some()
                         && !completion_token.is_complete()
                         && !end.remote_ended.load(Ordering::Acquire)
@@ -468,15 +476,17 @@ impl PvpSession {
                     // Freeze the sim so its speculative lead can't run past the
                     // rollback horizon (and overflow-bail) while the link is down;
                     // retire the latency readout; arm the give-up window the UI bar
-                    // drains over. One window, sized per transport (the sim is
-                    // paused throughout, so a long wait costs nothing but the
-                    // wait). Both peers converge on it: whoever trips first goes
-                    // silent, which stall-trips the other within
-                    // `RECONNECT_QUEUE_LENGTH` frames.
+                    // drains over. A channel close gets the short window (likely a
+                    // quit — don't hang on it); a stalled link gets the full
+                    // per-transport window (the sim is paused, so waiting is free).
                     let start = std::time::Instant::now();
-                    let timeout = match recipe {
-                        crate::netplay::ReconnectRecipe::Direct(_) => RECONNECT_DIRECT_TIMEOUT,
-                        crate::netplay::ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_TIMEOUT,
+                    let timeout = if matches!(trip, Trip::CleanClose) {
+                        RECONNECT_CLEAN_CLOSE_TIMEOUT
+                    } else {
+                        match recipe {
+                            crate::netplay::ReconnectRecipe::Direct(_) => RECONNECT_DIRECT_TIMEOUT,
+                            crate::netplay::ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_TIMEOUT,
+                        }
                     };
                     let deadline = start + timeout;
                     *reconnect_window.lock().unwrap() = Some((start, deadline));
