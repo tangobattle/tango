@@ -50,6 +50,18 @@ const RECONNECT_UI_TICK: std::time::Duration = std::time::Duration::from_millis(
 /// condition clears.
 const PAUSED_TICK: std::time::Duration = std::time::Duration::from_millis(10);
 
+/// Grace window after a successful reconnect during which the stall watchdog
+/// is suppressed. On reconnect the local input queue is still pegged at
+/// [`tango_pvp::battle::RECONNECT_QUEUE_LENGTH`] — that's *why* we reconnected
+/// — and the resumed drive loop only drains it back down as the peer's resent
+/// window arrives. Without this grace the still-high `queue_len` would re-trip
+/// the stall the instant the supervisor loops back, re-pausing the drive loop
+/// before it could ingest a single resend: the transport renegotiates forever
+/// while the sim never resumes. The grace ends early the moment the queue
+/// recovers (drops below the threshold); the deadline only bounds the wait so
+/// a reconnect that genuinely fails to recover still re-trips.
+const RECONNECT_DRAIN_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// The latching end-of-match signals, grouped so the teardown policy
 /// lives in one place instead of four loose atomics on the session.
 ///
@@ -1096,13 +1108,23 @@ fn spawn_supervisor(ctx: SupervisorContext) {
         }
 
         let mut receiver = make_receiver().expect("bring_up parks the in-match receiver");
+        // Set after each successful reconnect to `now + RECONNECT_DRAIN_GRACE`:
+        // the stall watch stays quiet until the queue recovers or this passes,
+        // so the just-reconnected (still-full) queue can't instantly re-trip.
+        let mut drain_until: Option<std::time::Instant> = None;
         loop {
             // The stall watch: poll the drive thread's published queue
             // length. Coarse (10 Hz) is fine — the queue takes seconds to
-            // climb to the trip point.
+            // climb to the trip point. A queue below the threshold clears any
+            // post-reconnect drain grace (the link recovered); a queue at or
+            // above it trips a stall — unless we're still inside the grace,
+            // where a high queue is the expected pre-drain state.
             let stall_watch = async {
                 loop {
-                    if metrics.queue_len.load(Ordering::Relaxed) as usize >= tango_pvp::battle::RECONNECT_QUEUE_LENGTH {
+                    let queue_len = metrics.queue_len.load(Ordering::Relaxed) as usize;
+                    if queue_len < tango_pvp::battle::RECONNECT_QUEUE_LENGTH {
+                        drain_until = None;
+                    } else if drain_until.is_none_or(|t| std::time::Instant::now() >= t) {
                         return;
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1200,6 +1222,11 @@ fn spawn_supervisor(ctx: SupervisorContext) {
             // drive loop resumes; its stall guard holds it below the
             // horizon until the resends drain the queue.
             receiver = make_receiver().expect("reconnect parks a fresh receiver");
+            // Hold the stall watch off until the resumed drive loop drains the
+            // still-full queue back below the threshold (or the grace lapses),
+            // so the stale-high `queue_len` can't instantly re-trip the stall
+            // and bounce us straight back into another reconnect.
+            drain_until = Some(std::time::Instant::now() + RECONNECT_DRAIN_GRACE);
             drive_paused.store(false, Ordering::Relaxed);
             frame_notify.notify_one();
             log::info!("pvp transparently reconnected the link");
