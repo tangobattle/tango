@@ -164,16 +164,16 @@ mod tests {
     #[test]
     fn tango_entries_exact_bytes() {
         // base=12345, ack=12345 (delta 0), meta tick_advantage=+2, [Right(0x010),
-        // EndOfRound, A(0x001)]. Inputs are two bytes (high, low); the marker is
-        // one (0x80). The meta is a single svarint byte, just as the old inlined
-        // tick_advantage was — so the wire form is byte-for-byte unchanged.
+        // A(0x001)]. Inputs are two bytes (high, low). The meta is a single
+        // svarint byte, just as the old inlined tick_advantage was — so the wire
+        // form is byte-for-byte unchanged.
         let f = data_frame(
             12345,
             12345,
             Meta { tick_advantage: 2 },
             vec![Element::Input(0x010), Element::Input(0x001)],
         );
-        assert_eq!(f.to_vec(), vec![0xB9, 0x60, 0x00, 0x04, 0x00, 0x10, 0x80, 0x00, 0x01]);
+        assert_eq!(f.to_vec(), vec![0xB9, 0x60, 0x00, 0x04, 0x00, 0x10, 0x00, 0x01]);
     }
 
     #[test]
