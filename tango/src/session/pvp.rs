@@ -1072,14 +1072,17 @@ fn spawn_supervisor(ctx: SupervisorContext) {
         enum Trip {
             /// Clean local teardown (user closed / cancelled). Never reconnects.
             Cancelled,
-            /// A channel hit EOF — the peer *told* us something: a deliberate
-            /// quit, the peer's reconnect giving up, or its transport
-            /// declaring the link dead. All of those mean the match is over;
-            /// a mere link outage never produces an EOF.
+            /// A channel hit EOF — a deliberate quit, the peer's reconnect
+            /// dropping its old transport (libdatachannel closes gracefully;
+            /// there is no silent teardown), or its transport declaring the
+            /// link dead. We can't tell those apart, so this reconnects on a
+            /// *short* window: a real drop's peer is already waiting at the
+            /// rendezvous and rejoins in a second or two, while a genuine
+            /// quit finds no one there and ends quickly.
             Closed,
             /// The local input queue climbed to `RECONNECT_QUEUE_LENGTH`:
             /// the peer stopped matching our inputs, i.e. a quiet/dead link.
-            /// The one trip that reconnects.
+            /// Reconnects on the full per-transport window.
             Stalled,
         }
 
@@ -1114,11 +1117,13 @@ fn spawn_supervisor(ctx: SupervisorContext) {
                 break;
             }
 
-            // Reconnect only on the stall watchdog — the one signal that
-            // means "the link went quiet under a live match" — and only if
-            // the transport can rebuild and the match isn't ending (our
-            // completion or the peer's EndOfMatch).
-            let reconnectable = matches!(trip, Trip::Stalled)
+            // Reconnect on any mid-match link loss — a stalled input queue
+            // *or* a channel close — as long as the transport can rebuild
+            // and the match isn't ending (our completion or the peer's
+            // EndOfMatch). A close uses the short give-up window (likely a
+            // quit — don't hang on it), so a real drop reconnects fast while
+            // a quit ends quickly anyway.
+            let reconnectable = matches!(trip, Trip::Stalled | Trip::Closed)
                 && link.can_reconnect()
                 && !completed.load(Ordering::Acquire)
                 && !end.remote_ended.load(Ordering::Acquire);
@@ -1148,8 +1153,13 @@ fn spawn_supervisor(ctx: SupervisorContext) {
                         frame_notify.notify_one();
                     }
                 };
+                let cause = if matches!(trip, Trip::Closed) {
+                    crate::net::link::ReconnectCause::CleanClose
+                } else {
+                    crate::net::link::ReconnectCause::Stall
+                };
                 tokio::select! {
-                    restored = link.reconnect() => restored,
+                    restored = link.reconnect(cause) => restored,
                     _ = ui_tick => unreachable!(),
                 }
             };

@@ -40,11 +40,33 @@ const RECONNECT_MATCHMAKING_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Du
 /// Pause between failed rebuild attempts (e.g. dialer racing ahead of the host
 /// re-binding its port).
 const RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(250);
+/// Give-up window for a reconnect triggered by a channel *close* (rather than
+/// a stalled input queue). libdatachannel tears connections down gracefully,
+/// so a close is either a deliberate quit or the peer's own reconnect dropping
+/// its old transport — we can't tell those apart, so we wait only briefly: a
+/// genuine asymmetric drop has the peer already at the rendezvous and rejoins
+/// almost at once, while a quit finds no peer and ends without a long
+/// "Reconnecting…". Applies to both transports (the cost of a needless wait is
+/// the same either way).
+const RECONNECT_CLEAN_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
 /// Upper bound on how long [`Link::bring_up`] waits for the lobby loop to
 /// observe its cancellation and release the control receiver. The loop
 /// typically returns within a few ms; the cap just keeps a wedged loop from
 /// hanging the PvP setup forever.
 const HANDOFF_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// What tripped the supervisor into a reconnect — sizes the give-up window.
+/// The *policy* (whether a trip reconnects at all) stays with the embedder;
+/// this only tells the mechanism how patient to be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReconnectCause {
+    /// The input queue stalled: a quiet/dead link. Full per-transport window.
+    Stall,
+    /// A channel closed cleanly: a deliberate quit or the peer's own
+    /// reconnect dropping its old transport. Short window — a real drop's
+    /// peer is already at the rendezvous, a quit never shows up.
+    CleanClose,
+}
 
 /// Which side of a direct (signaling-free) connection the local
 /// instance is. Drives the offer/answer symmetry breaker, and which
@@ -146,7 +168,7 @@ pub struct LinkParts {
     pub in_match_receiver: super::data::Receiver,
     /// The peer connection; brought up by both transports and kept alive for
     /// the channels' lifetime.
-    pub peer_conn: tango_rtc::PeerConnection,
+    pub peer_conn: datachannel_wrapper::PeerConnection,
     /// Recipe for transparently rebuilding the connection if it drops
     /// mid-match, or `None` for a transport that can't be rebuilt.
     pub recipe: Option<ReconnectRecipe>,
@@ -178,11 +200,14 @@ pub enum LinkHealth {
 /// the peer connection, both channels' halves, and the mid-match reconnect
 /// mechanism. See the module docs for the design.
 pub struct Link {
-    /// The current peer connection. `reconnect` drops the old one (silently,
-    /// via `abandon`) and slots the rebuilt one in; the link keeps it alive
-    /// for the channels' lifetime, and its eventual graceful drop (DTLS
-    /// close_notify) is what hands the peer a prompt EOF when we leave.
-    peer_conn: std::sync::Mutex<Option<tango_rtc::PeerConnection>>,
+    /// The current peer connection. `reconnect` drops the old one and slots
+    /// the rebuilt one in; the link keeps it alive for the channels' lifetime,
+    /// and its eventual graceful drop (DTLS close_notify) is what hands the
+    /// peer a prompt EOF when we leave. libdatachannel has no silent teardown,
+    /// so the peer also sees a clean EOF mid-reconnect — which is why a close
+    /// arms the peer's own reconnect window (see [`ReconnectCause`]) instead
+    /// of ending its match.
+    peer_conn: std::sync::Mutex<Option<datachannel_wrapper::PeerConnection>>,
     /// The in-match send handle: rennet out/in streams + retransmit heartbeat.
     /// Its streams are keyed to the session cancellation token, so they (and
     /// the unacked window) persist across a transport swap.
@@ -334,22 +359,27 @@ impl Link {
     /// first (the supervisor's `select!` arms are dropped before this is
     /// called) — the swap replaces them. The emulator freeze/unfreeze around
     /// the attempt is also the caller's job; this is transport-only.
-    pub async fn reconnect(&self) -> bool {
+    pub async fn reconnect(&self, cause: ReconnectCause) -> bool {
         let Some(recipe) = self.recipe.lock().unwrap().clone() else {
             self.health.send_replace(LinkHealth::Dead);
             return false;
         };
 
-        // Arm the give-up window the UI bar drains over — one window, sized
-        // per transport (the sim is paused throughout, so a long wait costs
-        // nothing but the wait). Both peers converge on it: whoever trips
-        // first goes silent, which stall-trips the other within
-        // `RECONNECT_QUEUE_LENGTH` frames. Retire the latency readout for the
-        // duration.
+        // Arm the give-up window the UI bar drains over (the sim is paused
+        // throughout, so a long wait costs nothing but the wait). A stall
+        // gets the full per-transport window — both peers converge on it:
+        // whoever trips first goes silent, which stall-trips the other
+        // within `RECONNECT_QUEUE_LENGTH` frames. A channel close gets the
+        // short window instead (likely a quit — don't hang on it; a real
+        // drop's peer is already at the rendezvous). Retire the latency
+        // readout for the duration.
         let started = std::time::Instant::now();
-        let timeout = match recipe {
-            ReconnectRecipe::Direct(_) => RECONNECT_DIRECT_TIMEOUT,
-            ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_TIMEOUT,
+        let timeout = match cause {
+            ReconnectCause::CleanClose => RECONNECT_CLEAN_CLOSE_TIMEOUT,
+            ReconnectCause::Stall => match recipe {
+                ReconnectRecipe::Direct(_) => RECONNECT_DIRECT_TIMEOUT,
+                ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_TIMEOUT,
+            },
         };
         let give_up_at = started + timeout;
         self.health
@@ -357,17 +387,14 @@ impl Link {
         self.retire_latency();
 
         // Tear the old peer connection down *before* rebuilding so the host's
-        // pinned UDP port frees up for the re-bind — and tear it down
-        // *silently* (`abandon`: no DTLS close_notify). A clean EOF means "the
-        // peer left" (the control-channel watch), so handing the peer one
-        // mid-reconnect would end its match; silence instead trips its stall
-        // watchdog into the same rendezvous. The socket is released
-        // asynchronously when the old driver task tears down, so a rebuild
-        // attempt can race it and see AddrInUse — `rebuild_connection`
-        // retries, absorbing that.
-        if let Some(old) = self.peer_conn.lock().unwrap().take() {
-            old.abandon();
-        }
+        // pinned UDP port frees up for the re-bind. libdatachannel has no
+        // silent teardown — the drop closes gracefully, handing the peer a
+        // clean EOF mid-rebuild — which is exactly why the peer's supervisor
+        // treats a close as reconnectable (short window) rather than "the
+        // peer left". The socket is released asynchronously as the stack
+        // tears down, so a rebuild attempt can race it and see AddrInUse —
+        // `rebuild_connection` retries, absorbing that.
+        drop(self.peer_conn.lock().unwrap().take());
 
         let Some(channels) = self.rebuild_connection(&recipe, give_up_at).await else {
             // Timed out or cancelled — give up; the match ends.
@@ -640,7 +667,7 @@ mod tests {
         // observe the Reconnecting health state before releasing it.
         let host_reconnect = tokio::spawn({
             let link = host_link.clone();
-            async move { link.reconnect().await }
+            async move { link.reconnect(ReconnectCause::Stall).await }
         });
         let observe_reconnecting = async {
             while !matches!(host_link.health(), LinkHealth::Reconnecting { .. }) {
@@ -658,9 +685,12 @@ mod tests {
             let _ = host_link.in_match().send_input(joyflags, 0).await;
         }
 
-        let conn_restored = tokio::time::timeout(std::time::Duration::from_secs(30), conn_link.reconnect())
-            .await
-            .expect("dialer reconnect timed out");
+        let conn_restored = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            conn_link.reconnect(ReconnectCause::Stall),
+        )
+        .await
+        .expect("dialer reconnect timed out");
         assert!(conn_restored, "dialer reconnect gave up");
         let host_restored = tokio::time::timeout(std::time::Duration::from_secs(30), host_reconnect)
             .await
