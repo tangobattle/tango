@@ -47,6 +47,7 @@ pub enum Packet {
     Settings(Settings),
     Commit(Commit),
     Uncommit(Uncommit),
+    ChunkStart(ChunkStart),
     Chunk(Chunk),
     StartMatch(StartMatch),
 
@@ -86,6 +87,15 @@ pub struct Commit {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Uncommit {}
+
+/// Opens a reveal stream: the total byte length of the zstd'd
+/// NegotiatedState the Chunk packets that follow will carry. The
+/// receiver counts arriving bytes against this — there is no
+/// end-of-stream sentinel.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct ChunkStart {
+    pub len: u64,
+}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Chunk {

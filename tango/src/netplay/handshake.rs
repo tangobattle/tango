@@ -90,11 +90,15 @@ pub(super) enum RemoteReady {
     /// Peer's Commit arrived.
     Committed {
         commitment: [u8; 16],
-        /// Their reveal, accumulating until the empty-sentinel Chunk.
+        /// Total reveal length their ChunkStart announced, once it
+        /// has arrived. Chunks before it are strays and get dropped.
+        expected: Option<u64>,
+        /// Their reveal, accumulating until `expected` bytes are here.
         chunks: Vec<u8>,
-        /// The sentinel arrived — `chunks` is the complete reveal.
-        /// Latched (not just an event) so a re-commit on our side can
-        /// re-verify the held reveal without the peer re-sending it.
+        /// The announced length fully arrived — `chunks` is the
+        /// complete reveal. Latched (not just an event) so a
+        /// re-commit on our side can re-verify the held reveal
+        /// without the peer re-sending it.
         revealed: bool,
         /// Peer sent StartMatch — they verified *our* reveal.
         start_match: bool,
@@ -262,6 +266,19 @@ impl State {
         let cancel = self.cancel.clone();
         iced::Task::perform(
             async move {
+                // Announce the total length up front — the receiver
+                // counts arriving bytes against it, so there's no
+                // end-of-stream sentinel to send.
+                let total = compressed.len() as u64;
+                {
+                    let sender = sender.clone();
+                    let result: std::io::Result<()> = tokio::select! {
+                        biased;
+                        _ = cancel.cancelled() => return Err(AsyncError::Cancelled),
+                        r = async move { sender.lock().await.send_chunk_start(total).await } => r,
+                    };
+                    result.map_err(|e| AsyncError::Failed(super::Error::Other(format!("send_chunk_start: {e}"))))?;
+                }
                 // bincode-framed Packet caps at 64 KB; 32 KB
                 // payload leaves room for the discriminant +
                 // length prefix.
@@ -276,13 +293,6 @@ impl State {
                     };
                     result.map_err(|e| AsyncError::Failed(super::Error::Other(format!("send_chunk: {e}"))))?;
                 }
-                // Empty sentinel = end-of-stream.
-                sender
-                    .lock()
-                    .await
-                    .send_chunk(Vec::new())
-                    .await
-                    .map_err(|e| AsyncError::Failed(super::Error::Other(format!("send_chunk-end: {e}"))))?;
                 Ok::<(), AsyncError>(())
             },
             |r| match r {
@@ -295,7 +305,7 @@ impl State {
     /// If the peer's reveal is complete and we've sent our chunks,
     /// verify their reveal against their commitment, advance to
     /// `StartMatchSent`, and fire StartMatch. No-op from any other
-    /// rung pairing: before their sentinel it just waits; after
+    /// rung pairing: before their reveal completes it just waits; after
     /// `StartMatchSent` it's a duplicate trip; before our commit the
     /// reveal is held (`revealed` stays latched) until we commit.
     pub(super) fn maybe_finish_handshake(&mut self) -> iced::Task<Message> {

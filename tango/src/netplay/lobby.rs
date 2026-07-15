@@ -122,6 +122,9 @@ pub(super) async fn run_lobby_loop(
                     Ok(crate::net::protocol::Packet::Uncommit(_)) => {
                         let _ = tx.unbounded_send(Message::RemoteUncommit);
                     }
+                    Ok(crate::net::protocol::Packet::ChunkStart(c)) => {
+                        let _ = tx.unbounded_send(Message::RemoteChunkStart(c.len));
+                    }
                     Ok(crate::net::protocol::Packet::Chunk(c)) => {
                         let _ = tx.unbounded_send(Message::RemoteChunk(c.chunk));
                     }

@@ -91,6 +91,11 @@ impl Sender {
             .await
     }
 
+    pub async fn send_chunk_start(&mut self, len: u64) -> std::io::Result<()> {
+        self.send_packet(&protocol::Packet::ChunkStart(protocol::ChunkStart { len }))
+            .await
+    }
+
     pub async fn send_chunk(&mut self, chunk: Vec<u8>) -> std::io::Result<()> {
         self.send_packet(&protocol::Packet::Chunk(protocol::Chunk { chunk }))
             .await

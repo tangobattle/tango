@@ -83,7 +83,12 @@ use handshake::{Handshake, LocalReady, RemoteReady};
 // marker predates that ambiguity). No bump: an older peer can't decode the
 // packet, which its mid-match watch ignores as stray traffic, falling back
 // to that window.)
-pub const PROTOCOL_VERSION: u32 = 0x4f;
+// 0x50: the lobby reveal announces its total byte length up front
+// (ChunkStart) and the receiver counts arriving bytes against it, replacing
+// the empty-sentinel Chunk that used to terminate the stream. The new Packet
+// variant sits ahead of Chunk, shifting later discriminants, and a 0x4f peer
+// would wait forever for a sentinel that never comes.
+pub const PROTOCOL_VERSION: u32 = 0x50;
 
 /// Why a netplay session failed — typed so the UI can route each
 /// failure mode to its own localized copy instead of string-matching
@@ -396,6 +401,9 @@ pub enum Message {
     RemoteCommit([u8; 16]),
     /// Internal: peer sent us an Uncommit packet.
     RemoteUncommit,
+    /// Internal: peer announced their reveal's total byte length —
+    /// their Chunk stream follows.
+    RemoteChunkStart(u64),
     /// Internal: peer sent us a Chunk packet.
     RemoteChunk(Vec<u8>),
     /// Internal: peer sent us a StartMatch packet. Once both
@@ -491,6 +499,7 @@ impl State {
                 // chunks / StartMatch belonged to the pairing it replaces.
                 self.handshake.remote = RemoteReady::Committed {
                     commitment: c,
+                    expected: None,
                     chunks: Vec::new(),
                     revealed: false,
                     start_match: false,
@@ -507,25 +516,68 @@ impl State {
                 self.handshake.local.revoke_start_match();
                 iced::Task::none()
             }
+            Message::RemoteChunkStart(len) => match &mut self.handshake.remote {
+                RemoteReady::Committed { expected, revealed, .. } if expected.is_none() => {
+                    *expected = Some(len);
+                    if len == 0 {
+                        // Degenerate but well-formed: a zero-length
+                        // reveal is complete on arrival (verification
+                        // will reject it downstream).
+                        *revealed = true;
+                        self.maybe_finish_handshake()
+                    } else {
+                        iced::Task::none()
+                    }
+                }
+                RemoteReady::Committed { .. } => iced::Task::done(Message::Failed(Error::Other(
+                    "peer sent a second ChunkStart within one reveal".to_string(),
+                ))),
+                RemoteReady::NotReady => {
+                    // No commitment on hand — a straggler from a voided
+                    // pairing (the peer's chunk task outliving its
+                    // Uncommit); drop it like stray chunks.
+                    log::warn!("netplay: ignoring ChunkStart received before Commit");
+                    iced::Task::none()
+                }
+            },
             Message::RemoteChunk(c) => {
-                // Empty chunk = end-of-stream sentinel. Anything
-                // non-empty just accumulates into the remote ladder's
-                // reveal buffer. NB: empty-sentinel flushing; lets us
-                // stream save states of any size in single-byte-of-
-                // overhead chunks.
+                // Chunk bytes accumulate into the remote ladder's reveal
+                // buffer until the ChunkStart-announced length is all
+                // here — no end-of-stream sentinel on the wire.
                 match &mut self.handshake.remote {
-                    RemoteReady::Committed { chunks, revealed, .. } => {
-                        if c.is_empty() {
+                    RemoteReady::Committed { revealed: true, .. } => {
+                        // The reveal is already complete — anything more
+                        // is a stray from a voided pairing; drop it.
+                        log::warn!("netplay: ignoring chunk received after complete reveal");
+                        iced::Task::none()
+                    }
+                    RemoteReady::Committed {
+                        expected: Some(expected),
+                        chunks,
+                        revealed,
+                        ..
+                    } => {
+                        chunks.extend_from_slice(&c);
+                        if (chunks.len() as u64) > *expected {
+                            iced::Task::done(Message::Failed(Error::Other(format!(
+                                "peer sent more reveal bytes than announced ({} > {})",
+                                chunks.len(),
+                                expected
+                            ))))
+                        } else if (chunks.len() as u64) == *expected {
                             *revealed = true;
                             self.maybe_finish_handshake()
                         } else {
-                            chunks.extend_from_slice(&c);
                             iced::Task::none()
                         }
                     }
-                    RemoteReady::NotReady if c.is_empty() => iced::Task::done(Message::Failed(Error::Other(
-                        "peer sent end-of-chunks before Commit".to_string(),
-                    ))),
+                    RemoteReady::Committed { expected: None, .. } => {
+                        // On the ordered channel a reveal's ChunkStart
+                        // always precedes its chunks, so these are strays
+                        // from a voided pairing; drop them.
+                        log::warn!("netplay: ignoring chunk received before ChunkStart");
+                        iced::Task::none()
+                    }
                     RemoteReady::NotReady => {
                         // Chunks with no commitment to verify against —
                         // protocol violation; drop them.
