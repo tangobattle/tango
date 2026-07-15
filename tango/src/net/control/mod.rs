@@ -101,6 +101,13 @@ impl Sender {
             .await
     }
 
+    /// Announce a deliberate mid-match quit, just before teardown (see
+    /// [`protocol::Packet::Goodbye`]).
+    pub async fn send_goodbye(&mut self) -> std::io::Result<()> {
+        self.send_packet(&protocol::Packet::Goodbye(protocol::Goodbye {}))
+            .await
+    }
+
     // EndOfRound / EndOfMatch are no longer reliable-channel packets — they
     // ride in-band as `data::wire` markers on the unreliable in-match channel
     // (see [`super::data::InMatchTx`]), so their old send helpers are gone.

@@ -43,12 +43,19 @@ const RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(
 /// Give-up window for a reconnect triggered by a channel *close* (rather than
 /// a stalled input queue). libdatachannel tears connections down gracefully,
 /// so a close is either a deliberate quit or the peer's own reconnect dropping
-/// its old transport — we can't tell those apart, so we wait only briefly: a
-/// genuine asymmetric drop has the peer already at the rendezvous and rejoins
-/// almost at once, while a quit finds no peer and ends without a long
+/// its old transport. A quit normally announces itself first (the control
+/// channel's `Goodbye`, see [`Link::send_goodbye`]) and ends the match without
+/// any window — so a bare close is *probably* the peer's reconnect, but the
+/// goodbye is best-effort, so we still wait only briefly: a genuine asymmetric
+/// drop has the peer already at the rendezvous and rejoins almost at once,
+/// while a quit whose goodbye was lost finds no peer and ends without a long
 /// "Reconnecting…". Applies to both transports (the cost of a needless wait is
 /// the same either way).
 const RECONNECT_CLEAN_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
+/// Cap on the deliberate-quit `Goodbye` send. Best-effort by design — a
+/// wedged transport must not delay the local teardown; the peer just falls
+/// back to the clean-close reconnect window.
+const GOODBYE_SEND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 /// Upper bound on how long [`Link::bring_up`] waits for the lobby loop to
 /// observe its cancellation and release the control receiver. The loop
 /// typically returns within a few ms; the cap just keeps a wedged loop from
@@ -62,10 +69,26 @@ const HANDOFF_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 pub enum ReconnectCause {
     /// The input queue stalled: a quiet/dead link. Full per-transport window.
     Stall,
-    /// A channel closed cleanly: a deliberate quit or the peer's own
-    /// reconnect dropping its old transport. Short window — a real drop's
-    /// peer is already at the rendezvous, a quit never shows up.
+    /// A channel closed cleanly *without* a preceding `Goodbye`: the peer's
+    /// own reconnect dropping its old transport, or a quit whose goodbye was
+    /// lost. Short window — a real drop's peer is already at the rendezvous,
+    /// a quit never shows up. (An announced quit never reaches a reconnect at
+    /// all — see [`ControlEnd::Goodbye`].)
     CleanClose,
+}
+
+/// What ended [`Link::watch_control`]'s mid-match watch. The distinction is
+/// what lets the supervisor end the match at once on a deliberate quit
+/// instead of burning the clean-close reconnect window on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlEnd {
+    /// The peer announced a deliberate quit ([`Link::send_goodbye`]'s
+    /// `Goodbye` packet): it is leaving and will never be at a rendezvous.
+    Goodbye,
+    /// The channel closed without a goodbye — the peer's own reconnect
+    /// dropping its old transport, its transport declaring the link dead, or
+    /// a quit whose goodbye was lost.
+    Eof,
 }
 
 /// Which side of a direct (signaling-free) connection the local
@@ -154,13 +177,15 @@ pub(crate) fn derive_reconnect_session_id(rng_seed: &[u8; 16], fp_a: &[u8], fp_b
 /// receiver arrives late — the lobby loop owns it until it observes its
 /// cancellation — so it comes as a oneshot rather than by value.
 pub struct LinkParts {
-    /// Reliable control/lobby channel sender. Idle in-match (all live traffic
-    /// is on the unreliable channel), but held open so its close doesn't
-    /// surface as a spurious disconnect on the peer's control-channel watch.
+    /// Reliable control/lobby channel sender. In-match it carries only the
+    /// deliberate-quit `Goodbye` (all live traffic is on the unreliable
+    /// channel), and is held open so its close doesn't surface as a spurious
+    /// disconnect on the peer's control-channel watch.
     pub control_sender: Arc<tokio::sync::Mutex<super::Sender>>,
     /// Reliable control receiver, sent by the lobby loop on cancel-exit. The
-    /// link watches it only for the disconnect signal (the unreliable datagram
-    /// channel has no clean close event).
+    /// link watches it only for the peer's deliberate-quit `Goodbye` and the
+    /// disconnect signal (the unreliable datagram channel has no clean close
+    /// event).
     pub control_receiver_rx: tokio::sync::oneshot::Receiver<super::Receiver>,
     /// Unreliable in-match channel's send half — becomes the [`InMatchTx`] sink.
     pub in_match_sender: super::data::Sender,
@@ -214,8 +239,9 @@ pub struct Link {
     in_match: InMatchTx,
     /// Reliable control channel sender. See [`LinkParts::control_sender`].
     control_sender: Arc<tokio::sync::Mutex<super::Sender>>,
-    /// Reliable control receiver, watched mid-match for the disconnect signal.
-    /// A tokio Mutex: [`watch_control_eof`](Self::watch_control_eof) holds it
+    /// Reliable control receiver, watched mid-match for the peer's `Goodbye`
+    /// and the disconnect signal.
+    /// A tokio Mutex: [`watch_control`](Self::watch_control) holds it
     /// across its receive await; `reconnect` replaces it once the watcher has
     /// been dropped (the supervisor's `select!` tears its arms down before
     /// reconnecting).
@@ -327,26 +353,48 @@ impl Link {
         *self.health.borrow()
     }
 
-    /// Watch the control channel mid-match for its close. Nothing legitimately
-    /// flows here mid-match, so packets and stray/undecodable bytes are
-    /// ignored; it only returns when the channel actually closes (a recv
-    /// error). A clean EOF means the peer *told* us something — a deliberate
-    /// quit (graceful drop sends DTLS close_notify), its reconnect giving up,
-    /// or its transport declaring the link dead — all of which end the match;
-    /// a mere outage delivers nothing (our own reconnect teardown is silent).
-    pub async fn watch_control_eof(&self) {
+    /// Watch the control channel mid-match. Only two things legitimately
+    /// happen here: the peer's deliberate-quit `Goodbye`, and the close (a
+    /// recv error). Either way the peer *told* us something — a goodbye means
+    /// it's leaving and the match ends at once; a bare EOF (graceful drop
+    /// sends DTLS close_notify) is its reconnect dropping its old transport,
+    /// its transport declaring the link dead, or a quit whose goodbye was
+    /// lost. A mere outage delivers nothing (our own reconnect teardown is
+    /// silent).
+    pub async fn watch_control(&self) -> ControlEnd {
         let mut receiver = self.control_receiver.lock().await;
         loop {
             match receiver.receive().await {
-                // Some packet — nothing legitimately flows here mid-match, but
-                // ignore it and keep watching.
+                // The peer announced a deliberate quit before tearing down.
+                Ok(super::control::protocol::Packet::Goodbye(_)) => return ControlEnd::Goodbye,
+                // Any other packet — nothing else legitimately flows here
+                // mid-match, but ignore it and keep watching.
                 Ok(_) => {}
                 // Undecodable bytes (`InvalidData`) are stray traffic, not a close —
                 // ignore and keep watching. Any other error (notably the channel's
                 // `UnexpectedEof`) means it actually closed, so stop.
                 Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {}
-                Err(_) => return,
+                Err(_) => return ControlEnd::Eof,
             }
+        }
+    }
+
+    /// Announce a deliberate local quit to the peer on the (otherwise idle)
+    /// reliable control channel, just before teardown. Our teardown's clean
+    /// EOF alone is ambiguous to the peer — its own reconnect's transport
+    /// drop looks identical — so without this it burns the clean-close
+    /// reconnect window on us; the goodbye lets its mid-match watch end the
+    /// match at once. Best-effort: on a wedged or torn-down transport the
+    /// send fails or times out and the peer falls back to that window.
+    pub async fn send_goodbye(&self) {
+        let send = async {
+            let mut sender = self.control_sender.lock().await;
+            sender.send_goodbye().await
+        };
+        match tokio::time::timeout(GOODBYE_SEND_TIMEOUT, send).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => log::debug!("goodbye send failed: {e}"),
+            Err(_) => log::debug!("goodbye send timed out"),
         }
     }
 
@@ -709,6 +757,59 @@ mod tests {
             .await
             .expect("phase-3 recv timed out");
         assert_eq!(got, (6..=10).collect::<Vec<u16>>());
+
+        cancel.cancel();
+    }
+
+    /// The deliberate-quit fast path: `send_goodbye` fired right before the
+    /// quitting side's teardown (exactly how the supervisor quits) surfaces on
+    /// the peer's `watch_control` as `Goodbye`, not as the close racing along
+    /// behind it — the control channel is ordered, so the announce always wins.
+    /// The close itself then reads as a plain `Eof`.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn goodbye_outruns_the_close() {
+        // A high, unlikely-to-clash loopback port (distinct from the
+        // direct_rtc tests' 24987/24988/24990 and the reconnect test's 24991).
+        let port = 24992;
+        let addr = format!("127.0.0.1:{port}");
+
+        let (host_res, conn_res) = tokio::join!(
+            crate::net::direct_rtc::host(port),
+            crate::net::direct_rtc::connect(&addr)
+        );
+        let mut host_ch = host_res.expect("host setup");
+        let mut conn_ch = conn_res.expect("connect setup");
+        let handshake = async {
+            tokio::try_join!(
+                crate::net::negotiate(&mut host_ch.control.0, &mut host_ch.control.1),
+                crate::net::negotiate(&mut conn_ch.control.0, &mut conn_ch.control.1),
+            )
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(15), handshake)
+            .await
+            .expect("handshake timed out — channel never opened")
+            .expect("negotiate failed");
+
+        let cancel = CancellationToken::new();
+        let host_link =
+            Arc::new(link_from_channels(host_ch, ReconnectRecipe::Direct(DirectRole::Host { port }), &cancel).await);
+        let conn_link =
+            Arc::new(link_from_channels(conn_ch, ReconnectRecipe::Direct(DirectRole::Connect { addr }), &cancel).await);
+
+        // The dialer quits: announce, then tear the whole link down at once.
+        conn_link.send_goodbye().await;
+        drop(conn_link);
+
+        let end = tokio::time::timeout(std::time::Duration::from_secs(15), host_link.watch_control())
+            .await
+            .expect("watch timed out — goodbye never arrived");
+        assert_eq!(end, ControlEnd::Goodbye);
+
+        // Watching again rides out the teardown's actual close as a bare EOF.
+        let end = tokio::time::timeout(std::time::Duration::from_secs(15), host_link.watch_control())
+            .await
+            .expect("watch timed out — close never arrived");
+        assert_eq!(end, ControlEnd::Eof);
 
         cancel.cancel();
     }

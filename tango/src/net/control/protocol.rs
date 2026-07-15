@@ -49,12 +49,19 @@ pub enum Packet {
     Uncommit(Uncommit),
     Chunk(Chunk),
     StartMatch(StartMatch),
+
     // The live match's per-frame Input / EndOfRound / EndOfMatch traffic no
     // longer rides this reliable channel — it's the data plane's job, carried
     // as `data::wire` frames/markers over a separate unreliable channel (see
-    // [`crate::net::data`]). Only lobby/handshake packets remain here; a
-    // deliberate mid-match quit is signaled by the transport itself (the
-    // peer connection's graceful drop sends DTLS close_notify → prompt EOF).
+    // [`crate::net::data`]). Only lobby/handshake packets remain here, plus:
+    /// Deliberate mid-match quit, sent just before teardown. The teardown's
+    /// close_notify alone is ambiguous to the peer — its own reconnect
+    /// produces the same clean EOF — so without this it burns the short
+    /// clean-close reconnect window on us; the goodbye lets it end at once.
+    /// A peer that predates this variant fails to decode it, which its
+    /// mid-match watch ignores as stray traffic (hence no version bump) —
+    /// it just falls back to that window.
+    Goodbye(Goodbye),
 }
 
 impl Packet {
@@ -117,6 +124,9 @@ pub struct Settings {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct StartMatch {}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct Goodbye {}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct NegotiatedState {

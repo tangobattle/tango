@@ -66,9 +66,10 @@ struct EndState {
     /// `is_ended` honors it so the lagging side gets time to write its
     /// replay tail before we drop the data channel.
     remote_ended: Arc<AtomicBool>,
-    /// Remote's data channel closed (clean RTC `on_closed` or receiver
-    /// `Err`) — raised by the supervisor. No more packets are coming,
-    /// so `is_ended` skips straight past the grace window.
+    /// Remote's channel closed (clean RTC `on_closed` or receiver `Err`)
+    /// or it announced a deliberate quit (the control channel's `Goodbye`)
+    /// — raised by the supervisor. No more packets are coming, so
+    /// `is_ended` skips straight past the grace window.
     remote_disconnected: Arc<AtomicBool>,
     /// Wall-clock instant we first observed local completion, or `None`
     /// until then. Pulls double duty: the drive thread fires our
@@ -453,7 +454,9 @@ impl PvpSession {
     pub fn request_close(&self) {
         // Cancelling the token is the whole close signal: it stops the
         // drive thread and the supervisor and flips `is_ended`'s
-        // cancellation check.
+        // cancellation check. The supervisor announces the quit to the
+        // peer (best-effort `Goodbye`) on its way out, so the peer ends
+        // at once instead of trying to reconnect to us.
         self.cancellation_token.cancel();
     }
 
@@ -537,10 +540,10 @@ impl PvpSession {
     }
 
     /// Whether the match ended because the remote vanished mid-match —
-    /// the peer's channel EOF'd (quit, crash, its own give-up) or the
-    /// reconnect window expired (see the link supervisor). Never set by
-    /// our own quit paths. Gates the disconnect dress of the results
-    /// screen.
+    /// the peer announced a quit, its channel EOF'd (crash, its own
+    /// give-up) or the reconnect window expired (see the link
+    /// supervisor). Never set by our own quit paths. Gates the
+    /// disconnect dress of the results screen.
     pub fn remote_disconnected(&self) -> bool {
         self.end.remote_disconnected.load(Ordering::Acquire)
     }
@@ -1070,15 +1073,21 @@ fn spawn_supervisor(ctx: SupervisorContext) {
     tokio::task::spawn(async move {
         // Why the receive loop ended this iteration.
         enum Trip {
-            /// Clean local teardown (user closed / cancelled). Never reconnects.
+            /// Clean local teardown (user closed / cancelled). Announces the
+            /// quit to the peer (best-effort `Goodbye`), never reconnects.
             Cancelled,
-            /// A channel hit EOF — a deliberate quit, the peer's reconnect
+            /// The peer announced a deliberate quit (the control channel's
+            /// `Goodbye`): it is leaving and will never be at a rendezvous,
+            /// so the match ends at once — no reconnect window at all.
+            PeerQuit,
+            /// A channel hit EOF without a goodbye — the peer's reconnect
             /// dropping its old transport (libdatachannel closes gracefully;
-            /// there is no silent teardown), or its transport declaring the
-            /// link dead. We can't tell those apart, so this reconnects on a
-            /// *short* window: a real drop's peer is already waiting at the
-            /// rendezvous and rejoins in a second or two, while a genuine
-            /// quit finds no one there and ends quickly.
+            /// there is no silent teardown), its transport declaring the
+            /// link dead, or a quit whose goodbye was lost. We can't tell
+            /// those apart, so this reconnects on a *short* window: a real
+            /// drop's peer is already waiting at the rendezvous and rejoins
+            /// in a second or two, while a lost-goodbye quit finds no one
+            /// there and ends quickly.
             Closed,
             /// The local input queue climbed to `RECONNECT_QUEUE_LENGTH`:
             /// the peer stopped matching our inputs, i.e. a quiet/dead link.
@@ -1102,7 +1111,13 @@ fn spawn_supervisor(ctx: SupervisorContext) {
             let trip = tokio::select! {
                 biased;
                 _ = cancel.cancelled() => Trip::Cancelled,
-                _ = link.watch_control_eof() => Trip::Closed,
+                end = link.watch_control() => match end {
+                    crate::net::link::ControlEnd::Goodbye => {
+                        log::info!("pvp: peer announced a quit");
+                        Trip::PeerQuit
+                    }
+                    crate::net::link::ControlEnd::Eof => Trip::Closed,
+                },
                 e = run_receive_pump(receiver, event_tx.clone(), frame_notify.clone()) => {
                     log::info!("pvp in-match channel closed: {e:?}");
                     Trip::Closed
@@ -1110,19 +1125,26 @@ fn spawn_supervisor(ctx: SupervisorContext) {
                 _ = stall_watch => Trip::Stalled,
             };
 
-            // Our own deliberate close: just stop. The session's teardown
-            // drops the peer connection gracefully, and its DTLS
-            // close_notify hands the peer a prompt EOF.
+            // Our own deliberate close: announce it, then stop. The
+            // session's teardown drops the peer connection gracefully, and
+            // its DTLS close_notify hands the peer a prompt EOF — but that
+            // EOF alone is ambiguous over there (our reconnect's transport
+            // drop looks identical), so send the goodbye first to let the
+            // peer end at once instead of burning its clean-close reconnect
+            // window on us. Best-effort: if it's lost, that window is the
+            // fallback.
             if matches!(trip, Trip::Cancelled) {
+                link.send_goodbye().await;
                 break;
             }
 
             // Reconnect on any mid-match link loss — a stalled input queue
-            // *or* a channel close — as long as the transport can rebuild
-            // and the match isn't ending (our completion or the peer's
-            // EndOfMatch). A close uses the short give-up window (likely a
-            // quit — don't hang on it), so a real drop reconnects fast while
-            // a quit ends quickly anyway.
+            // *or* a bare channel close — as long as the transport can
+            // rebuild and the match isn't ending (our completion or the
+            // peer's EndOfMatch). A close uses the short give-up window, so
+            // a real drop reconnects fast while a lost-goodbye quit still
+            // ends quickly. An announced quit (`PeerQuit`) never reconnects
+            // — the peer told us it isn't coming back.
             let reconnectable = matches!(trip, Trip::Stalled | Trip::Closed)
                 && link.can_reconnect()
                 && !completed.load(Ordering::Acquire)

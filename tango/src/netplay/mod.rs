@@ -75,6 +75,14 @@ use handshake::{Handshake, LocalReady, RemoteReady};
 // peer's channels would never open against ours; the sio-engine simulation
 // rides on top, so neither 0x4d (str0m + sio) nor 0x4e (libdatachannel +
 // trap sim) peers may pair with us.
+// (Still 0x4f: a deliberate mid-match quit announces itself again — a
+// control-channel `Goodbye` sent just before teardown — so the peer ends at
+// once instead of burning the short clean-close reconnect window (which
+// exists because our own reconnect's transport drop produces the same clean
+// EOF a quit does — the 0x4c-era rationale for dropping the old `Closing`
+// marker predates that ambiguity). No bump: an older peer can't decode the
+// packet, which its mid-match watch ignores as stray traffic, falling back
+// to that window.)
 pub const PROTOCOL_VERSION: u32 = 0x4f;
 
 /// Why a netplay session failed — typed so the UI can route each
