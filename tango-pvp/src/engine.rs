@@ -1,4 +1,4 @@
-//! The connection-level SIO match: builds the linked [`Pair`], primes
+//! The connection-level SIO match: builds the two-player [`Link`], primes
 //! both games to their link battle, then runs the rollback
 //! [`Session`](mgba_siolink::session::Session) with per-tick RAM-poll
 //! telemetry over it.
@@ -10,10 +10,14 @@
 //! clock-sync signals back. Round boundaries and outcomes come from the
 //! telemetry [`Store`](crate::telemetry::Store), not from traps.
 //!
-//! [`Pair`]: mgba_siolink::Pair
+//! (mgba-siolink links go up to four players, but every game tango
+//! supports is a two-player link battle, so this engine is two-player
+//! throughout: the pair of cores IS the link.)
+//!
+//! [`Link`]: mgba_siolink::Link
 //! [`advance`]: Match::advance
 
-use mgba_siolink::{Pair, PairOptions, SideOptions};
+use mgba_siolink::{Link, LinkOptions, SideOptions};
 
 use crate::telemetry::{Telemetry, TelemetryHandle};
 use crate::{GameSupport, PrimeConfig};
@@ -80,8 +84,8 @@ impl Match {
         let [rom0, rom1] = roms;
         let [save0, save1] = saves;
 
-        let mut pair = Pair::with_options(PairOptions {
-            sides: [
+        let mut pair = Link::with_options(LinkOptions {
+            sides: vec![
                 SideOptions {
                     rom: rom0,
                     save: Some(save0),
@@ -101,9 +105,9 @@ impl Match {
         };
         let lifecycle = crate::telemetry::LifecycleSink::new();
         let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
-        // The cores own their primer traps (see [`Pair::set_traps`]): the
+        // The cores own their primer traps (see [`Link::set_traps`]): the
         // pair outlives this Match whenever a host still holds a
-        // [`PairHandle`] (e.g. the audio pull), and core teardown walks the
+        // [`LinkHandle`] (e.g. the audio pull), and core teardown walks the
         // trap component, so the traps must live exactly as long as their
         // cores. They stay installed for the pair's life — inert once
         // primed, since their boot/menu addresses never execute in battle.
@@ -119,7 +123,7 @@ impl Match {
             if prime_ticks >= MAX_PRIME_TICKS {
                 anyhow::bail!("pvp: priming did not reach a link battle within {MAX_PRIME_TICKS} ticks");
             }
-            pair.tick([0, 0]);
+            pair.tick(&[0, 0]);
             prime_ticks += 1;
         }
         log::info!("pvp: primed to link battle in {prime_ticks} ticks");
@@ -169,7 +173,8 @@ impl Match {
     /// Feed one remote input packet, in tick order (see
     /// [`Session::add_remote_input`](mgba_siolink::session::Session::add_remote_input)).
     pub fn add_remote_input(&mut self, keys: u32, tick_advantage: i16) {
-        self.session.add_remote_input(keys, tick_advantage);
+        self.session
+            .add_remote_input(1 - self.local_player, keys, tick_advantage);
     }
 
     /// The shared telemetry store: round events, HP/chip/custom samples,
@@ -219,20 +224,24 @@ impl Match {
     /// Confirmed `(tick, [p0 keys, p1 keys])` pairs in order, for the
     /// replay sink.
     pub fn drain_confirmed(&mut self) -> Vec<(u32, [u32; 2])> {
-        self.session.drain_confirmed()
+        self.session
+            .drain_confirmed()
+            .into_iter()
+            .map(|(tick, keys)| (tick, [keys[0], keys[1]]))
+            .collect()
     }
 
     /// Run `f` against the live pair — for video/audio readout. The pair
     /// is parked at the newest simulated tick.
-    pub fn with_pair<R>(&self, f: impl FnOnce(&mut Pair) -> R) -> R {
-        self.session.with_pair(f)
+    pub fn with_pair<R>(&self, f: impl FnOnce(&mut Link) -> R) -> R {
+        self.session.with_link(f)
     }
 
     /// A cloneable, lockable handle to the live pair for readout from
     /// other threads (e.g. the host's audio callback pulling the local
     /// core's samples). Same contract as [`with_pair`](Self::with_pair).
-    pub fn pair_handle(&self) -> crate::PairHandle {
-        self.session.pair_handle()
+    pub fn pair_handle(&self) -> crate::LinkHandle {
+        self.session.link_handle()
     }
 
     /// The local player's rendered frame (native BGR555), for the
@@ -240,6 +249,6 @@ impl Match {
     pub fn local_video_buffer(&self) -> Option<Vec<u8>> {
         let player = self.local_player;
         self.session
-            .with_pair(|pair| pair.video_buffer(player).map(|b| b.to_vec()))
+            .with_link(|pair| pair.video_buffer(player).map(|b| b.to_vec()))
     }
 }

@@ -1,25 +1,30 @@
 //! Experimental generic rollback netplay over emulated SIO (link cable).
 //!
 //! Instead of per-game traps that replace a game's link protocol with
-//! memory-level input exchange, both GBAs run locally as a *pair* connected
-//! through mgba's lockstep SIO driver, and the pair is the rollback unit:
-//! the only true inputs are the two joypads, everything on the wire is
-//! derived deterministically. A netplay session runs the same `Pair` on both
-//! peers, feeds confirmed local + predicted remote keys into `tick`, and
-//! restores a `Snapshot` to re-simulate when a prediction turns out wrong.
+//! memory-level input exchange, all of the GBAs on the cable (two to four)
+//! run locally as a *link* connected through mgba's lockstep SIO driver,
+//! and the link is the rollback unit: the only true inputs are the
+//! joypads, everything on the wire is derived deterministically. A netplay
+//! session runs the same `Link` on every peer, feeds confirmed local +
+//! predicted remote keys into `tick`, and restores a `Snapshot` to
+//! re-simulate when a prediction turns out wrong.
 //!
 //! The cores are interleaved cooperatively on ONE thread (see
 //! `mgba::sio`): a tick runs whichever cores the lockstep protocol has not
 //! parked, one `run_loop` timing slice at a time, until the reference core
-//! (index 0) finishes one video frame. The peer core floats inside the
+//! (index 0) finishes one video frame. The other cores float inside the
 //! lockstep drift window and may be mid-frame or parked at a tick boundary;
-//! that partial progress is exactly captured by the pair snapshot, so the
+//! that partial progress is exactly captured by the link snapshot, so the
 //! interleave replays identically after a restore.
 
 pub mod replay;
 pub mod session;
 pub mod testrom;
 pub mod throttler;
+
+/// The most players one link supports — mgba's `MAX_GBAS`, the size of a
+/// real multi-cable chain.
+pub const MAX_PLAYERS: usize = 4;
 
 /// Which core a tick treats as the frame-boundary reference. Player 0 is
 /// also the lockstep clock owner (primary).
@@ -31,39 +36,39 @@ const REFERENCE: usize = 0;
 /// any legitimate tick.
 const MAX_SLICES_PER_TICK: usize = 2_000_000;
 
-pub struct Pair {
+pub struct Link {
     // Declaration order is drop order, and it matters: a core's deinit
     // calls back into its SIO driver, and detaching a driver touches the
     // coordinator.
-    cores: [mgba::core::Core; 2],
-    drivers: [mgba::sio::Driver; 2],
+    cores: Vec<mgba::core::Core>,
+    drivers: Vec<mgba::sio::Driver>,
     #[allow(dead_code)]
     coordinator: mgba::sio::Coordinator,
 }
 
-/// A consistent snapshot of the whole linked system: both cores plus both
-/// lockstep driver blobs (the coordinator's shared state rides in player
+/// A consistent snapshot of the whole linked system: every core plus every
+/// lockstep driver blob (the coordinator's shared state rides in player
 /// 0's blob). Core savestates alone are NOT sufficient — the lockstep
 /// event queues, sleep flags, and in-flight transfer data live outside
 /// them.
 pub struct Snapshot {
-    cores: [Box<mgba::state::State>; 2],
-    drivers: [Vec<u8>; 2],
+    cores: Vec<Box<mgba::state::State>>,
+    drivers: Vec<Vec<u8>>,
     /// Each core's SIO transfer-completion event (`GBASIO::completeEvent`):
     /// `Some(cycles until it fires)` when scheduled — negative when it has
     /// come due but not yet been processed — or `None` when idle. Captured
     /// from the timing list itself because the core savestate's own record
     /// of this event is lossy; see [`sio_complete_state`].
-    sio_complete: [Option<i32>; 2],
+    sio_complete: Vec<Option<i32>>,
     /// Each core's direct-sound FIFO channels (A, B), captured verbatim
     /// because the core savestate's encoding is lossy; see
     /// [`audio_fifo_state`].
-    audio_fifos: [[FifoLane; 2]; 2],
+    audio_fifos: Vec<[FifoLane; 2]>,
     /// Each core's internal DMA control state (all four channels), captured
     /// verbatim because the core savestate reconstructs it from the io
     /// block, which diverges from the truth mid-FIFO-refill; see
     /// [`dma_state`].
-    dmas: [[DmaLane; 4]; 2],
+    dmas: Vec<[DmaLane; 4]>,
 }
 
 /// Raw image of one direct-sound FIFO channel (`GBAAudioFIFO`): ring
@@ -87,6 +92,11 @@ struct DmaLane {
 }
 
 impl Snapshot {
+    /// Number of players (cores) this snapshot covers.
+    pub fn num_players(&self) -> usize {
+        self.cores.len()
+    }
+
     pub fn core_state(&self, i: usize) -> &mgba::state::State {
         &self.cores[i]
     }
@@ -96,7 +106,7 @@ impl Snapshot {
     }
 
     /// Digest of the rollback-relevant state, comparable across peers
-    /// simulating the same pair (the desync canary). Deliberately built
+    /// simulating the same link (the desync canary). Deliberately built
     /// from discrete savestate fields rather than raw state bytes: mgba
     /// serializes into an uninitialized buffer without touching reserved
     /// regions, so whole-struct bytes are not comparable. CPU registers
@@ -104,7 +114,7 @@ impl Snapshot {
     /// divergence within a tick or two.
     pub fn digest(&self) -> u32 {
         let mut h = crc32fast::Hasher::new();
-        for i in 0..2 {
+        for i in 0..self.cores.len() {
             let s = self.core_state(i);
             for r in 0..16 {
                 h.update(&s.gpr(r).to_le_bytes());
@@ -143,44 +153,45 @@ pub struct SideOptions {
 }
 
 #[derive(Default)]
-pub struct PairOptions {
-    pub sides: [SideOptions; 2],
-    /// Pin both carts' RTC to a fixed clock. Mandatory for netplay/replay
-    /// of RTC-bearing games (e.g. BN4.5): both peers must negotiate the
-    /// same match clock or the pair diverges on the first RTC read.
+pub struct LinkOptions {
+    /// One entry per player, 2 to [`MAX_PLAYERS`]. Core `i` runs `sides[i]`
+    /// and requests lockstep player `i`.
+    pub sides: Vec<SideOptions>,
+    /// Pin every cart's RTC to a fixed clock. Mandatory for netplay/replay
+    /// of RTC-bearing games (e.g. BN4.5): all peers must negotiate the
+    /// same match clock or the link diverges on the first RTC read.
     pub rtc: Option<std::time::SystemTime>,
 }
 
-impl Pair {
-    /// Boot a linked pair from two ROM images. Core 0 requests lockstep
-    /// player 0 (primary/master side), core 1 requests player 1.
-    pub fn new(roms: [Vec<u8>; 2]) -> Result<Self, mgba::Error> {
-        let [rom0, rom1] = roms;
-        Self::with_options(PairOptions {
-            sides: [
-                SideOptions { rom: rom0, save: None },
-                SideOptions { rom: rom1, save: None },
-            ],
+impl Link {
+    /// Boot a link from ROM images, one per player (2 to [`MAX_PLAYERS`]).
+    /// Core 0 requests lockstep player 0 (primary/master side), core `i`
+    /// requests player `i`.
+    pub fn new(roms: Vec<Vec<u8>>) -> Result<Self, mgba::Error> {
+        Self::with_options(LinkOptions {
+            sides: roms.into_iter().map(|rom| SideOptions { rom, save: None }).collect(),
             rtc: None,
         })
     }
 
-    pub fn with_options(options: PairOptions) -> Result<Self, mgba::Error> {
+    pub fn with_options(options: LinkOptions) -> Result<Self, mgba::Error> {
+        let num_players = options.sides.len();
+        assert!(
+            (2..=MAX_PLAYERS).contains(&num_players),
+            "a link takes 2 to {MAX_PLAYERS} players, got {num_players}"
+        );
+
         let mut coordinator = mgba::sio::Coordinator::new();
         let core_options = mgba::core::Options::default();
 
-        let mut cores = [
-            mgba::core::Core::new_gba("mgba-siolink", &core_options)?,
-            mgba::core::Core::new_gba("mgba-siolink", &core_options)?,
-        ];
-        let mut drivers = [
-            mgba::sio::Driver::new(&mut coordinator, 0),
-            mgba::sio::Driver::new(&mut coordinator, 1),
-        ];
+        let mut cores = (0..num_players)
+            .map(|_| mgba::core::Core::new_gba("mgba-siolink", &core_options))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut drivers = (0..num_players)
+            .map(|i| mgba::sio::Driver::new(&mut coordinator, i as i32))
+            .collect::<Vec<_>>();
 
-        let mut sides = options.sides.into_iter();
-        for (core, driver) in cores.iter_mut().zip(drivers.iter_mut()) {
-            let side = sides.next().unwrap();
+        for ((core, driver), side) in cores.iter_mut().zip(drivers.iter_mut()).zip(options.sides) {
             core.enable_video_buffer();
             core.as_mut().load_rom(mgba::vfile::VFile::from_vec(side.rom))?;
             if let Some(save) = side.save {
@@ -193,11 +204,16 @@ impl Pair {
             core.as_mut().reset();
         }
 
-        Ok(Pair {
+        Ok(Link {
             cores,
             drivers,
             coordinator,
         })
+    }
+
+    /// Number of players (cores) on this link.
+    pub fn num_players(&self) -> usize {
+        self.cores.len()
     }
 
     pub fn core(&self, i: usize) -> mgba::core::CoreRef<'_> {
@@ -234,21 +250,22 @@ impl Pair {
     /// renders every frame. Rendering is invisible to the emulated machine
     /// and frameskip is not serialized, so this is rollback-safe — it
     /// survives `load` and cannot perturb snapshot digests. Skip whichever
-    /// cores nobody is watching: the remote side during live play, both
-    /// sides while re-simulating.
+    /// cores nobody is watching: the remote sides during live play, every
+    /// side while re-simulating.
     pub fn set_frameskip(&mut self, i: usize, frameskip: i32) {
         self.cores[i].as_mut().gba_mut().set_frameskip(frameskip);
     }
 
-    /// Advance the pair by one frame of the reference core, interleaving
+    /// Advance the link by one frame of the reference core, interleaving
     /// run_loop slices between whichever cores the lockstep protocol
     /// currently allows to run. `keys[i]` is latched for core `i` at the
     /// start of the tick — the fixed sequence point that makes the key
-    /// schedule (and therefore the whole pair) deterministic and
+    /// schedule (and therefore the whole link) deterministic and
     /// replayable.
     ///
     /// Returns the number of slices run (diagnostic only).
-    pub fn tick(&mut self, keys: [u32; 2]) -> usize {
+    pub fn tick(&mut self, keys: &[u32]) -> usize {
+        assert_eq!(keys.len(), self.cores.len(), "one key set per player");
         for (core, &k) in self.cores.iter_mut().zip(keys.iter()) {
             core.as_mut().set_keys(k);
         }
@@ -257,7 +274,7 @@ impl Pair {
         let mut slices = 0;
         while self.cores[REFERENCE].as_ref().frame_counter() != target {
             let mut progressed = false;
-            for i in 0..2 {
+            for i in 0..self.cores.len() {
                 if self.drivers[i].asleep() {
                     continue;
                 }
@@ -270,12 +287,12 @@ impl Pair {
             }
             if !progressed {
                 // _verifyAwake on the C side guarantees not everyone sleeps;
-                // reaching this means the pair state is corrupt.
-                panic!("sio lockstep pair deadlocked: all cores asleep");
+                // reaching this means the link state is corrupt.
+                panic!("sio lockstep link deadlocked: all cores asleep");
             }
             if slices > MAX_SLICES_PER_TICK {
                 panic!(
-                    "sio lockstep pair livelocked: {} slices without finishing a reference frame",
+                    "sio lockstep link livelocked: {} slices without finishing a reference frame",
                     slices
                 );
             }
@@ -283,32 +300,27 @@ impl Pair {
         slices
     }
 
-    /// Snapshot the full pair. Valid at any tick boundary, including with a
-    /// transfer in flight or either core parked by the lockstep protocol.
+    /// Snapshot the full link. Valid at any tick boundary, including with a
+    /// transfer in flight or any core parked by the lockstep protocol.
     pub fn save(&mut self) -> Result<Snapshot, mgba::Error> {
-        let mut cores = [
-            self.cores[0].as_mut().save_state()?,
-            self.cores[1].as_mut().save_state()?,
-        ];
+        let mut cores = self
+            .cores
+            .iter_mut()
+            .map(|core| core.as_mut().save_state())
+            .collect::<Result<Vec<_>, _>>()?;
         for state in &mut cores {
             normalize_cpu_cycles(state);
         }
         Ok(Snapshot {
             cores,
-            drivers: [self.drivers[0].save_state(), self.drivers[1].save_state()],
-            sio_complete: [
-                sio_complete_state(&mut self.cores[0]),
-                sio_complete_state(&mut self.cores[1]),
-            ],
-            audio_fifos: [
-                audio_fifo_state(&mut self.cores[0]),
-                audio_fifo_state(&mut self.cores[1]),
-            ],
-            dmas: [dma_state(&mut self.cores[0]), dma_state(&mut self.cores[1])],
+            drivers: self.drivers.iter_mut().map(|d| d.save_state()).collect(),
+            sio_complete: self.cores.iter_mut().map(sio_complete_state).collect(),
+            audio_fifos: self.cores.iter_mut().map(audio_fifo_state).collect(),
+            dmas: self.cores.iter_mut().map(dma_state).collect(),
         })
     }
 
-    /// Restore a snapshot taken from THIS pair (same attach configuration).
+    /// Restore a snapshot taken from THIS link (same attach configuration).
     /// Core states load first — a core load rebuilds its timing list, which
     /// the driver blob then re-schedules the lockstep event into. In
     /// between, each core's SIO completion event is forced back to the
@@ -317,6 +329,11 @@ impl Pair {
     /// keeps the completion first in the timing list, matching both the
     /// vanilla restore order and the live scheduling order.
     pub fn load(&mut self, snapshot: &Snapshot) -> Result<(), mgba::Error> {
+        assert_eq!(
+            snapshot.cores.len(),
+            self.cores.len(),
+            "snapshot is from a link with a different player count"
+        );
         for (i, (core, state)) in self.cores.iter_mut().zip(snapshot.cores.iter()).enumerate() {
             defuse_sio_mode_switch(core, state);
             core.as_mut().load_state(state)?;
@@ -340,17 +357,17 @@ impl Pair {
 /// whose `_switchMode` compares the LOADED registers' mode against the
 /// PRE-LOAD `sio->mode` and, when they differ (i.e. the rollback window
 /// spans a link-mode switch — routine for bn1, which hops between NORMAL
-/// and MULTI), calls the lockstep driver's `setMode` while the pair is
+/// and MULTI), calls the lockstep driver's `setMode` while the link is
 /// half-restored: the core's clock has been rewound but the coordinator's
 /// has not. For player 0 that path runs
 /// `GBASIOLockstepCoordinatorWaitOnPlayers` → `_advanceCycle`, whose
 /// `newCycle - coordinator->cycle >= 0` assert fires (the crash at
 /// lockstep.c:700); it also force-sleeps the player and zeroes
-/// `cpu->nextEvent` AFTER the state restored it. For player 1 it enqueues
-/// a phantom `SIO_EV_MODE_SET` into the other player's queue. All of it is
-/// spurious — the driver blobs loaded right after this carry the true
-/// mode/queue/coordinator state — so make `_switchMode` see "no change"
-/// and do nothing.
+/// `cpu->nextEvent` AFTER the state restored it. For the other players it
+/// enqueues a phantom `SIO_EV_MODE_SET` into the other players' queues.
+/// All of it is spurious — the driver blobs loaded right after this carry
+/// the true mode/queue/coordinator state — so make `_switchMode` see "no
+/// change" and do nothing.
 fn defuse_sio_mode_switch(core: &mut mgba::core::Core, state: &mgba::state::State) {
     const OFF_IO_SIOCNT: usize = 0x400 + 0x128;
     const OFF_IO_RCNT: usize = 0x400 + 0x134;
@@ -372,7 +389,7 @@ fn defuse_sio_mode_switch(core: &mut mgba::core::Core, state: &mgba::state::Stat
 /// which is a perfectly healthy live state — but `GBADeserialize` rejects
 /// any negative `cpu.cycles` as a corrupted savestate, so the snapshot
 /// would refuse to load (and in a netplay session that half-applies the
-/// pair restore: one core loaded, the other left at the pre-load tick —
+/// link restore: some cores loaded, the rest left at the pre-load tick —
 /// the lockstep clocks then disagree and the coordinator's
 /// `_advanceCycle` assert fires).
 ///
@@ -424,7 +441,7 @@ fn gba_ptr(core: &mut mgba::core::Core) -> *mut mgba_sys::GBA {
 /// Capture the true scheduling of a core's SIO transfer-completion event
 /// (`GBASIO::completeEvent`): `Some(cycles until fire)` or `None`.
 ///
-/// This must ride in the pair snapshot because the core savestate is lossy
+/// This must ride in the link snapshot because the core savestate is lossy
 /// here. mgba serializes the event as `hw.sioNextEvent = when - now` with
 /// no "scheduled" bit and restores it in `GBAHardwareDeserialize`
 /// (gba/cart/gpio.c) behind the legacy heuristic
@@ -486,7 +503,7 @@ fn restore_sio_complete(core: &mut mgba::core::Core, scheduled: Option<i32>) {
 
 /// Capture a core's direct-sound FIFO channels verbatim.
 ///
-/// This must ride in the pair snapshot because the core savestate's
+/// This must ride in the link snapshot because the core savestate's
 /// encoding is lossy: `GBAAudioSerialize` packs each channel's
 /// `internalRemaining` — which counts 4..0 samples left in the popped
 /// word — into a TWO-bit legacy field (`FIFOInternalSamplesA/B`), so the
@@ -494,7 +511,7 @@ fn restore_sio_complete(core: &mut mgba::core::Core, scheduled: Option<i32>) {
 /// word up to 4 sample-events early, drains the FIFO faster than the live
 /// machine did, and crosses the DMA refill threshold (fill < 4) at a
 /// different timer overflow — the refill DMA steals ~10 bus cycles at a
-/// point in time where the live run had none, and the whole pair's
+/// point in time where the live run had none, and the whole link's
 /// interleave forks from there. (The serializer also normalizes the ring
 /// to `read == 0`, which is behaviorally invisible except for the
 /// open-bus-ish value `GBAAudioWriteFIFO` returns from the next slot;
@@ -538,7 +555,7 @@ fn restore_audio_fifos(core: &mut mgba::core::Core, lanes: &[FifoLane; 2]) {
 
 /// Capture a core's internal DMA control state verbatim.
 ///
-/// This must ride in the pair snapshot because the core savestate
+/// This must ride in the link snapshot because the core savestate
 /// reconstructs `GBADMA::reg` (and the `sourceOffset`/`destOffset`/`cycles`
 /// values derived from it) from the io block's DMAxCNT_HI — but
 /// `GBAAudioScheduleFifoDma` rewrites `reg` in place (dest control forced

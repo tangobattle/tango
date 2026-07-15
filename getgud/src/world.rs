@@ -4,7 +4,7 @@
 /// still real state, and the host's presentation typically only detects the end a
 /// tick or two later), so [`Ended`](RoundState::Ended) does not halt the
 /// simulation; it only stops [`World::log`] from receiving any further input
-/// pairs from the round-ending tick on.
+/// rows from the round-ending tick on.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RoundState {
     /// The round is still in progress after this tick.
@@ -22,6 +22,11 @@ pub enum RoundState {
 /// [`predict`](World::predict), and [`log`](World::log). Implement it once for
 /// your game on the type that owns the live simulation and pass it as the `W` type
 /// parameter to [`Session`](crate::Session).
+///
+/// A tick's inputs arrive as the local player's input plus a slice of remote
+/// inputs, indexed by *remote slot* (the same index the host passes to
+/// [`Session::add_remote_input`](crate::Session::add_remote_input)). The
+/// two-player case is simply the one-slot case.
 ///
 /// # Stepping model
 ///
@@ -41,7 +46,7 @@ pub enum RoundState {
 /// final tick, instead of snapshotting every intermediate one.
 ///
 /// [`load`](World::load) parks the world at the restored snapshot's tick; each
-/// [`step`](World::step) moves it one tick further. The same state + input must
+/// [`step`](World::step) moves it one tick further. The same state + inputs must
 /// always produce the same next state: rollback prediction only works if the
 /// simulation is deterministic.
 ///
@@ -59,7 +64,7 @@ pub enum RoundState {
 ///     type State = Vec<i32>;      // a serializable snapshot of the simulation
 ///     type Error = std::convert::Infallible;
 ///
-///     fn step(&mut self, _input: (u8, u8)) -> Result<RoundState, std::convert::Infallible> {
+///     fn step(&mut self, _local: &u8, _remotes: &[u8]) -> Result<RoundState, std::convert::Infallible> {
 ///         Ok(RoundState::Ongoing)
 ///     }
 ///     fn save(&mut self) -> Result<Vec<i32>, std::convert::Infallible> {
@@ -70,7 +75,7 @@ pub enum RoundState {
 ///         Ok(())
 ///     }
 ///     fn predict(&self, last_remote: &u8) -> u8 { *last_remote }
-///     fn log(&mut self, _pair: &(u8, u8)) {}
+///     fn log(&mut self, _local: &u8, _remotes: &[u8]) {}
 /// }
 /// ```
 pub trait World {
@@ -96,9 +101,10 @@ pub trait World {
     type Error: Send + 'static;
 
     /// Advance the live simulation exactly one tick from where it is parked by
-    /// applying the `(local, remote)` `input` pair, parking the world one tick
-    /// further on. Returns whether this tick ended the round — see [`RoundState`].
-    fn step(&mut self, input: (Self::Input, Self::Input)) -> Result<RoundState, Self::Error>;
+    /// applying this tick's inputs (`remotes` indexed by remote slot), parking
+    /// the world one tick further on. Returns whether this tick ended the
+    /// round — see [`RoundState`].
+    fn step(&mut self, local: &Self::Input, remotes: &[Self::Input]) -> Result<RoundState, Self::Error>;
 
     /// Snapshot the live simulation at the tick it is currently parked at.
     ///
@@ -122,9 +128,12 @@ pub trait World {
         let _ = state;
     }
 
-    /// Return the predicted remote input given the last confirmed remote input.
+    /// Return the predicted next input for a remote peer given that peer's
+    /// last known input. Applied independently per remote slot — and only to
+    /// the slots whose real input hasn't arrived yet; a remote input that is
+    /// already buffered is used as-is.
     fn predict(&self, last_remote: &Self::Input) -> Self::Input;
 
-    /// Record a single confirmed `(local, remote)` input pair.
-    fn log(&mut self, pair: &(Self::Input, Self::Input));
+    /// Record a single confirmed input row (`remotes` indexed by remote slot).
+    fn log(&mut self, local: &Self::Input, remotes: &[Self::Input]);
 }

@@ -204,7 +204,7 @@ impl Drop for Engine {
 struct SioPlaybackPull(SharedSioPlayback);
 
 impl crate::session::pair_stream::PairPull for SioPlaybackPull {
-    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_pvp::Pair)) {
+    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_pvp::Link)) {
         if let Ok(mut guard) = self.0.try_lock() {
             if let Some(pb) = guard.as_mut() {
                 f(pb.pair_mut());
@@ -850,7 +850,7 @@ impl Surfaces {
     }
 
     /// Publish the pair's live framebuffers.
-    fn publish_pair(&self, pair: &mut tango_pvp::Pair) {
+    fn publish_pair(&self, pair: &mut tango_pvp::Link) {
         let shown = self.shown();
         let main = pair.video_buffer(shown).map(|b| b.to_vec());
         let other = pair.video_buffer(1 - shown).map(|b| b.to_vec());

@@ -1,41 +1,44 @@
-//! The rollback loop around a [`Pair`], built on the [`getgud`] engine:
-//! repeat-last prediction for the remote side, speculative snapshots that
-//! are promoted when the prediction held and rolled back when it didn't,
-//! and a present delay instead of a negotiated input delay.
+//! The rollback loop around a [`Link`], built on the [`getgud`] engine:
+//! repeat-last prediction for each remote side, speculative snapshots that
+//! are promoted when the predictions held and rolled back when they
+//! didn't, and a present delay instead of a negotiated input delay.
 //!
-//! Both peers construct the SAME pair (same ROM/save/RTC for player 0 and
-//! player 1) and run one `Session` each, differing only in `local_player`.
-//! Each frame the caller feeds the local joypad and whatever remote input
-//! packets arrived — **in order**, one per remote tick, untagged — and the
-//! session presents `frontier - present_delay`, rolling back transparently
-//! as corrections land. The present delay is purely local (each peer picks
-//! its own; nothing is negotiated), and the packets carry each side's tick
-//! advantage so the two clocks can be held together: feed
+//! All peers construct the SAME link (same ROM/save/RTC for every player,
+//! in player order) and run one `Session` each, differing only in
+//! `local_player`. Each frame the caller feeds the local joypad and
+//! whatever remote input packets arrived — **in order** per peer, one per
+//! remote tick, untagged — and the session presents
+//! `frontier - present_delay`, rolling back transparently as corrections
+//! land. The present delay is purely local (each peer picks its own;
+//! nothing is negotiated), and the packets carry each side's tick
+//! advantage so the clocks can be held together: feed
 //! [`skew`](Session::skew) and [`speculation_balance`](Session::speculation_balance)
 //! into a [`Throttler`](crate::throttler::Throttler) and shave the tick
 //! rate by its output.
 //!
-//! Because the pair is deterministic, two sessions fed each other's
+//! Because the link is deterministic, sessions fed each other's
 //! outgoing packets converge on the identical settled trajectory — which
 //! [`checkpoint`](Session::checkpoint) digests make checkable on the wire.
 
 use std::sync::{Arc, Mutex};
 
-use crate::{Pair, Snapshot};
+use crate::{Link, Snapshot, MAX_PLAYERS};
 
-/// An input packet to forward to the peer: the local player's keys for
+/// An input packet to forward to every peer: the local player's keys for
 /// local tick `tick`, plus this side's tick advantage for clock sync.
 ///
 /// The receiving side feeds packets to
 /// [`add_remote_input`](Session::add_remote_input) strictly in `tick`
-/// order, exactly once each — `tick` exists to let the transport
-/// deduplicate and order (e.g. as a sequence number), not to schedule.
+/// order per sender, exactly once each — `tick` exists to let the
+/// transport deduplicate and order (e.g. as a sequence number), not to
+/// schedule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Outgoing {
     pub tick: u32,
     pub keys: u32,
-    /// How far this side's local input stream leads its remote one, in
-    /// ticks — the sender's half of the clock-sync handshake.
+    /// How far this side's local input stream leads its furthest-behind
+    /// remote one, in ticks — the sender's half of the clock-sync
+    /// handshake.
     pub tick_advantage: i16,
 }
 
@@ -47,7 +50,7 @@ pub struct Report {
     pub rolled_back: u32,
     /// Local ticks fed in so far (the newest local tick).
     pub frontier: u32,
-    /// Ticks [0, confirmed) have real inputs from both sides and can
+    /// Ticks [0, confirmed) have real inputs from every side and can
     /// never be rolled back again.
     pub confirmed: u32,
     /// The tick whose state this frame presents
@@ -61,84 +64,98 @@ pub struct Report {
 /// knowing what a game is.
 ///
 /// Contract: [`on_tick`](TickObserver::on_tick) fires for every simulated
-/// tick in simulation order, with the pair parked at that tick's boundary.
+/// tick in simulation order, with the link parked at that tick's boundary.
 /// Ticks are **speculative until confirmed**: after
 /// [`on_rewind`](TickObserver::on_rewind)`(t)`, every observation for
 /// ticks > `t` is revoked, and the re-simulation will re-report them
 /// (possibly with different values). Ticks at or below the session's
 /// confirmed boundary are final and will never be rewound.
 pub trait TickObserver: Send {
-    /// The pair just simulated `tick` and is parked at its boundary.
-    fn on_tick(&mut self, pair: &mut Pair, tick: u32);
-    /// The pair rewound to `tick` ahead of a rollback re-simulation:
+    /// The link just simulated `tick` and is parked at its boundary.
+    fn on_tick(&mut self, link: &mut Link, tick: u32);
+    /// The link rewound to `tick` ahead of a rollback re-simulation:
     /// discard every observation for ticks > `tick`.
     fn on_rewind(&mut self, tick: u32);
 }
 
-/// The pair plus the bookkeeping the [`getgud::World`] callbacks write,
+/// The link plus the bookkeeping the [`getgud::World`] callbacks write,
 /// shared between the engine-owned world and the [`Session`] wrapper (the
 /// engine owns its world outright, so anything the host must reach lives
 /// behind this handle).
 struct Shared {
-    pair: Pair,
-    /// The tick the live pair is parked at (frames of the reference core
+    link: Link,
+    /// The tick the live link is parked at (frames of the reference core
     /// since boot). Snapshots are stamped with it so `load` can recognize
     /// a no-op restore.
     live_tick: u32,
-    /// Confirmed input pairs in [player 0, player 1] order, tick order,
-    /// not yet handed out by [`Session::drain_confirmed`].
-    confirmed: Vec<[u32; 2]>,
+    /// Confirmed input rows in player order, tick order, not yet handed
+    /// out by [`Session::drain_confirmed`].
+    confirmed: Vec<Box<[u32]>>,
     /// Host-installed per-tick observer, if any.
     observer: Option<Box<dyn TickObserver>>,
 }
 
-/// A cloneable, cross-thread handle to the live pair — the readout seam
-/// for hosts that pull from the pair off the session's thread (e.g. an
+/// A cloneable, cross-thread handle to the live link — the readout seam
+/// for hosts that pull from the link off the session's thread (e.g. an
 /// audio callback draining a core's sample buffer). Locks the same mutex
 /// the engine's per-tick step takes, so access interleaves between engine
-/// ticks. [`Session::with_pair`]'s contract applies: read out, don't
+/// ticks. [`Session::with_link`]'s contract applies: read out, don't
 /// tick/load.
 #[derive(Clone)]
-pub struct PairHandle {
+pub struct LinkHandle {
     shared: Arc<Mutex<Shared>>,
 }
 
-impl PairHandle {
-    /// Run `f` against the live pair. See [`Session::with_pair`].
-    pub fn with_pair<R>(&self, f: impl FnOnce(&mut Pair) -> R) -> R {
-        f(&mut self.shared.lock().unwrap().pair)
+impl LinkHandle {
+    /// Run `f` against the live link. See [`Session::with_link`].
+    pub fn with_link<R>(&self, f: impl FnOnce(&mut Link) -> R) -> R {
+        f(&mut self.shared.lock().unwrap().link)
     }
 }
 
-/// A pair snapshot stamped with the tick it is poised at.
+/// A link snapshot stamped with the tick it is poised at.
 struct SnapshotAt {
     snap: Snapshot,
     tick: u32,
 }
 
-/// The [`getgud::World`] over a [`Pair`]: `step` is one lockstep tick,
-/// `save`/`load` are whole-pair snapshots, prediction is repeat-last.
-struct PairWorld {
+/// The [`getgud::World`] over a [`Link`]: `step` is one lockstep tick,
+/// `save`/`load` are whole-link snapshots, prediction is repeat-last.
+/// Remote slot `i` is player `i` skipping over `local_player`.
+struct LinkWorld {
     shared: Arc<Mutex<Shared>>,
     local_player: usize,
+    num_players: usize,
 }
 
-impl getgud::World for PairWorld {
+impl LinkWorld {
+    /// Assemble a player-indexed key row from the engine's (local, remotes)
+    /// view.
+    fn key_row(&self, local: u32, remotes: &[u32]) -> [u32; MAX_PLAYERS] {
+        debug_assert_eq!(remotes.len(), self.num_players - 1);
+        let mut keys = [0u32; MAX_PLAYERS];
+        keys[self.local_player] = local;
+        for (slot, &k) in remotes.iter().enumerate() {
+            keys[slot + (slot >= self.local_player) as usize] = k;
+        }
+        keys
+    }
+}
+
+impl getgud::World for LinkWorld {
     /// One side's joypad keys for one tick.
     type Input = u32;
     type State = SnapshotAt;
     type Error = mgba::Error;
 
-    fn step(&mut self, (local, remote): (u32, u32)) -> Result<getgud::RoundState, mgba::Error> {
+    fn step(&mut self, local: &u32, remotes: &[u32]) -> Result<getgud::RoundState, mgba::Error> {
+        let keys = self.key_row(*local, remotes);
         let mut guard = self.shared.lock().unwrap();
         let shared = &mut *guard;
-        let mut keys = [0u32; 2];
-        keys[self.local_player] = local;
-        keys[1 - self.local_player] = remote;
-        shared.pair.tick(keys);
+        shared.link.tick(&keys[..self.num_players]);
         shared.live_tick += 1;
         if let Some(observer) = shared.observer.as_mut() {
-            observer.on_tick(&mut shared.pair, shared.live_tick);
+            observer.on_tick(&mut shared.link, shared.live_tick);
         }
         // No round concept at this layer: a link session runs until the
         // host tears it down, so the log is never clamped.
@@ -149,7 +166,7 @@ impl getgud::World for PairWorld {
         let mut shared = self.shared.lock().unwrap();
         let tick = shared.live_tick;
         Ok(SnapshotAt {
-            snap: shared.pair.save()?,
+            snap: shared.link.save()?,
             tick,
         })
     }
@@ -158,13 +175,13 @@ impl getgud::World for PairWorld {
         let mut guard = self.shared.lock().unwrap();
         let shared = &mut *guard;
         // The engine `load`s the settled state before every rollback
-        // re-sim; when nothing speculated past it the pair is already
+        // re-sim; when nothing speculated past it the link is already
         // parked there (and by determinism holds the identical state), so
         // skip the restore and keep steady-state settles forward-only.
         if shared.live_tick == state.tick {
             return Ok(());
         }
-        shared.pair.load(&state.snap)?;
+        shared.link.load(&state.snap)?;
         shared.live_tick = state.tick;
         if let Some(observer) = shared.observer.as_mut() {
             observer.on_rewind(state.tick);
@@ -172,18 +189,16 @@ impl getgud::World for PairWorld {
         Ok(())
     }
 
-    /// Repeat-last: assume the remote keeps holding exactly what they
+    /// Repeat-last: assume a remote keeps holding exactly what they
     /// held (measured best over tango's replay corpus).
     fn predict(&self, last_remote: &u32) -> u32 {
         *last_remote
     }
 
-    fn log(&mut self, pair: &(u32, u32)) {
+    fn log(&mut self, local: &u32, remotes: &[u32]) {
+        let keys = self.key_row(*local, remotes);
         let mut shared = self.shared.lock().unwrap();
-        let mut keys = [0u32; 2];
-        keys[self.local_player] = pair.0;
-        keys[1 - self.local_player] = pair.1;
-        shared.confirmed.push(keys);
+        shared.confirmed.push(keys[..self.num_players].into());
     }
 }
 
@@ -193,9 +208,10 @@ impl getgud::World for PairWorld {
 const DIGEST_HISTORY: usize = 600;
 
 pub struct Session {
-    inner: getgud::Session<PairWorld>,
+    inner: getgud::Session<LinkWorld>,
     shared: Arc<Mutex<Shared>>,
     local_player: usize,
+    num_players: usize,
     /// Rolling `(tick, digest)` history of settled boundaries observed
     /// after each `advance`, newest last. When remote inputs arrive in
     /// bursts the settled cap can jump several ticks inside one advance;
@@ -207,24 +223,27 @@ pub struct Session {
 }
 
 impl Session {
-    /// Wrap a freshly booted pair. `present_delay`: how many ticks behind
+    /// Wrap a freshly booted link. `present_delay`: how many ticks behind
     /// the local frontier to present — purely local (the peers need not
     /// agree), trades input latency against prediction depth, adjustable
     /// at runtime via [`set_present_delay`](Session::set_present_delay).
-    pub fn new(mut pair: Pair, local_player: usize, present_delay: u32) -> Result<Self, mgba::Error> {
-        assert!(local_player < 2);
+    pub fn new(mut link: Link, local_player: usize, present_delay: u32) -> Result<Self, mgba::Error> {
+        let num_players = link.num_players();
+        assert!(local_player < num_players);
         // Live play only ever presents the local side, so don't spend the
-        // software renderer on the remote core (frameskip is unserialized
-        // and invisible to the simulation — see [`Pair::set_frameskip`]).
-        // A caller that does want the remote picture can flip it back via
-        // [`with_pair`](Session::with_pair).
-        pair.set_frameskip(1 - local_player, i32::MAX);
+        // software renderer on the remote cores (frameskip is unserialized
+        // and invisible to the simulation — see [`Link::set_frameskip`]).
+        // A caller that does want a remote picture can flip it back via
+        // [`with_link`](Session::with_link).
+        for i in (0..num_players).filter(|&i| i != local_player) {
+            link.set_frameskip(i, i32::MAX);
+        }
         let initial = SnapshotAt {
-            snap: pair.save()?,
+            snap: link.save()?,
             tick: 0,
         };
         let shared = Arc::new(Mutex::new(Shared {
-            pair,
+            link,
             live_tick: 0,
             confirmed: Vec::new(),
             observer: None,
@@ -232,15 +251,17 @@ impl Session {
         Ok(Session {
             inner: getgud::Session::new(getgud::SessionParams {
                 present_delay,
-                initial_remote: 0,
+                initial_remotes: vec![0; num_players - 1],
                 initial_state: initial,
-                world: PairWorld {
+                world: LinkWorld {
                     shared: shared.clone(),
                     local_player,
+                    num_players,
                 },
             }),
             shared,
             local_player,
+            num_players,
             digests: std::collections::VecDeque::new(),
             drained: 0,
         })
@@ -248,6 +269,11 @@ impl Session {
 
     pub fn local_player(&self) -> usize {
         self.local_player
+    }
+
+    /// Number of players (cores) on the link.
+    pub fn num_players(&self) -> usize {
+        self.num_players
     }
 
     /// Number of local ticks fed in so far.
@@ -270,27 +296,30 @@ impl Session {
         self.shared.lock().unwrap().observer = observer;
     }
 
-    /// Borrow the live pair (e.g. for video/audio readout). The pair is
+    /// Borrow the live link (e.g. for video/audio readout). The link is
     /// parked at the newest simulated tick — in steady state that is
     /// exactly the presented tick. Do not tick/load it behind the
     /// session's back; that desyncs the engine's bookkeeping.
-    pub fn with_pair<R>(&self, f: impl FnOnce(&mut Pair) -> R) -> R {
-        f(&mut self.shared.lock().unwrap().pair)
+    pub fn with_link<R>(&self, f: impl FnOnce(&mut Link) -> R) -> R {
+        f(&mut self.shared.lock().unwrap().link)
     }
 
-    /// A [`PairHandle`] for readout from other threads. The handle keeps
-    /// the pair alive independently of the session.
-    pub fn pair_handle(&self) -> PairHandle {
-        PairHandle {
+    /// A [`LinkHandle`] for readout from other threads. The handle keeps
+    /// the link alive independently of the session.
+    pub fn link_handle(&self) -> LinkHandle {
+        LinkHandle {
             shared: self.shared.clone(),
         }
     }
 
-    /// Feed one remote input packet. Packets must arrive here in tick
-    /// order, exactly once each (dedup/order on the transport side —
+    /// Feed one remote input packet from `player` (any player but the
+    /// local one). Packets must arrive here in tick order per player,
+    /// exactly once each (dedup/order on the transport side —
     /// [`Outgoing::tick`] is the sequence number).
-    pub fn add_remote_input(&mut self, keys: u32, tick_advantage: i16) {
-        self.inner.add_remote_input(keys, tick_advantage);
+    pub fn add_remote_input(&mut self, player: usize, keys: u32, tick_advantage: i16) {
+        assert!(player < self.num_players && player != self.local_player);
+        let slot = player - (player > self.local_player) as usize;
+        self.inner.add_remote_input(slot, keys, tick_advantage);
     }
 
     /// This side's half of the clock-sync handshake — already stamped on
@@ -299,10 +328,10 @@ impl Session {
         self.inner.local_tick_advantage()
     }
 
-    /// Clock-sync skew: how far this peer runs ahead of the remote,
-    /// positive = we lead and should slow down. Read it BEFORE
-    /// [`advance`](Session::advance) (afterward the just-enqueued local
-    /// input biases it up by one) and feed it to a
+    /// Clock-sync skew: how far this peer runs ahead of the remote it
+    /// most leads, positive = we lead and should slow down. Read it
+    /// BEFORE [`advance`](Session::advance) (afterward the just-enqueued
+    /// local input biases it up by one) and feed it to a
     /// [`Throttler`](crate::throttler::Throttler).
     pub fn skew(&self) -> i32 {
         self.inner.skew()
@@ -315,14 +344,14 @@ impl Session {
         self.inner.speculation_balance()
     }
 
-    /// Local inputs buffered but not yet matched by a remote input — the
-    /// stall-guard signal: when this outruns what the transport's
+    /// Local inputs buffered but not yet matched by every remote's input —
+    /// the stall-guard signal: when this outruns what the transport's
     /// redundancy window can carry, stop advancing.
     pub fn local_queue_length(&self) -> usize {
         self.inner.local_queue_length()
     }
 
-    /// Ticks [0, confirmed) have real inputs from both sides and can
+    /// Ticks [0, confirmed) have real inputs from every side and can
     /// never be rolled back again.
     pub fn confirmed(&self) -> u32 {
         self.inner.local_frontier() - self.inner.local_queue_length() as u32
@@ -331,7 +360,7 @@ impl Session {
     /// Sample the local joypad for this frame and advance the session one
     /// tick: newly confirmed inputs settle (promoting correct predictions,
     /// rolling back wrong ones), and speculation extends to the present
-    /// target. Returns the packet to send to the peer plus a report.
+    /// target. Returns the packet to send to every peer plus a report.
     pub fn advance(&mut self, local_keys: u32) -> Result<(Outgoing, Report), mgba::Error> {
         let outgoing = Outgoing {
             tick: self.inner.local_frontier(),
@@ -365,7 +394,7 @@ impl Session {
     }
 
     /// The newest settled tick with a recorded digest, for cross-peer
-    /// desync detection: both peers eventually settle the same tick and
+    /// desync detection: all peers eventually settle the same tick and
     /// the digests must match bit for bit.
     pub fn checkpoint(&self) -> Option<(u32, u32)> {
         self.digests.back().copied()
@@ -379,12 +408,12 @@ impl Session {
         self.digests.iter().find(|(t, _)| *t == tick).map(|(_, d)| *d)
     }
 
-    /// Drain newly-confirmed ticks as (tick, [p0 keys, p1 keys]) — final
-    /// input pairs in tick order, suitable for a replay sink. Ticks are
+    /// Drain newly-confirmed ticks as (tick, player-indexed keys) — final
+    /// input rows in tick order, suitable for a replay sink. Ticks are
     /// 1-based, numbered like [`TickObserver::on_tick`]'s: the input
-    /// pair that produced simulated tick `t` is stamped `t`, so a
+    /// row that produced simulated tick `t` is stamped `t`, so a
     /// tick's confirmed inputs and its telemetry line up exactly.
-    pub fn drain_confirmed(&mut self) -> Vec<(u32, [u32; 2])> {
+    pub fn drain_confirmed(&mut self) -> Vec<(u32, Box<[u32]>)> {
         let mut shared = self.shared.lock().unwrap();
         let out = shared
             .confirmed

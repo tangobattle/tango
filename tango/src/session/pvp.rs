@@ -2,7 +2,7 @@
 //! netplay sibling of
 //! [`crate::session::singleplayer::SinglePlayerSession`].
 //!
-//! Both games run locally as an [`mgba_siolink::Pair`] linked through
+//! Both games run locally as an [`mgba_siolink::Link`] pair linked through
 //! mgba's lockstep SIO driver (see [`tango_pvp::sio`]): the games speak
 //! their *real* link protocol over the emulated cable, and the pair is
 //! the rollback unit. There is no mgba thread, no traps, and no shadow —
@@ -310,7 +310,7 @@ impl PvpSession {
         // single-threaded by design). Construction happens on the thread —
         // priming is a couple seconds of emulation — and readiness comes
         // back over a oneshot so `new` can fail cleanly.
-        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<anyhow::Result<tango_pvp::PairHandle>>();
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<anyhow::Result<tango_pvp::LinkHandle>>();
         {
             let boot = BootPieces {
                 roms,
@@ -696,7 +696,7 @@ impl DriveContext {
     fn run(
         mut self,
         pieces: BootPieces,
-        ready_tx: tokio::sync::oneshot::Sender<anyhow::Result<tango_pvp::PairHandle>>,
+        ready_tx: tokio::sync::oneshot::Sender<anyhow::Result<tango_pvp::LinkHandle>>,
     ) {
         let mut match_ = match Match::new(MatchConfig {
             roms: pieces.roms,

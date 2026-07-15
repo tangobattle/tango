@@ -15,9 +15,10 @@ pub struct SessionParams<W: World> {
     /// runtime via [`Session::set_present_delay`].
     pub present_delay: u32,
 
-    /// The remote input assumed for tick 0, before any real remote input has
-    /// arrived. Used as the seed for prediction.
-    pub initial_remote: W::Input,
+    /// One entry per remote peer: the input assumed for that peer at tick 0,
+    /// before any real input has arrived. Used as the seed for prediction.
+    /// The length fixes the session's remote count (at least one).
+    pub initial_remotes: Vec<W::Input>,
 
     /// The starting game state at tick 0.
     pub initial_state: W::State,
@@ -40,46 +41,61 @@ pub struct Frame<'a, W: World> {
     /// remote input.
     pub state: &'a W::State,
 
-    /// The `(local, remote)` input pair that applies at [`tick`](Frame::tick) —
-    /// handy for presentation that should line up with the frame being shown
-    /// (local audio, effects, UI). For a confirmed tick the remote half is the
-    /// real input received from the peer; for a speculative tick it is the
-    /// [`predict`](World::predict)-supplied guess used to build the frame.
-    pub input: (W::Input, W::Input),
+    /// The local input that applies at [`tick`](Frame::tick) — handy for
+    /// presentation that should line up with the frame being shown (local
+    /// audio, effects, UI).
+    pub local: W::Input,
+
+    /// The remote inputs that apply at [`tick`](Frame::tick), indexed by
+    /// remote slot. For a confirmed tick these are the real inputs received
+    /// from the peers; for a speculative tick, each slot holds the real input
+    /// where one had arrived and the [`predict`](World::predict)-supplied
+    /// guess where it hadn't.
+    pub remotes: Box<[W::Input]>,
 }
 
 /// One speculatively-simulated tick, kept in a rolling buffer so a correct
 /// prediction can be promoted to settled with no re-simulation, and a wrong one
 /// can be rolled back to.
 struct Speculation<W: World> {
-    /// The tick this snapshot is poised at (one past the tick its `input`
+    /// The tick this snapshot is poised at (one past the tick its inputs
     /// advanced). `speculations[i].tick == settled_tick + 1 + i`.
     tick: u32,
     /// The bundled game state at the start of [`tick`](Self::tick).
     state: W::State,
-    /// The `(real local, predicted remote)` pair that produced this snapshot.
-    /// The predicted-remote half is what a later confirmation is checked
-    /// against to decide promote-vs-rollback.
-    input: (W::Input, W::Input),
+    /// The real local input that produced this snapshot.
+    local: W::Input,
+    /// The remote inputs that produced this snapshot, per slot: real where
+    /// the input had already arrived, predicted where it hadn't. This is what
+    /// a later confirmation is checked against to decide promote-vs-rollback.
+    remotes: Box<[W::Input]>,
     /// The round-end signal returned by the [`step`](World::step) that produced
     /// this snapshot, carried so a promotion applies the logging clamp at the same
     /// point a rollback re-sim would.
     round: RoundState,
 }
 
-/// A single peer's view of a two-player rollback session.
+/// A single peer's view of a rollback session: one local player against any
+/// number of remote peers (a classic two-player session has exactly one).
 ///
 /// `Session` owns the local/remote input queues, the authoritative ("settled")
 /// state, and a rolling buffer of speculative snapshots shown to the player. The
 /// intended loop is:
 ///
-/// 1. As remote packets arrive, call [`add_remote_input`](Session::add_remote_input).
+/// 1. As remote packets arrive, call [`add_remote_input`](Session::add_remote_input)
+///    with the sending peer's slot.
 /// 2. Once per tick, read [`skew`](Session::skew) and feed it into your clock so
-///    the two peers stay aligned, then call [`advance`](Session::advance) with
+///    the peers stay aligned, then call [`advance`](Session::advance) with
 ///    the local input. `advance` confirms any newly-matched ticks into the
 ///    settled state — promoting the speculative snapshots whose prediction held
 ///    and rolling back only where it didn't — extends speculation forward as
 ///    needed, and returns a [`Frame`] to render.
+///
+/// A tick is *confirmed* only once every remote's input for it has arrived;
+/// until then it is speculative. Speculation uses the real input for any
+/// remote whose packet is already in (only the missing slots are predicted),
+/// so a fast peer's inputs never get second-guessed while waiting on a slow
+/// one.
 ///
 /// Construct one with [`Session::new`]. See the [crate-level docs](crate) for a
 /// complete example.
@@ -92,20 +108,22 @@ pub struct Session<W: World> {
 
     input_queue: Queue<W::Input>,
 
-    /// Number of confirmed `(local, remote)` pairs ever matched (cumulative).
+    /// Number of confirmed input rows ever matched (cumulative).
     /// Confirmed ticks are `0..confirm_frontier`. Invariant:
     /// `confirm_frontier == settled_tick + settle_backlog.len()`.
     confirm_frontier: u32,
-    last_confirmed_remote: W::Input,
+    /// Per remote slot, the last input confirmed for that peer — the base of
+    /// its prediction chain.
+    last_confirmed_remotes: Box<[W::Input]>,
 
-    /// Confirmed pairs not yet folded into the settled state, in tick order
-    /// (covering ticks `settled_tick..confirm_frontier`). They are held back
-    /// until the present target reaches them so the settled state never runs
-    /// past the frame being displayed.
-    settle_backlog: VecDeque<(W::Input, W::Input)>,
-    /// The authoritative state, built only from confirmed-and-correct pairs.
+    /// Confirmed `(local, remotes)` rows not yet folded into the settled
+    /// state, in tick order (covering ticks `settled_tick..confirm_frontier`).
+    /// They are held back until the present target reaches them so the
+    /// settled state never runs past the frame being displayed.
+    settle_backlog: VecDeque<(W::Input, Box<[W::Input]>)>,
+    /// The authoritative state, built only from confirmed-and-correct rows.
     settled_state: W::State,
-    /// The tick `settled_state` is poised at (number of pairs folded in).
+    /// The tick `settled_state` is poised at (number of rows folded in).
     settled_tick: u32,
     /// Rolling buffer of speculative snapshots covering `(settled_tick, …]`,
     /// contiguous and in tick order. The simulator is parked at
@@ -113,7 +131,7 @@ pub struct Session<W: World> {
     speculations: VecDeque<Speculation<W>>,
 
     /// Set once a confirmed (settled) step ends the round (returns
-    /// [`RoundState::Ended`]). From then on no further input pairs are committed
+    /// [`RoundState::Ended`]). From then on no further input rows are committed
     /// to the logger — but the simulation keeps advancing through the
     /// post-round-end frames, since the host detects the end from the presented
     /// state a tick or two later.
@@ -126,7 +144,8 @@ pub struct Session<W: World> {
     /// 0 when the frame promoted cleanly or didn't settle.
     last_misprediction_depth: u32,
 
-    last_remote_tick_advantage: i16,
+    /// Per remote slot, the tick advantage that peer last reported.
+    last_remote_tick_advantages: Box<[i16]>,
 }
 
 impl<W: World> Session<W> {
@@ -134,26 +153,32 @@ impl<W: World> Session<W> {
     pub fn new(params: SessionParams<W>) -> Self {
         let SessionParams {
             present_delay,
-            initial_remote,
+            initial_remotes,
             initial_state,
             world,
         } = params;
+        assert!(!initial_remotes.is_empty(), "a session needs at least one remote");
 
         Self {
             present_delay,
             world,
             local_frontier: 0,
-            input_queue: Queue::new(),
+            input_queue: Queue::new(initial_remotes.len()),
             confirm_frontier: 0,
-            last_confirmed_remote: initial_remote,
+            last_remote_tick_advantages: initial_remotes.iter().map(|_| 0).collect(),
+            last_confirmed_remotes: initial_remotes.into_boxed_slice(),
             settle_backlog: VecDeque::new(),
             settled_state: initial_state,
             settled_tick: 0,
             speculations: VecDeque::new(),
             terminal_reached: false,
             last_misprediction_depth: 0,
-            last_remote_tick_advantage: 0,
         }
+    }
+
+    /// Number of remote peers in this session.
+    pub fn num_remotes(&self) -> usize {
+        self.input_queue.num_remotes()
     }
 
     /// The local frontier: the number of ticks [`advance`](Session::advance) has
@@ -187,15 +212,18 @@ impl<W: World> Session<W> {
     /// This is the per-tick driver. It:
     ///
     /// 1. enqueues `local_input`;
-    /// 2. matches it against any buffered remote inputs and folds the newly
-    ///    confirmed ticks into the authoritative settled state — promoting the
-    ///    speculative snapshots whose predicted remote matched (no re-sim) and
-    ///    rolling back to re-simulate where it didn't, logging confirmed pairs;
+    /// 2. matches it against the buffered remote inputs and folds the newly
+    ///    confirmed ticks (those with every remote's input present) into the
+    ///    authoritative settled state — promoting the speculative snapshots
+    ///    whose predicted remotes all matched (no re-sim) and rolling back to
+    ///    re-simulate where they didn't, logging confirmed rows;
     /// 3. computes the present target (`frontier - present_delay`);
-    /// 4. extends the speculative buffer forward to the target with
-    ///    [`predict`](World::predict)-supplied remote inputs, reusing the
-    ///    snapshots already built (only the genuinely new ticks are simulated);
-    /// 5. returns the state, tick, and the local/remote input pair at that tick.
+    /// 4. extends the speculative buffer forward to the target — using each
+    ///    remote's real input where it has already arrived and a
+    ///    [`predict`](World::predict)-supplied guess where it hasn't — reusing
+    ///    the snapshots already built (only the genuinely new ticks are
+    ///    simulated);
+    /// 5. returns the state, tick, and the input row at that tick.
     ///    (Read [`skew`](Session::skew) *before* this call for the clock-sync
     ///    hint covering the tick being advanced.)
     ///
@@ -206,7 +234,7 @@ impl<W: World> Session<W> {
     pub fn advance(&mut self, local_input: W::Input) -> Result<Frame<'_, W>, W::Error> {
         self.input_queue.add_local_input(local_input);
 
-        let (committable, unmatched_locals) = self.input_queue.drain_matched();
+        let (committable, unmatched_locals, unmatched_remotes) = self.input_queue.drain_matched();
         self.confirm_frontier += committable.len() as u32;
         self.settle_backlog.extend(committable);
 
@@ -215,15 +243,16 @@ impl<W: World> Session<W> {
         // Per-frame rollback depth, recomputed by `settle_to` below.
         self.last_misprediction_depth = 0;
 
-        // Fold confirmed pairs into the settled state, but never past the present
+        // Fold confirmed rows into the settled state, but never past the present
         // target (so the settled state stays at or behind the frame we display).
         // Settling continues through a round end — only logging stops there.
         self.settle_to(target.min(self.confirm_frontier))?;
 
-        // Extend the speculative tail up to the present target with predicted
-        // remotes, reusing the snapshots already built.
+        // Extend the speculative tail up to the present target, using arrived
+        // remote inputs where available and predictions elsewhere, reusing the
+        // snapshots already built.
         if target > self.settled_tick && self.confirm_frontier > 0 {
-            self.speculate_to(target, &unmatched_locals)?;
+            self.speculate_to(target, &unmatched_locals, &unmatched_remotes)?;
         }
 
         self.local_frontier += 1;
@@ -240,73 +269,90 @@ impl<W: World> Session<W> {
             Frame {
                 tick: spec.tick,
                 state: &spec.state,
-                input: spec.input.clone(),
+                local: spec.local.clone(),
+                remotes: spec.remotes.clone(),
             }
         } else {
-            let input = self.settle_backlog.front().cloned().unwrap_or_else(|| {
+            let (local, remotes) = self.settle_backlog.front().cloned().unwrap_or_else(|| {
                 (
                     unmatched_locals[0].clone(),
-                    self.world.predict(&self.last_confirmed_remote),
+                    self.last_confirmed_remotes
+                        .iter()
+                        .zip(unmatched_remotes.iter())
+                        .map(|(last, arrived)| {
+                            arrived.first().cloned().unwrap_or_else(|| self.world.predict(last))
+                        })
+                        .collect(),
                 )
             });
             Frame {
                 tick: self.settled_tick,
                 state: &self.settled_state,
-                input,
+                local,
+                remotes,
             }
         })
     }
 
-    /// Number of local inputs buffered but not yet confirmed against a remote
-    /// input.
+    /// Number of local inputs buffered but not yet confirmed against every
+    /// remote's input.
     pub fn local_queue_length(&self) -> usize {
         self.input_queue.local_queue_length()
     }
 
-    /// Number of received remote inputs not yet matched to a local input.
-    pub fn remote_queue_length(&self) -> usize {
-        self.input_queue.remote_queue_length()
+    /// Number of inputs received from remote peer `remote` not yet matched
+    /// into a confirmed tick.
+    pub fn remote_queue_length(&self, remote: usize) -> usize {
+        self.input_queue.remote_queue_length(remote)
     }
 
-    /// How far local input leads remote input, in ticks (clamped to [`i16`]).
+    /// How far local input leads the furthest-behind remote's input, in ticks
+    /// (clamped to [`i16`]).
     ///
-    /// This is the input queue's signed [`lead`](crate::Queue::lead), surfaced
-    /// for clock sync. It is each peer's half of the clock-sync handshake: you
-    /// send it to the remote with every input, and the remote's value comes back
-    /// via [`add_remote_input`](Session::add_remote_input). The difference of the
-    /// two is the [`skew`](Session::skew) used to keep the simulations aligned.
+    /// This is the input queue's signed worst-case [`lead`](crate::Queue::lead),
+    /// surfaced for clock sync. It is each peer's half of the clock-sync
+    /// handshake: you send it to every remote with every input, and each
+    /// remote's own value comes back via
+    /// [`add_remote_input`](Session::add_remote_input). The difference of the
+    /// two is that peer's contribution to the [`skew`](Session::skew) used to
+    /// keep the simulations aligned.
     pub fn local_tick_advantage(&self) -> i16 {
         self.input_queue.lead().clamp(i16::MIN as i32, i16::MAX as i32) as i16
     }
 
-    /// The tick advantage the remote peer last reported (via the
+    /// The tick advantage remote peer `remote` last reported (via the
     /// `tick_advantage` argument to [`add_remote_input`](Session::add_remote_input)).
-    pub fn last_remote_tick_advantage(&self) -> i16 {
-        self.last_remote_tick_advantage
+    pub fn last_remote_tick_advantage(&self, remote: usize) -> i16 {
+        self.last_remote_tick_advantages[remote]
     }
 
-    /// The clock-sync hint for the next tick to advance:
-    /// [`local_tick_advantage`](Session::local_tick_advantage) minus the remote
-    /// peer's reported advantage.
+    /// The clock-sync hint for the next tick to advance: the worst case, over
+    /// the remotes, of this side's lead over that peer minus the advantage the
+    /// peer last reported.
     ///
-    /// Positive means this client is running ahead of the remote and should slow
-    /// down (e.g. occasionally stall a frame) so the two simulations converge and
-    /// the prediction window stays small; zero means the peers are balanced.
+    /// Positive means this client is running ahead of at least one remote and
+    /// should slow down (e.g. occasionally stall a frame) so the simulations
+    /// converge and the prediction window stays small; zero or negative means
+    /// nobody is waiting on us. With everyone throttling on their own skew,
+    /// the group converges toward its slowest member.
     ///
     /// Read this *before* [`advance`](Session::advance): it reflects the local
-    /// advantage at the point the peer reads the value you ship them, which is
+    /// advantage at the point the peers read the value you ship them, which is
     /// before this tick's local input is enqueued. Reading it afterward would
     /// fold that just-enqueued input into the local half and bias the skew up by
     /// one.
     pub fn skew(&self) -> i32 {
-        self.local_tick_advantage() as i32 - self.last_remote_tick_advantage as i32
+        (0..self.last_remote_tick_advantages.len())
+            .map(|i| self.input_queue.lead_over(i) - self.last_remote_tick_advantages[i] as i32)
+            .max()
+            .expect("session has at least one remote")
     }
 
     /// The signed balance of the latest presented frame around the speculation
-    /// boundary — `lead - present_delay`, spanning both the speculative-depth
-    /// and headroom sides so a single value covers both. (Floor the positive
-    /// side for the plain speculative depth; negate and floor the other for the
-    /// headroom.)
+    /// boundary — worst-case `lead - present_delay`, spanning both the
+    /// speculative-depth and headroom sides so a single value covers both.
+    /// (Floor the positive side for the plain speculative depth; negate and
+    /// floor the other for the headroom.)
     ///
     /// This is *not* the raw local-over-remote lead. The presented frame is
     /// `frontier - present_delay`, so the present delay absorbs the first
@@ -314,7 +360,7 @@ impl<W: World> Session<W> {
     /// excess is actually rendered into the speculative tail. So:
     ///
     /// * positive — the presented frame speculates that many ticks past the last
-    ///   confirmed input;
+    ///   fully confirmed input;
     /// * zero — the frame is confirmed and sitting exactly at the boundary;
     /// * negative — the frame is confirmed with `-balance` ticks of *headroom*
     ///   (speculation-free buffer) still to spend before speculation begins.
@@ -336,23 +382,24 @@ impl<W: World> Session<W> {
         self.last_misprediction_depth
     }
 
-    /// Record an input received from the remote peer.
+    /// Record an input received from remote peer `remote`.
     ///
-    /// * `input` — the remote player's input for the next unmatched tick.
-    /// * `tick_advantage` — the remote peer's reported
+    /// * `remote` — which peer sent it (the slot index, `0..num_remotes`).
+    /// * `input` — that player's input for their next unmatched tick.
+    /// * `tick_advantage` — the peer's reported
     ///   [`local_tick_advantage`](Session::local_tick_advantage), used to
     ///   compute clock [`skew`](Session::skew).
     ///
-    /// Call this whenever remote inputs arrive; they are matched to local inputs
-    /// on the next [`advance`](Session::advance).
-    pub fn add_remote_input(&mut self, input: W::Input, tick_advantage: i16) {
-        self.input_queue.add_remote_input(input);
-        self.last_remote_tick_advantage = tick_advantage;
+    /// Call this whenever remote inputs arrive; they are matched into
+    /// confirmed ticks on the next [`advance`](Session::advance).
+    pub fn add_remote_input(&mut self, remote: usize, input: W::Input, tick_advantage: i16) {
+        self.input_queue.add_remote_input(remote, input);
+        self.last_remote_tick_advantages[remote] = tick_advantage;
     }
 
-    /// Fold confirmed pairs into the settled state up to `target`, promoting the
-    /// speculative snapshots whose predicted remote matched and rolling back to
-    /// re-simulate where it didn't. Logs confirmed pairs in tick order. Settling
+    /// Fold confirmed rows into the settled state up to `target`, promoting the
+    /// speculative snapshots whose remote inputs all matched and rolling back to
+    /// re-simulate where they didn't. Logs confirmed rows in tick order. Settling
     /// continues through a round end (the post-end frames are real state); only
     /// logging clamps there. No-op if already settled to or past `target`.
     fn settle_to(&mut self, target: u32) -> Result<(), W::Error> {
@@ -362,33 +409,34 @@ impl<W: World> Session<W> {
         }
         debug_assert!(self.settle_backlog.len() >= to_settle);
 
-        // Longest prefix of the confirmed pairs whose remote matches what we
-        // predicted speculatively — these can be promoted with no re-sim.
+        // Longest prefix of the confirmed rows whose remotes all match what we
+        // used speculatively — these can be promoted with no re-sim. (Slots
+        // that speculated with an already-arrived real input match trivially.)
         let mut promote = 0;
         while promote < to_settle
             && promote < self.speculations.len()
-            && self.speculations[promote].input.1 == self.settle_backlog[promote].1
+            && self.speculations[promote].remotes == self.settle_backlog[promote].1
         {
             promote += 1;
         }
 
         // Promote the correctly-predicted prefix: slide the settled cap up over
-        // the speculative snapshots, which are byte-exact because their predicted
-        // remote equalled the real one. The live simulation is not touched.
+        // the speculative snapshots, which are byte-exact because their remote
+        // inputs equalled the real ones. The live simulation is not touched.
         for _ in 0..promote {
             let spec = self.speculations.pop_front().unwrap();
-            let pair = self.settle_backlog.pop_front().unwrap();
+            let (local, remotes) = self.settle_backlog.pop_front().unwrap();
             assert_eq!(spec.tick, self.settled_tick + 1);
-            self.last_confirmed_remote = pair.1.clone();
             let displaced = std::mem::replace(&mut self.settled_state, spec.state);
             self.world.recycle(displaced);
             self.settled_tick = spec.tick;
-            self.commit_pair(&pair, spec.round);
+            self.commit_row(&local, &remotes, spec.round);
+            self.last_confirmed_remotes = remotes;
         }
 
         // Anything past the matched prefix descends from a wrong prediction (or
         // was never speculated): discard the speculative tail and re-simulate the
-        // remaining confirmed pairs authoritatively, rewinding both this and the
+        // remaining confirmed rows authoritatively, rewinding both this and the
         // host's auxiliary cores via `load`. Round-end comes back from `step`, so
         // we re-step the whole corrected tail and `save` only its final tick.
         // Settling continues through a round end (the post-end animation is real
@@ -402,11 +450,11 @@ impl<W: World> Session<W> {
             }
             self.world.load(&self.settled_state)?;
             for _ in promote..to_settle {
-                let pair = self.settle_backlog.pop_front().unwrap();
-                let round = self.world.step(pair.clone())?;
+                let (local, remotes) = self.settle_backlog.pop_front().unwrap();
+                let round = self.world.step(&local, &remotes)?;
                 self.settled_tick += 1;
-                self.last_confirmed_remote = pair.1.clone();
-                self.commit_pair(&pair, round);
+                self.commit_row(&local, &remotes, round);
+                self.last_confirmed_remotes = remotes;
             }
             let resettled = self.world.save()?;
             let displaced = std::mem::replace(&mut self.settled_state, resettled);
@@ -417,43 +465,68 @@ impl<W: World> Session<W> {
         Ok(())
     }
 
-    /// Forward a confirmed pair to the logger unless the round has already ended.
+    /// Forward a confirmed row to the logger unless the round has already ended.
     /// `round` is the round-end signal of the [`step`](World::step) that produced
-    /// the pair's resulting tick; once any settled step ends the round, this and
-    /// every later pair are withheld (the post-round-end frames are simulated but
+    /// the row's resulting tick; once any settled step ends the round, this and
+    /// every later row are withheld (the post-round-end frames are simulated but
     /// not part of the recorded round).
-    fn commit_pair(&mut self, pair: &(W::Input, W::Input), round: RoundState) {
+    fn commit_row(&mut self, local: &W::Input, remotes: &[W::Input], round: RoundState) {
         if round == RoundState::Ended {
             self.terminal_reached = true;
         }
         if !self.terminal_reached {
-            self.world.log(pair);
+            self.world.log(local, remotes);
         }
     }
 
-    /// Extend the speculative buffer up to `target` using real local inputs and
-    /// predicted remote inputs, simulating only the ticks not already covered.
-    /// The live simulation is parked at the speculation frontier, so each new tick
-    /// is a plain forward [`step`](World::step) followed by a [`save`](World::save).
-    fn speculate_to(&mut self, target: u32, unmatched_locals: &[W::Input]) -> Result<(), W::Error> {
+    /// Extend the speculative buffer up to `target` using real local inputs and,
+    /// per remote slot, the real input where one has already arrived (a tick can
+    /// be unconfirmed because a *different* remote is still missing) or a
+    /// predicted one where it hasn't — simulating only the ticks not already
+    /// covered. The live simulation is parked at the speculation frontier, so
+    /// each new tick is a plain forward [`step`](World::step) followed by a
+    /// [`save`](World::save).
+    fn speculate_to(
+        &mut self,
+        target: u32,
+        unmatched_locals: &[W::Input],
+        unmatched_remotes: &[Vec<W::Input>],
+    ) -> Result<(), W::Error> {
         assert_eq!(
             self.settled_tick, self.confirm_frontier,
             "speculation only runs once the settled cap has caught up to the confirmed frontier"
         );
-        let mut predicted = self.last_confirmed_remote.clone();
+        // Each remote's prediction chain continues from the newest speculated
+        // value for that slot (real or predicted), or from the last confirmed
+        // input when nothing is speculated yet.
+        let mut chain: Box<[W::Input]> = match self.speculations.back() {
+            Some(spec) => spec.remotes.clone(),
+            None => self.last_confirmed_remotes.clone(),
+        };
         while (self.settled_tick + self.speculations.len() as u32) < target {
-            // `unmatched_locals[k]` is the local input for tick
-            // `confirm_frontier + k`; here `confirm_frontier == settled_tick`, so
-            // the local for the next speculative tick is at `speculations.len()`.
-            let local = unmatched_locals[self.speculations.len()].clone();
-            let tick = self.settled_tick + self.speculations.len() as u32 + 1;
-            predicted = self.world.predict(&predicted);
-            let round = self.world.step((local.clone(), predicted.clone()))?;
+            // `unmatched_locals[k]` (and `unmatched_remotes[i][k]`) hold the
+            // input for tick `confirm_frontier + k`; here `confirm_frontier ==
+            // settled_tick`, so the inputs for the next speculative tick are
+            // at `speculations.len()`.
+            let k = self.speculations.len();
+            let local = unmatched_locals[k].clone();
+            let tick = self.settled_tick + k as u32 + 1;
+            let remotes: Box<[W::Input]> = chain
+                .iter()
+                .enumerate()
+                .map(|(i, last)| match unmatched_remotes[i].get(k) {
+                    Some(real) => real.clone(),
+                    None => self.world.predict(last),
+                })
+                .collect();
+            chain = remotes.clone();
+            let round = self.world.step(&local, &remotes)?;
             let state = self.world.save()?;
             self.speculations.push_back(Speculation {
                 tick,
                 state,
-                input: (local, predicted.clone()),
+                local,
+                remotes,
                 round,
             });
         }
@@ -474,7 +547,7 @@ mod tests {
     }
 
     /// A deterministic world whose state is the full ordered history of applied
-    /// `(local, remote)` pairs — so the settled state can be checked byte-for-byte
+    /// `(local, remotes)` rows — so the settled state can be checked byte-for-byte
     /// against a ground-truth fold of the confirmed inputs.
     ///
     /// `terminal_at` is the round-ending tick: the [`step`](World::step) whose
@@ -483,19 +556,19 @@ mod tests {
     /// tick, mirroring the real adapter, so the rollback counter reflects only
     /// genuine rewinds.
     struct W {
-        parked: Vec<(u8, u8)>,
+        parked: Vec<(u8, Vec<u8>)>,
         counters: Arc<Mutex<Counters>>,
         terminal_at: Option<u32>,
-        logged: Arc<Mutex<Vec<(u8, u8)>>>,
+        logged: Arc<Mutex<Vec<(u8, Vec<u8>)>>>,
     }
     impl World for W {
         type Input = u8;
-        type State = Vec<(u8, u8)>;
+        type State = Vec<(u8, Vec<u8>)>;
         type Error = std::convert::Infallible;
 
-        fn step(&mut self, input: (u8, u8)) -> Result<RoundState, std::convert::Infallible> {
+        fn step(&mut self, local: &u8, remotes: &[u8]) -> Result<RoundState, std::convert::Infallible> {
             self.counters.lock().unwrap().steps += 1;
-            self.parked.push(input);
+            self.parked.push((*local, remotes.to_vec()));
             let resulting_tick = self.parked.len() as u32;
             Ok(if self.terminal_at == Some(resulting_tick) {
                 RoundState::Ended
@@ -503,10 +576,10 @@ mod tests {
                 RoundState::Ongoing
             })
         }
-        fn save(&mut self) -> Result<Vec<(u8, u8)>, std::convert::Infallible> {
+        fn save(&mut self) -> Result<Vec<(u8, Vec<u8>)>, std::convert::Infallible> {
             Ok(self.parked.clone())
         }
-        fn load(&mut self, state: &Vec<(u8, u8)>) -> Result<(), std::convert::Infallible> {
+        fn load(&mut self, state: &Vec<(u8, Vec<u8>)>) -> Result<(), std::convert::Infallible> {
             if self.parked.len() == state.len() {
                 return Ok(());
             }
@@ -518,27 +591,32 @@ mod tests {
         fn predict(&self, last: &u8) -> u8 {
             *last
         }
-        fn recycle(&mut self, _state: Vec<(u8, u8)>) {
+        fn recycle(&mut self, _state: Vec<(u8, Vec<u8>)>) {
             self.counters.lock().unwrap().recycles += 1;
         }
-        fn log(&mut self, pair: &(u8, u8)) {
-            self.logged.lock().unwrap().push(*pair);
+        fn log(&mut self, local: &u8, remotes: &[u8]) {
+            self.logged.lock().unwrap().push((*local, remotes.to_vec()));
         }
     }
 
-    fn truth(locals: &[u8], remotes: &[u8]) -> Vec<(u8, u8)> {
-        locals.iter().zip(remotes).map(|(&l, &r)| (l, r)).collect()
+    fn truth(locals: &[u8], remotes: &[&[u8]]) -> Vec<(u8, Vec<u8>)> {
+        locals
+            .iter()
+            .enumerate()
+            .map(|(t, &l)| (l, remotes.iter().map(|r| r[t]).collect()))
+            .collect()
     }
 
     fn session(
         present_delay: u32,
+        num_remotes: usize,
         counters: Arc<Mutex<Counters>>,
-        logged: Arc<Mutex<Vec<(u8, u8)>>>,
+        logged: Arc<Mutex<Vec<(u8, Vec<u8>)>>>,
         terminal_at: Option<u32>,
     ) -> Session<W> {
         Session::new(SessionParams {
             present_delay,
-            initial_remote: 0,
+            initial_remotes: vec![0; num_remotes],
             initial_state: vec![],
             world: W {
                 parked: vec![],
@@ -559,16 +637,16 @@ mod tests {
         let logged = Arc::new(Mutex::new(Vec::new()));
         let locals = [10u8, 11, 12, 13, 14, 15, 16, 17];
         let remotes = [20u8, 21, 22, 23, 24, 25, 26, 27];
-        let truth = truth(&locals, &remotes);
+        let truth = truth(&locals, &[&remotes]);
         let n = locals.len();
         let remote_delay = 2;
 
-        let mut s = session(0, counters.clone(), logged.clone(), None);
+        let mut s = session(0, 1, counters.clone(), logged.clone(), None);
 
         // n real frames plus a couple to flush the present target to the end.
         for i in 0..n + remote_delay {
             if i >= remote_delay && i - remote_delay < n {
-                s.add_remote_input(remotes[i - remote_delay], 0);
+                s.add_remote_input(0, remotes[i - remote_delay], 0);
             }
             let local = if i < n { locals[i] } else { 99 };
             s.advance(local).unwrap();
@@ -585,7 +663,7 @@ mod tests {
         assert_eq!(
             logged.lock().unwrap().as_slice(),
             truth.as_slice(),
-            "logged the wrong pairs"
+            "logged the wrong rows"
         );
         // Mispredictions actually happened, so rollback re-sim ran.
         assert!(counters.lock().unwrap().restores > 0, "expected rollbacks");
@@ -605,14 +683,14 @@ mod tests {
         // Constant remote: predict(last) == next, so every speculation is right.
         let locals = [1u8, 2, 3, 4, 5, 6, 7, 8];
         let remotes = [9u8; 8];
-        let truth = truth(&locals, &remotes);
+        let truth = truth(&locals, &[&remotes]);
         let n = locals.len();
         let remote_delay = 2;
 
-        let mut s = session(0, counters.clone(), logged.clone(), None);
+        let mut s = session(0, 1, counters.clone(), logged.clone(), None);
         for i in 0..n + remote_delay {
             if i >= remote_delay && i - remote_delay < n {
-                s.add_remote_input(remotes[i - remote_delay], 0);
+                s.add_remote_input(0, remotes[i - remote_delay], 0);
             }
             let local = if i < n { locals[i] } else { 99 };
             s.advance(local).unwrap();
@@ -642,7 +720,7 @@ mod tests {
 
     /// A round end clamps *logging* but not simulation: the settled state keeps
     /// advancing through the post-round-end frames (so the host's presentation can
-    /// reach the end), while no pair from the round-ending tick on is logged.
+    /// reach the end), while no row from the round-ending tick on is logged.
     /// (Rollback path: distinct remotes make every prediction wrong.)
     #[test]
     fn round_end_clamps_logging_not_simulation() {
@@ -650,22 +728,22 @@ mod tests {
         let logged = Arc::new(Mutex::new(Vec::new()));
         let locals = [10u8, 11, 12, 13, 14, 15];
         let remotes = [20u8, 21, 22, 23, 24, 25];
-        let truth = truth(&locals, &remotes);
+        let truth = truth(&locals, &[&remotes]);
         let n = locals.len();
         let remote_delay = 2;
-        // The step producing tick 4 ends the round; its pair (and later ones) are
+        // The step producing tick 4 ends the round; its row (and later ones) are
         // withheld from the log, but the state still advances.
-        let mut s = session(0, counters.clone(), logged.clone(), Some(4));
+        let mut s = session(0, 1, counters.clone(), logged.clone(), Some(4));
         for i in 0..n + remote_delay {
             if i >= remote_delay && i - remote_delay < n {
-                s.add_remote_input(remotes[i - remote_delay], 0);
+                s.add_remote_input(0, remotes[i - remote_delay], 0);
             }
             let local = if i < n { locals[i] } else { 99 };
             s.advance(local).unwrap();
         }
         // Settled advances through the whole confirmed run...
         assert_eq!(s.settled_state().as_slice(), truth.as_slice());
-        // ...but only the pairs before the round-ending tick are logged.
+        // ...but only the rows before the round-ending tick are logged.
         assert_eq!(logged.lock().unwrap().as_slice(), &truth[..3]);
     }
 
@@ -680,13 +758,13 @@ mod tests {
         let logged = Arc::new(Mutex::new(Vec::new()));
         let locals = [1u8, 2, 3, 4, 5, 6];
         let remotes = [9u8; 6];
-        let truth = truth(&locals, &remotes);
+        let truth = truth(&locals, &[&remotes]);
         let n = locals.len();
         let remote_delay = 1;
-        let mut s = session(0, counters.clone(), logged.clone(), Some(4));
+        let mut s = session(0, 1, counters.clone(), logged.clone(), Some(4));
         for i in 0..n + remote_delay {
             if i >= remote_delay && i - remote_delay < n {
-                s.add_remote_input(remotes[i - remote_delay], 0);
+                s.add_remote_input(0, remotes[i - remote_delay], 0);
             }
             let local = if i < n { locals[i] } else { 99 };
             s.advance(local).unwrap();
@@ -710,7 +788,7 @@ mod tests {
         // longer than `target` after the delay bump.
         let locals: Vec<u8> = (1..=24).collect();
         let remotes = [9u8; 24];
-        let truth = truth(&locals, &remotes);
+        let truth = truth(&locals, &[&remotes]);
         let n = locals.len();
         // Remote lags far enough that even after the bump the settled cap stays
         // behind `target` (so `advance` takes the speculating branch, not the
@@ -719,10 +797,10 @@ mod tests {
 
         // present_delay 0 first: speculation runs `remote_delay` ticks ahead of the
         // settled cap, building a deep buffer.
-        let mut s = session(0, counters.clone(), logged.clone(), None);
+        let mut s = session(0, 1, counters.clone(), logged.clone(), None);
         for i in 0..12 {
             if i >= remote_delay {
-                s.add_remote_input(remotes[i - remote_delay], 0);
+                s.add_remote_input(0, remotes[i - remote_delay], 0);
             }
             s.advance(locals[i]).unwrap();
         }
@@ -733,7 +811,7 @@ mod tests {
         s.set_present_delay(3);
         for i in 12..n + remote_delay {
             if i >= remote_delay && i - remote_delay < n {
-                s.add_remote_input(remotes[i - remote_delay], 0);
+                s.add_remote_input(0, remotes[i - remote_delay], 0);
             }
             let local = if i < n { locals[i] } else { 99 };
             let frame_tick = s.advance(local).unwrap().tick;
@@ -746,5 +824,80 @@ mod tests {
 
         assert_eq!(s.settled_state().as_slice(), truth.as_slice());
         assert_eq!(logged.lock().unwrap().as_slice(), truth.as_slice());
+    }
+
+    /// Three players, each remote arriving with a different lag, every
+    /// prediction wrong (distinct values, repeat-predictor): the settled state
+    /// must stay a correct prefix of ground truth at every frame and end exactly
+    /// equal, and the confirmed rows must be logged in order.
+    #[test]
+    fn three_player_settles_correctly_with_skewed_arrivals() {
+        let counters = Arc::new(Mutex::new(Counters::default()));
+        let logged = Arc::new(Mutex::new(Vec::new()));
+        let locals = [10u8, 11, 12, 13, 14, 15, 16, 17];
+        let remote_a = [20u8, 21, 22, 23, 24, 25, 26, 27];
+        let remote_b = [30u8, 31, 32, 33, 34, 35, 36, 37];
+        let truth = truth(&locals, &[&remote_a, &remote_b]);
+        let n = locals.len();
+        let delays = [1usize, 4usize];
+
+        let mut s = session(0, 2, counters.clone(), logged.clone(), None);
+        let max_delay = 4;
+        for i in 0..n + max_delay {
+            for (slot, (inputs, delay)) in [(&remote_a, delays[0]), (&remote_b, delays[1])].iter().enumerate() {
+                if i >= *delay && i - *delay < n {
+                    s.add_remote_input(slot, inputs[i - *delay], 0);
+                }
+            }
+            let local = if i < n { locals[i] } else { 99 };
+            s.advance(local).unwrap();
+            let st = s.settled_state();
+            assert_eq!(st.as_slice(), &truth[..st.len()], "settled diverged at frame {i}");
+        }
+
+        assert_eq!(s.settled_state().as_slice(), truth.as_slice());
+        assert_eq!(logged.lock().unwrap().as_slice(), truth.as_slice());
+        assert!(counters.lock().unwrap().restores > 0, "expected rollbacks");
+    }
+
+    /// A remote input that has already *arrived* — its tick merely unconfirmed
+    /// because a different remote is still missing — must be used as-is by
+    /// speculation, not second-guessed by the predictor. Remote A varies every
+    /// tick (repeat-predict would be wrong every time) but arrives with lag 1,
+    /// inside the present delay, so every speculated tick already has A's real
+    /// input; remote B is constant (predictions hold) but arrives with lag 4.
+    /// If speculation uses A's real inputs, nothing ever rolls back.
+    #[test]
+    fn arrived_inputs_beat_predictions_in_speculation() {
+        let counters = Arc::new(Mutex::new(Counters::default()));
+        let logged = Arc::new(Mutex::new(Vec::new()));
+        let locals = [1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        let remote_a = [40u8, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51];
+        let remote_b = [7u8; 12];
+        let truth = truth(&locals, &[&remote_a, &remote_b]);
+        let n = locals.len();
+
+        let mut s = session(2, 2, counters.clone(), logged.clone(), None);
+        let max_delay = 4;
+        for i in 0..n + max_delay {
+            if i >= 1 && i - 1 < n {
+                s.add_remote_input(0, remote_a[i - 1], 0);
+            }
+            if i >= 4 && i - 4 < n {
+                s.add_remote_input(1, remote_b[i - 4], 0);
+            }
+            let local = if i < n { locals[i] } else { 99 };
+            s.advance(local).unwrap();
+            let st = s.settled_state();
+            assert_eq!(st.as_slice(), &truth[..st.len()], "settled diverged at frame {i}");
+        }
+
+        assert_eq!(s.settled_state().as_slice(), truth.as_slice());
+        assert_eq!(logged.lock().unwrap().as_slice(), truth.as_slice());
+        assert_eq!(
+            counters.lock().unwrap().restores,
+            0,
+            "speculation second-guessed an arrived input"
+        );
     }
 }

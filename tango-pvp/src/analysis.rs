@@ -595,8 +595,8 @@ pub fn analyze(
     let [rom0, rom1] = roms;
     let [save0, save1] = saves;
 
-    let mut pair = mgba_siolink::Pair::with_options(mgba_siolink::PairOptions {
-        sides: [
+    let mut pair = mgba_siolink::Link::with_options(mgba_siolink::LinkOptions {
+        sides: vec![
             mgba_siolink::SideOptions {
                 rom: rom0,
                 save: Some(save0),
@@ -621,7 +621,7 @@ pub fn analyze(
     };
     let lifecycle = crate::telemetry::LifecycleSink::new();
     let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
-    // Cores own their primer traps — see [`mgba_siolink::Pair::set_traps`]
+    // Cores own their primer traps — see [`mgba_siolink::Link::set_traps`]
     // for why any other ownership dangles at core teardown.
     pair.set_traps(0, support[0].primer_traps(&prime_config, 0, &lifecycle, &primed[0]));
     pair.set_traps(1, support[1].primer_traps(&prime_config, 1, &lifecycle, &primed[1]));
@@ -634,7 +634,7 @@ pub fn analyze(
         if cancel.load(std::sync::atomic::Ordering::Relaxed) {
             anyhow::bail!("cancelled");
         }
-        pair.tick([0, 0]);
+        pair.tick(&[0, 0]);
         prime_ticks += 1;
     }
 
@@ -646,7 +646,7 @@ pub fn analyze(
             anyhow::bail!("cancelled");
         }
         let tick = i as u32 + 1;
-        pair.tick(keys);
+        pair.tick(&keys);
         // Everything is final on a linear re-sim — fold as we go.
         mgba_siolink::session::TickObserver::on_tick(&mut observer, &mut pair, tick);
         let (samples, events) = store.lock().unwrap().drain_confirmed(tick);

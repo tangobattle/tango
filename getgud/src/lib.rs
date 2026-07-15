@@ -1,13 +1,17 @@
 //! `getgud` is a small, dependency-free core for **rollback netcode** in
-//! two-player deterministic games.
+//! deterministic games with one local player and any number of remote peers
+//! (the classic two-player session has exactly one).
 //!
 //! Each peer runs its own [`Session`]. You feed it the local player's input
-//! every tick and the remote player's inputs as they arrive over the network.
-//! The session confirms ticks for which both inputs are known, *predicts* the
-//! remote inputs that haven't arrived yet so it can present a responsive frame,
-//! and transparently corrects those predictions once the real inputs land. It
-//! also produces a clock-[`skew`](Session::skew) signal so the two peers can keep
-//! their simulations aligned.
+//! every tick and each remote player's inputs as they arrive over the network,
+//! tagged with that peer's *remote slot*. The session confirms ticks for which
+//! every player's input is known, *predicts* the remote inputs that haven't
+//! arrived yet so it can present a responsive frame, and transparently corrects
+//! those predictions once the real inputs land. A remote input that has already
+//! arrived — its tick merely unconfirmed because another peer is still missing —
+//! is used as-is, never second-guessed. The session also produces a
+//! clock-[`skew`](Session::skew) signal so the peers can keep their simulations
+//! aligned.
 //!
 //! The crate is generic over your game and contains no game logic itself. You
 //! implement a single trait, [`World`], on the type that owns your live
@@ -16,11 +20,11 @@
 //! | Member                            | Responsibility                                   |
 //! |-----------------------------------|--------------------------------------------------|
 //! | [`World`] `Input`/`State`/`Error` | Names your input, snapshot, and error types.     |
-//! | [`step`](World::step)             | Advances the live simulation one tick by an input pair, reporting round end (deterministically). |
+//! | [`step`](World::step)             | Advances the live simulation one tick by an input row, reporting round end (deterministically). |
 //! | [`save`](World::save)             | Snapshots the live simulation at the current tick. |
 //! | [`load`](World::load)             | Restores the live simulation to a snapshot, to rewind before a rollback. |
-//! | [`predict`](World::predict)       | Guesses the remote's next input from their last one. |
-//! | [`log`](World::log)               | Receives confirmed input pairs.                  |
+//! | [`predict`](World::predict)       | Guesses a remote's next input from their last one. |
+//! | [`log`](World::log)               | Receives confirmed input rows.                   |
 //!
 //! # Model
 //!
@@ -29,19 +33,20 @@
 //!   means less prediction but more input latency; smaller is snappier but
 //!   speculates further ahead. Tunable at runtime.
 //! * **Settled state** — the authoritative state built only from confirmed
-//!   `(local, remote)` input pairs. Inputs are logged as they settle.
+//!   input rows (every player's input present). Rows are logged as they settle.
 //! * **Speculative tail** — when the presented tick runs past the confirmed
 //!   region, the session steps forward from the settled state using real local
-//!   inputs and predicted remote inputs, saving each snapshot into a rolling
-//!   buffer. When the real remote inputs arrive, the snapshots whose prediction
-//!   held are promoted to settled with no re-simulation; only a mispredicted tail
-//!   is rolled back and re-stepped.
+//!   inputs, each remote's real input where it has already arrived, and
+//!   predicted inputs for the rest, saving each snapshot into a rolling
+//!   buffer. When the outstanding inputs arrive, the snapshots whose inputs
+//!   held are promoted to settled with no re-simulation; only a mispredicted
+//!   tail is rolled back and re-stepped.
 //!
 //! # Per-tick loop
 //!
 //! ```text
 //! loop each tick:
-//!     while packet arrived:  session.add_remote_input(remote_input, their_advantage)
+//!     while packet arrived:  session.add_remote_input(slot, remote_input, their_advantage)
 //!     adjust_clock(session.skew());   // stall a frame when running ahead
 //!     let frame = session.advance(local_input)?;
 //!     render(frame.state);
@@ -49,12 +54,13 @@
 //!
 //! # Example
 //!
-//! A toy world whose state is a single integer that each player's input nudges.
+//! A toy two-player world whose state is a single integer that each player's
+//! input nudges.
 //!
 //! ```
 //! use getgud::{RoundState, Session, SessionParams, World};
 //!
-//! // A world whose live state is a single integer that each player's input nudges.
+//! // A world whose live state is a single integer that every player's input nudges.
 //! struct Counter { total: i64 }
 //!
 //! impl World for Counter {
@@ -62,10 +68,9 @@
 //!     type State = i64;   // the snapshot is just the running total
 //!     type Error = std::convert::Infallible;
 //!
-//!     // Fold each (local, remote) pair into the running total.
-//!     fn step(&mut self, input: (i64, i64)) -> Result<RoundState, std::convert::Infallible> {
-//!         let (local, remote) = input;
-//!         self.total += local + remote;
+//!     // Fold each input row into the running total.
+//!     fn step(&mut self, local: &i64, remotes: &[i64]) -> Result<RoundState, std::convert::Infallible> {
+//!         self.total += local + remotes.iter().sum::<i64>();
 //!         Ok(RoundState::Ongoing) // this toy round never ends
 //!     }
 //!     // Snapshot / restore the running total.
@@ -74,15 +79,15 @@
 //!         self.total = *state;
 //!         Ok(())
 //!     }
-//!     // Predict that the remote keeps repeating its last input.
+//!     // Predict that a remote keeps repeating its last input.
 //!     fn predict(&self, last_remote: &i64) -> i64 { *last_remote }
-//!     // This toy world doesn't record confirmed pairs.
-//!     fn log(&mut self, _pair: &(i64, i64)) {}
+//!     // This toy world doesn't record confirmed rows.
+//!     fn log(&mut self, _local: &i64, _remotes: &[i64]) {}
 //! }
 //!
 //! let mut session = Session::<Counter>::new(SessionParams {
 //!     present_delay: 2,
-//!     initial_remote: 0,
+//!     initial_remotes: vec![0], // one remote peer
 //!     initial_state: 0,
 //!     world: Counter { total: 0 },
 //! });
@@ -93,7 +98,7 @@
 //! for tick in 0..10 {
 //!     // A packet from two ticks ago becomes available now.
 //!     if tick >= 2 {
-//!         session.add_remote_input(pending.remove(0), session.local_tick_advantage());
+//!         session.add_remote_input(0, pending.remove(0), session.local_tick_advantage());
 //!     }
 //!     pending.push(1); // the remote input we'll deliver later
 //!
@@ -102,7 +107,7 @@
 //!     let skew = session.skew();
 //!     let frame = session.advance(1).unwrap();
 //!     // `frame.state` is what to render.
-//!     let _ = (skew, frame.tick, frame.state, frame.input);
+//!     let _ = (skew, frame.tick, frame.state, frame.local, frame.remotes);
 //! }
 //!
 //! assert_eq!(session.local_frontier(), 10);
@@ -112,5 +117,6 @@ mod input;
 mod session;
 mod world;
 
+pub use input::Queue;
 pub use session::{Frame, Session, SessionParams};
 pub use world::{RoundState, World};

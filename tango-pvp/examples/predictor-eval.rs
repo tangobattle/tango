@@ -82,7 +82,7 @@ impl getgud::World for EvalWorld {
     type State = u32;
     type Error = std::convert::Infallible;
 
-    fn step(&mut self, _input: (Self::Input, Self::Input)) -> Result<getgud::RoundState, Self::Error> {
+    fn step(&mut self, _local: &Self::Input, _remotes: &[Self::Input]) -> Result<getgud::RoundState, Self::Error> {
         self.parked += 1;
         self.steps.set(self.steps.get() + 1);
         Ok(getgud::RoundState::Ongoing)
@@ -103,7 +103,7 @@ impl getgud::World for EvalWorld {
         }
     }
 
-    fn log(&mut self, _pair: &(Self::Input, Self::Input)) {}
+    fn log(&mut self, _local: &Self::Input, _remotes: &[Self::Input]) {}
 }
 
 /// Aggregated results of one or more [`run_round`]s at a single (depth, mask).
@@ -176,7 +176,7 @@ fn run_round(local: &[u16], remote: &[u16], depth: u32, mask: u16) -> RunAgg {
     let steps = Rc::new(Cell::new(0u64));
     let mut session = getgud::Session::new(getgud::SessionParams {
         present_delay: 0,
-        initial_remote: tango_pvp::input::PartialInput { joyflags: 0 },
+        initial_remotes: vec![tango_pvp::input::PartialInput { joyflags: 0 }],
         initial_state: 0u32,
         world: EvalWorld {
             mask,
@@ -191,6 +191,7 @@ fn run_round(local: &[u16], remote: &[u16], depth: u32, mask: u16) -> RunAgg {
     for t in 0..n {
         while delivered + lag <= t {
             session.add_remote_input(
+                0,
                 tango_pvp::input::PartialInput {
                     joyflags: remote[delivered],
                 },
@@ -202,7 +203,7 @@ fn run_round(local: &[u16], remote: &[u16], depth: u32, mask: u16) -> RunAgg {
             let frame = session
                 .advance(tango_pvp::input::PartialInput { joyflags: local[t] })
                 .unwrap();
-            (frame.tick, frame.input.1.joyflags)
+            (frame.tick, frame.remotes[0].joyflags)
         };
         agg.frames += 1;
         // The presented tick consumed pair `tick − 1`; if that pair isn't

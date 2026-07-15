@@ -1,5 +1,6 @@
 //! The PvP engine shared by all Battle Network games this project
-//! supports: both games run locally as an [`mgba_siolink::Pair`] linked
+//! supports: both games run locally as an [`mgba_siolink::Link`] (a pair
+//! of cores — every game tango supports is a two-player link battle)
 //! through mgba's lockstep SIO driver, and the pair is the rollback
 //! unit (see [`mgba_siolink::session::Session`]). The games run their
 //! *real* link protocol over the emulated cable — no handshake skips,
@@ -46,7 +47,7 @@ pub mod replay;
 pub mod telemetry;
 
 /// A PC-sited trap: fires the closure when emulation reaches the ROM
-/// address (see `mgba_siolink::Pair::set_traps`).
+/// address (see `mgba_siolink::Link::set_traps`).
 pub type Trap = (u32, Box<dyn Fn(mgba::core::CoreMutRef)>);
 
 /// One core's "the battle has started" latch — the priming handoff.
@@ -82,11 +83,11 @@ pub use mgba_siolink::throttler::Throttler;
 /// The linked core pair, re-exported for hosts that reach through
 /// [`Match::with_pair`](engine::Match::with_pair) for video/audio
 /// readout.
-pub use mgba_siolink::Pair;
+pub use mgba_siolink::Link;
 
 /// Cross-thread readout handle to a running match's pair (see
 /// [`Match::pair_handle`](engine::Match::pair_handle)).
-pub use mgba_siolink::session::PairHandle;
+pub use mgba_siolink::session::LinkHandle;
 
 /// Match parameters the primer needs before the games can negotiate the
 /// rest themselves over the emulated cable.

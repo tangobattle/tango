@@ -228,9 +228,9 @@ fn boot_and_prime(
     render: bool,
     cancel: Option<&AtomicBool>,
     lifecycle: &crate::telemetry::LifecycleSink,
-) -> anyhow::Result<mgba_siolink::Pair> {
-    let mut pair = mgba_siolink::Pair::with_options(mgba_siolink::PairOptions {
-        sides: [
+) -> anyhow::Result<mgba_siolink::Link> {
+    let mut pair = mgba_siolink::Link::with_options(mgba_siolink::LinkOptions {
+        sides: vec![
             mgba_siolink::SideOptions {
                 rom: config.roms[0].clone(),
                 save: Some(config.saves[0].clone()),
@@ -253,7 +253,7 @@ fn boot_and_prime(
         disable_bgm: config.disable_bgm,
     };
     let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
-    // Cores own their primer traps — see [`mgba_siolink::Pair::set_traps`]
+    // Cores own their primer traps — see [`mgba_siolink::Link::set_traps`]
     // for why any other ownership dangles at core teardown.
     pair.set_traps(0, config.support[0].primer_traps(&prime_config, 0, lifecycle, &primed[0]));
     pair.set_traps(1, config.support[1].primer_traps(&prime_config, 1, lifecycle, &primed[1]));
@@ -266,7 +266,7 @@ fn boot_and_prime(
         if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
             anyhow::bail!("cancelled");
         }
-        pair.tick([0, 0]);
+        pair.tick(&[0, 0]);
         prime_ticks += 1;
     }
     Ok(pair)
@@ -276,7 +276,7 @@ fn boot_and_prime(
 /// stream and a cursor. The host wraps it in a mutex — the drive loop,
 /// the seek chase, and the audio pull interleave on that lock.
 pub struct Playback {
-    pair: mgba_siolink::Pair,
+    pair: mgba_siolink::Link,
     inputs: Arc<Vec<[u32; 2]>>,
     cursor: u32,
 }
@@ -314,7 +314,7 @@ impl Playback {
         let Some(&keys) = self.inputs.get(self.cursor as usize) else {
             return false;
         };
-        self.pair.tick(keys);
+        self.pair.tick(&keys);
         self.cursor += 1;
         true
     }
@@ -342,7 +342,7 @@ impl Playback {
     }
 
     /// Direct pair access, for video/audio readout.
-    pub fn pair_mut(&mut self) -> &mut mgba_siolink::Pair {
+    pub fn pair_mut(&mut self) -> &mut mgba_siolink::Link {
         &mut self.pair
     }
 }
@@ -509,7 +509,7 @@ pub fn run_prefetch(
 
     // Keyframe at tick 0: the primed pre-battle state every backward
     // seek bottoms out on.
-    let capture = |pair: &mut mgba_siolink::Pair, tick: u32| -> anyhow::Result<Arc<Snapshot>> {
+    let capture = |pair: &mut mgba_siolink::Link, tick: u32| -> anyhow::Result<Arc<Snapshot>> {
         let state = pair.save()?;
         let framebuffers = [
             pair.video_buffer(0).map(|b| b.to_vec()).unwrap_or_default(),
@@ -531,7 +531,7 @@ pub fn run_prefetch(
             return Ok(None);
         }
         let tick = i as u32 + 1;
-        pair.tick(keys);
+        pair.tick(&keys);
         mgba_siolink::session::TickObserver::on_tick(&mut observer, &mut pair, tick);
 
         let (samples, events) = telemetry_store.lock().unwrap().drain_confirmed(tick);

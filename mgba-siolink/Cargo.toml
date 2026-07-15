@@ -10,7 +10,7 @@ getgud = { path = "../getgud" }
 # Needs the SIO driver state carried in the savestate blob (SIOCNT/RCNT
 # shadows + SIOMLT_SEND), on mgba-rs main since b3ad9c8.
 mgba.workspace = true
-# Raw C access for Pair::load's overdue-completeEvent repair (see
+# Raw C access for Link::load's overdue-completeEvent repair (see
 # lib.rs); same git source as `mgba` itself so cargo unifies them and
 # the pointer types line up.
 mgba-sys = { git = "https://github.com/tangobattle/mgba-rs" }

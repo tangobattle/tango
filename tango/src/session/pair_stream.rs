@@ -44,17 +44,17 @@ const AUDIO_MAX_TRIM: f64 = 0.005;
 /// 50 ms of backlog).
 const AUDIO_DISCARD_FACTOR: f64 = 3.0;
 
-/// Cross-thread access to a live [`Pair`](tango_pvp::Pair) for the
-/// audio callback — implemented over whatever lock the host keeps its
-/// pair behind. A host mid-boot may simply not call `f`; the stream
+/// Cross-thread access to a live pair of cores ([`Link`](tango_pvp::Link))
+/// for the audio callback — implemented over whatever lock the host keeps
+/// its pair behind. A host mid-boot may simply not call `f`; the stream
 /// plays silence until the pair exists.
 pub trait PairPull: Send {
-    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_pvp::Pair));
+    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_pvp::Link));
 }
 
-impl PairPull for tango_pvp::PairHandle {
-    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_pvp::Pair)) {
-        tango_pvp::PairHandle::with_pair(self, |pair| f(pair));
+impl PairPull for tango_pvp::LinkHandle {
+    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_pvp::Link)) {
+        tango_pvp::LinkHandle::with_link(self, |pair| f(pair));
     }
 }
 

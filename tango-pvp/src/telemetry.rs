@@ -311,7 +311,7 @@ impl Telemetry {
 }
 
 impl mgba_siolink::session::TickObserver for Telemetry {
-    fn on_tick(&mut self, pair: &mut mgba_siolink::Pair, tick: u32) {
+    fn on_tick(&mut self, pair: &mut mgba_siolink::Link, tick: u32) {
         let obs0 = self.pollers[0].poll(pair.core_mut(0));
         let obs1 = self.pollers[1].poll(pair.core_mut(1));
         let obs = match (obs0, obs1) {

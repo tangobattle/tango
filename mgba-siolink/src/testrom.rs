@@ -1,16 +1,18 @@
 //! A minimal hand-assembled GBA ROM that exercises SIO MULTI mode, for
 //! loopback tests: no real game automates cleanly into link mode, so this
-//! stands in for one.
+//! stands in for one. The same image runs on every unit of a 2-4 player
+//! link (role and slot read from SIOCNT's slave and multi-ID bits).
 //!
-//! Protocol per iteration `c` (both sides run the same image; role read
-//! from SIOCNT's slave bit): each side preloads SIOMLT_SEND with `c+1`
-//! (slave sets bit 15 so the two payloads are distinguishable), the master
-//! burns a settle delay so the slave's preload always lands first, then
-//! starts the transfer and spins on the busy bit; the slave spins until
-//! SIOMULTI0 shows the master's `c+1`. Both sides then append
-//! (SIOMULTI0, SIOMULTI1) to a log at 0x02000000 and loop. The EWRAM logs
-//! double as a desync canary: every core in the link must record the
-//! identical sequence (1, 1|0x8000, 2, 2|0x8000, ...).
+//! Protocol per iteration `c`: each unit preloads SIOMLT_SEND with
+//! `c+1 | id << 14` (the multi ID in the top two bits keeps the payloads
+//! distinguishable per player), the master burns a settle delay so every
+//! slave's preload always lands first, then starts the transfer and spins
+//! on the busy bit; each slave spins until SIOMULTI0 shows the master's
+//! `c+1`. Every unit then appends all four SIOMULTI registers to a log at
+//! 0x02000000 and loops. Unattached slots read back 0xFFFF, exactly like
+//! a real multi cable with nothing plugged in. The EWRAM logs double as a
+//! desync canary: every core in the link must record the identical
+//! sequence.
 
 const ENTRY_WORD: u32 = 0xC0 / 4;
 
@@ -67,6 +69,10 @@ fn orr_imm(cond: u32, rd: u32, rn: u32, rot: u32, imm8: u32) -> u32 {
     dp_imm(cond, 0b1100, 0, rn, rd, rot, imm8)
 }
 
+fn and_imm(rd: u32, rn: u32, rot: u32, imm8: u32) -> u32 {
+    dp_imm(AL, 0b0000, 0, rn, rd, rot, imm8)
+}
+
 fn add_imm(rd: u32, rn: u32, imm8: u32) -> u32 {
     dp_imm(AL, 0b0100, 0, rn, rd, 0, imm8)
 }
@@ -79,8 +85,9 @@ fn tst_imm(rn: u32, rot: u32, imm8: u32) -> u32 {
     dp_imm(AL, 0b1000, 1, rn, 0, rot, imm8)
 }
 
-fn mov_reg(rd: u32, rm: u32) -> u32 {
-    AL << 28 | 0b1101 << 21 | rd << 12 | rm
+/// `orr rd, rn, rm, LSL #shift` — register operand with an immediate shift.
+fn orr_reg_lsl(rd: u32, rn: u32, rm: u32, shift: u32) -> u32 {
+    AL << 28 | 0b1100 << 21 | rn << 16 | rd << 12 | shift << 7 | rm
 }
 
 fn cmp_reg(rn: u32, rm: u32) -> u32 {
@@ -103,13 +110,25 @@ fn ldrh(rd: u32, rn: u32, offset: u32) -> u32 {
 
 // r0 = 0x04000120 (SIO register block); halfword offsets from it:
 const SIOMULTI0: u32 = 0x00;
-const SIOMULTI1: u32 = 0x02;
 const SIOCNT: u32 = 0x08;
 const SIOMLT_SEND: u32 = 0x0A;
 const RCNT: u32 = 0x14;
 
-/// The EWRAM address both sides log (SIOMULTI0, SIOMULTI1) pairs to.
+/// The EWRAM address every unit logs its per-iteration
+/// (SIOMULTI0..SIOMULTI3) quads to.
 pub const LOG_ADDR: u32 = 0x0200_0000;
+
+/// Halfwords one log entry spans (all four SIOMULTI registers).
+pub const LOG_ENTRY_HALFWORDS: usize = 4;
+
+/// The value an unattached SIOMULTI slot reads back after a transfer.
+pub const UNATTACHED: u16 = 0xFFFF;
+
+/// The payload player `id` sends on iteration `c` (0-based): the counter
+/// tagged with the multi ID in the top two bits.
+pub fn payload(id: usize, c: usize) -> u16 {
+    ((c + 1) as u16 & 0x3FFF) | ((id as u16) << 14)
+}
 
 pub fn build() -> Vec<u8> {
     let mut asm = Asm { words: Vec::new() };
@@ -137,16 +156,15 @@ pub fn build() -> Vec<u8> {
     asm.branch(EQ, ready);
 
     let main_loop = asm.here();
-    asm.emit(add_imm(8, 4, 1)); // r8 = c + 1 (master payload / expectation)
-    asm.emit(mov_reg(7, 8));
+    asm.emit(add_imm(8, 4, 1)); // r8 = c + 1 (master payload, every unit's expectation)
     asm.emit(ldrh(1, 0, SIOCNT));
-    asm.emit(tst_imm(1, 0, 4)); // slave?
-    asm.emit(orr_imm(NE, 7, 7, 12, 0x80)); // slave payload = c+1 | 0x8000
+    asm.emit(and_imm(2, 1, 0, 0x30)); // r2 = multi ID bits (SIOCNT 4-5)
+    asm.emit(orr_reg_lsl(7, 8, 2, 10)); // r7 = c+1 | id << 14 — this unit's payload
     asm.emit(strh(7, 0, SIOMLT_SEND));
-    asm.emit(tst_imm(1, 0, 4));
+    asm.emit(tst_imm(1, 0, 4)); // slave?
     let to_slave = asm.branch_fixup(NE);
 
-    // Master: give the slave a settle window, then clock the transfer.
+    // Master: give the slaves a settle window, then clock the transfer.
     asm.emit(mov_imm(6, 12, 0x08)); // r6 = 0x800
     let mdelay = asm.here();
     asm.emit(subs_imm(6, 6, 1));
@@ -166,13 +184,13 @@ pub fn build() -> Vec<u8> {
     asm.emit(cmp_reg(2, 8));
     asm.branch(NE, slave);
 
+    // Record all four SIOMULTI slots (unattached ones read 0xFFFF).
     let record = asm.here();
-    asm.emit(ldrh(2, 0, SIOMULTI0));
-    asm.emit(ldrh(3, 0, SIOMULTI1));
-    asm.emit(strh(2, 5, 0));
-    asm.emit(add_imm(5, 5, 2));
-    asm.emit(strh(3, 5, 0));
-    asm.emit(add_imm(5, 5, 2));
+    for slot in 0..LOG_ENTRY_HALFWORDS as u32 {
+        asm.emit(ldrh(2, 0, SIOMULTI0 + slot * 2));
+        asm.emit(strh(2, 5, slot * 2));
+    }
+    asm.emit(add_imm(5, 5, 2 * LOG_ENTRY_HALFWORDS as u32));
     asm.emit(add_imm(4, 4, 1));
     asm.branch(AL, main_loop);
 
