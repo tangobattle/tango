@@ -218,6 +218,18 @@ impl Pair {
         self.cores[i].video_buffer()
     }
 
+    /// Install instruction traps on core `i` (see `mgba::trapper::Trapper`).
+    /// The core owns the trapper, which is the only sound ownership: the
+    /// trapper splices itself into the core's CPU component table and has
+    /// no uninstall, so the core dereferences it right up through its own
+    /// deinit — a trapper held anywhere else can be freed first and turn
+    /// core teardown into a jump through reclaimed memory. `Core`'s drop
+    /// order (deinit, then fields) keeps the trapper alive exactly long
+    /// enough.
+    pub fn set_traps(&mut self, i: usize, traps: Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)>) {
+        self.cores[i].set_traps(traps);
+    }
+
     /// Set core `i`'s video frameskip: `i32::MAX` never renders, `0`
     /// renders every frame. Rendering is invisible to the emulated machine
     /// and frameskip is not serialized, so this is rollback-safe — it

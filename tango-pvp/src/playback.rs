@@ -228,7 +228,7 @@ fn boot_and_prime(
     render: bool,
     cancel: Option<&AtomicBool>,
     lifecycle: &crate::telemetry::LifecycleSink,
-) -> anyhow::Result<(mgba_siolink::Pair, [mgba::trapper::Trapper; 2])> {
+) -> anyhow::Result<mgba_siolink::Pair> {
     let mut pair = mgba_siolink::Pair::with_options(mgba_siolink::PairOptions {
         sides: [
             mgba_siolink::SideOptions {
@@ -253,16 +253,10 @@ fn boot_and_prime(
         disable_bgm: config.disable_bgm,
     };
     let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
-    let trappers = [
-        mgba::trapper::Trapper::new(
-            pair.core_mut(0),
-            config.support[0].primer_traps(&prime_config, 0, lifecycle, &primed[0]),
-        ),
-        mgba::trapper::Trapper::new(
-            pair.core_mut(1),
-            config.support[1].primer_traps(&prime_config, 1, lifecycle, &primed[1]),
-        ),
-    ];
+    // Cores own their primer traps — see [`mgba_siolink::Pair::set_traps`]
+    // for why any other ownership dangles at core teardown.
+    pair.set_traps(0, config.support[0].primer_traps(&prime_config, 0, lifecycle, &primed[0]));
+    pair.set_traps(1, config.support[1].primer_traps(&prime_config, 1, lifecycle, &primed[1]));
 
     let mut prime_ticks = 0;
     while !(primed[0].is_set() && primed[1].is_set()) {
@@ -275,7 +269,7 @@ fn boot_and_prime(
         pair.tick([0, 0]);
         prime_ticks += 1;
     }
-    Ok((pair, trappers))
+    Ok(pair)
 }
 
 /// The playback pair: a booted, primed pair plus the recorded input
@@ -283,7 +277,6 @@ fn boot_and_prime(
 /// the seek chase, and the audio pull interleave on that lock.
 pub struct Playback {
     pair: mgba_siolink::Pair,
-    _trappers: [mgba::trapper::Trapper; 2],
     inputs: Arc<Vec<[u32; 2]>>,
     cursor: u32,
 }
@@ -299,13 +292,8 @@ impl Playback {
         inputs: Arc<Vec<[u32; 2]>>,
         lifecycle: &crate::telemetry::LifecycleSink,
     ) -> anyhow::Result<Self> {
-        let (pair, trappers) = boot_and_prime(config, true, None, lifecycle)?;
-        Ok(Self {
-            pair,
-            _trappers: trappers,
-            inputs,
-            cursor: 0,
-        })
+        let pair = boot_and_prime(config, true, None, lifecycle)?;
+        Ok(Self { pair, inputs, cursor: 0 })
     }
 
     /// Input pairs consumed so far = the playhead tick.
@@ -505,7 +493,7 @@ pub fn run_prefetch(
     )>,
 ) -> anyhow::Result<Option<crate::analysis::MatchStats>> {
     let lifecycle = crate::telemetry::LifecycleSink::new();
-    let (mut pair, _trappers) = boot_and_prime(config, true, Some(&cancel), &lifecycle)?;
+    let mut pair = boot_and_prime(config, true, Some(&cancel), &lifecycle)?;
 
     let (mut observer, telemetry_store) = Telemetry::new(
         [config.support[0].core_poller(0), config.support[1].core_poller(1)],

@@ -56,10 +56,6 @@ pub struct MatchConfig<'a> {
 pub struct Match {
     session: mgba_siolink::session::Session,
     telemetry: TelemetryHandle,
-    /// Primer traps patch ROM in place and have no uninstall; they stay
-    /// installed for the pair's life (their boot/menu addresses never
-    /// execute during battle, so they're inert once primed).
-    _trappers: [mgba::trapper::Trapper; 2],
     local_player: usize,
 }
 
@@ -105,16 +101,14 @@ impl Match {
         };
         let lifecycle = crate::telemetry::LifecycleSink::new();
         let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
-        let trappers = [
-            mgba::trapper::Trapper::new(
-                pair.core_mut(0),
-                support[0].primer_traps(&prime_config, 0, &lifecycle, &primed[0]),
-            ),
-            mgba::trapper::Trapper::new(
-                pair.core_mut(1),
-                support[1].primer_traps(&prime_config, 1, &lifecycle, &primed[1]),
-            ),
-        ];
+        // The cores own their primer traps (see [`Pair::set_traps`]): the
+        // pair outlives this Match whenever a host still holds a
+        // [`PairHandle`] (e.g. the audio pull), and core teardown walks the
+        // trap component, so the traps must live exactly as long as their
+        // cores. They stay installed for the pair's life — inert once
+        // primed, since their boot/menu addresses never execute in battle.
+        pair.set_traps(0, support[0].primer_traps(&prime_config, 0, &lifecycle, &primed[0]));
+        pair.set_traps(1, support[1].primer_traps(&prime_config, 1, &lifecycle, &primed[1]));
 
         // Prime both cores to their link battle. The traps do all the
         // driving (each core's walk its own menu state machine); the
@@ -156,7 +150,6 @@ impl Match {
         Ok(Match {
             session,
             telemetry: telemetry_handle,
-            _trappers: trappers,
             local_player,
         })
     }

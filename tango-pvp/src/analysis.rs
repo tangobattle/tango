@@ -621,16 +621,10 @@ pub fn analyze(
     };
     let lifecycle = crate::telemetry::LifecycleSink::new();
     let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
-    let _trappers = [
-        mgba::trapper::Trapper::new(
-            pair.core_mut(0),
-            support[0].primer_traps(&prime_config, 0, &lifecycle, &primed[0]),
-        ),
-        mgba::trapper::Trapper::new(
-            pair.core_mut(1),
-            support[1].primer_traps(&prime_config, 1, &lifecycle, &primed[1]),
-        ),
-    ];
+    // Cores own their primer traps — see [`mgba_siolink::Pair::set_traps`]
+    // for why any other ownership dangles at core teardown.
+    pair.set_traps(0, support[0].primer_traps(&prime_config, 0, &lifecycle, &primed[0]));
+    pair.set_traps(1, support[1].primer_traps(&prime_config, 1, &lifecycle, &primed[1]));
 
     let mut prime_ticks = 0;
     while !(primed[0].is_set() && primed[1].is_set()) {
