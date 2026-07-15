@@ -218,7 +218,7 @@ impl Pair {
         self.cores[i].video_buffer()
     }
 
-    /// Install instruction traps on core `i` (see `mgba::trapper::Trapper`).
+    /// Install instruction traps on core `i` (see `mgba::core::Core::set_traps`).
     /// The core owns the trapper, which is the only sound ownership: the
     /// trapper splices itself into the core's CPU component table and has
     /// no uninstall, so the core dereferences it right up through its own

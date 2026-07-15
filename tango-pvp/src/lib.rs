@@ -46,7 +46,7 @@ pub mod replay;
 pub mod telemetry;
 
 /// A PC-sited trap: fires the closure when emulation reaches the ROM
-/// address (see `mgba::trapper::Trapper`).
+/// address (see `mgba_siolink::Pair::set_traps`).
 pub type Trap = (u32, Box<dyn Fn(mgba::core::CoreMutRef)>);
 
 /// One core's "the battle has started" latch — the priming handoff.

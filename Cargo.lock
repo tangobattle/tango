@@ -619,7 +619,7 @@ dependencies = [
  "bitflags 2.11.1",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -3436,7 +3436,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.53.3",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -3745,7 +3745,7 @@ dependencies = [
 [[package]]
 name = "mgba"
 version = "4.0.32"
-source = "git+https://github.com/tangobattle/mgba-rs#b3ad9c8ef4bf278882d67e4887b0436a6db38d8d"
+source = "git+https://github.com/tangobattle/mgba-rs#095e4e7be9bb9d59dd06a9925c7cf20d51c07a46"
 dependencies = [
  "log",
  "mgba-sys",
@@ -3772,7 +3772,7 @@ dependencies = [
 [[package]]
 name = "mgba-sys"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/mgba-rs#b3ad9c8ef4bf278882d67e4887b0436a6db38d8d"
+source = "git+https://github.com/tangobattle/mgba-rs#095e4e7be9bb9d59dd06a9925c7cf20d51c07a46"
 dependencies = [
  "bindgen",
  "cmake",
