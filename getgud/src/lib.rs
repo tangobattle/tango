@@ -20,7 +20,7 @@
 //! | Member                            | Responsibility                                   |
 //! |-----------------------------------|--------------------------------------------------|
 //! | [`World`] `Input`/`State`/`Error` | Names your input, snapshot, and error types.     |
-//! | [`step`](World::step)             | Advances the live simulation one tick by an input row, reporting round end (deterministically). |
+//! | [`step`](World::step)             | Advances the live simulation one tick by an input row (deterministically). |
 //! | [`save`](World::save)             | Snapshots the live simulation at the current tick. |
 //! | [`load`](World::load)             | Restores the live simulation to a snapshot, to rewind before a rollback. |
 //! | [`predict`](World::predict)       | Guesses a remote's next input from their last one. |
@@ -58,7 +58,7 @@
 //! input nudges.
 //!
 //! ```
-//! use getgud::{RoundState, Session, SessionParams, World};
+//! use getgud::{Session, SessionParams, World};
 //!
 //! // A world whose live state is a single integer that every player's input nudges.
 //! struct Counter { total: i64 }
@@ -69,9 +69,9 @@
 //!     type Error = std::convert::Infallible;
 //!
 //!     // Fold each input row into the running total.
-//!     fn step(&mut self, local: &i64, remotes: &[i64]) -> Result<RoundState, std::convert::Infallible> {
+//!     fn step(&mut self, local: &i64, remotes: &[i64]) -> Result<(), std::convert::Infallible> {
 //!         self.total += local + remotes.iter().sum::<i64>();
-//!         Ok(RoundState::Ongoing) // this toy round never ends
+//!         Ok(())
 //!     }
 //!     // Snapshot / restore the running total.
 //!     fn save(&mut self) -> Result<i64, std::convert::Infallible> { Ok(self.total) }
@@ -119,4 +119,4 @@ mod world;
 
 pub use input::Queue;
 pub use session::{Frame, Session, SessionParams};
-pub use world::{RoundState, World};
+pub use world::World;

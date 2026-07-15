@@ -148,7 +148,7 @@ impl getgud::World for LinkWorld {
     type State = SnapshotAt;
     type Error = mgba::Error;
 
-    fn step(&mut self, local: &u32, remotes: &[u32]) -> Result<getgud::RoundState, mgba::Error> {
+    fn step(&mut self, local: &u32, remotes: &[u32]) -> Result<(), mgba::Error> {
         let keys = self.key_row(*local, remotes);
         let mut guard = self.shared.lock().unwrap();
         let shared = &mut *guard;
@@ -157,9 +157,7 @@ impl getgud::World for LinkWorld {
         if let Some(observer) = shared.observer.as_mut() {
             observer.on_tick(&mut shared.link, shared.live_tick);
         }
-        // No round concept at this layer: a link session runs until the
-        // host tears it down, so the log is never clamped.
-        Ok(getgud::RoundState::Ongoing)
+        Ok(())
     }
 
     fn save(&mut self) -> Result<SnapshotAt, mgba::Error> {

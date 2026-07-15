@@ -82,10 +82,10 @@ impl getgud::World for EvalWorld {
     type State = u32;
     type Error = std::convert::Infallible;
 
-    fn step(&mut self, _local: &Self::Input, _remotes: &[Self::Input]) -> Result<getgud::RoundState, Self::Error> {
+    fn step(&mut self, _local: &Self::Input, _remotes: &[Self::Input]) -> Result<(), Self::Error> {
         self.parked += 1;
         self.steps.set(self.steps.get() + 1);
-        Ok(getgud::RoundState::Ongoing)
+        Ok(())
     }
 
     fn save(&mut self) -> Result<u32, Self::Error> {

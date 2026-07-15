@@ -1,18 +1,3 @@
-/// Whether a tick ended the round, as reported by [`World::step`].
-///
-/// The session keeps simulating **past** a round end (the post-end frames are
-/// still real state, and the host's presentation typically only detects the end a
-/// tick or two later), so [`Ended`](RoundState::Ended) does not halt the
-/// simulation; it only stops [`World::log`] from receiving any further input
-/// rows from the round-ending tick on.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum RoundState {
-    /// The round is still in progress after this tick.
-    Ongoing,
-    /// This tick ended the round.
-    Ended,
-}
-
 /// Binds the concrete types a game provides to the netcode core **and** drives
 /// the simulation.
 ///
@@ -41,9 +26,8 @@ pub enum RoundState {
 /// * **promote** — neither: a correct prediction needs no simulation, so the
 ///   session reuses the snapshot it already saved.
 ///
-/// Because round-end comes back from [`step`](World::step) rather than from a
-/// snapshot, a rollback can re-step a whole corrected tail and `save` only its
-/// final tick, instead of snapshotting every intermediate one.
+/// A rollback re-steps the whole corrected tail and `save`s only its final
+/// tick, instead of snapshotting every intermediate one.
 ///
 /// [`load`](World::load) parks the world at the restored snapshot's tick; each
 /// [`step`](World::step) moves it one tick further. The same state + inputs must
@@ -53,7 +37,7 @@ pub enum RoundState {
 /// # Example
 ///
 /// ```
-/// use getgud::{RoundState, World};
+/// use getgud::World;
 ///
 /// struct MyGame {
 ///     cells: Vec<i32>,
@@ -64,8 +48,8 @@ pub enum RoundState {
 ///     type State = Vec<i32>;      // a serializable snapshot of the simulation
 ///     type Error = std::convert::Infallible;
 ///
-///     fn step(&mut self, _local: &u8, _remotes: &[u8]) -> Result<RoundState, std::convert::Infallible> {
-///         Ok(RoundState::Ongoing)
+///     fn step(&mut self, _local: &u8, _remotes: &[u8]) -> Result<(), std::convert::Infallible> {
+///         Ok(())
 ///     }
 ///     fn save(&mut self) -> Result<Vec<i32>, std::convert::Infallible> {
 ///         Ok(self.cells.clone())
@@ -102,9 +86,8 @@ pub trait World {
 
     /// Advance the live simulation exactly one tick from where it is parked by
     /// applying this tick's inputs (`remotes` indexed by remote slot), parking
-    /// the world one tick further on. Returns whether this tick ended the
-    /// round — see [`RoundState`].
-    fn step(&mut self, local: &Self::Input, remotes: &[Self::Input]) -> Result<RoundState, Self::Error>;
+    /// the world one tick further on.
+    fn step(&mut self, local: &Self::Input, remotes: &[Self::Input]) -> Result<(), Self::Error>;
 
     /// Snapshot the live simulation at the tick it is currently parked at.
     ///
