@@ -133,7 +133,39 @@ pub struct Configuration {
 
 pub struct PeerConnection {
     id: i32,
-    userdata: Box<PeerConnectionUserData>,
+    userdata: std::sync::Arc<std::sync::RwLock<PeerConnectionUserData>>,
+}
+
+/// Live entities' callback closures, keyed by libdatachannel id.
+///
+/// The C API's callback shims fetch the registered user pointer and then
+/// invoke the callback *without* any synchronization against deletion
+/// (`if (auto ptr = getUserPointer(id)) cb(id, ..., *ptr)` in capi.cpp), and
+/// `rtcDelete*` returns without joining callbacks already in flight on the
+/// worker threads — so handing the C side a raw pointer to memory we free in
+/// `Drop` is a use-after-free the moment an entity is deleted under traffic
+/// (and a null deref in the window before `rtcSetUserPointer`, which
+/// `getUserPointer` reports as an *engaged* optional holding null). Instead
+/// our `extern "C"` trampolines ignore the user pointer entirely and look the
+/// id up here: the entry is inserted before any callback is registered, an
+/// in-flight callback's `Arc` clone keeps the closures alive until it
+/// returns even if the owning object is dropped mid-call, a late callback
+/// after `Drop` finds nothing, and the `RwLock` makes `set_on_*` mutation
+/// sound against concurrent invocation. The map guard is never held across a
+/// callback or a call into libdatachannel.
+static PEER_CONNECTION_USERDATA: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<i32, std::sync::Arc<std::sync::RwLock<PeerConnectionUserData>>>>,
+> = std::sync::LazyLock::new(Default::default);
+static DATA_CHANNEL_USERDATA: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<i32, std::sync::Arc<std::sync::RwLock<DataChannelUserData>>>>,
+> = std::sync::LazyLock::new(Default::default);
+
+fn peer_connection_userdata(id: i32) -> Option<std::sync::Arc<std::sync::RwLock<PeerConnectionUserData>>> {
+    PEER_CONNECTION_USERDATA.lock().unwrap().get(&id).cloned()
+}
+
+fn data_channel_userdata(id: i32) -> Option<std::sync::Arc<std::sync::RwLock<DataChannelUserData>>> {
+    DATA_CHANNEL_USERDATA.lock().unwrap().get(&id).cloned()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, num_derive::FromPrimitive)]
@@ -156,11 +188,11 @@ pub enum GatheringState {
 
 #[derive(Default)]
 struct PeerConnectionUserData {
-    on_local_description: Option<Box<dyn Fn(&str, SdpType)>>,
-    on_local_candidate: Option<Box<dyn Fn(&str)>>,
-    on_state_change: Option<Box<dyn Fn(State)>>,
-    on_gathering_state_change: Option<Box<dyn Fn(GatheringState)>>,
-    on_data_channel: Option<Box<dyn Fn(DataChannel)>>,
+    on_local_description: Option<Box<dyn Fn(&str, SdpType) + Send + Sync>>,
+    on_local_candidate: Option<Box<dyn Fn(&str) + Send + Sync>>,
+    on_state_change: Option<Box<dyn Fn(State) + Send + Sync>>,
+    on_gathering_state_change: Option<Box<dyn Fn(GatheringState) + Send + Sync>>,
+    on_data_channel: Option<Box<dyn Fn(DataChannel) + Send + Sync>>,
 }
 
 fn init_logger() {
@@ -192,9 +224,6 @@ fn init_logger() {
         libdatachannel_sys::rtcInitLogger(libdatachannel_sys::rtcLogLevel_RTC_LOG_VERBOSE, Some(log_cb));
     });
 }
-
-unsafe impl Send for PeerConnection {}
-unsafe impl Sync for PeerConnection {}
 
 impl PeerConnection {
     pub fn new(mut config: Configuration) -> Result<Self, Error> {
@@ -273,16 +302,22 @@ impl PeerConnection {
             disableFingerprintVerification: config.disable_fingerprint_verification,
         };
         let id = check_error(unsafe { libdatachannel_sys::rtcCreatePeerConnection(&raw_config as *const _) })?;
-        let mut userdata: Box<PeerConnectionUserData> = Default::default();
+
+        // Registered before any callback so a trampoline can never miss it;
+        // the trampolines look the id up here rather than trusting the raw
+        // user pointer (see `PEER_CONNECTION_USERDATA`).
+        let userdata: std::sync::Arc<std::sync::RwLock<PeerConnectionUserData>> = Default::default();
+        PEER_CONNECTION_USERDATA.lock().unwrap().insert(id, userdata.clone());
 
         unsafe {
             extern "C" fn local_description_callback(
-                _id: i32,
+                id: i32,
                 sdp: *const std::ffi::c_char,
                 type_: *const std::ffi::c_char,
-                userdata: *mut std::ffi::c_void,
+                _userdata: *mut std::ffi::c_void,
             ) {
-                let ud = unsafe { &*(userdata as *mut PeerConnectionUserData) };
+                let Some(ud) = peer_connection_userdata(id) else { return };
+                let ud = ud.read().unwrap();
                 if let Some(cb) = &ud.on_local_description {
                     cb(
                         unsafe { std::ffi::CStr::from_ptr(sdp) }.to_str().unwrap(),
@@ -295,12 +330,13 @@ impl PeerConnection {
 
         unsafe {
             extern "C" fn local_candidate_callback(
-                _id: i32,
+                id: i32,
                 cand: *const std::ffi::c_char,
                 _mid: *const std::ffi::c_char,
-                userdata: *mut std::ffi::c_void,
+                _userdata: *mut std::ffi::c_void,
             ) {
-                let ud = unsafe { &*(userdata as *mut PeerConnectionUserData) };
+                let Some(ud) = peer_connection_userdata(id) else { return };
+                let ud = ud.read().unwrap();
                 if let Some(cb) = &ud.on_local_candidate {
                     cb(unsafe { std::ffi::CStr::from_ptr(cand) }.to_str().unwrap());
                 }
@@ -310,11 +346,12 @@ impl PeerConnection {
 
         unsafe {
             extern "C" fn state_change_callback(
-                _id: i32,
+                id: i32,
                 state: libdatachannel_sys::rtcState,
-                userdata: *mut std::ffi::c_void,
+                _userdata: *mut std::ffi::c_void,
             ) {
-                let ud = unsafe { &*(userdata as *mut PeerConnectionUserData) };
+                let Some(ud) = peer_connection_userdata(id) else { return };
+                let ud = ud.read().unwrap();
                 if let Some(cb) = &ud.on_state_change {
                     cb(State::from_u32(state as _).unwrap());
                 }
@@ -324,11 +361,12 @@ impl PeerConnection {
 
         unsafe {
             extern "C" fn gathering_state_change_callback(
-                _id: i32,
+                id: i32,
                 state: libdatachannel_sys::rtcGatheringState,
-                userdata: *mut std::ffi::c_void,
+                _userdata: *mut std::ffi::c_void,
             ) {
-                let ud = unsafe { &*(userdata as *mut PeerConnectionUserData) };
+                let Some(ud) = peer_connection_userdata(id) else { return };
+                let ud = ud.read().unwrap();
                 if let Some(cb) = &ud.on_gathering_state_change {
                     cb(GatheringState::from_u32(state as _).unwrap());
                 }
@@ -337,18 +375,15 @@ impl PeerConnection {
         };
 
         unsafe {
-            extern "C" fn data_channel_callback(_id: i32, id: i32, userdata: *mut std::ffi::c_void) {
-                let ud = unsafe { &*(userdata as *mut PeerConnectionUserData) };
+            extern "C" fn data_channel_callback(pc_id: i32, id: i32, _userdata: *mut std::ffi::c_void) {
+                let Some(ud) = peer_connection_userdata(pc_id) else { return };
+                let ud = ud.read().unwrap();
                 if let Some(cb) = &ud.on_data_channel {
                     cb(DataChannel::from_raw(id))
                 }
             }
             libdatachannel_sys::rtcSetDataChannelCallback(id, Some(data_channel_callback))
         };
-
-        unsafe {
-            libdatachannel_sys::rtcSetUserPointer(id, userdata.as_mut() as *mut PeerConnectionUserData as *mut _);
-        }
 
         Ok(Self { id, userdata })
     }
@@ -519,28 +554,33 @@ impl PeerConnection {
     }
 
     pub fn set_on_local_description(&mut self, cb: Option<impl Fn(&str, SdpType) + Send + Sync + 'static>) {
-        self.userdata.on_local_description = cb.map(|f| Box::new(f) as _);
+        self.userdata.write().unwrap().on_local_description = cb.map(|f| Box::new(f) as _);
     }
 
     pub fn set_on_local_candidate(&mut self, cb: Option<impl Fn(&str) + Send + Sync + 'static>) {
-        self.userdata.on_local_candidate = cb.map(|f| Box::new(f) as _);
+        self.userdata.write().unwrap().on_local_candidate = cb.map(|f| Box::new(f) as _);
     }
 
     pub fn set_on_state_change(&mut self, cb: Option<impl Fn(State) + Send + Sync + 'static>) {
-        self.userdata.on_state_change = cb.map(|f| Box::new(f) as _);
+        self.userdata.write().unwrap().on_state_change = cb.map(|f| Box::new(f) as _);
     }
 
     pub fn set_on_gathering_state_change(&mut self, cb: Option<impl Fn(GatheringState) + Send + Sync + 'static>) {
-        self.userdata.on_gathering_state_change = cb.map(|f| Box::new(f) as _);
+        self.userdata.write().unwrap().on_gathering_state_change = cb.map(|f| Box::new(f) as _);
     }
 
     pub fn set_on_data_channel(&mut self, cb: Option<impl Fn(DataChannel) + Send + Sync + 'static>) {
-        self.userdata.on_data_channel = cb.map(|f| Box::new(f) as _);
+        self.userdata.write().unwrap().on_data_channel = cb.map(|f| Box::new(f) as _);
     }
 }
 
 impl Drop for PeerConnection {
     fn drop(&mut self) {
+        // Retire the registry entry first: a callback the delete can't join
+        // either finds nothing (fired late) or holds its own `Arc` clone
+        // (already in flight) — never freed memory. Events fired during the
+        // teardown itself are lost, which is fine: they're teardown noise.
+        PEER_CONNECTION_USERDATA.lock().unwrap().remove(&self.id);
         unsafe {
             assert_eq!(libdatachannel_sys::rtcDeletePeerConnection(self.id), 0);
         }
@@ -549,29 +589,31 @@ impl Drop for PeerConnection {
 
 pub struct DataChannel {
     id: i32,
-    userdata: Box<DataChannelUserData>,
+    userdata: std::sync::Arc<std::sync::RwLock<DataChannelUserData>>,
 }
 
 #[derive(Default)]
 struct DataChannelUserData {
-    on_open: Option<Box<dyn Fn()>>,
-    on_closed: Option<Box<dyn Fn()>>,
-    on_error: Option<Box<dyn Fn(&str)>>,
-    on_message: Option<Box<dyn Fn(&[u8])>>,
-    on_buffered_amount_low: Option<Box<dyn Fn()>>,
-    on_available: Option<Box<dyn Fn()>>,
+    on_open: Option<Box<dyn Fn() + Send + Sync>>,
+    on_closed: Option<Box<dyn Fn() + Send + Sync>>,
+    on_error: Option<Box<dyn Fn(&str) + Send + Sync>>,
+    on_message: Option<Box<dyn Fn(&[u8]) + Send + Sync>>,
+    on_buffered_amount_low: Option<Box<dyn Fn() + Send + Sync>>,
+    on_available: Option<Box<dyn Fn() + Send + Sync>>,
 }
-
-unsafe impl Send for DataChannel {}
-unsafe impl Sync for DataChannel {}
 
 impl DataChannel {
     fn from_raw(id: i32) -> Self {
-        let mut userdata: Box<DataChannelUserData> = Default::default();
+        // Registered before any callback so a trampoline can never miss it;
+        // the trampolines look the id up here rather than trusting the raw
+        // user pointer (see `PEER_CONNECTION_USERDATA`).
+        let userdata: std::sync::Arc<std::sync::RwLock<DataChannelUserData>> = Default::default();
+        DATA_CHANNEL_USERDATA.lock().unwrap().insert(id, userdata.clone());
 
         unsafe {
-            extern "C" fn open_callback(_id: i32, userdata: *mut std::ffi::c_void) {
-                let ud = unsafe { &*(userdata as *mut DataChannelUserData) };
+            extern "C" fn open_callback(id: i32, _userdata: *mut std::ffi::c_void) {
+                let Some(ud) = data_channel_userdata(id) else { return };
+                let ud = ud.read().unwrap();
                 if let Some(cb) = &ud.on_open {
                     cb();
                 }
@@ -580,8 +622,9 @@ impl DataChannel {
         };
 
         unsafe {
-            extern "C" fn closed_callback(_id: i32, userdata: *mut std::ffi::c_void) {
-                let ud = unsafe { &*(userdata as *mut DataChannelUserData) };
+            extern "C" fn closed_callback(id: i32, _userdata: *mut std::ffi::c_void) {
+                let Some(ud) = data_channel_userdata(id) else { return };
+                let ud = ud.read().unwrap();
                 if let Some(cb) = &ud.on_closed {
                     cb();
                 }
@@ -590,8 +633,9 @@ impl DataChannel {
         };
 
         unsafe {
-            extern "C" fn error_callback(_id: i32, error: *const std::ffi::c_char, userdata: *mut std::ffi::c_void) {
-                let ud = unsafe { &*(userdata as *mut DataChannelUserData) };
+            extern "C" fn error_callback(id: i32, error: *const std::ffi::c_char, _userdata: *mut std::ffi::c_void) {
+                let Some(ud) = data_channel_userdata(id) else { return };
+                let ud = ud.read().unwrap();
                 if let Some(cb) = &ud.on_error {
                     cb(unsafe { std::ffi::CStr::from_ptr(error) }.to_str().unwrap());
                 }
@@ -601,12 +645,13 @@ impl DataChannel {
 
         unsafe {
             extern "C" fn message_callback(
-                _id: i32,
+                id: i32,
                 message: *const std::ffi::c_char,
                 size: i32,
-                userdata: *mut std::ffi::c_void,
+                _userdata: *mut std::ffi::c_void,
             ) {
-                let ud = unsafe { &*(userdata as *mut DataChannelUserData) };
+                let Some(ud) = data_channel_userdata(id) else { return };
+                let ud = ud.read().unwrap();
                 if let Some(cb) = &ud.on_message {
                     cb(unsafe { std::slice::from_raw_parts(message as *const _, size as usize) });
                 }
@@ -615,8 +660,9 @@ impl DataChannel {
         };
 
         unsafe {
-            extern "C" fn buffered_amount_low(_id: i32, userdata: *mut std::ffi::c_void) {
-                let ud = unsafe { &*(userdata as *mut DataChannelUserData) };
+            extern "C" fn buffered_amount_low(id: i32, _userdata: *mut std::ffi::c_void) {
+                let Some(ud) = data_channel_userdata(id) else { return };
+                let ud = ud.read().unwrap();
                 if let Some(cb) = &ud.on_buffered_amount_low {
                     cb();
                 }
@@ -625,18 +671,15 @@ impl DataChannel {
         };
 
         unsafe {
-            extern "C" fn available(_id: i32, userdata: *mut std::ffi::c_void) {
-                let ud = unsafe { &*(userdata as *mut DataChannelUserData) };
+            extern "C" fn available(id: i32, _userdata: *mut std::ffi::c_void) {
+                let Some(ud) = data_channel_userdata(id) else { return };
+                let ud = ud.read().unwrap();
                 if let Some(cb) = &ud.on_available {
                     cb();
                 }
             }
             libdatachannel_sys::rtcSetAvailableCallback(id, Some(available))
         };
-
-        unsafe {
-            libdatachannel_sys::rtcSetUserPointer(id, userdata.as_mut() as *mut DataChannelUserData as *mut _);
-        }
 
         DataChannel { id, userdata }
     }
@@ -679,28 +722,31 @@ impl DataChannel {
     }
 
     pub fn set_on_open(&mut self, cb: Option<impl Fn() + Send + Sync + 'static>) {
-        self.userdata.on_open = cb.map(|f| Box::new(f) as _);
+        self.userdata.write().unwrap().on_open = cb.map(|f| Box::new(f) as _);
     }
 
     pub fn set_on_closed(&mut self, cb: Option<impl Fn() + Send + Sync + 'static>) {
-        self.userdata.on_closed = cb.map(|f| Box::new(f) as _);
+        self.userdata.write().unwrap().on_closed = cb.map(|f| Box::new(f) as _);
     }
 
     pub fn set_on_buffered_amount_low(&mut self, cb: Option<impl Fn() + Send + Sync + 'static>) {
-        self.userdata.on_buffered_amount_low = cb.map(|f| Box::new(f) as _);
+        self.userdata.write().unwrap().on_buffered_amount_low = cb.map(|f| Box::new(f) as _);
     }
 
     pub fn set_on_error(&mut self, cb: Option<impl Fn(&str) + Send + Sync + 'static>) {
-        self.userdata.on_error = cb.map(|f| Box::new(f) as _);
+        self.userdata.write().unwrap().on_error = cb.map(|f| Box::new(f) as _);
     }
 
     pub fn set_on_message(&mut self, cb: Option<impl Fn(&[u8]) + Send + Sync + 'static>) {
-        self.userdata.on_message = cb.map(|f| Box::new(f) as _);
+        self.userdata.write().unwrap().on_message = cb.map(|f| Box::new(f) as _);
     }
 }
 
 impl Drop for DataChannel {
     fn drop(&mut self) {
+        // Same discipline as `PeerConnection`'s Drop: retire the registry
+        // entry before the delete so no trampoline can reach freed closures.
+        DATA_CHANNEL_USERDATA.lock().unwrap().remove(&self.id);
         unsafe {
             assert_eq!(libdatachannel_sys::rtcDeleteDataChannel(self.id), 0);
         }
