@@ -75,6 +75,8 @@ pub struct RoundStats {
     pub buster: [Vec<u32>; 2],
 }
 
+use mgba_siolink::session::TickObserver;
+
 pub use crate::battle::{RoundSample, NO_CHIP};
 
 /// Low bits of a `LoadedChip` report that carry the chip id; the rest is
@@ -648,7 +650,7 @@ pub fn analyze(
         let tick = i as u32 + 1;
         pair.tick(&keys);
         // Everything is final on a linear re-sim — fold as we go.
-        mgba_siolink::session::TickObserver::on_tick(&mut observer, &mut pair, tick);
+        observer.on_tick(&mut pair, tick);
         let (samples, events) = store.lock().unwrap().drain_confirmed(tick);
         fold_confirmed(&mut builder, local_player, samples, events, &mut |t| {
             (t == tick).then_some(keys)
