@@ -115,8 +115,12 @@ pub trait World {
     /// last known input. Applied independently per remote slot — and only to
     /// the slots whose real input hasn't arrived yet; a remote input that is
     /// already buffered is used as-is.
-    fn predict(&self, last_remote: &Self::Input) -> Self::Input;
+    fn predict(&self, last_remote: &Self::Input) -> Self::Input {
+        last_remote.clone()
+    }
 
     /// Record a single confirmed input row (`remotes` indexed by remote slot).
-    fn log(&mut self, local: &Self::Input, remotes: &[Self::Input]);
+    fn log(&mut self, local: &Self::Input, remotes: &[Self::Input]) {
+        let _ = (local, remotes);
+    }
 }
