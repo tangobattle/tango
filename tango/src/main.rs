@@ -105,7 +105,7 @@ pub fn main() {
 ///      sessions' logs and open a fresh `tango.log` inside it.
 ///   2. Spawn `current_exe()` again with `TANGO_CHILD=1` +
 ///      `RUST_BACKTRACE=1`, redirecting the child's stderr into
-///      the log file so panics + mgba C-side stderr
+///      the log file so panics + datachannel/mgba C-side stderr
 ///      get captured.
 ///   3. Wait. On non-zero exit, pop up a localized rfd dialog
 ///      pointing at the log file path.
@@ -342,7 +342,7 @@ fn run_app() -> iced::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     // Catch native crashes (segfaults, SEH violations, Mach
-    // EXC_BAD_ACCESS) from mgba / wgpu C code. Connect to
+    // EXC_BAD_ACCESS) from mgba / datachannel / wgpu C code. Connect to
     // the supervisor's out-of-process dump server (if we were launched
     // by one) so the minidump is written from the healthy parent rather
     // than in this process's fault handler. Also installs a panic hook

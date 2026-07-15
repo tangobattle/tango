@@ -68,7 +68,14 @@ use handshake::{Handshake, LocalReady, RemoteReady};
 // now carries the joypad for pair tick n from session start (previously
 // per-battle-tick, rounds delimited by EndOfRound), and the simulations
 // are mutually incompatible — a 0x4c peer would desync instantly.
-pub const PROTOCOL_VERSION: u32 = 0x4d;
+// 0x4e: the 5.0.51 release — libdatachannel transport over the old (trap
+// engine) simulation. Not us.
+// 0x4f: the WebRTC stack moved back to libdatachannel here too (ported from
+// 5.0.51). Data channels return to pre-agreed stream ids, so a DCEP-era
+// peer's channels would never open against ours; the sio-engine simulation
+// rides on top, so neither 0x4d (str0m + sio) nor 0x4e (libdatachannel +
+// trap sim) peers may pair with us.
+pub const PROTOCOL_VERSION: u32 = 0x4f;
 
 /// Why a netplay session failed — typed so the UI can route each
 /// failure mode to its own localized copy instead of string-matching
@@ -275,7 +282,7 @@ struct ConnectionHandles {
     /// The peer connection, kept alive for the duration of the
     /// session. Both transports (matchmaking WebRTC and the
     /// signaling-free direct link) bring one up.
-    peer_conn: tango_rtc::PeerConnection,
+    peer_conn: datachannel_wrapper::PeerConnection,
     /// `true` iff we're the "offer side" for symmetry-breaking
     /// purposes — i.e. we wrote the SDP offer on the matchmaking path,
     /// or we're the host on the direct link. Drives the
@@ -317,8 +324,8 @@ pub enum Message {
     },
     /// Direct local-play entry. Bypasses the signaling server —
     /// runs the protocol-version negotiate handshake over a
-    /// signaling-free peer connection both sides configure from
-    /// fixed ICE creds (see [`crate::net::direct_rtc`]). `role`
+    /// libdatachannel peer connection whose SDP both sides fabricate
+    /// from fixed ICE creds (see [`crate::net::direct_rtc`]). `role`
     /// says whether we're the host (pins the UDP port) or the dialer;
     /// the UI-side identifier is derived from it (see [`LinkIdent`]).
     ConnectDirect { role: DirectRole },
@@ -336,7 +343,7 @@ pub enum Message {
     /// Internal: protocol negotiate succeeded. Receiver is parked
     /// in the slot for the lobby subscription to take.
     NegotiationDone(Slot<NegotiationOutput>),
-    /// Internal: any step (signaling, WebRTC, negotiate, or
+    /// Internal: any step (signaling, datachannel, negotiate, or
     /// lobby loop) failed. Carries the typed failure the UI
     /// localizes.
     Failed(Error),

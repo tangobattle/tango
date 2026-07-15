@@ -1,0 +1,46 @@
+[package]
+name = "tango-signaling"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["client"]
+client = [
+  "dep:datachannel-wrapper",
+  "dep:url",
+  "dep:urlencoding",
+  "dep:tokio-tungstenite",
+  "dep:tokio",
+  "dep:rand",
+  "dep:rustls",
+  "dep:webpki-roots"
+]
+proto = []
+
+[dependencies]
+datachannel-wrapper = { path = "../datachannel-wrapper", optional = true }
+futures.workspace = true
+futures-util = "0.3"
+http = "0.2"
+log.workspace = true
+prost.workspace = true
+rand = { workspace = true, optional = true }
+# Pinned to the same versions tokio-tungstenite 0.16 pulls (rustls 0.20,
+# webpki-roots 0.22) so cargo unifies a single rustls in the graph — we
+# build the client `ClientConfig` ourselves to attach the mTLS client
+# certificate (see `client::build_tls_config`).
+rustls = { version = "0.20", optional = true }
+webpki-roots = { version = "0.22", optional = true }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["full"], optional = true }
+tokio-tungstenite = { version = "0.16", features = [
+  "rustls-tls-webpki-roots"
+], optional = true }
+url = { version = "2", optional = true }
+urlencoding = { version = "2", optional = true }
+
+[build-dependencies]
+prost-build.workspace = true
+
+[lints]
+workspace = true

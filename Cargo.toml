@@ -2,13 +2,16 @@
 resolver = "2"
 members = [
     "bps",
+    "datachannel-wrapper",
     "getgud",
+    "libdatachannel",
     "mgba-siolink",
     "rennet",
     "tango",
     "tango-dataview",
     "tango-gamesupport",
     "tango-pvp",
+    "tango-signaling",
 ]
 # One source of truth for every external dep shared by 2+ member crates,
 # so versions can't silently drift apart (we shipped four itertools and

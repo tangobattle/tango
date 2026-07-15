@@ -1,85 +1,223 @@
-//! Signaling-free WebRTC transport for the direct local-play link (`/host`
-//! and `/connect`): a [`tango_rtc`] peer connection with **no signaling
-//! exchange whatsoever**. Everything a normal SDP exchange would carry is
-//! either a fixed constant both ends already know (ICE credentials, DTLS/SCTP
-//! roles) or comes from the link code itself (the host's `addr:port`); DTLS
-//! fingerprint verification is off — there's no channel to learn the peer's
-//! cert over, so the trust model is "address = identity". See
-//! [`tango_rtc::PeerConnection::new_direct`].
+//! Signaling-free WebRTC `DataChannel` transport for the direct
+//! local-play link (`/host` and `/connect`). It replaces the old raw-TCP
+//! adapter: instead of a TCP stream we bring up a real libdatachannel
+//! peer connection, but with **no signaling exchange whatsoever**.
 //!
-//! Both pre-declared data channels (the reliable control channel + the
-//! unreliable in-match channel, see [`super::channel`]) are opened over DCEP
-//! by the dialer and bound by label on the host. The peer connection must be
-//! kept alive by the caller for the channels' lifetime (see
-//! `netplay::NegotiationOutput`).
+//! Normally the two peers swap SDP (ICE ufrag/pwd + DTLS fingerprint +
+//! candidates) through a signaling server. Here both sides instead
+//! *fabricate* each other's description from constants they already
+//! agree on:
+//!
+//! * **ICE credentials** are pinned to fixed values (see [`UFRAG_HOST`] /
+//!   [`UFRAG_CLIENT`] / [`ICE_PWD`]) via libdatachannel's
+//!   `LocalDescriptionInit`, so each side knows the other's ufrag/pwd up
+//!   front and ICE connectivity checks validate.
+//! * **The DTLS fingerprint** is unknowable without an exchange, so we
+//!   disable fingerprint verification ([`RtcConfig::disable_fingerprint_verification`])
+//!   and put a dummy (but well-formed) `sha-256` fingerprint in the
+//!   fabricated SDP. The handshake still encrypts; it just doesn't pin
+//!   the cert.
+//! * **Addresses**: the host pins its UDP port (so the dialer knows where
+//!   to send), and the dialer's fabricated offer carries a single host
+//!   candidate for the typed `addr`. The host itself needs no remote
+//!   candidate — it learns the dialer from the incoming STUN check
+//!   (peer-reflexive).
+//!
+//! Two data channels are pre-negotiated on fixed stream ids so there's no
+//! in-band DCEP handshake either: a reliable/ordered control channel (stream 0)
+//! and an unreliable/unordered in-match channel (stream 1) for the live
+//! `data::wire` datagrams. The peer connection must be kept alive by the caller
+//! for the channels' lifetime (see `netplay::NegotiationOutput`).
 
 use super::channel::Channels;
-use tango_rtc::{DirectRole, PeerConnection, PeerConnectionEvent, RtcConfig};
+use datachannel_wrapper::{LocalDescriptionInit, PeerConnection, RtcConfig, SdpType, SessionDescription};
 
-/// Bring up one end of the direct link and bundle it as [`Channels`]. Returns
-/// as soon as the transport is set up; the channels open asynchronously and
-/// the first `send` blocks until they do.
-fn open(role: DirectRole) -> std::io::Result<Channels> {
-    let (peer_conn, dcs, events) = PeerConnection::new_direct(
-        RtcConfig::default(),
-        &[super::channel::control_channel(), super::channel::in_match_channel()],
-        role,
-    )?;
-    spawn_state_logger(events);
-    let [control_dc, in_match_dc] = <[_; 2]>::try_from(dcs)
-        .map_err(|dcs: Vec<_>| std::io::Error::other(format!("expected 2 data channels, got {}", dcs.len())))?;
-    Ok(Channels {
+/// Fixed local ICE ufrag for the host (offerer) side. Must be a valid
+/// ICE ufrag (>= 4 chars); both peers know both values.
+const UFRAG_HOST: &str = "tangoHost";
+/// Fixed local ICE ufrag for the dialing (answerer) side.
+const UFRAG_CLIENT: &str = "tangoClient";
+/// Shared ICE pwd. Must be a valid ICE pwd (>= 22 chars). Both sides use
+/// the same value — ICE only requires each peer to know the other's pwd,
+/// and a fixed shared secret satisfies that without an exchange.
+const ICE_PWD: &str = "tangoDirectNoSignalingPwd";
+
+/// Build a fabricated remote SDP for the peer. `setup` is the DTLS role
+/// the *peer* advertises (`actpass` for an offer, `active` for an answer);
+/// `ufrag` is the peer's pinned ICE ufrag. `candidate` is an optional
+/// `a=candidate:` payload (host candidate for the dialer's view of the
+/// host; `None` when the host learns the peer reflexively).
+fn fabricate_sdp(sdp_type: SdpType, setup: &str, ufrag: &str, candidate: Option<&str>) -> SessionDescription {
+    // sha-256 fingerprint: 32 colon-joined hex byte pairs (95 chars). The
+    // value is a dummy — verification is disabled — but it must be
+    // well-formed or the SDP parser rejects it.
+    let fingerprint = ["AB"; 32].join(":");
+
+    let mut lines = vec![
+        "v=0".to_string(),
+        "o=rtc 0 0 IN IP4 127.0.0.1".to_string(),
+        "s=-".to_string(),
+        "t=0 0".to_string(),
+        "a=group:BUNDLE 0".to_string(),
+        "a=msid-semantic:WMS *".to_string(),
+        format!("a=fingerprint:sha-256 {fingerprint}"),
+        "m=application 9 UDP/DTLS/SCTP webrtc-datachannel".to_string(),
+        "c=IN IP4 0.0.0.0".to_string(),
+        "a=mid:0".to_string(),
+        "a=sendrecv".to_string(),
+        "a=sctp-port:5000".to_string(),
+        "a=max-message-size:262144".to_string(),
+        format!("a=setup:{setup}"),
+        format!("a=ice-ufrag:{ufrag}"),
+        format!("a=ice-pwd:{ICE_PWD}"),
+    ];
+    if let Some(candidate) = candidate {
+        lines.push(format!("a=candidate:{candidate}"));
+    }
+    lines.push("a=end-of-candidates".to_string());
+
+    // libdatachannel parses on \r\n line endings; trailing CRLF too.
+    let mut sdp = lines.join("\r\n");
+    sdp.push_str("\r\n");
+    SessionDescription { sdp_type, sdp }
+}
+
+/// Open both pre-negotiated data channels on a fresh peer connection (the
+/// reliable control channel + the unreliable in-match channel) and split each
+/// into our transport-agnostic Sender/Receiver, returning the peer connection
+/// so the caller can keep it alive.
+fn open_channels(mut pc: PeerConnection) -> Channels {
+    let (label, init) = super::channel::control_channel();
+    let control_dc = pc
+        .create_data_channel(label, init)
+        .expect("create pre-negotiated control data channel");
+    let (label, init) = super::channel::in_match_channel();
+    let in_match_dc = pc
+        .create_data_channel(label, init)
+        .expect("create pre-negotiated in-match data channel");
+    Channels {
         control: super::channel::control_pair(control_dc),
         in_match: super::channel::data_pair(in_match_dc),
-        peer_conn,
-        // No SDP exchange and fingerprint verification is off; the direct
-        // path rebuilds via re-run, not a fingerprint-derived session_id.
+        peer_conn: pc,
+        // Fabricated SDP with fingerprint verification disabled, so the dummy
+        // fingerprint is meaningless; the direct path rebuilds via re-run, not a
+        // derived session_id. Leave the pair empty.
         local_dtls_fingerprint: Vec::new(),
         peer_dtls_fingerprint: Vec::new(),
+        // No signaling server to attest an identity on the direct path.
         peer_client_cert_fingerprint: Vec::new(),
-    })
+    }
 }
 
 /// Drain (and log) a peer connection's state changes for its lifetime. The
 /// event stream is otherwise unused on the direct path, so without this a
-/// drop's cause (ICE/DTLS tearing the link down) is invisible. The task ends
+/// drop's cause (ICE/SCTP tearing the link down) is invisible. The task ends
 /// when the connection is dropped (the event sender goes away).
-fn spawn_state_logger(mut events: tokio::sync::mpsc::Receiver<PeerConnectionEvent>) {
+fn spawn_state_logger(mut events: tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>) {
     tokio::spawn(async move {
         while let Some(ev) = events.recv().await {
-            if let PeerConnectionEvent::ConnectionStateChange(state) = ev {
+            if let datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(state) = ev {
                 log::info!("pvp peer connection state: {state:?}");
             }
         }
     });
 }
 
-/// Host side: pin the UDP `port` and accept the first inbound peer (learned
-/// peer-reflexively from its ICE checks — the host itself never dials out).
+/// Host side: pin the UDP `port`, offer with fixed ICE creds, and accept
+/// the dialer reflexively. Returns once the descriptions are set; the
+/// channels open asynchronously and the first `send` blocks until they do.
 pub async fn host(port: u16) -> std::io::Result<Channels> {
-    open(DirectRole::Host { port })
+    let (pc, events) = PeerConnection::new(RtcConfig {
+        disable_fingerprint_verification: true,
+        // We drive setLocalDescription ourselves (with pinned ICE creds);
+        // an auto offer would race ahead with random creds.
+        disable_auto_negotiation: true,
+        // Pin the listen port so the dialer's fabricated host candidate
+        // can target it.
+        port_range: Some((port, port)),
+        ..Default::default()
+    })?;
+    spawn_state_logger(events);
+
+    let mut channels = open_channels(pc);
+
+    channels.peer_conn.set_local_description(
+        SdpType::Offer,
+        Some(&LocalDescriptionInit {
+            ice_ufrag: Some(UFRAG_HOST.to_string()),
+            ice_pwd: Some(ICE_PWD.to_string()),
+        }),
+    )?;
+    // The dialer answers as the DTLS client (`active`); no candidate — we
+    // learn its address from the incoming connectivity check.
+    channels
+        .peer_conn
+        .set_remote_description(fabricate_sdp(SdpType::Answer, "active", UFRAG_CLIENT, None))?;
+
+    Ok(channels)
 }
 
-/// Dialer side: resolve the typed address and dial the host at it.
+/// Dialer side: fabricate the host's offer (carrying a host candidate for
+/// `addr`), then answer with fixed ICE creds.
 pub async fn connect(addr: &str) -> std::io::Result<Channels> {
-    let remote = tokio::net::lookup_host(addr)
+    // Resolve the typed address into a concrete host candidate.
+    let sock = tokio::net::lookup_host(addr)
         .await?
         .next()
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "could not resolve address"))?;
-    open(DirectRole::Connect { remote })
+    let candidate = host_candidate(&sock);
+
+    let (pc, events) = PeerConnection::new(RtcConfig {
+        disable_fingerprint_verification: true,
+        // We drive setLocalDescription ourselves (with pinned ICE creds);
+        // an auto offer would race ahead with random creds and make us an
+        // offerer instead of the answerer.
+        disable_auto_negotiation: true,
+        ..Default::default()
+    })?;
+    spawn_state_logger(events);
+
+    let mut channels = open_channels(pc);
+
+    // The host offers as `actpass`; we become the DTLS client by answering
+    // `active`. Set the remote offer first, then generate our answer.
+    channels.peer_conn.set_remote_description(fabricate_sdp(
+        SdpType::Offer,
+        "actpass",
+        UFRAG_HOST,
+        Some(&candidate),
+    ))?;
+    channels.peer_conn.set_local_description(
+        SdpType::Answer,
+        Some(&LocalDescriptionInit {
+            ice_ufrag: Some(UFRAG_CLIENT.to_string()),
+            ice_pwd: Some(ICE_PWD.to_string()),
+        }),
+    )?;
+
+    Ok(channels)
+}
+
+/// Format an `a=candidate:` payload (everything after `a=candidate:`) for
+/// a single UDP host candidate at `sock`.
+fn host_candidate(sock: &std::net::SocketAddr) -> String {
+    // foundation=1, component=1 (RTP), udp, an arbitrary host-typed
+    // priority. libjuice resolves the rest from the connectivity check.
+    format!("1 1 udp 2122260223 {} {} typ host", sock.ip(), sock.port())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// End-to-end: host + dialer bring up both channels with no signaling,
-    /// run the real protocol-version handshake over the reliable channel,
-    /// then round-trip a raw datagram over the unreliable in-match channel.
-    /// Proves ICE + DTLS + SCTP + DCEP all complete and that the second
-    /// (unreliable) channel opens and carries traffic both ways.
+    /// End-to-end: host + dialer bring up both channels from fabricated SDP
+    /// alone (no signaling), run the real protocol-version handshake over the
+    /// reliable channel, then round-trip a raw datagram over the unreliable
+    /// in-match channel. Proves ICE + DTLS + SCTP all complete and that the
+    /// second pre-negotiated (stream-1, unreliable) channel opens and carries
+    /// traffic both ways.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn no_signaling_round_trips() {
+    async fn fabricated_sdp_round_trips() {
         // A high, unlikely-to-clash loopback port for the test host.
         let port = 24987;
         let addr = format!("127.0.0.1:{port}");
@@ -123,50 +261,39 @@ mod tests {
     /// re-pins the same UDP port; dialer re-dials the same address) and carry
     /// traffic again. This is exactly what the in-match reconnect coordinator
     /// does on a drop — including the one real race, the host re-binding its
-    /// pinned port after the old peer connection's driver releases it.
+    /// pinned port the instant the old peer connection is dropped.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn rebuild_after_drop_round_trips() {
         let port = 24988;
         let addr = format!("127.0.0.1:{port}");
 
         // Bring up the link, handshake, and prove it carries a datagram.
-        // The port-rebind race (the old driver task releases the socket
-        // asynchronously) is retried, same as the real reconnect coordinator.
-        let bring_up = |attempts: usize| {
-            let addr = addr.clone();
-            async move {
-                for attempt in 1..=attempts {
-                    let (host_res, conn_res) = tokio::join!(host(port), connect(&addr));
-                    let (mut host_ch, mut conn_ch) = match (host_res, conn_res) {
-                        (Ok(h), Ok(c)) => (h, c),
-                        r => {
-                            assert!(attempt < attempts, "direct setup kept failing: {:?}", r.0.err());
-                            continue;
-                        }
-                    };
-                    let handshake = async {
-                        tokio::try_join!(
-                            crate::net::negotiate(&mut host_ch.control.0, &mut host_ch.control.1),
-                            crate::net::negotiate(&mut conn_ch.control.0, &mut conn_ch.control.1),
-                        )
-                    };
-                    match tokio::time::timeout(std::time::Duration::from_secs(15), handshake).await {
-                        Ok(Ok(_)) => return (host_ch, conn_ch),
-                        r => assert!(attempt < attempts, "handshake kept failing: {:?}", r.is_err()),
-                    }
-                }
-                unreachable!()
-            }
+        let bring_up = || async {
+            let (host_res, conn_res) = tokio::join!(host(port), connect(&addr));
+            let mut host_ch = host_res.expect("host setup");
+            let mut conn_ch = conn_res.expect("connect setup");
+            let handshake = async {
+                tokio::try_join!(
+                    crate::net::negotiate(&mut host_ch.control.0, &mut host_ch.control.1),
+                    crate::net::negotiate(&mut conn_ch.control.0, &mut conn_ch.control.1),
+                )
+            };
+            tokio::time::timeout(std::time::Duration::from_secs(15), handshake)
+                .await
+                .expect("handshake timed out — channel never opened")
+                .expect("negotiate failed");
+            (host_ch, conn_ch)
         };
 
-        let (host_ch, conn_ch) = bring_up(1).await;
+        let (host_ch, conn_ch) = bring_up().await;
         // Simulate the drop: tearing down both peer connections releases the
-        // host's pinned UDP port (asynchronously, in the driver task).
+        // host's pinned UDP port.
         drop(host_ch);
         drop(conn_ch);
 
-        // Rebuild from the identical recipe.
-        let (mut host_ch, mut conn_ch) = bring_up(3).await;
+        // Rebuild from the identical recipe — host must re-bind the just-freed
+        // port. If the OS hadn't released it, `host(port)` here would fail.
+        let (mut host_ch, mut conn_ch) = bring_up().await;
 
         // The rebuilt in-match channel carries traffic both ways.
         host_ch

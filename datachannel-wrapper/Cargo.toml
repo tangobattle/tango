@@ -1,0 +1,12 @@
+[package]
+name = "datachannel-wrapper"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libdatachannel = { path = "../libdatachannel", features = ["vendored"] }
+log.workspace = true
+tokio = { workspace = true, features = ["full"] }
+
+[lints]
+workspace = true

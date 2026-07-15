@@ -46,8 +46,9 @@ jobs:
 
     steps:
       # `gamesupport` is a private submodule; the PAT authenticates its
-      # checkout. The token is used over HTTPS, so the submodule URL is
-      # HTTPS — see .gitmodules.
+      # checkout (the public libdatachannel submodule doesn't need it).
+      # The token is used over HTTPS, so the submodule URLs are HTTPS —
+      # see .gitmodules.
       - uses: actions/checkout@v2
         with:
           submodules: recursive
@@ -102,8 +103,9 @@ jobs:
 
     steps:
       # `gamesupport` is a private submodule; the PAT authenticates its
-      # checkout. The token is used over HTTPS, so the submodule URL is
-      # HTTPS — see .gitmodules.
+      # checkout (the public libdatachannel submodule doesn't need it).
+      # The token is used over HTTPS, so the submodule URLs are HTTPS —
+      # see .gitmodules.
       - uses: actions/checkout@v2
         with:
           submodules: recursive
@@ -153,8 +155,9 @@ jobs:
 
     steps:
       # `gamesupport` is a private submodule; the PAT authenticates its
-      # checkout. The token is used over HTTPS, so the submodule URL is
-      # HTTPS — see .gitmodules.
+      # checkout (the public libdatachannel submodule doesn't need it).
+      # The token is used over HTTPS, so the submodule URLs are HTTPS —
+      # see .gitmodules.
       - uses: actions/checkout@v2
         with:
           submodules: recursive

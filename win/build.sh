@@ -10,6 +10,15 @@ if command -v cl.exe >/dev/null 2>&1; then
     export PATH="$msvc_bin:$PATH"
 fi
 
+# openssl-src (pulled in by datachannel-sys's vendored feature) builds
+# OpenSSL from source via OpenSSL's Configure perl script, which needs
+# modules (Locale::Maketext::Simple, etc.) that Git Bash's minimal MSYS
+# perl doesn't ship. Strawberry Perl (preinstalled on the windows-2022
+# runner) has them; promote it to the front of PATH.
+if [ -d "/c/Strawberry/perl/bin" ]; then
+    export PATH="/c/Strawberry/perl/bin:$PATH"
+fi
+
 # Cleanup.
 function cleanup {
     rm -rf Tango.iconset tango_win_workdir
