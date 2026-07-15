@@ -321,23 +321,6 @@ impl Link {
         Ok(bytes)
     }
 
-    /// Whether core `i`'s game currently has its serial port configured
-    /// for link communication (MULTI/NORMAL/UART) — the closest a machine
-    /// gets to announcing "I want a cable". Games park the port in the
-    /// general-purpose (GPIO) or JOY modes otherwise, and link menus
-    /// re-assert their comms mode constantly, so this tracks menu
-    /// entry/exit closely.
-    pub fn sio_comms_active(&mut self, i: usize) -> bool {
-        let mode = unsafe { (*gba_ptr(&mut self.cores[i])).sio.mode };
-        matches!(
-            mode,
-            mgba_sys::GBASIOMode_GBA_SIO_NORMAL_8
-                | mgba_sys::GBASIOMode_GBA_SIO_NORMAL_32
-                | mgba_sys::GBASIOMode_GBA_SIO_MULTI
-                | mgba_sys::GBASIOMode_GBA_SIO_UART
-        )
-    }
-
     /// Core `i`'s current SRAM/flash/EEPROM image, or `None` if the game
     /// has no savedata (type never detected). Read straight from the live
     /// savedata buffer — the pair to [`Link::capture_boot_state`], since
