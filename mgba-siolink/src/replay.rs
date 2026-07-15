@@ -55,32 +55,37 @@ pub struct Metadata {
     pub sides: [SideMeta; 2],
 }
 
-pub struct Writer {
-    buf: Vec<u8>,
+/// Streams a recording into `w` as it goes: the header is written by
+/// [`new`](Writer::new), each tick's record by [`push`](Writer::push).
+/// Nothing is held back for the end but the one-byte sentinel, so a
+/// recording that dies mid-match still parses up to its last flushed
+/// tick (see [`Replay::is_complete`]).
+pub struct Writer<W: std::io::Write> {
+    w: W,
     /// Last `(p0, p1)` emitted, for the "default = previous" tag form.
     prev: (u16, u16),
 }
 
-impl Writer {
-    pub fn new(metadata: &Metadata) -> Self {
-        let mut buf = Vec::new();
-        buf.extend_from_slice(MAGIC);
-        buf.extend_from_slice(&metadata.rtc_unix_micros.unwrap_or(u64::MAX).to_le_bytes());
+impl<W: std::io::Write> Writer<W> {
+    /// Write the header (magic + metadata) into `w` and wrap it.
+    pub fn new(mut w: W, metadata: &Metadata) -> std::io::Result<Self> {
+        w.write_all(MAGIC)?;
+        w.write_all(&metadata.rtc_unix_micros.unwrap_or(u64::MAX).to_le_bytes())?;
         for side in &metadata.sides {
-            buf.extend_from_slice(&side.rom_crc32.to_le_bytes());
+            w.write_all(&side.rom_crc32.to_le_bytes())?;
             match &side.save {
                 Some(save) => {
-                    buf.extend_from_slice(&(save.len() as u32).to_le_bytes());
-                    buf.extend_from_slice(save);
+                    w.write_all(&(save.len() as u32).to_le_bytes())?;
+                    w.write_all(save)?;
                 }
-                None => buf.extend_from_slice(&u32::MAX.to_le_bytes()),
+                None => w.write_all(&u32::MAX.to_le_bytes())?,
             }
         }
-        Writer { buf, prev: (0, 0) }
+        Ok(Writer { w, prev: (0, 0) })
     }
 
     /// Append one confirmed tick's input pair. GBA joypads are 10 bits.
-    pub fn push(&mut self, keys: [u32; 2]) {
+    pub fn push(&mut self, keys: [u32; 2]) -> std::io::Result<()> {
         let (p0, p1) = (keys[0] as u16, keys[1] as u16);
 
         // Prefer whichever default sense (zero vs previous) leaves fewer
@@ -115,19 +120,26 @@ impl Writer {
             tag |= (((p1 >> 8) & 0b11) as u8) << 2;
         }
 
-        self.buf.push(tag);
+        let mut record = [tag, 0, 0];
+        let mut len = 1;
         if !p0_default {
-            self.buf.push((p0 & 0xff) as u8);
+            record[len] = (p0 & 0xff) as u8;
+            len += 1;
         }
         if !p1_default {
-            self.buf.push((p1 & 0xff) as u8);
+            record[len] = (p1 & 0xff) as u8;
+            len += 1;
         }
+        self.w.write_all(&record[..len])?;
         self.prev = (p0, p1);
+        Ok(())
     }
 
-    pub fn finish(mut self) -> Vec<u8> {
-        self.buf.push(END_OF_REPLAY);
-        self.buf
+    /// Write the end-of-stream sentinel, flush, and hand back the sink.
+    pub fn finish(mut self) -> std::io::Result<W> {
+        self.w.write_all(&[END_OF_REPLAY])?;
+        self.w.flush()?;
+        Ok(self.w)
     }
 }
 
@@ -223,23 +235,27 @@ mod tests {
     use super::*;
 
     fn roundtrip(inputs: &[[u32; 2]]) -> Replay {
-        let mut w = Writer::new(&Metadata {
-            rtc_unix_micros: Some(1_752_000_000_000_000),
-            sides: [
-                SideMeta {
-                    rom_crc32: 0xdead_beef,
-                    save: Some(vec![1, 2, 3]),
-                },
-                SideMeta {
-                    rom_crc32: 0x1234_5678,
-                    save: None,
-                },
-            ],
-        });
+        let mut w = Writer::new(
+            Vec::new(),
+            &Metadata {
+                rtc_unix_micros: Some(1_752_000_000_000_000),
+                sides: [
+                    SideMeta {
+                        rom_crc32: 0xdead_beef,
+                        save: Some(vec![1, 2, 3]),
+                    },
+                    SideMeta {
+                        rom_crc32: 0x1234_5678,
+                        save: None,
+                    },
+                ],
+            },
+        )
+        .unwrap();
         for &k in inputs {
-            w.push(k);
+            w.push(k).unwrap();
         }
-        let bytes = w.finish();
+        let bytes = w.finish().unwrap();
         let parsed = Replay::parse(&bytes).unwrap();
         assert_eq!(parsed.inputs, inputs);
         assert!(parsed.is_complete);
@@ -258,11 +274,11 @@ mod tests {
 
     #[test]
     fn idle_run_is_one_byte_per_tick() {
-        let mut w = Writer::new(&Metadata::default());
+        let mut w = Writer::new(Vec::new(), &Metadata::default()).unwrap();
         for _ in 0..1000 {
-            w.push([0, 0]);
+            w.push([0, 0]).unwrap();
         }
-        let bytes = w.finish();
+        let bytes = w.finish().unwrap();
         // 12 magic + 8 rtc + 2*(4 crc + 4 no-save) = 36 header, + 1000
         // idle tag bytes + 1 sentinel. The old flat layout spent 4000.
         assert_eq!(bytes.len(), 36 + 1000 + 1);
@@ -270,11 +286,11 @@ mod tests {
 
     #[test]
     fn truncated_tail_recovers_prefix() {
-        let mut w = Writer::new(&Metadata::default());
+        let mut w = Writer::new(Vec::new(), &Metadata::default()).unwrap();
         for i in 0..10u32 {
-            w.push([i & 0x3ff, (i * 3) & 0x3ff]);
+            w.push([i & 0x3ff, (i * 3) & 0x3ff]).unwrap();
         }
-        let mut bytes = w.finish();
+        let mut bytes = w.finish().unwrap();
         bytes.truncate(bytes.len() - 3); // eat the sentinel + last tick's tail
         let parsed = Replay::parse(&bytes).unwrap();
         assert!(!parsed.is_complete);
