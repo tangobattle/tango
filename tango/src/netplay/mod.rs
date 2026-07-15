@@ -55,7 +55,12 @@ use handshake::Handshake;
 // Data channels are now negotiated in-band (DCEP) instead of pre-agreed
 // stream ids, so a 0x4b peer's channels would never open against ours; the
 // version gate keeps the two stacks from ever pairing.
-pub const PROTOCOL_VERSION: u32 = 0x4c;
+// 0x4e: the WebRTC stack moved back to libdatachannel (5.0.51). Data channels
+// return to pre-agreed stream ids, so a DCEP-era 0x4c peer's channels would
+// never open against ours; and 0x4b-era releases carry older simulation, so
+// they mustn't pair either. 0x4d is skipped — the unreleased sio-engine
+// branch already claims it.
+pub const PROTOCOL_VERSION: u32 = 0x4e;
 
 /// Where the lifecycle is right now. Drives the Play tab's status
 /// bar + the Cancel button's visibility.
@@ -264,7 +269,7 @@ struct ConnectionHandles {
     /// The peer connection, kept alive for the duration of the
     /// session. Both transports (matchmaking WebRTC and the
     /// signaling-free direct link) bring one up.
-    peer_conn: tango_rtc::PeerConnection,
+    peer_conn: datachannel_wrapper::PeerConnection,
     /// `true` iff we're the "offer side" for symmetry-breaking
     /// purposes — i.e. we wrote the SDP offer on the matchmaking path,
     /// or we're the host on the direct link. Drives the
@@ -301,8 +306,8 @@ pub enum Message {
     },
     /// Direct local-play entry. Bypasses the signaling server —
     /// runs the protocol-version negotiate handshake over a
-    /// signaling-free peer connection both sides configure from
-    /// fixed ICE creds (see [`crate::net::direct_rtc`]). `role`
+    /// libdatachannel peer connection whose SDP both sides fabricate
+    /// from fixed ICE creds (see [`crate::net::direct_rtc`]). `role`
     /// says whether we're the host (pins the UDP port) or the dialer;
     /// the UI-side identifier is derived from it (see [`LinkIdent`]).
     ConnectDirect { role: DirectRole },
@@ -320,7 +325,7 @@ pub enum Message {
     /// Internal: protocol negotiate succeeded. Receiver is parked
     /// in the slot for the lobby subscription to take.
     NegotiationDone(Slot<NegotiationOutput>),
-    /// Internal: any step (signaling, WebRTC, negotiate, or
+    /// Internal: any step (signaling, datachannel, negotiate, or
     /// lobby loop) failed. Includes the user-readable error
     /// message.
     Failed(String),
@@ -863,7 +868,7 @@ pub struct PreMatchData {
     pub in_match_sender: Arc<tokio::sync::Mutex<crate::net::data::Sender>>,
     /// The peer connection; brought up by both transports. See
     /// [`ConnectionHandles::peer_conn`].
-    pub peer_conn: tango_rtc::PeerConnection,
+    pub peer_conn: datachannel_wrapper::PeerConnection,
     pub is_offerer: bool,
     /// Reliable receiver slot the lobby loop drops into on cancel-exit. The PvP
     /// session watches it only for the disconnect signal (the unreliable

@@ -6,20 +6,22 @@
 //! Single source of truth for the two channels every netplay transport brings
 //! up:
 //!
-//! * the **reliable, ordered** control/lobby channel (`"tango"`) carrying the
+//! * the **reliable, ordered** control/lobby channel (stream 0) carrying the
 //!   [`super::control::protocol`] `Packet` stream, and
-//! * the **unreliable, unordered** in-match channel (`"tango-match"`) carrying
-//!   the live match's [`super::data`] `wire` datagrams.
+//! * the **unreliable, unordered** in-match channel (stream 1) carrying the
+//!   live match's [`super::data`] `wire` datagrams.
 //!
 //! Both the matchmaking path (via [`tango_signaling`], which takes these specs
-//! and declares every channel up front) and the signaling-free direct path
-//! ([`super::direct_rtc`]) create exactly these. The labels and reliability
-//! live here and nowhere else so the two peers can't drift out of agreement —
-//! channels are negotiated in-band (DCEP) and matched up by label, so both
-//! sides must declare the same set.
+//! and creates the channels up front) and the signaling-free direct path
+//! ([`super::direct_rtc`]) create exactly these. The labels, stream ids, and
+//! reliability live here and nowhere else so the two peers can't drift out of
+//! agreement.
+//!
+//! All channels are *negotiated* (pre-agreed stream ids, no in-band DCEP), so
+//! both sides just create them with matching ids — no DCEP open handshake.
 
 use super::{control, data, PacketSink, PacketStream};
-use tango_rtc::{ChannelConfig, PeerConnection};
+use datachannel_wrapper::{DataChannelInit, PeerConnection, Reliability};
 
 /// The two netplay channels (reliable control + unreliable in-match) plus the
 /// peer connection that owns them, as one bundle. Produced by every transport's
@@ -36,8 +38,8 @@ pub struct Channels {
     /// This connection's two DTLS certificate fingerprints (raw SHA-256 bytes),
     /// parsed from the offer/answer SDP, used to seed the matchmaking reconnect
     /// `session_id` (see `netplay::derive_reconnect_session_id`). Empty on a
-    /// transport that doesn't surface them — the direct path exchanges no SDP
-    /// and runs with fingerprint verification off.
+    /// transport that doesn't surface them — the direct path fabricates SDP with
+    /// fingerprint verification off, so its dummy value is meaningless.
     pub local_dtls_fingerprint: Vec<u8>,
     pub peer_dtls_fingerprint: Vec<u8>,
 }
@@ -74,31 +76,41 @@ impl std::fmt::Debug for Channels {
     }
 }
 
-/// Spec for the reliable control channel. Every transport passes this (with
-/// [`in_match_channel`], in this order) to its `PeerConnection` constructor,
-/// which declares them together before any exchange.
-pub fn control_channel() -> ChannelConfig {
-    ChannelConfig {
-        label: "tango".to_owned(),
-        ordered: true,
-        reliable: true,
-    }
+/// Label + init for the reliable control channel, as a
+/// [`tango_signaling::ChannelSpec`] (the matchmaking path passes every channel's
+/// spec to `connect`, which creates them all up front and clones each per
+/// transparent reconnect).
+pub fn control_channel() -> (&'static str, DataChannelInit) {
+    (
+        "tango",
+        DataChannelInit::default().negotiated().manual_stream().stream(0),
+    )
 }
 
-/// Spec for the unreliable in-match channel. Mirror of [`control_channel`] —
-/// created alongside it rather than added after the connection is up.
-pub fn in_match_channel() -> ChannelConfig {
-    ChannelConfig {
-        label: "tango-match".to_owned(),
-        ordered: false,
-        reliable: false,
-    }
+/// Label + init for the unreliable in-match channel, as a
+/// [`tango_signaling::ChannelSpec`]. Mirror of [`control_channel`] — the
+/// matchmaking path creates this alongside the control channel rather than
+/// adding it after the connection is up.
+pub fn in_match_channel() -> (&'static str, DataChannelInit) {
+    (
+        "tango-match",
+        DataChannelInit::default()
+            .reliability(Reliability {
+                unordered: true,
+                unreliable: true,
+                max_packet_life_time: 0,
+                max_retransmits: 0,
+            })
+            .negotiated()
+            .manual_stream()
+            .stream(1),
+    )
 }
 
 // --- DataChannel <-> Sender/Receiver adapter ------------------------------
 
 struct DataChannelSink {
-    inner: tango_rtc::DataChannelSender,
+    inner: datachannel_wrapper::DataChannelSender,
 }
 
 #[async_trait::async_trait]
@@ -110,7 +122,7 @@ impl PacketSink for DataChannelSink {
 }
 
 struct DataChannelStream {
-    inner: tango_rtc::DataChannelReceiver,
+    inner: datachannel_wrapper::DataChannelReceiver,
 }
 
 #[async_trait::async_trait]
@@ -125,7 +137,7 @@ impl PacketStream for DataChannelStream {
 
 /// Wrap a `DataChannel`'s two halves into the shared [`PacketSink`] /
 /// [`PacketStream`] byte-pipe both planes' transports build on.
-fn split(dc: tango_rtc::DataChannel) -> (Box<dyn PacketSink>, Box<dyn PacketStream>) {
+fn split(dc: datachannel_wrapper::DataChannel) -> (Box<dyn PacketSink>, Box<dyn PacketStream>) {
     let (dc_tx, dc_rx) = dc.split();
     (
         Box::new(DataChannelSink { inner: dc_tx }),
@@ -138,14 +150,14 @@ fn split(dc: tango_rtc::DataChannel) -> (Box<dyn PacketSink>, Box<dyn PacketStre
 /// The unreliable in-match channel pairs via [`data_pair`] instead. The peer
 /// connection that owns the channel must be kept alive separately (see
 /// `netplay::NegotiationOutput`).
-pub fn control_pair(dc: tango_rtc::DataChannel) -> (control::Sender, control::Receiver) {
+pub fn control_pair(dc: datachannel_wrapper::DataChannel) -> (control::Sender, control::Receiver) {
     let (sink, stream) = split(dc);
     (control::Sender::new(sink), control::Receiver::new(stream))
 }
 
 /// Pair a `DataChannel` into the data plane's raw-bytes [`data::Sender`] /
 /// [`data::Receiver`] — the in-match counterpart to [`control_pair`].
-pub fn data_pair(dc: tango_rtc::DataChannel) -> (data::Sender, data::Receiver) {
+pub fn data_pair(dc: datachannel_wrapper::DataChannel) -> (data::Sender, data::Receiver) {
     let (sink, stream) = split(dc);
     (data::Sender::new(sink), data::Receiver::new(stream))
 }

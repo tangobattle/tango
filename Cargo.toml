@@ -2,7 +2,9 @@
 resolver = "2"
 members = [
     "bps",
+    "datachannel-wrapper",
     "discord-ipc",
+    "libdatachannel",
     "mgba",
     "getgud",
     "rennet",
@@ -11,7 +13,6 @@ members = [
     "tango-filesync",
     "tango-gamesupport",
     "tango-pvp",
-    "tango-rtc",
     "tango-signaling",
 ]
 # One source of truth for every external dep shared by 2+ member crates,

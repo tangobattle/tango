@@ -62,13 +62,54 @@ const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
 const MIN_RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(500);
 const MAX_RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_secs(8);
 
-/// One data channel's spec. The caller owns the channel policy (label /
-/// ordering / reliability) rather than this crate hardcoding it, and passes
-/// every channel the session needs so they're all declared together, in the
-/// initial offer. Channels come back from [`connect`] in the same order, and
-/// are re-declared identically on every transparent reconnect. Both peers
-/// must pass the same set — they're negotiated in-band and matched by label.
-pub type ChannelSpec = tango_rtc::ChannelConfig;
+/// One data channel's `(label, init)`. The caller owns the channel policy
+/// (label / stream id / reliability) rather than this crate hardcoding it, and
+/// passes every channel the session needs so they're all created together,
+/// before the offer. The `init` is cloned per attempt because [`connect`]
+/// recreates the channels on every transparent reconnect (and creating one
+/// consumes its `init`).
+pub type ChannelSpec = (&'static str, datachannel_wrapper::DataChannelInit);
+
+/// Build a fresh peer connection, create every requested channel on it, then
+/// generate the offer. Returns immediately with a (candidate-less or partial)
+/// local description — ICE candidates are trickled separately as they gather, so
+/// the offer ships before gathering finishes. Channels come back in the same
+/// order as `channels`.
+///
+/// Auto-negotiation is disabled and the offer is driven explicitly *after* all
+/// channels exist: relying on auto-negotiation here raced the channel creation,
+/// because creating the first channel kicks off offer generation + gathering on
+/// libdatachannel's own thread, and a second `create_data_channel` landing
+/// mid-negotiation made the captured `local_description` intermittently
+/// inconsistent. One explicit `set_local_description` after both channels are
+/// registered is deterministic (and mirrors the direct transport's bring-up).
+async fn create_data_channels(
+    rtc_config: datachannel_wrapper::RtcConfig,
+    channels: &[ChannelSpec],
+) -> Result<
+    (
+        Vec<datachannel_wrapper::DataChannel>,
+        tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
+        datachannel_wrapper::PeerConnection,
+    ),
+    std::io::Error,
+> {
+    let (mut peer_conn, event_rx) = datachannel_wrapper::PeerConnection::new(rtc_config)?;
+
+    let dcs = channels
+        .iter()
+        .map(|(label, init)| peer_conn.create_data_channel(label, init.clone()))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // All channels registered — now drive the single offer that puts them all
+    // in the initial association and starts gathering.
+    peer_conn.set_local_description(datachannel_wrapper::SdpType::Offer, None)?;
+
+    // Trickle ICE: don't wait for gathering. `local_description()` already holds
+    // the offer; candidates flow out of `event_rx` as they're gathered and the
+    // caller forwards each as an `IceCandidate` packet.
+    Ok((dcs, event_rx, peer_conn))
+}
 
 /// Encode and send one signaling `Packet` over the websocket.
 async fn send_signal(
@@ -153,12 +194,12 @@ fn is_transient(e: &Error) -> bool {
 /// value (like a game RNG seed) that might leak through other channels.
 ///
 /// `local_fingerprint` is parsed from our own offer/answer SDP; `peer_fingerprint`
-/// from the remote description the DTLS handshake verified against the peer's
+/// from the remote description libdatachannel verified against the peer's
 /// certificate. Either may be empty if it couldn't be parsed — callers must
 /// tolerate that.
 pub struct Connected {
-    pub channels: Vec<tango_rtc::DataChannel>,
-    pub peer_conn: tango_rtc::PeerConnection,
+    pub channels: Vec<datachannel_wrapper::DataChannel>,
+    pub peer_conn: datachannel_wrapper::PeerConnection,
     pub local_dtls_fingerprint: Vec<u8>,
     pub peer_dtls_fingerprint: Vec<u8>,
 }
@@ -169,7 +210,7 @@ pub type Connecting = futures_util::future::BoxFuture<'static, Result<Connected,
 /// SHA-256 digest bytes. SDP carries it as an `a=fingerprint:sha-256 <hex>`
 /// attribute whose value is colon-separated, hex-encoded octets (e.g.
 /// `AA:BB:...`). Returns `None` if there's no SHA-256 fingerprint line or it
-/// doesn't decode; only `sha-256` is accepted (what str0m emits).
+/// doesn't decode; only `sha-256` is accepted (what libdatachannel emits).
 fn parse_dtls_fingerprint(sdp: &str) -> Option<Vec<u8>> {
     for line in sdp.lines() {
         let Some(rest) = line.trim().strip_prefix("a=fingerprint:") else {
@@ -208,9 +249,9 @@ async fn establish(
 ) -> Result<
     (
         SignalingStream,
-        Vec<tango_rtc::DataChannel>,
-        tokio::sync::mpsc::Receiver<tango_rtc::PeerConnectionEvent>,
-        tango_rtc::PeerConnection,
+        Vec<datachannel_wrapper::DataChannel>,
+        tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
+        datachannel_wrapper::PeerConnection,
     ),
     Error,
 > {
@@ -271,37 +312,52 @@ async fn establish(
 
     log::info!("hello received from signaling stream: {:?}", hello);
 
-    let rtc_config = tango_rtc::RtcConfig {
-        ice_servers: hello
+    let mut rtc_config = datachannel_wrapper::RtcConfig::new(
+        &hello
             .ice_servers
             .into_iter()
-            .map(|ice_server| tango_rtc::IceServer {
-                urls: ice_server
+            .flat_map(|ice_server| {
+                ice_server
                     .urls
                     .into_iter()
-                    .filter(|url| {
-                        // Relaying explicitly disabled: drop the TURN servers
-                        // so we don't even gather relay candidates.
-                        !((url.starts_with("turn:") || url.starts_with("turns:")) && use_relay == Some(false))
-                    })
-                    .collect(),
-                username: ice_server.username,
-                credential: ice_server.credential,
-            })
-            .collect(),
-        ice_transport_policy: if use_relay == Some(true) {
-            tango_rtc::TransportPolicy::Relay
-        } else {
-            tango_rtc::TransportPolicy::All
-        },
-        ..Default::default()
-    };
+                    .flat_map(|url| {
+                        let Some(colon_idx) = url.chars().position(|c| c == ':') else {
+                            return vec![];
+                        };
 
-    // Declares every channel in the initial offer, which is built
-    // synchronously — `local_description()` holds it on return, so the
-    // `Start` below ships it right away (trickle ICE: candidates follow as
-    // `IceCandidate` events while gathering runs in the background).
-    let (peer_conn, dcs, event_rx) = tango_rtc::PeerConnection::new(rtc_config, channels)?;
+                        let proto = &url[..colon_idx];
+                        let rest = &url[colon_idx + 1..];
+
+                        if (proto == "turn" || proto == "turns") && use_relay == Some(false) {
+                            return vec![];
+                        }
+
+                        // libdatachannel doesn't support TURN over TCP: in fact, it explodes!
+                        if url.chars().skip_while(|c| *c != '?').collect::<String>() == "?transport=tcp" {
+                            return vec![];
+                        }
+
+                        if let (Some(username), Some(credential)) = (&ice_server.username, &ice_server.credential) {
+                            vec![format!(
+                                "{}:{}:{}@{}",
+                                proto,
+                                urlencoding::encode(username),
+                                urlencoding::encode(credential),
+                                rest
+                            )]
+                        } else {
+                            vec![format!("{}:{}", proto, rest)]
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>(),
+    );
+    if use_relay == Some(true) {
+        rtc_config.ice_transport_policy = datachannel_wrapper::TransportPolicy::Relay;
+    }
+    rtc_config.disable_auto_negotiation = true;
+    let (dcs, event_rx, peer_conn) = create_data_channels(rtc_config, channels).await?;
 
     signaling_stream
         .send(tokio_tungstenite::tungstenite::Message::Binary(
@@ -343,8 +399,8 @@ enum WaitOutcome {
 /// anything become `Dropped`, which the caller may transparently reconnect.
 async fn wait_for_exchange(
     signaling_stream: &mut SignalingStream,
-    event_rx: &mut tokio::sync::mpsc::Receiver<tango_rtc::PeerConnectionEvent>,
-    peer_conn: &mut tango_rtc::PeerConnection,
+    event_rx: &mut tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
+    peer_conn: &mut datachannel_wrapper::PeerConnection,
     pending_local_candidates: &mut Vec<String>,
 ) -> Result<WaitOutcome, Error> {
     let mut ping_interval = tokio::time::interval_at(tokio::time::Instant::now() + PING_INTERVAL, PING_INTERVAL);
@@ -358,8 +414,8 @@ async fn wait_for_exchange(
             // state can change before a remote description exists, so anything
             // else is ignored.
             event = event_rx.recv() => {
-                if let Some(tango_rtc::PeerConnectionEvent::IceCandidate(c)) = event {
-                    pending_local_candidates.push(c);
+                if let Some(datachannel_wrapper::PeerConnectionEvent::IceCandidate(c)) = event {
+                    pending_local_candidates.push(c.candidate);
                 }
                 continue;
             }
@@ -434,14 +490,17 @@ async fn wait_for_exchange(
                 log::info!("received an offer, this is the polite side. rolling back our local description and switching to answer");
 
                 // From here on the peer has committed to this offer: any failure
-                // is fatal, never a reconnect. Accepting the remote offer
-                // implicitly rolls back our own pending offer (and its channel
-                // declarations — the peer's replace them) and produces the
-                // answer as our new local description.
-                peer_conn.set_remote_description(tango_rtc::SessionDescription {
-                    sdp_type: tango_rtc::SdpType::Offer,
+                // is fatal, never a reconnect.
+                peer_conn.set_local_description(datachannel_wrapper::SdpType::Rollback, None)?;
+                peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
+                    sdp_type: datachannel_wrapper::SdpType::Offer,
                     sdp: offer.sdp.clone(),
                 })?;
+                // Auto-negotiation is off (see `create_data_channels`), so the
+                // answer is generated explicitly rather than implied by applying
+                // the remote offer — otherwise `local_description` below would be
+                // read before the answer existed.
+                peer_conn.set_local_description(datachannel_wrapper::SdpType::Answer, None)?;
 
                 let local_description = peer_conn.local_description().unwrap();
                 signaling_stream
@@ -462,8 +521,8 @@ async fn wait_for_exchange(
             Some(crate::proto::signaling::packet::Which::Answer(answer)) => {
                 log::info!("received an answer, this is the impolite side");
 
-                peer_conn.set_remote_description(tango_rtc::SessionDescription {
-                    sdp_type: tango_rtc::SdpType::Answer,
+                peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
+                    sdp_type: datachannel_wrapper::SdpType::Answer,
                     sdp: answer.sdp.clone(),
                 })?;
                 return Ok(WaitOutcome::Exchanged);
@@ -578,7 +637,7 @@ pub async fn connect(
 
         // Both ends' DTLS fingerprints, parsed from the SDP each side committed
         // to: ours from the local description, the peer's from the remote one
-        // the DTLS handshake verifies against the peer's certificate. The caller
+        // libdatachannel just verified against the peer's certificate. The caller
         // pairs them to derive a rendezvous id both ends agree on.
         let local_dtls_fingerprint = peer_conn
             .local_description()
@@ -623,22 +682,23 @@ pub async fn connect(
                 // The peer connection's own events are the authority on when we're
                 // up, and the source of the local candidates we trickle out.
                 ev = event_rx.recv() => match ev {
-                    Some(tango_rtc::PeerConnectionEvent::IceCandidate(candidate)) => {
+                    Some(datachannel_wrapper::PeerConnectionEvent::IceCandidate(c)) => {
                         let _ = send_signal(
                             &mut signaling_stream,
                             crate::proto::signaling::packet::Which::IceCandidate(
-                                crate::proto::signaling::packet::IceCandidate { candidate },
+                                crate::proto::signaling::packet::IceCandidate { candidate: c.candidate },
                             ),
                         )
                         .await;
                     }
-                    Some(tango_rtc::PeerConnectionEvent::ConnectionStateChange(c)) => match c {
-                        tango_rtc::ConnectionState::Connected => break Ok(()),
-                        tango_rtc::ConnectionState::Disconnected => break Err(Error::PeerConnectionDisconnected),
-                        tango_rtc::ConnectionState::Failed => break Err(Error::PeerConnectionFailed),
-                        tango_rtc::ConnectionState::Closed => break Err(Error::PeerConnectionClosed),
+                    Some(datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(c)) => match c {
+                        datachannel_wrapper::ConnectionState::Connected => break Ok(()),
+                        datachannel_wrapper::ConnectionState::Disconnected => break Err(Error::PeerConnectionDisconnected),
+                        datachannel_wrapper::ConnectionState::Failed => break Err(Error::PeerConnectionFailed),
+                        datachannel_wrapper::ConnectionState::Closed => break Err(Error::PeerConnectionClosed),
                         _ => {}
                     },
+                    Some(_) => {}
                     None => {
                         break Err(std::io::Error::new(
                             std::io::ErrorKind::UnexpectedEof,
@@ -657,7 +717,8 @@ pub async fn connect(
                             which: Some(crate::proto::signaling::packet::Which::IceCandidate(c)),
                         }) = crate::proto::signaling::Packet::decode(d.as_slice())
                         {
-                            let _ = peer_conn.add_remote_candidate(&c.candidate);
+                            let _ = peer_conn
+                                .add_remote_candidate(datachannel_wrapper::IceCandidate { candidate: c.candidate });
                         }
                     }
                 }
@@ -683,7 +744,7 @@ pub async fn connect(
         // (the event sender goes away).
         tokio::spawn(async move {
             while let Some(ev) = event_rx.recv().await {
-                if let tango_rtc::PeerConnectionEvent::ConnectionStateChange(state) = ev {
+                if let datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(state) = ev {
                     log::info!("pvp peer connection state: {state:?}");
                 }
             }

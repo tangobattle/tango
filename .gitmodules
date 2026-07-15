@@ -1,6 +1,9 @@
 [submodule "mgba/mgba-sys/mgba"]
 	path = mgba/mgba-sys/mgba
 	url = https://github.com/tangobattle/mgba
+[submodule "libdatachannel/libdatachannel-sys/libdatachannel"]
+	path = libdatachannel/libdatachannel-sys/libdatachannel
+	url = https://github.com/tangobattle/libdatachannel
 [submodule "gamesupport"]
 	path = gamesupport
 	url = https://github.com/tangobattle/gamesupport.git

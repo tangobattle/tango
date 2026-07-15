@@ -13,11 +13,10 @@
 //! Both planes build their `Sender` / `Receiver` on the shared [`PacketSink`] /
 //! [`PacketStream`] byte-pipe defined here — a message-boundary-preserving
 //! datagram transport, agnostic to whether the underlying channel is
-//! reliable/ordered. [`channel`] owns the data-channel specs (labels /
-//! ordering / reliability) and the adapters that split a WebRTC `DataChannel`
-//! into either pair ([`channel::control_pair`] for control,
-//! [`channel::data_pair`] for data). [`direct_rtc`] is the signaling-free
-//! direct transport.
+//! reliable/ordered. [`channel`] owns the data-channel specs (labels / stream
+//! ids / reliability) and the adapters that split a WebRTC `DataChannel` into
+//! either pair ([`channel::control_pair`] for control, [`channel::data_pair`]
+//! for data). [`direct_rtc`] is the signaling-free direct transport.
 //!
 //! The control plane's `Sender` / `Receiver` and the `protocol` module are
 //! re-exported at the root so callers can keep saying `crate::net::Sender`,

@@ -54,7 +54,7 @@ rennet = { path = "../rennet" }
 tango-pvp = { path = "../tango-pvp" }
 tango-filesync = { path = "../tango-filesync" }
 tango-signaling = { path = "../tango-signaling" }
-tango-rtc = { path = "../tango-rtc" }
+datachannel-wrapper = { path = "../datachannel-wrapper" }
 bincode = "1"
 async-trait.workspace = true
 sdl3 = { version = "0.18", default-features = false, features = ["build-from-source-static"] }
@@ -119,7 +119,7 @@ anyhow.workspace = true
 # Linux, a Mach exception server on macOS (needed for
 # EXC_BAD_ACCESS), SetUnhandledExceptionFilter + a vectored handler
 # on Windows. Installed in the child UI process so segfaults from
-# mgba / wgpu C code are caught.
+# mgba / datachannel / wgpu C code are caught.
 crash-handler = "0.6"
 # Out-of-process minidump writing + IPC. The child's crash handler
 # only ships the crash context over this channel; the supervisor

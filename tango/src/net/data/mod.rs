@@ -94,8 +94,8 @@ struct Delivery {
     rtt: Option<std::time::Duration>,
 }
 
-/// Send handle for the unreliable in-match channel (tango-rtc stream-1 data
-/// channel). Shared by the per-frame input pump, the receive loop's ack
+/// Send handle for the unreliable in-match channel (stream-1 data channel).
+/// Shared by the per-frame input pump, the receive loop's ack
 /// replies, and the session's in-band `EndOfMatch`. Carries [`protocol`] frames
 /// over [`Sender::send`].
 #[derive(Clone)]
