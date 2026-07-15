@@ -761,6 +761,113 @@ mod tests {
         cancel.cancel();
     }
 
+    /// Bidirectional resume: the real match is two-way, and after a mutual
+    /// reconnect *both* peers must carry fresh traffic again — not just the
+    /// host→dialer direction `reconnect_delivers_exactly_once` checks. Sends
+    /// inputs each way before the drop, reconnects both sides, then sends fresh
+    /// inputs each way and asserts both arrive. Guards against a swap that
+    /// silently re-establishes only one direction (which live shows up as
+    /// "reconnects but never resumes": each side stays stalled waiting for the
+    /// other's inputs that never arrive).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn reconnect_resumes_both_directions() {
+        let port = 24993;
+        let addr = format!("127.0.0.1:{port}");
+
+        let (host_res, conn_res) = tokio::join!(
+            crate::net::direct_rtc::host(port),
+            crate::net::direct_rtc::connect(&addr)
+        );
+        let mut host_ch = host_res.expect("host setup");
+        let mut conn_ch = conn_res.expect("connect setup");
+        let handshake = async {
+            tokio::try_join!(
+                crate::net::negotiate(&mut host_ch.control.0, &mut host_ch.control.1),
+                crate::net::negotiate(&mut conn_ch.control.0, &mut conn_ch.control.1),
+            )
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(15), handshake)
+            .await
+            .expect("handshake timed out — channel never opened")
+            .expect("negotiate failed");
+
+        let cancel = CancellationToken::new();
+        let host_link =
+            Arc::new(link_from_channels(host_ch, ReconnectRecipe::Direct(DirectRole::Host { port }), &cancel).await);
+        let conn_link = Arc::new(
+            link_from_channels(
+                conn_ch,
+                ReconnectRecipe::Direct(DirectRole::Connect { addr: addr.clone() }),
+                &cancel,
+            )
+            .await,
+        );
+
+        // Phase 1: inputs flow both ways over the original transport.
+        let mut host_rx = receiver_for(&host_link);
+        let mut conn_rx = receiver_for(&conn_link);
+        for joyflags in 1..=3u16 {
+            host_link.in_match().send_input(joyflags, 0).await.expect("host send");
+            conn_link.in_match().send_input(joyflags, 0).await.expect("conn send");
+        }
+        let (h1, c1) = tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            async { tokio::join!(recv_joyflags(&mut host_rx, 3), recv_joyflags(&mut conn_rx, 3)) },
+        )
+        .await
+        .expect("phase-1 recv timed out");
+        assert_eq!(h1, (1..=3).collect::<Vec<u16>>());
+        assert_eq!(c1, (1..=3).collect::<Vec<u16>>());
+        // Old receive halves read the transport about to be torn down.
+        drop(host_rx);
+        drop(conn_rx);
+
+        // Phase 2: both sides reconnect (host first, so its rebuild blocks
+        // waiting for the dialer to re-dial).
+        let host_reconnect = tokio::spawn({
+            let link = host_link.clone();
+            async move { link.reconnect(ReconnectCause::Stall).await }
+        });
+        let observe_reconnecting = async {
+            while !matches!(host_link.health(), LinkHealth::Reconnecting { .. }) {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(5), observe_reconnecting)
+            .await
+            .expect("host never entered Reconnecting");
+        let conn_restored = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            conn_link.reconnect(ReconnectCause::Stall),
+        )
+        .await
+        .expect("dialer reconnect timed out");
+        assert!(conn_restored, "dialer reconnect gave up");
+        let host_restored = tokio::time::timeout(std::time::Duration::from_secs(30), host_reconnect)
+            .await
+            .expect("host reconnect timed out")
+            .expect("host reconnect task panicked");
+        assert!(host_restored, "host reconnect gave up");
+
+        // Phase 3: fresh inputs must flow *both* ways over the rebuilt link.
+        let mut host_rx = receiver_for(&host_link);
+        let mut conn_rx = receiver_for(&conn_link);
+        for joyflags in 4..=6u16 {
+            host_link.in_match().send_input(joyflags, 0).await.expect("host post-reconnect send");
+            conn_link.in_match().send_input(joyflags, 0).await.expect("conn post-reconnect send");
+        }
+        let (h2, c2) = tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            async { tokio::join!(recv_joyflags(&mut host_rx, 3), recv_joyflags(&mut conn_rx, 3)) },
+        )
+        .await
+        .expect("phase-3 recv timed out — a direction never resumed");
+        assert_eq!(h2, (4..=6).collect::<Vec<u16>>(), "host did not receive dialer's post-reconnect inputs");
+        assert_eq!(c2, (4..=6).collect::<Vec<u16>>(), "dialer did not receive host's post-reconnect inputs");
+
+        cancel.cancel();
+    }
+
     /// The deliberate-quit fast path: `send_goodbye` fired right before the
     /// quitting side's teardown (exactly how the supervisor quits) surfaces on
     /// the peer's `watch_control` as `Goodbye`, not as the close racing along

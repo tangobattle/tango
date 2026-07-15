@@ -293,6 +293,16 @@ impl<W: World> Session<W> {
         self.input_queue.remote_queue_length(remote)
     }
 
+    /// How many rows the next [`advance`](Session::advance) could confirm from
+    /// buffered remote input alone — the furthest-behind remote's backlog (see
+    /// [`Queue::matchable`](crate::Queue::matchable)). Nonzero means advancing
+    /// will drain the local queue rather than only grow it: the signal a stall
+    /// guard needs so a full queue that is still being fed by the peer keeps
+    /// settling instead of deadlocking.
+    pub fn matchable(&self) -> usize {
+        self.input_queue.matchable()
+    }
+
     /// How far local input leads the furthest-behind remote's input, in ticks
     /// (clamped to [`i16`]).
     ///
@@ -628,6 +638,58 @@ mod tests {
         // Every discarded snapshot (cleared speculations, displaced settled
         // states) must be offered back to the world for reuse.
         assert!(counters.lock().unwrap().recycles > 0, "expected recycled states");
+    }
+
+    /// The stall-guard invariant the live drive loop depends on. A local queue
+    /// that has run far ahead of a silent peer reports `matchable() == 0` —
+    /// nothing is confirmable, so parking there is correct. But the moment the
+    /// peer's inputs arrive (e.g. the resend burst after a transparent
+    /// reconnect) `matchable()` turns positive and a *single* `advance` drains
+    /// the whole backlog. `advance` is the only thing that drains the local
+    /// queue, so a guard that parked on a full queue regardless of `matchable`
+    /// (as the drive loop once did) would deadlock here: the buffered remote
+    /// inputs would pile up forever unconsumed and the stall would never clear
+    /// — the link "reconnects but never resumes".
+    #[test]
+    fn matchable_gates_stall_recovery() {
+        let counters = Arc::new(Mutex::new(Counters::default()));
+        let logged = Arc::new(Mutex::new(Vec::new()));
+        let mut s = session(0, 1, counters, logged);
+
+        // The peer goes silent: advance a long run with no remote input. Each
+        // advance enqueues a local input with nothing to match, so the local
+        // queue climbs and nothing becomes confirmable.
+        let backlog = 200u32;
+        for i in 0..backlog {
+            s.advance(i as u8).unwrap();
+        }
+        assert_eq!(
+            s.local_queue_length(),
+            backlog as usize,
+            "every unmatched local input should still be queued"
+        );
+        assert_eq!(s.matchable(), 0, "a silent peer offers nothing to confirm — the guard parks");
+
+        // The peer's inputs arrive all at once (the reconnect resend burst),
+        // buffered by add_remote_input alone — which never drains the queue.
+        for i in 0..backlog {
+            s.add_remote_input(0, i as u8, 0);
+        }
+        assert_eq!(s.local_queue_length(), backlog as usize, "buffering remote input must not drain");
+        assert_eq!(
+            s.matchable(),
+            backlog as usize,
+            "buffered remote inputs are now matchable — the guard must let advance run"
+        );
+
+        // A single advance settles the whole backlog: the queue drops back
+        // below the stall cap instead of deadlocking.
+        s.advance(backlog as u8).unwrap();
+        assert!(
+            s.local_queue_length() <= 1,
+            "advance must drain the matched backlog, got {}",
+            s.local_queue_length()
+        );
     }
 
     /// When predictions hold (remote held constant so repeat-predict is right),

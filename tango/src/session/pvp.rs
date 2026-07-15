@@ -781,9 +781,22 @@ impl DriveContext {
             // The in-match heartbeat keeps the redundancy window + acks
             // flowing while we wait; the supervisor watches queue_len and
             // decides whether this is a reconnect.
+            //
+            // But hold ONLY when advancing can't make progress. `advance` is
+            // the sole thing that drains the local queue (it matches buffered
+            // remote inputs against local ones and confirms the pairs); merely
+            // ingesting remote inputs above just buffers them. So if the peer
+            // is still feeding us matchable inputs — exactly the case during a
+            // post-reconnect resend burst — we must keep advancing to settle
+            // them, even at a full queue: each such advance nets the queue
+            // *down* (drains ≥1, adds 1 local). Skipping advance whenever the
+            // queue is full instead would leave those resends forever
+            // unconsumed — the queue never drains, the stall never clears, and
+            // the link "reconnects but never resumes". Only a genuinely dead
+            // link (nothing matchable) parks here.
             let queue_len = match_.local_queue_length() as u32;
             self.metrics.queue_len.store(queue_len, Ordering::Relaxed);
-            if queue_len as usize >= tango_pvp::battle::RECONNECT_QUEUE_LENGTH {
+            if queue_len as usize >= tango_pvp::battle::RECONNECT_QUEUE_LENGTH && match_.matchable() == 0 {
                 std::thread::sleep(PAUSED_TICK);
                 next_tick = std::time::Instant::now();
                 continue;

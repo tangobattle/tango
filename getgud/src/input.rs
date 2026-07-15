@@ -56,6 +56,18 @@ where
         self.remote_queues[remote].len()
     }
 
+    /// The shortest remote input backlog — how many *fully*-matched rows a
+    /// [`drain_matched`](Queue::drain_matched) could commit right now (a tick
+    /// is only confirmable once every remote's input for it has arrived, so
+    /// the count is bounded by the furthest-behind remote). Zero means no
+    /// confirmable progress is available without more remote input. Used as
+    /// the stall guard's "can we still drain?" signal: a full local queue that
+    /// can still be matched against buffered remote inputs must keep advancing,
+    /// or the drain never happens.
+    pub fn matchable(&self) -> usize {
+        self.remote_queues.iter().map(|q| q.len()).min().unwrap_or(0)
+    }
+
     /// How many ticks local input leads remote peer `remote`'s input,
     /// signed: positive when the local queue is longer (local ahead of that
     /// remote), negative when that peer's received inputs have piled up past

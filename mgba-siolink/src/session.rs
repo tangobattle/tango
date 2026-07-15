@@ -349,6 +349,16 @@ impl Session {
         self.inner.local_queue_length()
     }
 
+    /// Rows the next [`advance`](Session::advance) could confirm from buffered
+    /// remote input alone. Nonzero means advancing drains the local queue
+    /// (matched remote inputs are waiting), so a stall guard tripping on
+    /// [`local_queue_length`](Session::local_queue_length) must still advance
+    /// to settle them — otherwise the queue never drains and the stall never
+    /// clears (the peer's post-reconnect resends pile up unconsumed).
+    pub fn matchable(&self) -> usize {
+        self.inner.matchable()
+    }
+
     /// Ticks [0, confirmed) have real inputs from every side and can
     /// never be rolled back again.
     pub fn confirmed(&self) -> u32 {

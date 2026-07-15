@@ -197,6 +197,17 @@ impl Match {
         self.session.local_queue_length()
     }
 
+    /// Rows the next [`advance`](Match::advance) could confirm from buffered
+    /// remote input alone — nonzero means advancing *drains* the local queue
+    /// instead of only growing it. The drive loop's stall guard consults this
+    /// so a full queue that the peer is still feeding (e.g. its resends after a
+    /// reconnect) keeps settling rather than deadlocking: `advance` is the only
+    /// thing that drains, so a guard that unconditionally skips it while the
+    /// queue is full would leave those inputs forever unconsumed.
+    pub fn matchable(&self) -> usize {
+        self.session.matchable()
+    }
+
     /// Ticks [0, confirmed) can never be rolled back again.
     pub fn confirmed(&self) -> u32 {
         self.session.confirmed()
