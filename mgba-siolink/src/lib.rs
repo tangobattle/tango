@@ -9,6 +9,14 @@
 //! predicted remote keys into `tick`, and restores a `Snapshot` to
 //! re-simulate when a prediction turns out wrong.
 //!
+//! A link of ONE is also valid: a single core with no SIO driver, which is
+//! mgba's model of a GBA with nothing plugged in. Together with
+//! [`Link::capture_boot_state`] and [`Link::from_states`] that makes the
+//! cable itself dynamic — a solo machine runs until peers appear, the
+//! captures are exchanged, and every peer rebuilds the full link mid-game
+//! (the cable plugs in); when the session ends, the local capture continues
+//! as a solo link again (the cable unplugs).
+//!
 //! The cores are interleaved cooperatively on ONE thread (see
 //! `mgba::sio`): a tick runs whichever cores the lockstep protocol has not
 //! parked, one `run_loop` timing slice at a time, until the reference core
@@ -25,6 +33,12 @@ pub mod throttler;
 /// The most players one link supports — mgba's `MAX_GBAS`, the size of a
 /// real multi-cable chain.
 pub const MAX_PLAYERS: usize = 4;
+
+// GBA io block indices (register address >> 1), for the SIO shadow-register
+// repairs around raw core loads.
+const REG_SIOCNT: usize = 0x128 >> 1;
+const REG_RCNT: usize = 0x134 >> 1;
+const REG_SIOMLT_SEND: usize = 0x12a >> 1;
 
 /// Which core a tick treats as the frame-boundary reference. Player 0 is
 /// also the lockstep clock owner (primary).
@@ -122,7 +136,9 @@ impl Snapshot {
             h.update(&s.cpsr().to_le_bytes());
             h.update(s.wram());
             h.update(s.iwram());
-            h.update(self.driver_blob(i));
+            if let Some(blob) = self.drivers.get(i) {
+                h.update(blob);
+            }
             h.update(&[self.sio_complete[i].is_some() as u8]);
             h.update(&self.sio_complete[i].unwrap_or(0).to_le_bytes());
             for lane in &self.audio_fifos[i] {
@@ -154,8 +170,9 @@ pub struct SideOptions {
 
 #[derive(Default)]
 pub struct LinkOptions {
-    /// One entry per player, 2 to [`MAX_PLAYERS`]. Core `i` runs `sides[i]`
-    /// and requests lockstep player `i`.
+    /// One entry per player, 1 to [`MAX_PLAYERS`]. Core `i` runs `sides[i]`
+    /// and requests lockstep player `i`. A single side boots with no SIO
+    /// driver at all — mgba's model of a GBA with nothing plugged in.
     pub sides: Vec<SideOptions>,
     /// Pin every cart's RTC to a fixed clock. Mandatory for netplay/replay
     /// of RTC-bearing games (e.g. BN4.5): all peers must negotiate the
@@ -163,8 +180,17 @@ pub struct LinkOptions {
     pub rtc: Option<std::time::SystemTime>,
 }
 
+/// One side of a link booted from a live capture instead of power-on: the
+/// ROM, the SRAM/flash image at capture time, and the serialized core state
+/// from [`Link::capture_boot_state`].
+pub struct BootSide {
+    pub rom: Vec<u8>,
+    pub save: Option<Vec<u8>>,
+    pub state: Vec<u8>,
+}
+
 impl Link {
-    /// Boot a link from ROM images, one per player (2 to [`MAX_PLAYERS`]).
+    /// Boot a link from ROM images, one per player (1 to [`MAX_PLAYERS`]).
     /// Core 0 requests lockstep player 0 (primary/master side), core `i`
     /// requests player `i`.
     pub fn new(roms: Vec<Vec<u8>>) -> Result<Self, mgba::Error> {
@@ -177,8 +203,8 @@ impl Link {
     pub fn with_options(options: LinkOptions) -> Result<Self, mgba::Error> {
         let num_players = options.sides.len();
         assert!(
-            (2..=MAX_PLAYERS).contains(&num_players),
-            "a link takes 2 to {MAX_PLAYERS} players, got {num_players}"
+            (1..=MAX_PLAYERS).contains(&num_players),
+            "a link takes 1 to {MAX_PLAYERS} players, got {num_players}"
         );
 
         let mut coordinator = mgba::sio::Coordinator::new();
@@ -187,11 +213,15 @@ impl Link {
         let mut cores = (0..num_players)
             .map(|_| mgba::core::Core::new_gba("mgba-siolink", &core_options))
             .collect::<Result<Vec<_>, _>>()?;
-        let mut drivers = (0..num_players)
-            .map(|i| mgba::sio::Driver::new(&mut coordinator, i as i32))
-            .collect::<Vec<_>>();
+        let mut drivers = if num_players > 1 {
+            (0..num_players)
+                .map(|i| mgba::sio::Driver::new(&mut coordinator, i as i32))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
 
-        for ((core, driver), side) in cores.iter_mut().zip(drivers.iter_mut()).zip(options.sides) {
+        for (i, (core, side)) in cores.iter_mut().zip(options.sides).enumerate() {
             core.enable_video_buffer();
             core.as_mut().load_rom(mgba::vfile::VFile::from_vec(side.rom))?;
             if let Some(save) = side.save {
@@ -200,7 +230,9 @@ impl Link {
             if let Some(rtc) = options.rtc {
                 core.set_rtc_fixed(rtc);
             }
-            driver.install(&mut core.as_mut());
+            if let Some(driver) = drivers.get_mut(i) {
+                driver.install(&mut core.as_mut());
+            }
             core.as_mut().reset();
         }
 
@@ -209,6 +241,118 @@ impl Link {
             drivers,
             coordinator,
         })
+    }
+
+    /// Boot a link mid-game from per-side captures — the emulated
+    /// equivalent of plugging a link cable into machines that are already
+    /// running. Each core boots fresh and loads its captured state while no
+    /// SIO driver is installed (so the load cannot fire lockstep callbacks
+    /// into a half-built link); only then does every core attach to the
+    /// coordinator, the same mid-run attach path mgba's own multi-window
+    /// multiplayer uses, which reads the core's current link mode and clock
+    /// at registration. Peers that build a link from identical captures get
+    /// bit-identical machines, which is what rollback needs — including the
+    /// building peer itself, whose own side must load from its serialized
+    /// capture rather than continue its live core (core savestates are
+    /// deliberately lossy in a few corners, and everyone must agree on the
+    /// reconstruction).
+    ///
+    /// A single side is the unplugged continuation of a capture: no driver,
+    /// no coordinator registration.
+    pub fn from_states(sides: Vec<BootSide>, rtc: Option<std::time::SystemTime>) -> Result<Self, mgba::Error> {
+        let num_players = sides.len();
+        assert!(
+            (1..=MAX_PLAYERS).contains(&num_players),
+            "a link takes 1 to {MAX_PLAYERS} players, got {num_players}"
+        );
+
+        let mut coordinator = mgba::sio::Coordinator::new();
+        let core_options = mgba::core::Options::default();
+
+        let mut cores = (0..num_players)
+            .map(|_| mgba::core::Core::new_gba("mgba-siolink", &core_options))
+            .collect::<Result<Vec<_>, _>>()?;
+        for (core, side) in cores.iter_mut().zip(sides) {
+            core.enable_video_buffer();
+            core.as_mut().load_rom(mgba::vfile::VFile::from_vec(side.rom))?;
+            if let Some(save) = side.save {
+                core.as_mut().load_save(mgba::vfile::VFile::from_vec(save))?;
+            }
+            if let Some(rtc) = rtc {
+                core.set_rtc_fixed(rtc);
+            }
+            core.as_mut().reset();
+            load_boot_state(core, &side.state)?;
+        }
+
+        // The cable plugs in: attach in player order, deterministically.
+        let mut drivers = if num_players > 1 {
+            (0..num_players)
+                .map(|i| mgba::sio::Driver::new(&mut coordinator, i as i32))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        for (core, driver) in cores.iter_mut().zip(drivers.iter_mut()) {
+            driver.install(&mut core.as_mut());
+        }
+
+        Ok(Link {
+            cores,
+            drivers,
+            coordinator,
+        })
+    }
+
+    /// Serialize core `i` for [`Link::from_states`]: the (cycle-normalized)
+    /// core savestate plus SIOMLT_SEND, which `GBAIOSerialize` never stores.
+    /// Valid at any tick boundary. The capture is only as exact as mgba's
+    /// savestate encoding — the deliberately-lossy corners the rollback
+    /// [`Snapshot`] carries out-of-band (FIFO sample countdowns, mid-refill
+    /// DMA control, an in-flight SIO completion) reconstruct approximately,
+    /// which is fine here: every peer reconstructs from the same bytes, and
+    /// a cable plug-in has no prior trajectory to stay faithful to.
+    pub fn capture_boot_state(&mut self, i: usize) -> Result<Vec<u8>, mgba::Error> {
+        let mut state = self.cores[i].as_mut().save_state()?;
+        normalize_cpu_cycles(&mut state);
+        let mut bytes = state.as_slice().to_vec();
+        let siomlt = unsafe { (*gba_ptr(&mut self.cores[i])).memory.io[REG_SIOMLT_SEND] };
+        bytes.extend_from_slice(&siomlt.to_le_bytes());
+        Ok(bytes)
+    }
+
+    /// Whether core `i`'s game currently has its serial port configured
+    /// for link communication (MULTI/NORMAL/UART) — the closest a machine
+    /// gets to announcing "I want a cable". Games park the port in the
+    /// general-purpose (GPIO) or JOY modes otherwise, and link menus
+    /// re-assert their comms mode constantly, so this tracks menu
+    /// entry/exit closely.
+    pub fn sio_comms_active(&mut self, i: usize) -> bool {
+        let mode = unsafe { (*gba_ptr(&mut self.cores[i])).sio.mode };
+        matches!(
+            mode,
+            mgba_sys::GBASIOMode_GBA_SIO_NORMAL_8
+                | mgba_sys::GBASIOMode_GBA_SIO_NORMAL_32
+                | mgba_sys::GBASIOMode_GBA_SIO_MULTI
+                | mgba_sys::GBASIOMode_GBA_SIO_UART
+        )
+    }
+
+    /// Core `i`'s current SRAM/flash/EEPROM image, or `None` if the game
+    /// has no savedata (type never detected). Read straight from the live
+    /// savedata buffer — the pair to [`Link::capture_boot_state`], since
+    /// core savestates do not carry savedata.
+    pub fn export_save(&mut self, i: usize) -> Option<Vec<u8>> {
+        unsafe {
+            let gba = gba_ptr(&mut self.cores[i]);
+            let savedata = std::ptr::addr_of!((*gba).memory.savedata);
+            let size = mgba_sys::GBASavedataSize(savedata);
+            let data = (*savedata).data;
+            if size == 0 || data.is_null() {
+                return None;
+            }
+            Some(std::slice::from_raw_parts(data as *const u8, size).to_vec())
+        }
     }
 
     /// Number of players (cores) on this link.
@@ -225,7 +369,7 @@ impl Link {
     }
 
     pub fn player_id(&self, i: usize) -> i32 {
-        self.drivers[i].player_id()
+        self.drivers.get(i).map(|d| d.player_id()).unwrap_or(0)
     }
 
     /// Core `i`'s rendered frame (240x160, mgba's native 16-bit XBGR1555),
@@ -275,7 +419,7 @@ impl Link {
         while self.cores[REFERENCE].as_ref().frame_counter() != target {
             let mut progressed = false;
             for i in 0..self.cores.len() {
-                if self.drivers[i].asleep() {
+                if self.drivers.get(i).is_some_and(|d| d.asleep()) {
                     continue;
                 }
                 if i == REFERENCE && self.cores[REFERENCE].as_ref().frame_counter() == target {
@@ -426,6 +570,55 @@ fn normalize_cpu_cycles(state: &mut mgba::state::State) {
     bytes[OFF_CPU_CYCLES..OFF_CPU_CYCLES + 4].copy_from_slice(&0i32.to_le_bytes());
     bytes[OFF_CPU_NEXT_EVENT..OFF_CPU_NEXT_EVENT + 4].copy_from_slice(&next_event.to_le_bytes());
     bytes[OFF_GLOBAL_CYCLES..OFF_GLOBAL_CYCLES + 8].copy_from_slice(&global.to_le_bytes());
+}
+
+/// Load a serialized boot state (from [`Link::capture_boot_state`]) into a
+/// freshly reset core with NO SIO driver installed, then neutralize the
+/// cable-dependent SIO state: the capture describes the OLD cable (or the
+/// lack of one), and this core is about to be on a new one.
+///
+/// - The SIOCNT mode bits are stripped from the shadow register, so the
+///   game's next SIOCNT write reads as a mode switch and re-announces the
+///   game's link mode to whatever driver is attached by then. Hot-attach
+///   discovery depends on this: the lockstep protocol propagates a player's
+///   mode via `setMode` events, and a core loaded already-in-mode would
+///   otherwise never fire one — no peer ever reports ready. (Real link
+///   menus re-assert their mode constantly; that re-assert is the plug-in
+///   handshake, same as on hardware.)
+/// - The SIOCNT line/status bits (slave, ready, multi-ID, busy) are
+///   stripped too: `GBASIOWriteSIOCNT` ORs the previous shadow's bits 2-7
+///   back into every write, so a stale 1 (e.g. the slave bit every
+///   unplugged GBA reads, or the busy bit of a transfer the unplug killed)
+///   would survive re-derivation forever.
+/// - Any pending transfer-completion event is descheduled: it belongs to a
+///   transfer on the old cable.
+/// - SIOMLT_SEND is never serialized at all, so it rides as a 2-byte tail
+///   on the blob and is poked back here.
+fn load_boot_state(core: &mut mgba::core::Core, blob: &[u8]) -> Result<(), mgba::Error> {
+    let state_len = std::mem::size_of::<mgba::state::State>();
+    if blob.len() != state_len + 2 {
+        return Err(mgba::Error::CallFailed("boot state has the wrong length"));
+    }
+    let (state_bytes, siomlt) = blob.split_at(state_len);
+    // Sound per State::from_slice's contract: exact size, and the bytes came
+    // from capture_boot_state on a compatible core.
+    let state = unsafe { mgba::state::State::from_slice(state_bytes) };
+    core.as_mut().load_state(&state)?;
+    restore_sio_complete(core, None);
+    unsafe {
+        let gba = gba_ptr(core);
+        let io = &mut (*gba).memory.io;
+        io[REG_SIOMLT_SEND] = u16::from_le_bytes(siomlt.try_into().unwrap());
+        (*gba).sio.siocnt = io[REG_SIOCNT] & !0x30fc;
+        (*gba).sio.rcnt = io[REG_RCNT];
+        // Mode derivation per sio.c's _switchMode, over the neutralized
+        // shadow. A driver attached after this reads the core's mode from
+        // here at registration.
+        let mode = (((*gba).sio.rcnt & 0xc000) | ((*gba).sio.siocnt & 0x3000)) >> 12;
+        let mode = if mode < 8 { mode & 0x3 } else { mode & 0xc };
+        (*gba).sio.mode = mode as mgba_sys::GBASIOMode;
+    }
+    Ok(())
 }
 
 /// Raw C-side view of a core's GBA, for the completion-event surgery below.

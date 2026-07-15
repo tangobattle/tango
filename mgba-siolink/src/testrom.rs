@@ -3,16 +3,29 @@
 //! stands in for one. The same image runs on every unit of a 2-4 player
 //! link (role and slot read from SIOCNT's slave and multi-ID bits).
 //!
-//! Protocol per iteration `c`: each unit preloads SIOMLT_SEND with
-//! `c+1 | id << 14` (the multi ID in the top two bits keeps the payloads
-//! distinguishable per player), the master burns a settle delay so every
-//! slave's preload always lands first, then starts the transfer and spins
-//! on the busy bit; each slave spins until SIOMULTI0 shows the master's
-//! `c+1`. Every unit then appends all four SIOMULTI registers to a log at
-//! 0x02000000 and loops. Unattached slots read back 0xFFFF, exactly like
-//! a real multi cable with nothing plugged in. The EWRAM logs double as a
-//! desync canary: every core in the link must record the identical
-//! sequence.
+//! Like a real game's link menu, the ROM tolerates the cable being plugged
+//! or unplugged at any point: nothing trusts a state that only held at
+//! boot. Every iteration re-asserts SIOCNT (refreshing the ready, slave,
+//! and multi-ID bits from whatever is on the cable now), no unit owns a
+//! counter — the next expected word is always `last observed SIOMULTI0 +
+//! 1` — and every wait is bounded, falling back to the re-assert rather
+//! than spinning on a partner that may be gone.
+//!
+//! Protocol per exchange: each unit preloads SIOMLT_SEND with
+//! `expected | id << 14` (the multi ID in the top two bits keeps the
+//! payloads distinguishable per player), the master burns a settle delay
+//! so every slave's preload always lands first, then starts the transfer
+//! and polls the busy bit; each slave watches for SIOMULTI0 to change to
+//! a fresh non-0xFFFF word. Every unit then appends all four SIOMULTI
+//! registers to a log at 0x02000000 and adopts the master's word as its
+//! new `last`. From a common reset the logged sequence is exactly
+//! `payload(slot, k)` per entry `k`; after a mid-run plug-in the units
+//! converge on the master's numbering from the second exchange on.
+//! Unattached slots read back 0xFFFF, exactly like a real multi cable
+//! with nothing plugged in, and a unit alone on the cable records nothing
+//! (an unplugged mgba GBA reads back the slave bit, so it parks in the
+//! bounded slave wait). The EWRAM logs double as a desync canary: every
+//! core in the link must record the identical sequence.
 
 const ENTRY_WORD: u32 = 0xC0 / 4;
 
@@ -144,27 +157,29 @@ pub fn build() -> Vec<u8> {
     asm.emit(orr_imm(AL, 0, 0, 14, 0x12)); // r0 |= 0x120
     asm.emit(mov_imm(1, 0, 0));
     asm.emit(strh(1, 0, RCNT)); // RCNT = 0
+    asm.emit(mov_imm(3, 0, 0xFF));
+    asm.emit(orr_imm(AL, 3, 3, 12, 0xFF)); // r3 = 0xFFFF (an undriven line)
+    asm.emit(mov_imm(5, 4, 0x02)); // r5 = 0x02000000 (log)
+    asm.emit(mov_imm(9, 0, 0)); // r9 = last observed master word
+
+    // Re-assert point: refresh SIOCNT from whatever is on the cable now
+    // and preload this unit's send. Every wait below falls back here.
+    let outer = asm.here();
+    asm.emit(add_imm(8, 9, 1)); // r8 = last + 1 — the next master word
     asm.emit(mov_imm(1, 10, 0x02)); // r1 = 0x2000 (MULTI)
     asm.emit(orr_imm(AL, 1, 1, 0, 3)); // baud 115200
-    asm.emit(strh(1, 0, SIOCNT));
-    asm.emit(mov_imm(4, 0, 0)); // r4 = counter
-    asm.emit(mov_imm(5, 4, 0x02)); // r5 = 0x02000000 (log)
-
-    let ready = asm.here();
+    asm.emit(strh(1, 0, SIOCNT)); // the rewrite refreshes ready/slave/id
     asm.emit(ldrh(1, 0, SIOCNT));
     asm.emit(tst_imm(1, 0, 8)); // all units ready?
-    asm.branch(EQ, ready);
-
-    let main_loop = asm.here();
-    asm.emit(add_imm(8, 4, 1)); // r8 = c + 1 (master payload, every unit's expectation)
-    asm.emit(ldrh(1, 0, SIOCNT));
+    asm.branch(EQ, outer);
     asm.emit(and_imm(2, 1, 0, 0x30)); // r2 = multi ID bits (SIOCNT 4-5)
-    asm.emit(orr_reg_lsl(7, 8, 2, 10)); // r7 = c+1 | id << 14 — this unit's payload
+    asm.emit(orr_reg_lsl(7, 8, 2, 10)); // r7 = expected | id << 14 — this unit's payload
     asm.emit(strh(7, 0, SIOMLT_SEND));
     asm.emit(tst_imm(1, 0, 4)); // slave?
     let to_slave = asm.branch_fixup(NE);
 
-    // Master: give the slaves a settle window, then clock the transfer.
+    // Master: give the slaves a settle window, then clock the transfer and
+    // poll the busy bit — bounded, since an unplug can strand it set.
     asm.emit(mov_imm(6, 12, 0x08)); // r6 = 0x800
     let mdelay = asm.here();
     asm.emit(subs_imm(6, 6, 1));
@@ -172,30 +187,45 @@ pub fn build() -> Vec<u8> {
     asm.emit(ldrh(1, 0, SIOCNT));
     asm.emit(orr_imm(AL, 1, 1, 0, 0x80)); // start
     asm.emit(strh(1, 0, SIOCNT));
+    asm.emit(mov_imm(6, 12, 0x80)); // r6 = 0x8000
     let mbusy = asm.here();
     asm.emit(ldrh(1, 0, SIOCNT));
     asm.emit(tst_imm(1, 0, 0x80));
+    let to_record_master = asm.branch_fixup(EQ);
+    asm.emit(subs_imm(6, 6, 1));
     asm.branch(NE, mbusy);
-    let to_record = asm.branch_fixup(AL);
+    asm.branch(AL, outer);
 
-    // Slave: wait for the master's word for this iteration to land.
+    // Slave: watch for a fresh master word — bounded, since with no master
+    // on the cable none ever comes.
     let slave = asm.here();
+    asm.emit(mov_imm(6, 12, 0x40)); // r6 = 0x4000
+    let swait = asm.here();
     asm.emit(ldrh(2, 0, SIOMULTI0));
-    asm.emit(cmp_reg(2, 8));
-    asm.branch(NE, slave);
+    asm.emit(cmp_reg(2, 9)); // unchanged since the last exchange?
+    let to_snext = asm.branch_fixup(EQ);
+    asm.emit(cmp_reg(2, 3)); // 0xFFFF: no master drove the line
+    let to_record_slave = asm.branch_fixup(NE);
+    let snext = asm.here();
+    asm.patch_branch(to_snext, snext);
+    asm.emit(subs_imm(6, 6, 1));
+    asm.branch(NE, swait);
+    asm.branch(AL, outer);
 
-    // Record all four SIOMULTI slots (unattached ones read 0xFFFF).
+    // Record all four SIOMULTI slots (unattached ones read 0xFFFF), then
+    // adopt the master's word as the new `last`.
     let record = asm.here();
     for slot in 0..LOG_ENTRY_HALFWORDS as u32 {
         asm.emit(ldrh(2, 0, SIOMULTI0 + slot * 2));
         asm.emit(strh(2, 5, slot * 2));
     }
     asm.emit(add_imm(5, 5, 2 * LOG_ENTRY_HALFWORDS as u32));
-    asm.emit(add_imm(4, 4, 1));
-    asm.branch(AL, main_loop);
+    asm.emit(ldrh(9, 0, SIOMULTI0));
+    asm.branch(AL, outer);
 
     asm.patch_branch(to_slave, slave);
-    asm.patch_branch(to_record, record);
+    asm.patch_branch(to_record_master, record);
+    asm.patch_branch(to_record_slave, record);
 
     let mut rom = Vec::with_capacity(1024);
     for w in &asm.words {
