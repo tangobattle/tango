@@ -68,8 +68,10 @@ pub const MAX_QUEUE_LENGTH: usize = RECONNECT_QUEUE_LENGTH + STALL_HEADROOM;
 /// Inclusive bounds for a side's `frame_delay`, which is realized purely as
 /// local frame delay (how far the display trails the netcode frontier).
 /// Each side picks its own; there's no negotiation. The lobby slider and config
-/// clamp to this range.
-pub const MIN_FRAME_DELAY: u32 = 2;
+/// clamp to this range. 0 presents the frontier itself — pure rollback, every
+/// misprediction visible immediately; the default (`default_frame_delay`, 2)
+/// stays above it, and the ping-based suggestion never lands below 1.
+pub const MIN_FRAME_DELAY: u32 = 0;
 pub const MAX_FRAME_DELAY: u32 = 10;
 
 pub fn suggest_frame_delay(rtt: std::time::Duration) -> u32 {
