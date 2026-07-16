@@ -51,6 +51,48 @@ pub(crate) fn new_gba_core(rom: &[u8]) -> anyhow::Result<mgba::core::Core> {
     Ok(core)
 }
 
+/// A pause flag a drive thread can block on — flag + condvar instead of a
+/// poll-sleep, so a parked loop costs zero wakeups. `wait` carries a
+/// defensive timeout so a cancellation signalled without a `set(false)`
+/// (or a lost notify) degrades to a slow re-check instead of a wedge;
+/// cancel paths should still release the gate for a prompt exit.
+pub(crate) struct PauseGate {
+    paused: std::sync::Mutex<bool>,
+    unpaused: std::sync::Condvar,
+}
+
+impl PauseGate {
+    /// Upper bound on one `wait` — how long a parked loop can take to
+    /// notice out-of-band state (cancellation) nobody notified for.
+    const DEFENSIVE_TICK: std::time::Duration = std::time::Duration::from_millis(250);
+
+    pub fn new(paused: bool) -> Self {
+        Self {
+            paused: std::sync::Mutex::new(paused),
+            unpaused: std::sync::Condvar::new(),
+        }
+    }
+
+    pub fn paused(&self) -> bool {
+        *self.paused.lock().unwrap()
+    }
+
+    pub fn set(&self, paused: bool) {
+        *self.paused.lock().unwrap() = paused;
+        if !paused {
+            self.unpaused.notify_all();
+        }
+    }
+
+    /// Park until unpaused or the defensive tick elapses (returns
+    /// immediately if not paused). Callers loop around this, re-checking
+    /// their cancellation flag between waits.
+    pub fn wait(&self) {
+        let g = self.paused.lock().unwrap();
+        let _ = self.unpaused.wait_timeout_while(g, Self::DEFENSIVE_TICK, |paused| *paused).unwrap();
+    }
+}
+
 /// At most one of these can be active at a time: replay playback,
 /// single-player, or PvP. The variants share enough surface (vbuf,
 /// close-request) that the view + tick loop wrap them uniformly.

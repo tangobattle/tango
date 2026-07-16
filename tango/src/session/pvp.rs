@@ -45,10 +45,11 @@ const IN_MATCH_HEARTBEAT: std::time::Duration =
 /// cosmetic.
 const RECONNECT_UI_TICK: std::time::Duration = std::time::Duration::from_millis(33);
 
-/// How long the drive loop sleeps per iteration while paused (reconnect) or
-/// stalled (peer far behind) — just short enough to react promptly when the
-/// condition clears.
-const PAUSED_TICK: std::time::Duration = std::time::Duration::from_millis(10);
+/// The stalled drive loop's block on the remote-input queue, per
+/// iteration: a peer input wakes it immediately; the timeout only bounds
+/// how long cancellation and the supervisor's queue_len metric wait for
+/// their next look. (The reconnect pause parks on a PauseGate instead.)
+const STALL_TICK: std::time::Duration = std::time::Duration::from_millis(10);
 
 /// Grace window after a successful reconnect during which the stall watchdog
 /// is suppressed. On reconnect the local input queue is still pegged at
@@ -281,7 +282,7 @@ impl PvpSession {
         let completed = Arc::new(AtomicBool::new(false));
         let frame_delay = Arc::new(AtomicU32::new(frame_delay));
         let metrics = Arc::new(Metrics::default());
-        let drive_paused = Arc::new(AtomicBool::new(false));
+        let drive_paused = Arc::new(crate::session::PauseGate::new(false));
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
         let tps_counter = Arc::new(Mutex::new(crate::session::stats::Counter::new(60)));
         vbuf.lock().unwrap().fill(0);
@@ -687,7 +688,7 @@ struct DriveContext {
     joyflags: Arc<AtomicU32>,
     frame_delay: Arc<AtomicU32>,
     metrics: Arc<Metrics>,
-    drive_paused: Arc<AtomicBool>,
+    drive_paused: Arc<crate::session::PauseGate>,
     cancel: tokio_util::sync::CancellationToken,
     completed: Arc<AtomicBool>,
     end: EndState,
@@ -754,8 +755,11 @@ impl DriveContext {
             if self.cancel.is_cancelled() {
                 break;
             }
-            if self.drive_paused.load(Ordering::Relaxed) {
-                std::thread::sleep(PAUSED_TICK);
+            if self.drive_paused.paused() {
+                // Park on the gate (the reconnect supervisor releases it
+                // on every exit path); restart the cadence from the wake
+                // so paused time doesn't accrue pacing debt.
+                self.drive_paused.wait();
                 next_tick = std::time::Instant::now();
                 continue;
             }
@@ -797,7 +801,20 @@ impl DriveContext {
             let queue_len = match_.local_queue_length() as u32;
             self.metrics.queue_len.store(queue_len, Ordering::Relaxed);
             if queue_len as usize >= tango_pvp::battle::RECONNECT_QUEUE_LENGTH && match_.matchable() == 0 {
-                std::thread::sleep(PAUSED_TICK);
+                // Block on the event queue rather than poll it: the only
+                // thing that clears a stall is the peer's next input, and
+                // it arrives exactly here. Ingest it and loop — the drain
+                // + stall re-check above decide whether we're unstuck.
+                match self.event_rx.recv_timeout(STALL_TICK) {
+                    Ok(tango_pvp::net::Event::Input(input)) => {
+                        match_.add_remote_input(input.joyflags as u32, input.tick_advantage);
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                    // Sender gone (link swap in flight): the supervisor
+                    // owns what happens next — hold the old poll cadence
+                    // rather than hot-spinning on a dead channel.
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => std::thread::sleep(STALL_TICK),
+                }
                 next_tick = std::time::Instant::now();
                 continue;
             }
@@ -1031,7 +1048,7 @@ struct SupervisorContext {
     completed: Arc<AtomicBool>,
     cancel: tokio_util::sync::CancellationToken,
     metrics: Arc<Metrics>,
-    drive_paused: Arc<AtomicBool>,
+    drive_paused: Arc<crate::session::PauseGate>,
     frame_notify: Arc<tokio::sync::Notify>,
 }
 
@@ -1195,7 +1212,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
             // converge on the rebuild: whoever trips first goes silent,
             // which stall-trips the other within RECONNECT_QUEUE_LENGTH
             // frames.
-            drive_paused.store(true, Ordering::Relaxed);
+            drive_paused.set(true);
             frame_notify.notify_one();
             log::info!("pvp link dropped — pausing to reconnect");
 
@@ -1225,7 +1242,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
                 // Timed out or cancelled — give up and end the match.
                 end.remote_disconnected.store(true, Ordering::Release);
                 cancel.cancel();
-                drive_paused.store(false, Ordering::Relaxed);
+                drive_paused.set(false);
                 break;
             }
 
@@ -1240,7 +1257,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
             // so the stale-high `queue_len` can't instantly re-trip the stall
             // and bounce us straight back into another reconnect.
             drain_until = Some(std::time::Instant::now() + RECONNECT_DRAIN_GRACE);
-            drive_paused.store(false, Ordering::Relaxed);
+            drive_paused.set(false);
             frame_notify.notify_one();
             log::info!("pvp transparently reconnected the link");
         }
@@ -1250,7 +1267,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
         // `is_ended` (the drive loop may already be gone, so no frame is
         // coming).
         link.retire_latency();
-        drive_paused.store(false, Ordering::Relaxed);
+        drive_paused.set(false);
         frame_notify.notify_one();
     });
 }

@@ -170,7 +170,7 @@ struct Engine {
     local_player: usize,
     /// Lock-free playhead mirror for UI reads.
     cursor: Arc<AtomicU32>,
-    paused: Arc<AtomicBool>,
+    paused: Arc<crate::session::PauseGate>,
     /// Pacing target, f32 bits (60 × speed factor).
     fps_bits: Arc<AtomicU32>,
     snapshots: tango_pvp::playback::SnapshotStore,
@@ -189,6 +189,8 @@ type SharedSioPlayback = Arc<Mutex<Option<tango_pvp::playback::Playback>>>;
 impl Drop for Engine {
     fn drop(&mut self) {
         self.cancel.store(true, Ordering::Relaxed);
+        // Release a gate-parked drive thread so the join below is prompt.
+        self.paused.set(false);
         self.seek.shutdown();
         for h in self.threads.drain(..) {
             let _ = h.join();
@@ -313,7 +315,7 @@ impl ReplaySession {
 
         let playback: SharedSioPlayback = Arc::new(Mutex::new(None));
         let cursor = Arc::new(AtomicU32::new(0));
-        let paused = Arc::new(AtomicBool::new(false));
+        let paused = Arc::new(crate::session::PauseGate::new(false));
         let fps_bits = Arc::new(AtomicU32::new(EXPECTED_FPS.to_bits()));
         let snapshots = sio_playback::SnapshotStore::new();
         let rewind = sio_playback::RewindRing::new();
@@ -465,7 +467,7 @@ impl ReplaySession {
                             &mut |snap| {
                                 surfaces.publish_snapshot(snap);
                             },
-                            &mut || paused.store(false, Ordering::Relaxed),
+                            &mut || paused.set(false),
                         );
                     }
                 })?,
@@ -592,7 +594,7 @@ impl ReplaySession {
     }
 
     pub fn is_paused(&self) -> bool {
-        self.engine.paused.load(Ordering::Relaxed)
+        self.engine.paused.paused()
     }
 
     /// Drive playback at `factor * 60` fps. 1.0 = realtime, 0.5 =
@@ -613,7 +615,7 @@ impl ReplaySession {
     pub fn set_paused(&self, paused: bool) {
         // Unpausing at end-of-stream is a no-op — the drive loop
         // re-pauses before running a frame.
-        self.engine.paused.store(paused, Ordering::Relaxed);
+        self.engine.paused.set(paused);
     }
 
     /// Playhead position on the seek bar: the recorded-frame index =
@@ -867,10 +869,6 @@ impl Surfaces {
     }
 }
 
-/// How long the SIO drive loop sleeps between pause checks — same
-/// cadence as the PvP drive loop's.
-const SIO_PAUSED_TICK: std::time::Duration = std::time::Duration::from_millis(16);
-
 /// Body of the SIO playback drive thread: boot + prime the pair (the
 /// slow part — the session shows black + silence until it's done), then
 /// pace the linear re-sim at the published fps target, capturing every
@@ -883,7 +881,7 @@ fn run_drive(
     inputs: Arc<Vec<[u32; 2]>>,
     playback: SharedSioPlayback,
     cursor: Arc<AtomicU32>,
-    paused: Arc<AtomicBool>,
+    paused: Arc<crate::session::PauseGate>,
     fps_bits: Arc<AtomicU32>,
     snapshots: tango_pvp::playback::SnapshotStore,
     rewind: tango_pvp::playback::RewindRing,
@@ -913,8 +911,11 @@ fn run_drive(
         if cancel.load(Ordering::Relaxed) {
             return;
         }
-        if paused.load(Ordering::Relaxed) {
-            std::thread::sleep(SIO_PAUSED_TICK);
+        if paused.paused() {
+            // Park on the gate (cancel releases it via Engine::drop);
+            // restart the cadence from the wake so paused time doesn't
+            // accrue pacing debt.
+            paused.wait();
             next_tick = std::time::Instant::now();
             continue;
         }
@@ -923,7 +924,7 @@ fn run_drive(
             let mut guard = playback.lock().unwrap();
             let Some(pb) = guard.as_mut() else { return };
             if pb.at_end() {
-                paused.store(true, Ordering::Relaxed);
+                paused.set(true);
                 continue;
             }
             pb.step();
