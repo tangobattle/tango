@@ -16,8 +16,8 @@ rand.workspace = true
 rand_pcg.workspace = true
 serde.workspace = true
 serde_repr = "0.1"
-getgud = { path = "../getgud" }
-mgba-siolink = { path = "../mgba-siolink" }
+getgud.workspace = true
+mgba-siolink.workspace = true
 shell-words = "1"
 tango-dataview = { path = "../tango-dataview" }
 tempfile = "3"

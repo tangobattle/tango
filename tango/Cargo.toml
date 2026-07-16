@@ -50,7 +50,7 @@ open = "5"
 bps = { git = "https://github.com/tangobattle/bps" }
 discord-ipc = { git = "https://github.com/tangobattle/discord-ipc" }
 mgba.workspace = true
-rennet = { path = "../rennet" }
+rennet.workspace = true
 tango-pvp = { path = "../tango-pvp" }
 tango-filesync = { git = "https://github.com/tangobattle/tango-filesync" }
 tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }

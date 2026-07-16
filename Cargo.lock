@@ -1974,6 +1974,7 @@ dependencies = [
 [[package]]
 name = "getgud"
 version = "0.1.0"
+source = "git+https://github.com/tangobattle/getgud#0ce6135ba22bbeabdcb5a5c45835004f7a0a83a7"
 
 [[package]]
 name = "gethostname"
@@ -3298,6 +3299,7 @@ dependencies = [
 [[package]]
 name = "mgba-siolink"
 version = "0.1.0"
+source = "git+https://github.com/tangobattle/mgba-siolink#d5cca2a6970ca0ac7df4cff12919be4235b276dc"
 dependencies = [
  "crc32fast",
  "getgud",
@@ -4920,6 +4922,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 [[package]]
 name = "rennet"
 version = "0.1.0"
+source = "git+https://github.com/tangobattle/rennet#0b45832f457b6e08e3f1853e824789aa94f09779"
 
 [[package]]
 name = "reqwest"
