@@ -1,16 +1,16 @@
 //! Audio for SIO-engine sessions: the host output stream plays one of
-//! the pair's cores directly — [`MGBAStream`]'s pull-and-resample shape
-//! and its faux clock (when the host paces the sim below the native
-//! tick rate, playback stretches by the same ratio; the fps target is
-//! read through a host-supplied closure since there's no mgba-thread
-//! sync to read it from). The one MGBAStream ingredient that CANNOT
-//! carry over is the audio-sync high water: there, a full buffer pauses
-//! the emulator until the callback consumes, but neither a netplay
-//! lockstep sim (the match clock owns its pacing) nor a paced replay
-//! drive loop may be paused by audio. Buffer-level regulation therefore
-//! moves to the consumption side: a small occupancy servo (±0.5%,
-//! inaudible) trims the resample ratio to hold the core's queue at a
-//! fixed level against timing jitter, and a discard cap sheds the
+//! the pair's cores directly — the same pull-and-resample shape and
+//! faux clock as the single-player stream (when the host paces the sim
+//! below the native tick rate, playback stretches by the same ratio;
+//! the fps target is read through a host-supplied closure since the
+//! host drive loop owns pacing). The one single-player ingredient that
+//! CANNOT carry over is the audio-clock high water: there, a full
+//! buffer pauses the emulator until the callback consumes, but neither
+//! a netplay lockstep sim (the match clock owns its pacing) nor a paced
+//! replay drive loop may be paused by audio. Buffer-level regulation
+//! therefore moves to the consumption side: a small occupancy servo
+//! (±0.5%, inaudible) trims the resample ratio to hold the core's queue
+//! at a fixed level against timing jitter, and a discard cap sheds the
 //! backlog a deep rollback re-simulation dumps (duplicate audio for
 //! re-simmed ticks) in one skip instead of replaying it.
 //!
@@ -18,8 +18,6 @@
 //! so readout interleaves between ticks. A stalled sim (reconnect
 //! pause, replay pause) still drains the queue and goes silent —
 //! there's genuinely nothing to play.
-//!
-//! [`MGBAStream`]: crate::platform::audio::MGBAStream
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -129,7 +127,7 @@ impl crate::platform::audio::Stream for PairStream {
             // resolution and CHANGES at runtime (BN4+ flip from 32768 to
             // 65536 Hz after boot), so it's re-read every fill.
             let rate = core.as_ref().audio_sample_rate() as f64;
-            // The faux clock, exactly as MGBAStream: production scales
+            // The faux clock, exactly as the single-player stream: production scales
             // with the sim's pace, so a throttled sim stretches playback
             // by the same ratio instead of starving it.
             let faux_clock = core.as_ref().calculate_framerate_ratio(fps_target as f64);

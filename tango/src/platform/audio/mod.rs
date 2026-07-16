@@ -1,7 +1,7 @@
-//! Audio core: a Stream trait, a late-binding mux so the host
-//! output stream can outlive any one session, and the MGBAStream
-//! adapter that pulls samples out of an mgba thread and resamples
-//! to the host rate.
+//! Audio core: a Stream trait and a late-binding mux so the host
+//! output stream can outlive any one session. Sessions bind their own
+//! Stream impls (each pulls samples out of its core(s) and resamples
+//! to the host rate).
 
 pub mod sdl;
 
@@ -80,18 +80,6 @@ impl LateBinder {
         Ok(Binding { binder: self.clone() })
     }
 
-    /// Bind a running mgba thread's audio output to this binder. Every session
-    /// does this identically; a failed bind is logged (tagged with `context`)
-    /// and downgraded to silence rather than aborting the session.
-    pub fn bind_mgba(&self, handle: mgba::thread::Handle, context: &str) -> Option<Binding> {
-        match self.bind(Some(Box::new(MGBAStream::new(handle, self.sample_rate())))) {
-            Ok(b) => Some(b),
-            Err(e) => {
-                log::warn!("{context}: audio bind failed: {e:?}");
-                None
-            }
-        }
-    }
 }
 
 impl Stream for LateBinder {
@@ -121,72 +109,3 @@ impl Stream for LateBinder {
     }
 }
 
-/// Pulls audio out of a running mgba thread, resampling from mGBA's
-/// internal rate to the host audio rate. The high-water adjustment
-/// follows the same formula as mGBA's SDL frontend so high-SOUNDBIAS
-/// games (Battle Network 4+) don't starve.
-pub struct MGBAStream {
-    handle: mgba::thread::Handle,
-    sample_rate: u32,
-    resampler: mgba::audio::AudioResampler,
-    dest_buffer: mgba::audio::AudioBuffer,
-    /// Tracked separately because `mAudioBuffer` doesn't expose
-    /// capacity through the Rust binding; grown lazily in `fill`.
-    dest_capacity: usize,
-}
-
-impl MGBAStream {
-    pub fn new(handle: mgba::thread::Handle, sample_rate: u32) -> MGBAStream {
-        let dest_capacity = SAMPLES * 2;
-        Self {
-            handle,
-            sample_rate,
-            resampler: mgba::audio::AudioResampler::new(),
-            dest_buffer: mgba::audio::AudioBuffer::new(dest_capacity, NUM_CHANNELS as u32),
-            dest_capacity,
-        }
-    }
-}
-
-impl Stream for MGBAStream {
-    fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize {
-        let frame_count = buf.len();
-        let linear_buf: &mut [i16] = bytemuck::cast_slice_mut(buf);
-
-        let mut audio_guard = self.handle.lock_audio();
-        let mut fps_target = audio_guard.sync().fps_target();
-        if fps_target <= 0.0 {
-            fps_target = 1.0;
-        }
-
-        let (core_rate, faux_clock) = {
-            let core = audio_guard.core_mut();
-            (
-                core.as_ref().audio_sample_rate() as f64,
-                core.as_ref().calculate_framerate_ratio(fps_target as f64),
-            )
-        };
-
-        let dest_rate = self.sample_rate as f64 * faux_clock;
-        let high_water = (frame_count as f64 + 16.0 + frame_count as f64 / 64.0) * core_rate / dest_rate;
-        audio_guard.sync_mut().set_audio_high_water(high_water as u32);
-
-        let needed = frame_count.saturating_mul(2);
-        if needed > self.dest_capacity {
-            let new_capacity = needed.next_power_of_two().max(SAMPLES * 2);
-            self.dest_buffer = mgba::audio::AudioBuffer::new(new_capacity, NUM_CHANNELS as u32);
-            self.dest_capacity = new_capacity;
-        }
-
-        let mut core = audio_guard.core_mut();
-        let mut core_buffer = core.audio_buffer();
-        self.resampler.set_source(&mut core_buffer, core_rate, true);
-        self.resampler.set_destination(&mut self.dest_buffer, dest_rate);
-        self.resampler.process();
-
-        let available = self.dest_buffer.available().min(frame_count);
-        self.dest_buffer
-            .read(&mut linear_buf[..available * NUM_CHANNELS], available);
-        available
-    }
-}
