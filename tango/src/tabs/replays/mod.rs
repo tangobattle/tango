@@ -210,7 +210,7 @@ pub enum Effect {
     /// for scaled exports.
     OpenExportSaveDialog { replay: std::path::PathBuf, lossless: bool },
     /// User confirmed an export. App decodes the replay, resolves
-    /// hooks + ROMs, spawns the tango_pvp::replay::export task,
+    /// hooks + ROMs, spawns the crate::replay_export task,
     /// and streams `Message::ExportProgress` / `ExportFinished`
     /// back into this module.
     StartExport {

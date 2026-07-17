@@ -510,7 +510,7 @@ impl App {
         }
     }
 
-    /// Spawn the tango_pvp::replay::export task with a progress
+    /// Spawn the crate::replay_export task with a progress
     /// callback that forwards into the replays-tab message
     /// stream. The user-picked output path + form snapshot come
     /// from the tab module's `ExportStart` effect.
@@ -627,7 +627,7 @@ impl App {
                 } else {
                     Some(user_settings.scale as usize)
                 };
-                let mut settings = tango_pvp::replay::export::Settings::default_with_scale(scale_arg);
+                let mut settings = crate::replay_export::Settings::default_with_scale(scale_arg);
                 settings.disable_bgm = user_settings.disable_bgm;
                 // Clone the sender into the callback. The original
                 // `progress_tx` stays alive on the thread scope until
@@ -676,7 +676,7 @@ impl App {
                     rtc: replay.rtc_time(),
                     disable_bgm: user_settings.disable_bgm,
                 };
-                let result = tango_pvp::replay::export::export(
+                let result = crate::replay_export::export(
                     &config,
                     &inputs,
                     local_player,

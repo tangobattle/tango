@@ -641,12 +641,9 @@ mod tests {
     }
 
     async fn recv_joyflags(rx: &mut crate::net::PvpReceiver, n: usize) -> Vec<u16> {
-        use tango_pvp::net::Receiver as _;
         let mut got = vec![];
         while got.len() < n {
-            match rx.receive().await.expect("receive") {
-                tango_pvp::net::Event::Input(input) => got.push(input.joyflags),
-            }
+            got.push(rx.receive().await.expect("receive").joyflags);
         }
         got
     }

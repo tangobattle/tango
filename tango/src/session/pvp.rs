@@ -25,7 +25,35 @@ use std::sync::{Arc, Mutex};
 use tango_pvp::engine::{Match, MatchConfig};
 use tango_pvp::telemetry;
 
-pub use tango_pvp::battle::EXPECTED_FPS;
+/// GBA video framerate in frames per second.
+pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
+
+/// Inclusive bounds for a side's `frame_delay`, which is realized purely as
+/// local frame delay (how far the display trails the netcode frontier).
+/// Each side picks its own; there's no negotiation. The lobby slider and config
+/// clamp to this range. 0 presents the frontier itself — pure rollback, every
+/// misprediction visible immediately; the default (`default_frame_delay`, 2)
+/// stays above it, and the ping-based suggestion never lands below 1.
+pub const MIN_FRAME_DELAY: u32 = 0;
+pub const MAX_FRAME_DELAY: u32 = 10;
+
+pub fn suggest_frame_delay(rtt: std::time::Duration) -> u32 {
+    let one_way_frames = (rtt.as_millis() * 60 / 2 / std::time::Duration::from_secs(1).as_millis()) as i32;
+    (one_way_frames + 1).clamp(MIN_FRAME_DELAY as i32, MAX_FRAME_DELAY as i32) as u32
+}
+
+/// Picks the per-match local_player_index. Both peers must call this with
+/// the same shared RNG state at the same point in the protocol so they end
+/// up on opposite sides. Advances the RNG by one draw.
+fn pick_local_player_index(rng: &mut rand_pcg::Mcg128Xsl64, is_offerer: bool) -> u8 {
+    use rand::Rng;
+    let did_polite_win = rng.gen::<bool>();
+    if did_polite_win == is_offerer {
+        0
+    } else {
+        1
+    }
+}
 
 /// Upper bound on how long `is_ended` waits for the peer's
 /// `EndOfMatch` packet after local completion. Wide enough to
@@ -53,7 +81,7 @@ const STALL_TICK: std::time::Duration = std::time::Duration::from_millis(10);
 
 /// Grace window after a successful reconnect during which the stall watchdog
 /// is suppressed. On reconnect the local input queue is still pegged at
-/// [`tango_pvp::battle::RECONNECT_QUEUE_LENGTH`] — that's *why* we reconnected
+/// [`crate::net::data::RECONNECT_QUEUE_LENGTH`] — that's *why* we reconnected
 /// — and the resumed drive loop only drains it back down as the peer's resent
 /// window arrives. Without this grace the still-high `queue_len` would re-trip
 /// the stall the instant the supervisor loops back, re-pausing the drive loop
@@ -245,7 +273,7 @@ impl PvpSession {
         // both peers derive the same assignment, mirrored.
         use rand::SeedableRng;
         let mut rng = rand_pcg::Mcg128Xsl64::from_seed(pre_match.rng_seed);
-        let local_player_index = tango_pvp::battle::pick_local_player_index(&mut rng, pre_match.is_offerer);
+        let local_player_index = pick_local_player_index(&mut rng, pre_match.is_offerer);
 
         // The match clock, pinned into both carts' RTC and recorded in the
         // replay metadata so playback re-primes to the identical state.
@@ -297,7 +325,7 @@ impl PvpSession {
         // Remote input events flow receive-task → drive thread over this
         // queue; the rennet reassembly in PvpReceiver already ordered and
         // deduplicated them (one Input per remote tick, in tick order).
-        let (event_tx, event_rx) = std::sync::mpsc::channel::<tango_pvp::net::Event>();
+        let (event_tx, event_rx) = std::sync::mpsc::channel::<crate::net::data::Input>();
 
         // The sender pump: the drive thread pushes one Input per advance;
         // the pump ships each as a rennet frame over the unreliable channel.
@@ -453,7 +481,7 @@ impl PvpSession {
     /// out-of-range caller.
     pub fn set_frame_delay(&self, frame_delay: u32) {
         self.frame_delay.store(
-            frame_delay.clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY),
+            frame_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
             Ordering::Relaxed,
         );
     }
@@ -692,7 +720,7 @@ struct DriveContext {
     cancel: tokio_util::sync::CancellationToken,
     completed: Arc<AtomicBool>,
     end: EndState,
-    event_rx: std::sync::mpsc::Receiver<tango_pvp::net::Event>,
+    event_rx: std::sync::mpsc::Receiver<crate::net::data::Input>,
     sender: crate::net::PvpSender,
     in_match: crate::net::InMatchTx,
     replay_writer: Option<tango_pvp::replay::Writer>,
@@ -721,7 +749,7 @@ impl DriveContext {
             local_player: pieces.local_player,
             present_delay: pieces
                 .present_delay
-                .clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY),
+                .clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
             disable_bgm: pieces.disable_bgm,
         }) {
             Ok(m) => m,
@@ -772,12 +800,8 @@ impl DriveContext {
 
             // Drain the network before advancing: every confirmed tick we
             // ingest now is a rollback we don't take deeper.
-            for event in self.event_rx.try_iter() {
-                match event {
-                    tango_pvp::net::Event::Input(input) => {
-                        match_.add_remote_input(input.joyflags as u32, input.tick_advantage);
-                    }
-                }
+            for input in self.event_rx.try_iter() {
+                match_.add_remote_input(input.joyflags as u32, input.tick_advantage);
             }
 
             // Stall guard: the peer is too far behind (or gone) — advancing
@@ -800,13 +824,13 @@ impl DriveContext {
             // link (nothing matchable) parks here.
             let queue_len = match_.local_queue_length() as u32;
             self.metrics.queue_len.store(queue_len, Ordering::Relaxed);
-            if queue_len as usize >= tango_pvp::battle::RECONNECT_QUEUE_LENGTH && match_.matchable() == 0 {
+            if queue_len as usize >= crate::net::data::RECONNECT_QUEUE_LENGTH && match_.matchable() == 0 {
                 // Block on the event queue rather than poll it: the only
                 // thing that clears a stall is the peer's next input, and
                 // it arrives exactly here. Ingest it and loop — the drain
                 // + stall re-check above decide whether we're unstuck.
                 match self.event_rx.recv_timeout(STALL_TICK) {
-                    Ok(tango_pvp::net::Event::Input(input)) => {
+                    Ok(input) => {
                         match_.add_remote_input(input.joyflags as u32, input.tick_advantage);
                     }
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
@@ -838,14 +862,13 @@ impl DriveContext {
             // Ship this tick's local input. Push-before-send semantics live
             // in the pump; a transport error is non-terminal (the heartbeat
             // retransmits once the reconnect swaps a live channel back in).
-            if tango_pvp::net::Sender::send(
-                &mut self.sender,
-                &tango_pvp::net::Event::Input(tango_pvp::net::Input {
+            if self
+                .sender
+                .send(&crate::net::data::Input {
                     joyflags: outgoing.keys as u16,
                     tick_advantage: outgoing.tick_advantage,
-                }),
-            )
-            .is_err()
+                })
+                .is_err()
             {
                 log::warn!("pvp: send pump terminated; ending match");
                 self.end.remote_disconnected.store(true, Ordering::Release);
@@ -895,8 +918,8 @@ impl DriveContext {
                     if let Err(e) = w.write_input(
                         self.local_player as u8,
                         &(
-                            tango_pvp::input::PartialInput { joyflags: local },
-                            tango_pvp::input::PartialInput { joyflags: remote },
+                            tango_pvp::input::Input { joyflags: local },
+                            tango_pvp::input::Input { joyflags: remote },
                         ),
                     ) {
                         log::warn!("pvp: replay write failed (recording stops): {e}");
@@ -989,8 +1012,8 @@ impl DriveContext {
                 let _ = w.write_input(
                     self.local_player as u8,
                     &(
-                        tango_pvp::input::PartialInput { joyflags: local },
-                        tango_pvp::input::PartialInput { joyflags: remote },
+                        tango_pvp::input::Input { joyflags: local },
+                        tango_pvp::input::Input { joyflags: remote },
                     ),
                 );
             }
@@ -1043,7 +1066,7 @@ impl DriveContext {
 struct SupervisorContext {
     link: Arc<crate::net::link::Link>,
     in_match: crate::net::InMatchTx,
-    event_tx: std::sync::mpsc::Sender<tango_pvp::net::Event>,
+    event_tx: std::sync::mpsc::Sender<crate::net::data::Input>,
     end: EndState,
     completed: Arc<AtomicBool>,
     cancel: tokio_util::sync::CancellationToken,
@@ -1057,13 +1080,13 @@ struct SupervisorContext {
 /// supervisor's).
 async fn run_receive_pump(
     mut receiver: crate::net::PvpReceiver,
-    event_tx: std::sync::mpsc::Sender<tango_pvp::net::Event>,
+    event_tx: std::sync::mpsc::Sender<crate::net::data::Input>,
     frame_notify: Arc<tokio::sync::Notify>,
 ) -> std::io::Error {
     loop {
-        match tango_pvp::net::Receiver::receive(&mut receiver).await {
-            Ok(event) => {
-                if event_tx.send(event).is_err() {
+        match receiver.receive().await {
+            Ok(input) => {
+                if event_tx.send(input).is_err() {
                     return std::io::Error::new(std::io::ErrorKind::BrokenPipe, "drive thread gone");
                 }
                 // Remote inputs settle ticks; make sure a paused/idle UI
@@ -1152,7 +1175,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
             let stall_watch = async {
                 loop {
                     let queue_len = metrics.queue_len.load(Ordering::Relaxed) as usize;
-                    if queue_len < tango_pvp::battle::RECONNECT_QUEUE_LENGTH {
+                    if queue_len < crate::net::data::RECONNECT_QUEUE_LENGTH {
                         drain_until = None;
                     } else if drain_until.is_none_or(|t| std::time::Instant::now() >= t) {
                         return;

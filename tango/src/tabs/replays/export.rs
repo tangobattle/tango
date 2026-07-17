@@ -214,7 +214,7 @@ pub struct ExportJob {
     /// chrome (button greys out, caption flips to "Cancelling…") and
     /// lets `Message::ExportFinished` distinguish a user-cancelled
     /// run from a real failure.
-    pub canceller: tango_pvp::replay::export::Canceller,
+    pub canceller: crate::replay_export::Canceller,
 }
 
 impl ExportJob {
@@ -224,7 +224,7 @@ impl ExportJob {
             total: 0,
             result: None,
             output,
-            canceller: tango_pvp::replay::export::Canceller::new(),
+            canceller: crate::replay_export::Canceller::new(),
         }
     }
 }
@@ -251,7 +251,7 @@ pub struct PerReplay {
 }
 
 /// User-tunable settings the export form passes to
-/// `tango_pvp::replay::export::export(...)`. Defaults match the
+/// `crate::replay_export::export(...)`. Defaults match the
 /// legacy replay-dump window.
 #[derive(Clone, Copy, Debug)]
 pub struct ExportSettings {
@@ -261,8 +261,8 @@ pub struct ExportSettings {
     pub scale: u8,
     pub disable_bgm: bool,
     /// Render both players' screens side-by-side (480x160 frame)
-    /// instead of just the local POV. Routes the export through
-    /// `tango_pvp::replay::export::export_twosided`.
+    /// instead of just the local POV. Passed through as the export's
+    /// `twosided` flag.
     pub twosided: bool,
 }
 

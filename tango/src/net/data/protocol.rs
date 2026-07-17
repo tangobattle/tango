@@ -38,12 +38,12 @@ const KIND_END_OF_MATCH: u8 = 1;
 /// window can't exceed the rollback horizon (the out-stream trims it to that),
 /// so a datagram claiming more is malformed or hostile; rennet enforces this in
 /// [`Frame::decode`](rennet::Frame::decode) via [`InMatch::MAX_RUN`].
-const MAX_ENTRIES: usize = tango_pvp::battle::MAX_QUEUE_LENGTH;
+const MAX_ENTRIES: usize = super::MAX_QUEUE_LENGTH;
 
 /// Rollback horizon for the in-match reliability streams: a gap wider than this
-/// can't be rolled back to, so the receiver bails. Matches the engine's input
-/// buffer cap (`round.rs` bails locally at the same depth).
-pub const HORIZON: u32 = tango_pvp::battle::MAX_QUEUE_LENGTH as u32;
+/// can't be rolled back to, so the receiver bails. Sized to the input-buffer
+/// budget ([`super::MAX_QUEUE_LENGTH`]).
+pub const HORIZON: u32 = super::MAX_QUEUE_LENGTH as u32;
 
 /// Cumulative ack frontier — re-exported so callers keep saying `protocol::Ack`.
 pub use rennet::Ack;

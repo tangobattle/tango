@@ -25,7 +25,7 @@ use iced::widget::{button, container, text};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
 use sweeten::widget::{column, row};
-use tango_pvp::battle::suggest_frame_delay;
+use crate::session::pvp::suggest_frame_delay;
 use unic_langid::LanguageIdentifier;
 
 use super::{ready_button_style, Message, ReadyPalette};
@@ -421,7 +421,7 @@ impl<'a> Lobby<'a> {
         // negotiation. Each increment is one GBA frame (~16.7 ms) of
         // added display latency.
         let slider = iced::widget::slider(
-            tango_pvp::battle::MIN_FRAME_DELAY..=tango_pvp::battle::MAX_FRAME_DELAY,
+            crate::session::pvp::MIN_FRAME_DELAY..=crate::session::pvp::MAX_FRAME_DELAY,
             self.frame_delay,
             gated(inert, Message::SetFrameDelay),
         )

@@ -78,7 +78,7 @@ struct EvalWorld {
 }
 
 impl getgud::World for EvalWorld {
-    type Input = tango_pvp::input::PartialInput;
+    type Input = tango_pvp::input::Input;
     type State = u32;
     type Error = std::convert::Infallible;
 
@@ -98,7 +98,7 @@ impl getgud::World for EvalWorld {
     }
 
     fn predict(&self, last: &Self::Input) -> Self::Input {
-        tango_pvp::input::PartialInput {
+        tango_pvp::input::Input {
             joyflags: last.joyflags & self.mask,
         }
     }
@@ -176,7 +176,7 @@ fn run_round(local: &[u16], remote: &[u16], depth: u32, mask: u16) -> RunAgg {
     let steps = Rc::new(Cell::new(0u64));
     let mut session = getgud::Session::new(getgud::SessionParams {
         present_delay: 0,
-        initial_remotes: vec![tango_pvp::input::PartialInput { joyflags: 0 }],
+        initial_remotes: vec![tango_pvp::input::Input { joyflags: 0 }],
         initial_state: 0u32,
         world: EvalWorld {
             mask,
@@ -192,7 +192,7 @@ fn run_round(local: &[u16], remote: &[u16], depth: u32, mask: u16) -> RunAgg {
         while delivered + lag <= t {
             session.add_remote_input(
                 0,
-                tango_pvp::input::PartialInput {
+                tango_pvp::input::Input {
                     joyflags: remote[delivered],
                 },
                 0,
@@ -201,7 +201,7 @@ fn run_round(local: &[u16], remote: &[u16], depth: u32, mask: u16) -> RunAgg {
         }
         let (tick, tip_remote) = {
             let frame = session
-                .advance(tango_pvp::input::PartialInput { joyflags: local[t] })
+                .advance(tango_pvp::input::Input { joyflags: local[t] })
                 .unwrap();
             (frame.tick, frame.remotes[0].joyflags)
         };
@@ -386,7 +386,7 @@ fn main() {
 
     let corpus = load_corpus(&paths);
     let total_ticks: usize = corpus.rounds.iter().map(|r| r.p1.len()).sum();
-    let fps = tango_pvp::battle::EXPECTED_FPS as f64;
+    let fps = 16777216.0 / 280896.0; // GBA frames per second
     println!(
         "corpus: {} files → {} matches ({} undecodable), {} rounds, {:.1}M ticks (~{:.1} h of play)",
         corpus.files,

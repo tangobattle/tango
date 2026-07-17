@@ -1,4 +1,3 @@
-pub mod export;
 mod protos;
 
 use byteorder::ReadBytesExt;
@@ -60,7 +59,7 @@ pub struct Replay {
     pub local_player_index: u8,
     pub rng_seed: [u8; 16],
     /// Each side's SRAM dump as
-    /// [`tango_dataview::save::Save::to_sram_dump`] produces it — ready
+    /// `tango_dataview::save::Save::to_sram_dump` produces it — ready
     /// to hand to `mgba::core::Core::load_save` without further
     /// conversion. Replays prior to schema version 0x1B stored raw
     /// WRAM here and reassembled SRAM on read.
@@ -68,7 +67,7 @@ pub struct Replay {
     pub remote_sram: Vec<u8>,
     /// One continuous run of (local, remote) pair ticks from session
     /// start — the stream as recorded, not segmented.
-    pub inputs: Vec<(crate::input::PartialInput, crate::input::PartialInput)>,
+    pub inputs: Vec<(crate::input::Input, crate::input::Input)>,
     /// Indices into `inputs` where a round starts (records whose
     /// ROUND_START flag was set). The first entry is always 0 when
     /// `inputs` is non-empty — recordings that predate the markers
@@ -179,7 +178,7 @@ impl Replay {
         // for the per-record encoding. `0x00` ends the stream cleanly;
         // any unexpected EOF mid-record drops the partial record and
         // leaves is_complete=false.
-        let mut inputs: Vec<(crate::input::PartialInput, crate::input::PartialInput)> = Vec::new();
+        let mut inputs: Vec<(crate::input::Input, crate::input::Input)> = Vec::new();
         let mut round_starts: Vec<usize> = Vec::new();
         let mut is_complete = false;
         let mut prev: (u16, u16) = (0, 0);
@@ -224,8 +223,8 @@ impl Replay {
 
             prev = (p1, p2);
 
-            let p1_input = crate::input::PartialInput { joyflags: p1 };
-            let p2_input = crate::input::PartialInput { joyflags: p2 };
+            let p1_input = crate::input::Input { joyflags: p1 };
+            let p2_input = crate::input::Input { joyflags: p2 };
             let (local, remote) = if local_player_index == 0 {
                 (p1_input, p2_input)
             } else {
@@ -300,7 +299,7 @@ impl Writer {
     pub fn write_input(
         &mut self,
         local_player_index: u8,
-        ip: &(crate::input::PartialInput, crate::input::PartialInput),
+        ip: &(crate::input::Input, crate::input::Input),
     ) -> std::io::Result<()> {
         let (local, remote) = ip;
         let (p1, p2) = if local_player_index == 0 {

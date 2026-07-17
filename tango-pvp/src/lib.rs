@@ -25,23 +25,16 @@
 //!   the live session and offline replay re-analysis.
 //!
 //! - [`replay`]: the replay file format ([`replay::VERSION`] — one
-//!   continuous run of confirmed pair-tick input pairs) and the ffmpeg
-//!   export pipeline.
+//!   continuous run of confirmed pair-tick input pairs).
 //!
-//! - [`battle`]: match identity, netcode sizing constants, and the
-//!   stats sample encoding.
+//! - [`battle`]: the per-tick stats sample encoding.
 //!
-//! - [`input`]: the joyflags input types that cross the wire and land
-//!   in replays.
-//!
-//! - [`net`]: `Sender` / `Receiver` traits for the in-flight network
-//!   abstraction.
+//! - [`input`]: the joyflags input type that lands in replays.
 
 pub mod analysis;
 pub mod battle;
 pub mod engine;
 pub mod input;
-pub mod net;
 pub mod playback;
 pub mod replay;
 pub mod telemetry;
@@ -88,6 +81,11 @@ pub use mgba_siolink::Link;
 /// Cross-thread readout handle to a running match's pair (see
 /// [`Match::pair_handle`](engine::Match::pair_handle)).
 pub use mgba_siolink::session::LinkHandle;
+
+/// Per-tick observer hook, re-exported for hosts that step a
+/// [`playback::Playback`] themselves and feed each tick to a
+/// [`telemetry::Telemetry`] observer (e.g. tango's replay video export).
+pub use mgba_siolink::session::TickObserver;
 
 /// Match parameters the primer needs before the games can negotiate the
 /// rest themselves over the emulated cable.

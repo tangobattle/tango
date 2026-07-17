@@ -21,6 +21,9 @@ mod save_view;
 mod session;
 mod tabs;
 
+// The replays tab's ffmpeg encode pipeline (runs on its own thread).
+mod replay_export;
+
 // Side services, and the app shell that ties everything together.
 mod app;
 mod discord;

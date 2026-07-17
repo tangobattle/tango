@@ -3,7 +3,7 @@
 //! [`Session`](mgba_siolink::session::Session) with per-tick RAM-poll
 //! telemetry over it.
 //!
-//! This is the [`crate::battle::Match`] analogue for the SIO engine, but
+//! This is the trap engine's `Match` analogue for the SIO engine, but
 //! much smaller: there is no shadow, no per-round `Round` object, and no
 //! trap-driven netcode. The host drives it directly — [`advance`] once
 //! per frame with the local joypad — and reads video, telemetry, and

@@ -520,7 +520,7 @@ dependencies = [
  "bitflags 2.11.1",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -2970,7 +2970,7 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 [[package]]
 name = "libdatachannel"
 version = "0.2.0+0.24.3"
-source = "git+https://github.com/tangobattle/libdatachannel-rs#0e6891f13b3d63a248b1299fb2680e5a53a2c63e"
+source = "git+https://github.com/tangobattle/libdatachannel-rs#ac727a98fe064ad96dc5754af10b49086e86dbf6"
 dependencies = [
  "libdatachannel-sys",
  "log",
@@ -2982,7 +2982,7 @@ dependencies = [
 [[package]]
 name = "libdatachannel-sys"
 version = "0.24.3"
-source = "git+https://github.com/tangobattle/libdatachannel-rs#0e6891f13b3d63a248b1299fb2680e5a53a2c63e"
+source = "git+https://github.com/tangobattle/libdatachannel-rs#ac727a98fe064ad96dc5754af10b49086e86dbf6"
 dependencies = [
  "bindgen",
  "cmake",
@@ -3007,7 +3007,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -3288,7 +3288,7 @@ dependencies = [
 [[package]]
 name = "mgba"
 version = "4.0.32"
-source = "git+https://github.com/tangobattle/mgba-rs#419b497764fc9ff0030d54809e77fffe1b7ae591"
+source = "git+https://github.com/tangobattle/mgba-rs#24af75bf1ba179a5f2337530fe4190756e258e57"
 dependencies = [
  "log",
  "mgba-sys",
@@ -3311,7 +3311,7 @@ dependencies = [
 [[package]]
 name = "mgba-sys"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/mgba-rs#419b497764fc9ff0030d54809e77fffe1b7ae591"
+source = "git+https://github.com/tangobattle/mgba-rs#24af75bf1ba179a5f2337530fe4190756e258e57"
 dependencies = [
  "bindgen",
  "cc",
@@ -4565,7 +4565,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6c3320f9abac597dcbc668774ef006702672474aad53c6d596b62e487b40b1"
 dependencies = [
  "heck",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "multimap",
  "once_cell",
@@ -4585,7 +4585,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9120690fafc389a67ba3803df527d0ec9cbbc9cc45e4cc20b332996dfb672425"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "syn",
@@ -5868,6 +5868,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sha3",
+ "shell-words",
  "steamlocate",
  "subtle",
  "sweeten",
@@ -5883,6 +5884,7 @@ dependencies = [
  "tango-gamesupport-exe45",
  "tango-pvp",
  "tango-signaling",
+ "tempfile",
  "thiserror 1.0.69",
  "tiny-skia",
  "tokio",
@@ -6069,23 +6071,16 @@ name = "tango-pvp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "bytemuck",
  "byteorder",
  "getgud",
- "image",
  "log",
  "mgba",
  "mgba-siolink",
  "prost",
  "prost-build",
- "rand",
- "rand_pcg",
  "serde",
  "serde_repr",
- "shell-words",
- "tango-dataview",
- "tempfile",
  "tokio",
  "tokio-util",
  "zstd",

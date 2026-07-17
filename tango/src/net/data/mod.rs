@@ -4,8 +4,8 @@
 //! generic [`rennet`] frame codec + redundancy-window / cumulative-ack
 //! reliability streams), plus the [`InMatchTx`] / [`PvpSender`] / [`PvpReceiver`]
 //! adapters that run them over the unreliable in-match channel and present the
-//! engine's ordered `tango_pvp::net::Event` stream. Loss-tolerant by design — it
-//! never assumes the reliable/ordered guarantee the control plane relies on.
+//! match's ordered [`Input`] stream. Loss-tolerant by design — it never assumes
+//! the reliable/ordered guarantee the control plane relies on.
 
 pub mod protocol;
 
@@ -55,19 +55,77 @@ impl Receiver {
 type OutStream = rennet::OutStream<protocol::InMatch>;
 type InStream = rennet::InStream<protocol::InMatch>;
 
-/// Send-pump queue depth. Deeper than the engine's unacked-local-input cap
-/// so that under a genuinely stalled wire the engine's overflow bail fires
-/// before the pump's channel ever blocks the frame — backpressure semantics
-/// match the old inline send. The slack on top covers the non-Input events
-/// interleaved into the same channel (one `EndOfRound` per round).
-const SEND_PUMP_DEPTH: usize = tango_pvp::battle::MAX_QUEUE_LENGTH + 8;
+/// In-match input-buffer budget — two coupled depths expressed as one.
+///
+/// The depth the session waits for before declaring a dead link and the
+/// rollback horizon the match bails at used to be tuned by hand (the former as
+/// a silence *duration*) and could drift apart. [`RECONNECT_QUEUE_LENGTH`] is
+/// now the single knob; [`MAX_QUEUE_LENGTH`] (the horizon) is *derived* from it,
+/// so the horizon can't end up smaller than the depth it has to out-cover.
+///
+/// Why watch the queue and not elapsed silence: a dead link keeps the sim
+/// committing ~one local input per displayed frame (the throttler caps its
+/// slowdown, so it never fully stalls) with nothing from the peer to match them
+/// against, so the local input queue climbs steadily. The session polls that
+/// depth directly and pauses to reconnect once it reaches
+/// [`RECONNECT_QUEUE_LENGTH`]. Measuring the very resource that overflows — not
+/// a time proxy for it — means the trip can't drift from the bail no matter how
+/// fast the throttled sim actually grows the queue: the watchdog always fires a
+/// fixed margin below the horizon.
+///
+/// That margin is [`STALL_HEADROOM`]: it covers the watchdog's poll interval and
+/// the frame or two the pause takes to land, plus a safety factor — sized so the
+/// overflow bail can never beat the watchdog + pause to the punch.
+///
+/// The session ([`crate::session::pvp`]) reads [`RECONNECT_QUEUE_LENGTH`] back
+/// to drive its watchdog. Lower it to trip reconnect sooner (the horizon shrinks
+/// with it); raise it to ride out longer blips (the horizon grows). Nothing else
+/// to retune.
+///
+/// 180 frames ≈ 3 s of play (at 60 fps, just above the GBA frame rate).
+pub const RECONNECT_QUEUE_LENGTH: usize = 180;
+
+/// Slack between the reconnect trip depth and the hard overflow bail — see
+/// [`RECONNECT_QUEUE_LENGTH`]. It need not match the trip depth itself; the slop
+/// it has to cover is a handful of frames, far short of the depth's worth of
+/// growth. 90 frames ≈ 1.5 s.
+const STALL_HEADROOM: usize = 90;
+
+/// Per-side input-queue capacity (the rollback horizon): how many local inputs
+/// may sit unmatched against remote ones (and vice versa) before the match
+/// bails ([`InMatchTx`]'s reassembly errors once a gap blows past it). Derived
+/// from [`RECONNECT_QUEUE_LENGTH`] — see that constant for the budget. The
+/// backpressure bound other layers size against (the send pump, rennet's
+/// redundancy window and reorder buffer via [`protocol::HORIZON`]); anything
+/// queueing inputs upstream can hold a bit more and rely on this bail — or the
+/// session's earlier reconnect pause — firing first.
+pub const MAX_QUEUE_LENGTH: usize = RECONNECT_QUEUE_LENGTH + STALL_HEADROOM;
+
+/// Send-pump queue depth. Deeper than the unacked-local-input cap so that
+/// under a genuinely stalled wire the overflow bail fires before the pump's
+/// channel ever blocks the frame — backpressure semantics match the old
+/// inline send. The slack on top is margin, nothing sized against it.
+const SEND_PUMP_DEPTH: usize = MAX_QUEUE_LENGTH + 8;
 
 /// Upper bound on the outstanding-send timestamps kept for RTT measurement.
 /// The deque is trimmed by the peer's acks every frame, so it stays tiny in
 /// steady state; this only bounds the book-keeping if the peer goes silent
 /// (acks stop), at which point a sample beyond the rollback horizon would be
 /// meaningless anyway. Sized to the horizon for that reason.
-const MAX_RTT_SAMPLES: usize = tango_pvp::battle::MAX_QUEUE_LENGTH;
+const MAX_RTT_SAMPLES: usize = MAX_QUEUE_LENGTH;
+
+/// One tick's input as it crosses the wire, oriented to its sender: the
+/// committed local joyflags for that tick, plus the sender's local tick
+/// advantage at send time — how far its local input leads the remote input
+/// it has received (the input queue's signed lead). The receiver subtracts
+/// the advantage from its own to get the raw skew that drives the time-sync
+/// throttler ([`tango_pvp::Throttler`]). Tick is positional — seq order on
+/// the wire, never embedded.
+#[derive(Clone, Debug)]
+pub struct Input {
+    pub joyflags: u16,
+    pub tick_advantage: i16,
+}
 
 /// Shared per-match stream state: the outbound seq/redundancy window
 /// ([`rennet::OutStream`]) and the inbound reorder/ack machinery
@@ -270,27 +328,23 @@ impl InMatchTx {
     }
 }
 
-/// `tango_pvp::net::Sender` adapter — pushes each per-frame `Event` through a
-/// bounded pump ([`SEND_PUMP_DEPTH`]) that ships it as a [`protocol`] frame over
-/// the unreliable in-match channel. The pump keeps the emulator thread off the
+/// Send adapter — pushes each per-frame [`Input`] through a bounded pump
+/// ([`SEND_PUMP_DEPTH`]) that ships it as a [`protocol`] frame over the
+/// unreliable in-match channel. The pump keeps the emulator thread off the
 /// shared sink mutex (also taken by the heartbeat's window resends) and off the
-/// await, and preserves Input/EndOfRound ordering into the out-stream's seq
-/// space.
+/// await, and preserves input ordering into the out-stream's seq space.
 pub struct PvpSender {
-    tx: tokio::sync::mpsc::Sender<tango_pvp::net::Event>,
+    tx: tokio::sync::mpsc::Sender<Input>,
 }
 
 impl PvpSender {
     pub fn new(im: InMatchTx) -> Self {
         // The retransmit heartbeat is the in-match channel's own concern
-        // (started by `InMatchTx::new`), so the pump just forwards events.
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<tango_pvp::net::Event>(SEND_PUMP_DEPTH);
+        // (started by `InMatchTx::new`), so the pump just forwards inputs.
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Input>(SEND_PUMP_DEPTH);
         tokio::spawn(async move {
-            while let Some(event) = rx.recv().await {
-                let result = match event {
-                    tango_pvp::net::Event::Input(input) => im.send_input(input.joyflags, input.tick_advantage).await,
-                };
-                if let Err(e) = result {
+            while let Some(input) = rx.recv().await {
+                if let Err(e) = im.send_input(input.joyflags, input.tick_advantage).await {
                     // Non-terminal: the element was pushed into the out-stream's
                     // window *before* the send await (see `send_frame_with`), so a
                     // failed send loses nothing — the heartbeat/next frame
@@ -303,10 +357,8 @@ impl PvpSender {
         });
         Self { tx }
     }
-}
 
-impl tango_pvp::net::Sender for PvpSender {
-    fn send(&mut self, event: &tango_pvp::net::Event) -> std::io::Result<()> {
+    pub fn send(&mut self, input: &Input) -> std::io::Result<()> {
         // blocking_send, not try_send: the pump channel feeds the reliable
         // out-stream window, so dropping here would lose an input *before* it
         // becomes retransmittable — a permanent hole in the ordered input
@@ -315,19 +367,19 @@ impl tango_pvp::net::Sender for PvpSender {
         // block_on then too), and is safe only because the emulator thread no
         // longer has a tokio runtime entered.
         self.tx
-            .blocking_send(event.clone())
+            .blocking_send(input.clone())
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pvp send pump terminated"))
     }
 }
 
-/// `tango_pvp::net::Receiver` adapter — reads [`protocol`] frames off the
-/// unreliable in-match channel, feeds them through the shared [`InMatchTx`]
-/// reassembly, and yields the resulting `Event`s in strict seq order. The ack
+/// Receive adapter — reads [`protocol`] frames off the unreliable in-match
+/// channel, feeds them through the shared [`InMatchTx`]
+/// reassembly, and yields the resulting [`Input`]s in strict seq order. The ack
 /// piggybacked on each frame drives both loss recovery and the latency readout:
 /// when it confirms one of our timestamped seqs, the round-trip is marked as a
 /// latency sample (there's no separate ping/pong probe). An in-band
 /// `EndOfMatch` marker raises `remote_ended`. One frame can deliver several
-/// elements, so surplus events buffer in `pending` and drain before the next
+/// elements, so surplus inputs buffer in `pending` and drain before the next
 /// read.
 pub struct PvpReceiver {
     receiver: Receiver,
@@ -343,8 +395,8 @@ pub struct PvpReceiver {
     /// Session subscription wake, pinged after `remote_ended` flips so
     /// `is_ended` is re-checked without waiting on the next vblank.
     end_of_match_notify: std::sync::Arc<tokio::sync::Notify>,
-    /// Elements made contiguous by the last frame but not yet yielded.
-    pending: std::collections::VecDeque<tango_pvp::net::Event>,
+    /// Inputs made contiguous by the last frame but not yet yielded.
+    pending: std::collections::VecDeque<Input>,
 }
 
 impl PvpReceiver {
@@ -364,14 +416,11 @@ impl PvpReceiver {
             pending: std::collections::VecDeque::new(),
         }
     }
-}
 
-#[async_trait::async_trait]
-impl tango_pvp::net::Receiver for PvpReceiver {
-    async fn receive(&mut self) -> std::io::Result<tango_pvp::net::Event> {
+    pub async fn receive(&mut self) -> std::io::Result<Input> {
         loop {
-            if let Some(event) = self.pending.pop_front() {
-                return Ok(event);
+            if let Some(input) = self.pending.pop_front() {
+                return Ok(input);
             }
             let msg = self.receiver.recv().await?;
             let frame = protocol::Frame::decode(&mut &msg[..])?;
@@ -388,11 +437,10 @@ impl tango_pvp::net::Receiver for PvpReceiver {
             for element in delivery.elements {
                 match element {
                     protocol::Element::Input(joyflags) => {
-                        self.pending
-                            .push_back(tango_pvp::net::Event::Input(tango_pvp::net::Input {
-                                joyflags,
-                                tick_advantage: delivery.meta.tick_advantage,
-                            }));
+                        self.pending.push_back(Input {
+                            joyflags,
+                            tick_advantage: delivery.meta.tick_advantage,
+                        });
                     }
                     protocol::Element::EndOfMatch => {
                         self.remote_ended.store(true, std::sync::atomic::Ordering::Release);

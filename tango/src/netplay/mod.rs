@@ -298,8 +298,8 @@ struct ConnectionHandles {
     peer_conn: datachannel_wrapper::PeerConnection,
     /// `true` iff we're the "offer side" for symmetry-breaking
     /// purposes — i.e. we wrote the SDP offer on the matchmaking path,
-    /// or we're the host on the direct link. Drives the
-    /// `Match::pick_local_player_index` tie-break.
+    /// or we're the host on the direct link. Drives the session's
+    /// `pick_local_player_index` tie-break.
     is_offerer: bool,
     /// Direct-link rebuild recipe for transparent mid-match reconnection,
     /// or `None` for the matchmaking transport. See

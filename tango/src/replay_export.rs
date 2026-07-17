@@ -1,8 +1,14 @@
+//! Replay video export: re-simulates a recorded replay through
+//! [`tango_pvp::playback`] and pipes the frames + audio through ffmpeg
+//! subprocesses into a video file. Fully synchronous — the app runs it on a
+//! dedicated thread ([`crate::app`]'s `spawn_replay_export`); the replays
+//! tab's inline panel ([`crate::tabs::replays`]) owns the [`Canceller`] and
+//! renders the progress callback.
+
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use byteorder::ByteOrder;
 use image::EncodableLayout;
 
 #[cfg(windows)]
@@ -345,8 +351,7 @@ impl EncodePipeline {
     /// Write one run of interleaved samples to audio track `track` as
     /// s16le bytes (the format the audio child was spawned to read).
     fn write_audio(&mut self, track: usize, samples: &[i16]) -> std::io::Result<()> {
-        let mut bytes = vec![0u8; samples.len() * 2];
-        byteorder::LittleEndian::write_i16_into(samples, &mut bytes[..]);
+        let bytes: Vec<u8> = samples.iter().flat_map(|s| s.to_le_bytes()).collect();
         self.audios[track].0.stdin().write_all(&bytes)
     }
 
@@ -380,7 +385,7 @@ impl EncodePipeline {
     }
 }
 
-/// Export an SIO replay ([`crate::replay::VERSION`]): one linear
+/// Export an SIO replay ([`tango_pvp::replay::VERSION`]): one linear
 /// pair re-sim produces both perspectives at once, so the two-sided
 /// layout is a compose of the two framebuffers rather than a second
 /// simulation. Round boundaries come from RAM-poll telemetry (the
@@ -390,7 +395,7 @@ impl EncodePipeline {
 /// written.
 #[allow(clippy::too_many_arguments)]
 pub fn export(
-    config: &crate::playback::BootConfig,
+    config: &tango_pvp::playback::BootConfig,
     inputs: &[[u32; 2]],
     local_player: usize,
     rounds_mask: &[bool],
@@ -414,14 +419,14 @@ pub fn export(
 
     // Boot + prime. This is ffmpeg-free but bounded (~a few hundred
     // ticks), so a cancel lands at the next loop check.
-    let lifecycle = crate::telemetry::LifecycleSink::new();
-    let mut pb = crate::playback::Playback::new(config, Arc::new(inputs.to_vec()), &lifecycle)?;
+    let lifecycle = tango_pvp::telemetry::LifecycleSink::new();
+    let mut pb = tango_pvp::playback::Playback::new(config, Arc::new(inputs.to_vec()), &lifecycle)?;
     // Drop the audio priming piled up (nothing drained during boot).
     for i in 0..2 {
         pb.pair_mut().core_mut(i).audio_buffer().clear();
     }
 
-    let (mut observer, telemetry_store) = crate::telemetry::Telemetry::new(
+    let (mut observer, telemetry_store) = tango_pvp::telemetry::Telemetry::new(
         [config.support[0].core_poller(0), config.support[1].core_poller(1)],
         lifecycle,
     );
@@ -443,10 +448,10 @@ pub fn export(
             anyhow::bail!("cancelled");
         }
         let tick = pb.cursor();
-        mgba_siolink::session::TickObserver::on_tick(&mut observer, pb.pair_mut(), tick);
+        tango_pvp::TickObserver::on_tick(&mut observer, pb.pair_mut(), tick);
         let (_, events) = telemetry_store.lock().unwrap().drain_confirmed(tick);
         for (_, event) in events {
-            if let crate::telemetry::RoundEvent::Started = event {
+            if let tango_pvp::telemetry::RoundEvent::Started = event {
                 rounds_started += 1;
             }
         }

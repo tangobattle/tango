@@ -31,7 +31,7 @@ use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, stack, text};
 use iced::{mouse, Alignment, Color, Element, Fill, Length, Point, Rectangle, Renderer, Theme};
 use lucide_icons::Icon;
-use tango_pvp::battle::{suggest_frame_delay, MAX_FRAME_DELAY, MIN_FRAME_DELAY};
+use pvp::{suggest_frame_delay, MAX_FRAME_DELAY, MIN_FRAME_DELAY};
 use unic_langid::LanguageIdentifier;
 
 /// Create the mgba core every session boots from: a GBA core with audio-sync
@@ -1331,9 +1331,7 @@ pub async fn spawn_pvp(
         pre_match,
         // Presentation delay is purely local — read straight from config (clamped
         // to the supported range), not negotiated with the peer.
-        frame_delay: config
-            .frame_delay
-            .clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY),
+        frame_delay: config.frame_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
         disable_bgm: config.disable_bgm_in_pvp,
         replays_path: &config.replays_path(),
         cache_path: &config.cache_path(),

@@ -110,6 +110,11 @@ tango-gamesupport-bn5 = { path = "../gamesupport/tango-gamesupport-bn5", optiona
 tango-gamesupport-bn6 = { path = "../gamesupport/tango-gamesupport-bn6", optional = true }
 tango-gamesupport-exe45 = { path = "../gamesupport/tango-gamesupport-exe45", optional = true }
 tango-dataview = { path = "../tango-dataview" }
+# Replay video export (`replay_export.rs`): shell-words splits the
+# ffmpeg flag strings into argv, tempfile holds the per-stream encoder
+# outputs until the final mux.
+shell-words = "1"
+tempfile = "3"
 walkdir = "2"
 directories-next = "2"
 log.workspace = true
