@@ -759,7 +759,7 @@ impl crate::session::ActiveSession for ReplaySession {
     }
 
     fn view<'a>(&'a self, ctx: crate::session::view::Ctx<'a>) -> iced::Element<'a, crate::session::Message> {
-        crate::session::view::replay_view(self, ctx)
+        crate::session::view::replay::view(self, ctx)
     }
 
     /// The opponent's screen, or the local one while swapped — `None`

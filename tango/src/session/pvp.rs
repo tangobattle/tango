@@ -477,10 +477,8 @@ impl PvpSession {
     /// coordination. Clamped to the supported range as a guard against an
     /// out-of-range caller.
     pub fn set_frame_delay(&self, frame_delay: u32) {
-        self.frame_delay.store(
-            frame_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
-            Ordering::Relaxed,
-        );
+        self.frame_delay
+            .store(frame_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY), Ordering::Relaxed);
     }
 
     /// `true` while the link has dropped and the session is transparently
@@ -603,7 +601,7 @@ impl crate::session::ActiveSession for PvpSession {
     }
 
     fn view<'a>(&'a self, ctx: crate::session::view::Ctx<'a>) -> iced::Element<'a, crate::session::Message> {
-        crate::session::view::pvp_view(self, ctx)
+        crate::session::view::pvp::view(self, ctx)
     }
 
     fn telemetry_sample(&self) -> Option<crate::session::MetricSample> {
@@ -618,9 +616,15 @@ impl crate::session::ActiveSession for PvpSession {
     /// leave.
     fn capture_results(&self) -> Option<crate::session::MatchResults> {
         if self.is_completed() {
-            Some(crate::session::MatchResults::capture(self, crate::session::MatchEnd::Completed))
+            Some(crate::session::MatchResults::capture(
+                self,
+                crate::session::MatchEnd::Completed,
+            ))
         } else if self.remote_disconnected() {
-            Some(crate::session::MatchResults::capture(self, crate::session::MatchEnd::Disconnected))
+            Some(crate::session::MatchResults::capture(
+                self,
+                crate::session::MatchEnd::Disconnected,
+            ))
         } else {
             None
         }
@@ -776,9 +780,7 @@ impl DriveContext {
             rng_seed: pieces.rng_seed,
             rtc: pieces.rtc,
             local_player: pieces.local_player,
-            present_delay: pieces
-                .present_delay
-                .clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
+            present_delay: pieces.present_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
             disable_bgm: pieces.disable_bgm,
         }) {
             Ok(m) => m,

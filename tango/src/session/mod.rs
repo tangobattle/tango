@@ -89,7 +89,10 @@ impl PauseGate {
     /// their cancellation flag between waits.
     pub fn wait(&self) {
         let g = self.paused.lock().unwrap();
-        let _ = self.unpaused.wait_timeout_while(g, Self::DEFENSIVE_TICK, |paused| *paused).unwrap();
+        let _ = self
+            .unpaused
+            .wait_timeout_while(g, Self::DEFENSIVE_TICK, |paused| *paused)
+            .unwrap();
     }
 }
 
@@ -144,9 +147,8 @@ pub trait ActiveSession: std::any::Any {
 
     /// Render this session's screen — the emulator pane plus this
     /// kind's chrome stack. Implementations delegate to their
-    /// concrete entry point in the [`view`] module
-    /// ([`view::replay_view`] and friends), which is where
-    /// kind-specific UI stays kind-typed.
+    /// concrete entry point ([`view::replay::view`] and friends),
+    /// which is where kind-specific UI stays kind-typed.
     fn view<'a>(&'a self, ctx: view::Ctx<'a>) -> Element<'a, Message>;
 
     /// Latest other-perspective frame for the picture-in-picture
@@ -197,7 +199,6 @@ pub trait ActiveSession: std::any::Any {
     fn is_ended(&self) -> bool {
         false
     }
-
 }
 
 impl dyn ActiveSession {
@@ -545,50 +546,17 @@ pub enum Message {
     /// session. Speed-up uses the same mechanism (edge-
     /// detected).
     Input(InputEvent),
-    /// Toggle play/pause on a replay session. No-op for single-player.
-    TogglePlay,
-    /// Scrub-bar drag in progress — fires per tick change while the
-    /// button is held. Pauses playback and blits the nearest prefetched
-    /// snapshot's framebuffer as an instant preview; the exact seek
-    /// waits for [`Message::ScrubCommit`]. Replay-only.
-    ScrubPreview(u32),
-    /// Scrub-bar drag released. Fires the real (asynchronous) seek to
-    /// the last previewed tick and resumes playback if it was running
-    /// when the drag started. Replay-only.
-    ScrubCommit(u32),
-    /// Cursor moved onto / along the scrub bar (`Some`) or off it
-    /// (`None`) without a button held. Drives the floating keyframe
-    /// thumbnail above the bar. Replay-only.
-    ScrubHover(Option<replay::scrubber::HoverInfo>),
-    /// Set the playback speed factor (1.0 = realtime). Replay-only.
-    SetSpeed(f32),
-    /// Toggle the input display overlay (the recorded pad state of
-    /// both sides, drawn over playback). Replay-only. The flag lives
-    /// in config — the App's wrapper flips + persists it, same as
-    /// [`Message::SetFrameDelay`]; nothing to do here.
-    ToggleInputDisplay,
-    /// Replay-only: toggle the opponent-screen picture-in-picture (the
-    /// transport bar's PiP button).
-    TogglePip,
-    /// Replay-only: swap which perspective the main screen shows (the
-    /// transport bar's swap button). Per-session, unlike the PiP — it
-    /// isn't persisted to config.
-    ToggleSwapPerspective,
-    /// A transport-bar dropdown (the speed menu) opened (`true`) or
-    /// closed (`false`) — [`crate::ui::widgets::MenuButton::on_toggle`].
-    /// While any overlay pane is up, iced hides the cursor from the
-    /// base tree (`Cursor::Unavailable`), so the bar's hover pin goes
-    /// blind exactly when the chrome must not hide or collapse under
-    /// the open pane — the dropdown reports its state instead.
-    BarMenuToggled(bool),
-    /// PvP-only: the match-settings frame-delay slider moved. Live-sets this
-    /// side's local frame delay on the running session; the App also persists it
-    /// to config. No peer coordination — it's purely a local display lag.
-    SetFrameDelay(u32),
-    /// PvP-only: open/close the match-settings popover anchored on the
-    /// telemetry plate (instrument panel). Mutually exclusive with the
-    /// options menu.
-    ToggleMatchSettings,
+    /// Replay-view messages (transport, scrubber, display toggles) —
+    /// defined + handled in [`view::replay`].
+    Replay(view::replay::Message),
+    /// PvP-view messages (frame delay, setup panels, save views,
+    /// disconnect confirm) — defined + handled in [`view::pvp`].
+    Pvp(view::pvp::Message),
+    /// Post-match results screen messages — defined in
+    /// [`view::results`]. Dismiss is handled here; WatchReplay by the
+    /// App wrapper (building a playback session needs the scanners +
+    /// config).
+    Results(view::results::Message),
     /// User pressed Esc inside a session. Dismisses whichever overlay
     /// is on top (settings modal, disconnect confirm, match-settings
     /// popover) if any, and arms the hold-to-quit timer — a tap never
@@ -606,22 +574,6 @@ pub enum Message {
     /// produces no frame wakes to run it — this keeps the overlay
     /// filling and the quit firing anyway.
     EscHoldTick,
-    /// Show the "really disconnect?" modal. PvP-only; picked from
-    /// the options menu's Disconnect item, which also dismisses
-    /// the popover.
-    OpenDisconnectConfirm,
-    /// Dismiss the disconnect confirm without disconnecting (the
-    /// Cancel button + the modal backdrop both fire this).
-    CloseDisconnectConfirm,
-    /// Show/hide the opponent's setup side panel. PvP-only.
-    ToggleOpponentPanel,
-    /// Show/hide the local player's save-view panel. PvP-only.
-    ToggleSelfPanel,
-    /// User interacted with the opponent's save-view (tab swap,
-    /// folder-group toggle, hover, …). PvP-only.
-    OpponentSaveViewAction(save_view::Action),
-    /// Mirror of [`OpponentSaveViewAction`] for the local panel.
-    SelfSaveViewAction(save_view::Action),
     /// Show the in-session Settings overlay. The emulator keeps
     /// running; only the visible body swaps. Replaces the
     /// legacy in-game pause menu.
@@ -638,13 +590,6 @@ pub enum Message {
     /// [`FrameSink`] notify — `notify_one()`'d by both the frame
     /// callback and the PvP end-detection wires.
     UpdateFramebuffer,
-    /// Dismiss the post-match results screen (its Done button, or Esc
-    /// while it's on screen) — back to the tabs.
-    DismissResults,
-    /// Play back the replay recorded for the match on the results screen.
-    /// Handled by the App wrapper (building a playback session needs the
-    /// scanners + config); a no-op here.
-    WatchResultsReplay,
     /// Click-swallower for modal panel chrome — keeps presses
     /// on the panel's inert regions from falling through to the
     /// dismiss-on-press backdrop layer beneath it.
@@ -709,9 +654,7 @@ impl State {
         // UpdateFramebuffer messages re-run this, so the idle
         // timer expires without needing its own timer source; a
         // paused replay (no frames) pins the bar visible anyway.
-        let replay_paused = self
-            .active_as::<replay::ReplaySession>()
-            .is_some_and(|r| r.is_paused());
+        let replay_paused = self.active_as::<replay::ReplaySession>().is_some_and(|r| r.is_paused());
         // The telemetry panel (match_settings) deliberately
         // doesn't count: it lives in the permanently-visible
         // top-right indicator, independent of the HUD controls,
@@ -851,64 +794,16 @@ impl State {
                     }
                 }
             }
-            Message::TogglePlay => self.toggle_replay_play(),
-            Message::ScrubPreview(target) => {
-                // Field-level borrow (not `active_as`): `scrub` is
-                // mutated while the session ref is live.
-                if let Some(s) = self.active.as_deref().and_then(|s| s.downcast_ref::<replay::ReplaySession>()) {
-                    self.scrub.drag(target, s);
-                }
-                // The drag blits its keyframes to the main screen —
-                // the floating hover thumbnail is redundant under it.
-                self.scrub.hover = None;
-            }
-            Message::ScrubCommit(target) => {
-                if let Some(s) = self.active_as::<replay::ReplaySession>() {
-                    s.seek_to(target, self.scrub.resume);
-                }
-                self.scrub.end_drag();
-            }
-            Message::ScrubHover(hover) => {
-                self.scrub.hover = hover;
-                // Field-level borrow (not `active_as`): `scrub` is
-                // mutated while the session ref is live.
-                if let Some(s) = self.active.as_deref().and_then(|s| s.downcast_ref::<replay::ReplaySession>()) {
-                    self.scrub.refresh_thumb(s);
-                }
-            }
-            Message::SetSpeed(factor) => {
-                if let Some(s) = self.active.as_ref() {
-                    s.set_speed(factor);
-                }
-            }
-            Message::ToggleInputDisplay => {
-                // Config-owned flag; the App wrapper flips + persists it
-                // before this dispatch. The view reads it from config.
-            }
-            Message::TogglePip => {
-                if let Some(s) = self.active_as::<replay::ReplaySession>() {
-                    s.toggle_pip();
-                }
-            }
-            Message::ToggleSwapPerspective => {
-                if let Some(s) = self.active_as::<replay::ReplaySession>() {
-                    s.toggle_swap_perspective();
-                }
-            }
-            Message::SetFrameDelay(d) => {
-                // Purely local frame delay — apply straight to the running
-                // PvP session. Config persistence happens in the App's
-                // `Message::Session` handler (it owns config).
-                if let Some(s) = self.active_as::<pvp::PvpSession>() {
-                    s.set_frame_delay(d);
-                }
-            }
-            Message::ToggleMatchSettings => {
-                // PvP-only: applied by the signal indicator.
-                if self.active_as::<pvp::PvpSession>().is_some() {
-                    self.match_settings.toggle();
-                }
-            }
+            // Kind-specific view messages — defined + handled beside
+            // the views that emit them.
+            Message::Replay(m) => return view::replay::update(self, m).map(Message::Replay),
+            Message::Pvp(m) => return view::pvp::update(self, m).map(Message::Pvp),
+            Message::Results(m) => match m {
+                view::results::Message::Dismiss => self.results = None,
+                // App-level: the wrapper intercepts this and builds the
+                // playback session (needs scanners + config).
+                view::results::Message::WatchReplay => {}
+            },
             Message::EscPressed => {
                 // Arm hold-to-quit on the first press of a physical
                 // hold only — OS key repeat re-fires EscPressed, and
@@ -937,47 +832,13 @@ impl State {
                 // wrapper so every message runs it; this variant only
                 // exists to generate message traffic while held.
             }
-            Message::OpenDisconnectConfirm => {
-                self.disconnect.open();
-            }
-            Message::CloseDisconnectConfirm => {
-                self.disconnect.close();
-            }
-            Message::DismissResults => {
-                self.results = None;
-            }
-            Message::WatchResultsReplay => {
-                // App-level: the wrapper intercepts this and builds the
-                // playback session (needs scanners + config).
-            }
             Message::MouseMoved => {
                 self.last_mouse_move = std::time::Instant::now();
             }
             Message::ControlsHovered(h) => {
                 self.controls_hovered = h;
             }
-            Message::BarMenuToggled(open) => {
-                self.bar_menu_open = open;
-            }
             Message::NoOp => {}
-            Message::ToggleOpponentPanel => {
-                self.opponent_panel.toggle();
-            }
-            Message::ToggleSelfPanel => {
-                self.self_panel.toggle();
-            }
-            Message::OpponentSaveViewAction(action) => {
-                if let Some(s) = self.active_as_mut::<pvp::PvpSession>() {
-                    let sv_task = s.opponent_save_view.fold(&action);
-                    return sv_task.map(Message::OpponentSaveViewAction);
-                }
-            }
-            Message::SelfSaveViewAction(action) => {
-                if let Some(s) = self.active_as_mut::<pvp::PvpSession>() {
-                    let sv_task = s.local_save_view.fold(&action);
-                    return sv_task.map(Message::SelfSaveViewAction);
-                }
-            }
             Message::OpenSettings => {
                 self.settings.open();
             }

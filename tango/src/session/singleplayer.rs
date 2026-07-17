@@ -109,7 +109,6 @@ impl SinglePlayerSession {
             drive: Some(drive),
         })
     }
-
 }
 
 impl crate::session::ActiveSession for SinglePlayerSession {
@@ -122,7 +121,7 @@ impl crate::session::ActiveSession for SinglePlayerSession {
     }
 
     fn view<'a>(&'a self, ctx: crate::session::view::Ctx<'a>) -> iced::Element<'a, crate::session::Message> {
-        crate::session::view::singleplayer_view(self, ctx)
+        crate::session::view::singleplayer::view(self, ctx)
     }
 
     fn set_joyflags(&self, joyflags: u32) {
@@ -241,8 +240,10 @@ impl crate::platform::audio::Stream for SinglePlayerStream {
         self.shared.consumed.notify_all();
 
         let available = self.dest_buffer.available().min(frame_count);
-        self.dest_buffer
-            .read(&mut linear_buf[..available * crate::platform::audio::NUM_CHANNELS], available);
+        self.dest_buffer.read(
+            &mut linear_buf[..available * crate::platform::audio::NUM_CHANNELS],
+            available,
+        );
         available
     }
 }

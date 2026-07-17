@@ -1134,21 +1134,21 @@ impl App {
                 // In-match frame-delay slider: persist the new value to config so
                 // the choice sticks for the next match (session.update applies it
                 // to the live session). Mirrors the lobby slider's persistence.
-                if let session::Message::SetFrameDelay(d) = &m {
+                if let session::Message::Pvp(session::view::pvp::Message::SetFrameDelay(d)) = &m {
                     self.config.frame_delay = *d;
                     self.persist_config();
                 }
                 // Replay input display toggle: the flag lives in config
                 // (so the choice sticks across replays); the session
                 // handler itself is a no-op.
-                if let session::Message::ToggleInputDisplay = &m {
+                if let session::Message::Replay(session::view::replay::Message::ToggleInputDisplay) = &m {
                     self.config.show_replay_inputs = !self.config.show_replay_inputs;
                     self.persist_config();
                 }
                 // Same deal for the opponent-screen PiP toggle — the session
                 // handler flips the live session's state; this keeps the
                 // choice sticking across replays.
-                if let session::Message::TogglePip = &m {
+                if let session::Message::Replay(session::view::replay::Message::TogglePip) = &m {
                     self.config.show_opponent_pip = !self.config.show_opponent_pip;
                     self.persist_config();
                 }
@@ -1158,11 +1158,16 @@ impl App {
                 // underneath — closing the replay lands back on them. On
                 // failure (e.g. the replay is still flushing or unreadable),
                 // log and leave the results screen up.
-                if let session::Message::WatchResultsReplay = &m {
+                if let session::Message::Results(session::view::results::Message::WatchReplay) = &m {
                     if let Some(path) = self.session.results.as_ref().and_then(|r| r.replay_path.clone()) {
                         let (stats_job, stats_task) = self.replay_stats_takeover(&path);
-                        match session::build_playback(&self.scanners, &self.config, &self.audio_binder, &path, stats_job)
-                        {
+                        match session::build_playback(
+                            &self.scanners,
+                            &self.config,
+                            &self.audio_binder,
+                            &path,
+                            stats_job,
+                        ) {
                             Ok(s) => {
                                 self.session.replay_chart = Some(self.replay_chart_for(&path, &s));
                                 self.session.active = Some(Box::new(s));
@@ -1186,7 +1191,10 @@ impl App {
                 // fresh on-disk SRAM. Detected by the active-slot
                 // transition (not the Close message) because Esc
                 // closes SP sessions inside the session update.
-                let was_sp = self.session.active_as::<session::singleplayer::SinglePlayerSession>().is_some();
+                let was_sp = self
+                    .session
+                    .active_as::<session::singleplayer::SinglePlayerSession>()
+                    .is_some();
                 // Snapshot "was PvP" before dispatch — PvP
                 // sessions can auto-tear-down inside
                 // `UpdateFramebuffer` (peer-end / disconnect /
@@ -1643,7 +1651,8 @@ impl App {
         // the tabs — same chrome-less cyberworld composition as the welcome
         // screen. The ScreenKey change animates the swap in both directions.
         if let Some(results) = self.session.results.as_ref() {
-            let results_view = session::view::results_view(lang, results).map(Message::Session);
+            let results_view =
+                session::view::results_view(lang, results).map(|m| Message::Session(session::Message::Results(m)));
             let composed: Element<'_, Message> = iced::widget::stack![widgets::cyber_backdrop(), results_view]
                 .width(Fill)
                 .height(Fill)
@@ -1664,7 +1673,9 @@ impl App {
                         physical_key,
                         iced::keyboard::key::Physical::Code(iced::keyboard::key::Code::Escape)
                     ) {
-                        return Some(Message::Session(session::Message::DismissResults));
+                        return Some(Message::Session(session::Message::Results(
+                            session::view::results::Message::Dismiss,
+                        )));
                     }
                 }
                 None

@@ -10,7 +10,7 @@
 //! file with ~500 lines of charting + tone math.
 
 use super::super::*;
-use super::*;
+use super::{Message, PvpSession};
 // Explicit so these win over iced's prelude `column!`/`row!` macros (see mod.rs).
 use sweeten::widget::{column, row};
 
@@ -20,7 +20,7 @@ use sweeten::widget::{column, row};
 /// the slider gets lobby-like width even in the compact panel. Frame delay is
 /// purely local display lag, so dragging it mid-match takes effect on the next
 /// rendered frame with no peer coordination.
-fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp::PvpSession) -> Element<'a, Message> {
+fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a PvpSession) -> Element<'a, Message> {
     let fd = pvp.frame_delay();
 
     // Heading: turtle glyph + title, both muted — matches the metric-card
@@ -318,7 +318,7 @@ fn metric_card<'a>(
 /// sample.
 fn match_settings_content<'a>(
     lang: &'a LanguageIdentifier,
-    pvp: &'a pvp::PvpSession,
+    pvp: &'a PvpSession,
     history: &std::collections::VecDeque<MetricSample>,
 ) -> Element<'a, Message> {
     // `zero` is the reference line: parity (mid-height) for skew, the value-0
@@ -562,7 +562,7 @@ fn signal_icon(skew: i32) -> Icon {
 /// header collapses it back (Esc works too).
 pub(super) fn telemetry_overlay<'a>(
     lang: &'a LanguageIdentifier,
-    pvp: &'a pvp::PvpSession,
+    pvp: &'a PvpSession,
     state: &'a State,
 ) -> Option<Element<'a, Message>> {
     // Same link-up gate as `latency()`: nothing to show before the

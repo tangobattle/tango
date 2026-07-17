@@ -22,7 +22,20 @@ use sweeten::widget::{column, row};
 use tango_pvp::analysis::BattleOutcome;
 use unic_langid::LanguageIdentifier;
 
-use super::super::{MatchEnd, MatchResults, Message};
+use super::super::{MatchEnd, MatchResults};
+
+/// Messages the results screen emits, wrapped as
+/// [`Results`](super::super::Message::Results) on the way out.
+#[derive(Debug, Clone, Copy)]
+pub enum Message {
+    /// Dismiss the results screen (its Done button, or Esc while it's
+    /// on screen) — back to the tabs. Handled by the session State.
+    Dismiss,
+    /// Play back the replay recorded for the match. Handled by the App
+    /// wrapper (building a playback session needs the scanners +
+    /// config).
+    WatchReplay,
+}
 
 /// Point size of the two score numerals — the card's centerpiece.
 const SCORE_SIZE: f32 = 44.0;
@@ -271,7 +284,7 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
         actions = actions.push(widgets::labeled_icon_button(
             Icon::Play,
             t!(lang, "session-results-watch-replay"),
-            Message::WatchResultsReplay,
+            Message::WatchReplay,
             STANDARD_PADDING,
             widgets::neutral,
         ));
@@ -280,7 +293,7 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
         button(text(t!(lang, "session-results-done")))
             .padding(STANDARD_PADDING)
             .style(widgets::primary_button)
-            .on_press(Message::DismissResults),
+            .on_press(Message::Dismiss),
     );
     body = body.push(iced::widget::Space::new().height(20)).push(actions);
 
