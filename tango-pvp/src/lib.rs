@@ -41,7 +41,7 @@ pub mod telemetry;
 
 /// A PC-sited trap: fires the closure when emulation reaches the ROM
 /// address (see `mgba_siolink::Link::set_traps`).
-pub type Trap = (u32, Box<dyn Fn(mgba::core::CoreMutRef)>);
+pub type Trap = (u32, Box<dyn Fn(&mut mgba::core::Core)>);
 
 /// One core's "the battle has started" latch — the priming handoff.
 /// Each core's battle-start trap (the game's own battle-start-complete
@@ -163,7 +163,7 @@ pub trait GameSupport: Sync {
         player: usize,
         lifecycle: &telemetry::LifecycleSink,
         primed: &PrimedLatch,
-    ) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)>;
+    ) -> Vec<(u32, Box<dyn Fn(&mut mgba::core::Core)>)>;
 
     /// The telemetry reader for one core running this game. `player` is
     /// which pair core (and player) this poller answers for.

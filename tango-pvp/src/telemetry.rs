@@ -77,14 +77,14 @@ pub struct CoreObs {
 /// (menus, the round intro before unit init). Round BOUNDARIES do not
 /// come from this — see [`LifecycleSink`].
 pub trait CorePoller: Send {
-    fn poll(&mut self, core: mgba::core::CoreMutRef) -> Option<CoreObs>;
+    fn poll(&mut self, core: &mut mgba::core::Core) -> Option<CoreObs>;
 }
 
 /// Any `FnMut` over a core is a poller — game support hands
 /// [`GameSupport::core_poller`](crate::GameSupport::core_poller) a plain
 /// closure reading its RAM offsets instead of defining a struct.
-impl<F: FnMut(mgba::core::CoreMutRef) -> Option<CoreObs> + Send> CorePoller for F {
-    fn poll(&mut self, core: mgba::core::CoreMutRef) -> Option<CoreObs> {
+impl<F: FnMut(&mut mgba::core::Core) -> Option<CoreObs> + Send> CorePoller for F {
+    fn poll(&mut self, core: &mut mgba::core::Core) -> Option<CoreObs> {
         self(core)
     }
 }

@@ -66,7 +66,7 @@ pub struct PairStream {
     fps_target: Box<dyn Fn() -> f32 + Send>,
     out_rate: u32,
     resampler: mgba::audio::AudioResampler,
-    dest_buffer: mgba::audio::AudioBuffer,
+    dest_buffer: mgba::audio::OwnedAudioBuffer,
     /// Tracked separately because `mAudioBuffer` doesn't expose
     /// capacity through the Rust binding; grown lazily in `fill`.
     dest_capacity: usize,
@@ -88,7 +88,7 @@ impl PairStream {
             fps_target: Box::new(fps_target),
             out_rate: if out_rate == 0 { 48000 } else { out_rate },
             resampler: mgba::audio::AudioResampler::new(),
-            dest_buffer: mgba::audio::AudioBuffer::new(dest_capacity, 2),
+            dest_buffer: mgba::audio::OwnedAudioBuffer::new(dest_capacity, 2),
             dest_capacity,
             discard: Vec::new(),
         }
@@ -109,7 +109,7 @@ impl crate::platform::audio::Stream for PairStream {
         let needed = frame_count.saturating_mul(2);
         if needed > self.dest_capacity {
             let new_capacity = needed.next_power_of_two().max(crate::platform::audio::SAMPLES * 2);
-            self.dest_buffer = mgba::audio::AudioBuffer::new(new_capacity, 2);
+            self.dest_buffer = mgba::audio::OwnedAudioBuffer::new(new_capacity, 2);
             self.dest_capacity = new_capacity;
         }
 
@@ -122,16 +122,16 @@ impl crate::platform::audio::Stream for PairStream {
         let out_rate = self.out_rate;
         let (resampler, dest_buffer, discard) = (&mut self.resampler, &mut self.dest_buffer, &mut self.discard);
         self.pair.with_pair(&mut |pair| {
-            let mut core = pair.core_mut(player);
+            let core = pair.core_mut(player);
             // The core's production rate follows the game's SOUNDBIAS
             // resolution and CHANGES at runtime (BN4+ flip from 32768 to
             // 65536 Hz after boot), so it's re-read every fill.
-            let rate = core.as_ref().audio_sample_rate() as f64;
+            let rate = core.audio_sample_rate() as f64;
             // The faux clock, exactly as the single-player stream: production scales
             // with the sim's pace, so a throttled sim stretches playback
             // by the same ratio instead of starving it.
-            let faux_clock = core.as_ref().calculate_framerate_ratio(fps_target as f64);
-            let mut source = core.audio_buffer();
+            let faux_clock = core.calculate_framerate_ratio(fps_target as f64);
+            let source = core.audio_buffer();
 
             let target = rate * AUDIO_TARGET_QUEUED_SECS;
             let queued = source.available() as f64;
@@ -150,7 +150,7 @@ impl crate::platform::audio::Stream for PairStream {
             let queued = source.available() as f64;
             let trim = AUDIO_MAX_TRIM * ((queued - target) / target).clamp(-1.0, 1.0);
 
-            resampler.set_source(&mut source, rate * (1.0 + trim), true);
+            resampler.set_source(source, rate * (1.0 + trim), true);
             resampler.set_destination(dest_buffer, out_rate as f64 * faux_clock);
             resampler.process();
         });

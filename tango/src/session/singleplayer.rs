@@ -23,7 +23,7 @@ const EXPECTED_FPS: f32 = 60.0;
 
 /// State shared between the drive thread and the audio stream.
 struct Shared {
-    core: Mutex<mgba::core::Core>,
+    core: Mutex<mgba::core::OwnedCore>,
     /// Signaled by the audio fill after it consumes samples (and by
     /// drop, to release a final wait).
     consumed: Condvar,
@@ -60,8 +60,8 @@ impl SinglePlayerSession {
         // Open RW so the game's own save writes persist back to disk —
         // mgba memory-maps the file and treats it as the cartridge SRAM.
         let save_file = std::fs::OpenOptions::new().read(true).write(true).open(save_path)?;
-        core.as_mut().load_save(mgba::vfile::VFile::from_file(save_file))?;
-        core.as_mut().reset();
+        core.load_save(mgba::vfile::VFile::from_file(save_file))?;
+        core.reset();
 
         let joyflags = Arc::new(AtomicU32::new(0));
         let shared = Arc::new(Shared {
@@ -91,7 +91,7 @@ impl SinglePlayerSession {
             shared: shared.clone(),
             out_rate: audio_binder.sample_rate(),
             resampler: mgba::audio::AudioResampler::new(),
-            dest_buffer: mgba::audio::AudioBuffer::new(
+            dest_buffer: mgba::audio::OwnedAudioBuffer::new(
                 crate::platform::audio::SAMPLES * 2,
                 crate::platform::audio::NUM_CHANNELS as u32,
             ),
@@ -157,7 +157,7 @@ fn drive_loop(
         // notify-while-not-yet-waiting race on stop and lets a rebound
         // audio device pick the session back up.
         while !shared.stop.load(Ordering::Relaxed)
-            && core.as_mut().audio_buffer().available() as u32 > shared.high_water.load(Ordering::Relaxed)
+            && core.audio_buffer().available() as u32 > shared.high_water.load(Ordering::Relaxed)
         {
             (core, _) = shared
                 .consumed
@@ -168,9 +168,8 @@ fn drive_loop(
             return;
         }
 
-        let mut c = core.as_mut();
-        c.set_keys(joyflags.load(Ordering::Relaxed));
-        c.run_frame();
+        core.set_keys(joyflags.load(Ordering::Relaxed));
+        core.run_frame();
 
         if let Some(frame) = core.video_buffer() {
             // Copy mgba's native BGR555 straight through; the framebuffer
@@ -192,7 +191,7 @@ struct SinglePlayerStream {
     shared: Arc<Shared>,
     out_rate: u32,
     resampler: mgba::audio::AudioResampler,
-    dest_buffer: mgba::audio::AudioBuffer,
+    dest_buffer: mgba::audio::OwnedAudioBuffer,
     /// Tracked separately because `mAudioBuffer` doesn't expose
     /// capacity through the Rust binding; grown lazily in `fill`.
     dest_capacity: usize,
@@ -207,7 +206,7 @@ impl crate::platform::audio::Stream for SinglePlayerStream {
         if needed > self.dest_capacity {
             let new_capacity = needed.next_power_of_two().max(crate::platform::audio::SAMPLES * 2);
             self.dest_buffer =
-                mgba::audio::AudioBuffer::new(new_capacity, crate::platform::audio::NUM_CHANNELS as u32);
+                mgba::audio::OwnedAudioBuffer::new(new_capacity, crate::platform::audio::NUM_CHANNELS as u32);
             self.dest_capacity = new_capacity;
         }
 
@@ -220,19 +219,18 @@ impl crate::platform::audio::Stream for SinglePlayerStream {
         // The core's production rate follows the game's SOUNDBIAS
         // resolution and CHANGES at runtime (BN4+ flip from 32768 to
         // 65536 Hz after boot), so it's re-read every fill.
-        let core_rate = core.as_ref().audio_sample_rate() as f64;
+        let core_rate = core.audio_sample_rate() as f64;
         // The faux clock: production scales with the drive's pace, so a
         // fast-forwarded core stretches into the same output rate
         // instead of flooding it.
-        let faux_clock = core.as_ref().calculate_framerate_ratio(fps_target as f64);
+        let faux_clock = core.calculate_framerate_ratio(fps_target as f64);
         let dest_rate = self.out_rate as f64 * faux_clock;
 
         let high_water = (frame_count as f64 + 16.0 + frame_count as f64 / 64.0) * core_rate / dest_rate;
         self.shared.high_water.store(high_water as u32, Ordering::Relaxed);
 
-        let mut cref = core.as_mut();
-        let mut source = cref.audio_buffer();
-        self.resampler.set_source(&mut source, core_rate, true);
+        let source = core.audio_buffer();
+        self.resampler.set_source(source, core_rate, true);
         self.resampler.set_destination(&mut self.dest_buffer, dest_rate);
         self.resampler.process();
         drop(core);

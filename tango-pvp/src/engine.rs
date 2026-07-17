@@ -141,7 +141,7 @@ impl Match {
         //     time with nothing draining), so the session doesn't open
         //     on a stale burst of boot/menu sound.
         for i in 0..2 {
-            let mut core = pair.core_mut(i);
+            let core = pair.core_mut(i);
             core.set_audio_buffer_size(16384);
             core.audio_buffer().clear();
         }

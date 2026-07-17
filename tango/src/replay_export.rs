@@ -434,8 +434,8 @@ pub fn export(
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
     let mut resamplers = [mgba::audio::AudioResampler::new(), mgba::audio::AudioResampler::new()];
     let mut dest_buffers = [
-        mgba::audio::AudioBuffer::new(0x4000, AUDIO_CHANNELS as u32),
-        mgba::audio::AudioBuffer::new(0x4000, AUDIO_CHANNELS as u32),
+        mgba::audio::OwnedAudioBuffer::new(0x4000, AUDIO_CHANNELS as u32),
+        mgba::audio::OwnedAudioBuffer::new(0x4000, AUDIO_CHANNELS as u32),
     ];
     let mut prev_should_write = false;
     // Telemetry round ordinal: Started events increment it; frames
@@ -478,8 +478,8 @@ pub fn export(
             }
             let pair = pb.pair_mut();
             let n = {
-                let mut core = pair.core_mut(core_idx);
-                let core_rate = core.as_ref().audio_sample_rate() as f64;
+                let core = pair.core_mut(core_idx);
+                let core_rate = core.audio_sample_rate() as f64;
                 let mut core_buffer = core.audio_buffer();
                 resamplers[slot].set_source(&mut core_buffer, core_rate, true);
                 resamplers[slot].set_destination(&mut dest_buffers[slot], SAMPLE_RATE);
