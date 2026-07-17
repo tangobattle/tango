@@ -93,56 +93,130 @@ impl PauseGate {
     }
 }
 
-/// At most one of these can be active at a time: replay playback,
-/// single-player, or PvP. The variants share enough surface (vbuf,
-/// close-request) that the view + tick loop wrap them uniformly.
-pub enum ActiveSession {
-    Replay(replay::ReplaySession),
-    SinglePlayer(singleplayer::SinglePlayerSession),
-    /// Boxed: `PvpSession` is ~2.5 KB, an order of magnitude bigger
-    /// than the other variants.
-    PvP(Box<pvp::PvpSession>),
+/// Per-session iced ↔ emu-thread frame plumbing: the shared GBA
+/// framebuffer (mgba-native BGR555, 2 bytes/pixel — the framebuffer
+/// shader expands it on the GPU) the session's frame callback
+/// `copy_from_slice`s into once per emu vblank, and the wake handle it
+/// `notify_one()`s whenever a new frame lands or `is_ended` could flip
+/// (the PvP end-detection wires). Every session constructor builds its
+/// own, so a fresh session always starts on a zeroed framebuffer with
+/// no stale wake pending — no cross-session wipe dance. `id` is unique
+/// per sink and keys the frame [`subscription`], so iced swaps the
+/// wake stream whenever the active session changes.
+pub struct FrameSink {
+    pub notify: std::sync::Arc<tokio::sync::Notify>,
+    pub vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    id: u64,
 }
 
-impl ActiveSession {
-    /// Pre-drop teardown. Only PvP has any: it cancels its token so the
-    /// receive loop announces the quit to the peer instead of leaving them
-    /// hanging on a reconnect window. Replay and single-player sessions
-    /// close by being dropped (the mgba thread joins in Drop).
-    pub fn request_close(&self) {
-        match self {
-            Self::PvP(s) => s.request_close(),
-            Self::Replay(_) | Self::SinglePlayer(_) => {}
+impl FrameSink {
+    pub fn new() -> Self {
+        static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        Self {
+            notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+            vbuf: std::sync::Arc::new(std::sync::Mutex::new(vec![
+                0u8;
+                (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2)
+                    as usize
+            ])),
+            id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         }
     }
+}
+
+/// A running emulator session — replay playback, single-player, or
+/// live PvP. At most one is active at a time ([`State::active`] holds
+/// it as a boxed trait object). The trait is the shared surface the
+/// view + tick loop drive without caring which kind is running;
+/// kind-specific chrome (the replay transport bar, the PvP panels)
+/// reaches its concrete session through
+/// [`downcast_ref`](dyn ActiveSession::downcast_ref) — the `Any`
+/// supertrait is what makes that possible.
+pub trait ActiveSession: std::any::Any {
+    /// Local-perspective Game registration for this session. Used by
+    /// the session view to pull per-game chrome (background image,
+    /// logo) into the emulator pane.
+    fn local_game(&self) -> &'static crate::library::game::Game;
+
+    /// This session's frame surfaces + wake handle — built fresh by
+    /// its constructor, see [`FrameSink`].
+    fn frame_sink(&self) -> &FrameSink;
+
+    /// Render this session's screen — the emulator pane plus this
+    /// kind's chrome stack. Implementations delegate to their
+    /// concrete entry point in the [`view`] module
+    /// ([`view::replay_view`] and friends), which is where
+    /// kind-specific UI stays kind-typed.
+    fn view<'a>(&'a self, ctx: view::Ctx<'a>) -> Element<'a, Message>;
+
+    /// Latest other-perspective frame for the picture-in-picture
+    /// inset, as raw BGR555 — `None` except on a replay session with
+    /// the PiP toggle on. Polled per frame by the
+    /// [`Message::UpdateFramebuffer`] handler alongside the main
+    /// [`frame_sink`](Self::frame_sink) read.
+    fn pip_pixels(&self) -> Option<Vec<u8>> {
+        None
+    }
+
+    /// Live telemetry snapshot for the match-settings sparklines —
+    /// `None` outside PvP, which clears the rolling history.
+    fn telemetry_sample(&self) -> Option<MetricSample> {
+        None
+    }
+
+    /// Post-match results for the results screen, snapshotted at
+    /// teardown (right before the [`is_ended`](Self::is_ended) close
+    /// drops the session) — `None` for everything but a PvP match
+    /// that ran to completion or lost its remote.
+    fn capture_results(&self) -> Option<MatchResults> {
+        None
+    }
+
+    /// Overwrite the entire mgba joyflag bitmap — the configurable
+    /// input mapping resolves multiple held bindings into one flag
+    /// word and pushes the result here every event. Default no-op:
+    /// replay playback feeds recorded input instead.
+    fn set_joyflags(&self, _joyflags: u32) {}
+
+    /// Drive the session at `factor` × realtime (fast-forward /
+    /// slow-mo). Default no-op: PvP runs at fixed EXPECTED_FPS so
+    /// both sides stay in sync — no speed control.
+    fn set_speed(&self, _factor: f32) {}
+
+    /// Pre-drop teardown. Default no-op — only PvP has any: it cancels
+    /// its token so the receive loop announces the quit to the peer
+    /// instead of leaving them hanging on a reconnect window. Replay
+    /// and single-player sessions close by being dropped (the mgba
+    /// thread joins in Drop).
+    fn request_close(&self) {}
 
     /// True once the session has ended on its own — currently used
     /// by PvP so a peer-disconnect / comm error tears the session
     /// view down automatically instead of leaving the user staring
     /// at a frozen frame.
-    pub fn is_ended(&self) -> bool {
-        match self {
-            Self::Replay(_) | Self::SinglePlayer(_) => false,
-            Self::PvP(s) => s.is_ended(),
-        }
+    fn is_ended(&self) -> bool {
+        false
     }
 
-    pub fn as_replay(&self) -> Option<&replay::ReplaySession> {
-        match self {
-            Self::Replay(s) => Some(s),
-            _ => None,
-        }
+}
+
+impl dyn ActiveSession {
+    /// Whether the running session is the concrete kind `T`.
+    pub fn is<T: ActiveSession>(&self) -> bool {
+        (self as &dyn std::any::Any).is::<T>()
     }
 
-    /// Local-perspective Game registration for this session. Used by
-    /// the session view to pull per-game chrome (background image,
-    /// logo) into the emulator pane.
-    pub fn local_game(&self) -> &'static crate::library::game::Game {
-        match self {
-            Self::Replay(s) => s.game(),
-            Self::SinglePlayer(s) => s.game(),
-            Self::PvP(s) => s.game(),
-        }
+    /// The running session as its concrete kind, for kind-specific
+    /// surface the shared trait deliberately doesn't carry (the replay
+    /// transport, the PvP panels + telemetry).
+    pub fn downcast_ref<T: ActiveSession>(&self) -> Option<&T> {
+        (self as &dyn std::any::Any).downcast_ref()
+    }
+
+    /// Mutable twin of [`downcast_ref`](Self::downcast_ref) — the PvP
+    /// save-view panels fold UI state stored on the session.
+    pub fn downcast_mut<T: ActiveSession>(&mut self) -> Option<&mut T> {
+        (self as &mut dyn std::any::Any).downcast_mut()
     }
 }
 
@@ -160,7 +234,7 @@ pub struct MetricSample {
 
 impl MetricSample {
     /// Read the current telemetry off a live PvP session. Called once per
-    /// emulator frame from the [`Message::UpdateFramebuffer`] handler.
+    /// emulator frame through [`ActiveSession::telemetry_sample`].
     fn capture(pvp: &pvp::PvpSession) -> Self {
         Self {
             tps: pvp.tps(),
@@ -302,24 +376,7 @@ impl MatchResults {
 /// session, then [`State::update`] handles the rest until [`Close`]
 /// clears it.
 pub struct State {
-    /// Permanent iced ↔ emu-thread wake handle. Cloned into each
-    /// active session at construction so its frame callback (and
-    /// PvP end-detection wires) can `notify_one()` whenever a new
-    /// frame lands or `is_ended` could flip. The [`subscription`]
-    /// `.notified().await`s on this single Notify across the
-    /// program's lifetime — no per-session re-keying needed.
-    pub frame_notify: std::sync::Arc<tokio::sync::Notify>,
-    /// Shared GBA framebuffer. The active session's frame callback
-    /// `copy_from_slice`s mgba's video buffer into this Mutex once
-    /// per emu vblank; the [`Message::UpdateFramebuffer`] handler
-    /// locks it, clones the bytes, and rebuilds
-    /// [`State::current_frame`]. Pre-sized to GBA dimensions and
-    /// reused across sessions — saves the per-session
-    /// `Arc<Mutex<Vec<u8>>>` allocation dance and lets the handler
-    /// read straight off `State` without dispatching through
-    /// `ActiveSession`.
-    pub vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
-    pub active: Option<ActiveSession>,
+    pub active: Option<Box<dyn ActiveSession>>,
     /// Analysis chart for the active replay-playback session — see
     /// [`ReplayChart`]. Set alongside `active` on watch, cleared on
     /// close.
@@ -423,14 +480,6 @@ pub struct State {
 impl Default for State {
     fn default() -> Self {
         Self {
-            frame_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-            vbuf: std::sync::Arc::new(std::sync::Mutex::new(vec![
-                0u8;
-                // Raw BGR555 from mgba: 2 bytes/pixel. The framebuffer shader
-                // expands it to RGB on the GPU (see `video::framebuffer`).
-                (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2)
-                    as usize
-            ])),
             active: None,
             replay_chart: None,
             results: None,
@@ -464,6 +513,17 @@ impl State {
     /// True iff a session is running. Drives main.rs's view routing.
     pub fn is_active(&self) -> bool {
         self.active.is_some()
+    }
+
+    /// The active session as concrete kind `T` — `None` while idle or
+    /// when a different kind is running.
+    pub fn active_as<T: ActiveSession>(&self) -> Option<&T> {
+        self.active.as_deref().and_then(|s| s.downcast_ref())
+    }
+
+    /// Mutable twin of [`active_as`](Self::active_as).
+    fn active_as_mut<T: ActiveSession>(&mut self) -> Option<&mut T> {
+        self.active.as_deref_mut().and_then(|s| s.downcast_mut())
     }
 }
 
@@ -574,9 +634,9 @@ pub enum Message {
     /// handler rebuilds the framebuffer from the active
     /// session's vbuf into [`State::current_frame`] and tears
     /// the session down if it's now ended. Fired by the session
-    /// subscription, which wakes on [`State::frame_notify`] —
-    /// `notify_one()`'d by both the frame callback and the PvP
-    /// end-detection wires.
+    /// subscription, which wakes on the active session's
+    /// [`FrameSink`] notify — `notify_one()`'d by both the frame
+    /// callback and the PvP end-detection wires.
     UpdateFramebuffer,
     /// Dismiss the post-match results screen (its Done button, or Esc
     /// while it's on screen) — back to the tabs.
@@ -650,9 +710,7 @@ impl State {
         // timer expires without needing its own timer source; a
         // paused replay (no frames) pins the bar visible anyway.
         let replay_paused = self
-            .active
-            .as_ref()
-            .and_then(ActiveSession::as_replay)
+            .active_as::<replay::ReplaySession>()
             .is_some_and(|r| r.is_paused());
         // The telemetry panel (match_settings) deliberately
         // doesn't count: it lives in the permanently-visible
@@ -713,7 +771,7 @@ impl State {
     /// Shared by the transport button's [`Message::TogglePlay`] and the
     /// spacebar keybind.
     fn toggle_replay_play(&self) {
-        if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+        if let Some(s) = self.active_as::<replay::ReplaySession>() {
             if s.seek_will_resume() {
                 // An in-flight seek is about to resume playback, so the
                 // button shows "Pause" — honor the press as one: land the
@@ -755,7 +813,7 @@ impl State {
                     // below records this press, so OS key-repeat (which the
                     // seek keys want but the pause toggle doesn't) is filtered.
                     let fresh_press = !self.input_held.is_key_held(physical);
-                    if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+                    if let Some(s) = self.active_as::<replay::ReplaySession>() {
                         if let Some(delta) = replay_seek_delta(*physical) {
                             // Chain off the in-flight seek's target so a burst
                             // of presses accumulates instead of all snapping to
@@ -778,10 +836,8 @@ impl State {
                 }
                 self.input_held.apply(&ev);
                 let joyflags = mapping.to_mgba_keys(&self.input_held);
-                match self.active.as_ref() {
-                    Some(ActiveSession::SinglePlayer(s)) => s.set_joyflags(joyflags),
-                    Some(ActiveSession::PvP(s)) => s.set_joyflags(joyflags),
-                    _ => {}
+                if let Some(s) = self.active.as_ref() {
+                    s.set_joyflags(joyflags);
                 }
                 // Speed-up: only fire set_speed on the rising or
                 // falling edge so we don't spam mgba's audio
@@ -790,17 +846,16 @@ impl State {
                 if now_engaged != self.speed_up_engaged {
                     self.speed_up_engaged = now_engaged;
                     let factor = if now_engaged { 4.0 } else { 1.0 };
-                    match self.active.as_ref() {
-                        Some(ActiveSession::SinglePlayer(s)) => s.set_speed(factor),
-                        Some(ActiveSession::Replay(s)) => s.set_speed(factor),
-                        // PvP runs at fixed EXPECTED_FPS.
-                        Some(ActiveSession::PvP(_)) | None => {}
+                    if let Some(s) = self.active.as_ref() {
+                        s.set_speed(factor);
                     }
                 }
             }
             Message::TogglePlay => self.toggle_replay_play(),
             Message::ScrubPreview(target) => {
-                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+                // Field-level borrow (not `active_as`): `scrub` is
+                // mutated while the session ref is live.
+                if let Some(s) = self.active.as_deref().and_then(|s| s.downcast_ref::<replay::ReplaySession>()) {
                     self.scrub.drag(target, s);
                 }
                 // The drag blits its keyframes to the main screen —
@@ -808,26 +863,22 @@ impl State {
                 self.scrub.hover = None;
             }
             Message::ScrubCommit(target) => {
-                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+                if let Some(s) = self.active_as::<replay::ReplaySession>() {
                     s.seek_to(target, self.scrub.resume);
                 }
                 self.scrub.end_drag();
             }
             Message::ScrubHover(hover) => {
                 self.scrub.hover = hover;
-                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+                // Field-level borrow (not `active_as`): `scrub` is
+                // mutated while the session ref is live.
+                if let Some(s) = self.active.as_deref().and_then(|s| s.downcast_ref::<replay::ReplaySession>()) {
                     self.scrub.refresh_thumb(s);
                 }
             }
             Message::SetSpeed(factor) => {
-                match self.active.as_ref() {
-                    Some(ActiveSession::Replay(s)) => s.set_speed(factor),
-                    Some(ActiveSession::SinglePlayer(s)) => s.set_speed(factor),
-                    Some(ActiveSession::PvP(_)) => {
-                        // PvP runs at fixed EXPECTED_FPS so both sides
-                        // stay in sync — no speed control.
-                    }
-                    None => {}
+                if let Some(s) = self.active.as_ref() {
+                    s.set_speed(factor);
                 }
             }
             Message::ToggleInputDisplay => {
@@ -835,12 +886,12 @@ impl State {
                 // before this dispatch. The view reads it from config.
             }
             Message::TogglePip => {
-                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+                if let Some(s) = self.active_as::<replay::ReplaySession>() {
                     s.toggle_pip();
                 }
             }
             Message::ToggleSwapPerspective => {
-                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+                if let Some(s) = self.active_as::<replay::ReplaySession>() {
                     s.toggle_swap_perspective();
                 }
             }
@@ -848,13 +899,13 @@ impl State {
                 // Purely local frame delay — apply straight to the running
                 // PvP session. Config persistence happens in the App's
                 // `Message::Session` handler (it owns config).
-                if let Some(ActiveSession::PvP(s)) = self.active.as_ref() {
+                if let Some(s) = self.active_as::<pvp::PvpSession>() {
                     s.set_frame_delay(d);
                 }
             }
             Message::ToggleMatchSettings => {
                 // PvP-only: applied by the signal indicator.
-                if let Some(ActiveSession::PvP(_)) = self.active.as_ref() {
+                if self.active_as::<pvp::PvpSession>().is_some() {
                     self.match_settings.toggle();
                 }
             }
@@ -916,13 +967,13 @@ impl State {
                 self.self_panel.toggle();
             }
             Message::OpponentSaveViewAction(action) => {
-                if let Some(ActiveSession::PvP(s)) = self.active.as_mut() {
+                if let Some(s) = self.active_as_mut::<pvp::PvpSession>() {
                     let sv_task = s.opponent_save_view.fold(&action);
                     return sv_task.map(Message::OpponentSaveViewAction);
                 }
             }
             Message::SelfSaveViewAction(action) => {
-                if let Some(ActiveSession::PvP(s)) = self.active.as_mut() {
+                if let Some(s) = self.active_as_mut::<pvp::PvpSession>() {
                     let sv_task = s.local_save_view.fold(&action);
                     return sv_task.map(Message::SelfSaveViewAction);
                 }
@@ -946,29 +997,16 @@ impl State {
                     // each call `notify_one()` so this branch fires
                     // even after the emu thread has paused.
                     if session.is_ended() {
-                        // Snapshot the finished match for the results screen
-                        // before the teardown drops it: on a natural end,
-                        // and on a remote disconnect (their channel EOF'd
-                        // or the reconnect window expired) — the card comes
-                        // up in its disconnect dress with the match as it
-                        // stood. Our own quit paths (Esc hold, disconnect
-                        // confirm) set neither flag and go straight back to
-                        // the menu: the player chose to leave.
-                        let results = match session {
-                            ActiveSession::PvP(pvp) if pvp.is_completed() => {
-                                Some(MatchResults::capture(pvp, MatchEnd::Completed))
-                            }
-                            ActiveSession::PvP(pvp) if pvp.remote_disconnected() => {
-                                Some(MatchResults::capture(pvp, MatchEnd::Disconnected))
-                            }
-                            _ => None,
-                        };
+                        // Snapshot the finished match for the results
+                        // screen before the teardown drops the session —
+                        // see [`ActiveSession::capture_results`].
+                        let results = session.capture_results();
                         self.close_session();
                         self.results = results;
                     } else {
                         // Upload the native frame as-is; the selected effect
                         // magnifies it on the GPU at draw time.
-                        let pixels = self.vbuf.lock().unwrap().clone();
+                        let pixels = session.frame_sink().vbuf.lock().unwrap().clone();
                         self.frame_revision = self.frame_revision.wrapping_add(1);
                         self.current_frame = Some(crate::platform::video::framebuffer::Frame {
                             pixels: std::sync::Arc::new(pixels),
@@ -981,12 +1019,10 @@ impl State {
                             // to know the current filter.
                             effect: &crate::platform::video::effects::PASSTHROUGH,
                         });
-                        if let ActiveSession::PvP(pvp) = session {
-                            sample = Some(MetricSample::capture(pvp));
-                        }
+                        sample = session.telemetry_sample();
                         // Replay PiP: the opponent's screen while the bar
                         // toggle is on.
-                        self.pip_frame = session.as_replay().and_then(|r| r.pip_pixels()).map(|pixels| {
+                        self.pip_frame = session.pip_pixels().map(|pixels| {
                             self.pip_revision = self.pip_revision.wrapping_add(1);
                             crate::platform::video::framebuffer::Frame {
                                 pixels: std::sync::Arc::new(pixels),
@@ -1017,21 +1053,27 @@ impl State {
 
 /// Per-emulator-frame wake stream. Yields
 /// [`Message::UpdateFramebuffer`] each time someone fires
-/// `notify_one()` on [`State::frame_notify`] — the per-frame
-/// callback for new vbuf data, and the PvP end-detection wires
-/// (peer-end packet, peer disconnect, grace timeout) for
-/// state-transition checks. Always-on across the program's
-/// lifetime; parks silently with no active session because
-/// nothing fires the notify. Keyboard input still flows through
-/// [`crate::platform::input_capture`] — see that module's docs for why the
-/// subscription path is too laggy for joypad state.
+/// `notify_one()` on the active session's [`FrameSink`] notify — the
+/// per-frame callback for new vbuf data, and the PvP end-detection
+/// wires (peer-end packet, peer disconnect, grace timeout) for
+/// state-transition checks. Lives only while a session is active,
+/// keyed by the sink's id so each new session swaps in a stream on
+/// its own fresh Notify (a wake fired before the stream spins up
+/// isn't lost — Notify stores the permit). Keyboard input still
+/// flows through [`crate::platform::input_capture`] — see that
+/// module's docs for why the subscription path is too laggy for
+/// joypad state.
 pub fn subscription(state: &State) -> iced::Subscription<Message> {
-    let frames = iced::Subscription::run_with(
-        FrameTag {
-            notify: state.frame_notify.clone(),
-        },
-        build_frame_stream,
-    );
+    let mut subs = Vec::new();
+    if let Some(sink) = state.active.as_deref().map(|s| s.frame_sink()) {
+        subs.push(iced::Subscription::run_with(
+            FrameTag {
+                id: sink.id,
+                notify: sink.notify.clone(),
+            },
+            build_frame_stream,
+        ));
+    }
     // The scrub bar's prefetch-progress fill is only repainted on redraw,
     // and a paused (or mid-seek) replay fires no `frame_notify` — so the bar
     // would sit frozen while the background prefetcher races ahead. Tick a
@@ -1039,11 +1081,8 @@ pub fn subscription(state: &State) -> iced::Subscription<Message> {
     // Playback already redraws at 60 Hz from the frame callback, hence the
     // `is_paused` gate, and the whole thing switches off once prefetch lands.
     let prefetching = state
-        .active
-        .as_ref()
-        .and_then(ActiveSession::as_replay)
+        .active_as::<replay::ReplaySession>()
         .is_some_and(|r| r.is_paused() && r.prefetch_progress() < r.total_ticks());
-    let mut subs = vec![frames];
     if prefetching {
         subs.push(iced::time::every(std::time::Duration::from_millis(50)).map(|_| Message::UpdateFramebuffer));
     }
@@ -1059,17 +1098,19 @@ pub fn subscription(state: &State) -> iced::Subscription<Message> {
     iced::Subscription::batch(subs)
 }
 
-/// Stable subscription identity. The hash is a constant string so
-/// iced keeps the same stream alive across view rebuilds; the
-/// `notify` payload carries the actual wake handle through to
-/// [`build_frame_stream`].
+/// Frame-stream subscription identity. Hashes the [`FrameSink`]'s
+/// unique id, so iced keeps one stream alive per session (stable
+/// across view rebuilds) and rebuilds it when a new session — with a
+/// fresh Notify — comes up. The `notify` payload carries the actual
+/// wake handle through to [`build_frame_stream`].
 struct FrameTag {
+    id: u64,
     notify: std::sync::Arc<tokio::sync::Notify>,
 }
 
 impl std::hash::Hash for FrameTag {
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        "session-frame".hash(h);
+        ("session-frame", self.id).hash(h);
     }
 }
 
@@ -1147,8 +1188,6 @@ pub fn build_playback(
     scanners: &Scanners,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
-    frame_notify: std::sync::Arc<tokio::sync::Notify>,
-    vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     path: &std::path::Path,
     // Have the prefetch pass double as the match-stats analysis — see
     // [`replay::PrefetchStatsJob`] and `App::replay_stats_takeover`.
@@ -1195,8 +1234,6 @@ pub fn build_playback(
         remote_rom,
         replay,
         audio_binder,
-        frame_notify,
-        vbuf,
         config.show_opponent_pip,
         stats_job,
     )
@@ -1210,8 +1247,6 @@ pub async fn spawn_pvp(
     scanners: Scanners,
     config: config::Config,
     audio_binder: audio::LateBinder,
-    frame_notify: std::sync::Arc<tokio::sync::Notify>,
-    vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     local_game: crate::library::rom::GameRef,
     local_patch: Option<(String, semver::Version)>,
     pre_match: crate::netplay::PreMatchData,
@@ -1338,8 +1373,6 @@ pub async fn spawn_pvp(
         audio_binder: &audio_binder,
         opponent_loaded,
         local_loaded,
-        frame_notify,
-        vbuf,
     })
     .await
 }
@@ -1352,8 +1385,6 @@ pub fn spawn_singleplayer(
     scanners: &Scanners,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
-    frame_notify: std::sync::Arc<tokio::sync::Notify>,
-    vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     loaded: &selection::Loaded,
 ) -> anyhow::Result<singleplayer::SinglePlayerSession> {
     let game = game::from_gamedb_entry(loaded.game)
@@ -1372,14 +1403,7 @@ pub fn spawn_singleplayer(
     } else {
         raw
     };
-    singleplayer::SinglePlayerSession::new(
-        game,
-        std::sync::Arc::new(rom_bytes),
-        &loaded.save_path,
-        audio_binder,
-        frame_notify,
-        vbuf,
-    )
+    singleplayer::SinglePlayerSession::new(game, std::sync::Arc::new(rom_bytes), &loaded.save_path, audio_binder)
 }
 
 /// Convert a tick count (60 Hz GBA frames) into `m:ss` for the scrub

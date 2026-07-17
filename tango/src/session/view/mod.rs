@@ -162,6 +162,18 @@ const SETUP_DRAWER_TRAVEL: f32 = SETUP_PANE_WIDTH;
 /// little extra for the drop shadow).
 const CONTROLS_SLIDE: f32 = 120.0;
 
+/// Everything a session's [`view`](ActiveSession::view) needs from
+/// the app, bundled so the trait hook stays one argument wide.
+#[derive(Clone, Copy)]
+pub struct Ctx<'a> {
+    pub lang: &'a LanguageIdentifier,
+    pub state: &'a State,
+    pub fractional_scaling: bool,
+    pub hide_emulator_border: bool,
+    pub show_replay_inputs: bool,
+    pub effect: &'static Effect,
+}
+
 pub fn view<'a>(
     lang: &'a LanguageIdentifier,
     state: &'a State,
@@ -170,31 +182,114 @@ pub fn view<'a>(
     show_replay_inputs: bool,
     effect: &'static Effect,
 ) -> Element<'a, Message> {
-    let Some(session) = state.active.as_ref() else {
+    let Some(session) = state.active.as_deref() else {
         return iced::widget::Space::new().width(Fill).height(Fill).into();
     };
+    // Each session kind assembles its own screen — see
+    // [`replay_view`] / [`singleplayer_view`] / [`pvp_view`].
+    session.view(Ctx {
+        lang,
+        state,
+        fractional_scaling,
+        hide_emulator_border,
+        show_replay_inputs,
+        effect,
+    })
+}
 
-    let frame = framebuffer_view(state, fractional_scaling, effect);
-    let mut layout = column![].spacing(0).width(Fill).height(Fill);
-    layout = layout.push(emulator_body(session, state, frame, hide_emulator_border));
+/// Shared closer for every session screen: the topmost Esc
+/// hold-to-quit chip, then the cursor-wake mouse area.
+/// iced's mouse_area, not sweeten's: sweeten 0.14 gates all its
+/// enter/move/exit dispatches on the cursor being inside the
+/// bounds, which makes `on_exit` unreachable (the cursor is
+/// outside by definition when it fires).
+fn finish_session_stack<'a>(
+    lang: &'a LanguageIdentifier,
+    state: &'a State,
+    mut stacked: iced::widget::Stack<'a, Message>,
+) -> Element<'a, Message> {
+    // Topmost: the Esc hold-to-quit countdown chip (see
+    // `exit_hold_overlay` for why it outranks even the reconnect
+    // modal).
+    if let Some(o) = exit_hold_overlay(lang, state) {
+        stacked = stacked.push(o);
+    }
+    iced::widget::mouse_area(stacked)
+        .on_move(|_| Message::MouseMoved)
+        .into()
+}
 
-    // Replays: clicking the screen itself plays/pauses, like any video
-    // player. This is the stack's bottom layer, and iced dispatches
-    // presses topmost-first with capture — so the transport bar's
-    // controls (and its plate, via the hover pin's press sink) never
-    // leak a click down here.
-    let base: Element<'a, Message> = if session.as_replay().is_some() {
-        iced::widget::mouse_area(layout).on_press(Message::TogglePlay).into()
-    } else {
-        layout.into()
-    };
-
+/// Replay playback: emulator + click-to-play base, the transport bar,
+/// input display, PiP inset, and the scrub hover thumbnail.
+pub(crate) fn replay_view<'a>(r: &'a replay::ReplaySession, ctx: Ctx<'a>) -> Element<'a, Message> {
+    let Ctx { lang, state, .. } = ctx;
+    let now = iced::time::Instant::now();
+    let frame = framebuffer_view(state, ctx.fractional_scaling, ctx.effect);
+    let body = emulator_body(r.local_game(), frame, ctx.hide_emulator_border, [false, false]);
+    // Clicking the screen itself plays/pauses, like any video player.
+    // This is the stack's bottom layer, and iced dispatches presses
+    // topmost-first with capture — so the transport bar's controls
+    // (and its plate, via the hover pin's press sink) never leak a
+    // click down here.
+    let base: Element<'a, Message> = iced::widget::mouse_area(body).on_press(Message::TogglePlay).into();
+    let mut stacked = stack![base];
     // The controls live in a floating bar over the emulator (no
     // reserved bottom strip), sliding away after the cursor sits
-    // still — see `floating_controls`. When fully hidden it isn't
+    // still — see `replay_controls`. When fully hidden it isn't
     // in the tree at all, so no invisible buttons linger where it
     // used to be.
-    let mut stacked = stack![base];
+    if state.controls_anim.visible(now) {
+        stacked = stacked.push(replay_controls(lang, r, state, ctx.show_replay_inputs));
+        stacked = stacked.push(corner_commands_overlay(lang, state, Message::Close, false));
+    }
+    // Input display, above the transport bar's resting spot.
+    // Deliberately outside the floating-controls gate — the whole
+    // point is reading inputs during playback, when the cursor (and
+    // the bar with it) has gone idle.
+    if let Some(o) = input_display_overlay(r, state, ctx.show_replay_inputs) {
+        stacked = stacked.push(o);
+    }
+    // PiP: the opponent's screen while the bar toggle is on. Also
+    // outside the controls gate — it's for watching, so it must not
+    // tuck away with the idle cursor.
+    if let Some(o) = pip_overlay(state) {
+        stacked = stacked.push(o);
+    }
+    if let Some(o) = scrub_thumbnail_overlay(state) {
+        stacked = stacked.push(o);
+    }
+    finish_session_stack(lang, state, stacked)
+}
+
+/// Single-player: just the emulator and the corner commands.
+pub(crate) fn singleplayer_view<'a>(
+    s: &'a singleplayer::SinglePlayerSession,
+    ctx: Ctx<'a>,
+) -> Element<'a, Message> {
+    let Ctx { lang, state, .. } = ctx;
+    let now = iced::time::Instant::now();
+    let frame = framebuffer_view(state, ctx.fractional_scaling, ctx.effect);
+    let body = emulator_body(s.local_game(), frame, ctx.hide_emulator_border, [false, false]);
+    let mut stacked = stack![body];
+    if state.controls_anim.visible(now) {
+        stacked = stacked.push(corner_commands_overlay(lang, state, Message::Close, false));
+    }
+    finish_session_stack(lang, state, stacked)
+}
+
+/// Live PvP: emulator with setup-drawer slots, the drawer edge
+/// handles, the drawers themselves, telemetry, and the
+/// disconnect / reconnect modals.
+pub(crate) fn pvp_view<'a>(p: &'a pvp::PvpSession, ctx: Ctx<'a>) -> Element<'a, Message> {
+    let Ctx { lang, state, .. } = ctx;
+    let now = iced::time::Instant::now();
+    let frame = framebuffer_view(state, ctx.fractional_scaling, ctx.effect);
+    let slots = [
+        p.local_loaded.is_some() && state.self_panel.shown(),
+        p.opponent_loaded.is_some() && state.opponent_panel.shown(),
+    ];
+    let body = emulator_body(p.local_game(), frame, ctx.hide_emulator_border, slots);
+    let mut stacked = stack![body];
     // A drawer pane mid-animation draws in iced's floating layer,
     // above every base stack layer — so for those moments the
     // telemetry plate is hoisted into the floating layer too, where
@@ -202,97 +297,67 @@ pub fn view<'a>(
     // `keep_above_drawers` for why it isn't hoisted permanently.
     // The top-right commands stay un-hoisted on purpose: the
     // drawers are supposed to cover them.
-    let now = iced::time::Instant::now();
     let drawer_moving = state.self_panel.is_animating(now) || state.opponent_panel.is_animating(now);
     if state.controls_anim.visible(now) {
-        // Replay: transport bar; PvP: setup-drawer edge handles.
-        // SP has nothing down here.
-        if !matches!(session, ActiveSession::SinglePlayer(_)) {
-            stacked = stacked.push(floating_controls(lang, session, state, show_replay_inputs));
-        }
-        // Every session: Settings + tear-down, top-right (PvP's
-        // tear-down routes through the disconnect confirm).
-        // Pushed BEFORE the setup drawers so an open drawer layers
-        // over them rather than the buttons intruding on the pane.
-        stacked = stacked.push(corner_commands_overlay(lang, session, state));
+        // The setup toggles ride the screen edges as drawer handles
+        // (the replay transport's slot in the layer order).
+        stacked = stacked.push(setup_handles_overlay(lang, p, state, state.controls_anim.progress(now)));
+        // Settings + tear-down, top-right; a live link routes the
+        // tear-down through the disconnect confirm (whose copy
+        // carries the unplug framing); once the link is already gone
+        // (`latency()` = None ⇒ remote dropped) there's nothing left
+        // to protect, so it closes directly. Pushed BEFORE the setup
+        // drawers so an open drawer layers over them rather than the
+        // buttons intruding on the pane.
+        let tear_down_msg = if p.latency().is_some() {
+            Message::OpenDisconnectConfirm
+        } else {
+            Message::Close
+        };
+        stacked = stacked.push(corner_commands_overlay(lang, state, tear_down_msg, slots[1]));
     }
-    // Replay input display, above the transport bar's resting spot.
-    // Deliberately outside the floating-controls gate — the whole
-    // point is reading inputs during playback, when the cursor (and
-    // the bar with it) has gone idle.
-    if let Some(o) = input_display_overlay(session, state, show_replay_inputs) {
-        stacked = stacked.push(o);
-    }
-    // Replay PiP: the opponent's screen while the bar toggle is on. Also
-    // outside the controls gate — it's for watching, so it must not tuck
-    // away with the idle cursor.
-    if let Some(o) = pip_overlay(state) {
-        stacked = stacked.push(o);
-    }
-    // PvP setup drawers — above the corner commands, below the
-    // telemetry plate (see `setup_drawers_overlay`).
-    for pane in setup_drawers_overlay(lang, session, state) {
+    // Setup drawers — above the corner commands, below the telemetry
+    // plate (see `setup_drawers_overlay`).
+    for pane in setup_drawers_overlay(lang, p, state) {
         stacked = stacked.push(pane);
     }
-    if let Some(o) = scrub_thumbnail_overlay(session, state) {
-        stacked = stacked.push(o);
-    }
-    // PvP signal indicator / expanded telemetry graph, bottom-right.
+    // Signal indicator / expanded telemetry graph, bottom-right.
     // Deliberately outside the floating-controls gate — connection
     // health stays glanceable even when the controls tuck away.
-    if let Some(o) = telemetry_overlay(lang, session, state) {
+    if let Some(o) = telemetry_overlay(lang, p, state) {
         stacked = stacked.push(keep_above_drawers(o, drawer_moving));
     }
-    if let Some(o) = disconnect_overlay(lang, session, state) {
+    if let Some(o) = disconnect_overlay(lang, state) {
         stacked = stacked.push(o);
     }
     // The auto-reconnect modal. Above the disconnect-confirm so that if
     // the link drops while that prompt is open, "Reconnecting…" reads over it.
-    if let Some(o) = reconnecting_overlay(lang, session) {
+    if let Some(o) = reconnecting_overlay(lang, p) {
         stacked = stacked.push(o);
     }
-    // Topmost: the Esc hold-to-quit countdown chip (see
-    // `exit_hold_overlay` for why it outranks even the reconnect
-    // modal).
-    if let Some(o) = exit_hold_overlay(lang, state) {
-        stacked = stacked.push(o);
-    }
-    // Any cursor movement over the session wakes the controls.
-    // iced's mouse_area, not sweeten's: sweeten 0.14 gates all its
-    // enter/move/exit dispatches on the cursor being inside the
-    // bounds, which makes `on_exit` unreachable (the cursor is
-    // outside by definition when it fires).
-    iced::widget::mouse_area(stacked)
-        .on_move(|_| Message::MouseMoved)
-        .into()
+    finish_session_stack(lang, state, stacked)
 }
 
-/// The floating controls bar: the transport / toggles strip in a
-/// [`widgets::panel`] plate, bottom-anchored over the emulator.
-/// Hiding slides it past the window's bottom edge — iced has no
-/// subtree opacity to fade with, but fully clearing the edge
-/// reads the same. The bar's own hover pin keeps it up while the
-/// cursor rests on it.
-fn floating_controls<'a>(
+/// The floating replay transport: the transport / toggles strip in a
+/// [`widgets::panel`] plate, bottom-anchored over the emulator and
+/// spanning the window (the scrubber is Fill-width). Hiding slides it
+/// past the window's bottom edge — iced has no subtree opacity to
+/// fade with, but fully clearing the edge reads the same. The bar's
+/// own hover pin keeps it up while the cursor rests on it.
+fn replay_controls<'a>(
     lang: &'a LanguageIdentifier,
-    session: &'a ActiveSession,
+    r: &'a replay::ReplaySession,
     state: &'a State,
     show_replay_inputs: bool,
 ) -> Element<'a, Message> {
     let now = iced::time::Instant::now();
     let hide_progress = state.controls_anim.progress(now);
-    // Replay transport carries a Fill-width scrubber, so its bar
-    // spans the window; PvP's setup toggles ride the screen edges
-    // as drawer handles instead — see `setup_handles_overlay`.
-    let Some(r) = session.as_replay() else {
-        return setup_handles_overlay(lang, session, state, hide_progress);
-    };
     let panel = container(replay_bar(lang, r, state, show_replay_inputs))
         .width(Fill)
         .style(hud_chip_plate);
     // iced's mouse_area — sweeten's `on_exit` never fires (see the
-    // note in `view`), which left the hover pin stuck and the bar
-    // permanently visible. `on_press` is a capture sink: a click on
+    // note in `finish_session_stack`), which left the hover pin stuck
+    // and the bar permanently visible. `on_press` is a capture sink: a click on
     // the bar's plate (between controls) re-asserts the pin instead
     // of falling through to the screen's play/pause toggle.
     let hover_pin = iced::widget::mouse_area(panel)
@@ -386,17 +451,20 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
 /// BNLC background art (cover-fit, crops as needed) or a pure-black
 /// backdrop when BNLC isn't installed. The backdrop spans the full
 /// body width so the setup panes float on top of the same bezel art.
+/// `slots` are the PvP setup-drawer slots (`[left, right]`) — see the
+/// comment on `drawer_slot` below; always `[false, false]` outside
+/// PvP.
 fn emulator_body<'a>(
-    session: &'a ActiveSession,
-    state: &'a State,
+    game: &'static crate::library::game::Game,
     frame: Element<'a, Message>,
     hide_emulator_border: bool,
+    slots: [bool; 2],
 ) -> Element<'a, Message> {
     let frame_container = container(frame).center(Fill);
     let bnlc_bg = if hide_emulator_border {
         None
     } else {
-        background_handle(session.local_game())
+        background_handle(game)
     };
     let backdrop: Element<'a, Message> = match bnlc_bg {
         Some(bg_handle) => iced::widget::image(bg_handle)
@@ -428,16 +496,12 @@ fn emulator_body<'a>(
             .height(Fill)
     };
     let mut content_row = row![].spacing(0).height(Fill).width(Fill);
-    if let ActiveSession::PvP(s) = session {
-        if s.local_loaded.is_some() && state.self_panel.shown() {
-            content_row = content_row.push(drawer_slot());
-        }
+    if slots[0] {
+        content_row = content_row.push(drawer_slot());
     }
     content_row = content_row.push(container(frame_container).width(Fill).height(Fill));
-    if let ActiveSession::PvP(s) = session {
-        if s.opponent_loaded.is_some() && state.opponent_panel.shown() {
-            content_row = content_row.push(drawer_slot());
-        }
+    if slots[1] {
+        content_row = content_row.push(drawer_slot());
     }
     let body = stack![backdrop, Element::from(content_row)];
     container(body).width(Fill).height(Fill).into()
@@ -451,17 +515,14 @@ fn emulator_body<'a>(
 /// drawers sit ABOVE the corner commands — an open drawer covers
 /// the Settings / Close buttons instead of having them intrude on
 /// its content — and BELOW the telemetry plate, which stays
-/// glanceable over an open drawer (see the layer order in [`view`]).
+/// glanceable over an open drawer (see the layer order in [`pvp_view`]).
 /// Mid-slide the panes draw in iced's floating layer, above every
 /// base layer (see `anim::slide_in` / `keep_above_drawers`).
 fn setup_drawers_overlay<'a>(
     lang: &'a LanguageIdentifier,
-    session: &'a ActiveSession,
+    s: &'a pvp::PvpSession,
     state: &'a State,
 ) -> Vec<Element<'a, Message>> {
-    let ActiveSession::PvP(s) = session else {
-        return Vec::new();
-    };
     let now = iced::time::Instant::now();
     let setup_pane = |panel: Element<'a, Message>, from_dx: f32, progress: f32| -> Element<'a, Message> {
         let pane = container(panel)
@@ -759,14 +820,16 @@ fn keep_above_drawers(el: Element<'_, Message>, drawer_moving: bool) -> Element<
 
 /// The unified session command cluster, top-right in every
 /// session type: the Settings gear and the tear-down button —
-/// direct Close for replay/SP, the disconnect confirm for PvP.
-/// Rides the same auto-hide transition as the rest of the
-/// controls, sliding up past the top edge when the cursor goes
-/// idle.
+/// `tear_down_msg` is direct Close for replay/SP, the disconnect
+/// confirm for a live PvP link. Rides the same auto-hide transition
+/// as the rest of the controls, sliding up past the top edge when
+/// the cursor goes idle — unless `behind_drawer` (PvP: the opponent
+/// drawer covers the cluster), which pins it instead.
 fn corner_commands_overlay<'a>(
     lang: &'a LanguageIdentifier,
-    session: &'a ActiveSession,
     state: &'a State,
+    tear_down_msg: Message,
+    behind_drawer: bool,
 ) -> Element<'a, Message> {
     let now = iced::time::Instant::now();
     let cmd = |icon: Icon,
@@ -786,15 +849,7 @@ fn corner_commands_overlay<'a>(
         .gap(4)
         .into()
     };
-    // Same X + "Close" tooltip in every session type. A live PvP
-    // match routes through the disconnect confirm (whose copy
-    // carries the unplug framing); once the link is already gone
-    // (`latency()` = None ⇒ remote dropped) there's nothing left
-    // to protect, so it closes directly.
-    let tear_down_msg = match session {
-        ActiveSession::PvP(pvp) if pvp.latency().is_some() => Message::OpenDisconnectConfirm,
-        _ => Message::Close,
-    };
+    // Same X + "Close" tooltip in every session type.
     let tear_down = cmd(Icon::X, t!(lang, "playback-close"), tear_down_msg, overlay_close_button);
     let cluster = row![
         cmd(
@@ -811,16 +866,12 @@ fn corner_commands_overlay<'a>(
         .on_enter(Message::ControlsHovered(true))
         .on_exit(Message::ControlsHovered(false));
     // While the opponent drawer is open the cluster sits behind it
-    // (see the layer order in `view`) — skip the auto-hide slide
-    // then. The slide draws in iced's floating layer
+    // (see the layer order in [`pvp_view`]) — skip the auto-hide
+    // slide then. The slide draws in iced's floating layer
     // (`anim::slide_in`), which would pop the buttons OVER the
     // drawer they're supposed to be under for the length of the
     // animation; at rest behind the drawer the slide is invisible
     // anyway.
-    let behind_drawer = match session {
-        ActiveSession::PvP(pvp) => pvp.opponent_loaded.is_some() && state.opponent_panel.shown(),
-        _ => false,
-    };
     let progress = if behind_drawer {
         1.0
     } else {
@@ -848,14 +899,10 @@ fn corner_commands_overlay<'a>(
 /// while the peer has blinded their setup.
 fn setup_handles_overlay<'a>(
     lang: &'a LanguageIdentifier,
-    session: &'a ActiveSession,
+    pvp: &'a pvp::PvpSession,
     state: &'a State,
     hide_progress: f32,
 ) -> Element<'a, Message> {
-    let ActiveSession::PvP(pvp) = session else {
-        return iced::widget::Space::new().into();
-    };
-
     let now = iced::time::Instant::now();
 
     // `on_left`: which screen edge the tab grows out of.
@@ -1116,8 +1163,7 @@ fn replay_transport<'a>(
 /// the window width — the overlay layer spans the whole session view.
 /// Pure presentation — no mouse handlers anywhere in the chain, so it
 /// never steals events from the transport below.
-fn scrub_thumbnail_overlay<'a>(session: &'a ActiveSession, state: &'a State) -> Option<Element<'a, Message>> {
-    session.as_replay()?;
+fn scrub_thumbnail_overlay(state: &State) -> Option<Element<'_, Message>> {
     let h = state.scrub.hover?;
     let (_, handle) = state.scrub.thumb.as_ref()?;
     let handle = handle.clone();
@@ -1309,14 +1355,13 @@ fn pip_overlay(state: &State) -> Option<Element<'_, Message>> {
 }
 
 fn input_display_overlay<'a>(
-    session: &'a ActiveSession,
+    r: &'a replay::ReplaySession,
     state: &'a State,
     show_replay_inputs: bool,
 ) -> Option<Element<'a, Message>> {
     if !show_replay_inputs {
         return None;
     }
-    let r = session.as_replay()?;
     let (mut local, mut remote) = r.input_at(playhead_tick(r, state));
     let (mut local_nick, mut remote_nick) = r.nicknames();
     // While the perspective is swapped, the main screen is the opponent's
@@ -1364,13 +1409,9 @@ fn input_display_overlay<'a>(
 /// of "this interrupts what you're doing" dialogs. Sits above
 /// the options popover in the stack so it covers the menu if
 /// the user somehow re-opened it.
-fn disconnect_overlay<'a>(
-    lang: &'a LanguageIdentifier,
-    session: &'a ActiveSession,
-    state: &'a State,
-) -> Option<Element<'a, Message>> {
+fn disconnect_overlay<'a>(lang: &'a LanguageIdentifier, state: &'a State) -> Option<Element<'a, Message>> {
     let now = iced::time::Instant::now();
-    if !(state.disconnect.visible(now) && matches!(session, ActiveSession::PvP(_))) {
+    if !state.disconnect.visible(now) {
         return None;
     }
     let progress = state.disconnect.progress(now);
@@ -1415,10 +1456,7 @@ fn disconnect_overlay<'a>(
 /// one — plus a Disconnect escape hatch (routes through [`Message::Close`], same
 /// as the confirm dialog's) so the user can abandon the wait. Pushed last in
 /// [`view`] so it sits above every other layer.
-fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, session: &'a ActiveSession) -> Option<Element<'a, Message>> {
-    let ActiveSession::PvP(pvp) = session else {
-        return None;
-    };
+fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp::PvpSession) -> Option<Element<'a, Message>> {
     if !pvp.is_reconnecting() {
         return None;
     }

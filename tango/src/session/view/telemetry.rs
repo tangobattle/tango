@@ -562,12 +562,9 @@ fn signal_icon(skew: i32) -> Icon {
 /// header collapses it back (Esc works too).
 pub(super) fn telemetry_overlay<'a>(
     lang: &'a LanguageIdentifier,
-    session: &'a ActiveSession,
+    pvp: &'a pvp::PvpSession,
     state: &'a State,
 ) -> Option<Element<'a, Message>> {
-    let ActiveSession::PvP(pvp) = session else {
-        return None;
-    };
     // Same link-up gate as `latency()`: nothing to show before the
     // first pong.
     pvp.latency_raw()?;

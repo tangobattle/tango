@@ -132,11 +132,10 @@ pub struct ReplaySession {
     /// [`Self::nicknames`]). Boxed to keep this struct — and with it
     /// the `ActiveSession` enum — small, same as the PvP variant.
     input_display: Box<InputDisplay>,
-    /// Shared display framebuffer + its wake handle, kept so
+    /// This session's display framebuffer + wake handle, kept so
     /// [`Self::scrub_preview`] can blit snapshot framebuffers without
     /// going through the emulator at all.
-    vbuf: Arc<Mutex<Vec<u8>>>,
-    frame_notify: Arc<tokio::sync::Notify>,
+    frame_sink: crate::session::FrameSink,
     /// Whether the opponent-screen PiP is on (a per-session toggle on
     /// the transport bar).
     show_pip: Arc<AtomicBool>,
@@ -230,8 +229,6 @@ impl ReplaySession {
         remote_rom: Arc<Vec<u8>>,
         replay: Arc<tango_pvp::replay::Replay>,
         audio_binder: &crate::platform::audio::LateBinder,
-        frame_notify: Arc<tokio::sync::Notify>,
-        vbuf: Arc<Mutex<Vec<u8>>>,
         show_pip: bool,
         stats_job: Option<PrefetchStatsJob>,
     ) -> anyhow::Result<Self> {
@@ -311,8 +308,7 @@ impl ReplaySession {
             ),
         });
 
-        vbuf.lock().unwrap().fill(0);
-
+        let frame_sink = crate::session::FrameSink::new();
         let playback: SharedSioPlayback = Arc::new(Mutex::new(None));
         let cursor = Arc::new(AtomicU32::new(0));
         let paused = Arc::new(crate::session::PauseGate::new(false));
@@ -341,12 +337,12 @@ impl ReplaySession {
         let pip_fresh = Arc::new(AtomicBool::new(false));
 
         let surfaces = Surfaces {
-            vbuf: vbuf.clone(),
+            vbuf: frame_sink.vbuf.clone(),
             pip_vbuf: pip_vbuf.clone(),
             pip_fresh: pip_fresh.clone(),
             show_pip: show_pip.clone(),
             swap_perspective: swap_perspective.clone(),
-            frame_notify: frame_notify.clone(),
+            frame_notify: frame_sink.notify.clone(),
             local_player,
         };
 
@@ -503,8 +499,7 @@ impl ReplaySession {
             round_boundaries: round_marks,
             total_ticks,
             input_display,
-            vbuf,
-            frame_notify,
+            frame_sink,
             show_pip,
             swap_perspective,
             pip_vbuf,
@@ -523,10 +518,6 @@ impl ReplaySession {
                 threads,
             },
         })
-    }
-
-    pub fn game(&self) -> &'static crate::library::game::Game {
-        self.game
     }
 
     /// Whether the opponent-screen PiP is on — drives the transport bar
@@ -585,25 +576,8 @@ impl ReplaySession {
         }
     }
 
-    /// Latest other-perspective frame for the PiP overlay (the opponent's
-    /// screen, or the local one while swapped), as raw BGR555 — `None`
-    /// while the PiP is off or before its first captured frame.
-    pub fn pip_pixels(&self) -> Option<Vec<u8>> {
-        (self.show_pip.load(Ordering::Relaxed) && self.pip_fresh.load(Ordering::Relaxed))
-            .then(|| self.pip_vbuf.lock().unwrap().clone())
-    }
-
     pub fn is_paused(&self) -> bool {
         self.engine.paused.paused()
-    }
-
-    /// Drive playback at `factor * 60` fps. 1.0 = realtime, 0.5 =
-    /// slow-mo, 2.0 / 4.0 = fast-forward. Audio paces trap-engine frames
-    /// (values above ~4 start dropping samples); the SIO drive loop
-    /// paces itself and publishes the target for its audio stream.
-    pub fn set_speed(&self, factor: f32) {
-        let fps = (EXPECTED_FPS * factor).max(1.0);
-        self.engine.fps_bits.store(fps.to_bits(), Ordering::Relaxed);
     }
 
     /// Current factor (current fps / 60).
@@ -762,16 +736,44 @@ impl ReplaySession {
     /// see [`Surfaces`].
     fn blit_snapshot(&self, snap: &NearestSnapshot) -> bool {
         Surfaces {
-            vbuf: self.vbuf.clone(),
+            vbuf: self.frame_sink.vbuf.clone(),
             pip_vbuf: self.pip_vbuf.clone(),
             pip_fresh: self.pip_fresh.clone(),
             show_pip: self.show_pip.clone(),
             swap_perspective: self.swap_perspective.clone(),
-            frame_notify: self.frame_notify.clone(),
+            frame_notify: self.frame_sink.notify.clone(),
             local_player: snap.local_player,
         }
         .publish_snapshot(&snap.snap);
         true
+    }
+}
+
+impl crate::session::ActiveSession for ReplaySession {
+    fn local_game(&self) -> &'static crate::library::game::Game {
+        self.game
+    }
+
+    fn frame_sink(&self) -> &crate::session::FrameSink {
+        &self.frame_sink
+    }
+
+    fn view<'a>(&'a self, ctx: crate::session::view::Ctx<'a>) -> iced::Element<'a, crate::session::Message> {
+        crate::session::view::replay_view(self, ctx)
+    }
+
+    /// The opponent's screen, or the local one while swapped — `None`
+    /// while the PiP is off or before its first captured frame.
+    fn pip_pixels(&self) -> Option<Vec<u8>> {
+        (self.show_pip.load(Ordering::Relaxed) && self.pip_fresh.load(Ordering::Relaxed))
+            .then(|| self.pip_vbuf.lock().unwrap().clone())
+    }
+
+    /// 0.5 = slow-mo. The SIO drive loop paces itself and publishes
+    /// the target for its audio stream.
+    fn set_speed(&self, factor: f32) {
+        let fps = (EXPECTED_FPS * factor).max(1.0);
+        self.engine.fps_bits.store(fps.to_bits(), Ordering::Relaxed);
     }
 }
 

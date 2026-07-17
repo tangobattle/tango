@@ -197,6 +197,10 @@ pub struct PvpSession {
     /// Where this match's replay is being recorded, or `None` if the writer
     /// failed to open. The post-match results screen offers to play it back.
     pub replay_path: Option<std::path::PathBuf>,
+    /// This session's display surfaces + frame wake handle; the drive
+    /// thread and the supervisor's end-detection wires hold clones of
+    /// its parts.
+    frame_sink: crate::session::FrameSink,
     /// When the session was built, for the results screen's match duration.
     started_at: std::time::Instant,
 }
@@ -225,8 +229,6 @@ pub struct PvpSessionArgs<'a> {
     pub audio_binder: &'a crate::platform::audio::LateBinder,
     pub opponent_loaded: Option<crate::selection::Loaded>,
     pub local_loaded: Option<crate::selection::Loaded>,
-    pub frame_notify: Arc<tokio::sync::Notify>,
-    pub vbuf: Arc<Mutex<Vec<u8>>>,
 }
 
 impl PvpSession {
@@ -251,8 +253,6 @@ impl PvpSession {
             audio_binder,
             opponent_loaded,
             local_loaded,
-            frame_notify,
-            vbuf,
         } = args;
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
@@ -313,7 +313,7 @@ impl PvpSession {
         let drive_paused = Arc::new(crate::session::PauseGate::new(false));
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
         let tps_counter = Arc::new(Mutex::new(crate::session::stats::Counter::new(60)));
-        vbuf.lock().unwrap().fill(0);
+        let frame_sink = crate::session::FrameSink::new();
 
         // Usage semantics can depend on the applied patch (exe45's PvP
         // patch), so they're probed off the patched ROM.
@@ -381,8 +381,8 @@ impl PvpSession {
                     .as_ref()
                     .map(|p| crate::library::replays::stats_path(cache_path, replays_path, p)),
                 tps_counter: tps_counter.clone(),
-                vbuf: vbuf.clone(),
-                frame_notify: frame_notify.clone(),
+                vbuf: frame_sink.vbuf.clone(),
+                frame_notify: frame_sink.notify.clone(),
                 local_player: local_player_index as usize,
                 rt: tokio::runtime::Handle::current(),
             };
@@ -431,7 +431,7 @@ impl PvpSession {
             cancel: cancellation_token.clone(),
             metrics: metrics.clone(),
             drive_paused: drive_paused.clone(),
-            frame_notify: frame_notify.clone(),
+            frame_notify: frame_sink.notify.clone(),
         });
 
         Ok(Self {
@@ -454,12 +454,9 @@ impl PvpSession {
             frame_delay,
             stats,
             replay_path,
+            frame_sink,
             started_at: std::time::Instant::now(),
         })
-    }
-
-    pub fn game(&self) -> &'static crate::library::game::Game {
-        self.local_game
     }
 
     /// This side's player index (P1 = 0, P2 = 1) for the match. Stable across
@@ -486,21 +483,6 @@ impl PvpSession {
         );
     }
 
-    /// Overwrite the joyflag bitmap (same shape as singleplayer's
-    /// — see [`crate::session::singleplayer::SinglePlayerSession::set_joyflags`]).
-    pub fn set_joyflags(&self, mgba_keys: u32) {
-        self.joyflags.store(mgba_keys, Ordering::Relaxed);
-    }
-
-    pub fn request_close(&self) {
-        // Cancelling the token is the whole close signal: it stops the
-        // drive thread and the supervisor and flips `is_ended`'s
-        // cancellation check. The supervisor announces the quit to the
-        // peer (best-effort `Goodbye`) on its way out, so the peer ends
-        // at once instead of trying to reconnect to us.
-        self.cancellation_token.cancel();
-    }
-
     /// `true` while the link has dropped and the session is transparently
     /// rebuilding it (direct or matchmaking) — the drive loop is paused and the
     /// PvP view shows a "Reconnecting…" overlay.
@@ -524,52 +506,6 @@ impl PvpSession {
                 Some((remaining / total).clamp(0.0, 1.0))
             }
             _ => None,
-        }
-    }
-
-    /// True once it's safe to tear the session down. Requires
-    /// local completion (the deciding round's end confirmed + runout)
-    /// PLUS one of:
-    ///   * the peer also sent us `EndOfMatch`, or
-    ///   * `PEER_END_GRACE` has elapsed since local completion
-    ///     (peer crashed / disconnected — give up waiting).
-    ///
-    /// The handshake keeps the data channel alive long enough
-    /// for the lagging side to also confirm its end and write
-    /// its replay tail before we drop the connection. Without it,
-    /// whichever side finishes first kills the connection out
-    /// from under the other and the other side's replay ends up
-    /// truncated.
-    pub fn is_ended(&self) -> bool {
-        // The dead-link checks come before the completion gate: a match
-        // that ends by disconnect (the peer quit, the reconnect window
-        // expired, our own netcode tore down) is over whether or not it
-        // ever completed — leaving these behind `completed` stranded
-        // mid-match disconnects on a frozen session forever.
-        //
-        // Remote's data channel closed (RTCPeerConnection drop or
-        // SCTP-level disconnect): no EndOfMatch is ever coming, so skip
-        // straight to teardown without burning the grace window.
-        if self.end.remote_disconnected.load(Ordering::Acquire) {
-            return true;
-        }
-        // We tore our own netcode down. Same rationale, from our side.
-        if self.cancellation_token.is_cancelled() {
-            return true;
-        }
-        if !self.completed.load(Ordering::Acquire) {
-            return false;
-        }
-        if self.end.remote_ended.load(Ordering::Acquire) {
-            return true;
-        }
-        match *self.end.local_ended_at.lock().unwrap() {
-            Some(t) => t.elapsed() >= PEER_END_GRACE,
-            // The completion flag can flip before the drive loop
-            // observes it and stamps the deadline. Hold off
-            // teardown for one extra tick rather than firing the
-            // grace timer from t=0.
-            None => false,
         }
     }
 
@@ -654,6 +590,99 @@ impl PvpSession {
             lead: self.metrics.queue_len.load(Ordering::Relaxed) as i32,
             depth: self.metrics.depth.load(Ordering::Relaxed),
         })
+    }
+}
+
+impl crate::session::ActiveSession for PvpSession {
+    fn local_game(&self) -> &'static crate::library::game::Game {
+        self.local_game
+    }
+
+    fn frame_sink(&self) -> &crate::session::FrameSink {
+        &self.frame_sink
+    }
+
+    fn view<'a>(&'a self, ctx: crate::session::view::Ctx<'a>) -> iced::Element<'a, crate::session::Message> {
+        crate::session::view::pvp_view(self, ctx)
+    }
+
+    fn telemetry_sample(&self) -> Option<crate::session::MetricSample> {
+        Some(crate::session::MetricSample::capture(self))
+    }
+
+    /// Snapshot the finished match: on a natural end, and on a remote
+    /// disconnect (their channel EOF'd or the reconnect window expired) —
+    /// the results card comes up in its disconnect dress with the match as
+    /// it stood. Our own quit paths (Esc hold, disconnect confirm) set
+    /// neither flag and go straight back to the menu: the player chose to
+    /// leave.
+    fn capture_results(&self) -> Option<crate::session::MatchResults> {
+        if self.is_completed() {
+            Some(crate::session::MatchResults::capture(self, crate::session::MatchEnd::Completed))
+        } else if self.remote_disconnected() {
+            Some(crate::session::MatchResults::capture(self, crate::session::MatchEnd::Disconnected))
+        } else {
+            None
+        }
+    }
+
+    fn set_joyflags(&self, joyflags: u32) {
+        self.joyflags.store(joyflags, Ordering::Relaxed);
+    }
+
+    fn request_close(&self) {
+        // Cancelling the token is the whole close signal: it stops the
+        // drive thread and the supervisor and flips `is_ended`'s
+        // cancellation check. The supervisor announces the quit to the
+        // peer (best-effort `Goodbye`) on its way out, so the peer ends
+        // at once instead of trying to reconnect to us.
+        self.cancellation_token.cancel();
+    }
+
+    /// True once it's safe to tear the session down. Requires
+    /// local completion (the deciding round's end confirmed + runout)
+    /// PLUS one of:
+    ///   * the peer also sent us `EndOfMatch`, or
+    ///   * `PEER_END_GRACE` has elapsed since local completion
+    ///     (peer crashed / disconnected — give up waiting).
+    ///
+    /// The handshake keeps the data channel alive long enough
+    /// for the lagging side to also confirm its end and write
+    /// its replay tail before we drop the connection. Without it,
+    /// whichever side finishes first kills the connection out
+    /// from under the other and the other side's replay ends up
+    /// truncated.
+    fn is_ended(&self) -> bool {
+        // The dead-link checks come before the completion gate: a match
+        // that ends by disconnect (the peer quit, the reconnect window
+        // expired, our own netcode tore down) is over whether or not it
+        // ever completed — leaving these behind `completed` stranded
+        // mid-match disconnects on a frozen session forever.
+        //
+        // Remote's data channel closed (RTCPeerConnection drop or
+        // SCTP-level disconnect): no EndOfMatch is ever coming, so skip
+        // straight to teardown without burning the grace window.
+        if self.end.remote_disconnected.load(Ordering::Acquire) {
+            return true;
+        }
+        // We tore our own netcode down. Same rationale, from our side.
+        if self.cancellation_token.is_cancelled() {
+            return true;
+        }
+        if !self.completed.load(Ordering::Acquire) {
+            return false;
+        }
+        if self.end.remote_ended.load(Ordering::Acquire) {
+            return true;
+        }
+        match *self.end.local_ended_at.lock().unwrap() {
+            Some(t) => t.elapsed() >= PEER_END_GRACE,
+            // The completion flag can flip before the drive loop
+            // observes it and stamps the deadline. Hold off
+            // teardown for one extra tick rather than firing the
+            // grace timer from t=0.
+            None => false,
+        }
     }
 }
 

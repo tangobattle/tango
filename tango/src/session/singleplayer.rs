@@ -1,8 +1,8 @@
 //! Standalone (no-netplay) emulator session. Boots a ROM with the
 //! user-selected save file and accepts joyflag input from the UI tick
-//! loop. The video frame plumbing mirrors `replay_session` — the same
-//! Arc<Mutex<Vec<u8>>> vbuf, fed mgba's raw BGR555 (the framebuffer shader
-//! expands it on the GPU).
+//! loop. The video frame plumbing mirrors the other sessions — the
+//! session's own [`FrameSink`](crate::session::FrameSink) vbuf, fed
+//! mgba's raw BGR555 (the framebuffer shader expands it on the GPU).
 //!
 //! The core runs on a drive thread we own (mgba is built without its
 //! thread runner), paced by the audio clock exactly as mgba's own sync
@@ -43,6 +43,7 @@ pub struct SinglePlayerSession {
     game: &'static crate::library::game::Game,
     joyflags: Arc<AtomicU32>,
     shared: Arc<Shared>,
+    frame_sink: crate::session::FrameSink,
     _audio_binding: Option<crate::platform::audio::Binding>,
     drive: Option<std::thread::JoinHandle<()>>,
 }
@@ -53,8 +54,6 @@ impl SinglePlayerSession {
         rom: Arc<Vec<u8>>,
         save_path: &std::path::Path,
         audio_binder: &crate::platform::audio::LateBinder,
-        frame_notify: Arc<tokio::sync::Notify>,
-        vbuf: Arc<Mutex<Vec<u8>>>,
     ) -> anyhow::Result<Self> {
         let mut core = crate::session::new_gba_core(rom.as_ref())?;
         // Open RW so the game's own save writes persist back to disk —
@@ -72,15 +71,12 @@ impl SinglePlayerSession {
             stop: AtomicBool::new(false),
         });
 
-        // Wipe the shared framebuffer so the previous session's
-        // last frame doesn't flash through before mgba writes its
-        // first one. The post-constructor `current_frame` clear
-        // covers iced's side; this covers the source.
-        vbuf.lock().unwrap().fill(0);
-
+        let frame_sink = crate::session::FrameSink::new();
         let drive = std::thread::Builder::new().name("singleplayer".to_owned()).spawn({
             let shared = shared.clone();
             let joyflags = joyflags.clone();
+            let vbuf = frame_sink.vbuf.clone();
+            let frame_notify = frame_sink.notify.clone();
             move || drive_loop(shared, joyflags, vbuf, frame_notify)
         })?;
 
@@ -108,27 +104,34 @@ impl SinglePlayerSession {
             game,
             joyflags,
             shared,
+            frame_sink,
             _audio_binding: audio_binding,
             drive: Some(drive),
         })
     }
 
-    pub fn game(&self) -> &'static crate::library::game::Game {
+}
+
+impl crate::session::ActiveSession for SinglePlayerSession {
+    fn local_game(&self) -> &'static crate::library::game::Game {
         self.game
     }
 
-    /// Overwrite the entire mgba joyflag bitmap — the configurable
-    /// input mapping resolves multiple held bindings into one
-    /// flag word and pushes the result here every event.
-    pub fn set_joyflags(&self, mgba_keys: u32) {
-        self.joyflags.store(mgba_keys, Ordering::Relaxed);
+    fn frame_sink(&self) -> &crate::session::FrameSink {
+        &self.frame_sink
     }
 
-    /// Drive the emulator at `factor * EXPECTED_FPS` fps. 1.0 = realtime,
-    /// anything higher = fast-forward. Audio paces frames, so values
-    /// above ~4x start dropping samples; clamp accordingly to keep audio
-    /// coherent.
-    pub fn set_speed(&self, factor: f32) {
+    fn view<'a>(&'a self, ctx: crate::session::view::Ctx<'a>) -> iced::Element<'a, crate::session::Message> {
+        crate::session::view::singleplayer_view(self, ctx)
+    }
+
+    fn set_joyflags(&self, joyflags: u32) {
+        self.joyflags.store(joyflags, Ordering::Relaxed);
+    }
+
+    /// Audio paces frames, so factors above ~4x start dropping
+    /// samples; clamp accordingly to keep audio coherent.
+    fn set_speed(&self, factor: f32) {
         let fps = (EXPECTED_FPS * factor).clamp(1.0, EXPECTED_FPS * 4.0);
         self.shared.fps_bits.store(fps.to_bits(), Ordering::Relaxed);
     }

@@ -16,7 +16,6 @@
 use crate::library::{game, patch, replays, rom, save};
 use crate::netplay::identity;
 use crate::platform::{audio, input, sdl_init};
-use crate::session::ActiveSession;
 use crate::ui::theme::theme_for;
 use crate::ui::{anim, widgets};
 use crate::{config, discord, i18n, loadout, net, netplay, selection, session, tabs, updater, INIT_LINK_CODE};
@@ -1162,18 +1161,11 @@ impl App {
                 if let session::Message::WatchResultsReplay = &m {
                     if let Some(path) = self.session.results.as_ref().and_then(|r| r.replay_path.clone()) {
                         let (stats_job, stats_task) = self.replay_stats_takeover(&path);
-                        match session::build_playback(
-                            &self.scanners,
-                            &self.config,
-                            &self.audio_binder,
-                            self.session.frame_notify.clone(),
-                            self.session.vbuf.clone(),
-                            &path,
-                            stats_job,
-                        ) {
+                        match session::build_playback(&self.scanners, &self.config, &self.audio_binder, &path, stats_job)
+                        {
                             Ok(s) => {
                                 self.session.replay_chart = Some(self.replay_chart_for(&path, &s));
-                                self.session.active = Some(ActiveSession::Replay(s));
+                                self.session.active = Some(Box::new(s));
                                 self.session.wake_controls();
                             }
                             // The dropped job closes its stream, whose
@@ -1194,14 +1186,14 @@ impl App {
                 // fresh on-disk SRAM. Detected by the active-slot
                 // transition (not the Close message) because Esc
                 // closes SP sessions inside the session update.
-                let was_sp = matches!(self.session.active, Some(ActiveSession::SinglePlayer(_)));
+                let was_sp = self.session.active_as::<session::singleplayer::SinglePlayerSession>().is_some();
                 // Snapshot "was PvP" before dispatch — PvP
                 // sessions can auto-tear-down inside
                 // `UpdateFramebuffer` (peer-end / disconnect /
                 // grace timeout), not just from a Close message.
                 // We trigger the replay rescan whenever a PvP
                 // session was active before and isn't after.
-                let was_pvp = matches!(self.session.active, Some(ActiveSession::PvP(_)));
+                let was_pvp = self.session.active_as::<session::pvp::PvpSession>().is_some();
                 let task = self.session.update(m, &self.config.input_mapping).map(Message::Session);
                 // Rescan + reload run off-thread; the Rescanned
                 // followup forces a `loaded` rebuild past the
@@ -1239,8 +1231,6 @@ impl App {
                 let scanners = self.scanners.clone();
                 let config = self.config.clone();
                 let audio_binder = self.audio_binder.clone();
-                let frame_notify = self.session.frame_notify.clone();
-                let vbuf = self.session.vbuf.clone();
                 let local_game = self.loadout.game;
                 let local_patch = self.loadout.patch.clone().zip(self.loadout.patch_version.clone());
                 iced::Task::perform(
@@ -1248,17 +1238,7 @@ impl App {
                         let Some(local_game) = local_game else {
                             return Err(anyhow::anyhow!("no local game selected"));
                         };
-                        session::spawn_pvp(
-                            scanners,
-                            config,
-                            audio_binder,
-                            frame_notify,
-                            vbuf,
-                            local_game,
-                            local_patch,
-                            pre_match,
-                        )
-                        .await
+                        session::spawn_pvp(scanners, config, audio_binder, local_game, local_patch, pre_match).await
                     },
                     |result| Message::PvpSessionBuilt(std::sync::Arc::new(std::sync::Mutex::new(Some(result)))),
                 )
@@ -1301,7 +1281,7 @@ impl App {
                         // opponent's drawer open at match start if
                         // their setup is actually visible.
                         let auto_open = self.config.show_opponent_setup && session.opponent_loaded.is_some();
-                        self.session.active = Some(ActiveSession::PvP(Box::new(session)));
+                        self.session.active = Some(Box::new(session));
                         if auto_open {
                             self.session.opponent_panel.open();
                         } else {
@@ -1490,12 +1470,14 @@ impl App {
             discord::make_game_info(g, patch, lang)
         });
 
-        if let Some(active) = &self.session.active {
+        if let Some(active) = self.session.active.as_deref() {
             let start = self.session_started_at.unwrap_or_else(std::time::SystemTime::now);
-            return match active {
-                ActiveSession::Replay(_) => discord::make_base_activity(None),
-                ActiveSession::SinglePlayer(_) => discord::make_single_player_activity(start, lang, game_info),
-                ActiveSession::PvP(_) => discord::make_in_progress_activity(start, lang, game_info),
+            return if active.is::<session::replay::ReplaySession>() {
+                discord::make_base_activity(None)
+            } else if active.is::<session::singleplayer::SinglePlayerSession>() {
+                discord::make_single_player_activity(start, lang, game_info)
+            } else {
+                discord::make_in_progress_activity(start, lang, game_info)
             };
         }
 

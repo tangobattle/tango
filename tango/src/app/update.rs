@@ -119,16 +119,9 @@ impl App {
                 let Some(loaded) = self.loaded.as_ref() else {
                     return iced::Task::none();
                 };
-                match session::spawn_singleplayer(
-                    &self.scanners,
-                    &self.config,
-                    &self.audio_binder,
-                    self.session.frame_notify.clone(),
-                    self.session.vbuf.clone(),
-                    loaded,
-                ) {
+                match session::spawn_singleplayer(&self.scanners, &self.config, &self.audio_binder, loaded) {
                     Ok(s) => {
-                        self.session.active = Some(ActiveSession::SinglePlayer(s));
+                        self.session.active = Some(Box::new(s));
                         self.session.wake_controls();
                     }
                     Err(e) => {
@@ -340,9 +333,7 @@ impl App {
                 self.replay_analysis_jobs.remove(&p);
             }
             if self.session.replay_chart.as_ref().is_some_and(|c| c.path == p) {
-                if let (Some(stats), Some(s)) =
-                    (&stats, self.session.active.as_ref().and_then(ActiveSession::as_replay))
-                {
+                if let (Some(stats), Some(s)) = (&stats, self.session.active_as::<session::replay::ReplaySession>()) {
                     let rounds = widgets::cook_hp_rounds(stats, [None, None], Some(&planned_spans(s))).0;
                     self.session.replay_chart = Some(session::ReplayChart { path: p, rounds });
                 }
@@ -361,18 +352,10 @@ impl App {
             E::RevealPath(p) => reveal_path(p),
             E::Watch(p) => {
                 let (stats_job, stats_task) = self.replay_stats_takeover(&p);
-                match session::build_playback(
-                    &self.scanners,
-                    &self.config,
-                    &self.audio_binder,
-                    self.session.frame_notify.clone(),
-                    self.session.vbuf.clone(),
-                    &p,
-                    stats_job,
-                ) {
+                match session::build_playback(&self.scanners, &self.config, &self.audio_binder, &p, stats_job) {
                     Ok(s) => {
                         self.session.replay_chart = Some(self.replay_chart_for(&p, &s));
-                        self.session.active = Some(ActiveSession::Replay(s));
+                        self.session.active = Some(Box::new(s));
                         self.session.wake_controls();
                     }
                     // The dropped job closes its stream, whose completion
