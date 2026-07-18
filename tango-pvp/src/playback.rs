@@ -241,6 +241,7 @@ fn boot_and_prime(
             },
         ],
         rtc: Some(config.rtc),
+        peripheral: mgba_siolink::Peripheral::Cable,
     })?;
     if !render {
         pair.set_frameskip(0, i32::MAX);

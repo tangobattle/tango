@@ -609,6 +609,7 @@ pub fn analyze(
             },
         ],
         rtc: Some(rtc),
+        peripheral: mgba_siolink::Peripheral::Cable,
     })?;
     // Nothing reads the pixels — skip rasterization on both cores.
     pair.set_frameskip(0, i32::MAX);

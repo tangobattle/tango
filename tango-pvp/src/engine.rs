@@ -17,7 +17,7 @@
 //! [`Link`]: mgba_siolink::Link
 //! [`advance`]: Match::advance
 
-use mgba_siolink::{Link, LinkOptions, SideOptions};
+use mgba_siolink::{Link, LinkOptions, Peripheral, SideOptions};
 
 use crate::telemetry::{Telemetry, TelemetryHandle};
 use crate::{GameSupport, PrimeConfig};
@@ -96,6 +96,7 @@ impl Match {
                 },
             ],
             rtc: Some(rtc),
+            peripheral: Peripheral::Cable,
         })?;
 
         let prime_config = PrimeConfig {
