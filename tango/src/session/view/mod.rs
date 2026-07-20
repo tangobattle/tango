@@ -114,6 +114,22 @@ const SETUP_PANE_WIDTH: f32 = 420.0;
 /// little extra for the drop shadow).
 const CONTROLS_SLIDE: f32 = 120.0;
 
+/// Pre-digested view of the watched replay's export job, for the
+/// transport bar's clip strip. The job itself lives in the replays
+/// tab's per-replay state (the App owns it and its canceller); the
+/// session view only renders what it's handed.
+#[derive(Clone, Copy)]
+pub struct ClipJob<'a> {
+    pub completed: usize,
+    pub total: usize,
+    /// Set once the export finished: `Ok` = saved, `Err` = the
+    /// failure line.
+    pub result: Option<Result<(), &'a str>>,
+    /// Cancel was clicked but the encoder thread hasn't wound down
+    /// yet — "Cancelling…" chrome.
+    pub cancelling: bool,
+}
+
 /// Everything a session's [`view`](ActiveSession::view) needs from
 /// the app, bundled so the trait hook stays one argument wide.
 #[derive(Clone, Copy)]
@@ -123,15 +139,18 @@ pub struct Ctx<'a> {
     pub fractional_scaling: bool,
     pub hide_emulator_border: bool,
     pub show_replay_inputs: bool,
+    pub clip_job: Option<ClipJob<'a>>,
     pub effect: &'static Effect,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn view<'a>(
     lang: &'a LanguageIdentifier,
     state: &'a State,
     fractional_scaling: bool,
     hide_emulator_border: bool,
     show_replay_inputs: bool,
+    clip_job: Option<ClipJob<'a>>,
     effect: &'static Effect,
 ) -> Element<'a, Message> {
     let Some(session) = state.active.as_deref() else {
@@ -145,6 +164,7 @@ pub fn view<'a>(
         fractional_scaling,
         hide_emulator_border,
         show_replay_inputs,
+        clip_job,
         effect,
     })
 }

@@ -65,6 +65,15 @@ pub enum ExportMessage {
     /// same panel can be open on replay A while closed on B.
     PanelOpen(std::path::PathBuf),
     PanelClose(std::path::PathBuf),
+    /// The player's Export-clip flow landed a save path: start a clip
+    /// export ([`crate::replay_export::Clip`] — the marked span, the
+    /// jump-start snapshot, and the session's round marks were all
+    /// captured when the scissors chip was pressed).
+    StartClip {
+        replay: std::path::PathBuf,
+        output: std::path::PathBuf,
+        clip: crate::replay_export::Clip,
+    },
 }
 
 impl ReplaysState {
@@ -104,6 +113,27 @@ impl ReplaysState {
                     output,
                     settings,
                     rounds,
+                    clip: None,
+                })
+            }
+            ExportMessage::StartClip { replay, output, clip } => {
+                // The player's clip export rides the same per-replay
+                // job machinery as the panel's — the tab shows its
+                // progress and owns its canceller; the panel is
+                // pinned open so the job is visible when the user
+                // next visits the tab. The round mask doesn't apply
+                // (the span is the gate), so the form's checkboxes
+                // are left untouched.
+                let settings = self.export_settings;
+                let entry = self.per.entry(replay.clone()).or_default();
+                entry.job = Some(ExportJob::new(output.clone()));
+                entry.panel_open = true;
+                Some(Effect::StartExport {
+                    replay,
+                    output,
+                    settings,
+                    rounds: vec![],
+                    clip: Some(clip),
                 })
             }
             ExportMessage::Progress {

@@ -374,51 +374,22 @@ impl App {
                 replay: replay_path,
                 lossless,
             } => {
-                // Lossless export muxes libx264rgb + flac, which .mkv holds
-                // natively; scaled export targets the more portable .mp4.
-                let ext = if lossless { "mkv" } else { "mp4" };
-                let filter_name = if lossless { "Matroska" } else { "MP4" };
-                let stem = replay_path
-                    .file_stem()
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "replay".to_string());
-                let default_name = format!("{stem}.{ext}");
-                let initial_dir = replay_path
-                    .parent()
-                    .map(|p| p.to_path_buf())
-                    .unwrap_or_else(|| self.config.replays_path());
-                let replay_for_msg = replay_path;
-                iced::Task::perform(
-                    async move {
-                        rfd::AsyncFileDialog::new()
-                            .set_directory(&initial_dir)
-                            .set_file_name(&default_name)
-                            .add_filter(filter_name, &[ext])
-                            .save_file()
-                            .await
-                            .map(|h| h.path().to_path_buf())
-                    },
-                    move |maybe_path| match maybe_path {
-                        Some(output) => tabs::replays::Message::Export(tabs::replays::ExportMessage::Start {
-                            replay: replay_for_msg.clone(),
-                            output,
-                        }),
-                        // User dismissed the dialog without picking — keep
-                        // the form open and untouched. ExportDismiss would
-                        // also close the panel, which is wrong here since
-                        // no job ever started.
-                        None => tabs::replays::Message::NoOp,
-                    },
-                )
-                .map(Message::Replays)
+                let replay_for_msg = replay_path.clone();
+                self.export_save_dialog(replay_path, lossless, "", move |output| {
+                    tabs::replays::Message::Export(tabs::replays::ExportMessage::Start {
+                        replay: replay_for_msg.clone(),
+                        output,
+                    })
+                })
             }
             E::StartExport {
                 replay,
                 output,
                 settings,
                 rounds,
+                clip,
             } => self
-                .spawn_replay_export(replay, output, settings, rounds)
+                .spawn_replay_export(replay, output, settings, rounds, clip)
                 .map(Message::Replays),
             E::AnalyzeReplay(path) => {
                 // Full re-simulation of the replay — seconds of CPU on a
@@ -493,6 +464,50 @@ impl App {
         }
     }
 
+    /// Open the native Save-File dialog for a replay's rendered
+    /// video and dispatch `make_msg(picked_path)` into the replays-tab
+    /// message stream — or NoOp on dismissal, keeping any open form
+    /// untouched since no job ever started. `lossless` selects the
+    /// default extension/filter: .mkv for lossless (libx264rgb +
+    /// flac), .mp4 for scaled exports. `stem_suffix` is appended to
+    /// the replay's file stem (the clip flow names its file apart so
+    /// it doesn't collide with a whole-replay export's default).
+    pub(super) fn export_save_dialog(
+        &self,
+        replay_path: std::path::PathBuf,
+        lossless: bool,
+        stem_suffix: &str,
+        make_msg: impl Fn(std::path::PathBuf) -> tabs::replays::Message + Send + Sync + 'static,
+    ) -> iced::Task<Message> {
+        let ext = if lossless { "mkv" } else { "mp4" };
+        let filter_name = if lossless { "Matroska" } else { "MP4" };
+        let stem = replay_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "replay".to_string());
+        let default_name = format!("{stem}{stem_suffix}.{ext}");
+        let initial_dir = replay_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| self.config.replays_path());
+        iced::Task::perform(
+            async move {
+                rfd::AsyncFileDialog::new()
+                    .set_directory(&initial_dir)
+                    .set_file_name(&default_name)
+                    .add_filter(filter_name, &[ext])
+                    .save_file()
+                    .await
+                    .map(|h| h.path().to_path_buf())
+            },
+            move |maybe_path| match maybe_path {
+                Some(output) => make_msg(output),
+                None => tabs::replays::Message::NoOp,
+            },
+        )
+        .map(Message::Replays)
+    }
+
     /// Spawn the crate::replay_export task with a progress
     /// callback that forwards into the replays-tab message
     /// stream. The user-picked output path + form snapshot come
@@ -503,6 +518,7 @@ impl App {
         output_path: std::path::PathBuf,
         user_settings: tabs::replays::ExportSettings,
         rounds_mask: Vec<bool>,
+        clip: Option<crate::replay_export::Clip>,
     ) -> iced::Task<tabs::replays::Message> {
         // Decode just enough of the replay to get both sides' game
         // registrations + raw ROM bytes. Failures show up as a
@@ -564,7 +580,7 @@ impl App {
             }
         };
 
-        if !rounds_mask.iter().any(|b| *b) {
+        if clip.is_none() && !rounds_mask.iter().any(|b| *b) {
             let mut job = tabs::replays::ExportJob::new(output_path.clone());
             job.result = Some(Err("no rounds selected for export".to_string()));
             self.replays.per.entry(replay_path).or_default().job = Some(job);
@@ -574,7 +590,11 @@ impl App {
         // Chapter titles for the output container, one per round in
         // mask order — resolved here because the export thread has no
         // access to the locale bundle.
-        let round_titles: Vec<String> = (0..rounds_mask.len())
+        let title_count = clip
+            .as_ref()
+            .map(|c| c.round_marks.len() + 1)
+            .unwrap_or(rounds_mask.len());
+        let round_titles: Vec<String> = (0..title_count)
             .map(|i| crate::t!(&self.config.language, "session-results-round", number = (i + 1) as i64))
             .collect();
 
@@ -666,12 +686,38 @@ impl App {
                     rtc: replay.rtc_time(),
                     disable_bgm: user_settings.disable_bgm,
                 };
+                // A whole-replay export is the degenerate clip covering
+                // the full stream, with the file's own round marks; the
+                // player's clip brings its marks (the session's
+                // boundaries, which cover marker-less recordings too)
+                // and a mask selecting every round — its gate is the
+                // span. A snapshot restore would erase the priming-time
+                // BGM-disable poke, so muted renders re-sim from boot.
+                let (mut clip, rounds_mask) = match clip {
+                    Some(c) => {
+                        let all_rounds = vec![true; c.round_marks.len() + 1];
+                        (c, all_rounds)
+                    }
+                    None => (
+                        crate::replay_export::Clip {
+                            start: 0,
+                            end: inputs.len() as u32,
+                            snapshot: None,
+                            round_marks: replay.round_starts.iter().skip(1).map(|&i| i as u32).collect(),
+                        },
+                        rounds_mask,
+                    ),
+                };
+                if user_settings.disable_bgm {
+                    clip.snapshot = None;
+                }
                 let result = crate::replay_export::export(
                     &config,
                     &inputs,
                     local_player,
                     &rounds_mask,
                     &round_titles,
+                    &clip,
                     &output_for_thread,
                     &settings,
                     &canceller_thread,

@@ -30,6 +30,7 @@ pub struct Scrubber<M> {
     total: u32,
     prefetched: u32,
     round_boundaries: Vec<u32>,
+    clip_marks: (Option<u32>, Option<u32>),
     on_seek: Box<dyn Fn(u32) -> M>,
     on_commit: Box<dyn Fn(u32) -> M>,
     on_hover: Box<dyn Fn(Option<HoverInfo>) -> M>,
@@ -63,6 +64,7 @@ impl<M> Scrubber<M> {
             total,
             prefetched,
             round_boundaries: Vec::new(),
+            clip_marks: (None, None),
             on_seek: Box::new(on_seek),
             on_commit: Box::new(on_commit),
             on_hover: Box::new(on_hover),
@@ -75,6 +77,14 @@ impl<M> Scrubber<M> {
 
     pub fn round_boundaries(mut self, b: Vec<u32>) -> Self {
         self.round_boundaries = b;
+        self
+    }
+
+    /// The clip-selection marks (in, out) to overlay on the track —
+    /// a notch per set mark, plus a highlight band between them when
+    /// both are set.
+    pub fn clip_marks(mut self, marks: (Option<u32>, Option<u32>)) -> Self {
+        self.clip_marks = marks;
         self
     }
 
@@ -220,6 +230,42 @@ impl<M> canvas::Program<M> for Scrubber<M> {
                 );
                 frame.fill(&played, fill_color);
             }
+        }
+
+        // Clip-selection overlay: a translucent primary band between
+        // the in/out marks (once both are set) and a solid notch per
+        // mark. Drawn over the segment fills and under the playhead,
+        // so the selection reads as a region of the track without
+        // hiding where playback is.
+        let (mark_in, mark_out) = self.clip_marks;
+        let mark_x = |m: u32| (m as f32 / total).clamp(0.0, 1.0) * w;
+        if let (Some(a), Some(b)) = (mark_in, mark_out) {
+            let (x0, x1) = (mark_x(a), mark_x(b));
+            if x1 - x0 >= 1.0 {
+                let band_h = track_h + 4.0;
+                let band_top = ((h - band_h) / 2.0).round();
+                frame.fill(
+                    &Path::rounded_rectangle(
+                        Point::new(x0, band_top),
+                        Size::new(x1 - x0, band_h),
+                        (band_h / 2.0).into(),
+                    ),
+                    iced::Color {
+                        a: 0.30,
+                        ..palette.primary.strong.color
+                    },
+                );
+            }
+        }
+        for m in [mark_in, mark_out].into_iter().flatten() {
+            let notch_w = 2.0;
+            let notch_h = track_h + 8.0;
+            let notch_top = ((h - notch_h) / 2.0).round();
+            frame.fill_rectangle(
+                Point::new((mark_x(m) - notch_w / 2.0).round(), notch_top),
+                Size::new(notch_w, notch_h),
+                palette.primary.strong.color,
+            );
         }
 
         // Ghost notch under the cursor while merely hovering — ties

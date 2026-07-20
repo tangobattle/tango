@@ -54,6 +54,17 @@ pub struct Scrub {
     /// keyed by the snapshot's absolute tick so cursor moves within
     /// the same keyframe reuse the handle instead of re-converting.
     pub thumb: Option<(u32, iced::widget::image::Handle)>,
+    /// Whether the transport bar's clip strip is expanded (the
+    /// scissors toggle). The strip owns the mark/export controls so
+    /// the resting bar stays a transport.
+    pub tools_open: bool,
+    /// Clip-selection start mark (playhead tick), set by the clip
+    /// strip's mark-in chip. Setting a mark that would invert the
+    /// pair drops the other mark, so `mark_in < mark_out` always
+    /// holds when both are set.
+    pub mark_in: Option<u32>,
+    /// Clip-selection end mark — see [`mark_in`](Self::mark_in).
+    pub mark_out: Option<u32>,
 }
 
 impl Scrub {
@@ -677,6 +688,24 @@ impl ReplaySession {
 
     fn seek_ctrl(&self) -> &SeekController {
         &self.engine.seek
+    }
+
+    /// The whole-pair snapshot best suited to jump-start a clip export
+    /// at playhead tick `start`: the latest capture strictly *before*
+    /// it (keyframe store ∪ rewind ring), so the clip's first frame is
+    /// still produced by a stepped tick rather than promised from a
+    /// framebuffer we can't re-emit. `None` means the export falls
+    /// back to simulating from boot.
+    pub fn clip_start_snapshot(&self, start: u32) -> Option<Arc<tango_pvp::playback::Snapshot>> {
+        let before = start.checked_sub(1)?;
+        let s = &self.engine;
+        [
+            s.snapshots.best_at_or_before(before),
+            s.rewind.best_at_or_before(before),
+        ]
+        .into_iter()
+        .flatten()
+        .max_by_key(|s| s.tick)
     }
 
     /// The captured snapshot nearest `target`, if any — backs the hover

@@ -50,6 +50,26 @@ pub enum Message {
     /// exactly when the chrome must not hide or collapse under the
     /// open pane — the dropdown reports its state instead.
     BarMenuToggled(bool),
+    /// Expand / collapse the clip strip (the bar's scissors toggle).
+    /// The strip carries all the mark/export controls so the resting
+    /// bar stays a transport.
+    ToggleClipTools,
+    /// Stamp the clip-selection start at the playhead (the strip's
+    /// mark-in chip). Stamping past the end mark drops the end mark —
+    /// the new mark wins, so the pair can never invert.
+    SetClipStart,
+    /// Stamp the clip-selection end at the playhead — mirror of
+    /// [`SetClipStart`](Self::SetClipStart).
+    SetClipEnd,
+    /// Drop both clip marks (the strip's clear chip).
+    ClearClipMarks,
+    /// Export the marked span. Handled by the App's wrapper (it needs
+    /// the scanners, the save dialog, and the replays tab's export
+    /// job machinery); the session handler is a no-op.
+    ExportClip { start: u32, end: u32 },
+    /// Cancel the running export shown in the clip strip. Also
+    /// App-handled — the job's canceller lives in the replays tab.
+    CancelClipExport,
 }
 
 /// Apply a replay-view message. Takes the whole session [`State`]:
@@ -103,15 +123,55 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
         Message::BarMenuToggled(open) => {
             state.bar_menu_open = open;
         }
+        Message::SetClipStart => {
+            // Field-level borrow (not `active_as`): `scrub` is mutated
+            // after the session ref computed the playhead.
+            let t = state
+                .active
+                .as_deref()
+                .and_then(|s| s.downcast_ref::<ReplaySession>())
+                .map(|s| playhead_tick(s, state));
+            if let Some(t) = t {
+                state.scrub.mark_in = Some(t);
+                if state.scrub.mark_out.is_some_and(|o| o <= t) {
+                    state.scrub.mark_out = None;
+                }
+            }
+        }
+        Message::SetClipEnd => {
+            let t = state
+                .active
+                .as_deref()
+                .and_then(|s| s.downcast_ref::<ReplaySession>())
+                .map(|s| playhead_tick(s, state));
+            if let Some(t) = t {
+                state.scrub.mark_out = Some(t);
+                if state.scrub.mark_in.is_some_and(|i| i >= t) {
+                    state.scrub.mark_in = None;
+                }
+            }
+        }
+        Message::ClearClipMarks => {
+            state.scrub.mark_in = None;
+            state.scrub.mark_out = None;
+        }
+        Message::ToggleClipTools => {
+            state.scrub.tools_open = !state.scrub.tools_open;
+        }
+        Message::ExportClip { .. } | Message::CancelClipExport => {
+            // App-side: see the wrappers in crate::app.
+        }
     }
     iced::Task::none()
 }
 
 /// Vertical clearance that floats a bottom-anchored popover just
 /// above the replay transport bar (bottom margin + strip padding
-/// + control height + row spacing + scrub bar + row spacing to the
-/// collapsed analysis-strip slot + plate border + gap).
-const POPOVER_LIFT: f32 = 12.0 + 16.0 + 32.0 + 4.0 + 26.0 + 4.0 + 2.0 + 6.0;
+/// + control height + row spacing to the collapsed clip-strip slot
+/// + row spacing + scrub bar + row spacing to the collapsed
+/// analysis-strip slot + plate border + gap). The clip strip's
+/// expanded height rides on top via [`clip_lift`].
+const POPOVER_LIFT: f32 = 12.0 + 16.0 + 32.0 + 4.0 + 4.0 + 26.0 + 4.0 + 2.0 + 6.0;
 
 /// Height of the hover analysis strip above the scrubber — what the
 /// bar (and anything floating above it) grows by while the strip is
@@ -155,7 +215,7 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
     // in the tree at all, so no invisible buttons linger where it
     // used to be.
     if state.controls_anim.visible(now) {
-        stacked = stacked.push(replay_controls(lang, r, state, ctx.show_replay_inputs));
+        stacked = stacked.push(replay_controls(lang, r, state, ctx.show_replay_inputs, ctx.clip_job));
         stacked = stacked.push(corner_commands_overlay(lang, state, SessionMessage::Close, false));
     }
     // Input display, above the transport bar's resting spot.
@@ -188,10 +248,11 @@ fn replay_controls<'a>(
     r: &'a ReplaySession,
     state: &'a State,
     show_replay_inputs: bool,
+    clip_job: Option<ClipJob<'a>>,
 ) -> Element<'a, SessionMessage> {
     let now = iced::time::Instant::now();
     let hide_progress = state.controls_anim.progress(now);
-    let panel = container(replay_bar(lang, r, state, show_replay_inputs))
+    let panel = container(replay_bar(lang, r, state, show_replay_inputs, clip_job))
         .width(Fill)
         .style(hud_chip_plate);
     // The bar's own messages are replay-local; lift them into the
@@ -225,6 +286,7 @@ fn replay_bar<'a>(
     r: &'a ReplaySession,
     state: &'a State,
     show_replay_inputs: bool,
+    clip_job: Option<ClipJob<'a>>,
 ) -> Element<'a, Message> {
     // No ellipsis popover for replays — the speed picker sits
     // directly in the bar, and Settings + Close float top-right
@@ -378,6 +440,37 @@ fn replay_bar<'a>(
     )
     .gap(4);
 
+    // Clip tools live behind one scissors toggle so the resting bar
+    // stays a transport, not an editor: toggling expands the clip
+    // strip (see [`clip_strip`]) between the scrubber and this row.
+    let tools_open = state.scrub.tools_open;
+    let (mark_in, mark_out) = (state.scrub.mark_in, state.scrub.mark_out);
+    let clip_toggle_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
+        let mut st = telemetry_plate_button(theme, status);
+        if tools_open {
+            let primary = theme.palette().primary;
+            st.text_color = primary;
+            st.border.color = iced::Color { a: 0.35, ..primary };
+        }
+        st
+    };
+    let clip_toggle = iced::widget::tooltip(
+        button(
+            container(Icon::Scissors.widget().size(16.0))
+                .width(iced::Length::Fixed(18.0))
+                .height(iced::Length::Fixed(18.0))
+                .center(Fill),
+        )
+        .padding(0)
+        .width(iced::Length::Fixed(32.0))
+        .height(iced::Length::Fixed(32.0))
+        .style(clip_toggle_style)
+        .on_press(Message::ToggleClipTools),
+        widgets::tooltip_bubble(t!(lang, "playback-clip-tools")),
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(4);
+
     // The analysis strip, YouTube-style: a minimal trace chart
     // ([`widgets::hp_hover_strip`]) that expands directly above the
     // scrubber while the cursor rests on the bar (the panel's hover
@@ -422,10 +515,23 @@ fn replay_bar<'a>(
         Message::ScrubHover,
     )
     .round_boundaries(r.round_boundaries())
+    .clip_marks((mark_in, mark_out))
     .view();
+
+    // The clip strip's slot is always in the tree (collapsed to a
+    // sliver, not unmounted) for the same reason as the analysis
+    // strip above: iced diffs widget state by tree position, so
+    // mounting it on toggle would shift the controls subtree and
+    // reset its widget state mid-interaction.
+    let clip_row: Element<'a, Message> = if tools_open {
+        clip_strip(lang, state, clip_job)
+    } else {
+        iced::widget::Space::new().height(0.001).into()
+    };
 
     let controls = row![].spacing(10).align_y(Alignment::Center);
     let controls = replay_transport(lang, r, state, controls)
+        .push(clip_toggle)
         .push(speed_menu)
         .push(input_toggle)
         .push(pip_toggle)
@@ -437,7 +543,190 @@ fn replay_bar<'a>(
         .width(Fill)
         .push(graph)
         .push(scrub)
+        .push(clip_row)
         .push(controls)
+        .into()
+}
+
+/// Fixed height of the expanded clip strip (chips + the row spacing
+/// above it come out of [`clip_lift`] too, so the floats above the
+/// bar ride up in step).
+const CLIP_ROW_H: f32 = 28.0;
+
+/// How much the expanded clip strip grows the bar — added to the
+/// bottom-anchored floats' lift alongside [`hover_chart_lift`].
+fn clip_lift(state: &State) -> f32 {
+    if state.scrub.tools_open {
+        CLIP_ROW_H
+    } else {
+        0.0
+    }
+}
+
+/// The clip strip: mark-in/mark-out stamps, the marked span's
+/// wallclock readout, clear, and the export CTA — swapped wholesale
+/// for a progress line while an export job is running. Lives between
+/// the scrubber and the transport row, only while the bar's scissors
+/// toggle is on.
+fn clip_strip<'a>(
+    lang: &'a LanguageIdentifier,
+    state: &'a State,
+    job: Option<ClipJob<'a>>,
+) -> Element<'a, Message> {
+    let chip = |icon: Icon, lit: bool, tip: String, msg: Option<Message>| -> Element<'a, Message> {
+        let style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
+            let mut st = telemetry_plate_button(theme, status);
+            if lit {
+                let primary = theme.palette().primary;
+                st.text_color = primary;
+                st.border.color = iced::Color { a: 0.35, ..primary };
+            }
+            st
+        };
+        iced::widget::tooltip(
+            button(
+                container(icon.widget().size(14.0))
+                    .width(iced::Length::Fixed(16.0))
+                    .height(iced::Length::Fixed(16.0))
+                    .center(Fill),
+            )
+            .padding(0)
+            .width(iced::Length::Fixed(26.0))
+            .height(iced::Length::Fixed(26.0))
+            .style(style)
+            .on_press_maybe(msg),
+            widgets::tooltip_bubble(tip),
+            iced::widget::tooltip::Position::Top,
+        )
+        .gap(4)
+        .into()
+    };
+
+    // A running export replaces the tools with its progress — the
+    // strip is the player-side face of the same per-replay job the
+    // replays tab shows, so there's exactly one of these at a time.
+    if let Some(job) = job.filter(|j| j.result.is_none()) {
+        let pct = if job.total > 0 {
+            (job.completed as f32 / job.total as f32).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let caption = if job.cancelling {
+            t!(lang, "replays-export-cancelling")
+        } else {
+            format!("{} {}%", t!(lang, "replays-export-progress"), (pct * 100.0).round() as u32)
+        };
+        let cancel = chip(
+            Icon::X,
+            false,
+            t!(lang, "replays-export-cancel"),
+            (!job.cancelling).then_some(Message::CancelClipExport),
+        );
+        return container(
+            row![
+                text(caption).size(TEXT_CAPTION).style(widgets::muted_text_style),
+                iced::widget::progress_bar(0.0..=1.0, pct)
+                    .girth(Length::Fixed(4.0))
+                    .style(widgets::slim_progress_bar),
+                cancel,
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center),
+        )
+        .height(iced::Length::Fixed(CLIP_ROW_H))
+        .align_y(iced::alignment::Vertical::Center)
+        .into();
+    }
+
+    let (mark_in, mark_out) = (state.scrub.mark_in, state.scrub.mark_out);
+    // Mark stamps ride beside their chips in the transport's numeral
+    // treatment; an unset mark shows a muted placeholder so setting
+    // one never reflows the row.
+    let stamp = |mark: Option<u32>| {
+        let (label, style): (String, fn(&iced::Theme) -> iced::widget::text::Style) = match mark {
+            Some(m) => (crate::session::format_tick(m), |theme: &iced::Theme| {
+                iced::widget::text::Style {
+                    color: Some(theme.palette().primary),
+                }
+            }),
+            None => ("–:––".to_string(), widgets::muted_text_style),
+        };
+        text(label).size(12).font(iced::Font::MONOSPACE).style(style)
+    };
+    let mut strip = row![
+        chip(
+            Icon::ArrowRightFromLine,
+            mark_in.is_some(),
+            t!(lang, "playback-clip-start"),
+            Some(Message::SetClipStart),
+        ),
+        stamp(mark_in),
+        chip(
+            Icon::ArrowRightToLine,
+            mark_out.is_some(),
+            t!(lang, "playback-clip-end"),
+            Some(Message::SetClipEnd),
+        ),
+        stamp(mark_out),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center);
+    // The marked span's length, once it exists.
+    if let (Some(a), Some(b)) = (mark_in, mark_out) {
+        strip = strip.push(
+            text(format!("({})", crate::session::format_tick(b - a)))
+                .size(12)
+                .style(widgets::muted_text_style),
+        );
+    }
+    strip = strip.push(iced::widget::space::horizontal());
+    // The last job's outcome, quietly, with the full line in a
+    // tooltip when it failed.
+    if let Some(job) = job {
+        match job.result {
+            Some(Ok(())) => {
+                strip = strip.push(
+                    text(t!(lang, "replays-export-success"))
+                        .size(TEXT_CAPTION)
+                        .style(widgets::muted_text_style),
+                );
+            }
+            Some(Err(e)) => {
+                strip = strip.push(
+                    iced::widget::tooltip(
+                        text(t!(lang, "replays-export-error", error = "…"))
+                            .size(TEXT_CAPTION)
+                            .style(widgets::muted_text_style),
+                        widgets::tooltip_bubble(e.to_string()),
+                        iced::widget::tooltip::Position::Top,
+                    )
+                    .gap(4),
+                );
+            }
+            None => {}
+        }
+    }
+    strip = strip.push(chip(
+        Icon::Delete,
+        false,
+        t!(lang, "playback-clip-clear"),
+        (mark_in.is_some() || mark_out.is_some()).then_some(Message::ClearClipMarks),
+    ));
+    // The one CTA in the strip: primary once a valid span exists.
+    let export_msg = match (mark_in, mark_out) {
+        (Some(start), Some(end)) if start < end => Some(Message::ExportClip { start, end }),
+        _ => None,
+    };
+    strip = strip.push(
+        button(text(t!(lang, "playback-clip-export")).size(12))
+            .padding([4, 10])
+            .height(iced::Length::Fixed(26.0))
+            .style(widgets::primary_button)
+            .on_press_maybe(export_msg),
+    );
+    container(strip)
+        .height(iced::Length::Fixed(CLIP_ROW_H))
+        .align_y(iced::alignment::Vertical::Center)
         .into()
 }
 
@@ -566,8 +855,9 @@ fn scrub_thumbnail_overlay(state: &State) -> Option<Element<'_, Message>> {
     const EDGE_MARGIN: f32 = 8.0;
     // A visible hover means the bar is engaged, which is exactly when
     // the analysis strip expands above the scrubber — lift the card
-    // over it so they never overlap.
-    let lift = POPOVER_LIFT + hover_chart_lift(state);
+    // over it (and over the clip strip, when open) so they never
+    // overlap.
+    let lift = POPOVER_LIFT + hover_chart_lift(state) + clip_lift(state);
     Some(
         iced::widget::responsive(move |size| {
             let img = iced::widget::image(handle.clone())
@@ -785,9 +1075,10 @@ fn input_display_overlay<'a>(
         .padding(iced::Padding {
             top: 0.0,
             right: 12.0,
-            // Rides up with the analysis strip so the engaged bar's
-            // taller plate never slides underneath the pads.
-            bottom: POPOVER_LIFT + hover_chart_lift(state),
+            // Rides up with the analysis strip (and the clip strip)
+            // so the engaged bar's taller plate never slides
+            // underneath the pads.
+            bottom: POPOVER_LIFT + hover_chart_lift(state) + clip_lift(state),
             left: 12.0,
         })
         .into(),

@@ -31,6 +31,7 @@ tab-settings = 设置
 # Play selectors
 play-no-game = 未选择游戏
 play-no-save = 选择存档
+save-actions = 存档操作
 
 # Save management
 save-open-folder = 打开文件夹
@@ -107,6 +108,18 @@ session-stat-skew = 时钟偏移
 session-stat-lead = 领先
 session-stat-depth = 预测错误深度
 session-stat-ping = 网络延迟
+session-results-victory = 胜利！
+session-results-defeat = 败北
+session-results-draw = 平局
+session-results-no-contest = 对战结束
+session-results-disconnected = 对手已断开连接
+session-results-no-rounds = 对战在分出任何回合胜负前就已结束。
+session-results-vs = vs { $nickname }
+session-results-you = 你
+session-results-round = 第 { $number } 回合
+session-results-draws = { $count } 个回合以平局结束
+session-results-watch-replay = 观看录像
+session-results-done = 完成
 
 # Save view sub-tabs
 save-tab-cover = 封面
@@ -148,6 +161,12 @@ folder-sort-mb = MB
 # Navi pane
 navi-id = 领航员 ID
 navi-link-navi = 链接领航员
+navi-base-hp = HP
+navi-buster = 洛克炮
+navi-buster-attack = 攻击
+navi-buster-rapid = 连射
+navi-buster-charge = 蓄力
+navi-power-attack = 强力攻击
 navi-edit-select = 领航员
 navi-style-unset = （无样式）
 navicust-grid-size = 网格：{ $cols } × { $rows }
@@ -193,7 +212,13 @@ play-no-selection = 选择一个游戏和存档以查看。
 
 # Replays
 replays-filter-all-games = 所有游戏
-replays-filter-opponent-placeholder = 搜索对手…
+replays-filter-any-time = 任意时间
+replays-filter-past-day = 过去 24 小时
+replays-filter-past-week = 过去一周
+replays-filter-past-month = 过去一个月
+replays-filter-past-year = 过去一年
+replays-filter-search-placeholder = 搜索录像…
+replays-analyzing = 正在分析录像…
 replays-show-incomplete = 显示未完成
 replays-direct-marker = （直连）
 replays-watch = 观看
@@ -217,12 +242,22 @@ playback-play = 播放
 playback-pause = 暂停
 playback-options = 选项
 playback-speed = 速度
+playback-input-display = 输入显示
+playback-pip = 对手画面
+playback-swap-perspective = 对手视角
+playback-clip-tools = 剪辑
+playback-clip-start = 标记剪辑起点
+playback-clip-end = 标记剪辑终点
+playback-clip-clear = 清除剪辑标记
+playback-clip-export = 导出剪辑
 playback-disconnect = 断开连接
 playback-disconnect-prompt = 从此对战断开连接？
 playback-disconnect-detail = 你将结束与对手的对战。
 playback-cancel = 取消
 playback-reconnecting = 连接已断开
 playback-reconnecting-detail = 正在重新连接…
+playback-exit-hold = 正在退出…
+playback-exit-hold-detail = 按住 Esc 退出——松开取消。
 replays-select-prompt = 选择一个录像。
 play-opponent = 对手
 replays-match-type = 对战类型：

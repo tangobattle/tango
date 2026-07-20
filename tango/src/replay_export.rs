@@ -310,6 +310,45 @@ fn split_flags(flags: &str) -> anyhow::Result<Vec<std::ffi::OsString>> {
         .collect())
 }
 
+/// The tick window an export writes, plus everything positional that
+/// goes with it. A whole-replay export is just the degenerate clip
+/// `0..=total` with no snapshot.
+#[derive(Clone)]
+pub struct Clip {
+    /// First / last playhead tick whose frames are written, inclusive
+    /// (the same coordinates as the player's readout).
+    pub start: u32,
+    pub end: u32,
+    /// A whole-pair savestate at a tick strictly before `start` (from
+    /// the player's keyframe store) to jump-start the re-sim at
+    /// instead of simulating from boot. Without one the prefix
+    /// simulates unwritten, same as a deselected round.
+    ///
+    /// A savestate restore replaces the priming-time pokes, so
+    /// callers wanting `Settings::disable_bgm` honored must pass
+    /// `None` and eat the full re-sim.
+    pub snapshot: Option<Arc<tango_pvp::playback::Snapshot>>,
+    /// Inter-round transition ticks ([`tango_pvp::replay::Replay`]'s
+    /// `round_starts` minus the leading 0, or the player's discovered
+    /// boundaries for recordings that predate the markers). The round
+    /// ordinal at any tick — for `rounds_mask` indexing and chapter
+    /// titles — is the count of marks at or before it; a jump-started
+    /// pair couldn't answer that from live telemetry, so no export
+    /// runs any.
+    pub round_marks: Vec<u32>,
+}
+
+impl std::fmt::Debug for Clip {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Clip")
+            .field("start", &self.start)
+            .field("end", &self.end)
+            .field("snapshot_tick", &self.snapshot.as_ref().map(|s| s.tick))
+            .field("round_marks", &self.round_marks)
+            .finish()
+    }
+}
+
 /// One chapter in the output container, spanning `[start_frame,
 /// end_frame)` in *output* video frames — i.e. frames actually written
 /// to the encoder, not simulation ticks, so unselected rounds don't
@@ -454,11 +493,11 @@ impl EncodePipeline {
 /// Export an SIO replay ([`tango_pvp::replay::VERSION`]): one linear
 /// pair re-sim produces both perspectives at once, so the two-sided
 /// layout is a compose of the two framebuffers rather than a second
-/// simulation. Round boundaries come from RAM-poll telemetry (the
-/// stream itself is one continuous run), and `rounds_mask` gates which
-/// telemetry rounds reach the encoders — indices match the stats/tab
-/// round ordering. Unselected spans still simulate; they just aren't
-/// written.
+/// simulation. A tick reaches the encoders when it's inside `clip`'s
+/// span AND its round is selected in `rounds_mask` (indices are
+/// `clip.round_marks` intervals — the same ordering as the tab's
+/// round checkboxes, which come from the same file marks). Unwritten
+/// spans still simulate; they just aren't written.
 ///
 /// Each written round becomes a chapter in the output container,
 /// titled from `round_titles` (indexed like `rounds_mask`; falls back
@@ -470,6 +509,7 @@ pub fn export(
     local_player: usize,
     rounds_mask: &[bool],
     round_titles: &[String],
+    clip: &Clip,
     output_path: &std::path::Path,
     settings: &Settings,
     canceller: &Canceller,
@@ -497,10 +537,17 @@ pub fn export(
         pb.pair_mut().core_mut(i).audio_buffer().clear();
     }
 
-    let (mut observer, telemetry_store) = tango_pvp::telemetry::Telemetry::new(
-        [config.support[0].core_poller(0), config.support[1].core_poller(1)],
-        lifecycle,
-    );
+    // Jump-start a clip from its snapshot: the pair skips straight to
+    // the capture tick and only the (≤ one keyframe interval) gap to
+    // the span start simulates unwritten.
+    if let Some(snap) = clip.snapshot.as_deref() {
+        if snap.tick < clip.start {
+            pb.load(snap)?;
+            for i in 0..2 {
+                pb.pair_mut().core_mut(i).audio_buffer().clear();
+            }
+        }
+    }
 
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
     let mut resamplers = [mgba::audio::AudioResampler::new(), mgba::audio::AudioResampler::new()];
@@ -509,9 +556,6 @@ pub fn export(
         mgba::audio::OwnedAudioBuffer::new(0x4000, AUDIO_CHANNELS as u32),
     ];
     let mut prev_should_write = false;
-    // Telemetry round ordinal: Started events increment it; frames
-    // before the first Started belong to round 0.
-    let mut rounds_started = 0usize;
     // Chapter bookkeeping, in output frames: the open chapter's
     // (round, first written frame), closed when the written round
     // changes or a mask gap stops writing.
@@ -532,25 +576,24 @@ pub fn export(
         }
     };
 
-    let total = pb.total() as usize;
+    // Progress is relative to where the re-sim actually starts (the
+    // snapshot tick for a jump-started clip) and ends (the span end),
+    // so the bar doesn't sit near-done from tick one.
+    let progress_base = pb.cursor() as usize;
+    let progress_total = (clip.end as usize)
+        .min(pb.total() as usize)
+        .saturating_sub(progress_base);
     while pb.step() {
         if canceller.is_cancelled() {
             anyhow::bail!("cancelled");
         }
         let tick = pb.cursor();
-        tango_pvp::TickObserver::on_tick(&mut observer, pb.pair_mut(), tick);
-        let (_, events) = telemetry_store.lock().unwrap().drain_confirmed(tick);
-        for (_, event) in events {
-            if let tango_pvp::telemetry::RoundEvent::Started = event {
-                rounds_started += 1;
-            }
-        }
-        let cur_round = rounds_started.saturating_sub(1);
-        if last_selected.is_none_or(|last| cur_round > last) {
+        let cur_round = clip.round_marks.partition_point(|&m| m <= tick);
+        if tick > clip.end || last_selected.is_none_or(|last| cur_round > last) {
             break;
         }
 
-        let should_write = rounds_mask.get(cur_round).copied().unwrap_or(false);
+        let should_write = tick >= clip.start && rounds_mask.get(cur_round).copied().unwrap_or(false);
         if let Some(open) = open_chapter {
             if !should_write || open.0 != cur_round {
                 close_chapter(&mut chapters, open, frames_written);
@@ -606,7 +649,7 @@ pub fn export(
             }
             frames_written += 1;
         }
-        progress_callback(tick as usize, total);
+        progress_callback((tick as usize).saturating_sub(progress_base), progress_total);
     }
     if let Some(open) = open_chapter {
         close_chapter(&mut chapters, open, frames_written);

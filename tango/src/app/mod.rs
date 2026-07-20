@@ -1152,6 +1152,50 @@ impl App {
                     self.config.show_opponent_pip = !self.config.show_opponent_pip;
                     self.persist_config();
                 }
+                // The transport bar's Export-clip chip: everything
+                // positional is captured NOW, while the session is alive —
+                // the jump-start snapshot nearest the span start and the
+                // session's round boundaries — then the save dialog runs
+                // async and the pick flows through the replays tab's
+                // export-job machinery (progress, cancel, and the panel all
+                // live there). The session handler itself is a no-op.
+                if let session::Message::Replay(session::view::replay::Message::ExportClip { start, end }) = &m {
+                    let (start, end) = (*start, *end);
+                    let Some(path) = self.session.replay_chart.as_ref().map(|c| c.path.clone()) else {
+                        return iced::Task::none();
+                    };
+                    let (snapshot, round_marks) = self
+                        .session
+                        .active_as::<session::replay::ReplaySession>()
+                        .map(|s| (s.clip_start_snapshot(start), s.round_boundaries()))
+                        .unwrap_or_default();
+                    let clip = crate::replay_export::Clip {
+                        start,
+                        end,
+                        snapshot,
+                        round_marks,
+                    };
+                    let lossless = self.replays.export_settings.scale == 0;
+                    let replay_for_msg = path.clone();
+                    return self.export_save_dialog(path, lossless, "-clip", move |output| {
+                        tabs::replays::Message::Export(tabs::replays::ExportMessage::StartClip {
+                            replay: replay_for_msg.clone(),
+                            output,
+                            clip: clip.clone(),
+                        })
+                    });
+                }
+                // The clip strip's cancel: forward to the replays tab's
+                // own cancel handler — the job and its canceller live
+                // there, whichever surface started the export.
+                if let session::Message::Replay(session::view::replay::Message::CancelClipExport) = &m {
+                    if let Some(path) = self.session.replay_chart.as_ref().map(|c| c.path.clone()) {
+                        return self.update_replays(tabs::replays::Message::Export(
+                            tabs::replays::ExportMessage::Cancel(path),
+                        ));
+                    }
+                    return iced::Task::none();
+                }
                 // Results screen's Watch button: building a playback session
                 // needs the scanners + config, so it's handled here (the
                 // session module's handler is a no-op). The results stay set
@@ -1537,12 +1581,30 @@ impl App {
             // arrived in. Going through subscriptions would
             // round-trip through an `mpsc::try_send` and cost ~1
             // winit iteration of input lag per event.
+            // The watched replay's export job (whole-replay or clip
+            // alike), digested for the transport bar's clip strip —
+            // the job itself stays owned by the replays tab.
+            let clip_job = self
+                .session
+                .replay_chart
+                .as_ref()
+                .and_then(|c| self.replays.job(&c.path))
+                .map(|j| session::view::ClipJob {
+                    completed: j.completed,
+                    total: j.total,
+                    result: j.result.as_ref().map(|r| match r {
+                        Ok(_) => Ok(()),
+                        Err(e) => Err(e.as_str()),
+                    }),
+                    cancelling: j.canceller.is_cancelled() && j.result.is_none(),
+                });
             let session_view = session::view::view(
                 lang,
                 &self.session,
                 self.config.fractional_scaling,
                 self.config.hide_emulator_border,
                 self.config.show_replay_inputs,
+                clip_job,
                 crate::platform::video::effects::effect_for(&self.config.video_filter),
             )
             .map(Message::Session);

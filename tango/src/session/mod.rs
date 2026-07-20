@@ -665,6 +665,9 @@ impl State {
             || overlay_open
             || replay_paused
             || self.scrub.preview.is_some()
+            // Clip tools stay pinned while expanded — marking in/out
+            // is a multi-step interaction with idle stretches between.
+            || self.scrub.tools_open
             || self.last_mouse_move.elapsed() < CONTROLS_HIDE_AFTER;
         self.controls_anim.set(show_controls, now);
         task

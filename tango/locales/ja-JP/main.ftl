@@ -31,6 +31,7 @@ tab-settings = 設定
 # Play selectors
 play-no-game = ゲーム未選択
 play-no-save = セーブを選択
+save-actions = セーブデータの操作
 
 # Save management
 save-open-folder = フォルダを開く
@@ -111,6 +112,18 @@ session-stat-tps = 毎秒ティック数（現在/上限）
 session-stat-skew = ずれ
 session-stat-depth = 予測ミス深度
 session-stat-ping = ネットワーク遅延
+session-results-victory = 勝利！
+session-results-defeat = 敗北
+session-results-draw = 引き分け
+session-results-no-contest = 対戦終了
+session-results-disconnected = 相手の接続が切断されました
+session-results-no-rounds = ラウンドの決着がつく前に対戦が終了しました。
+session-results-vs = vs { $nickname }
+session-results-you = あなた
+session-results-round = ラウンド{ $number }
+session-results-draws = { $count }ラウンドが引き分けに終わりました
+session-results-watch-replay = リプレイを再生
+session-results-done = 完了
 
 # Save view sub-tabs
 save-tab-cover = カバー
@@ -131,6 +144,12 @@ save-copy-image = 画像をコピー
 # Navi pane
 navi-id = ナビID
 navi-link-navi = リンクナビ
+navi-base-hp = HP
+navi-buster = バスター
+navi-buster-attack = アタック
+navi-buster-rapid = ラピッド
+navi-buster-charge = チャージ
+navi-power-attack = パワーアタック
 navi-style-unset = （スタイルなし）
 navicust-grid-size = グリッド: { $cols } × { $rows }
 navicust-parts = 設定済みパーツ
@@ -197,7 +216,13 @@ play-no-selection = 検査するゲームとセーブを選択してください
 
 # Replays
 replays-filter-all-games = すべて
-replays-filter-opponent-placeholder = 検索
+replays-filter-any-time = すべての期間
+replays-filter-past-day = 過去24時間
+replays-filter-past-week = 過去1週間
+replays-filter-past-month = 過去1か月
+replays-filter-past-year = 過去1年
+replays-filter-search-placeholder = リプレイを検索…
+replays-analyzing = リプレイを解析中…
 replays-show-incomplete = 未完了も表示
 replays-direct-marker = （ダイレクト）
 replays-watch = 再生
@@ -219,6 +244,14 @@ replays-export-save-as = 名前を付けて保存…
 playback-close = 閉じる
 playback-options = オプション
 playback-speed = 速度
+playback-input-display = 入力表示
+playback-pip = 相手の画面
+playback-swap-perspective = 相手の視点
+playback-clip-tools = クリップ
+playback-clip-start = クリップの開始位置を設定
+playback-clip-end = クリップの終了位置を設定
+playback-clip-clear = クリップ範囲をクリア
+playback-clip-export = クリップを書き出す
 playback-play = 再生
 playback-pause = 一時停止
 playback-disconnect = 切断
@@ -372,5 +405,7 @@ save-tab-navicust = ナビカス
 navi-edit-select = ナビ
 playback-reconnecting = 接続が切れました
 playback-reconnecting-detail = 再接続中…
+playback-exit-hold = 終了中…
+playback-exit-hold-detail = Escを押し続けると終了します。離すとキャンセルされます。
 settings-data-folder = データフォルダ
 settings-data-folder-change = 変更…
