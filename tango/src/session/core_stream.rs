@@ -20,9 +20,16 @@
 //!   permanently re-base it, ratcheting toward chronic underrun
 //!   crackle or latency creep. Trimming the claimed source rate
 //!   against the level error turns the target level into an attractor.
-//! - The discard cap sheds the backlog a deep rollback re-simulation
-//!   dumps (duplicate audio for the re-simmed ticks) in one skip
-//!   instead of replaying it.
+//! - The discard cap sheds, in one skip, a backlog only a producer
+//!   burst can create — a replay seek chase, a perspective swap onto
+//!   an undrained core's full ring, a device stall's catch-up.
+//!   (Rollbacks can't get there: re-simulation replaces its revoked
+//!   audio exactly.)
+//! - Re-priming. A fully drained queue means the sim stalled; refilled
+//!   at the servo's authority alone it would ride near-empty for ~10
+//!   seconds, where every jitter trough is an audible underrun. After
+//!   a drain the stream serves silence until the queue reaches target
+//!   once — one clean ~50 ms gap instead of seconds of crackle.
 //!
 //! The core access locks the same mutex the host's per-tick step
 //! takes, so readout interleaves between ticks. A stalled sim
@@ -47,10 +54,13 @@ const AUDIO_TARGET_QUEUED_SECS: f64 = 0.05;
 const AUDIO_MAX_TRIM: f64 = 0.005;
 
 /// Queue level, as a multiple of the target, past which `fill` stops
-/// absorbing and discards the oldest samples back down to target. Only
-/// deep re-simulation bursts (rollback, seek chases) get here; one skip
-/// beats seconds of extra latency (the servo alone would need ~10 s per
-/// 50 ms of backlog).
+/// absorbing and discards the oldest samples back down to target.
+/// Healthy operation never exceeds ~1.7x (target plus two ticks of
+/// phase swing), and rollbacks can't get here (re-simulation replaces
+/// its revoked audio exactly) — only producer bursts do: a replay seek
+/// chase, a perspective swap onto an undrained core's full ring, a
+/// device stall's catch-up. One skip beats seconds of extra latency
+/// (the servo alone would need ~10 s per 50 ms of backlog).
 const AUDIO_DISCARD_FACTOR: f64 = 3.0;
 
 /// Cross-thread access to a live core for the audio callback —
@@ -101,6 +111,15 @@ pub struct CoreStream {
     dest_capacity: usize,
     /// Sink for samples dropped at the discard cap.
     discard: Vec<i16>,
+    /// Serve silence until the queue reaches target once. Latched at
+    /// construction (the session starts with an empty queue) and again
+    /// whenever the queue fully drains — the signature of a stalled sim.
+    /// Without it, the post-stall rebuild happens at the servo's ~5 ms of
+    /// queue per second and the stream rides near-empty for ~10 seconds,
+    /// crackling on every jitter trough; one clean ~50 ms gap beats that.
+    /// (The wall-clock-era reservoir learned this; the mechanism was lost
+    /// in the revert.)
+    priming: bool,
 }
 
 impl CoreStream {
@@ -118,6 +137,7 @@ impl CoreStream {
             dest_buffer: mgba::audio::OwnedAudioBuffer::new(dest_capacity, crate::platform::audio::NUM_CHANNELS as u32),
             dest_capacity,
             discard: Vec::new(),
+            priming: true,
         }
     }
 
@@ -147,7 +167,12 @@ impl crate::platform::audio::Stream for CoreStream {
         }
 
         let out_rate = self.out_rate;
-        let (resampler, dest_buffer, discard) = (&mut self.resampler, &mut self.dest_buffer, &mut self.discard);
+        let (resampler, dest_buffer, discard, priming) = (
+            &mut self.resampler,
+            &mut self.dest_buffer,
+            &mut self.discard,
+            &mut self.priming,
+        );
         self.pull.with_core(&mut |core| {
             // The core's production rate follows the game's SOUNDBIAS
             // resolution and CHANGES at runtime (BN4+ flip from 32768 to
@@ -162,24 +187,45 @@ impl crate::platform::audio::Stream for CoreStream {
             let target = rate * AUDIO_TARGET_QUEUED_SECS;
             let queued = source.available() as f64;
             if queued > target * AUDIO_DISCARD_FACTOR {
-                // Deep re-simulation backlog: skip the oldest samples in
-                // one go rather than replaying seconds of duplicates.
+                // Producer-burst backlog (seek chase, perspective swap,
+                // device-stall catch-up): skip the oldest samples in one
+                // go rather than carrying seconds of extra latency.
                 let n = (queued - target) as usize;
                 discard.resize(n * 2, 0);
                 source.read(discard, n);
+            }
+
+            // Re-prime across stalls: hold silence until the queue is
+            // back at target, instead of riding near-empty at the
+            // servo's slow refill. (The latch is set below, on short
+            // delivery — the queue never reads exactly zero here, the
+            // resampler leaves fractional residue when it runs dry.)
+            let queued = source.available() as f64;
+            if *priming {
+                if queued < target {
+                    return;
+                }
+                *priming = false;
             }
 
             // Servo: nudge the claimed source rate so the queue level
             // converges on the target. Claiming the source faster than
             // it is makes each output frame consume more of it (drains);
             // slower, less (refills).
-            let queued = source.available() as f64;
             let trim = AUDIO_MAX_TRIM * ((queued - target) / target).clamp(-1.0, 1.0);
 
             resampler.set_source(source, rate * (1.0 + trim), true);
             resampler.set_destination(dest_buffer, out_rate as f64 * faux_clock);
             resampler.process();
         });
+
+        // A fill the queue couldn't cover in full is the stall
+        // signature — and the moment an artifact was unavoidable
+        // anyway. Latch priming so recovery is one clean gap instead
+        // of seconds of jitter-trough crackle at a near-empty queue.
+        if self.dest_buffer.available() < frame_count {
+            self.priming = true;
+        }
 
         let available = self.dest_buffer.available().min(frame_count);
         self.dest_buffer.read(
@@ -189,4 +235,5 @@ impl crate::platform::audio::Stream for CoreStream {
         available
     }
 }
+
 
