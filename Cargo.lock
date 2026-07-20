@@ -3299,7 +3299,7 @@ dependencies = [
 [[package]]
 name = "mgba-siolink"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/mgba-siolink#a5abcc3f1139fd72de939198185e02600320586f"
+source = "git+https://github.com/tangobattle/mgba-siolink#cce56fdfec6388e59e596771b86ea7ad642d9d8d"
 dependencies = [
  "crc32fast",
  "getgud",

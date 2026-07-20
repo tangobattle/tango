@@ -7,7 +7,7 @@
 //! [`spawn_singleplayer`] and stuff it into `state.active`); this
 //! module handles everything that happens after.
 
-pub mod pair_stream;
+pub mod core_stream;
 pub mod pvp;
 pub mod replay;
 pub mod singleplayer;

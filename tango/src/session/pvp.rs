@@ -400,12 +400,14 @@ impl PvpSession {
         // Audio: the host output stream plays the local core directly,
         // pulling and resampling its samples straight off the pair (rate
         // control follows the drive loop's published fps target) — see
-        // [`crate::session::pair_stream::PairStream`].
-        let audio_binding = match audio_binder.bind(Some(Box::new(crate::session::pair_stream::PairStream::new(
-            pair_handle,
-            {
-                let local_player = local_player_index as usize;
-                move || local_player
+        // [`crate::session::core_stream::CoreStream`].
+        let audio_binding = match audio_binder.bind(Some(Box::new(crate::session::core_stream::CoreStream::new(
+            crate::session::core_stream::PairCorePull {
+                pair: pair_handle,
+                player: {
+                    let local_player = local_player_index as usize;
+                    Box::new(move || local_player)
+                },
             },
             {
                 let metrics = metrics.clone();

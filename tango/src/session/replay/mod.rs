@@ -7,7 +7,7 @@
 //! asynchronous: requests land on a [`SeekController`] and a dedicated
 //! worker chases the newest target, so the UI never blocks on catch-up
 //! emulation. Audio is pulled straight off the pair via
-//! [`crate::session::pair_stream::PairStream`].
+//! [`crate::session::core_stream::CoreStream`].
 //!
 //! [`SnapshotStore`]: tango_pvp::playback::SnapshotStore
 //! [`RewindRing`]: tango_pvp::playback::RewindRing
@@ -204,7 +204,7 @@ impl Drop for Engine {
 /// lands anyway.
 struct SioPlaybackPull(SharedSioPlayback);
 
-impl crate::session::pair_stream::PairPull for SioPlaybackPull {
+impl crate::session::core_stream::PairPull for SioPlaybackPull {
     fn with_pair(&self, f: &mut dyn FnMut(&mut tango_pvp::Link)) {
         if let Ok(mut guard) = self.0.try_lock() {
             if let Some(pb) = guard.as_mut() {
@@ -471,20 +471,22 @@ impl ReplaySession {
 
         // Audio: play the shown perspective's core straight off the
         // pair, following the drive loop's pacing (see
-        // [`crate::session::pair_stream`]).
-        let audio_binding = match audio_binder.bind(Some(Box::new(crate::session::pair_stream::PairStream::new(
-            SioPlaybackPull(playback.clone()),
-            {
-                let swap_perspective = swap_perspective.clone();
-                move || {
-                    if swap_perspective.load(Ordering::Relaxed) {
-                        1 - local_player
-                    } else {
-                        local_player
-                    }
-                }
+        // [`crate::session::core_stream`]).
+        let audio_binding = match audio_binder.bind(Some(Box::new(crate::session::core_stream::CoreStream::new(
+            crate::session::core_stream::PairCorePull {
+                pair: SioPlaybackPull(playback.clone()),
+                player: {
+                    let swap_perspective = swap_perspective.clone();
+                    Box::new(move || {
+                        if swap_perspective.load(Ordering::Relaxed) {
+                            1 - local_player
+                        } else {
+                            local_player
+                        }
+                    })
+                },
             },
-            crate::session::pair_stream::PairStream::fps_from_bits(fps_bits.clone()),
+            crate::session::core_stream::CoreStream::fps_from_bits(fps_bits.clone()),
             audio_binder.sample_rate(),
         )))) {
             Ok(b) => Some(b),
