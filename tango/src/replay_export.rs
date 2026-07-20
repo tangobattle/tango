@@ -266,6 +266,7 @@ fn make_mux_ffmpeg(
     output_path: &std::path::Path,
     video_input_path: &std::path::Path,
     audio_input_paths: &[&std::path::Path],
+    chapters_path: Option<&std::path::Path>,
     flags: &[std::ffi::OsString],
     canceller: &Canceller,
 ) -> anyhow::Result<FfmpegChild> {
@@ -276,11 +277,22 @@ fn make_mux_ffmpeg(
         child.args(["-i"]).arg(path);
     }
 
+    if let Some(path) = chapters_path {
+        child.args(["-f", "ffmetadata", "-i"]).arg(path);
+    }
+
     child.args(["-c:v", "copy", "-c:a", "copy"]);
 
     child.args(["-map", "0"]);
     for i in 0..audio_input_paths.len() {
         child.arg("-map").arg(format!("{}", i + 1));
+    }
+    if chapters_path.is_some() {
+        // The ffmetadata input carries no streams, only chapters —
+        // it gets a -map_chapters instead of a -map.
+        child
+            .arg("-map_chapters")
+            .arg(format!("{}", audio_input_paths.len() + 1));
     }
 
     child.args(flags);
@@ -296,6 +308,47 @@ fn split_flags(flags: &str) -> anyhow::Result<Vec<std::ffi::OsString>> {
         .into_iter()
         .map(std::ffi::OsString::from)
         .collect())
+}
+
+/// One chapter in the output container, spanning `[start_frame,
+/// end_frame)` in *output* video frames — i.e. frames actually written
+/// to the encoder, not simulation ticks, so unselected rounds don't
+/// leave holes in the timeline.
+struct Chapter {
+    title: String,
+    start_frame: u64,
+    end_frame: u64,
+}
+
+/// Backslash-escape the characters the ffmetadata format treats
+/// specially in values ('=', ';', '#', '\' and newline).
+fn escape_ffmetadata(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if matches!(c, '=' | ';' | '#' | '\\' | '\n') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Write the chapter list as an ffmetadata file for the mux step.
+/// TIMEBASE is the GBA frame clock (280896 cycles/frame at 2^24 Hz —
+/// the reciprocal of the encoder's declared framerate), so START/END
+/// are exact output frame indices with no rounding through seconds.
+fn write_chapters_file(chapters: &[Chapter]) -> anyhow::Result<tempfile::NamedTempFile> {
+    let mut file = tempfile::NamedTempFile::new()?;
+    let mut buf = String::from(";FFMETADATA1\n");
+    for chapter in chapters {
+        buf.push_str("[CHAPTER]\nTIMEBASE=280896/16777216\n");
+        buf.push_str(&format!("START={}\n", chapter.start_frame));
+        buf.push_str(&format!("END={}\n", chapter.end_frame));
+        buf.push_str(&format!("title={}\n", escape_ffmetadata(&chapter.title)));
+    }
+    file.write_all(buf.as_bytes())?;
+    file.flush()?;
+    Ok(file)
 }
 
 /// The ffmpeg leg of an export: one video encoder + N audio encoders
@@ -357,8 +410,15 @@ impl EncodePipeline {
 
     /// Close every encoder's stdin (EOF makes them finish encoding),
     /// wait for each, then mux the encoded streams into `output_path`
-    /// with the audio tracks in spawn order.
-    fn finish(self, settings: &Settings, canceller: &Canceller, output_path: &std::path::Path) -> anyhow::Result<()> {
+    /// with the audio tracks in spawn order and one chapter per entry
+    /// of `chapters`.
+    fn finish(
+        self,
+        settings: &Settings,
+        canceller: &Canceller,
+        output_path: &std::path::Path,
+        chapters: &[Chapter],
+    ) -> anyhow::Result<()> {
         let Self {
             mut video,
             video_output,
@@ -372,11 +432,17 @@ impl EncodePipeline {
             child.wait()?;
             audio_outputs.push(output);
         }
+        let chapters_file = if chapters.is_empty() {
+            None
+        } else {
+            Some(write_chapters_file(chapters)?)
+        };
         let mux_child = make_mux_ffmpeg(
             &settings.ffmpeg,
             output_path,
             video_output.path(),
             &audio_outputs.iter().map(|o| o.path()).collect::<Vec<_>>(),
+            chapters_file.as_ref().map(|f| f.path()),
             &split_flags(&settings.ffmpeg_mux_flags)?,
             canceller,
         )?;
@@ -393,12 +459,17 @@ impl EncodePipeline {
 /// telemetry rounds reach the encoders — indices match the stats/tab
 /// round ordering. Unselected spans still simulate; they just aren't
 /// written.
+///
+/// Each written round becomes a chapter in the output container,
+/// titled from `round_titles` (indexed like `rounds_mask`; falls back
+/// to "Round N" past the end).
 #[allow(clippy::too_many_arguments)]
 pub fn export(
     config: &tango_pvp::playback::BootConfig,
     inputs: &[[u32; 2]],
     local_player: usize,
     rounds_mask: &[bool],
+    round_titles: &[String],
     output_path: &std::path::Path,
     settings: &Settings,
     canceller: &Canceller,
@@ -441,6 +512,25 @@ pub fn export(
     // Telemetry round ordinal: Started events increment it; frames
     // before the first Started belong to round 0.
     let mut rounds_started = 0usize;
+    // Chapter bookkeeping, in output frames: the open chapter's
+    // (round, first written frame), closed when the written round
+    // changes or a mask gap stops writing.
+    let mut frames_written = 0u64;
+    let mut chapters: Vec<Chapter> = vec![];
+    let mut open_chapter: Option<(usize, u64)> = None;
+    let close_chapter = |chapters: &mut Vec<Chapter>, (round, start): (usize, u64), end: u64| {
+        if end > start {
+            let title = round_titles
+                .get(round)
+                .cloned()
+                .unwrap_or_else(|| format!("Round {}", round + 1));
+            chapters.push(Chapter {
+                title,
+                start_frame: start,
+                end_frame: end,
+            });
+        }
+    };
 
     let total = pb.total() as usize;
     while pb.step() {
@@ -461,6 +551,15 @@ pub fn export(
         }
 
         let should_write = rounds_mask.get(cur_round).copied().unwrap_or(false);
+        if let Some(open) = open_chapter {
+            if !should_write || open.0 != cur_round {
+                close_chapter(&mut chapters, open, frames_written);
+                open_chapter = None;
+            }
+        }
+        if should_write && open_chapter.is_none() {
+            open_chapter = Some((cur_round, frames_written));
+        }
         if should_write && !prev_should_write {
             for (r, d) in resamplers.iter_mut().zip(dest_buffers.iter_mut()) {
                 *r = mgba::audio::AudioResampler::new();
@@ -505,9 +604,14 @@ pub fn export(
             } else {
                 pipeline.write_video(&vbuf)?;
             }
+            frames_written += 1;
         }
         progress_callback(tick as usize, total);
     }
+    if let Some(open) = open_chapter {
+        close_chapter(&mut chapters, open, frames_written);
+    }
 
-    pipeline.finish(settings, canceller, output_path)
+    pipeline.finish(settings, canceller, output_path, &chapters)
 }
+

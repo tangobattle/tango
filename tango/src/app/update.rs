@@ -571,6 +571,13 @@ impl App {
             return iced::Task::none();
         }
 
+        // Chapter titles for the output container, one per round in
+        // mask order — resolved here because the export thread has no
+        // access to the locale bundle.
+        let round_titles: Vec<String> = (0..rounds_mask.len())
+            .map(|i| crate::t!(&self.config.language, "session-results-round", number = (i + 1) as i64))
+            .collect();
+
         let (progress_tx, progress_rx) = futures::channel::mpsc::unbounded::<(usize, usize)>();
         let done_arc: std::sync::Arc<std::sync::Mutex<Option<Result<std::path::PathBuf, String>>>> =
             std::sync::Arc::new(std::sync::Mutex::new(None));
@@ -664,6 +671,7 @@ impl App {
                     &inputs,
                     local_player,
                     &rounds_mask,
+                    &round_titles,
                     &output_for_thread,
                     &settings,
                     &canceller_thread,
