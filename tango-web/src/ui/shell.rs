@@ -25,10 +25,10 @@ pub fn App() -> Element {
     // The last picks are remembered across loads: the game, and its
     // last-picked save (pruned later if the file is gone — the
     // save-pane listing is the judge).
-    let selected_game = use_signal(|| config.peek().last_game.clone());
+    let selected_family = use_signal(|| config.peek().last_game.clone());
     let selected_save = use_signal(|| {
         let c = config.peek();
-        c.last_game.as_ref().and_then(|slug| c.last_saves.get(slug).cloned())
+        c.last_game.as_ref().and_then(|fam| c.last_saves.get(fam).cloned())
     });
 
     let storage = use_resource(|| async {
@@ -58,7 +58,7 @@ pub fn App() -> Element {
         library_rev,
         storage,
         library,
-        selected_game,
+        selected_family,
         selected_save,
     });
 
@@ -82,16 +82,19 @@ pub fn App() -> Element {
         let runtime = runtime.clone();
         let mut selected_save = selected_save;
         let mut config = config;
-        let selected_game = selected_game;
+        let selected_family = selected_family;
         use_effect(move || {
             let _ = SESSION_EPOCH.read();
             if let Some(target) = runtime.borrow_mut().take_persisted_save() {
-                if selected_save.peek().is_none() {
+                let pick = selected_save.peek().clone();
+                // Only adopt when the picker still sits on a fresh row
+                // (a real file pick already names its own file).
+                if pick.is_none() || pick.as_deref().is_some_and(|p| p.starts_with("//fresh/")) {
                     selected_save.set(Some(target.file.clone()));
-                    let slug = selected_game.peek().clone();
-                    if let Some(slug) = slug {
+                    let family = selected_family.peek().clone();
+                    if let Some(family) = family {
                         config.with_mut(|c| {
-                            c.last_saves.insert(slug, target.file);
+                            c.last_saves.insert(family, target.file);
                         });
                     }
                 }

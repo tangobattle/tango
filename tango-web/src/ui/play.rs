@@ -4,13 +4,31 @@
 //! lands — logo + title + the Play button in its header), and the
 //! bottom link-code band (the Fight button arms with the netplay port
 //! at M3).
+//!
+//! Selection is per *family*, mirroring the desktop loadout: the
+//! family picker lists every supported family (un-owned ones
+//! disabled), ordered like the desktop's `loadout::family_options`;
+//! the save picker intermingles the family's variants, each save
+//! resolving to its concrete game.
 
 use base64::Engine as _;
 use dioxus::prelude::*;
 
 use super::{icons, use_ctx, Ctx};
-use crate::library;
+use crate::library::{self, GameRef};
 use crate::runtime::SAVES_REV;
+
+/// The save picker's fresh-row sentinel: `//fresh/<variant>`. `/` is
+/// illegal in stored file names, so it can't collide with a save.
+const FRESH_PREFIX: &str = "//fresh/";
+
+fn fresh_sentinel(game: GameRef) -> String {
+    format!("{FRESH_PREFIX}{}", game.family_and_variant().1)
+}
+
+fn parse_fresh(pick: &str) -> Option<u8> {
+    pick.strip_prefix(FRESH_PREFIX)?.parse().ok()
+}
 
 #[derive(Clone, PartialEq)]
 pub(crate) struct Flash {
@@ -79,7 +97,7 @@ pub(crate) fn FlashText(flash: Flash) -> Element {
 
 /// The selected game's logo as a PNG data URL, freshly encoded per
 /// selection (the registry keeps logos as decoded images).
-fn logo_data_url(game: library::GameRef) -> Option<String> {
+fn logo_data_url(game: GameRef) -> Option<String> {
     let mut png = std::io::Cursor::new(Vec::new());
     game.logo_image
         .write_to(&mut png, image::ImageFormat::Png)
@@ -90,6 +108,20 @@ fn logo_data_url(game: library::GameRef) -> Option<String> {
     ))
 }
 
+/// One row of the save picker: a real save file (resolved to its
+/// concrete game) or a fresh-start row for one variant.
+#[derive(Clone, PartialEq)]
+struct SaveRow {
+    /// The select's value: a file name or a fresh sentinel.
+    value: String,
+    label: String,
+    /// The game this row boots.
+    slug: String,
+    /// Whether that game's ROM is imported (un-owned rows disable,
+    /// like the desktop picker greys them).
+    available: bool,
+}
+
 #[component]
 pub fn PlayScreen() -> Element {
     let Ctx {
@@ -98,70 +130,95 @@ pub fn PlayScreen() -> Element {
         storage,
         mut library_rev,
         library,
-        mut selected_game,
+        mut selected_family,
         mut selected_save,
         ..
     } = use_ctx();
     let launch_flash = use_signal(|| Option::<Flash>::None);
 
     let lib = library.read().clone().flatten().unwrap_or_default();
+    let scanned = library.read().clone().flatten().is_some();
+    let family_options = library::family_options(&lib);
+    let any_owned = family_options.iter().any(|f| f.available);
 
-    // Prune a stale remembered pick once the scan disagrees (the game
-    // was deleted between loads).
+    // Prune a stale remembered family once the registry disagrees
+    // (persisted config from an older build).
     {
-        let lib = lib.clone();
         use_effect(move || {
-            let picked = selected_game.peek().clone();
-            if let Some(slug) = picked {
-                if library.read().clone().flatten().is_some() && lib.by_slug(&slug).is_none() {
-                    selected_game.set(None);
+            let picked = selected_family.peek().clone();
+            if let Some(fam) = picked {
+                if library::families().iter().all(|f| *f != fam) {
+                    selected_family.set(None);
                     selected_save.set(None);
                 }
             }
         });
     }
 
-    // The selected game's compatible saves: list the flat saves/
-    // directory and keep the files this game's own parser accepts
-    // (content detection, same as the desktop scanner).
+    // The family's save rows: real saves (content-detected across the
+    // family's variants, like the desktop's intermingled picker) then
+    // one fresh row per variant.
     let saves = use_resource(move || {
         let _ = SAVES_REV.read();
         let storage = storage.read().clone().flatten();
-        let slug = selected_game.read().clone();
+        let family = selected_family.read().clone();
+        let lib = library.read().clone().flatten().unwrap_or_default();
         async move {
-            let (Some(storage), Some(slug)) = (storage, slug) else {
+            let (Some(storage), Some(family)) = (storage, family) else {
                 return Vec::new();
             };
-            let Some(game) = library::find_by_slug(&slug) else {
-                return Vec::new();
-            };
-            let Ok(files) = crate::storage::list_files(storage.saves()).await else {
-                return Vec::new();
-            };
-            let mut out = Vec::new();
-            for (name, handle) in files {
-                let Ok(bytes) = crate::storage::read_handle(&handle).await else {
-                    continue;
-                };
-                if game.parse_save(&bytes).is_ok() {
-                    out.push(name);
+            let games: Vec<GameRef> = library::games_in_family(&family).collect();
+            let mut rows = Vec::new();
+            if let Ok(files) = crate::storage::list_files(storage.saves()).await {
+                for (name, handle) in files {
+                    let Ok(bytes) = crate::storage::read_handle(&handle).await else {
+                        continue;
+                    };
+                    // A save resolves to exactly one variant within
+                    // its family (each parser validates variant).
+                    let Some(game) = games.iter().copied().find(|g| g.parse_save(&bytes).is_ok())
+                    else {
+                        continue;
+                    };
+                    rows.push(SaveRow {
+                        value: name.clone(),
+                        label: if games.len() > 1 {
+                            format!("{name} · {}", library::variant_short_name(game))
+                        } else {
+                            name.clone()
+                        },
+                        slug: library::game_slug(game),
+                        available: lib.by_game(game).is_some(),
+                    });
                 }
             }
-            out
+            for game in games {
+                rows.push(SaveRow {
+                    value: fresh_sentinel(game),
+                    label: if library::games_in_family(&family).count() > 1 {
+                        format!("(fresh save — {})", library::variant_short_name(game))
+                    } else {
+                        "(fresh save)".to_string()
+                    },
+                    slug: library::game_slug(game),
+                    available: lib.by_game(game).is_some(),
+                });
+            }
+            rows
         }
     });
-    let save_names = saves.read().clone().unwrap_or_default();
+    let save_rows = saves.read().clone().unwrap_or_default();
 
-    // A remembered save pick that the listing no longer shows is
-    // stale — drop back to the fresh row. (Only once the listing has
-    // actually resolved, and no write-back is still in flight.)
+    // A remembered pick the listing no longer offers is stale — drop
+    // back to the default row. (Only once the listing has resolved,
+    // and no write-back is still in flight.)
     {
-        let save_names = save_names.clone();
+        let save_rows = save_rows.clone();
         use_effect(move || {
             if saves.read().is_some() && *crate::runtime::SAVES_IN_FLIGHT.read() == 0 {
                 let picked = selected_save.peek().clone();
                 if let Some(pick) = picked {
-                    if !save_names.contains(&pick) {
+                    if !save_rows.iter().any(|r| r.value == pick) {
                         selected_save.set(None);
                     }
                 }
@@ -169,22 +226,38 @@ pub fn PlayScreen() -> Element {
         });
     }
 
-    let selected_slug = selected_game.read().clone();
-    let selected_entry = selected_slug.as_ref().and_then(|s| lib.by_slug(s)).cloned();
+    let family = selected_family.read().clone();
     let pick = selected_save.read().clone();
-    let logo = selected_entry.as_ref().and_then(|e| logo_data_url(e.game));
 
-    // The launch handler, shared by the Play button.
+    // The row the next boot uses: the explicit pick, else the first
+    // available row (saves lead, so a family with saves defaults to
+    // its first save; a family without defaults to fresh).
+    let active_row = pick
+        .as_ref()
+        .and_then(|p| save_rows.iter().find(|r| &r.value == p))
+        .or_else(|| save_rows.iter().find(|r| r.available))
+        .cloned();
+    let active_game = active_row.as_ref().and_then(|r| library::find_by_slug(&r.slug));
+    let logo = active_game.and_then(logo_data_url);
+
+    // The launch handler.
     let launch = {
         let runtime = runtime.clone();
-        let selected_entry = selected_entry.clone();
+        let active_row = active_row.clone();
         move |_| {
             let runtime = runtime.clone();
             let storage = storage.read().clone().flatten();
-            let entry = selected_entry.clone();
-            let pick = selected_save.peek().clone();
+            let row = active_row.clone();
+            let lib = library.read().clone().flatten().unwrap_or_default();
             async move {
-                let (Some(storage), Some(entry)) = (storage, entry) else {
+                let (Some(storage), Some(row)) = (storage, row) else {
+                    return;
+                };
+                let Some(game) = library::find_by_slug(&row.slug) else {
+                    return;
+                };
+                let Some(entry) = lib.by_game(game).cloned() else {
+                    flash(launch_flash, "That game's ROM isn't imported", false, 5000);
                     return;
                 };
                 let rom = match crate::storage::read(storage.roms(), &entry.file).await {
@@ -195,24 +268,26 @@ pub fn PlayScreen() -> Element {
                         return;
                     }
                 };
-                let save = match &pick {
-                    Some(name) => match crate::storage::read(storage.saves(), name).await {
+                let fresh = parse_fresh(&row.value).is_some();
+                let save = if fresh {
+                    None
+                } else {
+                    match crate::storage::read(storage.saves(), &row.value).await {
                         Ok(bytes) => bytes,
                         Err(e) => {
                             flash(launch_flash, format!("couldn't read save: {e}"), false, 5000);
                             return;
                         }
-                    },
-                    None => None,
+                    }
                 };
                 // A fresh boot persists into a new file named for the
                 // game; a picked save writes back to itself.
-                let save_file = pick
-                    .clone()
-                    .unwrap_or_else(|| format!("{}.sav", library::game_slug(entry.game)));
-                if let Err(e) =
-                    crate::web::boot(runtime, entry.game, rom, save, Some(save_file)).await
-                {
+                let save_file = if fresh {
+                    format!("{}.sav", row.slug)
+                } else {
+                    row.value.clone()
+                };
+                if let Err(e) = crate::web::boot(runtime, game, rom, save, Some(save_file)).await {
                     flash(launch_flash, format!("couldn't start: {e:#}"), false, 5000);
                 }
             }
@@ -228,20 +303,21 @@ pub fn PlayScreen() -> Element {
                     onchange: move |evt: FormEvent| {
                         let v = evt.value();
                         if v.is_empty() {
-                            selected_game.set(None);
+                            selected_family.set(None);
                             selected_save.set(None);
                         } else {
                             selected_save.set(config.peek().last_saves.get(&v).cloned());
                             config.with_mut(|c| c.last_game = Some(v.clone()));
-                            selected_game.set(Some(v));
+                            selected_family.set(Some(v));
                         }
                     },
-                    option { value: "", selected: selected_slug.is_none(), "no game" }
-                    for entry in lib.entries.iter() {
+                    option { value: "", selected: family.is_none(), "no game" }
+                    for opt in family_options.iter() {
                         option {
-                            value: "{library::game_slug(entry.game)}",
-                            selected: Some(library::game_slug(entry.game)) == selected_slug,
-                            "{library::display_name(entry.game)}"
+                            value: "{opt.family}",
+                            selected: family.as_deref() == Some(opt.family),
+                            disabled: !opt.available,
+                            "{opt.display}"
                         }
                     }
                 }
@@ -256,28 +332,23 @@ pub fn PlayScreen() -> Element {
             }
             div { class: "save-row",
                 select {
-                    disabled: selected_entry.is_none(),
+                    disabled: family.is_none(),
                     onchange: move |evt: FormEvent| {
                         let v = evt.value();
-                        let slug = selected_game.peek().clone();
-                        if v.is_empty() {
-                            selected_save.set(None);
-                            if let Some(slug) = slug {
-                                config.with_mut(|c| { c.last_saves.remove(&slug); });
-                            }
-                        } else {
-                            selected_save.set(Some(v.clone()));
-                            if let Some(slug) = slug {
-                                config.with_mut(|c| { c.last_saves.insert(slug, v); });
-                            }
+                        let fam = selected_family.peek().clone();
+                        selected_save.set(Some(v.clone()));
+                        if let Some(fam) = fam {
+                            config.with_mut(|c| {
+                                c.last_saves.insert(fam, v);
+                            });
                         }
                     },
-                    option { value: "", selected: pick.is_none(), "(fresh save)" }
-                    for name in save_names.iter() {
+                    for row in save_rows.iter() {
                         option {
-                            value: "{name}",
-                            selected: pick.as_deref() == Some(name.as_str()),
-                            "{name}"
+                            value: "{row.value}",
+                            selected: active_row.as_ref().is_some_and(|a| a.value == row.value),
+                            disabled: !row.available,
+                            "{row.label}"
                         }
                     }
                 }
@@ -290,12 +361,13 @@ pub fn PlayScreen() -> Element {
 
         // --- middle body: the game card (save-view stand-in) ---
         section { class: "pane play-body",
-            if let Some(entry) = selected_entry.clone() {
+            if let Some(game) = active_game {
                 div { class: "head",
-                    span { class: "title", "{library::display_name(entry.game)}" }
+                    span { class: "title", "{library::display_name(game)}" }
                     div { class: "grow" }
                     button {
                         class: "btn primary",
+                        disabled: !active_row.as_ref().is_some_and(|r| r.available),
                         onclick: launch,
                         icons::Play {}
                         "Play"
@@ -309,20 +381,23 @@ pub fn PlayScreen() -> Element {
                         img { class: "logo", src: "{url}", alt: "" }
                     }
                     span { class: "sub",
-                        if let Some(p) = pick.as_deref() {
-                            "save: {p}"
-                        } else {
-                            "starting from a fresh save"
+                        if let Some(row) = active_row.as_ref() {
+                            if parse_fresh(&row.value).is_some() {
+                                "starting from a fresh save"
+                            } else {
+                                "save: {row.value}"
+                            }
                         }
                     }
                 }
-            } else if lib.entries.is_empty() {
+            } else if scanned && !any_owned {
                 div { class: "game-card",
                     span { class: "title", "No games yet" }
                     p { class: "sub",
-                        "Import a Mega Man Battle Network ROM (.gba) — drop it anywhere \
-                         or use the Import button above. Files stay in private browser \
-                         storage on this device."
+                        "Import Mega Man Battle Network ROMs (.gba) — drop them anywhere \
+                         or use the Import button above. A family unlocks once every ROM \
+                         in it is imported. Files stay in private browser storage on \
+                         this device."
                     }
                 }
             } else {

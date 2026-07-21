@@ -37,12 +37,13 @@ pub struct Config {
     pub volume: f32,
     /// Snap the game image to integer multiples of 240x160.
     pub integer_scaling: bool,
-    /// The library's last-picked game (family-variant slug), restored
-    /// on load.
+    /// The last-picked game *family* (region-specific family string,
+    /// e.g. "bn6"), restored on load — selection is per family like
+    /// the desktop's loadout, not per individual game.
     pub last_game: Option<String>,
-    /// Each game's last-picked save (family-variant slug → file name in
-    /// the flat `saves/` directory), re-selected when the game is. No
-    /// entry = the fresh-save row.
+    /// Each family's last-picked save: family string → either a file
+    /// name in the flat `saves/` directory or a `//fresh/<variant>`
+    /// sentinel. No entry = the default fresh-save row.
     pub last_saves: HashMap<String, String>,
     pub mapping: Mapping,
 }

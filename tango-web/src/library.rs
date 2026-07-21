@@ -50,8 +50,8 @@ pub fn find_by_family_and_variant(family: &str, variant: u8) -> Option<GameRef> 
     tango_gamesupport::find_by_family_and_variant(&GAMES, family, variant)
 }
 
-/// A game's stable identity string, e.g. `"bn6-0"` — the config's
-/// last-game/last-save key.
+/// A game's stable identity string, e.g. `"bn6-0"` — used in
+/// normalized file names and fresh-save sentinels.
 pub fn game_slug(game: GameRef) -> String {
     let (family, variant) = game.family_and_variant();
     format!("{family}-{variant}")
@@ -60,6 +60,72 @@ pub fn game_slug(game: GameRef) -> String {
 /// Resolve a persisted [`game_slug`] back to its registration.
 pub fn find_by_slug(slug: &str) -> Option<GameRef> {
     GAMES.iter().copied().find(|g| game_slug(g) == slug)
+}
+
+/// Every family in registry order (families group naturally because
+/// [`GAMES`] is built family by family).
+pub fn families() -> Vec<&'static str> {
+    let mut out: Vec<&'static str> = Vec::new();
+    for g in GAMES.iter() {
+        let fam = g.family_and_variant().0;
+        if !out.contains(&fam) {
+            out.push(fam);
+        }
+    }
+    out
+}
+
+/// All registered games belonging to a family. The family string is
+/// region-specific (`exe3` JP vs `bn3` US), so members differ only by
+/// color variant.
+pub fn games_in_family(family: &str) -> impl Iterator<Item = GameRef> + '_ {
+    GAMES
+        .iter()
+        .copied()
+        .filter(move |g| g.family_and_variant().0 == family)
+}
+
+/// One row of the family picker, mirroring the desktop's
+/// `loadout::family_options`: every supported family — not just the
+/// owned ones, so users can see what tango knows about — with
+/// un-owned families disabled.
+pub struct FamilyOption {
+    pub family: &'static str,
+    pub display: String,
+    /// `false` unless *every* game in this family has an imported ROM.
+    pub available: bool,
+}
+
+/// The family picker's rows: available families stable-sort to the
+/// top (then own-region first, then by family string) so the live
+/// ones lead — the desktop's exact ordering.
+pub fn family_options(library: &Library) -> Vec<FamilyOption> {
+    let mut options: Vec<FamilyOption> = families()
+        .into_iter()
+        .map(|fam| FamilyOption {
+            family: fam,
+            display: family_display_name(fam),
+            available: games_in_family(fam).all(|g| library.by_game(g).is_some()),
+        })
+        .collect();
+    options.sort_by(|a, b| {
+        (!a.available)
+            .cmp(&(!b.available))
+            .then_with(|| {
+                let ar = !family_matches_language(a.family);
+                let br = !family_matches_language(b.family);
+                ar.cmp(&br)
+            })
+            .then_with(|| a.family.cmp(b.family))
+    });
+    options
+}
+
+/// Does any game in `family` match the UI language's region? Used to
+/// sort own-region families first. The web build's UI language is
+/// en-US until the i18n port (M5), so US families lead.
+fn family_matches_language(family: &str) -> bool {
+    games_in_family(family).any(|g| g.region() == tango_gamesupport::Region::US)
 }
 
 /// Which registered games can load this SRAM dump. Saves live in one
@@ -197,8 +263,8 @@ impl Library {
         Library { entries }
     }
 
-    pub fn by_slug(&self, slug: &str) -> Option<&LibraryEntry> {
-        self.entries.iter().find(|e| game_slug(e.game) == slug)
+    pub fn by_game(&self, game: GameRef) -> Option<&LibraryEntry> {
+        self.entries.iter().find(|e| e.game == game)
     }
 }
 
@@ -260,4 +326,19 @@ pub fn display_name(game: GameRef) -> String {
 pub fn short_name(game: GameRef) -> String {
     let (family, _) = game.family_and_variant();
     family_str(family, "short").unwrap_or_else(|| game_slug(game))
+}
+
+/// Best-effort family display name (e.g. "Mega Man Battle Network 6")
+/// via the family's `name` string; falls back to the raw family string.
+pub fn family_display_name(family: &str) -> String {
+    family_str(family, "name").unwrap_or_else(|| family.to_string())
+}
+
+/// Short *variant* tag (e.g. "Gregar", "Blue Moon") via the family's
+/// `variant-<n>-short` string — the bare color/team name without the
+/// series title, for disambiguating variants within a family. Falls
+/// back to the family short tag for single-variant families.
+pub fn variant_short_name(game: GameRef) -> String {
+    let (family, variant) = game.family_and_variant();
+    family_str(family, &format!("variant-{variant}-short")).unwrap_or_else(|| short_name(game))
 }
