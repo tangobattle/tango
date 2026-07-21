@@ -549,7 +549,8 @@ impl PvpDriver {
         let session_id = self.reconnect_session_id.clone();
         wasm_bindgen_futures::spawn_local(async move {
             let endpoint = crate::config::matchmaking_endpoint();
-            let result = crate::net::signaling::connect(&endpoint, &session_id, None).await;
+            let result =
+                crate::net::signaling::connect(&endpoint, &session_id, crate::config::use_relay_pref()).await;
             let _ = result_tx.unbounded_send(match result {
                 Ok(connected) => {
                     // The channel-open barrier still applies to the

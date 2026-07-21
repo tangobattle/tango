@@ -19,15 +19,44 @@ pub const DEFAULT_MATCHMAKING: &str = "wss://matchmaking.tango.n1gp.net";
 /// GETs for the web client to sync it.
 pub const DEFAULT_PATCH_REPO: &str = "https://patches.tango.n1gp.net";
 
-/// The matchmaking endpoint for this page load.
-#[allow(dead_code)] // netplay (M3)
+/// The matchmaking endpoint for this page load: the URL override wins,
+/// then the Settings → Netplay value, then the default.
 pub fn matchmaking_endpoint() -> String {
     web_sys::window()
         .and_then(|w| w.location().search().ok())
         .and_then(|s| web_sys::UrlSearchParams::new_with_str(&s).ok())
         .and_then(|p| p.get("matchmaking_endpoint"))
         .filter(|v| !v.is_empty())
+        .or_else(|| Config::load().matchmaking_endpoint.filter(|v| !v.trim().is_empty()))
         .unwrap_or_else(|| DEFAULT_MATCHMAKING.to_string())
+}
+
+/// The relay preference as `tango_signaling`'s `use_relay` argument.
+pub fn use_relay_pref() -> Option<bool> {
+    Config::load().use_relay.use_relay()
+}
+
+/// Whether to route the peer connection through a TURN relay — the
+/// desktop's Settings → Netplay picker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum UseRelay {
+    #[default]
+    Auto,
+    Always,
+    Never,
+}
+
+impl UseRelay {
+    pub const ALL: [UseRelay; 3] = [UseRelay::Auto, UseRelay::Always, UseRelay::Never];
+
+    /// The `use_relay` argument the signaling connect expects.
+    pub fn use_relay(self) -> Option<bool> {
+        match self {
+            UseRelay::Auto => None,
+            UseRelay::Always => Some(true),
+            UseRelay::Never => Some(false),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,6 +84,14 @@ pub struct Config {
     /// name in the flat `saves/` directory or a `//fresh/<variant>`
     /// sentinel. No entry = the default fresh-save row.
     pub last_saves: HashMap<String, String>,
+    /// Favorited patches (by name) — they sort to the top of the
+    /// Patches tab, like the desktop's.
+    pub patch_favorites: Vec<String>,
+    /// Settings → Netplay's matchmaking endpoint; `None`/empty = the
+    /// default. A `?matchmaking_endpoint=` URL override beats both.
+    pub matchmaking_endpoint: Option<String>,
+    /// Whether to force / forbid the TURN relay.
+    pub use_relay: UseRelay,
     pub mapping: Mapping,
 }
 
@@ -71,6 +108,9 @@ impl Default for Config {
             integer_scaling: true,
             last_game: None,
             last_saves: HashMap::new(),
+            patch_favorites: Vec::new(),
+            matchmaking_endpoint: None,
+            use_relay: UseRelay::default(),
             mapping: Mapping::default(),
         }
     }

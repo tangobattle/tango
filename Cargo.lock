@@ -7589,6 +7589,7 @@ dependencies = [
  "mgba",
  "mgba-siolink",
  "prost",
+ "pulldown-cmark",
  "rand 0.8.5",
  "rand_pcg 0.3.1",
  "rennet",

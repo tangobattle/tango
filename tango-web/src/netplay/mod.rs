@@ -183,7 +183,7 @@ async fn run(
     mut commands: mpsc::UnboundedReceiver<Command>,
 ) -> anyhow::Result<()> {
     let endpoint = crate::config::matchmaking_endpoint();
-    let connected = signaling::connect(&endpoint, &link_code, None)
+    let connected = signaling::connect(&endpoint, &link_code, crate::config::use_relay_pref())
         .await
         .map_err(|e| anyhow::anyhow!("signaling: {e}"))?;
 

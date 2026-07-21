@@ -174,3 +174,23 @@ replays-select-prompt = リプレイを選択してください。
 replays-match-type = マッチタイプ:
 replays-duration = 再生時間:
 replays-round-count = { $count }ラウンド
+
+## patches detail (extracted from the desktop's main.ftl; keep in sync)
+patches-favorite = お気に入り
+patches-unfavorite = お気に入り解除
+patches-search-placeholder = パッチを検索…
+patches-readme-placeholder = このパッチにはREADMEがありません。
+patches-details-authors = 作者:
+patches-details-license = ライセンス:
+patches-details-source = ソース:
+
+## netplay settings (extracted from the desktop's main.ftl; keep in sync)
+settings-matchmaking-endpoint = マッチメイキングエンドポイント
+settings-use-relay = リレーサーバーを使用
+settings-use-relay-auto = 自動
+settings-use-relay-always = 常に使用
+settings-use-relay-never = 使用しない
+settings-show-opponent-setup = 対戦開始時に相手の構築を表示
+
+## netplay settings section label (extracted from the desktop)
+settings-section-netplay = ネットプレイ

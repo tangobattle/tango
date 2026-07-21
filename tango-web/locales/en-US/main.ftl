@@ -206,3 +206,23 @@ replays-round-count = { $count ->
     [one] 1 round
    *[other] { $count } rounds
 }
+
+## patches detail (extracted from the desktop's main.ftl; keep in sync)
+patches-favorite = Favorite
+patches-unfavorite = Unfavorite
+patches-search-placeholder = Search patches…
+patches-readme-placeholder = This patch has no README.
+patches-details-authors = Authors:
+patches-details-license = License:
+patches-details-source = Source:
+
+## netplay settings (extracted from the desktop's main.ftl; keep in sync)
+settings-matchmaking-endpoint = Matchmaking endpoint
+settings-use-relay = Use relay server
+settings-use-relay-auto = Auto
+settings-use-relay-always = Always
+settings-use-relay-never = Never
+settings-show-opponent-setup = Show opponent's setup at match start
+
+## netplay settings section label (extracted from the desktop)
+settings-section-netplay = Netplay

@@ -174,3 +174,23 @@ replays-select-prompt = 选择一个录像。
 replays-match-type = 对战类型：
 replays-duration = 时长：
 replays-round-count = { $count } 个回合
+
+## patches detail (extracted from the desktop's main.ftl; keep in sync)
+patches-favorite = 收藏
+patches-unfavorite = 取消收藏
+patches-search-placeholder = 搜索补丁…
+patches-readme-placeholder = 此补丁没有 README。
+patches-details-authors = 作者：
+patches-details-license = 许可证：
+patches-details-source = 来源：
+
+## netplay settings (extracted from the desktop's main.ftl; keep in sync)
+settings-matchmaking-endpoint = 匹配服务器地址
+settings-use-relay = 使用中继服务器
+settings-use-relay-auto = 自动
+settings-use-relay-always = 总是
+settings-use-relay-never = 从不
+settings-show-opponent-setup = 对战开始时显示对手的配置
+
+## netplay settings section label (extracted from the desktop)
+settings-section-netplay = 联机

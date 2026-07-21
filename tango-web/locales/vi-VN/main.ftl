@@ -174,3 +174,24 @@ replays-select-prompt = Chọn một replay.
 replays-match-type = Kiểu trận:
 replays-duration = Thời lượng:
 replays-round-count = { $count } vòng
+
+## patches detail (extracted from the desktop's main.ftl; keep in sync)
+patches-favorite = Yêu thích
+patches-unfavorite = Bỏ yêu thích
+patches-search-placeholder = Tìm bản vá…
+patches-readme-placeholder = Bản vá này không có README.
+patches-details-authors = Tác giả:
+patches-details-license = Giấy phép:
+    .all-rights-reserved = Đã đăng kí bản quyền tác giả
+patches-details-source = Website:
+
+## netplay settings (extracted from the desktop's main.ftl; keep in sync)
+settings-matchmaking-endpoint = Điểm cuối tạo trận đấu
+settings-use-relay = Dùng máy chủ chuyển tiếp
+settings-use-relay-auto = Tự động
+settings-use-relay-always = Luôn luôn
+settings-use-relay-never = Không bao giờ
+settings-show-opponent-setup = Hiện thiết lập của đối thủ khi trận đấu bắt đầu
+
+## netplay settings section label (extracted from the desktop)
+settings-section-netplay = Netplay

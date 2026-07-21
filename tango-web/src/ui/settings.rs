@@ -11,8 +11,7 @@ use crate::t;
 use crate::platform::input::{self, DescribeKind, MappedKey};
 use crate::runtime::{CAPTURED, CAPTURE_TARGET};
 
-/// The desktop's section list, minus the ones whose features haven't
-/// landed on web yet (Netplay joins at M3), plus Diagnostics — the
+/// The desktop's section list in its order, plus Diagnostics — the
 /// determinism probe and desync tooling live there.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum Section {
@@ -21,6 +20,7 @@ enum Section {
     Graphics,
     Audio,
     Input,
+    Netplay,
     Diagnostics,
     About,
 }
@@ -38,6 +38,7 @@ pub fn SettingsScreen() -> Element {
                 (Section::Graphics, t!(&lang, "settings-section-graphics")),
                 (Section::Audio, t!(&lang, "settings-section-audio")),
                 (Section::Input, t!(&lang, "settings-section-input")),
+                (Section::Netplay, t!(&lang, "settings-section-netplay")),
                 (Section::Diagnostics, t!(&lang, "web-diagnostics")),
                 (Section::About, t!(&lang, "settings-section-about")),
             ] {
@@ -55,6 +56,7 @@ pub fn SettingsScreen() -> Element {
                 Section::Graphics => rsx! { GraphicsSection {} },
                 Section::Audio => rsx! { AudioSection {} },
                 Section::Input => rsx! { InputSection {} },
+                Section::Netplay => rsx! { NetplaySection {} },
                 Section::Diagnostics => rsx! { super::diag::DiagnosticsSection {} },
                 Section::About => rsx! { AboutSection {} },
             }
@@ -149,6 +151,60 @@ fn AudioSection() -> Element {
                     },
                 }
                 span { class: "status", "{volume_pct}%" }
+            }
+        }
+    }
+}
+
+/// Settings → Netplay: the matchmaking endpoint + the relay policy —
+/// the desktop's section minus its show-opponent-setup toggle (that
+/// auto-opens the in-session opponent drawer, which the web build
+/// doesn't have yet). Changes take effect on the next connection.
+#[component]
+fn NetplaySection() -> Element {
+    let Ctx { mut config, .. } = use_ctx();
+    let endpoint = config.read().matchmaking_endpoint.clone().unwrap_or_default();
+    let use_relay = config.read().use_relay;
+    let lang = crate::i18n::LANG.read().clone();
+    let relay_label = |r: crate::config::UseRelay| match r {
+        crate::config::UseRelay::Auto => t!(&lang, "settings-use-relay-auto"),
+        crate::config::UseRelay::Always => t!(&lang, "settings-use-relay-always"),
+        crate::config::UseRelay::Never => t!(&lang, "settings-use-relay-never"),
+    };
+    rsx! {
+        section { class: "pane",
+            h2 { {t!(&lang, "settings-section-netplay")} }
+            div { class: "option-row",
+                label { {t!(&lang, "settings-matchmaking-endpoint")} }
+                input {
+                    r#type: "text",
+                    class: "wide",
+                    placeholder: crate::config::DEFAULT_MATCHMAKING,
+                    value: "{endpoint}",
+                    spellcheck: "false",
+                    autocomplete: "off",
+                    oninput: move |evt: FormEvent| {
+                        let v = evt.value();
+                        config.with_mut(|c| {
+                            c.matchmaking_endpoint = (!v.trim().is_empty()).then_some(v);
+                        });
+                    },
+                }
+            }
+            div { class: "option-row",
+                label { {t!(&lang, "settings-use-relay")} }
+                select {
+                    onchange: move |evt: FormEvent| {
+                        if let Ok(i) = evt.value().parse::<usize>() {
+                            if let Some(r) = crate::config::UseRelay::ALL.get(i) {
+                                config.with_mut(|c| c.use_relay = *r);
+                            }
+                        }
+                    },
+                    for (i, r) in crate::config::UseRelay::ALL.iter().enumerate() {
+                        option { value: "{i}", selected: *r == use_relay, {relay_label(*r)} }
+                    }
+                }
             }
         }
     }

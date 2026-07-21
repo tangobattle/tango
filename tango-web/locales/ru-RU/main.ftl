@@ -194,3 +194,24 @@ replays-round-count = { $count ->
     [few] { $count } раунда
    *[many] { $count } раундов
 }
+
+## patches detail (extracted from the desktop's main.ftl; keep in sync)
+patches-favorite = В избранное
+patches-unfavorite = Убрать из избранного
+patches-search-placeholder = Поиск патчей…
+patches-readme-placeholder = У этого патча нет README.
+patches-details-authors = Авторы:
+patches-details-license = Лицензия:
+    .all-rights-reserved = Все права защищены
+patches-details-source = Сайт:
+
+## netplay settings (extracted from the desktop's main.ftl; keep in sync)
+settings-matchmaking-endpoint = Точка окончания матча
+settings-use-relay = Использовать сервер-ретранслятор
+settings-use-relay-auto = Автоматически
+settings-use-relay-always = Всегда
+settings-use-relay-never = Никогда
+settings-show-opponent-setup = Показывать сборку соперника в начале матча
+
+## netplay settings section label (extracted from the desktop)
+settings-section-netplay = Сетевая игра

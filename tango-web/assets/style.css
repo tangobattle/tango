@@ -2348,3 +2348,190 @@ main.dropping {
   justify-content: center;
   color: var(--muted);
 }
+
+/* ---- patches tab (desktop top_split_pane shape) ---- */
+
+.filter-strip input.search.patches {
+  width: 260px; /* the desktop's fixed search width */
+}
+
+.patches-split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--pane-gap);
+}
+
+.patch-list {
+  width: 280px; /* the desktop's fixed list width */
+  flex: none;
+  overflow-y: auto;
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.patch-list .empty {
+  padding: 0 10px;
+}
+
+.patch-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.patch-row:nth-child(even) {
+  background: rgba(236, 238, 237, 0.05);
+}
+
+.patch-row:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.patch-row.selected {
+  background: linear-gradient(to bottom, var(--select-gold), var(--select-gold-2));
+  color: var(--accent-ink);
+}
+
+.patch-row.selected .caption {
+  color: color-mix(in srgb, var(--accent-ink) 75%, transparent);
+}
+
+.patch-row .title-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.patch-row .caption {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.fav-star {
+  color: #ffd23d; /* FAVORITE_GOLD = SELECT_YELLOW */
+  font-size: 15px;
+  line-height: 1;
+}
+
+.fav-star.off {
+  color: var(--muted);
+}
+
+.fav-btn {
+  padding: 2px 6px;
+  font-size: 18px;
+}
+
+.patch-detail {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pane-gap);
+}
+
+.patch-detail select {
+  height: 30px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: #16191a;
+  border: 1px solid rgba(236, 238, 237, 0.14);
+  border-radius: var(--tech-radius-sm);
+  padding: 0 8px;
+}
+
+.patch-detail .readme {
+  flex: 1;
+  min-height: 0;
+}
+
+.md {
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+}
+
+.md h1,
+.md h2,
+.md h3 {
+  margin: 12px 0 6px;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text);
+}
+
+.md h1::before,
+.md h2::before,
+.md h3::before {
+  content: none;
+}
+
+.md h1 {
+  font-size: 18px;
+}
+
+.md h2 {
+  font-size: 15px;
+}
+
+.md h3 {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.md p,
+.md ul,
+.md ol {
+  margin: 6px 0;
+}
+
+.md a {
+  color: var(--accent);
+}
+
+.md code {
+  font-family: "Noto Sans Mono", ui-monospace, monospace;
+  background: rgba(236, 238, 237, 0.08);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.md pre {
+  background: rgba(236, 238, 237, 0.06);
+  padding: 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.md img {
+  max-width: 100%;
+}
+
+.md blockquote {
+  margin: 6px 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--accent-hair);
+  color: var(--muted);
+}
+
+/* Settings → Netplay: the endpoint input at the desktop's 380px. */
+.option-row input.wide {
+  width: 380px;
+  max-width: 60vw;
+}

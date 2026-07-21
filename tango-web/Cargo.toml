@@ -69,6 +69,9 @@ base64 = "0.22"
 # Save view: the folder tab's group-by-chip collapse (same crate the
 # desktop's save_view uses).
 indexmap.workspace = true
+# Patch READMEs render to HTML (the desktop renders the same markdown
+# through iced's widget, which shares this parser).
+pulldown-cmark = { version = "0.12", default-features = false, features = ["html"] }
 
 dioxus = { version = "0.7", features = ["web"] }
 wasm-bindgen = "0.2"

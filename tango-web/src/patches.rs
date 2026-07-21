@@ -39,6 +39,10 @@ struct Metadata {
 #[derive(serde::Deserialize)]
 struct PatchMetadata {
     pub title: String,
+    #[serde(default)]
+    pub authors: Vec<String>,
+    pub license: Option<String>,
+    pub source: Option<String>,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -51,6 +55,9 @@ struct VersionMetadata {
 pub struct Patch {
     pub name: String,
     pub title: String,
+    pub authors: Vec<String>,
+    pub license: Option<String>,
+    pub source: Option<String>,
     /// version → (netplay compatibility tag, games with a .bps).
     pub versions: BTreeMap<semver::Version, PatchVersion>,
 }
@@ -224,11 +231,24 @@ pub async fn scan(storage: &Storage) -> Vec<Patch> {
         out.push(Patch {
             name,
             title: info.patch.title,
+            authors: info.patch.authors,
+            license: info.patch.license,
+            source: info.patch.source,
             versions,
         });
     }
     out.sort_by(|a, b| a.title.cmp(&b.title));
     out
+}
+
+/// The patch's synced `README.md`, if any.
+pub async fn readme(storage: &Storage, name: &str) -> Option<String> {
+    if name.contains('/') || name.contains('\\') {
+        return None;
+    }
+    let dir = dir_at(storage.patches(), &[name]).await.ok()?;
+    let raw = storage::read(&dir, "README.md").await.ok().flatten()?;
+    Some(String::from_utf8_lossy(&raw).into_owned())
 }
 
 /// A patch version's `rom_overrides` (charset + name/description
