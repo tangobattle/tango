@@ -7,6 +7,20 @@ members = [
     "tango-net-protocol",
     "tango-pvp",
 ]
+# The per-game gamesupport crates auto-join this workspace as path
+# dependencies (they live under the workspace directory), which drags
+# their examples into plain `cargo build`/`test` at the root — and the
+# seven crates' same-named probe examples then race each other linking
+# to one shared target/debug/examples/<name>.exe. Default to just the
+# real members; the probes still build on demand via
+# `cargo run -p tango-gamesupport-<game> --example <probe>`.
+default-members = [
+    "tango",
+    "tango-dataview",
+    "tango-gamesupport",
+    "tango-net-protocol",
+    "tango-pvp",
+]
 # One source of truth for every external dep shared by 2+ member crates,
 # so versions can't silently drift apart (we shipped four itertools and
 # two statically-linked zstd C libraries before this existed). Members

@@ -5882,6 +5882,7 @@ dependencies = [
  "tango-gamesupport-bn5",
  "tango-gamesupport-bn6",
  "tango-gamesupport-exe45",
+ "tango-net-protocol",
  "tango-pvp",
  "tango-signaling",
  "tempfile",

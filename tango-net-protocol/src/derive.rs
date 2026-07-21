@@ -33,24 +33,42 @@ pub fn pick_local_player_index(rng: &mut rand_pcg::Mcg128Xsl64, is_offerer: bool
     }
 }
 
-/// The transparent-reconnect rendezvous id both peers re-dial the
-/// matchmaking service with after a mid-match transport loss:
-/// `"_" + hex(Shake128("tango:reconnect:" ‖ rng_seed ‖ (fp_a XOR fp_b))[..16])`.
+/// Derive the matchmaking reconnect `session_id`, the rendezvous code both peers
+/// re-dial after a mid-match drop. It must be reproducible by either peer yet
+/// unguessable to anyone else (so a stranger can't camp the rendezvous and
+/// hijack the reconnect).
 ///
-/// The fingerprints are the two DTLS certificates' SHA-256 digests,
-/// XOR-folded so the construction is commutative. If either is absent
-/// (or the lengths differ — e.g. one peer can't surface one), both
-/// sides fall back to the seed-only form in lockstep rather than
-/// mixing in a lopsided value. Domain-separated from the lobby
-/// commitment (same `Shake128`, over `"tango:lobby:"`).
+/// Two independent secrets are mixed in, neither sufficient alone:
 ///
-/// Prefixed with `_` as the client does not allow construction of
-/// link codes containing `_`, but the server does permit them.
+/// * `rng_seed` — the shared match RNG seed (XOR of both commit nonces, exchanged
+///   over the encrypted data channel). The *signaling server* never sees it.
+/// * the two DTLS certificate fingerprints — per-connection, high-entropy, and
+///   verified during the handshake, but unlike `rng_seed` never written to disk
+///   (the seed doubles as the in-match RNG seed, so it lands in replay files). A
+///   *replay holder* never sees the fingerprints.
+///
+/// So no single party outside the two peers can reproduce the id: the server has
+/// the fingerprints but not the seed; a replay leaks the seed but not the
+/// fingerprints. The two fingerprints are folded together by XOR — commutative,
+/// so both peers reach the same value without having to agree on an order (which
+/// is "local" vs "remote" is swapped between them).
+///
+/// Falls back to seed-only (the original construction) when a fingerprint is
+/// missing or the two differ in length — e.g. a peer whose signaling stack didn't
+/// surface one — so the two ends still agree on an id rather than silently
+/// diverging. Domain-separated from the lobby commitment (same `Shake128`, over
+/// `"tango:lobby:"`).
+///
+/// We also prefix it with _ as the client does not allow construction of
+/// link codes containing _, but the server does permit them.
 pub fn derive_reconnect_session_id(rng_seed: &[u8; 16], fp_a: &[u8], fp_b: &[u8]) -> String {
     use sha3::digest::{ExtendableOutput, Update, XofReader};
     let mut h = sha3::Shake128::default();
     h.update(b"tango:reconnect:");
     h.update(rng_seed);
+    // Both fingerprints are SHA-256 digests (equal length); the empty / unequal
+    // guard keeps the two peers in lockstep on the seed-only fallback when one is
+    // absent rather than mixing in a lopsided value.
     if !fp_a.is_empty() && fp_a.len() == fp_b.len() {
         let folded: Vec<u8> = fp_a.iter().zip(fp_b).map(|(a, b)| a ^ b).collect();
         h.update(&folded);

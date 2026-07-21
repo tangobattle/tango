@@ -18,7 +18,7 @@ use crate::netplay::identity;
 use crate::platform::{audio, input, sdl_init};
 use crate::ui::theme::theme_for;
 use crate::ui::{anim, widgets};
-use crate::{config, discord, i18n, loadout, net, netplay, selection, session, tabs, updater, INIT_LINK_CODE};
+use crate::{config, discord, i18n, loadout, netplay, selection, session, tabs, updater, INIT_LINK_CODE};
 use i18n::t;
 use iced::widget::container;
 use iced::widget::space::horizontal as horizontal_space;
@@ -729,7 +729,7 @@ impl App {
     /// game_info from the local loadout. (No available-games /
     /// available-patches lists cross the wire — possession of the
     /// peer's setup is checked locally by `compat::check`.)
-    fn make_local_settings(&self) -> net::protocol::Settings {
+    fn make_local_settings(&self) -> tango_net_protocol::control::Settings {
         self.loadout.make_local_settings(&self.config, &self.netplay.lobby)
     }
 

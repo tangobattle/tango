@@ -125,52 +125,10 @@ pub enum ReconnectRecipe {
     },
 }
 
-/// Derive the matchmaking reconnect `session_id`, the rendezvous code both peers
-/// re-dial after a mid-match drop. It must be reproducible by either peer yet
-/// unguessable to anyone else (so a stranger can't camp the rendezvous and
-/// hijack the reconnect).
-///
-/// Two independent secrets are mixed in, neither sufficient alone:
-///
-/// * `rng_seed` — the shared match RNG seed (XOR of both commit nonces, exchanged
-///   over the encrypted data channel). The *signaling server* never sees it.
-/// * the two DTLS certificate fingerprints — per-connection, high-entropy, and
-///   verified during the handshake, but unlike `rng_seed` never written to disk
-///   (the seed doubles as the in-match RNG seed, so it lands in replay files). A
-///   *replay holder* never sees the fingerprints.
-///
-/// So no single party outside the two peers can reproduce the id: the server has
-/// the fingerprints but not the seed; a replay leaks the seed but not the
-/// fingerprints. The two fingerprints are folded together by XOR — commutative,
-/// so both peers reach the same value without having to agree on an order (which
-/// is "local" vs "remote" is swapped between them).
-///
-/// Falls back to seed-only (the original construction) when a fingerprint is
-/// missing or the two differ in length — e.g. a peer whose signaling stack didn't
-/// surface one — so the two ends still agree on an id rather than silently
-/// diverging. Domain-separated from the lobby commitment (same `Shake128`, over
-/// `"tango:lobby:"`).
-///
-/// We also prefix it with _ as the client does not allow construction of
-/// link codes containing _, but the server does permit them.
-pub(crate) fn derive_reconnect_session_id(rng_seed: &[u8; 16], fp_a: &[u8], fp_b: &[u8]) -> String {
-    use sha3::digest::{ExtendableOutput, Update, XofReader};
-    let mut h = sha3::Shake128::default();
-    h.update(b"tango:reconnect:");
-    h.update(rng_seed);
-    // Both fingerprints are SHA-256 digests (equal length); the empty / unequal
-    // guard keeps the two peers in lockstep on the seed-only fallback when one is
-    // absent rather than mixing in a lopsided value.
-    if !fp_a.is_empty() && fp_a.len() == fp_b.len() {
-        let folded: Vec<u8> = fp_a.iter().zip(fp_b).map(|(a, b)| a ^ b).collect();
-        h.update(&folded);
-    }
-    let mut out = [0u8; 16];
-    h.finalize_xof().read(&mut out);
-    let mut code: String = "_".into();
-    code.extend(out.iter().map(|b| format!("{b:02x}")));
-    code
-}
+// The reconnect session id is determinism-critical between peers, so
+// its construction (and full security rationale) lives in the shared
+// protocol crate.
+pub(crate) use tango_net_protocol::derive::derive_reconnect_session_id;
 
 /// Everything `netplay::State::take_pre_match` drains out of the lobby-era
 /// connection handles for [`Link::bring_up`] to assemble. The control
@@ -366,7 +324,7 @@ impl Link {
         loop {
             match receiver.receive().await {
                 // The peer announced a deliberate quit before tearing down.
-                Ok(super::control::protocol::Packet::Goodbye(_)) => return ControlEnd::Goodbye,
+                Ok(tango_net_protocol::control::Packet::Goodbye(_)) => return ControlEnd::Goodbye,
                 // Any other packet — nothing else legitimately flows here
                 // mid-match, but ignore it and keep watching.
                 Ok(_) => {}

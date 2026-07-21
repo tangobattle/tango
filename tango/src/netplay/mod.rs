@@ -43,52 +43,10 @@ pub use lobby::subscription;
 pub use handshake::ReadyView;
 use handshake::{Handshake, LocalReady, RemoteReady};
 
-// 0x47: in-match Input/EndOfRound/EndOfMatch moved off the reliable lobby
-// channel onto a separate unreliable channel with the `data::wire` redundancy
-// protocol. Incompatible with 0x46 peers, so the version gate rejects them.
-// 0x48: the data frame's piggybacked ack is now a signed delta from `base`
-// instead of an absolute frontier (smaller on the wire). Incompatible with 0x47.
-// 0x4a: mid-match disconnect reworked — a bare channel close reconnects on a
-// short window, and a deliberate quit announces itself with a `Closing` marker
-// so the peer ends at once. Incompatible with the interim 0x49 `Reconnecting`
-// marker, which sat at the same packet tag with the opposite meaning.
-// 0x4b: `NegotiatedState` gained `ts` — the commit-time wall clock whose
-// offerer-side value becomes the match clock every core pins its cart RTC to
-// (deterministic exe45 PvP/replays). Old peers can't decode the reveal.
-// 0x4c: the WebRTC stack moved from libdatachannel to tango-rtc (str0m).
-// Data channels are now negotiated in-band (DCEP) instead of pre-agreed
-// stream ids, so a 0x4b peer's channels would never open against ours; the
-// version gate keeps the two stacks from ever pairing.
-// (Still 0x4c: the `Closing` marker was removed — the transport's own DTLS
-// close_notify already hands the peer a prompt EOF on a deliberate quit. No
-// bump: an older 0x4c peer's marker decodes as stray traffic, which the
-// mid-match reliable-channel watch ignores.)
-// 0x4d: live PvP moved from the trap engine to the SIO-lockstep engine.
-// The in-match frame layout is unchanged, but its semantics aren't: seq n
-// now carries the joypad for pair tick n from session start (previously
-// per-battle-tick, rounds delimited by EndOfRound), and the simulations
-// are mutually incompatible — a 0x4c peer would desync instantly.
-// 0x4e: the 5.0.51 release — libdatachannel transport over the old (trap
-// engine) simulation. Not us.
-// 0x4f: the WebRTC stack moved back to libdatachannel here too (ported from
-// 5.0.51). Data channels return to pre-agreed stream ids, so a DCEP-era
-// peer's channels would never open against ours; the sio-engine simulation
-// rides on top, so neither 0x4d (str0m + sio) nor 0x4e (libdatachannel +
-// trap sim) peers may pair with us.
-// (Still 0x4f: a deliberate mid-match quit announces itself again — a
-// control-channel `Goodbye` sent just before teardown — so the peer ends at
-// once instead of burning the short clean-close reconnect window (which
-// exists because our own reconnect's transport drop produces the same clean
-// EOF a quit does — the 0x4c-era rationale for dropping the old `Closing`
-// marker predates that ambiguity). No bump: an older peer can't decode the
-// packet, which its mid-match watch ignores as stray traffic, falling back
-// to that window.)
-// 0x50: the lobby reveal announces its total byte length up front
-// (ChunkStart) and the receiver counts arriving bytes against it, replacing
-// the empty-sentinel Chunk that used to terminate the stream. The new Packet
-// variant sits ahead of Chunk, shifting later discriminants, and a 0x4f peer
-// would wait forever for a sentinel that never comes.
-pub const PROTOCOL_VERSION: u32 = 0x50;
+// The protocol version and its version-history changelog live in the
+// shared tango-net-protocol crate (every client implementation bumps
+// and documents them there).
+pub use tango_net_protocol::PROTOCOL_VERSION;
 
 /// Why a netplay session failed — typed so the UI can route each
 /// failure mode to its own localized copy instead of string-matching
@@ -204,8 +162,8 @@ pub struct State {
 
 #[derive(Clone)]
 pub struct LobbyState {
-    pub local: Option<crate::net::protocol::Settings>,
-    pub remote: Option<crate::net::protocol::Settings>,
+    pub local: Option<tango_net_protocol::control::Settings>,
+    pub remote: Option<tango_net_protocol::control::Settings>,
     /// Round-trip ping measurements, fed one-per-Pong by `PingMeasured` from
     /// the lobby loop. Empty before the first Pong. Its `latest()` (raw) drives
     /// the latency line in the pane; its `median()` smooths the per-second
@@ -375,9 +333,9 @@ pub enum Message {
     /// User has reached the lobby and we have the data needed to
     /// build a Settings packet — send it over the wire. App
     /// dispatches this exactly once per Lobby entry.
-    SendLocalSettings(Box<crate::net::protocol::Settings>),
+    SendLocalSettings(Box<tango_net_protocol::control::Settings>),
     /// Internal: lobby loop saw a Settings packet from the peer.
-    RemoteSettings(Box<crate::net::protocol::Settings>),
+    RemoteSettings(Box<tango_net_protocol::control::Settings>),
     /// Internal: ack that some background wire send (Settings,
     /// Commit, Uncommit, Chunk-stream, StartMatch) made it onto
     /// the wire. No-op message; just bumps the state-changed
@@ -621,7 +579,7 @@ impl State {
     /// `Message::SendLocalSettings` — push our Settings packet (Lobby only),
     /// deduping against the last sent value and dropping the local commit on a
     /// material change.
-    fn send_local_settings(&mut self, settings: Box<crate::net::protocol::Settings>) -> iced::Task<Message> {
+    fn send_local_settings(&mut self, settings: Box<tango_net_protocol::control::Settings>) -> iced::Task<Message> {
         // Only meaningful in Lobby phase; ignore late
         // arrivals after a Disconnect/Failed.
         if !matches!(self.phase, Phase::Lobby { .. }) {
@@ -669,7 +627,7 @@ impl State {
 
     /// `Message::RemoteSettings` — peer's Settings landed; record them and
     /// drop our commit if they downgraded visibility.
-    fn on_remote_settings(&mut self, settings: crate::net::protocol::Settings) -> iced::Task<Message> {
+    fn on_remote_settings(&mut self, settings: tango_net_protocol::control::Settings) -> iced::Task<Message> {
         // Visibility downgrade (peer's setup used to be
         // visible, now they've blinded it): drop our local
         // commit so we re-commit explicitly under the new
@@ -792,7 +750,7 @@ impl State {
             Ok(b) => b,
             Err(e) => return self.fail_handoff(Error::Other(format!("zstd decode: {e}"))),
         };
-        let peer_state = match crate::net::protocol::NegotiatedState::deserialize(&peer_state_bytes) {
+        let peer_state = match tango_net_protocol::control::NegotiatedState::deserialize(&peer_state_bytes) {
             Ok(s) => s,
             Err(e) => return self.fail_handoff(Error::Other(format!("decode peer state: {e}"))),
         };
@@ -811,16 +769,14 @@ impl State {
             } => String::new(),
             _ => return None,
         };
-        // RNG seed for the in-match shared RNG: XOR of the two
-        // nonces. Same construction as the legacy app.
-        let rng_seed: [u8; 16] = std::array::from_fn(|i| local_commit.state.nonce[i] ^ peer_state.nonce[i]);
-        // Match clock: the offerer's commit-time wall clock, so both peers pin
-        // every core's cart RTC to the same instant (see PreMatchData::match_ts).
-        let match_ts = if handles.is_offerer {
-            local_commit.state.ts
-        } else {
-            peer_state.ts
-        };
+        // RNG seed for the in-match shared RNG (XOR of the two nonces)
+        // and the match clock (the offerer's commit-time wall clock, so
+        // both peers pin every core's cart RTC to the same instant —
+        // see PreMatchData::match_ts). Both are determinism-critical,
+        // so the constructions live in the shared protocol crate.
+        let rng_seed = tango_net_protocol::derive::derive_rng_seed(&local_commit.state.nonce, &peer_state.nonce);
+        let match_ts =
+            tango_net_protocol::derive::pick_match_ts(handles.is_offerer, local_commit.state.ts, peer_state.ts);
         // Cancel the lobby loop so it returns ownership of the receiver via
         // the handles' oneshot. The loop sends the receiver down it on
         // cancel-exit; `Link::bring_up` awaits it.
@@ -930,8 +886,8 @@ pub struct PreMatchData {
     pub match_ts: u64,
     pub local_save_data: Vec<u8>,
     pub remote_save_data: Vec<u8>,
-    pub local_settings: crate::net::protocol::Settings,
-    pub remote_settings: crate::net::protocol::Settings,
+    pub local_settings: tango_net_protocol::control::Settings,
+    pub remote_settings: tango_net_protocol::control::Settings,
     pub link_code: String,
     pub match_type: (u8, u8),
     /// Both sides' install identities (SHA-256 of the mTLS client certificate
@@ -958,7 +914,7 @@ impl std::fmt::Debug for PreMatchData {
 /// SendLocalSettings handler drop stale commits without forcing
 /// the user back to the Ready button every time their roms
 /// scanner repopulates.
-fn settings_materially_differ(a: &crate::net::protocol::Settings, b: &crate::net::protocol::Settings) -> bool {
+fn settings_materially_differ(a: &tango_net_protocol::control::Settings, b: &tango_net_protocol::control::Settings) -> bool {
     a.game_info != b.game_info || a.match_type != b.match_type
 }
 

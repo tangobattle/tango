@@ -7,7 +7,7 @@
 //! match's ordered [`Input`] stream. Loss-tolerant by design — it never assumes
 //! the reliable/ordered guarantee the control plane relies on.
 
-pub mod protocol;
+use tango_net_protocol::data as protocol;
 
 use super::{LatencyCounter, PacketSink, PacketStream};
 
@@ -83,23 +83,17 @@ type InStream = rennet::InStream<protocol::InMatch>;
 /// to retune.
 ///
 /// 180 frames ≈ 3 s of play (at 60 fps, just above the GBA frame rate).
-pub const RECONNECT_QUEUE_LENGTH: usize = 180;
+/// The value lives with the wire codec in tango-net-protocol (the
+/// horizon is protocol-visible — every implementation must agree).
+pub use tango_net_protocol::data::{MAX_QUEUE_LENGTH, RECONNECT_QUEUE_LENGTH};
 
-/// Slack between the reconnect trip depth and the hard overflow bail — see
-/// [`RECONNECT_QUEUE_LENGTH`]. It need not match the trip depth itself; the slop
-/// it has to cover is a handful of frames, far short of the depth's worth of
-/// growth. 90 frames ≈ 1.5 s.
-const STALL_HEADROOM: usize = 90;
-
-/// Per-side input-queue capacity (the rollback horizon): how many local inputs
-/// may sit unmatched against remote ones (and vice versa) before the match
-/// bails ([`InMatchTx`]'s reassembly errors once a gap blows past it). Derived
-/// from [`RECONNECT_QUEUE_LENGTH`] — see that constant for the budget. The
-/// backpressure bound other layers size against (the send pump, rennet's
-/// redundancy window and reorder buffer via [`protocol::HORIZON`]); anything
-/// queueing inputs upstream can hold a bit more and rely on this bail — or the
-/// session's earlier reconnect pause — firing first.
-pub const MAX_QUEUE_LENGTH: usize = RECONNECT_QUEUE_LENGTH + STALL_HEADROOM;
+// The pure codec crate carries its own copy of the joyflags mask so it
+// doesn't drag in the emulator stack; this crate sees both, so a drift
+// becomes a build failure here.
+const _: () = assert!(
+    tango_net_protocol::data::JOYFLAGS_MASK == tango_pvp::input::JOYFLAGS_MASK,
+    "tango-net-protocol's JOYFLAGS_MASK drifted from tango-pvp's"
+);
 
 /// Send-pump queue depth. Deeper than the unacked-local-input cap so that
 /// under a genuinely stalled wire the overflow bail fires before the pump's

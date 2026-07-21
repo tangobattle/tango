@@ -42,18 +42,10 @@ pub fn suggest_frame_delay(rtt: std::time::Duration) -> u32 {
     (one_way_frames + 1).clamp(MIN_FRAME_DELAY as i32, MAX_FRAME_DELAY as i32) as u32
 }
 
-/// Picks the per-match local_player_index. Both peers must call this with
-/// the same shared RNG state at the same point in the protocol so they end
-/// up on opposite sides. Advances the RNG by one draw.
-fn pick_local_player_index(rng: &mut rand_pcg::Mcg128Xsl64, is_offerer: bool) -> u8 {
-    use rand::Rng;
-    let did_polite_win = rng.gen::<bool>();
-    if did_polite_win == is_offerer {
-        0
-    } else {
-        1
-    }
-}
+// Both peers must draw the player index from the same shared RNG state
+// at the same point in the protocol; the construction lives in the
+// shared protocol crate.
+use tango_net_protocol::derive::pick_local_player_index;
 
 /// Upper bound on how long `is_ended` waits for the peer's
 /// `EndOfMatch` packet after local completion. Wide enough to
