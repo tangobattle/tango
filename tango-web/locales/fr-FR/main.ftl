@@ -259,3 +259,7 @@ playback-input-display = Affichage des entrées
 
 ## replay input display + swap (extracted from the desktop)
 playback-swap-perspective = Perspective de l'adversaire
+
+## pvp setup drawers (extracted from the desktop)
+session-self = Ma configuration
+session-opponent = Configuration de l'adversaire

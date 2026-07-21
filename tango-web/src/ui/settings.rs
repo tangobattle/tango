@@ -251,10 +251,9 @@ fn AudioSection() -> Element {
     }
 }
 
-/// Settings → Netplay: the matchmaking endpoint + the relay policy —
-/// the desktop's section minus its show-opponent-setup toggle (that
-/// auto-opens the in-session opponent drawer, which the web build
-/// doesn't have yet). Changes take effect on the next connection.
+/// Settings → Netplay: the matchmaking endpoint, the opponent-drawer
+/// auto-open, and the relay policy — the desktop's section. Endpoint /
+/// relay changes take effect on the next connection.
 #[component]
 fn NetplaySection() -> Element {
     let Ctx { mut config, .. } = use_ctx();
@@ -283,6 +282,16 @@ fn NetplaySection() -> Element {
                         config.with_mut(|c| {
                             c.matchmaking_endpoint = (!v.trim().is_empty()).then_some(v);
                         });
+                    },
+                }
+            }
+            div { class: "option-row",
+                label { {t!(&lang, "settings-show-opponent-setup")} }
+                input {
+                    r#type: "checkbox",
+                    checked: config.read().show_opponent_setup,
+                    onchange: move |evt: FormEvent| {
+                        config.with_mut(|c| c.show_opponent_setup = evt.checked())
                     },
                 }
             }

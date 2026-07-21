@@ -264,3 +264,7 @@ playback-input-display = Отображение ввода
 
 ## replay input display + swap (extracted from the desktop)
 playback-swap-perspective = Вид соперника
+
+## pvp setup drawers (extracted from the desktop)
+session-self = Моя сборка
+session-opponent = Сборка соперника

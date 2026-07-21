@@ -34,11 +34,25 @@ pub struct PvpArgs {
     pub present_delay: u32,
 }
 
+/// One side's boot inputs, retained so the in-session setup drawers
+/// can build their save views lazily on first open.
+#[derive(Clone)]
+pub struct SetupSide {
+    pub game: crate::library::GameRef,
+    pub rom: Vec<u8>,
+    pub save: Vec<u8>,
+    pub patch: Option<(String, semver::Version)>,
+}
+
 pub struct PvpSession {
     pub driver: PvpDriver,
     pub shared: Arc<SharedSession>,
     pub link: LinkAccess,
     pub descriptor: SessionDescriptor,
+    /// The local side's setup, and the opponent's — `None` when they
+    /// asked for a blind setup.
+    pub setup_local: SetupSide,
+    pub setup_remote: Option<SetupSide>,
 }
 
 /// Boot + prime the pair (synchronously — a one-time multi-second
@@ -60,6 +74,27 @@ pub fn start(args: PvpArgs) -> anyhow::Result<PvpSession> {
     };
     let local_player =
         tango_net_protocol::derive::pick_local_player_index(&mut rng, pre.is_offerer) as usize;
+
+    // Retained for the in-session setup drawers (the opponent's only
+    // when they revealed). The patch identities ride the settings.
+    let patch_of = |s: &tango_net_protocol::control::Settings| {
+        s.game_info
+            .as_ref()
+            .and_then(|g| g.patch.as_ref())
+            .map(|p| (p.name.clone(), p.version.clone()))
+    };
+    let setup_local = SetupSide {
+        game: pre.local_game,
+        rom: local_rom.clone(),
+        save: pre.local_save.clone(),
+        patch: patch_of(&pre.local_settings),
+    };
+    let setup_remote = (!pre.remote_settings.blind_setup).then(|| SetupSide {
+        game: pre.remote_game,
+        rom: remote_rom.clone(),
+        save: pre.remote_save.clone(),
+        patch: patch_of(&pre.remote_settings),
+    });
 
     let (roms, saves, games): ([Vec<u8>; 2], [Vec<u8>; 2], [GameRef; 2]) = if local_player == 0 {
         (
@@ -147,6 +182,8 @@ pub fn start(args: PvpArgs) -> anyhow::Result<PvpSession> {
         shared,
         link: LinkAccess::Handle(link_handle),
         descriptor,
+        setup_local,
+        setup_remote,
     })
 }
 

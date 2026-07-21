@@ -157,6 +157,9 @@ pub struct Config {
     /// Show the recorded joypads during replay playback (the transport
     /// bar's toggle, persisted like the desktop's).
     pub show_replay_inputs: bool,
+    /// Auto-open the opponent's setup drawer at match start (when they
+    /// revealed it).
+    pub show_opponent_setup: bool,
     /// Re-sync the patch repo automatically in the background.
     pub enable_patch_autoupdate: bool,
     pub mapping: Mapping,
@@ -183,6 +186,7 @@ impl Default for Config {
             streamer_mode: false,
             mute_bgm_in_pvp: false,
             show_replay_inputs: false,
+            show_opponent_setup: false,
             enable_patch_autoupdate: true,
             mapping: Mapping::default(),
         }

@@ -243,3 +243,7 @@ playback-input-display = 入力表示
 
 ## replay input display + swap (extracted from the desktop)
 playback-swap-perspective = 相手の視点
+
+## pvp setup drawers (extracted from the desktop)
+session-self = 自分の構築
+session-opponent = 相手の構築

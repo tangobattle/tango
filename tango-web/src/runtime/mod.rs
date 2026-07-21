@@ -496,6 +496,21 @@ impl Runtime {
         }
     }
 
+    /// The running match's retained setups for the in-session drawers:
+    /// `(local, remote)`, the remote `None` when they went in blind.
+    /// `None` outside PvP sessions.
+    pub fn pvp_setup(
+        &self,
+    ) -> Option<(
+        crate::session::pvp::SetupSide,
+        Option<crate::session::pvp::SetupSide>,
+    )> {
+        match self.session.as_ref() {
+            Some(Session::Pvp(s)) => Some((s.setup_local.clone(), s.setup_remote.clone())),
+            _ => None,
+        }
+    }
+
     pub fn descriptor(&self) -> Option<&SessionDescriptor> {
         self.session.as_ref().map(|s| s.descriptor())
     }

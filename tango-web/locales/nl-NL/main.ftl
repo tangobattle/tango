@@ -259,3 +259,7 @@ playback-input-display = Invoerweergave
 
 ## replay input display + swap (extracted from the desktop)
 playback-swap-perspective = Perspectief van tegenstander
+
+## pvp setup drawers (extracted from the desktop)
+session-self = Mijn opzet
+session-opponent = Opzet van tegenstander

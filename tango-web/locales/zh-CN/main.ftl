@@ -243,3 +243,7 @@ playback-input-display = 输入显示
 
 ## replay input display + swap (extracted from the desktop)
 playback-swap-perspective = 对手视角
+
+## pvp setup drawers (extracted from the desktop)
+session-self = 我的配置
+session-opponent = 对手配置

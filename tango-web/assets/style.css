@@ -3063,3 +3063,68 @@ main.dropping {
 .results-card .btn {
   margin-top: 12px;
 }
+
+/* ---- in-match setup drawers (the desktop's docked sidebars) ---- */
+
+.setup-handle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 9;
+  width: 18px;
+  height: 56px;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+}
+
+.setup-handle.left {
+  left: 0;
+  border-radius: 0 8px 8px 0;
+  color: rgb(217, 56, 71); /* FIELD_RED — you */
+}
+
+.setup-handle.right {
+  right: 0;
+  border-radius: 8px 0 0 8px;
+  color: rgb(46, 102, 217); /* FIELD_BLUE — opponent */
+}
+
+.setup-handle.left.open {
+  left: min(420px, 80vw);
+  background: rgb(217, 56, 71);
+  color: #fff;
+}
+
+.setup-handle.right.open {
+  right: min(420px, 80vw);
+  background: rgb(46, 102, 217);
+  color: #fff;
+}
+
+.setup-drawer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: min(420px, 80vw); /* SETUP_PANE_WIDTH */
+  z-index: 8;
+  overflow-y: auto;
+  padding: 12px;
+  background: color-mix(in srgb, var(--bg) 95%, transparent);
+}
+
+.setup-drawer.left {
+  left: 0;
+}
+
+.setup-drawer.right {
+  right: 0;
+}
+
+.setup-drawer .save-view {
+  min-height: 100%;
+}

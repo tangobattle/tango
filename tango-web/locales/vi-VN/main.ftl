@@ -244,3 +244,7 @@ playback-input-display = Hiển thị nút bấm
 
 ## replay input display + swap (extracted from the desktop)
 playback-swap-perspective = Góc nhìn đối thủ
+
+## pvp setup drawers (extracted from the desktop)
+session-self = Thiết lập của tôi
+session-opponent = Thiết lập đối thủ

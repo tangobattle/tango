@@ -122,6 +122,7 @@ pub fn SessionView() -> Element {
                     }
                     if kind == Some(SessionKind::Pvp) {
                         TelemetryDeck {}
+                        PvpSetupDrawers {}
                     }
                     // Coarse-pointer screens get on-screen controls (CSS
                     // decides; it renders inert elsewhere). They stay put
@@ -436,6 +437,148 @@ fn input_pad(joyflags: u32) -> Element {
                 div { class: "ab",
                     span { class: "round-key b {on(0x002)}", "B" }
                     span { class: "round-key a {on(0x001)}", "A" }
+                }
+            }
+        }
+    }
+}
+
+/// The in-match setup drawers (the desktop's docked sidebars): the red
+/// left handle opens your own setup, the blue right handle the
+/// opponent's (absent when they went in blind). Each drawer embeds the
+/// read-only save view, built lazily on first open from the boot
+/// inputs the session retained.
+#[component]
+fn PvpSetupDrawers() -> Element {
+    let Ctx {
+        runtime,
+        config,
+        storage,
+        ..
+    } = use_ctx();
+    let lang = crate::i18n::LANG.read().clone();
+    let mut open_self = use_signal(|| false);
+    let mut open_remote = use_signal(|| false);
+    let handle_self = use_signal(|| Option::<crate::save_view::SaveHandle>::None);
+    let handle_remote = use_signal(|| Option::<crate::save_view::SaveHandle>::None);
+    // Settings → Netplay's auto-open: once per session.
+    let mut auto_opened = use_signal(|| false);
+
+    let Some((setup_local, setup_remote)) = runtime.borrow().pvp_setup() else {
+        return rsx! {};
+    };
+    let has_remote = setup_remote.is_some();
+
+    // Build a side's save view on first open (icon baking is a one-off
+    // ~100ms; the desktop pays it at boot instead). The slot guard makes
+    // repeat calls free; `building` guards the async gap so per-frame
+    // re-renders can't stack duplicate builds.
+    let building = use_hook(|| std::rc::Rc::new(std::cell::Cell::new((false, false))));
+    let build = {
+        let building = building.clone();
+        move |side: crate::session::pvp::SetupSide,
+              mut slot: Signal<Option<crate::save_view::SaveHandle>>,
+              is_remote: bool| {
+            if slot.peek().is_some() {
+                return;
+            }
+            let flags = building.get();
+            if (is_remote && flags.1) || (!is_remote && flags.0) {
+                return;
+            }
+            building.set(if is_remote {
+                (flags.0, true)
+            } else {
+                (true, flags.1)
+            });
+            let storage = storage.peek().clone().flatten();
+            spawn(async move {
+                let overrides = match (&storage, &side.patch) {
+                    (Some(storage), Some((name, ver))) => {
+                        crate::patches::version_overrides(storage, name, ver).await
+                    }
+                    _ => Default::default(),
+                };
+                if let Ok(l) = crate::save_view::Loaded::build(
+                    side.game,
+                    &side.rom,
+                    String::new(),
+                    &side.save,
+                    side.patch.clone(),
+                    overrides,
+                ) {
+                    slot.set(Some(crate::save_view::SaveHandle(std::rc::Rc::new(
+                        std::cell::RefCell::new(l),
+                    ))));
+                }
+            });
+        }
+    };
+
+    // Settings → Netplay's auto-open, once per session.
+    {
+        let build = build.clone();
+        let setup_remote = setup_remote.clone();
+        use_effect(move || {
+            if config.read().show_opponent_setup && !*auto_opened.peek() {
+                if let Some(side) = setup_remote.clone() {
+                    auto_opened.set(true);
+                    open_remote.set(true);
+                    build(side, handle_remote, true);
+                }
+            }
+        });
+    }
+
+    rsx! {
+        // Edge handles: red = you (left), blue = opponent (right).
+        button {
+            class: if open_self() { "setup-handle left open" } else { "setup-handle left" },
+            title: t!(&lang, "session-self"),
+            onclick: {
+                let setup_local = setup_local.clone();
+                let build = build.clone();
+                move |_| {
+                    let now_open = !open_self();
+                    open_self.set(now_open);
+                    if now_open {
+                        build(setup_local.clone(), handle_self, false);
+                    }
+                }
+            },
+            if open_self() { "◀" } else { "▶" }
+        }
+        if has_remote {
+            button {
+                class: if open_remote() { "setup-handle right open" } else { "setup-handle right" },
+                title: t!(&lang, "session-opponent"),
+                onclick: {
+                    let setup_remote = setup_remote.clone();
+                    let build = build.clone();
+                    move |_| {
+                        let now_open = !open_remote();
+                        open_remote.set(now_open);
+                        if now_open {
+                            if let Some(side) = setup_remote.clone() {
+                                build(side, handle_remote, true);
+                            }
+                        }
+                    }
+                },
+                if open_remote() { "▶" } else { "◀" }
+            }
+        }
+        if open_self() {
+            div { class: "setup-drawer left",
+                if let Some(handle) = handle_self() {
+                    crate::save_view::SaveView { handle, editable: false }
+                }
+            }
+        }
+        if open_remote() {
+            div { class: "setup-drawer right",
+                if let Some(handle) = handle_remote() {
+                    crate::save_view::SaveView { handle, editable: false }
                 }
             }
         }
