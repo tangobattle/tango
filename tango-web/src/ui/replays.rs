@@ -555,7 +555,11 @@ pub fn ReplaysScreen() -> Element {
                             }
                             button {
                                 class: "btn primary",
-                                disabled: !row.complete || watch_missing_rom || !netplay_idle,
+                                // Incomplete replays are watchable — the
+                                // desktop only gates on the ROM and live
+                                // netplay; the truncated stream just ends
+                                // playback early.
+                                disabled: watch_missing_rom || !netplay_idle,
                                 title: if watch_missing_rom { t!(&lang, "replays-watch-missing-rom") } else { t!(&lang, "replays-watch") },
                                 onclick: on_watch,
                                 icons::Play {}
