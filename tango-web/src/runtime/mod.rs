@@ -181,6 +181,19 @@ pub struct SaveTarget {
     pub file: String,
 }
 
+/// One reactive grab of the replay transport's scrub state.
+pub struct ReplayScrubInfo {
+    pub cursor: u32,
+    pub total: u32,
+    /// An in-flight seek's target — the playhead holds here while the
+    /// chase catches up.
+    pub pending: Option<u32>,
+    /// The chase will unpause on landing, so the transport keeps
+    /// reading "playing".
+    pub will_resume: bool,
+    pub round_boundaries: Vec<u32>,
+}
+
 struct CanvasHooks {
     canvas: web_sys::HtmlCanvasElement,
     lost: Closure<dyn FnMut(web_sys::Event)>,
@@ -518,6 +531,79 @@ impl Runtime {
         }
     }
 
+    /// Everything the replay transport's scrubber reads, in one grab.
+    pub fn replay_scrub(&self) -> Option<ReplayScrubInfo> {
+        match self.session.as_ref() {
+            Some(Session::Replay(s)) => {
+                let playback = match &s.link {
+                    crate::session::LinkAccess::Playback(p) => p,
+                    _ => return None,
+                };
+                let pb = playback.lock().unwrap();
+                Some(ReplayScrubInfo {
+                    cursor: pb.cursor(),
+                    total: pb.total(),
+                    pending: s.seek.pending(),
+                    will_resume: s.seek.will_resume(),
+                    round_boundaries: s.round_boundaries.clone(),
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// Fire (or supersede) a seek — the chase runs cooperatively in the
+    /// pump; `resume_after` unpauses on landing.
+    pub fn replay_seek(&self, target: u32, resume_after: bool) {
+        if let Some(Session::Replay(s)) = self.session.as_ref() {
+            s.seek.request(target, resume_after);
+        }
+    }
+
+    /// The tick of the keyframe nearest `target`, if any — the scrub
+    /// drag's should-I-blit decision (before the first blit, the live
+    /// frame beats a farther keyframe).
+    pub fn replay_nearest_keyframe(&self, target: u32) -> Option<u32> {
+        match self.session.as_ref() {
+            Some(Session::Replay(s)) => s.keyframes.lock().unwrap().nearest(target).map(|s| s.tick),
+            _ => None,
+        }
+    }
+
+    /// Blit a keyframe's stored framebuffers as an instant scrub
+    /// preview (no emulation). `exact` only accepts a keyframe at the
+    /// target itself — the press behavior; a drag takes the nearest.
+    /// Returns whether anything was blitted.
+    pub fn replay_scrub_preview(&self, target: u32, exact: bool) -> bool {
+        let Some(Session::Replay(s)) = self.session.as_ref() else {
+            return false;
+        };
+        let snap = {
+            let keyframes = s.keyframes.lock().unwrap();
+            if exact {
+                keyframes.exact(target)
+            } else {
+                keyframes.nearest(target)
+            }
+        };
+        let Some(snap) = snap else {
+            return false;
+        };
+        let view = s
+            .shared
+            .view_player
+            .load(std::sync::atomic::Ordering::Relaxed)
+            .min(1);
+        if snap.framebuffers[view].is_empty() {
+            return false;
+        }
+        s.shared.publish_video(&snap.framebuffers[view]);
+        if !snap.framebuffers[1 - view].is_empty() {
+            s.shared.publish_video2(&snap.framebuffers[1 - view]);
+        }
+        true
+    }
+
     /// The running match's retained setups for the in-session drawers:
     /// `(local, remote)`, the remote `None` when they went in blind.
     /// `None` outside PvP sessions.
@@ -619,6 +705,14 @@ impl Runtime {
 
         // Ticks.
         let mut changed = false;
+        // Replay seek: one budgeted chase burst per visible pump. Runs
+        // outside the paced tick loop — scrub drags pause playback, and
+        // the chase must advance under that pause.
+        if source == PumpSource::Raf {
+            if let Some(Session::Replay(s)) = &mut self.session {
+                changed |= s.driver.chase_seek(performance_now);
+            }
+        }
         if let Some(session) = &mut self.session {
             let shared = session.shared().clone();
             let paused = shared.paused.load(std::sync::atomic::Ordering::Acquire);

@@ -2738,9 +2738,139 @@ main.dropping {
   bottom: 12px;
   z-index: 8;
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+}
+
+.transport-row {
+  display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px;
+}
+
+/* ---- scrubber: segmented track + played fill + playhead ---- */
+
+.scrub-track {
+  position: relative;
+  height: 26px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.scrub-seg {
+  position: absolute;
+  top: 50%;
+  height: 6px;
+  transform: translateY(-50%);
+  border-radius: 3px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+}
+
+.scrub-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.scrub-ghost {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 10px;
+  transform: translate(-50%, -50%);
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.scrub-stamp {
+  position: absolute;
+  bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  font-size: 12px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  border-radius: 4px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.scrub-handle {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: var(--accent);
+  border: 2px solid color-mix(in srgb, var(--bg) 70%, var(--text));
+  pointer-events: none;
+}
+
+.scrub-handle.dragging,
+.scrub-track:hover .scrub-handle {
+  width: 16px;
+  height: 16px;
+}
+
+/* Pointer capture, the HTML way: while a drag is in flight this
+   invisible sheet owns every pointer event, so leaving the bar (or
+   the window edge clamp) doesn't drop the drag. */
+.scrub-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.transport-row .menu-anchor {
+  position: relative;
+}
+
+.transport-row .menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+
+.speed-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 0;
+  z-index: 21;
+  min-width: 88px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: var(--field);
+  border: 1px solid var(--accent-hair);
+  border-radius: var(--tech-radius-sm);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+
+.speed-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font: inherit;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.speed-menu .menu-item:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.speed-menu .menu-item.active {
+  color: var(--accent);
 }
 
 .transport-bar .btn.round {
@@ -2754,6 +2884,16 @@ main.dropping {
 .transport-bar .readout {
   font-size: 14px;
   color: var(--accent);
+}
+
+.transport-bar .readout-sep {
+  font-size: 14px;
+  color: color-mix(in srgb, var(--text) 55%, transparent);
+}
+
+.transport-bar .readout-total {
+  font-size: 14px;
+  color: color-mix(in srgb, var(--text) 55%, transparent);
 }
 
 .transport-bar .btn.chip {

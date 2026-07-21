@@ -250,3 +250,11 @@ session-opponent = 相手の構築
 
 ## replay pip (extracted from the desktop's main.ftl; keep in sync)
 playback-pip = 相手の画面
+
+## replay transport (extracted from the desktop's main.ftl; keep in sync)
+playback-play = 再生
+playback-clip-tools = クリップ
+playback-clip-start = クリップの開始位置を設定
+playback-clip-end = クリップの終了位置を設定
+playback-clip-clear = クリップ範囲をクリア
+playback-clip-export = クリップを書き出す

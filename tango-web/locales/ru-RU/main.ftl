@@ -271,3 +271,11 @@ session-opponent = Сборка соперника
 
 ## replay pip (extracted from the desktop's main.ftl; keep in sync)
 playback-pip = Экран соперника
+
+## replay transport (extracted from the desktop's main.ftl; keep in sync)
+playback-play = Воспроизвести
+playback-clip-tools = Клип
+playback-clip-start = Отметить начало клипа
+playback-clip-end = Отметить конец клипа
+playback-clip-clear = Сбросить метки клипа
+playback-clip-export = Экспортировать клип

@@ -266,3 +266,11 @@ session-opponent = Configuración del rival
 
 ## replay pip (extracted from the desktop's main.ftl; keep in sync)
 playback-pip = Pantalla del oponente
+
+## replay transport (extracted from the desktop's main.ftl; keep in sync)
+playback-play = Reproducir
+playback-clip-tools = Clip
+playback-clip-start = Marcar inicio del clip
+playback-clip-end = Marcar fin del clip
+playback-clip-clear = Borrar marcas del clip
+playback-clip-export = Exportar clip

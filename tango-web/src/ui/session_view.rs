@@ -284,96 +284,283 @@ pub fn SessionMenuCard() -> Element {
     }
 }
 
-/// The replay transport bar (the desktop's, minus the scrubber/clip
-/// machinery that rides the seek port): play/pause, the tick readout,
-/// and the speed chips. Pause parks the pump's pacing; speed rides the
-/// replay driver's own knob (the pump only overwrites it for local
-/// sessions).
+/// A scrub drag in flight: the previewed tick, whether playback was
+/// running when it started (the commit resumes), and whether a
+/// keyframe preview has replaced the live frame yet (until it has,
+/// the live frame beats a farther keyframe — the desktop's `blitted`
+/// hysteresis).
+#[derive(Clone, Copy)]
+struct ScrubDrag {
+    preview: u32,
+    resume: bool,
+    blitted: bool,
+}
+
+/// Cursor x within the scrub track → (x, track width), via the
+/// track's live bounding rect (the only place its layout width is
+/// knowable).
+fn scrub_metrics(client_x: f64) -> Option<(f64, f64)> {
+    let el = web_sys::window()?.document()?.get_element_by_id("scrub-track")?;
+    let rect = el.get_bounding_client_rect();
+    Some((client_x - rect.left(), rect.width()))
+}
+
+/// The replay transport bar (the desktop's `replay_bar`): scrubber on
+/// top, then play/pause + `cur / total` readout with the toggle chips
+/// right — speed menu, input display, PiP, swap. Pause parks the
+/// pump's pacing; seeks chase cooperatively in the pump.
 #[component]
 fn ReplayTransport() -> Element {
     let Ctx { runtime, mut config, .. } = use_ctx();
     let lang = crate::i18n::LANG.read().clone();
-    let Some((shared, paused, speed, tick)) = ({
+    // Per-drag / per-hover scrub state, plus the speed dropdown.
+    let mut drag = use_signal(|| None::<ScrubDrag>);
+    let mut hover = use_signal(|| None::<u32>);
+    let mut speed_open = use_signal(|| false);
+    let Some((shared, paused, speed, scrub)) = ({
         let rt = runtime.borrow();
-        rt.shared().map(|shared| {
-            (
+        match (rt.shared(), rt.replay_scrub()) {
+            (Some(shared), Some(scrub)) => Some((
                 shared.clone(),
                 shared.paused.load(Ordering::Relaxed),
                 shared.speed.load(Ordering::Relaxed),
-                shared.stats.lock().unwrap().frontier,
-            )
-        })
+                scrub,
+            )),
+            _ => None,
+        }
     }) else {
         return rsx! {};
     };
-    let readout = crate::session::format_tick(tick);
+    let total = scrub.total.max(1);
+    // The playhead everything reads: drag preview, else an in-flight
+    // seek's target (no snap-back while the chase catches up), else
+    // the cursor.
+    let playhead = drag()
+        .map(|d| d.preview)
+        .or(scrub.pending)
+        .unwrap_or(scrub.cursor)
+        .min(total);
+    // Mid-drag (and mid-chase-that-will-resume) the session is
+    // logically still playing; a Play glyph there reads as a stuck
+    // pause.
+    let logically_playing = drag().map(|d| d.resume).unwrap_or(false) || scrub.will_resume;
+    let show_paused = paused && !logically_playing;
     let show_inputs = config.read().show_replay_inputs;
     let show_pip = config.read().show_opponent_pip;
     let shared_toggle = shared.clone();
     let shared_swap = shared.clone();
+
+    let tick_at = move |client_x: f64| -> Option<u32> {
+        let (x, w) = scrub_metrics(client_x)?;
+        Some((((x / w.max(1.0)).clamp(0.0, 1.0) * total as f64).round() as u32).min(total))
+    };
+
+    // Track geometry, all in percent of the full track. Segments are
+    // the desktop's chapter treatment: a small gap at each recorded
+    // round boundary.
+    let pct = |t: u32| t as f64 / total as f64 * 100.0;
+    let mut edges: Vec<u32> = vec![0];
+    for &b in &scrub.round_boundaries {
+        if b > 0 && b < total {
+            edges.push(b);
+        }
+    }
+    edges.push(total);
+    let segments: Vec<(f64, f64, f64)> = edges
+        .windows(2)
+        .map(|pair| {
+            let (s, e) = (pair[0], pair[1]);
+            // Fill fraction inside this segment, 0..100.
+            let fill = ((playhead.min(e).saturating_sub(s)) as f64 / (e - s).max(1) as f64) * 100.0;
+            (pct(s), pct(e) - pct(s), fill)
+        })
+        .collect();
+    let seg_count = segments.len();
+
+    let on_track_down = {
+        let runtime = runtime.clone();
+        let shared = shared.clone();
+        move |evt: PointerEvent| {
+            let Some(t) = tick_at(evt.client_coordinates().x) else {
+                return;
+            };
+            let was_paused = shared.paused.load(Ordering::Relaxed);
+            shared.paused.store(true, Ordering::Release);
+            // A press previews only an exact keyframe — blitting the
+            // nearest would flash a wrong frame until the chase lands.
+            let blitted = runtime.borrow().replay_scrub_preview(t, true);
+            drag.set(Some(ScrubDrag {
+                preview: t,
+                resume: !was_paused,
+                blitted,
+            }));
+            hover.set(None);
+        }
+    };
+    let on_shield_move = {
+        let runtime = runtime.clone();
+        move |evt: PointerEvent| {
+            let Some(mut d) = *drag.peek() else { return };
+            let Some(t) = tick_at(evt.client_coordinates().x) else {
+                return;
+            };
+            if t == d.preview {
+                return;
+            }
+            d.preview = t;
+            let rt = runtime.borrow();
+            // Nearest-keyframe scrub feedback, with the live frame
+            // winning until the first blit.
+            let blit = d.blitted
+                || rt
+                    .replay_nearest_keyframe(t)
+                    .is_some_and(|n| n.abs_diff(t) <= scrub.cursor.abs_diff(t));
+            if blit && rt.replay_scrub_preview(t, false) {
+                d.blitted = true;
+            }
+            drag.set(Some(d));
+        }
+    };
+    let on_shield_up = {
+        let runtime = runtime.clone();
+        move |_| {
+            let Some(d) = *drag.peek() else { return };
+            runtime.borrow().replay_seek(d.preview, d.resume);
+            drag.set(None);
+        }
+    };
+
     rsx! {
         div { class: "transport-bar hud-chip",
-            button {
-                class: if paused { "btn round primary" } else { "btn round" },
-                title: t!(&lang, "playback-pause"),
-                onclick: move |_| {
-                    if shared_toggle.paused.load(Ordering::Relaxed) {
-                        shared_toggle.resume();
-                    } else {
-                        shared_toggle.paused.store(true, Ordering::Release);
+            // --- scrubber ---
+            div {
+                id: "scrub-track",
+                class: "scrub-track",
+                onpointerdown: on_track_down,
+                onpointermove: move |evt: PointerEvent| {
+                    if drag.peek().is_none() {
+                        hover.set(tick_at(evt.client_coordinates().x));
                     }
                 },
-                if paused {
-                    icons::Play {}
-                } else {
-                    icons::Pause {}
+                onpointerleave: move |_| hover.set(None),
+                for (i, (left, width, fill)) in segments.into_iter().enumerate() {
+                    div {
+                        class: "scrub-seg",
+                        style: format!(
+                            "left: calc({left}% + {}px); width: calc({width}% - {}px);",
+                            if i == 0 { 0.0 } else { 1.5 },
+                            match (i == 0, i == seg_count - 1) {
+                                (true, true) => 0.0,
+                                (true, false) | (false, true) => 1.5,
+                                (false, false) => 3.0,
+                            },
+                        ),
+                        div { class: "scrub-fill", style: "width: {fill}%;" }
+                    }
+                }
+                if let Some(h) = *hover.read() {
+                    div { class: "scrub-ghost", style: "left: {pct(h)}%;" }
+                    div { class: "scrub-stamp mono", style: "left: {pct(h)}%;",
+                        {crate::session::format_tick(h)}
+                    }
+                }
+                div {
+                    class: if drag.read().is_some() { "scrub-handle dragging" } else { "scrub-handle" },
+                    style: "left: {pct(playhead)}%;",
                 }
             }
-            span { class: "readout mono", "{readout}" }
-            div { class: "grow" }
-            span { class: "sub", {t!(&lang, "playback-speed")} }
-            for (label, pct) in [("0.5×", 50u32), ("1×", 100), ("2×", 200), ("4×", 400)] {
+            // Full-viewport drag shield: pointer capture the HTML way —
+            // moves and the release keep landing here even when the
+            // cursor leaves the bar.
+            if drag.read().is_some() {
+                div {
+                    class: "scrub-shield",
+                    onpointermove: on_shield_move,
+                    onpointerup: on_shield_up,
+                }
+            }
+            // --- transport row ---
+            div { class: "transport-row",
                 button {
-                    class: if speed == pct { "btn chip active" } else { "btn chip" },
-                    onclick: {
-                        let shared = shared.clone();
-                        move |_| shared.speed.store(pct, Ordering::Relaxed)
+                    class: if show_paused { "btn round primary" } else { "btn round" },
+                    title: if show_paused { t!(&lang, "playback-play") } else { t!(&lang, "playback-pause") },
+                    onclick: move |_| {
+                        if shared_toggle.paused.load(Ordering::Relaxed) {
+                            shared_toggle.resume();
+                        } else {
+                            shared_toggle.paused.store(true, Ordering::Release);
+                        }
                     },
-                    "{label}"
+                    if show_paused {
+                        icons::Play {}
+                    } else {
+                        icons::Pause {}
+                    }
                 }
-            }
-            // The recorded joypads, persisted like the desktop's toggle.
-            button {
-                class: if show_inputs { "btn chip active" } else { "btn chip" },
-                title: t!(&lang, "playback-input-display"),
-                onclick: move |_| {
-                    config.with_mut(|c| c.show_replay_inputs = !c.show_replay_inputs);
-                },
-                icons::Gamepad2 {}
-            }
-            // The other player's screen, persisted like the desktop's.
-            button {
-                class: if show_pip { "btn chip active" } else { "btn chip" },
-                title: t!(&lang, "playback-pip"),
-                onclick: move |_| {
-                    config.with_mut(|c| c.show_opponent_pip = !c.show_opponent_pip);
-                },
-                icons::PictureInPicture2 {}
-            }
-            // Swap perspective: the driver re-reads view_player every
-            // tick, so this flips the presented screen (and audio) live.
-            button {
-                class: "btn chip",
-                title: t!(&lang, "playback-swap-perspective"),
-                onclick: move |_| {
-                    let v = shared_swap.view_player.load(Ordering::Relaxed);
-                    shared_swap.view_player.store(1 - v.min(1), Ordering::Relaxed);
-                },
-                icons::ArrowLeftRight {}
+                span { class: "readout mono", {crate::session::format_tick(playhead)} }
+                span { class: "readout-sep", "/" }
+                span { class: "readout-total mono", {crate::session::format_tick(total)} }
+                div { class: "grow" }
+                // Speed: the desktop's Gauge dropdown, lit off-realtime.
+                div { class: "menu-anchor",
+                    button {
+                        class: if speed != 100 || speed_open() { "btn chip active" } else { "btn chip" },
+                        title: t!(&lang, "playback-speed"),
+                        onclick: move |_| speed_open.set(!speed_open()),
+                        icons::Gauge {}
+                    }
+                    if speed_open() {
+                        div { class: "menu-backdrop", onclick: move |_| speed_open.set(false) }
+                        div { class: "speed-menu",
+                            for (label, pct) in [("0.5×", 50u32), ("1×", 100), ("2×", 200), ("4×", 400)] {
+                                button {
+                                    class: if speed == pct { "menu-item active" } else { "menu-item" },
+                                    onclick: {
+                                        let shared = shared.clone();
+                                        move |_| {
+                                            shared.speed.store(pct, Ordering::Relaxed);
+                                            speed_open.set(false);
+                                        }
+                                    },
+                                    "{label}"
+                                }
+                            }
+                        }
+                    }
+                }
+                // The recorded joypads, persisted like the desktop's toggle.
+                button {
+                    class: if show_inputs { "btn chip active" } else { "btn chip" },
+                    title: t!(&lang, "playback-input-display"),
+                    onclick: move |_| {
+                        config.with_mut(|c| c.show_replay_inputs = !c.show_replay_inputs);
+                    },
+                    icons::Gamepad2 {}
+                }
+                // The other player's screen, persisted like the desktop's.
+                button {
+                    class: if show_pip { "btn chip active" } else { "btn chip" },
+                    title: t!(&lang, "playback-pip"),
+                    onclick: move |_| {
+                        config.with_mut(|c| c.show_opponent_pip = !c.show_opponent_pip);
+                    },
+                    icons::PictureInPicture2 {}
+                }
+                // Swap perspective: the driver re-reads view_player every
+                // tick, so this flips the presented screen (and audio) live.
+                button {
+                    class: "btn chip",
+                    title: t!(&lang, "playback-swap-perspective"),
+                    onclick: move |_| {
+                        let v = shared_swap.view_player.load(Ordering::Relaxed);
+                        shared_swap.view_player.store(1 - v.min(1), Ordering::Relaxed);
+                    },
+                    icons::ArrowLeftRight {}
+                }
             }
         }
         if show_inputs {
-            ReplayInputPads {}
+            ReplayInputPads { playhead }
         }
         if show_pip {
             ReplayPip {}
@@ -414,16 +601,16 @@ fn ReplayPip() -> Element {
 
 /// The recorded joypads (the desktop's `input_display_overlay`): the
 /// viewed player bottom-left, the other side bottom-right, each pad
-/// lighting the keys held on the current tick.
+/// lighting the keys held at the playhead — which follows scrub
+/// previews and in-flight seeks, same as the transport readout.
 #[component]
-fn ReplayInputPads() -> Element {
+fn ReplayInputPads(playhead: u32) -> Element {
     let Ctx { runtime, .. } = use_ctx();
-    let Some((inputs, tick, view)) = ({
+    let Some((inputs, view)) = ({
         let rt = runtime.borrow();
         match (rt.replay_inputs(), rt.shared()) {
             (Some(inputs), Some(shared)) => Some((
                 inputs,
-                shared.stats.lock().unwrap().frontier,
                 shared.view_player.load(Ordering::Relaxed).min(1),
             )),
             _ => None,
@@ -431,7 +618,7 @@ fn ReplayInputPads() -> Element {
     }) else {
         return rsx! {};
     };
-    let idx = (tick as usize).saturating_sub(1).min(inputs.len().saturating_sub(1));
+    let idx = (playhead as usize).saturating_sub(1).min(inputs.len().saturating_sub(1));
     let Some(pair) = inputs.get(idx).copied() else {
         return rsx! {};
     };

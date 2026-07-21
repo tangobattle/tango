@@ -250,3 +250,11 @@ session-opponent = 對手配置
 
 ## replay pip (extracted from the desktop's main.ftl; keep in sync)
 playback-pip = 對手畫面
+
+## replay transport (extracted from the desktop's main.ftl; keep in sync)
+playback-play = 播放
+playback-clip-tools = 剪輯
+playback-clip-start = 標記剪輯起點
+playback-clip-end = 標記剪輯終點
+playback-clip-clear = 清除剪輯標記
+playback-clip-export = 匯出剪輯

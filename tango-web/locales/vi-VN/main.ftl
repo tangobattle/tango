@@ -251,3 +251,11 @@ session-opponent = Thiết lập đối thủ
 
 ## replay pip (extracted from the desktop's main.ftl; keep in sync)
 playback-pip = Màn hình đối thủ
+
+## replay transport (extracted from the desktop's main.ftl; keep in sync)
+playback-play = Phát
+playback-clip-tools = Clip
+playback-clip-start = Đánh dấu điểm đầu clip
+playback-clip-end = Đánh dấu điểm cuối clip
+playback-clip-clear = Xóa đánh dấu clip
+playback-clip-export = Xuất clip
