@@ -11,6 +11,7 @@
 //! no wireless adapter on this port.
 
 pub mod local;
+pub mod pvp;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -23,6 +24,8 @@ pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
 #[derive(Debug, Clone)]
 pub enum SessionEnd {
     LocalQuit,
+    /// The games' own match-end path ran to completion on both sides.
+    MatchEnded,
     Error(String),
 }
 

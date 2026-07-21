@@ -86,11 +86,7 @@ async fn establish(
     use_relay: Option<bool>,
     connection_id: &[u8; 16],
 ) -> Result<(SignalSocket, webrtc::PeerParts), Error> {
-    let sep = if endpoint.contains('?') { '&' } else { '?' };
-    let url = format!(
-        "{endpoint}{sep}session_id={}",
-        js_sys::encode_uri_component(session_id)
-    );
+    let url = format!("{endpoint}/?session_id={}", js_sys::encode_uri_component(session_id));
     let mut ws = SignalSocket::connect(&url).await?;
 
     // The server speaks first: Hello with the ICE set (or an Abort).
@@ -98,8 +94,7 @@ async fn establish(
         let Some(raw) = ws.next().await else {
             return Err(Error::Other("signaling closed before Hello".into()));
         };
-        let p = Packet::decode(raw.as_slice())
-            .map_err(|e| Error::Other(format!("bad signaling packet: {e}")))?;
+        let p = Packet::decode(raw.as_slice()).map_err(|e| Error::Other(format!("bad signaling packet: {e}")))?;
         match p.which {
             Some(packet::Which::Hello(hello)) => break hello,
             Some(packet::Which::Abort(abort)) => {
@@ -179,8 +174,8 @@ async fn wait_for_exchange(
             }
             Step::Socket(Some(raw)) => {
                 ping_elapsed = 0;
-                let p = Packet::decode(raw.as_slice())
-                    .map_err(|e| Error::Other(format!("bad signaling packet: {e}")))?;
+                let p =
+                    Packet::decode(raw.as_slice()).map_err(|e| Error::Other(format!("bad signaling packet: {e}")))?;
                 match p.which {
                     Some(packet::Which::Ping(_)) | None => continue,
                     Some(packet::Which::Abort(abort)) => {
@@ -193,8 +188,7 @@ async fn wait_for_exchange(
                         // back. From here the peer has committed — any
                         // failure is fatal, never a redial.
                         log::info!("signaling: received offer (we are the polite side)");
-                        let answer_sdp =
-                            parts.pc.rollback_and_accept_offer(&offer.sdp).await?;
+                        let answer_sdp = parts.pc.rollback_and_accept_offer(&offer.sdp).await?;
                         send_packet(
                             ws,
                             packet::Which::Answer(packet::Answer {
@@ -235,11 +229,7 @@ enum Step {
 /// Bring a peer connection up end to end through the matchmaking
 /// server. Resolves once the WebRTC connection is live (the channel
 /// `onopen` barriers may land moments later).
-pub async fn connect(
-    endpoint: &str,
-    session_id: &str,
-    use_relay: Option<bool>,
-) -> Result<Connected, Error> {
+pub async fn connect(endpoint: &str, session_id: &str, use_relay: Option<bool>) -> Result<Connected, Error> {
     // A stable id for this logical connection attempt, sent with every
     // Start. It survives transparent redials, so the server replaces
     // our stale offer instead of mistaking the new socket for the
@@ -284,10 +274,7 @@ pub async fn connect(
     // Trickle phase: flush what we buffered, then pump until the
     // connection itself comes up.
     for candidate in pending.drain(..) {
-        let _ = send_packet(
-            &ws,
-            packet::Which::IceCandidate(packet::IceCandidate { candidate }),
-        );
+        let _ = send_packet(&ws, packet::Which::IceCandidate(packet::IceCandidate { candidate }));
     }
     loop {
         let step = futures::select! {
@@ -297,10 +284,7 @@ pub async fn connect(
         };
         match step {
             Step::Peer(Some(webrtc::PeerEvent::Candidate(c))) => {
-                let _ = send_packet(
-                    &ws,
-                    packet::Which::IceCandidate(packet::IceCandidate { candidate: c }),
-                );
+                let _ = send_packet(&ws, packet::Which::IceCandidate(packet::IceCandidate { candidate: c }));
             }
             Step::Peer(Some(webrtc::PeerEvent::Connected)) => break,
             Step::Peer(Some(webrtc::PeerEvent::Failed)) | Step::Peer(None) => {

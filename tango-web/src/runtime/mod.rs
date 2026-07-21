@@ -80,33 +80,38 @@ pub enum PumpSource {
 }
 
 /// A running session of either kind, presented uniformly to the pump
-/// and the UI. The PvP variant lands with the netplay port (M4).
+/// and the UI.
 pub enum Session {
     Local(LocalSession),
+    Pvp(crate::session::pvp::PvpSession),
 }
 
 impl Session {
     fn shared(&self) -> &std::sync::Arc<SharedSession> {
         match self {
             Session::Local(s) => &s.shared,
+            Session::Pvp(s) => &s.shared,
         }
     }
 
     fn descriptor(&self) -> &SessionDescriptor {
         match self {
             Session::Local(s) => &s.descriptor,
+            Session::Pvp(s) => &s.descriptor,
         }
     }
 
     fn link(&self) -> &LinkAccess {
         match self {
             Session::Local(s) => &s.link,
+            Session::Pvp(s) => &s.link,
         }
     }
 
     fn tick(&mut self) -> bool {
         match self {
             Session::Local(s) => s.driver.tick(),
+            Session::Pvp(s) => s.driver.tick(),
         }
     }
 
@@ -385,6 +390,18 @@ impl Runtime {
         self.presented_rev = 0;
         crate::platform::wakelock::set_active(true);
         *SESSION_EPOCH.write() += 1;
+    }
+
+    /// Boot a PvP session from the lobby handoff. The caller ensured
+    /// the audio sink exists (Fight was a user gesture); the pair
+    /// primes synchronously behind the "match starting" line.
+    pub fn start_pvp(&mut self, args: crate::session::pvp::PvpArgs) -> anyhow::Result<()> {
+        self.close_session();
+        let session = crate::session::pvp::start(args)?;
+        self.save_target = None;
+        self.last_persisted_save = None;
+        self.adopt_session(Session::Pvp(session));
+        Ok(())
     }
 
     /// The console's reset button: reboot the solo machine in place.

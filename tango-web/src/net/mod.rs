@@ -6,6 +6,7 @@
 //! `tango-net-protocol` crate — this module only moves bytes.
 
 pub mod control;
+pub mod data;
 pub mod signaling;
 pub mod webrtc;
 pub mod ws;

@@ -178,6 +178,13 @@ pub async fn boot(
     save: Option<Vec<u8>>,
     save_file: Option<String>,
 ) -> anyhow::Result<()> {
+    ensure_audio(&runtime).await;
+    runtime.borrow_mut().start_local(game, rom, save, save_file)
+}
+
+/// Create the audio sink if it doesn't exist yet. Must run within (or
+/// soon after) a user gesture; a missing sink degrades to silence.
+pub async fn ensure_audio(runtime: &std::rc::Rc<std::cell::RefCell<Runtime>>) {
     if !runtime.borrow().has_audio() {
         match crate::platform::audio::web::WebAudio::create(&WORKLET_JS.to_string(), || {
             crate::runtime::pump_from_audio_report();
@@ -188,7 +195,6 @@ pub async fn boot(
             Err(e) => log::error!("audio unavailable: {e:?}"),
         }
     }
-    runtime.borrow_mut().start_local(game, rom, save, save_file)
 }
 
 /// Whether this is iOS/iPadOS WebKit. iPadOS 13+ masquerades as macOS,

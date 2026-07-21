@@ -37,7 +37,10 @@ pub fn BottomBand(
     active_save: Option<String>,
 ) -> Element {
     let Ctx {
-        config, storage, ..
+        runtime,
+        config,
+        storage,
+        ..
     } = use_ctx();
     let mut link_code = use_signal(String::new);
     let mut match_type = use_signal(|| (0u8, 0u8));
@@ -96,6 +99,15 @@ pub fn BottomBand(
                         disabled: !can_fight,
                         title: if can_fight { "" } else { "Pick a game and a save first" },
                         onclick: move |_| {
+                            // The Fight click is the user gesture the
+                            // audio sink needs; create it now so the
+                            // eventual match has sound.
+                            {
+                                let runtime = runtime.clone();
+                                spawn(async move {
+                                    crate::web::ensure_audio(&runtime).await;
+                                });
+                            }
                             let mut code = link_code.peek().clone();
                             if code.is_empty() {
                                 // Empty input auto-generates a code, like

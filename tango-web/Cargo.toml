@@ -27,6 +27,8 @@ bincode.workspace = true
 # Lobby handshake: nonce + connection ids, commitment compare, reveal
 # compression (zstd builds for wasm via the same wasi-sdk clang).
 rand.workspace = true
+rand_pcg.workspace = true
+rennet.workspace = true
 subtle = "2"
 tango-gamesupport-bn1 = { path = "../gamesupport/tango-gamesupport-bn1", optional = true }
 tango-gamesupport-bn2 = { path = "../gamesupport/tango-gamesupport-bn2", optional = true }

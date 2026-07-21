@@ -102,6 +102,44 @@ pub fn App() -> Element {
         });
     }
 
+    // The lobby handshake completed: boot the PvP session from the
+    // deposited handoff (both ROMs resolved from the library). Guarded
+    // on the handoff actually being present so re-renders can't
+    // double-boot.
+    {
+        let runtime = runtime.clone();
+        use_effect(move || {
+            if !matches!(&*crate::netplay::PHASE.read(), crate::netplay::PhaseView::Starting) {
+                return;
+            }
+            if crate::netplay::PRE_MATCH.with(|s| s.borrow().is_none()) {
+                return;
+            }
+            let storage = storage.peek().clone().flatten();
+            let lib = library.peek().clone().flatten();
+            let runtime = runtime.clone();
+            spawn(async move {
+                let (Some(storage), Some(lib)) = (storage, lib) else {
+                    *crate::netplay::PHASE.write() = crate::netplay::PhaseView::Failed {
+                        error: "storage unavailable".to_string(),
+                    };
+                    return;
+                };
+                match crate::session::pvp::boot_from_handoff(runtime, storage, lib).await {
+                    Ok(()) => {
+                        *crate::netplay::PHASE.write() = crate::netplay::PhaseView::Idle;
+                    }
+                    Err(e) => {
+                        log::error!("pvp boot: {e:#}");
+                        *crate::netplay::PHASE.write() = crate::netplay::PhaseView::Failed {
+                            error: format!("{e:#}"),
+                        };
+                    }
+                }
+            });
+        });
+    }
+
     // Persist every config edit; the screens just mutate the signal.
     use_effect(move || config.read().save());
 
