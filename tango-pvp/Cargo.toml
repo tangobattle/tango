@@ -14,8 +14,6 @@ serde.workspace = true
 serde_repr = "0.1"
 getgud.workspace = true
 mgba-siolink.workspace = true
-tokio = { workspace = true, features = ["full"] }
-tokio-util.workspace = true
 zstd.workspace = true
 
 [build-dependencies]

@@ -6081,8 +6081,6 @@ dependencies = [
  "prost-build",
  "serde",
  "serde_repr",
- "tokio",
- "tokio-util",
  "zstd",
 ]
 
