@@ -46,6 +46,7 @@ session-results-draws = { $count ->
     [one] { $count } раунд завершился вничью
     [few] { $count } раунда завершились вничью
    *[many] { $count } раундов завершились вничью
+}
 session-results-done = Готово
 discord-presence-in-single-player = В одиночной игре
 discord-presence-in-progress = Матч в процессе

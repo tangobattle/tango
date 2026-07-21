@@ -45,6 +45,7 @@ session-results-round = Ronde { $number }
 session-results-draws = { $count ->
     [one] 1 ronde eindigde in gelijkspel
    *[other] { $count } rondes eindigden in gelijkspel
+}
 session-results-done = Klaar
 discord-presence-in-single-player = In de singleplayer
 discord-presence-in-progress = Spel gaande

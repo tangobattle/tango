@@ -45,6 +45,7 @@ session-results-round = Round { $number }
 session-results-draws = { $count ->
     [one] 1 round terminou empatado
    *[other] { $count } rounds terminaram empatados
+}
 session-results-done = Concluído
 discord-presence-in-single-player = No singleplayer
 discord-presence-in-progress = Partida em progresso

@@ -45,6 +45,7 @@ session-results-round = Round { $number }
 session-results-draws = { $count ->
     [one] 1 round ended in a draw
    *[other] { $count } rounds ended in a draw
+}
 session-results-done = Done
 discord-presence-in-single-player = In single player
 discord-presence-in-progress = Match in progress
