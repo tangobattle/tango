@@ -7327,6 +7327,7 @@ dependencies = [
  "tango-gamesupport-bn5",
  "tango-gamesupport-bn6",
  "tango-gamesupport-exe45",
+ "tango-net-protocol",
  "tango-pvp",
  "tango-signaling",
  "tempfile",
@@ -7509,6 +7510,19 @@ dependencies = [
  "tango-dataview",
  "tango-gamesupport",
  "tango-pvp",
+]
+
+[[package]]
+name = "tango-net-protocol"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "rand 0.8.5",
+ "rand_pcg 0.3.1",
+ "rennet",
+ "semver",
+ "serde",
+ "sha3",
 ]
 
 [[package]]

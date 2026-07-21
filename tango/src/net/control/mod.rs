@@ -10,7 +10,7 @@
 //! [`Receiver`](super::data::Receiver) — is the data plane's job
 //! ([`super::data`]).
 
-pub mod protocol;
+use tango_net_protocol::control as protocol;
 
 use super::{PacketSink, PacketStream};
 

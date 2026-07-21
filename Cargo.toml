@@ -4,15 +4,23 @@ members = [
     "tango",
     "tango-dataview",
     "tango-gamesupport",
+    "tango-net-protocol",
     "tango-pvp",
     "tango-web",
 ]
-# tango-web is wasm32-only (built via `dx`); plain `cargo build`/`test` at
-# the root covers the native crates.
+# Two reasons plain `cargo build`/`test` at the root sticks to the
+# real native members:
+# - tango-web is wasm32-only (built via `dx`);
+# - the per-game gamesupport crates auto-join this workspace as path
+#   dependencies (they live under the workspace directory), and their
+#   same-named probe examples race each other linking to one shared
+#   target/debug/examples/<name>.exe. The probes still build on demand
+#   via `cargo run -p tango-gamesupport-<game> --example <probe>`.
 default-members = [
     "tango",
     "tango-dataview",
     "tango-gamesupport",
+    "tango-net-protocol",
     "tango-pvp",
 ]
 # One source of truth for every external dep shared by 2+ member crates,
@@ -22,6 +30,7 @@ default-members = [
 [workspace.dependencies]
 anyhow = "1"
 async-trait = "0.1"
+bincode = "1"
 bytemuck = "1"
 byteorder = "1"
 crc32fast = "1"
@@ -41,10 +50,12 @@ prost-build = "0.14"
 rand = "0.8"
 rand_pcg = { version = "0.3", features = ["serde1"] }
 rennet = { git = "https://github.com/tangobattle/rennet" }
+semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde-hex = "0.1"
 serde_json = "1"
 sha2 = "0.10"
+sha3 = "0.10"
 thiserror = "1"
 tokio = "1"
 tokio-util = "0.7"

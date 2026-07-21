@@ -7,7 +7,7 @@
 //! up:
 //!
 //! * the **reliable, ordered** control/lobby channel (stream 0) carrying the
-//!   [`super::control::protocol`] `Packet` stream, and
+//!   [`tango_net_protocol::control`] `Packet` stream, and
 //! * the **unreliable, unordered** in-match channel (stream 1) carrying the
 //!   live match's [`super::data`] `wire` datagrams.
 //!
@@ -87,11 +87,16 @@ impl std::fmt::Debug for Channels {
 /// Label + init for the reliable control channel, as a
 /// [`tango_signaling::ChannelSpec`] (the matchmaking path passes every channel's
 /// spec to `connect`, which creates them all up front and clones each per
-/// transparent reconnect).
+/// transparent reconnect). The identity (label + negotiated stream id)
+/// is protocol-visible and lives in the shared crate; the
+/// libdatachannel `DataChannelInit` is this backend's.
 pub fn control_channel() -> (&'static str, DataChannelInit) {
     (
-        "tango",
-        DataChannelInit::default().negotiated().manual_stream().stream(0),
+        tango_net_protocol::channel_spec::CONTROL_LABEL,
+        DataChannelInit::default()
+            .negotiated()
+            .manual_stream()
+            .stream(tango_net_protocol::channel_spec::CONTROL_STREAM_ID),
     )
 }
 
@@ -101,7 +106,7 @@ pub fn control_channel() -> (&'static str, DataChannelInit) {
 /// adding it after the connection is up.
 pub fn in_match_channel() -> (&'static str, DataChannelInit) {
     (
-        "tango-match",
+        tango_net_protocol::channel_spec::IN_MATCH_LABEL,
         DataChannelInit::default()
             .reliability(Reliability {
                 unordered: true,
@@ -111,7 +116,7 @@ pub fn in_match_channel() -> (&'static str, DataChannelInit) {
             })
             .negotiated()
             .manual_stream()
-            .stream(1),
+            .stream(tango_net_protocol::channel_spec::IN_MATCH_STREAM_ID),
     )
 }
 

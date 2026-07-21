@@ -101,34 +101,34 @@ pub(super) async fn run_lobby_loop(
             }
             packet = receiver.receive() => {
                 match packet {
-                    Ok(crate::net::protocol::Packet::Ping(p)) => {
+                    Ok(tango_net_protocol::control::Packet::Ping(p)) => {
                         if let Err(e) = sender.lock().await.send_pong(p.ts).await {
                             log::warn!("lobby: send_pong failed: {e}");
                             let _ = tx.unbounded_send(Message::Failed(super::Error::Other(format!("pong: {e}"))));
                             return receiver;
                         }
                     }
-                    Ok(crate::net::protocol::Packet::Pong(p)) => {
+                    Ok(tango_net_protocol::control::Packet::Pong(p)) => {
                         let now_short = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u16;
                         let dt = now_short.wrapping_sub(p.ts);
                         let _ = tx.unbounded_send(Message::PingMeasured(std::time::Duration::from_millis(dt as u64)));
                     }
-                    Ok(crate::net::protocol::Packet::Settings(s)) => {
+                    Ok(tango_net_protocol::control::Packet::Settings(s)) => {
                         let _ = tx.unbounded_send(Message::RemoteSettings(Box::new(s)));
                     }
-                    Ok(crate::net::protocol::Packet::Commit(c)) => {
+                    Ok(tango_net_protocol::control::Packet::Commit(c)) => {
                         let _ = tx.unbounded_send(Message::RemoteCommit(c.commitment));
                     }
-                    Ok(crate::net::protocol::Packet::Uncommit(_)) => {
+                    Ok(tango_net_protocol::control::Packet::Uncommit(_)) => {
                         let _ = tx.unbounded_send(Message::RemoteUncommit);
                     }
-                    Ok(crate::net::protocol::Packet::ChunkStart(c)) => {
+                    Ok(tango_net_protocol::control::Packet::ChunkStart(c)) => {
                         let _ = tx.unbounded_send(Message::RemoteChunkStart(c.len));
                     }
-                    Ok(crate::net::protocol::Packet::Chunk(c)) => {
+                    Ok(tango_net_protocol::control::Packet::Chunk(c)) => {
                         let _ = tx.unbounded_send(Message::RemoteChunk(c.chunk));
                     }
-                    Ok(crate::net::protocol::Packet::StartMatch(_)) => {
+                    Ok(tango_net_protocol::control::Packet::StartMatch(_)) => {
                         let _ = tx.unbounded_send(Message::RemoteStartMatch);
                     }
                     Ok(other) => {

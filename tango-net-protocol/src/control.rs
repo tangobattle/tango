@@ -1,9 +1,9 @@
-//! Wire protocol for the reliable control/lobby channel. Slim port of
-//! the legacy `tango/src/net/protocol.rs` — same `Packet` enum + bincode
-//! framing, but the bincode option builders are `std::sync::LazyLock`
-//! instead of the legacy `lazy_static!` macro.
+//! Wire protocol for the reliable control/lobby channel: the `Packet`
+//! enum + bincode framing (moved verbatim from the tango bin crate's
+//! `net/control/protocol.rs`), the commit/reveal `NegotiatedState` and
+//! its commitment construction, and the reveal's chunking constant.
 //!
-//! `VERSION` is derived from [`crate::netplay::PROTOCOL_VERSION`] (the
+//! `VERSION` is derived from [`crate::PROTOCOL_VERSION`] (the
 //! signaling-server reject path sends the full u32; the per-peer Hello
 //! sends this u8), so the two can't disagree — but the Hello field is a
 //! byte, so the version must stay ≤ 0xff. The assert below turns the
@@ -13,11 +13,16 @@
 use bincode::Options;
 use std::sync::LazyLock;
 
-pub const VERSION: u8 = crate::netplay::PROTOCOL_VERSION as u8;
+pub const VERSION: u8 = crate::PROTOCOL_VERSION as u8;
 const _: () = assert!(
-    crate::netplay::PROTOCOL_VERSION <= u8::MAX as u32,
+    crate::PROTOCOL_VERSION <= u8::MAX as u32,
     "PROTOCOL_VERSION no longer fits the Hello packet's u8; widen the wire field before bumping past 0xff"
 );
+
+/// The reveal stream's chunking: the zstd'd [`NegotiatedState`] travels
+/// as [`Chunk`] packets of at most this many payload bytes (the last
+/// one smaller), inside the control channel's 64 KiB packet limit.
+pub const REVEAL_CHUNK_SIZE: usize = 32 * 1024;
 
 static BINCODE_OPTIONS: LazyLock<
     bincode::config::WithOtherLimit<
@@ -54,7 +59,7 @@ pub enum Packet {
     // The live match's per-frame Input / EndOfRound / EndOfMatch traffic no
     // longer rides this reliable channel — it's the data plane's job, carried
     // as `data::wire` frames/markers over a separate unreliable channel (see
-    // [`crate::net::data`]). Only lobby/handshake packets remain here, plus:
+    // [`crate::data`]). Only lobby/handshake packets remain here, plus:
     /// Deliberate mid-match quit, sent just before teardown. The teardown's
     /// close_notify alone is ambiguous to the peer — its own reconnect
     /// produces the same clean EOF — so without this it burns the short

@@ -17,7 +17,7 @@ use crate::app::Scanners;
 use crate::i18n::t;
 use crate::library::game;
 use crate::library::rom;
-use crate::net::protocol::Settings;
+use tango_net_protocol::control::Settings;
 use crate::netplay::{self, Phase};
 use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
 use crate::ui::widgets;

@@ -1,7 +1,9 @@
 //! tango's concrete in-match payload for the unreliable netplay datagram
 //! channel: the [`Element`] each seq slot carries, the [`Meta`] side-channel
 //! that rides on every frame, and the [`InMatch`] [`rennet::Codec`] descriptor
-//! that pairs them.
+//! that pairs them. Moved verbatim from the tango bin crate's
+//! `net/data/protocol.rs`, plus the queue-budget constants the horizon is
+//! sized from (previously `net/data/mod.rs`).
 //!
 //! The envelope (per-tick seq `base`, the delta-encoded cumulative `ack`, and
 //! the per-frame [`Meta`]), the LEB128 codec, and the redundancy-window /
@@ -25,7 +27,30 @@
 
 use std::io;
 
-use tango_pvp::input::JOYFLAGS_MASK;
+/// The 10-bit GBA joypad mask inputs are packed under. Kept as this
+/// crate's own constant so the pure codec crate doesn't drag in the
+/// emulator stack; the tango bin crate const-asserts it equal to
+/// `tango_pvp::input::JOYFLAGS_MASK` (it sees both crates).
+pub const JOYFLAGS_MASK: u16 = 0x03ff;
+
+/// The reconnect watchdog's trip depth: local inputs buffered with
+/// nothing from the peer to match them before the session pauses for a
+/// transparent reconnect. 180 frames ≈ 3 s of play (at 60 fps, just
+/// above the GBA frame rate).
+pub const RECONNECT_QUEUE_LENGTH: usize = 180;
+
+/// Slack between the reconnect trip depth and the hard overflow bail —
+/// see [`RECONNECT_QUEUE_LENGTH`]. It need not match the trip depth
+/// itself; the slop it has to cover is a handful of frames, far short
+/// of the depth's worth of growth. 90 frames ≈ 1.5 s.
+const STALL_HEADROOM: usize = 90;
+
+/// Per-side input-queue capacity (the rollback horizon): how many local
+/// inputs may sit unmatched against remote ones (and vice versa) before
+/// the match bails. Derived from [`RECONNECT_QUEUE_LENGTH`] — the
+/// backpressure bound other layers size against (rennet's redundancy
+/// window and reorder buffer via [`HORIZON`]).
+pub const MAX_QUEUE_LENGTH: usize = RECONNECT_QUEUE_LENGTH + STALL_HEADROOM;
 
 /// Top bit of an element's first byte: set => a 1-byte marker, clear => the high
 /// byte of a 2-byte input (always clear there, as joyflags fit in 10 bits).
@@ -38,14 +63,14 @@ const KIND_END_OF_MATCH: u8 = 1;
 /// window can't exceed the rollback horizon (the out-stream trims it to that),
 /// so a datagram claiming more is malformed or hostile; rennet enforces this in
 /// [`Frame::decode`](rennet::Frame::decode) via [`InMatch::MAX_RUN`].
-const MAX_ENTRIES: usize = super::MAX_QUEUE_LENGTH;
+const MAX_ENTRIES: usize = MAX_QUEUE_LENGTH;
 
 /// Rollback horizon for the in-match reliability streams: a gap wider than this
 /// can't be rolled back to, so the receiver bails. Sized to the input-buffer
-/// budget ([`super::MAX_QUEUE_LENGTH`]).
-pub const HORIZON: u32 = super::MAX_QUEUE_LENGTH as u32;
+/// budget ([`MAX_QUEUE_LENGTH`]).
+pub const HORIZON: u32 = MAX_QUEUE_LENGTH as u32;
 
-/// Cumulative ack frontier — re-exported so callers keep saying `protocol::Ack`.
+/// Cumulative ack frontier — re-exported so callers keep saying `data::Ack`.
 pub use rennet::Ack;
 
 /// One whole in-match datagram: tango's [`Element`] run and [`Meta`] wired into
@@ -56,8 +81,7 @@ pub type Frame = rennet::Frame<InMatch>;
 
 /// The [`rennet::Protocol`] descriptor for tango's in-match datagrams: pairs the
 /// [`Element`] stream with the [`Meta`] side-channel. A zero-sized marker — it's
-/// only ever a type parameter (`rennet::Frame<InMatch>`, the stream aliases in
-/// the parent module, …).
+/// only ever a type parameter (`rennet::Frame<InMatch>`, stream aliases, …).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InMatch;
 
@@ -74,7 +98,7 @@ impl rennet::Protocol for InMatch {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Meta {
     /// The newest local input's time-sync lead, fed to the throttler on the far
-    /// side (see `round.rs` / the engine session).
+    /// side.
     pub tick_advantage: i16,
 }
 

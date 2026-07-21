@@ -12,7 +12,7 @@
 
 use subtle::ConstantTimeEq;
 
-use crate::net::protocol::make_commitment;
+use tango_net_protocol::control::make_commitment;
 
 use super::{map_async_err, AsyncError, Message, Phase, State};
 
@@ -22,7 +22,7 @@ pub(super) struct LocalCommit {
     /// (a) derive the post-handshake RNG seed (`local.nonce XOR
     /// remote.nonce`) and (b) pass our save bytes into the PvP
     /// session once the match starts.
-    pub(super) state: crate::net::protocol::NegotiatedState,
+    pub(super) state: tango_net_protocol::control::NegotiatedState,
     /// `zstd(bincode(state))` — the bytes we hash for our
     /// commitment and slice into the Chunk packets.
     pub(super) compressed: Vec<u8>,
@@ -202,7 +202,7 @@ impl State {
         };
         let mut nonce = [0u8; 16];
         rand::Rng::fill(&mut rand::thread_rng(), &mut nonce);
-        let state = crate::net::protocol::NegotiatedState {
+        let state = tango_net_protocol::control::NegotiatedState {
             nonce,
             ts: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -281,9 +281,9 @@ impl State {
                 }
                 // bincode-framed Packet caps at 64 KB; 32 KB
                 // payload leaves room for the discriminant +
-                // length prefix.
-                const CHUNK_SIZE: usize = 32 * 1024;
-                for chunk in compressed.chunks(CHUNK_SIZE) {
+                // length prefix. Protocol-visible, so the size
+                // lives with the codec.
+                for chunk in compressed.chunks(tango_net_protocol::control::REVEAL_CHUNK_SIZE) {
                     let buf = chunk.to_vec();
                     let sender = sender.clone();
                     let result: std::io::Result<()> = tokio::select! {
@@ -337,7 +337,7 @@ impl State {
                 return iced::Task::done(Message::Failed(super::Error::Other(format!("zstd decode: {e}"))));
             }
         };
-        if let Err(e) = crate::net::protocol::NegotiatedState::deserialize(&peer_state_bytes) {
+        if let Err(e) = tango_net_protocol::control::NegotiatedState::deserialize(&peer_state_bytes) {
             return iced::Task::done(Message::Failed(super::Error::Other(format!("decode peer state: {e}"))));
         }
         let LocalReady::ChunksSent(commit) = std::mem::take(&mut self.handshake.local) else {

@@ -19,7 +19,7 @@
 //! "compatible" indicator.
 
 use crate::library::patch::PatchMap;
-use crate::net::protocol;
+use tango_net_protocol::control as protocol;
 
 /// Resolve the netplay_compatibility tag for a `(game, patch)`
 /// pair. For patched games it's the patch's

@@ -1,0 +1,22 @@
+[package]
+name = "tango-net-protocol"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+# The netplay wire protocol, extracted from the tango bin crate so a
+# second client implementation (tango-web) speaks byte-identical
+# framing by construction. Pure codecs + derivations: no transport, no
+# async, no emulator — builds for native AND wasm32.
+[dependencies]
+bincode.workspace = true
+serde.workspace = true
+semver.workspace = true
+sha3.workspace = true
+rand.workspace = true
+rand_pcg.workspace = true
+rennet.workspace = true
+
+[lints]
+workspace = true

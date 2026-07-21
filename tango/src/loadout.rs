@@ -220,8 +220,8 @@ impl Loadout {
         &self,
         config: &config::Config,
         lobby: &crate::netplay::LobbyState,
-    ) -> crate::net::protocol::Settings {
-        use crate::net::protocol::{GameInfo, PatchInfo, Settings};
+    ) -> tango_net_protocol::control::Settings {
+        use tango_net_protocol::control::{GameInfo, PatchInfo, Settings};
         Settings {
             nickname: config.nickname.clone().unwrap_or_default(),
             match_type: lobby.match_type,

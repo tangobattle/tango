@@ -1,7 +1,7 @@
 //! Per-peer netplay networking, split into planes that mirror each other:
 //!
 //! * [`control`] — the reliable lobby/handshake channel: the `Packet`
-//!   [`protocol`](control::protocol), the `Sender` / `Receiver` pair that frames
+//!   [`tango_net_protocol::control`], the `Sender` / `Receiver` pair that frames
 //!   those typed `Packet`s, and the version `negotiate` handshake.
 //! * [`data`] — the live in-match channel: a raw-bytes [`Sender`](data::Sender) /
 //!   [`Receiver`](data::Receiver) transport carrying tango's concrete `protocol`
@@ -20,7 +20,7 @@
 //!
 //! The control plane's `Sender` / `Receiver` and the `protocol` module are
 //! re-exported at the root so callers can keep saying `crate::net::Sender`,
-//! `crate::net::protocol`, etc.; the data plane's same-named transport types stay
+//! `tango_net_protocol::control`, etc.; the data plane's same-named transport types stay
 //! under `crate::net::data` to keep the two straight.
 
 pub mod channel;
@@ -29,7 +29,6 @@ pub mod data;
 pub mod direct_rtc;
 pub mod link;
 
-pub use control::protocol;
 pub use control::{negotiate, NegotiationError, Receiver, Sender};
 pub use data::{InMatchTx, PvpReceiver, PvpSender};
 
