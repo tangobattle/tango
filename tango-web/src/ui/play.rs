@@ -15,6 +15,7 @@ use base64::Engine as _;
 use dioxus::prelude::*;
 
 use super::{icons, use_ctx, Ctx};
+use crate::t;
 use crate::library::{self, GameRef};
 use crate::runtime::SAVES_REV;
 
@@ -135,6 +136,7 @@ pub fn PlayScreen() -> Element {
         ..
     } = use_ctx();
     let launch_flash = use_signal(|| Option::<Flash>::None);
+    let lang = crate::i18n::LANG.read().clone();
 
     let lib = library.read().clone().flatten().unwrap_or_default();
     let scanned = library.read().clone().flatten().is_some();
@@ -195,10 +197,14 @@ pub fn PlayScreen() -> Element {
             for game in games {
                 rows.push(SaveRow {
                     value: fresh_sentinel(game),
-                    label: if library::games_in_family(&family).count() > 1 {
-                        format!("(fresh save — {})", library::variant_short_name(game))
-                    } else {
-                        "(fresh save)".to_string()
+                    label: {
+                        let no_save =
+                            crate::i18n::t(&crate::i18n::LANG.peek().clone(), "play-no-save");
+                        if library::games_in_family(&family).count() > 1 {
+                            format!("{no_save} · {}", library::variant_short_name(game))
+                        } else {
+                            no_save
+                        }
                     },
                     slug: library::game_slug(game),
                     available: lib.by_game(game).is_some(),
@@ -311,7 +317,7 @@ pub fn PlayScreen() -> Element {
                             selected_family.set(Some(v));
                         }
                     },
-                    option { value: "", selected: family.is_none(), "no game" }
+                    option { value: "", selected: family.is_none(), {t!(&lang, "play-no-game")} }
                     for opt in family_options.iter() {
                         option {
                             value: "{opt.family}",
@@ -324,10 +330,10 @@ pub fn PlayScreen() -> Element {
                 // Patches join at M5; the slots hold the desktop's
                 // geometry meanwhile.
                 select { class: "patch", disabled: true,
-                    option { "No patch" }
+                    option { {t!(&lang, "play-no-patch")} }
                 }
                 select { class: "version", disabled: true,
-                    option { "—" }
+                    option { {t!(&lang, "play-version-placeholder")} }
                 }
             }
             div { class: "save-row",
@@ -370,7 +376,7 @@ pub fn PlayScreen() -> Element {
                         disabled: !active_row.as_ref().is_some_and(|r| r.available),
                         onclick: launch,
                         icons::Play {}
-                        "Play"
+                        {t!(&lang, "play-play")}
                     }
                 }
                 if let Some(f) = launch_flash.read().clone() {
@@ -383,26 +389,22 @@ pub fn PlayScreen() -> Element {
                     span { class: "sub",
                         if let Some(row) = active_row.as_ref() {
                             if parse_fresh(&row.value).is_some() {
-                                "starting from a fresh save"
+                                {t!(&lang, "play-no-save")}
                             } else {
-                                "save: {row.value}"
+                                "{row.value}"
                             }
                         }
                     }
                 }
             } else if scanned && !any_owned {
                 div { class: "game-card",
-                    span { class: "title", "No games yet" }
-                    p { class: "sub",
-                        "Import Mega Man Battle Network ROMs (.gba) — drop them anywhere \
-                         or use the Import button above. A family unlocks once every ROM \
-                         in it is imported. Files stay in private browser storage on \
-                         this device."
-                    }
+                    span { class: "title", {t!(&lang, "empty-no-roms-title")} }
+                    p { class: "sub", {t!(&lang, "empty-no-roms-body")} }
+                    p { class: "sub", {t!(&lang, "web-import-privacy")} }
                 }
             } else {
                 div { class: "game-card",
-                    span { class: "sub", "Pick a game above." }
+                    span { class: "sub", {t!(&lang, "play-no-selection")} }
                 }
             }
         }
@@ -432,7 +434,7 @@ fn ImportButton() -> Element {
     rsx! {
         label { class: "btn file-btn",
             icons::Upload {}
-            "Import…"
+            {t!(&crate::i18n::LANG.read().clone(), "web-import")}
             input {
                 r#type: "file",
                 multiple: true,

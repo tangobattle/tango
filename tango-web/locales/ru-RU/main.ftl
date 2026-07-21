@@ -1,0 +1,75 @@
+## tango-web strings. Keys shared with the desktop client are
+## extracted from its locale of the same name; keep them in sync.
+
+LANGUAGE = Русский
+window-quit = Выйти из Танго
+tab-play = Игра
+tab-replays = Повторы
+tab-patches = Патчи
+tab-settings = Настройки
+play-no-game = No game selected
+play-no-save = Выбрать сохранение
+play-no-patch = No patch
+play-version-placeholder = —
+play-link-code = Код ссылки (оставьте пустым для случайного)
+play-play = Воспроизвести
+play-fight = В бой!
+play-cancel = Отмена
+play-no-selection = Выберите игру и сохранение для просмотра.
+play-status-connecting = Подключение к серверу подбора…
+play-status-waiting-opponent = Ожидание соперника…
+play-you = Вы
+play-opponent = Соперник
+empty-no-roms-title = ROM-файлы не найдены
+empty-no-roms-body = Поместите ваши файлы .gba от Battle Network / Rockman EXE в:
+lobby-waiting = Ожидание…
+lobby-latency = Пинг: { $ms } мс
+lobby-link-code = Код ссылки: { $code }
+lobby-match-type = Тип матча
+lobby-ready = Готов
+lobby-unready = Не готов
+lobby-match-starting = Запуск…
+lobby-compat-ok = Совместимо — готов к игре.
+lobby-compat-missing-game = Одна сторона не выбрала игру.
+lobby-compat-missing-rom = Игра или патч не установлены с обеих сторон.
+lobby-compat-match-mismatch = Тип матча не совпадает.
+lobby-pick-game-first = Сначала выберите игру
+lobby-no-match-types = (нет типов матча для этой игры)
+session-results-victory = Победа!
+session-results-defeat = Поражение
+session-results-draw = Ничья
+session-results-no-contest = Матч завершён
+session-results-vs = против { $nickname }
+session-results-you = Вы
+session-results-round = Раунд { $number }
+session-results-draws = { $count ->
+    [one] { $count } раунд завершился вничью
+    [few] { $count } раунда завершились вничью
+   *[many] { $count } раундов завершились вничью
+session-results-done = Готово
+discord-presence-in-single-player = В одиночной игре
+discord-presence-in-progress = Матч в процессе
+playback-pause = Пауза
+playback-close = Закрыть
+replays-watch = Смотреть
+replays-incomplete = неполный
+replays-watch-missing-rom = Смотреть (ROM этой игры не найден)
+save-delete = Удалить
+settings-section-general = Общие
+settings-section-graphics = Графика
+settings-section-audio = Звук
+settings-section-input = Управление
+settings-section-about = О программе
+settings-volume = Громкость
+settings-nickname = Ник
+settings-language = Язык
+settings-input-press-key = Нажмите клавишу или кнопку…
+settings-input-reset = Сбросить по умолчанию
+settings-input-select-hint = Нажмите на кнопку, чтобы изменить её привязки
+welcome-title = Добро пожаловать в Tango!
+welcome-subtitle = Осталось пару шагов до начала игры.
+welcome-continue = Я Готов!
+welcome-step-roms = Добавьте свои ROM
+welcome-step-roms-detected = Обнаружено { $count } ROM.
+welcome-step-nickname = Задайте свой ник
+welcome-roms-needed = Добавьте хотя бы один ROM, чтобы продолжить.

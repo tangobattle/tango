@@ -30,6 +30,8 @@ pub fn matchmaking_endpoint() -> String {
 #[serde(default)]
 pub struct Config {
     pub nick: String,
+    /// The UI language (BCP 47). `None` = follow the browser.
+    pub language: Option<String>,
     /// How many ticks behind the input frontier to present (the input
     /// delay / rollback depth tradeoff), adjustable live in-session.
     pub present_delay: u32,
@@ -53,6 +55,7 @@ impl Default for Config {
         Config {
             // Empty until the player names themselves.
             nick: String::new(),
+            language: None,
             present_delay: 2,
             volume: 1.0,
             integer_scaling: true,

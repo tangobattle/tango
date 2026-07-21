@@ -5,6 +5,7 @@
 use dioxus::prelude::*;
 
 use super::{icons, use_ctx, Ctx};
+use crate::t;
 use crate::library::{self, GameRef};
 use crate::netplay::{self, PhaseView};
 use tango_net_protocol::control as protocol;
@@ -45,6 +46,7 @@ pub fn BottomBand(
     let mut link_code = use_signal(String::new);
     let mut match_type = use_signal(|| (0u8, 0u8));
     let phase = netplay::PHASE.read().clone();
+    let lang = crate::i18n::LANG.read().clone();
 
     // Selection changes while a lobby is up re-announce our settings
     // (material changes drop commits on both ends, like the desktop).
@@ -79,7 +81,7 @@ pub fn BottomBand(
                     }
                     input {
                         r#type: "text",
-                        placeholder: "link code",
+                        placeholder: t!(&lang, "play-link-code"),
                         spellcheck: "false",
                         autocomplete: "off",
                         maxlength: "40",
@@ -97,7 +99,7 @@ pub fn BottomBand(
                     button {
                         class: "btn primary",
                         disabled: !can_fight,
-                        title: if can_fight { "" } else { "Pick a game and a save first" },
+                        title: if can_fight { String::new() } else { t!(&lang, "lobby-pick-game-first") },
                         onclick: move |_| {
                             // The Fight click is the user gesture the
                             // audio sink needs; create it now so the
@@ -121,14 +123,17 @@ pub fn BottomBand(
                             netplay::connect(code, settings);
                         },
                         icons::Swords {}
-                        "Fight"
+                        {t!(&lang, "play-fight")}
                     }
                 }
             }
         }
         PhaseView::Connecting { link_code: code } => rsx! {
             div { class: "bottom-band",
-                span { class: "sub", "Connecting · {code} — waiting for an opponent…" }
+                span { class: "sub",
+                    {t!(&lang, "play-status-waiting-opponent")}
+                    " · {code}"
+                }
                 div { style: "flex:1" }
                 button {
                     class: "btn danger",
@@ -136,23 +141,20 @@ pub fn BottomBand(
                         netplay::disconnect();
                         *netplay::PHASE.write() = PhaseView::Idle;
                     },
-                    "Cancel"
+                    {t!(&lang, "play-cancel")}
                 }
             }
         },
         PhaseView::Starting => rsx! {
             div { class: "bottom-band",
-                span { class: "flash ok",
-                    "Match starting… (the PvP session port lands next — the lobby \
-                     handshake is complete)"
-                }
+                span { class: "flash ok", {t!(&lang, "lobby-match-starting")} }
                 div { style: "flex:1" }
                 button {
                     class: "btn danger",
                     onclick: move |_| {
                         *netplay::PHASE.write() = PhaseView::Idle;
                     },
-                    "Back"
+                    {t!(&lang, "play-cancel")}
                 }
             }
         },
@@ -161,7 +163,7 @@ pub fn BottomBand(
                 .remote_settings
                 .as_ref()
                 .map(|s| s.nickname.clone())
-                .unwrap_or_else(|| "waiting…".to_string());
+                .unwrap_or_else(|| t!(&lang, "lobby-waiting"));
             let remote_game = lobby.remote_settings.as_ref().and_then(|s| {
                 s.game_info.as_ref().map(|g| {
                     library::find_by_family_and_variant(
@@ -172,12 +174,25 @@ pub fn BottomBand(
                     .unwrap_or_else(|| g.family_and_variant.0.clone())
                 })
             });
+            // The verdict names the actual mismatch, like the desktop.
             let verdict = match lobby.compatible {
                 None => None,
-                Some(true) => Some(("flash ok", "compatible")),
-                Some(false) => Some(("flash bad", "incompatible setup")),
+                Some(true) => Some(("flash ok", t!(&lang, "lobby-compat-ok"))),
+                Some(false) => {
+                    let key = match (&lobby.local_settings.game_info, &lobby.remote_settings.as_ref().and_then(|s| s.game_info.clone())) {
+                        (Some(lg), Some(rg))
+                            if lg.family_and_variant.0 == rg.family_and_variant.0 =>
+                        {
+                            "lobby-compat-match-mismatch"
+                        }
+                        _ => "lobby-compat-missing-game",
+                    };
+                    Some(("flash bad", crate::i18n::t(&lang, key)))
+                }
             };
-            let latency = lobby.latency_ms.map(|l| format!("{l:.0} ms"));
+            let latency = lobby
+                .latency_ms
+                .map(|l| t!(&lang, "lobby-latency", ms = l.round() as i64));
             let local_ready = lobby.local_ready;
             let starting = lobby.match_ready;
             let modes: Vec<usize> = active_game
@@ -237,7 +252,11 @@ pub fn BottomBand(
                                 option {
                                     value: "{mode}.{sub}",
                                     selected: mt == (mode as u8, sub as u8),
-                                    "mode {mode}.{sub}"
+                                    {
+                                        active_game
+                                            .map(|g| library::match_type_name(g, mode as u8, sub as u8))
+                                            .unwrap_or_else(|| format!("{mode}.{sub}"))
+                                    }
                                 }
                             }
                         }
@@ -267,11 +286,11 @@ pub fn BottomBand(
                             });
                         },
                         if starting {
-                            "Starting…"
+                            {t!(&lang, "lobby-match-starting")}
                         } else if local_ready {
-                            "Unready"
+                            {t!(&lang, "lobby-unready")}
                         } else {
-                            "Ready"
+                            {t!(&lang, "lobby-ready")}
                         }
                     }
                 }

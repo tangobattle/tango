@@ -10,6 +10,7 @@ use dioxus::prelude::*;
 
 use super::{icons, play, session_view, settings, use_ctx, welcome, Ctx, Tab};
 use crate::config::Config;
+use crate::t;
 use crate::library::Library;
 use crate::runtime::{Runtime, SESSION_EPOCH};
 use crate::storage::Storage;
@@ -193,6 +194,9 @@ fn Shell() -> Element {
         mut library_rev,
         ..
     } = use_ctx();
+    let lang = crate::i18n::LANG.read().clone();
+    let patches_title = t!(&lang, "tab-patches");
+    let settings_title = t!(&lang, "tab-settings");
     let mut tab = use_signal(Tab::default);
     let current = tab();
     // True while a file drag hovers the content area (the drop cue).
@@ -216,14 +220,14 @@ fn Shell() -> Element {
                         class: if current == Tab::Play { "active" },
                         onclick: move |_| tab.set(Tab::Play),
                         icons::Gamepad2 {}
-                        "Play"
+                        {t!(&lang, "tab-play")}
                     }
                     button {
                         class: "btn tab",
                         class: if current == Tab::Replays { "active" },
                         onclick: move |_| tab.set(Tab::Replays),
                         icons::Film {}
-                        "Replays"
+                        {t!(&lang, "tab-replays")}
                     }
                 }
                 div { class: "spacer" }
@@ -231,14 +235,14 @@ fn Shell() -> Element {
                     button {
                         class: "btn tab icon-only",
                         class: if current == Tab::Patches { "active" },
-                        title: "Patches",
+                        title: "{patches_title}",
                         onclick: move |_| tab.set(Tab::Patches),
                         icons::Puzzle {}
                     }
                     button {
                         class: "btn tab icon-only",
                         class: if current == Tab::Settings { "active" },
-                        title: "Settings",
+                        title: "{settings_title}",
                         onclick: move |_| tab.set(Tab::Settings),
                         icons::Settings {}
                     }
@@ -277,8 +281,8 @@ fn Shell() -> Element {
                     Tab::Play => rsx! { play::PlayScreen {} },
                     Tab::Replays => rsx! { super::replays::ReplaysScreen {} },
                     Tab::Patches => rsx! { ComingSoon {
-                        title: "Patches",
-                        note: "Patch import lands after crossplay; unpatched games netplay-match the desktop client already.",
+                        title: patches_title.clone(),
+                        note: "Patch support is on its way; unpatched games netplay-match the desktop client already.".to_string(),
                     } },
                     Tab::Settings => rsx! { settings::SettingsScreen {} },
                 }
@@ -290,7 +294,7 @@ fn Shell() -> Element {
 /// Empty-state card for tabs whose feature lands in a later milestone —
 /// the tab structure mirrors the desktop shell from day one.
 #[component]
-fn ComingSoon(title: &'static str, note: &'static str) -> Element {
+fn ComingSoon(title: String, note: String) -> Element {
     rsx! {
         section { class: "panel", style: "align-self: center; margin: auto; max-width: 420px;",
             h2 { "{title}" }

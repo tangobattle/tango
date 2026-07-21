@@ -6,6 +6,7 @@
 use dioxus::prelude::*;
 
 use super::{icons, play, use_ctx, Ctx};
+use crate::t;
 
 #[component]
 pub fn WelcomeScreen() -> Element {
@@ -17,6 +18,7 @@ pub fn WelcomeScreen() -> Element {
         ..
     } = use_ctx();
     let mut nick = use_signal(String::new);
+    let lang = crate::i18n::LANG.read().clone();
 
     let games = library
         .read()
@@ -31,17 +33,15 @@ pub fn WelcomeScreen() -> Element {
         div { class: "welcome",
             div { class: "panel",
                 h1 { "TANGO" }
-                p { class: "sub",
-                    "Battle Network netplay, in your browser. Crossplays with the desktop client."
-                }
+                p { class: "sub", {t!(&lang, "welcome-subtitle")} }
                 div { class: "step",
-                    span { class: "caption", "1 · Your games" }
+                    span { class: "caption", "1 · " {t!(&lang, "welcome-step-roms")} }
                     label { class: "btn file-btn",
                         icons::Upload {}
                         if games > 0 {
-                            "{games} game(s) imported — add more…"
+                            {t!(&lang, "welcome-step-roms-detected", count = games as i64)}
                         } else {
-                            "Import ROMs (.gba)…"
+                            {t!(&lang, "web-import")}
                         }
                         input {
                             r#type: "file",
@@ -64,12 +64,10 @@ pub fn WelcomeScreen() -> Element {
                     if let Some(f) = play::IMPORT_FLASH.read().clone() {
                         p { class: "sub", play::FlashText { flash: f } }
                     }
-                    p { class: "sub",
-                        "Files are copied into private browser storage and never leave this device."
-                    }
+                    p { class: "sub", {t!(&lang, "web-import-privacy")} }
                 }
                 div { class: "step",
-                    span { class: "caption", "2 · Your name" }
+                    span { class: "caption", "2 · " {t!(&lang, "welcome-step-nickname")} }
                     input {
                         r#type: "text",
                         placeholder: "nickname",
@@ -90,7 +88,7 @@ pub fn WelcomeScreen() -> Element {
                         }
                     },
                     icons::Check {}
-                    "Continue"
+                    {t!(&lang, "welcome-continue")}
                 }
             }
         }

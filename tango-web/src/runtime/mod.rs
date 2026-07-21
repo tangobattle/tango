@@ -590,7 +590,13 @@ impl Runtime {
                             .clone()
                             .unwrap_or(SessionEnd::LocalQuit);
                         log::info!("session ended: {end:?}");
-                        self.last_end = Some(end);
+                        // Quiet ends go straight back to the shell,
+                        // like the desktop; only results and errors
+                        // hold an overlay.
+                        self.last_end = match end {
+                            SessionEnd::LocalQuit | SessionEnd::ReplayFinished => None,
+                            end => Some(end),
+                        };
                         self.close_session();
                         changed = true;
                         break;

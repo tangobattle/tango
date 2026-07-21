@@ -13,6 +13,7 @@
 compile_error!("tango-web is browser-only: build with `dx serve` (wasm32-unknown-unknown)");
 
 mod config;
+mod i18n;
 mod library;
 mod net;
 mod netplay;

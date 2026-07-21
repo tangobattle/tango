@@ -328,6 +328,15 @@ pub fn short_name(game: GameRef) -> String {
     family_str(family, "short").unwrap_or_else(|| game_slug(game))
 }
 
+/// Localized match-type label for a (mode, subtype) pair (e.g.
+/// "Single" / "Triple"), via the family's own bundle; falls back to
+/// "M.S".
+pub fn match_type_name(game: GameRef, match_type: u8, match_subtype: u8) -> String {
+    let (family, _) = game.family_and_variant();
+    family_str(family, &format!("match-type-{match_type}-{match_subtype}"))
+        .unwrap_or_else(|| format!("{match_type}.{match_subtype}"))
+}
+
 /// Best-effort family display name (e.g. "Mega Man Battle Network 6")
 /// via the family's `name` string; falls back to the raw family string.
 pub fn family_display_name(family: &str) -> String {

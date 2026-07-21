@@ -13,6 +13,7 @@
 use dioxus::prelude::*;
 
 use super::{use_ctx, Ctx};
+use crate::t;
 use crate::library::{self, GameRef};
 
 /// MUST match the native example's `schedule`.
@@ -95,22 +96,17 @@ pub fn DiagnosticsSection() -> Element {
     let ready = family.is_some() && real_save.is_some();
     let running = matches!(*state.read(), ProbeState::Running { .. });
 
+    let lang = crate::i18n::LANG.read().clone();
     rsx! {
         section { class: "pane",
-            h2 { "Diagnostics" }
-            p { class: "sub",
-                "Runs a fixed-input lockstep match (both sides on this machine) and hashes \
-                 every settled state checkpoint. Comparing the stream hash against the \
-                 native probe (gamesupport pvp_determinism example, same ROM + save) \
-                 proves the browser build simulates bit-identically to the desktop — \
-                 the crossplay prerequisite."
-            }
+            h2 { {t!(&lang, "web-diagnostics")} }
+            p { class: "sub", {t!(&lang, "web-diagnostics-description")} }
             div { class: "option-row",
                 label {
                     if let Some(save) = real_save.as_deref() {
-                        "Determinism probe · {save}"
+                        "{save}"
                     } else {
-                        "Determinism probe · pick a game and a real save on the Play tab first"
+                        {t!(&lang, "web-diagnostics-pick")}
                     }
                 }
                 button {
@@ -135,7 +131,11 @@ pub fn DiagnosticsSection() -> Element {
                             }
                         }
                     },
-                    if running { "Running…" } else { "Run" }
+                    if running {
+                        {t!(&lang, "web-diagnostics-running")}
+                    } else {
+                        {t!(&lang, "web-diagnostics-run")}
+                    }
                 }
             }
             match state.read().clone() {

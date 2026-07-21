@@ -7,6 +7,7 @@
 use dioxus::prelude::*;
 
 use super::{icons, use_ctx, Ctx};
+use crate::t;
 use crate::platform::input::{self, DescribeKind, MappedKey};
 use crate::runtime::{CAPTURED, CAPTURE_TARGET};
 
@@ -28,16 +29,17 @@ enum Section {
 pub fn SettingsScreen() -> Element {
     let mut section = use_signal(Section::default);
     let current = section();
+    let lang = crate::i18n::LANG.read().clone();
 
     rsx! {
         nav { class: "pane settings-nav",
             for (s, label) in [
-                (Section::General, "General"),
-                (Section::Graphics, "Graphics"),
-                (Section::Audio, "Audio"),
-                (Section::Input, "Input"),
-                (Section::Diagnostics, "Diagnostics"),
-                (Section::About, "About"),
+                (Section::General, t!(&lang, "settings-section-general")),
+                (Section::Graphics, t!(&lang, "settings-section-graphics")),
+                (Section::Audio, t!(&lang, "settings-section-audio")),
+                (Section::Input, t!(&lang, "settings-section-input")),
+                (Section::Diagnostics, t!(&lang, "web-diagnostics")),
+                (Section::About, t!(&lang, "settings-section-about")),
             ] {
                 button {
                     class: "btn tab",
@@ -64,11 +66,12 @@ pub fn SettingsScreen() -> Element {
 fn GeneralSection() -> Element {
     let Ctx { mut config, .. } = use_ctx();
     let nick = config.read().nick.clone();
+    let lang = crate::i18n::LANG.read().clone();
     rsx! {
         section { class: "pane",
-            h2 { "Profile" }
+            h2 { {t!(&lang, "settings-section-general")} }
             div { class: "option-row",
-                label { "Nickname" }
+                label { {t!(&lang, "settings-nickname")} }
                 input {
                     r#type: "text",
                     value: "{nick}",
@@ -78,6 +81,25 @@ fn GeneralSection() -> Element {
                     oninput: move |evt: FormEvent| {
                         config.with_mut(|c| c.nick = evt.value())
                     },
+                }
+            }
+            div { class: "option-row",
+                label { {t!(&lang, "settings-language")} }
+                select {
+                    onchange: move |evt: FormEvent| {
+                        let v = evt.value();
+                        if let Ok(id) = v.parse::<unic_langid::LanguageIdentifier>() {
+                            config.with_mut(|c| c.language = Some(v.clone()));
+                            *crate::i18n::LANG.write() = id;
+                        }
+                    },
+                    for id in crate::i18n::SUPPORTED_LANGS {
+                        option {
+                            value: "{id}",
+                            selected: *id == lang,
+                            {crate::i18n::language_label(id)}
+                        }
+                    }
                 }
             }
         }
@@ -109,11 +131,12 @@ fn GraphicsSection() -> Element {
 fn AudioSection() -> Element {
     let Ctx { mut config, .. } = use_ctx();
     let volume_pct = (config.read().volume * 100.0).round() as u32;
+    let lang = crate::i18n::LANG.read().clone();
     rsx! {
         section { class: "pane",
-            h2 { "Audio" }
+            h2 { {t!(&lang, "settings-section-audio")} }
             div { class: "option-row",
-                label { "Volume" }
+                label { {t!(&lang, "settings-volume")} }
                 input {
                     r#type: "range",
                     min: "0",
@@ -229,16 +252,16 @@ fn InputSection() -> Element {
                         }
                     }
                     if capture_target == Some(key) {
-                        span { class: "sub", "press a key or button… (Esc cancels)" }
+                        span { class: "sub", {t!(&crate::i18n::LANG.read().clone(), "settings-input-press-key")} }
                     }
                 } else {
-                    span { class: "sub", "Click a control, then press a key or gamepad input to bind it. Chips remove on click." }
+                    span { class: "sub", {t!(&crate::i18n::LANG.read().clone(), "settings-input-select-hint")} }
                 }
             }
             button {
                 class: "btn",
                 onclick: move |_| config.with_mut(|c| c.mapping = Default::default()),
-                "Reset to defaults"
+                {t!(&crate::i18n::LANG.read().clone(), "settings-input-reset")}
             }
         }
     }

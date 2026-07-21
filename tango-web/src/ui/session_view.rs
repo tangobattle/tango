@@ -9,6 +9,7 @@ use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
 
 use super::{icons, touch, use_ctx, Ctx};
+use crate::t;
 use crate::platform::input::{self, MappedKey};
 use crate::runtime::{FRAME_REV, MENU_OPEN, SESSION_EPOCH};
 use crate::session::{SessionEnd, SessionKind};
@@ -48,6 +49,7 @@ pub fn SessionView() -> Element {
         });
     }
 
+    let lang = crate::i18n::LANG.read().clone();
     // Reactive inputs: per-frame stats, structural session changes, and
     // the Escape-toggled menu.
     let _ = FRAME_REV.read();
@@ -92,7 +94,7 @@ pub fn SessionView() -> Element {
                     div { class: "corner-commands",
                         button {
                             class: "btn ghost icon-btn",
-                            title: "Menu (Esc)",
+                            title: "{t!(&lang, \"web-menu\")} (Esc)",
                             onclick: move |_| {
                                 let open = *MENU_OPEN.peek();
                                 *MENU_OPEN.write() = !open;
@@ -101,7 +103,7 @@ pub fn SessionView() -> Element {
                         }
                         button {
                             class: "btn ghost icon-btn quit",
-                            title: "Quit game",
+                            title: "{t!(&lang, \"window-quit\")}",
                             onclick: {
                                 let runtime = runtime.clone();
                                 move |_| runtime.borrow_mut().close_session()
@@ -119,20 +121,20 @@ pub fn SessionView() -> Element {
                     touch::TouchControls {}
                 }
                 if paused && !menu_open && end.is_none() {
-                    span { class: "badge pause-badge", "Paused" }
+                    span { class: "badge pause-badge", {t!(&lang, "playback-pause")} }
                 }
             }
             if let Some(end) = end {
                 div { class: "overlay",
                     div { class: "overlay-panel",
-                        p { class: "end-message", {end_message(&end)} }
+                        p { class: "end-message", {end_message(&lang, &end)} }
                         button {
                             class: "btn primary",
                             onclick: {
                                 let runtime = runtime.clone();
                                 move |_| runtime.borrow_mut().dismiss_end()
                             },
-                            "Back"
+                            {t!(&lang, "session-results-done")}
                         }
                     }
                 }
@@ -149,6 +151,7 @@ pub fn SessionMenuCard() -> Element {
         mut config,
         ..
     } = use_ctx();
+    let lang = crate::i18n::LANG.read().clone();
 
     let (title, caption, is_pvp) = {
         let rt = runtime.borrow();
@@ -157,7 +160,14 @@ pub fn SessionMenuCard() -> Element {
             .map(|d| crate::library::display_name(d.game))
             .unwrap_or_else(|| "Session".to_string());
         let is_pvp = rt.descriptor().map(|d| d.kind) == Some(SessionKind::Pvp);
-        let caption = if is_pvp { "Netplay" } else { "Playing solo" };
+        let caption = if is_pvp {
+            crate::i18n::t(&crate::i18n::LANG.peek().clone(), "discord-presence-in-progress")
+        } else {
+            crate::i18n::t(
+                &crate::i18n::LANG.peek().clone(),
+                "discord-presence-in-single-player",
+            )
+        };
         (title, caption, is_pvp)
     };
 
@@ -186,7 +196,7 @@ pub fn SessionMenuCard() -> Element {
                 }
             }
             div { class: "menu-volume",
-                label { "Volume · {volume_pct}%" }
+                label { {t!(&lang, "settings-volume")} " · {volume_pct}%" }
                 input {
                     r#type: "range",
                     min: "0",
@@ -221,7 +231,7 @@ pub fn SessionMenuCard() -> Element {
                         let runtime = runtime.clone();
                         move |_| runtime.borrow_mut().close_session()
                     },
-                    "Quit game"
+                    {t!(&lang, "window-quit")}
                 }
             }
             p { class: "hint", "{hints}" }
@@ -229,26 +239,29 @@ pub fn SessionMenuCard() -> Element {
     }
 }
 
-/// The end overlay's one-liner. PvP's variants join it at M4.
-fn end_message(end: &SessionEnd) -> String {
+/// The end overlay's one-liner: the desktop results card's verdict +
+/// score, condensed. Quiet ends never reach here (the runtime skips
+/// their overlay).
+fn end_message(lang: &unic_langid::LanguageIdentifier, end: &SessionEnd) -> String {
     match end {
-        SessionEnd::LocalQuit => "Session ended.".to_string(),
         SessionEnd::MatchEnded { wins, losses, draws } => {
             let verdict = if wins > losses {
-                "Victory!"
+                t!(lang, "session-results-victory")
             } else if wins < losses {
-                "Defeat."
+                t!(lang, "session-results-defeat")
             } else {
-                "Draw."
+                t!(lang, "session-results-draw")
             };
             let mut line = format!("{verdict}  {wins} – {losses}");
             if *draws > 0 {
-                line.push_str(&format!(" ({draws} draw(s))"));
+                line.push_str(&format!(
+                    "  ({})",
+                    t!(lang, "session-results-draws", count = *draws as i64)
+                ));
             }
-            line.push_str("  ·  Replay saved.");
             line
         }
-        SessionEnd::ReplayFinished => "Replay finished.".to_string(),
-        SessionEnd::Error(e) => format!("Session error: {e}"),
+        SessionEnd::LocalQuit | SessionEnd::ReplayFinished => String::new(),
+        SessionEnd::Error(e) => format!("{e}"),
     }
 }

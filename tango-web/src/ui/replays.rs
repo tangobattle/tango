@@ -8,6 +8,7 @@
 use dioxus::prelude::*;
 
 use super::{icons, use_ctx, Ctx};
+use crate::t;
 use crate::runtime::SAVES_REV;
 
 /// A watch attempt's status line (booting the pair takes seconds).
@@ -87,15 +88,16 @@ pub fn ReplaysScreen() -> Element {
         }
     });
     let rows = rows.read().clone().unwrap_or_default();
+    let lang = crate::i18n::LANG.read().clone();
+    let watch_title = t!(&lang, "replays-watch");
+    let download_title = t!(&lang, "web-download");
+    let delete_title = t!(&lang, "save-delete");
 
     rsx! {
         section { class: "pane", style: "flex:1; min-height:0; display:flex; flex-direction:column;",
-            h2 { "Replays" }
+            h2 { {t!(&lang, "tab-replays")} }
             if rows.is_empty() {
-                p { class: "sub",
-                    "No replays yet — finish a netplay match and it lands here. \
-                     Downloaded replays open in the desktop client too."
-                }
+                p { class: "sub", {t!(&lang, "web-replays-empty")} }
             }
             if let Some(status) = WATCH_STATUS.read().clone() {
                 p { class: "sub flash ok", "{status}" }
@@ -115,7 +117,7 @@ pub fn ReplaysScreen() -> Element {
                             }
                             button {
                                 class: "btn primary icon-btn",
-                                title: "Watch",
+                                title: "{watch_title}",
                                 disabled: !row.complete,
                                 onclick: {
                                     let file = row.file.clone();
@@ -125,8 +127,10 @@ pub fn ReplaysScreen() -> Element {
                                         let lib = library.read().clone().flatten();
                                         let file = file.clone();
                                         let runtime = runtime.clone();
-                                        *WATCH_STATUS.write() =
-                                            Some("Booting replay…".to_string());
+                                        *WATCH_STATUS.write() = Some(crate::i18n::t(
+                                            &crate::i18n::LANG.peek().clone(),
+                                            "web-booting-replay",
+                                        ));
                                         spawn(async move {
                                             let result = watch(runtime, storage, lib, file).await;
                                             match result {
@@ -143,7 +147,7 @@ pub fn ReplaysScreen() -> Element {
                             }
                             button {
                                 class: "btn icon-btn",
-                                title: "Download (.tangoreplay — opens in the desktop client)",
+                                title: "{download_title}",
                                 onclick: {
                                     let file = row.file.clone();
                                     move |_| {
@@ -164,7 +168,7 @@ pub fn ReplaysScreen() -> Element {
                             }
                             button {
                                 class: "btn icon-btn danger",
-                                title: "Delete",
+                                title: "{delete_title}",
                                 onclick: {
                                     let file = row.file.clone();
                                     move |_| {
