@@ -248,6 +248,7 @@ fn end_message(end: &SessionEnd) -> String {
             line.push_str("  ·  Replay saved.");
             line
         }
+        SessionEnd::ReplayFinished => "Replay finished.".to_string(),
         SessionEnd::Error(e) => format!("Session error: {e}"),
     }
 }

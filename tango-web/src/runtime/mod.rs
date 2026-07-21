@@ -84,6 +84,7 @@ pub enum PumpSource {
 pub enum Session {
     Local(LocalSession),
     Pvp(crate::session::pvp::PvpSession),
+    Replay(crate::session::replay::ReplaySession),
 }
 
 impl Session {
@@ -91,6 +92,7 @@ impl Session {
         match self {
             Session::Local(s) => &s.shared,
             Session::Pvp(s) => &s.shared,
+            Session::Replay(s) => &s.shared,
         }
     }
 
@@ -98,6 +100,7 @@ impl Session {
         match self {
             Session::Local(s) => &s.descriptor,
             Session::Pvp(s) => &s.descriptor,
+            Session::Replay(s) => &s.descriptor,
         }
     }
 
@@ -105,6 +108,7 @@ impl Session {
         match self {
             Session::Local(s) => &s.link,
             Session::Pvp(s) => &s.link,
+            Session::Replay(s) => &s.link,
         }
     }
 
@@ -112,6 +116,7 @@ impl Session {
         match self {
             Session::Local(s) => s.driver.tick(),
             Session::Pvp(s) => s.driver.tick(),
+            Session::Replay(s) => s.driver.tick(),
         }
     }
 
@@ -404,6 +409,22 @@ impl Runtime {
         Ok(())
     }
 
+    /// Watch a replay: boot the playback pair (synchronously — seconds
+    /// behind the caller's status line) and adopt it.
+    pub fn start_replay(
+        &mut self,
+        replay: tango_pvp::replay::Replay,
+        local_rom: Vec<u8>,
+        remote_rom: Vec<u8>,
+    ) -> anyhow::Result<()> {
+        self.close_session();
+        let session = crate::session::replay::start(replay, local_rom, remote_rom)?;
+        self.save_target = None;
+        self.last_persisted_save = None;
+        self.adopt_session(Session::Replay(session));
+        Ok(())
+    }
+
     /// The console's reset button: reboot the solo machine in place.
     /// SRAM is the cart's own memory and survives untouched (the OPFS
     /// autosave keeps covering it); a wireless machine's adapter
@@ -544,7 +565,7 @@ impl Runtime {
             // A hidden tab keeps ticking only for netplay (the cable
             // must hold while alt-tabbed). A hidden solo session idles
             // instead of burning a core in the background forever.
-            let idle_hidden = session.kind() == SessionKind::Local && document_hidden();
+            let idle_hidden = session.kind() != SessionKind::Pvp && document_hidden();
             if paused || idle_hidden {
                 shared.set_fps_target(0.0);
                 self.clock.reset();
@@ -661,6 +682,7 @@ impl Runtime {
             &match self.session.as_ref().map(|s| s.kind()) {
                 Some(SessionKind::Pvp) => "pvp",
                 Some(SessionKind::Local) => "local",
+                Some(SessionKind::Replay) => "replay",
                 None => "none",
             }
             .into(),

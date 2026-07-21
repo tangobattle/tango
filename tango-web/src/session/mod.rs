@@ -12,6 +12,7 @@
 
 pub mod local;
 pub mod pvp;
+pub mod replay;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -31,6 +32,8 @@ pub enum SessionEnd {
         losses: u32,
         draws: u32,
     },
+    /// A replay played through its whole recorded stream.
+    ReplayFinished,
     Error(String),
 }
 
@@ -39,9 +42,11 @@ pub enum SessionEnd {
 /// directly.
 #[derive(Clone)]
 pub enum LinkAccess {
-    #[allow(dead_code)] // PvP (M4)
     Handle(mgba_siolink::session::LinkHandle),
     Shared(Arc<Mutex<mgba_siolink::Link>>),
+    /// A playback pair: the link lives inside the Playback (which owns
+    /// the cursor), so audio pulls go through it.
+    Playback(Arc<Mutex<tango_pvp::playback::Playback>>),
 }
 
 impl LinkAccess {
@@ -50,6 +55,7 @@ impl LinkAccess {
         match self {
             LinkAccess::Handle(h) => Some(h.with_link(f)),
             LinkAccess::Shared(l) => Some(f(&mut l.lock().unwrap())),
+            LinkAccess::Playback(p) => Some(f(p.lock().unwrap().pair_mut())),
         }
     }
 }
@@ -201,9 +207,9 @@ impl SharedSession {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionKind {
-    #[allow(dead_code)] // PvP (M4)
     Pvp,
     Local,
+    Replay,
 }
 
 /// What the session view needs to label things.
