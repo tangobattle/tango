@@ -268,3 +268,6 @@ playback-swap-perspective = Вид соперника
 ## pvp setup drawers (extracted from the desktop)
 session-self = Моя сборка
 session-opponent = Сборка соперника
+
+## replay pip (extracted from the desktop's main.ftl; keep in sync)
+playback-pip = Экран соперника

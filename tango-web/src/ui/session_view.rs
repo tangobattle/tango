@@ -308,6 +308,7 @@ fn ReplayTransport() -> Element {
     };
     let readout = crate::session::format_tick(tick);
     let show_inputs = config.read().show_replay_inputs;
+    let show_pip = config.read().show_opponent_pip;
     let shared_toggle = shared.clone();
     let shared_swap = shared.clone();
     rsx! {
@@ -350,6 +351,15 @@ fn ReplayTransport() -> Element {
                 },
                 icons::Gamepad2 {}
             }
+            // The other player's screen, persisted like the desktop's.
+            button {
+                class: if show_pip { "btn chip active" } else { "btn chip" },
+                title: t!(&lang, "playback-pip"),
+                onclick: move |_| {
+                    config.with_mut(|c| c.show_opponent_pip = !c.show_opponent_pip);
+                },
+                icons::PictureInPicture2 {}
+            }
             // Swap perspective: the driver re-reads view_player every
             // tick, so this flips the presented screen (and audio) live.
             button {
@@ -364,6 +374,40 @@ fn ReplayTransport() -> Element {
         }
         if show_inputs {
             ReplayInputPads {}
+        }
+        if show_pip {
+            ReplayPip {}
+        }
+    }
+}
+
+/// The other player's screen, top-right (the desktop's PiP): a second
+/// canvas driven by its own presenter over the replay driver's vbuf2.
+#[component]
+fn ReplayPip() -> Element {
+    let Ctx { runtime, .. } = use_ctx();
+    {
+        let runtime = runtime.clone();
+        use_effect(move || {
+            let canvas = web_sys::window()
+                .and_then(|w| w.document())
+                .and_then(|d| d.get_element_by_id("pip-framebuffer"))
+                .and_then(|el| el.dyn_into::<web_sys::HtmlCanvasElement>().ok());
+            match canvas {
+                Some(canvas) => runtime.borrow_mut().attach_pip_canvas(&canvas),
+                None => log::error!("pip canvas missing"),
+            }
+        });
+    }
+    {
+        let runtime = runtime.clone();
+        use_drop(move || {
+            runtime.borrow_mut().detach_pip_canvas();
+        });
+    }
+    rsx! {
+        div { class: "pip-frame hud-chip",
+            canvas { id: "pip-framebuffer", width: "240", height: "160" }
         }
     }
 }

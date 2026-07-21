@@ -142,13 +142,17 @@ impl ReplayDriver {
             return false;
         }
 
-        let view = self.shared.view_player.load(Ordering::Relaxed);
+        let view = self.shared.view_player.load(Ordering::Relaxed).min(1);
         let stepped = {
             let mut playback = self.playback.lock().unwrap();
             let stepped = playback.step();
             if stepped {
                 if let Some(buf) = playback.pair_mut().video_buffer(view) {
                     self.shared.publish_video(buf);
+                }
+                // The other side feeds the picture-in-picture.
+                if let Some(buf) = playback.pair_mut().video_buffer(1 - view) {
+                    self.shared.publish_video2(buf);
                 }
             }
             stepped

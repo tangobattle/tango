@@ -263,3 +263,6 @@ playback-swap-perspective = Perspektive des Gegners
 ## pvp setup drawers (extracted from the desktop)
 session-self = Mein Setup
 session-opponent = Gegner-Setup
+
+## replay pip (extracted from the desktop's main.ftl; keep in sync)
+playback-pip = Bildschirm des Gegners

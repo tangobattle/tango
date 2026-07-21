@@ -248,3 +248,6 @@ playback-swap-perspective = Góc nhìn đối thủ
 ## pvp setup drawers (extracted from the desktop)
 session-self = Thiết lập của tôi
 session-opponent = Thiết lập đối thủ
+
+## replay pip (extracted from the desktop's main.ftl; keep in sync)
+playback-pip = Màn hình đối thủ

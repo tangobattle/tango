@@ -1239,6 +1239,16 @@ main.dropping {
   .badge {
     top: 44px;
   }
+
+  /* Half-size PiP under the shoulder buttons. */
+  .pip-frame {
+    top: 84px;
+  }
+
+  .pip-frame canvas {
+    width: 180px;
+    height: 120px;
+  }
 }
 
 /* A phone held upright: the session view never squeezes into portrait —
@@ -2753,6 +2763,24 @@ main.dropping {
 .transport-bar .btn.chip.active {
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* The opponent's picture-in-picture: top-right, tucked under the
+   corner commands, 1.5x native like the desktop's. */
+.pip-frame {
+  position: absolute;
+  top: 56px;
+  right: 12px;
+  z-index: 7;
+  padding: 3px;
+  line-height: 0;
+}
+
+.pip-frame canvas {
+  width: 360px;
+  height: 240px;
+  image-rendering: pixelated;
+  border-radius: 4px;
 }
 
 .telemetry-anchor {

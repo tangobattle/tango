@@ -131,6 +131,10 @@ pub struct SharedSession {
     /// Bumped whenever `vbuf` changes, so the presenter knows to
     /// re-upload.
     pub vbuf_rev: AtomicU64,
+    /// The *other* player's latest frame (the replay transport's
+    /// picture-in-picture source). Published by the replay driver only.
+    pub vbuf2: Mutex<Vec<u8>>,
+    pub vbuf2_rev: AtomicU64,
     /// The pace the simulation is currently targeting, as f32 bits; the
     /// audio servo keys its faux clock off it. 0.0 = paused/silent.
     pub fps_target: AtomicU32,
@@ -163,6 +167,8 @@ impl SharedSession {
         Arc::new(SharedSession {
             vbuf: Mutex::new(vec![0; crate::platform::video::SCREEN_BYTES]),
             vbuf_rev: AtomicU64::new(0),
+            vbuf2: Mutex::new(vec![0; crate::platform::video::SCREEN_BYTES]),
+            vbuf2_rev: AtomicU64::new(0),
             fps_target: AtomicU32::new(0f32.to_bits()),
             joyflags: AtomicU32::new(0),
             view_player: AtomicUsize::new(0),
@@ -201,6 +207,17 @@ impl SharedSession {
         vbuf.copy_from_slice(bgr555);
         drop(vbuf);
         self.vbuf_rev.fetch_add(1, Ordering::Release);
+    }
+
+    /// Publish the other player's frame for the picture-in-picture.
+    pub fn publish_video2(&self, bgr555: &[u8]) {
+        let mut vbuf = self.vbuf2.lock().unwrap();
+        if vbuf.len() != bgr555.len() {
+            vbuf.resize(bgr555.len(), 0);
+        }
+        vbuf.copy_from_slice(bgr555);
+        drop(vbuf);
+        self.vbuf2_rev.fetch_add(1, Ordering::Release);
     }
 
     pub fn finish(&self, end: SessionEnd) {

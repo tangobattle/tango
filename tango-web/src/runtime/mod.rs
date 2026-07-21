@@ -132,10 +132,13 @@ pub struct Runtime {
     /// RAII: unbinding returns the output to silence.
     audio_binding: Option<Binding>,
     presenter: Option<WebGlPresenter>,
+    /// The replay transport's picture-in-picture presenter.
+    pip_presenter: Option<WebGlPresenter>,
     /// The active canvas's context-loss hooks, removed when the canvas
     /// detaches or is replaced (else every mount stacks another pair).
     canvas_hooks: Option<CanvasHooks>,
     presented_rev: u64,
+    pip_presented_rev: u64,
     clock: clock::TickClock,
     pub held: input::HeldState,
     pub mapping: input::Mapping,
@@ -202,8 +205,10 @@ impl Runtime {
             audio_binder: LateBinder::new(),
             audio_binding: None,
             presenter: None,
+            pip_presenter: None,
             canvas_hooks: None,
             presented_rev: 0,
+            pip_presented_rev: 0,
             clock: clock::TickClock::new(),
             held: input::HeldState::default(),
             mapping: input::Mapping::default(),
@@ -305,6 +310,23 @@ impl Runtime {
     pub fn detach_canvas(&mut self) {
         self.drop_canvas_hooks();
         self.presenter = None;
+    }
+
+    /// Attach the picture-in-picture presenter (the replay transport's
+    /// opponent screen). No context-loss hooks — the PiP is transient;
+    /// re-toggling it rebuilds the pipeline.
+    pub fn attach_pip_canvas(&mut self, canvas: &web_sys::HtmlCanvasElement) {
+        match WebGlPresenter::new(canvas) {
+            Ok(p) => {
+                self.pip_presenter = Some(p);
+                self.pip_presented_rev = 0;
+            }
+            Err(e) => log::error!("pip presenter: {e}"),
+        }
+    }
+
+    pub fn detach_pip_canvas(&mut self) {
+        self.pip_presenter = None;
     }
 
     /// Boot a fresh solo session for a detected game. The caller must
@@ -745,6 +767,17 @@ impl Runtime {
                 if rev != self.presented_rev && rev != 0 {
                     self.presented_rev = rev;
                     let vbuf = session.shared().vbuf.lock().unwrap();
+                    presenter.present(&vbuf);
+                }
+            }
+            if let (Some(presenter), Some(session)) = (&mut self.pip_presenter, &self.session) {
+                let rev = session
+                    .shared()
+                    .vbuf2_rev
+                    .load(std::sync::atomic::Ordering::Acquire);
+                if rev != self.pip_presented_rev && rev != 0 {
+                    self.pip_presented_rev = rev;
+                    let vbuf = session.shared().vbuf2.lock().unwrap();
                     presenter.present(&vbuf);
                 }
             }
