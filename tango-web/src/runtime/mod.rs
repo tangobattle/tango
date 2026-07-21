@@ -221,6 +221,19 @@ impl Runtime {
             _pumping: false,
         }));
         RUNTIME.with(|r| *r.borrow_mut() = Some(runtime.clone()));
+        // Warm every signal the pump touches: a GlobalSignal's
+        // first-ever access initializes it against the current runtime,
+        // and the pump runs from web-sys closures where none exists.
+        // install() runs inside a use_hook, so this is the safe spot.
+        let _ = FRAME_REV.peek();
+        let _ = SESSION_EPOCH.peek();
+        let _ = SAVES_REV.peek();
+        let _ = SAVES_IN_FLIGHT.peek();
+        let _ = MENU_OPEN.peek();
+        let _ = PANEL_OPEN.peek();
+        let _ = CAPTURE_TARGET.peek();
+        let _ = CAPTURED.peek();
+        let _ = crate::netplay::PHASE.peek();
         install_raf(Rc::downgrade(&runtime));
         install_keyboard(Rc::downgrade(&runtime));
         install_beforeunload(Rc::downgrade(&runtime));

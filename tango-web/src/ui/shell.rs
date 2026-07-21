@@ -20,6 +20,10 @@ const STYLE: Asset = asset!("/assets/style.css");
 #[component]
 pub fn App() -> Element {
     let config = use_hook(|| Signal::new(Config::load()));
+    // The language signal's first-ever access must happen inside the
+    // Dioxus runtime (a GlobalSignal lazily initializes against the
+    // current runtime — touching it before launch panics).
+    use_hook(|| crate::i18n::init(config.peek().language.as_deref()));
     let runtime = use_hook(Runtime::install);
     // Bumped to rescan the library after imports/deletes.
     let library_rev = use_signal(|| 0u64);

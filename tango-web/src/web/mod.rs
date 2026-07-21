@@ -27,7 +27,6 @@ pub fn main() {
     mgba::log::install_default_logger();
     install_watchdog();
     install_service_worker();
-    crate::i18n::init(crate::config::Config::load().language.as_deref());
     dioxus::launch(crate::ui::App);
 }
 
