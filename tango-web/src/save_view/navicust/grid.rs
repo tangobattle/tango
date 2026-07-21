@@ -758,7 +758,6 @@ pub fn rotate_bitmap(bitmap: &tango_dataview::rom::NavicustBitmap, rot: u8) -> t
 /// turns, expressed as `(dy, dx)` offsets from the (rotated) grid center
 /// — exactly the offsets `navicust::materialize` applies when it stamps a
 /// part at `(row, col)`.
-#[allow(dead_code)] // the navicust editor's ghost (next phase)
 pub fn rotated_offsets(bitmap: &tango_dataview::rom::NavicustBitmap, rot: u8) -> Vec<(isize, isize)> {
     let (h, w) = bitmap.dim();
     let n = h; // square grids only

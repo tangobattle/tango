@@ -39,28 +39,30 @@ enum Tab {
 }
 
 /// Handles shared by every screen, provided once by [`shell::App`].
+/// `pub(crate)` so out-of-tree embedders (the save view) can reach the
+/// storage handle too.
 #[derive(Clone)]
-struct Ctx {
-    runtime: Rc<RefCell<Runtime>>,
-    config: Signal<Config>,
+pub(crate) struct Ctx {
+    pub(crate) runtime: Rc<RefCell<Runtime>>,
+    pub(crate) config: Signal<Config>,
     /// Bumped to rescan the library after imports and deletes.
-    library_rev: Signal<u64>,
+    pub(crate) library_rev: Signal<u64>,
     /// `Some(None)` when the browser has no OPFS.
-    storage: Resource<Option<Storage>>,
+    pub(crate) storage: Resource<Option<Storage>>,
     /// The ROM library scan; `None` until OPFS is up.
-    library: Resource<Option<Library>>,
+    pub(crate) library: Resource<Option<Library>>,
     /// The synced patch list, rescanned on PATCHES_REV bumps.
-    patches: Resource<Vec<crate::patches::Patch>>,
+    pub(crate) patches: Resource<Vec<crate::patches::Patch>>,
     /// The picked game *family* (region-specific family string) —
     /// whose saves the save pane shows. Per family, not per game,
     /// like the desktop loadout.
-    selected_family: Signal<Option<String>>,
+    pub(crate) selected_family: Signal<Option<String>>,
     /// The save picker's choice for the next boot: a file name inside
     /// the flat `saves/` directory, or a `//fresh/<variant>` sentinel.
     /// `None` = the default fresh row (first owned variant).
-    selected_save: Signal<Option<String>>,
+    pub(crate) selected_save: Signal<Option<String>>,
 }
 
-fn use_ctx() -> Ctx {
+pub(crate) fn use_ctx() -> Ctx {
     use_context::<Ctx>()
 }

@@ -236,6 +236,66 @@ pub fn FileQuestion() -> Element {
     }
 }
 
+/// lucide `grip-vertical` — drag-to-reorder affordance.
+#[component]
+pub fn GripVertical() -> Element {
+    rsx! {
+        Lucide {
+            circle { cx: "9", cy: "12", r: "1" }
+            circle { cx: "9", cy: "5", r: "1" }
+            circle { cx: "9", cy: "19", r: "1" }
+            circle { cx: "15", cy: "12", r: "1" }
+            circle { cx: "15", cy: "5", r: "1" }
+            circle { cx: "15", cy: "19", r: "1" }
+        }
+    }
+}
+
+/// lucide `rotate-cw` — the navicust palette's rotate control.
+#[component]
+pub fn RotateCw() -> Element {
+    rsx! {
+        Lucide {
+            path { d: "M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" }
+            path { d: "M21 3v5h-5" }
+        }
+    }
+}
+
+/// lucide `expand` — the navicust palette's uncompress control.
+#[component]
+pub fn Expand() -> Element {
+    rsx! {
+        Lucide {
+            path { d: "m15 15 6 6" }
+            path { d: "m15 9 6-6" }
+            path { d: "M21 16v5h-5" }
+            path { d: "M21 8V3h-5" }
+            path { d: "M3 16v5h5" }
+            path { d: "m3 21 6-6" }
+            path { d: "M3 8V3h5" }
+            path { d: "M9 9 3 3" }
+        }
+    }
+}
+
+/// lucide `shrink` — the navicust palette's compress control.
+#[component]
+pub fn Shrink() -> Element {
+    rsx! {
+        Lucide {
+            path { d: "m15 15 6 6" }
+            path { d: "m15 9 6-6" }
+            path { d: "M15 21v-5h5" }
+            path { d: "M15 3v5h5" }
+            path { d: "M3 16h5v5" }
+            path { d: "m3 21 6-6" }
+            path { d: "M3 8h5V3" }
+            path { d: "M9 9 3 3" }
+        }
+    }
+}
+
 #[component]
 pub fn Download() -> Element {
     rsx! {

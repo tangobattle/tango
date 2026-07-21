@@ -5,7 +5,8 @@
 use dioxus::prelude::*;
 use unic_langid::LanguageIdentifier;
 
-use super::Loaded;
+use super::edit::{Edit, NaviEdit};
+use super::{stage_edit, EditUi, Loaded, SaveHandle};
 use crate::t;
 
 /// The navi card's inner content: emblem on the left, the navi's name
@@ -82,6 +83,74 @@ fn StatInline(label: String, value: String) -> Element {
         span { class: "stat-inline",
             span { class: "stat-label", "{label}" }
             span { class: "stat-value", "{value}" }
+        }
+    }
+}
+
+/// The Navi picker (the desktop's `render_navi_edit`): a grid of the
+/// game's navis laid out per the ROM's own roster rows, each emblem on
+/// a circular accent-tinted plate (the equipped one lit with a glow).
+/// Clicking a plate stages the navi swap and closes the picker, landing
+/// back on the tab the user came from (still inside the edit session).
+#[component]
+pub(super) fn NaviPicker(handle: SaveHandle, editing: Signal<Option<EditUi>>, open: Signal<bool>) -> Element {
+    let _ = editing; // picking has no scratch state; the session stays open
+    let mut open = open;
+    let lang = crate::i18n::LANG.read().clone();
+    let loaded_rc = handle.0.clone();
+    let loaded = loaded_rc.borrow();
+    let assets = loaded.assets.as_ref();
+    let current = loaded.save.view_navi().map(|nv| nv.navi());
+
+    let mut rows: Vec<Element> = Vec::new();
+    for &order_row in assets.navi_order() {
+        let mut cells: Vec<Element> = Vec::new();
+        for &id in order_row {
+            let name = assets
+                .navi(id)
+                .and_then(|n| n.name())
+                .unwrap_or_else(|| format!("Navi #{id}"));
+            let selected = current == Some(id);
+            let emblem = loaded.navi_emblems.get(&id).cloned();
+            let accent = loaded
+                .navi_accents
+                .get(&id)
+                .cloned()
+                .unwrap_or_else(|| "#6b7a99".to_string());
+            let pick = {
+                let handle = handle.clone();
+                move |_| {
+                    stage_edit(&handle, Edit::Navi(NaviEdit::SetNavi(id)));
+                    open.set(false);
+                }
+            };
+            cells.push(rsx! {
+                button {
+                    class: if selected { "navi-cell selected" } else { "navi-cell" },
+                    style: "--navi-accent:{accent}",
+                    onclick: pick,
+                    span { class: "plate",
+                        if let Some(url) = emblem {
+                            img { class: "pix", src: "{url}", alt: "" }
+                        }
+                    }
+                    span { class: if selected { "navi-name" } else { "navi-name muted" }, "{name}" }
+                }
+            });
+        }
+        rows.push(rsx! {
+            div { class: "navi-row",
+                {cells.into_iter()}
+            }
+        });
+    }
+
+    rsx! {
+        div { class: "pane navi-picker",
+            span { class: "sub", {t!(&lang, "navi-edit-select")} }
+            div { class: "navi-grid",
+                {rows.into_iter()}
+            }
         }
     }
 }

@@ -1464,7 +1464,7 @@ main.dropping {
   flex: none;
 }
 
-.chip-row {
+.chip-cells {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -1473,19 +1473,19 @@ main.dropping {
   padding: 3px 12px;
 }
 
-.chip-row .c-count {
+.chip-cells .c-count {
   width: 22px;
   flex: none;
 }
 
-.chip-row .c-icon,
-.chip-row .c-elem {
+.chip-cells .c-icon,
+.chip-cells .c-elem {
   width: 28px;
   height: 28px;
   flex: none;
 }
 
-.chip-row .c-name {
+.chip-cells .c-name {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -1495,20 +1495,20 @@ main.dropping {
   white-space: nowrap;
 }
 
-.chip-row .c-code {
+.chip-cells .c-code {
   width: 22px;
   flex: none;
   text-align: right;
   font-family: "Noto Sans Mono", ui-monospace, monospace;
 }
 
-.chip-row .c-atk {
+.chip-cells .c-atk {
   width: 50px;
   flex: none;
   text-align: right;
 }
 
-.chip-row .c-mb {
+.chip-cells .c-mb {
   width: 50px;
   flex: none;
   text-align: right;
@@ -1519,7 +1519,7 @@ main.dropping {
   color: var(--muted);
 }
 
-.badge {
+.chip-flag {
   font-size: 10px;
   color: #fff;
   padding: 1px 4px;
@@ -1527,11 +1527,11 @@ main.dropping {
   line-height: 1.2;
 }
 
-.badge.reg {
+.chip-flag.reg {
   background: #ff42a5;
 }
 
-.badge.tag {
+.chip-flag.tag {
   background: #29a121;
 }
 
@@ -1771,4 +1771,299 @@ main.dropping {
 
 .abd-section .abd-title {
   padding: 8px 12px 4px;
+}
+
+/* ---- save editors (edit mode) ---- */
+
+.editor-panes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--pane-gap);
+}
+
+.editor-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.editor-header {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.editor-header .line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-header .line.stats {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.editor-header.lib {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.editor-header .filter,
+.editor-header select,
+.card4-row .slot-pick {
+  height: 30px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: #16191a;
+  border: 1px solid rgba(236, 238, 237, 0.14);
+  border-radius: var(--tech-radius-sm);
+  padding: 0 8px;
+}
+
+.editor-header .filter {
+  flex: 1;
+  min-width: 0;
+}
+
+.card4-row .slot-pick {
+  flex: 1;
+  min-width: 0;
+}
+
+.editor-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.editor-scroll.center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+}
+
+.sub.over {
+  color: var(--danger);
+}
+
+.btn.compact {
+  padding: 3px 8px;
+}
+
+.btn.toggle {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.btn.toggle:disabled {
+  opacity: 0.35;
+}
+
+/* Editor rows share the read view's cells; the edit variants add the
+ * drag grip gutter, click-to-add hover, and the disabled wash. */
+.chip-row-wrap.edit .grip,
+.card56-row.edit .grip {
+  width: 16px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  cursor: grab;
+}
+
+.chip-row-wrap.lib,
+.card56-row.lib {
+  cursor: pointer;
+}
+
+.chip-row-wrap.lib:hover,
+.card56-row.lib:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.chip-row-wrap.lib.disabled,
+.card56-row.lib.disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chip-row-wrap.lib.disabled:hover,
+.card56-row.lib.disabled:hover {
+  background: none;
+}
+
+/* NaviCust editor: pointer states on the grid overlay + the palette. */
+.ncp-overlay.grab {
+  cursor: grab;
+}
+
+.ncp-overlay.grabbing {
+  cursor: grabbing;
+}
+
+.ncp-badges {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 8px;
+}
+
+.palette-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.palette-row:nth-child(even) {
+  background: rgba(236, 238, 237, 0.05);
+}
+
+.palette-row:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.palette-row.selected {
+  background: linear-gradient(to bottom, var(--select-gold), var(--select-gold-2));
+  color: var(--accent-ink);
+}
+
+.palette-row.selected .sub,
+.palette-row.selected .muted {
+  color: color-mix(in srgb, var(--accent-ink) 75%, transparent);
+}
+
+.palette-row.disabled {
+  cursor: default;
+}
+
+.palette-row.disabled:hover {
+  background: none;
+}
+
+.palette-row .part-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.palette-row .part-info .sub {
+  margin: 0;
+}
+
+.palette-row .part-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: none;
+}
+
+/* ABD editor: the Used / Sec. numeric columns. */
+.abd-count {
+  width: 104px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.abd-count input {
+  width: 54px;
+  height: 26px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: #16191a;
+  border: 1px solid rgba(236, 238, 237, 0.14);
+  border-radius: var(--tech-radius-sm);
+  padding: 0 8px;
+}
+
+/* Navi picker: emblem plates laid out per the ROM's roster rows. */
+.navi-picker {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.navi-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+}
+
+.navi-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.navi-cell {
+  width: 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.navi-cell .plate {
+  width: 72px;
+  height: 72px;
+  border-radius: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--navi-accent) 14%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--navi-accent) 30%, transparent);
+}
+
+.navi-cell.selected .plate {
+  background: color-mix(in srgb, var(--navi-accent) 40%, var(--bg));
+  border: 2px solid color-mix(in srgb, var(--navi-accent) 90%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--navi-accent) 50%, transparent);
+}
+
+.navi-cell .plate img {
+  width: 48px;
+  height: 48px;
+  opacity: 0.45;
+}
+
+.navi-cell.selected .plate img {
+  opacity: 1;
+}
+
+.navi-cell .navi-name {
+  font-size: 11px;
+}
+
+/* The change-navi affordance (the card as a button while editing). */
+.btn.ghost.navi-card-btn {
+  padding: 0;
+  text-align: left;
 }

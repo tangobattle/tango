@@ -19,7 +19,6 @@ use crate::rom_overrides::{Overrides, OverridenAssets};
 /// these, so re-probe via [`Loaded::refresh_editability`] after any in-memory
 /// edit that can change capability.
 #[derive(Clone, Copy, Default)]
-#[allow(dead_code)] // read by the save editors (next phase)
 pub struct Editability {
     /// `view_chips_mut().is_some()` — drives the Folder editor.
     pub folder: bool,
@@ -56,16 +55,14 @@ impl Editability {
 
     /// Whether *any* section is editable — drives the single save-level
     /// Edit button.
-    #[allow(dead_code)] // the save editors' Edit button (next phase)
     pub fn any(&self) -> bool {
         self.folder || self.navicust || self.navi || self.patch_cards || self.auto_battle_data
     }
 }
 
 pub struct Loaded {
-    #[allow(dead_code)] // the save editors' commit path (next phase)
+    #[allow(dead_code)] // the replays tab's save-view embedding
     pub game: GameRef,
-    #[allow(dead_code)] // the save editors' commit path (next phase)
     /// The OPFS `saves/` file this save came from — the commit path
     /// writes the edited SRAM back to it.
     pub save_file: String,
@@ -73,7 +70,7 @@ pub struct Loaded {
     /// Which sections of this save can be edited in place.
     pub editability: Editability,
     /// Patch (name, version) baked into this Loaded, if any. `None` = raw ROM.
-    #[allow(dead_code)] // the save editors' commit path (next phase)
+    #[allow(dead_code)] // the replays tab's save-view embedding
     pub patch: Option<(String, semver::Version)>,
     pub assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     /// 14×14 chip icons as data URLs, indexed by chip id.
@@ -86,7 +83,6 @@ pub struct Loaded {
     /// Signature color per navi (`#rrggbb`), extracted from its emblem
     /// pixels — tints the navi picker's plates. Missing when the emblem
     /// is entirely monochrome.
-    #[allow(dead_code)] // the navi picker (next phase)
     pub navi_accents: HashMap<usize, String>,
 }
 
@@ -175,7 +171,6 @@ impl Loaded {
     /// Re-probe section [`Editability`] from the current in-memory save.
     /// Swapping the equipped navi flips navicust / patch-card capability,
     /// so the edit path calls this after a navi change.
-    #[allow(dead_code)] // the navi editor (next phase)
     pub fn refresh_editability(&mut self) {
         self.editability = Editability::probe(&mut *self.save);
     }
