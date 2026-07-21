@@ -14,9 +14,20 @@ build = "build.rs"
 mgba.workspace = true
 mgba-siolink.workspace = true
 
+tango-net-protocol = { path = "../tango-net-protocol" }
 tango-pvp = { path = "../tango-pvp" }
 tango-dataview = { path = "../tango-dataview" }
 tango-gamesupport = { path = "../tango-gamesupport" }
+# The signaling schema only (prost types for tango.signaling.Packet);
+# the crate's default `client` feature is the desktop's libdatachannel
+# driver and never builds on wasm.
+tango-signaling = { git = "https://github.com/tangobattle/tango-signaling", default-features = false, features = ["proto"] }
+prost.workspace = true
+bincode.workspace = true
+# Lobby handshake: nonce + connection ids, commitment compare, reveal
+# compression (zstd builds for wasm via the same wasi-sdk clang).
+rand.workspace = true
+subtle = "2"
 tango-gamesupport-bn1 = { path = "../gamesupport/tango-gamesupport-bn1", optional = true }
 tango-gamesupport-bn2 = { path = "../gamesupport/tango-gamesupport-bn2", optional = true }
 tango-gamesupport-bn3 = { path = "../gamesupport/tango-gamesupport-bn3", optional = true }
@@ -100,6 +111,22 @@ web-sys = { version = "0.3", features = [
     "Response",
     "Url",
     "HtmlAnchorElement",
+    "WebSocket",
+    "BinaryType",
+    "RtcPeerConnection",
+    "RtcConfiguration",
+    "RtcIceServer",
+    "RtcIceTransportPolicy",
+    "RtcDataChannel",
+    "RtcDataChannelInit",
+    "RtcDataChannelType",
+    "RtcSessionDescription",
+    "RtcSessionDescriptionInit",
+    "RtcSdpType",
+    "RtcIceCandidateInit",
+    "RtcIceCandidate",
+    "RtcPeerConnectionIceEvent",
+    "RtcPeerConnectionState",
     "BeforeUnloadEvent",
     "CanvasRenderingContext2d",
     "Clipboard",

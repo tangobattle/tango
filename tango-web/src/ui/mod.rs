@@ -5,6 +5,7 @@
 
 mod diag;
 mod icons;
+mod lobby_band;
 mod play;
 mod session_view;
 mod settings;

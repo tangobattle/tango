@@ -407,23 +407,16 @@ pub fn PlayScreen() -> Element {
             }
         }
 
-        // --- bottom band: the link-code strip (arms at M3) ---
-        div { class: "bottom-band",
-            input {
-                r#type: "text",
-                placeholder: "link code",
-                spellcheck: "false",
-                autocomplete: "off",
-                disabled: true,
-                title: "Netplay arrives with the crossplay milestone",
-            }
-            button {
-                class: "btn primary",
-                disabled: true,
-                title: "Netplay arrives with the crossplay milestone",
-                icons::Swords {}
-                "Fight"
-            }
+        // --- bottom band: the link-code strip / live lobby.
+        // Netplay commits real save bytes, so a fresh-save row doesn't
+        // count as a fightable pick (matching the desktop, whose
+        // new-save flow creates the file first).
+        super::lobby_band::BottomBand {
+            active_game,
+            active_save: active_row
+                .as_ref()
+                .map(|r| r.value.clone())
+                .filter(|v| !v.starts_with("//fresh/")),
         }
     }
 }

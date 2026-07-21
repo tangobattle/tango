@@ -962,3 +962,65 @@ main.dropping {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ---- lobby band ---- */
+
+.bottom-band.lobby {
+  gap: 12px;
+}
+
+.matchup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.matchup .side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.matchup .side .nick {
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.matchup .vs {
+  font-weight: 700;
+  color: var(--accent);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.ready-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(236, 238, 237, 0.18);
+  flex-shrink: 0;
+}
+
+.ready-dot.on {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+.bottom-band .code {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+}
+
+.bottom-band select {
+  height: 40px;
+  font: inherit;
+  color: var(--text);
+  background: #16191a;
+  border: 1px solid rgba(236, 238, 237, 0.14);
+  border-radius: var(--tech-radius-sm);
+  padding: 0 8px;
+}
