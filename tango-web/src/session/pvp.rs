@@ -85,7 +85,9 @@ pub fn start(args: PvpArgs) -> anyhow::Result<PvpSession> {
         rtc,
         local_player,
         present_delay,
-        disable_bgm: false,
+        // Settings → Audio's netplay BGM mute, sampled at boot like the
+        // desktop's.
+        disable_bgm: crate::config::Config::load().mute_bgm_in_pvp,
     })?;
 
     // Everything that borrows `pre` happens before the channel/pc

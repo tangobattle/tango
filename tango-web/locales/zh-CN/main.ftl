@@ -213,3 +213,30 @@ replays-export-progress = 正在渲染…
 replays-export-cancel = 取消
 replays-export-success = 渲染完成。
 replays-export-error = 渲染失败：{ $error }
+
+## theme + streamer + autoupdate settings (extracted from the desktop)
+settings-theme = 主题
+settings-theme-dark = 深色
+settings-theme-light = 浅色
+settings-streamer-mode = 主播隐私模式
+settings-enable-patch-autoupdate = 在后台自动更新补丁
+
+## mute bgm setting (extracted from the desktop)
+settings-disable-bgm-in-pvp = 联机对战时静音
+
+## cover tab (extracted from the desktop)
+save-tab-cover = 封面
+
+## lobby + telemetry + transport (extracted from the desktop)
+lobby-blind-mine = 隐藏配置
+lobby-blind-self-on = 你正在隐藏自己的配置。
+lobby-blind-peer-on = 对手正在隐藏其配置。
+settings-netplay-frame-delay = 帧延迟
+lobby-frame-delay-suggest = 根据延迟推荐
+session-stat-tps = 每秒帧数（当前/最大）
+session-stat-skew = 时钟偏移
+session-stat-lead = 领先
+session-stat-depth = 预测错误深度
+session-stat-ping = 网络延迟
+playback-speed = 速度
+playback-input-display = 输入显示

@@ -105,6 +105,40 @@ fn GeneralSection() -> Element {
                 }
             }
             div { class: "option-row",
+                label { {t!(&lang, "settings-streamer-mode")} }
+                input {
+                    r#type: "checkbox",
+                    checked: config.read().streamer_mode,
+                    onchange: move |evt: FormEvent| {
+                        config.with_mut(|c| c.streamer_mode = evt.checked())
+                    },
+                }
+            }
+            div { class: "option-row",
+                label { {t!(&lang, "settings-theme")} }
+                select {
+                    onchange: move |evt: FormEvent| {
+                        if let Ok(i) = evt.value().parse::<usize>() {
+                            if let Some(t) = crate::config::Theme::ALL.get(i) {
+                                config.with_mut(|c| c.theme = *t);
+                            }
+                        }
+                    },
+                    {
+                        let theme = config.read().theme;
+                        let label = |t: crate::config::Theme| match t {
+                            crate::config::Theme::Dark => t!(&lang, "settings-theme-dark"),
+                            crate::config::Theme::Light => t!(&lang, "settings-theme-light"),
+                        };
+                        rsx! {
+                            for (i, t) in crate::config::Theme::ALL.iter().enumerate() {
+                                option { value: "{i}", selected: *t == theme, {label(*t)} }
+                            }
+                        }
+                    }
+                }
+            }
+            div { class: "option-row",
                 label { {t!(&lang, "settings-accent")} }
                 select {
                     onchange: move |evt: FormEvent| {
@@ -142,6 +176,16 @@ fn GeneralSection() -> Element {
                     autocomplete: "off",
                     oninput: move |evt: FormEvent| {
                         config.with_mut(|c| c.patch_repo = evt.value())
+                    },
+                }
+            }
+            div { class: "option-row",
+                label { {t!(&lang, "settings-enable-patch-autoupdate")} }
+                input {
+                    r#type: "checkbox",
+                    checked: config.read().enable_patch_autoupdate,
+                    onchange: move |evt: FormEvent| {
+                        config.with_mut(|c| c.enable_patch_autoupdate = evt.checked())
                     },
                 }
             }
@@ -192,6 +236,16 @@ fn AudioSection() -> Element {
                     },
                 }
                 span { class: "status", "{volume_pct}%" }
+            }
+            div { class: "option-row",
+                label { {t!(&lang, "settings-disable-bgm-in-pvp")} }
+                input {
+                    r#type: "checkbox",
+                    checked: config.read().mute_bgm_in_pvp,
+                    onchange: move |evt: FormEvent| {
+                        config.with_mut(|c| c.mute_bgm_in_pvp = evt.checked())
+                    },
+                }
             }
         }
     }

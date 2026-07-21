@@ -34,6 +34,9 @@ use crate::ui::icons;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
+    /// Streamer mode only: the game's logo banner, hiding the save's
+    /// contents by default.
+    Cover,
     Navicust,
     Folder,
     PatchCards,
@@ -43,8 +46,11 @@ pub enum Tab {
 /// Which sub-tabs this save offers, in display order (the desktop's
 /// `available_tabs`). The equipped navi is not a tab — it lives in the
 /// persistent strip above the body.
-pub fn available_tabs(save: &dyn tango_dataview::save::Save) -> Vec<Tab> {
+pub fn available_tabs(save: &dyn tango_dataview::save::Save, streamer_mode: bool) -> Vec<Tab> {
     let mut tabs = vec![];
+    if streamer_mode {
+        tabs.push(Tab::Cover);
+    }
     if save.view_navicust().is_some() {
         tabs.push(Tab::Navicust);
     }
@@ -193,6 +199,7 @@ pub(crate) static CHIP_HOVER: GlobalSignal<Option<ChipHover>> = Signal::global(|
 
 fn tab_label(lang: &LanguageIdentifier, tab: Tab) -> String {
     match tab {
+        Tab::Cover => t!(lang, "save-tab-cover"),
         Tab::Navicust => t!(lang, "save-tab-navicust"),
         Tab::Folder => t!(lang, "save-tab-folder"),
         Tab::PatchCards => t!(lang, "save-tab-patch-cards"),
@@ -202,6 +209,7 @@ fn tab_label(lang: &LanguageIdentifier, tab: Tab) -> String {
 
 fn tab_icon(tab: Tab) -> Element {
     match tab {
+        Tab::Cover => rsx! { icons::Eye {} },
         Tab::Navicust => rsx! { icons::Puzzle {} },
         Tab::Folder => rsx! { icons::Files {} },
         Tab::PatchCards => rsx! { icons::CreditCard {} },
@@ -212,10 +220,39 @@ fn tab_icon(tab: Tab) -> Element {
 /// A save-view tab as TSV text for clipboard "copy as text".
 fn tab_as_text(tab: Tab, loaded: &Loaded, folder_grouped: bool) -> Option<String> {
     match tab {
+        Tab::Cover => None,
         Tab::Folder => folder::as_text(loaded, folder_grouped),
         Tab::Navicust => navicust::navicust_as_text(loaded),
         Tab::PatchCards => patch_cards::as_text(loaded),
         Tab::AutoBattleData => abd::as_text(loaded),
+    }
+}
+
+/// The Cover tab: the game's logo banner(s) — two-logo families stagger
+/// the pair diagonally, single-logo games center theirs (the desktop's
+/// `cover.rs`).
+fn render_cover(loaded: &Loaded) -> Element {
+    if loaded.logos.len() >= 2 {
+        let (_, _, first) = &loaded.logos[0];
+        let (_, _, second) = &loaded.logos[1];
+        rsx! {
+            div { class: "pane cover",
+                div { class: "cover-lane",
+                    img { class: "logo first pix", src: "{first}", alt: "" }
+                    img { class: "logo second pix", src: "{second}", alt: "" }
+                }
+            }
+        }
+    } else if let Some((_, _, url)) = loaded.logos.first() {
+        rsx! {
+            div { class: "pane cover",
+                img { class: "logo single pix", src: "{url}", alt: "" }
+            }
+        }
+    } else {
+        rsx! {
+            div { class: "pane cover" }
+        }
     }
 }
 
@@ -379,9 +416,10 @@ pub fn SaveView(
         }
     });
 
+    let streamer_mode = crate::ui::use_ctx().config.read().streamer_mode;
     let loaded_rc = handle.0.clone();
     let loaded = loaded_rc.borrow();
-    let available = available_tabs(loaded.save.as_ref());
+    let available = available_tabs(loaded.save.as_ref(), streamer_mode);
     let active = active_tab().filter(|t| available.contains(t)).or_else(|| available.first().copied());
     let has_navi_strip = loaded.save.view_navi().is_some();
     let editability = loaded.editability;
@@ -555,8 +593,9 @@ pub fn SaveView(
                             }
                         }
                     }
-                    // Extras are read-mode only, like the desktop.
-                    if !editing_session {
+                    // Extras are read-mode only, like the desktop; the
+                    // Cover tab has none.
+                    if !editing_session && active != Tab::Cover {
                         div { class: "tab-extras",
                             if active == Tab::Folder {
                                 label { class: "check",
@@ -598,6 +637,7 @@ pub fn SaveView(
                 } else {
                     div { class: "save-body", id: "save-body",
                         match active {
+                            Tab::Cover => render_cover(&loaded),
                             Tab::Folder => folder::render_folder(&lang, &loaded, folder_grouped()),
                             Tab::Navicust => navicust::render_navicust_tab(&lang, &loaded),
                             Tab::PatchCards => patch_cards::render_patch_cards(&lang, &loaded),

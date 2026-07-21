@@ -229,3 +229,30 @@ replays-export-progress = Rendu en cours…
 replays-export-cancel = Annuler
 replays-export-success = Rendu terminé.
 replays-export-error = Échec du rendu: { $error }
+
+## theme + streamer + autoupdate settings (extracted from the desktop)
+settings-theme = Thème
+settings-theme-dark = Sombre
+settings-theme-light = Clair
+settings-streamer-mode = Mode de confidentialité du Streamer
+settings-enable-patch-autoupdate = Activer la mise à jour automatique
+
+## mute bgm setting (extracted from the desktop)
+settings-disable-bgm-in-pvp = Désactiver la musique pendant le netplay
+
+## cover tab (extracted from the desktop)
+save-tab-cover = Couverture
+
+## lobby + telemetry + transport (extracted from the desktop)
+lobby-blind-mine = Cacher ma configuration
+lobby-blind-self-on = Vous cachez votre configuration.
+lobby-blind-peer-on = L'adversaire cache sa configuration.
+settings-netplay-frame-delay = Délai d'image
+lobby-frame-delay-suggest = Suggérer selon le ping
+session-stat-tps = Tick/s (actuel/max)
+session-stat-skew = Décalage
+session-stat-lead = Avance
+session-stat-depth = Profondeur de prédiction erronée
+session-stat-ping = Latence réseau
+playback-speed = Vitesse
+playback-input-display = Affichage des entrées

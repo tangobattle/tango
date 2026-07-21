@@ -19,6 +19,10 @@
   --accent-ink: #0a2012; /* per-accent: text on accent plates (set from config) */
   --plate: rgba(236, 238, 237, 0.04);
   --plate-2: rgba(236, 238, 237, 0.07);
+  --zebra: rgba(236, 238, 237, 0.05);
+  --hairline: rgba(236, 238, 237, 0.14);
+  --hairline-2: rgba(236, 238, 237, 0.12);
+  --field: #16191a;
 
   /* Metrics (style.rs). */
   --pane-pad: 12px;
@@ -29,6 +33,23 @@
   --tech-radius-sm: 6px 2px 6px 2px;
 
   font-size: 13px; /* BODY */
+}
+
+
+/* Light palette (ui/theme.rs light): warm cream over dark slate ink.
+ * Accent custom props are set per theme from config by the shell. */
+:root[data-theme="light"] {
+  --bg: #f3eedc;
+  --text: #142234;
+  --muted: rgba(20, 34, 52, 0.55);
+  --danger: #d13a3a;
+  --warning: #b77e33;
+  --plate: rgba(20, 34, 52, 0.05);
+  --plate-2: rgba(20, 34, 52, 0.09);
+  --zebra: rgba(20, 34, 52, 0.04);
+  --hairline: rgba(20, 34, 52, 0.16);
+  --hairline-2: rgba(20, 34, 52, 0.13);
+  --field: #fbf7ea;
 }
 
 * {
@@ -177,7 +198,7 @@ body {
   font: inherit;
   color: var(--text);
   background: linear-gradient(to bottom, var(--plate-2), var(--plate));
-  border: 1px solid rgba(236, 238, 237, 0.12);
+  border: 1px solid var(--hairline-2);
   border-radius: var(--tech-radius-sm);
   cursor: pointer;
   user-select: none;
@@ -351,8 +372,8 @@ h2::before {
   height: 34px;
   font: inherit;
   color: var(--text);
-  background: #16191a;
-  border: 1px solid rgba(236, 238, 237, 0.14);
+  background: var(--field);
+  border: 1px solid var(--hairline);
   border-radius: var(--tech-radius-sm);
   padding: 0 8px;
 }
@@ -462,8 +483,8 @@ input:focus {
   font-size: 15px;
   letter-spacing: 0.08em;
   color: var(--text);
-  background: #16191a;
-  border: 1px solid rgba(236, 238, 237, 0.14);
+  background: var(--field);
+  border: 1px solid var(--hairline);
   border-radius: var(--tech-radius-sm);
   padding: 0 12px;
 }
@@ -517,8 +538,8 @@ ul.rows li:nth-child(even) > .row {
 input[type="text"] {
   font: inherit;
   color: var(--text);
-  background: #16191a;
-  border: 1px solid rgba(236, 238, 237, 0.14);
+  background: var(--field);
+  border: 1px solid var(--hairline);
   border-radius: var(--tech-radius-sm);
   padding: 6px 10px;
 }
@@ -784,8 +805,8 @@ input[type="checkbox"] {
   font: inherit;
   font-size: 13px;
   color: var(--text);
-  background: #16191a;
-  border: 1px solid rgba(236, 238, 237, 0.14);
+  background: var(--field);
+  border: 1px solid var(--hairline);
   border-radius: var(--tech-radius-sm);
   padding: 0 8px;
 }
@@ -838,8 +859,8 @@ input[type="checkbox"] {
   width: 280px; /* the desktop's fixed nickname width */
   max-width: 100%;
   color: var(--text);
-  background: #16191a;
-  border: 1px solid rgba(236, 238, 237, 0.14);
+  background: var(--field);
+  border: 1px solid var(--hairline);
   border-radius: var(--tech-radius-sm);
   padding: 0 8px;
 }
@@ -1067,8 +1088,8 @@ main.dropping {
   height: 40px;
   font: inherit;
   color: var(--text);
-  background: #16191a;
-  border: 1px solid rgba(236, 238, 237, 0.14);
+  background: var(--field);
+  border: 1px solid var(--hairline);
   border-radius: var(--tech-radius-sm);
   padding: 0 8px;
 }
@@ -1510,7 +1531,7 @@ main.dropping {
 }
 
 .chip-row-wrap:nth-child(even) {
-  background: rgba(236, 238, 237, 0.05);
+  background: var(--zebra);
 }
 
 .chip-row-wrap .stripe {
@@ -1747,7 +1768,7 @@ main.dropping {
 
 .card56-row:nth-child(even),
 .card4-row:nth-child(even) {
-  background: rgba(236, 238, 237, 0.05);
+  background: var(--zebra);
 }
 
 .card56-row .c-idx {
@@ -1876,8 +1897,8 @@ main.dropping {
   font: inherit;
   font-size: 13px;
   color: var(--text);
-  background: #16191a;
-  border: 1px solid rgba(236, 238, 237, 0.14);
+  background: var(--field);
+  border: 1px solid var(--hairline);
   border-radius: var(--tech-radius-sm);
   padding: 0 8px;
 }
@@ -1982,7 +2003,7 @@ main.dropping {
 }
 
 .palette-row:nth-child(even) {
-  background: rgba(236, 238, 237, 0.05);
+  background: var(--zebra);
 }
 
 .palette-row:hover {
@@ -2041,8 +2062,8 @@ main.dropping {
   font: inherit;
   font-size: 13px;
   color: var(--text);
-  background: #16191a;
-  border: 1px solid rgba(236, 238, 237, 0.14);
+  background: var(--field);
+  border: 1px solid var(--hairline);
   border-radius: var(--tech-radius-sm);
   padding: 0 8px;
 }
@@ -2143,7 +2164,7 @@ main.dropping {
   display: flex;
   flex-direction: column;
   padding: 4px;
-  background: #16191a;
+  background: var(--field);
   border: 1px solid var(--accent-hair);
   border-radius: var(--tech-radius-sm);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
@@ -2181,8 +2202,8 @@ main.dropping {
   height: 34px;
   font: inherit;
   color: var(--text);
-  background: #16191a;
-  border: 1px solid rgba(236, 238, 237, 0.14);
+  background: var(--field);
+  border: 1px solid var(--hairline);
   border-radius: var(--tech-radius-sm);
   padding: 0 8px;
 }
@@ -2192,8 +2213,8 @@ main.dropping {
   max-width: 40%;
   font: inherit;
   color: var(--text);
-  background: #16191a;
-  border: 1px solid rgba(236, 238, 237, 0.14);
+  background: var(--field);
+  border: 1px solid var(--hairline);
   border-radius: var(--tech-radius-sm);
   padding: 0 8px;
 }
@@ -2218,8 +2239,8 @@ main.dropping {
   font: inherit;
   font-size: 13px;
   color: var(--text);
-  background: #16191a;
-  border: 1px solid rgba(236, 238, 237, 0.14);
+  background: var(--field);
+  border: 1px solid var(--hairline);
   border-radius: var(--tech-radius-sm);
   padding: 0 8px;
 }
@@ -2276,7 +2297,7 @@ main.dropping {
 }
 
 .replay-row:nth-child(even) {
-  background: rgba(236, 238, 237, 0.05);
+  background: var(--zebra);
 }
 
 .replay-row:hover {
@@ -2444,7 +2465,7 @@ main.dropping {
 }
 
 .patch-row:nth-child(even) {
-  background: rgba(236, 238, 237, 0.05);
+  background: var(--zebra);
 }
 
 .patch-row:hover {
@@ -2504,8 +2525,8 @@ main.dropping {
   font: inherit;
   font-size: 13px;
   color: var(--text);
-  background: #16191a;
-  border: 1px solid rgba(236, 238, 237, 0.14);
+  background: var(--field);
+  border: 1px solid var(--hairline);
   border-radius: var(--tech-radius-sm);
   padding: 0 8px;
 }
@@ -2588,4 +2609,105 @@ main.dropping {
 .option-row input.wide {
   width: 380px;
   max-width: 60vw;
+}
+
+/* ---- Cover tab (streamer mode) ---- */
+
+.cover {
+  flex: 1;
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 36px; /* PANE_PADDING + 24 */
+}
+
+.cover img.logo.single {
+  max-height: 220px;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+/* Two-logo families (Gregar/Falzar): a diagonal stagger in one lane. */
+.cover .cover-lane {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  height: 204px; /* H=140 + STAGGER=64 */
+}
+
+.cover .cover-lane img.logo {
+  position: absolute;
+  height: 140px;
+  max-width: 60%;
+  object-fit: contain;
+}
+
+.cover .cover-lane img.logo.first {
+  top: 0;
+  left: 0;
+}
+
+.cover .cover-lane img.logo.second {
+  bottom: 0;
+  right: 0;
+}
+
+/* ---- lobby settings cluster + blind eye ---- */
+
+.lobby-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lobby-setting .caption {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.lobby-setting .control-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lobby-setting input[type="range"] {
+  width: 120px;
+}
+
+.lobby-setting .fd-value {
+  width: 18px;
+  text-align: right;
+  font-family: "Noto Sans Mono", ui-monospace, monospace;
+}
+
+.lobby-setting select {
+  height: 30px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--field);
+  border: 1px solid var(--hairline);
+  border-radius: var(--tech-radius-sm);
+  padding: 0 8px;
+}
+
+.lobby-setting .check input {
+  accent-color: var(--accent);
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.matchup .blind-eye {
+  color: var(--danger);
+  display: inline-flex;
+  font-size: 15px;
+}
+
+.bottom-band .subtle-copy {
+  padding: 3px 6px;
 }

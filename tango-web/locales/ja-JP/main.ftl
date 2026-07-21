@@ -213,3 +213,30 @@ replays-export-progress = 録画中…
 replays-export-cancel = キャンセル
 replays-export-success = 録画が完了しました。
 replays-export-error = 録画に失敗しました: { $error }
+
+## theme + streamer + autoupdate settings (extracted from the desktop)
+settings-theme = テーマ
+settings-theme-dark = ダーク
+settings-theme-light = ライト
+settings-streamer-mode = 配信プライバシーモード
+settings-enable-patch-autoupdate = パッチを自動更新する
+
+## mute bgm setting (extracted from the desktop)
+settings-disable-bgm-in-pvp = ネットプレイで音楽を消す
+
+## cover tab (extracted from the desktop)
+save-tab-cover = カバー
+
+## lobby + telemetry + transport (extracted from the desktop)
+lobby-blind-mine = 構築を隠す
+lobby-blind-self-on = 自分の構築を隠しています。
+lobby-blind-peer-on = 相手は構築を隠しています。
+settings-netplay-frame-delay = フレーム遅延
+lobby-frame-delay-suggest = Pingから推奨
+session-stat-tps = 毎秒ティック数（現在/上限）
+session-stat-skew = ずれ
+session-stat-lead = リード
+session-stat-depth = 予測ミス深度
+session-stat-ping = ネットワーク遅延
+playback-speed = 速度
+playback-input-display = 入力表示

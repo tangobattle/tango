@@ -229,3 +229,30 @@ replays-export-progress = Renderen…
 replays-export-cancel = Annuleren
 replays-export-success = Renderen voltooid.
 replays-export-error = Renderen mislukt: { $error }
+
+## theme + streamer + autoupdate settings (extracted from the desktop)
+settings-theme = Thema
+settings-theme-dark = Donker
+settings-theme-light = Licht
+settings-streamer-mode = Streamer privacymodus
+settings-enable-patch-autoupdate = Autoupdate inschakelen
+
+## mute bgm setting (extracted from the desktop)
+settings-disable-bgm-in-pvp = Muziek in netplay uitschakelen
+
+## cover tab (extracted from the desktop)
+save-tab-cover = Omslag
+
+## lobby + telemetry + transport (extracted from the desktop)
+lobby-blind-mine = Opzet verbergen
+lobby-blind-self-on = Je verbergt je opzet.
+lobby-blind-peer-on = Tegenstander verbergt zijn opzet.
+settings-netplay-frame-delay = Framevertraging
+lobby-frame-delay-suggest = Voorstellen op basis van ping
+session-stat-tps = Tick/s (huidig/max.)
+session-stat-skew = Afwijking
+session-stat-lead = Voorsprong
+session-stat-depth = Misvoorspellingsdiepte
+session-stat-ping = Netwerklatentie
+playback-speed = Snelheid
+playback-input-display = Invoerweergave

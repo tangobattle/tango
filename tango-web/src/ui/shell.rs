@@ -9,7 +9,7 @@ use dioxus::html::HasFileData;
 use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
 
-use super::{icons, play, session_view, settings, use_ctx, welcome, Ctx, Tab};
+use super::{icons, patches_tab, play, session_view, settings, use_ctx, welcome, Ctx, Tab};
 use crate::config::Config;
 use crate::t;
 use crate::library::Library;
@@ -93,13 +93,39 @@ pub fn App() -> Element {
         });
     }
 
-    // The accent color drives the chrome through :root custom props —
-    // the web analog of the desktop's theme_for. Selection gold stays
-    // constant (--select-ink); the ink-vs-white flip on accent plates
-    // follows the desktop's on_accent luma rule.
+    // The desktop's 15-minute patch autoupdater, browser flavor: a
+    // background re-sync loop gated on the config toggle each round.
+    use_hook(move || {
+        spawn(async move {
+            loop {
+                gloo_timers::future::TimeoutFuture::new(15 * 60 * 1000).await;
+                if !config.peek().enable_patch_autoupdate {
+                    continue;
+                }
+                let Some(Some(storage)) = storage.peek().clone() else {
+                    continue;
+                };
+                let repo = config.peek().patch_repo.clone();
+                match crate::patches::sync(&storage, &repo).await {
+                    Ok(n) if n > 0 => *patches_tab::PATCHES_REV.write() += 1,
+                    Ok(_) => {}
+                    Err(e) => log::warn!("patch autoupdate: {e:#}"),
+                }
+            }
+        });
+    });
+
+    // The theme + accent drive the chrome: `data-theme` selects the
+    // palette override block in the stylesheet, and the accent custom
+    // props follow the theme's own accent values — the web analog of
+    // the desktop's theme_for. Selection gold stays constant
+    // (--select-ink); the ink-vs-white flip on accent plates follows
+    // the desktop's on_accent luma rule.
     use_effect(move || {
-        let accent = config.read().accent;
-        let (r, g, b) = accent.rgb();
+        let (accent, theme) = {
+            let c = config.read();
+            (c.accent, c.theme)
+        };
         let Some(root) = web_sys::window()
             .and_then(|w| w.document())
             .and_then(|d| d.document_element())
@@ -107,6 +133,14 @@ pub fn App() -> Element {
         else {
             return;
         };
+        let _ = root.set_attribute(
+            "data-theme",
+            match theme {
+                crate::config::Theme::Dark => "dark",
+                crate::config::Theme::Light => "light",
+            },
+        );
+        let (r, g, b) = accent.rgb(theme);
         let style = root.style();
         let _ = style.set_property("--accent", &format!("rgb({r},{g},{b})"));
         let _ = style.set_property("--accent-weak", &format!("rgba({r},{g},{b},0.14)"));

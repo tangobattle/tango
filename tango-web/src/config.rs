@@ -36,9 +36,20 @@ pub fn use_relay_pref() -> Option<bool> {
     Config::load().use_relay.use_relay()
 }
 
-/// The accent color, the desktop's MegaMan-cast picker (dark-palette
-/// values — the web build is dark-only). Selection gold and success
-/// green stay constant regardless, like the desktop.
+/// Dark or light chrome, the desktop's Theme picker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum Theme {
+    #[default]
+    Dark,
+    Light,
+}
+
+impl Theme {
+    pub const ALL: [Theme; 2] = [Theme::Dark, Theme::Light];
+}
+
+/// The accent color, the desktop's MegaMan-cast picker. Selection gold
+/// and success green stay constant regardless, like the desktop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Accent {
     #[default]
@@ -60,15 +71,20 @@ impl Accent {
         Accent::BassPurple,
     ];
 
-    /// The dark-palette accent color (`ui/theme.rs`'s values).
-    pub fn rgb(self) -> (u8, u8, u8) {
-        match self {
-            Accent::TangoGreen => (0x4c, 0xaf, 0x50),
-            Accent::MegaManBlue => (0x4d, 0xa6, 0xff),
-            Accent::ProtoManRed => (0xef, 0x40, 0x56),
-            Accent::RollPink => (0xff, 0x6e, 0xa8),
-            Accent::GutsManYellow => (0xe6, 0xb4, 0x22),
-            Accent::BassPurple => (0xae, 0x6f, 0xf5),
+    /// The per-theme accent color (`ui/theme.rs`'s dark/light values).
+    pub fn rgb(self, theme: Theme) -> (u8, u8, u8) {
+        match (self, theme) {
+            (Accent::TangoGreen, _) => (0x4c, 0xaf, 0x50),
+            (Accent::MegaManBlue, Theme::Dark) => (0x4d, 0xa6, 0xff),
+            (Accent::MegaManBlue, Theme::Light) => (0x14, 0x5c, 0xc2),
+            (Accent::ProtoManRed, Theme::Dark) => (0xef, 0x40, 0x56),
+            (Accent::ProtoManRed, Theme::Light) => (0xb7, 0x1c, 0x30),
+            (Accent::RollPink, Theme::Dark) => (0xff, 0x6e, 0xa8),
+            (Accent::RollPink, Theme::Light) => (0xc2, 0x2f, 0x6d),
+            (Accent::GutsManYellow, Theme::Dark) => (0xe6, 0xb4, 0x22),
+            (Accent::GutsManYellow, Theme::Light) => (0x96, 0x71, 0x18),
+            (Accent::BassPurple, Theme::Dark) => (0xae, 0x6f, 0xf5),
+            (Accent::BassPurple, Theme::Light) => (0x6a, 0x35, 0xb5),
         }
     }
 }
@@ -131,6 +147,15 @@ pub struct Config {
     pub use_relay: UseRelay,
     /// The accent color driving the chrome (CSS custom props).
     pub accent: Accent,
+    /// Dark or light chrome.
+    pub theme: Theme,
+    /// Hide identifying info (masked link-code input; the save view
+    /// leads with the Cover tab), the desktop's streamer mode.
+    pub streamer_mode: bool,
+    /// Silence the game BGM during netplay matches.
+    pub mute_bgm_in_pvp: bool,
+    /// Re-sync the patch repo automatically in the background.
+    pub enable_patch_autoupdate: bool,
     pub mapping: Mapping,
 }
 
@@ -151,6 +176,10 @@ impl Default for Config {
             matchmaking_endpoint: None,
             use_relay: UseRelay::default(),
             accent: Accent::default(),
+            theme: Theme::default(),
+            streamer_mode: false,
+            mute_bgm_in_pvp: false,
+            enable_patch_autoupdate: true,
             mapping: Mapping::default(),
         }
     }

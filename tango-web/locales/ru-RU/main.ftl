@@ -234,3 +234,30 @@ replays-export-progress = Рендеринг…
 replays-export-cancel = Отмена
 replays-export-success = Рендер завершён.
 replays-export-error = Сбой рендера: { $error }
+
+## theme + streamer + autoupdate settings (extracted from the desktop)
+settings-theme = Тема оформления
+settings-theme-dark = Тёмная
+settings-theme-light = Светлая
+settings-streamer-mode = Режим приватности стримера
+settings-enable-patch-autoupdate = Включить авто обновление
+
+## mute bgm setting (extracted from the desktop)
+settings-disable-bgm-in-pvp = Отключить музыку в сетевой игре
+
+## cover tab (extracted from the desktop)
+save-tab-cover = Покрытие
+
+## lobby + telemetry + transport (extracted from the desktop)
+lobby-blind-mine = Скрыть сборку
+lobby-blind-self-on = Вы скрываете свою сборку.
+lobby-blind-peer-on = Соперник скрывает свою сборку.
+settings-netplay-frame-delay = Задержка кадров
+lobby-frame-delay-suggest = Предложить по пингу
+session-stat-tps = Тик/с (текущее/макс.)
+session-stat-skew = Смещение
+session-stat-lead = Опережение
+session-stat-depth = Глубина ошибки предсказания
+session-stat-ping = Сетевая задержка
+playback-speed = Скорость
+playback-input-display = Отображение ввода

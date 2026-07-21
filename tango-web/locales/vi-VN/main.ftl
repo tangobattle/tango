@@ -214,3 +214,30 @@ replays-export-progress = Đang render…
 replays-export-cancel = Hủy
 replays-export-success = Render đã hoàn tất.
 replays-export-error = Render thất bại: { $error }
+
+## theme + streamer + autoupdate settings (extracted from the desktop)
+settings-theme = Giao diện
+settings-theme-dark = Tối
+settings-theme-light = Sáng
+settings-streamer-mode = Chế độ riêng tư
+settings-enable-patch-autoupdate = Bật tự động cập nhật
+
+## mute bgm setting (extracted from the desktop)
+settings-disable-bgm-in-pvp = Tắt nhạc nền trong netplay
+
+## cover tab (extracted from the desktop)
+save-tab-cover = Cover
+
+## lobby + telemetry + transport (extracted from the desktop)
+lobby-blind-mine = Ẩn thiết lập
+lobby-blind-self-on = Bạn đang ẩn thiết lập.
+lobby-blind-peer-on = Đối thủ đang ẩn thiết lập.
+settings-netplay-frame-delay = Độ trễ khung hình
+lobby-frame-delay-suggest = Đề xuất theo ping
+session-stat-tps = Tick/giây (hiện tại/tối đa)
+session-stat-skew = Độ lệch
+session-stat-lead = Dẫn trước
+session-stat-depth = Độ sâu dự đoán sai
+session-stat-ping = Độ trễ mạng
+playback-speed = Tốc độ
+playback-input-display = Hiển thị nút bấm

@@ -84,6 +84,10 @@ pub struct Loaded {
     /// pixels — tints the navi picker's plates. Missing when the emblem
     /// is entirely monochrome.
     pub navi_accents: HashMap<usize, String>,
+    /// Logos for the streamer-mode Cover tab as `(w, h, data URL)`: the
+    /// loaded variant first, family siblings after (so two-logo
+    /// families fan both out).
+    pub logos: Vec<(u32, u32, String)>,
 }
 
 impl Loaded {
@@ -153,6 +157,24 @@ impl Loaded {
             }
         }
 
+        // Logos for the Cover tab: the loaded variant first, then its
+        // family siblings.
+        let (family, variant) = game.family_and_variant();
+        let mut logo_order: Vec<GameRef> = vec![game];
+        for g in crate::library::games_in_family(family) {
+            if g.family_and_variant().1 != variant {
+                logo_order.push(g);
+            }
+        }
+        let logos: Vec<(u32, u32, String)> = logo_order
+            .into_iter()
+            .filter_map(|g| {
+                let img = g.logo_image.to_rgba8();
+                let (w, h) = img.dimensions();
+                png_data_url(&img).map(|url| (w, h, url))
+            })
+            .collect();
+
         Ok(Self {
             game,
             save_file,
@@ -165,6 +187,7 @@ impl Loaded {
             element_icons,
             navi_emblems,
             navi_accents,
+            logos,
         })
     }
 

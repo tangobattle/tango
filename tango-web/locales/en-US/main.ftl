@@ -245,3 +245,30 @@ replays-export-progress = Rendering…
 replays-export-cancel = Cancel
 replays-export-success = Render finished.
 replays-export-error = Render failed: { $error }
+
+## theme + streamer + autoupdate settings (extracted from the desktop)
+settings-theme = Theme
+settings-theme-dark = Dark
+settings-theme-light = Light
+settings-streamer-mode = Streamer privacy mode
+settings-enable-patch-autoupdate = Automatically update patches in the background
+
+## mute bgm setting (extracted from the desktop)
+settings-disable-bgm-in-pvp = Mute music in netplay
+
+## cover tab (extracted from the desktop)
+save-tab-cover = Cover
+
+## lobby + telemetry + transport (extracted from the desktop)
+lobby-blind-mine = Blind setup
+lobby-blind-self-on = You are hiding your setup.
+lobby-blind-peer-on = Opponent is hiding their setup.
+settings-netplay-frame-delay = Frame delay
+lobby-frame-delay-suggest = Suggest based on ping
+session-stat-tps = Tick/s (current/max)
+session-stat-skew = Skew
+session-stat-lead = Lead
+session-stat-depth = Misprediction depth
+session-stat-ping = Network latency
+playback-speed = Speed
+playback-input-display = Input display
