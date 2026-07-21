@@ -2773,6 +2773,26 @@ main.dropping {
   background: var(--accent);
 }
 
+.scrub-clip-band {
+  position: absolute;
+  top: 50%;
+  height: 10px;
+  transform: translateY(-50%);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  pointer-events: none;
+}
+
+.scrub-mark {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  background: var(--accent);
+  pointer-events: none;
+}
+
 .scrub-ghost {
   position: absolute;
   top: 50%;
@@ -2824,6 +2844,46 @@ main.dropping {
   z-index: 30;
   cursor: pointer;
   touch-action: none;
+}
+
+/* The clip strip between the scrubber and the transport row. */
+.clip-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.clip-strip .clip-stamp {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--text) 55%, transparent);
+}
+
+.clip-strip .clip-stamp.set {
+  color: var(--accent);
+}
+
+.clip-strip .btn.chip {
+  padding: 4px 8px;
+}
+
+.clip-strip .btn.clip-export {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.clip-progress {
+  flex: 1;
+  max-width: 240px;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+}
+
+.clip-progress-fill {
+  height: 100%;
+  background: var(--accent);
 }
 
 .transport-row .menu-anchor {

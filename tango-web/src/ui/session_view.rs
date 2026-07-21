@@ -311,12 +311,23 @@ fn scrub_metrics(client_x: f64) -> Option<(f64, f64)> {
 /// pump's pacing; seeks chase cooperatively in the pump.
 #[component]
 fn ReplayTransport() -> Element {
-    let Ctx { runtime, mut config, .. } = use_ctx();
+    let Ctx {
+        runtime,
+        mut config,
+        storage,
+        library,
+        ..
+    } = use_ctx();
     let lang = crate::i18n::LANG.read().clone();
     // Per-drag / per-hover scrub state, plus the speed dropdown.
     let mut drag = use_signal(|| None::<ScrubDrag>);
     let mut hover = use_signal(|| None::<u32>);
     let mut speed_open = use_signal(|| false);
+    // Clip tools: the scissors strip, its marks, and the last export's
+    // quiet outcome line.
+    let mut tools_open = use_signal(|| false);
+    let mut marks = use_signal(|| (None::<u32>, None::<u32>));
+    let mut clip_status = use_signal(|| None::<Result<(), String>>);
     let Some((shared, paused, speed, scrub)) = ({
         let rt = runtime.borrow();
         match (rt.shared(), rt.replay_scrub()) {
@@ -458,6 +469,18 @@ fn ReplayTransport() -> Element {
                         div { class: "scrub-fill", style: "width: {fill}%;" }
                     }
                 }
+                // Clip selection: a translucent band between the marks
+                // plus a notch per mark — over the fills, under the
+                // playhead.
+                if let (Some(a), Some(b)) = *marks.read() {
+                    div {
+                        class: "scrub-clip-band",
+                        style: "left: {pct(a)}%; width: {pct(b) - pct(a)}%;",
+                    }
+                }
+                for m in [marks.read().0, marks.read().1].into_iter().flatten() {
+                    div { class: "scrub-mark", style: "left: {pct(m)}%;" }
+                }
                 if let Some(h) = *hover.read() {
                     div { class: "scrub-ghost", style: "left: {pct(h)}%;" }
                     div { class: "scrub-stamp mono", style: "left: {pct(h)}%;",
@@ -477,6 +500,157 @@ fn ReplayTransport() -> Element {
                     class: "scrub-shield",
                     onpointermove: on_shield_move,
                     onpointerup: on_shield_up,
+                }
+            }
+            // --- clip strip: mark stamps + export, swapped wholesale
+            // for the running export's progress line ---
+            if tools_open() {
+                if let Some(p) = *crate::export::EXPORT_PROGRESS.read() {
+                    div { class: "clip-strip",
+                        span { class: "sub",
+                            if *crate::export::EXPORT_CANCEL.read() {
+                                {t!(&lang, "replays-export-cancelling")}
+                            } else {
+                                {t!(&lang, "replays-export-progress")}
+                                " {p.frame * 100 / p.total.max(1)}%"
+                            }
+                        }
+                        div { class: "clip-progress",
+                            div {
+                                class: "clip-progress-fill",
+                                style: "width: {p.frame * 100 / p.total.max(1)}%;",
+                            }
+                        }
+                        button {
+                            class: "btn chip",
+                            title: t!(&lang, "replays-export-cancel"),
+                            onclick: move |_| *crate::export::EXPORT_CANCEL.write() = true,
+                            icons::X {}
+                        }
+                    }
+                } else {
+                    div { class: "clip-strip",
+                        // Stamping past the other mark drops it — the
+                        // pair can never invert.
+                        button {
+                            class: if marks.read().0.is_some() { "btn chip active" } else { "btn chip" },
+                            title: t!(&lang, "playback-clip-start"),
+                            onclick: move |_| {
+                                marks.with_mut(|m| {
+                                    m.0 = Some(playhead);
+                                    if m.1.is_some_and(|o| o <= playhead) {
+                                        m.1 = None;
+                                    }
+                                });
+                            },
+                            icons::ArrowRightFromLine {}
+                        }
+                        span { class: if marks.read().0.is_some() { "clip-stamp mono set" } else { "clip-stamp mono" },
+                            {marks.read().0.map(crate::session::format_tick).unwrap_or_else(|| "–:––".to_string())}
+                        }
+                        button {
+                            class: if marks.read().1.is_some() { "btn chip active" } else { "btn chip" },
+                            title: t!(&lang, "playback-clip-end"),
+                            onclick: move |_| {
+                                marks.with_mut(|m| {
+                                    m.1 = Some(playhead);
+                                    if m.0.is_some_and(|i| i >= playhead) {
+                                        m.0 = None;
+                                    }
+                                });
+                            },
+                            icons::ArrowRightToLine {}
+                        }
+                        span { class: if marks.read().1.is_some() { "clip-stamp mono set" } else { "clip-stamp mono" },
+                            {marks.read().1.map(crate::session::format_tick).unwrap_or_else(|| "–:––".to_string())}
+                        }
+                        if let (Some(a), Some(b)) = *marks.read() {
+                            span { class: "sub",
+                                "({crate::session::format_tick(b - a)})"
+                            }
+                        }
+                        div { class: "grow" }
+                        match &*clip_status.read() {
+                            Some(Ok(())) => rsx! {
+                                span { class: "sub", {t!(&lang, "replays-export-success")} }
+                            },
+                            Some(Err(e)) => rsx! {
+                                span { class: "sub", title: "{e}",
+                                    {t!(&lang, "replays-export-error", error = e.clone())}
+                                }
+                            },
+                            None => rsx! {},
+                        }
+                        button {
+                            class: "btn chip",
+                            title: t!(&lang, "playback-clip-clear"),
+                            disabled: marks.read().0.is_none() && marks.read().1.is_none(),
+                            onclick: move |_| marks.set((None, None)),
+                            icons::Delete {}
+                        }
+                        button {
+                            class: "btn primary clip-export",
+                            disabled: !matches!(*marks.read(), (Some(a), Some(b)) if a < b),
+                            onclick: {
+                                let runtime = runtime.clone();
+                                move |_| {
+                                    let (Some(a), Some(b)) = *marks.peek() else {
+                                        return;
+                                    };
+                                    if crate::export::EXPORT_PROGRESS.peek().is_some() {
+                                        return;
+                                    }
+                                    let Some(file) = runtime.borrow().replay_source_file() else {
+                                        return;
+                                    };
+                                    let storage_v = storage.read().clone().flatten();
+                                    let lib = library.read().clone().flatten();
+                                    clip_status.set(None);
+                                    spawn(async move {
+                                        let stem = format!(
+                                            "{}-clip",
+                                            file.strip_suffix(".tangoreplay").unwrap_or(&file)
+                                        );
+                                        let result: anyhow::Result<bool> = async {
+                                            // Ask for the destination inside the
+                                            // click's user activation, same as the
+                                            // replays tab's export.
+                                            let target = if crate::export::save_picker_available() {
+                                                match crate::export::pick_save_file(&format!("{stem}.webm")).await? {
+                                                    Some(handle) => crate::export::ExportTarget::Picked(handle),
+                                                    None => return Ok(false),
+                                                }
+                                            } else {
+                                                let Some(storage) = storage_v.clone() else {
+                                                    anyhow::bail!("storage unavailable");
+                                                };
+                                                crate::export::ExportTarget::OpfsTemp(storage)
+                                            };
+                                            let (replay, local_rom, remote_rom) =
+                                                crate::ui::replays::load_pair(storage_v, lib, &file).await?;
+                                            crate::export::export_replay(
+                                                replay,
+                                                local_rom,
+                                                remote_rom,
+                                                stem,
+                                                target,
+                                                Some((a, b)),
+                                            )
+                                            .await?;
+                                            Ok(true)
+                                        }
+                                        .await;
+                                        match result {
+                                            Ok(true) => clip_status.set(Some(Ok(()))),
+                                            Ok(false) => {}
+                                            Err(e) => clip_status.set(Some(Err(format!("{e:#}")))),
+                                        }
+                                    });
+                                }
+                            },
+                            {t!(&lang, "playback-clip-export")}
+                        }
+                    }
                 }
             }
             // --- transport row ---
@@ -501,6 +675,14 @@ fn ReplayTransport() -> Element {
                 span { class: "readout-sep", "/" }
                 span { class: "readout-total mono", {crate::session::format_tick(total)} }
                 div { class: "grow" }
+                // Clip tools behind one scissors toggle, so the
+                // resting bar stays a transport rather than an editor.
+                button {
+                    class: if tools_open() { "btn chip active" } else { "btn chip" },
+                    title: t!(&lang, "playback-clip-tools"),
+                    onclick: move |_| tools_open.set(!tools_open()),
+                    icons::Scissors {}
+                }
                 // Speed: the desktop's Gauge dropdown, lit off-realtime.
                 div { class: "menu-anchor",
                     button {

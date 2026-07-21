@@ -258,3 +258,6 @@ playback-clip-start = 標記剪輯起點
 playback-clip-end = 標記剪輯終點
 playback-clip-clear = 清除剪輯標記
 playback-clip-export = 匯出剪輯
+
+## export cancelling (extracted from the desktop's main.ftl; keep in sync)
+replays-export-cancelling = 正在取消…

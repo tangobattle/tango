@@ -400,7 +400,7 @@ pub fn ReplaysScreen() -> Element {
                         crate::export::ExportTarget::OpfsTemp(storage)
                     };
                     let (replay, local_rom, remote_rom) = load_pair(storage, lib, &row.file).await?;
-                    crate::export::export_replay(replay, local_rom, remote_rom, stem, target).await?;
+                    crate::export::export_replay(replay, local_rom, remote_rom, stem, target, None).await?;
                     Ok(true)
                 }
                 .await;
@@ -622,8 +622,9 @@ fn save_stem_of(file: &str) -> String {
 }
 
 /// Decode the replay and read both sides' patched ROMs — everything a
-/// playback pair boots from. Shared by Watch and the video exporter.
-async fn load_pair(
+/// playback pair boots from. Shared by Watch, the video exporter, and
+/// the in-session clip export.
+pub(crate) async fn load_pair(
     storage: Option<crate::storage::Storage>,
     lib: Option<crate::library::Library>,
     file: &str,
@@ -688,5 +689,5 @@ async fn watch(
     // The Watch click is a user gesture — grab the audio sink while we
     // can.
     crate::web::ensure_audio(&runtime).await;
-    runtime.borrow_mut().start_replay(replay, local_rom, remote_rom)
+    runtime.borrow_mut().start_replay(replay, local_rom, remote_rom, file)
 }

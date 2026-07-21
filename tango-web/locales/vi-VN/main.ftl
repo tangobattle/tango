@@ -259,3 +259,6 @@ playback-clip-start = Đánh dấu điểm đầu clip
 playback-clip-end = Đánh dấu điểm cuối clip
 playback-clip-clear = Xóa đánh dấu clip
 playback-clip-export = Xuất clip
+
+## export cancelling (extracted from the desktop's main.ftl; keep in sync)
+replays-export-cancelling = Đang hủy…

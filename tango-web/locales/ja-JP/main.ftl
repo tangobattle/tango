@@ -258,3 +258,6 @@ playback-clip-start = クリップの開始位置を設定
 playback-clip-end = クリップの終了位置を設定
 playback-clip-clear = クリップ範囲をクリア
 playback-clip-export = クリップを書き出す
+
+## export cancelling (extracted from the desktop's main.ftl; keep in sync)
+replays-export-cancelling = キャンセル中…

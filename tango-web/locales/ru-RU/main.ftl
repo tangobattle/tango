@@ -279,3 +279,6 @@ playback-clip-start = Отметить начало клипа
 playback-clip-end = Отметить конец клипа
 playback-clip-clear = Сбросить метки клипа
 playback-clip-export = Экспортировать клип
+
+## export cancelling (extracted from the desktop's main.ftl; keep in sync)
+replays-export-cancelling = Отмена…

@@ -458,6 +458,52 @@ pub fn Gauge() -> Element {
 }
 
 #[component]
+pub fn Scissors() -> Element {
+    rsx! {
+        Lucide {
+            circle { cx: "6", cy: "6", r: "3" }
+            path { d: "M8.12 8.12 12 12" }
+            path { d: "M20 4 8.12 15.88" }
+            circle { cx: "6", cy: "18", r: "3" }
+            path { d: "M14.8 14.8 20 20" }
+        }
+    }
+}
+
+#[component]
+pub fn ArrowRightFromLine() -> Element {
+    rsx! {
+        Lucide {
+            path { d: "M3 5v14" }
+            path { d: "M21 12H7" }
+            path { d: "m15 18 6-6-6-6" }
+        }
+    }
+}
+
+#[component]
+pub fn ArrowRightToLine() -> Element {
+    rsx! {
+        Lucide {
+            path { d: "M17 12H3" }
+            path { d: "m11 18 6-6-6-6" }
+            path { d: "M21 5v14" }
+        }
+    }
+}
+
+#[component]
+pub fn Delete() -> Element {
+    rsx! {
+        Lucide {
+            path { d: "M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z" }
+            path { d: "m12 9 6 6" }
+            path { d: "m18 9-6 6" }
+        }
+    }
+}
+
+#[component]
 pub fn PictureInPicture2() -> Element {
     rsx! {
         Lucide {

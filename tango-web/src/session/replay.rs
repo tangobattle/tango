@@ -168,6 +168,9 @@ pub struct ReplaySession {
     /// markers get an unsegmented bar (no prefetch pair here to
     /// re-derive them).
     pub round_boundaries: Vec<u32>,
+    /// The replay's file name inside `replays/` — the clip strip's
+    /// export re-loads the pair from it.
+    pub source_file: String,
 }
 
 /// Resolve a decoded replay's two games against the registry.
@@ -250,6 +253,7 @@ pub fn start(
     replay: tango_pvp::replay::Replay,
     local_rom: Vec<u8>,
     remote_rom: Vec<u8>,
+    source_file: String,
 ) -> anyhow::Result<ReplaySession> {
     let (local_game, _) = resolve_games(&replay)?;
     let round_boundaries: Vec<u32> = replay.round_starts.iter().skip(1).map(|&i| i as u32).collect();
@@ -289,6 +293,7 @@ pub fn start(
         keyframes,
         seek,
         round_boundaries,
+        source_file,
     })
 }
 

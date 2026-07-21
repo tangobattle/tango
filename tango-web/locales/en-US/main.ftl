@@ -290,3 +290,6 @@ playback-clip-start = Mark clip start
 playback-clip-end = Mark clip end
 playback-clip-clear = Clear clip marks
 playback-clip-export = Export clip
+
+## export cancelling (extracted from the desktop's main.ftl; keep in sync)
+replays-export-cancelling = Cancelling…

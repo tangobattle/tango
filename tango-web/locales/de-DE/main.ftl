@@ -274,3 +274,6 @@ playback-clip-start = Clip-Anfang setzen
 playback-clip-end = Clip-Ende setzen
 playback-clip-clear = Clip-Markierungen löschen
 playback-clip-export = Clip exportieren
+
+## export cancelling (extracted from the desktop's main.ftl; keep in sync)
+replays-export-cancelling = Wird abgebrochen…

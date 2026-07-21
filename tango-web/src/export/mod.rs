@@ -78,13 +78,16 @@ pub static EXPORT_CANCEL: GlobalSignal<bool> = Signal::global(|| false);
 
 /// Render `replay` into `target` as a WebM. Runs on the main thread in
 /// cooperative slices; returns once the file is finalized (and, for the
-/// OPFS-temp path, the download kicked off).
+/// OPFS-temp path, the download kicked off). With `range` set, only
+/// the `[start, end)` tick span is encoded (the clip strip's export) —
+/// the run to `start` fast-skips under frameskip.
 pub async fn export_replay(
     replay: tango_pvp::replay::Replay,
     local_rom: Vec<u8>,
     remote_rom: Vec<u8>,
     file_stem: String,
     target: ExportTarget,
+    range: Option<(u32, u32)>,
 ) -> anyhow::Result<()> {
     // Pick the codec: VP9 where supported, else VP8 (both mux into the
     // same WebM); neither → no WebCodecs worth using in this browser.
@@ -96,11 +99,25 @@ pub async fn export_replay(
         anyhow::bail!("this browser has no WebCodecs VP8/VP9 encoder");
     };
 
-    let total = replay.inputs.len();
+    let stream_len = replay.inputs.len();
+    let (start, end) = match range {
+        Some((s, e)) => (
+            (s as usize).min(stream_len),
+            (e as usize).clamp(s as usize, stream_len),
+        ),
+        None => (0, stream_len),
+    };
+    let total = end - start;
+    if total == 0 {
+        anyhow::bail!("empty export range");
+    }
     *EXPORT_CANCEL.write() = false;
     *EXPORT_PROGRESS.write() = Some(Progress { frame: 0, total });
     // Everything below must clear the progress line on every exit path.
-    let result = run(replay, local_rom, remote_rom, &file_stem, &target, codec, codec_id, total).await;
+    let result = run(
+        replay, local_rom, remote_rom, &file_stem, &target, codec, codec_id, start, end,
+    )
+    .await;
     *EXPORT_PROGRESS.write() = None;
     if result.is_err() {
         // Best-effort: don't leave a half-streamed temp behind.
@@ -120,8 +137,10 @@ async fn run(
     target: &ExportTarget,
     codec: &str,
     codec_id: &'static str,
-    total: usize,
+    start: usize,
+    end: usize,
 ) -> anyhow::Result<()> {
+    let total = end - start;
     // ---- the sink + muxer ----
     let handle = match target {
         ExportTarget::Picked(handle) => handle.clone(),
@@ -239,6 +258,36 @@ async fn run(
     // The same boot the viewer uses, minus an audio sink or canvas.
     let (mut playback, local_player, _inputs) = crate::session::replay::boot(&replay, local_rom, remote_rom, false)?;
 
+    // Clip export: fast-skip to the range start under frameskip, then
+    // drop the skip-produced audio so the clip opens clean.
+    if start > 0 {
+        playback.pair_mut().set_frameskip(0, i32::MAX);
+        playback.pair_mut().set_frameskip(1, i32::MAX);
+        while (playback.cursor() as usize) < start {
+            if *EXPORT_CANCEL.peek() {
+                video_encoder.close();
+                audio_encoder.close();
+                anyhow::bail!("cancelled");
+            }
+            if !playback.step() {
+                break;
+            }
+            if playback.cursor() % 600 == 0 {
+                // The skip generates audio nobody wants — cap the
+                // buffers' growth while yielding to the UI.
+                for i in 0..2 {
+                    playback.pair_mut().core_mut(i).audio_buffer().clear();
+                }
+                gloo_timers::future::TimeoutFuture::new(0).await;
+            }
+        }
+        playback.pair_mut().set_frameskip(0, 0);
+        playback.pair_mut().set_frameskip(1, 0);
+        for i in 0..2 {
+            playback.pair_mut().core_mut(i).audio_buffer().clear();
+        }
+    }
+
     // Audio replumbing: native-rate core output → 48 kHz s16 via the
     // mgba resampler (the realtime LinkStream's servo/faux-clock logic
     // doesn't apply — export wants every sample, 1:1).
@@ -281,7 +330,7 @@ async fn run(
             anyhow::bail!("encoder: {msg}");
         }
 
-        if !playback.step() {
+        if playback.cursor() as usize >= end || !playback.step() {
             break;
         }
 

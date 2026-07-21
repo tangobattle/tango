@@ -464,9 +464,10 @@ impl Runtime {
         replay: tango_pvp::replay::Replay,
         local_rom: Vec<u8>,
         remote_rom: Vec<u8>,
+        source_file: String,
     ) -> anyhow::Result<()> {
         self.close_session();
-        let session = crate::session::replay::start(replay, local_rom, remote_rom)?;
+        let session = crate::session::replay::start(replay, local_rom, remote_rom, source_file)?;
         self.save_target = None;
         self.last_persisted_save = None;
         self.adopt_session(Session::Replay(session));
@@ -557,6 +558,15 @@ impl Runtime {
     pub fn replay_seek(&self, target: u32, resume_after: bool) {
         if let Some(Session::Replay(s)) = self.session.as_ref() {
             s.seek.request(target, resume_after);
+        }
+    }
+
+    /// The running replay's file name inside `replays/` — the clip
+    /// strip's export re-loads the pair from it.
+    pub fn replay_source_file(&self) -> Option<String> {
+        match self.session.as_ref() {
+            Some(Session::Replay(s)) => Some(s.source_file.clone()),
+            _ => None,
         }
     }
 
