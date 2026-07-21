@@ -807,15 +807,20 @@ input[type="checkbox"] {
 
 canvas#framebuffer {
   image-rendering: pixelated;
-  width: auto;
+  /* True integer scaling: snap the width down to a whole multiple of
+   * 240px (the height follows via the intrinsic 240x160 aspect). */
+  width: max(240px, round(down, min(100vw, (100vh - 0px) * 1.5), 240px));
   height: auto;
-  max-width: 100%;
-  max-height: 100%;
-  aspect-ratio: 3 / 2;
   filter: drop-shadow(0 6px 24px rgba(0, 0, 0, 0.8));
 }
 
+/* Integer scaling off: fill the stage, letterboxed. The backing store
+ * is a 6x nearest-neighbour render, so the browser's bilinear pass to
+ * the final size stays crisp without pixel shimmer. */
 canvas#framebuffer.fit {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   image-rendering: auto;
 }
 
@@ -927,17 +932,6 @@ canvas#framebuffer.fit {
   margin: 4px 0 14px;
 }
 
-/* ---- touch controls ---- */
-
-.touch-controls {
-  display: none;
-}
-
-@media (pointer: coarse) {
-  .touch-controls {
-    display: block;
-  }
-}
 
 /* ---- drop cue ---- */
 
@@ -1023,4 +1017,249 @@ main.dropping {
   border: 1px solid rgba(236, 238, 237, 0.14);
   border-radius: var(--tech-radius-sm);
   padding: 0 8px;
+}
+
+/* ---- touch controls + mobile (ported from gbaroll) ---- */
+
+/* Rendered inert everywhere; a coarse-pointer screen (a phone or
+   tablet) turns them on over the stage — the session is always
+   landscape there (held upright it rotates, see below). */
+.touch-controls {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .touch-controls {
+    display: block;
+    position: absolute;
+    inset: 0;
+    /* Above the pause badge, below the menu/end overlays. */
+    z-index: 6;
+    /* Only the controls themselves take touches; the stage stays
+       reachable between them. */
+    pointer-events: none;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .touch-controls > * {
+    pointer-events: auto;
+    position: absolute;
+    touch-action: none;
+  }
+
+  .tc-dpad {
+    left: 14px;
+    bottom: 16px;
+    /* Mirrored by DPAD_SIZE in ui/touch.rs. */
+    width: 132px;
+    height: 132px;
+    border-radius: 50%;
+    background: rgba(20, 25, 22, 0.45);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+  }
+
+  /* The cross glyph; inert. */
+  .tc-dpad::before,
+  .tc-dpad::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(236, 238, 237, 0.08);
+    border-radius: 8px;
+    pointer-events: none;
+  }
+
+  .tc-dpad::before {
+    width: 34px;
+    height: 100px;
+  }
+
+  .tc-dpad::after {
+    width: 100px;
+    height: 34px;
+  }
+
+  .tc-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(20, 25, 22, 0.45);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    font-weight: 600;
+  }
+
+  .tc-dpad.held,
+  .tc-btn.held {
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .tc-a {
+    right: 16px;
+    bottom: 78px;
+    width: 58px;
+    height: 58px;
+  }
+
+  .tc-b {
+    right: 82px;
+    bottom: 22px;
+    width: 58px;
+    height: 58px;
+  }
+
+  /* Shoulders hug the top corners, like the real thing. */
+  .tc-l,
+  .tc-r {
+    top: 0;
+    width: 92px;
+    height: 32px;
+  }
+
+  .tc-l {
+    left: 0;
+    border-radius: 0 0 12px 0;
+    border-width: 0 1px 1px 0;
+  }
+
+  .tc-r {
+    right: 0;
+    border-radius: 0 0 0 12px;
+    border-width: 0 0 1px 1px;
+  }
+
+  .tc-pill {
+    border-radius: 999px;
+    height: 26px;
+    padding: 0 14px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .tc-start {
+    left: 50%;
+    transform: translateX(8px);
+    bottom: 12px;
+  }
+
+  .tc-select {
+    left: 50%;
+    transform: translateX(calc(-100% - 8px));
+    bottom: 12px;
+  }
+
+  /* The corner commands and pause badge duck under the shoulders. */
+  .corner-commands {
+    top: 40px;
+  }
+
+  .badge {
+    top: 44px;
+  }
+}
+
+/* A phone held upright: the session view never squeezes into portrait —
+   it renders landscape, rotated 90° onto the tall screen (turn the
+   phone and the picture is upright). The touch controls' pointer math
+   survives the rotation because offsetX/offsetY map through the
+   inverse transform. */
+@media (pointer: coarse) and (orientation: portrait) {
+  .session {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100dvh;
+    height: 100dvw;
+    transform-origin: top left;
+    transform: rotate(90deg) translateY(-100dvw);
+  }
+
+  /* The rotated session's axes are swapped relative to the viewport,
+     so the viewport-unit sizing above swaps too. */
+  canvas#framebuffer {
+    width: max(240px, round(down, min(100dvh, 100dvw * 1.5), 240px));
+  }
+}
+
+/* --- small screens --------------------------------------------------- */
+
+@media (max-width: 700px) {
+  .topbar {
+    gap: 6px;
+    padding: 8px 6px;
+  }
+
+  /* The mark stays; the wordmark is what there's no room for. */
+  .topbar .brand h1 {
+    font-size: 15px;
+  }
+
+  .btn.tab {
+    padding: 6px 10px;
+  }
+
+  /* Fixed-width controls yield to the viewport. */
+  input:not([type]),
+  input[type="text"],
+  select {
+    min-width: 0;
+  }
+
+  /* The selector strip's game row wraps: family full-width, the
+     patch/version slots share the second line. */
+  .game-row {
+    flex-wrap: wrap;
+  }
+
+  .game-row .family {
+    flex: 1 1 100%;
+  }
+
+  .game-row .patch {
+    flex: 1;
+  }
+
+  .game-row .version {
+    width: 80px;
+  }
+
+  /* The lobby band stacks its clusters. */
+  .bottom-band {
+    flex-wrap: wrap;
+  }
+
+  .bottom-band input {
+    flex: 1 1 160px;
+  }
+
+  .matchup .side .nick {
+    font-size: 13px;
+  }
+
+  /* Settings: the sidebar becomes a top pill row. */
+  .settings-main {
+    flex-direction: column;
+  }
+
+  .settings-nav {
+    width: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .settings-nav .btn.tab {
+    width: auto;
+  }
+
+  .gba {
+    max-width: 100%;
+  }
 }
