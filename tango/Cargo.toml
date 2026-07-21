@@ -141,7 +141,7 @@ libc = "0.2"
 # Stack-allocated string for formatting the crash summary in the handler
 # without heap allocation (see crash_log.rs).
 arrayvec = "0.7"
-indexmap = "2"
+indexmap.workspace = true
 clap = { version = "4", features = ["derive"] }
 
 [features]

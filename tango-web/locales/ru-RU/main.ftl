@@ -81,3 +81,97 @@ welcome-step-roms = Добавьте свои ROM
 welcome-step-roms-detected = Обнаружено { $count } ROM.
 welcome-step-nickname = Задайте свой ник
 welcome-roms-needed = Добавьте хотя бы один ROM, чтобы продолжить.
+
+## save view (extracted from the desktop's main.ftl; keep in sync)
+save-tab-navicust = NaviCust
+save-tab-folder = Папка
+save-tab-patch-cards = Мод карты
+save-tab-auto-battle-data = Данные автобоя
+save-empty = В этом сохранении нет данных для этого вида.
+save-copy = Копировать
+save-copy-image = Копировать как изображение
+copied = Скопировано!
+save-edit = Изменить
+save-edit-save = Сохранить
+save-edit-cancel = Отмена
+save-edit-sort = Сортировка
+save-edit-clear = Очистить всё
+folder-group = Группировать по чипу
+navi-style = Стиль
+navi-style-unset = (без стиля)
+navi-id = ID Navi
+navi-link-navi = Link Navi
+navi-base-hp = HP
+navi-buster = Бастер
+navi-buster-attack = Атака
+navi-buster-rapid = Скорострельность
+navi-buster-charge = Заряд
+navi-power-attack = Мощная атака
+navi-edit-select = Нави
+folder-edit-search = Поиск чипов…
+folder-edit-folder = Папка
+folder-edit-count = { $count } / { $limit }
+folder-edit-navi = Нави { $used } / { $limit }
+folder-edit-mega = Мега { $used } / { $limit }
+folder-edit-giga = Гига { $used } / { $limit }
+folder-edit-dark = Дарк { $used } / { $limit }
+folder-edit-reg-memory = Reg { $mb }MB
+folder-edit-tag-memory = Tag { $mb }MB
+folder-sort-id = ID
+folder-sort-name = Название
+folder-sort-code = Код
+folder-sort-attack = Атака
+folder-sort-element = Элемент
+folder-sort-mb = MB
+navicust-grid-size = Сетка: { $cols } × { $rows }
+navicust-parts = Установленные детали
+navicust-empty = (ничего не установлено)
+navicust-edit-grid = NaviCust
+navicust-edit-count = { $count ->
+    [one] { $count } деталь
+    [few] { $count } детали
+   *[other] { $count } деталей
+}
+navicust-edit-rotate = Повернуть
+navicust-edit-compress = Сжать
+navicust-edit-uncompress = Разжать
+navicust-edit-search = Поиск деталей…
+navicust-sort-id = ID
+navicust-sort-name = Название
+navicust-sort-color = Цвет
+patch-card-edit-search = Поиск карт…
+patch-card-edit-count = { $count ->
+    [one] { $count } карта
+    [few] { $count } карты
+   *[other] { $count } карт
+}
+patch-card-edit-mb = { $mb }MB / { $limit }MB
+patch-card-sort-id = ID
+patch-card-sort-name = Название
+patch-card-sort-mb = MB
+patch-card4-none = Нет
+auto-battle-data-secondary-standard-chips = Стандартные чипы (второстепенные)
+auto-battle-data-standard-chips = Стандартные чипы
+auto-battle-data-mega-chips = Мега чипы
+auto-battle-data-giga-chip = Гига чип
+auto-battle-data-combos = Комбо
+auto-battle-data-program-advance = Продвинутые программы
+auto-battle-data-edit-used = Использовано
+auto-battle-data-edit-secondary = Втор.
+auto-battle-data-edit-count = { $count ->
+    [one] { $count } чип
+    [few] { $count } чипа
+   *[other] { $count } чипов
+}
+save-actions = Действия с сохранением
+save-duplicate = Дублировать
+save-rename = Переименовать
+save-rename-confirm = Переименовать
+save-delete-confirm = Удалить
+save-action-cancel = Отмена
+save-delete-prompt = Удалить { $name }?
+save-name-placeholder = Новое имя
+save-new = Новое сохранение
+save-new-confirm = Создать
+save-template-default = (по умолчанию)
+save-template-pick = Выбрать шаблон…

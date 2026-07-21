@@ -231,6 +231,45 @@ pub async fn scan(storage: &Storage) -> Vec<Patch> {
     out
 }
 
+/// A patch version's `rom_overrides` (charset + name/description
+/// overrides for the save view's assets), read fresh from the synced
+/// `info.toml`. The scanned [`Patch`] list deliberately doesn't carry
+/// these — they're only needed when a selection actually loads, and the
+/// parse is cheap at that point. `Default` when the patch or version is
+/// missing or the file doesn't parse.
+pub async fn version_overrides(
+    storage: &Storage,
+    name: &str,
+    version: &semver::Version,
+) -> crate::rom_overrides::Overrides {
+    #[derive(serde::Deserialize)]
+    struct VersionOverrides {
+        #[serde(default)]
+        rom_overrides: crate::rom_overrides::Overrides,
+    }
+    #[derive(serde::Deserialize)]
+    struct MetadataOverrides {
+        versions: HashMap<String, VersionOverrides>,
+    }
+    if name.contains('/') || name.contains('\\') {
+        return Default::default();
+    }
+    let Ok(dir) = dir_at(storage.patches(), &[name]).await else {
+        return Default::default();
+    };
+    let Ok(Some(raw)) = storage::read(&dir, "info.toml").await else {
+        return Default::default();
+    };
+    let Ok(info) = toml::from_str::<MetadataOverrides>(&String::from_utf8_lossy(&raw)) else {
+        return Default::default();
+    };
+    info.versions
+        .into_iter()
+        .find(|(v, _)| semver::Version::parse(v).is_ok_and(|v| v == *version))
+        .map(|(_, v)| v.rom_overrides)
+        .unwrap_or_default()
+}
+
 /// Read and apply `patches/<name>/v<version>/<CODE>_<REV>.bps` on top
 /// of `rom` — byte-for-byte the desktop's `apply_patch_from_disk`.
 pub async fn apply(

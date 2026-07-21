@@ -39,6 +39,7 @@ futures = "0.3"
 # on them without cloning tango).
 getgud = { git = "https://github.com/tangobattle/getgud" }
 image = { version = "0.25", default-features = false }
+indexmap = "2"
 itertools = "0.13"
 log = "0.4"
 mgba = { git = "https://github.com/tangobattle/mgba-rs" }

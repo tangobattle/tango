@@ -1263,3 +1263,319 @@ main.dropping {
     max-width: 100%;
   }
 }
+
+/* ---- save view (save_view/) ----
+ * Mirrors the desktop's save_view metrics: pane gap 8, strip paddings
+ * 6/[4,8], 28px chip sprites at 2x native, fixed stat columns
+ * (count 22 / code 22 / ATK 50 / MB 50), class-accent stripe 6px,
+ * zebra wash at 5% text. */
+
+.grow {
+  flex: 1;
+}
+
+.pix {
+  image-rendering: pixelated;
+}
+
+.save-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pane-gap);
+}
+
+/* Persistent navi identity strip; the save-level actions at its right
+ * edge. Pane pads 6, the card another [4,6] (desktop navi.rs). */
+.save-strip {
+  display: flex;
+  align-items: center;
+  padding: 6px;
+}
+
+.save-strip .strip-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.navi-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
+}
+
+.navi-card.bare {
+  gap: 14px;
+}
+
+.navi-card .emblem {
+  width: 45px;
+  height: 45px;
+  flex: none;
+}
+
+.navi-card .info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.navi-card .name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.navi-card .name {
+  font-size: 18px; /* TITLE */
+}
+
+.navi-card .edit-hint {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.navi-card .stats {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.navi-card .buster {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.stat-inline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.stat-inline .stat-label {
+  color: var(--muted);
+  font-size: 11px; /* CAPTION */
+}
+
+.stat-inline .stat-value {
+  font-size: 15px; /* HEADING */
+}
+
+/* Sub-tab strip: tabs left (scrollable), the active tab's extras right. */
+.save-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+}
+
+.save-tabs .subtabs {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  min-width: 0;
+}
+
+.save-tabs .subtabs::-webkit-scrollbar {
+  display: none;
+}
+
+.btn.subtab {
+  padding: 6px 14px;
+  border-radius: 12px 3px 12px 3px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.btn.subtab:hover {
+  background: var(--accent-weak);
+}
+
+.btn.subtab.active {
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--accent) 85%, white 4%),
+    color-mix(in srgb, var(--accent) 70%, black 12%)
+  );
+  color: var(--accent-ink);
+  font-weight: 600;
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.save-tabs .tab-extras {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.save-tabs .check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.save-tabs .check input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.btn.subtle {
+  padding: 4px 10px;
+}
+
+/* The active tab's body: its own scroll region so the strips (and the
+ * bottom band) stay planted, like the desktop's body scrollable. */
+.save-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Chip list (folder read view + ABD sections): rows flush to the pane
+ * edges, zebra wash, class-accent stripe. */
+.chip-list {
+  padding: 0;
+  overflow: hidden;
+}
+
+.chip-row-wrap {
+  display: flex;
+  align-items: stretch;
+}
+
+.chip-row-wrap:nth-child(even) {
+  background: rgba(236, 238, 237, 0.05);
+}
+
+.chip-row-wrap .stripe {
+  width: 6px;
+  flex: none;
+}
+
+.chip-row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 12px;
+}
+
+.chip-row .c-count {
+  width: 22px;
+  flex: none;
+}
+
+.chip-row .c-icon,
+.chip-row .c-elem {
+  width: 28px;
+  height: 28px;
+  flex: none;
+}
+
+.chip-row .c-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.chip-row .c-code {
+  width: 22px;
+  flex: none;
+  text-align: right;
+  font-family: "Noto Sans Mono", ui-monospace, monospace;
+}
+
+.chip-row .c-atk {
+  width: 50px;
+  flex: none;
+  text-align: right;
+}
+
+.chip-row .c-mb {
+  width: 50px;
+  flex: none;
+  text-align: right;
+  font-size: 11px; /* CAPTION */
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.badge {
+  font-size: 10px;
+  color: #fff;
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1.2;
+}
+
+.badge.reg {
+  background: #ff42a5;
+}
+
+.badge.tag {
+  background: #29a121;
+}
+
+/* Follow-cursor chip popover (the desktop's chip tooltip). */
+.chip-pop {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  transform: translate(14px, 18px);
+  background: var(--pop-bg, rgba(0, 0, 0, 0.85));
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 8px;
+  max-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chip-pop.flip {
+  transform: translate(calc(-100% - 14px), 18px);
+}
+
+.chip-pop p {
+  margin: 0;
+  font-size: 11px;
+}
+
+/* Empty-tab placeholder: centered icon over message, owning the pane. */
+.save-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px;
+  color: var(--muted);
+}
+
+.save-placeholder .ph-icon svg {
+  width: 36px;
+  height: 36px;
+}
+
+.save-placeholder .ph-msg {
+  font-size: 15px; /* HEADING */
+}

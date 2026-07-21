@@ -7583,6 +7583,7 @@ dependencies = [
  "getrandom 0.2.16",
  "gloo-timers",
  "image",
+ "indexmap",
  "js-sys",
  "log",
  "mgba",

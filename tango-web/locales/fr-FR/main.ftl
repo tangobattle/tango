@@ -80,3 +80,94 @@ welcome-step-roms = Ajoutez vos ROMs
 welcome-step-roms-detected = { $count } ROMs détectées.
 welcome-step-nickname = Choisissez votre pseudo
 welcome-roms-needed = Ajoutez au moins une ROM pour continuer.
+
+## save view (extracted from the desktop's main.ftl; keep in sync)
+save-tab-navicust = NaviCust
+save-tab-folder = Folder
+save-tab-patch-cards = Patch Cards
+save-tab-auto-battle-data = Auto Battle Data
+save-empty = Cette sauvegarde n'a pas de données pour cette vue.
+save-copy = Copier
+save-copy-image = Copier en image
+copied = Copié !
+save-edit = Modifier
+save-edit-save = Enregistrer
+save-edit-cancel = Annuler
+save-edit-sort = Trier
+save-edit-clear = Tout effacer
+folder-group = Grouper par puce
+navi-style = Style
+navi-style-unset = (aucun style)
+navi-id = ID du Navi
+navi-link-navi = Link Navi
+navi-base-hp = HP
+navi-buster = Buster
+navi-buster-attack = Attaque
+navi-buster-rapid = Cadence
+navi-buster-charge = Charge
+navi-power-attack = Attaque puissante
+navi-edit-select = Navi
+folder-edit-search = Rechercher des puces…
+folder-edit-folder = Folder
+folder-edit-count = { $count } / { $limit }
+folder-edit-navi = Navi { $used } / { $limit }
+folder-edit-mega = Mega { $used } / { $limit }
+folder-edit-giga = Giga { $used } / { $limit }
+folder-edit-dark = Dark { $used } / { $limit }
+folder-edit-reg-memory = Reg { $mb }MB
+folder-edit-tag-memory = Tag { $mb }MB
+folder-sort-id = ID
+folder-sort-name = Nom
+folder-sort-code = Code
+folder-sort-attack = Attaque
+folder-sort-element = Élément
+folder-sort-mb = MB
+navicust-grid-size = Grille: { $cols } × { $rows }
+navicust-parts = Pièces installées
+navicust-empty = (aucune installée)
+navicust-edit-grid = NaviCust
+navicust-edit-count = { $count ->
+    [one] { $count } pièce
+   *[other] { $count } pièces
+}
+navicust-edit-rotate = Pivoter
+navicust-edit-compress = Compresser
+navicust-edit-uncompress = Décompresser
+navicust-edit-search = Rechercher des pièces…
+navicust-sort-id = ID
+navicust-sort-name = Nom
+navicust-sort-color = Couleur
+patch-card-edit-search = Rechercher des cartes…
+patch-card-edit-count = { $count ->
+    [one] { $count } carte
+   *[other] { $count } cartes
+}
+patch-card-edit-mb = { $mb }MB / { $limit }MB
+patch-card-sort-id = ID
+patch-card-sort-name = Nom
+patch-card-sort-mb = MB
+patch-card4-none = Aucune
+auto-battle-data-secondary-standard-chips = Standard chips (secondaire)
+auto-battle-data-standard-chips = Standard chips
+auto-battle-data-mega-chips = Mega chips
+auto-battle-data-giga-chip = Giga chip
+auto-battle-data-combos = Combos
+auto-battle-data-program-advance = Program advance
+auto-battle-data-edit-used = Usages
+auto-battle-data-edit-secondary = Sec.
+auto-battle-data-edit-count = { $count ->
+    [one] { $count } puce
+   *[other] { $count } puces
+}
+save-actions = Actions de sauvegarde
+save-duplicate = Dupliquer
+save-rename = Renommer
+save-rename-confirm = Renommer
+save-delete-confirm = Supprimer
+save-action-cancel = Annuler
+save-delete-prompt = Supprimer { $name } ?
+save-name-placeholder = Nouveau nom
+save-new = Nouvelle sauvegarde
+save-new-confirm = Créer
+save-template-default = (par défaut)
+save-template-pick = Choisir un modèle…

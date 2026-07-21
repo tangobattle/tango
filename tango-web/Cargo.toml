@@ -66,6 +66,9 @@ unic-langid = { version = "0.9", features = ["likelysubtags"] }
 # data URL for the <img> tag.
 image = { workspace = true, features = ["png"] }
 base64 = "0.22"
+# Save view: the folder tab's group-by-chip collapse (same crate the
+# desktop's save_view uses).
+indexmap.workspace = true
 
 dioxus = { version = "0.7", features = ["web"] }
 wasm-bindgen = "0.2"

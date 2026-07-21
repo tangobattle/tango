@@ -187,6 +187,55 @@ pub fn Trash2() -> Element {
     }
 }
 
+/// lucide `files` — the save view's Folder tab.
+#[component]
+pub fn Files() -> Element {
+    rsx! {
+        Lucide {
+            path { d: "M20 7h-3a2 2 0 0 1-2-2V2" }
+            path { d: "M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l5 5v9a2 2 0 0 1-2 2Z" }
+            path { d: "M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8" }
+        }
+    }
+}
+
+/// lucide `credit-card` — the save view's Patch Cards tab.
+#[component]
+pub fn CreditCard() -> Element {
+    rsx! {
+        Lucide {
+            rect { x: "2", y: "5", width: "20", height: "14", rx: "2" }
+            line { x1: "2", x2: "22", y1: "10", y2: "10" }
+        }
+    }
+}
+
+/// lucide `clipboard-copy` — the save view's copy-as-text button.
+#[component]
+pub fn ClipboardCopy() -> Element {
+    rsx! {
+        Lucide {
+            rect { x: "8", y: "2", width: "8", height: "4", rx: "1", ry: "1" }
+            path { d: "M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2" }
+            path { d: "M16 4h2a2 2 0 0 1 2 2v4" }
+            path { d: "M21 14H11" }
+            path { d: "m15 10-4 4 4 4" }
+        }
+    }
+}
+
+/// lucide `file-question-mark` — the save view's empty-tab placeholder.
+#[component]
+pub fn FileQuestion() -> Element {
+    rsx! {
+        Lucide {
+            path { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" }
+            path { d: "M9.1 9a3 3 0 0 1 5.82 1c0 2-3 3-3 3" }
+            path { d: "M12 17h.01" }
+        }
+    }
+}
+
 #[component]
 pub fn Download() -> Element {
     rsx! {

@@ -80,3 +80,94 @@ welcome-step-roms = Voeg je ROMs toe
 welcome-step-roms-detected = { $count } ROMs gedetecteerd.
 welcome-step-nickname = Stel je bijnaam in
 welcome-roms-needed = Voeg minstens één ROM toe om door te gaan.
+
+## save view (extracted from the desktop's main.ftl; keep in sync)
+save-tab-navicust = NaviCust
+save-tab-folder = Map
+save-tab-patch-cards = Patch Cards
+save-tab-auto-battle-data = Auto Battle Data
+save-empty = Deze save heeft geen gegevens voor deze weergave.
+save-copy = Kopiëren
+save-copy-image = Als afbeelding kopiëren
+copied = Gekopieerd!
+save-edit = Bewerken
+save-edit-save = Opslaan
+save-edit-cancel = Annuleren
+save-edit-sort = Sorteren
+save-edit-clear = Alles wissen
+folder-group = Groeperen per chip
+navi-style = Stijl
+navi-style-unset = (geen stijl)
+navi-id = Navi-ID
+navi-link-navi = Link Navi
+navi-base-hp = HP
+navi-buster = Buster
+navi-buster-attack = Aanval
+navi-buster-rapid = Rapid
+navi-buster-charge = Charge
+navi-power-attack = Krachtaanval
+navi-edit-select = Navi
+folder-edit-search = Chips zoeken…
+folder-edit-folder = Map
+folder-edit-count = { $count } / { $limit }
+folder-edit-navi = Navi { $used } / { $limit }
+folder-edit-mega = Mega { $used } / { $limit }
+folder-edit-giga = Giga { $used } / { $limit }
+folder-edit-dark = Dark { $used } / { $limit }
+folder-edit-reg-memory = Reg { $mb }MB
+folder-edit-tag-memory = Tag { $mb }MB
+folder-sort-id = ID
+folder-sort-name = Naam
+folder-sort-code = Code
+folder-sort-attack = Aanval
+folder-sort-element = Element
+folder-sort-mb = MB
+navicust-grid-size = Raster: { $cols } × { $rows }
+navicust-parts = Geïnstalleerde onderdelen
+navicust-empty = (geen geïnstalleerd)
+navicust-edit-grid = NaviCust
+navicust-edit-count = { $count ->
+    [one] { $count } onderdeel
+   *[other] { $count } onderdelen
+}
+navicust-edit-rotate = Draaien
+navicust-edit-compress = Comprimeren
+navicust-edit-uncompress = Decomprimeren
+navicust-edit-search = Onderdelen zoeken…
+navicust-sort-id = ID
+navicust-sort-name = Naam
+navicust-sort-color = Kleur
+patch-card-edit-search = Kaarten zoeken…
+patch-card-edit-count = { $count ->
+    [one] { $count } kaart
+   *[other] { $count } kaarten
+}
+patch-card-edit-mb = { $mb }MB / { $limit }MB
+patch-card-sort-id = ID
+patch-card-sort-name = Naam
+patch-card-sort-mb = MB
+patch-card4-none = Geen
+auto-battle-data-secondary-standard-chips = Standaard chips (secundair)
+auto-battle-data-standard-chips = Standaard chips
+auto-battle-data-mega-chips = Mega chips
+auto-battle-data-giga-chip = Giga chip
+auto-battle-data-combos = Combo's
+auto-battle-data-program-advance = Program advance
+auto-battle-data-edit-used = Gebruikt
+auto-battle-data-edit-secondary = Sec.
+auto-battle-data-edit-count = { $count ->
+    [one] { $count } chip
+   *[other] { $count } chips
+}
+save-actions = Save-acties
+save-duplicate = Dupliceren
+save-rename = Hernoemen
+save-rename-confirm = Hernoemen
+save-delete-confirm = Verwijderen
+save-action-cancel = Annuleren
+save-delete-prompt = { $name } verwijderen?
+save-name-placeholder = Nieuwe naam
+save-new = Nieuwe save
+save-new-confirm = Aanmaken
+save-template-default = (standaard)
+save-template-pick = Kies een sjabloon…

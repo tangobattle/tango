@@ -4,7 +4,7 @@
 //! Tango's.
 
 mod diag;
-mod icons;
+pub(crate) mod icons;
 mod lobby_band;
 mod patches_tab;
 mod play;
