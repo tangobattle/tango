@@ -5,9 +5,12 @@
 //! framebuffer expanded + integer-upscaled into a `VideoFrame`, the
 //! cores' native-rate audio resampled to 48 kHz `AudioData`, both fed
 //! through `VideoEncoder` / `AudioEncoder` (VP9, falling back to VP8;
-//! Opus), and the chunks muxed into a WebM by `webm.rs`. No lossless
-//! mode — WebCodecs doesn't offer one — so the desktop's lossless
-//! render stays desktop-only.
+//! Opus), and the chunks **streamed** through the WebM muxer as they
+//! arrive — memory never holds more than the current cluster. The
+//! stream lands in the user's own file via `showSaveFilePicker` where
+//! the browser has it, else in an OPFS temp handed to the downloader.
+//! No lossless mode — WebCodecs doesn't offer one — so the desktop's
+//! lossless render stays desktop-only.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -15,12 +18,18 @@ use std::rc::Rc;
 use dioxus::prelude::*;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen_futures::JsFuture;
+use web_sys::{FileSystemFileHandle, FileSystemGetFileOptions};
 
 use crate::platform::video::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
+mod sink;
 mod webcodecs;
 mod webm;
 
+pub use sink::{pick_save_file, save_picker_available};
+
+use sink::FileSink;
 use webcodecs::obj;
 
 /// Nearest-neighbor integer upscale baked into the encoded frames, so
@@ -40,6 +49,20 @@ const AUDIO_BITRATE: f64 = 128_000.0;
 /// Request a keyframe every ~2s: bounds cluster spans + seek granularity.
 const KEYFRAME_INTERVAL: usize = 120;
 
+/// The OPFS temp the fallback path streams into (outside the scanned
+/// subdirectories).
+const TEMP_FILE: &str = "export-tmp.webm";
+
+/// Where the export streams to.
+pub enum ExportTarget {
+    /// The user's own file, picked up front (Chromium): the video
+    /// never materializes in memory or OPFS at all.
+    Picked(FileSystemFileHandle),
+    /// Browsers without the picker: an OPFS temp, handed to the
+    /// downloader once complete, then deleted.
+    OpfsTemp(crate::storage::Storage),
+}
+
 /// Live progress of the running export, for the Replays tab's status
 /// line. `None` = no export running.
 #[derive(Clone, Copy, PartialEq)]
@@ -53,14 +76,15 @@ pub static EXPORT_PROGRESS: GlobalSignal<Option<Progress>> = Signal::global(|| N
 /// yield point.
 pub static EXPORT_CANCEL: GlobalSignal<bool> = Signal::global(|| false);
 
-/// Render `replay` to a WebM and hand it to the browser's downloader.
-/// Runs on the main thread in cooperative slices; returns once the
-/// download has been kicked off (or the export failed / was cancelled).
+/// Render `replay` into `target` as a WebM. Runs on the main thread in
+/// cooperative slices; returns once the file is finalized (and, for the
+/// OPFS-temp path, the download kicked off).
 pub async fn export_replay(
     replay: tango_pvp::replay::Replay,
     local_rom: Vec<u8>,
     remote_rom: Vec<u8>,
     file_stem: String,
+    target: ExportTarget,
 ) -> anyhow::Result<()> {
     // Pick the codec: VP9 where supported, else VP8 (both mux into the
     // same WebM); neither → no WebCodecs worth using in this browser.
@@ -76,33 +100,70 @@ pub async fn export_replay(
     *EXPORT_CANCEL.write() = false;
     *EXPORT_PROGRESS.write() = Some(Progress { frame: 0, total });
     // Everything below must clear the progress line on every exit path.
-    let result = run(replay, local_rom, remote_rom, file_stem, codec, codec_id, total).await;
+    let result = run(replay, local_rom, remote_rom, &file_stem, &target, codec, codec_id, total).await;
     *EXPORT_PROGRESS.write() = None;
+    if result.is_err() {
+        // Best-effort: don't leave a half-streamed temp behind.
+        if let ExportTarget::OpfsTemp(storage) = &target {
+            let _ = crate::storage::delete(storage.root(), TEMP_FILE).await;
+        }
+    }
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run(
     replay: tango_pvp::replay::Replay,
     local_rom: Vec<u8>,
     remote_rom: Vec<u8>,
-    file_stem: String,
+    file_stem: &str,
+    target: &ExportTarget,
     codec: &str,
     codec_id: &'static str,
     total: usize,
 ) -> anyhow::Result<()> {
-    // Shared sinks the encoder callbacks write into.
-    let chunks: Rc<RefCell<Vec<webm::Chunk>>> = Rc::new(RefCell::new(Vec::new()));
+    // ---- the sink + muxer ----
+    let handle = match target {
+        ExportTarget::Picked(handle) => handle.clone(),
+        ExportTarget::OpfsTemp(storage) => {
+            let opts = FileSystemGetFileOptions::new();
+            opts.set_create(true);
+            JsFuture::from(storage.root().get_file_handle_with_options(TEMP_FILE, &opts))
+                .await
+                .map_err(|e| anyhow::anyhow!("temp file: {e:?}"))?
+                .dyn_into()
+                .map_err(|_| anyhow::anyhow!("expected a file handle"))?
+        }
+    };
+    let sink = FileSink::open(&handle).await?;
+    let mut muxer = webm::StreamingMuxer::begin(
+        sink,
+        webm::MuxConfig {
+            video_codec_id: codec_id,
+            width: OUT_W as u32,
+            height: OUT_H as u32,
+            audio_sample_rate: OPUS_RATE,
+            audio_channels: 2,
+        },
+    )
+    .await?;
+
+    // ---- the encoders ----
+    // Callbacks are synchronous: they only copy the chunk bytes into
+    // these queues; the driver loop moves them into the muxer and does
+    // the (async) sink writes with no RefCell borrow held.
+    let video_q: Rc<RefCell<Vec<webm::Chunk>>> = Rc::new(RefCell::new(Vec::new()));
+    let audio_q: Rc<RefCell<Vec<webm::Chunk>>> = Rc::new(RefCell::new(Vec::new()));
     let error: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
     let opus_private: Rc<RefCell<Option<Vec<u8>>>> = Rc::new(RefCell::new(None));
 
-    let read_chunk = |chunk: JsValue, track: webm::Track| -> webm::Chunk {
+    let read_chunk = |chunk: JsValue| -> webm::Chunk {
         let chunk: webcodecs::EncodedChunk = chunk.unchecked_into();
         let mut data = vec![0u8; chunk.byte_length() as usize];
         let array = js_sys::Uint8Array::new_with_length(data.len() as u32);
         chunk.copy_to(&array);
         array.copy_to(&mut data);
         webm::Chunk {
-            track,
             timestamp_us: chunk.timestamp(),
             key: chunk.type_() == "key",
             data,
@@ -110,13 +171,13 @@ async fn run(
     };
 
     let video_output = {
-        let chunks = chunks.clone();
+        let video_q = video_q.clone();
         Closure::<dyn FnMut(JsValue, JsValue)>::new(move |chunk: JsValue, _meta: JsValue| {
-            chunks.borrow_mut().push(read_chunk(chunk, webm::Track::Video));
+            video_q.borrow_mut().push(read_chunk(chunk));
         })
     };
     let audio_output = {
-        let chunks = chunks.clone();
+        let audio_q = audio_q.clone();
         let opus_private = opus_private.clone();
         Closure::<dyn FnMut(JsValue, JsValue)>::new(move |chunk: JsValue, meta: JsValue| {
             // The first chunk's metadata carries the OpusHead the WebM
@@ -137,7 +198,7 @@ async fn run(
                     }
                 }
             }
-            chunks.borrow_mut().push(read_chunk(chunk, webm::Track::Audio));
+            audio_q.borrow_mut().push(read_chunk(chunk));
         })
     };
     let make_error_cb = |slot: Rc<RefCell<Option<String>>>| {
@@ -174,6 +235,7 @@ async fn run(
         ("bitrate", JsValue::from_f64(AUDIO_BITRATE)),
     ]));
 
+    // ---- the pair ----
     // The same boot the viewer uses, minus an audio sink or canvas.
     let (mut playback, local_player) = crate::session::replay::boot(&replay, local_rom, remote_rom, false)?;
 
@@ -188,6 +250,26 @@ async fn run(
 
     let mut rgba = vec![0u8; OUT_W * OUT_H * 4];
     let mut frame_idx: usize = 0;
+
+    // Move callback-queued chunks into the muxer and stream what's
+    // ordered. Sync borrows drop before any await.
+    macro_rules! pump_muxer {
+        ($drain:expr) => {{
+            if !muxer.tracks_written() {
+                let head = opus_private.borrow().clone();
+                if let Some(head) = head {
+                    muxer.write_tracks(&head).await?;
+                }
+            }
+            for c in video_q.borrow_mut().drain(..) {
+                muxer.push_video(c);
+            }
+            for c in audio_q.borrow_mut().drain(..) {
+                muxer.push_audio(c);
+            }
+            muxer.pump($drain).await?;
+        }};
+    }
 
     loop {
         if *EXPORT_CANCEL.peek() {
@@ -251,14 +333,17 @@ async fn run(
                 frame: frame_idx,
                 total,
             });
-            // Yield so the UI paints; stall while the encoder queue is
-            // deep so unencoded frames don't pile up in memory.
+            // Stream out what the encoders have produced, then yield so
+            // the UI paints; stall while the encoder queues run deep so
+            // unencoded frames don't pile up in memory.
+            pump_muxer!(false);
             gloo_timers::future::TimeoutFuture::new(0).await;
             while video_encoder.encode_queue_size() > 60 || audio_encoder.audio_encode_queue_size() > 60 {
                 if *EXPORT_CANCEL.peek() || error.borrow().is_some() {
                     break;
                 }
                 gloo_timers::future::TimeoutFuture::new(10).await;
+                pump_muxer!(false);
             }
         }
     }
@@ -266,28 +351,29 @@ async fn run(
     if !pending_audio.is_empty() {
         flush_audio(&audio_encoder, &mut pending_audio, &mut audio_samples_sent);
     }
-    let _ = wasm_bindgen_futures::JsFuture::from(video_encoder.flush()).await;
-    let _ = wasm_bindgen_futures::JsFuture::from(audio_encoder.flush()).await;
+    let _ = JsFuture::from(video_encoder.flush()).await;
+    let _ = JsFuture::from(audio_encoder.flush()).await;
     video_encoder.close();
     audio_encoder.close();
     if let Some(msg) = error.borrow_mut().take() {
         anyhow::bail!("encoder: {msg}");
     }
     // The callbacks are done for good once the encoders are closed.
+    pump_muxer!(true);
     drop((video_output, audio_output, video_error, audio_error));
 
-    let config = webm::MuxConfig {
-        video_codec_id: codec_id,
-        width: OUT_W as u32,
-        height: OUT_H as u32,
-        opus_codec_private: opus_private.borrow_mut().take().unwrap_or_default(),
-        audio_sample_rate: OPUS_RATE,
-        audio_channels: 2,
-        duration_ms: frame_idx as f64 * FRAME_US / 1000.0,
-    };
-    let chunks = std::mem::take(&mut *chunks.borrow_mut());
-    let file = webm::mux(&config, chunks);
-    crate::web::download_bytes(&format!("{file_stem}.webm"), &file);
+    muxer.finish(frame_idx as f64 * FRAME_US / 1000.0).await?;
+
+    // The picker path streamed straight into the user's file; the OPFS
+    // temp still needs handing to the downloader.
+    if let ExportTarget::OpfsTemp(storage) = target {
+        let bytes = crate::storage::read(storage.root(), TEMP_FILE)
+            .await
+            .map_err(|e| anyhow::anyhow!("read temp: {e}"))?
+            .ok_or_else(|| anyhow::anyhow!("export temp disappeared"))?;
+        crate::web::download_bytes(&format!("{file_stem}.webm"), &bytes);
+        let _ = crate::storage::delete(storage.root(), TEMP_FILE).await;
+    }
     Ok(())
 }
 

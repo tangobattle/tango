@@ -367,8 +367,8 @@ pub fn ReplaysScreen() -> Element {
         }
     };
 
-    // Render the replay to a WebM through WebCodecs; progress + cancel
-    // ride the export signals.
+    // Render the replay to a WebM through WebCodecs, streaming to disk;
+    // progress + cancel ride the export signals.
     let exporting = crate::export::EXPORT_PROGRESS.read().is_some();
     let on_export = {
         let selected_row = selected_row.clone();
@@ -381,14 +381,34 @@ pub fn ReplaysScreen() -> Element {
             let lib = library.read().clone().flatten();
             spawn(async move {
                 let lang = crate::i18n::LANG.peek().clone();
+                let stem = save_stem_of(&row.file);
                 let result = async {
+                    // Where supported, ask for the destination first —
+                    // the click's user activation is still live, and the
+                    // whole render then streams straight to the user's
+                    // file. Elsewhere: stream into an OPFS temp.
+                    let target = if crate::export::save_picker_available() {
+                        match crate::export::pick_save_file(&format!("{stem}.webm")).await? {
+                            Some(handle) => crate::export::ExportTarget::Picked(handle),
+                            // Dismissing the picker is a quiet cancel.
+                            None => return Ok(false),
+                        }
+                    } else {
+                        let Some(storage) = storage.clone() else {
+                            anyhow::bail!("storage unavailable");
+                        };
+                        crate::export::ExportTarget::OpfsTemp(storage)
+                    };
                     let (replay, local_rom, remote_rom) = load_pair(storage, lib, &row.file).await?;
-                    crate::export::export_replay(replay, local_rom, remote_rom, save_stem_of(&row.file)).await
+                    crate::export::export_replay(replay, local_rom, remote_rom, stem, target).await?;
+                    Ok(true)
                 }
                 .await;
                 match result {
-                    Ok(()) => *WATCH_STATUS.write() = Some(t!(&lang, "replays-export-success")),
+                    Ok(true) => *WATCH_STATUS.write() = Some(t!(&lang, "replays-export-success")),
+                    Ok(false) => {}
                     Err(e) => {
+                        let e: anyhow::Error = e;
                         *WATCH_STATUS.write() = Some(t!(&lang, "replays-export-error", error = format!("{e:#}")));
                     }
                 }

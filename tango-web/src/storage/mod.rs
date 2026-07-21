@@ -45,6 +45,7 @@ fn err(msg: &str) -> StorageError {
 /// The app's OPFS root. Cheap to clone (JS handles inside).
 #[derive(Clone)]
 pub struct Storage {
+    root: FileSystemDirectoryHandle,
     roms: FileSystemDirectoryHandle,
     saves: FileSystemDirectoryHandle,
     replays: FileSystemDirectoryHandle,
@@ -65,11 +66,18 @@ impl Storage {
         let replays = subdir(&root, "replays").await?;
         let patches = subdir(&root, "patches").await?;
         Ok(Storage {
+            root,
             roms,
             saves,
             replays,
             patches,
         })
+    }
+
+    /// The OPFS root itself — scratch space outside the scanned
+    /// subdirectories (the exporter's temp file lives here).
+    pub fn root(&self) -> &FileSystemDirectoryHandle {
+        &self.root
     }
 
     pub fn roms(&self) -> &FileSystemDirectoryHandle {
