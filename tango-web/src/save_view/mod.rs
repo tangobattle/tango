@@ -13,9 +13,12 @@ use std::rc::Rc;
 use dioxus::prelude::*;
 use unic_langid::LanguageIdentifier;
 
+pub(crate) mod abd;
 pub(crate) mod folder;
 mod loaded;
 mod navi;
+pub(crate) mod navicust;
+pub(crate) mod patch_cards;
 
 pub use loaded::Loaded;
 
@@ -99,13 +102,13 @@ fn tab_icon(tab: Tab) -> Element {
     }
 }
 
-/// A save-view tab as TSV text for clipboard "copy as text", or `None`
-/// for tabs without a text form yet.
-fn tab_as_text(_lang: &LanguageIdentifier, tab: Tab, loaded: &Loaded, folder_grouped: bool) -> Option<String> {
+/// A save-view tab as TSV text for clipboard "copy as text".
+fn tab_as_text(tab: Tab, loaded: &Loaded, folder_grouped: bool) -> Option<String> {
     match tab {
         Tab::Folder => folder::as_text(loaded, folder_grouped),
-        // The remaining tabs' text forms arrive with their view ports.
-        Tab::Navicust | Tab::PatchCards | Tab::AutoBattleData => None,
+        Tab::Navicust => navicust::navicust_as_text(loaded),
+        Tab::PatchCards => patch_cards::as_text(loaded),
+        Tab::AutoBattleData => abd::as_text(loaded),
     }
 }
 
@@ -158,12 +161,11 @@ pub fn SaveView(handle: SaveHandle, play_enabled: Option<bool>, on_play: EventHa
     // Copy-as-text for the active tab; flashes "Copied!" on the button.
     let on_copy = {
         let handle = handle.clone();
-        let lang = lang.clone();
         move |tab: Tab| {
             let grouped = *folder_grouped.peek();
             let text = {
                 let l = handle.0.borrow();
-                tab_as_text(&lang, tab, &l, grouped)
+                tab_as_text(tab, &l, grouped)
             };
             let Some(text) = text else { return };
             spawn(async move {
@@ -246,14 +248,16 @@ pub fn SaveView(handle: SaveHandle, play_enabled: Option<bool>, on_play: EventHa
                 div { class: "save-body", id: "save-body",
                     match active {
                         Tab::Folder => folder::render_folder(&lang, &loaded, folder_grouped()),
-                        // The remaining read views arrive with their ports.
-                        Tab::Navicust | Tab::PatchCards | Tab::AutoBattleData => placeholder(t!(&lang, "save-empty")),
+                        Tab::Navicust => navicust::render_navicust_tab(&lang, &loaded),
+                        Tab::PatchCards => patch_cards::render_patch_cards(&lang, &loaded),
+                        Tab::AutoBattleData => abd::render_auto_battle_data(&lang, &loaded),
                     }
                 }
             } else {
                 {placeholder(t!(&lang, "save-empty"))}
             }
             ChipPopover { handle: handle.clone() }
+            navicust::NcpPopover { handle: handle.clone() }
         }
     }
 }

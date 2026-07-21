@@ -1579,3 +1579,196 @@ main.dropping {
 .save-placeholder .ph-msg {
   font-size: 15px; /* HEADING */
 }
+
+/* ---- NaviCust tab ---- */
+
+.ncp-pane {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.ncp-wrap {
+  position: relative;
+  flex: none;
+}
+
+.ncp-wrap svg {
+  display: block;
+}
+
+.ncp-overlay {
+  position: absolute;
+  inset: 0;
+}
+
+/* BN3 style name on the color bar's left edge. */
+.ncp-style-label {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  color: #fff;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Installed-parts panel beside the grid: solid column | plus column. */
+.ncp-parts {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 14px 0;
+}
+
+.ncp-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ncp-part-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ncp-part-row .thumb-box {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ncp-part-row .thumb-box svg {
+  max-width: 40px;
+  max-height: 40px;
+}
+
+.ncp-part-row .part-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.part-badge {
+  color: #000;
+  font-size: 13px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  line-height: 1.2;
+}
+
+.ncp-part-row .part-info .sub {
+  margin: 0;
+  white-space: pre-line; /* ROM descriptions keep the game's line breaks */
+}
+
+/* ---- Patch Cards tab ---- */
+
+.card-list {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.card56-row,
+.card4-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+.card4-row {
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+}
+
+.card56-row:nth-child(even),
+.card4-row:nth-child(even) {
+  background: rgba(236, 238, 237, 0.05);
+}
+
+.card56-row .c-idx {
+  width: 24px;
+  flex: none;
+  font-size: 11px;
+  padding-top: 2px;
+}
+
+.card56-row .c-name-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.card-name.off {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.card-mb {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.card56-row .c-effects {
+  width: 180px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.effect-badge {
+  color: #000;
+  font-size: 13px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  line-height: 1.2;
+}
+
+.card4-row .line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.slot-badge {
+  width: 34px;
+  flex: none;
+  text-align: center;
+  font-family: "Noto Sans Mono", ui-monospace, monospace;
+}
+
+.card-number {
+  font-family: "Noto Sans Mono", ui-monospace, monospace;
+}
+
+.bug-line {
+  color: #b55ade;
+  padding-left: 44px;
+}
+
+/* ---- Auto Battle Data tab ---- */
+
+.abd-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pane-gap);
+}
+
+.abd-section .abd-title {
+  padding: 8px 12px 4px;
+}
