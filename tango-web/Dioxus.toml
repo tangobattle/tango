@@ -1,0 +1,9 @@
+[application]
+name = "tango-web"
+asset_dir = "assets"
+
+[web.app]
+title = "Tango"
+
+[web.watcher]
+watch_path = ["src", "assets"]

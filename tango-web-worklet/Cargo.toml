@@ -1,0 +1,21 @@
+[package]
+name = "tango-web-worklet"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "abort"
+codegen-units = 1
+strip = true
+
+# Standalone on purpose: tango-web's build script compiles this for the
+# AudioWorkletGlobalScope with its own cargo invocation; the workspace
+# graph (and `cargo test` at the root) never sees it.
+[workspace]

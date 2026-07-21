@@ -5,6 +5,15 @@ members = [
     "tango-dataview",
     "tango-gamesupport",
     "tango-pvp",
+    "tango-web",
+]
+# tango-web is wasm32-only (built via `dx`); plain `cargo build`/`test` at
+# the root covers the native crates.
+default-members = [
+    "tango",
+    "tango-dataview",
+    "tango-gamesupport",
+    "tango-pvp",
 ]
 # One source of truth for every external dep shared by 2+ member crates,
 # so versions can't silently drift apart (we shipped four itertools and

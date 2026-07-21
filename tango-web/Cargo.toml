@@ -1,0 +1,135 @@
+[package]
+name = "tango-web"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+build = "build.rs"
+
+# wasm32-only (see src/main.rs); build with `dx serve` / `dx build`.
+[dependencies]
+# Engine + the shared tango crates. The mgba C core (and zstd's wasm
+# shim) cross-compile with the wasi-sdk clang named by
+# CC_wasm32_unknown_unknown; see .cargo/config.toml.
+mgba.workspace = true
+mgba-siolink.workspace = true
+
+tango-pvp = { path = "../tango-pvp" }
+tango-dataview = { path = "../tango-dataview" }
+tango-gamesupport = { path = "../tango-gamesupport" }
+tango-gamesupport-bn1 = { path = "../gamesupport/tango-gamesupport-bn1", optional = true }
+tango-gamesupport-bn2 = { path = "../gamesupport/tango-gamesupport-bn2", optional = true }
+tango-gamesupport-bn3 = { path = "../gamesupport/tango-gamesupport-bn3", optional = true }
+tango-gamesupport-bn4 = { path = "../gamesupport/tango-gamesupport-bn4", optional = true }
+tango-gamesupport-bn5 = { path = "../gamesupport/tango-gamesupport-bn5", optional = true }
+tango-gamesupport-bn6 = { path = "../gamesupport/tango-gamesupport-bn6", optional = true }
+tango-gamesupport-exe45 = { path = "../gamesupport/tango-gamesupport-exe45", optional = true }
+
+zstd.workspace = true
+# The gamesupport crates use `rand`; on wasm32-unknown-unknown its
+# getrandom backend needs the "js" feature turned on somewhere in the
+# graph (feature unification does the rest).
+getrandom = { version = "0.2", features = ["js"] }
+futures.workspace = true
+gloo-timers = { version = "0.3", features = ["futures"] }
+web-time = "1"
+crc32fast.workspace = true
+log.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+bytemuck.workspace = true
+# Game-name localization: the families' own Fluent fragments (same
+# dedicated path as the desktop's library::game).
+fluent-templates = "0.14"
+unic-langid = { version = "0.9", features = ["likelysubtags"] }
+# Game logos: the registry's decoded logo_image re-encodes to a PNG
+# data URL for the <img> tag.
+image = { workspace = true, features = ["png"] }
+base64 = "0.22"
+
+dioxus = { version = "0.7", features = ["web"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Document",
+    "Element",
+    "MediaQueryList",
+    "EventTarget",
+    "HtmlAudioElement",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "HtmlInputElement",
+    "HtmlMediaElement",
+    "KeyboardEvent",
+    "WebGl2RenderingContext",
+    "WebGlProgram",
+    "WebGlShader",
+    "WebGlTexture",
+    "WebGlUniformLocation",
+    "Performance",
+    "Navigator",
+    "ServiceWorkerContainer",
+    "Gamepad",
+    "GamepadButton",
+    "GamepadMappingType",
+    "AudioContext",
+    "AudioContextOptions",
+    "AudioContextState",
+    "BaseAudioContext",
+    "AudioWorklet",
+    "AudioWorkletNode",
+    "AudioWorkletNodeOptions",
+    "AudioNode",
+    "AudioDestinationNode",
+    "MessagePort",
+    "MessageEvent",
+    "Storage",
+    "StorageManager",
+    "FileSystemDirectoryHandle",
+    "FileSystemFileHandle",
+    "FileSystemGetDirectoryOptions",
+    "FileSystemGetFileOptions",
+    "FileSystemRemoveOptions",
+    "FileSystemWritableFileStream",
+    "File",
+    "Blob",
+    "Response",
+    "Url",
+    "HtmlAnchorElement",
+    "BeforeUnloadEvent",
+    "CanvasRenderingContext2d",
+    "Clipboard",
+    "Location",
+    "UrlSearchParams",
+] }
+console_error_panic_hook = "0.1"
+console_log = "1"
+
+[features]
+# Mirrors the tango bin crate: each game's support is an optional dep
+# behind its own feature; `gamesupport-all` enables every game. Shipped
+# builds pass `--features gamesupport-all`.
+default = []
+gamesupport-bn1 = ["dep:tango-gamesupport-bn1"]
+gamesupport-bn2 = ["dep:tango-gamesupport-bn2"]
+gamesupport-bn3 = ["dep:tango-gamesupport-bn3"]
+gamesupport-bn4 = ["dep:tango-gamesupport-bn4"]
+gamesupport-bn5 = ["dep:tango-gamesupport-bn5"]
+gamesupport-bn6 = ["dep:tango-gamesupport-bn6"]
+gamesupport-exe45 = ["dep:tango-gamesupport-exe45"]
+gamesupport-all = [
+    "gamesupport-bn1",
+    "gamesupport-bn2",
+    "gamesupport-bn3",
+    "gamesupport-bn4",
+    "gamesupport-bn5",
+    "gamesupport-bn6",
+    "gamesupport-exe45",
+]
+
+[lints]
+workspace = true
