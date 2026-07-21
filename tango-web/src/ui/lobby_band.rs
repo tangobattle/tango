@@ -14,6 +14,7 @@ use tango_net_protocol::control as protocol;
 fn local_settings(
     nick: &str,
     game: Option<GameRef>,
+    patch: Option<&(String, String)>,
     match_type: (u8, u8),
 ) -> protocol::Settings {
     protocol::Settings {
@@ -23,7 +24,12 @@ fn local_settings(
             let (family, variant) = g.family_and_variant();
             protocol::GameInfo {
                 family_and_variant: (family.to_string(), variant),
-                patch: None,
+                patch: patch.and_then(|(name, ver)| {
+                    Some(protocol::PatchInfo {
+                        name: name.clone(),
+                        version: semver::Version::parse(ver).ok()?,
+                    })
+                }),
             }
         }),
         blind_setup: false,
@@ -36,11 +42,14 @@ pub fn BottomBand(
     /// save row's value (`None` while nothing bootable is selected).
     active_game: Option<GameRef>,
     active_save: Option<String>,
+    /// The picked patch (name, version string), already validated.
+    active_patch: Option<(String, String)>,
 ) -> Element {
     let Ctx {
         runtime,
         config,
         storage,
+        patches,
         ..
     } = use_ctx();
     let mut link_code = use_signal(String::new);
@@ -52,6 +61,7 @@ pub fn BottomBand(
     // (material changes drop commits on both ends, like the desktop).
     {
         let active_game = active_game;
+        let active_patch2 = active_patch.clone();
         use_effect(move || {
             let mt = *match_type.read();
             if matches!(&*netplay::PHASE.peek(), PhaseView::Lobby(_)) {
@@ -59,6 +69,7 @@ pub fn BottomBand(
                 netplay::send_command(netplay::Command::SetSettings(local_settings(
                     &nick,
                     active_game,
+                    active_patch2.as_ref(),
                     mt,
                 )));
             }
@@ -118,9 +129,29 @@ pub fn BottomBand(
                                 link_code.set(code.clone());
                             }
                             let nick = config.peek().nick.clone();
-                            let settings =
-                                local_settings(&nick, active_game, *match_type.peek());
-                            netplay::connect(code, settings);
+                            let settings = local_settings(
+                                &nick,
+                                active_game,
+                                active_patch.as_ref(),
+                                *match_type.peek(),
+                            );
+                            // Snapshot the synced patches' tags for the
+                            // compat gate.
+                            let patch_tags = patches
+                                .peek()
+                                .clone()
+                                .unwrap_or_default()
+                                .iter()
+                                .flat_map(|p| {
+                                    p.versions.iter().map(|(v, pv)| {
+                                        (
+                                            (p.name.clone(), v.to_string()),
+                                            pv.netplay_compatibility.clone(),
+                                        )
+                                    })
+                                })
+                                .collect();
+                            netplay::connect(code, settings, patch_tags);
                         },
                         icons::Swords {}
                         {t!(&lang, "play-fight")}

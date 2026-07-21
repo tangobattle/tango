@@ -6,6 +6,7 @@
 mod diag;
 mod icons;
 mod lobby_band;
+mod patches_tab;
 mod play;
 mod replays;
 mod session_view;
@@ -48,6 +49,8 @@ struct Ctx {
     storage: Resource<Option<Storage>>,
     /// The ROM library scan; `None` until OPFS is up.
     library: Resource<Option<Library>>,
+    /// The synced patch list, rescanned on PATCHES_REV bumps.
+    patches: Resource<Vec<crate::patches::Patch>>,
     /// The picked game *family* (region-specific family string) —
     /// whose saves the save pane shows. Per family, not per game,
     /// like the desktop loadout.

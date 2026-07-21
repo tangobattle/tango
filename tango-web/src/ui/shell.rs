@@ -53,12 +53,24 @@ pub fn App() -> Element {
         }
     });
 
+    let patches = use_resource(move || {
+        let _ = super::patches_tab::PATCHES_REV.read();
+        let storage = storage.read().clone();
+        async move {
+            match storage.flatten() {
+                Some(s) => crate::patches::scan(&s).await,
+                None => Vec::new(),
+            }
+        }
+    });
+
     use_context_provider(|| Ctx {
         runtime: runtime.clone(),
         config,
         library_rev,
         storage,
         library,
+        patches,
         selected_family,
         selected_save,
     });
@@ -197,6 +209,7 @@ fn Shell() -> Element {
     let lang = crate::i18n::LANG.read().clone();
     let patches_title = t!(&lang, "tab-patches");
     let settings_title = t!(&lang, "tab-settings");
+    let _ = &patches_title;
     let mut tab = use_signal(Tab::default);
     let current = tab();
     // True while a file drag hovers the content area (the drop cue).
@@ -280,10 +293,7 @@ fn Shell() -> Element {
                 match current {
                     Tab::Play => rsx! { play::PlayScreen {} },
                     Tab::Replays => rsx! { super::replays::ReplaysScreen {} },
-                    Tab::Patches => rsx! { ComingSoon {
-                        title: patches_title.clone(),
-                        note: "Patch support is on its way; unpatched games netplay-match the desktop client already.".to_string(),
-                    } },
+                    Tab::Patches => rsx! { super::patches_tab::PatchesScreen {} },
                     Tab::Settings => rsx! { settings::SettingsScreen {} },
                 }
             }
@@ -291,14 +301,4 @@ fn Shell() -> Element {
     }
 }
 
-/// Empty-state card for tabs whose feature lands in a later milestone —
-/// the tab structure mirrors the desktop shell from day one.
-#[component]
-fn ComingSoon(title: String, note: String) -> Element {
-    rsx! {
-        section { class: "panel", style: "align-self: center; margin: auto; max-width: 420px;",
-            h2 { "{title}" }
-            p { class: "sub", "{note}" }
-        }
-    }
-}
+

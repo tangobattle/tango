@@ -131,6 +131,7 @@ pub fn PlayScreen() -> Element {
         storage,
         mut library_rev,
         library,
+        patches,
         mut selected_family,
         mut selected_save,
         ..
@@ -232,6 +233,8 @@ pub fn PlayScreen() -> Element {
         });
     }
 
+    // The synced patches, for the picker + eligibility.
+    let all_patches = patches.read().clone().unwrap_or_default();
     let family = selected_family.read().clone();
     let pick = selected_save.read().clone();
 
@@ -246,15 +249,39 @@ pub fn PlayScreen() -> Element {
     let active_game = active_row.as_ref().and_then(|r| library::find_by_slug(&r.slug));
     let logo = active_game.and_then(logo_data_url);
 
+    let eligible: Vec<crate::patches::Patch> = active_game
+        .map(|g| {
+            all_patches
+                .iter()
+                .filter(|p| p.versions.values().any(|v| v.supported.contains(&g)))
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    // The remembered pick, validated against eligibility.
+    let patch_pick: Option<(String, semver::Version)> = family
+        .as_ref()
+        .and_then(|f| config.read().last_patches.get(f).cloned())
+        .and_then(|(name, ver)| {
+            let p = eligible.iter().find(|p| p.name == name)?;
+            match semver::Version::parse(&ver) {
+                Ok(v) if p.versions.contains_key(&v) => Some((name, v)),
+                // Empty/stale version: newest available.
+                _ => p.versions.keys().next_back().cloned().map(|v| (name, v)),
+            }
+        });
+
     // The launch handler.
     let launch = {
         let runtime = runtime.clone();
         let active_row = active_row.clone();
+        let patch_pick2 = patch_pick.clone();
         move |_| {
             let runtime = runtime.clone();
             let storage = storage.read().clone().flatten();
             let row = active_row.clone();
             let lib = library.read().clone().flatten().unwrap_or_default();
+            let patch_pick = patch_pick2.clone();
             async move {
                 let (Some(storage), Some(row)) = (storage, row) else {
                     return;
@@ -273,6 +300,17 @@ pub fn PlayScreen() -> Element {
                         *library_rev.write() += 1;
                         return;
                     }
+                };
+                let rom = if let Some((name, ver)) = patch_pick.as_ref() {
+                    match crate::patches::apply(&storage, &rom, entry.game, name, ver).await {
+                        Ok(r) => r,
+                        Err(e) => {
+                            flash(launch_flash, format!("patch failed: {e:#}"), false, 5000);
+                            return;
+                        }
+                    }
+                } else {
+                    rom
                 };
                 let fresh = parse_fresh(&row.value).is_some();
                 let save = if fresh {
@@ -327,13 +365,58 @@ pub fn PlayScreen() -> Element {
                         }
                     }
                 }
-                // Patches join at M5; the slots hold the desktop's
-                // geometry meanwhile.
-                select { class: "patch", disabled: true,
-                    option { {t!(&lang, "play-no-patch")} }
+                select {
+                    class: "patch",
+                    disabled: eligible.is_empty(),
+                    onchange: move |evt: FormEvent| {
+                        let v = evt.value();
+                        let fam = selected_family.peek().clone();
+                        let Some(fam) = fam else { return };
+                        if v.is_empty() {
+                            config.with_mut(|c| {
+                                c.last_patches.remove(&fam);
+                            });
+                        } else {
+                            // Default to the newest version on pick.
+                            config.with_mut(|c| {
+                                c.last_patches.insert(fam, (v.clone(), String::new()));
+                            });
+                        }
+                    },
+                    option { value: "", selected: patch_pick.is_none(), {t!(&lang, "play-no-patch")} }
+                    for p in eligible.iter() {
+                        option {
+                            value: "{p.name}",
+                            selected: patch_pick.as_ref().is_some_and(|(n, _)| *n == p.name),
+                            "{p.title}"
+                        }
+                    }
                 }
-                select { class: "version", disabled: true,
-                    option { {t!(&lang, "play-version-placeholder")} }
+                select {
+                    class: "version",
+                    disabled: patch_pick.is_none(),
+                    onchange: move |evt: FormEvent| {
+                        let v = evt.value();
+                        let fam = selected_family.peek().clone();
+                        let Some(fam) = fam else { return };
+                        config.with_mut(|c| {
+                            if let Some(entry) = c.last_patches.get_mut(&fam) {
+                                entry.1 = v.clone();
+                            }
+                        });
+                    },
+                    if let Some((name, ver)) = patch_pick.as_ref() {
+                        for v in eligible
+                            .iter()
+                            .find(|p| p.name == *name)
+                            .map(|p| p.versions.keys().rev().cloned().collect::<Vec<_>>())
+                            .unwrap_or_default()
+                        {
+                            option { value: "{v}", selected: *ver == v, "v{v}" }
+                        }
+                    } else {
+                        option { {t!(&lang, "play-version-placeholder")} }
+                    }
                 }
             }
             div { class: "save-row",
@@ -419,6 +502,9 @@ pub fn PlayScreen() -> Element {
                 .as_ref()
                 .map(|r| r.value.clone())
                 .filter(|v| !v.starts_with("//fresh/")),
+            active_patch: patch_pick
+                .as_ref()
+                .map(|(n, v)| (n.clone(), v.to_string())),
         }
     }
 }

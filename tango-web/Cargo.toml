@@ -30,6 +30,11 @@ rand.workspace = true
 rand_pcg.workspace = true
 rennet.workspace = true
 subtle = "2"
+bps = { git = "https://github.com/tangobattle/bps" }
+toml = "0.8"
+sha2.workspace = true
+serde-hex.workspace = true
+semver.workspace = true
 tango-gamesupport-bn1 = { path = "../gamesupport/tango-gamesupport-bn1", optional = true }
 tango-gamesupport-bn2 = { path = "../gamesupport/tango-gamesupport-bn2", optional = true }
 tango-gamesupport-bn3 = { path = "../gamesupport/tango-gamesupport-bn3", optional = true }

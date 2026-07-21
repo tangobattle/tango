@@ -17,6 +17,7 @@ mod i18n;
 mod library;
 mod net;
 mod netplay;
+mod patches;
 mod platform;
 mod runtime;
 mod session;

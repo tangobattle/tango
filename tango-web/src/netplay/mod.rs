@@ -118,8 +118,15 @@ pub fn disconnect() {
 }
 
 /// Kick a connection off. The task owns everything until handoff or
-/// failure.
-pub fn connect(link_code: String, local_settings: protocol::Settings) {
+/// failure. `patch_tags` snapshots the synced patches' compatibility
+/// tags — (name, version) → tag — so the compat gate can resolve
+/// patched setups (an unknown patch is incompatible: we couldn't
+/// simulate the peer's side).
+pub fn connect(
+    link_code: String,
+    local_settings: protocol::Settings,
+    patch_tags: std::collections::HashMap<(String, String), String>,
+) {
     disconnect();
     let (tx, rx) = mpsc::unbounded();
     HANDLE.with(|h| *h.borrow_mut() = Some(Handle { commands: tx }));
@@ -127,7 +134,7 @@ pub fn connect(link_code: String, local_settings: protocol::Settings) {
         link_code: link_code.clone(),
     };
     wasm_bindgen_futures::spawn_local(async move {
-        match run(link_code, local_settings, rx).await {
+        match run(link_code, local_settings, patch_tags, rx).await {
             Ok(()) => {}
             Err(e) => {
                 log::error!("netplay: {e:#}");
@@ -172,6 +179,7 @@ enum RemoteReady {
 async fn run(
     link_code: String,
     mut local_settings: protocol::Settings,
+    patch_tags: std::collections::HashMap<(String, String), String>,
     mut commands: mpsc::UnboundedReceiver<Command>,
 ) -> anyhow::Result<()> {
     let endpoint = crate::config::matchmaking_endpoint();
@@ -259,7 +267,7 @@ async fn run(
                     view.local_ready = false;
                 }
                 tx.send_settings(settings)?;
-                publish(&mut view, &local, &remote);
+                publish_with(&mut view, &local, &remote, &patch_tags);
             }
             Ev::Command(Some(Command::Ready { save_data })) => {
                 if matches!(local, LocalReady::Committed { .. }) {
@@ -283,14 +291,14 @@ async fn run(
                     start_match_sent: false,
                 };
                 maybe_advance(&tx, &mut local, &mut remote)?;
-                publish(&mut view, &local, &remote);
+                publish_with(&mut view, &local, &remote, &patch_tags);
             }
             Ev::Command(Some(Command::Unready)) => {
                 if matches!(local, LocalReady::Committed { .. }) {
                     let _ = tx.send_uncommit();
                 }
                 local = LocalReady::NotReady;
-                publish(&mut view, &local, &remote);
+                publish_with(&mut view, &local, &remote, &patch_tags);
             }
             Ev::Packet(Err(e)) => {
                 anyhow::bail!("peer disconnected: {e}");
@@ -303,14 +311,14 @@ async fn run(
                 protocol::Packet::Pong(pong) => {
                     let now = (js_sys::Date::now() as u64 % 65536) as u16;
                     view.latency_ms = Some(now.wrapping_sub(pong.ts) as f32);
-                    publish(&mut view, &local, &remote);
+                    publish_with(&mut view, &local, &remote, &patch_tags);
                 }
                 protocol::Packet::Settings(settings) => {
                     // Their material change voids their commit (and our
                     // StartMatch predicated on it).
                     view.remote_settings = Some(settings);
                     remote_reset_derived(&mut remote, &mut view);
-                    publish(&mut view, &local, &remote);
+                    publish_with(&mut view, &local, &remote, &patch_tags);
                 }
                 protocol::Packet::Commit(commit) => {
                     remote = RemoteReady::Committed {
@@ -321,7 +329,7 @@ async fn run(
                         start_match: false,
                     };
                     maybe_advance(&tx, &mut local, &mut remote)?;
-                    publish(&mut view, &local, &remote);
+                    publish_with(&mut view, &local, &remote, &patch_tags);
                 }
                 protocol::Packet::Uncommit(_) => {
                     remote = RemoteReady::NotReady;
@@ -332,7 +340,7 @@ async fn run(
                     {
                         *start_match_sent = false;
                     }
-                    publish(&mut view, &local, &remote);
+                    publish_with(&mut view, &local, &remote, &patch_tags);
                 }
                 protocol::Packet::ChunkStart(cs) => {
                     if let RemoteReady::Committed { expected, .. } = &mut remote {
@@ -353,7 +361,7 @@ async fn run(
                     if (chunks.len() as u64) >= *expected {
                         *revealed = true;
                         maybe_advance(&tx, &mut local, &mut remote)?;
-                        publish(&mut view, &local, &remote);
+                        publish_with(&mut view, &local, &remote, &patch_tags);
                     }
                 }
                 protocol::Packet::StartMatch(_) => {
@@ -485,17 +493,30 @@ fn decode_reveal(compressed: &[u8]) -> anyhow::Result<protocol::NegotiatedState>
 }
 
 /// The compat gate, the web half of the desktop's `netplay::compat`:
-/// same netplay-compatibility tag (the raw family for unpatched games —
-/// patches join at M5), same match type, and we must own the peer's
-/// game (the match re-simulates their side locally).
-fn compatible(local: &protocol::Settings, remote: &protocol::Settings) -> bool {
+/// both sides' netplay-compatibility tags must match (a patch's tag
+/// when patched, the raw family otherwise), the match types must
+/// agree, and any patch in play must be one we possess (the match
+/// re-simulates the peer's side locally, patched identically).
+fn compatible(
+    local: &protocol::Settings,
+    remote: &protocol::Settings,
+    patch_tags: &std::collections::HashMap<(String, String), String>,
+) -> bool {
     let (Some(lg), Some(rg)) = (&local.game_info, &remote.game_info) else {
         return false;
     };
-    if lg.patch.is_some() || rg.patch.is_some() {
-        return false; // Patched crossplay lands with patch support (M5).
-    }
-    lg.family_and_variant.0 == rg.family_and_variant.0 && local.match_type == remote.match_type
+    let tag = |g: &protocol::GameInfo| -> Option<String> {
+        match &g.patch {
+            None => Some(g.family_and_variant.0.clone()),
+            Some(p) => patch_tags
+                .get(&(p.name.clone(), p.version.to_string()))
+                .cloned(),
+        }
+    };
+    let (Some(lt), Some(rt)) = (tag(lg), tag(rg)) else {
+        return false;
+    };
+    lt == rt && local.match_type == remote.match_type
 }
 
 /// Resolve both sides' games from their settings; both must be
@@ -521,7 +542,12 @@ fn resolve_games(
     Ok((local_game, remote_game))
 }
 
-fn publish(view: &mut LobbyView, local: &LocalReady, remote: &RemoteReady) {
+fn publish_with(
+    view: &mut LobbyView,
+    local: &LocalReady,
+    remote: &RemoteReady,
+    patch_tags: &std::collections::HashMap<(String, String), String>,
+) {
     view.local_ready = matches!(local, LocalReady::Committed { .. });
     view.remote_ready = matches!(remote, RemoteReady::Committed { .. });
     view.match_ready = matches!(
@@ -534,6 +560,6 @@ fn publish(view: &mut LobbyView, local: &LocalReady, remote: &RemoteReady) {
     view.compatible = view
         .remote_settings
         .as_ref()
-        .map(|r| compatible(&view.local_settings, r));
+        .map(|r| compatible(&view.local_settings, r, patch_tags));
     *PHASE.write() = PhaseView::Lobby(view.clone());
 }

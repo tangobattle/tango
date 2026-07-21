@@ -27,9 +27,6 @@ pub fn resolve_games(
         let info = side
             .and_then(|s| s.game_info.as_ref())
             .ok_or_else(|| anyhow::anyhow!("replay has no game info"))?;
-        if info.patch.is_some() {
-            anyhow::bail!("patched replays play back once patch support lands");
-        }
         library::find_by_family_and_variant(&info.rom_family, info.rom_variant as u8)
             .ok_or_else(|| anyhow::anyhow!("{} isn't supported by this build", info.rom_family))
     };

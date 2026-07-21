@@ -225,14 +225,30 @@ async fn watch(
             })
     };
     let (lf, rf) = (rom_of(local_game)?, rom_of(remote_game)?);
-    let local_rom = crate::storage::read(storage.roms(), &lf)
+    let mut local_rom = crate::storage::read(storage.roms(), &lf)
         .await
         .map_err(|e| anyhow::anyhow!("read rom: {e}"))?
         .ok_or_else(|| anyhow::anyhow!("ROM disappeared"))?;
-    let remote_rom = crate::storage::read(storage.roms(), &rf)
+    let mut remote_rom = crate::storage::read(storage.roms(), &rf)
         .await
         .map_err(|e| anyhow::anyhow!("read rom: {e}"))?
         .ok_or_else(|| anyhow::anyhow!("ROM disappeared"))?;
+    // Recorded patches re-apply from the synced tree.
+    let patch_of = |side: Option<&tango_pvp::replay::metadata::Side>| {
+        side.and_then(|s| s.game_info.as_ref())
+            .and_then(|g| g.patch.as_ref())
+            .and_then(|p| Some((p.name.clone(), semver::Version::parse(&p.version).ok()?)))
+    };
+    if let Some((name, ver)) = patch_of(replay.metadata.local_side.as_ref()) {
+        local_rom = crate::patches::apply(&storage, &local_rom, local_game, &name, &ver)
+            .await
+            .map_err(|e| anyhow::anyhow!("apply local patch: {e:#}"))?;
+    }
+    if let Some((name, ver)) = patch_of(replay.metadata.remote_side.as_ref()) {
+        remote_rom = crate::patches::apply(&storage, &remote_rom, remote_game, &name, &ver)
+            .await
+            .map_err(|e| anyhow::anyhow!("apply remote patch: {e:#}"))?;
+    }
     // The Watch click is a user gesture — grab the audio sink while we
     // can.
     crate::web::ensure_audio(&runtime).await;

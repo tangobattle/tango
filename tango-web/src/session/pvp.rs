@@ -655,14 +655,33 @@ pub async fn boot_from_handoff(
     };
     let local_file = read_rom(pre.local_game)?;
     let remote_file = read_rom(pre.remote_game)?;
-    let local_rom = crate::storage::read(storage.roms(), &local_file)
+    let mut local_rom = crate::storage::read(storage.roms(), &local_file)
         .await
         .map_err(|e| anyhow::anyhow!("read local rom: {e}"))?
         .ok_or_else(|| anyhow::anyhow!("local ROM disappeared"))?;
-    let remote_rom = crate::storage::read(storage.roms(), &remote_file)
+    let mut remote_rom = crate::storage::read(storage.roms(), &remote_file)
         .await
         .map_err(|e| anyhow::anyhow!("read remote rom: {e}"))?
         .ok_or_else(|| anyhow::anyhow!("remote ROM disappeared"))?;
+    // Each side's ROM patches per its own announced setup (the compat
+    // gate already required tags to match and the patch to be synced).
+    let apply = |rom: &mut Vec<u8>, game, settings: &tango_net_protocol::control::Settings| {
+        settings
+            .game_info
+            .as_ref()
+            .and_then(|g| g.patch.clone())
+            .map(|p| (rom.clone(), game, p))
+    };
+    if let Some((rom, game, p)) = apply(&mut local_rom, pre.local_game, &pre.local_settings) {
+        local_rom = crate::patches::apply(&storage, &rom, game, &p.name, &p.version)
+            .await
+            .map_err(|e| anyhow::anyhow!("apply local patch: {e:#}"))?;
+    }
+    if let Some((rom, game, p)) = apply(&mut remote_rom, pre.remote_game, &pre.remote_settings) {
+        remote_rom = crate::patches::apply(&storage, &rom, game, &p.name, &p.version)
+            .await
+            .map_err(|e| anyhow::anyhow!("apply remote patch: {e:#}"))?;
+    }
 
     let present_delay = crate::config::Config::load().present_delay;
     runtime

@@ -15,6 +15,10 @@ const KEY: &str = "tango-web.config";
 /// `?matchmaking_endpoint=…` (there is no settings knob).
 pub const DEFAULT_MATCHMAKING: &str = "wss://matchmaking.tango.n1gp.net";
 
+/// The desktop's default patch repo; the host must allow cross-origin
+/// GETs for the web client to sync it.
+pub const DEFAULT_PATCH_REPO: &str = "https://patches.tango.n1gp.net";
+
 /// The matchmaking endpoint for this page load.
 #[allow(dead_code)] // netplay (M3)
 pub fn matchmaking_endpoint() -> String {
@@ -32,6 +36,10 @@ pub struct Config {
     pub nick: String,
     /// The UI language (BCP 47). `None` = follow the browser.
     pub language: Option<String>,
+    /// The patch repo to sync (the desktop's by default).
+    pub patch_repo: String,
+    /// Each family's last-picked patch: family → (name, version).
+    pub last_patches: HashMap<String, (String, String)>,
     /// How many ticks behind the input frontier to present (the input
     /// delay / rollback depth tradeoff), adjustable live in-session.
     pub present_delay: u32,
@@ -56,6 +64,8 @@ impl Default for Config {
             // Empty until the player names themselves.
             nick: String::new(),
             language: None,
+            patch_repo: DEFAULT_PATCH_REPO.to_string(),
+            last_patches: HashMap::new(),
             present_delay: 2,
             volume: 1.0,
             integer_scaling: true,

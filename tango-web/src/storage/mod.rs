@@ -48,6 +48,7 @@ pub struct Storage {
     roms: FileSystemDirectoryHandle,
     saves: FileSystemDirectoryHandle,
     replays: FileSystemDirectoryHandle,
+    patches: FileSystemDirectoryHandle,
 }
 
 impl Storage {
@@ -62,10 +63,12 @@ impl Storage {
         let roms = subdir(&root, "roms").await?;
         let saves = subdir(&root, "saves").await?;
         let replays = subdir(&root, "replays").await?;
+        let patches = subdir(&root, "patches").await?;
         Ok(Storage {
             roms,
             saves,
             replays,
+            patches,
         })
     }
 
@@ -73,9 +76,14 @@ impl Storage {
         &self.roms
     }
 
-    #[allow(dead_code)] // replay writing (M4)
     pub fn replays(&self) -> &FileSystemDirectoryHandle {
         &self.replays
+    }
+
+    /// The synced patch tree (`patches/<name>/v<version>/…`), the
+    /// desktop's on-disk layout.
+    pub fn patches(&self) -> &FileSystemDirectoryHandle {
+        &self.patches
     }
 
     /// The flat save directory `saves/` — which game each file belongs
@@ -96,6 +104,29 @@ async fn subdir(
         .await?
         .dyn_into()
         .map_err(|_| err("expected a directory handle"))
+}
+
+/// List a directory's subdirectories (name, handle), sorted by name.
+pub async fn list_dirs(
+    dir: &FileSystemDirectoryHandle,
+) -> Result<Vec<(String, FileSystemDirectoryHandle)>, StorageError> {
+    let iter = dir.unchecked_ref::<DirectoryHandleExt>().values();
+    let mut out = Vec::new();
+    loop {
+        let next = JsFuture::from(iter.next().map_err(StorageError::from)?).await?;
+        let done = js_sys::Reflect::get(&next, &"done".into())?
+            .as_bool()
+            .unwrap_or(true);
+        if done {
+            break;
+        }
+        let value = js_sys::Reflect::get(&next, &"value".into())?;
+        if let Ok(d) = value.dyn_into::<FileSystemDirectoryHandle>() {
+            out.push((d.name(), d));
+        }
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(out)
 }
 
 /// List a directory's plain files (name, handle), sorted by name.
