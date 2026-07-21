@@ -6067,6 +6067,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tango-net-protocol"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "rand",
+ "rand_pcg",
+ "rennet",
+ "semver",
+ "serde",
+ "sha3",
+]
+
+[[package]]
 name = "tango-pvp"
 version = "0.1.0"
 dependencies = [
