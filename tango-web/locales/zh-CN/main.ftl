@@ -203,3 +203,6 @@ settings-accent-protoman-red = 布鲁斯红
 settings-accent-roll-pink = 罗尔粉
 settings-accent-gutsman-yellow = 气力人黄
 settings-accent-bass-purple = 佛鲁特紫
+
+## welcome step description (extracted from the desktop)
+welcome-step-nickname-description = 你可以随时在设置中更改。

@@ -219,3 +219,6 @@ settings-accent-protoman-red = Rouge ProtoMan
 settings-accent-roll-pink = Rose Roll
 settings-accent-gutsman-yellow = Jaune GutsMan
 settings-accent-bass-purple = Violet Bass
+
+## welcome step description (extracted from the desktop)
+welcome-step-nickname-description = Vous pourrez le changer à tout moment dans les Paramètres.

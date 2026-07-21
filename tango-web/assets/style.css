@@ -758,37 +758,90 @@ input[type="checkbox"] {
 }
 
 .welcome .panel {
-  width: min(480px, 92vw);
+  /* The desktop card: max 560 wide, 24px inset. */
+  width: min(560px, 92vw);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
+  padding: 24px;
+}
+
+.welcome .title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .welcome h1 {
   margin: 0;
   font-size: 22px; /* DISPLAY */
-  color: var(--accent);
-  text-align: center;
-  letter-spacing: 0.06em;
-  text-shadow: 0 0 16px color-mix(in srgb, var(--accent) 55%, transparent);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.welcome .title-row select {
+  height: 30px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: #16191a;
+  border: 1px solid rgba(236, 238, 237, 0.14);
+  border-radius: var(--tech-radius-sm);
+  padding: 0 8px;
 }
 
 .welcome .step {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  margin-top: 16px;
 }
 
-.welcome .step .caption {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+.welcome .step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.welcome .step-header .step-icon {
+  display: inline-flex;
   color: var(--muted);
+  font-size: 15px;
 }
 
-.welcome input {
-  height: 38px;
-  font-size: 15px;
+.welcome .step-header .step-icon.done {
+  color: var(--accent);
+}
+
+.welcome .step-header .step-label {
+  font-size: 18px; /* TITLE */
+}
+
+.welcome .step .sub {
+  margin: 0;
+}
+
+.welcome .actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.welcome .actions.end {
+  margin-top: 8px;
+  justify-content: flex-end;
+}
+
+.welcome input.nickname {
+  height: 34px;
+  font-size: 13px;
+  width: 280px; /* the desktop's fixed nickname width */
+  max-width: 100%;
+  color: var(--text);
+  background: #16191a;
+  border: 1px solid rgba(236, 238, 237, 0.14);
+  border-radius: var(--tech-radius-sm);
+  padding: 0 8px;
 }
 
 /* ---- session view ---- */

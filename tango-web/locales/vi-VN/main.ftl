@@ -204,3 +204,6 @@ settings-accent-protoman-red = Đỏ ProtoMan
 settings-accent-roll-pink = Hồng Roll
 settings-accent-gutsman-yellow = Vàng GutsMan
 settings-accent-bass-purple = Tím Bass
+
+## welcome step description (extracted from the desktop)
+welcome-step-nickname-description = Bạn có thể đổi bất cứ lúc nào trong Cài đặt.

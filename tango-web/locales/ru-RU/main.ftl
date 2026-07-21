@@ -224,3 +224,6 @@ settings-accent-protoman-red = Красный ProtoMan
 settings-accent-roll-pink = Розовый Roll
 settings-accent-gutsman-yellow = Жёлтый GutsMan
 settings-accent-bass-purple = Фиолетовый Bass
+
+## welcome step description (extracted from the desktop)
+welcome-step-nickname-description = Можно изменить в любой момент в Настройках.

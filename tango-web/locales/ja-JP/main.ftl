@@ -203,3 +203,6 @@ settings-accent-protoman-red = ブルースレッド
 settings-accent-roll-pink = ロールピンク
 settings-accent-gutsman-yellow = ガッツマンイエロー
 settings-accent-bass-purple = フォルテパープル
+
+## welcome step description (extracted from the desktop)
+welcome-step-nickname-description = 設定からいつでも変更できます。
