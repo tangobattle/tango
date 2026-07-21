@@ -270,6 +270,45 @@ pub async fn version_overrides(
         .unwrap_or_default()
 }
 
+/// The save templates a patch version ships for `game`, as
+/// `(template_name, sram_bytes)` — the files the desktop's patch scan
+/// reads (`<CODE>_<REV>.sav` = the unnamed default template,
+/// `<CODE>_<REV>_<name>.sav` = a named one). Bytes are returned raw;
+/// the caller parses them through the game to validate + re-checksum.
+pub async fn save_templates_for(
+    storage: &Storage,
+    name: &str,
+    version: &semver::Version,
+    game: GameRef,
+) -> Vec<(String, Vec<u8>)> {
+    if name.contains('/') || name.contains('\\') {
+        return Vec::new();
+    }
+    let Ok(dir) = dir_at(storage.patches(), &[name, &format!("v{version}")]).await else {
+        return Vec::new();
+    };
+    let (code, revision) = game.rom_code_and_revision();
+    let prefix = format!("{}_{revision:02}", String::from_utf8_lossy(code));
+    let Ok(files) = storage::list_files(&dir).await else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (file, handle) in files {
+        let Some(stem) = file.strip_suffix(".sav") else { continue };
+        let template_name = if stem == prefix {
+            String::new()
+        } else if let Some(rest) = stem.strip_prefix(&format!("{prefix}_")) {
+            rest.to_string()
+        } else {
+            continue;
+        };
+        if let Ok(bytes) = storage::read_handle(&handle).await {
+            out.push((template_name, bytes));
+        }
+    }
+    out
+}
+
 /// Read and apply `patches/<name>/v<version>/<CODE>_<REV>.bps` on top
 /// of `rom` — byte-for-byte the desktop's `apply_patch_from_disk`.
 pub async fn apply(

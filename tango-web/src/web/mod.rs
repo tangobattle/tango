@@ -357,7 +357,6 @@ pub async fn import_files(storage: &Storage, files: Vec<dioxus::html::FileData>)
 }
 
 /// Offer a byte blob as a download (save/replay export).
-#[allow(dead_code)] // save export UI
 pub fn download_bytes(name: &str, bytes: &[u8]) {
     let array = js_sys::Array::of1(&js_sys::Uint8Array::from(bytes).buffer());
     let Ok(blob) = web_sys::Blob::new_with_buffer_source_sequence(&array) else {

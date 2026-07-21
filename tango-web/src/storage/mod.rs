@@ -226,7 +226,6 @@ pub async fn write(
     Ok(())
 }
 
-#[allow(dead_code)] // the save-manage menu (rename/duplicate/delete) uses these
 pub async fn delete(dir: &FileSystemDirectoryHandle, name: &str) -> Result<(), StorageError> {
     JsFuture::from(dir.remove_entry(name)).await?;
     Ok(())
@@ -235,7 +234,6 @@ pub async fn delete(dir: &FileSystemDirectoryHandle, name: &str) -> Result<(), S
 /// Rename within a directory as copy-then-delete (`FileSystemHandle.
 /// move()` isn't available everywhere yet). Refuses to clobber an
 /// existing file.
-#[allow(dead_code)] // the save-manage menu (rename/duplicate/delete) uses these
 pub async fn rename(
     dir: &FileSystemDirectoryHandle,
     from: &str,

@@ -85,6 +85,7 @@ welcome-roms-needed = Add at least one ROM before continuing.
 ## Untranslated locales fall back to en-US, the desktop's own policy
 ## for client-specific keys.
 web-import = Import…
+web-export = Export save
 web-import-privacy = Files are copied into private browser storage and never leave this device.
 web-replays-empty = No replays yet — finish a netplay match and it lands here. Downloaded replays open in the desktop client too.
 web-download = Download

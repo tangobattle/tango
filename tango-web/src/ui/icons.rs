@@ -69,18 +69,19 @@ pub fn Settings() -> Element {
     }
 }
 
-/// lucide `swords` — the Fight button.
+/// lucide `swords` — the Fight button + the Auto Battle Data tab.
 #[component]
 pub fn Swords() -> Element {
     rsx! {
         Lucide {
-            path { d: "M14.5 17.5 3 6V3h3l11.5 11.5" }
-            path { d: "M13 19l6-6" }
-            path { d: "M16 16l4 4" }
-            path { d: "M19 21l2-2" }
-            path { d: "M9.5 6.5 21 18v3h-3L6.5 9.5" }
-            path { d: "M5 14l-2 2" }
-            path { d: "M7 17l-4 4" }
+            polyline { points: "14.5 17.5 3 6 3 3 6 3 17.5 14.5" }
+            line { x1: "13", x2: "19", y1: "19", y2: "13" }
+            line { x1: "16", x2: "20", y1: "16", y2: "20" }
+            line { x1: "19", x2: "21", y1: "21", y2: "19" }
+            polyline { points: "14.5 6.5 18 3 21 3 21 6 17.5 10" }
+            line { x1: "5", x2: "9", y1: "14", y2: "18" }
+            line { x1: "7", x2: "4", y1: "17", y2: "20" }
+            line { x1: "3", x2: "5", y1: "19", y2: "21" }
         }
     }
 }
@@ -232,6 +233,31 @@ pub fn FileQuestion() -> Element {
             path { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" }
             path { d: "M9.1 9a3 3 0 0 1 5.82 1c0 2-3 3-3 3" }
             path { d: "M12 17h.01" }
+        }
+    }
+}
+
+/// lucide `file-plus` — the New save button.
+#[component]
+pub fn FilePlus() -> Element {
+    rsx! {
+        Lucide {
+            path { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" }
+            path { d: "M14 2v4a2 2 0 0 0 2 2h4" }
+            path { d: "M9 15h6" }
+            path { d: "M12 12v6" }
+        }
+    }
+}
+
+/// lucide `ellipsis-vertical` — the save-actions ⋮ menu trigger.
+#[component]
+pub fn EllipsisVertical() -> Element {
+    rsx! {
+        Lucide {
+            circle { cx: "12", cy: "12", r: "1" }
+            circle { cx: "12", cy: "5", r: "1" }
+            circle { cx: "12", cy: "19", r: "1" }
         }
     }
 }

@@ -1,15 +1,15 @@
 //! The Play tab, laid out like the desktop's (`tabs/play/mod.rs`):
-//! a selector strip up top (game row over save row), the game body in
-//! the middle (stands in for the desktop's save-view until that port
-//! lands — logo + title + the Play button in its header), and the
-//! bottom link-code band (the Fight button arms with the netplay port
-//! at M3).
+//! a selector strip up top (game row over the managed save row —
+//! [New save][picker][Import][⋮ actions], with the rename / duplicate
+//! / delete / create-from-template forms swapping in), the save view
+//! in the middle, and the bottom link-code band.
 //!
 //! Selection is per *family*, mirroring the desktop loadout: the
 //! family picker lists every supported family (un-owned ones
 //! disabled), ordered like the desktop's `loadout::family_options`;
 //! the save picker intermingles the family's variants, each save
-//! resolving to its concrete game.
+//! resolving to its concrete game. A fresh-save pick (web-only: boot
+//! without a save, persist on first run) falls back to the game card.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -170,6 +170,187 @@ fn resolve_patch_pick(
 /// write-back, import) forces a rebuild even when the key matches,
 /// mirroring the desktop's `ForceRebuildLoaded`.
 type LoadedKey = (String, String, Option<(String, String)>, u64);
+
+/// In-flight save-management form state (the desktop's `SaveAction`):
+/// the save row swaps to whichever rename / duplicate / delete / create
+/// form is open.
+#[derive(Clone, PartialEq, Default)]
+enum SaveAction {
+    #[default]
+    None,
+    Renaming {
+        draft: String,
+    },
+    /// `draft` prefills with the next free "<stem> (copy)" suggestion
+    /// so a plain Enter behaves like a one-click duplicate.
+    Duplicating {
+        draft: String,
+    },
+    ConfirmDelete,
+    /// Creating a new save from a template. `pick` indexes `options`;
+    /// `auto_default` tracks the generated name suggestion so switching
+    /// templates regenerates it until the user types their own.
+    NewSave {
+        draft: String,
+        pick: Option<usize>,
+        auto_default: Option<String>,
+        options: Vec<TemplateOption>,
+        /// Save files already in OPFS, for collision-free suggestions.
+        existing: std::collections::HashSet<String>,
+    },
+}
+
+/// One entry in the new-save template picker: a concrete owned-ROM
+/// variant × template, labeled "Variant – Template". Patch-shipped
+/// templates carry their SRAM; bundled ones resolve through the game's
+/// own `save_templates` at confirm.
+#[derive(Clone, PartialEq)]
+struct TemplateOption {
+    slug: String,
+    /// Raw template name (empty string = the default template).
+    template: String,
+    display: String,
+    /// A patch-shipped template's raw SRAM; `None` = bundled.
+    sram: Option<Vec<u8>>,
+}
+
+fn sanitize_filename(s: &str) -> String {
+    let cleaned: String = s
+        .chars()
+        .map(|c| match c {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => ' ',
+            c if (c as u32) < 0x20 => ' ',
+            c => c,
+        })
+        .collect();
+    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Appends ` 2`, ` 3`, ... to `base` until `<name>.sav` isn't taken.
+fn disambiguate_save_name(existing: &std::collections::HashSet<String>, base: &str) -> String {
+    let mut draft = base.to_string();
+    for n in 2..100 {
+        if !existing.contains(&format!("{draft}.sav")) {
+            break;
+        }
+        draft = format!("{base} {n}");
+    }
+    draft
+}
+
+/// Next free "<stem> (copy)" / "<stem> (copy N)" name for a duplicate.
+fn suggest_duplicate_stem(existing: &std::collections::HashSet<String>, stem: &str) -> String {
+    for n in 1..1000 {
+        let suffix = if n == 1 {
+            " (copy)".to_string()
+        } else {
+            format!(" (copy {n})")
+        };
+        let candidate = format!("{stem}{suffix}");
+        if !existing.contains(&format!("{candidate}.sav")) {
+            return candidate;
+        }
+    }
+    format!("{stem} (copy)")
+}
+
+/// A save file's display stem (the name without the `.sav`).
+fn save_stem(file: &str) -> &str {
+    file.strip_suffix(".sav").unwrap_or(file)
+}
+
+/// Every file currently in OPFS `saves/` — the whole flat directory,
+/// not just the visible family's, since all families share it.
+async fn existing_save_files(storage: &crate::storage::Storage) -> std::collections::HashSet<String> {
+    crate::storage::list_files(storage.saves())
+        .await
+        .map(|v| v.into_iter().map(|(n, _)| n).collect())
+        .unwrap_or_default()
+}
+
+/// Localized "<game-variant> - <template>" suggestion for a new save's
+/// name, filesystem-sanitized.
+fn suggest_save_name(lang: &unic_langid::LanguageIdentifier, game: GameRef, template: &str) -> String {
+    let game_name = library::display_name(game);
+    let label = template_label(lang, game, template);
+    sanitize_filename(&format!("{game_name} - {label}"))
+}
+
+/// Localized template label via the family's own `save-<name>` string,
+/// falling back to the shared "(default)" key or the raw name.
+fn template_label(lang: &unic_langid::LanguageIdentifier, game: GameRef, raw: &str) -> String {
+    library::save_template_label(game, raw).unwrap_or_else(|| {
+        if raw.is_empty() {
+            crate::i18n::t(lang, "save-template-default")
+        } else {
+            raw.to_string()
+        }
+    })
+}
+
+/// Every (owned-ROM variant × template) creation option for `family`:
+/// patch-shipped templates (when a patch is picked) override bundled
+/// ones of the same name, and variants the patch doesn't support drop
+/// out — the desktop's `creation_template_options`.
+async fn creation_template_options(
+    lang: &unic_langid::LanguageIdentifier,
+    storage: &crate::storage::Storage,
+    lib: &library::Library,
+    family: &str,
+    patch_pick: Option<&(String, semver::Version)>,
+    all_patches: &[crate::patches::Patch],
+) -> Vec<TemplateOption> {
+    let patch_supported: Option<Vec<GameRef>> = patch_pick.and_then(|(name, ver)| {
+        let p = all_patches.iter().find(|p| p.name == *name)?;
+        Some(p.versions.get(ver)?.supported.clone())
+    });
+    let mut out = Vec::new();
+    for game in library::games_in_family(family) {
+        if lib.by_game(game).is_none() {
+            continue;
+        }
+        if let Some(supported) = &patch_supported {
+            if !supported.contains(&game) {
+                continue;
+            }
+        }
+        let slug = library::game_slug(game);
+        let variant = library::variant_short_name(game);
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        // Patch templates first (they override same-named bundled ones).
+        if let Some((name, ver)) = patch_pick {
+            for (template, sram) in crate::patches::save_templates_for(storage, name, ver, game).await {
+                // Only offer templates the game can actually parse.
+                if game.parse_save(&sram).is_err() {
+                    continue;
+                }
+                if !seen.insert(template.clone()) {
+                    continue;
+                }
+                let display = format!("{variant} \u{2013} {}", template_label(lang, game, &template));
+                out.push(TemplateOption {
+                    slug: slug.clone(),
+                    template,
+                    display,
+                    sram: Some(sram),
+                });
+            }
+        }
+        for (template, _) in game.save_templates.iter() {
+            if !seen.insert(template.to_string()) {
+                continue;
+            }
+            let display = format!("{variant} \u{2013} {}", template_label(lang, game, template));
+            out.push(TemplateOption {
+                slug: slug.clone(),
+                template: template.to_string(),
+                display,
+                sram: None,
+            });
+        }
+    }
+    out
+}
 
 #[component]
 pub fn PlayScreen() -> Element {
@@ -420,6 +601,313 @@ pub fn PlayScreen() -> Element {
         }
     };
 
+    // ---- save management (the desktop's save_manage flows) ----
+    let mut save_action = use_signal(SaveAction::default);
+    let mut menu_open = use_signal(|| false);
+    // The file the manage actions operate on: a real (non-fresh) pick.
+    let managed_save: Option<String> = active_row
+        .as_ref()
+        .filter(|r| parse_fresh(&r.value).is_none())
+        .map(|r| r.value.clone());
+    // New-save is offered whenever the family has an owned variant with
+    // bundled templates (or a patch is picked, which may ship its own —
+    // the form's picker ends up empty if it doesn't).
+    let can_new = family.as_deref().is_some_and(|f| {
+        library::games_in_family(f)
+            .any(|g| lib.by_game(g).is_some() && (!g.save_templates.is_empty() || patch_pick.is_some()))
+    });
+
+    // Select a freshly created/renamed file and remember it for the family.
+    let mut adopt_save = {
+        move |file: String| {
+            let fam = selected_family.peek().clone();
+            selected_save.set(Some(file.clone()));
+            if let Some(fam) = fam {
+                config.with_mut(|c| {
+                    c.last_saves.insert(fam, file);
+                });
+            }
+            save_action.set(SaveAction::None);
+            *SAVES_REV.write() += 1;
+        }
+    };
+
+    let start_rename = {
+        let managed = managed_save.clone();
+        move |_| {
+            menu_open.set(false);
+            if let Some(f) = &managed {
+                save_action.set(SaveAction::Renaming {
+                    draft: save_stem(f).to_string(),
+                });
+            }
+        }
+    };
+
+    let start_duplicate = {
+        let managed = managed_save.clone();
+        move |_| {
+            menu_open.set(false);
+            let Some(f) = managed.clone() else { return };
+            let storage = storage.read().clone().flatten();
+            spawn(async move {
+                let Some(storage) = storage else { return };
+                let existing = existing_save_files(&storage).await;
+                let draft = suggest_duplicate_stem(&existing, save_stem(&f));
+                save_action.set(SaveAction::Duplicating { draft });
+            });
+        }
+    };
+
+    let start_delete = move |_| {
+        menu_open.set(false);
+        save_action.set(SaveAction::ConfirmDelete);
+    };
+
+    // Export = the web stand-in for the desktop's reveal-in-folder: the
+    // save downloads through the browser.
+    let do_export = {
+        let managed = managed_save.clone();
+        move |_| {
+            menu_open.set(false);
+            let Some(f) = managed.clone() else { return };
+            let storage = storage.read().clone().flatten();
+            spawn(async move {
+                let Some(storage) = storage else { return };
+                if let Ok(Some(bytes)) = crate::storage::read(storage.saves(), &f).await {
+                    crate::web::download_bytes(&f, &bytes);
+                }
+            });
+        }
+    };
+
+    let start_new = {
+        move |_| {
+            menu_open.set(false);
+            let storage = storage.read().clone().flatten();
+            let lib = library.read().clone().flatten().unwrap_or_default();
+            let fam = selected_family.peek().clone();
+            let all_patches = patches.read().clone().unwrap_or_default();
+            let eligible_for_new: Vec<crate::patches::Patch> = fam
+                .as_deref()
+                .map(|f| {
+                    all_patches
+                        .iter()
+                        .filter(|p| {
+                            p.versions
+                                .values()
+                                .any(|v| v.supported.iter().any(|g| g.family_and_variant().0 == f))
+                        })
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default();
+            let patch_pick = resolve_patch_pick(&config.peek(), fam.as_deref(), &eligible_for_new);
+            let lang = crate::i18n::LANG.peek().clone();
+            spawn(async move {
+                let (Some(storage), Some(fam)) = (storage, fam) else { return };
+                let existing = existing_save_files(&storage).await;
+                let options =
+                    creation_template_options(&lang, &storage, &lib, &fam, patch_pick.as_ref(), &all_patches).await;
+                let pick = (options.len() == 1).then_some(0);
+                let draft = match pick.and_then(|i| options.get(i)) {
+                    Some(o) => {
+                        let base = library::find_by_slug(&o.slug)
+                            .map(|g| suggest_save_name(&lang, g, &o.template))
+                            .unwrap_or_else(|| "new save".to_string());
+                        disambiguate_save_name(&existing, &base)
+                    }
+                    // No single default yet — seed with the variant-neutral
+                    // family name while the user picks a template.
+                    None => disambiguate_save_name(&existing, &sanitize_filename(&library::family_display_name(&fam))),
+                };
+                save_action.set(SaveAction::NewSave {
+                    auto_default: Some(draft.clone()),
+                    draft,
+                    pick,
+                    options,
+                    existing,
+                });
+            });
+        }
+    };
+
+    let cancel_action = move |_| save_action.set(SaveAction::None);
+
+    let confirm_rename = {
+        let managed = managed_save.clone();
+        move |_| {
+            let SaveAction::Renaming { draft } = save_action.peek().clone() else {
+                return;
+            };
+            let new_stem = sanitize_filename(draft.trim());
+            let Some(old) = managed.clone() else { return };
+            if new_stem.is_empty() {
+                return;
+            }
+            let storage = storage.read().clone().flatten();
+            spawn(async move {
+                let Some(storage) = storage else { return };
+                let new_file = format!("{new_stem}.sav");
+                if new_file == old {
+                    save_action.set(SaveAction::None);
+                    return;
+                }
+                if crate::storage::read(storage.saves(), &new_file).await.ok().flatten().is_some() {
+                    flash(IMPORT_FLASH.signal(), format!("{new_file} already exists"), false, 4000);
+                    return;
+                }
+                match crate::storage::rename(storage.saves(), &old, &new_file).await {
+                    Ok(()) => adopt_save(new_file),
+                    Err(e) => flash(IMPORT_FLASH.signal(), format!("rename failed: {e}"), false, 5000),
+                }
+            });
+        }
+    };
+
+    let confirm_duplicate = {
+        let managed = managed_save.clone();
+        move |_| {
+            let SaveAction::Duplicating { draft } = save_action.peek().clone() else {
+                return;
+            };
+            let new_stem = sanitize_filename(draft.trim());
+            let Some(src) = managed.clone() else { return };
+            if new_stem.is_empty() {
+                return;
+            }
+            let storage = storage.read().clone().flatten();
+            spawn(async move {
+                let Some(storage) = storage else { return };
+                let new_file = format!("{new_stem}.sav");
+                if crate::storage::read(storage.saves(), &new_file).await.ok().flatten().is_some() {
+                    flash(IMPORT_FLASH.signal(), format!("{new_file} already exists"), false, 4000);
+                    return;
+                }
+                let Ok(Some(bytes)) = crate::storage::read(storage.saves(), &src).await else {
+                    flash(IMPORT_FLASH.signal(), "couldn't read the save", false, 4000);
+                    return;
+                };
+                match crate::storage::write(storage.saves(), &new_file, &bytes).await {
+                    Ok(()) => adopt_save(new_file),
+                    Err(e) => flash(IMPORT_FLASH.signal(), format!("duplicate failed: {e}"), false, 5000),
+                }
+            });
+        }
+    };
+
+    let confirm_delete = {
+        let managed = managed_save.clone();
+        move |_| {
+            let Some(f) = managed.clone() else { return };
+            let storage = storage.read().clone().flatten();
+            spawn(async move {
+                let Some(storage) = storage else { return };
+                match crate::storage::delete(storage.saves(), &f).await {
+                    Ok(()) => {
+                        let fam = selected_family.peek().clone();
+                        selected_save.set(None);
+                        if let Some(fam) = fam {
+                            config.with_mut(|c| {
+                                c.last_saves.remove(&fam);
+                            });
+                        }
+                        save_action.set(SaveAction::None);
+                        *SAVES_REV.write() += 1;
+                    }
+                    Err(e) => flash(IMPORT_FLASH.signal(), format!("delete failed: {e}"), false, 5000),
+                }
+            });
+        }
+    };
+
+    let confirm_new = {
+        move |_| {
+            let SaveAction::NewSave { draft, pick, options, .. } = save_action.peek().clone() else {
+                return;
+            };
+            let Some(opt) = pick.and_then(|i| options.get(i).cloned()) else {
+                return;
+            };
+            let Some(game) = library::find_by_slug(&opt.slug) else { return };
+            let name = sanitize_filename(draft.trim());
+            if name.is_empty() {
+                return;
+            }
+            let storage = storage.read().clone().flatten();
+            spawn(async move {
+                let Some(storage) = storage else { return };
+                let file = format!("{name}.sav");
+                if crate::storage::read(storage.saves(), &file).await.ok().flatten().is_some() {
+                    flash(IMPORT_FLASH.signal(), format!("{file} already exists"), false, 4000);
+                    return;
+                }
+                // Materialize the template: a patch-shipped SRAM re-parses
+                // through the game (and both paths re-checksum — the
+                // template's stored checksum predates this clone).
+                let sram = match &opt.sram {
+                    Some(bytes) => match game.parse_save(bytes) {
+                        Ok(mut save) => {
+                            save.rebuild_checksum();
+                            save.to_sram_dump()
+                        }
+                        Err(e) => {
+                            flash(IMPORT_FLASH.signal(), format!("bad template: {e}"), false, 5000);
+                            return;
+                        }
+                    },
+                    None => {
+                        let Some(template) = game
+                            .save_templates
+                            .iter()
+                            .find(|(n, _)| *n == opt.template)
+                            .map(|(_, s)| *s)
+                        else {
+                            return;
+                        };
+                        let mut save = template.clone_box();
+                        save.rebuild_checksum();
+                        save.to_sram_dump()
+                    }
+                };
+                match crate::storage::write(storage.saves(), &file, &sram).await {
+                    Ok(()) => adopt_save(file),
+                    Err(e) => flash(IMPORT_FLASH.signal(), format!("create failed: {e}"), false, 5000),
+                }
+            });
+        }
+    };
+
+    // Template switch inside the New form: refresh the auto-suggested
+    // name unless the user already typed their own.
+    let on_template_pick = {
+        move |evt: FormEvent| {
+            let Ok(i) = evt.value().parse::<usize>() else { return };
+            let lang = crate::i18n::LANG.peek().clone();
+            save_action.with_mut(|a| {
+                if let SaveAction::NewSave {
+                    draft,
+                    pick,
+                    auto_default,
+                    options,
+                    existing,
+                } = a
+                {
+                    *pick = Some(i);
+                    if auto_default.as_deref() == Some(draft.as_str()) {
+                        if let Some(o) = options.get(i) {
+                            if let Some(g) = library::find_by_slug(&o.slug) {
+                                let new_draft = disambiguate_save_name(existing, &suggest_save_name(&lang, g, &o.template));
+                                *draft = new_draft.clone();
+                                *auto_default = Some(new_draft);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    };
+
     rsx! {
         // --- selector strip: game row over save row, one pane ---
         section { class: "pane selector-strip",
@@ -502,28 +990,190 @@ pub fn PlayScreen() -> Element {
                 }
             }
             div { class: "save-row",
-                select {
-                    disabled: family.is_none(),
-                    onchange: move |evt: FormEvent| {
-                        let v = evt.value();
-                        let fam = selected_family.peek().clone();
-                        selected_save.set(Some(v.clone()));
-                        if let Some(fam) = fam {
-                            config.with_mut(|c| {
-                                c.last_saves.insert(fam, v);
-                            });
+                match save_action() {
+                    // At rest: [New save][picker][Import][⋮ actions] —
+                    // the desktop's row shape, Import being web-only.
+                    SaveAction::None => rsx! {
+                        button {
+                            class: "btn icon-btn",
+                            title: t!(&lang, "save-new"),
+                            disabled: !can_new,
+                            onclick: start_new,
+                            icons::FilePlus {}
+                        }
+                        select {
+                            disabled: family.is_none(),
+                            onchange: move |evt: FormEvent| {
+                                let v = evt.value();
+                                let fam = selected_family.peek().clone();
+                                selected_save.set(Some(v.clone()));
+                                if let Some(fam) = fam {
+                                    config.with_mut(|c| {
+                                        c.last_saves.insert(fam, v);
+                                    });
+                                }
+                            },
+                            for row in save_rows.iter() {
+                                option {
+                                    value: "{row.value}",
+                                    selected: active_row.as_ref().is_some_and(|a| a.value == row.value),
+                                    disabled: !row.available,
+                                    "{row.label}"
+                                }
+                            }
+                        }
+                        ImportButton {}
+                        div { class: "menu-anchor",
+                            button {
+                                class: "btn icon-btn",
+                                title: t!(&lang, "save-actions"),
+                                disabled: managed_save.is_none(),
+                                onclick: move |_| menu_open.set(!menu_open()),
+                                icons::EllipsisVertical {}
+                            }
+                            if menu_open() {
+                                div { class: "menu-backdrop", onclick: move |_| menu_open.set(false) }
+                                div { class: "save-menu",
+                                    button { class: "menu-item", onclick: do_export,
+                                        icons::Download {}
+                                        {t!(&lang, "web-export")}
+                                    }
+                                    button { class: "menu-item", onclick: start_duplicate,
+                                        icons::Files {}
+                                        {t!(&lang, "save-duplicate")}
+                                    }
+                                    button { class: "menu-item", onclick: start_rename,
+                                        icons::Pencil {}
+                                        {t!(&lang, "save-rename")}
+                                    }
+                                    button { class: "menu-item danger", onclick: start_delete,
+                                        icons::Trash2 {}
+                                        {t!(&lang, "save-delete")}
+                                    }
+                                }
+                            }
                         }
                     },
-                    for row in save_rows.iter() {
-                        option {
-                            value: "{row.value}",
-                            selected: active_row.as_ref().is_some_and(|a| a.value == row.value),
-                            disabled: !row.available,
-                            "{row.label}"
+                    // Every form ends [× cancel][confirm], the confirm
+                    // repeating the icon of the action that opened it.
+                    SaveAction::Renaming { draft } => rsx! {
+                        input {
+                            class: "save-name",
+                            r#type: "text",
+                            placeholder: t!(&lang, "save-name-placeholder"),
+                            value: "{draft}",
+                            oninput: move |evt: FormEvent| {
+                                save_action.with_mut(|a| {
+                                    if let SaveAction::Renaming { draft } = a {
+                                        *draft = evt.value();
+                                    }
+                                });
+                            },
+                            onkeydown: {
+                                let confirm = confirm_rename.clone();
+                                move |evt: KeyboardEvent| {
+                                    if evt.key() == Key::Enter {
+                                        confirm(());
+                                    }
+                                }
+                            },
                         }
-                    }
+                        button { class: "btn icon-btn", title: t!(&lang, "save-action-cancel"), onclick: cancel_action,
+                            icons::X {}
+                        }
+                        button { class: "btn primary", onclick: move |_| confirm_rename.clone()(()),
+                            icons::Pencil {}
+                            {t!(&lang, "save-rename-confirm")}
+                        }
+                    },
+                    SaveAction::Duplicating { draft } => rsx! {
+                        input {
+                            class: "save-name",
+                            r#type: "text",
+                            placeholder: t!(&lang, "save-name-placeholder"),
+                            value: "{draft}",
+                            oninput: move |evt: FormEvent| {
+                                save_action.with_mut(|a| {
+                                    if let SaveAction::Duplicating { draft } = a {
+                                        *draft = evt.value();
+                                    }
+                                });
+                            },
+                            onkeydown: {
+                                let confirm = confirm_duplicate.clone();
+                                move |evt: KeyboardEvent| {
+                                    if evt.key() == Key::Enter {
+                                        confirm(());
+                                    }
+                                }
+                            },
+                        }
+                        button { class: "btn icon-btn", title: t!(&lang, "save-action-cancel"), onclick: cancel_action,
+                            icons::X {}
+                        }
+                        button { class: "btn primary", onclick: move |_| confirm_duplicate.clone()(()),
+                            icons::Files {}
+                            {t!(&lang, "save-duplicate")}
+                        }
+                    },
+                    SaveAction::ConfirmDelete => rsx! {
+                        span { class: "sub grow",
+                            {t!(&lang, "save-delete-prompt", name = managed_save.as_deref().map(save_stem).unwrap_or_default())}
+                        }
+                        button { class: "btn icon-btn", title: t!(&lang, "save-action-cancel"), onclick: cancel_action,
+                            icons::X {}
+                        }
+                        button { class: "btn danger", onclick: confirm_delete,
+                            icons::Trash2 {}
+                            {t!(&lang, "save-delete-confirm")}
+                        }
+                    },
+                    SaveAction::NewSave { draft, pick, options, .. } => rsx! {
+                        select {
+                            class: "template-pick",
+                            onchange: on_template_pick,
+                            option { value: "", selected: pick.is_none(), disabled: true, {t!(&lang, "save-template-pick")} }
+                            for (i, o) in options.iter().enumerate() {
+                                option { value: "{i}", selected: pick == Some(i), "{o.display}" }
+                            }
+                        }
+                        input {
+                            class: "save-name",
+                            r#type: "text",
+                            placeholder: t!(&lang, "save-name-placeholder"),
+                            value: "{draft}",
+                            oninput: move |evt: FormEvent| {
+                                save_action.with_mut(|a| {
+                                    if let SaveAction::NewSave { draft, auto_default, .. } = a {
+                                        let v = evt.value();
+                                        if auto_default.as_deref() != Some(v.as_str()) {
+                                            *auto_default = None;
+                                        }
+                                        *draft = v;
+                                    }
+                                });
+                            },
+                            onkeydown: {
+                                let confirm = confirm_new.clone();
+                                move |evt: KeyboardEvent| {
+                                    if evt.key() == Key::Enter {
+                                        confirm(());
+                                    }
+                                }
+                            },
+                        }
+                        button { class: "btn icon-btn", title: t!(&lang, "save-action-cancel"), onclick: cancel_action,
+                            icons::X {}
+                        }
+                        button {
+                            class: "btn primary",
+                            disabled: pick.is_none() || draft.trim().is_empty(),
+                            onclick: move |_| confirm_new.clone()(()),
+                            icons::FilePlus {}
+                            {t!(&lang, "save-new-confirm")}
+                        }
+                    },
                 }
-                ImportButton {}
             }
             if let Some(f) = IMPORT_FLASH.read().clone() {
                 p { class: "sub", FlashText { flash: f } }

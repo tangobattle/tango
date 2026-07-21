@@ -343,6 +343,20 @@ pub fn family_display_name(family: &str) -> String {
     family_str(family, "name").unwrap_or_else(|| family.to_string())
 }
 
+/// Localized label for a save template via the family's `save-<name>`
+/// string (the empty-string default template uses `save-megaman`, the
+/// key the games' own bundles carry for it). `None` when the family's
+/// bundle has no such key — the caller falls back to the raw name.
+pub fn save_template_label(game: GameRef, raw: &str) -> Option<String> {
+    let (family, _) = game.family_and_variant();
+    let key = if raw.is_empty() {
+        "save-megaman".to_string()
+    } else {
+        format!("save-{raw}")
+    };
+    family_str(family, &key)
+}
+
 /// Short *variant* tag (e.g. "Gregar", "Blue Moon") via the family's
 /// `variant-<n>-short` string — the bare color/team name without the
 /// series title, for disambiguating variants within a family. Falls
