@@ -149,12 +149,12 @@ body {
   padding: 0 6px;
 }
 
-.topbar .brand h1 {
-  font-size: 18px; /* TITLE */
-  margin: 0;
-  letter-spacing: 0.04em;
-  color: var(--accent);
-  text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 55%, transparent);
+.topbar .brand img.logo {
+  /* The desktop nav strip's 28px icon.png mark. */
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  display: block;
 }
 
 .topbar .tabs {

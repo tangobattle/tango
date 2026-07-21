@@ -16,6 +16,9 @@ use crate::runtime::{Runtime, SESSION_EPOCH};
 use crate::storage::Storage;
 
 const STYLE: Asset = asset!("/assets/style.css");
+/// The desktop's standalone logo mark (`tango/src/icon.png`), shown at
+/// the nav strip's left edge like the desktop top bar.
+const LOGO: Asset = asset!("/assets/icon.png");
 
 #[component]
 pub fn App() -> Element {
@@ -229,7 +232,7 @@ fn Shell() -> Element {
             ondrop: move |evt| evt.prevent_default(),
             header { class: "topbar",
                 div { class: "brand",
-                    h1 { "TANGO" }
+                    img { class: "logo", src: LOGO, alt: "Tango" }
                 }
                 nav { class: "tabs",
                     button {
