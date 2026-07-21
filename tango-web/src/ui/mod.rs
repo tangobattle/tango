@@ -7,6 +7,7 @@ mod diag;
 mod icons;
 mod lobby_band;
 mod play;
+mod replays;
 mod session_view;
 mod settings;
 mod shell;

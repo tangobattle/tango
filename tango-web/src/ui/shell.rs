@@ -275,10 +275,7 @@ fn Shell() -> Element {
                 },
                 match current {
                     Tab::Play => rsx! { play::PlayScreen {} },
-                    Tab::Replays => rsx! { ComingSoon {
-                        title: "Replays",
-                        note: "Replay recording arrives with the netplay port; replays recorded here will open in the desktop client too.",
-                    } },
+                    Tab::Replays => rsx! { super::replays::ReplaysScreen {} },
                     Tab::Patches => rsx! { ComingSoon {
                         title: "Patches",
                         note: "Patch import lands after crossplay; unpatched games netplay-match the desktop client already.",
