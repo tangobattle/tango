@@ -10,7 +10,7 @@
 //! `tango_net_protocol::data` + `rennet` — identical bytes to the
 //! desktop peer.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::Mutex;
@@ -44,8 +44,10 @@ pub enum NetEvent {
     Input(Input),
     /// The peer's in-band end-of-match marker.
     EndOfMatch,
-    /// The channel closed or the stream fell past the horizon.
-    Gone,
+    /// The channel closed or the stream fell past the horizon. Carries
+    /// the transport generation that observed it — stale generations
+    /// (an old pump dying after a swap) are ignored.
+    Gone { generation: u32 },
 }
 
 struct Streams {
@@ -55,12 +57,19 @@ struct Streams {
 }
 
 /// The shared send half: the tick pushes + ships, the heartbeat resends.
+/// The channel half is swappable — a transparent reconnect replaces the
+/// transport while the rennet streams (and their unacked windows)
+/// survive, refilling the peer's gap on the first resend.
 #[derive(Clone)]
 pub struct InMatchTx {
     streams: Rc<Mutex<Streams>>,
-    tx: ChannelSender,
+    tx: Rc<RefCell<ChannelSender>>,
     sent: Rc<Cell<bool>>,
     rtt_ms: Rc<Cell<Option<f32>>>,
+    /// Bumped per transport swap; Gone events from a stale pump are
+    /// ignored by the driver.
+    generation: Rc<Cell<u32>>,
+    event_tx: mpsc::UnboundedSender<NetEvent>,
 }
 
 impl InMatchTx {
@@ -78,13 +87,42 @@ impl InMatchTx {
             let w = s.out.window();
             Frame::new(w.base, s.inn.ack(), w.meta, w.entries).to_vec()
         };
-        let _ = self.tx.send(&bytes);
+        let _ = self.tx.borrow().send(&bytes);
         self.sent.set(true);
     }
 
     /// The freshest ack-derived round-trip estimate.
     pub fn rtt_ms(&self) -> Option<f32> {
         self.rtt_ms.get()
+    }
+
+    /// The current transport generation — Gone events carry the
+    /// generation of the pump that observed the close, so the driver
+    /// can drop stale ones after a swap.
+    pub fn generation(&self) -> u32 {
+        self.generation.get()
+    }
+
+    /// Swap in a fresh transport after a reconnect: the send half is
+    /// replaced, a new receive pump feeds the same streams and event
+    /// channel, and the redundancy window ships immediately to refill
+    /// the peer's gap.
+    pub fn swap_transport(&self, tx: ChannelSender, rx: ChannelReceiver) {
+        *self.tx.borrow_mut() = tx;
+        self.generation.set(self.generation.get() + 1);
+        wasm_bindgen_futures::spawn_local(recv_pump(
+            rx,
+            self.streams.clone(),
+            self.rtt_ms.clone(),
+            self.event_tx.clone(),
+            self.generation.get(),
+        ));
+        let bytes = {
+            let s = self.streams.lock().unwrap();
+            let w = s.out.window();
+            Frame::new(w.base, s.inn.ack(), w.meta, w.entries).to_vec()
+        };
+        let _ = self.tx.borrow().send(&bytes);
     }
 }
 
@@ -104,12 +142,14 @@ pub fn wire(
     let sent = Rc::new(Cell::new(false));
     let rtt_ms = Rc::new(Cell::new(None));
     let (event_tx, event_rx) = mpsc::unbounded();
+    let tx = Rc::new(RefCell::new(tx));
 
     wasm_bindgen_futures::spawn_local(recv_pump(
         rx,
         streams.clone(),
         rtt_ms.clone(),
-        event_tx,
+        event_tx.clone(),
+        0,
     ));
     wasm_bindgen_futures::spawn_local(heartbeat(
         tx.clone(),
@@ -124,6 +164,8 @@ pub fn wire(
             tx,
             sent,
             rtt_ms,
+            generation: Rc::new(Cell::new(0)),
+            event_tx,
         },
         event_rx,
     )
@@ -134,6 +176,7 @@ async fn recv_pump(
     streams: Rc<Mutex<Streams>>,
     rtt_ms: Rc<Cell<Option<f32>>>,
     event_tx: mpsc::UnboundedSender<NetEvent>,
+    generation: u32,
 ) {
     while let Some(dgram) = rx.receive().await {
         let frame = match Frame::decode(&mut &dgram[..]) {
@@ -160,7 +203,7 @@ async fn recv_pump(
             match s.inn.accept(&frame) {
                 Ok(window) => window,
                 Err(rennet::HorizonExceeded) => {
-                    let _ = event_tx.unbounded_send(NetEvent::Gone);
+                    let _ = event_tx.unbounded_send(NetEvent::Gone { generation });
                     return;
                 }
             }
@@ -178,13 +221,13 @@ async fn recv_pump(
             }
         }
     }
-    let _ = event_tx.unbounded_send(NetEvent::Gone);
+    let _ = event_tx.unbounded_send(NetEvent::Gone { generation });
 }
 
 /// Resend the redundancy window on intervals where the tick sent
 /// nothing, so acks and loss recovery keep flowing.
 async fn heartbeat(
-    tx: ChannelSender,
+    tx: Rc<RefCell<ChannelSender>>,
     streams: Rc<Mutex<Streams>>,
     sent: Rc<Cell<bool>>,
     stop: Rc<Cell<bool>>,
@@ -202,8 +245,8 @@ async fn heartbeat(
             let w = s.out.window();
             Frame::new(w.base, s.inn.ack(), w.meta, w.entries).to_vec()
         };
-        if tx.send(&bytes).is_err() {
-            return;
-        }
+        // A send error here just means the transport is mid-swap; the
+        // reconnect refills the peer from the same window.
+        let _ = tx.borrow().send(&bytes);
     }
 }

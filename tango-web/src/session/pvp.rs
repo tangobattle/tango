@@ -101,26 +101,9 @@ pub fn start(args: PvpArgs) -> anyhow::Result<PvpSession> {
     let (in_match, event_rx) = data::wire(pre.in_match_tx, pre.in_match_rx, stop.clone());
 
     // The reliable channel's only mid-match job is the peer's Goodbye
-    // (deliberate quit) vs a bare close (reconnectable, M5).
+    // (deliberate quit) vs a bare close (reconnectable).
     let (goodbye_tx, goodbye_rx) = mpsc::unbounded::<bool>();
-    {
-        let mut rx = pre.control_rx;
-        wasm_bindgen_futures::spawn_local(async move {
-            loop {
-                match rx.receive().await {
-                    Ok(tango_net_protocol::control::Packet::Goodbye(_)) => {
-                        let _ = goodbye_tx.unbounded_send(true);
-                        return;
-                    }
-                    Ok(_) => continue,
-                    Err(_) => {
-                        let _ = goodbye_tx.unbounded_send(false);
-                        return;
-                    }
-                }
-            }
-        });
-    }
+    spawn_goodbye_watch(pre.control_rx, goodbye_tx.clone());
 
     let link_handle = match_.pair_handle();
     let descriptor = SessionDescriptor {
@@ -137,6 +120,9 @@ pub fn start(args: PvpArgs) -> anyhow::Result<PvpSession> {
         in_match,
         event_rx,
         goodbye_rx,
+        goodbye_tx,
+        reconnect_session_id: pre.reconnect_session_id,
+        reconnecting: None,
         control_tx: pre.control_tx,
         pc: Some(pre.pc),
         stop,
@@ -146,6 +132,8 @@ pub fn start(args: PvpArgs) -> anyhow::Result<PvpSession> {
         local_ended_at: None,
         first_round_started: false,
         pending_round_marks: std::collections::VecDeque::new(),
+        round_wins: [0, 0],
+        round_draws: 0,
         replay_writer: Some(replay_writer),
         replay_buf,
         replay_name,
@@ -158,6 +146,29 @@ pub fn start(args: PvpArgs) -> anyhow::Result<PvpSession> {
         link: LinkAccess::Handle(link_handle),
         descriptor,
     })
+}
+
+/// Watch the reliable channel for the peer's Goodbye (true) or a bare
+/// close (false — reconnectable).
+fn spawn_goodbye_watch(
+    mut rx: crate::net::control::Receiver,
+    goodbye_tx: mpsc::UnboundedSender<bool>,
+) {
+    wasm_bindgen_futures::spawn_local(async move {
+        loop {
+            match rx.receive().await {
+                Ok(tango_net_protocol::control::Packet::Goodbye(_)) => {
+                    let _ = goodbye_tx.unbounded_send(true);
+                    return;
+                }
+                Ok(_) => continue,
+                Err(_) => {
+                    let _ = goodbye_tx.unbounded_send(false);
+                    return;
+                }
+            }
+        }
+    });
 }
 
 fn build_replay_writer(
@@ -228,6 +239,25 @@ fn replay_file_name(pre: &PreMatch) -> String {
     format!("{}-{}-vs-{}.tangoreplay", pre.match_ts, family, opponent)
 }
 
+/// A successful reconnect's fresh transport halves, produced by the
+/// rendezvous task for the driver to swap in.
+struct FreshTransport {
+    control_tx: crate::net::control::Sender,
+    control_rx: crate::net::control::Receiver,
+    in_match_tx: crate::net::webrtc::ChannelSender,
+    in_match_rx: crate::net::webrtc::ChannelReceiver,
+    pc: crate::net::webrtc::PeerConnection,
+}
+
+/// An in-flight reconnect attempt.
+struct ReconnectAttempt {
+    started: Instant,
+    result_rx: mpsc::UnboundedReceiver<Result<FreshTransport, String>>,
+}
+
+/// Overall budget for one transparent reconnect (rendezvous + ICE).
+const RECONNECT_WINDOW_MS: u64 = 30_000;
+
 pub struct PvpDriver {
     shared: Arc<SharedSession>,
     local_player: usize,
@@ -236,6 +266,9 @@ pub struct PvpDriver {
     in_match: InMatchTx,
     event_rx: mpsc::UnboundedReceiver<NetEvent>,
     goodbye_rx: mpsc::UnboundedReceiver<bool>,
+    goodbye_tx: mpsc::UnboundedSender<bool>,
+    reconnect_session_id: String,
+    reconnecting: Option<ReconnectAttempt>,
     control_tx: crate::net::control::Sender,
     pc: Option<crate::net::webrtc::PeerConnection>,
     stop: Rc<Cell<bool>>,
@@ -245,6 +278,10 @@ pub struct PvpDriver {
     local_ended_at: Option<Instant>,
     first_round_started: bool,
     pending_round_marks: std::collections::VecDeque<u32>,
+    /// Confirmed round outcomes in absolute player terms: [p0, p1]
+    /// wins and the draw count, reoriented at the end.
+    round_wins: [u32; 2],
+    round_draws: u32,
     replay_writer: Option<tango_pvp::replay::Writer>,
     replay_buf: Arc<Mutex<Vec<u8>>>,
     replay_name: String,
@@ -265,13 +302,37 @@ impl PvpDriver {
             return Some(SessionEnd::LocalQuit);
         }
 
-        // Peer's deliberate quit / a dead control channel.
+        // Peer's deliberate quit / a dead control channel. A bare close
+        // during (or starting) a reconnect is expected static.
         if let Ok(deliberate) = self.goodbye_rx.try_recv() {
-            return Some(if deliberate || self.match_ended() {
-                SessionEnd::MatchEnded
-            } else {
-                SessionEnd::Error("opponent disconnected".to_string())
-            });
+            if deliberate || self.match_ended() {
+                return Some(self.match_ended_result());
+            }
+            if self.reconnecting.is_none() {
+                self.begin_reconnect();
+            }
+        }
+
+        // An in-flight reconnect: poll its outcome; time the window out.
+        if let Some(attempt) = &mut self.reconnecting {
+            match attempt.result_rx.try_recv() {
+                Ok(Ok(fresh)) => {
+                    log::info!("pvp: transport reconnected; resuming");
+                    self.control_tx = fresh.control_tx;
+                    spawn_goodbye_watch(fresh.control_rx, self.goodbye_tx.clone());
+                    self.in_match.swap_transport(fresh.in_match_tx, fresh.in_match_rx);
+                    self.pc = Some(fresh.pc);
+                    self.reconnecting = None;
+                }
+                Ok(Err(e)) => {
+                    return Some(SessionEnd::Error(format!("reconnect failed: {e}")));
+                }
+                Err(_) => {
+                    if attempt.started.elapsed().as_millis() as u64 >= RECONNECT_WINDOW_MS {
+                        return Some(SessionEnd::Error("connection lost".to_string()));
+                    }
+                }
+            }
         }
 
         let pd = self.shared.present_delay.load(Ordering::Relaxed);
@@ -290,12 +351,17 @@ impl PvpDriver {
                 NetEvent::EndOfMatch => {
                     self.peer_ended = true;
                 }
-                NetEvent::Gone => {
-                    return Some(if self.match_ended() {
-                        SessionEnd::MatchEnded
-                    } else {
-                        SessionEnd::Error("connection lost".to_string())
-                    });
+                NetEvent::Gone { generation } => {
+                    if generation < self.in_match.generation() {
+                        // A stale pump dying after a swap.
+                        continue;
+                    }
+                    if self.match_ended() {
+                        return Some(self.match_ended_result());
+                    }
+                    if self.reconnecting.is_none() {
+                        self.begin_reconnect();
+                    }
                 }
             }
         }
@@ -308,7 +374,7 @@ impl PvpDriver {
                 .local_ended_at
                 .is_some_and(|at| at.elapsed().as_millis() as u64 >= PEER_END_GRACE_MS);
             if self.peer_ended || grace_over {
-                return Some(SessionEnd::MatchEnded);
+                return Some(self.match_ended_result());
             }
         }
 
@@ -360,7 +426,11 @@ impl PvpDriver {
                     }
                     self.first_round_started = true;
                 }
-                tango_pvp::telemetry::RoundEvent::Ended { .. } => {}
+                tango_pvp::telemetry::RoundEvent::Ended { outcome } => match outcome {
+                    Some(tango_pvp::telemetry::Outcome::P0Win) => self.round_wins[0] += 1,
+                    Some(tango_pvp::telemetry::Outcome::P1Win) => self.round_wins[1] += 1,
+                    Some(tango_pvp::telemetry::Outcome::Draw) | None => self.round_draws += 1,
+                },
                 tango_pvp::telemetry::RoundEvent::MatchEnded => {
                     match_ended = true;
                 }
@@ -452,6 +522,56 @@ impl PvpDriver {
 
     fn match_ended(&self) -> bool {
         self.completed && self.peer_ended
+    }
+
+    /// The local-oriented final tally.
+    fn match_ended_result(&self) -> SessionEnd {
+        let (wins, losses) = if self.local_player == 0 {
+            (self.round_wins[0], self.round_wins[1])
+        } else {
+            (self.round_wins[1], self.round_wins[0])
+        };
+        SessionEnd::MatchEnded {
+            wins,
+            losses,
+            draws: self.round_draws,
+        }
+    }
+
+    /// Kick a transparent reconnect: both peers re-rendezvous on the
+    /// derived session id (the desktop does the same on its side) and
+    /// the fresh channel halves swap in under the surviving rennet
+    /// streams. The sim keeps ticking meanwhile — the stall guard holds
+    /// it at the horizon edge until inputs flow again.
+    fn begin_reconnect(&mut self) {
+        log::warn!("pvp: transport lost; attempting transparent reconnect");
+        let (result_tx, result_rx) = mpsc::unbounded();
+        let session_id = self.reconnect_session_id.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let endpoint = crate::config::matchmaking_endpoint();
+            let result = crate::net::signaling::connect(&endpoint, &session_id, None).await;
+            let _ = result_tx.unbounded_send(match result {
+                Ok(connected) => {
+                    // The channel-open barrier still applies to the
+                    // fresh control channel.
+                    match connected.control_open.await {
+                        Ok(()) => Ok(FreshTransport {
+                            control_tx: crate::net::control::Sender::new(connected.control_tx),
+                            control_rx: crate::net::control::Receiver::new(connected.control_rx),
+                            in_match_tx: connected.in_match_tx,
+                            in_match_rx: connected.in_match_rx,
+                            pc: connected.pc,
+                        }),
+                        Err(_) => Err("control channel never opened".to_string()),
+                    }
+                }
+                Err(e) => Err(format!("{e}")),
+            });
+        });
+        self.reconnecting = Some(ReconnectAttempt {
+            started: Instant::now(),
+            result_rx,
+        });
     }
 
     /// Teardown: stop the pumps, announce a deliberate quit, flush the

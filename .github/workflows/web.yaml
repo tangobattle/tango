@@ -1,0 +1,72 @@
+name: web
+
+on:
+  push:
+    branches: [tango-web]
+  workflow_dispatch:
+
+jobs:
+  # The wasm bundle: the mgba C core cross-compiles via wasi-sdk's
+  # clang into the wasm32-unknown-unknown Rust binary, then dx wraps
+  # it into the static site. Recipe follows gbaroll's proven workflow.
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      # The gamesupport submodule is private; the PAT rides the same
+      # HTTPS checkout the release workflow uses.
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.GAMESUPPORT_REPO_PAT }}
+
+      # mgba-sys's build script, bindgen, and the cc crate (zstd's
+      # wasm shim) read these; see .cargo/config.toml for the local
+      # equivalent.
+      - name: Install wasi-sdk
+        run: |
+          curl -fsSL -o /tmp/wasi-sdk.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sdk-25.0-x86_64-linux.tar.gz"
+          sudo tar -C /opt -xzf /tmp/wasi-sdk.tar.gz
+          sudo mv /opt/wasi-sdk-25.0-x86_64-linux /opt/wasi-sdk
+          {
+            echo "WASI_SDK_PATH=/opt/wasi-sdk"
+            echo "CC_wasm32_unknown_unknown=/opt/wasi-sdk/bin/clang"
+            echo "AR_wasm32_unknown_unknown=/opt/wasi-sdk/bin/llvm-ar"
+          } >> "$GITHUB_ENV"
+
+      # tango-pvp's replay proto (and tango-signaling's schema) build
+      # with protoc.
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: cargo-bins/cargo-binstall@main
+
+      # --force: the rust-cache restores ~/.cargo's install manifest
+      # but not the binaries, so binstall would otherwise skip the
+      # install as "already done" on every cache hit. --locked: the
+      # cargo-install fallback resolves deps fresh otherwise.
+      - name: Install dioxus-cli
+        run: cargo binstall --no-confirm --force --locked dioxus-cli@0.7.9
+
+      - name: Build the web bundle
+        run: dx build --package tango-web --features gamesupport-all --release
+
+      # The service worker's URL sets its scope, static hosts can't
+      # send Service-Worker-Allowed to widen one, and dx flattens
+      # bundled assets into /assets/ — so it's copied to the site root
+      # beside index.html.
+      - name: Place the service worker
+        run: cp tango-web/sw.js target/dx/tango-web/release/web/public/sw.js
+
+      - name: Upload the site
+        uses: actions/upload-artifact@v4
+        with:
+          name: tango-web
+          path: target/dx/tango-web/release/web/public

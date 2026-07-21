@@ -233,7 +233,21 @@ pub fn SessionMenuCard() -> Element {
 fn end_message(end: &SessionEnd) -> String {
     match end {
         SessionEnd::LocalQuit => "Session ended.".to_string(),
-        SessionEnd::MatchEnded => "Match complete! Replay saved.".to_string(),
+        SessionEnd::MatchEnded { wins, losses, draws } => {
+            let verdict = if wins > losses {
+                "Victory!"
+            } else if wins < losses {
+                "Defeat."
+            } else {
+                "Draw."
+            };
+            let mut line = format!("{verdict}  {wins} – {losses}");
+            if *draws > 0 {
+                line.push_str(&format!(" ({draws} draw(s))"));
+            }
+            line.push_str("  ·  Replay saved.");
+            line
+        }
         SessionEnd::Error(e) => format!("Session error: {e}"),
     }
 }

@@ -25,7 +25,12 @@ pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
 pub enum SessionEnd {
     LocalQuit,
     /// The games' own match-end path ran to completion on both sides.
-    MatchEnded,
+    /// Carries the confirmed round tally, local-oriented.
+    MatchEnded {
+        wins: u32,
+        losses: u32,
+        draws: u32,
+    },
     Error(String),
 }
 
