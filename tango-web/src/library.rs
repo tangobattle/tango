@@ -89,20 +89,33 @@ pub struct RomInfo {
 }
 
 /// Identify picked ROM bytes. Only clean dumps of registered games
-/// import — same contract as the desktop scanner.
+/// import — same contract as the desktop scanner. The rejection names
+/// what the file looked like (code/revision/CRC32) so a bad dump or a
+/// build without that game's support is diagnosable from the console.
 pub fn rom_info(name: &str, bytes: &[u8]) -> anyhow::Result<RomInfo> {
-    let game = detect(bytes)
-        .ok_or_else(|| anyhow::anyhow!("{name}: not a clean dump of a supported game"))?;
-    Ok(RomInfo {
-        game,
-        crc32: crc32fast::hash(bytes),
-    })
+    let crc32 = crc32fast::hash(bytes);
+    let Some(game) = detect(bytes) else {
+        let code = bytes
+            .get(0xac..0xb0)
+            .map(|c| String::from_utf8_lossy(c).into_owned())
+            .unwrap_or_else(|| "????".into());
+        let revision = bytes.get(0xbc).copied().unwrap_or(0);
+        anyhow::bail!(
+            "{name}: not a clean dump of a supported game \
+             (code {code} rev {revision}, crc32 {crc32:08x}, {} bytes, \
+             {} games registered)",
+            bytes.len(),
+            GAMES.len()
+        );
+    };
+    Ok(RomInfo { game, crc32 })
 }
 
 /// The stored name is normalized to the cartridge, not the picked file:
 /// `<family>-<variant> (<CODE>r<rev>).gba`. Re-importing the same ROM
-/// overwrites itself instead of piling up copies, and revision variants
-/// of one game stay distinct files.
+/// overwrites itself instead of piling up copies, revision variants of
+/// one game stay distinct files, and the scan can recover the game
+/// from the name alone ([`game_from_normalized_name`]).
 pub fn normalized_file_name(info: &RomInfo) -> String {
     let (family, variant) = info.game.family_and_variant();
     let (code, revision) = info.game.rom_code_and_revision();
@@ -110,6 +123,21 @@ pub fn normalized_file_name(info: &RomInfo) -> String {
         "{family}-{variant} ({}r{revision}).gba",
         String::from_utf8_lossy(code)
     )
+}
+
+/// Invert [`normalized_file_name`]: `"bn1-0 (AREEr0).gba"` → the
+/// registration whose code+revision match. Returns `None` for names
+/// this build didn't write (or whose game isn't compiled in).
+fn game_from_normalized_name(name: &str) -> Option<GameRef> {
+    let inner = name
+        .strip_suffix(".gba")?
+        .rsplit_once(" (")?
+        .1
+        .strip_suffix(')')?;
+    let (code, revision) = inner.rsplit_once('r')?;
+    let code: &[u8; 4] = code.as_bytes().try_into().ok()?;
+    let revision: u8 = revision.parse().ok()?;
+    tango_gamesupport::find_by_rom_info(&GAMES, code, revision)
 }
 
 /// The scanned ROM library: which registered games have an imported
@@ -129,9 +157,14 @@ pub struct LibraryEntry {
 }
 
 impl Library {
-    /// Read every file in `roms/` and identify it against the registry.
-    /// Unrecognized files are skipped (imports are already gated on
-    /// detection, so these are leftovers from older builds at worst).
+    /// Identify every file in `roms/` against the registry. Imports
+    /// already validated content (header + CRC32) and stored each ROM
+    /// under its [`normalized_file_name`], so the scan trusts that
+    /// name — the web stand-in for the desktop scanner's
+    /// stat-fingerprint gate; re-reading and re-hashing the whole
+    /// library froze the tab for minutes on a debug build. Files whose
+    /// names don't parse (hand-placed leftovers) get the full
+    /// read + detect treatment.
     pub async fn scan(storage: &crate::storage::Storage) -> Library {
         let files = match crate::storage::list_files(storage.roms()).await {
             Ok(files) => files,
@@ -142,6 +175,10 @@ impl Library {
         };
         let mut found = Vec::new();
         for (file, handle) in files {
+            if let Some(game) = game_from_normalized_name(&file) {
+                found.push(LibraryEntry { game, file });
+                continue;
+            }
             let Ok(bytes) = crate::storage::read_handle(&handle).await else {
                 continue;
             };
