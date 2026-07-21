@@ -256,3 +256,6 @@ session-stat-depth = Misvoorspellingsdiepte
 session-stat-ping = Netwerklatentie
 playback-speed = Snelheid
 playback-input-display = Invoerweergave
+
+## replay input display + swap (extracted from the desktop)
+playback-swap-perspective = Perspectief van tegenstander

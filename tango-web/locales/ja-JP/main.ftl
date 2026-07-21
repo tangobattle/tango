@@ -240,3 +240,6 @@ session-stat-depth = 予測ミス深度
 session-stat-ping = ネットワーク遅延
 playback-speed = 速度
 playback-input-display = 入力表示
+
+## replay input display + swap (extracted from the desktop)
+playback-swap-perspective = 相手の視点

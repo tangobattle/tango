@@ -240,3 +240,6 @@ session-stat-depth = 预测错误深度
 session-stat-ping = 网络延迟
 playback-speed = 速度
 playback-input-display = 输入显示
+
+## replay input display + swap (extracted from the desktop)
+playback-swap-perspective = 对手视角

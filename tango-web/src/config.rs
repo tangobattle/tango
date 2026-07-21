@@ -154,6 +154,9 @@ pub struct Config {
     pub streamer_mode: bool,
     /// Silence the game BGM during netplay matches.
     pub mute_bgm_in_pvp: bool,
+    /// Show the recorded joypads during replay playback (the transport
+    /// bar's toggle, persisted like the desktop's).
+    pub show_replay_inputs: bool,
     /// Re-sync the patch repo automatically in the background.
     pub enable_patch_autoupdate: bool,
     pub mapping: Mapping,
@@ -179,6 +182,7 @@ impl Default for Config {
             theme: Theme::default(),
             streamer_mode: false,
             mute_bgm_in_pvp: false,
+            show_replay_inputs: false,
             enable_patch_autoupdate: true,
             mapping: Mapping::default(),
         }

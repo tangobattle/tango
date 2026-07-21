@@ -135,8 +135,43 @@ pub fn SessionView() -> Element {
             }
             if let Some(end) = end {
                 div { class: "overlay",
-                    div { class: "overlay-panel",
-                        p { class: "end-message", {end_message(&lang, &end)} }
+                    div { class: "overlay-panel results-card",
+                        match &end {
+                            // The desktop results card, static flavor:
+                            // styled headline, the 44px score row, the
+                            // draws line.
+                            SessionEnd::MatchEnded { wins, losses, draws } => {
+                                let (headline, tone) = if wins > losses {
+                                    (t!(&lang, "session-results-victory"), "win")
+                                } else if wins < losses {
+                                    (t!(&lang, "session-results-defeat"), "loss")
+                                } else {
+                                    (t!(&lang, "session-results-draw"), "draw")
+                                };
+                                let (wins, losses, draws) = (*wins, *losses, *draws);
+                                rsx! {
+                                    p { class: "headline {tone}", "{headline}" }
+                                    div { class: "score-row",
+                                        div { class: "score-side",
+                                            span { class: "numeral", "{wins}" }
+                                            span { class: "sub", {t!(&lang, "session-results-you")} }
+                                        }
+                                        span { class: "numeral dash", "–" }
+                                        div { class: "score-side",
+                                            span { class: "numeral", "{losses}" }
+                                            span { class: "sub", {t!(&lang, "play-opponent")} }
+                                        }
+                                    }
+                                    if draws > 0 {
+                                        p { class: "sub", {t!(&lang, "session-results-draws", count = draws as i64)} }
+                                    }
+                                }
+                            }
+                            SessionEnd::Error(e) => rsx! {
+                                p { class: "headline draw", "{e}" }
+                            },
+                            _ => rsx! {},
+                        }
                         button {
                             class: "btn primary",
                             onclick: {
@@ -255,7 +290,7 @@ pub fn SessionMenuCard() -> Element {
 /// sessions).
 #[component]
 fn ReplayTransport() -> Element {
-    let Ctx { runtime, .. } = use_ctx();
+    let Ctx { runtime, mut config, .. } = use_ctx();
     let lang = crate::i18n::LANG.read().clone();
     let Some((shared, paused, speed, tick)) = ({
         let rt = runtime.borrow();
@@ -271,7 +306,9 @@ fn ReplayTransport() -> Element {
         return rsx! {};
     };
     let readout = crate::session::format_tick(tick);
+    let show_inputs = config.read().show_replay_inputs;
     let shared_toggle = shared.clone();
+    let shared_swap = shared.clone();
     rsx! {
         div { class: "transport-bar hud-chip",
             button {
@@ -301,6 +338,104 @@ fn ReplayTransport() -> Element {
                         move |_| shared.speed.store(pct, Ordering::Relaxed)
                     },
                     "{label}"
+                }
+            }
+            // The recorded joypads, persisted like the desktop's toggle.
+            button {
+                class: if show_inputs { "btn chip active" } else { "btn chip" },
+                title: t!(&lang, "playback-input-display"),
+                onclick: move |_| {
+                    config.with_mut(|c| c.show_replay_inputs = !c.show_replay_inputs);
+                },
+                icons::Gamepad2 {}
+            }
+            // Swap perspective: the driver re-reads view_player every
+            // tick, so this flips the presented screen (and audio) live.
+            button {
+                class: "btn chip",
+                title: t!(&lang, "playback-swap-perspective"),
+                onclick: move |_| {
+                    let v = shared_swap.view_player.load(Ordering::Relaxed);
+                    shared_swap.view_player.store(1 - v.min(1), Ordering::Relaxed);
+                },
+                icons::ArrowLeftRight {}
+            }
+        }
+        if show_inputs {
+            ReplayInputPads {}
+        }
+    }
+}
+
+/// The recorded joypads (the desktop's `input_display_overlay`): the
+/// viewed player bottom-left, the other side bottom-right, each pad
+/// lighting the keys held on the current tick.
+#[component]
+fn ReplayInputPads() -> Element {
+    let Ctx { runtime, .. } = use_ctx();
+    let Some((inputs, tick, view)) = ({
+        let rt = runtime.borrow();
+        match (rt.replay_inputs(), rt.shared()) {
+            (Some(inputs), Some(shared)) => Some((
+                inputs,
+                shared.stats.lock().unwrap().frontier,
+                shared.view_player.load(Ordering::Relaxed).min(1),
+            )),
+            _ => None,
+        }
+    }) else {
+        return rsx! {};
+    };
+    let idx = (tick as usize).saturating_sub(1).min(inputs.len().saturating_sub(1));
+    let Some(pair) = inputs.get(idx).copied() else {
+        return rsx! {};
+    };
+    let (left, right) = (pair[view], pair[1 - view]);
+    rsx! {
+        div { class: "input-pads",
+            {input_pad(left)}
+            div { class: "grow" }
+            {input_pad(right)}
+        }
+    }
+}
+
+/// One joypad face (the desktop's `input_pad`, HTML flavor): shoulders,
+/// the D-pad cross + Start/Select pills, and the B/A diagonal — held
+/// keys light primary. mGBA key bits: A 0x001, B 0x002, Select 0x004,
+/// Start 0x008, Right 0x010, Left 0x020, Up 0x040, Down 0x080, R 0x100,
+/// L 0x200.
+fn input_pad(joyflags: u32) -> Element {
+    let on = |bit: u32| if joyflags & bit != 0 { "on" } else { "" };
+    rsx! {
+        div { class: "input-pad hud-chip",
+            div { class: "shoulders",
+                span { class: "shoulder {on(0x200)}", "L" }
+                div { class: "grow" }
+                span { class: "shoulder {on(0x100)}", "R" }
+            }
+            div { class: "face",
+                div { class: "left-col",
+                    div { class: "dpad",
+                        span { class: "arm blank" }
+                        span { class: "arm up {on(0x040)}", "▲" }
+                        span { class: "arm blank" }
+                        span { class: "arm left {on(0x020)}", "◀" }
+                        span { class: "arm hub" }
+                        span { class: "arm right {on(0x010)}", "▶" }
+                        span { class: "arm blank" }
+                        span { class: "arm down {on(0x080)}", "▼" }
+                        span { class: "arm blank" }
+                    }
+                    div { class: "pills",
+                        span { class: "pill start {on(0x008)}", "START" }
+                        span { class: "pill select {on(0x004)}", "SELECT" }
+                    }
+                }
+                div { class: "grow" }
+                div { class: "ab",
+                    span { class: "round-key b {on(0x002)}", "B" }
+                    span { class: "round-key a {on(0x001)}", "A" }
                 }
             }
         }
@@ -536,29 +671,3 @@ fn spark(
     }
 }
 
-/// The end overlay's one-liner: the desktop results card's verdict +
-/// score, condensed. Quiet ends never reach here (the runtime skips
-/// their overlay).
-fn end_message(lang: &unic_langid::LanguageIdentifier, end: &SessionEnd) -> String {
-    match end {
-        SessionEnd::MatchEnded { wins, losses, draws } => {
-            let verdict = if wins > losses {
-                t!(lang, "session-results-victory")
-            } else if wins < losses {
-                t!(lang, "session-results-defeat")
-            } else {
-                t!(lang, "session-results-draw")
-            };
-            let mut line = format!("{verdict}  {wins} – {losses}");
-            if *draws > 0 {
-                line.push_str(&format!(
-                    "  ({})",
-                    t!(lang, "session-results-draws", count = *draws as i64)
-                ));
-            }
-            line
-        }
-        SessionEnd::LocalQuit | SessionEnd::ReplayFinished => String::new(),
-        SessionEnd::Error(e) => format!("{e}"),
-    }
-}

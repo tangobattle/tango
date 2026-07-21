@@ -256,3 +256,6 @@ session-stat-depth = Profundidad de predicción errónea
 session-stat-ping = Latencia de red
 playback-speed = Velocidad
 playback-input-display = Mostrar entradas
+
+## replay input display + swap (extracted from the desktop)
+playback-swap-perspective = Perspectiva del oponente

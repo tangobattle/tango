@@ -272,3 +272,6 @@ session-stat-depth = Misprediction depth
 session-stat-ping = Network latency
 playback-speed = Speed
 playback-input-display = Input display
+
+## replay input display + swap (extracted from the desktop)
+playback-swap-perspective = Opponent's perspective

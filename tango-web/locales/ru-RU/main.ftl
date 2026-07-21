@@ -261,3 +261,6 @@ session-stat-depth = Глубина ошибки предсказания
 session-stat-ping = Сетевая задержка
 playback-speed = Скорость
 playback-input-display = Отображение ввода
+
+## replay input display + swap (extracted from the desktop)
+playback-swap-perspective = Вид соперника

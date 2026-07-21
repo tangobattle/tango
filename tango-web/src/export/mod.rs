@@ -237,7 +237,7 @@ async fn run(
 
     // ---- the pair ----
     // The same boot the viewer uses, minus an audio sink or canvas.
-    let (mut playback, local_player) = crate::session::replay::boot(&replay, local_rom, remote_rom, false)?;
+    let (mut playback, local_player, _inputs) = crate::session::replay::boot(&replay, local_rom, remote_rom, false)?;
 
     // Audio replumbing: native-rate core output → 48 kHz s16 via the
     // mgba resampler (the realtime LinkStream's servo/faux-clock logic

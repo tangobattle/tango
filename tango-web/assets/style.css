@@ -2861,3 +2861,205 @@ main.dropping {
   border-top: 1px solid var(--accent-hair);
   margin: 12px 0;
 }
+
+/* ---- replay input display (the desktop's input_pad) ---- */
+
+.input-pads {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 60px; /* clears the transport bar */
+  z-index: 8;
+  display: flex;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.input-pad {
+  width: 160px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input-pad .shoulders {
+  display: flex;
+}
+
+.input-pad .shoulder {
+  width: 56px;
+  height: 15px;
+  border-radius: 999px;
+  font-size: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--plate-2);
+  border: 1px solid var(--hairline);
+}
+
+.input-pad .face {
+  display: flex;
+  align-items: center;
+}
+
+.input-pad .left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.input-pad .dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 24px);
+  grid-auto-rows: 24px;
+  gap: 2px;
+}
+
+.input-pad .arm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  background: var(--plate-2);
+  border: 1px solid var(--hairline);
+}
+
+.input-pad .arm.blank {
+  visibility: hidden;
+}
+
+.input-pad .arm.up {
+  border-radius: 7px 7px 3px 3px;
+}
+
+.input-pad .arm.down {
+  border-radius: 3px 3px 7px 7px;
+}
+
+.input-pad .arm.left {
+  border-radius: 7px 3px 3px 7px;
+}
+
+.input-pad .arm.right {
+  border-radius: 3px 7px 7px 3px;
+}
+
+.input-pad .arm.hub {
+  border-radius: 3px;
+}
+
+.input-pad .pills {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.input-pad .pill {
+  width: 44px;
+  height: 14px;
+  border-radius: 999px;
+  font-size: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--plate-2);
+  border: 1px solid var(--hairline);
+}
+
+.input-pad .pill.start {
+  margin-left: 8px;
+}
+
+.input-pad .ab {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.input-pad .round-key {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  background: var(--plate-2);
+  border: 1px solid var(--hairline);
+}
+
+.input-pad .round-key.b {
+  margin-top: 14px; /* the GBA diagonal */
+}
+
+/* Held keys light primary, like the desktop's mix(plate, primary, .55). */
+.input-pad .arm.on,
+.input-pad .pill.on,
+.input-pad .round-key.on,
+.input-pad .shoulder.on {
+  background: color-mix(in srgb, var(--accent) 55%, var(--plate-2));
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* ---- results card (the desktop's, static flavor) ---- */
+
+.results-card {
+  width: 400px;
+  max-width: 90vw;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.results-card .headline {
+  margin: 0;
+  font-size: 22px; /* DISPLAY */
+  min-height: 30px;
+}
+
+.results-card .headline.win {
+  color: #4caf50; /* success stays Tango green regardless of accent */
+}
+
+.results-card .headline.loss {
+  color: var(--danger);
+}
+
+.results-card .headline.draw {
+  color: var(--muted);
+}
+
+.results-card .score-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.results-card .score-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.results-card .numeral {
+  font-size: 44px;
+  line-height: 1.1;
+  font-family: "Noto Sans Mono", ui-monospace, monospace;
+}
+
+.results-card .numeral.dash {
+  font-size: 26px;
+  align-self: center;
+  color: var(--muted);
+}
+
+.results-card .btn {
+  margin-top: 12px;
+}

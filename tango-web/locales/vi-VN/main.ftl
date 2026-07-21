@@ -241,3 +241,6 @@ session-stat-depth = Độ sâu dự đoán sai
 session-stat-ping = Độ trễ mạng
 playback-speed = Tốc độ
 playback-input-display = Hiển thị nút bấm
+
+## replay input display + swap (extracted from the desktop)
+playback-swap-perspective = Góc nhìn đối thủ

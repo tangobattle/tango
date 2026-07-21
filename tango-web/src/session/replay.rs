@@ -17,6 +17,10 @@ pub struct ReplaySession {
     pub shared: Arc<SharedSession>,
     pub link: LinkAccess,
     pub descriptor: SessionDescriptor,
+    /// The recorded joyflag stream in absolute player order, one entry
+    /// per tick — the transport bar's input display reads the current
+    /// tick's pair out of it.
+    pub inputs: Arc<Vec<[u32; 2]>>,
 }
 
 /// Resolve a decoded replay's two games against the registry.
@@ -44,7 +48,7 @@ pub fn boot(
     local_rom: Vec<u8>,
     remote_rom: Vec<u8>,
     disable_bgm: bool,
-) -> anyhow::Result<(tango_pvp::playback::Playback, usize)> {
+) -> anyhow::Result<(tango_pvp::playback::Playback, usize, Arc<Vec<[u32; 2]>>)> {
     let (local_game, remote_game) = resolve_games(replay)?;
     let local_player = replay.local_player_index as usize;
 
@@ -89,8 +93,9 @@ pub fn boot(
         disable_bgm,
     };
     let lifecycle = tango_pvp::telemetry::LifecycleSink::new();
-    let playback = tango_pvp::playback::Playback::new(&config, Arc::new(inputs), &lifecycle)?;
-    Ok((playback, local_player))
+    let inputs = Arc::new(inputs);
+    let playback = tango_pvp::playback::Playback::new(&config, inputs.clone(), &lifecycle)?;
+    Ok((playback, local_player, inputs))
 }
 
 /// Boot + prime the playback pair for the live viewer.
@@ -100,7 +105,7 @@ pub fn start(
     remote_rom: Vec<u8>,
 ) -> anyhow::Result<ReplaySession> {
     let (local_game, _) = resolve_games(&replay)?;
-    let (playback, local_player) = boot(&replay, local_rom, remote_rom, false)?;
+    let (playback, local_player, inputs) = boot(&replay, local_rom, remote_rom, false)?;
 
     let shared = SharedSession::new(0);
     shared.view_player.store(local_player, Ordering::Relaxed);
@@ -120,6 +125,7 @@ pub fn start(
         shared,
         link: LinkAccess::Playback(playback),
         descriptor,
+        inputs,
     })
 }
 

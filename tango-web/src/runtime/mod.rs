@@ -486,6 +486,16 @@ impl Runtime {
         }
     }
 
+    /// The running replay's recorded joyflag stream (absolute player
+    /// order, one entry per tick) — the transport's input display reads
+    /// the current tick's pair from it. `None` outside replay sessions.
+    pub fn replay_inputs(&self) -> Option<std::sync::Arc<Vec<[u32; 2]>>> {
+        match self.session.as_ref() {
+            Some(Session::Replay(s)) => Some(s.inputs.clone()),
+            _ => None,
+        }
+    }
+
     pub fn descriptor(&self) -> Option<&SessionDescriptor> {
         self.session.as_ref().map(|s| s.descriptor())
     }
