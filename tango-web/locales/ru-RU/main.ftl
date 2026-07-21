@@ -215,3 +215,12 @@ settings-show-opponent-setup = Показывать сборку соперни�
 
 ## netplay settings section label (extracted from the desktop)
 settings-section-netplay = Сетевая игра
+
+## accent + patch repo settings (extracted from the desktop)
+settings-accent = Акцентный цвет
+settings-accent-tango-green = Зелёный Tango
+settings-accent-megaman-blue = Синий MegaMan
+settings-accent-protoman-red = Красный ProtoMan
+settings-accent-roll-pink = Розовый Roll
+settings-accent-gutsman-yellow = Жёлтый GutsMan
+settings-accent-bass-purple = Фиолетовый Bass

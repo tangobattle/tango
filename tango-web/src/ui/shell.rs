@@ -7,6 +7,7 @@
 
 use dioxus::html::HasFileData;
 use dioxus::prelude::*;
+use wasm_bindgen::JsCast;
 
 use super::{icons, play, session_view, settings, use_ctx, welcome, Ctx, Tab};
 use crate::config::Config;
@@ -91,6 +92,28 @@ pub fn App() -> Element {
             }
         });
     }
+
+    // The accent color drives the chrome through :root custom props —
+    // the web analog of the desktop's theme_for. Selection gold stays
+    // constant (--select-ink); the ink-vs-white flip on accent plates
+    // follows the desktop's on_accent luma rule.
+    use_effect(move || {
+        let accent = config.read().accent;
+        let (r, g, b) = accent.rgb();
+        let Some(root) = web_sys::window()
+            .and_then(|w| w.document())
+            .and_then(|d| d.document_element())
+            .and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok())
+        else {
+            return;
+        };
+        let style = root.style();
+        let _ = style.set_property("--accent", &format!("rgb({r},{g},{b})"));
+        let _ = style.set_property("--accent-weak", &format!("rgba({r},{g},{b},0.14)"));
+        let _ = style.set_property("--accent-hair", &format!("rgba({r},{g},{b},0.38)"));
+        let luma = (0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32) / 255.0;
+        let _ = style.set_property("--accent-ink", if luma > 0.6 { "#0a2012" } else { "#ffffff" });
+    });
 
     // A "(fresh save)" session that persisted SRAM created a real
     // save file — move the picker onto it, and remember it as the

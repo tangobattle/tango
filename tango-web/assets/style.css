@@ -15,7 +15,8 @@
   --warning: #ffb547;
   --select-gold: #ffd23d;
   --select-gold-2: #e8ac18;
-  --accent-ink: #0a2012;
+  --select-ink: #0a2012; /* constant: text on selection gold */
+  --accent-ink: #0a2012; /* per-accent: text on accent plates (set from config) */
   --plate: rgba(236, 238, 237, 0.04);
   --plate-2: rgba(236, 238, 237, 0.07);
 
@@ -1937,12 +1938,12 @@ main.dropping {
 
 .palette-row.selected {
   background: linear-gradient(to bottom, var(--select-gold), var(--select-gold-2));
-  color: var(--accent-ink);
+  color: var(--select-ink);
 }
 
 .palette-row.selected .sub,
 .palette-row.selected .muted {
-  color: color-mix(in srgb, var(--accent-ink) 75%, transparent);
+  color: color-mix(in srgb, var(--select-ink) 75%, transparent);
 }
 
 .palette-row.disabled {
@@ -2231,12 +2232,12 @@ main.dropping {
 
 .replay-row.selected {
   background: linear-gradient(to bottom, var(--select-gold), var(--select-gold-2));
-  color: var(--accent-ink);
+  color: var(--select-ink);
 }
 
 .replay-row.selected .sub,
 .replay-row.selected .caption {
-  color: color-mix(in srgb, var(--accent-ink) 75%, transparent);
+  color: color-mix(in srgb, var(--select-ink) 75%, transparent);
 }
 
 .replay-row .line {
@@ -2399,11 +2400,11 @@ main.dropping {
 
 .patch-row.selected {
   background: linear-gradient(to bottom, var(--select-gold), var(--select-gold-2));
-  color: var(--accent-ink);
+  color: var(--select-ink);
 }
 
 .patch-row.selected .caption {
-  color: color-mix(in srgb, var(--accent-ink) 75%, transparent);
+  color: color-mix(in srgb, var(--select-ink) 75%, transparent);
 }
 
 .patch-row .title-line {

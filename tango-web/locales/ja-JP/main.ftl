@@ -194,3 +194,12 @@ settings-show-opponent-setup = 対戦開始時に相手の構築を表示
 
 ## netplay settings section label (extracted from the desktop)
 settings-section-netplay = ネットプレイ
+
+## accent + patch repo settings (extracted from the desktop)
+settings-accent = アクセントカラー
+settings-accent-tango-green = タンゴグリーン
+settings-accent-megaman-blue = ロックマンブルー
+settings-accent-protoman-red = ブルースレッド
+settings-accent-roll-pink = ロールピンク
+settings-accent-gutsman-yellow = ガッツマンイエロー
+settings-accent-bass-purple = フォルテパープル

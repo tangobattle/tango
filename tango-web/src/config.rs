@@ -36,6 +36,43 @@ pub fn use_relay_pref() -> Option<bool> {
     Config::load().use_relay.use_relay()
 }
 
+/// The accent color, the desktop's MegaMan-cast picker (dark-palette
+/// values — the web build is dark-only). Selection gold and success
+/// green stay constant regardless, like the desktop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum Accent {
+    #[default]
+    TangoGreen,
+    MegaManBlue,
+    ProtoManRed,
+    RollPink,
+    GutsManYellow,
+    BassPurple,
+}
+
+impl Accent {
+    pub const ALL: [Accent; 6] = [
+        Accent::TangoGreen,
+        Accent::MegaManBlue,
+        Accent::ProtoManRed,
+        Accent::RollPink,
+        Accent::GutsManYellow,
+        Accent::BassPurple,
+    ];
+
+    /// The dark-palette accent color (`ui/theme.rs`'s values).
+    pub fn rgb(self) -> (u8, u8, u8) {
+        match self {
+            Accent::TangoGreen => (0x4c, 0xaf, 0x50),
+            Accent::MegaManBlue => (0x4d, 0xa6, 0xff),
+            Accent::ProtoManRed => (0xef, 0x40, 0x56),
+            Accent::RollPink => (0xff, 0x6e, 0xa8),
+            Accent::GutsManYellow => (0xe6, 0xb4, 0x22),
+            Accent::BassPurple => (0xae, 0x6f, 0xf5),
+        }
+    }
+}
+
 /// Whether to route the peer connection through a TURN relay — the
 /// desktop's Settings → Netplay picker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -92,6 +129,8 @@ pub struct Config {
     pub matchmaking_endpoint: Option<String>,
     /// Whether to force / forbid the TURN relay.
     pub use_relay: UseRelay,
+    /// The accent color driving the chrome (CSS custom props).
+    pub accent: Accent,
     pub mapping: Mapping,
 }
 
@@ -111,6 +150,7 @@ impl Default for Config {
             patch_favorites: Vec::new(),
             matchmaking_endpoint: None,
             use_relay: UseRelay::default(),
+            accent: Accent::default(),
             mapping: Mapping::default(),
         }
     }

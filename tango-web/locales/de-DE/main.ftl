@@ -210,3 +210,12 @@ settings-show-opponent-setup = Setup des Gegners bei Spielbeginn anzeigen
 
 ## netplay settings section label (extracted from the desktop)
 settings-section-netplay = Netplay
+
+## accent + patch repo settings (extracted from the desktop)
+settings-accent = Akzentfarbe
+settings-accent-tango-green = Tango-Grün
+settings-accent-megaman-blue = MegaMan-Blau
+settings-accent-protoman-red = ProtoMan-Rot
+settings-accent-roll-pink = Roll-Rosa
+settings-accent-gutsman-yellow = GutsMan-Gelb
+settings-accent-bass-purple = Bass-Lila

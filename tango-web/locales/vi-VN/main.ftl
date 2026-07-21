@@ -195,3 +195,12 @@ settings-show-opponent-setup = Hiện thiết lập của đối thủ khi trậ
 
 ## netplay settings section label (extracted from the desktop)
 settings-section-netplay = Netplay
+
+## accent + patch repo settings (extracted from the desktop)
+settings-accent = Màu nhấn
+settings-accent-tango-green = Xanh lá Tango
+settings-accent-megaman-blue = Xanh dương MegaMan
+settings-accent-protoman-red = Đỏ ProtoMan
+settings-accent-roll-pink = Hồng Roll
+settings-accent-gutsman-yellow = Vàng GutsMan
+settings-accent-bass-purple = Tím Bass

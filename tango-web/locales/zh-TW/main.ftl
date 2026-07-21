@@ -194,3 +194,12 @@ settings-show-opponent-setup = 對戰開始時顯示對手的配置
 
 ## netplay settings section label (extracted from the desktop)
 settings-section-netplay = 連線對戰
+
+## accent + patch repo settings (extracted from the desktop)
+settings-accent = 強調色
+settings-accent-tango-green = 探戈綠
+settings-accent-megaman-blue = 洛克人藍
+settings-accent-protoman-red = 布魯斯紅
+settings-accent-roll-pink = 羅爾粉紅
+settings-accent-gutsman-yellow = 氣力人黃
+settings-accent-bass-purple = 佛魯特紫

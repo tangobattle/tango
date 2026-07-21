@@ -104,6 +104,47 @@ fn GeneralSection() -> Element {
                     }
                 }
             }
+            div { class: "option-row",
+                label { {t!(&lang, "settings-accent")} }
+                select {
+                    onchange: move |evt: FormEvent| {
+                        if let Ok(i) = evt.value().parse::<usize>() {
+                            if let Some(a) = crate::config::Accent::ALL.get(i) {
+                                config.with_mut(|c| c.accent = *a);
+                            }
+                        }
+                    },
+                    {
+                        let accent = config.read().accent;
+                        let label = |a: crate::config::Accent| match a {
+                            crate::config::Accent::TangoGreen => t!(&lang, "settings-accent-tango-green"),
+                            crate::config::Accent::MegaManBlue => t!(&lang, "settings-accent-megaman-blue"),
+                            crate::config::Accent::ProtoManRed => t!(&lang, "settings-accent-protoman-red"),
+                            crate::config::Accent::RollPink => t!(&lang, "settings-accent-roll-pink"),
+                            crate::config::Accent::GutsManYellow => t!(&lang, "settings-accent-gutsman-yellow"),
+                            crate::config::Accent::BassPurple => t!(&lang, "settings-accent-bass-purple"),
+                        };
+                        rsx! {
+                            for (i, a) in crate::config::Accent::ALL.iter().enumerate() {
+                                option { value: "{i}", selected: *a == accent, {label(*a)} }
+                            }
+                        }
+                    }
+                }
+            }
+            div { class: "option-row",
+                label { {t!(&lang, "settings-patch-repo")} }
+                input {
+                    r#type: "text",
+                    class: "wide",
+                    value: "{config.read().patch_repo}",
+                    spellcheck: "false",
+                    autocomplete: "off",
+                    oninput: move |evt: FormEvent| {
+                        config.with_mut(|c| c.patch_repo = evt.value())
+                    },
+                }
+            }
         }
     }
 }
