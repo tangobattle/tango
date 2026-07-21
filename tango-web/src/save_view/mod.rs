@@ -325,8 +325,16 @@ pub(crate) fn limit_caption(label: String, over: bool) -> Element {
 ///   * `Some(true)`  — Play button rendered and enabled.
 ///   * `Some(false)` — Play button rendered but disabled (e.g. while a
 ///     netplay lobby is open and single-player would conflict).
+///
+/// `editable`: only the Play tab passes `true` (the default) — other
+/// embedders (the replay detail pane) never show the Edit affordance.
 #[component]
-pub fn SaveView(handle: SaveHandle, play_enabled: Option<bool>, on_play: EventHandler<()>) -> Element {
+pub fn SaveView(
+    handle: SaveHandle,
+    play_enabled: Option<bool>,
+    on_play: Option<EventHandler<()>>,
+    #[props(default = true)] editable: bool,
+) -> Element {
     // Re-render after staged edits (they mutate through the RefCell).
     let _ = SAVE_REV.read();
     let lang = crate::i18n::LANG.read().clone();
@@ -377,8 +385,8 @@ pub fn SaveView(handle: SaveHandle, play_enabled: Option<bool>, on_play: EventHa
     let active = active_tab().filter(|t| available.contains(t)).or_else(|| available.first().copied());
     let has_navi_strip = loaded.save.view_navi().is_some();
     let editability = loaded.editability;
-    let editing_session = editing.read().is_some();
-    let save_editable = editability.any();
+    let editing_session = editable && editing.read().is_some();
+    let save_editable = editable && editability.any();
 
     // Save is gated on a legal folder when chips are editable: a full 30
     // chips with no folder-limit violations.
@@ -515,7 +523,11 @@ pub fn SaveView(handle: SaveHandle, play_enabled: Option<bool>, on_play: EventHa
                                 button {
                                     class: "btn primary",
                                     disabled: !enabled,
-                                    onclick: move |_| on_play.call(()),
+                                    onclick: move |_| {
+                                        if let Some(h) = &on_play {
+                                            h.call(());
+                                        }
+                                    },
                                     icons::Play {}
                                     {t!(&lang, "play-play")}
                                 }

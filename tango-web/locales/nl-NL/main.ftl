@@ -171,3 +171,21 @@ save-new = Nieuwe save
 save-new-confirm = Aanmaken
 save-template-default = (standaard)
 save-template-pick = Kies een sjabloon…
+
+## replays detail (extracted from the desktop's main.ftl; keep in sync)
+replays-filter-all-games = Alle spellen
+replays-filter-any-time = Elk moment
+replays-filter-past-day = Afgelopen 24 uur
+replays-filter-past-week = Afgelopen week
+replays-filter-past-month = Afgelopen maand
+replays-filter-past-year = Afgelopen jaar
+replays-filter-search-placeholder = Replays zoeken…
+replays-show-incomplete = Onvolledige tonen
+replays-direct-marker = (direct)
+replays-select-prompt = Selecteer een herhaling.
+replays-match-type = Matchtype:
+replays-duration = Duur:
+replays-round-count = { $count ->
+    [one] 1 ronde
+   *[other] { $count } rondes
+}

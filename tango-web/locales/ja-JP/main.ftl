@@ -159,3 +159,18 @@ save-new = 新規セーブ
 save-new-confirm = 作成
 save-template-default = （デフォルト）
 save-template-pick = テンプレートを選択…
+
+## replays detail (extracted from the desktop's main.ftl; keep in sync)
+replays-filter-all-games = すべて
+replays-filter-any-time = すべての期間
+replays-filter-past-day = 過去24時間
+replays-filter-past-week = 過去1週間
+replays-filter-past-month = 過去1か月
+replays-filter-past-year = 過去1年
+replays-filter-search-placeholder = リプレイを検索…
+replays-show-incomplete = 未完了も表示
+replays-direct-marker = （ダイレクト）
+replays-select-prompt = リプレイを選択してください。
+replays-match-type = マッチタイプ:
+replays-duration = 再生時間:
+replays-round-count = { $count }ラウンド

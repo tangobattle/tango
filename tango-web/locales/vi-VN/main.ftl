@@ -159,3 +159,18 @@ save-new = Save mới
 save-new-confirm = Tạo
 save-template-default = (mặc định)
 save-template-pick = Chọn mẫu…
+
+## replays detail (extracted from the desktop's main.ftl; keep in sync)
+replays-filter-all-games = Tất cả game
+replays-filter-any-time = Mọi lúc
+replays-filter-past-day = 24 giờ qua
+replays-filter-past-week = Tuần qua
+replays-filter-past-month = Tháng qua
+replays-filter-past-year = Năm qua
+replays-filter-search-placeholder = Tìm kiếm replay…
+replays-show-incomplete = Hiện chưa hoàn tất
+replays-direct-marker = (trực tiếp)
+replays-select-prompt = Chọn một replay.
+replays-match-type = Kiểu trận:
+replays-duration = Thời lượng:
+replays-round-count = { $count } vòng

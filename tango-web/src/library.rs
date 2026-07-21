@@ -45,7 +45,6 @@ pub fn detect(rom: &[u8]) -> Option<GameRef> {
 }
 
 /// Look a registered game up by `(family, variant)`.
-#[allow(dead_code)] // netplay settings resolution (M3)
 pub fn find_by_family_and_variant(family: &str, variant: u8) -> Option<GameRef> {
     tango_gamesupport::find_by_family_and_variant(&GAMES, family, variant)
 }
@@ -322,7 +321,6 @@ pub fn display_name(game: GameRef) -> String {
 }
 
 /// Short tag (e.g. "BN6") via the family's `short` string.
-#[allow(dead_code)] // compact pickers (M3 lobby)
 pub fn short_name(game: GameRef) -> String {
     let (family, _) = game.family_and_variant();
     family_str(family, "short").unwrap_or_else(|| game_slug(game))

@@ -159,3 +159,18 @@ save-new = 新增存檔
 save-new-confirm = 建立
 save-template-default = （預設）
 save-template-pick = 選擇範本…
+
+## replays detail (extracted from the desktop's main.ftl; keep in sync)
+replays-filter-all-games = 所有遊戲
+replays-filter-any-time = 任何時間
+replays-filter-past-day = 過去 24 小時
+replays-filter-past-week = 過去一週
+replays-filter-past-month = 過去一個月
+replays-filter-past-year = 過去一年
+replays-filter-search-placeholder = 搜尋重播…
+replays-show-incomplete = 顯示未完成
+replays-direct-marker = （直連）
+replays-select-prompt = 選擇一個重播。
+replays-match-type = 對戰類型：
+replays-duration = 時長：
+replays-round-count = { $count } 個回合

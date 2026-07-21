@@ -171,3 +171,21 @@ save-new = Novo save
 save-new-confirm = Criar
 save-template-default = (padrão)
 save-template-pick = Escolher um modelo…
+
+## replays detail (extracted from the desktop's main.ftl; keep in sync)
+replays-filter-all-games = Todos os jogos
+replays-filter-any-time = Qualquer data
+replays-filter-past-day = Últimas 24 horas
+replays-filter-past-week = Última semana
+replays-filter-past-month = Último mês
+replays-filter-past-year = Último ano
+replays-filter-search-placeholder = Pesquisar replays…
+replays-show-incomplete = Mostrar incompletos
+replays-direct-marker = (direto)
+replays-select-prompt = Selecione um replay.
+replays-match-type = Tipo de partida:
+replays-duration = Duração:
+replays-round-count = { $count ->
+    [one] 1 round
+   *[other] { $count } rounds
+}

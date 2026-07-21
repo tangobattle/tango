@@ -159,3 +159,18 @@ save-new = 新建存档
 save-new-confirm = 创建
 save-template-default = （默认）
 save-template-pick = 选择模板…
+
+## replays detail (extracted from the desktop's main.ftl; keep in sync)
+replays-filter-all-games = 所有游戏
+replays-filter-any-time = 任意时间
+replays-filter-past-day = 过去 24 小时
+replays-filter-past-week = 过去一周
+replays-filter-past-month = 过去一个月
+replays-filter-past-year = 过去一年
+replays-filter-search-placeholder = 搜索录像…
+replays-show-incomplete = 显示未完成
+replays-direct-marker = （直连）
+replays-select-prompt = 选择一个录像。
+replays-match-type = 对战类型：
+replays-duration = 时长：
+replays-round-count = { $count } 个回合

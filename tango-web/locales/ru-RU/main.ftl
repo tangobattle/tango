@@ -175,3 +175,22 @@ save-new = Новое сохранение
 save-new-confirm = Создать
 save-template-default = (по умолчанию)
 save-template-pick = Выбрать шаблон…
+
+## replays detail (extracted from the desktop's main.ftl; keep in sync)
+replays-filter-all-games = Все игры
+replays-filter-any-time = За всё время
+replays-filter-past-day = Последние 24 часа
+replays-filter-past-week = За последнюю неделю
+replays-filter-past-month = За последний месяц
+replays-filter-past-year = За последний год
+replays-filter-search-placeholder = Поиск повторов…
+replays-show-incomplete = Показывать неполные
+replays-direct-marker = (прямое)
+replays-select-prompt = Выберите повтор.
+replays-match-type = Тип матча:
+replays-duration = Длительность:
+replays-round-count = { $count ->
+    [one] 1 раунд
+    [few] { $count } раунда
+   *[many] { $count } раундов
+}
