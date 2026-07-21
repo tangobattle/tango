@@ -3,6 +3,7 @@
 //! screen). Modeled on gbaroll's shell; the screens themselves are
 //! Tango's.
 
+mod diag;
 mod icons;
 mod play;
 mod session_view;

@@ -11,7 +11,8 @@ use crate::platform::input::{self, DescribeKind, MappedKey};
 use crate::runtime::{CAPTURED, CAPTURE_TARGET};
 
 /// The desktop's section list, minus the ones whose features haven't
-/// landed on web yet (Netplay joins at M3).
+/// landed on web yet (Netplay joins at M3), plus Diagnostics — the
+/// determinism probe and desync tooling live there.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum Section {
     #[default]
@@ -19,6 +20,7 @@ enum Section {
     Graphics,
     Audio,
     Input,
+    Diagnostics,
     About,
 }
 
@@ -34,6 +36,7 @@ pub fn SettingsScreen() -> Element {
                 (Section::Graphics, "Graphics"),
                 (Section::Audio, "Audio"),
                 (Section::Input, "Input"),
+                (Section::Diagnostics, "Diagnostics"),
                 (Section::About, "About"),
             ] {
                 button {
@@ -50,6 +53,7 @@ pub fn SettingsScreen() -> Element {
                 Section::Graphics => rsx! { GraphicsSection {} },
                 Section::Audio => rsx! { AudioSection {} },
                 Section::Input => rsx! { InputSection {} },
+                Section::Diagnostics => rsx! { super::diag::DiagnosticsSection {} },
                 Section::About => rsx! { AboutSection {} },
             }
         }
