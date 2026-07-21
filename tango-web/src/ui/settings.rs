@@ -422,25 +422,45 @@ fn InputSection() -> Element {
 /// in-place navigation would tear down the running app.
 #[component]
 fn AboutSection() -> Element {
+    // The desktop's About: emblem, then "# Tango {version}" + the
+    // repo's CREDITS.md as rendered markdown (English-only, like the
+    // desktop). Parsed once — the content is static. Web extras (mGBA /
+    // Dioxus attribution) ride at the end.
+    static ABOUT_HTML: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+        let md = format!(
+            "# Tango {VERSION}\n{}",
+            include_str!("../../../CREDITS.md")
+        );
+        let parser = pulldown_cmark::Parser::new(&md).filter(|ev| {
+            !matches!(
+                ev,
+                pulldown_cmark::Event::Html(_) | pulldown_cmark::Event::InlineHtml(_)
+            )
+        });
+        let mut html = String::new();
+        pulldown_cmark::html::push_html(&mut html, parser);
+        // In-app navigation would unload the wasm app — every credits
+        // link opens a new tab instead.
+        html.replace("<a href=", "<a target=\"_blank\" rel=\"noopener\" href=")
+    });
     rsx! {
         section { class: "pane credits",
-            h2 { "About" }
-            p { "Tango (web) v{VERSION} · built on:" }
-            ul {
-                li {
-                    Ext { href: "https://mgba.io", label: "mGBA" }
-                    " — the emulator core, by endrift and contributors (MPL-2.0)"
-                }
-                li {
-                    Ext { href: "https://dioxuslabs.com", label: "Dioxus" }
-                    " — the UI framework"
-                }
+            img { class: "emblem-banner", src: EMBLEM, alt: "Tango" }
+            div { class: "md", dangerous_inner_html: "{ABOUT_HTML.as_str()}" }
+            hr {}
+            p { class: "sub",
+                "Tango (web) v{VERSION} · "
+                Ext { href: "https://mgba.io", label: "mGBA" }
+                " (MPL-2.0) · "
+                Ext { href: "https://dioxuslabs.com", label: "Dioxus" }
             }
         }
     }
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// The desktop About page's banner (`tango/src/emblem.png`).
+const EMBLEM: Asset = asset!("/assets/emblem.png");
 
 /// A credits link out of the app: new tab, no opener.
 #[component]

@@ -85,7 +85,9 @@ pub fn PatchesScreen() -> Element {
         });
         let mut html = String::new();
         pulldown_cmark::html::push_html(&mut html, parser);
-        html
+        // In-app navigation would unload the wasm app — README links
+        // open a new tab instead.
+        html.replace("<a href=", "<a target=\"_blank\" rel=\"noopener noreferrer\" href=")
     });
 
     let on_update = move |_| {

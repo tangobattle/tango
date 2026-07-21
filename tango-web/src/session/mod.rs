@@ -22,6 +22,15 @@ use crate::library::GameRef;
 /// GBA cycles per second / cycles per frame — the exact tick rate.
 pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
 
+/// A tick count as the transport bar's `m:ss` readout (the desktop's
+/// `format_tick`).
+pub fn format_tick(tick: u32) -> String {
+    let total_s = tick / 60;
+    let m = total_s / 60;
+    let s = total_s % 60;
+    format!("{m}:{s:02}")
+}
+
 #[derive(Debug, Clone)]
 pub enum SessionEnd {
     LocalQuit,
@@ -174,7 +183,6 @@ impl SharedSession {
     /// Resume a locally paced session without trying to make up time spent
     /// paused. The reset request is published before the pause flag clears,
     /// so a pump that observes the resume also observes the reset.
-    #[allow(dead_code)] // pause/resume UI
     pub fn resume(&self) {
         self.pace_reset_requested.store(true, Ordering::Relaxed);
         self.paused.store(false, Ordering::Release);

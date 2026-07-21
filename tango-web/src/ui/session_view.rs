@@ -56,19 +56,20 @@ pub fn SessionView() -> Element {
     let _ = SESSION_EPOCH.read();
     let menu_open = *MENU_OPEN.read();
 
-    let (title, running, paused, end) = {
+    let (title, running, paused, end, kind) = {
         let rt = runtime.borrow();
         let title = rt
             .descriptor()
             .map(|d| crate::library::display_name(d.game))
             .unwrap_or_else(|| "Session".to_string());
+        let kind = rt.descriptor().map(|d| d.kind);
         let end = rt.last_end();
         match rt.shared() {
             Some(shared) => {
                 let paused = shared.paused.load(Ordering::Relaxed);
-                (title, true, paused, end)
+                (title, true, paused, end, kind)
             }
-            None => (title, false, false, end),
+            None => (title, false, false, end, kind),
         }
     };
 
@@ -113,6 +114,14 @@ pub fn SessionView() -> Element {
                     }
                     if menu_open {
                         div { class: "card-anchor", SessionMenuCard {} }
+                    }
+                    // The desktop's per-kind overlays: the replay
+                    // transport bar and the PvP telemetry deck.
+                    if kind == Some(SessionKind::Replay) {
+                        ReplayTransport {}
+                    }
+                    if kind == Some(SessionKind::Pvp) {
+                        TelemetryDeck {}
                     }
                     // Coarse-pointer screens get on-screen controls (CSS
                     // decides; it renders inert elsewhere). They stay put
@@ -235,6 +244,294 @@ pub fn SessionMenuCard() -> Element {
                 }
             }
             p { class: "hint", "{hints}" }
+        }
+    }
+}
+
+/// The replay transport bar (the desktop's, minus the scrubber/clip
+/// machinery that rides the seek port): play/pause, the tick readout,
+/// and the speed chips. Pause parks the pump's pacing; speed rides the
+/// replay driver's own knob (the pump only overwrites it for local
+/// sessions).
+#[component]
+fn ReplayTransport() -> Element {
+    let Ctx { runtime, .. } = use_ctx();
+    let lang = crate::i18n::LANG.read().clone();
+    let Some((shared, paused, speed, tick)) = ({
+        let rt = runtime.borrow();
+        rt.shared().map(|shared| {
+            (
+                shared.clone(),
+                shared.paused.load(Ordering::Relaxed),
+                shared.speed.load(Ordering::Relaxed),
+                shared.stats.lock().unwrap().frontier,
+            )
+        })
+    }) else {
+        return rsx! {};
+    };
+    let readout = crate::session::format_tick(tick);
+    let shared_toggle = shared.clone();
+    rsx! {
+        div { class: "transport-bar hud-chip",
+            button {
+                class: if paused { "btn round primary" } else { "btn round" },
+                title: t!(&lang, "playback-pause"),
+                onclick: move |_| {
+                    if shared_toggle.paused.load(Ordering::Relaxed) {
+                        shared_toggle.resume();
+                    } else {
+                        shared_toggle.paused.store(true, Ordering::Release);
+                    }
+                },
+                if paused {
+                    icons::Play {}
+                } else {
+                    icons::Pause {}
+                }
+            }
+            span { class: "readout mono", "{readout}" }
+            div { class: "grow" }
+            span { class: "sub", {t!(&lang, "playback-speed")} }
+            for (label, pct) in [("0.5×", 50u32), ("1×", 100), ("2×", 200), ("4×", 400)] {
+                button {
+                    class: if speed == pct { "btn chip active" } else { "btn chip" },
+                    onclick: {
+                        let shared = shared.clone();
+                        move |_| shared.speed.store(pct, Ordering::Relaxed)
+                    },
+                    "{label}"
+                }
+            }
+        }
+    }
+}
+
+/// One telemetry history sample; the deck keeps the desktop's 180-deep
+/// rolling window.
+struct Sample {
+    tps: f32,
+    skew: i32,
+    lead: i64,
+    depth: u32,
+    ping: Option<f32>,
+}
+
+const METRIC_HISTORY_LEN: usize = 180;
+
+/// The PvP telemetry deck (the desktop's bottom-right chip + panel):
+/// collapsed, a skew-toned signal chip; expanded, the five metric cards
+/// with sparklines and the live frame-delay slider. Gated on the first
+/// pong, like the desktop.
+#[component]
+fn TelemetryDeck() -> Element {
+    let Ctx {
+        runtime, mut config, ..
+    } = use_ctx();
+    let lang = crate::i18n::LANG.read().clone();
+    let mut expanded = use_signal(|| false);
+    // History rides a plain ring (not a signal): the deck already
+    // re-renders per frame via the parent's FRAME_REV read, and a
+    // reactive write per frame would double the render rate.
+    let history = use_hook(|| std::rc::Rc::new(std::cell::RefCell::new((0u32, std::collections::VecDeque::<Sample>::new()))));
+
+    let Some((shared, stats, local_player)) = ({
+        let rt = runtime.borrow();
+        match (rt.shared(), rt.descriptor()) {
+            (Some(shared), Some(d)) => Some((shared.clone(), shared.stats.lock().unwrap().clone(), d.local_player)),
+            _ => None,
+        }
+    }) else {
+        return rsx! {};
+    };
+    // Nothing to show before the first pong.
+    let Some(ping) = stats.rtt_ms else {
+        return rsx! {};
+    };
+
+    // One sample per simulated tick, newest pinned right.
+    {
+        let mut h = history.borrow_mut();
+        if h.0 != stats.frontier {
+            h.0 = stats.frontier;
+            let lead = stats.frontier as i64 - stats.confirmed as i64;
+            h.1.push_back(Sample {
+                tps: stats.tps,
+                skew: stats.skew,
+                lead,
+                depth: stats.rolled_back,
+                ping: stats.rtt_ms,
+            });
+            while h.1.len() > METRIC_HISTORY_LEN {
+                h.1.pop_front();
+            }
+        }
+    }
+
+    let skew = stats.skew;
+    let skew_mag = skew.unsigned_abs();
+    let tone_of = |good: bool, warn: bool| if good { "good" } else if warn { "warn" } else { "bad" };
+
+    if !expanded() {
+        // Collapsed: the signal-bars chip, toned by skew.
+        return rsx! {
+            div { class: "telemetry-anchor",
+                button {
+                    class: "btn round hud-chip-btn tone-{tone_of(skew_mag <= 3, skew_mag <= 7)}",
+                    title: "{skew:+}",
+                    onclick: move |_| expanded.set(true),
+                    if skew_mag <= 3 {
+                        icons::SignalHigh {}
+                    } else if skew_mag <= 7 {
+                        icons::SignalMedium {}
+                    } else {
+                        icons::SignalLow {}
+                    }
+                }
+            }
+        };
+    }
+
+    let h = history.borrow();
+    let target = stats.fps_target.max(1.0);
+    let lead = stats.frontier as i64 - stats.confirmed as i64;
+    let frame_delay = shared.present_delay.load(Ordering::Relaxed).min(10);
+    let cards = [
+        (
+            rsx! { icons::Gauge {} },
+            t!(&lang, "session-stat-tps"),
+            spark(&h.1, |s| Some(s.tps), target - 8.0, target + 2.0),
+            format!("{:.0}", stats.tps),
+            tone_of(stats.tps >= target - 1.0, stats.tps >= target - 5.0),
+        ),
+        (
+            rsx! { icons::ArrowLeftRight {} },
+            t!(&lang, "session-stat-skew"),
+            spark(&h.1, |s| Some(s.skew as f32), -8.0, 8.0),
+            format!("{skew:+}"),
+            tone_of(skew_mag <= 3, skew_mag <= 7),
+        ),
+        (
+            rsx! { icons::Footprints {} },
+            t!(&lang, "session-stat-lead"),
+            spark(&h.1, |s| Some(s.lead as f32), -24.0, 24.0),
+            format!("{lead:+}"),
+            tone_of(lead.unsigned_abs() <= 8, lead.unsigned_abs() <= 16),
+        ),
+        (
+            rsx! { icons::GitMerge {} },
+            t!(&lang, "session-stat-depth"),
+            spark(&h.1, |s| Some(s.depth as f32), 0.0, 8.0),
+            format!("{}", stats.rolled_back),
+            tone_of(stats.rolled_back <= 2, stats.rolled_back <= 5),
+        ),
+        (
+            rsx! { icons::Wifi {} },
+            t!(&lang, "session-stat-ping"),
+            spark(&h.1, |s| s.ping, 0.0, 200.0),
+            format!("{:.0} ms", ping),
+            tone_of(ping < 80.0, ping < 140.0),
+        ),
+    ];
+    let shared_fd = shared.clone();
+
+    rsx! {
+        div { class: "telemetry-anchor",
+            div { class: "telemetry-panel hud-chip",
+                div { class: "tele-header",
+                    span { class: "seat", "P{local_player + 1}" }
+                    span { class: "sub", {t!(&lang, "play-you")} }
+                    div { class: "grow" }
+                    button {
+                        class: "btn ghost icon-btn",
+                        onclick: move |_| expanded.set(false),
+                        icons::ChevronUp {}
+                    }
+                }
+                for (icon, label, sparkline, value, tone) in cards {
+                    div { class: "tele-card",
+                        div { class: "caption-row",
+                            span { class: "icon", {icon} }
+                            span { class: "sub", "{label}" }
+                        }
+                        div { class: "value-row",
+                            {sparkline}
+                            span { class: "value mono tone-{tone}", "{value}" }
+                        }
+                    }
+                }
+                div { class: "tele-card",
+                    div { class: "caption-row",
+                        span { class: "sub", {t!(&lang, "settings-netplay-frame-delay")} }
+                    }
+                    div { class: "value-row",
+                        input {
+                            r#type: "range",
+                            min: "0",
+                            max: "10",
+                            value: "{frame_delay}",
+                            oninput: move |evt: FormEvent| {
+                                if let Ok(v) = evt.value().parse::<u32>() {
+                                    let v = v.min(10);
+                                    // Applied live by the PvP driver next
+                                    // tick; persisted for the next match.
+                                    shared_fd.present_delay.store(v, Ordering::Relaxed);
+                                    config.with_mut(|c| c.present_delay = v);
+                                }
+                            },
+                        }
+                        span { class: "value mono", "{frame_delay}" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A 180-slot sparkline as an inline SVG polyline, newest pinned right;
+/// `None` readings break the line.
+fn spark(
+    history: &std::collections::VecDeque<Sample>,
+    pick: impl Fn(&Sample) -> Option<f32>,
+    min: f32,
+    max: f32,
+) -> Element {
+    const W: f32 = 160.0;
+    const H: f32 = 24.0;
+    let span = (max - min).max(f32::EPSILON);
+    let dx = W / (METRIC_HISTORY_LEN - 1) as f32;
+    // Newest sample rides the right edge.
+    let offset = METRIC_HISTORY_LEN.saturating_sub(history.len());
+    let mut runs: Vec<String> = Vec::new();
+    let mut current = String::new();
+    for (i, s) in history.iter().enumerate() {
+        match pick(s) {
+            Some(v) => {
+                let x = (offset + i) as f32 * dx;
+                let y = H - ((v - min) / span).clamp(0.0, 1.0) * H;
+                current.push_str(&format!("{x:.1},{y:.1} "));
+            }
+            None => {
+                if !current.is_empty() {
+                    runs.push(std::mem::take(&mut current));
+                }
+            }
+        }
+    }
+    if !current.is_empty() {
+        runs.push(current);
+    }
+    rsx! {
+        svg { class: "sparkline", view_box: "0 0 {W} {H}",
+            for points in runs {
+                polyline {
+                    points: "{points}",
+                    fill: "none",
+                    stroke: "currentColor",
+                    stroke_width: "1",
+                    stroke_linecap: "round",
+                }
+            }
         }
     }
 }
