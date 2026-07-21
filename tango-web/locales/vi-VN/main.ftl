@@ -207,3 +207,10 @@ settings-accent-bass-purple = Tím Bass
 
 ## welcome step description (extracted from the desktop)
 welcome-step-nickname-description = Bạn có thể đổi bất cứ lúc nào trong Cài đặt.
+
+## replay video export (extracted from the desktop)
+replays-export = Xuất
+replays-export-progress = Đang render…
+replays-export-cancel = Hủy
+replays-export-success = Render đã hoàn tất.
+replays-export-error = Render thất bại: { $error }

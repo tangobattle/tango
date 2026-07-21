@@ -367,6 +367,35 @@ pub fn ReplaysScreen() -> Element {
         }
     };
 
+    // Render the replay to a WebM through WebCodecs; progress + cancel
+    // ride the export signals.
+    let exporting = crate::export::EXPORT_PROGRESS.read().is_some();
+    let on_export = {
+        let selected_row = selected_row.clone();
+        move |_| {
+            let Some(row) = selected_row.clone() else { return };
+            if crate::export::EXPORT_PROGRESS.peek().is_some() {
+                return;
+            }
+            let storage = storage.read().clone().flatten();
+            let lib = library.read().clone().flatten();
+            spawn(async move {
+                let lang = crate::i18n::LANG.peek().clone();
+                let result = async {
+                    let (replay, local_rom, remote_rom) = load_pair(storage, lib, &row.file).await?;
+                    crate::export::export_replay(replay, local_rom, remote_rom, save_stem_of(&row.file)).await
+                }
+                .await;
+                match result {
+                    Ok(()) => *WATCH_STATUS.write() = Some(t!(&lang, "replays-export-success")),
+                    Err(e) => {
+                        *WATCH_STATUS.write() = Some(t!(&lang, "replays-export-error", error = format!("{e:#}")));
+                    }
+                }
+            });
+        }
+    };
+
     let on_delete = {
         let selected_row = selected_row.clone();
         move |_| {
@@ -425,6 +454,17 @@ pub fn ReplaysScreen() -> Element {
                 }
                 {t!(&lang, "replays-show-incomplete")}
             }
+            if let Some(p) = *crate::export::EXPORT_PROGRESS.read() {
+                span { class: "sub",
+                    {t!(&lang, "replays-export-progress")}
+                    " {p.frame * 100 / p.total.max(1)}%"
+                }
+                button {
+                    class: "btn",
+                    onclick: move |_| *crate::export::EXPORT_CANCEL.write() = true,
+                    {t!(&lang, "replays-export-cancel")}
+                }
+            }
             if let Some(status) = WATCH_STATUS.read().clone() {
                 span { class: "sub flash ok", "{status}" }
             }
@@ -474,6 +514,13 @@ pub fn ReplaysScreen() -> Element {
                         div { class: "head",
                             span { class: "title", {save_stem_of(&row.file)} }
                             div { class: "grow" }
+                            button {
+                                class: "btn icon-btn",
+                                title: t!(&lang, "replays-export"),
+                                disabled: exporting || watch_missing_rom,
+                                onclick: on_export,
+                                icons::Clapperboard {}
+                            }
                             button {
                                 class: "btn icon-btn",
                                 title: t!(&lang, "web-download"),
@@ -550,18 +597,18 @@ fn save_stem_of(file: &str) -> String {
     file.strip_suffix(".tangoreplay").unwrap_or(file).to_string()
 }
 
-/// Decode the replay, resolve + read both ROMs, boot the playback.
-async fn watch(
-    runtime: std::rc::Rc<std::cell::RefCell<crate::runtime::Runtime>>,
+/// Decode the replay and read both sides' patched ROMs — everything a
+/// playback pair boots from. Shared by Watch and the video exporter.
+async fn load_pair(
     storage: Option<crate::storage::Storage>,
     lib: Option<crate::library::Library>,
-    file: String,
-) -> anyhow::Result<()> {
+    file: &str,
+) -> anyhow::Result<(tango_pvp::replay::Replay, Vec<u8>, Vec<u8>)> {
     let (storage, lib) = match (storage, lib) {
         (Some(s), Some(l)) => (s, l),
         _ => anyhow::bail!("storage unavailable"),
     };
-    let bytes = crate::storage::read(storage.replays(), &file)
+    let bytes = crate::storage::read(storage.replays(), file)
         .await
         .map_err(|e| anyhow::anyhow!("read replay: {e}"))?
         .ok_or_else(|| anyhow::anyhow!("replay disappeared"))?;
@@ -603,6 +650,17 @@ async fn watch(
             .await
             .map_err(|e| anyhow::anyhow!("apply remote patch: {e:#}"))?;
     }
+    Ok((replay, local_rom, remote_rom))
+}
+
+/// Decode the replay, resolve + read both ROMs, boot the playback.
+async fn watch(
+    runtime: std::rc::Rc<std::cell::RefCell<crate::runtime::Runtime>>,
+    storage: Option<crate::storage::Storage>,
+    lib: Option<crate::library::Library>,
+    file: String,
+) -> anyhow::Result<()> {
+    let (replay, local_rom, remote_rom) = load_pair(storage, lib, &file).await?;
     // The Watch click is a user gesture — grab the audio sink while we
     // can.
     crate::web::ensure_audio(&runtime).await;

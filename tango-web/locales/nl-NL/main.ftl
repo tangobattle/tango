@@ -222,3 +222,10 @@ settings-accent-bass-purple = Bass-paars
 
 ## welcome step description (extracted from the desktop)
 welcome-step-nickname-description = Je kunt deze altijd wijzigen via Instellingen.
+
+## replay video export (extracted from the desktop)
+replays-export = Exporteren
+replays-export-progress = Renderen…
+replays-export-cancel = Annuleren
+replays-export-success = Renderen voltooid.
+replays-export-error = Renderen mislukt: { $error }

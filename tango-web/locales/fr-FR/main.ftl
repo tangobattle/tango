@@ -222,3 +222,10 @@ settings-accent-bass-purple = Violet Bass
 
 ## welcome step description (extracted from the desktop)
 welcome-step-nickname-description = Vous pourrez le changer à tout moment dans les Paramètres.
+
+## replay video export (extracted from the desktop)
+replays-export = Exporter
+replays-export-progress = Rendu en cours…
+replays-export-cancel = Annuler
+replays-export-success = Rendu terminé.
+replays-export-error = Échec du rendu: { $error }

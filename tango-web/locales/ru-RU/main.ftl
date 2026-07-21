@@ -227,3 +227,10 @@ settings-accent-bass-purple = Фиолетовый Bass
 
 ## welcome step description (extracted from the desktop)
 welcome-step-nickname-description = Можно изменить в любой момент в Настройках.
+
+## replay video export (extracted from the desktop)
+replays-export = Экспортировать
+replays-export-progress = Рендеринг…
+replays-export-cancel = Отмена
+replays-export-success = Рендер завершён.
+replays-export-error = Сбой рендера: { $error }

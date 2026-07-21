@@ -206,3 +206,10 @@ settings-accent-bass-purple = 佛魯特紫
 
 ## welcome step description (extracted from the desktop)
 welcome-step-nickname-description = 你可以隨時在設定中變更。
+
+## replay video export (extracted from the desktop)
+replays-export = 算繪
+replays-export-progress = 正在算繪…
+replays-export-cancel = 取消
+replays-export-success = 算繪完成。
+replays-export-error = 算繪失敗：{ $error }

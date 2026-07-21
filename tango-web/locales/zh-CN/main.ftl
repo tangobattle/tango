@@ -206,3 +206,10 @@ settings-accent-bass-purple = 佛鲁特紫
 
 ## welcome step description (extracted from the desktop)
 welcome-step-nickname-description = 你可以随时在设置中更改。
+
+## replay video export (extracted from the desktop)
+replays-export = 渲染
+replays-export-progress = 正在渲染…
+replays-export-cancel = 取消
+replays-export-success = 渲染完成。
+replays-export-error = 渲染失败：{ $error }

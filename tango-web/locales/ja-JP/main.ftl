@@ -206,3 +206,10 @@ settings-accent-bass-purple = フォルテパープル
 
 ## welcome step description (extracted from the desktop)
 welcome-step-nickname-description = 設定からいつでも変更できます。
+
+## replay video export (extracted from the desktop)
+replays-export = 録画
+replays-export-progress = 録画中…
+replays-export-cancel = キャンセル
+replays-export-success = 録画が完了しました。
+replays-export-error = 録画に失敗しました: { $error }

@@ -36,14 +36,16 @@ pub fn resolve_games(
     ))
 }
 
-/// Boot + prime the playback pair (synchronously — seconds, behind the
-/// caller's status line).
-pub fn start(
-    replay: tango_pvp::replay::Replay,
+/// Boot + prime a playback pair for `replay` (synchronously — seconds,
+/// behind the caller's status line). Shared by live playback and the
+/// video exporter; returns the playback plus the local player index.
+pub fn boot(
+    replay: &tango_pvp::replay::Replay,
     local_rom: Vec<u8>,
     remote_rom: Vec<u8>,
-) -> anyhow::Result<ReplaySession> {
-    let (local_game, remote_game) = resolve_games(&replay)?;
+    disable_bgm: bool,
+) -> anyhow::Result<(tango_pvp::playback::Playback, usize)> {
+    let (local_game, remote_game) = resolve_games(replay)?;
     let local_player = replay.local_player_index as usize;
 
     // Everything the boot takes is in ABSOLUTE player order; the
@@ -84,11 +86,21 @@ pub fn start(
         ),
         rng_seed: replay.rng_seed,
         rtc: std::time::UNIX_EPOCH + std::time::Duration::from_millis(replay.metadata.ts),
-        disable_bgm: false,
+        disable_bgm,
     };
     let lifecycle = tango_pvp::telemetry::LifecycleSink::new();
-    let playback =
-        tango_pvp::playback::Playback::new(&config, Arc::new(inputs), &lifecycle)?;
+    let playback = tango_pvp::playback::Playback::new(&config, Arc::new(inputs), &lifecycle)?;
+    Ok((playback, local_player))
+}
+
+/// Boot + prime the playback pair for the live viewer.
+pub fn start(
+    replay: tango_pvp::replay::Replay,
+    local_rom: Vec<u8>,
+    remote_rom: Vec<u8>,
+) -> anyhow::Result<ReplaySession> {
+    let (local_game, _) = resolve_games(&replay)?;
+    let (playback, local_player) = boot(&replay, local_rom, remote_rom, false)?;
 
     let shared = SharedSession::new(0);
     shared.view_player.store(local_player, Ordering::Relaxed);

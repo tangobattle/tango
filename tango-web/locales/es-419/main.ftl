@@ -222,3 +222,10 @@ settings-accent-bass-purple = Morado Bass
 
 ## welcome step description (extracted from the desktop)
 welcome-step-nickname-description = Puedes cambiarlo en cualquier momento en Ajustes.
+
+## replay video export (extracted from the desktop)
+replays-export = Exportar
+replays-export-progress = Renderizando…
+replays-export-cancel = Cancelar
+replays-export-success = Renderización completada.
+replays-export-error = Renderizado fallido: { $error }

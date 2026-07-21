@@ -222,3 +222,10 @@ settings-accent-bass-purple = Roxo Bass
 
 ## welcome step description (extracted from the desktop)
 welcome-step-nickname-description = Você pode alterá-lo a qualquer momento em Ajustes.
+
+## replay video export (extracted from the desktop)
+replays-export = Exportar
+replays-export-progress = Renderizando…
+replays-export-cancel = Cancelar
+replays-export-success = Renderização concluída.
+replays-export-error = Falha na renderização: { $error }

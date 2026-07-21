@@ -238,3 +238,10 @@ settings-accent-bass-purple = Bass Purple
 
 ## welcome step description (extracted from the desktop)
 welcome-step-nickname-description = You can change this at any time in Settings.
+
+## replay video export (extracted from the desktop)
+replays-export = Render
+replays-export-progress = Rendering…
+replays-export-cancel = Cancel
+replays-export-success = Render finished.
+replays-export-error = Render failed: { $error }
