@@ -91,7 +91,10 @@ pub fn WelcomeScreen() -> Element {
                             input {
                                 r#type: "file",
                                 multiple: true,
-                                accept: ".gba,.srl,.sav",
+                                // octet-stream: iOS greys out unknown
+                                // extensions without a recognized UTI —
+                                // see the play tab's ImportButton.
+                                accept: ".gba,.srl,.sav,application/octet-stream",
                                 onchange: move |evt: FormEvent| {
                                     let storage = storage.read().clone().flatten();
                                     let files = evt.files();

@@ -1276,7 +1276,14 @@ fn ImportButton() -> Element {
             input {
                 r#type: "file",
                 multiple: true,
-                accept: ".gba,.srl,.sav",
+                // The octet-stream entry is iOS's: Safari maps accept
+                // to UTI types and greys out extensions it doesn't
+                // recognize (.gba/.srl/.sav are all unknown to it), so
+                // without a recognized type the Files picker lets
+                // nothing be selected. application/octet-stream =
+                // public.data = everything; import_files validates the
+                // picks anyway.
+                accept: ".gba,.srl,.sav,application/octet-stream",
                 onchange: move |evt: FormEvent| {
                     let storage = storage.read().clone().flatten();
                     let files = evt.files();
