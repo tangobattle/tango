@@ -848,9 +848,13 @@ pub enum Message {
     Session(session::Message),
     Netplay(netplay::Message),
     /// Carries the freshly-constructed PvP session (plus its setup-pane
-    /// presentation state) back into the App after the async build task
-    /// in `spawn_pvp` resolves. `Slot` because PvpSession isn't Clone.
-    PvpSessionBuilt(netplay::Slot<anyhow::Result<(session::pvp::PvpSession, session::PvpPanes)>>),
+    /// presentation state and audio binding) back into the App after the
+    /// async build task in `spawn_pvp` resolves. `Slot` because
+    /// PvpSession isn't Clone.
+    #[allow(clippy::type_complexity)]
+    PvpSessionBuilt(
+        netplay::Slot<anyhow::Result<(session::pvp::PvpSession, session::PvpPanes, Option<audio::Binding>)>>,
+    ),
     /// 1 Hz tick: refresh Discord rich-presence + drain any
     /// Discord-initiated join secret into the play link-code
     /// field.
@@ -1212,9 +1216,10 @@ impl App {
                             &path,
                             stats_job,
                         ) {
-                            Ok(s) => {
+                            Ok((s, audio)) => {
                                 self.session.replay_chart = Some(self.replay_chart_for(&path, &s));
                                 self.session.active = Some(Box::new(s));
+                                self.session.audio_binding = audio;
                                 self.session.wake_controls();
                             }
                             // The dropped job closes its stream, whose
@@ -1325,7 +1330,7 @@ impl App {
                     return iced::Task::none();
                 };
                 match result {
-                    Ok((session, panes)) => {
+                    Ok((session, panes, audio)) => {
                         // Both setup drawers start closed — the edge
                         // handles are the invitation; a pane that
                         // barges in over the match start isn't.
@@ -1335,6 +1340,7 @@ impl App {
                         let auto_open = self.config.show_opponent_setup && panes.opponent_loaded.is_some();
                         self.session.active = Some(Box::new(session));
                         self.session.pvp_panes = Some(panes);
+                        self.session.audio_binding = audio;
                         if auto_open {
                             self.session.opponent_panel.open();
                         } else {

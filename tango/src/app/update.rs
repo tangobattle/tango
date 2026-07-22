@@ -120,8 +120,9 @@ impl App {
                     return iced::Task::none();
                 };
                 match session::spawn_singleplayer(&self.scanners, &self.config, &self.audio_binder, loaded) {
-                    Ok(s) => {
+                    Ok((s, audio)) => {
                         self.session.active = Some(Box::new(s));
+                        self.session.audio_binding = audio;
                         self.session.wake_controls();
                     }
                     Err(e) => {
@@ -353,9 +354,10 @@ impl App {
             E::Watch(p) => {
                 let (stats_job, stats_task) = self.replay_stats_takeover(&p);
                 match session::build_playback(&self.scanners, &self.config, &self.audio_binder, &p, stats_job) {
-                    Ok(s) => {
+                    Ok((s, audio)) => {
                         self.session.replay_chart = Some(self.replay_chart_for(&p, &s));
                         self.session.active = Some(Box::new(s));
+                        self.session.audio_binding = audio;
                         self.session.wake_controls();
                     }
                     // The dropped job closes its stream, whose completion

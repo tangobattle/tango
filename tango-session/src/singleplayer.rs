@@ -48,17 +48,20 @@ pub struct SinglePlayerSession {
     joyflags: Arc<AtomicU32>,
     shared: Arc<Shared>,
     frame_sink: crate::FrameSink,
-    _audio_binding: Option<crate::audio::Binding>,
     drive: Option<std::thread::JoinHandle<()>>,
 }
 
 impl SinglePlayerSession {
+    /// Boot the session. Also returns its audio stream — the session's
+    /// samples resampled to `sample_rate` — for the host to route to its
+    /// output; dropping it just costs sound (the wall-clock pacer doesn't
+    /// depend on the audio device at all).
     pub fn new(
         game: &'static tango_gamesupport::Game,
         rom: Arc<Vec<u8>>,
         save_path: &std::path::Path,
-        audio_binder: &crate::audio::LateBinder,
-    ) -> anyhow::Result<Self> {
+        sample_rate: u32,
+    ) -> anyhow::Result<(Self, crate::core_stream::CoreStream)> {
         let mut core = crate::new_gba_core(rom.as_ref())?;
         // Open RW so the game's own save writes persist back to disk —
         // mgba memory-maps the file and treats it as the cartridge SRAM.
@@ -87,32 +90,25 @@ impl SinglePlayerSession {
             move || drive_loop(shared, joyflags, vbuf, frame_notify)
         })?;
 
-        // A failed bind is logged and downgraded to silence rather than
-        // aborting the session — the wall-clock pacer doesn't depend on
-        // the audio device at all.
-        let audio_binding = match audio_binder.bind(Some(Box::new(crate::core_stream::CoreStream::new(
+        let audio = crate::core_stream::CoreStream::new(
             SharedCorePull(shared.clone()),
             {
                 let shared = shared.clone();
                 move || f32::from_bits(shared.fps_bits.load(Ordering::Relaxed))
             },
-            audio_binder.sample_rate(),
-        )))) {
-            Ok(b) => Some(b),
-            Err(e) => {
-                log::warn!("singleplayer: audio bind failed: {e:?}");
-                None
-            }
-        };
+            sample_rate,
+        );
 
-        Ok(Self {
-            game,
-            joyflags,
-            shared,
-            frame_sink,
-            _audio_binding: audio_binding,
-            drive: Some(drive),
-        })
+        Ok((
+            Self {
+                game,
+                joyflags,
+                shared,
+                frame_sink,
+                drive: Some(drive),
+            },
+            audio,
+        ))
     }
 }
 

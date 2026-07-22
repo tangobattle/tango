@@ -344,6 +344,13 @@ fn capture_results(session: &dyn ActiveSession, panes: Option<&PvpPanes>) -> Opt
 /// clears it.
 pub struct State {
     pub active: Option<Box<dyn ActiveSession>>,
+    /// Keeps the active session's audio stream routed into the host
+    /// output for exactly the session's lifetime — dropping it returns
+    /// the [`audio::LateBinder`] to silence. Set beside `active` at
+    /// install (the spawn helpers hand it back alongside the session),
+    /// cleared first in [`close_session`](State::close_session) so the
+    /// stream stops pulling before the session's cores wind down.
+    pub audio_binding: Option<audio::Binding>,
     /// PvP-only: the two sides' loaded assets + save-view panel state
     /// for the in-match setup drawers — the presentation state the
     /// session engine deliberately doesn't carry. Set alongside
@@ -453,6 +460,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             active: None,
+            audio_binding: None,
             pvp_panes: None,
             replay_chart: None,
             results: None,
@@ -668,6 +676,9 @@ impl State {
         if let Some(s) = self.active.as_ref() {
             s.request_close();
         }
+        // Unbind audio before dropping the session so the output stream
+        // stops pulling from cores that are about to wind down.
+        self.audio_binding = None;
         self.active = None;
         self.pvp_panes = None;
         self.replay_chart = None;
@@ -1012,10 +1023,29 @@ fn thumbnail_handle(framebuffer: &[u8]) -> iced::widget::image::Handle {
     iced::widget::image::Handle::from_rgba(replay::SCREEN_WIDTH, replay::SCREEN_HEIGHT, rgba)
 }
 
+/// Route a freshly-built session's audio stream into the host output,
+/// returning the RAII binding the caller stores beside the session
+/// ([`State::audio_binding`]). A failed bind is logged and downgraded
+/// to silence rather than aborting the session — no session kind
+/// depends on the audio device.
+fn bind_session_audio(
+    audio_binder: &audio::LateBinder,
+    stream: tango_session::core_stream::CoreStream,
+) -> Option<audio::Binding> {
+    match audio_binder.bind(Some(Box::new(stream))) {
+        Ok(b) => Some(b),
+        Err(e) => {
+            log::warn!("session audio bind failed: {e:?}");
+            None
+        }
+    }
+}
+
 /// Decode a `.tangoreplay`, resolve both sides' ROM (+ optional
-/// patch) from the scanners, and spin up a playback session bound to
-/// the shared audio binder. Ready to drop straight into the app's
-/// `session` slot.
+/// patch) from the scanners, and spin up a playback session with its
+/// audio routed into the shared output. Ready to drop straight into
+/// the app's `session` slot (the binding goes in
+/// [`State::audio_binding`]).
 pub fn build_playback(
     scanners: &Scanners,
     config: &config::Config,
@@ -1024,7 +1054,7 @@ pub fn build_playback(
     // Have the prefetch pass double as the match-stats analysis — see
     // [`replay::PrefetchStatsJob`] and `App::replay_stats_takeover`.
     stats_job: Option<replay::PrefetchStatsJob>,
-) -> anyhow::Result<replay::ReplaySession> {
+) -> anyhow::Result<(replay::ReplaySession, Option<audio::Binding>)> {
     let f = std::fs::File::open(path)?;
     let replay = std::sync::Arc::new(tango_pvp::replay::Replay::decode(f)?);
     let patches_path = config.patches_path();
@@ -1059,16 +1089,17 @@ pub fn build_playback(
 
     let (local_game, local_rom) = resolve_rom(replay.metadata.local_side.as_ref())?;
     let (remote_game, remote_rom) = resolve_rom(replay.metadata.remote_side.as_ref())?;
-    replay::ReplaySession::new(
+    let (session, audio) = replay::ReplaySession::new(
         local_game,
         local_rom,
         remote_game,
         remote_rom,
         replay,
-        audio_binder,
+        audio_binder.sample_rate(),
         config.show_opponent_pip,
         stats_job,
-    )
+    )?;
+    Ok((session, bind_session_audio(audio_binder, audio)))
 }
 
 /// Build the live PvP session from the netplay handoff data
@@ -1084,7 +1115,7 @@ pub async fn spawn_pvp(
     local_game: crate::library::rom::GameRef,
     local_patch: Option<(String, semver::Version)>,
     pre_match: crate::netplay::PreMatchData,
-) -> anyhow::Result<(pvp::PvpSession, PvpPanes)> {
+) -> anyhow::Result<(pvp::PvpSession, PvpPanes, Option<audio::Binding>)> {
     let local_game_impl =
         game::from_gamedb_entry(local_game).ok_or_else(|| anyhow::anyhow!("no impl for local game"))?;
     let local_rom_raw = scanners
@@ -1192,7 +1223,7 @@ pub async fn spawn_pvp(
         ))
     };
 
-    let session = pvp::PvpSession::new(pvp::PvpSessionArgs {
+    let (session, audio) = pvp::PvpSession::new(pvp::PvpSessionArgs {
         local_game: local_game_impl,
         local_rom: std::sync::Arc::new(local_rom_bytes),
         remote_game: remote_game_impl,
@@ -1204,7 +1235,7 @@ pub async fn spawn_pvp(
         disable_bgm: config.disable_bgm_in_pvp,
         replays_path: &config.replays_path(),
         cache_path: &config.cache_path(),
-        audio_binder: &audio_binder,
+        sample_rate: audio_binder.sample_rate(),
     })
     .await?;
     Ok((
@@ -1215,6 +1246,7 @@ pub async fn spawn_pvp(
             local_save_view: save_view::State::new(),
             opponent_save_view: save_view::State::new(),
         },
+        bind_session_audio(&audio_binder, audio),
     ))
 }
 
@@ -1227,7 +1259,7 @@ pub fn spawn_singleplayer(
     config: &config::Config,
     audio_binder: &audio::LateBinder,
     loaded: &selection::Loaded,
-) -> anyhow::Result<singleplayer::SinglePlayerSession> {
+) -> anyhow::Result<(singleplayer::SinglePlayerSession, Option<audio::Binding>)> {
     let game = game::from_gamedb_entry(loaded.game)
         .ok_or_else(|| anyhow::anyhow!("no game impl for {:?}", loaded.game.family_and_variant()))?;
     // Loaded stashes the *parsed* ROM (assets), not the raw bytes —
@@ -1244,7 +1276,9 @@ pub fn spawn_singleplayer(
     } else {
         raw
     };
-    singleplayer::SinglePlayerSession::new(game, std::sync::Arc::new(rom_bytes), &loaded.save_path, audio_binder)
+    let (session, audio) =
+        singleplayer::SinglePlayerSession::new(game, std::sync::Arc::new(rom_bytes), &loaded.save_path, audio_binder.sample_rate())?;
+    Ok((session, bind_session_audio(audio_binder, audio)))
 }
 
 /// Convert a tick count (60 Hz GBA frames) into `m:ss` for the scrub

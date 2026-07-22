@@ -58,9 +58,6 @@ pub struct ReplaySession {
     /// Whether `pip_vbuf` holds a frame from the current PiP activation
     /// (cleared while off, so a stale capture never flashes on re-toggle).
     pip_fresh: Arc<AtomicBool>,
-    /// Held so the audio binding survives for the session's lifetime;
-    /// the LateBinder swaps back to silence when this Drops.
-    _audio_binding: Option<crate::audio::Binding>,
     /// The playback machinery (pair, workers, seek state).
     engine: Engine,
 }
@@ -129,6 +126,9 @@ impl ReplaySession {
     /// have [`GameSupport`](tango_pvp::GameSupport) support. Returns
     /// immediately — boot + priming (a second or two) happens on the
     /// drive thread, with a black frame and silence until it's up.
+    /// Also returns the session's audio stream (the shown perspective's
+    /// core at `sample_rate`, following the drive loop's pacing) for the
+    /// host to route to its output.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         game: &'static tango_gamesupport::Game,
@@ -136,10 +136,10 @@ impl ReplaySession {
         remote_game: &'static tango_gamesupport::Game,
         remote_rom: Arc<Vec<u8>>,
         replay: Arc<tango_pvp::replay::Replay>,
-        audio_binder: &crate::audio::LateBinder,
+        sample_rate: u32,
         show_pip: bool,
         stats_job: Option<PrefetchStatsJob>,
-    ) -> anyhow::Result<Self> {
+    ) -> anyhow::Result<(Self, crate::core_stream::CoreStream)> {
         use tango_pvp::playback as sio_playback;
 
         let local_sio = game.pvp;
@@ -380,7 +380,7 @@ impl ReplaySession {
         // Audio: play the shown perspective's core straight off the
         // pair, following the drive loop's pacing (see
         // [`crate::core_stream`]).
-        let audio_binding = match audio_binder.bind(Some(Box::new(crate::core_stream::CoreStream::new(
+        let audio = crate::core_stream::CoreStream::new(
             crate::core_stream::PairCorePull {
                 pair: SioPlaybackPull(playback.clone()),
                 player: {
@@ -395,16 +395,10 @@ impl ReplaySession {
                 },
             },
             crate::core_stream::CoreStream::fps_from_bits(fps_bits.clone()),
-            audio_binder.sample_rate(),
-        )))) {
-            Ok(b) => Some(b),
-            Err(e) => {
-                log::warn!("sio replay: audio bind failed: {e:?}");
-                None
-            }
-        };
+            sample_rate,
+        );
 
-        Ok(Self {
+        let session = Self {
             game,
             round_boundaries: round_marks,
             total_ticks,
@@ -414,7 +408,6 @@ impl ReplaySession {
             swap_perspective,
             pip_vbuf,
             pip_fresh,
-            _audio_binding: audio_binding,
             engine: Engine {
                 local_player,
                 cursor,
@@ -427,7 +420,8 @@ impl ReplaySession {
                 cancel,
                 threads,
             },
-        })
+        };
+        Ok((session, audio))
     }
 
     /// Whether the opponent-screen PiP is on — drives the transport bar

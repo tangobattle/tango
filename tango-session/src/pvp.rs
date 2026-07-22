@@ -144,7 +144,6 @@ pub struct PvpSession {
     /// Sliding-window timestamp counter marked once per drive-loop frame —
     /// yields the true simulation TPS regardless of how often the UI polls.
     tps_counter: Arc<Mutex<crate::stats::Counter>>,
-    _audio_binding: Option<crate::audio::Binding>,
     /// Drops fire-cancellation through the drive thread and the network
     /// tasks. On Close we cancel + drop the session, which tears the
     /// network loop down cleanly.
@@ -243,7 +242,8 @@ pub struct PvpSessionArgs<'a> {
     pub disable_bgm: bool,
     pub replays_path: &'a Path,
     pub cache_path: &'a Path,
-    pub audio_binder: &'a crate::audio::LateBinder,
+    /// The host output rate the session's audio stream resamples to.
+    pub sample_rate: u32,
 }
 
 impl PvpSession {
@@ -253,8 +253,11 @@ impl PvpSession {
     /// until it observes its cancellation and exits (`Link::bring_up`
     /// awaits its handback), and because the drive thread then boots and
     /// primes the pair — a couple of seconds of emulation — before the
-    /// session is live.
-    pub async fn new(args: PvpSessionArgs<'_>) -> anyhow::Result<Self> {
+    /// session is live. Also returns the session's audio stream (the
+    /// local core's samples at the args' `sample_rate`, rate control
+    /// following the drive loop's published fps target) for the host to
+    /// route to its output.
+    pub async fn new(args: PvpSessionArgs<'_>) -> anyhow::Result<(Self, crate::core_stream::CoreStream)> {
         let PvpSessionArgs {
             local_game,
             local_rom,
@@ -265,7 +268,7 @@ impl PvpSession {
             disable_bgm,
             replays_path,
             cache_path,
-            audio_binder,
+            sample_rate,
         } = args;
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
@@ -414,7 +417,7 @@ impl PvpSession {
         // pulling and resampling its samples straight off the pair (rate
         // control follows the drive loop's published fps target) — see
         // [`crate::core_stream::CoreStream`].
-        let audio_binding = match audio_binder.bind(Some(Box::new(crate::core_stream::CoreStream::new(
+        let audio = crate::core_stream::CoreStream::new(
             crate::core_stream::PairCorePull {
                 pair: pair_handle,
                 player: {
@@ -426,14 +429,8 @@ impl PvpSession {
                 let metrics = metrics.clone();
                 move || f32::from_bits(metrics.fps_target.load(Ordering::Relaxed))
             },
-            audio_binder.sample_rate(),
-        )))) {
-            Ok(b) => Some(b),
-            Err(e) => {
-                log::warn!("pvp: audio bind failed: {e:?}");
-                None
-            }
-        };
+            sample_rate,
+        );
 
         // Receive pump + link supervisor: reads peer frames into the event
         // queue, watches for stalls, and runs the transparent reconnect.
@@ -449,14 +446,13 @@ impl PvpSession {
             frame_notify: frame_sink.notify.clone(),
         });
 
-        Ok(Self {
+        let session = Self {
             local_game,
             local_player_index,
             joyflags,
             completed,
             end,
             tps_counter,
-            _audio_binding: audio_binding,
             cancellation_token,
             link,
             metrics,
@@ -467,7 +463,8 @@ impl PvpSession {
             replay_path,
             frame_sink,
             started_at: std::time::Instant::now(),
-        })
+        };
+        Ok((session, audio))
     }
 
     /// This side's player index (P1 = 0, P2 = 1) for the match. Stable across
