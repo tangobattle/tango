@@ -15,10 +15,40 @@ use web_sys::{WebGl2RenderingContext as Gl, WebGlProgram, WebGlShader, WebGlText
 pub const SCREEN_WIDTH: i32 = 240;
 pub const SCREEN_HEIGHT: i32 = 160;
 
-/// The video-filter registry, in pick-list order: `config.video_filter`
-/// key → display name. Keys match the desktop's so configs mean the
-/// same thing.
-pub static FILTERS: &[(&str, &str)] = &[("", "—"), ("mmpx", "mmpx"), ("lcd", "LCD")];
+/// The video-filter registry, in the desktop's pick-list order:
+/// `config.video_filter` key → display name. Keys match the desktop's
+/// so configs mean the same thing.
+pub static FILTERS: &[(&str, &str)] = &[
+    ("", "—"),
+    ("hq2x", "hq2x"),
+    ("hq3x", "hq3x"),
+    ("hq4x", "hq4x"),
+    ("mmpx", "mmpx"),
+    ("lcd", "LCD"),
+];
+
+/// The hqx family, naga-transpiled from the desktop's generated WGSL
+/// (their rule cascades are thousands of lines — hand-porting was
+/// never on). Regenerate with:
+///
+/// ```text
+/// { echo "const SRGB_TARGET: bool = false;"; \
+///   cat tango/src/platform/video/effects/common.wgsl \
+///       tango/src/platform/video/effects/hqx/common.wgsl \
+///       tango/src/platform/video/effects/hqx/hq2x.wgsl; } > hq2x.wgsl
+/// naga hq2x.wgsl hq2x.frag --entry-point fs_main --profile es300 --keep-coordinate-space
+/// naga hq2x.wgsl hqx.vert  --entry-point vs_main --profile es300 --keep-coordinate-space
+/// ```
+///
+/// `--keep-coordinate-space` matters: the default wgpu→GL conversion
+/// re-flips y and renders upside-down against this presenter's
+/// already-flipped fullscreen triangle. The vertex stage is identical
+/// across the family (the SCALE consts it carries are unused), so one
+/// copy serves all three.
+const HQX_VERT: &str = include_str!("hqx/hqx.vert");
+const HQ2X_FRAG: &str = include_str!("hqx/hq2x.frag");
+const HQ3X_FRAG: &str = include_str!("hqx/hq3x.frag");
+const HQ4X_FRAG: &str = include_str!("hqx/hq4x.frag");
 
 const VERTEX: &str = r#"#version 300 es
 precision highp float;
@@ -237,13 +267,18 @@ void main() {
 }
 "#;
 
-/// Resolve a `config.video_filter` key to its fragment body. Unknown /
-/// empty keys fall back to the pass-through, like the desktop registry.
-fn fragment_for(filter: &str) -> &'static str {
+/// Resolve a `config.video_filter` key to its (vertex, fragment)
+/// sources. Unknown / empty keys fall back to the pass-through, like
+/// the desktop registry. The hand-written effects share the local
+/// prelude; the hqx family ships naga's own matched stage pair.
+fn pipeline_for(filter: &str) -> (&'static str, String) {
     match filter {
-        "mmpx" => MMPX,
-        "lcd" => LCD,
-        _ => PASSTHROUGH,
+        "hq2x" => (HQX_VERT, HQ2X_FRAG.to_string()),
+        "hq3x" => (HQX_VERT, HQ3X_FRAG.to_string()),
+        "hq4x" => (HQX_VERT, HQ4X_FRAG.to_string()),
+        "mmpx" => (VERTEX, format!("{COMMON}{MMPX}")),
+        "lcd" => (VERTEX, format!("{COMMON}{LCD}")),
+        _ => (VERTEX, format!("{COMMON}{PASSTHROUGH}")),
     }
 }
 
@@ -267,8 +302,8 @@ impl WebGlPresenter {
             .dyn_into()
             .map_err(|_| "webgl2 context type")?;
 
-        let fragment = format!("{COMMON}{}", fragment_for(filter));
-        let program = link_program(&gl, VERTEX, &fragment)?;
+        let (vertex, fragment) = pipeline_for(filter);
+        let program = link_program(&gl, vertex, &fragment)?;
         gl.use_program(Some(&program));
 
         let texture = gl.create_texture().ok_or("create_texture")?;
@@ -282,7 +317,11 @@ impl WebGlPresenter {
         gl.tex_parameteri(Gl::TEXTURE_2D, Gl::TEXTURE_WRAP_T, Gl::CLAMP_TO_EDGE as i32);
         gl.tex_storage_2d(Gl::TEXTURE_2D, 1, Gl::R16UI, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-        let fb_uniform = gl.get_uniform_location(&program, "fb");
+        // The one sampler, whatever the backend named it ("fb" in the
+        // hand-written prelude, naga's group/binding mangle for hqx).
+        let fb_uniform = gl
+            .get_uniform_location(&program, "fb")
+            .or_else(|| gl.get_uniform_location(&program, "_group_0_binding_0_fs"));
         gl.uniform1i(fb_uniform.as_ref(), 0);
 
         Ok(WebGlPresenter {
