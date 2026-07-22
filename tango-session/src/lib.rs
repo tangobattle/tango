@@ -120,18 +120,17 @@ impl PauseGate {
 /// could flip (the PvP end-detection wires). Every session constructor
 /// builds its own, so a fresh session always starts on a zeroed
 /// framebuffer with no stale wake pending — no cross-session wipe
-/// dance. [`id`](Self::id) is unique per sink so the host can key its
-/// frame-wake stream on it and swap the stream whenever the active
-/// session changes.
+/// dance. Carries no identity: if the host needs to tell one session's
+/// sink from the next (e.g. to key a UI wake stream), that's the
+/// host's bookkeeping — a pointer to the `Notify` won't do (a new
+/// session's allocation can reuse a dropped one's address).
 pub struct FrameSink {
     pub notify: std::sync::Arc<tokio::sync::Notify>,
     pub vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
-    id: u64,
 }
 
 impl FrameSink {
     pub fn new() -> Self {
-        static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         Self {
             notify: std::sync::Arc::new(tokio::sync::Notify::new()),
             vbuf: std::sync::Arc::new(std::sync::Mutex::new(vec![
@@ -139,14 +138,7 @@ impl FrameSink {
                 (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2)
                     as usize
             ])),
-            id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         }
-    }
-
-    /// Stable per-sink identity, for keying the host's frame-wake
-    /// stream to the active session.
-    pub fn id(&self) -> u64 {
-        self.id
     }
 }
 

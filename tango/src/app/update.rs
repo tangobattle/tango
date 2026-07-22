@@ -123,7 +123,7 @@ impl App {
                     Ok((s, audio)) => {
                         self.session.active = Some(Box::new(s));
                         self.session.audio_binding = audio;
-                        self.session.wake_controls();
+                        self.session.session_installed();
                     }
                     Err(e) => {
                         // Log-only: the Play button is gated on a fully
@@ -358,7 +358,7 @@ impl App {
                         self.session.replay_chart = Some(self.replay_chart_for(&p, &s));
                         self.session.active = Some(Box::new(s));
                         self.session.audio_binding = audio;
-                        self.session.wake_controls();
+                        self.session.session_installed();
                     }
                     // The dropped job closes its stream, whose completion
                     // message clears the tab's pending marker — a later

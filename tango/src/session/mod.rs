@@ -344,6 +344,14 @@ fn capture_results(session: &dyn ActiveSession, panes: Option<&PvpPanes>) -> Opt
 /// clears it.
 pub struct State {
     pub active: Option<Box<dyn ActiveSession>>,
+    /// Count of sessions ever installed — bumped by
+    /// [`session_installed`](Self::session_installed), and the frame
+    /// [`subscription`]'s identity for the active session. Keying the
+    /// wake stream by anything address-based (the `Notify` Arc's
+    /// pointer) would be ABA-prone: a new session can allocate at a
+    /// dropped one's address, and iced would keep the old stream —
+    /// parked on the old Notify — instead of spinning up the new one.
+    session_seq: u64,
     /// Keeps the active session's audio stream routed into the host
     /// output for exactly the session's lifetime — dropping it returns
     /// the [`audio::LateBinder`] to silence. Set beside `active` at
@@ -431,7 +439,7 @@ pub struct State {
     /// Wall-clock of the last cursor movement over the session
     /// view — drives the floating controls' auto-hide. Bumped by
     /// [`Message::MouseMoved`] and on session start
-    /// ([`State::wake_controls`]).
+    /// ([`State::session_installed`]).
     pub last_mouse_move: std::time::Instant,
     /// Cursor is currently over the floating controls bar — pins
     /// it visible regardless of the idle timer.
@@ -460,6 +468,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             active: None,
+            session_seq: 0,
             audio_binding: None,
             pvp_panes: None,
             replay_chart: None,
@@ -648,14 +657,18 @@ impl State {
         task
     }
 
-    /// Reset the floating controls' idle timer — called by the App
-    /// when a session starts so the bar greets the user visible
-    /// even if the mouse hasn't moved in a while. Also clears the
-    /// hover pin: closing a session removes its widgets without
-    /// any `on_exit` firing (the cursor is usually ON the close
-    /// button), and a latched `controls_hovered` would pin the
-    /// next session's chrome on screen permanently.
-    pub fn wake_controls(&mut self) {
+    /// Post-install hook — the App calls this right after stuffing a
+    /// new session into [`active`](Self::active). Stamps the session's
+    /// identity ([`session_seq`](Self::session_seq), which keys the
+    /// frame subscription) and resets the floating controls' idle
+    /// timer so the bar greets the user visible even if the mouse
+    /// hasn't moved in a while. Also clears the hover pin: closing a
+    /// session removes its widgets without any `on_exit` firing (the
+    /// cursor is usually ON the close button), and a latched
+    /// `controls_hovered` would pin the next session's chrome on
+    /// screen permanently.
+    pub fn session_installed(&mut self) {
+        self.session_seq += 1;
         self.last_mouse_move = std::time::Instant::now();
         self.controls_hovered = false;
         // Same reasoning as the hover pin — a menu whose widget went
@@ -900,9 +913,9 @@ impl State {
 /// per-frame callback for new vbuf data, and the PvP end-detection
 /// wires (peer-end packet, peer disconnect, grace timeout) for
 /// state-transition checks. Lives only while a session is active,
-/// keyed by the sink's id so each new session swaps in a stream on
-/// its own fresh Notify (a wake fired before the stream spins up
-/// isn't lost — Notify stores the permit). Keyboard input still
+/// keyed by [`State::session_seq`] so each new session swaps in a
+/// stream on its own fresh Notify (a wake fired before the stream
+/// spins up isn't lost — Notify stores the permit). Keyboard input still
 /// flows through [`crate::platform::input_capture`] — see that
 /// module's docs for why the subscription path is too laggy for
 /// joypad state.
@@ -911,7 +924,7 @@ pub fn subscription(state: &State) -> iced::Subscription<Message> {
     if let Some(sink) = state.active.as_deref().map(|s| s.frame_sink()) {
         subs.push(iced::Subscription::run_with(
             FrameTag {
-                id: sink.id(),
+                id: state.session_seq,
                 notify: sink.notify.clone(),
             },
             build_frame_stream,
@@ -941,11 +954,11 @@ pub fn subscription(state: &State) -> iced::Subscription<Message> {
     iced::Subscription::batch(subs)
 }
 
-/// Frame-stream subscription identity. Hashes the [`FrameSink`]'s
-/// unique id, so iced keeps one stream alive per session (stable
-/// across view rebuilds) and rebuilds it when a new session — with a
-/// fresh Notify — comes up. The `notify` payload carries the actual
-/// wake handle through to [`build_frame_stream`].
+/// Frame-stream subscription identity. Hashes the install counter
+/// ([`State::session_seq`]), so iced keeps one stream alive per
+/// session (stable across view rebuilds) and rebuilds it when a new
+/// session — with a fresh Notify — comes up. The `notify` payload
+/// carries the actual wake handle through to [`build_frame_stream`].
 struct FrameTag {
     id: u64,
     notify: std::sync::Arc<tokio::sync::Notify>,

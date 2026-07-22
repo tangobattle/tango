@@ -1220,7 +1220,7 @@ impl App {
                                 self.session.replay_chart = Some(self.replay_chart_for(&path, &s));
                                 self.session.active = Some(Box::new(s));
                                 self.session.audio_binding = audio;
-                                self.session.wake_controls();
+                                self.session.session_installed();
                             }
                             // The dropped job closes its stream, whose
                             // completion message clears the tab's pending
@@ -1347,7 +1347,7 @@ impl App {
                             self.session.opponent_panel.close();
                         }
                         self.session.self_panel.close();
-                        self.session.wake_controls();
+                        self.session.session_installed();
                         // Drop the post-handoff lobby snapshot now
                         // that the PvP view is taking over the
                         // screen. take_pre_match deliberately left
