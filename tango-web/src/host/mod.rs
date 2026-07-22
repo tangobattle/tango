@@ -13,6 +13,20 @@ pub use crate::web::{boot, download_bytes, ensure_audio, reset_file_input};
 #[cfg(not(target_arch = "wasm32"))]
 pub use crate::native::{boot, download_bytes, ensure_audio, reset_file_input};
 
+/// A bundled PNG as a `data:` URL. Native builds run from plain
+/// `cargo run` have no dx asset bundle next to the exe (the resolver
+/// roots at the exe's directory), so bundled images are embedded at
+/// compile time and handed to Blitz as data URLs instead of `asset!`
+/// paths.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn png_data_url(bytes: &[u8]) -> String {
+    use base64::Engine;
+    format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    )
+}
+
 /// The viewport's CSS width, where the platform can say — popover
 /// edge-flip decisions fall back to never-flip without it (Blitz has
 /// no viewport query in 0.7.9).

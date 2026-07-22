@@ -17,10 +17,33 @@ use crate::library::Library;
 use crate::runtime::{Runtime, SESSION_EPOCH};
 use crate::storage::Storage;
 
+#[cfg(target_arch = "wasm32")]
 const STYLE: Asset = asset!("/assets/style.css");
 /// The desktop's standalone logo mark (`tango/src/icon.png`), shown at
 /// the nav strip's left edge like the desktop top bar.
+#[cfg(target_arch = "wasm32")]
 const LOGO: Asset = asset!("/assets/icon.png");
+
+/// Native asset delivery: no dx bundle exists under plain `cargo run`,
+/// so the stylesheet inlines as a `<style>` element and the logo
+/// embeds as a data URL (see `host::png_data_url`).
+#[cfg(not(target_arch = "wasm32"))]
+const STYLE_TEXT: &str = include_str!("../../assets/style.css");
+
+/// The logo's `src`, per target.
+fn logo_src() -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        LOGO.to_string()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use std::sync::OnceLock;
+        static URL: OnceLock<String> = OnceLock::new();
+        URL.get_or_init(|| crate::host::png_data_url(include_bytes!("../../assets/icon.png")))
+            .clone()
+    }
+}
 
 #[component]
 pub fn App() -> Element {
@@ -284,7 +307,10 @@ pub fn App() -> Element {
         let rt_down = runtime.clone();
         let rt_up = runtime.clone();
         rsx! {
-            document::Stylesheet { href: STYLE }
+            // The base sheet first, the theme overrides second — the
+            // later style element wins at equal specificity, which is
+            // exactly what the lifted light-palette block needs.
+            document::Style { {STYLE_TEXT} }
             document::Style { {theme_css} }
             div {
                 class: "native-root",
@@ -369,7 +395,7 @@ fn Shell() -> Element {
             ondrop: move |evt| evt.prevent_default(),
             header { class: "topbar",
                 div { class: "brand",
-                    img { class: "logo", src: LOGO, alt: "Tango" }
+                    img { class: "logo", src: logo_src(), alt: "Tango" }
                 }
                 nav { class: "tabs",
                     button {

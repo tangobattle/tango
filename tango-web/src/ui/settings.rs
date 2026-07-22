@@ -471,7 +471,7 @@ fn AboutSection() -> Element {
     });
     rsx! {
         section { class: "pane credits",
-            img { class: "emblem-banner", src: EMBLEM, alt: "Tango" }
+            img { class: "emblem-banner", src: emblem_src(), alt: "Tango" }
             div { class: "md", dangerous_inner_html: "{ABOUT_HTML.as_str()}" }
             hr {}
             p { class: "sub",
@@ -486,7 +486,24 @@ fn AboutSection() -> Element {
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The desktop About page's banner (`tango/src/emblem.png`).
+#[cfg(target_arch = "wasm32")]
 const EMBLEM: Asset = asset!("/assets/emblem.png");
+
+/// The banner's `src`, per target (native embeds a data URL — no dx
+/// asset bundle exists under plain `cargo run`).
+fn emblem_src() -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        EMBLEM.to_string()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use std::sync::OnceLock;
+        static URL: OnceLock<String> = OnceLock::new();
+        URL.get_or_init(|| crate::host::png_data_url(include_bytes!("../../assets/emblem.png")))
+            .clone()
+    }
+}
 
 /// A credits link out of the app: new tab, no opener.
 #[component]
