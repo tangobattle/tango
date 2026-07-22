@@ -262,3 +262,11 @@ playback-clip-export = Xuất clip
 
 ## export cancelling (extracted from the desktop's main.ftl; keep in sync)
 replays-export-cancelling = Đang hủy…
+
+## video filter (extracted from the desktop's main.ftl; keep in sync)
+settings-video-filter = Bộ lọc ảnh
+    .null = Không
+    .hq2x = hq2x
+    .hq3x = hq3x
+    .hq4x = hq4x
+    .mmpx = MMPX

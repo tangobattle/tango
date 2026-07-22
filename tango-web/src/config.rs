@@ -149,6 +149,9 @@ pub struct Config {
     pub accent: Accent,
     /// Dark or light chrome.
     pub theme: Theme,
+    /// GPU video-filter key (`""`, `"mmpx"`, `"lcd"`, …) — the
+    /// desktop's `video_filter`, applied by the WebGL presenter.
+    pub video_filter: String,
     /// Hide identifying info (masked link-code input; the save view
     /// leads with the Cover tab), the desktop's streamer mode.
     pub streamer_mode: bool,
@@ -186,6 +189,7 @@ impl Default for Config {
             use_relay: UseRelay::default(),
             accent: Accent::default(),
             theme: Theme::default(),
+            video_filter: String::new(),
             streamer_mode: false,
             mute_bgm_in_pvp: false,
             show_replay_inputs: false,

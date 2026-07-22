@@ -261,3 +261,6 @@ playback-clip-export = クリップを書き出す
 
 ## export cancelling (extracted from the desktop's main.ftl; keep in sync)
 replays-export-cancelling = キャンセル中…
+
+## video filter (extracted from the desktop's main.ftl; keep in sync)
+settings-video-filter = ビデオフィルター

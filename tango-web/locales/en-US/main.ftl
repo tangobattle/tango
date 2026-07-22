@@ -293,3 +293,6 @@ playback-clip-export = Export clip
 
 ## export cancelling (extracted from the desktop's main.ftl; keep in sync)
 replays-export-cancelling = Cancelling…
+
+## video filter (extracted from the desktop's main.ftl; keep in sync)
+settings-video-filter = Video filter

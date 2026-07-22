@@ -196,7 +196,9 @@ fn GeneralSection() -> Element {
 #[component]
 fn GraphicsSection() -> Element {
     let Ctx { mut config, .. } = use_ctx();
+    let lang = crate::i18n::LANG.read().clone();
     let integer_scaling = config.read().integer_scaling;
+    let video_filter = config.read().video_filter.clone();
     rsx! {
         section { class: "pane",
             h2 { "Emulator" }
@@ -208,6 +210,21 @@ fn GraphicsSection() -> Element {
                     onchange: move |evt: FormEvent| {
                         config.with_mut(|c| c.integer_scaling = evt.checked())
                     },
+                }
+            }
+            div { class: "option-row",
+                label { {t!(&lang, "settings-video-filter")} }
+                select {
+                    onchange: move |evt: FormEvent| {
+                        config.with_mut(|c| c.video_filter = evt.value());
+                    },
+                    for (id, name) in crate::platform::video::webgl::FILTERS.iter() {
+                        option {
+                            value: "{id}",
+                            selected: video_filter == *id,
+                            "{name}"
+                        }
+                    }
                 }
             }
         }

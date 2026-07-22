@@ -277,3 +277,11 @@ playback-clip-export = Clip exporteren
 
 ## export cancelling (extracted from the desktop's main.ftl; keep in sync)
 replays-export-cancelling = Annuleren…
+
+## video filter (extracted from the desktop's main.ftl; keep in sync)
+settings-video-filter = Videofilter
+    .null = Geen
+    .hq2x = hq2x
+    .hq3x = hq3x
+    .hq4x = hq4x
+    .mmpx = MMPX

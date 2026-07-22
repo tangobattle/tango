@@ -50,6 +50,7 @@ pub struct Storage {
     saves: FileSystemDirectoryHandle,
     replays: FileSystemDirectoryHandle,
     patches: FileSystemDirectoryHandle,
+    stats: FileSystemDirectoryHandle,
 }
 
 impl Storage {
@@ -65,12 +66,14 @@ impl Storage {
         let saves = subdir(&root, "saves").await?;
         let replays = subdir(&root, "replays").await?;
         let patches = subdir(&root, "patches").await?;
+        let stats = subdir(&root, "stats").await?;
         Ok(Storage {
             root,
             roms,
             saves,
             replays,
             patches,
+            stats,
         })
     }
 
@@ -100,6 +103,12 @@ impl Storage {
         &self.saves
     }
 
+    /// Match-stats sidecars (`<replay stem>.stats`), the desktop's
+    /// cache-dir analogue. Format-versioned: readers reject stale
+    /// versions and recompute.
+    pub fn stats(&self) -> &FileSystemDirectoryHandle {
+        &self.stats
+    }
 }
 
 async fn subdir(

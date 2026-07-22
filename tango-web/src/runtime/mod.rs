@@ -139,6 +139,9 @@ pub struct Runtime {
     canvas_hooks: Option<CanvasHooks>,
     presented_rev: u64,
     pip_presented_rev: u64,
+    /// The `config.video_filter` key the presenter was built with —
+    /// context-restore rebuilds need it.
+    video_filter: String,
     clock: clock::TickClock,
     pub held: input::HeldState,
     pub mapping: input::Mapping,
@@ -222,6 +225,7 @@ impl Runtime {
             canvas_hooks: None,
             presented_rev: 0,
             pip_presented_rev: 0,
+            video_filter: String::new(),
             clock: clock::TickClock::new(),
             held: input::HeldState::default(),
             mapping: input::Mapping::default(),
@@ -268,9 +272,12 @@ impl Runtime {
     /// arm context-loss recovery: `webglcontextlost` must be
     /// preventDefault'ed for the browser to restore the context, and
     /// `webglcontextrestored` rebuilds the pipeline on the same canvas.
-    pub fn attach_canvas(&mut self, canvas: &web_sys::HtmlCanvasElement) {
+    /// `filter` is the `config.video_filter` key; it's remembered so
+    /// the context-restore rebuild keeps the same pipeline.
+    pub fn attach_canvas(&mut self, canvas: &web_sys::HtmlCanvasElement, filter: &str) {
         self.drop_canvas_hooks();
-        match WebGlPresenter::new(canvas) {
+        self.video_filter = filter.to_string();
+        match WebGlPresenter::new(canvas, filter) {
             Ok(p) => {
                 self.presenter = Some(p);
                 // Force a re-upload on the next pump.
@@ -289,7 +296,8 @@ impl Runtime {
                 log::warn!("webgl context restored; rebuilding the presenter");
                 if let Some(runtime) = RUNTIME.with(|r| r.borrow().clone()) {
                     if let Ok(mut rt) = runtime.try_borrow_mut() {
-                        rt.attach_canvas(&canvas);
+                        let filter = rt.video_filter.clone();
+                        rt.attach_canvas(&canvas, &filter);
                     }
                 }
             })
@@ -329,7 +337,8 @@ impl Runtime {
     /// opponent screen). No context-loss hooks — the PiP is transient;
     /// re-toggling it rebuilds the pipeline.
     pub fn attach_pip_canvas(&mut self, canvas: &web_sys::HtmlCanvasElement) {
-        match WebGlPresenter::new(canvas) {
+        // The PiP stays on the pass-through — it's a small inset.
+        match WebGlPresenter::new(canvas, "") {
             Ok(p) => {
                 self.pip_presenter = Some(p);
                 self.pip_presented_rev = 0;

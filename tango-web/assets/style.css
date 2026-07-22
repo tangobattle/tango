@@ -2722,6 +2722,175 @@ main.dropping {
   padding: 3px 6px;
 }
 
+/* ---- HP match chart (the desktop's hp_match_graph / hp_hover_strip) ---- */
+
+.hp-graph {
+  position: relative;
+}
+
+.hp-graph-hit {
+  position: relative;
+}
+
+.hp-graph svg {
+  display: block;
+  width: 100%;
+  height: 72px;
+}
+
+.hp-panel {
+  fill: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+:root[data-theme="light"] .hp-panel {
+  fill: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+/* Success stays Tango green regardless of accent, like the metric
+   tones. */
+.hp-tint.win {
+  fill: color-mix(in srgb, #4caf50 14%, transparent);
+}
+
+.hp-tint.loss {
+  fill: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+:root[data-theme="light"] .hp-tint.win {
+  fill: color-mix(in srgb, #4caf50 8%, transparent);
+}
+
+:root[data-theme="light"] .hp-tint.loss {
+  fill: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+.hp-custom {
+  fill: color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+.hp-baseline {
+  stroke: color-mix(in srgb, var(--text) 22%, transparent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.hp-trace {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.hp-trace.you,
+.hp-chip.you {
+  stroke: #d93847;
+}
+
+.hp-trace.opp,
+.hp-chip.opp {
+  stroke: #2e66d9;
+}
+
+.hp-chip {
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.hp-crosshair {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--text) 35%, transparent);
+  pointer-events: none;
+}
+
+.hp-dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.hp-dot.you {
+  background: #d93847;
+}
+
+.hp-dot.opp {
+  background: #2e66d9;
+}
+
+.hp-readout {
+  position: absolute;
+  top: 50%;
+  transform: translate(10px, -50%);
+  padding: 3px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.hp-readout.flip {
+  transform: translate(calc(-100% - 10px), -50%);
+}
+
+.hp-readout .line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.hp-readout .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  flex: none;
+}
+
+.hp-readout .dot.you {
+  background: #d93847;
+}
+
+.hp-readout .dot.opp {
+  background: #2e66d9;
+}
+
+.hp-readout .chip-icon {
+  width: 14px;
+  height: 14px;
+  image-rendering: pixelated;
+}
+
+.hp-strip {
+  display: block;
+  width: 100%;
+  pointer-events: none;
+}
+
+/* The chart's inset panels are the pane content — no padding, the pane
+   bg only peeks through the round dividers. */
+.hp-pane {
+  padding: 0;
+  position: relative;
+}
+
+.hp-pane .hp-progress {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  font-size: 11px;
+}
+
 /* ---- session overlays: transport bar + telemetry deck ---- */
 
 /* The desktop's floating-chip plate family (hud_chip_plate). */
@@ -2844,6 +3013,11 @@ main.dropping {
   z-index: 30;
   cursor: pointer;
   touch-action: none;
+}
+
+/* The analysis strip's collapsible slot above the scrubber. */
+.strip-slot {
+  overflow: hidden;
 }
 
 /* The clip strip between the scrubber and the transport row. */

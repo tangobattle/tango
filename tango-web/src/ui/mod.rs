@@ -4,11 +4,12 @@
 //! Tango's.
 
 mod diag;
+mod hp_chart;
 pub(crate) mod icons;
 mod lobby_band;
 mod patches_tab;
 mod play;
-mod replays;
+pub(crate) mod replays;
 mod session_view;
 mod settings;
 mod shell;

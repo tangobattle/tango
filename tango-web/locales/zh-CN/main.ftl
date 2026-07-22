@@ -261,3 +261,6 @@ playback-clip-export = 导出剪辑
 
 ## export cancelling (extracted from the desktop's main.ftl; keep in sync)
 replays-export-cancelling = 正在取消…
+
+## video filter (extracted from the desktop's main.ftl; keep in sync)
+settings-video-filter = 视频滤镜

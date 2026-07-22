@@ -12,6 +12,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 compile_error!("tango-web is browser-only: build with `dx serve` (wasm32-unknown-unknown)");
 
+mod analysis;
 mod config;
 mod export;
 mod i18n;

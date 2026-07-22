@@ -128,12 +128,36 @@ struct Detail {
     duration_secs: u32,
     rounds: usize,
     handle: Option<SaveHandle>,
+    /// Per-round tick counts from the recording's round markers — the
+    /// HP chart's fixed segment frame.
+    planned: std::rc::Rc<Vec<u32>>,
 }
 
 impl PartialEq for Detail {
     fn eq(&self, other: &Self) -> bool {
-        self.duration_secs == other.duration_secs && self.rounds == other.rounds && self.handle == other.handle
+        self.duration_secs == other.duration_secs
+            && self.rounds == other.rounds
+            && self.handle == other.handle
+            && self.planned == other.planned
     }
+}
+
+/// Per-round tick counts from the recorded round-start markers (spans
+/// between consecutive starts; the last runs to the stream end).
+/// Marker-less recordings cook as one span.
+pub(crate) fn planned_spans(round_starts: &[usize], total_ticks: u32) -> Vec<u32> {
+    let starts: Vec<u32> = round_starts.iter().map(|&i| i as u32).collect();
+    if starts.is_empty() {
+        return vec![total_ticks.max(1)];
+    }
+    starts
+        .iter()
+        .enumerate()
+        .map(|(i, &s)| {
+            let next = starts.get(i + 1).copied().unwrap_or(total_ticks.max(s));
+            next.saturating_sub(s).max(1)
+        })
+        .collect()
 }
 
 #[component]
@@ -275,12 +299,41 @@ pub fn ReplaysScreen() -> Element {
                     .ok()
                     .map(|l| SaveHandle(std::rc::Rc::new(std::cell::RefCell::new(l))))
             };
+            let planned = std::rc::Rc::new(planned_spans(&replay.round_starts, replay.inputs.len() as u32));
             Some(Detail {
                 duration_secs,
                 rounds,
                 handle,
+                planned,
             })
         }
+    });
+
+    // Match stats for the selected replay: cached sidecar or a
+    // cooperative background re-sim (the desktop's lazy stats worker).
+    let mut stats_slot = use_signal(|| None::<(String, std::rc::Rc<tango_pvp::analysis::MatchStats>)>);
+    use_effect(move || {
+        let Some(file) = selected.read().clone() else {
+            return;
+        };
+        if stats_slot.peek().as_ref().is_some_and(|(f, _)| *f == file) {
+            return;
+        }
+        let storage = storage.peek().clone().flatten();
+        let lib = library.peek().clone().flatten();
+        spawn(async move {
+            match crate::analysis::stats_for(storage, lib, &file).await {
+                // Land only if still selected — chip names resolve
+                // through the selected replay's Loaded (the sidecar is
+                // cached either way; re-selecting reloads from disk).
+                Ok(stats) => {
+                    if selected.peek().as_deref() == Some(file.as_str()) {
+                        stats_slot.set(Some((file, std::rc::Rc::new(stats))));
+                    }
+                }
+                Err(e) => log::warn!("replay stats: {e:#}"),
+            }
+        });
     });
 
     let lang = crate::i18n::LANG.read().clone();
@@ -329,6 +382,27 @@ pub fn ReplaysScreen() -> Element {
         .clone()
         .and_then(|f| rows.iter().find(|r| r.file == f).cloned());
     let detail_data = detail.read().clone().flatten();
+
+    // The cooked HP chart: cached/computed stats (empty = the seeded
+    // frame at planned widths, drawn into when the analysis lands),
+    // chip names/icons through the local side's Loaded.
+    let hp_chart: Option<(std::rc::Rc<Vec<super::hp_chart::CookedHpRound>>, f32)> =
+        detail_data.as_ref().map(|d| {
+            let stats = stats_slot
+                .read()
+                .as_ref()
+                .filter(|(f, _)| selected.read().as_deref() == Some(f.as_str()))
+                .map(|(_, s)| s.clone())
+                .unwrap_or_else(|| std::rc::Rc::new(tango_pvp::analysis::MatchStats { rounds: Vec::new() }));
+            let loaded = d.handle.as_ref().map(|h| h.0.borrow());
+            let (rounds, max_hp) =
+                super::hp_chart::cook_hp_rounds(&stats, loaded.as_deref(), Some(&d.planned));
+            (std::rc::Rc::new(rounds), max_hp)
+        });
+    let analysis_progress = crate::analysis::ANALYSIS_PROGRESS
+        .read()
+        .clone()
+        .filter(|(f, _, _)| selected.read().as_deref() == Some(f.as_str()));
 
     let watch_missing_rom = selected_row
         .as_ref()
@@ -599,6 +673,22 @@ pub fn ReplaysScreen() -> Element {
                             span { class: "sub", {t!(&lang, "play-opponent")} }
                             span { class: "nick", "{row.remote_nick}" }
                             span { class: "sub", "{row.remote_desc}" }
+                        }
+                    }
+                    // The HP chart pane (the desktop's hp_pane): the
+                    // chart's per-round inset panels ARE the content, so
+                    // the pane carries no padding and renders even while
+                    // the stats are still computing (an empty frame at
+                    // the planned widths, no layout shift on arrival).
+                    if let Some((rounds, max_hp)) = hp_chart.clone() {
+                        div { class: "pane hp-pane",
+                            super::hp_chart::HpMatchGraph { rounds, max_hp }
+                            if let Some((_, done, total)) = analysis_progress {
+                                span { class: "sub hp-progress",
+                                    {t!(&lang, "replays-export-progress")}
+                                    " {done * 100 / total.max(1)}%"
+                                }
+                            }
                         }
                     }
                     // The local side's save, through the read-only save

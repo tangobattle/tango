@@ -23,16 +23,19 @@ pub fn SessionView() -> Element {
     } = use_ctx();
 
     // Attach the presenter once the canvas exists; detach on unmount so
-    // the next mount starts from a fresh WebGL context.
+    // the next mount starts from a fresh WebGL context. Reading the
+    // filter reactively re-attaches (rebuilding the pipeline) when the
+    // setting changes mid-session.
     {
         let runtime = runtime.clone();
         use_effect(move || {
+            let filter = config.read().video_filter.clone();
             let canvas = web_sys::window()
                 .and_then(|w| w.document())
                 .and_then(|d| d.get_element_by_id("framebuffer"))
                 .and_then(|el| el.dyn_into::<web_sys::HtmlCanvasElement>().ok());
             match canvas {
-                Some(canvas) => runtime.borrow_mut().attach_canvas(&canvas),
+                Some(canvas) => runtime.borrow_mut().attach_canvas(&canvas, &filter),
                 None => log::error!("canvas missing"),
             }
         });
@@ -81,10 +84,13 @@ pub fn SessionView() -> Element {
                 // integer mode (pixelated CSS upscale stays square), a
                 // 6x nearest-neighbour render for fit mode (the browser
                 // then bilinears it to the window — sharp, no shimmer).
+                // A video filter always renders at the 6x backing —
+                // its magnification happens in the fragment shader, and
+                // the LCD grid's screen-space lines need the pixels.
                 canvas {
                     id: "framebuffer",
-                    width: if config.read().integer_scaling { "240" } else { "1440" },
-                    height: if config.read().integer_scaling { "160" } else { "960" },
+                    width: if config.read().integer_scaling && config.read().video_filter.is_empty() { "240" } else { "1440" },
+                    height: if config.read().integer_scaling && config.read().video_filter.is_empty() { "160" } else { "960" },
                     class: if !config.read().integer_scaling { "fit" },
                 }
                 // Top-right corner commands (the desktop's auto-hide
@@ -328,6 +334,56 @@ fn ReplayTransport() -> Element {
     let mut tools_open = use_signal(|| false);
     let mut marks = use_signal(|| (None::<u32>, None::<u32>));
     let mut clip_status = use_signal(|| None::<Result<(), String>>);
+    // The analysis strip above the scrubber: cooked from the CACHED
+    // stats sidecar only (a re-sim here would fight the running
+    // emulation for the one thread; the replays tab computes). `None`
+    // = not looked up yet; empty = no sidecar.
+    let mut strip_rounds = use_signal(|| None::<std::rc::Rc<Vec<super::hp_chart::CookedHpRound>>>);
+    let mut bar_hover = use_signal(|| false);
+    {
+        let runtime = runtime.clone();
+        use_effect(move || {
+            if strip_rounds.peek().is_some() {
+                return;
+            }
+            let Some((file, planned)) = ({
+                let rt = runtime.borrow();
+                match (rt.replay_source_file(), rt.replay_scrub()) {
+                    (Some(file), Some(scrub)) => {
+                        // The scrubber's exact tick scale: spans between
+                        // round boundaries.
+                        let mut starts = vec![0u32];
+                        starts.extend(scrub.round_boundaries.iter().copied());
+                        let total = scrub.total.max(1);
+                        let planned: Vec<u32> = starts
+                            .iter()
+                            .enumerate()
+                            .map(|(i, &s)| {
+                                starts.get(i + 1).copied().unwrap_or(total).saturating_sub(s).max(1)
+                            })
+                            .collect();
+                        Some((file, planned))
+                    }
+                    _ => None,
+                }
+            }) else {
+                return;
+            };
+            let storage = storage.peek().clone().flatten();
+            spawn(async move {
+                let Some(storage) = storage else { return };
+                let rounds = match crate::analysis::cached_stats(&storage, &file).await {
+                    Some(stats) => {
+                        let (rounds, _) =
+                            super::hp_chart::cook_hp_rounds(&stats, None, Some(&planned));
+                        std::rc::Rc::new(rounds)
+                    }
+                    None => std::rc::Rc::new(Vec::new()),
+                };
+                strip_rounds.set(Some(rounds));
+            });
+        });
+    }
     let Some((shared, paused, speed, scrub)) = ({
         let rt = runtime.borrow();
         match (rt.shared(), rt.replay_scrub()) {
@@ -441,8 +497,24 @@ fn ReplayTransport() -> Element {
         }
     };
 
+    // The strip expands while the transport is engaged (the desktop's
+    // bar_engaged), collapsing — not unmounting — otherwise.
+    let engaged = bar_hover() || speed_open() || drag.read().is_some();
+    let strip = strip_rounds.read().clone().filter(|r| !r.is_empty());
+    let strip_h: f32 = if engaged && strip.is_some() { 40.0 } else { 0.0 };
+
     rsx! {
-        div { class: "transport-bar hud-chip",
+        div {
+            class: "transport-bar hud-chip",
+            onmouseenter: move |_| bar_hover.set(true),
+            onmouseleave: move |_| bar_hover.set(false),
+            // --- analysis strip (traces + custom bands over the
+            // scrubber's exact tick scale) ---
+            div { class: "strip-slot", style: "height: {strip_h}px;",
+                if let Some(rounds) = strip {
+                    super::hp_chart::HpHoverStrip { rounds, height: 40.0 }
+                }
+            }
             // --- scrubber ---
             div {
                 id: "scrub-track",
