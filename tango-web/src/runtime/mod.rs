@@ -589,6 +589,28 @@ impl Runtime {
         }
     }
 
+    /// The keyframe nearest `target` as `(tick, viewed player's native
+    /// BGR555 frame)` — the scrub hover thumbnail's source. The caller
+    /// caches by tick, so the copy only happens per keyframe change.
+    pub fn replay_keyframe_frame(&self, target: u32) -> Option<(u32, Vec<u8>)> {
+        match self.session.as_ref() {
+            Some(Session::Replay(s)) => {
+                let snap = s.keyframes.lock().unwrap().nearest(target)?;
+                let view = s
+                    .shared
+                    .view_player
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                    .min(1);
+                let fb = &snap.framebuffers[view];
+                if fb.is_empty() {
+                    return None;
+                }
+                Some((snap.tick, fb.clone()))
+            }
+            _ => None,
+        }
+    }
+
     /// Blit a keyframe's stored framebuffers as an instant scrub
     /// preview (no emulation). `exact` only accepts a keyframe at the
     /// target itself — the press behavior; a drag takes the nearest.

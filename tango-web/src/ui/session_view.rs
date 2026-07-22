@@ -311,6 +311,21 @@ fn scrub_metrics(client_x: f64) -> Option<(f64, f64)> {
     Some((client_x - rect.left(), rect.width()))
 }
 
+/// A keyframe's native BGR555 frame as a PNG data URL (the hover
+/// thumbnail). 5-bit channels expand as `(c << 3) | (c >> 2)` so white
+/// maps to 255.
+fn bgr555_thumb_url(fb: &[u8]) -> Option<String> {
+    let mut img = image::RgbaImage::new(240, 160);
+    for (i, px) in img.pixels_mut().enumerate() {
+        let v = u16::from_le_bytes([fb[i * 2], fb[i * 2 + 1]]);
+        let r = (v & 0x1f) as u8;
+        let g = ((v >> 5) & 0x1f) as u8;
+        let b = ((v >> 10) & 0x1f) as u8;
+        *px = image::Rgba([(r << 3) | (r >> 2), (g << 3) | (g >> 2), (b << 3) | (b >> 2), 0xff]);
+    }
+    crate::save_view::png_data_url(&img)
+}
+
 /// The replay transport bar (the desktop's `replay_bar`): scrubber on
 /// top, then play/pause + `cur / total` readout with the toggle chips
 /// right — speed menu, input display, PiP, swap. Pause parks the
@@ -328,6 +343,9 @@ fn ReplayTransport() -> Element {
     // Per-drag / per-hover scrub state, plus the speed dropdown.
     let mut drag = use_signal(|| None::<ScrubDrag>);
     let mut hover = use_signal(|| None::<u32>);
+    // The hover thumbnail, cached by the backing keyframe's tick so
+    // cursor moves within one keyframe reuse the PNG.
+    let mut thumb = use_signal(|| None::<(u32, String)>);
     let mut speed_open = use_signal(|| false);
     // Clip tools: the scissors strip, its marks, and the last export's
     // quiet outcome line.
@@ -520,9 +538,26 @@ fn ReplayTransport() -> Element {
                 id: "scrub-track",
                 class: "scrub-track",
                 onpointerdown: on_track_down,
-                onpointermove: move |evt: PointerEvent| {
-                    if drag.peek().is_none() {
-                        hover.set(tick_at(evt.client_coordinates().x));
+                onpointermove: {
+                    let runtime = runtime.clone();
+                    move |evt: PointerEvent| {
+                        if drag.peek().is_some() {
+                            return;
+                        }
+                        let t = tick_at(evt.client_coordinates().x);
+                        hover.set(t);
+                        // Refresh the floating thumbnail from the
+                        // nearest keyframe, re-encoding only when the
+                        // backing keyframe actually changes.
+                        if let Some(t) = t {
+                            if let Some((kt, fb)) = runtime.borrow().replay_keyframe_frame(t) {
+                                if thumb.peek().as_ref().map(|(t2, _)| *t2) != Some(kt) {
+                                    if let Some(url) = bgr555_thumb_url(&fb) {
+                                        thumb.set(Some((kt, url)));
+                                    }
+                                }
+                            }
+                        }
                     }
                 },
                 onpointerleave: move |_| hover.set(None),
@@ -555,8 +590,20 @@ fn ReplayTransport() -> Element {
                 }
                 if let Some(h) = *hover.read() {
                     div { class: "scrub-ghost", style: "left: {pct(h)}%;" }
-                    div { class: "scrub-stamp mono", style: "left: {pct(h)}%;",
-                        {crate::session::format_tick(h)}
+                    // The floating keyframe thumbnail + timestamp,
+                    // clamped inside the bar; the stamp rides alone
+                    // when no keyframe is in reach yet.
+                    if let Some((_, url)) = thumb.read().as_ref() {
+                        div {
+                            class: "scrub-thumb hud-chip",
+                            style: "left: clamp(97px, {pct(h)}%, calc(100% - 97px));",
+                            img { src: "{url}" }
+                            span { class: "mono", {crate::session::format_tick(h)} }
+                        }
+                    } else {
+                        div { class: "scrub-stamp mono", style: "left: {pct(h)}%;",
+                            {crate::session::format_tick(h)}
+                        }
                     }
                 }
                 div {

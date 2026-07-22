@@ -2972,6 +2972,33 @@ main.dropping {
   pointer-events: none;
 }
 
+/* Floating keyframe thumbnail + timestamp above the bar: native
+   240x160 at 0.75 — readable without feeling like a second screen. */
+.scrub-thumb {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.scrub-thumb img {
+  width: 180px;
+  height: 120px;
+  image-rendering: pixelated;
+  border-radius: 3px;
+}
+
+.scrub-thumb span {
+  font-size: 11px;
+  color: var(--accent);
+}
+
 .scrub-stamp {
   position: absolute;
   bottom: calc(100% + 2px);

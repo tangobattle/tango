@@ -27,7 +27,7 @@ mod navi;
 pub(crate) mod navicust;
 pub(crate) mod patch_cards;
 
-pub use loaded::Loaded;
+pub use loaded::{png_data_url, Loaded};
 
 use crate::t;
 use crate::ui::icons;
