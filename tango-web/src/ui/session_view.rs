@@ -147,7 +147,7 @@ pub fn SessionView() -> Element {
                             // The desktop results card, static flavor:
                             // styled headline, the 44px score row, the
                             // draws line.
-                            SessionEnd::MatchEnded { wins, losses, draws } => {
+                            SessionEnd::MatchEnded { wins, losses, draws, stats } => {
                                 let (headline, tone) = if wins > losses {
                                     (t!(&lang, "session-results-victory"), "win")
                                 } else if wins < losses {
@@ -155,6 +155,16 @@ pub fn SessionView() -> Element {
                                 } else {
                                     (t!(&lang, "session-results-draw"), "draw")
                                 };
+                                // The results HP graph (the desktop's, at
+                                // rest): no plan — each round anchors at its
+                                // own first sample — and only when a round
+                                // actually has a drawable trace (the
+                                // desktop's static fallback drops it too).
+                                let chart = stats.as_ref().map(|s| {
+                                    let (rounds, max_hp) =
+                                        super::hp_chart::cook_hp_rounds(s, None, None);
+                                    (std::rc::Rc::new(rounds), max_hp)
+                                }).filter(|(rounds, _)| rounds.iter().any(|r| r.trace.len() >= 2));
                                 let (wins, losses, draws) = (*wins, *losses, *draws);
                                 rsx! {
                                     p { class: "headline {tone}", "{headline}" }
@@ -167,6 +177,16 @@ pub fn SessionView() -> Element {
                                         div { class: "score-side",
                                             span { class: "numeral", "{losses}" }
                                             span { class: "sub", {t!(&lang, "play-opponent")} }
+                                        }
+                                    }
+                                    if let Some((rounds, max_hp)) = chart {
+                                        div { class: "results-graph",
+                                            super::hp_chart::HpMatchGraph {
+                                                rounds,
+                                                max_hp,
+                                                zoom_key: "results".to_string(),
+                                                zoomable: false,
+                                            }
                                         }
                                     }
                                     if draws > 0 {

@@ -214,9 +214,15 @@ fn graph_fx(client_x: f64) -> Option<f32> {
 /// per-round panels + outcome washes, custom bands, zero baseline,
 /// step traces, chip lanes, the crosshair/readout on hover, and the
 /// desktop's scroll-zoom / drag-pan / double-click-reset. `zoom_key`
-/// identifies the match — a change resets the view.
+/// identifies the match — a change resets the view; `zoomable: false`
+/// (the results card) keeps the hover readout but no view controls.
 #[component]
-pub fn HpMatchGraph(rounds: std::rc::Rc<Vec<CookedHpRound>>, max_hp: f32, zoom_key: String) -> Element {
+pub fn HpMatchGraph(
+    rounds: std::rc::Rc<Vec<CookedHpRound>>,
+    max_hp: f32,
+    zoom_key: String,
+    zoomable: bool,
+) -> Element {
     let mut hover = use_signal(|| None::<f32>);
     let mut zoom = use_signal(|| 1.0f32);
     let mut offset = use_signal(|| 0.0f32);
@@ -301,7 +307,7 @@ pub fn HpMatchGraph(rounds: std::rc::Rc<Vec<CookedHpRound>>, max_hp: f32, zoom_k
                 hover.set(Some(fx));
             },
             onmousedown: move |evt| {
-                if *zoom.peek() > 1.001 {
+                if zoomable && *zoom.peek() > 1.001 {
                     pan.set(graph_fx(evt.client_coordinates().x));
                 }
             },
@@ -316,6 +322,9 @@ pub fn HpMatchGraph(rounds: std::rc::Rc<Vec<CookedHpRound>>, max_hp: f32, zoom_k
                 pan.set(None);
             },
             onwheel: move |evt| {
+                if !zoomable {
+                    return;
+                }
                 evt.prevent_default();
                 let Some(fx) = graph_fx(evt.client_coordinates().x) else {
                     return;

@@ -125,6 +125,14 @@ pub fn start(args: PvpArgs) -> anyhow::Result<PvpSession> {
         disable_bgm: crate::config::Config::load().mute_bgm_in_pvp,
     })?;
 
+    // Live stats, fed from confirmed telemetry as the match runs — the
+    // shared fold, so these and an offline re-analysis of the replay
+    // are byte-equivalent (the desktop's arrangement).
+    let stats = tango_pvp::analysis::StatsBuilder::new(
+        pre.local_game.pvp.chip_semantics(&setup_local.rom),
+        pre.local_game.pvp.counts_buster(&setup_local.rom),
+    );
+
     // Everything that borrows `pre` happens before the channel/pc
     // moves below.
     let replay_buf: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
@@ -171,6 +179,8 @@ pub fn start(args: PvpArgs) -> anyhow::Result<PvpSession> {
         pending_round_marks: std::collections::VecDeque::new(),
         round_wins: [0, 0],
         round_draws: 0,
+        stats,
+        pending_buttons: std::collections::VecDeque::new(),
         replay_writer: Some(replay_writer),
         replay_buf,
         replay_name,
@@ -321,6 +331,11 @@ pub struct PvpDriver {
     /// wins and the draw count, reoriented at the end.
     round_wins: [u32; 2],
     round_draws: u32,
+    /// Live match stats, folded from confirmed telemetry.
+    stats: tango_pvp::analysis::StatsBuilder,
+    /// Confirmed input pairs awaiting their samples in the fold (the
+    /// buttons half of each `RoundSample`).
+    pending_buttons: std::collections::VecDeque<(u32, [u32; 2])>,
     replay_writer: Option<tango_pvp::replay::Writer>,
     replay_buf: Arc<Mutex<Vec<u8>>>,
     replay_name: String,
@@ -450,7 +465,7 @@ impl PvpDriver {
 
         // Confirmed telemetry first, so this batch's round starts can
         // stamp markers onto this batch's replay records.
-        let (_samples, events) = self
+        let (samples, events) = self
             .match_
             .telemetry()
             .lock()
@@ -502,6 +517,24 @@ impl PvpDriver {
                     break;
                 }
             }
+        }
+
+        // Fold this batch into the live stats: samples pair with their
+        // buttons via the confirmed input queue (everything here is
+        // final — confirmed-only, so no revocation bookkeeping).
+        self.pending_buttons.extend(confirmed_inputs.iter().copied());
+        if !samples.is_empty() || !events.is_empty() {
+            let stats = &mut self.stats;
+            let pending = &mut self.pending_buttons;
+            tango_pvp::analysis::fold_confirmed(stats, self.local_player, samples, events, &mut |tick| {
+                while pending.front().is_some_and(|(t, _)| *t < tick) {
+                    pending.pop_front();
+                }
+                match pending.front() {
+                    Some(&(t, keys)) if t == tick => Some(keys),
+                    _ => None,
+                }
+            });
         }
 
         // Completion: the games' own match-end path ran (confirmed —
@@ -574,6 +607,7 @@ impl PvpDriver {
             wins,
             losses,
             draws: self.round_draws,
+            stats: Some(self.stats.snapshot()),
         }
     }
 
@@ -651,6 +685,19 @@ impl PvpDriver {
         let bytes = std::mem::take(&mut *self.replay_buf.lock().unwrap());
         if !bytes.is_empty() {
             let name = self.replay_name.clone();
+            // A completed match's stats ride along as the sidecar —
+            // each round already folded as it ended, so the Replays
+            // tab never has to re-simulate this one (desktop policy).
+            let stats_sidecar = if self.completed {
+                let snapshot = self.stats.snapshot();
+                let mut stats_bytes = Vec::new();
+                snapshot
+                    .write(&mut stats_bytes)
+                    .ok()
+                    .map(|_| (crate::analysis::stats_name(&self.replay_name), stats_bytes))
+            } else {
+                None
+            };
             wasm_bindgen_futures::spawn_local(async move {
                 let Ok(storage) = crate::storage::Storage::open().await else {
                     return;
@@ -658,6 +705,11 @@ impl PvpDriver {
                 match crate::storage::write(storage.replays(), &name, &bytes).await {
                     Ok(()) => log::info!("replay saved: {name} ({} bytes)", bytes.len()),
                     Err(e) => log::error!("couldn't save replay {name}: {e}"),
+                }
+                if let Some((stats_file, stats_bytes)) = stats_sidecar {
+                    if let Err(e) = crate::storage::write(storage.stats(), &stats_file, &stats_bytes).await {
+                        log::warn!("couldn't save stats sidecar {stats_file}: {e}");
+                    }
                 }
             });
         }

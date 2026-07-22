@@ -19,7 +19,7 @@ pub static ANALYSIS_PROGRESS: GlobalSignal<Option<(String, u32, u32)>> = Signal:
 /// batch runs well under a frame's budget.
 const BATCH: u32 = 240;
 
-fn stats_name(replay_file: &str) -> String {
+pub(crate) fn stats_name(replay_file: &str) -> String {
     let stem = replay_file.strip_suffix(".tangoreplay").unwrap_or(replay_file);
     format!("{stem}.stats")
 }

@@ -2896,6 +2896,12 @@ main.dropping {
   position: relative;
 }
 
+/* The results card's graph slot (the desktop's 10px spacer + chart). */
+.results-graph {
+  width: min(520px, 78vw);
+  margin-top: 10px;
+}
+
 .hp-pane .hp-progress {
   position: absolute;
   top: 4px;

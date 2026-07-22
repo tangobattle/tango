@@ -686,6 +686,7 @@ pub fn ReplaysScreen() -> Element {
                                 rounds,
                                 max_hp,
                                 zoom_key: row.file.clone(),
+                                zoomable: true,
                             }
                             if let Some((_, done, total)) = analysis_progress {
                                 span { class: "sub hp-progress",

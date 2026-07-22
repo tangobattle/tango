@@ -31,19 +31,46 @@ pub fn format_tick(tick: u32) -> String {
     format!("{m}:{s:02}")
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum SessionEnd {
     LocalQuit,
     /// The games' own match-end path ran to completion on both sides.
-    /// Carries the confirmed round tally, local-oriented.
+    /// Carries the confirmed round tally, local-oriented, plus the
+    /// stats folded live from confirmed telemetry (the results card's
+    /// HP graph).
     MatchEnded {
         wins: u32,
         losses: u32,
         draws: u32,
+        stats: Option<tango_pvp::analysis::MatchStats>,
     },
     /// A replay played through its whole recorded stream.
     ReplayFinished,
     Error(String),
+}
+
+// Hand-written: the derived impl would dump every HP point into the
+// session-end log line.
+impl std::fmt::Debug for SessionEnd {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SessionEnd::LocalQuit => write!(f, "LocalQuit"),
+            SessionEnd::MatchEnded {
+                wins,
+                losses,
+                draws,
+                stats,
+            } => f
+                .debug_struct("MatchEnded")
+                .field("wins", wins)
+                .field("losses", losses)
+                .field("draws", draws)
+                .field("stats_rounds", &stats.as_ref().map(|s| s.rounds.len()))
+                .finish(),
+            SessionEnd::ReplayFinished => write!(f, "ReplayFinished"),
+            SessionEnd::Error(e) => f.debug_tuple("Error").field(e).finish(),
+        }
+    }
 }
 
 /// Uniform access to a live link for audio readout, for sessions driven
