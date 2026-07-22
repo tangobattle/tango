@@ -1,6 +1,9 @@
-//! App configuration, one small JSON blob in localStorage. The dirs the
-//! desktop client exposes are gone — ROMs and saves live in OPFS (see
-//! `storage`), which has no user-facing paths.
+//! App configuration, one small JSON blob: localStorage in the
+//! browser, a `config.json` in this app's own config dir on native
+//! (separate from the desktop client's — the structs differ). On the
+//! web the dirs the desktop client exposes are gone — ROMs and saves
+//! live in OPFS (see `storage`), which has no user-facing paths; on
+//! native `storage` points at the desktop's `~/Documents/Tango` tree.
 
 use std::collections::HashMap;
 
@@ -8,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::platform::input::Mapping;
 
+#[cfg(target_arch = "wasm32")]
 const KEY: &str = "tango-web.config";
 
 /// The matchmaking server every build points at (the same one the
@@ -19,16 +23,28 @@ pub const DEFAULT_MATCHMAKING: &str = "wss://matchmaking.tango.n1gp.net";
 /// GETs for the web client to sync it.
 pub const DEFAULT_PATCH_REPO: &str = "https://patches.tango.n1gp.net";
 
-/// The matchmaking endpoint for this page load: the URL override wins,
-/// then the Settings → Netplay value, then the default.
+/// The matchmaking endpoint for this run: the per-run override wins
+/// (`?matchmaking_endpoint=…` on the web, the
+/// `TANGO_WEB_MATCHMAKING_ENDPOINT` env var on native), then the
+/// Settings → Netplay value, then the default.
 pub fn matchmaking_endpoint() -> String {
+    run_override()
+        .filter(|v| !v.is_empty())
+        .or_else(|| Config::load().matchmaking_endpoint.filter(|v| !v.trim().is_empty()))
+        .unwrap_or_else(|| DEFAULT_MATCHMAKING.to_string())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn run_override() -> Option<String> {
     web_sys::window()
         .and_then(|w| w.location().search().ok())
         .and_then(|s| web_sys::UrlSearchParams::new_with_str(&s).ok())
         .and_then(|p| p.get("matchmaking_endpoint"))
-        .filter(|v| !v.is_empty())
-        .or_else(|| Config::load().matchmaking_endpoint.filter(|v| !v.trim().is_empty()))
-        .unwrap_or_else(|| DEFAULT_MATCHMAKING.to_string())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn run_override() -> Option<String> {
+    std::env::var("TANGO_WEB_MATCHMAKING_ENDPOINT").ok()
 }
 
 /// The relay preference as `tango_signaling`'s `use_relay` argument.
@@ -201,11 +217,19 @@ impl Default for Config {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 fn local_storage() -> Option<web_sys::Storage> {
     web_sys::window()?.local_storage().ok()?
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn config_path() -> Option<std::path::PathBuf> {
+    let dirs = directories_next::ProjectDirs::from("net", "n1gp", "tango-web")?;
+    Some(dirs.config_dir().join("config.json"))
+}
+
 impl Config {
+    #[cfg(target_arch = "wasm32")]
     pub fn load() -> Config {
         local_storage()
             .and_then(|s| s.get_item(KEY).ok()?)
@@ -213,6 +237,7 @@ impl Config {
             .unwrap_or_default()
     }
 
+    #[cfg(target_arch = "wasm32")]
     pub fn save(&self) {
         let Some(storage) = local_storage() else {
             return;
@@ -224,6 +249,40 @@ impl Config {
                 }
             }
             Err(e) => log::error!("failed to serialize config: {e}"),
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn load() -> Config {
+        config_path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_default()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn save(&self) {
+        let Some(path) = config_path() else {
+            return;
+        };
+        let json = match serde_json::to_string_pretty(self) {
+            Ok(json) => json,
+            Err(e) => {
+                log::error!("failed to serialize config: {e}");
+                return;
+            }
+        };
+        // Write-then-rename so a crash mid-write can't torch the config.
+        let write = || -> std::io::Result<()> {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let tmp = path.with_extension("json.tmp");
+            std::fs::write(&tmp, &json)?;
+            std::fs::rename(&tmp, &path)
+        };
+        if let Err(e) = write() {
+            log::error!("failed to write config: {e}");
         }
     }
 }

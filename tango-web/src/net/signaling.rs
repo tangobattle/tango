@@ -74,7 +74,31 @@ fn send_packet(ws: &SignalSocket, which: packet::Which) -> anyhow::Result<()> {
 }
 
 async fn sleep_ms(ms: u32) {
-    gloo_timers::future::TimeoutFuture::new(ms).await;
+    crate::compat::sleep_ms(ms).await;
+}
+
+/// `encodeURIComponent`, target-neutral: percent-encode everything
+/// outside JS's unreserved set.
+fn encode_uri_component(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'-'
+            | b'_'
+            | b'.'
+            | b'!'
+            | b'~'
+            | b'*'
+            | b'\''
+            | b'('
+            | b')' => out.push(b as char),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
 }
 
 /// One `establish` round: dial, read Hello, build the peer connection,
@@ -86,7 +110,7 @@ async fn establish(
     use_relay: Option<bool>,
     connection_id: &[u8; 16],
 ) -> Result<(SignalSocket, webrtc::PeerParts), Error> {
-    let url = format!("{endpoint}/?session_id={}", js_sys::encode_uri_component(session_id));
+    let url = format!("{endpoint}/?session_id={}", encode_uri_component(session_id));
     let mut ws = SignalSocket::connect(&url).await?;
 
     // The server speaks first: Hello with the ICE set (or an Abort).

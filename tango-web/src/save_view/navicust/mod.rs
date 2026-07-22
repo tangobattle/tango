@@ -177,10 +177,7 @@ pub(super) fn NcpPopover(handle: SaveHandle) -> Element {
     let Some(info) = info else { return rsx! {} };
     let name = info.name().unwrap_or_else(|| "?".to_string());
     let description = info.description();
-    let flip = web_sys::window()
-        .and_then(|w| w.inner_width().ok())
-        .and_then(|v| v.as_f64())
-        .is_some_and(|w| x > w - 320.0);
+    let flip = crate::host::viewport_width().is_some_and(|w| x > w - 320.0);
     rsx! {
         div {
             class: if flip { "chip-pop flip" } else { "chip-pop" },

@@ -51,7 +51,7 @@ pub(crate) fn flash(mut slot: Signal<Option<Flash>>, text: impl Into<String>, ok
         ok,
     }));
     spawn(async move {
-        gloo_timers::future::TimeoutFuture::new(ms).await;
+        crate::compat::sleep_ms(ms).await;
         if slot.peek().as_ref().is_some_and(|f| f.text == text) {
             slot.set(None);
         }
@@ -64,8 +64,8 @@ pub(crate) fn flash(mut slot: Signal<Option<Flash>>, text: impl Into<String>, ok
 pub(crate) static IMPORT_FLASH: GlobalSignal<Option<Flash>> = Signal::global(|| None);
 
 /// Flash an import's outcome.
-pub(crate) fn note_import(counts: &crate::web::ImportCounts) {
-    let crate::web::ImportCounts {
+pub(crate) fn note_import(counts: &crate::host::ImportCounts) {
+    let crate::host::ImportCounts {
         roms,
         saves,
         skipped,
@@ -594,7 +594,7 @@ pub fn PlayScreen() -> Element {
                 } else {
                     row.value.clone()
                 };
-                if let Err(e) = crate::web::boot(runtime, game, rom, save, Some(save_file)).await {
+                if let Err(e) = crate::host::boot(runtime, game, rom, save, Some(save_file)).await {
                     flash(launch_flash, format!("couldn't start: {e:#}"), false, 5000);
                 }
             }
@@ -675,7 +675,7 @@ pub fn PlayScreen() -> Element {
             spawn(async move {
                 let Some(storage) = storage else { return };
                 if let Ok(Some(bytes)) = crate::storage::read(storage.saves(), &f).await {
-                    crate::web::download_bytes(&f, &bytes);
+                    crate::host::download_bytes(&f, &bytes);
                 }
             });
         }
@@ -1287,10 +1287,10 @@ fn ImportButton() -> Element {
                 onchange: move |evt: FormEvent| {
                     let storage = storage.read().clone().flatten();
                     let files = evt.files();
-                    crate::web::reset_file_input(&evt);
+                    crate::host::reset_file_input(&evt);
                     async move {
                         let Some(storage) = storage else { return };
-                        let counts = crate::web::import_files(&storage, files).await;
+                        let counts = crate::host::import_files(&storage, files).await;
                         note_import(&counts);
                         *library_rev.write() += 1;
                         *SAVES_REV.write() += 1;

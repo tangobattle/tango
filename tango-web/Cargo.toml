@@ -6,7 +6,11 @@ license = "MPL-2.0"
 publish = false
 build = "build.rs"
 
-# wasm32-only (see src/main.rs); build with `dx serve` / `dx build`.
+# Two targets, one crate:
+#  - wasm32 (the original): `dx serve` / `dx build`, dioxus-web in a
+#    browser, platform layer on web APIs.
+#  - native (desktop): plain `cargo run`, dioxus-native (Blitz, no
+#    webview), platform layer on the desktop client's stack.
 [dependencies]
 # Engine + the shared tango crates. The mgba C core (and zstd's wasm
 # shim) cross-compile with the wasi-sdk clang named by
@@ -44,12 +48,7 @@ tango-gamesupport-bn6 = { path = "../gamesupport/tango-gamesupport-bn6", optiona
 tango-gamesupport-exe45 = { path = "../gamesupport/tango-gamesupport-exe45", optional = true }
 
 zstd.workspace = true
-# The gamesupport crates use `rand`; on wasm32-unknown-unknown its
-# getrandom backend needs the "js" feature turned on somewhere in the
-# graph (feature unification does the rest).
-getrandom = { version = "0.2", features = ["js"] }
 futures.workspace = true
-gloo-timers = { version = "0.3", features = ["futures"] }
 web-time = "1"
 crc32fast.workspace = true
 log.workspace = true
@@ -73,7 +72,15 @@ indexmap.workspace = true
 # through iced's widget, which shares this parser).
 pulldown-cmark = { version = "0.12", default-features = false, features = ["html"] }
 
+dioxus = { version = "0.7" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
 dioxus = { version = "0.7", features = ["web"] }
+# The gamesupport crates use `rand`; on wasm32-unknown-unknown its
+# getrandom backend needs the "js" feature turned on somewhere in the
+# graph (feature unification does the rest).
+getrandom = { version = "0.2", features = ["js"] }
+gloo-timers = { version = "0.3", features = ["futures"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
@@ -149,6 +156,42 @@ web-sys = { version = "0.3", features = [
 ] }
 console_error_panic_hook = "0.1"
 console_log = "1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+dioxus = { version = "0.7", features = ["native"] }
+# The custom-paint (emulator framebuffer) integration: `use_wgpu` +
+# `CustomPaintSource` come from dioxus-native, and the paint code must
+# use the same wgpu major that anyrender_vello composites with.
+dioxus-native = { version = "0.7", features = ["autofocus"] }
+# Clipboard (the browser backends use navigator.clipboard).
+arboard = { version = "3", default-features = false }
+# Replay export: the save dialog + encoder temp files (ffmpeg itself is
+# found beside the exe or on PATH, like the desktop).
+rfd = "0.15"
+tempfile = "3"
+wgpu = { version = "26", default-features = false }
+env_logger = "0.11"
+futures-timer = "3"
+# Data-dir discovery (~/Documents/Tango, shared with the desktop app)
+# and this app's own cache dir.
+directories-next = "2"
+# navigator.language's native counterpart.
+sys-locale = "0.3"
+# Local-time replay timestamps (the browser uses js Date).
+chrono = "0.4"
+# Audio + gamepads: the desktop client's SDL3 stack.
+sdl3 = { version = "0.18", default-features = false, features = ["build-from-source-static"] }
+send_wrapper = "0.6"
+# Netplay transport: libdatachannel (the desktop client's stack) fills
+# in for RTCPeerConnection, tokio-tungstenite for the signaling
+# websocket. Same versions the desktop resolves so the graph unifies.
+datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "net", "time", "macros"] }
+tokio-tungstenite = { version = "0.16", features = ["rustls-tls-webpki-roots"] }
+urlencoding = "2"
+# Patch-repo sync (the browser uses fetch); same version/features shape
+# as the desktop so the graph unifies.
+reqwest = { version = "0.11", default-features = false, features = ["native-tls"] }
 
 [features]
 # Mirrors the tango bin crate: each game's support is an optional dep

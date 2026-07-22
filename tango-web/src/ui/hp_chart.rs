@@ -204,10 +204,21 @@ struct HoverReadout {
 }
 
 /// Cursor x as a fraction of the chart's width, via its live rect.
+/// Native Blitz can't measure elements (nor deliver element-relative
+/// coordinates) in 0.7.9, so the hover crosshair/readout quietly
+/// doesn't engage there — the chart itself renders fully.
 fn graph_fx(client_x: f64) -> Option<f32> {
-    let el = web_sys::window()?.document()?.get_element_by_id("hp-graph-hit")?;
-    let rect = el.get_bounding_client_rect();
-    Some((((client_x - rect.left()) / rect.width().max(1.0)) as f32).clamp(0.0, 1.0))
+    #[cfg(target_arch = "wasm32")]
+    {
+        let el = web_sys::window()?.document()?.get_element_by_id("hp-graph-hit")?;
+        let rect = el.get_bounding_client_rect();
+        Some((((client_x - rect.left()) / rect.width().max(1.0)) as f32).clamp(0.0, 1.0))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = client_x;
+        None
+    }
 }
 
 /// The full chart (the desktop's `hp_match_graph` at height 72):

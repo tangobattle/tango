@@ -27,18 +27,10 @@ use web_sys::{
 
 use tango_net_protocol::channel_spec;
 
+use super::{parse_dtls_fingerprint, PeerEvent};
+
 fn jserr(what: &str, e: JsValue) -> anyhow::Error {
     anyhow::anyhow!("{what}: {e:?}")
-}
-
-/// Connection-level events the signaling loop consumes.
-pub enum PeerEvent {
-    /// A trickled local ICE candidate to relay to the peer.
-    Candidate(String),
-    /// The connection came up.
-    Connected,
-    /// The connection failed or closed.
-    Failed,
 }
 
 /// One live peer connection. Dropping it tears the transport down.
@@ -347,29 +339,4 @@ impl Drop for PeerConnection {
         self.pc.set_onconnectionstatechange(None);
         self.pc.close();
     }
-}
-
-/// First sha-256 `a=fingerprint:` line of an SDP as raw digest bytes —
-/// the same parse the desktop's signaling client does.
-fn parse_dtls_fingerprint(sdp: &str) -> Option<Vec<u8>> {
-    for line in sdp.lines() {
-        let Some(rest) = line.trim().strip_prefix("a=fingerprint:") else {
-            continue;
-        };
-        let mut parts = rest.splitn(2, ' ');
-        let algo = parts.next()?;
-        if !algo.eq_ignore_ascii_case("sha-256") {
-            continue;
-        }
-        let Some(hex) = parts.next() else { continue };
-        let bytes: Option<Vec<u8>> = hex
-            .split(':')
-            .map(|octet| u8::from_str_radix(octet.trim(), 16).ok())
-            .collect();
-        match bytes {
-            Some(b) if !b.is_empty() => return Some(b),
-            _ => continue,
-        }
-    }
-    None
 }

@@ -11,12 +11,19 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::JsFuture;
-use web_sys::FileSystemDirectoryHandle;
 
 use crate::library::{self, GameRef};
 use crate::storage::{self, Storage};
+
+/// The directory-handle type of the active storage backend.
+#[cfg(target_arch = "wasm32")]
+type Dir = web_sys::FileSystemDirectoryHandle;
+#[cfg(not(target_arch = "wasm32"))]
+type Dir = crate::storage::DirHandle;
 
 /// The `tango_filesync` manifest, mirrored locally (the crate itself
 /// is tokio-bound; the schema is tiny and stable).
@@ -68,6 +75,7 @@ pub struct PatchVersion {
     pub supported: Vec<GameRef>,
 }
 
+#[cfg(target_arch = "wasm32")]
 async fn fetch_bytes(url: &str) -> anyhow::Result<Vec<u8>> {
     let window = web_sys::window().ok_or_else(|| anyhow::anyhow!("no window"))?;
     let resp = JsFuture::from(window.fetch_with_str(url))
@@ -88,11 +96,29 @@ async fn fetch_bytes(url: &str) -> anyhow::Result<Vec<u8>> {
     Ok(js_sys::Uint8Array::new(&buf).to_vec())
 }
 
+/// reqwest, run on the net runtime (hyper needs a tokio reactor at
+/// poll time; the main-thread executor can't promise one).
+#[cfg(not(target_arch = "wasm32"))]
+async fn fetch_bytes(url: &str) -> anyhow::Result<Vec<u8>> {
+    let url = url.to_owned();
+    let (tx, rx) = futures::channel::oneshot::channel();
+    crate::net::rt::handle().spawn(async move {
+        let res = async {
+            let resp = reqwest::get(&url).await?;
+            if !resp.status().is_success() {
+                anyhow::bail!("fetch {url}: HTTP {}", resp.status());
+            }
+            Ok(resp.bytes().await?.to_vec())
+        }
+        .await;
+        let _ = tx.send(res);
+    });
+    rx.await.map_err(|_| anyhow::anyhow!("fetch task dropped"))?
+}
+
 /// Resolve (creating) a nested directory under `root`.
-async fn dir_at(
-    root: &FileSystemDirectoryHandle,
-    components: &[&str],
-) -> anyhow::Result<FileSystemDirectoryHandle> {
+#[cfg(target_arch = "wasm32")]
+async fn dir_at(root: &Dir, components: &[&str]) -> anyhow::Result<Dir> {
     let mut cur = root.clone();
     for c in components {
         let opts = web_sys::FileSystemGetDirectoryOptions::new();
@@ -106,10 +132,19 @@ async fn dir_at(
     Ok(cur)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+async fn dir_at(root: &Dir, components: &[&str]) -> anyhow::Result<Dir> {
+    let mut cur = root.clone();
+    for c in components {
+        cur = cur.child(c)?;
+    }
+    Ok(cur)
+}
+
 /// One file of the sync: skip when the local copy's SHA-256 matches.
 async fn sync_file(
     repo: &str,
-    root: &FileSystemDirectoryHandle,
+    root: &Dir,
     path: &[&str],
     hash: &[u8; 32],
 ) -> anyhow::Result<bool> {

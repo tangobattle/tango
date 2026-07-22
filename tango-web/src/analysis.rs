@@ -56,7 +56,7 @@ pub async fn stats_for(
         if ANALYSIS_PROGRESS.peek().is_none() {
             break;
         }
-        gloo_timers::future::TimeoutFuture::new(250).await;
+        crate::compat::sleep_ms(250).await;
     }
     *ANALYSIS_PROGRESS.write() = Some((file.to_string(), 0, 0));
     let result = compute(storage.clone(), lib, file).await;
@@ -153,7 +153,7 @@ async fn compute(
         pair.tick(&[0, 0]);
         prime_ticks += 1;
         if prime_ticks % BATCH == 0 {
-            gloo_timers::future::TimeoutFuture::new(0).await;
+            crate::compat::sleep_ms(0).await;
         }
     }
 
@@ -179,7 +179,7 @@ async fn compute(
                 p.1 = tick;
                 p.2 = total;
             }
-            gloo_timers::future::TimeoutFuture::new(0).await;
+            crate::compat::sleep_ms(0).await;
         }
     }
 

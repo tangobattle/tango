@@ -11,6 +11,12 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
+    // The worklet is an AudioWorklet DSP module — web-only. Native
+    // builds (dioxus-native) have no worklet scope and no use for it.
+    if !env::var("TARGET").map(|t| t.starts_with("wasm32")).unwrap_or(false) {
+        return;
+    }
+
     println!("cargo:rerun-if-changed=../tango-web-worklet/src");
     println!("cargo:rerun-if-changed=../tango-web-worklet/Cargo.toml");
 

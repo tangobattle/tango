@@ -5,7 +5,7 @@
 
 use wasm_bindgen::JsCast;
 
-use super::input::{GamepadAxis, GamepadButton, HeldState};
+use crate::platform::input::{GamepadAxis, GamepadButton, HeldState};
 
 /// W3C "standard" gamepad mapping, button index → binding button.
 /// Indices 6/7 (triggers) are analog and surface as

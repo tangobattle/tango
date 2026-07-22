@@ -133,7 +133,7 @@ pub fn connect(
     *PHASE.write() = PhaseView::Connecting {
         link_code: link_code.clone(),
     };
-    wasm_bindgen_futures::spawn_local(async move {
+    crate::compat::spawn_local(async move {
         match run(link_code, local_settings, patch_tags, rx).await {
             Ok(()) => {}
             Err(e) => {
@@ -237,12 +237,12 @@ async fn run(
         let ev = futures::select! {
             p = rx.receive().fuse() => Ev::Packet(p),
             c = commands.next() => Ev::Command(c),
-            _ = gloo_timers::future::TimeoutFuture::new(1_000).fuse() => Ev::PingDue,
+            _ = crate::compat::sleep_ms(1_000).fuse() => Ev::PingDue,
         };
 
         match ev {
             Ev::PingDue => {
-                let ts = (js_sys::Date::now() as u64 % 65536) as u16;
+                let ts = (crate::compat::now_unix_ms() as u64 % 65536) as u16;
                 let _ = tx.send_ping(ts);
             }
             Ev::Command(None) | Ev::Command(Some(Command::Disconnect)) => {
@@ -275,7 +275,7 @@ async fn run(
                 }
                 let state = protocol::NegotiatedState {
                     nonce: rand::random(),
-                    ts: js_sys::Date::now() as u64,
+                    ts: crate::compat::now_unix_ms() as u64,
                     save_data,
                 };
                 let compressed = zstd::stream::encode_all(
@@ -309,7 +309,7 @@ async fn run(
                     let _ = tx.send_pong(ping.ts);
                 }
                 protocol::Packet::Pong(pong) => {
-                    let now = (js_sys::Date::now() as u64 % 65536) as u16;
+                    let now = (crate::compat::now_unix_ms() as u64 % 65536) as u16;
                     view.latency_ms = Some(now.wrapping_sub(pong.ts) as f32);
                     publish_with(&mut view, &local, &remote, &patch_tags);
                 }

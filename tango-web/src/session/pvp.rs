@@ -203,7 +203,7 @@ fn spawn_goodbye_watch(
     mut rx: crate::net::control::Receiver,
     goodbye_tx: mpsc::UnboundedSender<bool>,
 ) {
-    wasm_bindgen_futures::spawn_local(async move {
+    crate::compat::spawn_local(async move {
         loop {
             match rx.receive().await {
                 Ok(tango_net_protocol::control::Packet::Goodbye(_)) => {
@@ -620,7 +620,7 @@ impl PvpDriver {
         log::warn!("pvp: transport lost; attempting transparent reconnect");
         let (result_tx, result_rx) = mpsc::unbounded();
         let session_id = self.reconnect_session_id.clone();
-        wasm_bindgen_futures::spawn_local(async move {
+        crate::compat::spawn_local(async move {
             let endpoint = crate::config::matchmaking_endpoint();
             let result =
                 crate::net::signaling::connect(&endpoint, &session_id, crate::config::use_relay_pref()).await;
@@ -698,7 +698,7 @@ impl PvpDriver {
             } else {
                 None
             };
-            wasm_bindgen_futures::spawn_local(async move {
+            crate::compat::spawn_local(async move {
                 let Ok(storage) = crate::storage::Storage::open().await else {
                     return;
                 };
@@ -716,8 +716,8 @@ impl PvpDriver {
 
         // Close the peer connection once the control channel drains.
         if let Some(pc) = self.pc.take() {
-            wasm_bindgen_futures::spawn_local(async move {
-                gloo_timers::future::TimeoutFuture::new(200).await;
+            crate::compat::spawn_local(async move {
+                crate::compat::sleep_ms(200).await;
                 pc.close();
                 drop(pc);
             });

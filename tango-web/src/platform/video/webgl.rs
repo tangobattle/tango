@@ -15,17 +15,6 @@ use web_sys::{WebGl2RenderingContext as Gl, WebGlProgram, WebGlShader, WebGlText
 pub const SCREEN_WIDTH: i32 = 240;
 pub const SCREEN_HEIGHT: i32 = 160;
 
-/// The video-filter registry, in the desktop's pick-list order:
-/// `config.video_filter` key → display name. Keys match the desktop's
-/// so configs mean the same thing.
-pub static FILTERS: &[(&str, &str)] = &[
-    ("", "—"),
-    ("hq2x", "hq2x"),
-    ("hq3x", "hq3x"),
-    ("hq4x", "hq4x"),
-    ("mmpx", "mmpx"),
-    ("lcd", "LCD"),
-];
 
 /// The hqx family, naga-transpiled from the desktop's generated WGSL
 /// (their rule cascades are thousands of lines — hand-porting was

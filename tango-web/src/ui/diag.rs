@@ -189,7 +189,7 @@ async fn run_probe(
 
     // Priming alone is a few thousand core-frames; yield first so the
     // "Running…" state paints before the long haul starts.
-    gloo_timers::future::TimeoutFuture::new(0).await;
+    crate::compat::sleep_ms(0).await;
     let mut m = tango_pvp::engine::Match::new(probe_config(rom, save, game.pvp))?;
 
     let mut stream = Fnv::new();
@@ -211,7 +211,7 @@ async fn run_probe(
         }
         if frame % CHUNK == 0 {
             state.set(ProbeState::Running { frame });
-            gloo_timers::future::TimeoutFuture::new(0).await;
+            crate::compat::sleep_ms(0).await;
         }
     }
 

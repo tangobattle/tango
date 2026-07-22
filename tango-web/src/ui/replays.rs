@@ -87,8 +87,9 @@ impl DateFilter {
     }
 }
 
-/// `ts` (ms since epoch) in the browser's local time, the desktop's
+/// `ts` (ms since epoch) in local time, the desktop's
 /// "%Y-%m-%d %H:%M:%S".
+#[cfg(target_arch = "wasm32")]
 fn fmt_ts(ms: u64) -> String {
     let d = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(ms as f64));
     format!(
@@ -100,6 +101,16 @@ fn fmt_ts(ms: u64) -> String {
         d.get_minutes(),
         d.get_seconds()
     )
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn fmt_ts(ms: u64) -> String {
+    use chrono::TimeZone;
+    chrono::Local
+        .timestamp_millis_opt(ms as i64)
+        .single()
+        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+        .unwrap_or_default()
 }
 
 /// One side's "Variant (+patch vX)" description for the matchup pane.
@@ -345,7 +356,7 @@ pub fn ReplaysScreen() -> Element {
     families.dedup();
 
     // AND of the four filters, like the desktop's `matches_filters`.
-    let now_ms = js_sys::Date::now();
+    let now_ms = crate::compat::now_unix_ms();
     let needle = search.read().to_lowercase();
     let visible: Vec<&Row> = rows
         .iter()
@@ -435,7 +446,7 @@ pub fn ReplaysScreen() -> Element {
             spawn(async move {
                 let Some(storage) = storage else { return };
                 if let Ok(Some(bytes)) = crate::storage::read(storage.replays(), &row.file).await {
-                    crate::web::download_bytes(&row.file, &bytes);
+                    crate::host::download_bytes(&row.file, &bytes);
                 }
             });
         }
@@ -783,6 +794,6 @@ async fn watch(
     let (replay, local_rom, remote_rom) = load_pair(storage, lib, &file).await?;
     // The Watch click is a user gesture — grab the audio sink while we
     // can.
-    crate::web::ensure_audio(&runtime).await;
+    crate::host::ensure_audio(&runtime).await;
     runtime.borrow_mut().start_replay(replay, local_rom, remote_rom, file)
 }

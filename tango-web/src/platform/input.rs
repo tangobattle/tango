@@ -95,6 +95,41 @@ pub enum GamepadButton {
 }
 
 impl GamepadButton {
+    /// Map from SDL3's button enum (native backend). 1:1 — the enum
+    /// was copied from the desktop client's SDL3 set to begin with.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn from_sdl3(b: sdl3::gamepad::Button) -> Self {
+        use sdl3::gamepad::Button as B;
+        match b {
+            B::South => Self::South,
+            B::East => Self::East,
+            B::West => Self::West,
+            B::North => Self::North,
+            B::Back => Self::Select,
+            B::Start => Self::Start,
+            B::Guide => Self::Mode,
+            B::LeftStick => Self::LeftThumb,
+            B::RightStick => Self::RightThumb,
+            B::LeftShoulder => Self::LeftShoulder,
+            B::RightShoulder => Self::RightShoulder,
+            B::DPadUp => Self::DPadUp,
+            B::DPadDown => Self::DPadDown,
+            B::DPadLeft => Self::DPadLeft,
+            B::DPadRight => Self::DPadRight,
+            B::Misc1 => Self::Misc1,
+            B::Misc2 => Self::Misc2,
+            B::Misc3 => Self::Misc3,
+            B::Misc4 => Self::Misc4,
+            B::Misc5 => Self::Misc5,
+            B::Misc6 => Self::Misc6,
+            B::RightPaddle1 => Self::RightPaddle1,
+            B::LeftPaddle1 => Self::LeftPaddle1,
+            B::RightPaddle2 => Self::RightPaddle2,
+            B::LeftPaddle2 => Self::LeftPaddle2,
+            B::Touchpad => Self::Touchpad,
+        }
+    }
+
     /// Display label for the settings UI.
     pub fn label(&self) -> &'static str {
         match self {
@@ -380,6 +415,9 @@ impl HeldState {
     /// key held across the switch would otherwise stay "down" forever
     /// (a held fast-forward would silently pin the tab at 3× CPU).
     /// Gamepad state is exempt — it's re-polled whole every pump.
+    /// (Unwired on native: Blitz 0.7.9 delivers no focus/blur events;
+    /// keyups arrive through the window regardless of focus loss.)
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub fn release_keys(&mut self) {
         self.keys.clear();
     }

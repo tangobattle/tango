@@ -7,6 +7,7 @@
 
 use dioxus::html::HasFileData;
 use dioxus::prelude::*;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 
 use super::{icons, patches_tab, play, session_view, settings, use_ctx, welcome, Ctx, Tab};
@@ -98,7 +99,7 @@ pub fn App() -> Element {
     use_hook(move || {
         spawn(async move {
             loop {
-                gloo_timers::future::TimeoutFuture::new(15 * 60 * 1000).await;
+                crate::compat::sleep_ms(15 * 60 * 1000).await;
                 if !config.peek().enable_patch_autoupdate {
                     continue;
                 }
@@ -121,6 +122,7 @@ pub fn App() -> Element {
     // the desktop's theme_for. Selection gold stays constant
     // (--select-ink); the ink-vs-white flip on accent plates follows
     // the desktop's on_accent luma rule.
+    #[cfg(target_arch = "wasm32")]
     use_effect(move || {
         let (accent, theme) = {
             let c = config.read();
@@ -242,7 +244,18 @@ pub fn App() -> Element {
     };
     let needs_welcome = config.read().nick.trim().is_empty();
 
-    rsx! {
+    let screen = rsx! {
+        if in_session {
+            session_view::SessionView {}
+        } else if needs_welcome {
+            welcome::WelcomeScreen {}
+        } else {
+            Shell {}
+        }
+    };
+
+    #[cfg(target_arch = "wasm32")]
+    return rsx! {
         document::Stylesheet { href: STYLE }
         // App-frame viewport: no pinch zoom, edge-to-edge on notched
         // screens, browser chrome tinted to match.
@@ -253,14 +266,81 @@ pub fn App() -> Element {
             content: "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no",
         }
         document::Meta { name: "theme-color", content: "#0e1011" }
-        if in_session {
-            session_view::SessionView {}
-        } else if needs_welcome {
-            welcome::WelcomeScreen {}
-        } else {
-            Shell {}
+        {screen}
+    };
+
+    // Native: no DOM to hang `data-theme`/inline custom props on, so
+    // the theme + accent go through an injected style element instead
+    // (the light-palette block is lifted out of the stylesheet itself,
+    // so the values can't drift). Keyboard events reach the app
+    // through a focused wrapper — there are no document-level
+    // listeners to install.
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let theme_css = {
+            let c = config.read();
+            native_theme_css(c.accent, c.theme)
+        };
+        let rt_down = runtime.clone();
+        let rt_up = runtime.clone();
+        rsx! {
+            document::Stylesheet { href: STYLE }
+            document::Style { {theme_css} }
+            div {
+                class: "native-root",
+                style: "display: contents;",
+                tabindex: "0",
+                autofocus: true,
+                onkeydown: move |evt: KeyboardEvent| {
+                    let code = evt.data().code().to_string();
+                    if crate::runtime::native_key_event(&rt_down, &code, true) {
+                        evt.prevent_default();
+                    }
+                },
+                onkeyup: move |evt: KeyboardEvent| {
+                    let code = evt.data().code().to_string();
+                    crate::runtime::native_key_event(&rt_up, &code, false);
+                },
+                {screen}
+            }
         }
     }
+}
+
+/// The native theme style block: accent custom props at `:root`, plus —
+/// for the light theme — every `:root[data-theme="light"]`-prefixed
+/// rule from the stylesheet re-emitted without the un-settable
+/// attribute selector (the bare block lands on `:root`, scoped ones
+/// keep their descendant selectors).
+#[cfg(not(target_arch = "wasm32"))]
+fn native_theme_css(accent: crate::config::Accent, theme: crate::config::Theme) -> String {
+    let (r, g, b) = accent.rgb(theme);
+    let luma = (0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32) / 255.0;
+    let accent_ink = if luma > 0.6 { "#0a2012" } else { "#ffffff" };
+    let mut css = format!(
+        ":root {{ --accent: rgb({r},{g},{b}); --accent-weak: rgba({r},{g},{b},0.14); \
+         --accent-hair: rgba({r},{g},{b},0.38); --accent-ink: {accent_ink}; }}\n"
+    );
+    if theme == crate::config::Theme::Light {
+        const SHEET: &str = include_str!("../../assets/style.css");
+        const PREFIX: &str = ":root[data-theme=\"light\"]";
+        let mut rest = SHEET;
+        while let Some(at) = rest.find(PREFIX) {
+            let after = &rest[at + PREFIX.len()..];
+            let Some(brace) = after.find('{') else { break };
+            let selector_tail = after[..brace].trim();
+            let body = &after[brace + 1..];
+            let Some(end) = body.find('}') else { break };
+            let rules = &body[..end];
+            if selector_tail.is_empty() {
+                css.push_str(&format!(":root {{{rules}}}\n"));
+            } else {
+                css.push_str(&format!("{selector_tail} {{{rules}}}\n"));
+            }
+            rest = &body[end + 1..];
+        }
+    }
+    css
 }
 
 #[component]
@@ -348,7 +428,7 @@ fn Shell() -> Element {
                     let files = evt.files();
                     async move {
                         let Some(storage) = storage else { return };
-                        let counts = crate::web::import_files(&storage, files).await;
+                        let counts = crate::host::import_files(&storage, files).await;
                         play::note_import(&counts);
                         *library_rev.write() += 1;
                         *crate::runtime::SAVES_REV.write() += 1;

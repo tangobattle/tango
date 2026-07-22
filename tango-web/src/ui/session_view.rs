@@ -6,6 +6,7 @@
 use std::sync::atomic::Ordering;
 
 use dioxus::prelude::*;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 
 use super::{icons, touch, use_ctx, Ctx};
@@ -26,6 +27,7 @@ pub fn SessionView() -> Element {
     // the next mount starts from a fresh WebGL context. Reading the
     // filter reactively re-attaches (rebuilding the pipeline) when the
     // setting changes mid-session.
+    #[cfg(target_arch = "wasm32")]
     {
         let runtime = runtime.clone();
         use_effect(move || {
@@ -40,6 +42,28 @@ pub fn SessionView() -> Element {
             }
         });
     }
+    // Native: the paint source registers with the Blitz renderer once
+    // per mount (the canvas's `"src"` attribute references it); filter
+    // changes swap the pipeline in place rather than re-registering.
+    #[cfg(not(target_arch = "wasm32"))]
+    let fb_src = {
+        let runtime = runtime.clone();
+        let id = dioxus_native::use_wgpu(move || {
+            let filter = config.peek().video_filter.clone();
+            runtime.borrow_mut().attach_native_presenter(&filter)
+        });
+        id.to_string()
+    };
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let runtime = runtime.clone();
+        use_effect(move || {
+            let filter = config.read().video_filter.clone();
+            runtime.borrow_mut().set_native_filter(&filter);
+        });
+    }
+    #[cfg(target_arch = "wasm32")]
+    let fb_src = String::new();
     {
         let runtime = runtime.clone();
         use_drop(move || {
@@ -89,6 +113,9 @@ pub fn SessionView() -> Element {
                 // the LCD grid's screen-space lines need the pixels.
                 canvas {
                     id: "framebuffer",
+                    // Native: references the registered paint source
+                    // (ignored by the browser backend).
+                    "src": "{fb_src}",
                     width: if config.read().integer_scaling && config.read().video_filter.is_empty() { "240" } else { "1440" },
                     height: if config.read().integer_scaling && config.read().video_filter.is_empty() { "160" } else { "960" },
                     class: if !config.read().integer_scaling { "fit" },
@@ -324,11 +351,21 @@ struct ScrubDrag {
 
 /// Cursor x within the scrub track → (x, track width), via the
 /// track's live bounding rect (the only place its layout width is
-/// knowable).
+/// knowable). Native Blitz can't measure elements in 0.7.9, so scrub
+/// pointer interactions quietly don't engage there (the transport
+/// buttons still work).
 fn scrub_metrics(client_x: f64) -> Option<(f64, f64)> {
-    let el = web_sys::window()?.document()?.get_element_by_id("scrub-track")?;
-    let rect = el.get_bounding_client_rect();
-    Some((client_x - rect.left(), rect.width()))
+    #[cfg(target_arch = "wasm32")]
+    {
+        let el = web_sys::window()?.document()?.get_element_by_id("scrub-track")?;
+        let rect = el.get_bounding_client_rect();
+        Some((client_x - rect.left(), rect.width()))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = client_x;
+        None
+    }
 }
 
 /// A keyframe's native BGR555 frame as a PNG data URL (the hover
@@ -894,6 +931,7 @@ fn ReplayTransport() -> Element {
 #[component]
 fn ReplayPip() -> Element {
     let Ctx { runtime, .. } = use_ctx();
+    #[cfg(target_arch = "wasm32")]
     {
         let runtime = runtime.clone();
         use_effect(move || {
@@ -907,6 +945,13 @@ fn ReplayPip() -> Element {
             }
         });
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    let pip_src = {
+        let runtime = runtime.clone();
+        dioxus_native::use_wgpu(move || runtime.borrow_mut().attach_native_pip()).to_string()
+    };
+    #[cfg(target_arch = "wasm32")]
+    let pip_src = String::new();
     {
         let runtime = runtime.clone();
         use_drop(move || {
@@ -915,7 +960,7 @@ fn ReplayPip() -> Element {
     }
     rsx! {
         div { class: "pip-frame hud-chip",
-            canvas { id: "pip-framebuffer", width: "240", height: "160" }
+            canvas { id: "pip-framebuffer", "src": "{pip_src}", width: "240", height: "160" }
         }
     }
 }

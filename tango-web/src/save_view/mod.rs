@@ -405,7 +405,9 @@ pub fn SaveView(
     }
 
     // Reset the body scroll on tab switches, like the desktop's
-    // snap-to-top.
+    // snap-to-top. (Web-only: Blitz has no raw-DOM scroll access; the
+    // native build keeps the scroll position across tabs for now.)
+    #[cfg(target_arch = "wasm32")]
     use_effect(move || {
         let _ = active_tab.read();
         if let Some(el) = web_sys::window()
@@ -505,11 +507,9 @@ pub fn SaveView(
             };
             let Some(text) = text else { return };
             spawn(async move {
-                let Some(win) = web_sys::window() else { return };
-                let p = win.navigator().clipboard().write_text(&text);
-                if wasm_bindgen_futures::JsFuture::from(p).await.is_ok() {
+                if crate::host::copy_text(&text).await {
                     copy_flash.set(Some(tab as u8));
-                    gloo_timers::future::TimeoutFuture::new(1500).await;
+                    crate::compat::sleep_ms(1500).await;
                     if *copy_flash.peek() == Some(tab as u8) {
                         copy_flash.set(None);
                     }
@@ -678,10 +678,7 @@ fn ChipPopover(handle: SaveHandle) -> Element {
     let bg = h.accent.unwrap_or("rgba(0, 0, 0, 0.85)");
     // Flip to the cursor's left near the viewport's right edge so the
     // popover never clips offscreen.
-    let flip = web_sys::window()
-        .and_then(|w| w.inner_width().ok())
-        .and_then(|v| v.as_f64())
-        .is_some_and(|w| h.x > w - 320.0);
+    let flip = crate::host::viewport_width().is_some_and(|w| h.x > w - 320.0);
     rsx! {
         div {
             class: if flip { "chip-pop flip" } else { "chip-pop" },

@@ -7,6 +7,8 @@
 
 pub mod control;
 pub mod data;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod rt;
 pub mod signaling;
 pub mod webrtc;
 pub mod ws;

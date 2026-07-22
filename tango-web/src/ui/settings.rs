@@ -218,7 +218,7 @@ fn GraphicsSection() -> Element {
                     onchange: move |evt: FormEvent| {
                         config.with_mut(|c| c.video_filter = evt.value());
                     },
-                    for (id, name) in crate::platform::video::webgl::FILTERS.iter() {
+                    for (id, name) in crate::platform::video::FILTERS.iter() {
                         option {
                             value: "{id}",
                             selected: video_filter == *id,

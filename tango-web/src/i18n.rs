@@ -45,13 +45,26 @@ fluent_templates::static_loader! {
 pub static LANG: GlobalSignal<unic_langid::LanguageIdentifier> = Signal::global(|| FALLBACK_LANG);
 
 /// Resolve the startup language: the persisted config choice if valid,
+/// The host's UI language: `navigator.language` in the browser, the
+/// `sys-locale` lookup on native.
+fn system_language() -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_sys::window()?.navigator().language()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        sys_locale::get_locale()
+    }
+}
+
 /// else the best [`SUPPORTED_LANGS`] match for `navigator.language`.
 pub fn init(config_language: Option<&str>) {
     let lang = config_language
         .and_then(|s| s.parse::<unic_langid::LanguageIdentifier>().ok())
         .filter(|l| SUPPORTED_LANGS.contains(l))
         .or_else(|| {
-            let requested = web_sys::window()?.navigator().language()?;
+            let requested = system_language()?;
             let requested: unic_langid::LanguageIdentifier = requested.parse().ok()?;
             SUPPORTED_LANGS
                 .iter()

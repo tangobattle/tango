@@ -1,6 +1,8 @@
 //! The single-threaded session host: one `Runtime` in an
-//! `Rc<RefCell<_>>`, pumped from three sources that all funnel into
-//! [`Runtime::pump`] —
+//! `Rc<RefCell<_>>`, pumped from sources that all funnel into
+//! [`Runtime::pump`].
+//!
+//! On the web, three sources —
 //!
 //! - **rAF** while the tab is visible: ticks + audio + present + a
 //!   `FRAME_REV` signal bump for the reactive UI;
@@ -9,11 +11,17 @@
 //!   stops, so a netplay session holds full speed in the background;
 //! - double-fires are harmless — the accumulator sees ~0 elapsed.
 //!
-//! Everything here runs on the JS main thread; the atomics/mutexes in
-//! `SharedSession` are uncontended. The one real hazard is re-entrant
-//! locking (a single thread deadlocks itself), so the pump strictly
-//! sequences tick → audio → present as siblings and nothing calls back
-//! into the pump from inside a `with_link` scope.
+//! On native, one: a timer task on the Dioxus executor pumps with the
+//! `Raf` source (there is no visibility split, and audio pulls itself
+//! from the SDL callback thread instead of being pushed here).
+//!
+//! Everything here runs on the main thread; the atomics/mutexes in
+//! `SharedSession` are uncontended on the web (on native the SDL audio
+//! thread genuinely contends the link, same as the desktop client).
+//! The one real hazard is re-entrant locking (a single thread
+//! deadlocks itself), so the pump strictly sequences tick → audio →
+//! present as siblings and nothing calls back into the pump from
+//! inside a `with_link` scope.
 
 pub mod clock;
 
@@ -22,11 +30,19 @@ use std::collections::HashSet;
 use std::rc::{Rc, Weak};
 
 use dioxus::prelude::*;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::closure::Closure;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::platform::audio::sdl::Backend as AudioBackend;
+#[cfg(target_arch = "wasm32")]
 use crate::platform::audio::web::WebAudio;
 use crate::platform::audio::{Binding, LateBinder, LinkStream};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::platform::video::native::Presenter;
+#[cfg(target_arch = "wasm32")]
 use crate::platform::video::webgl::WebGlPresenter;
 use crate::platform::{gamepad, input};
 use crate::session::local::{LocalArgs, LocalSession};
@@ -76,6 +92,9 @@ pub static CAPTURED: GlobalSignal<Option<(input::MappedKey, input::PhysicalInput
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PumpSource {
     Raf,
+    /// The AudioWorklet's queue reports — the web's hidden-tab tick
+    /// source. Native audio pulls on the SDL thread instead.
+    #[cfg(target_arch = "wasm32")]
     Audio,
 }
 
@@ -127,15 +146,25 @@ impl Session {
 
 pub struct Runtime {
     session: Option<Session>,
+    #[cfg(target_arch = "wasm32")]
     audio: Option<WebAudio>,
+    #[cfg(not(target_arch = "wasm32"))]
+    audio: Option<AudioBackend>,
     audio_binder: LateBinder,
     /// RAII: unbinding returns the output to silence.
     audio_binding: Option<Binding>,
+    #[cfg(target_arch = "wasm32")]
     presenter: Option<WebGlPresenter>,
+    #[cfg(not(target_arch = "wasm32"))]
+    presenter: Option<Presenter>,
     /// The replay transport's picture-in-picture presenter.
+    #[cfg(target_arch = "wasm32")]
     pip_presenter: Option<WebGlPresenter>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pip_presenter: Option<Presenter>,
     /// The active canvas's context-loss hooks, removed when the canvas
     /// detaches or is replaced (else every mount stacks another pair).
+    #[cfg(target_arch = "wasm32")]
     canvas_hooks: Option<CanvasHooks>,
     presented_rev: u64,
     pip_presented_rev: u64,
@@ -170,6 +199,14 @@ pub struct Runtime {
     /// fires on edges, and the first scan only seeds this baseline so an
     /// already-held input can't bind itself.
     capture_prev: Option<HashSet<input::PhysicalInput>>,
+    /// Playback-device topology snapshot (sorted ids), diffed at 1 Hz:
+    /// SDL can't resurrect a stream whose endpoint went away, so a
+    /// change rebuilds the backend (the desktop's
+    /// `reopen_audio_backend`).
+    #[cfg(not(target_arch = "wasm32"))]
+    audio_device_ids: Vec<u32>,
+    #[cfg(not(target_arch = "wasm32"))]
+    last_audio_watch_ms: f64,
     /// Set while the pump runs — the keyboard handlers and UI callbacks
     /// re-borrow the Runtime, and anything that could re-enter must not.
     _pumping: bool,
@@ -197,6 +234,7 @@ pub struct ReplayScrubInfo {
     pub round_boundaries: Vec<u32>,
 }
 
+#[cfg(target_arch = "wasm32")]
 struct CanvasHooks {
     canvas: web_sys::HtmlCanvasElement,
     lost: Closure<dyn FnMut(web_sys::Event)>,
@@ -222,6 +260,7 @@ impl Runtime {
             audio_binding: None,
             presenter: None,
             pip_presenter: None,
+            #[cfg(target_arch = "wasm32")]
             canvas_hooks: None,
             presented_rev: 0,
             pip_presented_rev: 0,
@@ -240,6 +279,10 @@ impl Runtime {
             last_autosave_ms: 0.0,
             last_end: None,
             capture_prev: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            audio_device_ids: Vec::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            last_audio_watch_ms: 0.0,
             _pumping: false,
         }));
         RUNTIME.with(|r| *r.borrow_mut() = Some(runtime.clone()));
@@ -256,10 +299,28 @@ impl Runtime {
         let _ = CAPTURE_TARGET.peek();
         let _ = CAPTURED.peek();
         let _ = crate::netplay::PHASE.peek();
-        install_raf(Rc::downgrade(&runtime));
-        install_keyboard(Rc::downgrade(&runtime));
-        install_beforeunload(Rc::downgrade(&runtime));
-        install_focus_release(Rc::downgrade(&runtime));
+        #[cfg(target_arch = "wasm32")]
+        {
+            install_raf(Rc::downgrade(&runtime));
+            install_keyboard(Rc::downgrade(&runtime));
+            install_beforeunload(Rc::downgrade(&runtime));
+            install_focus_release(Rc::downgrade(&runtime));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            install_native_pump(Rc::downgrade(&runtime));
+            // The audio sink needs no user gesture on native: SDL's
+            // callback pulls from the LateBinder for the app's life.
+            // (The binder clone is bound first — a `runtime.borrow()`
+            // inside the match scrutinee would live for the whole match
+            // and deadlock the arm's `borrow_mut`.)
+            let binder = runtime.borrow().audio_binder.clone();
+            match AudioBackend::new(binder) {
+                Ok(backend) => runtime.borrow_mut().set_audio(backend),
+                Err(e) => log::warn!("sdl audio unavailable: {e:#}"),
+            }
+            runtime.borrow_mut().audio_device_ids = playback_device_ids_now();
+        }
         crate::platform::wakelock::install();
         runtime
     }
@@ -268,12 +329,49 @@ impl Runtime {
         self.storage = Some(storage);
     }
 
+    /// Attach (or replace) the native presenter pair for the session
+    /// canvas: keeps the runtime's presenting half, returns the paint
+    /// source to register with the Blitz renderer (`use_wgpu` + the
+    /// canvas's `"src"` attribute). Filter changes after this go
+    /// through [`Self::set_native_filter`] — the paint source
+    /// registration is per-component-mount and must not be rebuilt.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn attach_native_presenter(&mut self, filter: &str) -> crate::platform::video::native::PaintSource {
+        self.video_filter = filter.to_string();
+        let presenter = Presenter::new(filter);
+        let source = presenter.paint_source();
+        self.presenter = Some(presenter);
+        self.presented_rev = 0;
+        source
+    }
+
+    /// Attach the native picture-in-picture presenter (the replay
+    /// transport's opponent screen; stays on the pass-through).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn attach_native_pip(&mut self) -> crate::platform::video::native::PaintSource {
+        let presenter = Presenter::new("");
+        let source = presenter.paint_source();
+        self.pip_presenter = Some(presenter);
+        self.pip_presented_rev = 0;
+        source
+    }
+
+    /// Live filter switch — takes hold on the next repaint.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_native_filter(&mut self, filter: &str) {
+        self.video_filter = filter.to_string();
+        if let Some(p) = &self.presenter {
+            p.set_filter(filter);
+        }
+    }
+
     /// Attach (or replace) the presenter for the session canvas, and
     /// arm context-loss recovery: `webglcontextlost` must be
     /// preventDefault'ed for the browser to restore the context, and
     /// `webglcontextrestored` rebuilds the pipeline on the same canvas.
     /// `filter` is the `config.video_filter` key; it's remembered so
     /// the context-restore rebuild keeps the same pipeline.
+    #[cfg(target_arch = "wasm32")]
     pub fn attach_canvas(&mut self, canvas: &web_sys::HtmlCanvasElement, filter: &str) {
         self.drop_canvas_hooks();
         self.video_filter = filter.to_string();
@@ -315,6 +413,7 @@ impl Runtime {
         });
     }
 
+    #[cfg(target_arch = "wasm32")]
     fn drop_canvas_hooks(&mut self) {
         if let Some(hooks) = self.canvas_hooks.take() {
             let _ = hooks.canvas.remove_event_listener_with_callback(
@@ -329,6 +428,7 @@ impl Runtime {
     }
 
     pub fn detach_canvas(&mut self) {
+        #[cfg(target_arch = "wasm32")]
         self.drop_canvas_hooks();
         self.presenter = None;
     }
@@ -336,6 +436,7 @@ impl Runtime {
     /// Attach the picture-in-picture presenter (the replay transport's
     /// opponent screen). No context-loss hooks — the PiP is transient;
     /// re-toggling it rebuilds the pipeline.
+    #[cfg(target_arch = "wasm32")]
     pub fn attach_pip_canvas(&mut self, canvas: &web_sys::HtmlCanvasElement) {
         // The PiP stays on the pass-through — it's a small inset.
         match WebGlPresenter::new(canvas, "") {
@@ -365,7 +466,7 @@ impl Runtime {
     ) -> anyhow::Result<()> {
         self.close_session();
         let rtc = std::time::SystemTime::UNIX_EPOCH
-            + std::time::Duration::from_millis(js_sys::Date::now() as u64);
+            + std::time::Duration::from_millis(crate::compat::now_unix_ms() as u64);
         self.saved_crc = save.as_deref().map(crc32fast::hash);
         let session = crate::session::local::start(LocalArgs {
             game,
@@ -403,7 +504,7 @@ impl Runtime {
         let target = target.clone();
         let storage = storage.clone();
         *SAVES_IN_FLIGHT.write() += 1;
-        wasm_bindgen_futures::spawn_local(async move {
+        crate::compat::spawn_local(async move {
             let dir = storage.saves().clone();
             if let Err(e) = crate::storage::write(&dir, &target.file, &bytes).await {
                 log::error!("couldn't write back {}: {e}", target.file);
@@ -439,9 +540,11 @@ impl Runtime {
             ))))
             .ok();
         self.session = Some(session);
+        #[cfg(target_arch = "wasm32")]
         if let Some(audio) = &mut self.audio {
             // A fixed silence cushion under the sink's sawtooth; see
-            // WebAudio::prime.
+            // WebAudio::prime. (Native needs none: the SDL callback's
+            // pull path has the LinkStream's own priming latch.)
             audio.prime(2048);
         }
         self.clock.reset();
@@ -670,13 +773,24 @@ impl Runtime {
         &self.metric_history
     }
 
-    /// Install the audio sink (built asynchronously from a user
-    /// gesture; see `WebAudio::create`).
+    /// Install the audio sink (on the web, built asynchronously from a
+    /// user gesture — see `WebAudio::create`; on native, built at
+    /// install time from SDL).
+    #[cfg(target_arch = "wasm32")]
     pub fn set_audio(&mut self, audio: WebAudio) {
         self.audio_binder.set_sample_rate(audio.sample_rate());
         self.audio = Some(audio);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_audio(&mut self, audio: AudioBackend) {
+        self.audio_binder.set_sample_rate(audio.sample_rate());
+        self.audio = Some(audio);
+    }
+
+    /// Whether the (gesture-gated) web sink exists yet — the native
+    /// backend installs unconditionally at startup.
+    #[cfg(target_arch = "wasm32")]
     pub fn has_audio(&self) -> bool {
         self.audio.is_some()
     }
@@ -803,9 +917,30 @@ impl Runtime {
 
         // Audio: top the sink up from whatever is bound (silence when
         // no session). Strictly after ticks — LinkStream locks the link.
+        // Web-only: the native SDL callback pulls on its own thread.
+        #[cfg(target_arch = "wasm32")]
         if let (Some(audio), true) = (&mut self.audio, self.session.is_some()) {
             audio.resume_if_suspended();
             audio.pump(&mut self.audio_binder);
+        }
+
+        // Native audio housekeeping: diff the playback-device topology
+        // at 1 Hz and rebuild the backend when it moves — a stream
+        // whose endpoint died would otherwise stay silently dead (and
+        // with it, anything paced by audio consumption).
+        #[cfg(not(target_arch = "wasm32"))]
+        if now_ms - self.last_audio_watch_ms > 1_000.0 {
+            self.last_audio_watch_ms = now_ms;
+            let ids = playback_device_ids_now();
+            if ids != self.audio_device_ids {
+                self.audio_device_ids = ids;
+                log::info!("audio device topology changed; reopening the backend");
+                self.audio = None;
+                match AudioBackend::new(self.audio_binder.clone()) {
+                    Ok(backend) => self.set_audio(backend),
+                    Err(e) => log::warn!("sdl audio reopen failed: {e:#}"),
+                }
+            }
         }
 
         // Solo autosave: SRAM back to OPFS every minute when it changed
@@ -841,6 +976,8 @@ impl Runtime {
         // peak sio slices (the lockstep-livelock early-warning), readable
         // from devtools / automation even while the tab is hidden and the
         // UI is frozen — and by the watchdog's heartbeat records.
+        // Browser-only — native has a debugger and real process tools.
+        #[cfg(target_arch = "wasm32")]
         if changed {
             if let Some(session) = &self.session {
                 let (frontier, slices) = {
@@ -860,34 +997,37 @@ impl Runtime {
             }
         }
 
-        // Debug probe: wasm linear-memory pages (64KiB each). Linear
-        // memory only ever grows, so a steady climb here is the
-        // telltale of a leak long before the tab notices.
-        let _ = js_sys::Reflect::set(
-            &js_sys::global(),
-            &"tangoWebWasmPages".into(),
-            &(core::arch::wasm32::memory_size::<0>() as f64).into(),
-        );
-        // Debug probe: whether fast-forward reads as held — a stuck
-        // modifier here once pinned background tabs at 3× CPU.
-        let _ = js_sys::Reflect::set(
-            &js_sys::global(),
-            &"tangoWebSpeedUp".into(),
-            &self.mapping.speed_up_held(&self.held).into(),
-        );
-        // Debug probe: the running session's kind, so the watchdog's
-        // heartbeat records say what a wedge interrupted.
-        let _ = js_sys::Reflect::set(
-            &js_sys::global(),
-            &"tangoWebSession".into(),
-            &match self.session.as_ref().map(|s| s.kind()) {
-                Some(SessionKind::Pvp) => "pvp",
-                Some(SessionKind::Local) => "local",
-                Some(SessionKind::Replay) => "replay",
-                None => "none",
-            }
-            .into(),
-        );
+        #[cfg(target_arch = "wasm32")]
+        {
+            // Debug probe: wasm linear-memory pages (64KiB each). Linear
+            // memory only ever grows, so a steady climb here is the
+            // telltale of a leak long before the tab notices.
+            let _ = js_sys::Reflect::set(
+                &js_sys::global(),
+                &"tangoWebWasmPages".into(),
+                &(core::arch::wasm32::memory_size::<0>() as f64).into(),
+            );
+            // Debug probe: whether fast-forward reads as held — a stuck
+            // modifier here once pinned background tabs at 3× CPU.
+            let _ = js_sys::Reflect::set(
+                &js_sys::global(),
+                &"tangoWebSpeedUp".into(),
+                &self.mapping.speed_up_held(&self.held).into(),
+            );
+            // Debug probe: the running session's kind, so the watchdog's
+            // heartbeat records say what a wedge interrupted.
+            let _ = js_sys::Reflect::set(
+                &js_sys::global(),
+                &"tangoWebSession".into(),
+                &match self.session.as_ref().map(|s| s.kind()) {
+                    Some(SessionKind::Pvp) => "pvp",
+                    Some(SessionKind::Local) => "local",
+                    Some(SessionKind::Replay) => "replay",
+                    None => "none",
+                }
+                .into(),
+            );
+        }
 
         // Present + UI signal: only on the visible-path source.
         if source == PumpSource::Raf {
@@ -923,12 +1063,23 @@ impl Runtime {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 fn performance_now() -> f64 {
     web_sys::window().unwrap().performance().unwrap().now()
 }
 
+/// Monotonic milliseconds since first use — the native counterpart of
+/// `performance.now()` (only ever consumed as deltas).
+#[cfg(not(target_arch = "wasm32"))]
+fn performance_now() -> f64 {
+    use std::sync::OnceLock;
+    static START: OnceLock<std::time::Instant> = OnceLock::new();
+    START.get_or_init(std::time::Instant::now).elapsed().as_secs_f64() * 1000.0
+}
+
 /// Covers both backgrounded tabs and fully-occluded windows (Chrome
 /// reports "hidden" for either; rAF is already stopped in both).
+#[cfg(target_arch = "wasm32")]
 fn document_hidden() -> bool {
     web_sys::window()
         .and_then(|w| w.document())
@@ -936,9 +1087,17 @@ fn document_hidden() -> bool {
         .unwrap_or(false)
 }
 
+/// A native window is never "hidden" in the tab sense — desktop apps
+/// keep running unfocused, same as the desktop client.
+#[cfg(not(target_arch = "wasm32"))]
+fn document_hidden() -> bool {
+    false
+}
+
 /// The worklet's queue-report hook: pump with the Audio source. Wired
 /// by `WebAudio::create` via this free function so the closure only
 /// holds a weak handle.
+#[cfg(target_arch = "wasm32")]
 pub fn pump_from_audio_report() {
     if let Some(runtime) = RUNTIME.with(|r| r.borrow().clone()) {
         if let Ok(mut rt) = runtime.try_borrow_mut() {
@@ -947,6 +1106,88 @@ pub fn pump_from_audio_report() {
     }
 }
 
+/// Route one key event from the native UI's focused wrapper — the
+/// counterpart of the web's document keyboard listener. Returns true
+/// when the event was consumed (capture, overlay toggles, bound game
+/// input) and the caller should prevent-default it.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn native_key_event(runtime: &Rc<RefCell<Runtime>>, code: &str, pressed: bool) -> bool {
+    // Binding capture: the next key press becomes the binding (Escape
+    // cancels); either way nothing else sees it.
+    if pressed && CAPTURE_TARGET.peek().is_some() {
+        if let Some(key) = CAPTURE_TARGET.write().take() {
+            if code != "Escape" {
+                *CAPTURED.write() = Some((key, input::PhysicalInput::Key(code.into())));
+            }
+        }
+        return true;
+    }
+    let Ok(mut rt) = runtime.try_borrow_mut() else {
+        return false;
+    };
+    // Releases always land, whatever gate consumed the press: held
+    // state must never outlive the physical key.
+    if !pressed {
+        rt.key_event(code, false);
+        return false;
+    }
+    // Keys belong to the UI unless something here consumes them: a
+    // live session (game input, the Escape overlays) or its menu.
+    if rt.shared().is_none() && !*MENU_OPEN.peek() {
+        return false;
+    }
+    // Escape drives the overlays, never the game: it collapses the
+    // cable panel first, then toggles the menu.
+    if code == "Escape" {
+        if rt.shared().is_some() {
+            if *PANEL_OPEN.peek() && !*MENU_OPEN.peek() {
+                *PANEL_OPEN.write() = false;
+            } else {
+                let open = *MENU_OPEN.peek();
+                *MENU_OPEN.write() = !open;
+            }
+            return true;
+        }
+        return false;
+    }
+    rt.key_event(code, true)
+}
+
+/// The current playback-device topology as sorted raw ids (empty when
+/// SDL is unavailable).
+#[cfg(not(target_arch = "wasm32"))]
+fn playback_device_ids_now() -> Vec<u32> {
+    crate::platform::sdl_init::sdl()
+        .and_then(|sdl| sdl.audio().ok())
+        .map(|audio| {
+            crate::platform::audio::sdl::playback_device_ids(&audio)
+                .iter()
+                .map(|d| d.id().0)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The native pump driver: a timer task on the Dioxus executor. The
+/// cadence is coarser and jitterier than rAF (Windows timers park at
+/// ~15ms), which the `TickClock` accumulator absorbs — up to 6 ticks
+/// per pump — and the audio side never sees (the SDL callback pulls on
+/// its own thread, with the LinkStream servo smoothing consumption).
+#[cfg(not(target_arch = "wasm32"))]
+fn install_native_pump(runtime: Weak<RefCell<Runtime>>) {
+    crate::compat::spawn_local(async move {
+        loop {
+            let Some(rt) = runtime.upgrade() else { break };
+            if let Ok(mut rt) = rt.try_borrow_mut() {
+                rt.pump(PumpSource::Raf);
+            }
+            drop(rt);
+            crate::compat::sleep_ms(8).await;
+        }
+    });
+}
+
+#[cfg(target_arch = "wasm32")]
 fn install_raf(runtime: Weak<RefCell<Runtime>>) {
     let handle: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
     let handle2 = handle.clone();
@@ -959,6 +1200,7 @@ fn install_raf(runtime: Weak<RefCell<Runtime>>) {
     request_animation_frame(handle.borrow().as_ref().unwrap());
 }
 
+#[cfg(target_arch = "wasm32")]
 fn request_animation_frame(closure: &Closure<dyn FnMut(f64)>) {
     web_sys::window()
         .unwrap()
@@ -969,6 +1211,7 @@ fn request_animation_frame(closure: &Closure<dyn FnMut(f64)>) {
 /// Warn before the tab closes over a live session: OPFS writes are
 /// async and can't complete during unload, so "use Quit to save" — the
 /// autosave interval bounds the loss either way.
+#[cfg(target_arch = "wasm32")]
 fn install_beforeunload(runtime: Weak<RefCell<Runtime>>) {
     let window = web_sys::window().unwrap();
     let closure: Closure<dyn FnMut(web_sys::BeforeUnloadEvent)> =
@@ -991,6 +1234,7 @@ fn install_beforeunload(runtime: Weak<RefCell<Runtime>>) {
 /// tab: the matching keyup fires wherever the user went, so anything
 /// still held here would stay "down" forever — most damagingly a held
 /// fast-forward, which would keep a background tab at 3× CPU.
+#[cfg(target_arch = "wasm32")]
 fn install_focus_release(runtime: Weak<RefCell<Runtime>>) {
     let window = web_sys::window().unwrap();
     let document = window.document().unwrap();
@@ -1022,6 +1266,7 @@ fn install_focus_release(runtime: Weak<RefCell<Runtime>>) {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 fn install_keyboard(runtime: Weak<RefCell<Runtime>>) {
     let document = web_sys::window().unwrap().document().unwrap();
     for (event, pressed) in [("keydown", true), ("keyup", false)] {

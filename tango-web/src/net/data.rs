@@ -16,7 +16,6 @@ use std::rc::Rc;
 use std::sync::Mutex;
 
 use futures::channel::mpsc;
-use gloo_timers::future::TimeoutFuture;
 use tango_net_protocol::data::{Element, Frame, InMatch, Meta, HORIZON};
 use web_time::Instant;
 
@@ -110,7 +109,7 @@ impl InMatchTx {
     pub fn swap_transport(&self, tx: ChannelSender, rx: ChannelReceiver) {
         *self.tx.borrow_mut() = tx;
         self.generation.set(self.generation.get() + 1);
-        wasm_bindgen_futures::spawn_local(recv_pump(
+        crate::compat::spawn_local(recv_pump(
             rx,
             self.streams.clone(),
             self.rtt_ms.clone(),
@@ -144,14 +143,14 @@ pub fn wire(
     let (event_tx, event_rx) = mpsc::unbounded();
     let tx = Rc::new(RefCell::new(tx));
 
-    wasm_bindgen_futures::spawn_local(recv_pump(
+    crate::compat::spawn_local(recv_pump(
         rx,
         streams.clone(),
         rtt_ms.clone(),
         event_tx.clone(),
         0,
     ));
-    wasm_bindgen_futures::spawn_local(heartbeat(
+    crate::compat::spawn_local(heartbeat(
         tx.clone(),
         streams.clone(),
         sent.clone(),
@@ -233,7 +232,7 @@ async fn heartbeat(
     stop: Rc<Cell<bool>>,
 ) {
     loop {
-        TimeoutFuture::new(HEARTBEAT_MS).await;
+        crate::compat::sleep_ms(HEARTBEAT_MS).await;
         if stop.get() {
             return;
         }

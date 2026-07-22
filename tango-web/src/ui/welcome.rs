@@ -98,11 +98,11 @@ pub fn WelcomeScreen() -> Element {
                                 onchange: move |evt: FormEvent| {
                                     let storage = storage.read().clone().flatten();
                                     let files = evt.files();
-                                    crate::web::reset_file_input(&evt);
+                                    crate::host::reset_file_input(&evt);
                                     async move {
                                         let Some(storage) = storage else { return };
                                         let counts =
-                                            crate::web::import_files(&storage, files).await;
+                                            crate::host::import_files(&storage, files).await;
                                         play::note_import(&counts);
                                         *library_rev.write() += 1;
                                     }

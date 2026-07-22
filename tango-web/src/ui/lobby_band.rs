@@ -134,7 +134,7 @@ pub fn BottomBand(
                             {
                                 let runtime = runtime.clone();
                                 spawn(async move {
-                                    crate::web::ensure_audio(&runtime).await;
+                                    crate::host::ensure_audio(&runtime).await;
                                 });
                             }
                             let mut code = link_code.peek().clone();
@@ -312,11 +312,9 @@ pub fn BottomBand(
                         onclick: move |_| {
                             let code = code_for_copy.clone();
                             spawn(async move {
-                                let Some(win) = web_sys::window() else { return };
-                                let p = win.navigator().clipboard().write_text(&code);
-                                if wasm_bindgen_futures::JsFuture::from(p).await.is_ok() {
+                                if crate::host::copy_text(&code).await {
                                     copied.set(true);
-                                    gloo_timers::future::TimeoutFuture::new(1500).await;
+                                    crate::compat::sleep_ms(1500).await;
                                     copied.set(false);
                                 }
                             });

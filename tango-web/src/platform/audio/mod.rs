@@ -5,6 +5,9 @@
 //! (`replay.rs` is present but not compiled until the replay playback
 //! port lands.)
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod sdl;
+#[cfg(target_arch = "wasm32")]
 pub mod web;
 
 pub const NUM_CHANNELS: usize = 2;
