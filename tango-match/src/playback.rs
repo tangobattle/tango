@@ -227,7 +227,7 @@ fn boot_and_prime(
     render: bool,
     cancel: Option<&AtomicBool>,
     lifecycle: &crate::telemetry::LifecycleSink,
-) -> anyhow::Result<mgba_siolink::Link> {
+) -> Result<mgba_siolink::Link, crate::Error> {
     let mut pair = mgba_siolink::Link::with_options(mgba_siolink::LinkOptions {
         sides: vec![
             mgba_siolink::SideOptions {
@@ -267,10 +267,10 @@ fn boot_and_prime(
     let mut prime_ticks = 0;
     while !(primed[0].is_set() && primed[1].is_set()) {
         if prime_ticks >= MAX_PRIME_TICKS {
-            anyhow::bail!("pvp playback: priming did not reach a link battle within {MAX_PRIME_TICKS} ticks");
+            return Err(crate::Error::PrimeTimeout(MAX_PRIME_TICKS));
         }
         if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
-            anyhow::bail!("cancelled");
+            return Err(crate::Error::Cancelled);
         }
         pair.tick(&[0, 0]);
         prime_ticks += 1;
@@ -297,7 +297,7 @@ impl Playback {
         config: &BootConfig,
         inputs: Arc<Vec<[u32; 2]>>,
         lifecycle: &crate::telemetry::LifecycleSink,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, crate::Error> {
         let pair = boot_and_prime(config, true, None, lifecycle)?;
         Ok(Self {
             pair,
@@ -331,7 +331,7 @@ impl Playback {
 
     /// Capture a whole-pair snapshot (with both framebuffers) at the
     /// current cursor.
-    pub fn capture(&mut self) -> anyhow::Result<Arc<Snapshot>> {
+    pub fn capture(&mut self) -> Result<Arc<Snapshot>, crate::Error> {
         let state = self.pair.save()?;
         let framebuffers = [
             self.pair.video_buffer(0).map(|b| b.to_vec()).unwrap_or_default(),
@@ -345,7 +345,7 @@ impl Playback {
     }
 
     /// Restore the pair to `snap` and move the cursor there.
-    pub fn load(&mut self, snap: &Snapshot) -> anyhow::Result<()> {
+    pub fn load(&mut self, snap: &Snapshot) -> Result<(), crate::Error> {
         self.pair.load(&snap.state)?;
         self.cursor = snap.tick;
         Ok(())
@@ -501,7 +501,7 @@ pub fn run_prefetch(
         bool,
         &mut dyn FnMut(u32, u32, &crate::analysis::StatsBuilder),
     )>,
-) -> anyhow::Result<Option<crate::analysis::MatchStats>> {
+) -> Result<Option<crate::analysis::MatchStats>, crate::Error> {
     let lifecycle = crate::telemetry::LifecycleSink::new();
     let mut pair = boot_and_prime(config, true, Some(&cancel), &lifecycle)?;
 
@@ -519,7 +519,7 @@ pub fn run_prefetch(
 
     // Keyframe at tick 0: the primed pre-battle state every backward
     // seek bottoms out on.
-    let capture = |pair: &mut mgba_siolink::Link, tick: u32| -> anyhow::Result<Arc<Snapshot>> {
+    let capture = |pair: &mut mgba_siolink::Link, tick: u32| -> Result<Arc<Snapshot>, crate::Error> {
         let state = pair.save()?;
         let framebuffers = [
             pair.video_buffer(0).map(|b| b.to_vec()).unwrap_or_default(),

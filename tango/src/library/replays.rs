@@ -219,6 +219,7 @@ fn analyze_replay(
         on_progress,
         cancel,
     )
+    .map_err(Into::into)
 }
 
 /// Pretty path relative to the replays root.

@@ -257,7 +257,7 @@ impl PvpSession {
     /// local core's samples at the args' `sample_rate`, rate control
     /// following the drive loop's published fps target) for the host to
     /// route to its output.
-    pub async fn new(args: PvpSessionArgs<'_>) -> anyhow::Result<(Self, crate::core_stream::CoreStream)> {
+    pub async fn new(args: PvpSessionArgs<'_>) -> Result<(Self, crate::core_stream::CoreStream), crate::Error> {
         let PvpSessionArgs {
             local_game,
             local_rom,
@@ -277,10 +277,13 @@ impl PvpSession {
         // .sav file.
         let remote_save = remote_game
             .parse_save(&pre_match.remote_save_data)
-            .map_err(|e| anyhow::anyhow!("parse remote save: {e:?}"))?;
+            .map_err(|e| crate::Error::ParseSave {
+                side: "remote",
+                source: e,
+            })?;
         let local_save = local_game
             .parse_save(&pre_match.local_save_data)
-            .map_err(|e| anyhow::anyhow!("parse local save: {e:?}"))?;
+            .map_err(|e| crate::Error::ParseSave { side: "local", source: e })?;
 
         let local_sio = local_game.pvp;
         let remote_sio = remote_game.pvp;
@@ -367,7 +370,8 @@ impl PvpSession {
         // single-threaded by design). Construction happens on the thread —
         // priming is a couple seconds of emulation — and readiness comes
         // back over a oneshot so `new` can fail cleanly.
-        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<anyhow::Result<tango_match::LinkHandle>>();
+        let (ready_tx, ready_rx) =
+            tokio::sync::oneshot::channel::<Result<tango_match::LinkHandle, tango_match::Error>>();
         {
             let boot = BootPieces {
                 roms,
@@ -409,9 +413,7 @@ impl PvpSession {
 
         // Wait for boot + priming before declaring the session live. Ready
         // hands back the handle to the live pair for the audio stream.
-        let pair_handle = ready_rx
-            .await
-            .map_err(|_| anyhow::anyhow!("sio drive thread died during boot"))??;
+        let pair_handle = ready_rx.await.map_err(|_| crate::Error::DriveThreadDied)??;
 
         // Audio: the host output stream plays the local core directly,
         // pulling and resampling its samples straight off the pair (rate
@@ -748,7 +750,7 @@ impl DriveContext {
     fn run(
         mut self,
         pieces: BootPieces,
-        ready_tx: tokio::sync::oneshot::Sender<anyhow::Result<tango_match::LinkHandle>>,
+        ready_tx: tokio::sync::oneshot::Sender<Result<tango_match::LinkHandle, tango_match::Error>>,
     ) {
         let mut match_ = match Match::new(MatchConfig {
             roms: pieces.roms,
@@ -1316,7 +1318,7 @@ fn build_replay_writer(
     local_player_index: u8,
     local_save: &(dyn tango_dataview::save::Save + Send + Sync),
     remote_save: &(dyn tango_dataview::save::Save + Send + Sync),
-) -> anyhow::Result<(tango_match::replay::Writer, std::path::PathBuf)> {
+) -> Result<(tango_match::replay::Writer, std::path::PathBuf), crate::Error> {
     let link_code = &pre_match.link_code;
     let local_settings = &pre_match.local_settings;
     let remote_settings = &pre_match.remote_settings;
@@ -1324,11 +1326,11 @@ fn build_replay_writer(
     let local_gi = local_settings
         .game_info
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("local settings missing game info"))?;
+        .ok_or(crate::Error::MissingGameInfo { side: "local" })?;
     let remote_gi = remote_settings
         .game_info
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("remote settings missing game info"))?;
+        .ok_or(crate::Error::MissingGameInfo { side: "remote" })?;
     let netplay_compat = local_gi
         .patch
         .as_ref()

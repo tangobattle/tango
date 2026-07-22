@@ -44,7 +44,7 @@ pub fn load_match_stats(
 
 /// Write `stats` to a replay's cache slot, creating the mirrored
 /// directory as needed.
-pub fn write_match_stats(stats_file: &std::path::Path, stats: &tango_match::analysis::MatchStats) -> anyhow::Result<()> {
+pub fn write_match_stats(stats_file: &std::path::Path, stats: &tango_match::analysis::MatchStats) -> std::io::Result<()> {
     if let Some(parent) = stats_file.parent() {
         std::fs::create_dir_all(parent)?;
     }

@@ -68,7 +68,7 @@ impl Match {
     /// rollback session. Priming runs identically on both peers (it is a
     /// pure function of ROM/save/rtc), so both reach the same state before
     /// the session — and therefore the same session initial state.
-    pub fn new(config: MatchConfig) -> anyhow::Result<Self> {
+    pub fn new(config: MatchConfig) -> Result<Self, crate::Error> {
         let MatchConfig {
             roms,
             saves,
@@ -122,7 +122,7 @@ impl Match {
         let mut prime_ticks = 0;
         while !(primed[0].is_set() && primed[1].is_set()) {
             if prime_ticks >= MAX_PRIME_TICKS {
-                anyhow::bail!("pvp: priming did not reach a link battle within {MAX_PRIME_TICKS} ticks");
+                return Err(crate::Error::PrimeTimeout(MAX_PRIME_TICKS));
             }
             pair.tick(&[0, 0]);
             prime_ticks += 1;
@@ -167,7 +167,7 @@ impl Match {
     /// inputs (rolling back on misprediction), speculate to the present
     /// target. Returns the packet to forward to the peer plus a report.
     /// Telemetry for the ticks this advanced lands in the shared store.
-    pub fn advance(&mut self, local_keys: u32) -> anyhow::Result<(Outgoing, Report)> {
+    pub fn advance(&mut self, local_keys: u32) -> Result<(Outgoing, Report), crate::Error> {
         Ok(self.session.advance(local_keys)?)
     }
 

@@ -22,18 +22,16 @@ pub enum NegotiationError {
     RemoteProtocolVersionTooOld,
     #[error("remote protocol version too new")]
     RemoteProtocolVersionTooNew,
+    /// The transport failed underneath the handshake.
     #[error(transparent)]
-    Other(#[from] anyhow::Error),
+    Other(#[from] std::io::Error),
 }
 
 /// Exchange Hello packets with the peer and verify both sides speak
 /// the same `protocol::VERSION`. Has to run on both peers before any
 /// other packet is sent.
 pub async fn negotiate(sender: &mut Sender, receiver: &mut Receiver) -> Result<(), NegotiationError> {
-    sender
-        .send_hello()
-        .await
-        .map_err(|e| NegotiationError::Other(e.into()))?;
+    sender.send_hello().await.map_err(NegotiationError::Other)?;
     let hello = match receiver.receive().await.map_err(|_| NegotiationError::ExpectedHello)? {
         protocol::Packet::Hello(h) => h,
         _ => return Err(NegotiationError::ExpectedHello),

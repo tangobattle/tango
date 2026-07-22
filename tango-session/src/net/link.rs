@@ -140,6 +140,17 @@ fn hex(bytes: &[u8]) -> String {
     s
 }
 
+/// Why [`Link::bring_up`] failed to assemble the transport bundle —
+/// both variants are the lobby loop failing to hand its control
+/// receiver over (see [`LinkParts::control_receiver_rx`]).
+#[derive(Debug, thiserror::Error)]
+pub enum BringUpError {
+    #[error("timed out waiting for lobby loop to release receiver")]
+    ReceiverHandoffTimeout,
+    #[error("lobby loop dropped without releasing receiver")]
+    ReceiverHandoffDropped,
+}
+
 /// Everything `netplay::State::take_pre_match` drains out of the lobby-era
 /// connection handles for [`Link::bring_up`] to assemble. The control
 /// receiver arrives late — the lobby loop owns it until it observes its
@@ -245,11 +256,11 @@ impl Link {
         parts: LinkParts,
         heartbeat: std::time::Duration,
         cancel: CancellationToken,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, BringUpError> {
         let control_receiver = tokio::time::timeout(HANDOFF_TIMEOUT, parts.control_receiver_rx)
             .await
-            .map_err(|_| anyhow::anyhow!("timed out waiting for lobby loop to release receiver"))?
-            .map_err(|_| anyhow::anyhow!("lobby loop dropped without releasing receiver"))?;
+            .map_err(|_| BringUpError::ReceiverHandoffTimeout)?
+            .map_err(|_| BringUpError::ReceiverHandoffDropped)?;
         let in_match = InMatchTx::new(parts.in_match_sender, heartbeat, cancel.clone());
         let (health, _) = tokio::sync::watch::channel(LinkHealth::Connected);
         Ok(Self {

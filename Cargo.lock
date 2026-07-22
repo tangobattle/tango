@@ -6072,7 +6072,6 @@ dependencies = [
 name = "tango-match"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "bytemuck",
  "byteorder",
  "getgud",
@@ -6083,6 +6082,7 @@ dependencies = [
  "prost-build",
  "serde",
  "serde_repr",
+ "thiserror 1.0.69",
  "zstd",
 ]
 
@@ -6103,7 +6103,6 @@ dependencies = [
 name = "tango-session"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "async-trait",
  "bytemuck",
  "chrono",

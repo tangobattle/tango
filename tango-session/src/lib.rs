@@ -14,11 +14,48 @@ pub mod singleplayer;
 pub mod stats;
 pub mod stats_cache;
 
+/// Why a session failed to construct or boot, any kind. One enum for
+/// all three session kinds — their failure sets overlap heavily (core
+/// boot, thread spawn, engine priming), and hosts route every variant
+/// the same way (log + stay on the menu).
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error(transparent)]
+    Mgba(#[from] mgba::Error),
+    /// File IO (the single-player save open, the replay writer) or a
+    /// failed thread spawn.
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    /// The match engine failed to boot or prime the pair.
+    #[error(transparent)]
+    Engine(#[from] tango_match::Error),
+    /// The netplay handoff's transport bundle failed to assemble.
+    #[error(transparent)]
+    LinkBringUp(#[from] net::link::BringUpError),
+    #[error("replay has a bad local player index")]
+    BadLocalPlayerIndex,
+    #[error("replay has no inputs")]
+    EmptyReplay,
+    /// A side's committed SRAM dump didn't parse as a save for its game.
+    #[error("parse {side} save: {source}")]
+    ParseSave {
+        side: &'static str,
+        #[source]
+        source: tango_gamesupport::Error,
+    },
+    /// A side's negotiated settings arrived without game info.
+    #[error("{side} settings missing game info")]
+    MissingGameInfo { side: &'static str },
+    /// The PvP drive thread died before reporting boot success.
+    #[error("sio drive thread died during boot")]
+    DriveThreadDied,
+}
+
 /// Create the mgba core every session boots from: a GBA core with audio-sync
 /// on, its video buffer enabled, and `rom` loaded. Callers then load the save
 /// (which differs per session — RW file vs in-memory SRAM dump) and install
 /// their own traps.
-pub fn new_gba_core(rom: &[u8]) -> anyhow::Result<mgba::core::OwnedCore> {
+pub fn new_gba_core(rom: &[u8]) -> Result<mgba::core::OwnedCore, mgba::Error> {
     let mut core = mgba::core::OwnedCore::new_gba(
         "tango",
         &mgba::core::Options {

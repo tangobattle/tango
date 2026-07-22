@@ -39,6 +39,23 @@ pub mod playback;
 pub mod replay;
 pub mod telemetry;
 
+/// Simulation failure, shared by the live engine, replay playback, and
+/// offline analysis — all three boot and drive the same kind of pair.
+/// (The stats sidecar codec has its own parse error,
+/// [`analysis::ReadError`].)
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error(transparent)]
+    Mgba(#[from] mgba::Error),
+    /// Priming never reached a link battle within the tick bound — a
+    /// wedged menu walk (or the wrong ROM/save for the primer traps).
+    #[error("priming did not reach a link battle within {0} ticks")]
+    PrimeTimeout(u32),
+    /// The caller's cancel flag flipped mid-simulation.
+    #[error("cancelled")]
+    Cancelled,
+}
+
 /// A PC-sited trap: fires the closure when emulation reaches the ROM
 /// address (see `mgba_siolink::Link::set_traps`).
 pub type Trap = (u32, Box<dyn Fn(&mut mgba::core::Core)>);

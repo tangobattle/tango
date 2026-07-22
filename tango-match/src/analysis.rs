@@ -343,17 +343,35 @@ fn fold_round(
     }
 }
 
+/// Why a stats sidecar failed to parse. Callers treat every variant as
+/// "recompute" — the distinctions only serve logs.
+#[derive(Debug, thiserror::Error)]
+pub enum ReadError {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error("not a stats sidecar (bad magic)")]
+    BadMagic,
+    #[error("unsupported stats version {0} (want {FORMAT_VERSION})")]
+    UnsupportedVersion(u32),
+    #[error("bad outcome tag {0}")]
+    BadOutcomeTag(i8),
+    /// A count field beyond the reader's sanity cap — corrupt data,
+    /// rejected before allocating for it.
+    #[error("implausible {what} count {n}")]
+    ImplausibleCount { what: &'static str, n: u32 },
+}
+
 impl MatchStats {
     /// Parse a sidecar. Errors on malformed input, a missing magic, or a
     /// version other than [`FORMAT_VERSION`] — callers treat all of these
     /// as "recompute".
-    pub fn read(mut r: impl std::io::Read) -> anyhow::Result<Self> {
-        fn u32_of(r: &mut impl std::io::Read) -> anyhow::Result<u32> {
+    pub fn read(mut r: impl std::io::Read) -> Result<Self, ReadError> {
+        fn u32_of(r: &mut impl std::io::Read) -> std::io::Result<u32> {
             let mut b = [0u8; 4];
             r.read_exact(&mut b)?;
             Ok(u32::from_le_bytes(b))
         }
-        fn u16_of(r: &mut impl std::io::Read) -> anyhow::Result<u16> {
+        fn u16_of(r: &mut impl std::io::Read) -> std::io::Result<u16> {
             let mut b = [0u8; 2];
             r.read_exact(&mut b)?;
             Ok(u16::from_le_bytes(b))
@@ -361,17 +379,20 @@ impl MatchStats {
         let mut magic = [0u8; 4];
         r.read_exact(&mut magic)?;
         if &magic != MAGIC {
-            anyhow::bail!("not a stats sidecar (bad magic)");
+            return Err(ReadError::BadMagic);
         }
         let version = u32_of(&mut r)?;
         if version != FORMAT_VERSION {
-            anyhow::bail!("unsupported stats version {} (want {})", version, FORMAT_VERSION);
+            return Err(ReadError::UnsupportedVersion(version));
         }
         let n_rounds = u32_of(&mut r)?;
         // A best-of-3 match writes 2-3 rounds; anything huge is a
         // corrupt count, better rejected than allocated.
         if n_rounds > 64 {
-            anyhow::bail!("implausible round count {}", n_rounds);
+            return Err(ReadError::ImplausibleCount {
+                what: "round",
+                n: n_rounds,
+            });
         }
         let mut rounds = Vec::with_capacity(n_rounds as usize);
         for _ in 0..n_rounds {
@@ -382,11 +403,11 @@ impl MatchStats {
                 -1 => Some(BattleOutcome::Draw),
                 0 => Some(BattleOutcome::Loss),
                 1 => Some(BattleOutcome::Win),
-                other => anyhow::bail!("bad outcome tag {}", other),
+                other => return Err(ReadError::BadOutcomeTag(other)),
             };
             let n_hp = u32_of(&mut r)?;
             if n_hp as usize > MAX_HP_POINTS_PER_ROUND {
-                anyhow::bail!("implausible hp point count {}", n_hp);
+                return Err(ReadError::ImplausibleCount { what: "hp point", n: n_hp });
             }
             let mut hp = Vec::with_capacity(n_hp as usize);
             for _ in 0..n_hp {
@@ -398,7 +419,10 @@ impl MatchStats {
             }
             let n_custom = u32_of(&mut r)?;
             if n_custom > 1024 {
-                anyhow::bail!("implausible custom span count {}", n_custom);
+                return Err(ReadError::ImplausibleCount {
+                    what: "custom span",
+                    n: n_custom,
+                });
             }
             let mut custom = Vec::with_capacity(n_custom as usize);
             for _ in 0..n_custom {
@@ -408,7 +432,7 @@ impl MatchStats {
             for side in &mut chip_uses {
                 let n = u32_of(&mut r)?;
                 if n > 4096 {
-                    anyhow::bail!("implausible chip-use count {}", n);
+                    return Err(ReadError::ImplausibleCount { what: "chip-use", n });
                 }
                 for _ in 0..n {
                     side.push((u32_of(&mut r)?, u16_of(&mut r)?));
@@ -418,7 +442,7 @@ impl MatchStats {
             for side in &mut buster {
                 let n = u32_of(&mut r)?;
                 if n > 65536 {
-                    anyhow::bail!("implausible buster count {}", n);
+                    return Err(ReadError::ImplausibleCount { what: "buster", n });
                 }
                 for _ in 0..n {
                     side.push(u32_of(&mut r)?);
@@ -435,7 +459,7 @@ impl MatchStats {
         Ok(MatchStats { rounds })
     }
 
-    pub fn write(&self, mut w: impl std::io::Write) -> anyhow::Result<()> {
+    pub fn write(&self, mut w: impl std::io::Write) -> std::io::Result<()> {
         w.write_all(MAGIC)?;
         w.write_all(&FORMAT_VERSION.to_le_bytes())?;
         w.write_all(&(self.rounds.len() as u32).to_le_bytes())?;
@@ -581,7 +605,7 @@ pub fn analyze(
     config: AnalyzeConfig<'_>,
     on_progress: &mut dyn FnMut(u32, u32, &StatsBuilder),
     cancel: &std::sync::atomic::AtomicBool,
-) -> anyhow::Result<MatchStats> {
+) -> Result<MatchStats, crate::Error> {
     let AnalyzeConfig {
         roms,
         saves,
@@ -632,10 +656,10 @@ pub fn analyze(
     let mut prime_ticks = 0;
     while !(primed[0].is_set() && primed[1].is_set()) {
         if prime_ticks >= MAX_PRIME_TICKS {
-            anyhow::bail!("pvp analyze: priming did not reach a link battle within {MAX_PRIME_TICKS} ticks");
+            return Err(crate::Error::PrimeTimeout(MAX_PRIME_TICKS));
         }
         if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-            anyhow::bail!("cancelled");
+            return Err(crate::Error::Cancelled);
         }
         pair.tick(&[0, 0]);
         prime_ticks += 1;
@@ -646,7 +670,7 @@ pub fn analyze(
     let total = inputs.len() as u32;
     for (i, &keys) in inputs.iter().enumerate() {
         if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-            anyhow::bail!("cancelled");
+            return Err(crate::Error::Cancelled);
         }
         let tick = i as u32 + 1;
         pair.tick(&keys);

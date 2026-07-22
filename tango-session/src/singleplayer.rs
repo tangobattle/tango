@@ -61,7 +61,7 @@ impl SinglePlayerSession {
         rom: Arc<Vec<u8>>,
         save_path: &std::path::Path,
         sample_rate: u32,
-    ) -> anyhow::Result<(Self, crate::core_stream::CoreStream)> {
+    ) -> Result<(Self, crate::core_stream::CoreStream), crate::Error> {
         let mut core = crate::new_gba_core(rom.as_ref())?;
         // Open RW so the game's own save writes persist back to disk —
         // mgba memory-maps the file and treats it as the cartridge SRAM.

@@ -139,14 +139,16 @@ impl ReplaySession {
         sample_rate: u32,
         show_pip: bool,
         stats_job: Option<PrefetchStatsJob>,
-    ) -> anyhow::Result<(Self, crate::core_stream::CoreStream)> {
+    ) -> Result<(Self, crate::core_stream::CoreStream), crate::Error> {
         use tango_match::playback as sio_playback;
 
         let local_sio = game.pvp;
         let remote_sio = remote_game.pvp;
 
         let local_player = replay.local_player_index as usize;
-        anyhow::ensure!(local_player < 2, "bad local player index");
+        if local_player >= 2 {
+            return Err(crate::Error::BadLocalPlayerIndex);
+        }
         // Orient the replay's local/remote pairs back to absolute pair
         // order (core 0 runs player 0's game) — same contract as the
         // analysis path.
@@ -164,7 +166,7 @@ impl ReplaySession {
         );
         let total_ticks = inputs.len() as u32;
         if total_ticks == 0 {
-            anyhow::bail!("replay has no inputs");
+            return Err(crate::Error::EmptyReplay);
         }
         let boot = {
             let replay = replay.clone();
@@ -343,6 +345,10 @@ impl ReplaySession {
                                 }
                             }
                             Ok(None) => {}
+                            // Session closed while the prefetch pair was
+                            // still priming — a normal teardown, not noise
+                            // for the error log.
+                            Err(tango_match::Error::Cancelled) => {}
                             Err(e) => log::error!("sio replay prefetch worker exited with error: {e:?}"),
                         }
                     }

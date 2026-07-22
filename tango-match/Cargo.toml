@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow.workspace = true
+thiserror.workspace = true
 byteorder.workspace = true
 bytemuck.workspace = true
 log.workspace = true
