@@ -7,7 +7,7 @@
 
 use dioxus::prelude::*;
 
-use super::{icons, use_ctx, Ctx};
+use super::{icons, use_ctx, widgets, Ctx};
 use crate::library;
 use crate::t;
 
@@ -196,23 +196,26 @@ pub fn PatchesScreen() -> Element {
                             span { class: "title", "{patch.title}" }
                             div { class: "grow" }
                             // Version picker (semver descending).
-                            select {
+                            widgets::Select {
+                                value: version_pick
+                                    .read()
+                                    .as_ref()
+                                    .filter(|(n, _)| *n == patch.name)
+                                    .map(|(_, pv)| pv.clone())
+                                    .or_else(|| patch.versions.keys().next_back().map(|v| v.to_string()))
+                                    .unwrap_or_default(),
+                                options: patch
+                                    .versions
+                                    .keys()
+                                    .rev()
+                                    .map(|v| widgets::SelectOption::new(v.to_string(), format!("v{v}")))
+                                    .collect::<Vec<_>>(),
                                 onchange: {
                                     let name = patch.name.clone();
-                                    move |evt: FormEvent| {
-                                        version_pick.set(Some((name.clone(), evt.value())));
+                                    move |v: String| {
+                                        version_pick.set(Some((name.clone(), v)));
                                     }
                                 },
-                                for v in patch.versions.keys().rev() {
-                                    option {
-                                        value: "{v}",
-                                        selected: version_pick.read().as_ref()
-                                            .is_some_and(|(n, pv)| *n == patch.name && *pv == v.to_string())
-                                            || (version_pick.read().as_ref().is_none_or(|(n, _)| *n != patch.name)
-                                                && Some(v) == patch.versions.keys().next_back()),
-                                        "v{v}"
-                                    }
-                                }
                             }
                         }
                         div { class: "meta",

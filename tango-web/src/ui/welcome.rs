@@ -8,7 +8,7 @@
 
 use dioxus::prelude::*;
 
-use super::{icons, play, use_ctx, Ctx};
+use super::{icons, play, use_ctx, widgets, Ctx};
 use crate::t;
 
 /// A step's header: its done-state icon beside the 18px label, the
@@ -63,21 +63,18 @@ pub fn WelcomeScreen() -> Element {
                 div { class: "title-row",
                     h1 { {t!(&lang, "welcome-title")} }
                     div { class: "grow" }
-                    select {
-                        onchange: move |evt: FormEvent| {
-                            let v = evt.value();
+                    widgets::Select {
+                        value: lang.to_string(),
+                        options: crate::i18n::SUPPORTED_LANGS
+                            .iter()
+                            .map(|id| widgets::SelectOption::new(id.to_string(), crate::i18n::language_label(id)))
+                            .collect::<Vec<_>>(),
+                        onchange: move |v: String| {
                             if let Ok(id) = v.parse::<unic_langid::LanguageIdentifier>() {
                                 config.with_mut(|c| c.language = Some(v.clone()));
                                 *crate::i18n::LANG.write() = id;
                             }
                         },
-                        for id in crate::i18n::SUPPORTED_LANGS {
-                            option {
-                                value: "{id}",
-                                selected: *id == lang,
-                                {crate::i18n::language_label(id)}
-                            }
-                        }
                     }
                 }
                 p { class: "sub", {t!(&lang, "welcome-subtitle")} }

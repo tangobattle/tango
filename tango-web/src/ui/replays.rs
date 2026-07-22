@@ -8,7 +8,7 @@
 
 use dioxus::prelude::*;
 
-use super::{icons, use_ctx, Ctx};
+use super::{icons, use_ctx, widgets, Ctx};
 use crate::save_view::{SaveHandle, SaveView};
 use crate::t;
 use crate::runtime::SAVES_REV;
@@ -518,31 +518,33 @@ pub fn ReplaysScreen() -> Element {
     rsx! {
         // --- filter strip: game / date / search / show-incomplete ---
         section { class: "pane filter-strip",
-            select {
-                onchange: move |evt: FormEvent| {
-                    let v = evt.value();
+            widgets::Select {
+                value: game_filter.read().clone().unwrap_or_default(),
+                options: std::iter::once(widgets::SelectOption::new("", t!(&lang, "replays-filter-all-games")))
+                    .chain(
+                        families
+                            .iter()
+                            .map(|f| widgets::SelectOption::new(f.clone(), crate::library::family_display_name(f))),
+                    )
+                    .collect::<Vec<_>>(),
+                onchange: move |v: String| {
                     game_filter.set((!v.is_empty()).then_some(v));
                 },
-                option { value: "", selected: game_filter.read().is_none(), {t!(&lang, "replays-filter-all-games")} }
-                for f in families.iter() {
-                    option {
-                        value: "{f}",
-                        selected: game_filter.read().as_deref() == Some(f.as_str()),
-                        {crate::library::family_display_name(f)}
-                    }
-                }
             }
-            select {
-                onchange: move |evt: FormEvent| {
-                    if let Ok(i) = evt.value().parse::<usize>() {
+            widgets::Select {
+                value: DateFilter::ALL.iter().position(|d| *d == date_filter()).unwrap_or(0).to_string(),
+                options: DateFilter::ALL
+                    .iter()
+                    .enumerate()
+                    .map(|(i, d)| widgets::SelectOption::new(i.to_string(), d.label(&lang)))
+                    .collect::<Vec<_>>(),
+                onchange: move |v: String| {
+                    if let Ok(i) = v.parse::<usize>() {
                         if let Some(d) = DateFilter::ALL.get(i) {
                             date_filter.set(*d);
                         }
                     }
                 },
-                for (i, d) in DateFilter::ALL.iter().enumerate() {
-                    option { value: "{i}", selected: *d == date_filter(), {d.label(&lang)} }
-                }
             }
             input {
                 class: "search",

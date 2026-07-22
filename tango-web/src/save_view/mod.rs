@@ -287,15 +287,18 @@ pub(crate) fn library_header(
                 oninput: move |evt: FormEvent| on_filter.call(evt.value()),
             }
             span { class: "sub", "{sort_label}" }
-            select {
-                onchange: move |evt: FormEvent| {
-                    if let Ok(i) = evt.value().parse::<usize>() {
+            crate::ui::widgets::Select {
+                value: selected.to_string(),
+                options: options
+                    .iter()
+                    .enumerate()
+                    .map(|(i, label)| crate::ui::widgets::SelectOption::new(i.to_string(), label.clone()))
+                    .collect::<Vec<_>>(),
+                onchange: move |v: String| {
+                    if let Ok(i) = v.parse::<usize>() {
                         on_sort.call(i);
                     }
                 },
-                for (i, label) in options.iter().enumerate() {
-                    option { value: "{i}", selected: i == selected, "{label}" }
-                }
             }
         }
     }

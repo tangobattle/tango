@@ -314,7 +314,6 @@ pub fn App() -> Element {
             document::Style { {theme_css} }
             div {
                 class: "native-root",
-                style: "display: contents;",
                 tabindex: "0",
                 autofocus: true,
                 onkeydown: move |evt: KeyboardEvent| {

@@ -6,7 +6,7 @@
 
 use dioxus::prelude::*;
 
-use super::{icons, use_ctx, Ctx};
+use super::{icons, use_ctx, widgets, Ctx};
 use crate::t;
 use crate::platform::input::{self, DescribeKind, MappedKey};
 use crate::runtime::{CAPTURED, CAPTURE_TARGET};
@@ -87,21 +87,18 @@ fn GeneralSection() -> Element {
             }
             div { class: "option-row",
                 label { {t!(&lang, "settings-language")} }
-                select {
-                    onchange: move |evt: FormEvent| {
-                        let v = evt.value();
+                widgets::Select {
+                    value: lang.to_string(),
+                    options: crate::i18n::SUPPORTED_LANGS
+                        .iter()
+                        .map(|id| widgets::SelectOption::new(id.to_string(), crate::i18n::language_label(id)))
+                        .collect::<Vec<_>>(),
+                    onchange: move |v: String| {
                         if let Ok(id) = v.parse::<unic_langid::LanguageIdentifier>() {
                             config.with_mut(|c| c.language = Some(v.clone()));
                             *crate::i18n::LANG.write() = id;
                         }
                     },
-                    for id in crate::i18n::SUPPORTED_LANGS {
-                        option {
-                            value: "{id}",
-                            selected: *id == lang,
-                            {crate::i18n::language_label(id)}
-                        }
-                    }
                 }
             }
             div { class: "option-row",
@@ -116,52 +113,58 @@ fn GeneralSection() -> Element {
             }
             div { class: "option-row",
                 label { {t!(&lang, "settings-theme")} }
-                select {
-                    onchange: move |evt: FormEvent| {
-                        if let Ok(i) = evt.value().parse::<usize>() {
-                            if let Some(t) = crate::config::Theme::ALL.get(i) {
-                                config.with_mut(|c| c.theme = *t);
-                            }
-                        }
-                    },
-                    {
-                        let theme = config.read().theme;
-                        let label = |t: crate::config::Theme| match t {
-                            crate::config::Theme::Dark => t!(&lang, "settings-theme-dark"),
-                            crate::config::Theme::Light => t!(&lang, "settings-theme-light"),
-                        };
-                        rsx! {
-                            for (i, t) in crate::config::Theme::ALL.iter().enumerate() {
-                                option { value: "{i}", selected: *t == theme, {label(*t)} }
-                            }
+                {
+                    let theme = config.read().theme;
+                    let label = |t: crate::config::Theme| match t {
+                        crate::config::Theme::Dark => t!(&lang, "settings-theme-dark"),
+                        crate::config::Theme::Light => t!(&lang, "settings-theme-light"),
+                    };
+                    rsx! {
+                        widgets::Select {
+                            value: crate::config::Theme::ALL.iter().position(|t| *t == theme).unwrap_or(0).to_string(),
+                            options: crate::config::Theme::ALL
+                                .iter()
+                                .enumerate()
+                                .map(|(i, t)| widgets::SelectOption::new(i.to_string(), label(*t)))
+                                .collect::<Vec<_>>(),
+                            onchange: move |v: String| {
+                                if let Ok(i) = v.parse::<usize>() {
+                                    if let Some(t) = crate::config::Theme::ALL.get(i) {
+                                        config.with_mut(|c| c.theme = *t);
+                                    }
+                                }
+                            },
                         }
                     }
                 }
             }
             div { class: "option-row",
                 label { {t!(&lang, "settings-accent")} }
-                select {
-                    onchange: move |evt: FormEvent| {
-                        if let Ok(i) = evt.value().parse::<usize>() {
-                            if let Some(a) = crate::config::Accent::ALL.get(i) {
-                                config.with_mut(|c| c.accent = *a);
-                            }
-                        }
-                    },
-                    {
-                        let accent = config.read().accent;
-                        let label = |a: crate::config::Accent| match a {
-                            crate::config::Accent::TangoGreen => t!(&lang, "settings-accent-tango-green"),
-                            crate::config::Accent::MegaManBlue => t!(&lang, "settings-accent-megaman-blue"),
-                            crate::config::Accent::ProtoManRed => t!(&lang, "settings-accent-protoman-red"),
-                            crate::config::Accent::RollPink => t!(&lang, "settings-accent-roll-pink"),
-                            crate::config::Accent::GutsManYellow => t!(&lang, "settings-accent-gutsman-yellow"),
-                            crate::config::Accent::BassPurple => t!(&lang, "settings-accent-bass-purple"),
-                        };
-                        rsx! {
-                            for (i, a) in crate::config::Accent::ALL.iter().enumerate() {
-                                option { value: "{i}", selected: *a == accent, {label(*a)} }
-                            }
+                {
+                    let accent = config.read().accent;
+                    let label = |a: crate::config::Accent| match a {
+                        crate::config::Accent::TangoGreen => t!(&lang, "settings-accent-tango-green"),
+                        crate::config::Accent::MegaManBlue => t!(&lang, "settings-accent-megaman-blue"),
+                        crate::config::Accent::ProtoManRed => t!(&lang, "settings-accent-protoman-red"),
+                        crate::config::Accent::RollPink => t!(&lang, "settings-accent-roll-pink"),
+                        crate::config::Accent::GutsManYellow => t!(&lang, "settings-accent-gutsman-yellow"),
+                        crate::config::Accent::BassPurple => t!(&lang, "settings-accent-bass-purple"),
+                    };
+                    rsx! {
+                        widgets::Select {
+                            value: crate::config::Accent::ALL.iter().position(|a| *a == accent).unwrap_or(0).to_string(),
+                            options: crate::config::Accent::ALL
+                                .iter()
+                                .enumerate()
+                                .map(|(i, a)| widgets::SelectOption::new(i.to_string(), label(*a)))
+                                .collect::<Vec<_>>(),
+                            onchange: move |v: String| {
+                                if let Ok(i) = v.parse::<usize>() {
+                                    if let Some(a) = crate::config::Accent::ALL.get(i) {
+                                        config.with_mut(|c| c.accent = *a);
+                                    }
+                                }
+                            },
                         }
                     }
                 }
@@ -214,17 +217,15 @@ fn GraphicsSection() -> Element {
             }
             div { class: "option-row",
                 label { {t!(&lang, "settings-video-filter")} }
-                select {
-                    onchange: move |evt: FormEvent| {
-                        config.with_mut(|c| c.video_filter = evt.value());
+                widgets::Select {
+                    value: video_filter.clone(),
+                    options: crate::platform::video::FILTERS
+                        .iter()
+                        .map(|(id, name)| widgets::SelectOption::new(*id, *name))
+                        .collect::<Vec<_>>(),
+                    onchange: move |v: String| {
+                        config.with_mut(|c| c.video_filter = v);
                     },
-                    for (id, name) in crate::platform::video::FILTERS.iter() {
-                        option {
-                            value: "{id}",
-                            selected: video_filter == *id,
-                            "{name}"
-                        }
-                    }
                 }
             }
         }
@@ -241,15 +242,12 @@ fn AudioSection() -> Element {
             h2 { {t!(&lang, "settings-section-audio")} }
             div { class: "option-row",
                 label { {t!(&lang, "settings-volume")} }
-                input {
-                    r#type: "range",
-                    min: "0",
-                    max: "100",
-                    value: "{volume_pct}",
-                    oninput: move |evt: FormEvent| {
-                        if let Ok(v) = evt.value().parse::<f32>() {
-                            config.with_mut(|c| c.volume = (v / 100.0).clamp(0.0, 1.0));
-                        }
+                widgets::Slider {
+                    min: 0.0,
+                    max: 100.0,
+                    value: volume_pct as f64,
+                    oninput: move |v: f64| {
+                        config.with_mut(|c| c.volume = (v as f32 / 100.0).clamp(0.0, 1.0));
                     },
                 }
                 span { class: "status", "{volume_pct}%" }
@@ -314,17 +312,20 @@ fn NetplaySection() -> Element {
             }
             div { class: "option-row",
                 label { {t!(&lang, "settings-use-relay")} }
-                select {
-                    onchange: move |evt: FormEvent| {
-                        if let Ok(i) = evt.value().parse::<usize>() {
+                widgets::Select {
+                    value: crate::config::UseRelay::ALL.iter().position(|r| *r == use_relay).unwrap_or(0).to_string(),
+                    options: crate::config::UseRelay::ALL
+                        .iter()
+                        .enumerate()
+                        .map(|(i, r)| widgets::SelectOption::new(i.to_string(), relay_label(*r)))
+                        .collect::<Vec<_>>(),
+                    onchange: move |v: String| {
+                        if let Ok(i) = v.parse::<usize>() {
                             if let Some(r) = crate::config::UseRelay::ALL.get(i) {
                                 config.with_mut(|c| c.use_relay = *r);
                             }
                         }
                     },
-                    for (i, r) in crate::config::UseRelay::ALL.iter().enumerate() {
-                        option { value: "{i}", selected: *r == use_relay, {relay_label(*r)} }
-                    }
                 }
             }
         }

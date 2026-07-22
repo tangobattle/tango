@@ -17,7 +17,7 @@ use std::rc::Rc;
 use base64::Engine as _;
 use dioxus::prelude::*;
 
-use super::{icons, use_ctx, Ctx};
+use super::{icons, use_ctx, widgets, Ctx};
 use crate::t;
 use crate::library::{self, GameRef};
 use crate::runtime::SAVES_REV;
@@ -881,8 +881,8 @@ pub fn PlayScreen() -> Element {
     // Template switch inside the New form: refresh the auto-suggested
     // name unless the user already typed their own.
     let on_template_pick = {
-        move |evt: FormEvent| {
-            let Ok(i) = evt.value().parse::<usize>() else { return };
+        move |v: String| {
+            let Ok(i) = v.parse::<usize>() else { return };
             let lang = crate::i18n::LANG.peek().clone();
             save_action.with_mut(|a| {
                 if let SaveAction::NewSave {
@@ -912,10 +912,15 @@ pub fn PlayScreen() -> Element {
         // --- selector strip: game row over save row, one pane ---
         section { class: "pane selector-strip",
             div { class: "game-row",
-                select {
+                widgets::Select {
                     class: "family",
-                    onchange: move |evt: FormEvent| {
-                        let v = evt.value();
+                    value: family.clone().unwrap_or_default(),
+                    options: std::iter::once(widgets::SelectOption::new("", t!(&lang, "play-no-game")))
+                        .chain(family_options.iter().map(|opt| {
+                            widgets::SelectOption::new(opt.family, opt.display.clone()).disabled(!opt.available)
+                        }))
+                        .collect::<Vec<_>>(),
+                    onchange: move |v: String| {
                         if v.is_empty() {
                             selected_family.set(None);
                             selected_save.set(None);
@@ -925,21 +930,15 @@ pub fn PlayScreen() -> Element {
                             selected_family.set(Some(v));
                         }
                     },
-                    option { value: "", selected: family.is_none(), {t!(&lang, "play-no-game")} }
-                    for opt in family_options.iter() {
-                        option {
-                            value: "{opt.family}",
-                            selected: family.as_deref() == Some(opt.family),
-                            disabled: !opt.available,
-                            "{opt.display}"
-                        }
-                    }
                 }
-                select {
+                widgets::Select {
                     class: "patch",
                     disabled: eligible.is_empty(),
-                    onchange: move |evt: FormEvent| {
-                        let v = evt.value();
+                    value: patch_pick.as_ref().map(|(n, _)| n.clone()).unwrap_or_default(),
+                    options: std::iter::once(widgets::SelectOption::new("", t!(&lang, "play-no-patch")))
+                        .chain(eligible.iter().map(|p| widgets::SelectOption::new(p.name.clone(), p.title.clone())))
+                        .collect::<Vec<_>>(),
+                    onchange: move |v: String| {
                         let fam = selected_family.peek().clone();
                         let Some(fam) = fam else { return };
                         if v.is_empty() {
@@ -953,20 +952,27 @@ pub fn PlayScreen() -> Element {
                             });
                         }
                     },
-                    option { value: "", selected: patch_pick.is_none(), {t!(&lang, "play-no-patch")} }
-                    for p in eligible.iter() {
-                        option {
-                            value: "{p.name}",
-                            selected: patch_pick.as_ref().is_some_and(|(n, _)| *n == p.name),
-                            "{p.title}"
-                        }
-                    }
                 }
-                select {
+                widgets::Select {
                     class: "version",
                     disabled: patch_pick.is_none(),
-                    onchange: move |evt: FormEvent| {
-                        let v = evt.value();
+                    value: patch_pick.as_ref().map(|(_, v)| v.to_string()).unwrap_or_default(),
+                    options: if let Some((name, _)) = patch_pick.as_ref() {
+                        eligible
+                            .iter()
+                            .find(|p| p.name == *name)
+                            .map(|p| {
+                                p.versions
+                                    .keys()
+                                    .rev()
+                                    .map(|v| widgets::SelectOption::new(v.to_string(), format!("v{v}")))
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default()
+                    } else {
+                        vec![widgets::SelectOption::new("", t!(&lang, "play-version-placeholder"))]
+                    },
+                    onchange: move |v: String| {
                         let fam = selected_family.peek().clone();
                         let Some(fam) = fam else { return };
                         config.with_mut(|c| {
@@ -975,18 +981,6 @@ pub fn PlayScreen() -> Element {
                             }
                         });
                     },
-                    if let Some((name, ver)) = patch_pick.as_ref() {
-                        for v in eligible
-                            .iter()
-                            .find(|p| p.name == *name)
-                            .map(|p| p.versions.keys().rev().cloned().collect::<Vec<_>>())
-                            .unwrap_or_default()
-                        {
-                            option { value: "{v}", selected: *ver == v, "v{v}" }
-                        }
-                    } else {
-                        option { {t!(&lang, "play-version-placeholder")} }
-                    }
                 }
             }
             div { class: "save-row",
@@ -1001,10 +995,17 @@ pub fn PlayScreen() -> Element {
                             onclick: start_new,
                             icons::FilePlus {}
                         }
-                        select {
+                        widgets::Select {
                             disabled: family.is_none(),
-                            onchange: move |evt: FormEvent| {
-                                let v = evt.value();
+                            value: active_row.as_ref().map(|a| a.value.clone()).unwrap_or_default(),
+                            options: save_rows
+                                .iter()
+                                .map(|row| {
+                                    widgets::SelectOption::new(row.value.clone(), row.label.clone())
+                                        .disabled(!row.available)
+                                })
+                                .collect::<Vec<_>>(),
+                            onchange: move |v: String| {
                                 let fam = selected_family.peek().clone();
                                 selected_save.set(Some(v.clone()));
                                 if let Some(fam) = fam {
@@ -1013,14 +1014,6 @@ pub fn PlayScreen() -> Element {
                                     });
                                 }
                             },
-                            for row in save_rows.iter() {
-                                option {
-                                    value: "{row.value}",
-                                    selected: active_row.as_ref().is_some_and(|a| a.value == row.value),
-                                    disabled: !row.available,
-                                    "{row.label}"
-                                }
-                            }
                         }
                         ImportButton {}
                         div { class: "menu-anchor",
@@ -1129,13 +1122,20 @@ pub fn PlayScreen() -> Element {
                         }
                     },
                     SaveAction::NewSave { draft, pick, options, .. } => rsx! {
-                        select {
+                        widgets::Select {
                             class: "template-pick",
+                            value: pick.map(|i| i.to_string()).unwrap_or_default(),
+                            options: std::iter::once(
+                                widgets::SelectOption::new("", t!(&lang, "save-template-pick")).disabled(true),
+                            )
+                            .chain(
+                                options
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, o)| widgets::SelectOption::new(i.to_string(), o.display.clone())),
+                            )
+                            .collect::<Vec<_>>(),
                             onchange: on_template_pick,
-                            option { value: "", selected: pick.is_none(), disabled: true, {t!(&lang, "save-template-pick")} }
-                            for (i, o) in options.iter().enumerate() {
-                                option { value: "{i}", selected: pick == Some(i), "{o.display}" }
-                            }
                         }
                         input {
                             class: "save-name",

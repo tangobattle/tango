@@ -13,6 +13,7 @@ pub(crate) mod replays;
 mod session_view;
 mod settings;
 mod shell;
+pub(crate) mod widgets;
 mod touch;
 mod welcome;
 

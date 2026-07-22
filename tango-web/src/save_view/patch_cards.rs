@@ -497,8 +497,7 @@ fn PatchCard4sEdit(handle: SaveHandle, editing: Signal<Option<EditUi>>) -> Eleme
         let slot_label = PATCH_CARD4_SLOT_LABELS[slot];
         let on_pick = {
             let handle = handle.clone();
-            move |evt: FormEvent| {
-                let val = evt.value();
+            move |val: String| {
                 if val.is_empty() {
                     stage_edit(&handle, Edit::PatchCard4s(PatchCard4Edit::RemoveCard { slot }));
                 } else if let Ok(id) = val.parse::<usize>() {
@@ -531,13 +530,20 @@ fn PatchCard4sEdit(handle: SaveHandle, editing: Signal<Option<EditUi>>) -> Eleme
             div { class: "card4-row edit",
                 div { class: "line",
                     span { class: "slot-badge", "{slot_label}" }
-                    select {
+                    crate::ui::widgets::Select {
                         class: "slot-pick",
+                        value: selected_id.map(|id| id.to_string()).unwrap_or_default(),
+                        options: std::iter::once(crate::ui::widgets::SelectOption::new(
+                            "",
+                            t!(&lang, "patch-card4-none"),
+                        ))
+                        .chain(
+                            choices
+                                .iter()
+                                .map(|(id, label)| crate::ui::widgets::SelectOption::new(id.to_string(), label.clone())),
+                        )
+                        .collect::<Vec<_>>(),
                         onchange: on_pick,
-                        option { value: "", selected: selected_id.is_none(), {t!(&lang, "patch-card4-none")} }
-                        for (id, label) in choices {
-                            option { value: "{id}", selected: selected_id == Some(id), "{label}" }
-                        }
                     }
                     {super::edit_toggle_maybe(
                         "ON",

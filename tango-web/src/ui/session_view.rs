@@ -9,7 +9,7 @@ use dioxus::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 
-use super::{icons, touch, use_ctx, Ctx};
+use super::{icons, touch, use_ctx, widgets, Ctx};
 use crate::t;
 use crate::platform::input::{self, MappedKey};
 use crate::runtime::{FRAME_REV, MENU_OPEN, SESSION_EPOCH};
@@ -295,15 +295,12 @@ pub fn SessionMenuCard() -> Element {
             }
             div { class: "menu-volume",
                 label { {t!(&lang, "settings-volume")} " · {volume_pct}%" }
-                input {
-                    r#type: "range",
-                    min: "0",
-                    max: "100",
-                    value: "{volume_pct}",
-                    oninput: move |evt: FormEvent| {
-                        if let Ok(v) = evt.value().parse::<f32>() {
-                            config.with_mut(|c| c.volume = (v / 100.0).clamp(0.0, 1.0));
-                        }
+                widgets::Slider {
+                    min: 0.0,
+                    max: 100.0,
+                    value: volume_pct as f64,
+                    oninput: move |v: f64| {
+                        config.with_mut(|c| c.volume = (v as f32 / 100.0).clamp(0.0, 1.0));
                     },
                 }
             }
@@ -1343,19 +1340,16 @@ fn TelemetryDeck() -> Element {
                         span { class: "sub", {t!(&lang, "settings-netplay-frame-delay")} }
                     }
                     div { class: "value-row",
-                        input {
-                            r#type: "range",
-                            min: "0",
-                            max: "10",
-                            value: "{frame_delay}",
-                            oninput: move |evt: FormEvent| {
-                                if let Ok(v) = evt.value().parse::<u32>() {
-                                    let v = v.min(10);
-                                    // Applied live by the PvP driver next
-                                    // tick; persisted for the next match.
-                                    shared_fd.present_delay.store(v, Ordering::Relaxed);
-                                    config.with_mut(|c| c.present_delay = v);
-                                }
+                        widgets::Slider {
+                            min: 0.0,
+                            max: 10.0,
+                            value: frame_delay as f64,
+                            oninput: move |v: f64| {
+                                let v = (v.round() as u32).min(10);
+                                // Applied live by the PvP driver next
+                                // tick; persisted for the next match.
+                                shared_fd.present_delay.store(v, Ordering::Relaxed);
+                                config.with_mut(|c| c.present_delay = v);
                             },
                         }
                         span { class: "value mono", "{frame_delay}" }

@@ -4,7 +4,7 @@
 
 use dioxus::prelude::*;
 
-use super::{icons, use_ctx, Ctx};
+use super::{icons, use_ctx, widgets, Ctx};
 use crate::t;
 use crate::library::{self, GameRef};
 use crate::netplay::{self, PhaseView};
@@ -335,10 +335,24 @@ pub fn BottomBand(
                     // mode table.
                     div { class: "lobby-setting",
                         span { class: "caption", {t!(&lang, "lobby-match-type")} }
-                        select {
+                        widgets::Select {
                             disabled: local_ready,
-                            onchange: move |evt: FormEvent| {
-                                let v = evt.value();
+                            value: format!("{}.{}", mt.0, mt.1),
+                            options: modes
+                                .iter()
+                                .enumerate()
+                                .flat_map(|(mode, subs)| {
+                                    (0..*subs).map(move |sub| {
+                                        widgets::SelectOption::new(
+                                            format!("{mode}.{sub}"),
+                                            active_game
+                                                .map(|g| library::match_type_name(g, mode as u8, sub as u8))
+                                                .unwrap_or_else(|| format!("{mode}.{sub}")),
+                                        )
+                                    })
+                                })
+                                .collect::<Vec<_>>(),
+                            onchange: move |v: String| {
                                 let mut parts = v.split('.');
                                 let mode: u8 =
                                     parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
@@ -346,19 +360,6 @@ pub fn BottomBand(
                                     parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
                                 match_type.set((mode, sub));
                             },
-                            for (mode, subs) in modes.iter().enumerate() {
-                                for sub in 0..*subs {
-                                    option {
-                                        value: "{mode}.{sub}",
-                                        selected: mt == (mode as u8, sub as u8),
-                                        {
-                                            active_game
-                                                .map(|g| library::match_type_name(g, mode as u8, sub as u8))
-                                                .unwrap_or_else(|| format!("{mode}.{sub}"))
-                                        }
-                                    }
-                                }
-                            }
                         }
                     }
                     // Frame delay (the boot's present delay): slider +
@@ -366,15 +367,12 @@ pub fn BottomBand(
                     div { class: "lobby-setting",
                         span { class: "caption", {t!(&lang, "settings-netplay-frame-delay")} }
                         div { class: "control-row",
-                            input {
-                                r#type: "range",
-                                min: "0",
-                                max: "10",
-                                value: "{frame_delay}",
-                                oninput: move |evt: FormEvent| {
-                                    if let Ok(v) = evt.value().parse::<u32>() {
-                                        config.with_mut(|c| c.present_delay = v.min(10));
-                                    }
+                            widgets::Slider {
+                                min: 0.0,
+                                max: 10.0,
+                                value: frame_delay as f64,
+                                oninput: move |v: f64| {
+                                    config.with_mut(|c| c.present_delay = (v.round() as u32).min(10));
                                 },
                             }
                             span { class: "fd-value", "{frame_delay}" }
