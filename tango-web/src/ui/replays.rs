@@ -682,7 +682,11 @@ pub fn ReplaysScreen() -> Element {
                     // the planned widths, no layout shift on arrival).
                     if let Some((rounds, max_hp)) = hp_chart.clone() {
                         div { class: "pane hp-pane",
-                            super::hp_chart::HpMatchGraph { rounds, max_hp }
+                            super::hp_chart::HpMatchGraph {
+                                rounds,
+                                max_hp,
+                                zoom_key: row.file.clone(),
+                            }
                             if let Some((_, done, total)) = analysis_progress {
                                 span { class: "sub hp-progress",
                                     {t!(&lang, "replays-export-progress")}

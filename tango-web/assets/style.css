@@ -2798,6 +2798,18 @@ main.dropping {
   vector-effect: non-scaling-stroke;
 }
 
+.hp-graph.zoomed {
+  cursor: grab;
+}
+
+.hp-graph.panning {
+  cursor: grabbing;
+}
+
+.hp-viewport {
+  fill: color-mix(in srgb, var(--text) 30%, transparent);
+}
+
 .hp-crosshair {
   position: absolute;
   top: 0;

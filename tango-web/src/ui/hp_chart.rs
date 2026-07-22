@@ -157,13 +157,13 @@ pub fn cook_hp_rounds(
     (out, max_hp)
 }
 
-/// Segment layout on the 1000-unit axis: `(seg_x, seg_w)` per round,
-/// gaps subtracted before distributing width (they don't represent
-/// time).
-fn segments(rounds: &[CookedHpRound]) -> Vec<(f32, f32)> {
+/// Segment layout on the virtual axis `XU * zoom`: `(seg_x, seg_w)`
+/// per round, gaps fixed (they don't represent time, so they don't
+/// scale with zoom) and subtracted before distributing width.
+fn segments(rounds: &[CookedHpRound], zoom: f32) -> Vec<(f32, f32)> {
     let total: f32 = rounds.iter().map(|r| r.weight.max(1.0)).sum::<f32>().max(1.0);
     let gaps = GAP * rounds.len().saturating_sub(1) as f32;
-    let usable = (XU - gaps).max(1.0);
+    let usable = (XU * zoom - gaps).max(1.0);
     let mut out = Vec::with_capacity(rounds.len());
     let mut seg_x = 0.0;
     for r in rounds {
@@ -203,19 +203,43 @@ struct HoverReadout {
     chips: Vec<(String, &'static str, Option<String>)>,
 }
 
+/// Cursor x as a fraction of the chart's width, via its live rect.
+fn graph_fx(client_x: f64) -> Option<f32> {
+    let el = web_sys::window()?.document()?.get_element_by_id("hp-graph-hit")?;
+    let rect = el.get_bounding_client_rect();
+    Some((((client_x - rect.left()) / rect.width().max(1.0)) as f32).clamp(0.0, 1.0))
+}
+
 /// The full chart (the desktop's `hp_match_graph` at height 72):
 /// per-round panels + outcome washes, custom bands, zero baseline,
-/// step traces, chip lanes, and the crosshair/readout on hover.
+/// step traces, chip lanes, the crosshair/readout on hover, and the
+/// desktop's scroll-zoom / drag-pan / double-click-reset. `zoom_key`
+/// identifies the match — a change resets the view.
 #[component]
-pub fn HpMatchGraph(rounds: std::rc::Rc<Vec<CookedHpRound>>, max_hp: f32) -> Element {
+pub fn HpMatchGraph(rounds: std::rc::Rc<Vec<CookedHpRound>>, max_hp: f32, zoom_key: String) -> Element {
     let mut hover = use_signal(|| None::<f32>);
-    let segs = segments(&rounds);
+    let mut zoom = use_signal(|| 1.0f32);
+    let mut offset = use_signal(|| 0.0f32);
+    // Last cursor fraction while panning.
+    let mut pan = use_signal(|| None::<f32>);
+    let mut last_key = use_signal(|| zoom_key.clone());
+    if *last_key.peek() != zoom_key {
+        last_key.set(zoom_key.clone());
+        zoom.set(1.0);
+        offset.set(0.0);
+        pan.set(None);
+    }
+
+    let z = *zoom.read();
+    let off = (*offset.read()).clamp(0.0, (XU * (z - 1.0)).max(0.0));
+    let segs = segments(&rounds, z);
 
     // Resolve the hover against the cooked data (the desktop's
-    // draw-time hit-test): the containing segment, the step value in
-    // force at that x, and any chip mark within ~4 units.
+    // draw-time hit-test): the containing segment on the virtual
+    // timeline, the step value in force at that x, and any chip mark
+    // within ~4 units.
     let readout: Option<HoverReadout> = hover.read().and_then(|fx| {
-        let vx = fx * XU;
+        let vx = fx * XU + off;
         let (i, &(sx, sw)) = segs
             .iter()
             .enumerate()
@@ -249,25 +273,80 @@ pub fn HpMatchGraph(rounds: std::rc::Rc<Vec<CookedHpRound>>, max_hp: f32) -> Ele
         })
     });
 
+    let panning = pan.read().is_some();
+    let graph_class = if panning {
+        "hp-graph panning"
+    } else if z > 1.001 {
+        "hp-graph zoomed"
+    } else {
+        "hp-graph"
+    };
     rsx! {
         div {
-            class: "hp-graph",
+            class: graph_class,
             onmousemove: move |evt| {
-                let el = web_sys::window()
-                    .and_then(|w| w.document())
-                    .and_then(|d| d.get_element_by_id("hp-graph-hit"));
-                if let Some(el) = el {
-                    let rect = el.get_bounding_client_rect();
-                    let fx = ((evt.client_coordinates().x - rect.left()) / rect.width().max(1.0)) as f32;
-                    hover.set(Some(fx.clamp(0.0, 1.0)));
+                let Some(fx) = graph_fx(evt.client_coordinates().x) else {
+                    return;
+                };
+                let panning_at = { *pan.peek() };
+                if let Some(last) = panning_at {
+                    // Pan by the cursor's travel, clamped to the
+                    // virtual timeline.
+                    let z = *zoom.peek();
+                    let next = (*offset.peek() - (fx - last) * XU)
+                        .clamp(0.0, (XU * (z - 1.0)).max(0.0));
+                    offset.set(next);
+                    pan.set(Some(fx));
+                }
+                hover.set(Some(fx));
+            },
+            onmousedown: move |evt| {
+                if *zoom.peek() > 1.001 {
+                    pan.set(graph_fx(evt.client_coordinates().x));
                 }
             },
-            onmouseleave: move |_| hover.set(None),
+            onmouseup: move |_| pan.set(None),
+            onmouseleave: move |_| {
+                hover.set(None);
+                pan.set(None);
+            },
+            ondoubleclick: move |_| {
+                zoom.set(1.0);
+                offset.set(0.0);
+                pan.set(None);
+            },
+            onwheel: move |evt| {
+                evt.prevent_default();
+                let Some(fx) = graph_fx(evt.client_coordinates().x) else {
+                    return;
+                };
+                // Scroll up = zoom in, anchored so the timeline point
+                // under the cursor stays put.
+                let steps = match evt.delta() {
+                    dioxus::html::geometry::WheelDelta::Pixels(v) => -v.y as f32 * 0.01,
+                    dioxus::html::geometry::WheelDelta::Lines(v) => -v.y as f32 * 0.25,
+                    dioxus::html::geometry::WheelDelta::Pages(v) => -v.y as f32 * 0.5,
+                };
+                let old = *zoom.peek();
+                let new = (old * steps.exp()).clamp(1.0, 64.0);
+                let pos = fx * XU;
+                let anchor = (pos + *offset.peek()) * (new / old) - pos;
+                zoom.set(new);
+                offset.set(anchor.clamp(0.0, (XU * (new - 1.0)).max(0.0)));
+            },
             div { id: "hp-graph-hit", class: "hp-graph-hit",
                 svg {
                     view_box: "0 0 1000 72",
                     preserve_aspect_ratio: "none",
-                    for (i, (sx, sw)) in segs.iter().copied().enumerate() {
+                    for (i, (sx, sw)) in segs
+                        .iter()
+                        .map(|&(sx, sw)| (sx - off, sw))
+                        .enumerate()
+                        // Cull segments fully outside the viewport —
+                        // the SVG would clip them anyway, but at deep
+                        // zoom the chip-lane ticks add up.
+                        .filter(|(_, (sx, sw))| sx + sw > -10.0 && *sx < XU + 10.0)
+                    {
                         // Segment panel wash, full height.
                         rect {
                             class: "hp-panel",
@@ -311,6 +390,13 @@ pub fn HpMatchGraph(rounds: std::rc::Rc<Vec<CookedHpRound>>, max_hp: f32) -> Ele
                                     x2: "{sx + m.x * sw}", y2: "{lane_y(side) + 3.0}",
                                 }
                             }
+                        }
+                    }
+                    // Viewport indicator along the top while zoomed.
+                    if z > 1.001 {
+                        rect {
+                            class: "hp-viewport",
+                            x: "{off / z}", y: "0", width: "{XU / z}", height: "2", rx: "1",
                         }
                     }
                 }
