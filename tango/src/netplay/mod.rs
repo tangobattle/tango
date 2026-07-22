@@ -869,43 +869,9 @@ impl State {
     }
 }
 
-/// Everything the App needs to build a PvpSession. Drained
-/// from netplay::State after both sides exchanged StartMatch.
-pub struct PreMatchData {
-    /// The transport bundle — every live handle the peer link owns for the
-    /// match's lifetime (channels, peer connection, reconnect recipe).
-    /// `Link::bring_up` assembles it.
-    pub link_parts: LinkParts,
-    pub is_offerer: bool,
-    pub rng_seed: [u8; 16],
-    /// The match clock, milliseconds since the unix epoch: the offerer's
-    /// commit-time wall clock, identical on both peers. Every core (primary,
-    /// shadow, re-sim stepper) pins its cart RTC here so RTC-reading games
-    /// (exe45) stay deterministic, and the replay metadata records it as `ts`
-    /// so playback pins to the same value.
-    pub match_ts: u64,
-    pub local_save_data: Vec<u8>,
-    pub remote_save_data: Vec<u8>,
-    pub local_settings: tango_net_protocol::control::Settings,
-    pub remote_settings: tango_net_protocol::control::Settings,
-    pub link_code: String,
-    pub match_type: (u8, u8),
-    /// Both sides' install identities (SHA-256 of the mTLS client certificate
-    /// presented to the matchmaking server), recorded into the replay
-    /// metadata: ours self-computed, the peer's server-attested. Empty on
-    /// direct connections or when a side presented no certificate.
-    pub local_client_cert_fingerprint: Vec<u8>,
-    pub peer_client_cert_fingerprint: Vec<u8>,
-}
-
-// The channel/peer-conn handles aren't `Debug`; a placeholder keeps the
-// enclosing `Message` (which carries a `Slot<PreMatchData>`) derivable, same as
-// `Channels`.
-impl std::fmt::Debug for PreMatchData {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("PreMatchData { .. }")
-    }
-}
+// The matchmaking→session handoff bundle lives beside its consumer in
+// the session crate; re-exported so netplay callers keep their path.
+pub use tango_session::pvp::PreMatchData;
 
 /// Does this settings change warrant auto-unready? `true` for
 /// game-info or match-type changes (the user's effectively

@@ -5884,6 +5884,7 @@ dependencies = [
  "tango-gamesupport-exe45",
  "tango-net-protocol",
  "tango-pvp",
+ "tango-session",
  "tango-signaling",
  "tempfile",
  "thiserror 1.0.69",
@@ -6096,6 +6097,31 @@ dependencies = [
  "serde",
  "serde_repr",
  "zstd",
+]
+
+[[package]]
+name = "tango-session"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytemuck",
+ "chrono",
+ "datachannel-wrapper",
+ "futures",
+ "log",
+ "mgba",
+ "rand",
+ "rand_pcg",
+ "rennet",
+ "tango-dataview",
+ "tango-gamesupport",
+ "tango-net-protocol",
+ "tango-pvp",
+ "tango-signaling",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]

@@ -128,7 +128,17 @@ pub enum ReconnectRecipe {
 // The reconnect session id is determinism-critical between peers, so
 // its construction (and full security rationale) lives in the shared
 // protocol crate.
-pub(crate) use tango_net_protocol::derive::derive_reconnect_session_id;
+pub use tango_net_protocol::derive::derive_reconnect_session_id;
+
+/// Lowercase hex of a fingerprint digest, for the reconnect log line.
+fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
+}
 
 /// Everything `netplay::State::take_pre_match` drains out of the lobby-era
 /// connection handles for [`Link::bring_up`] to assemble. The control
@@ -424,7 +434,7 @@ impl Link {
         if !peer_client_cert_fingerprint.is_empty() {
             log::info!(
                 "reconnected peer client identity (sha256 fingerprint: {})",
-                crate::netplay::identity::hex(&peer_client_cert_fingerprint)
+                hex(&peer_client_cert_fingerprint)
             );
         }
 
@@ -502,7 +512,7 @@ impl Link {
                             endpoint,
                             session_id,
                             *use_relay,
-                            crate::netplay::PROTOCOL_VERSION,
+                            tango_net_protocol::PROTOCOL_VERSION,
                             vec![super::channel::control_channel(), super::channel::in_match_channel()],
                             identity.clone(),
                         )

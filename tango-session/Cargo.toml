@@ -1,0 +1,30 @@
+[package]
+name = "tango-session"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+bytemuck.workspace = true
+chrono = "0.4"
+datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }
+futures.workspace = true
+log.workspace = true
+mgba.workspace = true
+rand.workspace = true
+rand_pcg.workspace = true
+rennet.workspace = true
+tango-dataview = { path = "../tango-dataview" }
+tango-gamesupport = { path = "../tango-gamesupport" }
+tango-net-protocol = { path = "../tango-net-protocol" }
+tango-pvp = { path = "../tango-pvp" }
+tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "time", "rt", "net", "sync", "macros"] }
+tokio-util = { workspace = true, features = ["io", "rt"] }
+
+[lints]
+workspace = true

@@ -130,8 +130,8 @@ pub struct ClipJob<'a> {
     pub cancelling: bool,
 }
 
-/// Everything a session's [`view`](ActiveSession::view) needs from
-/// the app, bundled so the trait hook stays one argument wide.
+/// Everything a session's view needs from the app, bundled so each
+/// kind's entry point stays one argument wide.
 #[derive(Clone, Copy)]
 pub struct Ctx<'a> {
     pub lang: &'a LanguageIdentifier,
@@ -156,9 +156,7 @@ pub fn view<'a>(
     let Some(session) = state.active.as_deref() else {
         return iced::widget::Space::new().width(Fill).height(Fill).into();
     };
-    // Each session kind assembles its own screen — see
-    // [`replay::view`] / [`singleplayer::view`] / [`pvp::view`].
-    session.view(Ctx {
+    let ctx = Ctx {
         lang,
         state,
         fractional_scaling,
@@ -166,7 +164,21 @@ pub fn view<'a>(
         show_replay_inputs,
         clip_job,
         effect,
-    })
+    };
+    // Each session kind assembles its own screen. The engine-side
+    // trait deliberately knows nothing about rendering, so this is the
+    // one place a session's concrete kind picks its view.
+    if let Some(s) = session.downcast_ref::<crate::session::replay::ReplaySession>() {
+        replay::view(s, ctx)
+    } else if let Some(s) = session.downcast_ref::<crate::session::pvp::PvpSession>() {
+        pvp::view(s, ctx)
+    } else if let Some(s) = session.downcast_ref::<crate::session::singleplayer::SinglePlayerSession>() {
+        singleplayer::view(s, ctx)
+    } else {
+        // Unreachable today — the three kinds above are the only
+        // ActiveSession impls anywhere.
+        iced::widget::Space::new().width(Fill).height(Fill).into()
+    }
 }
 
 /// Shared closer for every session screen: the topmost Esc

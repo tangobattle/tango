@@ -128,13 +128,13 @@ impl CoreStream {
         fps_target: impl Fn() -> f32 + Send + 'static,
         out_rate: u32,
     ) -> Self {
-        let dest_capacity = crate::platform::audio::SAMPLES * 2;
+        let dest_capacity = crate::audio::SAMPLES * 2;
         Self {
             pull: Box::new(pull),
             fps_target: Box::new(fps_target),
             out_rate: if out_rate == 0 { 48000 } else { out_rate },
             resampler: mgba::audio::AudioResampler::new(),
-            dest_buffer: mgba::audio::OwnedAudioBuffer::new(dest_capacity, crate::platform::audio::NUM_CHANNELS as u32),
+            dest_buffer: mgba::audio::OwnedAudioBuffer::new(dest_capacity, crate::audio::NUM_CHANNELS as u32),
             dest_capacity,
             discard: Vec::new(),
             priming: true,
@@ -148,16 +148,16 @@ impl CoreStream {
     }
 }
 
-impl crate::platform::audio::Stream for CoreStream {
-    fn fill(&mut self, buf: &mut [[i16; crate::platform::audio::NUM_CHANNELS]]) -> usize {
+impl crate::audio::Stream for CoreStream {
+    fn fill(&mut self, buf: &mut [[i16; crate::audio::NUM_CHANNELS]]) -> usize {
         let frame_count = buf.len();
         let linear_buf: &mut [i16] = bytemuck::cast_slice_mut(buf);
 
         let needed = frame_count.saturating_mul(2);
         if needed > self.dest_capacity {
-            let new_capacity = needed.next_power_of_two().max(crate::platform::audio::SAMPLES * 2);
+            let new_capacity = needed.next_power_of_two().max(crate::audio::SAMPLES * 2);
             self.dest_buffer =
-                mgba::audio::OwnedAudioBuffer::new(new_capacity, crate::platform::audio::NUM_CHANNELS as u32);
+                mgba::audio::OwnedAudioBuffer::new(new_capacity, crate::audio::NUM_CHANNELS as u32);
             self.dest_capacity = new_capacity;
         }
 
@@ -229,7 +229,7 @@ impl crate::platform::audio::Stream for CoreStream {
 
         let available = self.dest_buffer.available().min(frame_count);
         self.dest_buffer.read(
-            &mut linear_buf[..available * crate::platform::audio::NUM_CHANNELS],
+            &mut linear_buf[..available * crate::audio::NUM_CHANNELS],
             available,
         );
         available

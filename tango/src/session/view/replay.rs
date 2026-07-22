@@ -4,7 +4,8 @@
 //! [`Message`]s those controls emit and their [`update`] handler.
 
 use super::*;
-use crate::session::replay::{scrubber, ReplaySession};
+use crate::session::replay::ReplaySession;
+use crate::session::scrubber;
 use crate::session::Message as SessionMessage;
 // Explicit so these win over iced's prelude `column!`/`row!` macros (see mod.rs).
 use sweeten::widget::{column, row};

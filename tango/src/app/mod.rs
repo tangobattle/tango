@@ -847,10 +847,10 @@ pub enum Message {
     Welcome(tabs::welcome::Message),
     Session(session::Message),
     Netplay(netplay::Message),
-    /// Carries the freshly-constructed PvP session back into the
-    /// App after the async build task in `spawn_pvp` resolves.
-    /// `Slot` because PvpSession isn't Clone.
-    PvpSessionBuilt(netplay::Slot<anyhow::Result<session::pvp::PvpSession>>),
+    /// Carries the freshly-constructed PvP session (plus its setup-pane
+    /// presentation state) back into the App after the async build task
+    /// in `spawn_pvp` resolves. `Slot` because PvpSession isn't Clone.
+    PvpSessionBuilt(netplay::Slot<anyhow::Result<(session::pvp::PvpSession, session::PvpPanes)>>),
     /// 1 Hz tick: refresh Discord rich-presence + drain any
     /// Discord-initiated join secret into the play link-code
     /// field.
@@ -1325,15 +1325,16 @@ impl App {
                     return iced::Task::none();
                 };
                 match result {
-                    Ok(session) => {
+                    Ok((session, panes)) => {
                         // Both setup drawers start closed — the edge
                         // handles are the invitation; a pane that
                         // barges in over the match start isn't.
                         // Except when the user opted in: slide the
                         // opponent's drawer open at match start if
                         // their setup is actually visible.
-                        let auto_open = self.config.show_opponent_setup && session.opponent_loaded.is_some();
+                        let auto_open = self.config.show_opponent_setup && panes.opponent_loaded.is_some();
                         self.session.active = Some(Box::new(session));
+                        self.session.pvp_panes = Some(panes);
                         if auto_open {
                             self.session.opponent_panel.open();
                         } else {

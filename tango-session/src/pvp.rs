@@ -1,6 +1,6 @@
 //! Live PvP emulator session on the SIO-lockstep engine — peer-paired
 //! netplay sibling of
-//! [`crate::session::singleplayer::SinglePlayerSession`].
+//! [`crate::singleplayer::SinglePlayerSession`].
 //!
 //! Both games run locally as an [`mgba_siolink::Link`] pair linked through
 //! mgba's lockstep SIO driver (see [`tango_pvp::sio`]): the games speak
@@ -128,7 +128,7 @@ struct Metrics {
 }
 
 pub struct PvpSession {
-    local_game: &'static crate::library::game::Game,
+    local_game: &'static tango_gamesupport::Game,
     /// This side's player index (P1 = 0, P2 = 1), picked once at match start and
     /// stable for the whole match. The pair is symmetric — core 0 always runs
     /// player 0's game on both peers — so this is also which core is "ours".
@@ -143,8 +143,8 @@ pub struct PvpSession {
     end: EndState,
     /// Sliding-window timestamp counter marked once per drive-loop frame —
     /// yields the true simulation TPS regardless of how often the UI polls.
-    tps_counter: Arc<Mutex<crate::session::stats::Counter>>,
-    _audio_binding: Option<crate::platform::audio::Binding>,
+    tps_counter: Arc<Mutex<crate::stats::Counter>>,
+    _audio_binding: Option<crate::audio::Binding>,
     /// Drops fire-cancellation through the drive thread and the network
     /// tasks. On Close we cancel + drop the session, which tears the
     /// network loop down cleanly.
@@ -160,21 +160,6 @@ pub struct PvpSession {
     metrics: Arc<Metrics>,
     pub link_code: String,
     pub remote_nickname: String,
-    /// Opponent's fully-loaded selection (rom + parsed save +
-    /// derived assets) unless they blinded their setup. The session
-    /// pane uses it to embed the same save-view we render for
-    /// our own side — folder, navi, navicust, the whole thing.
-    pub opponent_loaded: Option<crate::selection::Loaded>,
-    /// Active-tab / grouping state for the in-match opponent
-    /// save-view panel. Mutated via
-    /// `session::Message::OpponentSaveViewAction`.
-    pub opponent_save_view: crate::save_view::State,
-    /// Local side's fully-loaded selection — mirror of
-    /// [`opponent_loaded`] for the in-session "my setup" toggle.
-    pub local_loaded: Option<crate::selection::Loaded>,
-    /// Active-tab / grouping state for the in-match self
-    /// save-view panel. Mirror of [`opponent_save_view`].
-    pub local_save_view: crate::save_view::State,
     /// Live local frame delay — realized as the engine's present delay
     /// (how far the displayed tick trails the local input frontier). The
     /// footer slider writes it; the drive loop applies changes each frame.
@@ -192,21 +177,61 @@ pub struct PvpSession {
     /// This session's display surfaces + frame wake handle; the drive
     /// thread and the supervisor's end-detection wires hold clones of
     /// its parts.
-    frame_sink: crate::session::FrameSink,
+    frame_sink: crate::FrameSink,
     /// When the session was built, for the results screen's match duration.
     started_at: std::time::Instant,
 }
 
+/// Everything the app needs to build a PvpSession: the negotiated match
+/// terms plus the live transport bundle. Drained out of the matchmaking
+/// lobby (or the direct-connect path) after both sides exchanged
+/// StartMatch.
+pub struct PreMatchData {
+    /// The transport bundle — every live handle the peer link owns for the
+    /// match's lifetime (channels, peer connection, reconnect recipe).
+    /// `Link::bring_up` assembles it.
+    pub link_parts: crate::net::link::LinkParts,
+    pub is_offerer: bool,
+    pub rng_seed: [u8; 16],
+    /// The match clock, milliseconds since the unix epoch: the offerer's
+    /// commit-time wall clock, identical on both peers. Every core (primary,
+    /// shadow, re-sim stepper) pins its cart RTC here so RTC-reading games
+    /// (exe45) stay deterministic, and the replay metadata records it as `ts`
+    /// so playback pins to the same value.
+    pub match_ts: u64,
+    pub local_save_data: Vec<u8>,
+    pub remote_save_data: Vec<u8>,
+    pub local_settings: tango_net_protocol::control::Settings,
+    pub remote_settings: tango_net_protocol::control::Settings,
+    pub link_code: String,
+    pub match_type: (u8, u8),
+    /// Both sides' install identities (SHA-256 of the mTLS client certificate
+    /// presented to the matchmaking server), recorded into the replay
+    /// metadata: ours self-computed, the peer's server-attested. Empty on
+    /// direct connections or when a side presented no certificate.
+    pub local_client_cert_fingerprint: Vec<u8>,
+    pub peer_client_cert_fingerprint: Vec<u8>,
+}
+
+// The channel/peer-conn handles aren't `Debug`; a placeholder keeps any
+// enclosing message (the app carries this in a `Slot<PreMatchData>`)
+// derivable, same as `Channels`.
+impl std::fmt::Debug for PreMatchData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("PreMatchData { .. }")
+    }
+}
+
 /// Everything [`PvpSession::new`] needs, as named fields. Assembled by
-/// [`spawn_pvp`](crate::session::spawn_pvp).
+/// the app's `spawn_pvp` glue.
 pub struct PvpSessionArgs<'a> {
     /// Local/remote game impls; the roms must already have any patch applied.
-    pub local_game: &'static crate::library::game::Game,
+    pub local_game: &'static tango_gamesupport::Game,
     pub local_rom: Arc<Vec<u8>>,
-    pub remote_game: &'static crate::library::game::Game,
+    pub remote_game: &'static tango_gamesupport::Game,
     pub remote_rom: Arc<Vec<u8>>,
     /// The netplay handoff: negotiated terms + the transport bundle.
-    pub pre_match: crate::netplay::PreMatchData,
+    pub pre_match: crate::pvp::PreMatchData,
     /// This side's frame delay — realized purely as local display lag (the
     /// engine's present delay). Comes straight from local config; never
     /// negotiated with or sent to the peer.
@@ -218,9 +243,7 @@ pub struct PvpSessionArgs<'a> {
     pub disable_bgm: bool,
     pub replays_path: &'a Path,
     pub cache_path: &'a Path,
-    pub audio_binder: &'a crate::platform::audio::LateBinder,
-    pub opponent_loaded: Option<crate::selection::Loaded>,
-    pub local_loaded: Option<crate::selection::Loaded>,
+    pub audio_binder: &'a crate::audio::LateBinder,
 }
 
 impl PvpSession {
@@ -243,8 +266,6 @@ impl PvpSession {
             replays_path,
             cache_path,
             audio_binder,
-            opponent_loaded,
-            local_loaded,
         } = args;
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
@@ -302,10 +323,10 @@ impl PvpSession {
         let completed = Arc::new(AtomicBool::new(false));
         let frame_delay = Arc::new(AtomicU32::new(frame_delay));
         let metrics = Arc::new(Metrics::default());
-        let drive_paused = Arc::new(crate::session::PauseGate::new(false));
+        let drive_paused = Arc::new(crate::PauseGate::new(false));
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
-        let tps_counter = Arc::new(Mutex::new(crate::session::stats::Counter::new(60)));
-        let frame_sink = crate::session::FrameSink::new();
+        let tps_counter = Arc::new(Mutex::new(crate::stats::Counter::new(60)));
+        let frame_sink = crate::FrameSink::new();
 
         // Usage semantics can depend on the applied patch (exe45's PvP
         // patch), so they're probed off the patched ROM.
@@ -371,7 +392,7 @@ impl PvpSession {
                 stats: stats.clone(),
                 stats_path: replay_path
                     .as_ref()
-                    .map(|p| crate::library::replays::stats_path(cache_path, replays_path, p)),
+                    .map(|p| crate::stats_cache::stats_path(cache_path, replays_path, p)),
                 tps_counter: tps_counter.clone(),
                 vbuf: frame_sink.vbuf.clone(),
                 frame_notify: frame_sink.notify.clone(),
@@ -392,9 +413,9 @@ impl PvpSession {
         // Audio: the host output stream plays the local core directly,
         // pulling and resampling its samples straight off the pair (rate
         // control follows the drive loop's published fps target) — see
-        // [`crate::session::core_stream::CoreStream`].
-        let audio_binding = match audio_binder.bind(Some(Box::new(crate::session::core_stream::CoreStream::new(
-            crate::session::core_stream::PairCorePull {
+        // [`crate::core_stream::CoreStream`].
+        let audio_binding = match audio_binder.bind(Some(Box::new(crate::core_stream::CoreStream::new(
+            crate::core_stream::PairCorePull {
                 pair: pair_handle,
                 player: {
                     let local_player = local_player_index as usize;
@@ -441,10 +462,6 @@ impl PvpSession {
             metrics,
             link_code: pre_match.link_code,
             remote_nickname: pre_match.remote_settings.nickname,
-            opponent_loaded,
-            opponent_save_view: crate::save_view::State::new(),
-            local_loaded,
-            local_save_view: crate::save_view::State::new(),
             frame_delay,
             stats,
             replay_path,
@@ -585,43 +602,13 @@ impl PvpSession {
     }
 }
 
-impl crate::session::ActiveSession for PvpSession {
-    fn local_game(&self) -> &'static crate::library::game::Game {
+impl crate::ActiveSession for PvpSession {
+    fn local_game(&self) -> &'static tango_gamesupport::Game {
         self.local_game
     }
 
-    fn frame_sink(&self) -> &crate::session::FrameSink {
+    fn frame_sink(&self) -> &crate::FrameSink {
         &self.frame_sink
-    }
-
-    fn view<'a>(&'a self, ctx: crate::session::view::Ctx<'a>) -> iced::Element<'a, crate::session::Message> {
-        crate::session::view::pvp::view(self, ctx)
-    }
-
-    fn telemetry_sample(&self) -> Option<crate::session::MetricSample> {
-        Some(crate::session::MetricSample::capture(self))
-    }
-
-    /// Snapshot the finished match: on a natural end, and on a remote
-    /// disconnect (their channel EOF'd or the reconnect window expired) —
-    /// the results card comes up in its disconnect dress with the match as
-    /// it stood. Our own quit paths (Esc hold, disconnect confirm) set
-    /// neither flag and go straight back to the menu: the player chose to
-    /// leave.
-    fn capture_results(&self) -> Option<crate::session::MatchResults> {
-        if self.is_completed() {
-            Some(crate::session::MatchResults::capture(
-                self,
-                crate::session::MatchEnd::Completed,
-            ))
-        } else if self.remote_disconnected() {
-            Some(crate::session::MatchResults::capture(
-                self,
-                crate::session::MatchEnd::Disconnected,
-            ))
-        } else {
-            None
-        }
     }
 
     fn set_joyflags(&self, joyflags: u32) {
@@ -743,7 +730,7 @@ struct DriveContext {
     joyflags: Arc<AtomicU32>,
     frame_delay: Arc<AtomicU32>,
     metrics: Arc<Metrics>,
-    drive_paused: Arc<crate::session::PauseGate>,
+    drive_paused: Arc<crate::PauseGate>,
     cancel: tokio_util::sync::CancellationToken,
     completed: Arc<AtomicBool>,
     end: EndState,
@@ -753,7 +740,7 @@ struct DriveContext {
     replay_writer: Option<tango_pvp::replay::Writer>,
     stats: Arc<Mutex<tango_pvp::analysis::StatsBuilder>>,
     stats_path: Option<std::path::PathBuf>,
-    tps_counter: Arc<Mutex<crate::session::stats::Counter>>,
+    tps_counter: Arc<Mutex<crate::stats::Counter>>,
     vbuf: Arc<Mutex<Vec<u8>>>,
     frame_notify: Arc<tokio::sync::Notify>,
     local_player: usize,
@@ -1051,7 +1038,7 @@ impl DriveContext {
                 // re-simulate this one.
                 if let Some(stats_path) = self.stats_path.as_ref() {
                     let snapshot = self.stats.lock().unwrap().snapshot();
-                    if let Err(e) = crate::library::replays::write_match_stats(stats_path, &snapshot) {
+                    if let Err(e) = crate::stats_cache::write_match_stats(stats_path, &snapshot) {
                         log::warn!("failed to write replay stats cache entry: {e}");
                     }
                 }
@@ -1096,7 +1083,7 @@ struct SupervisorContext {
     completed: Arc<AtomicBool>,
     cancel: tokio_util::sync::CancellationToken,
     metrics: Arc<Metrics>,
-    drive_paused: Arc<crate::session::PauseGate>,
+    drive_paused: Arc<crate::PauseGate>,
     frame_notify: Arc<tokio::sync::Notify>,
 }
 
@@ -1328,7 +1315,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
 /// `YYYYMMDDhhmmss-<link_code>-<compat>-vs-<opponent>-p<idx>.tangoreplay`.
 fn build_replay_writer(
     replays_path: &Path,
-    pre_match: &crate::netplay::PreMatchData,
+    pre_match: &crate::pvp::PreMatchData,
     local_player_index: u8,
     local_save: &(dyn tango_dataview::save::Save + Send + Sync),
     remote_save: &(dyn tango_dataview::save::Save + Send + Sync),

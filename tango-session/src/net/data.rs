@@ -77,7 +77,7 @@ type InStream = rennet::InStream<protocol::InMatch>;
 /// the frame or two the pause takes to land, plus a safety factor — sized so the
 /// overflow bail can never beat the watchdog + pause to the punch.
 ///
-/// The session ([`crate::session::pvp`]) reads [`RECONNECT_QUEUE_LENGTH`] back
+/// The session ([`crate::pvp`]) reads [`RECONNECT_QUEUE_LENGTH`] back
 /// to drive its watchdog. Lower it to trip reconnect sooner (the horizon shrinks
 /// with it); raise it to ride out longer blips (the horizon grows). Nothing else
 /// to retune.

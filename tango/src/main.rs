@@ -7,8 +7,9 @@ mod library; // the on-disk game library: registry + ROM/save/patch/replay scann
 mod platform; // host-machine glue: SDL, input devices, AV output, crash capture
 mod ui; // look-and-feel toolkit: widgets, style, theme, animation
 
-// Netplay: `net` owns the wire protocols, `netplay` the connection lifecycle.
-mod net;
+// Netplay: `net` (in the session crate) owns the wire protocols,
+// `netplay` the connection lifecycle.
+pub(crate) use tango_session::net;
 mod netplay;
 
 // App-level state the tabs share.

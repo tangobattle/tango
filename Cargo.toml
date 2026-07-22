@@ -6,6 +6,7 @@ members = [
     "tango-gamesupport",
     "tango-net-protocol",
     "tango-pvp",
+    "tango-session",
 ]
 # The per-game gamesupport crates auto-join this workspace as path
 # dependencies (they live under the workspace directory), which drags
@@ -20,6 +21,7 @@ default-members = [
     "tango-gamesupport",
     "tango-net-protocol",
     "tango-pvp",
+    "tango-session",
 ]
 # One source of truth for every external dep shared by 2+ member crates,
 # so versions can't silently drift apart (we shipped four itertools and

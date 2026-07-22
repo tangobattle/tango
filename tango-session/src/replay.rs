@@ -7,12 +7,10 @@
 //! asynchronous: requests land on a [`SeekController`] and a dedicated
 //! worker chases the newest target, so the UI never blocks on catch-up
 //! emulation. Audio is pulled straight off the pair via
-//! [`crate::session::core_stream::CoreStream`].
+//! [`crate::core_stream::CoreStream`].
 //!
 //! [`SnapshotStore`]: tango_pvp::playback::SnapshotStore
 //! [`RewindRing`]: tango_pvp::playback::RewindRing
-
-pub mod scrubber;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
@@ -22,107 +20,6 @@ use tango_pvp::playback::SeekController;
 pub const SCREEN_WIDTH: u32 = mgba::gba::SCREEN_WIDTH;
 pub const SCREEN_HEIGHT: u32 = mgba::gba::SCREEN_HEIGHT;
 const EXPECTED_FPS: f32 = 60.0;
-
-/// Scrub-bar interaction state for a replay session. Splits the
-/// drag/hover bookkeeping out of [`crate::session::State`] (which is
-/// otherwise game-mode-agnostic) and keeps it next to the
-/// [`ReplaySession`] it drives. The owning state holds one of these
-/// and the transport widget reads it to draw the playhead + the
-/// floating keyframe thumbnail.
-#[derive(Default)]
-pub struct Scrub {
-    /// `Some(tick)` while the user is dragging — the previewed
-    /// position. The transport draws the playhead here instead of at
-    /// the emulator's actual tick, and the first event of a drag
-    /// pauses playback.
-    pub preview: Option<u32>,
-    /// Whether playback was running when the drag started, so
-    /// [`end_drag`](Self::end_drag)'s commit can resume it once the
-    /// seek lands.
-    pub resume: bool,
-    /// Whether this drag has blitted a keyframe preview yet. Until it
-    /// has, the live frame is still on screen and beats a farther
-    /// keyframe; afterwards previews always blit (the live frame is
-    /// gone from the buffer).
-    pub blitted: bool,
-    /// Where the cursor is resting on the scrub bar, driving the
-    /// floating thumbnail card above it. `None` when the cursor is off
-    /// the bar — and during a drag, when the full-screen blit preview
-    /// supersedes it.
-    pub hover: Option<scrubber::HoverInfo>,
-    /// RGBA conversion of the snapshot behind the hover thumbnail,
-    /// keyed by the snapshot's absolute tick so cursor moves within
-    /// the same keyframe reuse the handle instead of re-converting.
-    pub thumb: Option<(u32, iced::widget::image::Handle)>,
-    /// Whether the transport bar's clip strip is expanded (the
-    /// scissors toggle). The strip owns the mark/export controls so
-    /// the resting bar stays a transport.
-    pub tools_open: bool,
-    /// Clip-selection start mark (playhead tick), set by the clip
-    /// strip's mark-in chip. Setting a mark that would invert the
-    /// pair drops the other mark, so `mark_in < mark_out` always
-    /// holds when both are set.
-    pub mark_in: Option<u32>,
-    /// Clip-selection end mark — see [`mark_in`](Self::mark_in).
-    pub mark_out: Option<u32>,
-}
-
-impl Scrub {
-    /// Begin or continue a drag at `target`. The first event of a drag
-    /// freezes playback under the cursor (remembering whether to
-    /// resume) and starts blitting previews from the snapshot buffers.
-    pub fn drag(&mut self, target: u32, replay: &ReplaySession) {
-        let press = self.preview.is_none();
-        if press {
-            self.resume = !replay.is_paused();
-            replay.set_paused(true);
-        }
-        self.preview = Some(target);
-        // The press itself only previews an exact frame: a click seeks
-        // to the tick under the cursor, and blitting the *nearest*
-        // keyframe there would flash a wrong frame until the chase
-        // delivers the real one. Once the drag is actually moving,
-        // nearest-keyframe previews are the scrubbing feedback.
-        let blitted = if press {
-            replay.scrub_preview_exact(target)
-        } else {
-            replay.scrub_preview(target, self.blitted)
-        };
-        if blitted {
-            self.blitted = true;
-        }
-    }
-
-    /// Reset the per-drag fields once a drag is released. The actual
-    /// (asynchronous) seek is fired by the caller, which still owns the
-    /// `&ReplaySession` — this just clears the drag bookkeeping.
-    pub fn end_drag(&mut self) {
-        self.preview = None;
-        self.resume = false;
-        self.blitted = false;
-    }
-
-    /// Refresh the floating hover thumbnail for the current
-    /// [`hover`](Self::hover) position. Caches by the nearest
-    /// snapshot's absolute tick, so cursor moves within one keyframe
-    /// reuse the decoded handle.
-    pub fn refresh_thumb(&mut self, replay: &ReplaySession) {
-        let Some(h) = self.hover else { return };
-        if let Some(snap) = replay.nearest_snapshot(h.tick) {
-            let snap_tick = snap.key_tick();
-            let fb = snap.local_framebuffer();
-            if !fb.is_empty() && self.thumb.as_ref().map(|(t, _)| *t) != Some(snap_tick) {
-                self.thumb = Some((snap_tick, super::thumbnail_handle(fb)));
-            }
-        }
-    }
-
-    /// Drop all scrub state, drag and hover alike — used when the
-    /// session closes.
-    pub fn clear(&mut self) {
-        *self = Self::default();
-    }
-}
 
 /// What the input display overlay reads off a replay: every recorded
 /// (local, remote) joyflags pair, flattened across rounds in playhead
@@ -134,7 +31,7 @@ struct InputDisplay {
 }
 
 pub struct ReplaySession {
-    game: &'static crate::library::game::Game,
+    game: &'static tango_gamesupport::Game,
     /// Inter-round seek-bar marks (see [`Self::round_boundaries`]),
     /// discovered from telemetry by the prefetch pass as it runs.
     round_boundaries: Arc<Mutex<Vec<u32>>>,
@@ -146,7 +43,7 @@ pub struct ReplaySession {
     /// This session's display framebuffer + wake handle, kept so
     /// [`Self::scrub_preview`] can blit snapshot framebuffers without
     /// going through the emulator at all.
-    frame_sink: crate::session::FrameSink,
+    frame_sink: crate::FrameSink,
     /// Whether the opponent-screen PiP is on (a per-session toggle on
     /// the transport bar).
     show_pip: Arc<AtomicBool>,
@@ -163,7 +60,7 @@ pub struct ReplaySession {
     pip_fresh: Arc<AtomicBool>,
     /// Held so the audio binding survives for the session's lifetime;
     /// the LateBinder swaps back to silence when this Drops.
-    _audio_binding: Option<crate::platform::audio::Binding>,
+    _audio_binding: Option<crate::audio::Binding>,
     /// The playback machinery (pair, workers, seek state).
     engine: Engine,
 }
@@ -180,7 +77,7 @@ struct Engine {
     local_player: usize,
     /// Lock-free playhead mirror for UI reads.
     cursor: Arc<AtomicU32>,
-    paused: Arc<crate::session::PauseGate>,
+    paused: Arc<crate::PauseGate>,
     /// Pacing target, f32 bits (60 × speed factor).
     fps_bits: Arc<AtomicU32>,
     snapshots: tango_pvp::playback::SnapshotStore,
@@ -215,7 +112,7 @@ impl Drop for Engine {
 /// lands anyway.
 struct SioPlaybackPull(SharedSioPlayback);
 
-impl crate::session::core_stream::PairPull for SioPlaybackPull {
+impl crate::core_stream::PairPull for SioPlaybackPull {
     fn with_pair(&self, f: &mut dyn FnMut(&mut tango_pvp::Link)) {
         if let Ok(mut guard) = self.0.try_lock() {
             if let Some(pb) = guard.as_mut() {
@@ -234,12 +131,12 @@ impl ReplaySession {
     /// drive thread, with a black frame and silence until it's up.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        game: &'static crate::library::game::Game,
+        game: &'static tango_gamesupport::Game,
         rom: Arc<Vec<u8>>,
-        remote_game: &'static crate::library::game::Game,
+        remote_game: &'static tango_gamesupport::Game,
         remote_rom: Arc<Vec<u8>>,
         replay: Arc<tango_pvp::replay::Replay>,
-        audio_binder: &crate::platform::audio::LateBinder,
+        audio_binder: &crate::audio::LateBinder,
         show_pip: bool,
         stats_job: Option<PrefetchStatsJob>,
     ) -> anyhow::Result<Self> {
@@ -319,10 +216,10 @@ impl ReplaySession {
             ),
         });
 
-        let frame_sink = crate::session::FrameSink::new();
+        let frame_sink = crate::FrameSink::new();
         let playback: SharedSioPlayback = Arc::new(Mutex::new(None));
         let cursor = Arc::new(AtomicU32::new(0));
-        let paused = Arc::new(crate::session::PauseGate::new(false));
+        let paused = Arc::new(crate::PauseGate::new(false));
         let fps_bits = Arc::new(AtomicU32::new(EXPECTED_FPS.to_bits()));
         let snapshots = sio_playback::SnapshotStore::new();
         let rewind = sio_playback::RewindRing::new();
@@ -438,7 +335,7 @@ impl ReplaySession {
                         ) {
                             Ok(Some(stats)) => {
                                 if let Some(job) = &stats_job {
-                                    if let Err(e) = crate::library::replays::write_match_stats(&job.stats_file, &stats)
+                                    if let Err(e) = crate::stats_cache::write_match_stats(&job.stats_file, &stats)
                                     {
                                         log::warn!("prefetch stats cache write failed: {e:?}");
                                     }
@@ -482,9 +379,9 @@ impl ReplaySession {
 
         // Audio: play the shown perspective's core straight off the
         // pair, following the drive loop's pacing (see
-        // [`crate::session::core_stream`]).
-        let audio_binding = match audio_binder.bind(Some(Box::new(crate::session::core_stream::CoreStream::new(
-            crate::session::core_stream::PairCorePull {
+        // [`crate::core_stream`]).
+        let audio_binding = match audio_binder.bind(Some(Box::new(crate::core_stream::CoreStream::new(
+            crate::core_stream::PairCorePull {
                 pair: SioPlaybackPull(playback.clone()),
                 player: {
                     let swap_perspective = swap_perspective.clone();
@@ -497,7 +394,7 @@ impl ReplaySession {
                     })
                 },
             },
-            crate::session::core_stream::CoreStream::fps_from_bits(fps_bits.clone()),
+            crate::core_stream::CoreStream::fps_from_bits(fps_bits.clone()),
             audio_binder.sample_rate(),
         )))) {
             Ok(b) => Some(b),
@@ -780,17 +677,13 @@ impl ReplaySession {
     }
 }
 
-impl crate::session::ActiveSession for ReplaySession {
-    fn local_game(&self) -> &'static crate::library::game::Game {
+impl crate::ActiveSession for ReplaySession {
+    fn local_game(&self) -> &'static tango_gamesupport::Game {
         self.game
     }
 
-    fn frame_sink(&self) -> &crate::session::FrameSink {
+    fn frame_sink(&self) -> &crate::FrameSink {
         &self.frame_sink
-    }
-
-    fn view<'a>(&'a self, ctx: crate::session::view::Ctx<'a>) -> iced::Element<'a, crate::session::Message> {
-        crate::session::view::replay::view(self, ctx)
     }
 
     /// The opponent's screen, or the local one while swapped — `None`
@@ -914,7 +807,7 @@ fn run_drive(
     inputs: Arc<Vec<[u32; 2]>>,
     playback: SharedSioPlayback,
     cursor: Arc<AtomicU32>,
-    paused: Arc<crate::session::PauseGate>,
+    paused: Arc<crate::PauseGate>,
     fps_bits: Arc<AtomicU32>,
     snapshots: tango_pvp::playback::SnapshotStore,
     rewind: tango_pvp::playback::RewindRing,

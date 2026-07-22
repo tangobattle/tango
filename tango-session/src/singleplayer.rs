@@ -1,7 +1,7 @@
 //! Standalone (no-netplay) emulator session. Boots a ROM with the
 //! user-selected save file and accepts joyflag input from the UI tick
 //! loop. The video frame plumbing mirrors the other sessions — the
-//! session's own [`FrameSink`](crate::session::FrameSink) vbuf, fed
+//! session's own [`FrameSink`](crate::FrameSink) vbuf, fed
 //! mgba's raw BGR555 (the framebuffer shader expands it on the GPU).
 //!
 //! The core runs on a drive thread we own (mgba is built without its
@@ -10,7 +10,7 @@
 //! (drift-free on average), and a loop that falls far behind
 //! resynchronizes its cadence instead of sprinting. Audio follows as a
 //! pure consumer through the shared
-//! [`CoreStream`](crate::session::core_stream::CoreStream) rate
+//! [`CoreStream`](crate::core_stream::CoreStream) rate
 //! control, so a stalled or torn-down audio device costs sound, never
 //! the session.
 //!
@@ -37,29 +37,29 @@ struct Shared {
 /// readout interleaves between ticks.
 struct SharedCorePull(Arc<Shared>);
 
-impl crate::session::core_stream::CorePull for SharedCorePull {
+impl crate::core_stream::CorePull for SharedCorePull {
     fn with_core(&self, f: &mut dyn FnMut(&mut mgba::core::Core)) {
         f(&mut self.0.core.lock().unwrap());
     }
 }
 
 pub struct SinglePlayerSession {
-    game: &'static crate::library::game::Game,
+    game: &'static tango_gamesupport::Game,
     joyflags: Arc<AtomicU32>,
     shared: Arc<Shared>,
-    frame_sink: crate::session::FrameSink,
-    _audio_binding: Option<crate::platform::audio::Binding>,
+    frame_sink: crate::FrameSink,
+    _audio_binding: Option<crate::audio::Binding>,
     drive: Option<std::thread::JoinHandle<()>>,
 }
 
 impl SinglePlayerSession {
     pub fn new(
-        game: &'static crate::library::game::Game,
+        game: &'static tango_gamesupport::Game,
         rom: Arc<Vec<u8>>,
         save_path: &std::path::Path,
-        audio_binder: &crate::platform::audio::LateBinder,
+        audio_binder: &crate::audio::LateBinder,
     ) -> anyhow::Result<Self> {
-        let mut core = crate::session::new_gba_core(rom.as_ref())?;
+        let mut core = crate::new_gba_core(rom.as_ref())?;
         // Open RW so the game's own save writes persist back to disk —
         // mgba memory-maps the file and treats it as the cartridge SRAM.
         let save_file = std::fs::OpenOptions::new().read(true).write(true).open(save_path)?;
@@ -78,7 +78,7 @@ impl SinglePlayerSession {
             stop: AtomicBool::new(false),
         });
 
-        let frame_sink = crate::session::FrameSink::new();
+        let frame_sink = crate::FrameSink::new();
         let drive = std::thread::Builder::new().name("singleplayer".to_owned()).spawn({
             let shared = shared.clone();
             let joyflags = joyflags.clone();
@@ -90,7 +90,7 @@ impl SinglePlayerSession {
         // A failed bind is logged and downgraded to silence rather than
         // aborting the session — the wall-clock pacer doesn't depend on
         // the audio device at all.
-        let audio_binding = match audio_binder.bind(Some(Box::new(crate::session::core_stream::CoreStream::new(
+        let audio_binding = match audio_binder.bind(Some(Box::new(crate::core_stream::CoreStream::new(
             SharedCorePull(shared.clone()),
             {
                 let shared = shared.clone();
@@ -116,17 +116,13 @@ impl SinglePlayerSession {
     }
 }
 
-impl crate::session::ActiveSession for SinglePlayerSession {
-    fn local_game(&self) -> &'static crate::library::game::Game {
+impl crate::ActiveSession for SinglePlayerSession {
+    fn local_game(&self) -> &'static tango_gamesupport::Game {
         self.game
     }
 
-    fn frame_sink(&self) -> &crate::session::FrameSink {
+    fn frame_sink(&self) -> &crate::FrameSink {
         &self.frame_sink
-    }
-
-    fn view<'a>(&'a self, ctx: crate::session::view::Ctx<'a>) -> iced::Element<'a, crate::session::Message> {
-        crate::session::view::singleplayer::view(self, ctx)
     }
 
     fn set_joyflags(&self, joyflags: u32) {
@@ -171,9 +167,9 @@ fn drive_loop(
                 vbuf.lock().unwrap().copy_from_slice(frame);
             }
         }
-        // Wake the session subscription so iced rebuilds
-        // the texture handle for this frame. Notify
-        // coalesces — a slow UI doesn't queue up wakes.
+        // Wake the host's frame subscription so the UI rebuilds
+        // the texture for this frame. Notify coalesces — a slow
+        // UI doesn't queue up wakes.
         frame_notify.notify_one();
 
         let mut fps = f32::from_bits(shared.fps_bits.load(Ordering::Relaxed));

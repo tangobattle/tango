@@ -74,13 +74,13 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
             state.self_panel.toggle();
         }
         Message::OpponentSaveView(action) => {
-            if let Some(s) = state.active_as_mut::<PvpSession>() {
-                return s.opponent_save_view.fold(&action).map(Message::OpponentSaveView);
+            if let Some(panes) = state.pvp_panes.as_mut() {
+                return panes.opponent_save_view.fold(&action).map(Message::OpponentSaveView);
             }
         }
         Message::SelfSaveView(action) => {
-            if let Some(s) = state.active_as_mut::<PvpSession>() {
-                return s.local_save_view.fold(&action).map(Message::SelfSaveView);
+            if let Some(panes) = state.pvp_panes.as_mut() {
+                return panes.local_save_view.fold(&action).map(Message::SelfSaveView);
             }
         }
     }
@@ -116,9 +116,10 @@ pub(crate) fn view<'a>(p: &'a PvpSession, ctx: Ctx<'a>) -> Element<'a, SessionMe
     let Ctx { lang, state, .. } = ctx;
     let now = iced::time::Instant::now();
     let frame = framebuffer_view(state, ctx.fractional_scaling, ctx.effect);
+    let panes = state.pvp_panes.as_ref();
     let slots = [
-        p.local_loaded.is_some() && state.self_panel.shown(),
-        p.opponent_loaded.is_some() && state.opponent_panel.shown(),
+        panes.is_some_and(|panes| panes.local_loaded.is_some()) && state.self_panel.shown(),
+        panes.is_some_and(|panes| panes.opponent_loaded.is_some()) && state.opponent_panel.shown(),
     ];
     let body = emulator_body(p.local_game(), frame, ctx.hide_emulator_border, slots);
     let mut stacked = stack![body];
@@ -133,7 +134,7 @@ pub(crate) fn view<'a>(p: &'a PvpSession, ctx: Ctx<'a>) -> Element<'a, SessionMe
     if state.controls_anim.visible(now) {
         // The setup toggles ride the screen edges as drawer handles
         // (the replay transport's slot in the layer order).
-        stacked = stacked.push(setup_handles_overlay(lang, p, state, state.controls_anim.progress(now)));
+        stacked = stacked.push(setup_handles_overlay(lang, state, state.controls_anim.progress(now)));
         // Settings + tear-down, top-right; a live link routes the
         // tear-down through the disconnect confirm (whose copy
         // carries the unplug framing); once the link is already gone
@@ -150,7 +151,7 @@ pub(crate) fn view<'a>(p: &'a PvpSession, ctx: Ctx<'a>) -> Element<'a, SessionMe
     }
     // Setup drawers — above the corner commands, below the telemetry
     // plate (see `setup_drawers_overlay`).
-    for pane in setup_drawers_overlay(lang, p, state) {
+    for pane in setup_drawers_overlay(lang, state) {
         stacked = stacked.push(pane.map(SessionMessage::Pvp));
     }
     // Signal indicator / expanded telemetry graph, bottom-right.
@@ -181,12 +182,11 @@ pub(crate) fn view<'a>(p: &'a PvpSession, ctx: Ctx<'a>) -> Element<'a, SessionMe
 /// glanceable over an open drawer (see the layer order in [`view`]).
 /// Mid-slide the panes draw in iced's floating layer, above every
 /// base layer (see `anim::slide_in` / `keep_above_drawers`).
-fn setup_drawers_overlay<'a>(
-    lang: &'a LanguageIdentifier,
-    s: &'a PvpSession,
-    state: &'a State,
-) -> Vec<Element<'a, Message>> {
+fn setup_drawers_overlay<'a>(lang: &'a LanguageIdentifier, state: &'a State) -> Vec<Element<'a, Message>> {
     let now = iced::time::Instant::now();
+    let Some(s) = state.pvp_panes.as_ref() else {
+        return Vec::new();
+    };
     let setup_pane = |panel: Element<'a, Message>, from_dx: f32, progress: f32| -> Element<'a, Message> {
         let pane = container(panel)
             .width(iced::Length::Fixed(SETUP_PANE_WIDTH))
@@ -267,11 +267,11 @@ fn keep_above_drawers(el: Element<'_, SessionMessage>, drawer_moving: bool) -> E
 /// while the peer has blinded their setup.
 fn setup_handles_overlay<'a>(
     lang: &'a LanguageIdentifier,
-    pvp: &'a PvpSession,
     state: &'a State,
     hide_progress: f32,
 ) -> Element<'a, SessionMessage> {
     let now = iced::time::Instant::now();
+    let panes = state.pvp_panes.as_ref();
 
     // `on_left`: which screen edge the tab grows out of.
     // `drawer_progress`: how far the tab's drawer is out (0..1) —
@@ -387,7 +387,7 @@ fn setup_handles_overlay<'a>(
     const FIELD_BLUE: Color = Color::from_rgb(0.18, 0.40, 0.85);
 
     let mut edges = row![].width(Fill).align_y(Alignment::Center);
-    if pvp.local_loaded.is_some() {
+    if panes.is_some_and(|panes| panes.local_loaded.is_some()) {
         edges = edges.push(handle(
             true,
             state.self_panel.shown(),
@@ -400,7 +400,7 @@ fn setup_handles_overlay<'a>(
     edges = edges.push(horizontal_space());
     // No tab at all when the peer blinded their setup — a
     // permanently dead handle is just clutter on the edge.
-    if pvp.opponent_loaded.is_some() {
+    if panes.is_some_and(|panes| panes.opponent_loaded.is_some()) {
         edges = edges.push(handle(
             false,
             state.opponent_panel.shown(),
