@@ -1,5 +1,5 @@
 //! Replay playback session: a linearly-driven
-//! [`tango_pvp::playback::Playback`] pair behind a mutex, paced by
+//! [`tango_match::playback::Playback`] pair behind a mutex, paced by
 //! a drive thread; a prefetch pair races ahead of the playhead filling
 //! a keyframe [`SnapshotStore`] (and doubling as the match-stats
 //! analysis), and a [`RewindRing`] keeps every tick of the last ~1.5s
@@ -9,13 +9,13 @@
 //! emulation. Audio is pulled straight off the pair via
 //! [`crate::core_stream::CoreStream`].
 //!
-//! [`SnapshotStore`]: tango_pvp::playback::SnapshotStore
-//! [`RewindRing`]: tango_pvp::playback::RewindRing
+//! [`SnapshotStore`]: tango_match::playback::SnapshotStore
+//! [`RewindRing`]: tango_match::playback::RewindRing
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
-use tango_pvp::playback::SeekController;
+use tango_match::playback::SeekController;
 
 pub const SCREEN_WIDTH: u32 = mgba::gba::SCREEN_WIDTH;
 pub const SCREEN_HEIGHT: u32 = mgba::gba::SCREEN_HEIGHT;
@@ -66,9 +66,9 @@ pub struct ReplaySession {
 /// mutex, paced by a host drive thread; the seek worker chases targets
 /// by loading the nearest pair snapshot and stepping forward, and the
 /// prefetch worker races its own pair ahead for keyframes + stats +
-/// round marks (see [`tango_pvp::playback`]).
+/// round marks (see [`tango_match::playback`]).
 ///
-/// [`Playback`]: tango_pvp::playback::Playback
+/// [`Playback`]: tango_match::playback::Playback
 struct Engine {
     /// Which pair core is the replay's local perspective.
     local_player: usize,
@@ -77,8 +77,8 @@ struct Engine {
     paused: Arc<crate::PauseGate>,
     /// Pacing target, f32 bits (60 × speed factor).
     fps_bits: Arc<AtomicU32>,
-    snapshots: tango_pvp::playback::SnapshotStore,
-    rewind: tango_pvp::playback::RewindRing,
+    snapshots: tango_match::playback::SnapshotStore,
+    rewind: tango_match::playback::RewindRing,
     prefetch_progress: Arc<AtomicU32>,
     seek: Arc<SeekController>,
     /// Cancels the drive + prefetch threads on Drop.
@@ -88,7 +88,7 @@ struct Engine {
     threads: Vec<std::thread::JoinHandle<()>>,
 }
 
-type SharedSioPlayback = Arc<Mutex<Option<tango_pvp::playback::Playback>>>;
+type SharedSioPlayback = Arc<Mutex<Option<tango_match::playback::Playback>>>;
 
 impl Drop for Engine {
     fn drop(&mut self) {
@@ -110,7 +110,7 @@ impl Drop for Engine {
 struct SioPlaybackPull(SharedSioPlayback);
 
 impl crate::core_stream::PairPull for SioPlaybackPull {
-    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_pvp::Link)) {
+    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_match::Link)) {
         if let Ok(mut guard) = self.0.try_lock() {
             if let Some(pb) = guard.as_mut() {
                 f(pb.pair_mut());
@@ -121,9 +121,9 @@ impl crate::core_stream::PairPull for SioPlaybackPull {
 
 impl ReplaySession {
     /// Build a playback session for an SIO-engine replay
-    /// ([`tango_pvp::replay::VERSION`]): one continuous run of pair
+    /// ([`tango_match::replay::VERSION`]): one continuous run of pair
     /// ticks, re-simulated on a linearly-driven pair. Both sides must
-    /// have [`GameSupport`](tango_pvp::GameSupport) support. Returns
+    /// have [`GameSupport`](tango_match::GameSupport) support. Returns
     /// immediately — boot + priming (a second or two) happens on the
     /// drive thread, with a black frame and silence until it's up.
     /// Also returns the session's audio stream (the shown perspective's
@@ -135,12 +135,12 @@ impl ReplaySession {
         rom: Arc<Vec<u8>>,
         remote_game: &'static tango_gamesupport::Game,
         remote_rom: Arc<Vec<u8>>,
-        replay: Arc<tango_pvp::replay::Replay>,
+        replay: Arc<tango_match::replay::Replay>,
         sample_rate: u32,
         show_pip: bool,
         stats_job: Option<PrefetchStatsJob>,
     ) -> anyhow::Result<(Self, crate::core_stream::CoreStream)> {
-        use tango_pvp::playback as sio_playback;
+        use tango_match::playback as sio_playback;
 
         let local_sio = game.pvp;
         let remote_sio = remote_game.pvp;
@@ -196,7 +196,7 @@ impl ReplaySession {
             }
         };
 
-        let nickname_of = |side: &Option<tango_pvp::replay::metadata::Side>| {
+        let nickname_of = |side: &Option<tango_match::replay::metadata::Side>| {
             side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default()
         };
         let input_display = Box::new(InputDisplay {
@@ -205,8 +205,8 @@ impl ReplaySession {
                 .iter()
                 .map(|(local, remote)| {
                     (
-                        local.joyflags & tango_pvp::input::JOYFLAGS_MASK,
-                        remote.joyflags & tango_pvp::input::JOYFLAGS_MASK,
+                        local.joyflags & tango_match::input::JOYFLAGS_MASK,
+                        remote.joyflags & tango_match::input::JOYFLAGS_MASK,
                     )
                 })
                 .collect(),
@@ -310,7 +310,7 @@ impl ReplaySession {
                         const PREVIEW_EVERY: std::time::Duration = std::time::Duration::from_millis(33);
                         let mut last_preview = std::time::Instant::now();
                         let mut on_stats_progress =
-                            |_tick: u32, _total: u32, builder: &tango_pvp::analysis::StatsBuilder| {
+                            |_tick: u32, _total: u32, builder: &tango_match::analysis::StatsBuilder| {
                                 let Some(job) = &stats_job else { return };
                                 let now = std::time::Instant::now();
                                 if now.duration_since(last_preview) < PREVIEW_EVERY {
@@ -330,7 +330,7 @@ impl ReplaySession {
                             stats_job.is_some().then_some((
                                 chip_semantics,
                                 counts_buster,
-                                &mut on_stats_progress as &mut dyn FnMut(u32, u32, &tango_pvp::analysis::StatsBuilder),
+                                &mut on_stats_progress as &mut dyn FnMut(u32, u32, &tango_match::analysis::StatsBuilder),
                             )),
                         ) {
                             Ok(Some(stats)) => {
@@ -362,7 +362,7 @@ impl ReplaySession {
                     let rewind = rewind.clone();
                     let surfaces = surfaces.clone();
                     move || {
-                        tango_pvp::playback::run_seek_worker(
+                        tango_match::playback::run_seek_worker(
                             &seek,
                             &playback,
                             &snapshots,
@@ -587,7 +587,7 @@ impl ReplaySession {
     /// still produced by a stepped tick rather than promised from a
     /// framebuffer we can't re-emit. `None` means the export falls
     /// back to simulating from boot.
-    pub fn clip_start_snapshot(&self, start: u32) -> Option<Arc<tango_pvp::playback::Snapshot>> {
+    pub fn clip_start_snapshot(&self, start: u32) -> Option<Arc<tango_match::playback::Snapshot>> {
         let before = start.checked_sub(1)?;
         let s = &self.engine;
         [
@@ -698,7 +698,7 @@ impl crate::ActiveSession for ReplaySession {
 /// A captured playback snapshot — what
 /// [`ReplaySession::nearest_snapshot`] hands the scrub/hover UI.
 pub struct NearestSnapshot {
-    snap: Arc<tango_pvp::playback::Snapshot>,
+    snap: Arc<tango_match::playback::Snapshot>,
     local_player: usize,
 }
 
@@ -771,7 +771,7 @@ impl Surfaces {
     }
 
     /// Publish the pair's live framebuffers.
-    fn publish_pair(&self, pair: &mut tango_pvp::Link) {
+    fn publish_pair(&self, pair: &mut tango_match::Link) {
         let shown = self.shown();
         let main = pair.video_buffer(shown).map(|b| b.to_vec());
         let other = pair.video_buffer(1 - shown).map(|b| b.to_vec());
@@ -779,7 +779,7 @@ impl Surfaces {
     }
 
     /// Publish a captured snapshot's framebuffers (emulation-free).
-    fn publish_snapshot(&self, snap: &tango_pvp::playback::Snapshot) {
+    fn publish_snapshot(&self, snap: &tango_match::playback::Snapshot) {
         let shown = self.shown();
         let pick = |i: usize| -> Option<&[u8]> {
             let fb = snap.framebuffers[i].as_slice();
@@ -797,20 +797,20 @@ impl Surfaces {
 /// a no-op until a seek moves the playhead back.
 #[allow(clippy::too_many_arguments)]
 fn run_drive(
-    boot_config: tango_pvp::playback::BootConfig,
+    boot_config: tango_match::playback::BootConfig,
     inputs: Arc<Vec<[u32; 2]>>,
     playback: SharedSioPlayback,
     cursor: Arc<AtomicU32>,
     paused: Arc<crate::PauseGate>,
     fps_bits: Arc<AtomicU32>,
-    snapshots: tango_pvp::playback::SnapshotStore,
-    rewind: tango_pvp::playback::RewindRing,
+    snapshots: tango_match::playback::SnapshotStore,
+    rewind: tango_match::playback::RewindRing,
     cancel: Arc<AtomicBool>,
     surfaces: Surfaces,
 ) {
     // The display pair runs no telemetry observer — its lifecycle sink
     // is a write-only stub.
-    let pb = match tango_pvp::playback::Playback::new(&boot_config, inputs, &tango_pvp::telemetry::LifecycleSink::new())
+    let pb = match tango_match::playback::Playback::new(&boot_config, inputs, &tango_match::telemetry::LifecycleSink::new())
     {
         Ok(pb) => pb,
         Err(e) => {
@@ -876,7 +876,7 @@ fn run_drive(
 }
 
 pub struct PrefetchStatsJob {
-    pub partial_tx: futures::channel::mpsc::UnboundedSender<tango_pvp::analysis::MatchStats>,
-    pub done: Arc<Mutex<Option<tango_pvp::analysis::MatchStats>>>,
+    pub partial_tx: futures::channel::mpsc::UnboundedSender<tango_match::analysis::MatchStats>,
+    pub done: Arc<Mutex<Option<tango_match::analysis::MatchStats>>>,
     pub stats_file: std::path::PathBuf,
 }

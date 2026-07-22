@@ -5882,8 +5882,8 @@ dependencies = [
  "tango-gamesupport-bn5",
  "tango-gamesupport-bn6",
  "tango-gamesupport-exe45",
+ "tango-match",
  "tango-net-protocol",
- "tango-pvp",
  "tango-session",
  "tango-signaling",
  "tempfile",
@@ -5936,7 +5936,7 @@ dependencies = [
  "crc32fast",
  "image",
  "tango-dataview",
- "tango-pvp",
+ "tango-match",
  "thiserror 1.0.69",
 ]
 
@@ -5954,7 +5954,7 @@ dependencies = [
  "rand",
  "tango-dataview",
  "tango-gamesupport",
- "tango-pvp",
+ "tango-match",
 ]
 
 [[package]]
@@ -5972,7 +5972,7 @@ dependencies = [
  "rand",
  "tango-dataview",
  "tango-gamesupport",
- "tango-pvp",
+ "tango-match",
 ]
 
 [[package]]
@@ -5992,7 +5992,7 @@ dependencies = [
  "rand",
  "tango-dataview",
  "tango-gamesupport",
- "tango-pvp",
+ "tango-match",
 ]
 
 [[package]]
@@ -6010,7 +6010,7 @@ dependencies = [
  "rand",
  "tango-dataview",
  "tango-gamesupport",
- "tango-pvp",
+ "tango-match",
 ]
 
 [[package]]
@@ -6029,7 +6029,7 @@ dependencies = [
  "rand",
  "tango-dataview",
  "tango-gamesupport",
- "tango-pvp",
+ "tango-match",
 ]
 
 [[package]]
@@ -6048,7 +6048,7 @@ dependencies = [
  "rand",
  "tango-dataview",
  "tango-gamesupport",
- "tango-pvp",
+ "tango-match",
 ]
 
 [[package]]
@@ -6065,24 +6065,11 @@ dependencies = [
  "rand",
  "tango-dataview",
  "tango-gamesupport",
- "tango-pvp",
+ "tango-match",
 ]
 
 [[package]]
-name = "tango-net-protocol"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "rand",
- "rand_pcg",
- "rennet",
- "semver",
- "serde",
- "sha3",
-]
-
-[[package]]
-name = "tango-pvp"
+name = "tango-match"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -6097,6 +6084,19 @@ dependencies = [
  "serde",
  "serde_repr",
  "zstd",
+]
+
+[[package]]
+name = "tango-net-protocol"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "rand",
+ "rand_pcg",
+ "rennet",
+ "semver",
+ "serde",
+ "sha3",
 ]
 
 [[package]]
@@ -6116,8 +6116,8 @@ dependencies = [
  "rennet",
  "tango-dataview",
  "tango-gamesupport",
+ "tango-match",
  "tango-net-protocol",
- "tango-pvp",
  "tango-signaling",
  "thiserror 1.0.69",
  "tokio",

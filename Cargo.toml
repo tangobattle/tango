@@ -5,7 +5,7 @@ members = [
     "tango-dataview",
     "tango-gamesupport",
     "tango-net-protocol",
-    "tango-pvp",
+    "tango-match",
     "tango-session",
 ]
 # The per-game gamesupport crates auto-join this workspace as path
@@ -20,7 +20,7 @@ default-members = [
     "tango-dataview",
     "tango-gamesupport",
     "tango-net-protocol",
-    "tango-pvp",
+    "tango-match",
     "tango-session",
 ]
 # One source of truth for every external dep shared by 2+ member crates,

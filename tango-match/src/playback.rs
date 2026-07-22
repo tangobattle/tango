@@ -11,8 +11,7 @@
 //! RAM-poll telemetry by the prefetch pass).
 //!
 //! The host owns the threads (drive loop, prefetcher, seek worker);
-//! this module provides the work they do, mirroring
-//! [`crate::replay::playback`]'s split for the trap engine.
+//! this module provides the work they do.
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};

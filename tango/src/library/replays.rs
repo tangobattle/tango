@@ -2,7 +2,7 @@ use crate::library::scanner;
 
 pub struct ScannedReplay {
     pub path: std::path::PathBuf,
-    pub metadata: tango_pvp::replay::Metadata,
+    pub metadata: tango_match::replay::Metadata,
 }
 
 /// Output of [`compute_stats`]. Cheap to copy.
@@ -25,7 +25,7 @@ pub type Scanner = scanner::Scanner<Vec<ScannedReplay>>;
 /// Whether the replay's local-side game is registered with the app. A
 /// replay with no recorded local game info can't be filtered on, so it's
 /// kept; one that names a game we don't have compiled in is hidden.
-fn local_game_registered(metadata: &tango_pvp::replay::Metadata) -> bool {
+fn local_game_registered(metadata: &tango_match::replay::Metadata) -> bool {
     match metadata.local_side.as_ref().and_then(|s| s.game_info.as_ref()) {
         None => true,
         Some(gi) => u8::try_from(gi.rom_variant)
@@ -64,7 +64,7 @@ pub fn scan_replays(path: &std::path::Path) -> Vec<ScannedReplay> {
                 continue;
             }
         };
-        let metadata = match tango_pvp::replay::read_metadata(&mut f) {
+        let metadata = match tango_match::replay::read_metadata(&mut f) {
             Ok((_version, m)) => m,
             Err(_) => continue,
         };
@@ -88,7 +88,7 @@ pub fn scan_replays(path: &std::path::Path) -> Vec<ScannedReplay> {
 /// this on a worker thread, never from the UI path.
 pub fn compute_stats(path: &std::path::Path) -> std::io::Result<ReplayStats> {
     let f = std::fs::File::open(path)?;
-    let replay = tango_pvp::replay::Replay::decode(f)?;
+    let replay = tango_match::replay::Replay::decode(f)?;
     Ok(ReplayStats {
         tick_count: replay.inputs.len() as u32,
         round_count: replay.round_starts.len() as u32,
@@ -115,17 +115,17 @@ pub fn compute_and_cache_match_stats(
     cache_path: std::path::PathBuf,
     replays_path: std::path::PathBuf,
     path: std::path::PathBuf,
-    on_progress: &mut dyn FnMut(u32, u32, &tango_pvp::analysis::StatsBuilder),
+    on_progress: &mut dyn FnMut(u32, u32, &tango_match::analysis::StatsBuilder),
     // Flipping this aborts the simulation mid-pass with a "cancelled"
     // error and nothing cached — used when a playback session's
     // prefetcher takes over the same analysis.
     cancel: &std::sync::atomic::AtomicBool,
-) -> anyhow::Result<tango_pvp::analysis::MatchStats> {
+) -> anyhow::Result<tango_match::analysis::MatchStats> {
     let f = std::fs::File::open(&path)?;
-    let replay = tango_pvp::replay::Replay::decode(f)?;
+    let replay = tango_match::replay::Replay::decode(f)?;
 
     let resolve =
-        |side: Option<&tango_pvp::replay::metadata::Side>| -> anyhow::Result<(crate::library::rom::GameRef, Vec<u8>)> {
+        |side: Option<&tango_match::replay::metadata::Side>| -> anyhow::Result<(crate::library::rom::GameRef, Vec<u8>)> {
             let gi = side
                 .and_then(|s| s.game_info.as_ref())
                 .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
@@ -165,16 +165,16 @@ pub fn compute_and_cache_match_stats(
 
 /// [`compute_and_cache_match_stats`]'s SIO-engine arm: orient the
 /// replay's local/remote sides back to absolute pair order and linearly
-/// re-simulate through [`tango_pvp::analysis::analyze`].
+/// re-simulate through [`tango_match::analysis::analyze`].
 fn analyze_replay(
-    replay: &tango_pvp::replay::Replay,
+    replay: &tango_match::replay::Replay,
     local_game: crate::library::rom::GameRef,
     local_rom: Vec<u8>,
     remote_game: crate::library::rom::GameRef,
     remote_rom: Vec<u8>,
-    on_progress: &mut dyn FnMut(u32, u32, &tango_pvp::analysis::StatsBuilder),
+    on_progress: &mut dyn FnMut(u32, u32, &tango_match::analysis::StatsBuilder),
     cancel: &std::sync::atomic::AtomicBool,
-) -> anyhow::Result<tango_pvp::analysis::MatchStats> {
+) -> anyhow::Result<tango_match::analysis::MatchStats> {
     let local_sio = local_game.pvp;
     let remote_sio = remote_game.pvp;
     let local_player = replay.local_player_index as usize;
@@ -190,7 +190,7 @@ fn analyze_replay(
             keys
         })
         .collect();
-    let (roms, saves, support): ([Vec<u8>; 2], [Vec<u8>; 2], [&dyn tango_pvp::GameSupport; 2]) = if local_player == 0 {
+    let (roms, saves, support): ([Vec<u8>; 2], [Vec<u8>; 2], [&dyn tango_match::GameSupport; 2]) = if local_player == 0 {
         (
             [local_rom.clone(), remote_rom],
             [replay.local_sram.clone(), replay.remote_sram.clone()],
@@ -203,8 +203,8 @@ fn analyze_replay(
             [remote_sio, local_sio],
         )
     };
-    tango_pvp::analysis::analyze(
-        tango_pvp::analysis::AnalyzeConfig {
+    tango_match::analysis::analyze(
+        tango_match::analysis::AnalyzeConfig {
             roms,
             saves,
             support,

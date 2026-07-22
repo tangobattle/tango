@@ -20,7 +20,7 @@ rennet.workspace = true
 tango-dataview = { path = "../tango-dataview" }
 tango-gamesupport = { path = "../tango-gamesupport" }
 tango-net-protocol = { path = "../tango-net-protocol" }
-tango-pvp = { path = "../tango-pvp" }
+tango-match = { path = "../tango-match" }
 tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "time", "rt", "net", "sync", "macros"] }

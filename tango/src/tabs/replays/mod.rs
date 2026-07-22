@@ -50,12 +50,12 @@ pub enum Message {
     /// An [`Effect::AnalyzeReplay`] re-simulation reporting a throttled
     /// partial result, rendered as a live chart that draws itself in
     /// while the analysis runs.
-    HpStatsPartial(std::path::PathBuf, tango_pvp::analysis::MatchStats),
+    HpStatsPartial(std::path::PathBuf, tango_match::analysis::MatchStats),
     /// An [`Effect::AnalyzeReplay`] re-simulation finished. `None` =
     /// analysis failed (missing ROM, undecodable) — clears the pending
     /// marker so a later re-focus can retry (e.g. after the user
     /// installs the ROM).
-    HpStatsLoaded(std::path::PathBuf, Option<tango_pvp::analysis::MatchStats>),
+    HpStatsLoaded(std::path::PathBuf, Option<tango_match::analysis::MatchStats>),
     SaveViewAction(save_view::Action),
     /// Used by Tasks that need a Message to return but want no
     /// state mutation. Currently: the user dismissed the Save As
@@ -159,7 +159,7 @@ pub struct ReplaysState {
 
 /// A replay's match stats, cooked for drawing (see
 /// [`widgets::cook_hp_rounds`]). Built once per replay when its
-/// [`tango_pvp::analysis::MatchStats`] arrive.
+/// [`tango_match::analysis::MatchStats`] arrive.
 pub struct HpChart {
     pub rounds: Vec<widgets::CookedHpRound>,
     /// The match-wide HP scale the traces were normalized against — the
@@ -169,7 +169,7 @@ pub struct HpChart {
 
 impl HpChart {
     fn new(
-        stats: &tango_pvp::analysis::MatchStats,
+        stats: &tango_match::analysis::MatchStats,
         loaded: Option<&crate::selection::Loaded>,
         planned: Option<&[u32]>,
     ) -> Self {
@@ -300,7 +300,7 @@ impl ReplaysState {
                         self.hp_charts.insert(
                             p.clone(),
                             HpChart::new(
-                                &tango_pvp::analysis::MatchStats { rounds: vec![] },
+                                &tango_match::analysis::MatchStats { rounds: vec![] },
                                 self.loaded.as_ref(),
                                 Some(&self.loaded_round_ticks),
                             ),
@@ -399,7 +399,7 @@ impl ReplaysState {
         }
         let res = (|| -> anyhow::Result<(crate::selection::Loaded, Vec<u32>)> {
             let f = std::fs::File::open(&path)?;
-            let replay = tango_pvp::replay::Replay::decode(f)?;
+            let replay = tango_match::replay::Replay::decode(f)?;
             let round_ticks = replay.round_ranges().map(|r| r.len() as u32).collect();
             let loaded = crate::selection::Loaded::for_replay_local(scanners, config, &replay)?;
             Ok((loaded, round_ticks))
@@ -774,7 +774,7 @@ fn replay_detail<'a>(
     let md = &r.metadata;
     let ts_str = format_ts(md.ts, "%Y-%m-%d %H:%M:%S %z");
 
-    let row_for_side = |label: String, side: Option<&tango_pvp::replay::metadata::Side>| -> Element<'static, Message> {
+    let row_for_side = |label: String, side: Option<&tango_match::replay::metadata::Side>| -> Element<'static, Message> {
         let nick = side.map(|s| s.nickname.clone()).unwrap_or_default();
         let gi = side.and_then(|s| s.game_info.as_ref());
         let game_line = gi

@@ -91,8 +91,8 @@ pub use tango_net_protocol::data::{MAX_QUEUE_LENGTH, RECONNECT_QUEUE_LENGTH};
 // doesn't drag in the emulator stack; this crate sees both, so a drift
 // becomes a build failure here.
 const _: () = assert!(
-    tango_net_protocol::data::JOYFLAGS_MASK == tango_pvp::input::JOYFLAGS_MASK,
-    "tango-net-protocol's JOYFLAGS_MASK drifted from tango-pvp's"
+    tango_net_protocol::data::JOYFLAGS_MASK == tango_match::input::JOYFLAGS_MASK,
+    "tango-net-protocol's JOYFLAGS_MASK drifted from tango-match's"
 );
 
 /// Send-pump queue depth. Deeper than the unacked-local-input cap so that
@@ -113,7 +113,7 @@ const MAX_RTT_SAMPLES: usize = MAX_QUEUE_LENGTH;
 /// advantage at send time — how far its local input leads the remote input
 /// it has received (the input queue's signed lead). The receiver subtracts
 /// the advantage from its own to get the raw skew that drives the time-sync
-/// throttler ([`tango_pvp::Throttler`]). Tick is positional — seq order on
+/// throttler ([`tango_match::Throttler`]). Tick is positional — seq order on
 /// the wire, never embedded.
 #[derive(Clone, Debug)]
 pub struct Input {
@@ -224,7 +224,7 @@ impl InMatchTx {
     pub async fn send_input(&self, joyflags: u16, tick_advantage: i16) -> std::io::Result<()> {
         self.send_frame_with(move |out| {
             out.push_with_meta(
-                protocol::Element::Input(joyflags & tango_pvp::input::JOYFLAGS_MASK),
+                protocol::Element::Input(joyflags & tango_match::input::JOYFLAGS_MASK),
                 protocol::Meta { tick_advantage },
             );
         })

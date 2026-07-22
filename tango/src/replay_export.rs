@@ -1,5 +1,5 @@
 //! Replay video export: re-simulates a recorded replay through
-//! [`tango_pvp::playback`] and pipes the frames + audio through ffmpeg
+//! [`tango_match::playback`] and pipes the frames + audio through ffmpeg
 //! subprocesses into a video file. Fully synchronous — the app runs it on a
 //! dedicated thread ([`crate::app`]'s `spawn_replay_export`); the replays
 //! tab's inline panel ([`crate::tabs::replays`]) owns the [`Canceller`] and
@@ -327,8 +327,8 @@ pub struct Clip {
     /// A savestate restore replaces the priming-time pokes, so
     /// callers wanting `Settings::disable_bgm` honored must pass
     /// `None` and eat the full re-sim.
-    pub snapshot: Option<Arc<tango_pvp::playback::Snapshot>>,
-    /// Inter-round transition ticks ([`tango_pvp::replay::Replay`]'s
+    pub snapshot: Option<Arc<tango_match::playback::Snapshot>>,
+    /// Inter-round transition ticks ([`tango_match::replay::Replay`]'s
     /// `round_starts` minus the leading 0, or the player's discovered
     /// boundaries for recordings that predate the markers). The round
     /// ordinal at any tick — for `rounds_mask` indexing and chapter
@@ -490,7 +490,7 @@ impl EncodePipeline {
     }
 }
 
-/// Export an SIO replay ([`tango_pvp::replay::VERSION`]): one linear
+/// Export an SIO replay ([`tango_match::replay::VERSION`]): one linear
 /// pair re-sim produces both perspectives at once, so the two-sided
 /// layout is a compose of the two framebuffers rather than a second
 /// simulation. A tick reaches the encoders when it's inside `clip`'s
@@ -504,7 +504,7 @@ impl EncodePipeline {
 /// to "Round N" past the end).
 #[allow(clippy::too_many_arguments)]
 pub fn export(
-    config: &tango_pvp::playback::BootConfig,
+    config: &tango_match::playback::BootConfig,
     inputs: &[[u32; 2]],
     local_player: usize,
     rounds_mask: &[bool],
@@ -530,8 +530,8 @@ pub fn export(
 
     // Boot + prime. This is ffmpeg-free but bounded (~a few hundred
     // ticks), so a cancel lands at the next loop check.
-    let lifecycle = tango_pvp::telemetry::LifecycleSink::new();
-    let mut pb = tango_pvp::playback::Playback::new(config, Arc::new(inputs.to_vec()), &lifecycle)?;
+    let lifecycle = tango_match::telemetry::LifecycleSink::new();
+    let mut pb = tango_match::playback::Playback::new(config, Arc::new(inputs.to_vec()), &lifecycle)?;
     // Drop the audio priming piled up (nothing drained during boot).
     for i in 0..2 {
         pb.pair_mut().core_mut(i).audio_buffer().clear();

@@ -22,7 +22,7 @@
 //! per-button optimal mask computed from the corpus itself at horizon `d`:
 //! repeat a button iff it flips over `d` ticks less often than it's held.
 //!
-//! Usage: cargo run --release -p tango-pvp --example predictor-eval [-- <replay file/dir>...]
+//! Usage: cargo run --release -p tango-match --example predictor-eval [-- <replay file/dir>...]
 //! (defaults to ~/Documents/Tango/replays)
 
 use std::cell::Cell;
@@ -78,7 +78,7 @@ struct EvalWorld {
 }
 
 impl getgud::World for EvalWorld {
-    type Input = tango_pvp::input::Input;
+    type Input = tango_match::input::Input;
     type State = u32;
     type Error = std::convert::Infallible;
 
@@ -98,7 +98,7 @@ impl getgud::World for EvalWorld {
     }
 
     fn predict(&self, last: &Self::Input) -> Self::Input {
-        tango_pvp::input::Input {
+        tango_match::input::Input {
             joyflags: last.joyflags & self.mask,
         }
     }
@@ -176,7 +176,7 @@ fn run_round(local: &[u16], remote: &[u16], depth: u32, mask: u16) -> RunAgg {
     let steps = Rc::new(Cell::new(0u64));
     let mut session = getgud::Session::new(getgud::SessionParams {
         present_delay: 0,
-        initial_remotes: vec![tango_pvp::input::Input { joyflags: 0 }],
+        initial_remotes: vec![tango_match::input::Input { joyflags: 0 }],
         initial_state: 0u32,
         world: EvalWorld {
             mask,
@@ -192,7 +192,7 @@ fn run_round(local: &[u16], remote: &[u16], depth: u32, mask: u16) -> RunAgg {
         while delivered + lag <= t {
             session.add_remote_input(
                 0,
-                tango_pvp::input::Input {
+                tango_match::input::Input {
                     joyflags: remote[delivered],
                 },
                 0,
@@ -201,7 +201,7 @@ fn run_round(local: &[u16], remote: &[u16], depth: u32, mask: u16) -> RunAgg {
         }
         let (tick, tip_remote) = {
             let frame = session
-                .advance(tango_pvp::input::Input { joyflags: local[t] })
+                .advance(tango_match::input::Input { joyflags: local[t] })
                 .unwrap();
             (frame.tick, frame.remotes[0].joyflags)
         };
@@ -292,7 +292,7 @@ fn load_corpus(paths: &[std::path::PathBuf]) -> Corpus {
     for path in &files {
         let replay = match std::fs::File::open(path)
             .map_err(std::io::Error::from)
-            .and_then(|f| tango_pvp::replay::Replay::decode(f))
+            .and_then(|f| tango_match::replay::Replay::decode(f))
         {
             Ok(replay) => replay,
             Err(e) => {

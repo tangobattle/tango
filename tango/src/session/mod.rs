@@ -261,7 +261,7 @@ pub struct MatchResults {
 /// `[start, end)` x spans where the custom screen stood open. Empty when the
 /// round produced no HP samples (torn down mid-intro).
 pub struct RoundCard {
-    pub outcome: tango_pvp::analysis::BattleOutcome,
+    pub outcome: tango_match::analysis::BattleOutcome,
     pub trace: Vec<(f32, f32, f32)>,
     pub custom: Vec<(f32, f32)>,
     /// Chip-use events per side (`[you, opponent]`), cooked for the
@@ -1056,9 +1056,9 @@ pub fn build_playback(
     stats_job: Option<replay::PrefetchStatsJob>,
 ) -> anyhow::Result<(replay::ReplaySession, Option<audio::Binding>)> {
     let f = std::fs::File::open(path)?;
-    let replay = std::sync::Arc::new(tango_pvp::replay::Replay::decode(f)?);
+    let replay = std::sync::Arc::new(tango_match::replay::Replay::decode(f)?);
     let patches_path = config.patches_path();
-    let resolve_rom = |side: Option<&tango_pvp::replay::metadata::Side>| -> anyhow::Result<(
+    let resolve_rom = |side: Option<&tango_match::replay::metadata::Side>| -> anyhow::Result<(
         &'static game::Game,
         std::sync::Arc<Vec<u8>>,
     )> {

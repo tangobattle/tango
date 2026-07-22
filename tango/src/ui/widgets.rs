@@ -2315,11 +2315,11 @@ pub fn hp_opponent_color(_theme: &Theme) -> iced::Color {
 }
 
 /// The list-row / results-card mark for a round outcome.
-pub fn outcome_mark(outcome: tango_pvp::analysis::BattleOutcome) -> (Icon, fn(&Theme) -> iced::widget::text::Style) {
+pub fn outcome_mark(outcome: tango_match::analysis::BattleOutcome) -> (Icon, fn(&Theme) -> iced::widget::text::Style) {
     match outcome {
-        tango_pvp::analysis::BattleOutcome::Win => (Icon::Check, success_text_style),
-        tango_pvp::analysis::BattleOutcome::Loss => (Icon::X, danger_text_style),
-        tango_pvp::analysis::BattleOutcome::Draw => (Icon::Minus, muted_text_style),
+        tango_match::analysis::BattleOutcome::Win => (Icon::Check, success_text_style),
+        tango_match::analysis::BattleOutcome::Loss => (Icon::X, danger_text_style),
+        tango_match::analysis::BattleOutcome::Draw => (Icon::Minus, muted_text_style),
     }
 }
 
@@ -2347,7 +2347,7 @@ pub struct HpGraphRound<'a> {
     /// shows the icon + name of the tick nearest the cursor. Empty on
     /// games whose traps don't report chips.
     pub chip_uses: [&'a [ChipUseMark]; 2],
-    pub outcome: Option<tango_pvp::analysis::BattleOutcome>,
+    pub outcome: Option<tango_match::analysis::BattleOutcome>,
     /// Tick span of the round — its share of the timeline's width.
     pub weight: f32,
 }
@@ -2384,7 +2384,7 @@ fn chip_use_marks(
         .collect()
 }
 
-/// A round of [`tango_pvp::analysis::MatchStats`] cooked for
+/// A round of [`tango_match::analysis::MatchStats`] cooked for
 /// [`hp_match_graph`]: the outcome carried through, everything else
 /// normalized — trace `(x, you, opponent)` with x 0..=1 over the round's
 /// span and HP against the match-wide maximum, custom spans and
@@ -2392,7 +2392,7 @@ fn chip_use_marks(
 /// points (torn down mid-intro) cook to an empty trace with weight 0.
 #[derive(Clone)]
 pub struct CookedHpRound {
-    pub outcome: Option<tango_pvp::analysis::BattleOutcome>,
+    pub outcome: Option<tango_match::analysis::BattleOutcome>,
     pub trace: Vec<(f32, f32, f32)>,
     pub custom: Vec<(f32, f32)>,
     pub chip_uses: [Vec<ChipUseMark>; 2],
@@ -2420,7 +2420,7 @@ pub struct CookedHpRound {
 /// of continually rescaling it. Without a plan, each round anchors at
 /// its own first sample.
 pub fn cook_hp_rounds(
-    stats: &tango_pvp::analysis::MatchStats,
+    stats: &tango_match::analysis::MatchStats,
     loadeds: [Option<&crate::selection::Loaded>; 2],
     planned: Option<&[u32]>,
 ) -> (Vec<CookedHpRound>, f32) {
@@ -2888,8 +2888,8 @@ pub fn hp_match_graph<'a, M: 'a>(
                 );
                 if local_sweep >= 1.0 {
                     let tint = match round.outcome {
-                        Some(tango_pvp::analysis::BattleOutcome::Win) => Some(palette.success.base.color),
-                        Some(tango_pvp::analysis::BattleOutcome::Loss) => Some(palette.danger.base.color),
+                        Some(tango_match::analysis::BattleOutcome::Win) => Some(palette.success.base.color),
+                        Some(tango_match::analysis::BattleOutcome::Loss) => Some(palette.danger.base.color),
                         _ => None,
                     };
                     if let Some(color) = tint {

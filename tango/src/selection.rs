@@ -341,7 +341,7 @@ impl Loaded {
     pub fn for_replay_local(
         scanners: &crate::app::Scanners,
         config: &crate::config::Config,
-        replay: &tango_pvp::replay::Replay,
+        replay: &tango_match::replay::Replay,
     ) -> anyhow::Result<Self> {
         let side = replay
             .metadata

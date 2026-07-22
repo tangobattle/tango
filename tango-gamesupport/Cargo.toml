@@ -8,7 +8,7 @@ license = "LGPL-3.0-or-later"
 crc32fast.workspace = true
 image.workspace = true
 tango-dataview = { path = "../tango-dataview" }
-tango-pvp = { path = "../tango-pvp" }
+tango-match = { path = "../tango-match" }
 thiserror.workspace = true
 
 [lints]

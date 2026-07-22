@@ -30,7 +30,7 @@ use std::io;
 /// The 10-bit GBA joypad mask inputs are packed under. Kept as this
 /// crate's own constant so the pure codec crate doesn't drag in the
 /// emulator stack; the tango bin crate const-asserts it equal to
-/// `tango_pvp::input::JOYFLAGS_MASK` (it sees both crates).
+/// `tango_match::input::JOYFLAGS_MASK` (it sees both crates).
 pub const JOYFLAGS_MASK: u16 = 0x03ff;
 
 /// The reconnect watchdog's trip depth: local inputs buffered with

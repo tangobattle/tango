@@ -41,7 +41,7 @@ struct ExportPrep {
     local_rom: Vec<u8>,
     remote_game: crate::library::rom::GameRef,
     remote_rom: Vec<u8>,
-    replay: tango_pvp::replay::Replay,
+    replay: tango_match::replay::Replay,
 }
 
 #[derive(Clone)]
@@ -320,8 +320,8 @@ impl App {
         // duplicate worker; the prefetch stream's completion clears it.
         self.replays.hp_pending.insert(path.to_path_buf());
 
-        let (partial_tx, partial_rx) = futures::channel::mpsc::unbounded::<tango_pvp::analysis::MatchStats>();
-        let done: std::sync::Arc<std::sync::Mutex<Option<tango_pvp::analysis::MatchStats>>> = Default::default();
+        let (partial_tx, partial_rx) = futures::channel::mpsc::unbounded::<tango_match::analysis::MatchStats>();
+        let done: std::sync::Arc<std::sync::Mutex<Option<tango_match::analysis::MatchStats>>> = Default::default();
         let job = session::replay::PrefetchStatsJob {
             partial_tx,
             done: done.clone(),

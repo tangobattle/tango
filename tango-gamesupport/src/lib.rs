@@ -6,7 +6,7 @@
 //! - ROM identity (`family`/`variant`, `rom_code`/`revision`, `crc32`,
 //!   `region`) — formerly the `tango-gamedb` crate.
 //! - The save/ROM parsers (`parse_save_fn` / `load_rom_assets_fn`).
-//! - The PvP engine support ([`tango_pvp::GameSupport`]).
+//! - The PvP engine support ([`tango_match::GameSupport`]).
 //! - The app-facing presentation bits (`match_types`, `save_templates`,
 //!   `logo_image`, `background`).
 //!
@@ -111,7 +111,7 @@ pub struct Game {
 
     /// SIO-engine support (menu priming + RAM-poll telemetry) for this
     /// ROM. Live netplay and SIO-replay playback both run on it.
-    pub pvp: &'static (dyn tango_pvp::GameSupport + Send + Sync),
+    pub pvp: &'static (dyn tango_match::GameSupport + Send + Sync),
 
     /// Length-per-mode list. Entry `i` is how many subtypes mode `i` has —
     /// e.g. BN6 is `[1, 1]`. Drives the match-type pick_list in the lobby.

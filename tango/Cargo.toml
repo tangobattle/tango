@@ -52,7 +52,7 @@ discord-ipc = { git = "https://github.com/tangobattle/discord-ipc" }
 mgba.workspace = true
 rennet.workspace = true
 tango-net-protocol = { path = "../tango-net-protocol" }
-tango-pvp = { path = "../tango-pvp" }
+tango-match = { path = "../tango-match" }
 tango-session = { path = "../tango-session" }
 tango-filesync = { git = "https://github.com/tangobattle/tango-filesync" }
 tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }

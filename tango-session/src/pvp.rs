@@ -3,7 +3,7 @@
 //! [`crate::singleplayer::SinglePlayerSession`].
 //!
 //! Both games run locally as an [`mgba_siolink::Link`] pair linked through
-//! mgba's lockstep SIO driver (see [`tango_pvp::sio`]): the games speak
+//! mgba's lockstep SIO driver: the games speak
 //! their *real* link protocol over the emulated cable, and the pair is
 //! the rollback unit. There is no mgba thread, no traps, and no shadow —
 //! a dedicated drive thread paces the [`Match`] at the GBA frame
@@ -22,8 +22,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
-use tango_pvp::engine::{Match, MatchConfig};
-use tango_pvp::telemetry;
+use tango_match::engine::{Match, MatchConfig};
+use tango_match::telemetry;
 
 /// GBA video framerate in frames per second.
 pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
@@ -169,7 +169,7 @@ pub struct PvpSession {
     /// thread holds a clone), so the post-match results snapshot and the
     /// sidecar write can read it during teardown regardless of how far the
     /// background tasks have already wound down.
-    stats: Arc<Mutex<tango_pvp::analysis::StatsBuilder>>,
+    stats: Arc<Mutex<tango_match::analysis::StatsBuilder>>,
     /// Where this match's replay is being recorded, or `None` if the writer
     /// failed to open. The post-match results screen offers to play it back.
     pub replay_path: Option<std::path::PathBuf>,
@@ -333,7 +333,7 @@ impl PvpSession {
 
         // Usage semantics can depend on the applied patch (exe45's PvP
         // patch), so they're probed off the patched ROM.
-        let stats = Arc::new(Mutex::new(tango_pvp::analysis::StatsBuilder::new(
+        let stats = Arc::new(Mutex::new(tango_match::analysis::StatsBuilder::new(
             local_game.pvp.chip_semantics(local_rom.as_ref()),
             local_game.pvp.counts_buster(local_rom.as_ref()),
         )));
@@ -367,7 +367,7 @@ impl PvpSession {
         // single-threaded by design). Construction happens on the thread —
         // priming is a couple seconds of emulation — and readiness comes
         // back over a oneshot so `new` can fail cleanly.
-        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<anyhow::Result<tango_pvp::LinkHandle>>();
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<anyhow::Result<tango_match::LinkHandle>>();
         {
             let boot = BootPieces {
                 roms,
@@ -572,7 +572,7 @@ impl PvpSession {
     /// The match stats aggregated so far, in play order. Read at teardown
     /// for the post-match results screen; rounds the match never finished
     /// (mid-round disconnect) simply aren't in it.
-    pub fn stats_snapshot(&self) -> tango_pvp::analysis::MatchStats {
+    pub fn stats_snapshot(&self) -> tango_match::analysis::MatchStats {
         self.stats.lock().unwrap().snapshot()
     }
 
@@ -672,7 +672,7 @@ impl crate::ActiveSession for PvpSession {
 #[derive(Clone, Copy, Debug)]
 pub struct RoundStats {
     /// Real-time clock skew the throttler reacts to (see
-    /// [`tango_pvp::Throttler`]). The symmetric network term cancels
+    /// [`tango_match::Throttler`]). The symmetric network term cancels
     /// in the difference, so this reads ~0 at clock sync, positive when
     /// we're leading (and being slowed), and negative when the peer is
     /// leading.
@@ -714,7 +714,7 @@ impl Drop for PvpSession {
 struct BootPieces {
     roms: [Vec<u8>; 2],
     saves: [Vec<u8>; 2],
-    supports: [&'static (dyn tango_pvp::GameSupport + Send + Sync); 2],
+    supports: [&'static (dyn tango_match::GameSupport + Send + Sync); 2],
     match_type: (u8, u8),
     rng_seed: [u8; 16],
     rtc: std::time::SystemTime,
@@ -734,8 +734,8 @@ struct DriveContext {
     event_rx: std::sync::mpsc::Receiver<crate::net::data::Input>,
     sender: crate::net::PvpSender,
     in_match: crate::net::InMatchTx,
-    replay_writer: Option<tango_pvp::replay::Writer>,
-    stats: Arc<Mutex<tango_pvp::analysis::StatsBuilder>>,
+    replay_writer: Option<tango_match::replay::Writer>,
+    stats: Arc<Mutex<tango_match::analysis::StatsBuilder>>,
     stats_path: Option<std::path::PathBuf>,
     tps_counter: Arc<Mutex<crate::stats::Counter>>,
     vbuf: Arc<Mutex<Vec<u8>>>,
@@ -748,7 +748,7 @@ impl DriveContext {
     fn run(
         mut self,
         pieces: BootPieces,
-        ready_tx: tokio::sync::oneshot::Sender<anyhow::Result<tango_pvp::LinkHandle>>,
+        ready_tx: tokio::sync::oneshot::Sender<anyhow::Result<tango_match::LinkHandle>>,
     ) {
         let mut match_ = match Match::new(MatchConfig {
             roms: pieces.roms,
@@ -775,7 +775,7 @@ impl DriveContext {
             let _ = w.start_round();
         }
 
-        let mut throttler = tango_pvp::Throttler::new();
+        let mut throttler = tango_match::Throttler::new();
         let mut next_tick = std::time::Instant::now();
         // (tick, [p0, p1]) confirmed input pairs not yet folded into
         // stats (the telemetry for those ticks may confirm later).
@@ -857,7 +857,7 @@ impl DriveContext {
             let skew = match_.skew();
             self.metrics.skew.store(skew, Ordering::Relaxed);
 
-            let keys = self.joyflags.load(Ordering::Relaxed) & tango_pvp::input::JOYFLAGS_MASK as u32;
+            let keys = self.joyflags.load(Ordering::Relaxed) & tango_match::input::JOYFLAGS_MASK as u32;
             let (outgoing, report) = match match_.advance(keys) {
                 Ok(r) => r,
                 Err(e) => {
@@ -927,8 +927,8 @@ impl DriveContext {
                     if let Err(e) = w.write_input(
                         self.local_player as u8,
                         &(
-                            tango_pvp::input::Input { joyflags: local },
-                            tango_pvp::input::Input { joyflags: remote },
+                            tango_match::input::Input { joyflags: local },
+                            tango_match::input::Input { joyflags: remote },
                         ),
                     ) {
                         log::warn!("pvp: replay write failed (recording stops): {e}");
@@ -1021,8 +1021,8 @@ impl DriveContext {
                 let _ = w.write_input(
                     self.local_player as u8,
                     &(
-                        tango_pvp::input::Input { joyflags: local },
-                        tango_pvp::input::Input { joyflags: remote },
+                        tango_match::input::Input { joyflags: local },
+                        tango_match::input::Input { joyflags: remote },
                     ),
                 );
             }
@@ -1044,7 +1044,7 @@ impl DriveContext {
     }
 
     /// Fold a batch of confirmed telemetry into the stats builder (the
-    /// shared [`tango_pvp::analysis::fold_confirmed`], so live stats
+    /// shared [`tango_match::analysis::fold_confirmed`], so live stats
     /// and offline re-analysis stay byte-equivalent) and drive the round
     /// lifecycle off the events.
     fn fold_confirmed_telemetry(
@@ -1054,7 +1054,7 @@ impl DriveContext {
         pending_buttons: &mut std::collections::VecDeque<(u32, [u32; 2])>,
     ) {
         let mut stats = self.stats.lock().unwrap();
-        tango_pvp::analysis::fold_confirmed(&mut stats, self.local_player, samples, events, &mut |tick| {
+        tango_match::analysis::fold_confirmed(&mut stats, self.local_player, samples, events, &mut |tick| {
             // Discard input pairs older than this sample; the front pair
             // at the sample's tick carries its buttons. Samples arrive
             // tick-ascending, so this never skips a later sample's pair.
@@ -1316,7 +1316,7 @@ fn build_replay_writer(
     local_player_index: u8,
     local_save: &(dyn tango_dataview::save::Save + Send + Sync),
     remote_save: &(dyn tango_dataview::save::Save + Send + Sync),
-) -> anyhow::Result<(tango_pvp::replay::Writer, std::path::PathBuf)> {
+) -> anyhow::Result<(tango_match::replay::Writer, std::path::PathBuf)> {
     let link_code = &pre_match.link_code;
     let local_settings = &pre_match.local_settings;
     let remote_settings = &pre_match.remote_settings;
@@ -1355,7 +1355,7 @@ fn build_replay_writer(
         .open(&replay_filename)?;
     let local_sram = local_save.to_sram_dump();
     let remote_sram = remote_save.to_sram_dump();
-    let writer = tango_pvp::replay::Writer::new(
+    let writer = tango_match::replay::Writer::new(
         // Buffered: write_input runs on the drive thread once per
         // confirmed tick, and unbuffered it costs a few small write
         // syscalls each time. The format already recovers truncated tails,
@@ -1363,8 +1363,8 @@ fn build_replay_writer(
         // incomplete) replay changes nothing; finish() flushes.
         std::io::BufWriter::new(file),
         // SIO-engine stream: one continuous run of pair ticks.
-        tango_pvp::replay::VERSION,
-        tango_pvp::replay::Metadata {
+        tango_match::replay::VERSION,
+        tango_match::replay::Metadata {
             // The negotiated match clock, not the local wall clock: both
             // cores' cart RTC is pinned to this instant, and playback
             // re-primes pinned to `metadata.ts`, so recording the same
@@ -1372,15 +1372,15 @@ fn build_replay_writer(
             // peers' replays of one match carry the identical ts.
             ts: pre_match.match_ts,
             link_code: link_code.clone(),
-            local_side: Some(tango_pvp::replay::metadata::Side {
+            local_side: Some(tango_match::replay::metadata::Side {
                 nickname: local_settings.nickname.clone(),
-                game_info: Some(tango_pvp::replay::metadata::GameInfo {
+                game_info: Some(tango_match::replay::metadata::GameInfo {
                     rom_family: local_gi.family_and_variant.0.clone(),
                     rom_variant: local_gi.family_and_variant.1 as u32,
                     patch: local_gi
                         .patch
                         .as_ref()
-                        .map(|p| tango_pvp::replay::metadata::game_info::Patch {
+                        .map(|p| tango_match::replay::metadata::game_info::Patch {
                             name: p.name.clone(),
                             version: p.version.to_string(),
                         }),
@@ -1391,15 +1391,15 @@ fn build_replay_writer(
                 reveal_setup: !local_settings.blind_setup,
                 client_cert_fingerprint_sha256: pre_match.local_client_cert_fingerprint.clone(),
             }),
-            remote_side: Some(tango_pvp::replay::metadata::Side {
+            remote_side: Some(tango_match::replay::metadata::Side {
                 nickname: remote_settings.nickname.clone(),
-                game_info: Some(tango_pvp::replay::metadata::GameInfo {
+                game_info: Some(tango_match::replay::metadata::GameInfo {
                     rom_family: remote_gi.family_and_variant.0.clone(),
                     rom_variant: remote_gi.family_and_variant.1 as u32,
                     patch: remote_gi
                         .patch
                         .as_ref()
-                        .map(|p| tango_pvp::replay::metadata::game_info::Patch {
+                        .map(|p| tango_match::replay::metadata::game_info::Patch {
                             name: p.name.clone(),
                             version: p.version.to_string(),
                         }),
