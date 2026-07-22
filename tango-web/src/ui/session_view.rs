@@ -1151,8 +1151,10 @@ const METRIC_HISTORY_LEN: usize = 180;
 
 /// The PvP telemetry deck (the desktop's bottom-right chip + panel):
 /// collapsed, a skew-toned signal chip; expanded, the five metric cards
-/// with sparklines and the live frame-delay slider. Gated on the first
-/// pong, like the desktop.
+/// with sparklines and the live frame-delay slider. Visible from match
+/// start — the desktop's `latency()` reads `Some(ZERO)` until the
+/// first sample, so its panel never waits on a pong; only a dropped
+/// link hides it.
 #[component]
 fn TelemetryDeck() -> Element {
     let Ctx {
@@ -1174,10 +1176,11 @@ fn TelemetryDeck() -> Element {
     }) else {
         return rsx! {};
     };
-    // Nothing to show before the first pong.
-    let Some(ping) = stats.rtt_ms else {
-        return rsx! {};
-    };
+    // The desktop's pre-first-sample reading: zero, not hidden. (An
+    // earlier gate here returned nothing until the first ack-derived
+    // sample — which hid the deck for the whole match if sampling ever
+    // hiccuped, and was stricter than the desktop.)
+    let ping = stats.rtt_ms.unwrap_or(0.0);
 
     // One sample per simulated tick, newest pinned right.
     {
