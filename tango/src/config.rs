@@ -326,6 +326,15 @@ impl Config {
     pub fn saves_path(&self) -> std::path::PathBuf {
         self.data_path.join("saves")
     }
+    /// The configured patch repo, or the default when the setting is
+    /// blank (which is how the settings field spells "use the default").
+    pub fn patch_repo_url(&self) -> String {
+        if self.patch_repo.is_empty() {
+            DEFAULT_PATCH_REPO.to_string()
+        } else {
+            self.patch_repo.clone()
+        }
+    }
     pub fn patches_path(&self) -> std::path::PathBuf {
         self.data_path.join("patches")
     }

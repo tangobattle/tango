@@ -1188,7 +1188,7 @@ pub async fn spawn_pvp(
         // hand both straight to `from_patched_rom` — no second BPS apply.
         let applied_patch = remote_gi.patch.as_ref().and_then(|p| {
             let patches = scanners.patches.read();
-            let version_meta = patches.get(&p.name)?.versions.get(&p.version).cloned()?;
+            let version_meta = patches.version(&p.name, &p.version).cloned()?;
             Some(crate::selection::AppliedPatch {
                 name: p.name.clone(),
                 version: p.version.clone(),
@@ -1218,7 +1218,7 @@ pub async fn spawn_pvp(
         // instead of re-applying the BPS patch.
         let applied_patch = local_patch.as_ref().and_then(|(name, version)| {
             let patches = scanners.patches.read();
-            let version_meta = patches.get(name)?.versions.get(version).cloned()?;
+            let version_meta = patches.version(name, version).cloned()?;
             Some(crate::selection::AppliedPatch {
                 name: name.clone(),
                 version: version.clone(),
@@ -1287,8 +1287,12 @@ pub fn spawn_singleplayer(
     } else {
         raw
     };
-    let (session, audio) =
-        singleplayer::SinglePlayerSession::new(game, std::sync::Arc::new(rom_bytes), &loaded.save_path, audio_binder.sample_rate())?;
+    let (session, audio) = singleplayer::SinglePlayerSession::new(
+        game,
+        std::sync::Arc::new(rom_bytes),
+        &loaded.save_path,
+        audio_binder.sample_rate(),
+    )?;
     Ok((session, bind_session_audio(audio_binder, audio)))
 }
 

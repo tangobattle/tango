@@ -21,7 +21,6 @@
 use crate::layout::{RomTarget, DEFAULT_TEMPLATE, MANIFEST_PATH, README_PATH, ROMS_DIR, SAVES_DIR};
 use crate::manifest::Manifest;
 use crate::Error;
-use sha2::Digest;
 use std::collections::BTreeMap;
 use std::io::{Seek, Write};
 use std::path::Path;
@@ -151,7 +150,7 @@ impl Builder {
         Ok(Built {
             path,
             size: raw.len() as u64,
-            sha256: sha256_hex(&raw),
+            sha256: crate::sha256_hex(&raw),
         })
     }
 }
@@ -214,16 +213,6 @@ fn list_dir(dir: &Path) -> Result<Vec<(std::path::PathBuf, String)>, Error> {
     }
     out.sort();
     Ok(out)
-}
-
-pub fn sha256_hex(bytes: &[u8]) -> String {
-    let digest = sha2::Sha256::digest(bytes);
-    let mut out = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        use std::fmt::Write;
-        let _ = write!(out, "{byte:02x}");
-    }
-    out
 }
 
 #[cfg(test)]

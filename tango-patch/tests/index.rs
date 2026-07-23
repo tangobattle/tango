@@ -48,7 +48,7 @@ fn the_hash_matches_the_package_on_disk() {
     let (_, entry) = index.latest("bn6_allstars").unwrap();
     let raw = std::fs::read(dir.path().join(&entry.path)).unwrap();
     assert_eq!(entry.size, raw.len() as u64);
-    assert_eq!(entry.sha256, tango_patch::bundle::sha256_hex(&raw));
+    assert_eq!(entry.sha256, tango_patch::sha256_hex(&raw));
 }
 
 #[test]

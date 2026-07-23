@@ -17,15 +17,15 @@ use crate::app::Scanners;
 use crate::i18n::t;
 use crate::library::game;
 use crate::library::rom;
-use tango_net_protocol::control::Settings;
 use crate::netplay::{self, Phase};
+use crate::session::pvp::suggest_frame_delay;
 use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
 use crate::ui::widgets;
 use iced::widget::{button, container, text};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
 use sweeten::widget::{column, row};
-use crate::session::pvp::suggest_frame_delay;
+use tango_net_protocol::control::Settings;
 use unic_langid::LanguageIdentifier;
 
 use super::{ready_button_style, Message, ReadyPalette};
@@ -320,6 +320,8 @@ impl<'a> Lobby<'a> {
                     Verdict::Compatible => t!(lang, "lobby-compat-ok"),
                     Verdict::MissingGame => t!(lang, "lobby-compat-missing-game"),
                     Verdict::MissingRom => t!(lang, "lobby-compat-missing-rom"),
+                    // Not a dead end: the app is already downloading it.
+                    Verdict::MissingPatch { .. } => t!(lang, "lobby-compat-fetching-patch"),
                     Verdict::DifferentVersions => t!(lang, "lobby-compat-version-mismatch"),
                     Verdict::DifferentMatchTypes => t!(lang, "lobby-compat-match-mismatch"),
                 };

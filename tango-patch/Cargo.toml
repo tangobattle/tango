@@ -40,7 +40,7 @@ clap = { workspace = true, optional = true }
 default = []
 package = ["dep:zip"]
 bundle = ["dep:zip", "dep:sha2"]
-index = ["dep:serde_json"]
+index = ["dep:serde_json", "dep:sha2"]
 cli = ["package", "bundle", "index", "dep:anyhow", "dep:clap"]
 
 [lints]

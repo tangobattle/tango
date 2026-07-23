@@ -90,7 +90,8 @@ lobby-pick-game-first = Pick a game first
 
 lobby-compat-ok = Compatible — ready to play.
 lobby-compat-missing-game = One side hasn't picked a game.
-lobby-compat-missing-rom = Game or patch isn't installed on both sides.
+lobby-compat-missing-rom = The other player's game isn't installed here.
+lobby-compat-fetching-patch = Downloading the patch for this match…
 lobby-compat-version-mismatch = Game versions don't match (different patch / ROM).
 lobby-compat-match-mismatch = Match type doesn't match.
 lobby-ready = Ready
@@ -283,10 +284,15 @@ replays-incomplete = incomplete
 play-you = You
 
 # Patches
-patches-update = Update
-patches-updating = Updating…
-patches-update-failed = Update failed: { $error }
-patches-open-folder = Open folder
+patches-refresh = Refresh
+patches-refreshing = Refreshing…
+patches-refresh-failed = Refresh failed: { $error }
+patches-install = Install
+patches-uninstall = Remove
+patches-installed = Installed
+patches-downloading = Downloading…
+patches-downloading-progress = Downloading… { $percent }%
+patches-reveal-package = Show package
 patches-favorite = Favorite
 patches-unfavorite = Unfavorite
 patches-search-placeholder = Search patches…
@@ -296,7 +302,10 @@ patches-details-authors = Authors:
 patches-details-license = License:
 patches-details-source = Source:
 patches-details-games = Supported games:
-patches-netplay-compatibility = Netplay compatibility:
+patches-netplay-compatibility = Netplay:
+patches-netplay-isolated = This version only
+patches-netplay-vanilla = Plays with the unpatched game
+patches-netplay-group = Plays with: { $group }
 
 # Settings panel
 settings-section-general = General
@@ -382,7 +391,7 @@ settings-matchmaking-endpoint = Matchmaking endpoint
 settings-data-folder = Data folder
 settings-data-folder-change = Change…
 settings-patch-repo = Patches repository
-settings-enable-patch-autoupdate = Automatically update patches in the background
+settings-enable-patch-autoupdate = Check for new patches in the background
 settings-enable-updater = Automatically check for app updates
 settings-allow-prerelease-upgrades = Include prereleases when checking for app updates
 settings-netplay-frame-delay = Frame delay

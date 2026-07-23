@@ -1,12 +1,14 @@
 use crate::app::Scanners;
 use crate::i18n::t;
 use crate::library::game;
+use crate::library::patch::{Catalog, Progress};
 use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::ui::widgets;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, scrollable, text};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
+use std::collections::HashMap;
 use sweeten::widget::{column, row, text_input};
 use unic_langid::LanguageIdentifier;
 
@@ -15,14 +17,27 @@ use unic_langid::LanguageIdentifier;
 /// light and dark themes, regardless of the configured accent.
 const FAVORITE_GOLD: iced::Color = iced::Color::from_rgb(1.0, 0.78, 0.0);
 
+/// A patch version, the unit everything here installs and removes.
+pub type VersionKey = (String, semver::Version);
+
 #[derive(Debug, Clone)]
 pub enum Message {
     Selected(String),
     VersionSelected(semver::Version),
-    OpenFolder(std::path::PathBuf),
+    RevealPackage(std::path::PathBuf),
     ReadmeLinkClicked(iced::widget::markdown::Uri),
-    Update,
-    UpdateFinished(Result<(), String>),
+    /// Re-fetch the repo index (metadata only).
+    Refresh,
+    RefreshFinished(Result<(), String>),
+    /// Download the selected version.
+    Install(VersionKey),
+    InstallProgress(VersionKey, u64, u64),
+    InstallFinished(VersionKey, Result<(), String>),
+    /// Delete an installed package. The index still lists it, so it can
+    /// be reinstalled.
+    Uninstall(VersionKey),
+    /// A README fetched for a version that isn't installed.
+    ReadmeFetched(VersionKey, Option<String>),
     /// Star / unstar a patch. The patches list sorts favorites to
     /// the top, and the Play tab's patch dropdown shows a ★ glyph
     /// next to favorite names.
@@ -36,9 +51,15 @@ pub struct PatchesState {
     pub selected: Option<String>,
     pub version: Option<semver::Version>,
     pub readme_items: Vec<iced::widget::markdown::Item>,
-    pub readme_cache_key: Option<(String, semver::Version)>,
-    pub updating: bool,
-    pub last_update_error: Option<String>,
+    pub readme_cache_key: Option<VersionKey>,
+    pub refreshing: bool,
+    pub last_error: Option<String>,
+    /// In-flight downloads, by version, as (downloaded, total) bytes.
+    pub downloads: HashMap<VersionKey, Progress>,
+    /// READMEs fetched for versions we haven't downloaded. `None` means
+    /// "asked, and the repo doesn't publish one" — cached either way so
+    /// selection doesn't re-request on every frame.
+    remote_readmes: HashMap<VersionKey, Option<String>>,
     /// Case-insensitive substring filter applied to the sidebar
     /// list (matches against patch name and title).
     pub search: String,
@@ -50,19 +71,27 @@ pub struct PatchesState {
 /// Side-effects bubble-up. See [`crate::tabs::replays::Effect`]
 /// for the rationale: pure state mutations stay in the module;
 /// anything that needs App-level collaborators (file system,
-/// browser open, async patch update, scanner refresh) is
-/// returned to be dispatched by the caller.
+/// browser open, async fetch, scanner refresh) is returned to be
+/// dispatched by the caller.
 #[derive(Debug)]
 pub enum Effect {
     /// `open::that(_)` — folder or http URL.
     OpenPath(String),
-    /// User clicked Update; App spawns `patch::update(url, root)`
-    /// and dispatches `Message::UpdateFinished` on completion.
-    /// Carries the repo URL + on-disk root.
-    StartUpdate { url: String, root: std::path::PathBuf },
-    /// Patch update finished cleanly — App should re-scan +
-    /// refresh loaded.
-    UpdateRescan,
+    /// Show a package in the file manager.
+    RevealPath(std::path::PathBuf),
+    /// Re-fetch the repo index. Cheap: metadata only, and conditional on
+    /// the stored ETag.
+    RefreshIndex,
+    /// Download and install a patch version.
+    Install(VersionKey),
+    /// Delete an installed package.
+    Uninstall(VersionKey),
+    /// Fetch the README the repo published for a version we don't have.
+    FetchReadme(VersionKey),
+    /// Something changed on disk — App should re-scan + refresh loaded.
+    Rescan,
+    /// A download failed — anything queued behind it should give up.
+    InstallFailed,
     /// Toggle the named patch's favorite status in `Config`.
     ToggleFavorite(String),
 }
@@ -70,53 +99,87 @@ pub enum Effect {
 impl PatchesState {
     /// Apply a tab message. See [`crate::tabs::replays::Effect`]
     /// for the side-effect surface convention.
-    pub fn update(&mut self, msg: Message, scanners: &Scanners, config: &crate::config::Config) -> Option<Effect> {
+    pub fn update(&mut self, msg: Message, scanners: &Scanners) -> Option<Effect> {
         match msg {
-            Message::Selected(p) => {
-                let v = scanners
-                    .patches
-                    .read()
-                    .get(&p)
-                    .and_then(|patch| patch.versions.keys().max().cloned());
-                if self.selected.as_ref() != Some(&p) {
+            Message::Selected(name) => {
+                let newest = scanners.patches.read().versions(&name).keys().next_back().cloned();
+                if self.selected.as_deref() != Some(name.as_str()) {
                     self.detail_enter.start(iced::time::Instant::now());
                 }
-                self.selected = Some(p);
-                self.version = v;
-                self.refresh_readme(scanners);
-                None
+                self.selected = Some(name);
+                self.version = newest;
+                self.refresh_readme(scanners)
             }
             Message::VersionSelected(v) => {
                 self.version = Some(v);
-                self.refresh_readme(scanners);
-                None
+                self.refresh_readme(scanners)
             }
-            Message::OpenFolder(p) => Some(Effect::OpenPath(p.display().to_string())),
+            Message::RevealPackage(p) => Some(Effect::RevealPath(p)),
             Message::ReadmeLinkClicked(url) => Some(Effect::OpenPath(url.to_string())),
-            Message::Update => {
-                if self.updating {
+            Message::Refresh => {
+                if self.refreshing {
                     return None;
                 }
-                self.updating = true;
-                self.last_update_error = None;
-                Some(Effect::StartUpdate {
-                    url: config.patch_repo.clone(),
-                    root: config.data_path.join("patches"),
-                })
+                self.refreshing = true;
+                self.last_error = None;
+                Some(Effect::RefreshIndex)
             }
-            Message::UpdateFinished(res) => {
-                self.updating = false;
+            Message::RefreshFinished(res) => {
+                self.refreshing = false;
                 match res {
-                    Ok(()) => {
-                        self.last_update_error = None;
-                        Some(Effect::UpdateRescan)
-                    }
+                    Ok(()) => Some(Effect::Rescan),
                     Err(e) => {
-                        log::warn!("patch update failed: {e}");
-                        self.last_update_error = Some(e);
+                        log::warn!("patch index refresh failed: {e}");
+                        self.last_error = Some(e);
                         None
                     }
                 }
+            }
+            Message::Install(key) => {
+                if self.downloads.contains_key(&key) {
+                    return None;
+                }
+                self.last_error = None;
+                self.downloads.insert(
+                    key.clone(),
+                    Progress {
+                        downloaded: 0,
+                        total: 0,
+                    },
+                );
+                Some(Effect::Install(key))
+            }
+            Message::InstallProgress(key, downloaded, total) => {
+                if let Some(p) = self.downloads.get_mut(&key) {
+                    *p = Progress { downloaded, total };
+                }
+                None
+            }
+            Message::InstallFinished(key, res) => {
+                self.downloads.remove(&key);
+                match res {
+                    Ok(()) => {
+                        // The package now has its own README; drop the
+                        // fetched one so the installed copy wins.
+                        self.remote_readmes.remove(&key);
+                        self.readme_cache_key = None;
+                        Some(Effect::Rescan)
+                    }
+                    Err(e) => {
+                        log::warn!("installing {} {}: {e}", key.0, key.1);
+                        self.last_error = Some(e);
+                        Some(Effect::InstallFailed)
+                    }
+                }
+            }
+            Message::Uninstall(key) => Some(Effect::Uninstall(key)),
+            Message::ReadmeFetched(key, readme) => {
+                self.remote_readmes.insert(key.clone(), readme);
+                if self.readme_cache_key.as_ref() == Some(&key) {
+                    // Force the cache to rebuild now that it has content.
+                    self.readme_cache_key = None;
+                }
+                None
             }
             Message::ToggleFavorite(name) => Some(Effect::ToggleFavorite(name)),
             Message::SearchChanged(s) => {
@@ -127,21 +190,45 @@ impl PatchesState {
     }
 
     /// Rebuild the parsed-markdown cache for the currently selected
-    /// patch+version. No-op if the cache already matches.
-    pub fn refresh_readme(&mut self, scanners: &Scanners) {
+    /// patch+version. No-op if the cache already matches. Returns a
+    /// fetch effect when the version isn't installed and we haven't
+    /// asked the repo for its README yet.
+    pub fn refresh_readme(&mut self, scanners: &Scanners) -> Option<Effect> {
         let key = match (&self.selected, &self.version) {
-            (Some(n), Some(v)) => Some((n.clone(), v.clone())),
-            _ => None,
+            (Some(n), Some(v)) => (n.clone(), v.clone()),
+            _ => {
+                self.readme_cache_key = None;
+                self.readme_items.clear();
+                return None;
+            }
         };
-        if self.readme_cache_key == key {
-            return;
+        if self.readme_cache_key.as_ref() == Some(&key) {
+            return None;
         }
-        self.readme_cache_key = key.clone();
-        self.readme_items = key
-            .as_ref()
-            .and_then(|(n, _)| scanners.patches.read().get(n).and_then(|p| p.readme.clone()))
+
+        let patches = scanners.patches.read();
+        let installed = patches.version(&key.0, &key.1).and_then(|v| v.readme.clone());
+        let mut effect = None;
+        let readme = match installed {
+            Some(readme) => Some(readme),
+            None => match self.remote_readmes.get(&key) {
+                Some(cached) => cached.clone(),
+                None => {
+                    // Only worth asking if the repo says it published one.
+                    if patches.entry(&key.0, &key.1).and_then(|e| e.readme.as_ref()).is_some() {
+                        effect = Some(Effect::FetchReadme(key.clone()));
+                    }
+                    None
+                }
+            },
+        };
+        drop(patches);
+
+        self.readme_cache_key = Some(key);
+        self.readme_items = readme
             .map(|md| iced::widget::markdown::parse(&md).collect())
             .unwrap_or_default();
+        effect
     }
 
     pub fn view<'a>(
@@ -154,31 +241,23 @@ impl PatchesState {
 
         let top = self.top_strip(lang);
         let left = self.patch_list(&patches, config);
-        let right: Element<'_, Message> =
-            if let Some((name, patch)) = self.selected.as_ref().and_then(|n| patches.get(n).map(|p| (n, p))) {
-                let detail = self.patch_detail(lang, config, name, patch);
-                // Selection entrance: the detail panel rises up
-                // into place.
-                crate::ui::anim::slide_in_opt(
-                    detail,
-                    self.detail_enter.progress(iced::time::Instant::now()),
-                    iced::Vector::new(0.0, 28.0),
-                )
-            } else {
-                widgets::pane_prompt(t!(lang, "patches-select-prompt"))
-            };
+        let right: Element<'_, Message> = match self.selected.as_ref().filter(|n| patches.title(n).is_some()) {
+            Some(name) => crate::ui::anim::slide_in_opt(
+                self.patch_detail(lang, config, &patches, name),
+                self.detail_enter.progress(iced::time::Instant::now()),
+                iced::Vector::new(0.0, 28.0),
+            ),
+            None => widgets::pane_prompt(t!(lang, "patches-select-prompt")),
+        };
 
         widgets::top_split_pane(top, left, right)
     }
 
-    /// Top strip: the search filter, the in-flight / failed update
-    /// status, and the update button.
+    /// Top strip: the search filter, the in-flight / failed refresh
+    /// status, and the refresh button.
     fn top_strip<'a>(&'a self, lang: &'a LanguageIdentifier) -> Element<'a, Message> {
-        let update_msg = if self.updating { None } else { Some(Message::Update) };
+        let refresh_msg = if self.refreshing { None } else { Some(Message::Refresh) };
 
-        // Search input replaces the "Installed: N" label. The
-        // count was informational only; a filter is more useful
-        // once the patch list grows past a handful of entries.
         let search_input = text_input(&t!(lang, "patches-search-placeholder"), &self.search)
             .on_input(Message::SearchChanged)
             .padding(STANDARD_PADDING)
@@ -186,15 +265,15 @@ impl PatchesState {
             .style(widgets::chunky_text_input);
         let mut top_row = row![search_input].spacing(8).align_y(Alignment::Center);
 
-        if self.updating {
+        if self.refreshing {
             top_row = top_row.push(
-                text(t!(lang, "patches-updating"))
+                text(t!(lang, "patches-refreshing"))
                     .size(TEXT_CAPTION)
                     .style(widgets::muted_text_style),
             );
-        } else if let Some(err) = &self.last_update_error {
+        } else if let Some(err) = &self.last_error {
             top_row = top_row.push(
-                text(t!(lang, "patches-update-failed", error = err.clone()))
+                text(t!(lang, "patches-refresh-failed", error = err.clone()))
                     .size(TEXT_CAPTION)
                     .style(widgets::danger_text_style),
             );
@@ -202,8 +281,8 @@ impl PatchesState {
 
         top_row = top_row.push(horizontal_space()).push(widgets::icon_button_maybe(
             Icon::CloudSync,
-            t!(lang, "patches-update"),
-            update_msg,
+            t!(lang, "patches-refresh"),
+            refresh_msg,
             STANDARD_PADDING,
         ));
 
@@ -214,34 +293,33 @@ impl PatchesState {
             .into()
     }
 
-    /// Left sidebar: the searchable patch list, favorites first
-    /// (with a leading gold star — indicator only; the toggle lives
-    /// in the detail header).
-    fn patch_list<'a>(
-        &'a self,
-        patches: &crate::library::patch::PatchMap,
-        config: &crate::config::Config,
-    ) -> Element<'a, Message> {
-        // Apply the search filter case-insensitively against both
-        // the patch name (e.g. `bn6-foo`) and human title.
+    /// Left sidebar: the searchable patch list — everything the repo
+    /// offers, not just what's downloaded. Favorites first (with a
+    /// leading gold star), and anything not installed is captioned as
+    /// available.
+    fn patch_list<'a>(&'a self, patches: &Catalog, config: &crate::config::Config) -> Element<'a, Message> {
         let query = self.search.trim().to_lowercase();
-        let mut ordered_patches: Vec<(&String, &std::sync::Arc<crate::library::patch::Patch>)> = patches
-            .iter()
-            .filter(|(n, p)| {
-                query.is_empty() || n.to_lowercase().contains(&query) || p.title.to_lowercase().contains(&query)
+        let mut names: Vec<&str> = patches
+            .names()
+            .into_iter()
+            .filter(|name| {
+                query.is_empty()
+                    || name.to_lowercase().contains(&query)
+                    || patches.title(name).is_some_and(|t| t.to_lowercase().contains(&query))
             })
             .collect();
         // Favorites first, alphabetical within each group.
-        ordered_patches.sort_by(|(a, _), (b, _)| {
+        names.sort_by(|a, b| {
             let fa = config.favorite_patches.contains(*a);
             let fb = config.favorite_patches.contains(*b);
             fb.cmp(&fa).then_with(|| a.cmp(b))
         });
 
         let mut list = column![].spacing(2).padding([8, 0]);
-        for (idx, (name, patch)) in ordered_patches.iter().enumerate() {
-            let selected = self.selected.as_deref() == Some(name.as_str());
-            let is_fav = config.favorite_patches.contains(*name);
+        for (idx, name) in names.into_iter().enumerate() {
+            let selected = self.selected.as_deref() == Some(name);
+            let is_fav = config.favorite_patches.contains(name);
+            let title = patches.title(name).unwrap_or(name).to_owned();
             let title_row: Element<'_, Message> = if is_fav {
                 row![
                     text("\u{2605}")
@@ -249,19 +327,26 @@ impl PatchesState {
                         .style(|_: &iced::Theme| iced::widget::text::Style {
                             color: Some(FAVORITE_GOLD),
                         }),
-                    text(patch.title.clone()).size(TEXT_BODY),
+                    text(title).size(TEXT_BODY),
                 ]
                 .spacing(6)
                 .align_y(Alignment::Center)
                 .into()
             } else {
-                text(patch.title.clone()).size(TEXT_BODY).into()
+                text(title).size(TEXT_BODY).into()
+            };
+            // The caption doubles as the installed indicator: a patch
+            // you don't have reads as available rather than absent.
+            let caption = if patches.installed.contains_key(name) {
+                name.to_owned()
+            } else {
+                format!("{name}  ·  ↓")
             };
             list = list.push(
                 button(
                     column![
                         title_row,
-                        text((*name).clone())
+                        text(caption)
                             .size(TEXT_CAPTION)
                             .style(widgets::list_caption_style(selected)),
                     ]
@@ -270,7 +355,7 @@ impl PatchesState {
                 .padding(style::ROW_PADDING)
                 .width(Fill)
                 .style(widgets::list_item(selected, idx))
-                .on_press(Message::Selected((*name).clone())),
+                .on_press(Message::Selected(name.to_owned())),
             );
         }
         container(scrollable(list).style(widgets::chunky_scrollable).height(Fill))
@@ -281,48 +366,27 @@ impl PatchesState {
     }
 
     /// Right panel: the selected patch's header (favorite toggle,
-    /// title, version picker, open-folder), its key:value details,
+    /// title, version picker, install/remove), its key:value details,
     /// and the scrollable markdown README beneath.
     fn patch_detail<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
         config: &crate::config::Config,
+        patches: &Catalog,
         name: &str,
-        patch: &crate::library::patch::Patch,
     ) -> Element<'a, Message> {
-        let mut versions: Vec<semver::Version> = patch.versions.keys().cloned().collect();
+        let all_versions = patches.versions(name);
+        let mut versions: Vec<semver::Version> = all_versions.keys().cloned().collect();
         versions.sort_by(|a, b| b.cmp(a));
         let selected_version = self
             .version
             .clone()
-            .filter(|v| patch.versions.contains_key(v))
+            .filter(|v| all_versions.contains_key(v))
             .or_else(|| versions.first().cloned());
 
-        let version_info = selected_version.as_ref().and_then(|v| patch.versions.get(v)).cloned();
+        let info = selected_version.as_ref().and_then(|v| all_versions.get(v));
+        let key = selected_version.as_ref().map(|v| (name.to_owned(), v.clone()));
 
-        let supported_games_str = version_info
-            .as_ref()
-            .map(|v| {
-                let mut names: Vec<String> = v.supported_games.iter().map(|g| game::display_name(lang, g)).collect();
-                names.sort();
-                if names.is_empty() {
-                    "—".to_string()
-                } else {
-                    names.join(", ")
-                }
-            })
-            .unwrap_or_else(|| "—".to_string());
-
-        let netplay_compat = version_info
-            .as_ref()
-            .map(|v| v.netplay_compatibility.clone())
-            .unwrap_or_default();
-
-        // Favorite toggle lives in the detail header, styled
-        // as a flat icon-only affordance so it reads as a
-        // toggle indicator rather than a CTA. State is carried
-        // entirely by the glyph + color: filled gold "★" when
-        // favorite, hollow muted "☆" when not.
         let is_fav = config.favorite_patches.contains(name);
         let favorite_toggle = {
             let label = if is_fav {
@@ -354,31 +418,19 @@ impl PatchesState {
 
         // Title in a Fill container so a long patch name takes
         // the leftover space and wraps naturally instead of
-        // squashing the version picker / folder button on
-        // the right. Default `Wrapping::Word` keeps it
-        // readable across multiple lines if it has to.
+        // squashing the version picker / action button on the
+        // right.
+        let title = patches.title(name).unwrap_or(name).to_owned();
         let header = row![
             favorite_toggle,
-            container(text(patch.title.clone()).size(TEXT_TITLE))
-                .padding([4, 0])
-                .width(Fill),
-            widgets::picker(versions, selected_version, Message::VersionSelected),
-            widgets::icon_button(
-                Icon::FolderOpen,
-                t!(lang, "patches-open-folder"),
-                Message::OpenFolder(patch.path.clone()),
-                STANDARD_PADDING,
-            ),
+            container(text(title).size(TEXT_TITLE)).padding([4, 0]).width(Fill),
+            widgets::picker(versions, selected_version.clone(), Message::VersionSelected),
         ]
         .spacing(8)
-        // Top-align so the action buttons stay anchored when
-        // a long title wraps to multiple lines (Center would
-        // re-center them as the title grows).
+        // Top-align so the action buttons stay anchored when a long
+        // title wraps to multiple lines.
         .align_y(Alignment::Start);
 
-        // Single key:value row helper — muted label, plain value,
-        // so the readable density matches the rest of the UI's
-        // caption rows (e.g. save list metadata).
         let detail_row = |label: String, value: String| -> Element<'_, Message> {
             row![
                 text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
@@ -389,31 +441,62 @@ impl PatchesState {
             .into()
         };
 
+        // Authors / license / source come from the installed package
+        // when we have it, and from the index otherwise.
+        let installed_patch = patches.installed.get(name);
+        let indexed = selected_version.as_ref().and_then(|v| patches.entry(name, v));
+        let authors = installed_patch
+            .map(|p| p.authors.clone())
+            .filter(|a| !a.is_empty())
+            .or_else(|| indexed.map(|e| e.authors.clone()))
+            .unwrap_or_default();
+        let license = installed_patch
+            .and_then(|p| p.license.clone())
+            .or_else(|| indexed.and_then(|e| e.license.clone()));
+        let source = installed_patch
+            .and_then(|p| p.source.clone())
+            .or_else(|| indexed.and_then(|e| e.source.clone()));
+
+        let supported_games_str = selected_version
+            .as_ref()
+            .map(|v| {
+                let mut names: Vec<String> = patches
+                    .supported_games(name, v)
+                    .iter()
+                    .map(|g| game::display_name(lang, g))
+                    .collect();
+                names.sort();
+                if names.is_empty() {
+                    "—".to_string()
+                } else {
+                    names.join(", ")
+                }
+            })
+            .unwrap_or_else(|| "—".to_string());
+
         let mut details = column![].spacing(3);
-        if !patch.authors.is_empty() {
-            details = details.push(detail_row(
-                t!(lang, "patches-details-authors"),
-                patch.authors.join(", "),
-            ));
+        if !authors.is_empty() {
+            details = details.push(detail_row(t!(lang, "patches-details-authors"), authors.join(", ")));
         }
-        if let Some(license) = &patch.license {
-            details = details.push(detail_row(t!(lang, "patches-details-license"), license.clone()));
+        if let Some(license) = license {
+            details = details.push(detail_row(t!(lang, "patches-details-license"), license));
         }
-        if let Some(source) = &patch.source {
-            details = details.push(detail_row(t!(lang, "patches-details-source"), source.clone()));
+        if let Some(source) = source {
+            details = details.push(detail_row(t!(lang, "patches-details-source"), source));
         }
         details = details.push(detail_row(t!(lang, "patches-details-games"), supported_games_str));
-        if !netplay_compat.is_empty() {
-            details = details.push(detail_row(t!(lang, "patches-netplay-compatibility"), netplay_compat));
+        if let Some(netplay) = info.and_then(|i| i.netplay()) {
+            details = details.push(detail_row(
+                t!(lang, "patches-netplay-compatibility"),
+                netplay_label(lang, netplay),
+            ));
         }
 
-        // Markdown README, parsed and cached in self.readme_items.
-        // Pull the live Theme from `crate::ui::theme::theme_for(config)`
-        // so link color tracks the active palette, and pin
-        // the body text to the app's TEXT_BODY size (default
-        // Settings::from would otherwise use 16 px and make
-        // the README visually heavier than the rest of the
-        // pane).
+        let actions = self.action_row(lang, info, key);
+
+        // README is flush with the pane edges (no outer padding) so the
+        // scrollbar hugs the pane; the markdown body has its own
+        // PANE_PADDING inset so the prose doesn't slam the pane wall.
         let readme_body: Element<'_, Message> = if self.readme_items.is_empty() {
             text(t!(lang, "patches-readme-placeholder")).size(TEXT_CAPTION).into()
         } else {
@@ -426,17 +509,10 @@ impl PatchesState {
             .map(Message::ReadmeLinkClicked)
         };
 
-        let meta_pane = container(column![header, details,].spacing(6))
+        let meta_pane = container(column![header, details, actions].spacing(6))
             .width(Fill)
             .padding(style::PANE_PADDING)
             .style(widgets::pane);
-        // README is flush with the pane edges (no outer
-        // padding) so the scrollbar hugs the pane; the markdown
-        // body has its own PANE_PADDING inset so the prose
-        // doesn't slam the pane wall. Pane height shrinks to
-        // content but capped by the parent column's remaining
-        // space — long readmes scroll inside, short ones don't
-        // pad to the full page height.
         let readme_pane = container(
             scrollable(container(readme_body).padding(style::PANE_PADDING).width(Fill))
                 .style(widgets::chunky_scrollable),
@@ -448,5 +524,92 @@ impl PatchesState {
             .width(Fill)
             .height(Fill)
             .into()
+    }
+
+    /// Install / downloading / installed-with-remove, plus the package
+    /// size. One fixed-height row in every state so the panel doesn't
+    /// jump as a download starts and finishes.
+    fn action_row<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        info: Option<&crate::library::patch::VersionInfo<'_>>,
+        key: Option<VersionKey>,
+    ) -> Element<'a, Message> {
+        let Some((info, key)) = info.zip(key) else {
+            return row![].height(Length::Fixed(32.0)).into();
+        };
+
+        let mut controls = row![].spacing(8).align_y(Alignment::Center);
+        if let Some(progress) = self.downloads.get(&key) {
+            let label = if progress.total > 0 {
+                t!(
+                    lang,
+                    "patches-downloading-progress",
+                    percent = (progress.downloaded * 100 / progress.total.max(1)) as i64
+                )
+            } else {
+                t!(lang, "patches-downloading")
+            };
+            controls = controls.push(text(label).size(TEXT_CAPTION).style(widgets::muted_text_style));
+        } else if info.is_installed() {
+            controls = controls.push(
+                text(t!(lang, "patches-installed"))
+                    .size(TEXT_CAPTION)
+                    .style(widgets::muted_text_style),
+            );
+            if let Some(path) = info.installed.map(|v| v.path.clone()) {
+                controls = controls.push(widgets::icon_button(
+                    Icon::FolderOpen,
+                    t!(lang, "patches-reveal-package"),
+                    Message::RevealPackage(path),
+                    STANDARD_PADDING,
+                ));
+            }
+            controls = controls.push(widgets::icon_button(
+                Icon::Trash2,
+                t!(lang, "patches-uninstall"),
+                Message::Uninstall(key.clone()),
+                STANDARD_PADDING,
+            ));
+        } else if info.indexed.is_some() {
+            controls = controls.push(widgets::icon_button(
+                Icon::Download,
+                t!(lang, "patches-install"),
+                Message::Install(key.clone()),
+                STANDARD_PADDING,
+            ));
+        }
+
+        if let Some(size) = info.size() {
+            controls = controls.push(
+                text(human_size(size))
+                    .size(TEXT_CAPTION)
+                    .style(widgets::muted_text_style),
+            );
+        }
+
+        container(controls)
+            .height(Length::Fixed(32.0))
+            .align_y(Alignment::Center)
+            .into()
+    }
+}
+
+/// How a version's netplay declaration reads in the UI. The typed
+/// declaration means we can say what it *means* rather than echoing an
+/// opaque tag string at the user.
+fn netplay_label(lang: &LanguageIdentifier, netplay: &tango_patch::Compatibility) -> String {
+    match netplay {
+        tango_patch::Compatibility::Isolated => t!(lang, "patches-netplay-isolated"),
+        tango_patch::Compatibility::Vanilla => t!(lang, "patches-netplay-vanilla"),
+        tango_patch::Compatibility::Group(group) => t!(lang, "patches-netplay-group", group = group.clone()),
+    }
+}
+
+fn human_size(bytes: u64) -> String {
+    match bytes {
+        0..=1023 => format!("{bytes} B"),
+        1024..=1048575 => format!("{:.0} KB", bytes as f64 / 1024.0),
+        _ => format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0)),
     }
 }

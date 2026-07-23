@@ -52,10 +52,11 @@ discord-ipc = { git = "https://github.com/tangobattle/discord-ipc" }
 mgba.workspace = true
 rennet.workspace = true
 tango-net-protocol = { path = "../tango-net-protocol" }
+# Reads packages and the index; the app never writes a package.
+tango-patch = { path = "../tango-patch", features = ["package", "index"] }
 tango-match = { path = "../tango-match" }
 tango-replay = { path = "../tango-replay" }
 tango-session = { path = "../tango-session" }
-tango-filesync = { git = "https://github.com/tangobattle/tango-filesync" }
 tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
 datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }
 bincode = "1"
@@ -145,6 +146,11 @@ libc = "0.2"
 arrayvec = "0.7"
 indexmap = "2"
 clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+# The app never writes a package, but its patch-scanner tests build one
+# to scan.
+tango-patch = { path = "../tango-patch", features = ["package", "index", "bundle"] }
 
 [features]
 # Each game's support (dataview + PvP hooks + saves + logos) is an

@@ -36,6 +36,17 @@ pub struct Index {
     pub patches: BTreeMap<String, BTreeMap<semver::Version, Entry>>,
 }
 
+/// An empty index of the current format — what a client has before its
+/// first successful fetch.
+impl Default for Index {
+    fn default() -> Self {
+        Index {
+            format: FORMAT,
+            patches: BTreeMap::new(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Entry {
@@ -67,6 +78,27 @@ impl Entry {
     /// This version's netplay identity for a given ROM family.
     pub fn tag(&self, family: &str, name: &str, version: &semver::Version) -> crate::Tag {
         crate::Tag::patched(family, name, version, &self.netplay)
+    }
+
+    /// Is `raw` the package this entry describes? A client checks every
+    /// download against this, which is also what makes serving packages
+    /// from a mirror or a CDN cache safe.
+    pub fn verify(&self, raw: &[u8]) -> Result<(), Error> {
+        if raw.len() as u64 != self.size {
+            return Err(Error::Invalid(format!(
+                "expected {} bytes, got {}",
+                self.size,
+                raw.len()
+            )));
+        }
+        let sha256 = crate::sha256_hex(raw);
+        if sha256 != self.sha256 {
+            return Err(Error::Invalid(format!(
+                "hash mismatch: expected {}, got {sha256}",
+                self.sha256
+            )));
+        }
+        Ok(())
     }
 }
 
@@ -156,7 +188,7 @@ mod build {
                     games: package.targets().collect(),
                     path: relative_url(root, &path)?,
                     size: raw.len() as u64,
-                    sha256: crate::bundle::sha256_hex(&raw),
+                    sha256: crate::sha256_hex(&raw),
                     readme,
                 };
 

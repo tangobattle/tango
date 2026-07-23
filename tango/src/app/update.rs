@@ -292,18 +292,79 @@ impl App {
     }
 
     pub(super) fn update_patches(&mut self, msg: tabs::patches::Message) -> iced::Task<Message> {
-        let Some(effect) = self.patches.update(msg, &self.scanners, &self.config) else {
+        let Some(effect) = self.patches.update(msg, &self.scanners) else {
             return iced::Task::none();
         };
         use tabs::patches::Effect as E;
         match effect {
             E::OpenPath(s) => open_path(s),
-            E::UpdateRescan => self.rescan_off_thread(RescanFollowup::Refresh),
-            E::StartUpdate { url, root } => iced::Task::perform(
-                async move { patch::update(url, root).await.map_err(|e| e.to_string()) },
-                tabs::patches::Message::UpdateFinished,
-            )
-            .map(Message::Patches),
+            E::RevealPath(p) => reveal_path(p),
+            E::Rescan => {
+                let followup = if self.pending_watch.is_some() {
+                    RescanFollowup::RetryPendingWatch
+                } else {
+                    RescanFollowup::Refresh
+                };
+                self.rescan_off_thread(followup)
+            }
+            E::RefreshIndex => {
+                let url = self.config.patch_repo_url();
+                let root = self.config.patches_path();
+                iced::Task::perform(
+                    async move {
+                        patch::fetch_index(&url, &root)
+                            .await
+                            .map(|_changed| ())
+                            .map_err(|e| e.to_string())
+                    },
+                    tabs::patches::Message::RefreshFinished,
+                )
+                .map(Message::Patches)
+            }
+            E::Install(key) => self.install_patch(key),
+            E::Uninstall((name, version)) => {
+                if let Err(e) = patch::uninstall(&self.config.patches_path(), &name, &version) {
+                    log::warn!("uninstalling {name} {version}: {e}");
+                }
+                self.rescan_off_thread(RescanFollowup::Refresh)
+            }
+            E::FetchReadme(key) => {
+                let (name, version) = key.clone();
+                let url = self.config.patch_repo_url();
+                let Some(path) = self
+                    .scanners
+                    .patches
+                    .read()
+                    .entry(&name, &version)
+                    .and_then(|e| e.readme.clone())
+                else {
+                    return iced::Task::none();
+                };
+                iced::Task::perform(
+                    async move {
+                        reqwest::Client::new()
+                            .get(format!("{}/{path}", url.trim_end_matches('/')))
+                            .header("User-Agent", "tango")
+                            .timeout(std::time::Duration::from_secs(30))
+                            .send()
+                            .await
+                            .ok()?
+                            .error_for_status()
+                            .ok()?
+                            .text()
+                            .await
+                            .ok()
+                    },
+                    move |readme| tabs::patches::Message::ReadmeFetched(key.clone(), readme),
+                )
+                .map(Message::Patches)
+            }
+            E::InstallFailed => {
+                // Don't leave a replay queued behind a download that
+                // isn't coming.
+                self.pending_watch = None;
+                iced::Task::none()
+            }
             E::ToggleFavorite(name) => {
                 if !self.config.favorite_patches.remove(&name) {
                     self.config.favorite_patches.insert(name);
@@ -312,6 +373,110 @@ impl App {
                 iced::Task::none()
             }
         }
+    }
+
+    /// Download one patch version, reporting byte progress as it goes.
+    ///
+    /// Progress and the terminal result travel down one channel, so the
+    /// stream ends exactly when the download does — no polling and no
+    /// separate completion signal to keep in sync.
+    pub(super) fn install_patch(&mut self, key: tabs::patches::VersionKey) -> iced::Task<Message> {
+        let (name, version) = key.clone();
+        let Some(entry) = self.scanners.patches.read().entry(&name, &version).cloned() else {
+            return iced::Task::done(Message::Patches(tabs::patches::Message::InstallFinished(
+                key,
+                Err("not offered by this patch repo".to_string()),
+            )));
+        };
+        let url = self.config.patch_repo_url();
+        let root = self.config.patches_path();
+
+        let (tx, rx) = futures::channel::mpsc::unbounded::<tabs::patches::Message>();
+        let progress_tx = tx.clone();
+        let progress_key = key.clone();
+        tokio::task::spawn(async move {
+            let result = patch::download(&url, &root, &name, &version, &entry, move |p| {
+                let _ = progress_tx.unbounded_send(tabs::patches::Message::InstallProgress(
+                    progress_key.clone(),
+                    p.downloaded,
+                    p.total,
+                ));
+            })
+            .await;
+            let _ = tx.unbounded_send(tabs::patches::Message::InstallFinished(
+                key,
+                result.map(|_| ()).map_err(|e| format!("{e:#}")),
+            ));
+        });
+        iced::Task::stream(rx).map(Message::Patches)
+    }
+
+    /// Start playback of a replay, downloading the patch it was
+    /// recorded with if we don't have it.
+    ///
+    /// Under the old format every patch was already mirrored, so this
+    /// could never come up; now a replay is the most likely reason to
+    /// need a patch you never installed — including a version that was
+    /// superseded years ago, which is exactly why the repo keeps them.
+    pub(super) fn watch_replay(&mut self, p: std::path::PathBuf) -> iced::Task<Message> {
+        if let Some(key) = self.replay_missing_patch(&p) {
+            log::info!("replay {} needs {} {}, fetching", p.display(), key.0, key.1);
+            self.pending_watch = Some(p);
+            if self.patches.downloads.contains_key(&key) {
+                // Already on its way (the user clicked twice, or the
+                // lobby wanted the same patch).
+                return iced::Task::none();
+            }
+            self.patches.downloads.insert(
+                key.clone(),
+                patch::Progress {
+                    downloaded: 0,
+                    total: 0,
+                },
+            );
+            return self.install_patch(key);
+        }
+
+        let (stats_job, stats_task) = self.replay_stats_takeover(&p);
+        match session::build_playback(&self.scanners, &self.config, &self.audio_binder, &p, stats_job) {
+            Ok((s, audio)) => {
+                self.session.replay_chart = Some(self.replay_chart_for(&p, &s));
+                self.session.active = Some(Box::new(s));
+                self.session.audio_binding = audio;
+                self.session.session_installed();
+            }
+            // The dropped job closes its stream, whose completion
+            // message clears the tab's pending marker — a later
+            // focus retries the analysis.
+            Err(e) => log::warn!("failed to play replay {}: {e}", p.display()),
+        }
+        stats_task
+    }
+
+    /// The first patch a replay needs that isn't installed but is
+    /// offered by the repo. `None` when playback can go ahead — or when
+    /// the patch is one we could never get, which fails as before.
+    fn replay_missing_patch(&self, path: &std::path::Path) -> Option<tabs::patches::VersionKey> {
+        // The replay scanner already parsed every metadata header, so
+        // this costs a lookup rather than a decode.
+        let wanted: Vec<(String, String)> = {
+            let replays = self.scanners.replays.read();
+            let scanned = replays.iter().find(|r| r.path == path)?;
+            [scanned.metadata.side(0), scanned.metadata.side(1)]
+                .into_iter()
+                .flatten()
+                .filter_map(|s| s.game_info.as_ref()?.patch.as_ref())
+                .map(|p| (p.name.clone(), p.version.clone()))
+                .collect()
+        };
+        let patches = self.scanners.patches.read();
+        wanted.into_iter().find_map(|(name, version)| {
+            let version = semver::Version::parse(&version).ok()?;
+            // Only worth waiting on something the repo actually offers;
+            // a patch nobody publishes fails at playback as it always did.
+            (!patches.is_installed(&name, &version) && patches.entry(&name, &version).is_some())
+                .then_some((name, version))
+        })
     }
 
     pub(super) fn update_replays(&mut self, msg: tabs::replays::Message) -> iced::Task<Message> {
@@ -351,22 +516,10 @@ impl App {
         match effect {
             E::OpenPath(p) => open_path(p),
             E::RevealPath(p) => reveal_path(p),
-            E::Watch(p) => {
-                let (stats_job, stats_task) = self.replay_stats_takeover(&p);
-                match session::build_playback(&self.scanners, &self.config, &self.audio_binder, &p, stats_job) {
-                    Ok((s, audio)) => {
-                        self.session.replay_chart = Some(self.replay_chart_for(&p, &s));
-                        self.session.active = Some(Box::new(s));
-                        self.session.audio_binding = audio;
-                        self.session.session_installed();
-                    }
-                    // The dropped job closes its stream, whose completion
-                    // message clears the tab's pending marker — a later
-                    // focus retries the analysis.
-                    Err(e) => log::warn!("failed to play replay {}: {e}", p.display()),
-                }
-                stats_task
-            }
+            E::Watch(p) => self.watch_replay(p),
+            // The dropped job closes its stream, whose completion
+            // message clears the tab's pending marker — a later
+            // focus retries the analysis.
             E::CopyText(s) => iced::clipboard::write(s),
             E::CopyImage(img) => {
                 copy_image_to_clipboard(img);
@@ -405,7 +558,8 @@ impl App {
                 let patches_path = self.config.patches_path();
                 let cache_path = self.config.cache_path();
                 let replays_path = self.config.replays_path();
-                let (progress_tx, progress_rx) = futures::channel::mpsc::unbounded::<tango_match::analysis::MatchStats>();
+                let (progress_tx, progress_rx) =
+                    futures::channel::mpsc::unbounded::<tango_match::analysis::MatchStats>();
                 let done: std::sync::Arc<std::sync::Mutex<Option<tango_match::analysis::MatchStats>>> =
                     std::sync::Arc::new(std::sync::Mutex::new(None));
                 let done_worker = done.clone();
@@ -645,8 +799,7 @@ impl App {
                 let cb = move |current: usize, total: usize| {
                     let _ = cb_tx.unbounded_send((current, total));
                 };
-                let inputs: Vec<[u32; 2]> =
-                    replay.inputs.iter().map(|&[p1, p2]| [p1 as u32, p2 as u32]).collect();
+                let inputs: Vec<[u32; 2]> = replay.inputs.iter().map(|&[p1, p2]| [p1 as u32, p2 as u32]).collect();
                 let config = tango_match::playback::BootConfig {
                     roms,
                     saves: replay.srams.clone(),

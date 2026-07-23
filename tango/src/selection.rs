@@ -369,8 +369,7 @@ impl Loaded {
         let patch_meta = gi.patch.as_ref().and_then(|p| {
             let v = semver::Version::parse(&p.version).ok()?;
             let patches = scanners.patches.read();
-            let pinfo = patches.get(&p.name)?;
-            let vmeta = pinfo.versions.get(&v)?.clone();
+            let vmeta = patches.version(&p.name, &v)?.clone();
             Some((p.name.clone(), v, vmeta))
         });
 

@@ -76,7 +76,7 @@ impl Scanners {
             Some(save::scan_saves(&saves_path))
         });
         self.patches
-            .rescan_if_changed(std::slice::from_ref(&patches_path), || patch::scan(&patches_path).ok());
+            .rescan_if_changed(&patch::scan_roots(&patches_path), || patch::scan(&patches_path).ok());
         self.replays.rescan_if_changed(std::slice::from_ref(&replays_path), || {
             Some(replays::scan_replays(&replays_path))
         });
@@ -156,9 +156,13 @@ pub struct App {
     /// `make_single_player_activity` / `make_in_progress_activity`
     /// timestamps. Reset to `None` when the session ends.
     session_started_at: Option<std::time::SystemTime>,
-    /// Background loop that pulls the patch repo every 15 min
-    /// and refreshes the patches scanner in place.
+    /// Background loop that re-fetches the patch index every 15 min
+    /// (a conditional GET of metadata, not the packages) and refreshes
+    /// the patches scanner in place.
     patch_autoupdater: patch::Autoupdater,
+    /// A replay whose playback is waiting on a patch download. Set by
+    /// `watch_replay`, resumed once the install rescan lands.
+    pending_watch: Option<std::path::PathBuf>,
     /// Self-updater. Polls GitHub every 30 min, streams the
     /// platform installer into the cache dir, and on the
     /// `finish_update` call (or next launch) hands off to the
@@ -376,7 +380,7 @@ impl App {
             "initial scan: {} rom(s), {} save game(s), {} patch(es), {} replay(s)",
             scanners.roms.read().len(),
             scanners.saves.read().values().map(|v| v.len()).sum::<usize>(),
-            scanners.patches.read().len(),
+            scanners.patches.read().installed.len(),
             scanners.replays.read().len(),
         );
 
@@ -413,11 +417,7 @@ impl App {
                             // patch still exists and supports the variant.
                             if let Some(Some((n, v))) = config.last_patch_per_save.get(rel) {
                                 let patches = scanners.patches.read();
-                                let ok = patches
-                                    .get(n)
-                                    .and_then(|p| p.versions.get(v))
-                                    .map(|vm| vm.supported_games.contains(&game))
-                                    .unwrap_or(false);
+                                let ok = patches.supported_games(n, v).contains(&game);
                                 if ok {
                                     restored.patch = Some(n.clone());
                                     restored.patch_version = Some(v.clone());
@@ -524,6 +524,7 @@ impl App {
             discord: discord::Client::new(),
             session_started_at: None,
             patch_autoupdater,
+            pending_watch: None,
             updater,
             rescans_in_flight: 0,
             // Start at rest (no launch animation) — progress 1.0
@@ -722,6 +723,44 @@ impl App {
         iced::Task::done(Message::Netplay(netplay::Message::Uncommit))
     }
 
+    /// Fetch a patch the lobby needs but doesn't have.
+    ///
+    /// The compatibility check resolves the peer's patch from the repo
+    /// index, so we know a matchup is playable before the package is on
+    /// disk — and the only thing standing in the way is a download we
+    /// can start ourselves. Idempotent: the tab tracks in-flight
+    /// downloads, and this fires on every lobby state change.
+    fn fetch_missing_patch(&mut self) -> iced::Task<Message> {
+        if !matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) {
+            return iced::Task::none();
+        }
+        let (Some(local), Some(remote)) = (self.netplay.lobby.local.as_ref(), self.netplay.lobby.remote.as_ref())
+        else {
+            return iced::Task::none();
+        };
+        let verdict = {
+            let roms = self.scanners.roms.read();
+            let patches = self.scanners.patches.read();
+            netplay::compat::check(local, remote, &roms, &patches)
+        };
+        let Some((name, version)) = verdict.fetchable() else {
+            return iced::Task::none();
+        };
+        let key = (name.to_owned(), version.clone());
+        if self.patches.downloads.contains_key(&key) {
+            return iced::Task::none();
+        }
+        log::info!("lobby needs {} {}, fetching", key.0, key.1);
+        self.patches.downloads.insert(
+            key.clone(),
+            patch::Progress {
+                downloaded: 0,
+                total: 0,
+            },
+        );
+        self.install_patch(key)
+    }
+
     /// Build a `protocol::Settings` packet from the App's current
     /// state: nickname from config, match_type defaults to (0, 0),
     /// game_info from the local loadout. (No available-games /
@@ -780,8 +819,8 @@ impl App {
         let save = scanned.save.clone_box();
         let patch_meta = patch.and_then(|(name, version)| {
             patches
-                .get(&name)
-                .and_then(|p| p.versions.get(&version).map(|v| (name.clone(), version, v.clone())))
+                .version(&name, &version)
+                .map(|v| (name.clone(), version.clone(), v.clone()))
         });
         drop(patches);
         drop(saves);
@@ -893,6 +932,9 @@ pub enum Message {
 /// distinct Message variant per call site.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RescanFollowup {
+    /// A patch a replay was waiting on just installed — start playback
+    /// now that the scan can see it.
+    RetryPendingWatch,
     /// Just re-validate `self.loaded` against the fresh scan.
     Refresh,
     /// Refresh + warm the replays-tab stats cache (used when a
@@ -1321,7 +1363,8 @@ impl App {
                 };
                 let resend = self.resend_settings_if_lobby();
                 let uncommit = self.uncommit_if_incompat();
-                iced::Task::batch([task, resend, uncommit, attention])
+                let fetch = self.fetch_missing_patch();
+                iced::Task::batch([task, resend, uncommit, fetch, attention])
             }
             Message::PvpSessionBuilt(slot) => {
                 let Some(result) = slot.lock().unwrap().take() else {
@@ -1370,6 +1413,13 @@ impl App {
                     RescanFollowup::Refresh => {
                         self.refresh_loaded();
                         iced::Task::none()
+                    }
+                    RescanFollowup::RetryPendingWatch => {
+                        self.refresh_loaded();
+                        match self.pending_watch.take() {
+                            Some(path) => self.watch_replay(path),
+                            None => iced::Task::none(),
+                        }
                     }
                     RescanFollowup::RefreshAndReplayStats => {
                         self.refresh_loaded();

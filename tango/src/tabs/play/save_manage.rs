@@ -555,12 +555,10 @@ fn templates_for_game(
     let mut out = indexmap::IndexMap::new();
     if let (Some(patch_name), Some(version)) = (patch_name, patch_version) {
         let patches = scanners.patches.read();
-        if let Some(patch) = patches.get(patch_name) {
-            if let Some(v) = patch.versions.get(version) {
-                if let Some(m) = v.save_templates.get(&game) {
-                    for (name, save) in m.iter() {
-                        out.insert(name.clone(), save.clone_box());
-                    }
+        if let Some(v) = patches.version(patch_name, version) {
+            if let Some(m) = v.save_templates.get(&game) {
+                for (name, save) in m.iter() {
+                    out.insert(name.clone(), save.clone_box());
                 }
             }
         }

@@ -159,10 +159,8 @@ impl Loadout {
             Some(Some((name, version))) => {
                 let supported = {
                     let patches = scanners.patches.read();
-                    patches
-                        .get(&name)
-                        .and_then(|p| p.versions.get(&version))
-                        .map(|v| self.game.map(|g| v.supported_games.contains(&g)).unwrap_or(false))
+                    self.game
+                        .map(|g| patches.supported_games(&name, &version).contains(&g))
                         .unwrap_or(false)
                 };
                 if supported {
@@ -195,8 +193,7 @@ impl Loadout {
             let patches = scanners.patches.read();
             self.patch_version
                 .as_ref()
-                .and_then(|v| patches.get(&name).and_then(|p| p.versions.get(v)))
-                .map(|v| v.supported_games.contains(&g))
+                .map(|v| patches.supported_games(&name, v).contains(&g))
                 .unwrap_or(false)
         };
         if current_ok {
@@ -453,13 +450,16 @@ pub fn patch_options(
         .map(|f| game::games_in_family(f).collect())
         .unwrap_or_default();
     let mut names: Vec<String> = patches
-        .iter()
-        .filter(|(_, p)| {
-            p.versions
-                .values()
-                .any(|v| family_games.iter().any(|g| v.supported_games.contains(g)))
+        .names()
+        .into_iter()
+        .filter(|name| {
+            patches.versions(name).keys().any(|v| {
+                family_games
+                    .iter()
+                    .any(|g| patches.supported_games(name, v).contains(g))
+            })
         })
-        .map(|(n, _)| n.clone())
+        .map(|n| n.to_owned())
         .collect();
     names.sort_by(|a, b| {
         let fa = config.favorite_patches.contains(a);
@@ -491,14 +491,15 @@ pub fn version_options(loadout: &Loadout, scanners: &Scanners) -> Vec<semver::Ve
     loadout
         .patch
         .as_ref()
-        .and_then(|n| patches.get(n))
-        .map(|p| {
+        .map(|name| {
             let game = loadout.game;
-            let mut vs: Vec<semver::Version> = p
-                .versions
-                .iter()
-                .filter(|(_, v)| game.map(|g| v.supported_games.contains(&g)).unwrap_or(true))
-                .map(|(k, _)| k.clone())
+            let mut vs: Vec<semver::Version> = patches
+                .versions(name)
+                .into_keys()
+                .filter(|v| {
+                    game.map(|g| patches.supported_games(name, v).contains(&g))
+                        .unwrap_or(true)
+                })
                 .collect();
             vs.sort_by(|a, b| b.cmp(a));
             vs
@@ -516,13 +517,7 @@ fn newest_supporting_version(
     game: Option<rom::GameRef>,
 ) -> Option<semver::Version> {
     let patches = scanners.patches.read();
-    patches.get(patch_name).and_then(|p| {
-        p.versions
-            .iter()
-            .filter(|(_, v)| game.map(|g| v.supported_games.contains(&g)).unwrap_or(true))
-            .map(|(k, _)| k.clone())
-            .max()
-    })
+    patches.newest_version(patch_name, game)
 }
 
 /// The remembered save for `game` if it's still in the scan,
@@ -602,12 +597,8 @@ pub fn patch_supported_games(
 ) -> Option<std::collections::HashSet<rom::GameRef>> {
     let name = loadout.patch.as_ref()?;
     let version = loadout.patch_version.as_ref()?;
-    scanners
-        .patches
-        .read()
-        .get(name)
-        .and_then(|p| p.versions.get(version))
-        .map(|v| v.supported_games.clone())
+    let games = scanners.patches.read().supported_games(name, version);
+    (!games.is_empty()).then_some(games)
 }
 
 /// Whether the currently-selected patch+version supports `game`. True

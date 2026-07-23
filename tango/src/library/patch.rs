@@ -1,178 +1,542 @@
-//! Patch scanner. Slim port of `tango/src/patch.rs` — no autoupdate / HTTP
-//! sync / patch application yet. Just reads `info.toml`, README, and the
-//! per-version directory to discover which games each version supports.
+//! Installed patch packages and the cached repo index.
+//!
+//! Patches live on disk as `.tangopatch` packages (see the `tango-patch`
+//! crate) under `<data>/patches/store/`, one file per patch version.
+//! Alongside them sits `index.json`, a cached copy of the repo's
+//! catalogue.
+//!
+//! # Nothing is mirrored
+//!
+//! The index is metadata only — tens of KiB for an entire repo — and it
+//! carries everything the UI lists plus everything netplay compatibility
+//! resolution needs. So the app polls just that, and fetches a package
+//! only when something actually calls for it: the player installs it, a
+//! peer turns up using it, or a replay needs it to re-simulate. The old
+//! format made the client sha256 every file in the repo and download all
+//! of them (hundreds of MiB) before it could tell you what a patch was.
 
 use crate::library::rom::GameRef;
-use crate::library::rom_overrides::Overrides;
 use crate::library::scanner;
 use futures::StreamExt;
-use itertools::Itertools;
-use serde::Deserialize;
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::path::PathBuf;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use tango_patch::{Compatibility, Package, Tag};
 use tokio::io::AsyncWriteExt;
 
-#[derive(Deserialize, Debug)]
-struct Metadata {
-    pub patch: PatchMetadata,
-    pub versions: HashMap<String, VersionMetadata>,
-}
-
-#[derive(Deserialize, Debug)]
-struct PatchMetadata {
-    pub title: String,
-    #[serde(default)]
-    pub authors: Vec<String>,
-    pub license: Option<String>,
-    pub source: Option<String>,
-}
-
-#[derive(Deserialize, Debug, Default)]
-struct VersionMetadata {
-    #[serde(default)]
-    pub rom_overrides: Overrides,
-    pub netplay_compatibility: String,
-}
-
-#[derive(Clone)]
+/// One installed patch version — everything read out of its package at
+/// scan time. The BPS payloads stay in the file and are read on demand
+/// (see [`apply_patch_from_disk`]); a scan only touches metadata, the
+/// README, and any save templates.
 pub struct Version {
-    pub rom_overrides: Overrides,
-    pub netplay_compatibility: String,
+    /// The `.tangopatch` this came from.
+    pub path: PathBuf,
+    pub netplay: Compatibility,
+    pub rom_overrides: tango_patch::Overrides,
     pub supported_games: HashSet<GameRef>,
     /// Per-game save templates the patch ships. Keyed by template name
     /// (empty string = the default template); values are owned Save
     /// trait objects ready to be serialized via `to_sram_dump`.
-    pub save_templates:
-        std::collections::HashMap<GameRef, BTreeMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>>,
+    pub save_templates: HashMap<GameRef, BTreeMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>>,
+    pub readme: Option<String>,
 }
 
+/// An installed patch: its versions plus the metadata of the newest one.
+/// Metadata is per-version in the package format (a patch can be
+/// retitled or change hands between releases), and the newest version is
+/// what a list row should describe.
 pub struct Patch {
-    pub path: PathBuf,
     pub title: String,
     /// Author display strings — parsed via `mailparse` and reduced to a
     /// display name (or the address if no display name).
     pub authors: Vec<String>,
     pub license: Option<String>,
     pub source: Option<String>,
-    pub readme: Option<String>,
     pub versions: BTreeMap<semver::Version, Arc<Version>>,
 }
 
 pub type PatchMap = BTreeMap<String, Arc<Patch>>;
-pub type Scanner = scanner::Scanner<PatchMap>;
+pub type Scanner = scanner::Scanner<Catalog>;
 
-/// Fetch the patch repo's index.json and download any missing /
-/// updated files via tango_filesync.
-pub async fn update(url: String, root: PathBuf) -> anyhow::Result<()> {
-    std::fs::create_dir_all(&root)?;
-
-    let client = reqwest::Client::new();
-    let entries = tokio::time::timeout(std::time::Duration::from_secs(30), async {
-        Ok::<_, anyhow::Error>(
-            client
-                .get(format!("{}/index.json", url))
-                .header("User-Agent", "tango")
-                .send()
-                .await?
-                .json::<tango_filesync::Entries>()
-                .await?,
-        )
-    })
-    .await??;
-
-    tango_filesync::sync(
-        &root,
-        &entries,
-        {
-            let url = url.clone();
-            let root = root.clone();
-            // One shared client across all downloads — reqwest::Client is an
-            // Arc'd pool, so clones reuse connections + TLS sessions.
-            let client = client.clone();
-            move |path| {
-                let url = url.clone();
-                let root = root.clone();
-                let client = client.clone();
-                Box::pin(async move {
-                    let mut output_file = tokio::fs::File::create(&root.join(path)).await?;
-                    let mut stream = tokio::time::timeout(
-                        std::time::Duration::from_secs(30),
-                        client
-                            .get(format!(
-                                "{}/{}",
-                                url,
-                                path.components().map(|v| v.as_os_str().to_string_lossy()).join("/")
-                            ))
-                            .header("User-Agent", "tango")
-                            .send(),
-                    )
-                    .await?
-                    .map_err(std::io::Error::other)?
-                    .bytes_stream();
-                    while let Some(chunk) =
-                        tokio::time::timeout(std::time::Duration::from_secs(30), stream.next()).await?
-                    {
-                        let chunk = chunk.map_err(std::io::Error::other)?;
-                        output_file.write_all(&chunk).await?;
-                    }
-                    log::info!("filesynced: {}", path.display());
-                    Ok(())
-                })
-            }
-        },
-        4,
-    )
-    .await?;
-    Ok(())
+/// What patches exist, from both directions: what's installed here and
+/// what the repo offers. The two overlap freely — a patch can be
+/// installed and indexed, installed only (sideloaded), or indexed only
+/// (not downloaded yet).
+#[derive(Default)]
+pub struct Catalog {
+    pub installed: PatchMap,
+    /// Last index we fetched. Empty before the first successful fetch,
+    /// and kept across restarts so the app can browse offline.
+    pub index: tango_patch::Index,
 }
 
-/// Read and decode the .bps for `game` from `patches_path/<patch_name>/v<version>/`,
-/// then apply it on top of the supplied ROM. Returns the patched ROM bytes.
+/// One version as the UI sees it, whether or not it's on disk.
+pub struct VersionInfo<'a> {
+    pub installed: Option<&'a Arc<Version>>,
+    pub indexed: Option<&'a tango_patch::index::Entry>,
+}
+
+impl VersionInfo<'_> {
+    pub fn is_installed(&self) -> bool {
+        self.installed.is_some()
+    }
+
+    pub fn netplay(&self) -> Option<&Compatibility> {
+        self.installed.map(|v| &v.netplay).or(self.indexed.map(|e| &e.netplay))
+    }
+
+    /// Package size in bytes, when the repo told us.
+    pub fn size(&self) -> Option<u64> {
+        self.indexed.map(|e| e.size)
+    }
+}
+
+impl Catalog {
+    /// Every patch name, installed or merely offered.
+    pub fn names(&self) -> BTreeSet<&str> {
+        self.installed
+            .keys()
+            .map(|s| s.as_str())
+            .chain(self.index.patches.keys().map(|s| s.as_str()))
+            .collect()
+    }
+
+    pub fn is_installed(&self, name: &str, version: &semver::Version) -> bool {
+        self.version(name, version).is_some()
+    }
+
+    pub fn version(&self, name: &str, version: &semver::Version) -> Option<&Arc<Version>> {
+        self.installed.get(name)?.versions.get(version)
+    }
+
+    /// The index entry for a version, if the repo offers it.
+    pub fn entry(&self, name: &str, version: &semver::Version) -> Option<&tango_patch::index::Entry> {
+        self.index.get(name, version)
+    }
+
+    /// Display metadata for a patch: the installed newest version's, or
+    /// the index's if none is installed.
+    pub fn title(&self, name: &str) -> Option<&str> {
+        self.installed
+            .get(name)
+            .map(|p| p.title.as_str())
+            .or_else(|| self.index.latest(name).map(|(_, e)| e.title.as_str()))
+    }
+
+    /// Every known version of `name`, oldest first.
+    pub fn versions(&self, name: &str) -> BTreeMap<semver::Version, VersionInfo<'_>> {
+        let mut out: BTreeMap<semver::Version, VersionInfo<'_>> = BTreeMap::new();
+        if let Some(patch) = self.installed.get(name) {
+            for (v, version) in &patch.versions {
+                out.insert(
+                    v.clone(),
+                    VersionInfo {
+                        installed: Some(version),
+                        indexed: None,
+                    },
+                );
+            }
+        }
+        if let Some(entries) = self.index.patches.get(name) {
+            for (v, entry) in entries {
+                out.entry(v.clone())
+                    .or_insert(VersionInfo {
+                        installed: None,
+                        indexed: None,
+                    })
+                    .indexed = Some(entry);
+            }
+        }
+        out
+    }
+
+    /// A version's netplay declaration, preferring the installed package
+    /// (it's the thing that would actually run) over the index.
+    pub fn compatibility(&self, name: &str, version: &semver::Version) -> Option<&Compatibility> {
+        self.version(name, version)
+            .map(|v| &v.netplay)
+            .or_else(|| self.entry(name, version).map(|e| &e.netplay))
+    }
+
+    /// Resolve the netplay identity of a `(game, patch)` pair. `None`
+    /// when the patch is one we've never heard of, installed or indexed
+    /// — the peer may be running something sideloaded, which we can't
+    /// vouch for either way.
+    ///
+    /// Resolving from the index matters: it's what lets a peer's patch
+    /// be judged compatible *before* it's downloaded.
+    pub fn tag(&self, game: GameRef, patch: Option<(&str, &semver::Version)>) -> Option<Tag> {
+        let family = game.family_and_variant().0;
+        match patch {
+            None => Some(Tag::vanilla(family)),
+            Some((name, version)) => Some(Tag::patched(family, name, version, self.compatibility(name, version)?)),
+        }
+    }
+
+    /// Games a version supports. Falls back to the index's list so the
+    /// Play tab can offer a patch that isn't downloaded yet.
+    pub fn supported_games(&self, name: &str, version: &semver::Version) -> HashSet<GameRef> {
+        if let Some(v) = self.version(name, version) {
+            return v.supported_games.clone();
+        }
+        self.entry(name, version)
+            .map(|e| e.games.iter().filter_map(|t| game_for(*t)).collect())
+            .unwrap_or_default()
+    }
+
+    /// Newest version of `name` supporting `game` (any version when
+    /// `game` is `None`), across installed *and* indexed versions.
+    pub fn newest_version(&self, name: &str, game: Option<GameRef>) -> Option<semver::Version> {
+        self.versions(name).into_keys().rfind(|v| match game {
+            Some(g) => self.supported_games(name, v).contains(&g),
+            None => true,
+        })
+    }
+}
+
+/// `<patches>/store` — one `.tangopatch` per patch version.
+pub fn store_path(patches_path: &Path) -> PathBuf {
+    patches_path.join("store")
+}
+
+/// Where a given patch version lives (or would live) on disk.
+pub fn package_path(patches_path: &Path, name: &str, version: &semver::Version) -> PathBuf {
+    store_path(patches_path).join(format!("{name}-{version}.{}", tango_patch::EXTENSION))
+}
+
+/// `<patches>/index.json` — the cached repo catalogue.
+pub fn index_path(patches_path: &Path) -> PathBuf {
+    patches_path.join(tango_patch::index::FILE_NAME)
+}
+
+/// Everything a scan reads, for the change-detection fingerprint.
+pub fn scan_roots(patches_path: &Path) -> Vec<PathBuf> {
+    vec![store_path(patches_path), index_path(patches_path)]
+}
+
+fn game_for(target: tango_patch::RomTarget) -> Option<GameRef> {
+    crate::library::game::find_by_rom_info(&target.code, target.revision)
+}
+
+/// Read the installed packages and the cached index.
+pub fn scan(patches_path: &Path) -> std::io::Result<Catalog> {
+    let index = match std::fs::read_to_string(index_path(patches_path)) {
+        Ok(raw) => match tango_patch::Index::parse(&raw) {
+            Ok(index) => index,
+            Err(e) => {
+                log::warn!("cached patch index is unusable, ignoring it: {e}");
+                tango_patch::Index::default()
+            }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => tango_patch::Index::default(),
+        Err(e) => return Err(e),
+    };
+
+    // Newest version wins for the patch-level display metadata, so
+    // collect per version first and fold afterwards.
+    let mut versions: BTreeMap<String, BTreeMap<semver::Version, (Arc<Version>, tango_patch::Manifest)>> =
+        BTreeMap::new();
+    let store = store_path(patches_path);
+    let read_dir = match std::fs::read_dir(&store) {
+        Ok(read_dir) => read_dir,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(Catalog {
+                installed: PatchMap::new(),
+                index,
+            })
+        }
+        Err(e) => return Err(e),
+    };
+
+    for entry in read_dir {
+        let path = match entry {
+            Ok(entry) => entry.path(),
+            Err(e) => {
+                log::warn!("patch scan: {e}");
+                continue;
+            }
+        };
+        if path.extension().is_none_or(|e| e != tango_patch::EXTENSION) {
+            continue;
+        }
+        match read_package(&path) {
+            Ok((manifest, version)) => {
+                versions
+                    .entry(manifest.name.clone())
+                    .or_default()
+                    .insert(manifest.version.clone(), (Arc::new(version), manifest));
+            }
+            Err(e) => log::warn!("{}: {e}", path.display()),
+        }
+    }
+
+    let installed = versions
+        .into_iter()
+        .filter_map(|(name, versions)| {
+            // Newest version supplies the patch's display metadata.
+            let (_, newest) = versions.values().next_back()?;
+            let patch = Patch {
+                title: newest.title.clone(),
+                authors: display_authors(&newest.authors),
+                license: newest.license.clone(),
+                source: newest.source.clone(),
+                versions: versions.into_iter().map(|(v, (version, _))| (v, version)).collect(),
+            };
+            Some((name, Arc::new(patch)))
+        })
+        .collect();
+
+    Ok(Catalog { installed, index })
+}
+
+/// Read one package into a [`Version`] and its manifest.
+fn read_package(path: &Path) -> anyhow::Result<(tango_patch::Manifest, Version)> {
+    let mut package = Package::open(path)?;
+    let manifest = package.manifest().clone();
+
+    // A package can be named for a game this build doesn't support (no
+    // gamesupport feature, or a rom we don't know); that just means
+    // fewer supported games, not a bad package.
+    let mut supported_games = HashSet::new();
+    let mut save_templates: HashMap<GameRef, BTreeMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>> =
+        HashMap::new();
+    for target in package.targets().collect::<Vec<_>>() {
+        let Some(game) = game_for(target) else {
+            continue;
+        };
+        supported_games.insert(game);
+        for template in package.save_templates(target).map(|s| s.to_owned()).collect::<Vec<_>>() {
+            let raw = package.save_template(target, &template)?;
+            match game.parse_save(&raw) {
+                Ok(save) => {
+                    save_templates.entry(game).or_default().insert(template, save);
+                }
+                Err(e) => log::warn!(
+                    "{}: {target} template {template:?} is not a valid save: {e}",
+                    path.display()
+                ),
+            }
+        }
+    }
+
+    let version = Version {
+        path: path.to_path_buf(),
+        netplay: manifest.netplay.clone(),
+        rom_overrides: manifest.rom_overrides.clone(),
+        supported_games,
+        save_templates,
+        readme: package.readme()?,
+    };
+    Ok((manifest, version))
+}
+
+/// `Name <addr@example.com>` → `Name`.
+fn display_authors(authors: &[String]) -> Vec<String> {
+    authors
+        .iter()
+        .map(|s| match mailparse::addrparse(s) {
+            Ok(addrs) => addrs
+                .iter()
+                .filter_map(|addr| match addr {
+                    mailparse::MailAddr::Single(info) => {
+                        Some(info.display_name.clone().unwrap_or_else(|| info.addr.clone()))
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
+            Err(_) => s.clone(),
+        })
+        .collect()
+}
+
+/// Read the BPS for `game` out of the installed package and apply it to
+/// `rom`, returning the patched image.
 pub fn apply_patch_from_disk(
     rom: &[u8],
     game: GameRef,
-    patches_path: &std::path::Path,
+    patches_path: &Path,
     patch_name: &str,
     patch_version: &semver::Version,
 ) -> anyhow::Result<Vec<u8>> {
-    let patch_name_path = std::path::Path::new(patch_name);
-    if patch_name_path.components().count() > 1 {
-        anyhow::bail!("attempted path traversal in patch name");
-    }
+    // Names are validated on the way in (`tango_patch::validate_name`
+    // forbids separators), so a name can't escape the store.
+    tango_patch::validate_name(patch_name).map_err(|e| anyhow::anyhow!("bad patch name: {e}"))?;
 
+    let path = package_path(patches_path, patch_name, patch_version);
     let (rom_code, revision) = game.rom_code_and_revision();
-    let bps_path = patches_path
-        .join(patch_name_path)
-        .join(format!("v{patch_version}"))
-        .join(format!(
-            "{}_{:02}.bps",
-            std::str::from_utf8(rom_code).unwrap(),
-            revision
-        ));
-    let raw = std::fs::read(&bps_path)?;
+    let target = tango_patch::RomTarget::new(*rom_code, revision);
+    let raw = Package::open(&path)?.bps(target)?;
     Ok(bps::Patch::decode(&raw)?.apply(rom)?)
 }
 
-/// Background patch-repo autoupdater. Spawns a tokio task on
-/// [`Autoupdater::start`] that re-runs `update + scan` every
-/// `INTERVAL`, mirroring `tango/src/patch.rs::Autoupdater`. The
-/// task observes its cancellation token between cycles so
-/// `stop` (or the App dropping) tears it down cleanly.
+/// Progress of one package download, in bytes.
+#[derive(Debug, Clone, Copy)]
+pub struct Progress {
+    pub downloaded: u64,
+    pub total: u64,
+}
+
+const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn client() -> reqwest::Client {
+    reqwest::Client::new()
+}
+
+/// Fetch the repo index, writing it to disk when it changed.
+///
+/// Returns `true` if the on-disk copy was replaced (the caller should
+/// rescan). Conditional on the stored ETag, so the common case — the
+/// repo hasn't published anything since we last looked — is a 304 with
+/// no body, which is what lets this poll on a timer without being rude.
+pub async fn fetch_index(url: &str, patches_path: &Path) -> anyhow::Result<bool> {
+    std::fs::create_dir_all(patches_path)?;
+    let path = index_path(patches_path);
+    let etag_path = patches_path.join("index.etag");
+
+    let mut request = client()
+        .get(format!(
+            "{}/{}",
+            url.trim_end_matches('/'),
+            tango_patch::index::FILE_NAME
+        ))
+        .header("User-Agent", "tango")
+        .timeout(TIMEOUT);
+    // Only send the validator if we still have the body it describes.
+    if path.is_file() {
+        if let Ok(etag) = std::fs::read_to_string(&etag_path) {
+            request = request.header(reqwest::header::IF_NONE_MATCH, etag.trim());
+        }
+    }
+
+    let response = request.send().await?.error_for_status()?;
+    if response.status() == reqwest::StatusCode::NOT_MODIFIED {
+        return Ok(false);
+    }
+    let etag = response
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_owned());
+    let raw = response.text().await?;
+
+    // Parse before writing: a corrupt or future-format index shouldn't
+    // clobber the usable one we already have.
+    let index = tango_patch::Index::parse(&raw)?;
+    std::fs::write(&path, &raw)?;
+    match etag {
+        Some(etag) => std::fs::write(&etag_path, etag)?,
+        None => {
+            let _ = std::fs::remove_file(&etag_path);
+        }
+    }
+    log::info!(
+        "patch index: {} versions of {} patches",
+        index.len(),
+        index.patches.len()
+    );
+    Ok(true)
+}
+
+/// Download one patch version into the store.
+///
+/// The package is verified against the index's hash and written through
+/// a temporary file, so a failed or truncated download can't leave a
+/// half-written package that the next scan would treat as installed.
+pub async fn download(
+    url: &str,
+    patches_path: &Path,
+    name: &str,
+    version: &semver::Version,
+    entry: &tango_patch::index::Entry,
+    progress: impl Fn(Progress),
+) -> anyhow::Result<PathBuf> {
+    tango_patch::validate_name(name).map_err(|e| anyhow::anyhow!("bad patch name: {e}"))?;
+    let store = store_path(patches_path);
+    std::fs::create_dir_all(&store)?;
+
+    let response = client()
+        .get(format!("{}/{}", url.trim_end_matches('/'), entry.path))
+        .header("User-Agent", "tango")
+        .timeout(TIMEOUT)
+        .send()
+        .await?
+        .error_for_status()?;
+
+    let total = response.content_length().unwrap_or(entry.size);
+    let temp = store.join(format!(".{name}-{version}.part"));
+    let mut file = tokio::fs::File::create(&temp).await?;
+    let mut raw = Vec::with_capacity(entry.size as usize);
+    let mut stream = response.bytes_stream();
+    progress(Progress { downloaded: 0, total });
+    while let Some(chunk) = tokio::time::timeout(TIMEOUT, stream.next()).await? {
+        let chunk = chunk?;
+        file.write_all(&chunk).await?;
+        raw.extend_from_slice(&chunk);
+        progress(Progress {
+            downloaded: raw.len() as u64,
+            total,
+        });
+    }
+    file.flush().await?;
+    drop(file);
+
+    let verified = verify(&raw, entry, name, version);
+    if verified.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    verified?;
+
+    let path = package_path(patches_path, name, version);
+    std::fs::rename(&temp, &path)?;
+    log::info!("installed {name} {version} ({} bytes)", raw.len());
+    Ok(path)
+}
+
+/// A downloaded package must be what the index promised, and must be
+/// what it says it is. The hash check is also what makes serving
+/// packages from a mirror or a CDN cache safe.
+fn verify(raw: &[u8], entry: &tango_patch::index::Entry, name: &str, version: &semver::Version) -> anyhow::Result<()> {
+    entry
+        .verify(raw)
+        .map_err(|e| anyhow::anyhow!("{name} {version}: {e}"))?;
+    let manifest = Package::read(std::io::Cursor::new(raw))?.manifest().clone();
+    if manifest.name != name || &manifest.version != version {
+        anyhow::bail!(
+            "{name} {version}: package contains {} {} instead",
+            manifest.name,
+            manifest.version
+        );
+    }
+    Ok(())
+}
+
+/// Delete an installed package. The next scan drops it from the catalog;
+/// the index still lists it, so it can be reinstalled.
+pub fn uninstall(patches_path: &Path, name: &str, version: &semver::Version) -> anyhow::Result<()> {
+    tango_patch::validate_name(name).map_err(|e| anyhow::anyhow!("bad patch name: {e}"))?;
+    std::fs::remove_file(package_path(patches_path, name, version))?;
+    Ok(())
+}
+
+/// Background index refresher.
+///
+/// Under the old format this re-hashed every file in the patch directory
+/// and downloaded whatever differed; now it re-fetches one small
+/// conditional GET, so it costs a 304 in the steady state.
 pub struct Autoupdater {
-    patches_path: std::path::PathBuf,
+    patches_path: PathBuf,
     patch_repo: String,
     patches_scanner: Scanner,
     cancellation_token: Option<tokio_util::sync::CancellationToken>,
 }
 
 impl Autoupdater {
-    /// Same cadence as legacy — fast enough to pick up new
-    /// patches within an hour, slow enough not to hammer the
-    /// repo.
+    /// Fast enough to notice a new patch within the hour, slow enough
+    /// not to hammer the repo.
     const INTERVAL: std::time::Duration = std::time::Duration::from_secs(15 * 60);
 
-    pub fn new(patches_path: std::path::PathBuf, patch_repo: String, patches_scanner: Scanner) -> Self {
+    pub fn new(patches_path: PathBuf, patch_repo: String, patches_scanner: Scanner) -> Self {
         Self {
             patches_path,
             patch_repo,
@@ -186,7 +550,7 @@ impl Autoupdater {
         if self.cancellation_token.is_some() {
             return;
         }
-        log::info!("starting patch autoupdater (every {:?})", Self::INTERVAL);
+        log::info!("starting patch index autoupdater (every {:?})", Self::INTERVAL);
         let token = tokio_util::sync::CancellationToken::new();
         let scanner = self.patches_scanner.clone();
         let patches_path = self.patches_path.clone();
@@ -198,30 +562,26 @@ impl Autoupdater {
         tokio::task::spawn({
             let token = token.clone();
             async move {
-                'l: loop {
-                    let url = patch_repo.clone();
-                    let path = patches_path.clone();
-                    let scanner = scanner.clone();
-                    // Run the blocking scan+update on a worker
-                    // so the autoupdater task doesn't pin its
-                    // executor thread during the http fetch /
-                    // extract loop.
-                    let _ = tokio::task::spawn_blocking(move || {
-                        scanner.rescan(|| {
-                            if let Err(e) = futures::executor::block_on(update(url.clone(), path.clone())) {
-                                log::error!("patch autoupdate failed: {e:?}");
-                            }
-                            scan(&path).ok()
-                        });
-                        log::info!("patch autoupdate cycle complete");
-                    })
-                    .await;
+                loop {
+                    match fetch_index(&patch_repo, &patches_path).await {
+                        // Only a changed index is worth a rescan.
+                        Ok(true) => {
+                            let path = patches_path.clone();
+                            let scanner = scanner.clone();
+                            let _ = tokio::task::spawn_blocking(move || {
+                                scanner.rescan(|| scan(&path).ok());
+                            })
+                            .await;
+                        }
+                        Ok(false) => {}
+                        Err(e) => log::error!("patch index autoupdate failed: {e:?}"),
+                    }
                     tokio::select! {
                         _ = tokio::time::sleep(Self::INTERVAL) => {}
-                        _ = token.cancelled() => { break 'l; }
+                        _ = token.cancelled() => break,
                     }
                 }
-                log::info!("stopped patch autoupdater");
+                log::info!("stopped patch index autoupdater");
             }
         });
         self.cancellation_token = Some(token);
@@ -240,176 +600,394 @@ impl Drop for Autoupdater {
     }
 }
 
-pub fn scan(path: &std::path::Path) -> std::io::Result<PatchMap> {
-    let mut patches = BTreeMap::new();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tango_patch::bundle::Builder;
 
-    let read_dir = match std::fs::read_dir(path) {
-        Ok(r) => r,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(patches),
-        Err(e) => return Err(e),
-    };
+    /// A scratch data directory that cleans up on drop.
+    struct TempDir(PathBuf);
 
-    let patch_filename_re = regex::Regex::new(r"^(\S{4})_(\d{2})\.bps$").unwrap();
-    let save_template_filename_re = regex::Regex::new(r"^(\S{4})_(\d{2})(?:|_(.+?))\.sav$").unwrap();
-
-    for entry in read_dir {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(e) => {
-                log::warn!("patch scan: {e:?}");
-                continue;
-            }
-        };
-        let Some(name) = entry.file_name().to_str().map(|s| s.to_string()) else {
-            continue;
-        };
-        if entry.file_type().ok().map(|ft| !ft.is_dir()).unwrap_or(false) {
-            continue;
+    impl TempDir {
+        fn new() -> Self {
+            static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!("tango-patch-scan-{}-{n}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path).unwrap();
+            TempDir(path)
         }
+    }
 
-        let info_path = entry.path().join("info.toml");
-        let raw = match std::fs::read_to_string(&info_path) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        let info = match toml::from_str::<Metadata>(&raw) {
-            Ok(i) => i,
-            Err(e) => {
-                log::warn!("{}: {e}", info_path.display());
-                continue;
-            }
-        };
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
 
-        let readme = std::fs::read_dir(entry.path())
-            .ok()
-            .and_then(|mut it| {
-                it.find(|p| {
-                    p.as_ref()
-                        .map(|e| e.file_name().eq_ignore_ascii_case("readme"))
-                        .unwrap_or(false)
-                })
-                .and_then(|r| r.ok())
-            })
-            .and_then(|e| std::fs::read(e.path()).ok())
-            .map(|buf| String::from_utf8_lossy(&buf).to_string());
+    fn manifest(name: &str, version: &str, netplay: &str) -> tango_patch::Manifest {
+        tango_patch::Manifest::parse(&format!(
+            r#"
+format = 1
+name = "{name}"
+version = "{version}"
+title = "Test {name}"
+authors = ["Someone <someone@example.com>"]
+netplay = "{netplay}"
+"#
+        ))
+        .unwrap()
+    }
 
-        let mut versions = BTreeMap::new();
-        for (v, ver) in info.versions {
-            let sv = match semver::Version::parse(&v) {
-                Ok(s) => s,
-                Err(e) => {
-                    log::warn!("{}: bad version {v}: {e}", entry.path().display());
-                    continue;
-                }
-            };
-            if sv.to_string() != v {
-                log::warn!("{}: semver did not round trip: {v}", entry.path().display());
-                continue;
-            }
+    /// Install a package patching BR6E_00 (BN6 Falzar), which every
+    /// gamesupport-enabled build knows.
+    fn install(root: &Path, name: &str, version: &str, netplay: &str) {
+        let mut builder = Builder::new(manifest(name, version, netplay));
+        builder.set_readme("# hello");
+        builder.add_rom("BR6E_00".parse().unwrap(), b"not really a bps".to_vec());
+        builder.write_file(&store_path(root)).unwrap();
+    }
 
-            let vdir = entry.path().join(format!("v{sv}"));
-            let vread = match std::fs::read_dir(&vdir) {
-                Ok(r) => r,
-                Err(e) => {
-                    log::warn!("{}: {e}", vdir.display());
-                    continue;
-                }
-            };
-
-            let mut supported_games: HashSet<GameRef> = HashSet::new();
-            let mut save_templates: std::collections::HashMap<
-                GameRef,
-                BTreeMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>,
-            > = std::collections::HashMap::new();
-            for f in vread {
-                let Ok(f) = f else { continue };
-                let Some(filename) = f.file_name().into_string().ok() else {
-                    continue;
-                };
-
-                if let Some(captures) = patch_filename_re.captures(&filename) {
-                    let rom_code: [u8; 4] = match captures[1].as_bytes().try_into() {
-                        Ok(b) => b,
-                        Err(_) => continue,
-                    };
-                    let Ok(revision) = captures[2].parse::<u8>() else {
-                        continue;
-                    };
-                    let Some(game) = crate::library::game::find_by_rom_info(&rom_code, revision) else {
-                        continue;
-                    };
-                    supported_games.insert(game);
-                } else if let Some(captures) = save_template_filename_re.captures(&filename) {
-                    let rom_code: [u8; 4] = match captures[1].as_bytes().try_into() {
-                        Ok(b) => b,
-                        Err(_) => continue,
-                    };
-                    let Ok(revision) = captures[2].parse::<u8>() else {
-                        continue;
-                    };
-                    let Some(game) = crate::library::game::find_by_rom_info(&rom_code, revision) else {
-                        continue;
-                    };
-                    let template_name = captures.get(3).map(|m| m.as_str().to_string()).unwrap_or_default();
-                    let raw = match std::fs::read(f.path()) {
-                        Ok(r) => r,
-                        Err(e) => {
-                            log::warn!("{}: {e}", f.path().display());
-                            continue;
-                        }
-                    };
-                    match game.parse_save(&raw) {
-                        Ok(save) => {
-                            save_templates.entry(game).or_default().insert(template_name, save);
-                        }
-                        Err(e) => log::warn!("{}: not a valid template save: {e}", f.path().display()),
-                    }
-                }
-            }
-
-            versions.insert(
-                sv,
-                Arc::new(Version {
-                    rom_overrides: ver.rom_overrides,
-                    netplay_compatibility: ver.netplay_compatibility,
-                    supported_games,
-                    save_templates,
-                }),
+    /// An index offering `name` at `version` without it being installed.
+    fn index_with(root: &Path, entries: &[(&str, &str, &str)]) {
+        let mut index = tango_patch::Index::default();
+        for (name, version, netplay) in entries {
+            index.patches.entry((*name).to_owned()).or_default().insert(
+                version.parse().unwrap(),
+                tango_patch::index::Entry {
+                    title: format!("Test {name}"),
+                    authors: vec!["Someone <someone@example.com>".into()],
+                    license: None,
+                    source: None,
+                    netplay: netplay.parse().unwrap(),
+                    games: vec!["BR6E_00".parse().unwrap()],
+                    path: format!("{name}/{name}-{version}.tangopatch"),
+                    size: 1234,
+                    sha256: "0".repeat(64),
+                    readme: None,
+                },
             );
         }
+        std::fs::write(index_path(root), index.to_json().unwrap()).unwrap();
+    }
 
-        let authors = info
-            .patch
-            .authors
-            .into_iter()
-            .map(|s| match mailparse::addrparse(&s) {
-                Ok(addrs) => addrs
-                    .iter()
-                    .filter_map(|addr| match addr {
-                        mailparse::MailAddr::Single(info) => {
-                            Some(info.display_name.clone().unwrap_or_else(|| info.addr.clone()))
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                Err(_) => s,
-            })
-            .collect();
+    fn bn6_falzar() -> GameRef {
+        crate::library::game::find_by_rom_info(b"BR6E", 0).expect("gamesupport-bn6 must be enabled for this test")
+    }
 
-        patches.insert(
-            name,
-            Arc::new(Patch {
-                path: entry.path(),
-                title: info.patch.title,
-                authors,
-                license: info.patch.license,
-                source: info.patch.source,
-                readme,
-                versions,
-            }),
+    fn v(s: &str) -> semver::Version {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn scans_installed_packages() {
+        let dir = TempDir::new();
+        install(&dir.0, "bn6_test", "1.0.0", "group:testing");
+
+        let catalog = scan(&dir.0).unwrap();
+        assert_eq!(catalog.installed.len(), 1);
+        assert_eq!(catalog.title("bn6_test"), Some("Test bn6_test"));
+        // mailparse reduces the address to its display name.
+        assert_eq!(catalog.installed["bn6_test"].authors, vec!["Someone"]);
+
+        let version = catalog.version("bn6_test", &v("1.0.0")).unwrap();
+        assert_eq!(version.netplay, Compatibility::Group("testing".into()));
+        assert_eq!(version.readme.as_deref(), Some("# hello"));
+        assert!(version.supported_games.contains(&bn6_falzar()));
+        assert!(catalog.is_installed("bn6_test", &v("1.0.0")));
+    }
+
+    #[test]
+    fn an_empty_or_absent_store_is_not_an_error() {
+        let dir = TempDir::new();
+        assert!(scan(&dir.0).unwrap().installed.is_empty());
+        std::fs::create_dir_all(store_path(&dir.0)).unwrap();
+        assert!(scan(&dir.0).unwrap().installed.is_empty());
+    }
+
+    #[test]
+    fn the_catalog_merges_installed_and_offered() {
+        let dir = TempDir::new();
+        install(&dir.0, "bn6_test", "1.0.0", "group:testing");
+        index_with(
+            &dir.0,
+            &[
+                // A newer version of something we have, plus something
+                // we don't have at all.
+                ("bn6_test", "2.0.0", "group:testing"),
+                ("bn6_other", "1.0.0", "vanilla"),
+            ],
+        );
+
+        let catalog = scan(&dir.0).unwrap();
+        assert_eq!(
+            catalog.names().into_iter().collect::<Vec<_>>(),
+            vec!["bn6_other", "bn6_test"]
+        );
+
+        let versions = catalog.versions("bn6_test");
+        assert_eq!(versions.len(), 2);
+        assert!(versions[&v("1.0.0")].is_installed());
+        assert!(!versions[&v("2.0.0")].is_installed());
+        assert_eq!(versions[&v("2.0.0")].size(), Some(1234));
+
+        // Not installed, but still browsable and resolvable.
+        assert_eq!(catalog.title("bn6_other"), Some("Test bn6_other"));
+        assert!(catalog
+            .supported_games("bn6_other", &v("1.0.0"))
+            .contains(&bn6_falzar()));
+        assert!(!catalog.is_installed("bn6_other", &v("1.0.0")));
+    }
+
+    #[test]
+    fn tags_resolve_from_the_index_before_anything_is_downloaded() {
+        let dir = TempDir::new();
+        index_with(
+            &dir.0,
+            &[("bn6_cosmetic", "1.0.0", "vanilla"), ("bn6_mod", "1.0.0", "isolated")],
+        );
+        let catalog = scan(&dir.0).unwrap();
+        let game = bn6_falzar();
+
+        // This is what lets the lobby judge a peer's patch it has never
+        // seen: a cosmetic patch plays the unpatched game...
+        assert_eq!(
+            catalog.tag(game, Some(("bn6_cosmetic", &v("1.0.0")))),
+            catalog.tag(game, None)
+        );
+        // ... and a gameplay patch does not.
+        assert_ne!(
+            catalog.tag(game, Some(("bn6_mod", &v("1.0.0")))),
+            catalog.tag(game, None)
+        );
+        // A patch nobody has heard of can't be vouched for either way.
+        assert_eq!(catalog.tag(game, Some(("bn6_unknown", &v("1.0.0")))), None);
+    }
+
+    #[test]
+    fn an_installed_package_outranks_the_index() {
+        // The installed package is the thing that would actually run, so
+        // a stale or wrong index entry must not decide compatibility.
+        let dir = TempDir::new();
+        install(&dir.0, "bn6_test", "1.0.0", "isolated");
+        index_with(&dir.0, &[("bn6_test", "1.0.0", "vanilla")]);
+
+        let catalog = scan(&dir.0).unwrap();
+        assert_eq!(
+            catalog.compatibility("bn6_test", &v("1.0.0")),
+            Some(&Compatibility::Isolated)
+        );
+        assert_ne!(
+            catalog.tag(bn6_falzar(), Some(("bn6_test", &v("1.0.0")))),
+            catalog.tag(bn6_falzar(), None)
         );
     }
 
-    Ok(patches)
+    #[test]
+    fn newest_version_spans_installed_and_offered() {
+        let dir = TempDir::new();
+        install(&dir.0, "bn6_test", "1.0.0", "isolated");
+        index_with(&dir.0, &[("bn6_test", "1.2.0", "isolated")]);
+        let catalog = scan(&dir.0).unwrap();
+        assert_eq!(catalog.newest_version("bn6_test", None), Some(v("1.2.0")));
+        assert_eq!(catalog.newest_version("bn6_test", Some(bn6_falzar())), Some(v("1.2.0")));
+        assert_eq!(catalog.newest_version("nonexistent", None), None);
+    }
+
+    #[test]
+    fn a_corrupt_package_is_skipped_not_fatal() {
+        let dir = TempDir::new();
+        install(&dir.0, "bn6_test", "1.0.0", "isolated");
+        std::fs::write(
+            store_path(&dir.0).join(format!("junk-1.0.0.{}", tango_patch::EXTENSION)),
+            b"not a zip",
+        )
+        .unwrap();
+        // A file someone dropped in by hand shouldn't cost them the
+        // rest of their patches.
+        let catalog = scan(&dir.0).unwrap();
+        assert_eq!(catalog.installed.len(), 1);
+        assert!(catalog.is_installed("bn6_test", &v("1.0.0")));
+    }
+
+    /// The smallest HTTP server that can stand in for a patch repo:
+    /// serves files under a root, with the ETag handling `fetch_index`
+    /// depends on. Testing against a real socket is the point — URL
+    /// joining, conditional requests, and streamed bodies are exactly
+    /// what a hand-rolled fake would paper over.
+    async fn serve(root: PathBuf) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    return;
+                };
+                let root = root.clone();
+                tokio::spawn(async move {
+                    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                    let mut buf = vec![0u8; 8192];
+                    let n = socket.read(&mut buf).await.unwrap_or(0);
+                    let request = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    let path = request
+                        .lines()
+                        .next()
+                        .and_then(|l| l.split_whitespace().nth(1))
+                        .unwrap_or("/")
+                        .trim_start_matches('/')
+                        .to_owned();
+                    let if_none_match = request
+                        .lines()
+                        .find_map(|l| l.strip_prefix("if-none-match: ").or(l.strip_prefix("If-None-Match: ")))
+                        .map(|s| s.trim().to_owned());
+
+                    let response = match std::fs::read(root.join(&path)) {
+                        Ok(body) => {
+                            let etag = format!("\"{}\"", tango_patch::sha256_hex(&body));
+                            if if_none_match.as_deref() == Some(etag.as_str()) {
+                                b"HTTP/1.1 304 Not Modified\r\nContent-Length: 0\r\n\r\n".to_vec()
+                            } else {
+                                let mut out = format!(
+                                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nETag: {etag}\r\n\r\n",
+                                    body.len()
+                                )
+                                .into_bytes();
+                                out.extend_from_slice(&body);
+                                out
+                            }
+                        }
+                        Err(_) => b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".to_vec(),
+                    };
+                    let _ = socket.write_all(&response).await;
+                    let _ = socket.flush().await;
+                });
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    /// Build a repo of packages plus its index, the way the bundler's
+    /// `pack` + `index` would.
+    fn build_repo(root: &Path, packages: &[(&str, &str, &str)]) {
+        for (name, version, netplay) in packages {
+            let mut builder = Builder::new(manifest(name, version, netplay));
+            builder.set_readme(format!("# {name} {version}"));
+            builder.add_rom(
+                "BR6E_00".parse().unwrap(),
+                format!("bps for {name} {version}").into_bytes(),
+            );
+            builder.write_file(&root.join(name)).unwrap();
+        }
+        let index = tango_patch::Index::build(root, true).unwrap();
+        std::fs::write(root.join(tango_patch::index::FILE_NAME), index.to_json().unwrap()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn fetches_the_index_then_installs_only_what_is_asked_for() {
+        let repo = TempDir::new();
+        build_repo(
+            &repo.0,
+            &[("bn6_one", "1.0.0", "vanilla"), ("bn6_two", "2.0.0", "group:pair")],
+        );
+        let url = serve(repo.0.clone()).await;
+        let data = TempDir::new();
+
+        // First fetch pulls the index; the second is a 304.
+        assert!(fetch_index(&url, &data.0).await.unwrap(), "first fetch should store");
+        assert!(!fetch_index(&url, &data.0).await.unwrap(), "second fetch should 304");
+
+        // The whole repo is browsable, with nothing downloaded.
+        let catalog = scan(&data.0).unwrap();
+        assert!(catalog.installed.is_empty());
+        assert_eq!(
+            catalog.names().into_iter().collect::<Vec<_>>(),
+            vec!["bn6_one", "bn6_two"]
+        );
+        assert_eq!(catalog.title("bn6_two"), Some("Test bn6_two"));
+        assert!(!store_path(&data.0).exists(), "nothing should have been downloaded");
+
+        // Install one of them.
+        let version = v("2.0.0");
+        let entry = catalog.entry("bn6_two", &version).unwrap().clone();
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen_w = seen.clone();
+        download(&url, &data.0, "bn6_two", &version, &entry, move |p| {
+            seen_w.lock().unwrap().push(p.downloaded)
+        })
+        .await
+        .unwrap();
+        assert!(
+            seen.lock().unwrap().last().copied() == Some(entry.size),
+            "progress should end at the full size: {:?}",
+            seen.lock().unwrap()
+        );
+
+        let catalog = scan(&data.0).unwrap();
+        assert!(catalog.is_installed("bn6_two", &version));
+        assert!(!catalog.is_installed("bn6_one", &v("1.0.0")), "only the asked-for one");
+        assert_eq!(
+            catalog.version("bn6_two", &version).unwrap().readme.as_deref(),
+            Some("# bn6_two 2.0.0")
+        );
+        assert_eq!(
+            catalog.compatibility("bn6_two", &version),
+            Some(&Compatibility::Group("pair".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_package_that_is_not_what_the_index_promised_is_rejected() {
+        let repo = TempDir::new();
+        build_repo(&repo.0, &[("bn6_one", "1.0.0", "vanilla")]);
+        let url = serve(repo.0.clone()).await;
+        let data = TempDir::new();
+        fetch_index(&url, &data.0).await.unwrap();
+
+        let catalog = scan(&data.0).unwrap();
+        let version = v("1.0.0");
+        let mut entry = catalog.entry("bn6_one", &version).unwrap().clone();
+        entry.sha256 = "0".repeat(64);
+
+        let err = download(&url, &data.0, "bn6_one", &version, &entry, |_| {})
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("hash mismatch"), "{err}");
+        // Nothing half-written left behind: not the package, and not
+        // the temporary it streamed into.
+        assert!(!package_path(&data.0, "bn6_one", &version).exists());
+        assert_eq!(
+            std::fs::read_dir(store_path(&data.0)).unwrap().count(),
+            0,
+            "no leftovers in the store"
+        );
+        assert!(scan(&data.0).unwrap().installed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_failed_fetch_leaves_the_cached_index_usable() {
+        let repo = TempDir::new();
+        build_repo(&repo.0, &[("bn6_one", "1.0.0", "vanilla")]);
+        let url = serve(repo.0.clone()).await;
+        let data = TempDir::new();
+        fetch_index(&url, &data.0).await.unwrap();
+
+        // Repo goes away (or serves garbage) — we keep browsing what we
+        // last saw, which is what makes the app work offline.
+        std::fs::write(repo.0.join(tango_patch::index::FILE_NAME), "not json at all").unwrap();
+        assert!(fetch_index(&url, &data.0).await.is_err());
+        let catalog = scan(&data.0).unwrap();
+        assert_eq!(catalog.names().len(), 1);
+        assert!(catalog.entry("bn6_one", &v("1.0.0")).is_some());
+    }
+
+    #[test]
+    fn a_corrupt_index_leaves_the_installed_patches_alone() {
+        let dir = TempDir::new();
+        install(&dir.0, "bn6_test", "1.0.0", "isolated");
+        std::fs::write(index_path(&dir.0), "{ this is not json").unwrap();
+        let catalog = scan(&dir.0).unwrap();
+        assert!(catalog.index.is_empty());
+        assert!(catalog.is_installed("bn6_test", &v("1.0.0")));
+    }
 }

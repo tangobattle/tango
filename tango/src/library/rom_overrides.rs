@@ -1,89 +1,44 @@
-//! Patch-driven overrides for chip / navicust / patch-card names + effects.
-//! Port of the relevant bits of `tango/src/rom.rs`. The wrapper layers on
-//! top of any `tango_dataview::rom::Assets` impl (i.e. the per-game
-//! assets returned by `tango_gamesupport::Game::load_rom_assets`).
+//! Applies a patch's `[rom_overrides]` on top of a game's own assets.
+//!
+//! The schema itself lives in `tango_patch::Overrides` (it's part of the
+//! package format, and the bundler validates it at pack time). This
+//! module is only the runtime layering.
 
-use serde::Deserialize;
+use tango_patch::overrides::{ChipOverride, NavicustPartOverride, PatchCard56Override, StyleOverride};
 
-fn deserialize_option_language_identifier<'de, D>(
-    deserializer: D,
-) -> Result<Option<unic_langid::LanguageIdentifier>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    Option::<String>::deserialize(deserializer)?
-        .map_or(Ok(None), |buf| buf.parse().map(Some).map_err(serde::de::Error::custom))
-}
-
-fn deserialize_option_patch_card56_effect_template<'de, D>(
-    deserializer: D,
-) -> Result<Option<tango_dataview::rom::PatchCard56EffectTemplate>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    struct ShortTemplatePart {
-        t: Option<String>,
-        p: Option<u32>,
-    }
-
-    Ok(Option::<Vec<ShortTemplatePart>>::deserialize(deserializer)?.map(|v| {
-        v.into_iter()
-            .flat_map(|v| {
-                if let Some(t) = v.t {
-                    vec![tango_dataview::rom::PatchCard56EffectTemplatePart::String(t)]
-                } else if let Some(p) = v.p {
-                    vec![tango_dataview::rom::PatchCard56EffectTemplatePart::PrintVar(p as usize)]
-                } else {
-                    vec![]
+/// A patch card effect name template, resolved against an effect's
+/// parameter. The format stores parts as `{ t = "text" }` or
+/// `{ p = 1 }`; `p == 1` is the effect's parameter, doubled by ten for
+/// the two id's that record it in tens.
+fn render_effect_name(
+    parts: &[tango_patch::overrides::TemplatePart],
+    effect: &tango_dataview::rom::PatchCard56Effect,
+) -> String {
+    parts
+        .iter()
+        .map(|part| {
+            if let Some(t) = &part.t {
+                t.clone()
+            } else if part.p == Some(1) {
+                let mut parameter = effect.parameter as u32;
+                if effect.id == 0x00 || effect.id == 0x02 {
+                    parameter *= 10;
                 }
-            })
-            .collect()
-    }))
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct ChipOverride {
-    pub name: Option<String>,
-    pub description: Option<String>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct NavicustPartOverride {
-    pub name: Option<String>,
-    pub description: Option<String>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct PatchCard56Override {
-    pub name: Option<String>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct PatchCard56EffectOverride {
-    #[serde(deserialize_with = "deserialize_option_patch_card56_effect_template")]
-    pub name_template: Option<tango_dataview::rom::PatchCard56EffectTemplate>,
-}
-
-#[derive(Deserialize, Default, Debug, Clone)]
-#[serde(default)]
-pub struct Overrides {
-    #[serde(deserialize_with = "deserialize_option_language_identifier")]
-    pub language: Option<unic_langid::LanguageIdentifier>,
-    pub charset: Option<Vec<String>>,
-    pub chips: Option<Vec<ChipOverride>>,
-    pub navicust_parts: Option<Vec<NavicustPartOverride>>,
-    pub patch_card56s: Option<Vec<PatchCard56Override>>,
-    pub patch_card56_effects: Option<Vec<PatchCard56EffectOverride>>,
+                format!("{parameter}")
+            } else {
+                String::new()
+            }
+        })
+        .collect()
 }
 
 pub struct OverridenAssets {
     assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>,
-    overrides: Overrides,
+    overrides: tango_patch::Overrides,
 }
 
 impl OverridenAssets {
-    pub fn new(assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>, overrides: Overrides) -> Self {
+    pub fn new(assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>, overrides: tango_patch::Overrides) -> Self {
         Self { assets, overrides }
     }
 }
@@ -169,7 +124,7 @@ pub struct OverridenPatchCard56<'a> {
     patch_card56: Box<dyn tango_dataview::rom::PatchCard56 + 'a>,
     id: usize,
     overrides: Option<&'a Vec<PatchCard56Override>>,
-    effect_overrides: Option<&'a Vec<PatchCard56EffectOverride>>,
+    effect_overrides: Option<&'a Vec<tango_patch::overrides::PatchCard56EffectOverride>>,
 }
 
 impl<'a> tango_dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
@@ -189,29 +144,34 @@ impl<'a> tango_dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
                 name: self
                     .effect_overrides
                     .and_then(|v| v.get(e.id).and_then(|v| v.name_template.as_ref()))
-                    .map(|parts| {
-                        parts
-                            .iter()
-                            .map(|p| match p {
-                                tango_dataview::rom::PatchCard56EffectTemplatePart::String(s) => s.clone(),
-                                tango_dataview::rom::PatchCard56EffectTemplatePart::PrintVar(v) => {
-                                    if *v == 1 {
-                                        let mut parameter = e.parameter as u32;
-                                        if e.id == 0x00 || e.id == 0x02 {
-                                            parameter *= 10;
-                                        }
-                                        format!("{parameter}")
-                                    } else {
-                                        "".to_string()
-                                    }
-                                }
-                            })
-                            .collect::<String>()
-                    })
+                    .map(|parts| render_effect_name(parts, &e))
                     .or_else(|| e.name.clone()),
                 ..e
             })
             .collect()
+    }
+}
+
+pub struct OverridenStyle<'a> {
+    style: Box<dyn tango_dataview::rom::Style + 'a>,
+    id: usize,
+    overrides: Option<&'a Vec<StyleOverride>>,
+}
+
+impl tango_dataview::rom::Style for OverridenStyle<'_> {
+    fn name(&self) -> Option<String> {
+        self.overrides
+            .and_then(|v| v.get(self.id).and_then(|v| v.name.clone()))
+            .or_else(|| self.style.name())
+    }
+    fn typ(&self) -> tango_dataview::rom::StyleType {
+        self.style.typ()
+    }
+    fn element(&self) -> usize {
+        self.style.element()
+    }
+    fn extra_ncp_color(&self) -> Option<tango_dataview::rom::NavicustPartColor> {
+        self.style.extra_ncp_color()
     }
 }
 
@@ -263,7 +223,13 @@ impl tango_dataview::rom::Assets for OverridenAssets {
         self.assets.num_navicust_parts()
     }
     fn style<'a>(&'a self, id: usize) -> Option<Box<dyn tango_dataview::rom::Style + 'a>> {
-        self.assets.style(id)
+        self.assets.style(id).map(|style| {
+            Box::new(OverridenStyle {
+                style,
+                id,
+                overrides: self.overrides.styles.as_ref(),
+            }) as Box<dyn tango_dataview::rom::Style + 'a>
+        })
     }
     fn num_styles(&self) -> usize {
         self.assets.num_styles()

@@ -5873,7 +5873,6 @@ dependencies = [
  "subtle",
  "sweeten",
  "tango-dataview",
- "tango-filesync",
  "tango-gamesupport",
  "tango-gamesupport-bn1",
  "tango-gamesupport-bn2",
@@ -5884,6 +5883,7 @@ dependencies = [
  "tango-gamesupport-exe45",
  "tango-match",
  "tango-net-protocol",
+ "tango-patch",
  "tango-replay",
  "tango-session",
  "tango-signaling",
@@ -5915,19 +5915,6 @@ dependencies = [
  "num-traits",
  "patricia_tree",
  "thiserror 1.0.69",
-]
-
-[[package]]
-name = "tango-filesync"
-version = "0.1.0"
-source = "git+https://github.com/tangobattle/tango-filesync#1c72a637d2e3d363b6a613198911a5cb1cfd2ebc"
-dependencies = [
- "async-recursion",
- "futures",
- "serde",
- "serde-hex",
- "sha2",
- "tokio",
 ]
 
 [[package]]

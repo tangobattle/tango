@@ -103,6 +103,19 @@ impl Error {
     }
 }
 
+/// Hex SHA-256, the digest the index records for every package.
+#[cfg(any(feature = "bundle", feature = "index"))]
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest as _;
+    let digest = sha2::Sha256::digest(bytes);
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
 /// Accept a patch name, netplay group, or save template name.
 ///
 /// The charset is deliberately narrow — ASCII alphanumerics, `_` and `-`,
