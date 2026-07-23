@@ -562,13 +562,11 @@ impl App {
                 };
                 Ok((entry, rom))
             };
-            let (local_game, local_rom) = resolve(replay.metadata.local_side.as_ref())?;
-            let (remote_game, remote_rom) = resolve(replay.metadata.remote_side.as_ref())?;
+            let (p1_game, p1_rom) = resolve(replay.metadata.side(0))?;
+            let (p2_game, p2_rom) = resolve(replay.metadata.side(1))?;
             Ok(ExportPrep {
-                local_game,
-                local_rom,
-                remote_game,
-                remote_rom,
+                games: [p1_game, p2_game],
+                roms: [p1_rom, p2_rom],
                 replay,
             })
         })();
@@ -623,13 +621,7 @@ impl App {
         std::thread::Builder::new()
             .name("replay-export".to_string())
             .spawn(move || {
-                let ExportPrep {
-                    local_game,
-                    local_rom,
-                    remote_game,
-                    remote_rom,
-                    replay,
-                } = prep;
+                let ExportPrep { games, roms, replay } = prep;
                 // scale == 0 is the slider's lossless stop → libx264rgb
                 // -qp 0 (RGB-domain lossless); 1..=10 → libx264 + nearest
                 // upscale at that factor. `default_with_scale` builds the
@@ -653,28 +645,12 @@ impl App {
                 let cb = move |current: usize, total: usize| {
                     let _ = cb_tx.unbounded_send((current, total));
                 };
-                // The replay's input stream is already absolute pair
-                // order — just widen.
-                let local_player = replay.local_player_index as usize;
                 let inputs: Vec<[u32; 2]> =
                     replay.inputs.iter().map(|&[p1, p2]| [p1 as u32, p2 as u32]).collect();
-                let (roms, saves, support): ([Vec<u8>; 2], [Vec<u8>; 2], _) = if local_player == 0 {
-                    (
-                        [local_rom, remote_rom],
-                        [replay.local_sram.clone(), replay.remote_sram.clone()],
-                        [local_game.pvp, remote_game.pvp],
-                    )
-                } else {
-                    (
-                        [remote_rom, local_rom],
-                        [replay.remote_sram.clone(), replay.local_sram.clone()],
-                        [remote_game.pvp, local_game.pvp],
-                    )
-                };
                 let config = tango_match::playback::BootConfig {
                     roms,
-                    saves,
-                    support,
+                    saves: replay.srams.clone(),
+                    support: [games[0].pvp, games[1].pvp],
                     match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
                     rng_seed: replay.rng_seed,
                     rtc: replay.rtc_time(),
@@ -708,7 +684,7 @@ impl App {
                 let result = crate::replay_export::export(
                     &config,
                     &inputs,
-                    local_player,
+                    replay.local_player_index as usize,
                     &rounds_mask,
                     &round_titles,
                     &clip,

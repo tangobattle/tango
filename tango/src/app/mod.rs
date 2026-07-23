@@ -37,10 +37,8 @@ mod update;
 /// Pulled together synchronously in `start_replay_export` so the
 /// spawned future doesn't have to touch `&self`.
 struct ExportPrep {
-    local_game: crate::library::rom::GameRef,
-    local_rom: Vec<u8>,
-    remote_game: crate::library::rom::GameRef,
-    remote_rom: Vec<u8>,
+    games: [crate::library::rom::GameRef; 2],
+    roms: [Vec<u8>; 2],
     replay: tango_match::replay::Replay,
 }
 

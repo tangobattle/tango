@@ -29,8 +29,11 @@ message Metadata {
 
   uint64 ts = 1;
   string link_code = 2;
-  Side local_side = 3;
-  Side remote_side = 4;
+  // Sides are stored in absolute player order (schema 0x1D and later);
+  // the container's local_player_index byte says which one is the
+  // recorder's. Field numbers kept from the local_side/remote_side era.
+  Side p1_side = 3;
+  Side p2_side = 4;
   // Field 5 was a `round` index, never populated to anything useful —
   // replays already cover all rounds of a match, so the field was
   // always zero and just confused the UI. Reserved so future schema

@@ -1100,13 +1100,11 @@ pub fn build_playback(
         Ok((g, std::sync::Arc::new(rom)))
     };
 
-    let (local_game, local_rom) = resolve_rom(replay.metadata.local_side.as_ref())?;
-    let (remote_game, remote_rom) = resolve_rom(replay.metadata.remote_side.as_ref())?;
+    let (p1_game, p1_rom) = resolve_rom(replay.metadata.side(0))?;
+    let (p2_game, p2_rom) = resolve_rom(replay.metadata.side(1))?;
     let (session, audio) = replay::ReplaySession::new(
-        local_game,
-        local_rom,
-        remote_game,
-        remote_rom,
+        [p1_game, p2_game],
+        [p1_rom, p2_rom],
         replay,
         audio_binder.sample_rate(),
         config.show_opponent_pip,

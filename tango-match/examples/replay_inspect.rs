@@ -22,7 +22,12 @@ fn main() {
             }
         };
         let m = &replay.metadata;
-        for (tag, side) in [("local", &m.local_side), ("remote", &m.remote_side)] {
+        for (player, side) in [(0u8, m.side(0)), (1, m.side(1))] {
+            let tag = format!(
+                "p{}{}",
+                player + 1,
+                if player == replay.local_player_index { " (recorder)" } else { "" }
+            );
             if let Some(side) = side {
                 let gi = side.game_info.as_ref();
                 println!(

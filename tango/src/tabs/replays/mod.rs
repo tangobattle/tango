@@ -500,7 +500,7 @@ impl ReplaysState {
             let mut seen: Vec<String> = replays
                 .iter()
                 .filter_map(|r| {
-                    let gi = r.metadata.local_side.as_ref()?.game_info.as_ref()?;
+                    let gi = r.local_side()?.game_info.as_ref()?;
                     Some(gi.rom_family.clone())
                 })
                 .unique()
@@ -577,9 +577,7 @@ impl ReplaysState {
             .game_filter
             .as_ref()
             .map(|family| {
-                r.metadata
-                    .local_side
-                    .as_ref()
+                r.local_side()
                     .and_then(|s| s.game_info.as_ref())
                     .map(|gi| gi.rom_family == *family)
                     .unwrap_or(false)
@@ -608,12 +606,12 @@ impl ReplaysState {
         idx: usize,
     ) -> Element<'a, Message> {
         let md = &r.metadata;
-        let local_nick = md.local_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
-        let remote_nick = md.remote_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
+        let local_nick = r.local_side().map(|s| s.nickname.clone()).unwrap_or_default();
+        let remote_nick = r.remote_side().map(|s| s.nickname.clone()).unwrap_or_default();
 
         let ts_str = format_ts(md.ts, "%Y-%m-%d %H:%M:%S");
 
-        let local_gi = md.local_side.as_ref().and_then(|s| s.game_info.as_ref());
+        let local_gi = r.local_side().and_then(|s| s.game_info.as_ref());
         let game_label = local_gi
             .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
             .and_then(|(family, variant)| crate::library::game::find_by_family_and_variant(family, variant))
@@ -763,9 +761,7 @@ fn replay_detail<'a>(
     // one the emulator session would error on construction. Resolve
     // now so the Watch button can disable + explain.
     let local_rom_present = r
-        .metadata
-        .local_side
-        .as_ref()
+        .local_side()
         .and_then(|s| s.game_info.as_ref())
         .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
         .and_then(|(family, variant)| crate::library::game::find_by_family_and_variant(family, variant))
@@ -806,9 +802,8 @@ fn replay_detail<'a>(
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
 
-    let game_short = md
-        .local_side
-        .as_ref()
+    let game_short = r
+        .local_side()
         .and_then(|s| s.game_info.as_ref())
         .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
         .and_then(|(family, variant)| crate::library::game::find_by_family_and_variant(family, variant))
@@ -899,9 +894,8 @@ fn replay_detail<'a>(
                     .style(widgets::muted_text_style),
                 text(ts_str).size(TEXT_CAPTION).style(widgets::muted_text_style),
                 {
-                    let family = md
-                        .local_side
-                        .as_ref()
+                    let family = r
+                        .local_side()
                         .and_then(|s| s.game_info.as_ref())
                         .map(|g| g.rom_family.clone())
                         .unwrap_or_default();
@@ -967,8 +961,8 @@ fn replay_detail<'a>(
     .style(widgets::pane);
 
     let matchup_pane = widgets::matchup_pane(
-        row_for_side(t!(lang, "play-you"), md.local_side.as_ref()),
-        row_for_side(t!(lang, "play-opponent"), md.remote_side.as_ref()),
+        row_for_side(t!(lang, "play-you"), r.local_side()),
+        row_for_side(t!(lang, "play-opponent"), r.remote_side()),
     );
 
     // HP-over-time pane: the match graph, at a fixed height with the
@@ -1053,7 +1047,7 @@ const DETAIL_HP_GRAPH_H: f32 = 72.0;
 fn search_haystack(lang: &LanguageIdentifier, replays_path: &std::path::Path, r: &replays::ScannedReplay) -> String {
     let md = &r.metadata;
     let mut parts: Vec<String> = Vec::new();
-    for side in [md.local_side.as_ref(), md.remote_side.as_ref()].into_iter().flatten() {
+    for side in [md.side(0), md.side(1)].into_iter().flatten() {
         parts.push(side.nickname.clone());
         if let Some(gi) = side.game_info.as_ref() {
             parts.push(gi.rom_family.clone());

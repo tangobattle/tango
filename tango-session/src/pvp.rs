@@ -1341,6 +1341,49 @@ fn build_replay_writer(
         .open(&replay_filename)?;
     let local_sram = local_save.to_sram_dump();
     let remote_sram = remote_save.to_sram_dump();
+    let local_side = Some(tango_match::replay::metadata::Side {
+        nickname: local_settings.nickname.clone(),
+        game_info: Some(tango_match::replay::metadata::GameInfo {
+            rom_family: local_gi.family_and_variant.0.clone(),
+            rom_variant: local_gi.family_and_variant.1 as u32,
+            patch: local_gi
+                .patch
+                .as_ref()
+                .map(|p| tango_match::replay::metadata::game_info::Patch {
+                    name: p.name.clone(),
+                    version: p.version.to_string(),
+                }),
+        }),
+        // The replay metadata proto (replay11) predates the
+        // blind-setup inversion and still stores the
+        // positive "reveal" sense.
+        reveal_setup: !local_settings.blind_setup,
+        client_cert_fingerprint_sha256: pre_match.local_client_cert_fingerprint.clone(),
+    });
+    let remote_side = Some(tango_match::replay::metadata::Side {
+        nickname: remote_settings.nickname.clone(),
+        game_info: Some(tango_match::replay::metadata::GameInfo {
+            rom_family: remote_gi.family_and_variant.0.clone(),
+            rom_variant: remote_gi.family_and_variant.1 as u32,
+            patch: remote_gi
+                .patch
+                .as_ref()
+                .map(|p| tango_match::replay::metadata::game_info::Patch {
+                    name: p.name.clone(),
+                    version: p.version.to_string(),
+                }),
+        }),
+        reveal_setup: !remote_settings.blind_setup,
+        client_cert_fingerprint_sha256: pre_match.peer_client_cert_fingerprint.clone(),
+    });
+    // The recorder is where perspective enters the format: everything in
+    // the file is absolute player order, so seat the two sides (and the
+    // two saves) by our negotiated player index here and nowhere else.
+    let (p1_side, p2_side, srams) = if local_player_index == 0 {
+        (local_side, remote_side, [&local_sram, &remote_sram])
+    } else {
+        (remote_side, local_side, [&remote_sram, &local_sram])
+    };
     let writer = tango_match::replay::Writer::new(
         // Buffered: write_input runs on the drive thread once per
         // confirmed tick, and unbuffered it costs a few small write
@@ -1350,6 +1393,7 @@ fn build_replay_writer(
         std::io::BufWriter::new(file),
         // SIO-engine stream: one continuous run of pair ticks.
         tango_match::replay::VERSION,
+        local_player_index,
         tango_match::replay::Metadata {
             // The negotiated match clock, not the local wall clock: both
             // cores' cart RTC is pinned to this instant, and playback
@@ -1358,49 +1402,13 @@ fn build_replay_writer(
             // peers' replays of one match carry the identical ts.
             ts: pre_match.match_ts,
             link_code: link_code.clone(),
-            local_side: Some(tango_match::replay::metadata::Side {
-                nickname: local_settings.nickname.clone(),
-                game_info: Some(tango_match::replay::metadata::GameInfo {
-                    rom_family: local_gi.family_and_variant.0.clone(),
-                    rom_variant: local_gi.family_and_variant.1 as u32,
-                    patch: local_gi
-                        .patch
-                        .as_ref()
-                        .map(|p| tango_match::replay::metadata::game_info::Patch {
-                            name: p.name.clone(),
-                            version: p.version.to_string(),
-                        }),
-                }),
-                // The replay metadata proto (replay11) predates the
-                // blind-setup inversion and still stores the
-                // positive "reveal" sense.
-                reveal_setup: !local_settings.blind_setup,
-                client_cert_fingerprint_sha256: pre_match.local_client_cert_fingerprint.clone(),
-            }),
-            remote_side: Some(tango_match::replay::metadata::Side {
-                nickname: remote_settings.nickname.clone(),
-                game_info: Some(tango_match::replay::metadata::GameInfo {
-                    rom_family: remote_gi.family_and_variant.0.clone(),
-                    rom_variant: remote_gi.family_and_variant.1 as u32,
-                    patch: remote_gi
-                        .patch
-                        .as_ref()
-                        .map(|p| tango_match::replay::metadata::game_info::Patch {
-                            name: p.name.clone(),
-                            version: p.version.to_string(),
-                        }),
-                }),
-                reveal_setup: !remote_settings.blind_setup,
-                client_cert_fingerprint_sha256: pre_match.peer_client_cert_fingerprint.clone(),
-            }),
+            p1_side,
+            p2_side,
             match_type: pre_match.match_type.0 as u32,
             match_subtype: pre_match.match_type.1 as u32,
         },
-        pre_match.is_offerer,
-        local_player_index,
         pre_match.rng_seed,
-        &local_sram,
-        &remote_sram,
+        [srams[0].as_slice(), srams[1].as_slice()],
     )?;
     Ok((writer, replay_filename))
 }

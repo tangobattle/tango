@@ -131,19 +131,14 @@ impl ReplaySession {
     /// host to route to its output.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        game: &'static tango_gamesupport::Game,
-        rom: Arc<Vec<u8>>,
-        remote_game: &'static tango_gamesupport::Game,
-        remote_rom: Arc<Vec<u8>>,
+        games: [&'static tango_gamesupport::Game; 2],
+        roms: [Arc<Vec<u8>>; 2],
         replay: Arc<tango_match::replay::Replay>,
         sample_rate: u32,
         show_pip: bool,
         stats_job: Option<PrefetchStatsJob>,
     ) -> Result<(Self, crate::core_stream::CoreStream), crate::Error> {
         use tango_match::playback as sio_playback;
-
-        let local_sio = game.pvp;
-        let remote_sio = remote_game.pvp;
 
         let local_player = replay.local_player_index as usize;
         if local_player >= 2 {
@@ -159,24 +154,12 @@ impl ReplaySession {
         }
         let boot = {
             let replay = replay.clone();
-            move |local_rom: &[u8], remote_rom: &[u8]| -> sio_playback::BootConfig {
-                let (roms, saves, support): ([Vec<u8>; 2], [Vec<u8>; 2], _) = if local_player == 0 {
-                    (
-                        [local_rom.to_vec(), remote_rom.to_vec()],
-                        [replay.local_sram.clone(), replay.remote_sram.clone()],
-                        [local_sio, remote_sio],
-                    )
-                } else {
-                    (
-                        [remote_rom.to_vec(), local_rom.to_vec()],
-                        [replay.remote_sram.clone(), replay.local_sram.clone()],
-                        [remote_sio, local_sio],
-                    )
-                };
+            let roms = roms.clone();
+            move || -> sio_playback::BootConfig {
                 sio_playback::BootConfig {
-                    roms,
-                    saves,
-                    support,
+                    roms: [roms[0].to_vec(), roms[1].to_vec()],
+                    saves: replay.srams.clone(),
+                    support: [games[0].pvp, games[1].pvp],
                     match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
                     rng_seed: replay.rng_seed,
                     rtc: replay.rtc_time(),
@@ -187,8 +170,8 @@ impl ReplaySession {
             }
         };
 
-        let nickname_of = |side: &Option<tango_match::replay::metadata::Side>| {
-            side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default()
+        let nickname_of = |side: Option<&tango_match::replay::metadata::Side>| {
+            side.map(|s| s.nickname.clone()).unwrap_or_default()
         };
         let input_display = Box::new(InputDisplay {
             pairs: replay
@@ -202,8 +185,8 @@ impl ReplaySession {
                 })
                 .collect(),
             nicknames: (
-                nickname_of(&replay.metadata.local_side),
-                nickname_of(&replay.metadata.remote_side),
+                nickname_of(replay.local_side()),
+                nickname_of(replay.remote_side()),
             ),
         });
 
@@ -255,7 +238,7 @@ impl ReplaySession {
             std::thread::Builder::new()
                 .name("tango-sio-replay-drive".to_owned())
                 .spawn({
-                    let boot_config = boot(rom.as_ref(), remote_rom.as_ref());
+                    let boot_config = boot();
                     let inputs = inputs.clone();
                     let playback = playback.clone();
                     let cursor = cursor.clone();
@@ -289,14 +272,14 @@ impl ReplaySession {
             std::thread::Builder::new()
                 .name("tango-sio-replay-prefetch".to_owned())
                 .spawn({
-                    let boot_config = boot(rom.as_ref(), remote_rom.as_ref());
+                    let boot_config = boot();
                     let inputs = inputs.clone();
                     let snapshots = snapshots.clone();
                     let prefetch_progress = prefetch_progress.clone();
                     let round_marks = discover_marks.then(|| round_marks.clone());
                     let cancel = cancel.clone();
-                    let chip_semantics = game.pvp.chip_semantics(rom.as_ref());
-                    let counts_buster = game.pvp.counts_buster(rom.as_ref());
+                    let chip_semantics = games[local_player].pvp.chip_semantics(roms[local_player].as_ref());
+                    let counts_buster = games[local_player].pvp.counts_buster(roms[local_player].as_ref());
                     move || {
                         const PREVIEW_EVERY: std::time::Duration = std::time::Duration::from_millis(33);
                         let mut last_preview = std::time::Instant::now();
@@ -394,7 +377,7 @@ impl ReplaySession {
         );
 
         let session = Self {
-            game,
+            game: games[local_player],
             round_boundaries: round_marks,
             total_ticks,
             input_display,

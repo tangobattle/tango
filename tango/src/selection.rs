@@ -344,9 +344,7 @@ impl Loaded {
         replay: &tango_match::replay::Replay,
     ) -> anyhow::Result<Self> {
         let side = replay
-            .metadata
-            .local_side
-            .as_ref()
+            .local_side()
             .ok_or_else(|| anyhow::anyhow!("replay missing local side metadata"))?;
         let gi = side
             .game_info
@@ -363,7 +361,7 @@ impl Loaded {
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("rom for {}/{} not scanned", gi.rom_family, gi.rom_variant))?;
 
-        let save = game.parse_save(&replay.local_sram)?;
+        let save = game.parse_save(&replay.srams[replay.local_player_index as usize])?;
 
         // Optional patch info — pull the Arc<Version> from the patch
         // scanner so we get the same rom_overrides (charset etc.) as

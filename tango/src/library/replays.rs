@@ -2,7 +2,20 @@ use crate::library::scanner;
 
 pub struct ScannedReplay {
     pub path: std::path::PathBuf,
+    /// The recorder's player slot — picks the "you" side out of the
+    /// metadata's player-ordered sides.
+    pub local_player_index: u8,
     pub metadata: tango_match::replay::Metadata,
+}
+
+impl ScannedReplay {
+    pub fn local_side(&self) -> Option<&tango_match::replay::metadata::Side> {
+        self.metadata.side(self.local_player_index)
+    }
+
+    pub fn remote_side(&self) -> Option<&tango_match::replay::metadata::Side> {
+        self.metadata.side(1 - self.local_player_index)
+    }
 }
 
 /// Output of [`compute_stats`]. Cheap to copy.
@@ -25,8 +38,8 @@ pub type Scanner = scanner::Scanner<Vec<ScannedReplay>>;
 /// Whether the replay's local-side game is registered with the app. A
 /// replay with no recorded local game info can't be filtered on, so it's
 /// kept; one that names a game we don't have compiled in is hidden.
-fn local_game_registered(metadata: &tango_match::replay::Metadata) -> bool {
-    match metadata.local_side.as_ref().and_then(|s| s.game_info.as_ref()) {
+fn local_game_registered(side: Option<&tango_match::replay::metadata::Side>) -> bool {
+    match side.and_then(|s| s.game_info.as_ref()) {
         None => true,
         Some(gi) => u8::try_from(gi.rom_variant)
             .ok()
@@ -64,18 +77,19 @@ pub fn scan_replays(path: &std::path::Path) -> Vec<ScannedReplay> {
                 continue;
             }
         };
-        let metadata = match tango_match::replay::read_metadata(&mut f) {
-            Ok((_version, m)) => m,
+        let (local_player_index, metadata) = match tango_match::replay::read_metadata(&mut f) {
+            Ok((_version, lpi, m)) => (lpi, m),
             Err(_) => continue,
         };
         // Hide replays whose game isn't registered (its
         // `gamesupport-<game>` feature is disabled / its crate isn't
         // compiled in) — there's no way to view or export them.
-        if !local_game_registered(&metadata) {
+        if !local_game_registered(metadata.side(local_player_index)) {
             continue;
         }
         out.push(ScannedReplay {
             path: p.to_path_buf(),
+            local_player_index,
             metadata,
         });
     }
@@ -147,15 +161,13 @@ pub fn compute_and_cache_match_stats(
             };
             Ok((entry, rom))
         };
-    let (local_game, local_rom) = resolve(replay.metadata.local_side.as_ref())?;
-    let (remote_game, remote_rom) = resolve(replay.metadata.remote_side.as_ref())?;
+    let (p1_game, p1_rom) = resolve(replay.metadata.side(0))?;
+    let (p2_game, p2_rom) = resolve(replay.metadata.side(1))?;
 
     let stats = analyze_replay(
         &replay,
-        local_game,
-        local_rom,
-        remote_game,
-        remote_rom,
+        [p1_game, p2_game],
+        [p1_rom, p2_rom],
         on_progress,
         cancel,
     )?;
@@ -163,49 +175,31 @@ pub fn compute_and_cache_match_stats(
     Ok(stats)
 }
 
-/// [`compute_and_cache_match_stats`]'s SIO-engine arm: orient the
-/// replay's local/remote sides back to absolute pair order and linearly
-/// re-simulate through [`tango_match::analysis::analyze`].
+/// [`compute_and_cache_match_stats`]'s SIO-engine arm: linearly
+/// re-simulate through [`tango_match::analysis::analyze`]. Everything in
+/// the replay is already absolute player order; `local_player` only
+/// picks whose chip semantics the stats speak.
 fn analyze_replay(
     replay: &tango_match::replay::Replay,
-    local_game: crate::library::rom::GameRef,
-    local_rom: Vec<u8>,
-    remote_game: crate::library::rom::GameRef,
-    remote_rom: Vec<u8>,
+    games: [crate::library::rom::GameRef; 2],
+    roms: [Vec<u8>; 2],
     on_progress: &mut dyn FnMut(u32, u32, &tango_match::analysis::StatsBuilder),
     cancel: &std::sync::atomic::AtomicBool,
 ) -> anyhow::Result<tango_match::analysis::MatchStats> {
-    let local_sio = local_game.pvp;
-    let remote_sio = remote_game.pvp;
     let local_player = replay.local_player_index as usize;
-    // An SIO replay's input stream is already absolute pair order —
-    // just widen.
     let inputs: Vec<[u32; 2]> = replay.inputs.iter().map(|&[p1, p2]| [p1 as u32, p2 as u32]).collect();
-    let (roms, saves, support): ([Vec<u8>; 2], [Vec<u8>; 2], [&dyn tango_match::GameSupport; 2]) = if local_player == 0 {
-        (
-            [local_rom.clone(), remote_rom],
-            [replay.local_sram.clone(), replay.remote_sram.clone()],
-            [local_sio, remote_sio],
-        )
-    } else {
-        (
-            [remote_rom, local_rom.clone()],
-            [replay.remote_sram.clone(), replay.local_sram.clone()],
-            [remote_sio, local_sio],
-        )
-    };
     tango_match::analysis::analyze(
         tango_match::analysis::AnalyzeConfig {
-            roms,
-            saves,
-            support,
+            roms: roms.clone(),
+            saves: replay.srams.clone(),
+            support: [games[0].pvp, games[1].pvp],
             match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
             rng_seed: replay.rng_seed,
             rtc: replay.rtc_time(),
             local_player,
             inputs: &inputs,
-            chip_semantics: local_game.pvp.chip_semantics(&local_rom),
-            counts_buster: local_game.pvp.counts_buster(&local_rom),
+            chip_semantics: games[local_player].pvp.chip_semantics(&roms[local_player]),
+            counts_buster: games[local_player].pvp.counts_buster(&roms[local_player]),
         },
         on_progress,
         cancel,
