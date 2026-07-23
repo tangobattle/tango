@@ -1,14 +1,13 @@
 use crate::app::Scanners;
 use crate::i18n::t;
 use crate::library::game;
-use crate::library::patch::{Catalog, Progress};
+use crate::library::patch::{Catalog, Download, Downloads, VersionKey};
 use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::ui::widgets;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, scrollable, text};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
-use std::collections::HashMap;
 use sweeten::widget::{column, row, text_input};
 use unic_langid::LanguageIdentifier;
 
@@ -16,9 +15,6 @@ use unic_langid::LanguageIdentifier;
 /// the theme palette) so it reads as "this is a favorite" on both
 /// light and dark themes, regardless of the configured accent.
 const FAVORITE_GOLD: iced::Color = iced::Color::from_rgb(1.0, 0.78, 0.0);
-
-/// A patch version, the unit everything here installs and removes.
-pub type VersionKey = (String, semver::Version);
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -54,12 +50,10 @@ pub struct PatchesState {
     pub readme_cache_key: Option<VersionKey>,
     pub refreshing: bool,
     pub last_error: Option<String>,
-    /// In-flight downloads, by version, as (downloaded, total) bytes.
-    pub downloads: HashMap<VersionKey, Progress>,
     /// READMEs fetched for versions we haven't downloaded. `None` means
     /// "asked, and the repo doesn't publish one" — cached either way so
     /// selection doesn't re-request on every frame.
-    remote_readmes: HashMap<VersionKey, Option<String>>,
+    remote_readmes: std::collections::HashMap<VersionKey, Option<String>>,
     /// Case-insensitive substring filter applied to the sidebar
     /// list (matches against patch name and title).
     pub search: String,
@@ -136,27 +130,13 @@ impl PatchesState {
                 }
             }
             Message::Install(key) => {
-                if self.downloads.contains_key(&key) {
-                    return None;
-                }
                 self.last_error = None;
-                self.downloads.insert(
-                    key.clone(),
-                    Progress {
-                        downloaded: 0,
-                        total: 0,
-                    },
-                );
                 Some(Effect::Install(key))
             }
-            Message::InstallProgress(key, downloaded, total) => {
-                if let Some(p) = self.downloads.get_mut(&key) {
-                    *p = Progress { downloaded, total };
-                }
-                None
-            }
+            // App keeps the download map (see `patch::Downloads`); the
+            // tab only reacts to the outcome.
+            Message::InstallProgress(..) => None,
             Message::InstallFinished(key, res) => {
-                self.downloads.remove(&key);
                 match res {
                     Ok(()) => {
                         // The package now has its own README; drop the
@@ -236,6 +216,7 @@ impl PatchesState {
         lang: &'a LanguageIdentifier,
         scanners: &'a Scanners,
         config: &'a crate::config::Config,
+        downloads: &'a Downloads,
     ) -> Element<'a, Message> {
         let patches = scanners.patches.read();
 
@@ -243,7 +224,7 @@ impl PatchesState {
         let left = self.patch_list(&patches, config);
         let right: Element<'_, Message> = match self.selected.as_ref().filter(|n| patches.title(n).is_some()) {
             Some(name) => crate::ui::anim::slide_in_opt(
-                self.patch_detail(lang, config, &patches, name),
+                self.patch_detail(lang, config, &patches, name, downloads),
                 self.detail_enter.progress(iced::time::Instant::now()),
                 iced::Vector::new(0.0, 28.0),
             ),
@@ -374,6 +355,7 @@ impl PatchesState {
         config: &crate::config::Config,
         patches: &Catalog,
         name: &str,
+        downloads: &Downloads,
     ) -> Element<'a, Message> {
         let all_versions = patches.versions(name);
         let mut versions: Vec<semver::Version> = all_versions.keys().cloned().collect();
@@ -492,7 +474,7 @@ impl PatchesState {
             ));
         }
 
-        let actions = self.action_row(lang, info, key);
+        let actions = self.action_row(lang, info, key, downloads);
 
         // README is flush with the pane edges (no outer padding) so the
         // scrollbar hugs the pane; the markdown body has its own
@@ -534,23 +516,31 @@ impl PatchesState {
         lang: &'a LanguageIdentifier,
         info: Option<&crate::library::patch::VersionInfo<'_>>,
         key: Option<VersionKey>,
+        downloads: &Downloads,
     ) -> Element<'a, Message> {
         let Some((info, key)) = info.zip(key) else {
             return row![].height(Length::Fixed(32.0)).into();
         };
 
         let mut controls = row![].spacing(8).align_y(Alignment::Center);
-        if let Some(progress) = self.downloads.get(&key) {
-            let label = if progress.total > 0 {
-                t!(
-                    lang,
-                    "patches-downloading-progress",
-                    percent = (progress.downloaded * 100 / progress.total.max(1)) as i64
-                )
-            } else {
-                t!(lang, "patches-downloading")
+        if let Some(download) = downloads.get(&key).filter(|d| d.is_running()) {
+            let label = match download.percent() {
+                Some(percent) => t!(lang, "patches-downloading-progress", percent = percent as i64),
+                None => t!(lang, "patches-downloading"),
             };
             controls = controls.push(text(label).size(TEXT_CAPTION).style(widgets::muted_text_style));
+        } else if matches!(downloads.get(&key), Some(Download::Failed)) {
+            controls = controls.push(
+                text(t!(lang, "patches-download-failed"))
+                    .size(TEXT_CAPTION)
+                    .style(widgets::danger_text_style),
+            );
+            controls = controls.push(widgets::icon_button(
+                Icon::RefreshCw,
+                t!(lang, "patches-retry"),
+                Message::Install(key.clone()),
+                STANDARD_PADDING,
+            ));
         } else if info.is_installed() {
             controls = controls.push(
                 text(t!(lang, "patches-installed"))

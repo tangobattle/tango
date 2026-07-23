@@ -1,9 +1,8 @@
 //! Installed patch packages and the cached repo index.
 //!
 //! Patches live on disk as `.tangopatch` packages (see the `tango-patch`
-//! crate) under `<data>/patches/store/`, one file per patch version.
-//! Alongside them sits `index.json`, a cached copy of the repo's
-//! catalogue.
+//! crate) in `<data>/patches/`, one file per patch version. Alongside
+//! them sits `index.json`, a cached copy of the repo's catalogue.
 //!
 //! # Nothing is mirrored
 //!
@@ -194,14 +193,9 @@ impl Catalog {
     }
 }
 
-/// `<patches>/store` — one `.tangopatch` per patch version.
-pub fn store_path(patches_path: &Path) -> PathBuf {
-    patches_path.join("store")
-}
-
 /// Where a given patch version lives (or would live) on disk.
 pub fn package_path(patches_path: &Path, name: &str, version: &semver::Version) -> PathBuf {
-    store_path(patches_path).join(format!("{name}-{version}.{}", tango_patch::EXTENSION))
+    patches_path.join(format!("{name}-{version}.{}", tango_patch::EXTENSION))
 }
 
 /// `<patches>/index.json` — the cached repo catalogue.
@@ -209,9 +203,10 @@ pub fn index_path(patches_path: &Path) -> PathBuf {
     patches_path.join(tango_patch::index::FILE_NAME)
 }
 
-/// Everything a scan reads, for the change-detection fingerprint.
+/// Everything a scan reads, for the change-detection fingerprint — the
+/// packages and the cached index all live in the one directory.
 pub fn scan_roots(patches_path: &Path) -> Vec<PathBuf> {
-    vec![store_path(patches_path), index_path(patches_path)]
+    vec![patches_path.to_path_buf()]
 }
 
 fn game_for(target: tango_patch::RomTarget) -> Option<GameRef> {
@@ -236,8 +231,7 @@ pub fn scan(patches_path: &Path) -> std::io::Result<Catalog> {
     // collect per version first and fold afterwards.
     let mut versions: BTreeMap<String, BTreeMap<semver::Version, (Arc<Version>, tango_patch::Manifest)>> =
         BTreeMap::new();
-    let store = store_path(patches_path);
-    let read_dir = match std::fs::read_dir(&store) {
+    let read_dir = match std::fs::read_dir(patches_path) {
         Ok(read_dir) => read_dir,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Ok(Catalog {
@@ -360,7 +354,7 @@ pub fn apply_patch_from_disk(
     patch_version: &semver::Version,
 ) -> anyhow::Result<Vec<u8>> {
     // Names are validated on the way in (`tango_patch::validate_name`
-    // forbids separators), so a name can't escape the store.
+    // forbids separators), so a name can't escape the directory.
     tango_patch::validate_name(patch_name).map_err(|e| anyhow::anyhow!("bad patch name: {e}"))?;
 
     let path = package_path(patches_path, patch_name, patch_version);
@@ -370,12 +364,45 @@ pub fn apply_patch_from_disk(
     Ok(bps::Patch::decode(&raw)?.apply(rom)?)
 }
 
+/// A patch version — the unit everything installs, removes and renders.
+pub type VersionKey = (String, semver::Version);
+
 /// Progress of one package download, in bytes.
 #[derive(Debug, Clone, Copy)]
 pub struct Progress {
     pub downloaded: u64,
     pub total: u64,
 }
+
+/// What a download is doing.
+///
+/// Owned by `App` rather than by the patches tab: four different things
+/// start downloads — the patches tab, a lobby peer's patch, a replay's
+/// patch, and the play tab's picker — and two tabs render them.
+#[derive(Debug, Clone, Copy)]
+pub enum Download {
+    Running(Progress),
+    /// Kept after a failure so the UI can say so instead of going quiet.
+    /// Replaced when the download is retried.
+    Failed,
+}
+
+impl Download {
+    /// Whole percent, once the server has told us how big the package
+    /// is. `None` while that's still unknown, or after a failure.
+    pub fn percent(&self) -> Option<u64> {
+        match self {
+            Download::Running(p) if p.total > 0 => Some(p.downloaded * 100 / p.total),
+            _ => None,
+        }
+    }
+
+    pub fn is_running(&self) -> bool {
+        matches!(self, Download::Running(_))
+    }
+}
+
+pub type Downloads = std::collections::HashMap<VersionKey, Download>;
 
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
@@ -438,7 +465,7 @@ pub async fn fetch_index(url: &str, patches_path: &Path) -> anyhow::Result<bool>
     Ok(true)
 }
 
-/// Download one patch version into the store.
+/// Download one patch version into the patches directory.
 ///
 /// The package is verified against the index's hash and written through
 /// a temporary file, so a failed or truncated download can't leave a
@@ -452,8 +479,7 @@ pub async fn download(
     progress: impl Fn(Progress),
 ) -> anyhow::Result<PathBuf> {
     tango_patch::validate_name(name).map_err(|e| anyhow::anyhow!("bad patch name: {e}"))?;
-    let store = store_path(patches_path);
-    std::fs::create_dir_all(&store)?;
+    std::fs::create_dir_all(patches_path)?;
 
     let response = client()
         .get(format!("{}/{}", url.trim_end_matches('/'), entry.path))
@@ -464,7 +490,7 @@ pub async fn download(
         .error_for_status()?;
 
     let total = response.content_length().unwrap_or(entry.size);
-    let temp = store.join(format!(".{name}-{version}.part"));
+    let temp = patches_path.join(format!(".{name}-{version}.part"));
     let mut file = tokio::fs::File::create(&temp).await?;
     let mut raw = Vec::with_capacity(entry.size as usize);
     let mut stream = response.bytes_stream();
@@ -645,7 +671,7 @@ netplay = "{netplay}"
         let mut builder = Builder::new(manifest(name, version, netplay));
         builder.set_readme("# hello");
         builder.add_rom("BR6E_00".parse().unwrap(), b"not really a bps".to_vec());
-        builder.write_file(&store_path(root)).unwrap();
+        builder.write_file(root).unwrap();
     }
 
     /// An index offering `name` at `version` without it being installed.
@@ -698,10 +724,10 @@ netplay = "{netplay}"
     }
 
     #[test]
-    fn an_empty_or_absent_store_is_not_an_error() {
+    fn an_empty_or_absent_patches_dir_is_not_an_error() {
         let dir = TempDir::new();
         assert!(scan(&dir.0).unwrap().installed.is_empty());
-        std::fs::create_dir_all(store_path(&dir.0)).unwrap();
+        std::fs::create_dir_all(&dir.0).unwrap();
         assert!(scan(&dir.0).unwrap().installed.is_empty());
     }
 
@@ -799,7 +825,7 @@ netplay = "{netplay}"
         let dir = TempDir::new();
         install(&dir.0, "bn6_test", "1.0.0", "isolated");
         std::fs::write(
-            store_path(&dir.0).join(format!("junk-1.0.0.{}", tango_patch::EXTENSION)),
+            dir.0.join(format!("junk-1.0.0.{}", tango_patch::EXTENSION)),
             b"not a zip",
         )
         .unwrap();
@@ -904,7 +930,15 @@ netplay = "{netplay}"
             vec!["bn6_one", "bn6_two"]
         );
         assert_eq!(catalog.title("bn6_two"), Some("Test bn6_two"));
-        assert!(!store_path(&data.0).exists(), "nothing should have been downloaded");
+        assert_eq!(
+            std::fs::read_dir(&data.0)
+                .unwrap()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().extension().is_some_and(|x| x == tango_patch::EXTENSION))
+                .count(),
+            0,
+            "nothing should have been downloaded"
+        );
 
         // Install one of them.
         let version = v("2.0.0");
@@ -956,11 +990,14 @@ netplay = "{netplay}"
         // Nothing half-written left behind: not the package, and not
         // the temporary it streamed into.
         assert!(!package_path(&data.0, "bn6_one", &version).exists());
-        assert_eq!(
-            std::fs::read_dir(store_path(&data.0)).unwrap().count(),
-            0,
-            "no leftovers in the store"
-        );
+        // Only the index and its validator; no package, and no
+        // half-written temporary.
+        let mut left: Vec<String> = std::fs::read_dir(&data.0)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(left, vec!["index.etag", "index.json"], "no leftovers");
         assert!(scan(&data.0).unwrap().installed.is_empty());
     }
 

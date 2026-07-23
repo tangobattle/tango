@@ -469,11 +469,16 @@ pub fn patch_options(
     let no_patch_option = widgets::Choice::new(String::new(), t!(lang, "play-no-patch"));
     let patch_options: Vec<widgets::Choice<String>> = std::iter::once(no_patch_option.clone())
         .chain(names.into_iter().map(|n| {
-            let display = if config.favorite_patches.contains(&n) {
-                format!("\u{2605} {n}")
-            } else {
-                n.clone()
-            };
+            // The list offers everything the repo has, so say which ones
+            // aren't here yet — picking one downloads it.
+            let mut display = String::new();
+            if config.favorite_patches.contains(&n) {
+                display.push_str("\u{2605} ");
+            }
+            if !patches.installed.contains_key(&n) {
+                display.push_str("\u{2193} ");
+            }
+            display.push_str(&n);
             widgets::Choice::new(n, display)
         }))
         .collect();
@@ -621,11 +626,12 @@ pub fn game_row<'a>(
     lang: &'a LanguageIdentifier,
     scanners: &'a Scanners,
     config: &'a config::Config,
+    downloads: &'a crate::library::patch::Downloads,
 ) -> Element<'a, Message> {
     let game = family_picker(loadout, lang, scanners).width(Length::FillPortion(3));
 
     let patch = patch_picker(loadout, lang, scanners, config).width(Length::FillPortion(2));
-    let version = version_picker(loadout, lang, scanners);
+    let version = version_picker(loadout, lang, scanners, downloads);
 
     row![game, patch, version].spacing(8).align_y(Alignment::Center).into()
 }
@@ -697,7 +703,25 @@ fn version_picker<'a>(
     loadout: &'a Loadout,
     lang: &'a LanguageIdentifier,
     scanners: &'a Scanners,
+    downloads: &'a crate::library::patch::Downloads,
 ) -> Element<'a, Message> {
+    // A version being fetched reports itself in this slot rather than
+    // offering a list that can't be acted on yet. Same fixed width in
+    // every state, so the strip doesn't shift as a download starts and
+    // finishes.
+    if let (Some(name), Some(version)) = (&loadout.patch, &loadout.patch_version) {
+        if let Some(download) = downloads.get(&(name.clone(), version.clone())) {
+            let label = match download {
+                crate::library::patch::Download::Failed => t!(lang, "play-patch-download-failed"),
+                running => match running.percent() {
+                    Some(percent) => t!(lang, "play-patch-downloading-progress", percent = percent as i64),
+                    None => t!(lang, "play-patch-downloading"),
+                },
+            };
+            return widgets::disabled_pick_list(label).width(Length::Fixed(100.0)).into();
+        }
+    }
+
     let options = version_options(loadout, scanners);
     if options.is_empty() {
         widgets::disabled_pick_list(t!(lang, "play-version-placeholder"))

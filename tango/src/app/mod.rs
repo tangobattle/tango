@@ -163,6 +163,10 @@ pub struct App {
     /// A replay whose playback is waiting on a patch download. Set by
     /// `watch_replay`, resumed once the install rescan lands.
     pending_watch: Option<std::path::PathBuf>,
+    /// In-flight and failed patch downloads. App-level because the
+    /// patches tab, the lobby, replay playback and the play tab's picker
+    /// all start them, and two tabs render them.
+    downloads: patch::Downloads,
     /// Self-updater. Polls GitHub every 30 min, streams the
     /// platform installer into the cache dir, and on the
     /// `finish_update` call (or next launch) hands off to the
@@ -525,6 +529,7 @@ impl App {
             session_started_at: None,
             patch_autoupdater,
             pending_watch: None,
+            downloads: patch::Downloads::new(),
             updater,
             rescans_in_flight: 0,
             // Start at rest (no launch animation) — progress 1.0
@@ -747,17 +752,7 @@ impl App {
             return iced::Task::none();
         };
         let key = (name.to_owned(), version.clone());
-        if self.patches.downloads.contains_key(&key) {
-            return iced::Task::none();
-        }
         log::info!("lobby needs {} {}, fetching", key.0, key.1);
-        self.patches.downloads.insert(
-            key.clone(),
-            patch::Progress {
-                downloaded: 0,
-                total: 0,
-            },
-        );
         self.install_patch(key)
     }
 
@@ -1811,6 +1806,7 @@ impl App {
                         self.loaded.as_ref(),
                         self.config.streamer_mode,
                         &self.config,
+                        &self.downloads,
                         tabs::play::LobbyBandCtx {
                             phase: &self.netplay.phase,
                             lobby: &self.netplay.lobby,
@@ -1829,7 +1825,7 @@ impl App {
                 .map(Message::Replays),
             Tab::Patches => self
                 .patches
-                .view(lang, &self.scanners, &self.config)
+                .view(lang, &self.scanners, &self.config, &self.downloads)
                 .map(Message::Patches),
             Tab::Settings => {
                 tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking(), None)

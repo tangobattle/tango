@@ -18,7 +18,9 @@ impl App {
                 // type (Triple where supported) instead of the
                 // last game's pick.
                 self.apply_default_match_type();
-                iced::Task::none()
+                // The picker offers patches that aren't downloaded, so
+                // picking one is a request to fetch it.
+                self.fetch_selected_patch()
             }
         }
     }
@@ -292,6 +294,27 @@ impl App {
     }
 
     pub(super) fn update_patches(&mut self, msg: tabs::patches::Message) -> iced::Task<Message> {
+        // Bookkeeping before delegating: the map is App-level (see
+        // `patch::Downloads`) because the tab isn't the only thing that
+        // starts downloads or the only thing that renders them.
+        match &msg {
+            tabs::patches::Message::InstallProgress(key, downloaded, total) => {
+                self.downloads.insert(
+                    key.clone(),
+                    patch::Download::Running(patch::Progress {
+                        downloaded: *downloaded,
+                        total: *total,
+                    }),
+                );
+            }
+            tabs::patches::Message::InstallFinished(key, Ok(())) => {
+                self.downloads.remove(key);
+            }
+            tabs::patches::Message::InstallFinished(key, Err(_)) => {
+                self.downloads.insert(key.clone(), patch::Download::Failed);
+            }
+            _ => {}
+        }
         let Some(effect) = self.patches.update(msg, &self.scanners) else {
             return iced::Task::none();
         };
@@ -300,10 +323,14 @@ impl App {
             E::OpenPath(s) => open_path(s),
             E::RevealPath(p) => reveal_path(p),
             E::Rescan => {
+                // ForceRebuildLoaded, not Refresh: the selection tuple
+                // is unchanged by an install, so `refresh_loaded` would
+                // take its early-return and leave the Play tab showing
+                // the game unpatched.
                 let followup = if self.pending_watch.is_some() {
                     RescanFollowup::RetryPendingWatch
                 } else {
-                    RescanFollowup::Refresh
+                    RescanFollowup::ForceRebuildLoaded
                 };
                 self.rescan_off_thread(followup)
             }
@@ -380,7 +407,12 @@ impl App {
     /// Progress and the terminal result travel down one channel, so the
     /// stream ends exactly when the download does — no polling and no
     /// separate completion signal to keep in sync.
-    pub(super) fn install_patch(&mut self, key: tabs::patches::VersionKey) -> iced::Task<Message> {
+    pub(super) fn install_patch(&mut self, key: patch::VersionKey) -> iced::Task<Message> {
+        // Already on its way — the user clicked twice, or two of the
+        // four triggers want the same package.
+        if self.downloads.get(&key).is_some_and(|d| d.is_running()) {
+            return iced::Task::none();
+        }
         let (name, version) = key.clone();
         let Some(entry) = self.scanners.patches.read().entry(&name, &version).cloned() else {
             return iced::Task::done(Message::Patches(tabs::patches::Message::InstallFinished(
@@ -390,6 +422,13 @@ impl App {
         };
         let url = self.config.patch_repo_url();
         let root = self.config.patches_path();
+        self.downloads.insert(
+            key.clone(),
+            patch::Download::Running(patch::Progress {
+                downloaded: 0,
+                total: 0,
+            }),
+        );
 
         let (tx, rx) = futures::channel::mpsc::unbounded::<tabs::patches::Message>();
         let progress_tx = tx.clone();
@@ -411,6 +450,31 @@ impl App {
         iced::Task::stream(rx).map(Message::Patches)
     }
 
+    /// Fetch the patch the play tab's picker just selected, if we don't
+    /// have it.
+    ///
+    /// The picker lists everything the repo offers, not just what's on
+    /// disk, so choosing an entry is how you install it. Cheap to call on
+    /// every selection change: `install_patch` ignores a request for
+    /// something already downloading, and this returns early for anything
+    /// already installed. A download that failed is retried, so a
+    /// selection change picks up again once the network comes back.
+    fn fetch_selected_patch(&mut self) -> iced::Task<Message> {
+        let (Some(name), Some(version)) = (self.loadout.patch.clone(), self.loadout.patch_version.clone()) else {
+            return iced::Task::none();
+        };
+        {
+            let patches = self.scanners.patches.read();
+            // Nothing to do if we have it, and nothing we *can* do if the
+            // repo doesn't offer it (a sideloaded patch that was deleted).
+            if patches.is_installed(&name, &version) || patches.entry(&name, &version).is_none() {
+                return iced::Task::none();
+            }
+        }
+        log::info!("play tab selected {name} {version}, fetching");
+        self.install_patch((name, version))
+    }
+
     /// Start playback of a replay, downloading the patch it was
     /// recorded with if we don't have it.
     ///
@@ -422,18 +486,6 @@ impl App {
         if let Some(key) = self.replay_missing_patch(&p) {
             log::info!("replay {} needs {} {}, fetching", p.display(), key.0, key.1);
             self.pending_watch = Some(p);
-            if self.patches.downloads.contains_key(&key) {
-                // Already on its way (the user clicked twice, or the
-                // lobby wanted the same patch).
-                return iced::Task::none();
-            }
-            self.patches.downloads.insert(
-                key.clone(),
-                patch::Progress {
-                    downloaded: 0,
-                    total: 0,
-                },
-            );
             return self.install_patch(key);
         }
 
@@ -456,7 +508,7 @@ impl App {
     /// The first patch a replay needs that isn't installed but is
     /// offered by the repo. `None` when playback can go ahead — or when
     /// the patch is one we could never get, which fails as before.
-    fn replay_missing_patch(&self, path: &std::path::Path) -> Option<tabs::patches::VersionKey> {
+    fn replay_missing_patch(&self, path: &std::path::Path) -> Option<patch::VersionKey> {
         // The replay scanner already parsed every metadata header, so
         // this costs a lookup rather than a decode.
         let wanted: Vec<(String, String)> = {
