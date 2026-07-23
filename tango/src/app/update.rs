@@ -653,19 +653,11 @@ impl App {
                 let cb = move |current: usize, total: usize| {
                     let _ = cb_tx.unbounded_send((current, total));
                 };
-                // Orient the replay's local/remote pairs back to absolute
-                // pair order — same contract as playback and analysis.
+                // The replay's input stream is already absolute pair
+                // order — just widen.
                 let local_player = replay.local_player_index as usize;
-                let inputs: Vec<[u32; 2]> = replay
-                    .inputs
-                    .iter()
-                    .map(|(local, remote)| {
-                        let mut keys = [0u32; 2];
-                        keys[local_player] = local.joyflags as u32;
-                        keys[1 - local_player] = remote.joyflags as u32;
-                        keys
-                    })
-                    .collect();
+                let inputs: Vec<[u32; 2]> =
+                    replay.inputs.iter().map(|&[p1, p2]| [p1 as u32, p2 as u32]).collect();
                 let (roms, saves, support): ([Vec<u8>; 2], [Vec<u8>; 2], _) = if local_player == 0 {
                     (
                         [local_rom, remote_rom],

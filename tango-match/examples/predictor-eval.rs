@@ -78,7 +78,7 @@ struct EvalWorld {
 }
 
 impl getgud::World for EvalWorld {
-    type Input = tango_match::input::Input;
+    type Input = u16;
     type State = u32;
     type Error = std::convert::Infallible;
 
@@ -98,9 +98,7 @@ impl getgud::World for EvalWorld {
     }
 
     fn predict(&self, last: &Self::Input) -> Self::Input {
-        tango_match::input::Input {
-            joyflags: last.joyflags & self.mask,
-        }
+        last & self.mask
     }
 
     fn log(&mut self, _local: &Self::Input, _remotes: &[Self::Input]) {}
@@ -176,7 +174,7 @@ fn run_round(local: &[u16], remote: &[u16], depth: u32, mask: u16) -> RunAgg {
     let steps = Rc::new(Cell::new(0u64));
     let mut session = getgud::Session::new(getgud::SessionParams {
         present_delay: 0,
-        initial_remotes: vec![tango_match::input::Input { joyflags: 0 }],
+        initial_remotes: vec![0u16],
         initial_state: 0u32,
         world: EvalWorld {
             mask,
@@ -190,20 +188,12 @@ fn run_round(local: &[u16], remote: &[u16], depth: u32, mask: u16) -> RunAgg {
     let mut delivered = 0usize;
     for t in 0..n {
         while delivered + lag <= t {
-            session.add_remote_input(
-                0,
-                tango_match::input::Input {
-                    joyflags: remote[delivered],
-                },
-                0,
-            );
+            session.add_remote_input(0, remote[delivered], 0);
             delivered += 1;
         }
         let (tick, tip_remote) = {
-            let frame = session
-                .advance(tango_match::input::Input { joyflags: local[t] })
-                .unwrap();
-            (frame.tick, frame.remotes[0].joyflags)
+            let frame = session.advance(local[t]).unwrap();
+            (frame.tick, frame.remotes[0])
         };
         agg.frames += 1;
         // The presented tick consumed pair `tick − 1`; if that pair isn't
@@ -311,8 +301,8 @@ fn load_corpus(paths: &[std::path::PathBuf]) -> Corpus {
                 continue;
             }
             corpus.rounds.push(Round {
-                p1: round.iter().map(|(l, _)| l.joyflags).collect(),
-                p2: round.iter().map(|(_, r)| r.joyflags).collect(),
+                p1: round.iter().map(|&[p1, _]| p1).collect(),
+                p2: round.iter().map(|&[_, p2]| p2).collect(),
             });
         }
     }

@@ -924,15 +924,7 @@ impl DriveContext {
                         pending_round_marks.pop_front();
                         let _ = w.start_round();
                     }
-                    let (p0, p1) = (keys[0] as u16, keys[1] as u16);
-                    let (local, remote) = if self.local_player == 0 { (p0, p1) } else { (p1, p0) };
-                    if let Err(e) = w.write_input(
-                        self.local_player as u8,
-                        &(
-                            tango_match::input::Input { joyflags: local },
-                            tango_match::input::Input { joyflags: remote },
-                        ),
-                    ) {
+                    if let Err(e) = w.write_input([keys[0] as u16, keys[1] as u16]) {
                         log::warn!("pvp: replay write failed (recording stops): {e}");
                         self.replay_writer = None;
                         break;
@@ -1018,15 +1010,7 @@ impl DriveContext {
         // recording.
         if let Some(mut w) = self.replay_writer.take() {
             for (_, keys) in match_.drain_confirmed() {
-                let (p0, p1) = (keys[0] as u16, keys[1] as u16);
-                let (local, remote) = if self.local_player == 0 { (p0, p1) } else { (p1, p0) };
-                let _ = w.write_input(
-                    self.local_player as u8,
-                    &(
-                        tango_match::input::Input { joyflags: local },
-                        tango_match::input::Input { joyflags: remote },
-                    ),
-                );
+                let _ = w.write_input([keys[0] as u16, keys[1] as u16]);
             }
             if self.completed.load(Ordering::Acquire) {
                 if let Err(e) = w.finish() {

@@ -178,18 +178,9 @@ fn analyze_replay(
     let local_sio = local_game.pvp;
     let remote_sio = remote_game.pvp;
     let local_player = replay.local_player_index as usize;
-    // An SIO replay's input stream is one continuous run of
-    // (local, remote) pairs; reorient to absolute pair order.
-    let inputs: Vec<[u32; 2]> = replay
-        .inputs
-        .iter()
-        .map(|(local, remote)| {
-            let mut keys = [0u32; 2];
-            keys[local_player] = local.joyflags as u32;
-            keys[1 - local_player] = remote.joyflags as u32;
-            keys
-        })
-        .collect();
+    // An SIO replay's input stream is already absolute pair order —
+    // just widen.
+    let inputs: Vec<[u32; 2]> = replay.inputs.iter().map(|&[p1, p2]| [p1 as u32, p2 as u32]).collect();
     let (roms, saves, support): ([Vec<u8>; 2], [Vec<u8>; 2], [&dyn tango_match::GameSupport; 2]) = if local_player == 0 {
         (
             [local_rom.clone(), remote_rom],

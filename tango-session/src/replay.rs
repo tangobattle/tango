@@ -149,21 +149,10 @@ impl ReplaySession {
         if local_player >= 2 {
             return Err(crate::Error::BadLocalPlayerIndex);
         }
-        // Orient the replay's local/remote pairs back to absolute pair
-        // order (core 0 runs player 0's game) — same contract as the
-        // analysis path.
-        let inputs: Arc<Vec<[u32; 2]>> = Arc::new(
-            replay
-                .inputs
-                .iter()
-                .map(|(local, remote)| {
-                    let mut keys = [0u32; 2];
-                    keys[local_player] = local.joyflags as u32;
-                    keys[1 - local_player] = remote.joyflags as u32;
-                    keys
-                })
-                .collect(),
-        );
+        // The replay's input stream is already absolute pair order
+        // (core 0 runs player 0's game) — just widen.
+        let inputs: Arc<Vec<[u32; 2]>> =
+            Arc::new(replay.inputs.iter().map(|&[p1, p2]| [p1 as u32, p2 as u32]).collect());
         let total_ticks = inputs.len() as u32;
         if total_ticks == 0 {
             return Err(crate::Error::EmptyReplay);
@@ -205,10 +194,10 @@ impl ReplaySession {
             pairs: replay
                 .inputs
                 .iter()
-                .map(|(local, remote)| {
+                .map(|&keys| {
                     (
-                        local.joyflags & tango_match::input::JOYFLAGS_MASK,
-                        remote.joyflags & tango_match::input::JOYFLAGS_MASK,
+                        keys[local_player] & tango_match::input::JOYFLAGS_MASK,
+                        keys[1 - local_player] & tango_match::input::JOYFLAGS_MASK,
                     )
                 })
                 .collect(),

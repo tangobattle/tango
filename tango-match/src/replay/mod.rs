@@ -43,9 +43,11 @@ pub struct Replay {
     /// WRAM here and reassembled SRAM on read.
     pub local_sram: Vec<u8>,
     pub remote_sram: Vec<u8>,
-    /// One continuous run of (local, remote) pair ticks from session
-    /// start — the stream as recorded, not segmented.
-    pub inputs: Vec<(crate::input::Input, crate::input::Input)>,
+    /// One continuous run of (p1, p2) joyflag pair ticks from session
+    /// start — the stream as recorded, not segmented. Always absolute
+    /// player order, no matter which side recorded; `local_player_index`
+    /// says which column is the recorder's.
+    pub inputs: Vec<[u16; 2]>,
     /// Indices into `inputs` where a round starts (records carrying a
     /// stream mark). The first entry is always 0 when `inputs` is
     /// non-empty — recordings that predate the markers decode as one
@@ -116,9 +118,6 @@ impl Replay {
         self.local_player_index = 1 - self.local_player_index;
         self.is_offerer = !self.is_offerer;
         std::mem::swap(&mut self.local_sram, &mut self.remote_sram);
-        for (local, remote) in self.inputs.iter_mut() {
-            std::mem::swap(local, remote);
-        }
         self
     }
 
@@ -156,20 +155,7 @@ impl Replay {
         // truncated tail comes back as is_complete = false with the
         // partial record dropped.
         let stream = mgba_rollback::replay::Stream::read(&mut r)?;
-
-        let inputs: Vec<(crate::input::Input, crate::input::Input)> = stream
-            .inputs
-            .into_iter()
-            .map(|[p1, p2]| {
-                let p1_input = crate::input::Input { joyflags: p1 };
-                let p2_input = crate::input::Input { joyflags: p2 };
-                if local_player_index == 0 {
-                    (p1_input, p2_input)
-                } else {
-                    (p2_input, p1_input)
-                }
-            })
-            .collect();
+        let inputs = stream.inputs;
 
         // A leading unmarked run — recordings that predate the markers,
         // or a crash-recovered partial round — still counts as a round.
@@ -232,18 +218,10 @@ impl Writer {
         Ok(())
     }
 
-    pub fn write_input(
-        &mut self,
-        local_player_index: u8,
-        ip: &(crate::input::Input, crate::input::Input),
-    ) -> std::io::Result<()> {
-        let (local, remote) = ip;
-        let (p1, p2) = if local_player_index == 0 {
-            (local.joyflags, remote.joyflags)
-        } else {
-            (remote.joyflags, local.joyflags)
-        };
-        self.stream.push([p1, p2])
+    /// Append one confirmed tick's (p1, p2) joyflag pair — absolute
+    /// player order, same as [`Replay::inputs`] comes back.
+    pub fn write_input(&mut self, keys: [u16; 2]) -> std::io::Result<()> {
+        self.stream.push(keys)
     }
 
     pub fn finish(self) -> std::io::Result<()> {
@@ -270,66 +248,45 @@ mod tests {
     }
 
     #[test]
-    fn roundtrips_rounds_and_both_sides() {
+    fn roundtrips_rounds_and_header() {
         // joyflags with high bits set exercise the explicit tag form;
         // the repeated pair the previous-tick default.
-        let ticks: Vec<(u16, u16)> = vec![(0, 0), (0x041, 0x082), (0x041, 0x082), (0x3ff, 0x155), (0, 0x300)];
+        let ticks: Vec<[u16; 2]> = vec![[0, 0], [0x041, 0x082], [0x041, 0x082], [0x3ff, 0x155], [0, 0x300]];
         let round_starts = [0usize, 3];
 
-        for local_player_index in [0u8, 1] {
-            let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-            let mut w = Writer::new(
-                SharedVec(buf.clone()),
-                VERSION,
-                Metadata {
-                    ts: 1_752_000_000_000,
-                    ..Default::default()
-                },
-                true,
-                local_player_index,
-                [7u8; 16],
-                &[1, 2, 3],
-                &[4, 5],
-            )
-            .unwrap();
-            for (i, &(p1, p2)) in ticks.iter().enumerate() {
-                if round_starts.contains(&i) {
-                    w.start_round().unwrap();
-                }
-                let (local, remote) = if local_player_index == 0 { (p1, p2) } else { (p2, p1) };
-                w.write_input(
-                    local_player_index,
-                    &(
-                        crate::input::Input { joyflags: local },
-                        crate::input::Input { joyflags: remote },
-                    ),
-                )
-                .unwrap();
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut w = Writer::new(
+            SharedVec(buf.clone()),
+            VERSION,
+            Metadata {
+                ts: 1_752_000_000_000,
+                ..Default::default()
+            },
+            true,
+            1,
+            [7u8; 16],
+            &[1, 2, 3],
+            &[4, 5],
+        )
+        .unwrap();
+        for (i, &keys) in ticks.iter().enumerate() {
+            if round_starts.contains(&i) {
+                w.start_round().unwrap();
             }
-            w.finish().unwrap();
-
-            let bytes = buf.lock().unwrap().clone();
-            let replay = Replay::decode(&bytes[..]).unwrap();
-            assert!(replay.is_complete);
-            assert!(replay.is_offerer);
-            assert_eq!(replay.local_player_index, local_player_index);
-            assert_eq!(replay.rng_seed, [7u8; 16]);
-            assert_eq!(replay.local_sram, vec![1, 2, 3]);
-            assert_eq!(replay.remote_sram, vec![4, 5]);
-            assert_eq!(replay.metadata.ts, 1_752_000_000_000);
-            assert_eq!(replay.round_starts, round_starts);
-            let expected: Vec<(u16, u16)> = ticks
-                .iter()
-                .map(|&(p1, p2)| if local_player_index == 0 { (p1, p2) } else { (p2, p1) })
-                .collect();
-            assert_eq!(
-                replay
-                    .inputs
-                    .iter()
-                    .map(|(l, r)| (l.joyflags, r.joyflags))
-                    .collect::<Vec<_>>(),
-                expected
-            );
+            w.write_input(keys).unwrap();
         }
+        w.finish().unwrap();
+
+        let bytes = buf.lock().unwrap().clone();
+        let replay = Replay::decode(&bytes[..]).unwrap();
+        assert!(replay.is_complete);
+        assert!(replay.is_offerer);
+        assert_eq!(replay.local_player_index, 1);
+        assert_eq!(replay.rng_seed, [7u8; 16]);
+        assert_eq!(replay.local_sram, vec![1, 2, 3]);
+        assert_eq!(replay.remote_sram, vec![4, 5]);
+        assert_eq!(replay.metadata.ts, 1_752_000_000_000);
+        assert_eq!(replay.round_starts, round_starts);
+        assert_eq!(replay.inputs, ticks);
     }
 }
