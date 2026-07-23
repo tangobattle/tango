@@ -462,11 +462,14 @@ pub fn view<'a>(
                         ..
                     }) => Some(input::PhysicalInput::Key(input::KeyPhysical(*physical_key))),
                     crate::platform::input_capture::Input::Keyboard(_) => None,
-                    crate::platform::input_capture::Input::Gamepad(ev) => match *ev {
-                        sdl3_gamepad::GamepadEvent::ButtonDown(b) => {
+                    // Binding capture coalesces every pad: the first
+                    // button/axis from any controller wins, so the source
+                    // `id` is ignored here.
+                    crate::platform::input_capture::Input::Gamepad(ev) => match ev.kind {
+                        sdl3_gamepad::GamepadEventKind::ButtonDown(b) => {
                             Some(input::PhysicalInput::Button(input::GamepadButton::from_gamepad(b)))
                         }
-                        sdl3_gamepad::GamepadEvent::AxisMotion { axis, value } => {
+                        sdl3_gamepad::GamepadEventKind::AxisMotion { axis, value } => {
                             (value.abs() > input::AXIS_THRESHOLD).then_some(input::PhysicalInput::Axis {
                                 axis: input::GamepadAxis::from_gamepad(axis),
                                 dir: if value > 0.0 {

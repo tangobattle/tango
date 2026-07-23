@@ -19,6 +19,7 @@
 //! [`Code`]: iced::keyboard::key::Code
 
 use iced::keyboard::key::{Code, NativeCode, Physical};
+use sdl3_gamepad::GamepadId;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -510,6 +511,10 @@ pub enum MappedKey {
 /// pipeline and the input settings pane's live binding highlight —
 /// share one normalized stream (see
 /// [`crate::platform::input_capture::Input::to_event`]).
+///
+/// Gamepad events are tagged with the source [`GamepadId`]: the
+/// [`sdl3_gamepad`] crate emits per-device now, and [`HeldState`]
+/// coalesces every pad into one logical controller (see its docs).
 #[derive(Debug, Clone)]
 pub enum Event {
     Key {
@@ -517,24 +522,41 @@ pub enum Event {
         pressed: bool,
     },
     Button {
+        id: GamepadId,
         button: GamepadButton,
         pressed: bool,
     },
     Axis {
+        id: GamepadId,
         axis: GamepadAxis,
         value: f32,
     },
-    /// Controller dropped — clear all gamepad state so
-    /// disconnected buttons don't read as still-held.
-    GamepadDisconnected,
+    /// Controller dropped — drop that pad's held state so its
+    /// disconnected buttons don't read as still-held (other pads
+    /// stay put).
+    GamepadDisconnected {
+        id: GamepadId,
+    },
 }
 
 /// Live held-input state combined from keyboard + every connected
 /// gamepad. The session loop updates this on every key/gamepad
 /// event then asks the Mapping to compute the resulting joyflags.
+///
+/// Gamepad state is tracked per device: the [`sdl3_gamepad`] crate
+/// reports each pad's buttons/axes separately, and this type does the
+/// coalescing — a binding counts as held if *any* connected pad holds
+/// it. Keeping the pads separate is what lets one controller unplug
+/// (dropping just its entry) without wiping another's held buttons.
 #[derive(Default)]
 pub struct HeldState {
     keys: HashSet<Physical>,
+    gamepads: HashMap<GamepadId, GamepadHeld>,
+}
+
+/// One connected pad's held buttons + last-known axis values.
+#[derive(Default)]
+struct GamepadHeld {
     buttons: HashSet<GamepadButton>,
     /// Per-axis last-known normalized value in [-1, 1]. Bindings
     /// trigger when |value| crosses [`AXIS_THRESHOLD`].
@@ -546,9 +568,9 @@ impl HeldState {
     pub fn apply(&mut self, ev: &Event) {
         match *ev {
             Event::Key { physical, pressed } => self.set_key(physical, pressed),
-            Event::Button { button, pressed } => self.set_button(button, pressed),
-            Event::Axis { axis, value } => self.set_axis(axis, value),
-            Event::GamepadDisconnected => self.clear_gamepad(),
+            Event::Button { id, button, pressed } => self.set_button(id, button, pressed),
+            Event::Axis { id, axis, value } => self.set_axis(id, axis, value),
+            Event::GamepadDisconnected { id } => self.remove_gamepad(id),
         }
     }
 
@@ -566,36 +588,37 @@ impl HeldState {
         self.keys.contains(physical)
     }
 
-    pub fn set_button(&mut self, b: GamepadButton, pressed: bool) {
+    pub fn set_button(&mut self, id: GamepadId, b: GamepadButton, pressed: bool) {
+        let pad = self.gamepads.entry(id).or_default();
         if pressed {
-            self.buttons.insert(b);
+            pad.buttons.insert(b);
         } else {
-            self.buttons.remove(&b);
+            pad.buttons.remove(&b);
         }
     }
 
-    pub fn set_axis(&mut self, a: GamepadAxis, value: f32) {
-        self.axes.insert(a, value);
+    pub fn set_axis(&mut self, id: GamepadId, a: GamepadAxis, value: f32) {
+        self.gamepads.entry(id).or_default().axes.insert(a, value);
     }
 
-    /// Clear gamepad state — call when a controller disconnects so
-    /// stuck-pressed buttons don't leak across reconnects.
-    pub fn clear_gamepad(&mut self) {
-        self.buttons.clear();
-        self.axes.clear();
+    /// Drop a disconnected pad's held state so stuck-pressed buttons
+    /// don't leak across reconnects. Other connected pads are untouched.
+    pub fn remove_gamepad(&mut self, id: GamepadId) {
+        self.gamepads.remove(&id);
     }
 
     pub fn is_active(&self, p: &PhysicalInput) -> bool {
         match p {
             PhysicalInput::Key(c) => self.keys.contains(&c.0),
-            PhysicalInput::Button(b) => self.buttons.contains(b),
-            PhysicalInput::Axis { axis, dir } => {
-                let v = self.axes.get(axis).copied().unwrap_or(0.0);
+            // Coalesce across pads: held on any connected controller counts.
+            PhysicalInput::Button(b) => self.gamepads.values().any(|pad| pad.buttons.contains(b)),
+            PhysicalInput::Axis { axis, dir } => self.gamepads.values().any(|pad| {
+                let v = pad.axes.get(axis).copied().unwrap_or(0.0);
                 match dir {
                     AxisDir::Positive => v > AXIS_THRESHOLD,
                     AxisDir::Negative => v < -AXIS_THRESHOLD,
                 }
-            }
+            }),
         }
     }
 }

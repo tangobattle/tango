@@ -5390,7 +5390,7 @@ dependencies = [
 [[package]]
 name = "sdl3-gamepad"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/sdl3-gamepad#884518917d87a06a77f8426611de44218c5410be"
+source = "git+https://github.com/tangobattle/sdl3-gamepad#c201200369663ea9c2a321e3dc562a716eab515f"
 dependencies = [
  "log",
  "sdl3",

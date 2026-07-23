@@ -61,21 +61,31 @@ impl Input<'_> {
                 },
                 _ => return None,
             },
-            Input::Gamepad(ev) => match **ev {
-                GamepadEvent::ButtonDown(b) => crate::platform::input::Event::Button {
-                    button: crate::platform::input::GamepadButton::from_gamepad(b),
-                    pressed: true,
-                },
-                GamepadEvent::ButtonUp(b) => crate::platform::input::Event::Button {
-                    button: crate::platform::input::GamepadButton::from_gamepad(b),
-                    pressed: false,
-                },
-                GamepadEvent::AxisMotion { axis, value } => crate::platform::input::Event::Axis {
-                    axis: crate::platform::input::GamepadAxis::from_gamepad(axis),
-                    value,
-                },
-                GamepadEvent::DeviceRemoved => crate::platform::input::Event::GamepadDisconnected,
-            },
+            Input::Gamepad(ev) => {
+                use sdl3_gamepad::GamepadEventKind as K;
+                let id = ev.id;
+                match ev.kind {
+                    K::ButtonDown(b) => crate::platform::input::Event::Button {
+                        id,
+                        button: crate::platform::input::GamepadButton::from_gamepad(b),
+                        pressed: true,
+                    },
+                    K::ButtonUp(b) => crate::platform::input::Event::Button {
+                        id,
+                        button: crate::platform::input::GamepadButton::from_gamepad(b),
+                        pressed: false,
+                    },
+                    K::AxisMotion { axis, value } => crate::platform::input::Event::Axis {
+                        id,
+                        axis: crate::platform::input::GamepadAxis::from_gamepad(axis),
+                        value,
+                    },
+                    K::Disconnected => crate::platform::input::Event::GamepadDisconnected { id },
+                    // Connect needs no state — the held-state map creates
+                    // the pad's entry lazily on its first button/axis.
+                    K::Connected => return None,
+                }
+            }
         })
     }
 }
@@ -160,11 +170,14 @@ where
                 }
             }
             Event::Window(window::Event::RedrawRequested(_)) => {
-                sdl3_gamepad::pump(|ev| {
+                // Pull the gamepad stream dry (gilrs-style) — one frame's
+                // worth of per-device events, coalesced downstream by
+                // `HeldState`.
+                while let Some(ev) = sdl3_gamepad::next_event() {
                     if let Some(message) = (self.on_input)(Input::Gamepad(&ev)) {
                         shell.publish(message);
                     }
-                });
+                }
                 // No `shell.request_redraw()` — the session
                 // subscription's vblank-notify wake is what
                 // perpetuates the loop now. Pacing redraws here
