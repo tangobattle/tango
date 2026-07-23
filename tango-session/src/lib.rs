@@ -113,32 +113,39 @@ impl PauseGate {
     }
 }
 
-/// Per-session UI ↔ emu-thread frame plumbing: the shared GBA
-/// framebuffer (mgba-native BGR555, 2 bytes/pixel) the session's frame
-/// callback `copy_from_slice`s into once per emu vblank, and the wake
-/// handle it `notify_one()`s whenever a new frame lands or `is_ended`
-/// could flip (the PvP end-detection wires). Every session constructor
-/// builds its own, so a fresh session always starts on a zeroed
-/// framebuffer with no stale wake pending — no cross-session wipe
-/// dance. Carries no identity: if the host needs to tell one session's
-/// sink from the next (e.g. to key a UI wake stream), that's the
-/// host's bookkeeping — a pointer to the `Notify` won't do (a new
-/// session's allocation can reuse a dropped one's address).
-pub struct FrameSink {
-    pub notify: std::sync::Arc<tokio::sync::Notify>,
-    pub vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
-}
+/// One shared GBA screen — mgba-native BGR555, 2 bytes/pixel — with
+/// the emu thread writing it and the host copying it out to upload on
+/// repaint. A session builds one per screen it publishes: its main
+/// display, plus the replay PiP's opponent view. Each starts zeroed,
+/// so a fresh session never flashes the previous one's last frame.
+///
+/// Waking the host is deliberately not part of this: a session can
+/// write several screens for one tick (the replay PiP), and it has
+/// state worth a repaint that isn't a frame at all, so the wake is the
+/// session's ([`ActiveSession::wake`]) rather than the surface's.
+pub struct Framebuffer(std::sync::Mutex<Vec<u8>>);
 
-impl FrameSink {
-    pub fn new() -> Self {
-        Self {
-            notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-            vbuf: std::sync::Arc::new(std::sync::Mutex::new(vec![
-                0u8;
-                (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2)
-                    as usize
-            ])),
+impl Framebuffer {
+    pub fn new() -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self(std::sync::Mutex::new(vec![
+            0u8;
+            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2)
+                as usize
+        ])))
+    }
+
+    /// Emu side: put this frame up. A wrong-sized `pixels` is ignored
+    /// — the last good frame stays up rather than tearing the surface.
+    pub fn write(&self, pixels: &[u8]) {
+        let mut vbuf = self.0.lock().unwrap();
+        if vbuf.len() == pixels.len() {
+            vbuf.copy_from_slice(pixels);
         }
+    }
+
+    /// Host side: a copy of the frame currently up, as raw BGR555.
+    pub fn read(&self) -> Vec<u8> {
+        self.0.lock().unwrap().clone()
     }
 }
 
@@ -156,14 +163,27 @@ pub trait ActiveSession: std::any::Any {
     /// the emulator pane.
     fn local_game(&self) -> &'static tango_gamesupport::Game;
 
-    /// This session's frame surfaces + wake handle — built fresh by
-    /// its constructor, see [`FrameSink`].
-    fn frame_sink(&self) -> &FrameSink;
+    /// This session's main display, built fresh by its constructor —
+    /// the host [`read`](Framebuffer::read)s it into a GPU texture
+    /// every repaint.
+    fn screen(&self) -> std::sync::Arc<Framebuffer>;
+
+    /// Signalled whenever the host should take another look: a new
+    /// frame landed, or state it re-checks on the same beat moved
+    /// (`is_ended` after a peer-end packet, a link drop, a reconnect's
+    /// give-up bar). The host parks one repaint stream on it, so a
+    /// session that has stopped producing frames can still drive its
+    /// own teardown. Coalescing — a slow host sees one wake per park,
+    /// not a queue — and a wake fired before it parks isn't lost (the
+    /// permit is stored). Handed out owned, so that stream can outlive
+    /// its borrow of the session.
+    fn wake(&self) -> std::sync::Arc<tokio::sync::Notify>;
 
     /// Latest other-perspective frame for the picture-in-picture
     /// inset, as raw BGR555 — `None` except on a replay session with
     /// the PiP toggle on. Polled per frame by the host alongside the
-    /// main [`frame_sink`](Self::frame_sink) read.
+    /// main [`screen`](Self::screen) read. (A `Framebuffer` of its own
+    /// behind the toggle, hence pixels rather than the surface.)
     fn pip_pixels(&self) -> Option<Vec<u8>> {
         None
     }

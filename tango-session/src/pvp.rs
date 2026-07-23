@@ -173,10 +173,13 @@ pub struct PvpSession {
     /// Where this match's replay is being recorded, or `None` if the writer
     /// failed to open. The post-match results screen offers to play it back.
     pub replay_path: Option<std::path::PathBuf>,
-    /// This session's display surfaces + frame wake handle; the drive
-    /// thread and the supervisor's end-detection wires hold clones of
-    /// its parts.
-    frame_sink: crate::FrameSink,
+    /// This session's display, written by the drive thread once per
+    /// simulated frame.
+    screen: Arc<crate::Framebuffer>,
+    /// Repaint/re-check wake — fired per frame by the drive thread and
+    /// by the end-detection wires that produce no frame at all (the
+    /// receive pump, the reconnect supervisor, the peer-end grace).
+    wake: Arc<tokio::sync::Notify>,
     /// When the session was built, for the results screen's match duration.
     started_at: std::time::Instant,
 }
@@ -332,7 +335,8 @@ impl PvpSession {
         let drive_paused = Arc::new(crate::PauseGate::new(false));
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
         let tps_counter = Arc::new(Mutex::new(crate::stats::Counter::new(60)));
-        let frame_sink = crate::FrameSink::new();
+        let screen = crate::Framebuffer::new();
+        let wake = Arc::new(tokio::sync::Notify::new());
 
         // Usage semantics can depend on the applied patch (exe45's PvP
         // patch), so they're probed off the patched ROM.
@@ -401,8 +405,8 @@ impl PvpSession {
                     .as_ref()
                     .map(|p| crate::stats_cache::stats_path(cache_path, replays_path, p)),
                 tps_counter: tps_counter.clone(),
-                vbuf: frame_sink.vbuf.clone(),
-                frame_notify: frame_sink.notify.clone(),
+                screen: screen.clone(),
+                wake: wake.clone(),
                 local_player: local_player_index as usize,
                 rt: tokio::runtime::Handle::current(),
             };
@@ -445,7 +449,7 @@ impl PvpSession {
             cancel: cancellation_token.clone(),
             metrics: metrics.clone(),
             drive_paused: drive_paused.clone(),
-            frame_notify: frame_sink.notify.clone(),
+            wake: wake.clone(),
         });
 
         let session = Self {
@@ -463,7 +467,8 @@ impl PvpSession {
             frame_delay,
             stats,
             replay_path,
-            frame_sink,
+            screen,
+            wake,
             started_at: std::time::Instant::now(),
         };
         Ok((session, audio))
@@ -606,8 +611,12 @@ impl crate::ActiveSession for PvpSession {
         self.local_game
     }
 
-    fn frame_sink(&self) -> &crate::FrameSink {
-        &self.frame_sink
+    fn screen(&self) -> Arc<crate::Framebuffer> {
+        self.screen.clone()
+    }
+
+    fn wake(&self) -> Arc<tokio::sync::Notify> {
+        self.wake.clone()
     }
 
     fn set_joyflags(&self, joyflags: u32) {
@@ -740,8 +749,8 @@ struct DriveContext {
     stats: Arc<Mutex<tango_match::analysis::StatsBuilder>>,
     stats_path: Option<std::path::PathBuf>,
     tps_counter: Arc<Mutex<crate::stats::Counter>>,
-    vbuf: Arc<Mutex<Vec<u8>>>,
-    frame_notify: Arc<tokio::sync::Notify>,
+    screen: Arc<crate::Framebuffer>,
+    wake: Arc<tokio::sync::Notify>,
     local_player: usize,
     rt: tokio::runtime::Handle,
 }
@@ -966,10 +975,10 @@ impl DriveContext {
                     });
                     // Wall-clock fallback wake so `is_ended` is rechecked
                     // even if the peer never sends EndOfMatch.
-                    let notify = self.frame_notify.clone();
+                    let wake = self.wake.clone();
                     self.rt.spawn(async move {
                         tokio::time::sleep(PEER_END_GRACE).await;
-                        notify.notify_one();
+                        wake.notify_one();
                     });
                 }
             }
@@ -977,13 +986,10 @@ impl DriveContext {
             // Present the local screen to the UI. (Audio needs no push —
             // the output stream pulls it straight off the pair.)
             if let Some(buf) = match_.local_video_buffer() {
-                let mut vbuf = self.vbuf.lock().unwrap();
-                if vbuf.len() == buf.len() {
-                    vbuf.copy_from_slice(&buf);
-                }
+                self.screen.write(&buf);
             }
             self.tps_counter.lock().unwrap().mark();
-            self.frame_notify.notify_one();
+            self.wake.notify_one();
 
             // Clock sync: only the leading peer shaves tick rate, and only
             // once the presented frame actually speculates past the present
@@ -1067,7 +1073,7 @@ struct SupervisorContext {
     cancel: tokio_util::sync::CancellationToken,
     metrics: Arc<Metrics>,
     drive_paused: Arc<crate::PauseGate>,
-    frame_notify: Arc<tokio::sync::Notify>,
+    wake: Arc<tokio::sync::Notify>,
 }
 
 /// Pump one receiver until error/EOF, forwarding events to the drive
@@ -1076,7 +1082,7 @@ struct SupervisorContext {
 async fn run_receive_pump(
     mut receiver: crate::net::PvpReceiver,
     event_tx: std::sync::mpsc::Sender<crate::net::data::Input>,
-    frame_notify: Arc<tokio::sync::Notify>,
+    wake: Arc<tokio::sync::Notify>,
 ) -> std::io::Error {
     loop {
         match receiver.receive().await {
@@ -1086,7 +1092,7 @@ async fn run_receive_pump(
                 }
                 // Remote inputs settle ticks; make sure a paused/idle UI
                 // still observes progress.
-                frame_notify.notify_one();
+                wake.notify_one();
             }
             Err(e) => return e,
         }
@@ -1111,21 +1117,21 @@ fn spawn_supervisor(ctx: SupervisorContext) {
         cancel,
         metrics,
         drive_paused,
-        frame_notify,
+        wake,
     } = ctx;
 
     let make_receiver = {
         let link = link.clone();
         let in_match = in_match.clone();
         let end = end.clone();
-        let frame_notify = frame_notify.clone();
+        let wake = wake.clone();
         move || -> Option<crate::net::PvpReceiver> {
             Some(crate::net::PvpReceiver::new(
                 link.take_match_receiver()?,
                 in_match.clone(),
                 link.latency_handle(),
                 end.remote_ended.clone(),
-                frame_notify.clone(),
+                wake.clone(),
             ))
         }
     };
@@ -1188,7 +1194,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
                     }
                     crate::net::link::ControlEnd::Eof => Trip::Closed,
                 },
-                e = run_receive_pump(receiver, event_tx.clone(), frame_notify.clone()) => {
+                e = run_receive_pump(receiver, event_tx.clone(), wake.clone()) => {
                     log::info!("pvp in-match channel closed: {e:?}");
                     Trip::Closed
                 }
@@ -1231,7 +1237,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
             // which stall-trips the other within RECONNECT_QUEUE_LENGTH
             // frames.
             drive_paused.set(true);
-            frame_notify.notify_one();
+            wake.notify_one();
             log::info!("pvp link dropped — pausing to reconnect");
 
             // Rebuild + hot-swap (the link's job), ticking the UI at
@@ -1242,7 +1248,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
                     let mut iv = tokio::time::interval(RECONNECT_UI_TICK);
                     loop {
                         iv.tick().await;
-                        frame_notify.notify_one();
+                        wake.notify_one();
                     }
                 };
                 let cause = if matches!(trip, Trip::Closed) {
@@ -1276,7 +1282,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
             // and bounce us straight back into another reconnect.
             drain_until = Some(std::time::Instant::now() + RECONNECT_DRAIN_GRACE);
             drive_paused.set(false);
-            frame_notify.notify_one();
+            wake.notify_one();
             log::info!("pvp transparently reconnected the link");
         }
 
@@ -1286,7 +1292,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
         // coming).
         link.retire_latency();
         drive_paused.set(false);
-        frame_notify.notify_one();
+        wake.notify_one();
     });
 }
 

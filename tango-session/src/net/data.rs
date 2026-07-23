@@ -386,9 +386,9 @@ pub struct PvpReceiver {
     /// delivered. `PvpSession::is_ended` reads this to know the remote reached
     /// its match_end_ret hook and the connection is safe to tear down.
     remote_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    /// Session subscription wake, pinged after `remote_ended` flips so
-    /// `is_ended` is re-checked without waiting on the next vblank.
-    end_of_match_notify: std::sync::Arc<tokio::sync::Notify>,
+    /// Session wake, signalled after `remote_ended` flips so `is_ended`
+    /// is re-checked without waiting on the next vblank.
+    wake: std::sync::Arc<tokio::sync::Notify>,
     /// Inputs made contiguous by the last frame but not yet yielded.
     pending: std::collections::VecDeque<Input>,
 }
@@ -399,14 +399,14 @@ impl PvpReceiver {
         im: InMatchTx,
         latency_counter: std::sync::Arc<std::sync::Mutex<Option<LatencyCounter>>>,
         remote_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
-        end_of_match_notify: std::sync::Arc<tokio::sync::Notify>,
+        wake: std::sync::Arc<tokio::sync::Notify>,
     ) -> Self {
         Self {
             receiver,
             im,
             latency_counter,
             remote_ended,
-            end_of_match_notify,
+            wake,
             pending: std::collections::VecDeque::new(),
         }
     }
@@ -438,7 +438,7 @@ impl PvpReceiver {
                     }
                     protocol::Element::EndOfMatch => {
                         self.remote_ended.store(true, std::sync::atomic::Ordering::Release);
-                        self.end_of_match_notify.notify_one();
+                        self.wake.notify_one();
                     }
                 }
             }

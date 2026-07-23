@@ -567,12 +567,13 @@ pub enum Message {
     CloseSettings,
     /// One emulator frame has landed, or `is_ended` could have
     /// flipped (PvP peer-end / disconnect / grace-timeout). The
-    /// handler rebuilds the framebuffer from the active
-    /// session's vbuf into [`State::current_frame`] and tears
-    /// the session down if it's now ended. Fired by the session
-    /// subscription, which wakes on the active session's
-    /// [`FrameSink`] notify — `notify_one()`'d by both the frame
-    /// callback and the PvP end-detection wires.
+    /// handler rebuilds the framebuffer from the active session's
+    /// [`screen`](tango_session::ActiveSession::screen) into
+    /// [`State::current_frame`] and tears the session down if it's now
+    /// ended. Fired by the session subscription, which parks on the
+    /// active session's [`wake`](tango_session::ActiveSession::wake) —
+    /// signalled by both the frame callback and the PvP end-detection
+    /// wires.
     UpdateFramebuffer,
     /// Click-swallower for modal panel chrome — keeps presses
     /// on the panel's inert regions from falling through to the
@@ -862,7 +863,7 @@ impl State {
                     } else {
                         // Upload the native frame as-is; the selected effect
                         // magnifies it on the GPU at draw time.
-                        let pixels = session.frame_sink().vbuf.lock().unwrap().clone();
+                        let pixels = session.screen().read();
                         self.frame_revision = self.frame_revision.wrapping_add(1);
                         self.current_frame = Some(crate::platform::video::framebuffer::Frame {
                             pixels: std::sync::Arc::new(pixels),
@@ -908,24 +909,24 @@ impl State {
 }
 
 /// Per-emulator-frame wake stream. Yields
-/// [`Message::UpdateFramebuffer`] each time someone fires
-/// `notify_one()` on the active session's [`FrameSink`] notify — the
-/// per-frame callback for new vbuf data, and the PvP end-detection
-/// wires (peer-end packet, peer disconnect, grace timeout) for
-/// state-transition checks. Lives only while a session is active,
-/// keyed by [`State::session_seq`] so each new session swaps in a
-/// stream on its own fresh Notify (a wake fired before the stream
+/// [`Message::UpdateFramebuffer`] each time someone signals the active
+/// session's [`wake`](tango_session::ActiveSession::wake) — the
+/// per-frame callback for new screen contents, and the PvP
+/// end-detection wires (peer-end packet, peer disconnect, grace
+/// timeout) for state-transition checks. Lives only while a session is
+/// active, keyed by [`State::session_seq`] so each new session swaps in
+/// a stream on its own fresh wake (a signal fired before the stream
 /// spins up isn't lost — Notify stores the permit). Keyboard input still
 /// flows through [`crate::platform::input_capture`] — see that
 /// module's docs for why the subscription path is too laggy for
 /// joypad state.
 pub fn subscription(state: &State) -> iced::Subscription<Message> {
     let mut subs = Vec::new();
-    if let Some(sink) = state.active.as_deref().map(|s| s.frame_sink()) {
+    if let Some(wake) = state.active.as_deref().map(|s| s.wake()) {
         subs.push(iced::Subscription::run_with(
             FrameTag {
                 id: state.session_seq,
-                notify: sink.notify.clone(),
+                wake,
             },
             build_frame_stream,
         ));
@@ -957,11 +958,11 @@ pub fn subscription(state: &State) -> iced::Subscription<Message> {
 /// Frame-stream subscription identity. Hashes the install counter
 /// ([`State::session_seq`]), so iced keeps one stream alive per
 /// session (stable across view rebuilds) and rebuilds it when a new
-/// session — with a fresh Notify — comes up. The `notify` payload
-/// carries the actual wake handle through to [`build_frame_stream`].
+/// session — with a fresh wake — comes up. The `wake` payload carries
+/// the actual handle through to [`build_frame_stream`].
 struct FrameTag {
     id: u64,
-    notify: std::sync::Arc<tokio::sync::Notify>,
+    wake: std::sync::Arc<tokio::sync::Notify>,
 }
 
 impl std::hash::Hash for FrameTag {
@@ -971,10 +972,9 @@ impl std::hash::Hash for FrameTag {
 }
 
 fn build_frame_stream(tag: &FrameTag) -> impl futures::Stream<Item = Message> {
-    let notify = tag.notify.clone();
-    futures::stream::unfold(notify, |notify| async move {
-        notify.notified().await;
-        Some((Message::UpdateFramebuffer, notify))
+    futures::stream::unfold(tag.wake.clone(), |wake| async move {
+        wake.notified().await;
+        Some((Message::UpdateFramebuffer, wake))
     })
 }
 
@@ -1024,7 +1024,7 @@ const CONTROLS_HIDE_AFTER: std::time::Duration = std::time::Duration::from_milli
 const ESC_QUIT_HOLD: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Expand an mgba-native BGR555 framebuffer (one little-endian `u16`
-/// per pixel — see [`State`]'s `vbuf`) to an RGBA8 image handle for
+/// per pixel — see [`tango_session::Framebuffer`]) to an RGBA8 image handle for
 /// the hover thumbnail, via dataview's shared conversion — the same
 /// table that renders ROM sprites/palettes and replay video exports,
 /// and the CPU twin of the GPU decode in `video/effects/common.wgsl`.

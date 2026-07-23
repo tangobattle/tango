@@ -40,10 +40,11 @@ pub struct ReplaySession {
     /// [`Self::nicknames`]). Boxed to keep this struct — and with it
     /// the `ActiveSession` enum — small, same as the PvP variant.
     input_display: Box<InputDisplay>,
-    /// This session's display framebuffer + wake handle, kept so
-    /// [`Self::scrub_preview`] can blit snapshot framebuffers without
-    /// going through the emulator at all.
-    frame_sink: crate::FrameSink,
+    /// This session's display, kept so [`Self::scrub_preview`] can blit
+    /// snapshot framebuffers without going through the emulator at all.
+    screen: Arc<crate::Framebuffer>,
+    /// Repaint wake, fired once per published frame (and per blit).
+    wake: Arc<tokio::sync::Notify>,
     /// Whether the opponent-screen PiP is on (a per-session toggle on
     /// the transport bar).
     show_pip: Arc<AtomicBool>,
@@ -52,10 +53,10 @@ pub struct ReplaySession {
     /// PiP, when also on, carries the local screen so the two surfaces
     /// always show both sides.
     swap_perspective: Arc<AtomicBool>,
-    /// The opponent's screen, copied once per published frame while the
-    /// PiP is on. Same BGR555 layout as `vbuf`.
-    pip_vbuf: Arc<Mutex<Vec<u8>>>,
-    /// Whether `pip_vbuf` holds a frame from the current PiP activation
+    /// The opponent's screen, written once per published frame while
+    /// the PiP is on.
+    pip: Arc<crate::Framebuffer>,
+    /// Whether `pip` holds a frame from the current PiP activation
     /// (cleared while off, so a stale capture never flashes on re-toggle).
     pip_fresh: Arc<AtomicBool>,
     /// The playback machinery (pair, workers, seek state).
@@ -190,7 +191,8 @@ impl ReplaySession {
             ),
         });
 
-        let frame_sink = crate::FrameSink::new();
+        let screen = crate::Framebuffer::new();
+        let wake = Arc::new(tokio::sync::Notify::new());
         let playback: SharedSioPlayback = Arc::new(Mutex::new(None));
         let cursor = Arc::new(AtomicU32::new(0));
         let paused = Arc::new(crate::PauseGate::new(false));
@@ -211,20 +213,16 @@ impl ReplaySession {
         let cancel = Arc::new(AtomicBool::new(false));
         let show_pip = Arc::new(AtomicBool::new(show_pip));
         let swap_perspective = Arc::new(AtomicBool::new(false));
-        let pip_vbuf = Arc::new(Mutex::new(vec![
-            0u8;
-            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2)
-                as usize
-        ]));
+        let pip = crate::Framebuffer::new();
         let pip_fresh = Arc::new(AtomicBool::new(false));
 
         let surfaces = Surfaces {
-            vbuf: frame_sink.vbuf.clone(),
-            pip_vbuf: pip_vbuf.clone(),
+            screen: screen.clone(),
+            pip: pip.clone(),
             pip_fresh: pip_fresh.clone(),
             show_pip: show_pip.clone(),
             swap_perspective: swap_perspective.clone(),
-            frame_notify: frame_sink.notify.clone(),
+            wake: wake.clone(),
             local_player,
         };
 
@@ -381,10 +379,11 @@ impl ReplaySession {
             round_boundaries: round_marks,
             total_ticks,
             input_display,
-            frame_sink,
+            screen,
+            wake,
             show_pip,
             swap_perspective,
-            pip_vbuf,
+            pip,
             pip_fresh,
             engine: Engine {
                 local_player,
@@ -636,12 +635,12 @@ impl ReplaySession {
     /// see [`Surfaces`].
     fn blit_snapshot(&self, snap: &NearestSnapshot) -> bool {
         Surfaces {
-            vbuf: self.frame_sink.vbuf.clone(),
-            pip_vbuf: self.pip_vbuf.clone(),
+            screen: self.screen.clone(),
+            pip: self.pip.clone(),
             pip_fresh: self.pip_fresh.clone(),
             show_pip: self.show_pip.clone(),
             swap_perspective: self.swap_perspective.clone(),
-            frame_notify: self.frame_sink.notify.clone(),
+            wake: self.wake.clone(),
             local_player: snap.local_player,
         }
         .publish_snapshot(&snap.snap);
@@ -654,15 +653,18 @@ impl crate::ActiveSession for ReplaySession {
         self.game
     }
 
-    fn frame_sink(&self) -> &crate::FrameSink {
-        &self.frame_sink
+    fn screen(&self) -> Arc<crate::Framebuffer> {
+        self.screen.clone()
+    }
+
+    fn wake(&self) -> Arc<tokio::sync::Notify> {
+        self.wake.clone()
     }
 
     /// The opponent's screen, or the local one while swapped — `None`
     /// while the PiP is off or before its first captured frame.
     fn pip_pixels(&self) -> Option<Vec<u8>> {
-        (self.show_pip.load(Ordering::Relaxed) && self.pip_fresh.load(Ordering::Relaxed))
-            .then(|| self.pip_vbuf.lock().unwrap().clone())
+        (self.show_pip.load(Ordering::Relaxed) && self.pip_fresh.load(Ordering::Relaxed)).then(|| self.pip.read())
     }
 
     /// 0.5 = slow-mo. The SIO drive loop paces itself and publishes
@@ -705,12 +707,12 @@ impl NearestSnapshot {
 /// [`blit_snapshot_surfaces`]).
 #[derive(Clone)]
 struct Surfaces {
-    vbuf: Arc<Mutex<Vec<u8>>>,
-    pip_vbuf: Arc<Mutex<Vec<u8>>>,
+    screen: Arc<crate::Framebuffer>,
+    pip: Arc<crate::Framebuffer>,
     pip_fresh: Arc<AtomicBool>,
     show_pip: Arc<AtomicBool>,
     swap_perspective: Arc<AtomicBool>,
-    frame_notify: Arc<tokio::sync::Notify>,
+    wake: Arc<tokio::sync::Notify>,
     local_player: usize,
 }
 
@@ -729,23 +731,18 @@ impl Surfaces {
     /// keeps its last frame.
     fn publish(&self, main: Option<&[u8]>, other: Option<&[u8]>) {
         if let Some(main) = main {
-            let mut vbuf = self.vbuf.lock().unwrap();
-            if vbuf.len() == main.len() {
-                vbuf.copy_from_slice(main);
-            }
+            self.screen.write(main);
         }
         if self.show_pip.load(Ordering::Relaxed) {
             if let Some(other) = other {
-                let mut pip = self.pip_vbuf.lock().unwrap();
-                if pip.len() == other.len() {
-                    pip.copy_from_slice(other);
-                    self.pip_fresh.store(true, Ordering::Relaxed);
-                }
+                self.pip.write(other);
+                self.pip_fresh.store(true, Ordering::Relaxed);
             }
         } else {
             self.pip_fresh.store(false, Ordering::Relaxed);
         }
-        self.frame_notify.notify_one();
+        // One wake for the pair, after both surfaces are up.
+        self.wake.notify_one();
     }
 
     /// Publish the pair's live framebuffers.

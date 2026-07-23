@@ -1,8 +1,9 @@
 //! Standalone (no-netplay) emulator session. Boots a ROM with the
 //! user-selected save file and accepts joyflag input from the UI tick
 //! loop. The video frame plumbing mirrors the other sessions — the
-//! session's own [`FrameSink`](crate::FrameSink) vbuf, fed
-//! mgba's raw BGR555 (the framebuffer shader expands it on the GPU).
+//! drive loop writes mgba's raw BGR555 into the session's own
+//! [`Framebuffer`](crate::Framebuffer) (the framebuffer shader expands
+//! it to RGB on the GPU).
 //!
 //! The core runs on a drive thread we own (mgba is built without its
 //! thread runner), paced by the wall clock the same way the PvP drive
@@ -47,7 +48,8 @@ pub struct SinglePlayerSession {
     game: &'static tango_gamesupport::Game,
     joyflags: Arc<AtomicU32>,
     shared: Arc<Shared>,
-    frame_sink: crate::FrameSink,
+    screen: Arc<crate::Framebuffer>,
+    wake: Arc<tokio::sync::Notify>,
     drive: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -81,13 +83,14 @@ impl SinglePlayerSession {
             stop: AtomicBool::new(false),
         });
 
-        let frame_sink = crate::FrameSink::new();
+        let screen = crate::Framebuffer::new();
+        let wake = Arc::new(tokio::sync::Notify::new());
         let drive = std::thread::Builder::new().name("singleplayer".to_owned()).spawn({
             let shared = shared.clone();
             let joyflags = joyflags.clone();
-            let vbuf = frame_sink.vbuf.clone();
-            let frame_notify = frame_sink.notify.clone();
-            move || drive_loop(shared, joyflags, vbuf, frame_notify)
+            let screen = screen.clone();
+            let wake = wake.clone();
+            move || drive_loop(shared, joyflags, screen, wake)
         })?;
 
         let audio = crate::core_stream::CoreStream::new(
@@ -104,7 +107,8 @@ impl SinglePlayerSession {
                 game,
                 joyflags,
                 shared,
-                frame_sink,
+                screen,
+                wake,
                 drive: Some(drive),
             },
             audio,
@@ -117,8 +121,12 @@ impl crate::ActiveSession for SinglePlayerSession {
         self.game
     }
 
-    fn frame_sink(&self) -> &crate::FrameSink {
-        &self.frame_sink
+    fn screen(&self) -> Arc<crate::Framebuffer> {
+        self.screen.clone()
+    }
+
+    fn wake(&self) -> Arc<tokio::sync::Notify> {
+        self.wake.clone()
     }
 
     fn set_joyflags(&self, joyflags: u32) {
@@ -146,8 +154,8 @@ impl Drop for SinglePlayerSession {
 fn drive_loop(
     shared: Arc<Shared>,
     joyflags: Arc<AtomicU32>,
-    vbuf: Arc<Mutex<Vec<u8>>>,
-    frame_notify: Arc<tokio::sync::Notify>,
+    screen: Arc<crate::Framebuffer>,
+    wake: Arc<tokio::sync::Notify>,
 ) {
     let mut next_tick = std::time::Instant::now();
     while !shared.stop.load(Ordering::Relaxed) {
@@ -158,15 +166,15 @@ fn drive_loop(
             core.set_keys(joyflags.load(Ordering::Relaxed));
             core.run_frame();
             if let Some(frame) = core.video_buffer() {
-                // Copy mgba's native BGR555 straight through; the framebuffer
+                // mgba's native BGR555 goes up as-is; the framebuffer
                 // shader expands it to RGB on the GPU at draw time.
-                vbuf.lock().unwrap().copy_from_slice(frame);
+                screen.write(frame);
             }
         }
-        // Wake the host's frame subscription so the UI rebuilds
-        // the texture for this frame. Notify coalesces — a slow
-        // UI doesn't queue up wakes.
-        frame_notify.notify_one();
+        // Wake the host's frame subscription so the UI rebuilds the
+        // texture for this frame. Notify coalesces — a slow UI doesn't
+        // queue up wakes.
+        wake.notify_one();
 
         let mut fps = f32::from_bits(shared.fps_bits.load(Ordering::Relaxed));
         if fps <= 0.0 {
