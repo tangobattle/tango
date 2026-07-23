@@ -1,7 +1,7 @@
 //! SIO-replay playback machinery: the linearly-driven pair, its
 //! snapshot stores, and the background prefetch body.
 //!
-//! An SIO replay ([`crate::replay::VERSION`]) is the boot
+//! An SIO replay (`tango_replay::VERSION`) is the boot
 //! configuration plus one continuous run of confirmed `[p0, p1]` pair
 //! ticks. The pair is deterministic, so playback is a linear re-sim:
 //! boot, prime, feed the stream — and *any* recorded tick can be

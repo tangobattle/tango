@@ -399,7 +399,7 @@ impl ReplaysState {
         }
         let res = (|| -> anyhow::Result<(crate::selection::Loaded, Vec<u32>)> {
             let f = std::fs::File::open(&path)?;
-            let replay = tango_match::replay::Replay::decode(f)?;
+            let replay = tango_replay::Replay::decode(f)?;
             let round_ticks = replay.round_ranges().map(|r| r.len() as u32).collect();
             let loaded = crate::selection::Loaded::for_replay_local(scanners, config, &replay)?;
             Ok((loaded, round_ticks))
@@ -770,7 +770,7 @@ fn replay_detail<'a>(
     let md = &r.metadata;
     let ts_str = format_ts(md.ts, "%Y-%m-%d %H:%M:%S %z");
 
-    let row_for_side = |label: String, side: Option<&tango_match::replay::metadata::Side>| -> Element<'static, Message> {
+    let row_for_side = |label: String, side: Option<&tango_replay::metadata::Side>| -> Element<'static, Message> {
         let nick = side.map(|s| s.nickname.clone()).unwrap_or_default();
         let gi = side.and_then(|s| s.game_info.as_ref());
         let game_line = gi

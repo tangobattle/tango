@@ -121,7 +121,7 @@ impl crate::core_stream::PairPull for SioPlaybackPull {
 
 impl ReplaySession {
     /// Build a playback session for an SIO-engine replay
-    /// ([`tango_match::replay::VERSION`]): one continuous run of pair
+    /// ([`tango_replay::VERSION`]): one continuous run of pair
     /// ticks, re-simulated on a linearly-driven pair. Both sides must
     /// have [`GameSupport`](tango_match::GameSupport) support. Returns
     /// immediately — boot + priming (a second or two) happens on the
@@ -133,7 +133,7 @@ impl ReplaySession {
     pub fn new(
         games: [&'static tango_gamesupport::Game; 2],
         roms: [Arc<Vec<u8>>; 2],
-        replay: Arc<tango_match::replay::Replay>,
+        replay: Arc<tango_replay::Replay>,
         sample_rate: u32,
         show_pip: bool,
         stats_job: Option<PrefetchStatsJob>,
@@ -170,7 +170,7 @@ impl ReplaySession {
             }
         };
 
-        let nickname_of = |side: Option<&tango_match::replay::metadata::Side>| {
+        let nickname_of = |side: Option<&tango_replay::metadata::Side>| {
             side.map(|s| s.nickname.clone()).unwrap_or_default()
         };
         let input_display = Box::new(InputDisplay {

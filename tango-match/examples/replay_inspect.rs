@@ -14,7 +14,7 @@ fn main() {
                 continue;
             }
         };
-        let replay = match tango_match::replay::Replay::decode(f) {
+        let replay = match tango_replay::Replay::decode(f) {
             Ok(r) => r,
             Err(e) => {
                 println!("  decode failed: {e}");

@@ -282,7 +282,7 @@ fn load_corpus(paths: &[std::path::PathBuf]) -> Corpus {
     for path in &files {
         let replay = match std::fs::File::open(path)
             .map_err(std::io::Error::from)
-            .and_then(|f| tango_match::replay::Replay::decode(f))
+            .and_then(|f| tango_replay::Replay::decode(f))
         {
             Ok(replay) => replay,
             Err(e) => {

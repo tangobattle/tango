@@ -39,7 +39,7 @@ mod update;
 struct ExportPrep {
     games: [crate::library::rom::GameRef; 2],
     roms: [Vec<u8>; 2],
-    replay: tango_match::replay::Replay,
+    replay: tango_replay::Replay,
 }
 
 #[derive(Clone)]

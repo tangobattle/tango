@@ -579,7 +579,7 @@ const MAX_PRIME_TICKS: u32 = 3600;
 /// Everything [`analyze`] needs. All fields are in **absolute** player
 /// order (core 0 runs player 0's game), which is how the caller should
 /// orient the replay's local/remote pairs using
-/// [`Replay::local_player_index`](crate::replay::Replay::local_player_index).
+/// `tango_replay::Replay::local_player_index`.
 pub struct AnalyzeConfig<'a> {
     pub roms: [Vec<u8>; 2],
     pub saves: [Vec<u8>; 2],

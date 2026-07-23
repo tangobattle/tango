@@ -5,15 +5,15 @@ pub struct ScannedReplay {
     /// The recorder's player slot — picks the "you" side out of the
     /// metadata's player-ordered sides.
     pub local_player_index: u8,
-    pub metadata: tango_match::replay::Metadata,
+    pub metadata: tango_replay::Metadata,
 }
 
 impl ScannedReplay {
-    pub fn local_side(&self) -> Option<&tango_match::replay::metadata::Side> {
+    pub fn local_side(&self) -> Option<&tango_replay::metadata::Side> {
         self.metadata.side(self.local_player_index)
     }
 
-    pub fn remote_side(&self) -> Option<&tango_match::replay::metadata::Side> {
+    pub fn remote_side(&self) -> Option<&tango_replay::metadata::Side> {
         self.metadata.side(1 - self.local_player_index)
     }
 }
@@ -38,7 +38,7 @@ pub type Scanner = scanner::Scanner<Vec<ScannedReplay>>;
 /// Whether the replay's local-side game is registered with the app. A
 /// replay with no recorded local game info can't be filtered on, so it's
 /// kept; one that names a game we don't have compiled in is hidden.
-fn local_game_registered(side: Option<&tango_match::replay::metadata::Side>) -> bool {
+fn local_game_registered(side: Option<&tango_replay::metadata::Side>) -> bool {
     match side.and_then(|s| s.game_info.as_ref()) {
         None => true,
         Some(gi) => u8::try_from(gi.rom_variant)
@@ -77,7 +77,7 @@ pub fn scan_replays(path: &std::path::Path) -> Vec<ScannedReplay> {
                 continue;
             }
         };
-        let (local_player_index, metadata) = match tango_match::replay::read_metadata(&mut f) {
+        let (local_player_index, metadata) = match tango_replay::read_metadata(&mut f) {
             Ok((_version, lpi, m)) => (lpi, m),
             Err(_) => continue,
         };
@@ -102,7 +102,7 @@ pub fn scan_replays(path: &std::path::Path) -> Vec<ScannedReplay> {
 /// this on a worker thread, never from the UI path.
 pub fn compute_stats(path: &std::path::Path) -> std::io::Result<ReplayStats> {
     let f = std::fs::File::open(path)?;
-    let replay = tango_match::replay::Replay::decode(f)?;
+    let replay = tango_replay::Replay::decode(f)?;
     Ok(ReplayStats {
         tick_count: replay.inputs.len() as u32,
         round_count: replay.round_starts.len() as u32,
@@ -136,10 +136,10 @@ pub fn compute_and_cache_match_stats(
     cancel: &std::sync::atomic::AtomicBool,
 ) -> anyhow::Result<tango_match::analysis::MatchStats> {
     let f = std::fs::File::open(&path)?;
-    let replay = tango_match::replay::Replay::decode(f)?;
+    let replay = tango_replay::Replay::decode(f)?;
 
     let resolve =
-        |side: Option<&tango_match::replay::metadata::Side>| -> anyhow::Result<(crate::library::rom::GameRef, Vec<u8>)> {
+        |side: Option<&tango_replay::metadata::Side>| -> anyhow::Result<(crate::library::rom::GameRef, Vec<u8>)> {
             let gi = side
                 .and_then(|s| s.game_info.as_ref())
                 .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
@@ -180,7 +180,7 @@ pub fn compute_and_cache_match_stats(
 /// the replay is already absolute player order; `local_player` only
 /// picks whose chip semantics the stats speak.
 fn analyze_replay(
-    replay: &tango_match::replay::Replay,
+    replay: &tango_replay::Replay,
     games: [crate::library::rom::GameRef; 2],
     roms: [Vec<u8>; 2],
     on_progress: &mut dyn FnMut(u32, u32, &tango_match::analysis::StatsBuilder),

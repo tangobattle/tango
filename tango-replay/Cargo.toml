@@ -1,0 +1,16 @@
+[package]
+name = "tango-replay"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+byteorder.workspace = true
+prost.workspace = true
+serde.workspace = true
+zstd.workspace = true
+
+[build-dependencies]
+prost-build.workspace = true
+
+[lints]
+workspace = true

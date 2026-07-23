@@ -1069,9 +1069,9 @@ pub fn build_playback(
     stats_job: Option<replay::PrefetchStatsJob>,
 ) -> anyhow::Result<(replay::ReplaySession, Option<audio::Binding>)> {
     let f = std::fs::File::open(path)?;
-    let replay = std::sync::Arc::new(tango_match::replay::Replay::decode(f)?);
+    let replay = std::sync::Arc::new(tango_replay::Replay::decode(f)?);
     let patches_path = config.patches_path();
-    let resolve_rom = |side: Option<&tango_match::replay::metadata::Side>| -> anyhow::Result<(
+    let resolve_rom = |side: Option<&tango_replay::metadata::Side>| -> anyhow::Result<(
         &'static game::Game,
         std::sync::Arc<Vec<u8>>,
     )> {

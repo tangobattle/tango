@@ -5,19 +5,17 @@ edition = "2021"
 
 [dependencies]
 thiserror.workspace = true
-byteorder.workspace = true
 bytemuck.workspace = true
 log.workspace = true
 mgba.workspace = true
-prost.workspace = true
 serde.workspace = true
 serde_repr = "0.1"
 getgud.workspace = true
 mgba-rollback.workspace = true
-zstd.workspace = true
 
-[build-dependencies]
-prost-build.workspace = true
+# For the examples only — the library itself doesn't touch replay files.
+[dev-dependencies]
+tango-replay = { path = "../tango-replay" }
 
 [lints]
 workspace = true

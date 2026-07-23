@@ -736,7 +736,7 @@ struct DriveContext {
     event_rx: std::sync::mpsc::Receiver<crate::net::data::Input>,
     sender: crate::net::PvpSender,
     in_match: crate::net::InMatchTx,
-    replay_writer: Option<tango_match::replay::Writer>,
+    replay_writer: Option<tango_replay::Writer>,
     stats: Arc<Mutex<tango_match::analysis::StatsBuilder>>,
     stats_path: Option<std::path::PathBuf>,
     tps_counter: Arc<Mutex<crate::stats::Counter>>,
@@ -1302,7 +1302,7 @@ fn build_replay_writer(
     local_player_index: u8,
     local_save: &(dyn tango_dataview::save::Save + Send + Sync),
     remote_save: &(dyn tango_dataview::save::Save + Send + Sync),
-) -> Result<(tango_match::replay::Writer, std::path::PathBuf), crate::Error> {
+) -> Result<(tango_replay::Writer, std::path::PathBuf), crate::Error> {
     let link_code = &pre_match.link_code;
     let local_settings = &pre_match.local_settings;
     let remote_settings = &pre_match.remote_settings;
@@ -1341,15 +1341,15 @@ fn build_replay_writer(
         .open(&replay_filename)?;
     let local_sram = local_save.to_sram_dump();
     let remote_sram = remote_save.to_sram_dump();
-    let local_side = Some(tango_match::replay::metadata::Side {
+    let local_side = Some(tango_replay::metadata::Side {
         nickname: local_settings.nickname.clone(),
-        game_info: Some(tango_match::replay::metadata::GameInfo {
+        game_info: Some(tango_replay::metadata::GameInfo {
             rom_family: local_gi.family_and_variant.0.clone(),
             rom_variant: local_gi.family_and_variant.1 as u32,
             patch: local_gi
                 .patch
                 .as_ref()
-                .map(|p| tango_match::replay::metadata::game_info::Patch {
+                .map(|p| tango_replay::metadata::game_info::Patch {
                     name: p.name.clone(),
                     version: p.version.to_string(),
                 }),
@@ -1360,15 +1360,15 @@ fn build_replay_writer(
         reveal_setup: !local_settings.blind_setup,
         client_cert_fingerprint_sha256: pre_match.local_client_cert_fingerprint.clone(),
     });
-    let remote_side = Some(tango_match::replay::metadata::Side {
+    let remote_side = Some(tango_replay::metadata::Side {
         nickname: remote_settings.nickname.clone(),
-        game_info: Some(tango_match::replay::metadata::GameInfo {
+        game_info: Some(tango_replay::metadata::GameInfo {
             rom_family: remote_gi.family_and_variant.0.clone(),
             rom_variant: remote_gi.family_and_variant.1 as u32,
             patch: remote_gi
                 .patch
                 .as_ref()
-                .map(|p| tango_match::replay::metadata::game_info::Patch {
+                .map(|p| tango_replay::metadata::game_info::Patch {
                     name: p.name.clone(),
                     version: p.version.to_string(),
                 }),
@@ -1384,7 +1384,7 @@ fn build_replay_writer(
     } else {
         (remote_side, local_side, [&remote_sram, &local_sram])
     };
-    let writer = tango_match::replay::Writer::new(
+    let writer = tango_replay::Writer::new(
         // Buffered: write_input runs on the drive thread once per
         // confirmed tick, and unbuffered it costs a few small write
         // syscalls each time. The format already recovers truncated tails,
@@ -1392,9 +1392,9 @@ fn build_replay_writer(
         // incomplete) replay changes nothing; finish() flushes.
         std::io::BufWriter::new(file),
         // SIO-engine stream: one continuous run of pair ticks.
-        tango_match::replay::VERSION,
+        tango_replay::VERSION,
         local_player_index,
-        tango_match::replay::Metadata {
+        tango_replay::Metadata {
             // The negotiated match clock, not the local wall clock: both
             // cores' cart RTC is pinned to this instant, and playback
             // re-primes pinned to `metadata.ts`, so recording the same

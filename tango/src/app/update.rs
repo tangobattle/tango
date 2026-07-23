@@ -527,7 +527,7 @@ impl App {
         // Done(Err) status — same as runtime errors below.
         let prep = (|| -> anyhow::Result<ExportPrep> {
             let f = std::fs::File::open(&replay_path)?;
-            let replay = tango_match::replay::Replay::decode(f)?;
+            let replay = tango_replay::Replay::decode(f)?;
             // The export re-simulates both sides from the recorded
             // inputs, so each side's ROM must be the exact patched ROM
             // that was used when the match was recorded — otherwise the
@@ -535,7 +535,7 @@ impl App {
             // `resolve_rom`: apply the side's patch from disk before
             // handing the bytes to export.
             let patches_path = self.config.patches_path();
-            let resolve = |side: Option<&tango_match::replay::metadata::Side>| -> anyhow::Result<(
+            let resolve = |side: Option<&tango_replay::metadata::Side>| -> anyhow::Result<(
                 crate::library::rom::GameRef,
                 Vec<u8>,
             )> {

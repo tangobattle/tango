@@ -53,6 +53,7 @@ mgba.workspace = true
 rennet.workspace = true
 tango-net-protocol = { path = "../tango-net-protocol" }
 tango-match = { path = "../tango-match" }
+tango-replay = { path = "../tango-replay" }
 tango-session = { path = "../tango-session" }
 tango-filesync = { git = "https://github.com/tangobattle/tango-filesync" }
 tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }

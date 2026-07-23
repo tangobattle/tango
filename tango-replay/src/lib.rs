@@ -1,4 +1,18 @@
+//! Tango's replay file format, in two layers kept deliberately
+//! distinct:
+//!
+//! - the *container* (this crate's root): the file framing — magic,
+//!   schema version, perspective byte, metadata proto, rng seed, SRAM
+//!   frames — everything needed to boot a pair of cores into the
+//!   recorded match.
+//!
+//! - the *stream* ([`stream`]): the per-tick input-pair codec that
+//!   makes up the rest of the file. It knows nothing about the framing;
+//!   its marks are generic tick annotations the container interprets as
+//!   round starts.
+
 mod protos;
+pub mod stream;
 
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
@@ -11,13 +25,13 @@ pub type Metadata = protos::replay11::Metadata;
 pub const HEADER: &[u8] = b"TOOT";
 /// SIO-engine replays — the only readable schema. The input stream is
 /// one continuous run of pair ticks from session start, replayed by
-/// rebooting and re-priming an [`mgba_rollback::Link`] and feeding it
+/// rebooting and re-priming an `mgba_rollback::Link` and feeding it
 /// the (p1, p2) stream verbatim. Trap-engine recordings (schema 0x1B
 /// and older) and the perspective-ordered 0x1C are not supported.
 ///
 /// Layout: magic, version, local_player_index, metadata (u32 length +
-/// proto), rng seed, two zstd SRAM frames, then an
-/// [`mgba_rollback::replay`] input stream (round boundaries are its
+/// proto), rng seed, two zstd SRAM frames, then a [`stream`]-encoded
+/// input stream (round boundaries are its
 /// marks). Everything but `local_player_index` is in absolute player
 /// order — sides, SRAM frames, input columns — so the recorder's seat
 /// is the file's ONE perspective-dependent byte: overwriting byte 5
@@ -27,7 +41,7 @@ pub const VERSION: u8 = 0x1D;
 pub struct Writer {
     /// Everything after the header framing is the shared stream
     /// encoding; rounds are its marks.
-    stream: mgba_rollback::replay::Writer<Box<dyn Write + Send>>,
+    stream: stream::Writer<Box<dyn Write + Send>>,
 }
 
 #[derive(Clone)]
@@ -163,7 +177,7 @@ impl Replay {
         // The rest of the file is the shared stream encoding; a
         // truncated tail comes back as is_complete = false with the
         // partial record dropped.
-        let stream = mgba_rollback::replay::Stream::read(&mut r)?;
+        let stream = stream::Stream::read(&mut r)?;
         let inputs = stream.inputs;
 
         // A leading unmarked run — recordings that predate the markers,
@@ -211,7 +225,7 @@ impl Writer {
         }
         writer.flush()?;
         Ok(Writer {
-            stream: mgba_rollback::replay::Writer::new(writer),
+            stream: stream::Writer::new(writer),
         })
     }
 

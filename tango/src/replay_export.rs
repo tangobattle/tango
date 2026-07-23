@@ -328,7 +328,7 @@ pub struct Clip {
     /// callers wanting `Settings::disable_bgm` honored must pass
     /// `None` and eat the full re-sim.
     pub snapshot: Option<Arc<tango_match::playback::Snapshot>>,
-    /// Inter-round transition ticks ([`tango_match::replay::Replay`]'s
+    /// Inter-round transition ticks ([`tango_replay::Replay`]'s
     /// `round_starts` minus the leading 0, or the player's discovered
     /// boundaries for recordings that predate the markers). The round
     /// ordinal at any tick — for `rounds_mask` indexing and chapter
@@ -490,7 +490,7 @@ impl EncodePipeline {
     }
 }
 
-/// Export an SIO replay ([`tango_match::replay::VERSION`]): one linear
+/// Export an SIO replay ([`tango_replay::VERSION`]): one linear
 /// pair re-sim produces both perspectives at once, so the two-sided
 /// layout is a compose of the two framebuffers rather than a second
 /// simulation. A tick reaches the encoders when it's inside `clip`'s

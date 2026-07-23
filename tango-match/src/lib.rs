@@ -24,9 +24,6 @@
 //! - [`analysis`]: match-stats types and the telemetry fold, shared by
 //!   the live session and offline replay re-analysis.
 //!
-//! - [`replay`]: the replay file format ([`replay::VERSION`] — one
-//!   continuous run of confirmed pair-tick input pairs).
-//!
 //! - [`battle`]: the per-tick stats sample encoding.
 //!
 //! - [`input`]: the joyflags input type that lands in replays.
@@ -36,7 +33,6 @@ pub mod battle;
 pub mod engine;
 pub mod input;
 pub mod playback;
-pub mod replay;
 pub mod telemetry;
 
 /// Simulation failure, shared by the live engine, replay playback, and
