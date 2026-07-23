@@ -512,7 +512,7 @@ impl State {
             }
             .view()
         } else {
-            self.bottom_strip(lang, streamer_mode)
+            self.bottom_strip(lang, streamer_mode, loadout::patch_ready(loadout, scanners))
         };
         let mut group: Element<'a, Message> = column![widgets::hud_scanline_bottom(), bottom].width(Fill).into();
         if let Some(phase) = swap {
@@ -561,7 +561,13 @@ impl State {
                 );
             }
         }
-        self.save_view(lang, loaded, streamer_mode, netplay_phase)
+        self.save_view(
+            lang,
+            loaded,
+            streamer_mode,
+            netplay_phase,
+            loadout::patch_ready(loadout, scanners),
+        )
     }
 
     fn selector_strip<'a>(
@@ -596,6 +602,7 @@ impl State {
         loaded: Option<&'a selection::Loaded>,
         streamer_mode: bool,
         netplay_phase: &'a crate::netplay::Phase,
+        patch_ready: bool,
     ) -> Element<'a, Message> {
         let Some(loaded) = loaded else {
             return container(text(t!(lang, "play-no-selection")).size(TEXT_BODY))
@@ -604,8 +611,10 @@ impl State {
         };
         // Play button is the singleplayer entry point — disabled
         // whenever a netplay attempt is anywhere in flight so it
-        // can't fight with the lobby for the same save/emulator slot.
-        let play_button = Some(matches!(netplay_phase, crate::netplay::Phase::Idle));
+        // can't fight with the lobby for the same save/emulator slot,
+        // and while the selected patch is still downloading, since the
+        // session would otherwise boot the game unpatched.
+        let play_button = Some(matches!(netplay_phase, crate::netplay::Phase::Idle) && patch_ready);
         save_view::view(
             lang,
             loaded,
@@ -630,12 +639,22 @@ impl State {
     /// mode the input renders secure (masked) — typed, pasted, and
     /// restored-generated codes are all scrapeable off a stream
     /// otherwise.
-    fn bottom_strip<'a>(&'a self, lang: &'a LanguageIdentifier, streamer_mode: bool) -> Element<'a, Message> {
+    ///
+    /// `patch_ready` is false while the selected patch is still being
+    /// downloaded: committing to a match then would negotiate a setup we
+    /// can't actually run, so the CTA waits alongside the download the
+    /// version slot is already reporting.
+    fn bottom_strip<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        streamer_mode: bool,
+        patch_ready: bool,
+    ) -> Element<'a, Message> {
         const BOTTOM_SIZE: f32 = 15.0;
         const BOTTOM_PAD: [f32; 2] = [10.0, 16.0];
         const BOTTOM_CTA_PAD: [f32; 2] = [10.0, 22.0];
         let trimmed = self.link_code.trim();
-        let can_submit = trimmed.is_empty() || resolve_link_ident(trimmed).is_some();
+        let can_submit = patch_ready && (trimmed.is_empty() || resolve_link_ident(trimmed).is_some());
         let fight_button: Element<'a, Message> = {
             // Same chrome as the lobby's Ready button — both are
             // "commit to a match" CTAs. ready_button_style for

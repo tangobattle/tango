@@ -489,9 +489,12 @@ pub fn patch_options(
     (patch_options, selected_patch)
 }
 
-/// Versions of the selected patch that support the current game,
-/// newest first. Empty when no patch is selected.
-pub fn version_options(loadout: &Loadout, scanners: &Scanners) -> Vec<semver::Version> {
+/// Versions of the selected patch that support the current game, newest
+/// first. Empty when no patch is selected. Includes versions that aren't
+/// downloaded — the repo keeps every release forever, and an old one is
+/// exactly what a replay or an opponent may need — marked with a ↓, same
+/// as the patch list.
+pub fn version_options(loadout: &Loadout, scanners: &Scanners) -> Vec<widgets::Choice<semver::Version>> {
     let patches = scanners.patches.read();
     loadout
         .patch
@@ -507,9 +510,32 @@ pub fn version_options(loadout: &Loadout, scanners: &Scanners) -> Vec<semver::Ve
                 })
                 .collect();
             vs.sort_by(|a, b| b.cmp(a));
-            vs
+            vs.into_iter()
+                .map(|v| {
+                    let label = if patches.is_installed(name, &v) {
+                        v.to_string()
+                    } else {
+                        format!("\u{2193} {v}")
+                    };
+                    widgets::Choice::new(v, label)
+                })
+                .collect()
         })
         .unwrap_or_default()
+}
+
+/// Whether the selected patch is actually on disk.
+///
+/// False while its package is downloading, after a failed download, and
+/// for a patch with no resolvable version — in every one of those the
+/// session would run unpatched, so the entry points stay shut until it
+/// lands. `true` when no patch is selected, which is a valid setup.
+pub fn patch_ready(loadout: &Loadout, scanners: &Scanners) -> bool {
+    match (&loadout.patch, &loadout.patch_version) {
+        (None, _) => true,
+        (Some(name), Some(version)) => scanners.patches.read().is_installed(name, version),
+        (Some(_), None) => false,
+    }
 }
 
 // ---------- Resolution helpers ----------
@@ -705,32 +731,35 @@ fn version_picker<'a>(
     scanners: &'a Scanners,
     downloads: &'a crate::library::patch::Downloads,
 ) -> Element<'a, Message> {
-    // A version being fetched reports itself in this slot rather than
-    // offering a list that can't be acted on yet. Same fixed width in
-    // every state, so the strip doesn't shift as a download starts and
-    // finishes.
-    if let (Some(name), Some(version)) = (&loadout.patch, &loadout.patch_version) {
-        if let Some(download) = downloads.get(&(name.clone(), version.clone())) {
-            let label = match download {
+    let options = version_options(loadout, scanners);
+    if options.is_empty() {
+        return widgets::disabled_pick_list(t!(lang, "play-version-placeholder"))
+            .width(Length::Fixed(100.0))
+            .into();
+    }
+
+    let selected = loadout.patch_version.as_ref().and_then(|version| {
+        let mut choice = options.iter().find(|o| &o.value == version).cloned()?;
+        // A version being fetched reports progress through its own
+        // label. The picker stays live rather than being swapped for a
+        // status widget, so an older version that IS downloaded can
+        // still be chosen while this one lands — and the slot keeps its
+        // width in every state, so the strip doesn't shift.
+        if let Some(download) = downloads.get(&(loadout.patch.clone()?, version.clone())) {
+            choice.label = match download {
                 crate::library::patch::Download::Failed => t!(lang, "play-patch-download-failed"),
                 running => match running.percent() {
                     Some(percent) => t!(lang, "play-patch-downloading-progress", percent = percent as i64),
                     None => t!(lang, "play-patch-downloading"),
                 },
             };
-            return widgets::disabled_pick_list(label).width(Length::Fixed(100.0)).into();
         }
-    }
-
-    let options = version_options(loadout, scanners);
-    if options.is_empty() {
-        widgets::disabled_pick_list(t!(lang, "play-version-placeholder"))
-            .width(Length::Fixed(100.0))
-            .into()
-    } else {
-        widgets::picker(options, loadout.patch_version.clone(), Message::PatchVersionSelected)
-            .placeholder(t!(lang, "play-version-placeholder"))
-            .width(Length::Fixed(100.0))
-            .into()
-    }
+        Some(choice)
+    });
+    widgets::picker(options, selected, |c: widgets::Choice<semver::Version>| {
+        Message::PatchVersionSelected(c.value)
+    })
+    .placeholder(t!(lang, "play-version-placeholder"))
+    .width(Length::Fixed(100.0))
+    .into()
 }

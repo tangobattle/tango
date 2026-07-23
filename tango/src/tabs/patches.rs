@@ -40,6 +40,42 @@ pub enum Message {
     ToggleFavorite(String),
     /// Patches list filter input changed.
     SearchChanged(String),
+    /// Which slice of the catalog the list shows.
+    FilterChanged(Filter),
+}
+
+/// Which patches the list shows. The catalog holds both what's on disk
+/// and what the repo offers, and the two questions people ask of it —
+/// "what do I have?" and "what could I get?" — are different enough to
+/// be worth separating.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Filter {
+    #[default]
+    All,
+    /// On disk.
+    Installed,
+    /// Offered by the repo and not on disk.
+    Available,
+}
+
+impl Filter {
+    const ALL: [Filter; 3] = [Filter::All, Filter::Installed, Filter::Available];
+
+    fn label(&self, lang: &LanguageIdentifier) -> String {
+        match self {
+            Filter::All => t!(lang, "patches-filter-all"),
+            Filter::Installed => t!(lang, "patches-filter-installed"),
+            Filter::Available => t!(lang, "patches-filter-available"),
+        }
+    }
+
+    fn accepts(&self, installed: bool) -> bool {
+        match self {
+            Filter::All => true,
+            Filter::Installed => installed,
+            Filter::Available => !installed,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -57,6 +93,7 @@ pub struct PatchesState {
     /// Case-insensitive substring filter applied to the sidebar
     /// list (matches against patch name and title).
     pub search: String,
+    pub filter: Filter,
     /// Entrance restarted when a different patch is selected —
     /// the detail panel slides in from the right.
     pub detail_enter: crate::ui::anim::Enter,
@@ -166,6 +203,10 @@ impl PatchesState {
                 self.search = s;
                 None
             }
+            Message::FilterChanged(f) => {
+                self.filter = f;
+                None
+            }
         }
     }
 
@@ -244,7 +285,16 @@ impl PatchesState {
             .padding(STANDARD_PADDING)
             .width(Length::Fixed(260.0))
             .style(widgets::chunky_text_input);
-        let mut top_row = row![search_input].spacing(8).align_y(Alignment::Center);
+        let filter = widgets::picker(
+            Filter::ALL
+                .iter()
+                .map(|f| widgets::Choice::new(*f, f.label(lang)))
+                .collect::<Vec<_>>(),
+            Some(widgets::Choice::new(self.filter, self.filter.label(lang))),
+            |c: widgets::Choice<Filter>| Message::FilterChanged(c.value),
+        )
+        .width(Length::Fixed(130.0));
+        let mut top_row = row![search_input, filter].spacing(8).align_y(Alignment::Center);
 
         if self.refreshing {
             top_row = top_row.push(
@@ -283,6 +333,7 @@ impl PatchesState {
         let mut names: Vec<&str> = patches
             .names()
             .into_iter()
+            .filter(|name| self.filter.accepts(patches.installed.contains_key(*name)))
             .filter(|name| {
                 query.is_empty()
                     || name.to_lowercase().contains(&query)
@@ -601,5 +652,30 @@ fn human_size(bytes: u64) -> String {
         0..=1023 => format!("{bytes} B"),
         1024..=1048575 => format!("{:.0} KB", bytes as f64 / 1024.0),
         _ => format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_three_filters_partition_the_catalog() {
+        // "Available" means offered but not on disk, so the three
+        // choices answer different questions instead of two of them
+        // showing nearly the same list. A sideloaded patch (installed,
+        // not in the index) is Installed, never Available.
+        for installed in [true, false] {
+            assert!(Filter::All.accepts(installed));
+        }
+        assert!(Filter::Installed.accepts(true));
+        assert!(!Filter::Installed.accepts(false));
+        assert!(Filter::Available.accepts(false));
+        assert!(!Filter::Available.accepts(true));
+    }
+
+    #[test]
+    fn the_default_filter_hides_nothing() {
+        assert_eq!(Filter::default(), Filter::All);
     }
 }
