@@ -480,11 +480,16 @@ impl PatchesState {
         // when we have it, and from the index otherwise.
         let installed_patch = patches.installed.get(name);
         let indexed = selected_version.as_ref().and_then(|v| patches.entry(name, v));
-        let authors = installed_patch
-            .map(|p| p.authors.clone())
-            .filter(|a| !a.is_empty())
-            .or_else(|| indexed.map(|e| e.authors.clone()))
-            .unwrap_or_default();
+        // Both sources carry the raw `Name <addr>` form, so the same
+        // reduction runs over either — installing a patch mustn't change
+        // how its authors read.
+        let authors = crate::library::patch::display_authors(
+            &installed_patch
+                .map(|p| p.authors.clone())
+                .filter(|a| !a.is_empty())
+                .or_else(|| indexed.map(|e| e.authors.clone()))
+                .unwrap_or_default(),
+        );
         let license = installed_patch
             .and_then(|p| p.license.clone())
             .or_else(|| indexed.and_then(|e| e.license.clone()));

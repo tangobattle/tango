@@ -46,8 +46,9 @@ pub struct Version {
 /// what a list row should describe.
 pub struct Patch {
     pub title: String,
-    /// Author display strings — parsed via `mailparse` and reduced to a
-    /// display name (or the address if no display name).
+    /// Raw `Name <addr@example.com>` strings, exactly as the manifest
+    /// has them — the same form the index carries, so both sources
+    /// render identically once passed through [`display_authors`].
     pub authors: Vec<String>,
     pub license: Option<String>,
     pub source: Option<String>,
@@ -271,7 +272,7 @@ pub fn scan(patches_path: &Path) -> std::io::Result<Catalog> {
             let (_, newest) = versions.values().next_back()?;
             let patch = Patch {
                 title: newest.title.clone(),
-                authors: display_authors(&newest.authors),
+                authors: newest.authors.clone(),
                 license: newest.license.clone(),
                 source: newest.source.clone(),
                 versions: versions.into_iter().map(|(v, (version, _))| (v, version)).collect(),
@@ -324,8 +325,14 @@ fn read_package(path: &Path) -> anyhow::Result<(tango_patch::Manifest, Version)>
     Ok((manifest, version))
 }
 
-/// `Name <addr@example.com>` → `Name`.
-fn display_authors(authors: &[String]) -> Vec<String> {
+/// `Name <addr@example.com>` → `Name`, falling back to the address when
+/// there's no display name and to the raw string when it doesn't parse.
+///
+/// Applied at render time rather than at scan time: an installed patch's
+/// authors come from its package and a non-installed one's from the
+/// index, and reducing only the former made a patch appear to change
+/// authors the moment it finished downloading.
+pub fn display_authors(authors: &[String]) -> Vec<String> {
     authors
         .iter()
         .map(|s| match mailparse::addrparse(s) {
@@ -726,7 +733,13 @@ netplay = "{netplay}"
         assert_eq!(catalog.installed.len(), 1);
         assert_eq!(catalog.title("bn6_test"), Some("Test bn6_test"));
         // mailparse reduces the address to its display name.
-        assert_eq!(catalog.installed["bn6_test"].authors, vec!["Someone"]);
+        // Kept raw; the display reduction happens at render time so
+        // that installing a patch can't change how its authors read.
+        assert_eq!(
+            catalog.installed["bn6_test"].authors,
+            vec!["Someone <someone@example.com>"]
+        );
+        assert_eq!(display_authors(&catalog.installed["bn6_test"].authors), vec!["Someone"]);
 
         let version = catalog.version("bn6_test", &v("1.0.0")).unwrap();
         assert_eq!(version.netplay, Compatibility::Group("testing".into()));
@@ -800,6 +813,23 @@ netplay = "{netplay}"
         );
         // A patch nobody has heard of can't be vouched for either way.
         assert_eq!(catalog.tag(game, Some(("bn6_unknown", &v("1.0.0")))), None);
+    }
+
+    #[test]
+    fn the_index_and_the_package_agree_on_author_form() {
+        let dir = TempDir::new();
+        install(&dir.0, "bn6_test", "1.0.0", "isolated");
+        index_with(&dir.0, &[("bn6_test", "1.0.0", "isolated")]);
+        let catalog = scan(&dir.0).unwrap();
+
+        let installed = &catalog.installed["bn6_test"].authors;
+        let indexed = &catalog.entry("bn6_test", &v("1.0.0")).unwrap().authors;
+        // Both sides hold the same raw form, so the single reduction the
+        // UI runs can't make a patch look like it changed hands the
+        // moment it finishes downloading.
+        assert_eq!(installed, indexed);
+        assert_eq!(display_authors(installed), display_authors(indexed));
+        assert_eq!(display_authors(installed), vec!["Someone"]);
     }
 
     #[test]
