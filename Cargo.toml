@@ -8,7 +8,6 @@ members = [
     "tango-match",
     "tango-replay",
     "tango-session",
-    "sdl3-gamepad",
 ]
 # The per-game gamesupport crates auto-join this workspace as path
 # dependencies (they live under the workspace directory), which drags
@@ -25,17 +24,7 @@ default-members = [
     "tango-match",
     "tango-replay",
     "tango-session",
-    "sdl3-gamepad",
 ]
-# `tango-patch` is its own workspace root (see its Cargo.toml): the patch
-# repo's CI builds the bundler from a checkout that can't include the
-# private gamesupport submodule, so it has to stand alone. `tango`
-# depends on it by path all the same.
-#
-# It is therefore NOT covered by `cargo test --workspace`; run
-# `cargo test --manifest-path tango-patch/Cargo.toml --all-features`.
-exclude = ["tango-patch"]
-
 # One source of truth for every external dep shared by 2+ member crates,
 # so versions can't silently drift apart (we shipped four itertools and
 # two statically-linked zstd C libraries before this existed). Members

@@ -25,6 +25,7 @@ use crate::platform::audio;
 const WATCH_INTERVAL: Duration = Duration::from_millis(500);
 const STALL_TIMEOUT: Duration = Duration::from_secs(2);
 const RETRY_DELAY: Duration = Duration::from_secs(5);
+const OPEN_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct ConfigSnapshot {
@@ -245,7 +246,11 @@ fn open_stream(source: audio::LateBinder) -> anyhow::Result<LiveStream> {
                     }
                 }
             },
-            None,
+            // Avoid pinning the supervisor (and application shutdown)
+            // forever in a wedged host API. Backends that cannot
+            // enforce initialization timeouts document this as
+            // advisory and may ignore it.
+            Some(OPEN_TIMEOUT),
         )
         .context("build default output stream")?;
     stream.play().context("start default output stream")?;
