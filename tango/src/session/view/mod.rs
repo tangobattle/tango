@@ -176,7 +176,7 @@ pub fn view<'a>(
         singleplayer::view(s, ctx)
     } else {
         // Unreachable today — the three kinds above are the only
-        // ActiveSession impls anywhere.
+        // Session impls anywhere.
         iced::widget::Space::new().width(Fill).height(Fill).into()
     }
 }

@@ -606,7 +606,7 @@ impl PvpSession {
     }
 }
 
-impl crate::ActiveSession for PvpSession {
+impl crate::Session for PvpSession {
     fn local_game(&self) -> &'static tango_gamesupport::Game {
         self.local_game
     }

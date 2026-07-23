@@ -38,7 +38,7 @@ pub struct ReplaySession {
     total_ticks: u32,
     /// Input display lookup data ([`Self::input_at`] /
     /// [`Self::nicknames`]). Boxed to keep this struct — and with it
-    /// the `ActiveSession` enum — small, same as the PvP variant.
+    /// the `Session` enum — small, same as the PvP variant.
     input_display: Box<InputDisplay>,
     /// This session's display, kept so [`Self::scrub_preview`] can blit
     /// snapshot framebuffers without going through the emulator at all.
@@ -648,7 +648,7 @@ impl ReplaySession {
     }
 }
 
-impl crate::ActiveSession for ReplaySession {
+impl crate::Session for ReplaySession {
     fn local_game(&self) -> &'static tango_gamesupport::Game {
         self.game
     }

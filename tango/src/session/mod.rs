@@ -11,14 +11,14 @@
 //! each session kind to its view.
 //!
 //! The Play / Replays tabs are responsible for STARTING sessions
-//! (they construct an ActiveSession via [`build_playback`] /
+//! (they construct an Session via [`build_playback`] /
 //! [`spawn_singleplayer`] and stuff it into `state.active`); this
 //! module handles everything that happens after.
 
 pub mod scrubber;
 pub mod view;
 
-pub use tango_session::{pvp, replay, singleplayer, ActiveSession};
+pub use tango_session::{pvp, replay, singleplayer, Session};
 
 use crate::app::Scanners;
 use crate::config;
@@ -327,7 +327,7 @@ impl MatchResults {
 /// it stood. Our own quit paths (Esc hold, disconnect confirm) set
 /// neither flag and go straight back to the menu: the player chose to
 /// leave.
-fn capture_results(session: &dyn ActiveSession, panes: Option<&PvpPanes>) -> Option<MatchResults> {
+fn capture_results(session: &dyn Session, panes: Option<&PvpPanes>) -> Option<MatchResults> {
     let pvp = session.downcast_ref::<pvp::PvpSession>()?;
     if pvp.is_completed() {
         Some(MatchResults::capture(pvp, panes, MatchEnd::Completed))
@@ -339,11 +339,11 @@ fn capture_results(session: &dyn ActiveSession, panes: Option<&PvpPanes>) -> Opt
 }
 
 /// Per-session UI state. App holds `session: State`; the Play and
-/// Replays tabs swap an `ActiveSession` into `active` to start a
+/// Replays tabs swap an `Session` into `active` to start a
 /// session, then [`State::update`] handles the rest until [`Close`]
 /// clears it.
 pub struct State {
-    pub active: Option<Box<dyn ActiveSession>>,
+    pub active: Option<Box<dyn Session>>,
     /// Count of sessions ever installed — bumped by
     /// [`session_installed`](Self::session_installed), and the frame
     /// [`subscription`]'s identity for the active session. Keying the
@@ -507,7 +507,7 @@ impl State {
 
     /// The active session as concrete kind `T` — `None` while idle or
     /// when a different kind is running.
-    pub fn active_as<T: ActiveSession>(&self) -> Option<&T> {
+    pub fn active_as<T: Session>(&self) -> Option<&T> {
         self.active.as_deref().and_then(|s| s.downcast_ref())
     }
 }
@@ -568,10 +568,10 @@ pub enum Message {
     /// One emulator frame has landed, or `is_ended` could have
     /// flipped (PvP peer-end / disconnect / grace-timeout). The
     /// handler rebuilds the framebuffer from the active session's
-    /// [`frame`](ActiveSession::frame) into [`State::current_frame`]
+    /// [`frame`](Session::frame) into [`State::current_frame`]
     /// and tears the session down if it's now ended. Fired by the
     /// session subscription, which parks on the active session's
-    /// [`wake`](ActiveSession::wake) — signalled by both the frame
+    /// [`wake`](Session::wake) — signalled by both the frame
     /// callback and the PvP end-detection wires.
     UpdateFramebuffer,
     /// Click-swallower for modal panel chrome — keeps presses
@@ -909,7 +909,7 @@ impl State {
 
 /// Per-emulator-frame wake stream. Yields
 /// [`Message::UpdateFramebuffer`] each time someone signals the active
-/// session's [`wake`](ActiveSession::wake) — the
+/// session's [`wake`](Session::wake) — the
 /// per-frame callback for new screen contents, and the PvP
 /// end-detection wires (peer-end packet, peer disconnect, grace
 /// timeout) for state-transition checks. Lives only while a session is
@@ -1023,7 +1023,7 @@ const CONTROLS_HIDE_AFTER: std::time::Duration = std::time::Duration::from_milli
 const ESC_QUIT_HOLD: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Expand an mgba-native BGR555 framebuffer (one little-endian `u16`
-/// per pixel — what [`ActiveSession::frame`] hands back) to an RGBA8 image handle for
+/// per pixel — what [`Session::frame`] hands back) to an RGBA8 image handle for
 /// the hover thumbnail, via dataview's shared conversion — the same
 /// table that renders ROM sprites/palettes and replay video exports,
 /// and the CPU twin of the GPU decode in `video/effects/common.wgsl`.

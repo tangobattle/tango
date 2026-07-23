@@ -3,7 +3,7 @@
 //! that pace them, the shared audio stream, and the netplay transport
 //! they run over. The app owns everything presentational — views,
 //! input mapping, per-session UI state — and drives a session through
-//! [`ActiveSession`] plus each kind's concrete surface.
+//! [`Session`] plus each kind's concrete surface.
 
 pub mod audio;
 pub mod core_stream;
@@ -116,7 +116,7 @@ impl PauseGate {
 /// One shared GBA screen — mgba-native BGR555, 2 bytes/pixel — with
 /// a session's emu thread writing it and the session reading it back
 /// out for the host. Internal: sessions publish
-/// [`frame`](ActiveSession::frame) pixels, not surfaces. A session
+/// [`frame`](Session::frame) pixels, not surfaces. A session
 /// builds one per screen it shows: its main display, plus the replay
 /// PiP's opponent view. Each starts zeroed, so a fresh session never
 /// flashes the previous one's last frame.
@@ -124,7 +124,7 @@ impl PauseGate {
 /// Waking the host is deliberately not part of this: a session can
 /// write several screens for one tick (the replay PiP), and it has
 /// state worth a repaint that isn't a frame at all, so the wake is the
-/// session's ([`ActiveSession::wake`]) rather than the surface's.
+/// session's ([`Session::wake`]) rather than the surface's.
 pub(crate) struct Framebuffer(std::sync::Mutex<Vec<u8>>);
 
 impl Framebuffer {
@@ -157,9 +157,9 @@ impl Framebuffer {
 /// tick loop drives without caring which kind is running; kind-specific
 /// surface (the replay transport, the PvP telemetry + panels) reaches
 /// its concrete session through
-/// [`downcast_ref`](dyn ActiveSession::downcast_ref) — the `Any`
+/// [`downcast_ref`](dyn Session::downcast_ref) — the `Any`
 /// supertrait is what makes that possible.
-pub trait ActiveSession: std::any::Any {
+pub trait Session: std::any::Any {
     /// Local-perspective Game registration for this session. Used by
     /// the host to pull per-game chrome (background image, logo) into
     /// the emulator pane.
@@ -217,21 +217,21 @@ pub trait ActiveSession: std::any::Any {
     }
 }
 
-impl dyn ActiveSession {
+impl dyn Session {
     /// Whether the running session is the concrete kind `T`.
-    pub fn is<T: ActiveSession>(&self) -> bool {
+    pub fn is<T: Session>(&self) -> bool {
         (self as &dyn std::any::Any).is::<T>()
     }
 
     /// The running session as its concrete kind, for kind-specific
     /// surface the shared trait deliberately doesn't carry (the replay
     /// transport, the PvP telemetry).
-    pub fn downcast_ref<T: ActiveSession>(&self) -> Option<&T> {
+    pub fn downcast_ref<T: Session>(&self) -> Option<&T> {
         (self as &dyn std::any::Any).downcast_ref()
     }
 
     /// Mutable twin of [`downcast_ref`](Self::downcast_ref).
-    pub fn downcast_mut<T: ActiveSession>(&mut self) -> Option<&mut T> {
+    pub fn downcast_mut<T: Session>(&mut self) -> Option<&mut T> {
         (self as &mut dyn std::any::Any).downcast_mut()
     }
 }

@@ -116,7 +116,7 @@ impl SinglePlayerSession {
     }
 }
 
-impl crate::ActiveSession for SinglePlayerSession {
+impl crate::Session for SinglePlayerSession {
     fn local_game(&self) -> &'static tango_gamesupport::Game {
         self.game
     }
