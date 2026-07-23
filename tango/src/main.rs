@@ -377,13 +377,12 @@ fn run_app() -> iced::Result {
     // stub and spams `GBA BIOS: SWI: …` lines straight to stdout.
     mgba::log::install_default_logger();
 
-    // Initialize SDL3 itself + warm the gamepad context now (main
-    // thread) so the first emulator session's first redraw doesn't
-    // pay for SDL_Init + enumerating + opening every attached
-    // controller. sdl3 enforces "first thread to call init owns the
-    // pump", so this has to happen on the iced/winit main thread.
-    platform::sdl_init::init();
-    platform::gamepad::init();
+    // Initialize SDL3 + warm the gamepad context now (main thread) so
+    // the first emulator session's first redraw doesn't pay for
+    // SDL_Init + enumerating + opening every attached controller. sdl3
+    // enforces "first thread to call init owns the pump", so this has to
+    // happen on the iced/winit main thread.
+    sdl3_gamepad::init("Tango");
 
     // Windows-only auto-fallback to ANGLE for old Intel iGPUs.
     // We enumerate `Backends::PRIMARY` (DX12 + Vulkan) up front

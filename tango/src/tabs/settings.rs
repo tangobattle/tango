@@ -463,12 +463,12 @@ pub fn view<'a>(
                     }) => Some(input::PhysicalInput::Key(input::KeyPhysical(*physical_key))),
                     crate::platform::input_capture::Input::Keyboard(_) => None,
                     crate::platform::input_capture::Input::Gamepad(ev) => match *ev {
-                        crate::platform::gamepad::GamepadEvent::ButtonDown(b) => {
-                            Some(input::PhysicalInput::Button(input::GamepadButton::from_sdl3(b)))
+                        sdl3_gamepad::GamepadEvent::ButtonDown(b) => {
+                            Some(input::PhysicalInput::Button(input::GamepadButton::from_gamepad(b)))
                         }
-                        crate::platform::gamepad::GamepadEvent::AxisMotion { axis, value } => {
+                        sdl3_gamepad::GamepadEvent::AxisMotion { axis, value } => {
                             (value.abs() > input::AXIS_THRESHOLD).then_some(input::PhysicalInput::Axis {
-                                axis,
+                                axis: input::GamepadAxis::from_gamepad(axis),
                                 dir: if value > 0.0 {
                                     input::AxisDir::Positive
                                 } else {

@@ -15,8 +15,8 @@
 //!
 //! Keyboard events arrive as `Event::Keyboard` and are forwarded
 //! verbatim. Gamepads aren't part of iced's event stream, so we
-//! drain SDL3's event pump (via the thread-local helper in
-//! [`crate::platform::gamepad`]) on every `RedrawRequested` — which
+//! drain SDL3's event pump (via the main-thread helper in the
+//! [`sdl3_gamepad`] crate) on every `RedrawRequested` — which
 //! `interface.update` synthesizes once per redraw (see the
 //! `let redraw_event` block in `iced_winit::run_with_executor`).
 //!
@@ -32,12 +32,12 @@ use iced::advanced::widget::{Operation, Tree};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::{mouse, window, Element, Event, Length, Rectangle, Size, Vector};
 
-use crate::platform::gamepad::GamepadEvent;
+use sdl3_gamepad::GamepadEvent;
 
 /// Tagged input handed to the [`InputCapture`] callback. Keyboard
 /// events borrow the iced event so the caller can pattern-match
-/// without cloning; gamepad events come pre-normalized from
-/// [`crate::platform::gamepad`] (SDL3-derived but with the call-site facing
+/// without cloning; gamepad events come pre-normalized from the
+/// [`sdl3_gamepad`] crate (SDL3-derived but with the call-site facing
 /// surface narrowed).
 pub enum Input<'a> {
     Keyboard(&'a iced::keyboard::Event),
@@ -63,14 +63,17 @@ impl Input<'_> {
             },
             Input::Gamepad(ev) => match **ev {
                 GamepadEvent::ButtonDown(b) => crate::platform::input::Event::Button {
-                    button: crate::platform::input::GamepadButton::from_sdl3(b),
+                    button: crate::platform::input::GamepadButton::from_gamepad(b),
                     pressed: true,
                 },
                 GamepadEvent::ButtonUp(b) => crate::platform::input::Event::Button {
-                    button: crate::platform::input::GamepadButton::from_sdl3(b),
+                    button: crate::platform::input::GamepadButton::from_gamepad(b),
                     pressed: false,
                 },
-                GamepadEvent::AxisMotion { axis, value } => crate::platform::input::Event::Axis { axis, value },
+                GamepadEvent::AxisMotion { axis, value } => crate::platform::input::Event::Axis {
+                    axis: crate::platform::input::GamepadAxis::from_gamepad(axis),
+                    value,
+                },
                 GamepadEvent::DeviceRemoved => crate::platform::input::Event::GamepadDisconnected,
             },
         })
@@ -157,7 +160,7 @@ where
                 }
             }
             Event::Window(window::Event::RedrawRequested(_)) => {
-                crate::platform::gamepad::pump(|ev| {
+                sdl3_gamepad::pump(|ev| {
                     if let Some(message) = (self.on_input)(Input::Gamepad(&ev)) {
                         shell.publish(message);
                     }

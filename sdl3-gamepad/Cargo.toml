@@ -1,0 +1,39 @@
+[package]
+name = "sdl3-gamepad"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+[dependencies]
+# SDL3, built from source and statically linked, but trimmed down to
+# just the gamepad path. `sdl3` itself only exposes the build knobs; the
+# subsystem toggles live on `sdl3-sys` below.
+sdl3 = { version = "0.18", default-features = false, features = ["build-from-source-static"] }
+# Trim the vendored SDL3 build to gamepad-only. `no-default-subsystems`
+# turns every subsystem OFF (audio/video/render/gpu/camera/joystick/
+# haptic/hidapi/power/sensor/dialog/tray); we then re-enable just the
+# joystick subsystem — the gamepad API is built on top of it, there is
+# no separate `SDL_GAMEPAD` flag — plus HIDAPI, which is what gives good
+# PS4/5, Switch Pro, and Xbox-over-Bluetooth coverage. `sdl-joystick` /
+# `sdl-hidapi` win over the `no-sdl-*` flags because sdl3-sys emits the
+# CMake `=ON` define after the `=OFF` one. Cargo feature unification
+# folds these onto the same `sdl3-sys` that `sdl3` already builds, so
+# this is the whole trim: no fork, no patched build script.
+#
+# Dropping video is the big payoff — it removes the X11/Wayland build
+# dependency on Linux and the Metal/Cocoa link on macOS. Nothing here
+# ever instantiates an audio/video/render subsystem, so the compiled-out
+# symbols are never referenced and static linking stays clean.
+sdl3-sys = { version = "0.6", default-features = false, features = [
+    "no-default-subsystems",
+    "sdl-joystick",
+    "sdl-hidapi",
+] }
+# Lets the `!Send` SDL handles (Sdl, EventPump, GamepadSubsystem) live in
+# `Send` globals: SendWrapper is Send + Sync but panics if the inner
+# value is dereferenced (or dropped) from any thread other than the one
+# that created it — exactly the main-thread-only guarantee SDL3 needs, so
+# we don't have to hand-roll an `unsafe impl Send` + thread-id check.
+send_wrapper = "0.6"
+log.workspace = true

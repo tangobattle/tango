@@ -5388,6 +5388,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sdl3-gamepad"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "sdl3",
+ "sdl3-sys",
+ "send_wrapper",
+]
+
+[[package]]
 name = "sdl3-image-src"
 version = "3.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6056,9 +6066,8 @@ dependencies = [
  "reqwest",
  "rfd",
  "rustls-pemfile",
- "sdl3",
+ "sdl3-gamepad",
  "semver",
- "send_wrapper",
  "serde",
  "serde_json",
  "sha2",

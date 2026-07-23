@@ -215,14 +215,16 @@ pub enum AxisDir {
     Negative,
 }
 
-/// SDL3 gamepad buttons we expose for binding — the full set SDL3
-/// can report, mapped 1:1 from [`sdl3::gamepad::Button`] in
-/// [`Self::from_sdl3`]. Beyond the standard Xbox/PS
-/// face/shoulder/d-pad layout this covers the extras on fancier
-/// pads: the `Misc*` share/capture-style buttons, the four back
-/// paddles, and the touchpad click. Triggers aren't buttons here —
-/// SDL3 reports them as axes, so bind them through
-/// [`GamepadAxis::TriggerLeft`] / [`GamepadAxis::TriggerRight`].
+/// Gamepad buttons we expose for binding — the full set SDL3 can
+/// report, mapped from [`sdl3_gamepad::Button`] in [`Self::from_gamepad`].
+/// This mirror carries the serde representation of the on-disk config
+/// and the localized display labels, which the SDL-facing crate
+/// deliberately doesn't. Beyond the standard Xbox/PS face/shoulder/d-pad
+/// layout this covers the extras on fancier pads: the `Misc*`
+/// share/capture-style buttons, the four back paddles, and the touchpad
+/// click. Triggers aren't buttons here — SDL3 reports them as axes, so
+/// bind them through [`GamepadAxis::TriggerLeft`] /
+/// [`GamepadAxis::TriggerRight`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GamepadButton {
@@ -255,8 +257,8 @@ pub enum GamepadButton {
 }
 
 impl GamepadButton {
-    pub fn from_sdl3(b: sdl3::gamepad::Button) -> Self {
-        use sdl3::gamepad::Button as B;
+    pub fn from_gamepad(b: sdl3_gamepad::Button) -> Self {
+        use sdl3_gamepad::Button as B;
         match b {
             B::South => Self::South,
             B::East => Self::East,
@@ -334,6 +336,19 @@ pub enum GamepadAxis {
 }
 
 impl GamepadAxis {
+    /// Map a raw [`sdl3_gamepad::Axis`] to our binding-facing axis.
+    pub fn from_gamepad(a: sdl3_gamepad::Axis) -> Self {
+        use sdl3_gamepad::Axis as A;
+        match a {
+            A::LeftX => Self::LeftStickX,
+            A::LeftY => Self::LeftStickY,
+            A::RightX => Self::RightStickX,
+            A::RightY => Self::RightStickY,
+            A::TriggerLeft => Self::TriggerLeft,
+            A::TriggerRight => Self::TriggerRight,
+        }
+    }
+
     /// Fluent key for this axis's display label, resolved against
     /// the active locale by [`describe`]. The `+`/`−` direction
     /// sign is prepended separately by the caller.
