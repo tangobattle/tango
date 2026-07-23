@@ -6,6 +6,7 @@ members = [
     "tango-gamesupport",
     "tango-net-protocol",
     "tango-match",
+    "tango-patch",
     "tango-replay",
     "tango-session",
 ]
@@ -22,6 +23,7 @@ default-members = [
     "tango-gamesupport",
     "tango-net-protocol",
     "tango-match",
+    "tango-patch",
     "tango-replay",
     "tango-session",
 ]
@@ -35,6 +37,7 @@ async-trait = "0.1"
 bincode = "1"
 bytemuck = "1"
 byteorder = "1"
+clap = { version = "4", features = ["derive"] }
 crc32fast = "1"
 futures = "0.3"
 # The engine crates (pulled out of this workspace so gbaroll can depend
@@ -61,6 +64,9 @@ sha3 = "0.10"
 thiserror = "1"
 tokio = "1"
 tokio-util = "0.7"
+toml = "0.8"
+unic-langid = { version = "0.9", features = ["likelysubtags"] }
+zip = { version = "2", default-features = false }
 zstd = "0.13"
 
 # `release` keeps Cargo's defaults (lto = false, codegen-units = 16) so

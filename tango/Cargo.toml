@@ -97,7 +97,7 @@ thiserror.workspace = true
 chrono = "0.4"
 itertools.workspace = true
 steamlocate = "2"
-zip = "2"
+zip = { workspace = true, features = ["aes-crypto", "bzip2", "deflate64", "deflate", "lzma", "time", "zstd", "xz"] }
 reqwest = { version = "0.11", features = ["stream", "json", "native-tls"], default-features = false }
 tokio = { workspace = true, features = ["fs", "io-util", "time", "rt", "net", "sync", "macros"] }
 tokio-util = { workspace = true, features = ["io", "rt"] }

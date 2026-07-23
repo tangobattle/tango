@@ -6098,6 +6098,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "tango-patch"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 1.0.69",
+ "toml 0.8.23",
+ "unic-langid",
+ "zip",
+]
+
+[[package]]
 name = "tango-replay"
 version = "0.1.0"
 dependencies = [

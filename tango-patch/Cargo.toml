@@ -1,0 +1,47 @@
+[package]
+name = "tango-patch"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+# The bundler. Patch authors and the patch repo's CI use it to build and
+# index `.tangopatch` packages; the app only needs the library, so the
+# binary (and its clap/anyhow deps) is behind a feature.
+[[bin]]
+name = "tango-patch"
+path = "src/bin/tango-patch.rs"
+required-features = ["cli"]
+
+[dependencies]
+semver.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+unic-langid.workspace = true
+
+serde_json = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+# `deflate` only: packages are plain zips, and dropping the default
+# feature set keeps bzip2/zstd/aes out of the bundler's dep graph.
+zip = { workspace = true, features = ["deflate"], optional = true }
+
+anyhow = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+
+# The manifest/tag/layout core is always compiled; the three modules that
+# do I/O are opt-in, because no consumer wants all of them. The app reads
+# packages and the index but never writes a package; the bundler writes
+# them without needing the reader.
+#
+# `cargo test -p tango-patch --all-features` runs the full suite —
+# `tests/` covers the combinations, so it needs every feature on.
+[features]
+default = []
+package = ["dep:zip"]
+bundle = ["dep:zip", "dep:sha2"]
+index = ["dep:serde_json"]
+cli = ["package", "bundle", "index", "dep:anyhow", "dep:clap"]
+
+[lints]
+workspace = true
