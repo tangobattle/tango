@@ -497,6 +497,18 @@ pub async fn download(
     progress(Progress { downloaded: 0, total });
     while let Some(chunk) = tokio::time::timeout(TIMEOUT, stream.next()).await? {
         let chunk = chunk?;
+        // The index fixes the exact byte count; a server sending more than
+        // it promised is misbehaving, and buffering it unbounded would let
+        // it exhaust memory and disk before the post-download hash check
+        // ever runs. Stop as soon as it overruns.
+        if raw.len() as u64 + chunk.len() as u64 > entry.size {
+            drop(file);
+            let _ = tokio::fs::remove_file(&temp).await;
+            anyhow::bail!(
+                "{name} {version}: download exceeds the {} bytes the index promised",
+                entry.size
+            );
+        }
         file.write_all(&chunk).await?;
         raw.extend_from_slice(&chunk);
         progress(Progress {

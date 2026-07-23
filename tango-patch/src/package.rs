@@ -12,6 +12,40 @@ use crate::Error;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Seek};
 
+// Ceilings on how much any single archive entry may decompress to. A
+// `.tangopatch` is untrusted input — a scanned file could have been
+// hand-crafted, and a package fetched from a repo is only hash-checked
+// against what that same repo published — so a "zip bomb" (a few KB that
+// inflates to gigabytes, or a header that merely *claims* to) must not be
+// able to exhaust memory when a package is opened or read. These bounds
+// sit far above any real payload: a GBA save is at most 128 KiB, a
+// manifest a handful of lines, a BPS patch is bounded by the ROM it
+// patches (largest supported ROM is 32 MiB).
+const MAX_MANIFEST: u64 = 256 * 1024;
+const MAX_README: u64 = 4 * 1024 * 1024;
+const MAX_SAVE: u64 = 1024 * 1024;
+const MAX_BPS: u64 = 64 * 1024 * 1024;
+
+/// Decompress an archive entry into memory, refusing to buffer more than
+/// `limit` bytes even if the entry claims — or delivers — more.
+///
+/// Both the up-front reservation and the actual read are bounded, so
+/// neither a lying central-directory `uncompressed_size` nor a genuine
+/// decompression bomb can force a large allocation. `declared` is the
+/// entry's header size, trusted only to *shrink* the initial reservation.
+fn read_capped(entry: impl Read, declared: u64, limit: u64, what: &str) -> Result<Vec<u8>, Error> {
+    let mut buf = Vec::with_capacity(declared.min(limit) as usize);
+    // `take(limit + 1)` reads at most one byte past the limit, so an
+    // over-limit entry is detected without ever buffering it whole.
+    entry.take(limit + 1).read_to_end(&mut buf)?;
+    if buf.len() as u64 > limit {
+        return Err(Error::Invalid(format!(
+            "{what} is larger than the {limit}-byte limit (possible zip bomb)"
+        )));
+    }
+    Ok(buf)
+}
+
 /// An opened package. Cheap to construct: only the zip's central
 /// directory and the manifest are read up front, so a scanner can open
 /// every installed package without touching the patch payloads.
@@ -36,11 +70,12 @@ impl<R: Read + Seek> Package<R> {
         let mut archive = zip::ZipArchive::new(reader)?;
 
         let manifest = {
-            let mut entry = archive
+            let entry = archive
                 .by_name(MANIFEST_PATH)
                 .map_err(|_| Error::Invalid(format!("no {MANIFEST_PATH}")))?;
-            let mut raw = String::new();
-            entry.read_to_string(&mut raw)?;
+            let declared = entry.size();
+            let raw = read_capped(entry, declared, MAX_MANIFEST, MANIFEST_PATH)?;
+            let raw = String::from_utf8(raw).map_err(|_| Error::Invalid(format!("{MANIFEST_PATH} is not UTF-8")))?;
             Manifest::parse(&raw)?
         };
 
@@ -103,12 +138,12 @@ impl<R: Read + Seek> Package<R> {
         if !self.supports(target) {
             return Err(Error::NoSuchTarget(target));
         }
-        self.read_entry(&target.rom_path())
+        self.read_entry(&target.rom_path(), MAX_BPS)
     }
 
     /// A save template's raw SRAM dump.
     pub fn save_template(&mut self, target: RomTarget, template: &str) -> Result<Vec<u8>, Error> {
-        self.read_entry(&target.save_path(template))
+        self.read_entry(&target.save_path(template), MAX_SAVE)
     }
 
     /// The patch's README, as markdown.
@@ -116,14 +151,13 @@ impl<R: Read + Seek> Package<R> {
         if !self.has_readme {
             return Ok(None);
         }
-        let raw = self.read_entry(README_PATH)?;
+        let raw = self.read_entry(README_PATH, MAX_README)?;
         Ok(Some(String::from_utf8_lossy(&raw).into_owned()))
     }
 
-    fn read_entry(&mut self, path: &str) -> Result<Vec<u8>, Error> {
-        let mut entry = self.archive.by_name(path)?;
-        let mut buf = Vec::with_capacity(entry.size() as usize);
-        entry.read_to_end(&mut buf)?;
-        Ok(buf)
+    fn read_entry(&mut self, path: &str, limit: u64) -> Result<Vec<u8>, Error> {
+        let entry = self.archive.by_name(path)?;
+        let declared = entry.size();
+        read_capped(entry, declared, limit, path)
     }
 }

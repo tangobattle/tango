@@ -95,3 +95,46 @@ fn garbage_is_not_a_package() {
     let truncated = full().to_vec().unwrap();
     assert!(Package::read(std::io::Cursor::new(truncated[..truncated.len() / 2].to_vec())).is_err());
 }
+
+// A `.tangopatch` is untrusted, so an entry that inflates far past its
+// real bound (a "zip bomb") must be refused, not buffered whole. These
+// entries compress to almost nothing but decompress past the caller-side
+// caps — the reads should error rather than allocate gigabytes.
+
+#[test]
+fn an_oversized_readme_is_rejected_not_buffered() {
+    let mut b = bundle::Builder::new(manifest("bomb", "1.0.0", "isolated"));
+    b.add_rom(target("BR6E_00"), b"bps".to_vec());
+    b.set_readme("a".repeat(5 * 1024 * 1024)); // > MAX_README (4 MiB)
+
+    // Opening is fine — the README isn't touched until it's asked for.
+    let mut pkg = Package::read(std::io::Cursor::new(b.to_vec().unwrap())).unwrap();
+    assert!(matches!(pkg.readme(), Err(Error::Invalid(_))));
+}
+
+#[test]
+fn an_oversized_save_template_is_rejected() {
+    let mut b = bundle::Builder::new(manifest("bomb", "1.0.0", "isolated"));
+    b.add_rom(target("BR6E_00"), b"bps".to_vec());
+    b.add_save_template(target("BR6E_00"), DEFAULT_TEMPLATE, vec![0u8; 2 * 1024 * 1024])
+        .unwrap(); // > MAX_SAVE (1 MiB)
+
+    let mut pkg = Package::read(std::io::Cursor::new(b.to_vec().unwrap())).unwrap();
+    assert!(matches!(pkg.save_template(target("BR6E_00"), DEFAULT_TEMPLATE), Err(Error::Invalid(_))));
+}
+
+#[test]
+fn an_oversized_manifest_is_rejected_on_open() {
+    // The manifest is read during `Package::read`, so a manifest that
+    // inflates past the cap can't even be opened — which is what protects
+    // a directory scan, where every package is opened sight unseen.
+    let mut m = manifest("bomb", "1.0.0", "isolated");
+    m.source = Some(format!("https://example.com/{}", "a".repeat(300 * 1024)));
+    let mut b = bundle::Builder::new(m);
+    b.add_rom(target("BR6E_00"), b"bps".to_vec());
+
+    assert!(matches!(
+        Package::read(std::io::Cursor::new(b.to_vec().unwrap())),
+        Err(Error::Invalid(_))
+    ));
+}
