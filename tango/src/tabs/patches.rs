@@ -130,20 +130,20 @@ pub enum Effect {
 impl PatchesState {
     /// Apply a tab message. See [`crate::tabs::replays::Effect`]
     /// for the side-effect surface convention.
-    pub fn update(&mut self, msg: Message, scanners: &Scanners) -> Option<Effect> {
+    pub fn update(&mut self, msg: Message, patches: &Catalog) -> Option<Effect> {
         match msg {
             Message::Selected(name) => {
-                let newest = scanners.patches.read().versions(&name).keys().next_back().cloned();
+                let newest = patches.versions(&name).keys().next_back().cloned();
                 if self.selected.as_deref() != Some(name.as_str()) {
                     self.detail_enter.start(iced::time::Instant::now());
                 }
                 self.selected = Some(name);
                 self.version = newest;
-                self.refresh_readme(scanners)
+                self.refresh_readme(patches)
             }
             Message::VersionSelected(v) => {
                 self.version = Some(v);
-                self.refresh_readme(scanners)
+                self.refresh_readme(patches)
             }
             Message::RevealPackage(p) => Some(Effect::RevealPath(p)),
             Message::ReadmeLinkClicked(url) => Some(Effect::OpenPath(url.to_string())),
@@ -193,8 +193,12 @@ impl PatchesState {
             Message::ReadmeFetched(key, readme) => {
                 self.remote_readmes.insert(key.clone(), readme);
                 if self.readme_cache_key.as_ref() == Some(&key) {
-                    // Force the cache to rebuild now that it has content.
+                    // The cache key already matches this version, so
+                    // `refresh_readme` would no-op — drop it first, then
+                    // rebuild, or the fetched text sits in the map
+                    // unrendered until the user reselects.
                     self.readme_cache_key = None;
+                    return self.refresh_readme(patches);
                 }
                 None
             }
@@ -214,7 +218,7 @@ impl PatchesState {
     /// patch+version. No-op if the cache already matches. Returns a
     /// fetch effect when the version isn't installed and we haven't
     /// asked the repo for its README yet.
-    pub fn refresh_readme(&mut self, scanners: &Scanners) -> Option<Effect> {
+    pub fn refresh_readme(&mut self, patches: &Catalog) -> Option<Effect> {
         let key = match (&self.selected, &self.version) {
             (Some(n), Some(v)) => (n.clone(), v.clone()),
             _ => {
@@ -227,7 +231,6 @@ impl PatchesState {
             return None;
         }
 
-        let patches = scanners.patches.read();
         let installed = patches.version(&key.0, &key.1).and_then(|v| v.readme.clone());
         let mut effect = None;
         let readme = match installed {
@@ -243,7 +246,6 @@ impl PatchesState {
                 }
             },
         };
-        drop(patches);
 
         self.readme_cache_key = Some(key);
         self.readme_items = readme
@@ -677,5 +679,81 @@ mod tests {
     #[test]
     fn the_default_filter_hides_nothing() {
         assert_eq!(Filter::default(), Filter::All);
+    }
+
+    fn v(s: &str) -> semver::Version {
+        s.parse().unwrap()
+    }
+
+    /// A catalog offering one patch that isn't downloaded, whose index
+    /// entry advertises a README sidecar.
+    fn offered_with_readme() -> Catalog {
+        let mut index = tango_patch::Index::default();
+        index.patches.entry("bn6_test".to_owned()).or_default().insert(
+            v("1.0.0"),
+            tango_patch::index::Entry {
+                title: "Test".into(),
+                authors: vec![],
+                license: None,
+                source: None,
+                netplay: tango_patch::Compatibility::Isolated,
+                games: vec!["BR6E_00".parse().unwrap()],
+                path: "bn6_test/bn6_test-1.0.0.tangopatch".into(),
+                size: 1,
+                sha256: "0".repeat(64),
+                readme: Some("bn6_test/bn6_test-1.0.0.README.md".into()),
+            },
+        );
+        Catalog {
+            installed: Default::default(),
+            index,
+        }
+    }
+
+    #[test]
+    fn selecting_an_undownloaded_patch_asks_for_its_readme() {
+        let patches = offered_with_readme();
+        let mut state = PatchesState::default();
+        let effect = state.update(Message::Selected("bn6_test".into()), &patches);
+        assert!(
+            matches!(&effect, Some(Effect::FetchReadme(key)) if key == &("bn6_test".to_owned(), v("1.0.0"))),
+            "{effect:?}"
+        );
+        // Nothing to show yet, and the version resolved from the index.
+        assert!(state.readme_items.is_empty());
+        assert_eq!(state.version, Some(v("1.0.0")));
+    }
+
+    #[test]
+    fn a_fetched_readme_renders_without_reselecting() {
+        let patches = offered_with_readme();
+        let mut state = PatchesState::default();
+        state.update(Message::Selected("bn6_test".into()), &patches);
+
+        let key = ("bn6_test".to_owned(), v("1.0.0"));
+        state.update(Message::ReadmeFetched(key, Some("# hello".into())), &patches);
+        assert!(
+            !state.readme_items.is_empty(),
+            "the fetched readme should be parsed as soon as it lands"
+        );
+    }
+
+    #[test]
+    fn a_patch_with_no_published_readme_is_only_asked_about_once() {
+        let patches = offered_with_readme();
+        let mut state = PatchesState::default();
+        state.update(Message::Selected("bn6_test".into()), &patches);
+
+        // The repo had nothing after all.
+        let key = ("bn6_test".to_owned(), v("1.0.0"));
+        state.update(Message::ReadmeFetched(key.clone(), None), &patches);
+        assert!(state.readme_items.is_empty());
+
+        // Reselecting must not re-request it.
+        state.selected = None;
+        state.version = None;
+        state.readme_cache_key = None;
+        let effect = state.update(Message::Selected("bn6_test".into()), &patches);
+        assert!(effect.is_none(), "{effect:?}");
     }
 }

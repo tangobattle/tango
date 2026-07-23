@@ -315,7 +315,7 @@ impl App {
             }
             _ => {}
         }
-        let Some(effect) = self.patches.update(msg, &self.scanners) else {
+        let Some(effect) = self.patches.update(msg, &self.scanners.patches.read()) else {
             return iced::Task::none();
         };
         use tabs::patches::Effect as E;
