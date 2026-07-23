@@ -653,8 +653,8 @@ impl crate::ActiveSession for ReplaySession {
         self.game
     }
 
-    fn screen(&self) -> Arc<crate::Framebuffer> {
-        self.screen.clone()
+    fn frame(&self) -> Vec<u8> {
+        self.screen.read()
     }
 
     fn wake(&self) -> Arc<tokio::sync::Notify> {
@@ -663,7 +663,7 @@ impl crate::ActiveSession for ReplaySession {
 
     /// The opponent's screen, or the local one while swapped — `None`
     /// while the PiP is off or before its first captured frame.
-    fn pip_pixels(&self) -> Option<Vec<u8>> {
+    fn pip_frame(&self) -> Option<Vec<u8>> {
         (self.show_pip.load(Ordering::Relaxed) && self.pip_fresh.load(Ordering::Relaxed)).then(|| self.pip.read())
     }
 

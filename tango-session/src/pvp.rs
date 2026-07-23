@@ -611,8 +611,8 @@ impl crate::ActiveSession for PvpSession {
         self.local_game
     }
 
-    fn screen(&self) -> Arc<crate::Framebuffer> {
-        self.screen.clone()
+    fn frame(&self) -> Vec<u8> {
+        self.screen.read()
     }
 
     fn wake(&self) -> Arc<tokio::sync::Notify> {

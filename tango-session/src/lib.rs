@@ -114,16 +114,18 @@ impl PauseGate {
 }
 
 /// One shared GBA screen — mgba-native BGR555, 2 bytes/pixel — with
-/// the emu thread writing it and the host copying it out to upload on
-/// repaint. A session builds one per screen it publishes: its main
-/// display, plus the replay PiP's opponent view. Each starts zeroed,
-/// so a fresh session never flashes the previous one's last frame.
+/// a session's emu thread writing it and the session reading it back
+/// out for the host. Internal: sessions publish
+/// [`frame`](ActiveSession::frame) pixels, not surfaces. A session
+/// builds one per screen it shows: its main display, plus the replay
+/// PiP's opponent view. Each starts zeroed, so a fresh session never
+/// flashes the previous one's last frame.
 ///
 /// Waking the host is deliberately not part of this: a session can
 /// write several screens for one tick (the replay PiP), and it has
 /// state worth a repaint that isn't a frame at all, so the wake is the
 /// session's ([`ActiveSession::wake`]) rather than the surface's.
-pub struct Framebuffer(std::sync::Mutex<Vec<u8>>);
+pub(crate) struct Framebuffer(std::sync::Mutex<Vec<u8>>);
 
 impl Framebuffer {
     pub fn new() -> std::sync::Arc<Self> {
@@ -163,10 +165,11 @@ pub trait ActiveSession: std::any::Any {
     /// the emulator pane.
     fn local_game(&self) -> &'static tango_gamesupport::Game;
 
-    /// This session's main display, built fresh by its constructor —
-    /// the host [`read`](Framebuffer::read)s it into a GPU texture
-    /// every repaint.
-    fn screen(&self) -> std::sync::Arc<Framebuffer>;
+    /// This session's current display frame, as raw BGR555 (2 bytes
+    /// per pixel, mgba-native) — the host uploads it to a GPU texture
+    /// every repaint, so it hands back a copy rather than the live
+    /// surface the emu thread is writing.
+    fn frame(&self) -> Vec<u8>;
 
     /// Signalled whenever the host should take another look: a new
     /// frame landed, or state it re-checks on the same beat moved
@@ -179,12 +182,11 @@ pub trait ActiveSession: std::any::Any {
     /// its borrow of the session.
     fn wake(&self) -> std::sync::Arc<tokio::sync::Notify>;
 
-    /// Latest other-perspective frame for the picture-in-picture
-    /// inset, as raw BGR555 — `None` except on a replay session with
-    /// the PiP toggle on. Polled per frame by the host alongside the
-    /// main [`screen`](Self::screen) read. (A `Framebuffer` of its own
-    /// behind the toggle, hence pixels rather than the surface.)
-    fn pip_pixels(&self) -> Option<Vec<u8>> {
+    /// The other-perspective frame behind the picture-in-picture
+    /// inset — `None` except on a replay session with the PiP toggle
+    /// on and a frame captured since it was flipped on. Polled per
+    /// frame by the host alongside the main [`frame`](Self::frame).
+    fn pip_frame(&self) -> Option<Vec<u8>> {
         None
     }
 

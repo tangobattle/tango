@@ -121,8 +121,8 @@ impl crate::ActiveSession for SinglePlayerSession {
         self.game
     }
 
-    fn screen(&self) -> Arc<crate::Framebuffer> {
-        self.screen.clone()
+    fn frame(&self) -> Vec<u8> {
+        self.screen.read()
     }
 
     fn wake(&self) -> Arc<tokio::sync::Notify> {

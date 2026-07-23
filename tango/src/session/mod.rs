@@ -568,12 +568,11 @@ pub enum Message {
     /// One emulator frame has landed, or `is_ended` could have
     /// flipped (PvP peer-end / disconnect / grace-timeout). The
     /// handler rebuilds the framebuffer from the active session's
-    /// [`screen`](tango_session::ActiveSession::screen) into
-    /// [`State::current_frame`] and tears the session down if it's now
-    /// ended. Fired by the session subscription, which parks on the
-    /// active session's [`wake`](tango_session::ActiveSession::wake) —
-    /// signalled by both the frame callback and the PvP end-detection
-    /// wires.
+    /// [`frame`](ActiveSession::frame) into [`State::current_frame`]
+    /// and tears the session down if it's now ended. Fired by the
+    /// session subscription, which parks on the active session's
+    /// [`wake`](ActiveSession::wake) — signalled by both the frame
+    /// callback and the PvP end-detection wires.
     UpdateFramebuffer,
     /// Click-swallower for modal panel chrome — keeps presses
     /// on the panel's inert regions from falling through to the
@@ -863,7 +862,7 @@ impl State {
                     } else {
                         // Upload the native frame as-is; the selected effect
                         // magnifies it on the GPU at draw time.
-                        let pixels = session.screen().read();
+                        let pixels = session.frame();
                         self.frame_revision = self.frame_revision.wrapping_add(1);
                         self.current_frame = Some(crate::platform::video::framebuffer::Frame {
                             pixels: std::sync::Arc::new(pixels),
@@ -879,7 +878,7 @@ impl State {
                         sample = session.downcast_ref::<pvp::PvpSession>().map(MetricSample::capture);
                         // Replay PiP: the opponent's screen while the bar
                         // toggle is on.
-                        self.pip_frame = session.pip_pixels().map(|pixels| {
+                        self.pip_frame = session.pip_frame().map(|pixels| {
                             self.pip_revision = self.pip_revision.wrapping_add(1);
                             crate::platform::video::framebuffer::Frame {
                                 pixels: std::sync::Arc::new(pixels),
@@ -910,7 +909,7 @@ impl State {
 
 /// Per-emulator-frame wake stream. Yields
 /// [`Message::UpdateFramebuffer`] each time someone signals the active
-/// session's [`wake`](tango_session::ActiveSession::wake) — the
+/// session's [`wake`](ActiveSession::wake) — the
 /// per-frame callback for new screen contents, and the PvP
 /// end-detection wires (peer-end packet, peer disconnect, grace
 /// timeout) for state-transition checks. Lives only while a session is
@@ -1024,7 +1023,7 @@ const CONTROLS_HIDE_AFTER: std::time::Duration = std::time::Duration::from_milli
 const ESC_QUIT_HOLD: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Expand an mgba-native BGR555 framebuffer (one little-endian `u16`
-/// per pixel — see [`tango_session::Framebuffer`]) to an RGBA8 image handle for
+/// per pixel — what [`ActiveSession::frame`] hands back) to an RGBA8 image handle for
 /// the hover thumbnail, via dataview's shared conversion — the same
 /// table that renders ROM sprites/palettes and replay video exports,
 /// and the CPU twin of the GPU decode in `video/effects/common.wgsl`.
