@@ -12,7 +12,7 @@ pub const HEADER: &[u8] = b"TOOT";
 /// SIO-engine replays — the only readable schema. The input stream is
 /// one continuous run of pair ticks from session start (a ROUND_START
 /// on the first record and on each later round's first record),
-/// replayed by rebooting and re-priming an [`mgba_siolink::Link`] and
+/// replayed by rebooting and re-priming an [`mgba_rollback::Link`] and
 /// feeding it the (p1, p2) stream verbatim. Trap-engine recordings
 /// (schema 0x1B and older) are not supported — the engine that played
 /// them is gone, and [`decode_metadata`] rejects them.

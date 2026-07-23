@@ -13,7 +13,7 @@ prost.workspace = true
 serde.workspace = true
 serde_repr = "0.1"
 getgud.workspace = true
-mgba-siolink.workspace = true
+mgba-rollback.workspace = true
 zstd.workspace = true
 
 [build-dependencies]

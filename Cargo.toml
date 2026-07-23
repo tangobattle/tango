@@ -42,7 +42,7 @@ image = { version = "0.25", default-features = false }
 itertools = "0.13"
 log = "0.4"
 mgba = { git = "https://github.com/tangobattle/mgba-rs" }
-mgba-siolink = { git = "https://github.com/tangobattle/mgba-siolink" }
+mgba-rollback = { git = "https://github.com/tangobattle/mgba-rollback" }
 num-derive = "0.4.2"
 num-traits = "0.2"
 prost = "0.14"

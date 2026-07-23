@@ -75,7 +75,7 @@ pub struct RoundStats {
     pub buster: [Vec<u32>; 2],
 }
 
-use mgba_siolink::session::TickObserver;
+use mgba_rollback::session::TickObserver;
 
 pub use crate::battle::{RoundSample, NO_CHIP};
 
@@ -621,19 +621,19 @@ pub fn analyze(
     let [rom0, rom1] = roms;
     let [save0, save1] = saves;
 
-    let mut pair = mgba_siolink::Link::with_options(mgba_siolink::LinkOptions {
+    let mut pair = mgba_rollback::Link::with_options(mgba_rollback::LinkOptions {
         sides: vec![
-            mgba_siolink::SideOptions {
+            mgba_rollback::SideOptions {
                 rom: rom0,
                 save: Some(save0),
             },
-            mgba_siolink::SideOptions {
+            mgba_rollback::SideOptions {
                 rom: rom1,
                 save: Some(save1),
             },
         ],
         rtc: Some(rtc),
-        peripheral: mgba_siolink::Peripheral::Cable,
+        peripheral: mgba_rollback::Peripheral::Cable,
     })?;
     // Nothing reads the pixels — skip rasterization on both cores.
     pair.set_frameskip(0, i32::MAX);
@@ -648,7 +648,7 @@ pub fn analyze(
     };
     let lifecycle = crate::telemetry::LifecycleSink::new();
     let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
-    // Cores own their primer traps — see [`mgba_siolink::Link::set_traps`]
+    // Cores own their primer traps — see [`mgba_rollback::Link::set_traps`]
     // for why any other ownership dangles at core teardown.
     pair.set_traps(0, support[0].primer_traps(&prime_config, 0, &lifecycle, &primed[0]));
     pair.set_traps(1, support[1].primer_traps(&prime_config, 1, &lifecycle, &primed[1]));

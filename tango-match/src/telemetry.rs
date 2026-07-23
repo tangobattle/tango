@@ -3,7 +3,7 @@
 //! Battle VALUES (HP, custom flags, chips) are pure observations:
 //! per-core [`CorePoller`]s read the same EWRAM addresses after every
 //! simulated tick, driven through
-//! [`mgba_siolink::session::TickObserver`]. Round LIFECYCLE (round
+//! [`mgba_rollback::session::TickObserver`]. Round LIFECYCLE (round
 //! start, match end) is trap-driven instead: the games' own
 //! battle-start and match-end code paths are ROM anchors the per-game
 //! support traps ([`GameSupport::primer_traps`] wires them for core 0),
@@ -271,7 +271,7 @@ impl Store {
 /// A host-side handle to the shared telemetry [`Store`].
 pub type TelemetryHandle = std::sync::Arc<std::sync::Mutex<Store>>;
 
-/// The [`TickObserver`](mgba_siolink::session::TickObserver) that turns
+/// The [`TickObserver`](mgba_rollback::session::TickObserver) that turns
 /// a pair of [`CorePoller`]s plus the trap-fed [`LifecycleSink`] into
 /// revocable telemetry in a shared [`Store`]: dense per-tick samples
 /// plus lifecycle events, both truncated on rewind.
@@ -310,8 +310,8 @@ impl Telemetry {
     }
 }
 
-impl mgba_siolink::session::TickObserver for Telemetry {
-    fn on_tick(&mut self, pair: &mut mgba_siolink::Link, tick: u32) {
+impl mgba_rollback::session::TickObserver for Telemetry {
+    fn on_tick(&mut self, pair: &mut mgba_rollback::Link, tick: u32) {
         let obs0 = self.pollers[0].poll(pair.core_mut(0));
         let obs1 = self.pollers[1].poll(pair.core_mut(1));
         let obs = match (obs0, obs1) {

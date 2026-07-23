@@ -18,8 +18,8 @@ synchronous, reproducible function of its inputs.
 
 | Term | Meaning |
 | --- | --- |
-| **pair** | The two linked cores ([`mgba_siolink::Link`]). Core `i` runs player `i`'s ROM + save **on both peers** — the pair is symmetric, so both sides simulate the identical match. (mgba-siolink links go to four players; every game tango supports is a two-player link battle, so this engine is two-player throughout.) |
-| **session** | `mgba_siolink::session::Session`: the rollback engine over the pair. Settles ticks with confirmed remote inputs, speculates ahead on predicted ones, rolls back and re-simulates on misprediction (getgud underneath). |
+| **pair** | The two linked cores ([`mgba_rollback::Link`]). Core `i` runs player `i`'s ROM + save **on both peers** — the pair is symmetric, so both sides simulate the identical match. (mgba-rollback links go to four players; every game tango supports is a two-player link battle, so this engine is two-player throughout.) |
+| **session** | `mgba_rollback::session::Session`: the rollback engine over the pair. Settles ticks with confirmed remote inputs, speculates ahead on predicted ones, rolls back and re-simulates on misprediction (getgud underneath). |
 | **priming** | Walking a freshly booted pair to its link battle: PC-sited traps at known menu-code anchors poke control state so the games' own boot → comm-menu → battle flow runs itself, pads idle throughout, real link exchanges included. Ends when both games' own battle-start code fires (`PrimedLatch`). |
 | **trap** | A callback on a ROM program-counter address (`Link::set_traps`). Used only for priming and for the round-lifecycle anchors — never for netcode. |
 | **joyflags** | The GBA's 10-bit pad state. The only thing that crosses the wire (and the only thing replays record) per tick. |
@@ -32,7 +32,7 @@ synchronous, reproducible function of its inputs.
 
 ```
 mgba (emulator)
-  └── mgba-siolink (the pair: lockstep SIO driver, savestates, Session)
+  └── mgba-rollback (the pair: lockstep SIO driver, savestates, Session)
         + getgud (generic rollback)
               └── tango-match (this crate: Match, playback, telemetry,
                   analysis, replay format)
@@ -47,7 +47,7 @@ mgba (emulator)
 - **`lib.rs`** — the per-game contract: [`GameSupport`] (primer traps +
   a `CorePoller` per core + patched-ROM-dependent chip/buster
   semantics), `PrimeConfig` (match type, RNG seed derivation, BGM
-  silence), `PrimedLatch`. Re-exports the host-facing mgba-siolink
+  silence), `PrimedLatch`. Re-exports the host-facing mgba-rollback
   surface (`Link`, `LinkHandle`, `TickObserver`, `Throttler`).
 
 - **`engine`** — [`Match`]: boots the pair, primes it (bounded by

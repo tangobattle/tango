@@ -2,7 +2,7 @@
 //! netplay sibling of
 //! [`crate::singleplayer::SinglePlayerSession`].
 //!
-//! Both games run locally as an [`mgba_siolink::Link`] pair linked through
+//! Both games run locally as an [`mgba_rollback::Link`] pair linked through
 //! mgba's lockstep SIO driver: the games speak
 //! their *real* link protocol over the emulated cable, and the pair is
 //! the rollback unit. There is no mgba thread, no traps, and no shadow —

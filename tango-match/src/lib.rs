@@ -1,8 +1,8 @@
 //! The PvP engine shared by all Battle Network games this project
-//! supports: both games run locally as an [`mgba_siolink::Link`] (a pair
+//! supports: both games run locally as an [`mgba_rollback::Link`] (a pair
 //! of cores — every game tango supports is a two-player link battle)
 //! through mgba's lockstep SIO driver, and the pair is the rollback
-//! unit (see [`mgba_siolink::session::Session`]). The games run their
+//! unit (see [`mgba_rollback::session::Session`]). The games run their
 //! *real* link protocol over the emulated cable — no handshake skips,
 //! no packet munging, no shadow co-sim — so the only game-specific code
 //! is data-side: priming a freshly booted game to its link battle, and
@@ -57,7 +57,7 @@ pub enum Error {
 }
 
 /// A PC-sited trap: fires the closure when emulation reaches the ROM
-/// address (see `mgba_siolink::Link::set_traps`).
+/// address (see `mgba_rollback::Link::set_traps`).
 pub type Trap = (u32, Box<dyn Fn(&mut mgba::core::Core)>);
 
 /// One core's "the battle has started" latch — the priming handoff.
@@ -85,24 +85,24 @@ impl PrimedLatch {
 }
 
 /// The engine's clock-sync governor, re-exported so hosts driving a
-/// [`Match`](engine::Match) don't need their own mgba-siolink
+/// [`Match`](engine::Match) don't need their own mgba-rollback
 /// dependency: feed it `skew()` + `speculation_balance()` each frame and
 /// shave the returned fps off the tick rate.
-pub use mgba_siolink::throttler::Throttler;
+pub use mgba_rollback::throttler::Throttler;
 
 /// The linked core pair, re-exported for hosts that reach through
 /// [`Match::with_pair`](engine::Match::with_pair) for video/audio
 /// readout.
-pub use mgba_siolink::Link;
+pub use mgba_rollback::Link;
 
 /// Cross-thread readout handle to a running match's pair (see
 /// [`Match::pair_handle`](engine::Match::pair_handle)).
-pub use mgba_siolink::session::LinkHandle;
+pub use mgba_rollback::session::LinkHandle;
 
 /// Per-tick observer hook, re-exported for hosts that step a
 /// [`playback::Playback`] themselves and feed each tick to a
 /// [`telemetry::Telemetry`] observer (e.g. tango's replay video export).
-pub use mgba_siolink::session::TickObserver;
+pub use mgba_rollback::session::TickObserver;
 
 /// Match parameters the primer needs before the games can negotiate the
 /// rest themselves over the emulated cable.

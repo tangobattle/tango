@@ -1,6 +1,6 @@
 //! The connection-level SIO match: builds the two-player [`Link`], primes
 //! both games to their link battle, then runs the rollback
-//! [`Session`](mgba_siolink::session::Session) with per-tick RAM-poll
+//! [`Session`](mgba_rollback::session::Session) with per-tick RAM-poll
 //! telemetry over it.
 //!
 //! This is the trap engine's `Match` analogue for the SIO engine, but
@@ -10,19 +10,19 @@
 //! clock-sync signals back. Round boundaries and outcomes come from the
 //! telemetry [`Store`](crate::telemetry::Store), not from traps.
 //!
-//! (mgba-siolink links go up to four players, but every game tango
+//! (mgba-rollback links go up to four players, but every game tango
 //! supports is a two-player link battle, so this engine is two-player
 //! throughout: the pair of cores IS the link.)
 //!
-//! [`Link`]: mgba_siolink::Link
+//! [`Link`]: mgba_rollback::Link
 //! [`advance`]: Match::advance
 
-use mgba_siolink::{Link, LinkOptions, Peripheral, SideOptions};
+use mgba_rollback::{Link, LinkOptions, Peripheral, SideOptions};
 
 use crate::telemetry::{Telemetry, TelemetryHandle};
 use crate::{GameSupport, PrimeConfig};
 
-pub use mgba_siolink::session::{Outgoing, Report};
+pub use mgba_rollback::session::{Outgoing, Report};
 
 /// Cap on priming ticks before we give up bringing the games to their
 /// link battle. Real bring-up is ~470 ticks (BN6); this is generous
@@ -58,7 +58,7 @@ pub struct MatchConfig<'a> {
 
 /// A booted, primed, running SIO match.
 pub struct Match {
-    session: mgba_siolink::session::Session,
+    session: mgba_rollback::session::Session,
     telemetry: TelemetryHandle,
     local_player: usize,
 }
@@ -149,7 +149,7 @@ impl Match {
 
         let (telemetry, telemetry_handle) =
             Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
-        let mut session = mgba_siolink::session::Session::new(pair, local_player, present_delay)?;
+        let mut session = mgba_rollback::session::Session::new(pair, local_player, present_delay)?;
         session.set_observer(Some(Box::new(telemetry)));
 
         Ok(Match {
@@ -172,7 +172,7 @@ impl Match {
     }
 
     /// Feed one remote input packet, in tick order (see
-    /// [`Session::add_remote_input`](mgba_siolink::session::Session::add_remote_input)).
+    /// [`Session::add_remote_input`](mgba_rollback::session::Session::add_remote_input)).
     pub fn add_remote_input(&mut self, keys: u32, tick_advantage: i16) {
         self.session
             .add_remote_input(1 - self.local_player, keys, tick_advantage);

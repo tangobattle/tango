@@ -39,7 +39,7 @@ const REWIND_MAX_ENTRIES: usize = 192;
 /// never need emulation.
 pub struct Snapshot {
     pub tick: u32,
-    pub state: mgba_siolink::Snapshot,
+    pub state: mgba_rollback::Snapshot,
     /// Both cores' framebuffers (native BGR555), indexed by player.
     pub framebuffers: [Vec<u8>; 2],
 }
@@ -227,20 +227,20 @@ fn boot_and_prime(
     render: bool,
     cancel: Option<&AtomicBool>,
     lifecycle: &crate::telemetry::LifecycleSink,
-) -> Result<mgba_siolink::Link, crate::Error> {
-    let mut pair = mgba_siolink::Link::with_options(mgba_siolink::LinkOptions {
+) -> Result<mgba_rollback::Link, crate::Error> {
+    let mut pair = mgba_rollback::Link::with_options(mgba_rollback::LinkOptions {
         sides: vec![
-            mgba_siolink::SideOptions {
+            mgba_rollback::SideOptions {
                 rom: config.roms[0].clone(),
                 save: Some(config.saves[0].clone()),
             },
-            mgba_siolink::SideOptions {
+            mgba_rollback::SideOptions {
                 rom: config.roms[1].clone(),
                 save: Some(config.saves[1].clone()),
             },
         ],
         rtc: Some(config.rtc),
-        peripheral: mgba_siolink::Peripheral::Cable,
+        peripheral: mgba_rollback::Peripheral::Cable,
     })?;
     if !render {
         pair.set_frameskip(0, i32::MAX);
@@ -253,7 +253,7 @@ fn boot_and_prime(
         disable_bgm: config.disable_bgm,
     };
     let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
-    // Cores own their primer traps — see [`mgba_siolink::Link::set_traps`]
+    // Cores own their primer traps — see [`mgba_rollback::Link::set_traps`]
     // for why any other ownership dangles at core teardown.
     pair.set_traps(
         0,
@@ -282,7 +282,7 @@ fn boot_and_prime(
 /// stream and a cursor. The host wraps it in a mutex — the drive loop,
 /// the seek chase, and the audio pull interleave on that lock.
 pub struct Playback {
-    pair: mgba_siolink::Link,
+    pair: mgba_rollback::Link,
     inputs: Arc<Vec<[u32; 2]>>,
     cursor: u32,
 }
@@ -352,7 +352,7 @@ impl Playback {
     }
 
     /// Direct pair access, for video/audio readout.
-    pub fn pair_mut(&mut self) -> &mut mgba_siolink::Link {
+    pub fn pair_mut(&mut self) -> &mut mgba_rollback::Link {
         &mut self.pair
     }
 }
@@ -519,7 +519,7 @@ pub fn run_prefetch(
 
     // Keyframe at tick 0: the primed pre-battle state every backward
     // seek bottoms out on.
-    let capture = |pair: &mut mgba_siolink::Link, tick: u32| -> Result<Arc<Snapshot>, crate::Error> {
+    let capture = |pair: &mut mgba_rollback::Link, tick: u32| -> Result<Arc<Snapshot>, crate::Error> {
         let state = pair.save()?;
         let framebuffers = [
             pair.video_buffer(0).map(|b| b.to_vec()).unwrap_or_default(),
@@ -542,7 +542,7 @@ pub fn run_prefetch(
         }
         let tick = i as u32 + 1;
         pair.tick(&keys);
-        mgba_siolink::session::TickObserver::on_tick(&mut observer, &mut pair, tick);
+        mgba_rollback::session::TickObserver::on_tick(&mut observer, &mut pair, tick);
 
         let (samples, events) = telemetry_store.lock().unwrap().drain_confirmed(tick);
         if let Some(round_marks) = &round_marks {
