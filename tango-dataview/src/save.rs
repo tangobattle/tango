@@ -12,13 +12,13 @@ where
 }
 
 pub enum PatchCardsView<'a> {
-    PatchCard4s(Box<dyn PatchCard4sView<'a> + 'a>),
-    PatchCard56s(Box<dyn PatchCard56sView<'a> + 'a>),
+    PatchCard4s(Box<dyn PatchCard4sView + 'a>),
+    PatchCard56s(Box<dyn PatchCard56sView + 'a>),
 }
 
 pub enum PatchCardsViewMut<'a> {
-    PatchCard4s(Box<dyn PatchCard4sViewMut<'a> + 'a>),
-    PatchCard56s(Box<dyn PatchCard56sViewMut<'a> + 'a>),
+    PatchCard4s(Box<dyn PatchCard4sViewMut + 'a>),
+    PatchCard56s(Box<dyn PatchCard56sViewMut + 'a>),
 }
 
 pub struct FolderLimits {
@@ -57,11 +57,11 @@ where
 
     fn rebuild_checksum(&mut self);
 
-    fn view_chips(&self) -> Option<Box<dyn ChipsView<'_> + '_>> {
+    fn view_chips(&self) -> Option<Box<dyn ChipsView + '_>> {
         None
     }
 
-    fn view_chips_mut(&mut self) -> Option<Box<dyn ChipsViewMut<'_> + '_>> {
+    fn view_chips_mut(&mut self) -> Option<Box<dyn ChipsViewMut + '_>> {
         None
     }
 
@@ -73,30 +73,30 @@ where
         None
     }
 
-    fn view_navi(&self) -> Option<Box<dyn NaviView<'_> + '_>> {
+    fn view_navi(&self) -> Option<Box<dyn NaviView + '_>> {
         None
     }
 
-    fn view_navi_mut(&mut self) -> Option<Box<dyn NaviViewMut<'_> + '_>> {
+    fn view_navi_mut(&mut self) -> Option<Box<dyn NaviViewMut + '_>> {
         None
     }
 
     /// The navicust customizer, or `None` when the save has no navicust —
     /// either the game has none at all, or a link navi is equipped (see
     /// [`NaviView`]).
-    fn view_navicust(&self) -> Option<Box<dyn NavicustView<'_> + '_>> {
+    fn view_navicust(&self) -> Option<Box<dyn NavicustView + '_>> {
         None
     }
 
-    fn view_navicust_mut(&mut self) -> Option<Box<dyn NavicustViewMut<'_> + '_>> {
+    fn view_navicust_mut(&mut self) -> Option<Box<dyn NavicustViewMut + '_>> {
         None
     }
 
-    fn view_auto_battle_data(&self) -> Option<Box<dyn AutoBattleDataView<'_> + '_>> {
+    fn view_auto_battle_data(&self) -> Option<Box<dyn AutoBattleDataView + '_>> {
         None
     }
 
-    fn view_auto_battle_data_mut(&mut self) -> Option<Box<dyn AutoBattleDataViewMut<'_> + '_>> {
+    fn view_auto_battle_data_mut(&mut self) -> Option<Box<dyn AutoBattleDataViewMut + '_>> {
         None
     }
 
@@ -214,7 +214,7 @@ pub struct Chip {
     pub code: ChipCode,
 }
 
-pub trait ChipsView<'a> {
+pub trait ChipsView {
     fn num_folders(&self) -> usize;
     fn equipped_folder_index(&self) -> usize;
     /// The folder's Regular chip slot. Outer `None` means the game has
@@ -237,7 +237,7 @@ pub trait ChipsView<'a> {
     }
 }
 
-pub trait ChipsViewMut<'a> {
+pub trait ChipsViewMut: ChipsView {
     fn set_equipped_folder(&mut self, folder_index: usize) -> bool {
         let _ = folder_index;
         false
@@ -276,22 +276,22 @@ pub struct PatchCard {
     pub enabled: bool,
 }
 
-pub trait PatchCard56sView<'a> {
+pub trait PatchCard56sView {
     fn count(&self) -> usize;
     fn patch_card(&self, slot: usize) -> Option<PatchCard>;
 }
 
-pub trait PatchCard56sViewMut<'a> {
+pub trait PatchCard56sViewMut: PatchCard56sView {
     fn set_count(&mut self, count: usize);
     fn set_patch_card(&mut self, slot: usize, patch_card: PatchCard) -> bool;
     fn rebuild_anticheat(&mut self);
 }
 
-pub trait PatchCard4sView<'a> {
+pub trait PatchCard4sView {
     fn patch_card(&self, slot: usize) -> Option<PatchCard>;
 }
 
-pub trait PatchCard4sViewMut<'a> {
+pub trait PatchCard4sViewMut: PatchCard4sView {
     fn set_patch_card(&mut self, slot: usize, patch_card: Option<PatchCard>) -> bool;
     fn rebuild_anticheat(&mut self);
 }
@@ -301,7 +301,7 @@ pub trait PatchCard4sViewMut<'a> {
 /// from [`NavicustView`], so it can grow more navi-level fields without
 /// being entangled with the navicust. When a link navi is equipped the
 /// save has no editable navicust, so [`Save::view_navicust`] returns `None`.
-pub trait NaviView<'a> {
+pub trait NaviView {
     fn navi(&self) -> usize;
 
     /// The navi's base max HP — from HP Memories / leveling only, excluding
@@ -340,7 +340,7 @@ pub struct NaviBusterStats {
     pub b_power_attack: u8,
 }
 
-pub trait NaviViewMut<'a> {
+pub trait NaviViewMut: NaviView {
     /// Set the equipped navi index. Returns `false` (no write) if `navi`
     /// is out of range for this game.
     fn set_navi(&mut self, navi: usize) -> bool;
@@ -355,7 +355,7 @@ pub struct NavicustPart {
     pub compressed: bool,
 }
 
-pub trait NavicustView<'a> {
+pub trait NavicustView {
     fn count(&self) -> usize {
         25
     }
@@ -371,7 +371,7 @@ pub trait NavicustView<'a> {
     fn navicust_color_bar(&self) -> Vec<Option<crate::rom::NavicustPartColor>>;
 }
 
-pub trait NavicustViewMut<'a> {
+pub trait NavicustViewMut: NavicustView {
     fn set_style(&mut self, _style: usize) -> bool {
         false
     }
@@ -383,13 +383,13 @@ pub trait NavicustViewMut<'a> {
     fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets);
 }
 
-pub trait AutoBattleDataView<'a> {
+pub trait AutoBattleDataView {
     fn chip_use_count(&self, id: usize) -> Option<usize>;
     fn secondary_chip_use_count(&self, id: usize) -> Option<usize>;
     fn materialized(&self) -> crate::auto_battle_data::MaterializedAutoBattleData;
 }
 
-pub trait AutoBattleDataViewMut<'a> {
+pub trait AutoBattleDataViewMut: AutoBattleDataView {
     fn set_chip_use_count(&mut self, id: usize, count: usize) -> bool;
     fn set_secondary_chip_use_count(&mut self, id: usize, count: usize) -> bool;
     fn clear_materialized(&mut self);

@@ -75,7 +75,7 @@ impl MaterializedAutoBattleData {
     }
 
     pub fn materialize(
-        auto_battle_data_view: &(dyn crate::save::AutoBattleDataView<'_> + '_),
+        auto_battle_data_view: &(dyn crate::save::AutoBattleDataView + '_),
         assets: &dyn crate::rom::Assets,
     ) -> Self {
         let use_counts = (0..assets.num_chips())
@@ -165,7 +165,7 @@ impl GroupedAutoBattleData {
     /// ranking and slot allocation [`MaterializedAutoBattleData::materialize`]
     /// uses, kept grouped instead of expanded.
     pub fn materialize(
-        auto_battle_data_view: &(dyn crate::save::AutoBattleDataView<'_> + '_),
+        auto_battle_data_view: &(dyn crate::save::AutoBattleDataView + '_),
         assets: &dyn crate::rom::Assets,
     ) -> Self {
         let use_counts = (0..assets.num_chips())
