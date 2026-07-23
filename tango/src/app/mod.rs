@@ -15,7 +15,7 @@
 
 use crate::library::{game, patch, replays, rom, save};
 use crate::netplay::identity;
-use crate::platform::{audio, input, sdl_init};
+use crate::platform::{audio, input};
 use crate::ui::theme::theme_for;
 use crate::ui::{anim, widgets};
 use crate::{config, discord, i18n, loadout, netplay, selection, session, tabs, updater, INIT_LINK_CODE};
@@ -91,26 +91,13 @@ pub struct App {
     tab: Tab,
     scanners: Scanners,
     /// Cloned into every session so they can bind their MGBAStream
-    /// without owning the audio backend. The sdl Backend lives in
+    /// without owning the audio backend. The CPAL Backend lives in
     /// `_audio_backend` so the underlying stream keeps playing.
     audio_binder: audio::LateBinder,
-    /// Kept alive for the program's lifetime; dropping it would tear
-    /// down the SDL audio stream and the app would go silent.
-    /// Rebuilt by [`Self::reopen_audio_backend`] when the playback
-    /// device topology changes under us.
-    _audio_backend: Option<audio::sdl::Backend>,
-    /// Pins SDL's audio subsystem (and with it the OS device-
-    /// notification machinery that keeps the device list current) for
-    /// the app's lifetime, and serves the 1 Hz topology poll. The
-    /// backend holds its own subsystem handle, but if the backend
-    /// failed to open — or dies and fails to reopen — this keeps
-    /// device enumeration working so a later hotplug can still bring
-    /// audio up.
-    audio_subsystem: Option<sdl3::AudioSubsystem>,
-    /// Last playback-device topology snapshot, diffed on the 1 Hz
-    /// [`Message::AudioWatchTick`]; any difference triggers
-    /// [`Self::reopen_audio_backend`].
-    audio_device_ids: Vec<sdl3::audio::AudioDeviceID>,
+    /// Owns the CPAL stream and its recovery supervisor. The backend
+    /// internally follows default-device/config changes, reconnects
+    /// after stream failures, and retries while no device is present.
+    _audio_backend: Option<audio::cpal::Backend>,
 
     /// Owned game+save+assets for the current selection. Rebuilt only
     /// when game or save changes; per-frame view() borrows it.
@@ -434,43 +421,19 @@ impl App {
         }
         let welcome = tabs::welcome::State::from_nickname(config.nickname.as_deref());
 
-        // Spin up the SDL audio backend once at startup with the
+        // Spin up the CPAL audio backend once at startup with the
         // LateBinder as the source. Sessions later bind their
-        // MGBAStream into the binder and the SDL stream keeps going
+        // MGBAStream into the binder and the CPAL stream keeps going
         // across selections.
-        //
-        // The subsystem pin must be taken before `Backend::new`, which
-        // borrows the global `Sdl` itself — holding our guard across it
-        // would deadlock `sdl_init`'s mutex. It outlives the backend so
-        // the 1 Hz playback-device topology poll (see
-        // `reopen_audio_backend`) works for the app's whole life.
-        let audio_subsystem = {
-            let sdl = sdl_init::sdl();
-            sdl.and_then(|sdl| match sdl.audio() {
-                Ok(a) => Some(a),
-                Err(e) => {
-                    log::warn!("audio: subsystem pin failed: {e}");
-                    None
-                }
-            })
-        };
-        let mut audio_binder = audio::LateBinder::new();
+        let audio_binder = audio::LateBinder::new();
         audio_binder.set_volume(config.volume);
-        let audio_backend = match audio::sdl::Backend::new(audio_binder.clone()) {
-            Ok(b) => {
-                audio_binder.set_sample_rate(b.sample_rate());
-                log::info!("audio: sdl backend up at {} Hz", b.sample_rate());
-                Some(b)
-            }
+        let audio_backend = match audio::cpal::Backend::new(audio_binder.clone()) {
+            Ok(b) => Some(b),
             Err(e) => {
-                log::warn!("audio: sdl init failed, running silent: {e:?}");
+                log::warn!("audio: cpal supervisor failed to start, running silent: {e:?}");
                 None
             }
         };
-        let audio_device_ids = audio_subsystem
-            .as_ref()
-            .map(audio::sdl::playback_device_ids)
-            .unwrap_or_default();
 
         let mut patch_autoupdater = patch::Autoupdater::new(
             config.patches_path(),
@@ -514,8 +477,6 @@ impl App {
             scanners,
             audio_binder,
             _audio_backend: audio_backend,
-            audio_subsystem,
-            audio_device_ids,
             loaded: None,
             loadout: restored,
             play,
@@ -891,13 +852,6 @@ pub enum Message {
     /// Discord-initiated join secret into the play link-code
     /// field.
     DiscordTick,
-    /// 1 Hz audio housekeeping tick: diff the playback-device
-    /// topology and reopen the output stream on the current default
-    /// device if it moved. Emulation is paced by that stream's
-    /// callbacks, so this is also what unfreezes a running session
-    /// whose endpoint died (e.g. Voicemeeter's virtual device
-    /// dropping on an engine restart).
-    AudioWatchTick,
     /// Raw window event (resize, move, etc.). Filtered in the
     /// handler — only Resized currently triggers anything.
     Window(iced::window::Id, iced::window::Event),
@@ -1104,27 +1058,6 @@ impl App {
             Message::Patches(m) => self.update_patches(m),
             Message::DiscordTick => {
                 self.handle_discord_tick();
-                iced::Task::none()
-            }
-            Message::AudioWatchTick => {
-                // Pump (without draining — polling here would eat
-                // gamepad events meant for `gamepad::pump`) so SDL
-                // runs its deferred device bookkeeping: device
-                // *removals* are processed as queued main-thread
-                // callbacks inside SDL_PumpEvents, and the redraw-
-                // driven pump may be silent exactly when the output
-                // device just died. Additions land in the list
-                // directly from SDL's notification thread.
-                if let Some(mut pump) = sdl_init::event_pump() {
-                    pump.pump_events();
-                }
-                if let Some(subsystem) = &self.audio_subsystem {
-                    let ids = audio::sdl::playback_device_ids(subsystem);
-                    if ids != self.audio_device_ids {
-                        self.audio_device_ids = ids;
-                        self.reopen_audio_backend();
-                    }
-                }
                 iced::Task::none()
             }
             Message::Window(id, ev) => {
@@ -1454,13 +1387,6 @@ impl App {
             // equality before re-sending) and gives us the join-
             // secret pickup loop too.
             iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::DiscordTick),
-            // 1 Hz audio-device housekeeping — a device-list snapshot
-            // compare unless a playback device actually came or went.
-            // A poll rather than SDL's AudioDeviceAdded/Removed events
-            // because those only flush from SDL's pending list when
-            // the event pump runs, and our pump is redraw-driven —
-            // possibly silent during the very freeze this recovers.
-            iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::AudioWatchTick),
             // Window events drive the geometry-persistence loop.
             iced::window::events().map(|(id, ev)| Message::Window(id, ev)),
         ];
@@ -1495,35 +1421,6 @@ impl App {
             subs.push(iced::window::frames().map(|_| Message::AnimTick));
         }
         iced::Subscription::batch(subs)
-    }
-
-    /// A playback device came or went: reopen the SDL output stream so
-    /// it re-acquires whatever the default device now is. SDL migrates
-    /// a default-device stream across a default *change* on its own,
-    /// but it can't resurrect a stream whose endpoint died (USB DAC
-    /// unplugged, Voicemeeter's virtual device dropping on an engine
-    /// restart) — and since emulation is paced by this stream's
-    /// callbacks, a dead stream freezes any running core. The new
-    /// backend is built before the old one drops so the audio
-    /// subsystem never quits mid-swap; sessions stay bound through the
-    /// LateBinder and simply start receiving `fill` calls again, which
-    /// is also what wakes a core parked in mgba's audio sync.
-    fn reopen_audio_backend(&mut self) {
-        log::info!("audio: playback device topology changed, reopening output stream");
-        match audio::sdl::Backend::new(self.audio_binder.clone()) {
-            Ok(b) => {
-                self.audio_binder.set_sample_rate(b.sample_rate());
-                log::info!("audio: sdl backend reopened at {} Hz", b.sample_rate());
-                self._audio_backend = Some(b);
-            }
-            // Keep whatever we had: the change may have been an
-            // unrelated device vanishing mid-enumeration, and a stream
-            // that does turn out dead is no worse held than dropped.
-            // The next topology change (e.g. a device coming back)
-            // retries; no per-tick retry, so a deviceless machine
-            // doesn't log-spam.
-            Err(e) => log::warn!("audio: reopen failed, keeping previous stream: {e:?}"),
-        }
     }
 
     /// Refresh Discord rich-presence + drain any Discord-initiated

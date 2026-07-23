@@ -1,8 +1,8 @@
 //! Host-machine glue — everything that talks to the OS or hardware,
 //! and nothing that knows about tabs, saves, or netplay:
 //!
-//! * [`sdl_init`] + [`audio`] + [`gamepad`]: the SDL3 context and the
-//!   two subsystems that ride it.
+//! * [`sdl_init`] + [`gamepad`]: SDL3 gamepad input.
+//! * [`audio`]: CPAL audio output and session-stream routing.
 //! * [`input`] + [`input_capture`]: physical-input mapping for the
 //!   emulator sessions and the capture flow that rebinds it.
 //! * [`video`]: the wgpu framebuffer widget and its upscale effects.

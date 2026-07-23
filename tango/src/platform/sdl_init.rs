@@ -6,15 +6,13 @@
 //! globals. `SendWrapper` is `Send`/`Sync` but panics if the inner
 //! value is touched from any thread other than the one that built
 //! it, which is exactly the main-thread-only guarantee we need.
-//! Callers grab subsystems (audio, gamepad, ...) via [`sdl`] and
-//! drain input via [`event_pump`] — all of which must run on the
-//! main thread.
+//! Callers grab the gamepad subsystem via [`sdl`] and drain input via
+//! [`event_pump`] — all of which must run on the main thread. Audio is
+//! deliberately independent and uses CPAL.
 //!
-//! Lives in its own module so audio + gamepad don't both try to own
-//! the SDL context; one canonical owner, multiple borrowers. The
-//! `EventPump` is a singleton (the sdl3 crate ref-counts it, so only
-//! one can exist at a time), which is the other reason it belongs
-//! here rather than inside any single subsystem.
+//! The `EventPump` is a singleton (the sdl3 crate ref-counts it, so
+//! only one can exist at a time), which is why it lives alongside the
+//! canonical SDL owner rather than inside the gamepad module.
 
 use std::ops::{Deref, DerefMut};
 use std::sync::{Mutex, MutexGuard};
@@ -22,24 +20,18 @@ use std::sync::{Mutex, MutexGuard};
 use sdl3::{EventPump, Sdl};
 use send_wrapper::SendWrapper;
 
-use crate::platform::audio;
-
 static SDL: Mutex<Option<SendWrapper<Sdl>>> = Mutex::new(None);
 static EVENT_PUMP: Mutex<Option<SendWrapper<EventPump>>> = Mutex::new(None);
 
 /// Initialize SDL3 once at startup on the main thread. Failures are
 /// logged and turn [`sdl`] / [`event_pump`] into `None`-returning
-/// no-ops — callers that depend on SDL (audio, gamepad) fall back to
-/// silent / unavailable modes without taking the app down.
+/// no-ops — callers that depend on SDL (currently gamepads) fall back
+/// to unavailable modes without taking the app down.
 pub fn init() {
     // Per the SDL3 gamepad example: needed on Windows so the joystick
     // subsystem spins up its own polling thread when we don't have a
     // video subsystem hooked into the message loop.
     sdl3::hint::set("SDL_JOYSTICK_THREAD", "1");
-    // Nudge SDL toward our preferred audio buffer size for low
-    // playback latency. Advisory only — the driver can still pick a
-    // larger quantum.
-    sdl3::hint::set("SDL_AUDIO_DEVICE_SAMPLE_FRAMES", &audio::SAMPLES.to_string());
     sdl3::hint::set("SDL_APP_NAME", "Tango");
     sdl3::hint::set("SDL_WINDOWS_INTRESOURCE_ICON", "1");
 

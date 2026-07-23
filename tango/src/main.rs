@@ -4,7 +4,7 @@
 mod config;
 mod i18n;
 mod library; // the on-disk game library: registry + ROM/save/patch/replay scanning
-mod platform; // host-machine glue: SDL, input devices, AV output, crash capture
+mod platform; // host-machine glue: SDL input, CPAL audio, video, crash capture
 mod ui; // look-and-feel toolkit: widgets, style, theme, animation
 
 // Netplay: `net` (in the session crate) owns the wire protocols,
@@ -380,10 +380,8 @@ fn run_app() -> iced::Result {
     // Initialize SDL3 itself + warm the gamepad context now (main
     // thread) so the first emulator session's first redraw doesn't
     // pay for SDL_Init + enumerating + opening every attached
-    // controller, and so the audio backend below can borrow the
-    // already-initialized Sdl. sdl3 enforces "first thread to call
-    // init owns the pump", so this has to happen on the iced/winit
-    // main thread.
+    // controller. sdl3 enforces "first thread to call init owns the
+    // pump", so this has to happen on the iced/winit main thread.
     platform::sdl_init::init();
     platform::gamepad::init();
 

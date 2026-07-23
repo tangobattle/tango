@@ -1,11 +1,16 @@
 //! The app's audio routing: the `Stream` contract sessions produce
 //! against comes from [`tango_session::audio`] (re-exported here); this
 //! module owns the late-binding mux that lets the host output stream
-//! outlive any one session, and the SDL backend that drives it.
+//! outlive any one session, and the CPAL backend that drives it.
 
-pub mod sdl;
+pub mod cpal;
 
 pub use tango_session::audio::{Stream, NUM_CHANNELS, SAMPLES};
+
+/// Stable session-facing mix rate. Device-native rate changes are
+/// handled in the CPAL boundary, so a hotplug never invalidates a
+/// running session's resampler.
+pub const MIX_SAMPLE_RATE: u32 = 48_000;
 
 #[derive(thiserror::Error, Debug)]
 pub enum BindingError {
@@ -51,14 +56,10 @@ pub struct LateBinder {
 impl LateBinder {
     pub fn new() -> Self {
         Self {
-            sample_rate: 0,
+            sample_rate: MIX_SAMPLE_RATE,
             stream: std::sync::Arc::new(std::sync::Mutex::new(None)),
             volume: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(1.0_f32.to_bits())),
         }
-    }
-
-    pub fn set_sample_rate(&mut self, sample_rate: u32) {
-        self.sample_rate = sample_rate;
     }
 
     pub fn sample_rate(&self) -> u32 {

@@ -62,6 +62,11 @@ datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrappe
 bincode = "1"
 async-trait.workspace = true
 sdl3 = { version = "0.18", default-features = false, features = ["build-from-source-static"] }
+# Native audio output. The session side always mixes at 48 kHz; this
+# boundary negotiates the current default device's format and converts
+# to it, so a device swap can change sample rate without rebuilding the
+# running emulator session.
+cpal = "0.18"
 # Lets the `!Send` SDL handles (Sdl, EventPump, GamepadSubsystem) live in
 # `Send` globals: SendWrapper is Send + Sync but panics if the inner value
 # is dereferenced (or dropped) from any thread other than the one that
