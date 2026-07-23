@@ -10,45 +10,23 @@ pub type Metadata = protos::replay11::Metadata;
 
 pub const HEADER: &[u8] = b"TOOT";
 /// SIO-engine replays — the only readable schema. The input stream is
-/// one continuous run of pair ticks from session start (a ROUND_START
-/// on the first record and on each later round's first record),
-/// replayed by rebooting and re-priming an [`mgba_rollback::Link`] and
-/// feeding it the (p1, p2) stream verbatim. Trap-engine recordings
-/// (schema 0x1B and older) are not supported — the engine that played
-/// them is gone, and [`decode_metadata`] rejects them.
+/// one continuous run of pair ticks from session start, replayed by
+/// rebooting and re-priming an [`mgba_rollback::Link`] and feeding it
+/// the (p1, p2) stream verbatim. Trap-engine recordings (schema 0x1B
+/// and older) are not supported — the engine that played them is gone,
+/// and [`decode_metadata`] rejects them.
+///
+/// After the header (magic, version, metadata, offerer flag, player
+/// index, rng seed, two zstd SRAM frames), the rest of the file is an
+/// [`mgba_rollback::replay`] input stream: this container only frames
+/// it. Round boundaries are the stream's marks — one stamped on each
+/// round's first record.
 pub const VERSION: u8 = 0x1C;
 
-/// Per-input record encoding. GBA joyflags use 10 bits, so each side packs
-/// into 2 high bits in the tag's payload nibble plus 1 low byte that
-/// follows. Most frames are idle or repeat the previous frame, so the tag
-/// byte alone usually suffices.
-///
-/// Tag byte layout:
-///   bit 7 (op): 0 = "default value is zero", 1 = "default value is previous record's value"
-///   bit 6:      1 = p1 takes the default (no p1 byte follows), 0 = p1 explicit
-///   bit 5:      1 = p2 takes the default (no p2 byte follows), 0 = p2 explicit
-///   bit 4:      ROUND_START flag (overlay; resets `prev` to (0,0) for this record)
-///   bits 0..=1: high 2 bits of explicit p1
-///   bits 2..=3: high 2 bits of explicit p2
-///
-/// The all-zero tag byte (0x00) is the end-of-replay sentinel. The op bit
-/// is informationally redundant when both sides are explicit, so the
-/// encoder always sets it (op=1) in that case to keep the tag byte clear
-/// of the EOR sentinel.
-const OP_PREV: u8 = 0b1000_0000;
-const P1_DEFAULT: u8 = 0b0100_0000;
-const P2_DEFAULT: u8 = 0b0010_0000;
-const ROUND_START_FLAG: u8 = 0b0001_0000;
-const END_OF_REPLAY: u8 = 0x00;
-
 pub struct Writer {
-    writer: Box<dyn Write + Send>,
-    /// True once a round is open. The next [`write_input`] sets the
-    /// `ROUND_START_FLAG` bit on its tag byte and clears this.
-    next_input_is_round_start: bool,
-    /// Last (p1, p2) joyflags emitted, used by the "default = previous"
-    /// tag form. Reset to (0, 0) on every [`start_round`].
-    prev: (u16, u16),
+    /// Everything after the header framing is the shared stream
+    /// encoding; rounds are its marks.
+    stream: mgba_rollback::replay::Writer<Box<dyn Write + Send>>,
 }
 
 #[derive(Clone)]
@@ -68,11 +46,11 @@ pub struct Replay {
     /// One continuous run of (local, remote) pair ticks from session
     /// start — the stream as recorded, not segmented.
     pub inputs: Vec<(crate::input::Input, crate::input::Input)>,
-    /// Indices into `inputs` where a round starts (records whose
-    /// ROUND_START flag was set). The first entry is always 0 when
-    /// `inputs` is non-empty — recordings that predate the markers
-    /// decode as one round — so consecutive entries (and the stream
-    /// end) delimit the rounds.
+    /// Indices into `inputs` where a round starts (records carrying a
+    /// stream mark). The first entry is always 0 when `inputs` is
+    /// non-empty — recordings that predate the markers decode as one
+    /// round — so consecutive entries (and the stream end) delimit the
+    /// rounds.
     pub round_starts: Vec<usize>,
 }
 
@@ -174,73 +152,34 @@ impl Replay {
         let local_sram = read_zstd_frame(&mut r)?;
         let remote_sram = read_zstd_frame(&mut r)?;
 
-        // Streaming decode: see the tag-byte layout doc near `OP_PREV`
-        // for the per-record encoding. `0x00` ends the stream cleanly;
-        // any unexpected EOF mid-record drops the partial record and
-        // leaves is_complete=false.
-        let mut inputs: Vec<(crate::input::Input, crate::input::Input)> = Vec::new();
-        let mut round_starts: Vec<usize> = Vec::new();
-        let mut is_complete = false;
-        let mut prev: (u16, u16) = (0, 0);
+        // The rest of the file is the shared stream encoding; a
+        // truncated tail comes back as is_complete = false with the
+        // partial record dropped.
+        let stream = mgba_rollback::replay::Stream::read(&mut r)?;
 
-        while let Ok(tag) = r.read_u8() {
-            if tag == END_OF_REPLAY {
-                is_complete = true;
-                break;
-            }
-
-            if tag & ROUND_START_FLAG != 0 {
-                round_starts.push(inputs.len());
-                prev = (0, 0);
-            }
-
-            let op_prev = tag & OP_PREV != 0;
-            let p1_default = tag & P1_DEFAULT != 0;
-            let p2_default = tag & P2_DEFAULT != 0;
-
-            let p1 = if p1_default {
-                if op_prev {
-                    prev.0
+        let inputs: Vec<(crate::input::Input, crate::input::Input)> = stream
+            .inputs
+            .into_iter()
+            .map(|[p1, p2]| {
+                let p1_input = crate::input::Input { joyflags: p1 };
+                let p2_input = crate::input::Input { joyflags: p2 };
+                if local_player_index == 0 {
+                    (p1_input, p2_input)
                 } else {
-                    0
+                    (p2_input, p1_input)
                 }
-            } else {
-                let high = (tag & 0b11) as u16;
-                let Ok(low) = r.read_u8() else { break };
-                (high << 8) | low as u16
-            };
-            let p2 = if p2_default {
-                if op_prev {
-                    prev.1
-                } else {
-                    0
-                }
-            } else {
-                let high = ((tag >> 2) & 0b11) as u16;
-                let Ok(low) = r.read_u8() else { break };
-                (high << 8) | low as u16
-            };
-
-            prev = (p1, p2);
-
-            let p1_input = crate::input::Input { joyflags: p1 };
-            let p2_input = crate::input::Input { joyflags: p2 };
-            let (local, remote) = if local_player_index == 0 {
-                (p1_input, p2_input)
-            } else {
-                (p2_input, p1_input)
-            };
-            inputs.push((local, remote));
-        }
+            })
+            .collect();
 
         // A leading unmarked run — recordings that predate the markers,
         // or a crash-recovered partial round — still counts as a round.
+        let mut round_starts = stream.marks;
         if !inputs.is_empty() && round_starts.first() != Some(&0) {
             round_starts.insert(0, 0);
         }
 
         Ok(Self {
-            is_complete,
+            is_complete: stream.is_complete,
             metadata,
             is_offerer,
             local_player_index,
@@ -280,19 +219,16 @@ impl Writer {
         write_zstd_frame(&mut *writer, remote_sram)?;
         writer.flush()?;
         Ok(Writer {
-            writer,
-            next_input_is_round_start: false,
-            prev: (0, 0),
+            stream: mgba_rollback::replay::Writer::new(writer),
         })
     }
 
     pub fn start_round(&mut self) -> std::io::Result<()> {
-        // The marker is stamped on the next [`write_input`]'s tag byte; we
+        // The mark is stamped on the next [`write_input`]'s tag byte; we
         // don't emit anything here, so a crash mid-round just leaves the
         // partial inputs on disk and the recovery path will treat the next
-        // ROUND_START as starting a fresh round.
-        self.next_input_is_round_start = true;
-        self.prev = (0, 0);
+        // mark as starting a fresh round.
+        self.stream.mark();
         Ok(())
     }
 
@@ -307,66 +243,93 @@ impl Writer {
         } else {
             (remote.joyflags, local.joyflags)
         };
-
-        // Pick whichever op (default = zero vs default = previous) lets
-        // more sides "take the default" — fewer explicit sides = smaller
-        // record. Tie-break toward op=0 so the canonical idle frame stays
-        // compact and matches new readers' expectations.
-        let op0_p1_default = p1 == 0;
-        let op0_p2_default = p2 == 0;
-        let op1_p1_default = p1 == self.prev.0;
-        let op1_p2_default = p2 == self.prev.1;
-        let op0_explicit_count = (!op0_p1_default as u32) + (!op0_p2_default as u32);
-        let op1_explicit_count = (!op1_p1_default as u32) + (!op1_p2_default as u32);
-
-        let (mut op_prev, p1_default, p2_default) = if op1_explicit_count < op0_explicit_count {
-            (true, op1_p1_default, op1_p2_default)
-        } else {
-            (false, op0_p1_default, op0_p2_default)
-        };
-
-        // The op bit is informationally redundant when both sides are
-        // explicit; force it high so the tag byte never collides with the
-        // 0x00 EOR sentinel (which it could if both high-bit pairs and the
-        // round-start bit are all zero).
-        if !p1_default && !p2_default {
-            op_prev = true;
-        }
-
-        let mut tag: u8 = 0;
-        if op_prev {
-            tag |= OP_PREV;
-        }
-        if p1_default {
-            tag |= P1_DEFAULT;
-        } else {
-            tag |= ((p1 >> 8) & 0b11) as u8;
-        }
-        if p2_default {
-            tag |= P2_DEFAULT;
-        } else {
-            tag |= (((p2 >> 8) & 0b11) as u8) << 2;
-        }
-        if self.next_input_is_round_start {
-            tag |= ROUND_START_FLAG;
-            self.next_input_is_round_start = false;
-        }
-
-        self.writer.write_u8(tag)?;
-        if !p1_default {
-            self.writer.write_u8((p1 & 0xff) as u8)?;
-        }
-        if !p2_default {
-            self.writer.write_u8((p2 & 0xff) as u8)?;
-        }
-
-        self.prev = (p1, p2);
-        Ok(())
+        self.stream.push([p1, p2])
     }
 
-    pub fn finish(mut self) -> std::io::Result<()> {
-        self.writer.write_u8(END_OF_REPLAY)?;
-        self.writer.flush()?;
+    pub fn finish(self) -> std::io::Result<()> {
+        self.stream.finish()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `Writer::new` wants ownership of an `impl Write + Send + 'static`,
+    /// so a plain `Vec` can't be inspected afterwards; share the buffer.
+    struct SharedVec(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+    impl std::io::Write for SharedVec {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn roundtrips_rounds_and_both_sides() {
+        // joyflags with high bits set exercise the explicit tag form;
+        // the repeated pair the previous-tick default.
+        let ticks: Vec<(u16, u16)> = vec![(0, 0), (0x041, 0x082), (0x041, 0x082), (0x3ff, 0x155), (0, 0x300)];
+        let round_starts = [0usize, 3];
+
+        for local_player_index in [0u8, 1] {
+            let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let mut w = Writer::new(
+                SharedVec(buf.clone()),
+                VERSION,
+                Metadata {
+                    ts: 1_752_000_000_000,
+                    ..Default::default()
+                },
+                true,
+                local_player_index,
+                [7u8; 16],
+                &[1, 2, 3],
+                &[4, 5],
+            )
+            .unwrap();
+            for (i, &(p1, p2)) in ticks.iter().enumerate() {
+                if round_starts.contains(&i) {
+                    w.start_round().unwrap();
+                }
+                let (local, remote) = if local_player_index == 0 { (p1, p2) } else { (p2, p1) };
+                w.write_input(
+                    local_player_index,
+                    &(
+                        crate::input::Input { joyflags: local },
+                        crate::input::Input { joyflags: remote },
+                    ),
+                )
+                .unwrap();
+            }
+            w.finish().unwrap();
+
+            let bytes = buf.lock().unwrap().clone();
+            let replay = Replay::decode(&bytes[..]).unwrap();
+            assert!(replay.is_complete);
+            assert!(replay.is_offerer);
+            assert_eq!(replay.local_player_index, local_player_index);
+            assert_eq!(replay.rng_seed, [7u8; 16]);
+            assert_eq!(replay.local_sram, vec![1, 2, 3]);
+            assert_eq!(replay.remote_sram, vec![4, 5]);
+            assert_eq!(replay.metadata.ts, 1_752_000_000_000);
+            assert_eq!(replay.round_starts, round_starts);
+            let expected: Vec<(u16, u16)> = ticks
+                .iter()
+                .map(|&(p1, p2)| if local_player_index == 0 { (p1, p2) } else { (p2, p1) })
+                .collect();
+            assert_eq!(
+                replay
+                    .inputs
+                    .iter()
+                    .map(|(l, r)| (l.joyflags, r.joyflags))
+                    .collect::<Vec<_>>(),
+                expected
+            );
+        }
     }
 }
