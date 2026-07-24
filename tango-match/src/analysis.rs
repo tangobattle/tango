@@ -726,11 +726,14 @@ pub fn fold_confirmed(
         }
         builder.push_sample(RoundSample {
             tick,
-            local: obs.hp[local_player],
-            remote: obs.hp[1 - local_player],
+            local: obs.units[local_player].hp,
+            remote: obs.units[1 - local_player].hp,
             custom: obs.custom[local_player],
             buttons,
-            chips: [obs.chips[local_player], obs.chips[1 - local_player]],
+            // The stats format keeps the sentinel spelling; telemetry
+            // carries the absence as `None`.
+            chips: [obs.units[local_player].chip, obs.units[1 - local_player].chip]
+                .map(|c| c.unwrap_or(NO_CHIP)),
         });
     };
 

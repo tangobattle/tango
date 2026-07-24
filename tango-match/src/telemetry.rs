@@ -21,12 +21,18 @@
 //! confirmed boundary is final.
 //!
 //! Each core gets its own poller (its own game variant's offsets — the
-//! two sides of a crossplay pair are different ROMs), and each poller
-//! answers for **its own player** where a game only knows its local side
-//! (bn1–3's custom-screen flag). Absolute-indexed values (HP, chips, the
-//! battle tick) are taken from player 0's core; under lockstep the two
-//! games compute the same battle, so the views agree at every settled
-//! boundary. Round-start and verdict traps live on core 0 only, for the
+//! two sides of a crossplay pair are different ROMs), and a poll splits
+//! in two along what the game's RAM actually holds. The battle SIM is
+//! both-sided on every core — under lockstep each game simulates both
+//! units, and `unit_owner` resolves slot to absolute player — so
+//! [`CoreObs::units`] carries both players and the merge takes them from
+//! player 0's core, arbitrarily but consistently (core 1's copy is the
+//! same values; splicing one player from each core would assemble a
+//! state neither game ever computed if they ever disagreed). LOCAL state
+//! has no second copy to read: bn1–3 keep the custom screen as this
+//! side's battle-mode handler value, so [`CoreObs::custom_self`] answers
+//! for the polling core's own player only and the merge pairs the two
+//! cores' answers. Round-start and verdict traps live on core 0 only, for the
 //! same reason — but MATCH-END anchors live on both cores: each game
 //! exits the link session through its own path, and on a one-sided
 //! decline only the decliner's game exits (the other waits at its menu
@@ -38,10 +44,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-/// Sentinel for "no chip loaded" in [`BattleObs::chips`] — the games' own
-/// in-memory sentinel (same as `battle::NO_CHIP`).
-pub const NO_CHIP: u16 = 0xffff;
-
 /// How a finished round came out, in **absolute** player terms; hosts
 /// reorient by local player index.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -51,19 +53,34 @@ pub enum Outcome {
     Draw,
 }
 
-/// One core's view of one simulated tick, absolute player order where a
-/// field covers both players.
+/// One player's unit in the battle sim, as one core sees it. Every field
+/// here comes out of the shared simulation, so both cores of a pair read
+/// the same values at a settled tick — new per-player battle readings
+/// belong in here.
+#[derive(Clone, Copy, Debug)]
+pub struct UnitObs {
+    /// In-battle HP.
+    pub hp: u16,
+    /// Loaded-chip token, `None` when the game reports no chip loaded (or
+    /// reports no chip identity at all — bn1). The games spell this
+    /// `0xFFFF` in RAM; that sentinel stops at the poller, and the
+    /// serialized stats format's own [`battle::NO_CHIP`] is re-applied at
+    /// the fold (see [`analysis::fold_confirmed`]).
+    ///
+    /// [`battle::NO_CHIP`]: crate::battle::NO_CHIP
+    /// [`analysis::fold_confirmed`]: crate::analysis::fold_confirmed
+    pub chip: Option<u16>,
+}
+
+/// One core's view of one simulated tick.
 #[derive(Clone, Copy, Debug)]
 pub struct CoreObs {
-    /// Both players' in-battle HP.
-    pub hp: [u16; 2],
+    /// Both players' units, absolute player order.
+    pub units: [UnitObs; 2],
     /// Whether **this core's own player** has the custom (chip-select)
-    /// screen open.
+    /// screen open — the one reading a game may only know for its local
+    /// side (bn1–3), hence the per-core shape.
     pub custom_self: bool,
-    /// Both players' loaded-chip tokens ([`NO_CHIP`] = none/not reported).
-    pub chips: [u16; 2],
-    /// The round's standing result, once this game has decided it.
-    pub outcome: Option<Outcome>,
 }
 
 /// The per-game data-side reader for one core of the pair: polls one
@@ -163,15 +180,13 @@ impl LifecycleSink {
     }
 }
 
-/// Both players' merged observation for one simulated tick: absolute
-/// values from player 0's core, per-player custom flags from each side's
-/// own core.
+/// Both players' merged observation for one simulated tick: the shared
+/// sim's units from player 0's core, per-player custom flags from each
+/// side's own core. Absolute player order.
 #[derive(Clone, Copy, Debug)]
 pub struct BattleObs {
-    pub hp: [u16; 2],
+    pub units: [UnitObs; 2],
     pub custom: [bool; 2],
-    pub chips: [u16; 2],
-    pub outcome: Option<Outcome>,
 }
 
 /// A lifecycle event, stamped from the games' own trapped code paths.
@@ -316,10 +331,8 @@ impl mgba_rollback::session::TickObserver for Telemetry {
         let obs1 = self.pollers[1].poll(pair.core_mut(1));
         let obs = match (obs0, obs1) {
             (Some(c0), Some(c1)) => Some(BattleObs {
-                hp: c0.hp,
+                units: c0.units,
                 custom: [c0.custom_self, c1.custom_self],
-                chips: c0.chips,
-                outcome: c0.outcome.or(c1.outcome),
             }),
             _ => None,
         };
