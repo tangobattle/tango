@@ -408,6 +408,40 @@ fn corner_commands_overlay<'a>(
         .into()
 }
 
+/// Picture-in-picture inset, top-right below the corner commands: the
+/// other side's screen. Both cores render anyway (replay re-simulates the
+/// opponent, training runs a live pair); this just insets the extra one.
+/// Drawn through its own shader surface ([`PipProgram`]) because the main
+/// framebuffer's pipeline owns a single resident texture. Reads the
+/// host's captured [`State::pip_frame`], so it's pure presentation with no
+/// message of its own — every session kind can push it directly.
+///
+/// [`PipProgram`]: crate::platform::video::framebuffer::PipProgram
+pub(crate) fn pip_overlay(state: &State) -> Option<Element<'_, Message>> {
+    let frame = state.pip_frame.clone()?;
+    // 1.5x native: readable without dominating the main view.
+    let (w, h) = (frame.width as f32 * 1.5, frame.height as f32 * 1.5);
+    let fb = iced::widget::shader::Shader::new(crate::platform::video::framebuffer::PipProgram::new(frame))
+        .width(Length::Fixed(w))
+        .height(Length::Fixed(h));
+    let plate = container(fb).padding(3).style(hud_chip_plate);
+    Some(
+        container(plate)
+            .width(Fill)
+            .height(Fill)
+            .align_x(iced::alignment::Horizontal::Right)
+            .align_y(iced::alignment::Vertical::Top)
+            .padding(iced::Padding {
+                // Clear the corner commands' resting spot.
+                top: 56.0,
+                right: 12.0,
+                bottom: 0.0,
+                left: 0.0,
+            })
+            .into(),
+    )
+}
+
 /// Diameter of the exit chip's countdown dial.
 const HOLD_RING_SIZE: f32 = 28.0;
 

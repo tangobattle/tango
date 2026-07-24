@@ -536,6 +536,9 @@ pub enum Message {
     /// PvP-view messages (frame delay, setup panels, save views,
     /// disconnect confirm) — defined + handled in [`view::pvp`].
     Pvp(view::pvp::Message),
+    /// Training-view messages (PiP + side-swap toggles) — defined +
+    /// handled in [`view::training`].
+    Training(view::training::Message),
     /// Post-match results screen messages — defined in
     /// [`view::results`]. Dismiss is handled here; WatchReplay by the
     /// App wrapper (building a playback session needs the scanners +
@@ -793,6 +796,7 @@ impl State {
             // the views that emit them.
             Message::Replay(m) => return view::replay::update(self, m).map(Message::Replay),
             Message::Pvp(m) => return view::pvp::update(self, m).map(Message::Pvp),
+            Message::Training(m) => return view::training::update(self, m).map(Message::Training),
             Message::Results(m) => match m {
                 view::results::Message::Dismiss => self.results = None,
                 // App-level: the wrapper intercepts this and builds the

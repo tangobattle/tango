@@ -23,7 +23,7 @@
 //! each tick is supplied locally before that tick advances, so the pair
 //! runs in perfect lockstep.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tango_match::engine::{Match, MatchConfig};
@@ -91,8 +91,12 @@ type SharedController = Arc<Mutex<Box<dyn TrainingController>>>;
 
 pub struct TrainingSession {
     game: &'static tango_gamesupport::Game,
-    /// Which core the human drives (P1 = 0). Fixed for the session.
-    human_player: usize,
+    /// Which core the human currently drives (0 or 1). The player starts
+    /// on core 0 with the dummy on core 1; [`swap`](Self::toggle_swap)
+    /// flips it so the human takes the other side. Read every tick by the
+    /// drive loop (to route input) and by the audio pull (to follow the
+    /// controlled core).
+    controlled: Arc<AtomicUsize>,
     joyflags: Arc<AtomicU32>,
     controller: SharedController,
     /// Pacing target as f32 bits — realtime by default; `set_speed`
@@ -102,6 +106,14 @@ pub struct TrainingSession {
     /// The most recent joyflags the dummy controller produced, for the
     /// host to observe.
     dummy_joyflags: Arc<AtomicU32>,
+    /// Whether the opponent-screen picture-in-picture is on.
+    show_pip: Arc<AtomicBool>,
+    /// The non-controlled core's screen, written each tick while the PiP
+    /// is on.
+    pip: Arc<crate::Framebuffer>,
+    /// Whether `pip` holds a frame from the current PiP activation
+    /// (cleared while off, so a stale capture never flashes on re-toggle).
+    pip_fresh: Arc<AtomicBool>,
     /// Latched once the battle's own match-end path fires — flips
     /// [`is_ended`](crate::Session::is_ended) so the host tears the
     /// session down.
@@ -130,15 +142,15 @@ impl TrainingSession {
         sample_rate: u32,
         controller: Box<dyn TrainingController>,
     ) -> Result<(Self, crate::core_stream::CoreStream), crate::Error> {
-        // The human is core 0, the dummy core 1. Both cores run the same
-        // game (a mirror match) — training is local, so there's no
-        // opponent selection.
-        let human_player = 0usize;
-        let dummy_player = 1usize;
-
-        // Boot + prime the pair to a live link battle. Present delay 0:
-        // the match is local and lockstep, so there's no latency to hide
-        // and no speculation to roll back.
+        // The engine's local core is core 0; `advance` always feeds core
+        // 0 and `add_remote_input` core 1. The player starts on core 0
+        // (the dummy on core 1); a swap only re-routes which input source
+        // feeds each core, so the engine's local_player stays 0. Both
+        // cores run the same game (a mirror match) — training is local,
+        // so there's no opponent selection.
+        //
+        // Present delay 0: the match is local and lockstep, so there's no
+        // latency to hide and no speculation to roll back.
         let match_ = Match::new(MatchConfig {
             roms: [rom.as_ref().clone(), rom.as_ref().clone()],
             saves: [save_sram.clone(), save_sram],
@@ -146,26 +158,46 @@ impl TrainingSession {
             match_type: TRAINING_MATCH_TYPE,
             rng_seed: rand::random(),
             rtc: std::time::SystemTime::now(),
-            local_player: human_player,
+            local_player: 0,
             present_delay: 0,
             disable_bgm: false,
         })?;
 
+        // The rollback session frameskips every non-local core to spare
+        // the software renderer (PvP only ever shows the local side).
+        // Training shows both — the PiP and the side-swap — so turn
+        // rendering back on for the whole pair. (Frameskip is unserialized
+        // and invisible to the simulation, so this is rollback-safe.)
+        match_.with_pair(|pair| {
+            for i in 0..2 {
+                pair.set_frameskip(i, 0);
+            }
+        });
+
+        let controlled = Arc::new(AtomicUsize::new(0));
         let joyflags = Arc::new(AtomicU32::new(0));
         let controller: SharedController = Arc::new(Mutex::new(controller));
         let fps_bits = Arc::new(AtomicU32::new(EXPECTED_FPS.to_bits()));
         let dummy_joyflags = Arc::new(AtomicU32::new(0));
+        let show_pip = Arc::new(AtomicBool::new(false));
+        let pip = crate::Framebuffer::new();
+        let pip_fresh = Arc::new(AtomicBool::new(false));
         let ended = Arc::new(AtomicBool::new(false));
         let stop = Arc::new(AtomicBool::new(false));
         let screen = crate::Framebuffer::new();
         let wake = Arc::new(tokio::sync::Notify::new());
 
-        // Audio pulls the human core straight off the pair (same path as
-        // PvP), rate control following the pacing target.
+        // Audio pulls the controlled core straight off the pair (same
+        // path as PvP), rate control following the pacing target. The
+        // `player` closure is re-read every fill, so a swap moves the
+        // sound to the side the player is now driving.
         let audio = crate::core_stream::CoreStream::new(
             crate::core_stream::PairCorePull {
                 pair: match_.pair_handle(),
-                player: Box::new(move || human_player),
+                player: {
+                    let controlled = controlled.clone();
+                    Box::new(move || controlled.load(Ordering::Relaxed))
+                },
             },
             crate::core_stream::CoreStream::fps_from_bits(fps_bits.clone()),
             sample_rate,
@@ -174,12 +206,14 @@ impl TrainingSession {
         let drive = std::thread::Builder::new().name("training".to_owned()).spawn({
             let ctx = DriveContext {
                 match_,
-                human_player,
-                dummy_player,
+                controlled: controlled.clone(),
                 joyflags: joyflags.clone(),
                 controller: controller.clone(),
                 fps_bits: fps_bits.clone(),
                 dummy_joyflags: dummy_joyflags.clone(),
+                show_pip: show_pip.clone(),
+                pip: pip.clone(),
+                pip_fresh: pip_fresh.clone(),
                 ended: ended.clone(),
                 stop: stop.clone(),
                 screen: screen.clone(),
@@ -191,11 +225,14 @@ impl TrainingSession {
         Ok((
             Self {
                 game,
-                human_player,
+                controlled,
                 joyflags,
                 controller,
                 fps_bits,
                 dummy_joyflags,
+                show_pip,
+                pip,
+                pip_fresh,
                 ended,
                 stop,
                 screen,
@@ -221,9 +258,33 @@ impl TrainingSession {
         self.dummy_joyflags.load(Ordering::Relaxed)
     }
 
-    /// Which core the human drives (always P1 = 0 in training).
-    pub fn human_player(&self) -> usize {
-        self.human_player
+    /// Which core the human currently drives (0 or 1).
+    pub fn controlled_player(&self) -> usize {
+        self.controlled.load(Ordering::Relaxed)
+    }
+
+    /// Whether the player has swapped to the non-default side (control of
+    /// core 1). `false` on the side the session booted on.
+    pub fn is_swapped(&self) -> bool {
+        self.controlled.load(Ordering::Relaxed) != 0
+    }
+
+    /// Swap which side the player controls: the human and the dummy trade
+    /// cores. Takes effect on the next tick the drive loop routes input,
+    /// and the audio + main screen follow the newly-controlled core.
+    pub fn toggle_swap(&self) {
+        self.controlled.fetch_xor(1, Ordering::Relaxed);
+    }
+
+    /// Whether the opponent-screen picture-in-picture is on.
+    pub fn show_pip(&self) -> bool {
+        self.show_pip.load(Ordering::Relaxed)
+    }
+
+    /// Toggle the opponent-screen picture-in-picture. Takes effect on the
+    /// next published frame.
+    pub fn toggle_pip(&self) {
+        self.show_pip.fetch_xor(true, Ordering::Relaxed);
     }
 }
 
@@ -238,6 +299,12 @@ impl crate::Session for TrainingSession {
 
     fn wake(&self) -> Arc<tokio::sync::Notify> {
         self.wake.clone()
+    }
+
+    /// The non-controlled core's screen — `None` while the PiP is off or
+    /// before its first captured frame.
+    fn pip_frame(&self) -> Option<Vec<u8>> {
+        (self.show_pip.load(Ordering::Relaxed) && self.pip_fresh.load(Ordering::Relaxed)).then(|| self.pip.read())
     }
 
     fn set_joyflags(&self, joyflags: u32) {
@@ -269,12 +336,14 @@ impl Drop for TrainingSession {
 /// Everything the drive thread owns for the session's life.
 struct DriveContext {
     match_: Match,
-    human_player: usize,
-    dummy_player: usize,
+    controlled: Arc<AtomicUsize>,
     joyflags: Arc<AtomicU32>,
     controller: SharedController,
     fps_bits: Arc<AtomicU32>,
     dummy_joyflags: Arc<AtomicU32>,
+    show_pip: Arc<AtomicBool>,
+    pip: Arc<crate::Framebuffer>,
+    pip_fresh: Arc<AtomicBool>,
     ended: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
     screen: Arc<crate::Framebuffer>,
@@ -288,30 +357,37 @@ impl DriveContext {
         let mut pacer = crate::Pacer::new();
 
         while !self.stop.load(Ordering::Relaxed) {
+            // Which core the player drives this tick; the dummy takes the
+            // other. A swap flips this between ticks.
+            let controlled = self.controlled.load(Ordering::Relaxed);
+            let dummy_player = 1 - controlled;
+
             // Poll the dummy controller for the tick about to advance. It
             // sees the pair parked at the newest simulated tick; its
             // output becomes the dummy core's input for this tick. The
             // stock NoopController returns 0.
-            let human_player = self.human_player;
-            let dummy_player = self.dummy_player;
             let controller = self.controller.clone();
             let dummy = self.match_.with_pair(|pair| {
                 controller.lock().unwrap().poll(&mut ControllerContext {
                     pair,
                     dummy_player,
-                    human_player,
+                    human_player: controlled,
                     frame,
                 })
             }) & mask;
             self.dummy_joyflags.store(dummy, Ordering::Relaxed);
 
-            // Feed the dummy's input for this tick, then advance the human
-            // core's. Both inputs for the tick are present before it
-            // advances, so the pair confirms it immediately — lockstep,
-            // no rollback.
-            self.match_.add_remote_input(dummy, 0);
-            let keys = self.joyflags.load(Ordering::Relaxed) & mask;
-            let (_outgoing, report) = match self.match_.advance(keys) {
+            // Route each input to its core, then feed the engine: core 0
+            // via `advance`, core 1 via `add_remote_input` (the engine's
+            // fixed local/remote slots). Whichever core the player drives
+            // gets the pad; the other gets the dummy. Both inputs for the
+            // tick are present before it advances, so the pair confirms it
+            // immediately — lockstep, no rollback.
+            let player = self.joyflags.load(Ordering::Relaxed) & mask;
+            let core0 = if controlled == 0 { player } else { dummy };
+            let core1 = if controlled == 0 { dummy } else { player };
+            self.match_.add_remote_input(core1, 0);
+            let (_outgoing, report) = match self.match_.advance(core0) {
                 Ok(r) => r,
                 Err(e) => {
                     log::error!("training: advance failed: {e}");
@@ -332,9 +408,21 @@ impl DriveContext {
                 break;
             }
 
-            if let Some(buf) = self.match_.local_video_buffer() {
-                self.screen.write(&buf);
-            }
+            // Publish the controlled core to the main screen; the other
+            // core feeds the PiP while it's on.
+            self.match_.with_pair(|pair| {
+                if let Some(buf) = pair.video_buffer(controlled) {
+                    self.screen.write(buf);
+                }
+                if self.show_pip.load(Ordering::Relaxed) {
+                    if let Some(buf) = pair.video_buffer(dummy_player) {
+                        self.pip.write(buf);
+                        self.pip_fresh.store(true, Ordering::Relaxed);
+                    }
+                } else {
+                    self.pip_fresh.store(false, Ordering::Relaxed);
+                }
+            });
             frame = frame.wrapping_add(1);
             self.wake.notify_one();
 

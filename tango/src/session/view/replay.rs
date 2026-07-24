@@ -230,7 +230,7 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
     // outside the controls gate — it's for watching, so it must not
     // tuck away with the idle cursor.
     if let Some(o) = pip_overlay(state) {
-        stacked = stacked.push(o.map(SessionMessage::Replay));
+        stacked = stacked.push(o);
     }
     if let Some(o) = scrub_thumbnail_overlay(state) {
         stacked = stacked.push(o.map(SessionMessage::Replay));
@@ -1004,38 +1004,6 @@ fn input_pad<'a>(joyflags: u16) -> Element<'a, Message> {
 /// the transport bar's popover lift so it never moves — the bar
 /// auto-hides beneath it, the chips stay. Pure presentation: no mouse
 /// handlers anywhere in the chain.
-/// Picture-in-picture inset, top-right below the corner commands: the
-/// opponent's screen during replay playback (their perspective is
-/// re-simulated anyway; this just turns its renderer on). Drawn through
-/// its own shader surface ([`PipProgram`]) because the main framebuffer's
-/// pipeline owns a single resident texture.
-///
-/// [`PipProgram`]: crate::platform::video::framebuffer::PipProgram
-fn pip_overlay(state: &State) -> Option<Element<'_, Message>> {
-    let frame = state.pip_frame.clone()?;
-    // 1.5x native: readable without dominating the main view.
-    let (w, h) = (frame.width as f32 * 1.5, frame.height as f32 * 1.5);
-    let fb = iced::widget::shader::Shader::new(crate::platform::video::framebuffer::PipProgram::new(frame))
-        .width(Length::Fixed(w))
-        .height(Length::Fixed(h));
-    let plate = container(fb).padding(3).style(hud_chip_plate);
-    Some(
-        container(plate)
-            .width(Fill)
-            .height(Fill)
-            .align_x(iced::alignment::Horizontal::Right)
-            .align_y(iced::alignment::Vertical::Top)
-            .padding(iced::Padding {
-                // Clear the corner commands' resting spot.
-                top: 56.0,
-                right: 12.0,
-                bottom: 0.0,
-                left: 0.0,
-            })
-            .into(),
-    )
-}
-
 fn input_display_overlay<'a>(
     r: &'a ReplaySession,
     state: &'a State,
