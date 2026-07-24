@@ -667,61 +667,43 @@ pub fn game_row<'a>(
 ) -> Element<'a, Message> {
     let game = family_picker(loadout, lang, scanners).width(Length::FillPortion(3));
 
-    // Gaps are explicit children rather than row spacing, because a
-    // fetch replaces the patch AND version pickers with one unbroken
-    // download strip -- and a uniform spacing would leave a seam down
-    // the middle of it. Laid out this way the fixed 8 + 8 + version
-    // width comes off the row identically in both states, so the game
-    // picker never moves.
-    let gap = || iced::widget::space::horizontal().width(Length::Fixed(8.0));
-    let rest: Vec<Element<'a, Message>> = match patch_download(loadout, lang, downloads) {
-        Some((bar, controls)) => vec![bar, controls],
-        None => vec![
-            patch_picker(loadout, lang, scanners, config)
-                .width(Length::FillPortion(2))
-                .into(),
-            gap().into(),
-            version_picker(loadout, lang, scanners),
-        ],
-    };
-
-    let mut strip = row![game, gap()].spacing(0).align_y(Alignment::Center);
-    for element in rest {
-        strip = strip.push(element);
+    // A fetch takes the whole row: the bar can then run the full width
+    // rather than stopping at a picker boundary with the readout
+    // stranded past it. Cancelling puts the three pickers straight
+    // back, and the strip is the same height, so nothing moves.
+    if let Some(strip) = patch_download(loadout, lang, downloads) {
+        return strip;
     }
-    strip.into()
+
+    let patch = patch_picker(loadout, lang, scanners, config).width(Length::FillPortion(2));
+    let version = version_picker(loadout, lang, scanners);
+    row![game, patch, version].spacing(8).align_y(Alignment::Center).into()
 }
 
-/// Width of the version slot. Shared by the picker and the download
-/// strip that replaces it, so a swap can't change the row's shape.
+/// Width of the version slot.
 const VERSION_PICKER_WIDTH: f32 = 100.0;
 
-/// The download strip that replaces the patch and version pickers
-/// while a fetch is in flight or has failed: one continuous run of
-/// bar, percent and a ✕ to call it off, returned as the two adjacent
-/// pieces the row needs to keep its widths (they abut, so it reads as
-/// one). `None` whenever there's nothing to report, which is the
-/// normal case.
+/// The download strip that stands in for the whole picker row while a
+/// fetch is in flight or has failed: the bar takes every pixel the
+/// readout doesn't. `None` whenever there's nothing to report, which
+/// is the normal case.
 ///
-/// The pieces carry exactly the width and height the pickers they
-/// stand in for lay out to, so nothing around them moves.
+/// Carries [`crate::ui::style::PICKER_HEIGHT`], so swapping it in for
+/// the pickers can't change the strip's height.
 fn patch_download<'a>(
     loadout: &'a Loadout,
     lang: &'a LanguageIdentifier,
     downloads: &'a crate::library::patch::Downloads,
-) -> Option<(Element<'a, Message>, Element<'a, Message>)> {
+) -> Option<Element<'a, Message>> {
     let key = (loadout.patch.clone()?, loadout.patch_version.clone()?);
-    let piece = |content: Element<'a, Message>, width| {
+    let strip = |content: iced::widget::Row<'a, Message>| {
         Element::from(
-            container(content)
-                .width(width)
+            container(content.spacing(8).align_y(Alignment::Center))
+                .width(Length::Fill)
                 .height(Length::Fixed(crate::ui::style::PICKER_HEIGHT))
                 .align_y(Alignment::Center),
         )
     };
-    // The trailing piece swallows the gap the pickers had between them,
-    // so the strip has no seam.
-    let trailing = Length::Fixed(VERSION_PICKER_WIDTH + 8.0);
 
     match downloads.get(&key) {
         Some(download) if download.is_running() => {
@@ -729,63 +711,36 @@ fn patch_download<'a>(
                 Some(percent) => t!(lang, "play-patch-downloading-progress", percent = percent as i64),
                 None => t!(lang, "play-patch-downloading"),
             };
-            Some((
-                piece(
-                    iced::widget::progress_bar(0.0..=1.0, download.fraction().unwrap_or(0.0))
-                        .girth(Length::Fixed(4.0))
-                        .length(Length::Fill)
-                        .style(widgets::slim_progress_bar)
-                        .into(),
-                    Length::FillPortion(2),
+            Some(strip(row![
+                iced::widget::progress_bar(0.0..=1.0, download.fraction().unwrap_or(0.0))
+                    .girth(Length::Fixed(4.0))
+                    .length(Length::Fill)
+                    .style(widgets::slim_progress_bar),
+                // Right-aligned by sitting at the end of a filled row:
+                // the number's right edge is pinned, so 9% → 100% eats
+                // into the bar rather than shoving the ✕ along.
+                text(caption).size(TEXT_CAPTION).style(widgets::muted_text_style),
+                // Calling it off puts the pickers straight back.
+                widgets::icon_button(
+                    lucide_icons::Icon::X,
+                    t!(lang, "patches-cancel"),
+                    Message::CancelPatchDownload(key),
+                    [1.0, 1.0],
                 ),
-                piece(
-                    // Percent and ✕ sit as one group at the row's right
-                    // edge, which puts the slack in a single place
-                    // instead of splitting it either side of the
-                    // readout. Right-aligning also pins the number's
-                    // right edge, so 9% → 100% grows leftwards into
-                    // that slack and moves nothing.
-                    row![
-                        iced::widget::space::horizontal(),
-                        text(caption).size(TEXT_CAPTION).style(widgets::muted_text_style),
-                        // Calling it off puts both pickers straight back.
-                        widgets::icon_button(
-                            lucide_icons::Icon::X,
-                            t!(lang, "patches-cancel"),
-                            Message::CancelPatchDownload(key),
-                            [1.0, 1.0],
-                        ),
-                    ]
-                    .spacing(4)
-                    .align_y(Alignment::Center)
-                    .into(),
-                    trailing,
-                ),
-            ))
+            ]))
         }
-        Some(crate::library::patch::Download::Failed) => Some((
-            piece(
-                text(t!(lang, "play-patch-download-failed"))
-                    .size(TEXT_CAPTION)
-                    .style(widgets::danger_text_style)
-                    .into(),
-                Length::FillPortion(2),
+        Some(crate::library::patch::Download::Failed) => Some(strip(row![
+            text(t!(lang, "play-patch-download-failed"))
+                .size(TEXT_CAPTION)
+                .style(widgets::danger_text_style),
+            iced::widget::space::horizontal(),
+            widgets::icon_button(
+                lucide_icons::Icon::RefreshCw,
+                t!(lang, "patches-retry"),
+                Message::RetryPatchDownload(key),
+                [1.0, 1.0],
             ),
-            piece(
-                row![
-                    iced::widget::space::horizontal(),
-                    widgets::icon_button(
-                        lucide_icons::Icon::RefreshCw,
-                        t!(lang, "patches-retry"),
-                        Message::RetryPatchDownload(key),
-                        [1.0, 1.0],
-                    ),
-                ]
-                .align_y(Alignment::Center)
-                .into(),
-                trailing,
-            ),
-        )),
+        ])),
         _ => None,
     }
 }
