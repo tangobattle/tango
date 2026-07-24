@@ -37,7 +37,10 @@ pub enum BattleOutcome {
 // announced verdict. Older sidecars recompute.
 // v9: bn1 reports chip identity now (it was buster-only), so its
 // cached stats are missing every chip event they should have.
-pub const FORMAT_VERSION: u32 = 9;
+// v10: bn1's first cut read the chip-select block and capped ids at
+// 0xB0 — it dropped every higher-id chip and invented one use per
+// custom cycle, so v9's bn1 sidecars are wrong on both counts.
+pub const FORMAT_VERSION: u32 = 10;
 
 /// Sidecar file magic.
 const MAGIC: &[u8; 4] = b"TGST";
