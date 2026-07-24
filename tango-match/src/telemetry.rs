@@ -32,7 +32,11 @@
 //! has no second copy to read: bn1–3 keep the custom screen as this
 //! side's battle-mode handler value, so [`CoreObs::custom_self`] answers
 //! for the polling core's own player only and the merge pairs the two
-//! cores' answers. Round-start and verdict traps live on core 0 only, for the
+//! cores' answers. [`UnitObs::chip`] straddles the two — bn2–6 and
+//! exe45 hold both players' chips, but bn1 records its picks per
+//! console and a peer's are nowhere in the other's RAM, so the merge
+//! takes each player's chip from that player's own core (identical
+//! values for the games that report both). Round-start and verdict traps live on core 0 only, for the
 //! same reason — but MATCH-END anchors live on both cores: each game
 //! exits the link session through its own path, and on a one-sided
 //! decline only the decliner's game exits (the other waits at its menu
@@ -66,11 +70,15 @@ pub struct UnitObs {
     /// side), y 1..=3 top to bottom. Where the unit IS — a move in
     /// flight reads as its origin until it lands.
     pub tile: (u8, u8),
-    /// Loaded-chip token, `None` when the game reports no chip loaded (or
-    /// reports no chip identity at all — bn1). The games spell this
-    /// `0xFFFF` in RAM; that sentinel stops at the poller, and the
-    /// serialized stats format's own [`battle::NO_CHIP`] is re-applied at
-    /// the fold (see [`analysis::fold_confirmed`]).
+    /// Loaded-chip token, `None` when the game reports no chip loaded.
+    /// Answered for **this core's own player** — bn1 records chips per
+    /// console, so [`Telemetry`] takes each player's from that player's
+    /// core; the games that report both sides agree either way.
+    ///
+    /// The games spell absence as `0xFFFF` in RAM; that sentinel stops
+    /// at the poller, and the serialized stats format's own
+    /// [`battle::NO_CHIP`] is re-applied at the fold (see
+    /// [`analysis::fold_confirmed`]).
     ///
     /// [`battle::NO_CHIP`]: crate::battle::NO_CHIP
     /// [`analysis::fold_confirmed`]: crate::analysis::fold_confirmed
@@ -336,7 +344,15 @@ impl mgba_rollback::session::TickObserver for Telemetry {
         let obs1 = self.pollers[1].poll(pair.core_mut(1));
         let obs = match (obs0, obs1) {
             (Some(c0), Some(c1)) => Some(BattleObs {
-                units: c0.units,
+                // The sim's own readings come from player 0's core, but
+                // the chip comes from each player's OWN core: bn1 keeps
+                // its chip record per console and a peer's picks appear
+                // nowhere in the other's RAM. The games that do report
+                // both agree between cores, so this costs them nothing.
+                units: std::array::from_fn(|p| UnitObs {
+                    chip: if p == 0 { c0.units[0].chip } else { c1.units[1].chip },
+                    ..c0.units[p]
+                }),
                 custom: [c0.custom_self, c1.custom_self],
             }),
             _ => None,

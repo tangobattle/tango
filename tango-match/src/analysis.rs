@@ -35,7 +35,9 @@ pub enum BattleOutcome {
 // spanning a round boundary no longer folds the next round's first
 // samples into the closing one) and samples stop at the round's
 // announced verdict. Older sidecars recompute.
-pub const FORMAT_VERSION: u32 = 8;
+// v9: bn1 reports chip identity now (it was buster-only), so its
+// cached stats are missing every chip event they should have.
+pub const FORMAT_VERSION: u32 = 9;
 
 /// Sidecar file magic.
 const MAGIC: &[u8; 4] = b"TGST";
