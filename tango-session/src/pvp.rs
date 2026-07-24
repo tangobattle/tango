@@ -787,7 +787,7 @@ impl DriveContext {
         }
 
         let mut throttler = tango_match::Throttler::new();
-        let mut next_tick = std::time::Instant::now();
+        let mut pacer = crate::Pacer::new();
         // (tick, [p0, p1]) confirmed input pairs not yet folded into
         // stats (the telemetry for those ticks may confirm later).
         let mut pending_buttons: std::collections::VecDeque<(u32, [u32; 2])> = std::collections::VecDeque::new();
@@ -808,7 +808,7 @@ impl DriveContext {
                 // on every exit path); restart the cadence from the wake
                 // so paused time doesn't accrue pacing debt.
                 self.drive_paused.wait();
-                next_tick = std::time::Instant::now();
+                pacer.resync();
                 continue;
             }
 
@@ -859,7 +859,7 @@ impl DriveContext {
                     // rather than hot-spinning on a dead channel.
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => std::thread::sleep(STALL_TICK),
                 }
-                next_tick = std::time::Instant::now();
+                pacer.resync();
                 continue;
             }
 
@@ -999,15 +999,7 @@ impl DriveContext {
             self.metrics.fps_target.store(target.to_bits(), Ordering::Relaxed);
 
             // Pace at the base rate minus whatever the throttler shaved.
-            next_tick += std::time::Duration::from_secs_f64(1.0 / target as f64);
-            let now = std::time::Instant::now();
-            if next_tick > now {
-                std::thread::sleep(next_tick - now);
-            } else if now - next_tick > std::time::Duration::from_millis(250) {
-                // Fell way behind (debugger, laptop lid, ...): don't sprint
-                // to catch up, just resynchronize the cadence.
-                next_tick = now;
-            }
+            pacer.wait(target);
         }
 
         // Teardown: flush the replay tail. Finalize (write the EOR

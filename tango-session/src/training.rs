@@ -244,12 +244,9 @@ impl crate::Session for TrainingSession {
         self.joyflags.store(joyflags, Ordering::Relaxed);
     }
 
-    /// Above ~4x, one callback interval's production overshoots the
-    /// stream's discard cap and fast-forward audio turns into constant
-    /// skips; clamp to keep it coherent. (Matches single-player.)
     fn set_speed(&self, factor: f32) {
-        let fps = (EXPECTED_FPS * factor).clamp(1.0, EXPECTED_FPS * 4.0);
-        self.fps_bits.store(fps.to_bits(), Ordering::Relaxed);
+        self.fps_bits
+            .store(crate::clamp_speed(EXPECTED_FPS, factor).to_bits(), Ordering::Relaxed);
     }
 
     /// True once the battle's own match-end path fired, so the host
@@ -288,7 +285,7 @@ impl DriveContext {
     fn run(mut self) {
         let mask = tango_match::input::JOYFLAGS_MASK as u32;
         let mut frame: u64 = 0;
-        let mut next_tick = std::time::Instant::now();
+        let mut pacer = crate::Pacer::new();
 
         while !self.stop.load(Ordering::Relaxed) {
             // Poll the dummy controller for the tick about to advance. It
@@ -342,19 +339,7 @@ impl DriveContext {
             self.wake.notify_one();
 
             // Pace at the target rate (realtime unless fast-forwarding).
-            let mut fps = f32::from_bits(self.fps_bits.load(Ordering::Relaxed));
-            if fps <= 0.0 {
-                fps = EXPECTED_FPS;
-            }
-            next_tick += std::time::Duration::from_secs_f64(1.0 / fps as f64);
-            let now = std::time::Instant::now();
-            if next_tick > now {
-                std::thread::sleep(next_tick - now);
-            } else if now - next_tick > std::time::Duration::from_millis(250) {
-                // Fell way behind (debugger, laptop lid, ...): don't
-                // sprint to catch up, just resynchronize the cadence.
-                next_tick = now;
-            }
+            pacer.wait(f32::from_bits(self.fps_bits.load(Ordering::Relaxed)));
         }
     }
 }

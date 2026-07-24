@@ -24,30 +24,28 @@ use std::sync::{Arc, Mutex};
 
 const EXPECTED_FPS: f32 = 60.0;
 
-/// State shared between the drive thread and the audio stream.
-struct Shared {
-    core: Mutex<mgba::core::OwnedCore>,
-    /// Drive pacing target as f32 bits. 60.0 = realtime; fast-forward
-    /// raises it and the audio stream's faux clock compresses to match.
-    fps_bits: AtomicU32,
-    stop: AtomicBool,
-}
+/// The session core, shared between the drive thread (which steps it) and
+/// the audio stream (which pulls samples off it between ticks).
+type SharedCore = Arc<Mutex<mgba::core::OwnedCore>>;
 
 /// Cross-thread audio pull over the session core's mutex — the drive
 /// thread holds it only while stepping a frame, so the callback's
 /// readout interleaves between ticks.
-struct SharedCorePull(Arc<Shared>);
+struct SharedCorePull(SharedCore);
 
 impl crate::core_stream::CorePull for SharedCorePull {
     fn with_core(&self, f: &mut dyn FnMut(&mut mgba::core::Core)) {
-        f(&mut self.0.core.lock().unwrap());
+        f(&mut self.0.lock().unwrap());
     }
 }
 
 pub struct SinglePlayerSession {
     game: &'static tango_gamesupport::Game,
     joyflags: Arc<AtomicU32>,
-    shared: Arc<Shared>,
+    /// Pacing target as f32 bits. 60.0 = realtime; fast-forward raises it
+    /// and the audio stream's faux clock compresses to match.
+    fps_bits: Arc<AtomicU32>,
+    stop: Arc<AtomicBool>,
     screen: Arc<crate::Framebuffer>,
     wake: Arc<tokio::sync::Notify>,
     drive: Option<std::thread::JoinHandle<()>>,
@@ -76,29 +74,28 @@ impl SinglePlayerSession {
         // hold that at BN4+'s 65536 Hz. Same sizing as the pair engine.
         core.set_audio_buffer_size(16384);
 
+        let core: SharedCore = Arc::new(Mutex::new(core));
         let joyflags = Arc::new(AtomicU32::new(0));
-        let shared = Arc::new(Shared {
-            core: Mutex::new(core),
-            fps_bits: AtomicU32::new(EXPECTED_FPS.to_bits()),
-            stop: AtomicBool::new(false),
-        });
-
+        let fps_bits = Arc::new(AtomicU32::new(EXPECTED_FPS.to_bits()));
+        let stop = Arc::new(AtomicBool::new(false));
         let screen = crate::Framebuffer::new();
         let wake = Arc::new(tokio::sync::Notify::new());
+
         let drive = std::thread::Builder::new().name("singleplayer".to_owned()).spawn({
-            let shared = shared.clone();
-            let joyflags = joyflags.clone();
-            let screen = screen.clone();
-            let wake = wake.clone();
-            move || drive_loop(shared, joyflags, screen, wake)
+            let ctx = DriveContext {
+                core: core.clone(),
+                joyflags: joyflags.clone(),
+                fps_bits: fps_bits.clone(),
+                stop: stop.clone(),
+                screen: screen.clone(),
+                wake: wake.clone(),
+            };
+            move || ctx.run()
         })?;
 
         let audio = crate::core_stream::CoreStream::new(
-            SharedCorePull(shared.clone()),
-            {
-                let shared = shared.clone();
-                move || f32::from_bits(shared.fps_bits.load(Ordering::Relaxed))
-            },
+            SharedCorePull(core),
+            crate::core_stream::CoreStream::fps_from_bits(fps_bits.clone()),
             sample_rate,
         );
 
@@ -106,7 +103,8 @@ impl SinglePlayerSession {
             Self {
                 game,
                 joyflags,
-                shared,
+                fps_bits,
+                stop,
                 screen,
                 wake,
                 drive: Some(drive),
@@ -133,61 +131,54 @@ impl crate::Session for SinglePlayerSession {
         self.joyflags.store(joyflags, Ordering::Relaxed);
     }
 
-    /// Above ~4x, one callback interval's production overshoots the
-    /// stream's discard cap and fast-forward audio turns into constant
-    /// skips; clamp to keep it coherent.
     fn set_speed(&self, factor: f32) {
-        let fps = (EXPECTED_FPS * factor).clamp(1.0, EXPECTED_FPS * 4.0);
-        self.shared.fps_bits.store(fps.to_bits(), Ordering::Relaxed);
+        self.fps_bits
+            .store(crate::clamp_speed(EXPECTED_FPS, factor).to_bits(), Ordering::Relaxed);
     }
 }
 
 impl Drop for SinglePlayerSession {
     fn drop(&mut self) {
-        self.shared.stop.store(true, Ordering::Relaxed);
+        self.stop.store(true, Ordering::Relaxed);
         if let Some(drive) = self.drive.take() {
             let _ = drive.join();
         }
     }
 }
 
-fn drive_loop(
-    shared: Arc<Shared>,
+/// Everything the drive thread owns for the session's life — each an
+/// `Arc` shared with the session (and, for the core, the audio pull).
+struct DriveContext {
+    core: SharedCore,
     joyflags: Arc<AtomicU32>,
+    fps_bits: Arc<AtomicU32>,
+    stop: Arc<AtomicBool>,
     screen: Arc<crate::Framebuffer>,
     wake: Arc<tokio::sync::Notify>,
-) {
-    let mut next_tick = std::time::Instant::now();
-    while !shared.stop.load(Ordering::Relaxed) {
-        {
-            // Scoped: the audio callback pulls samples under this same
-            // mutex, so it must be free while we sleep off the tick.
-            let mut core = shared.core.lock().unwrap();
-            core.set_keys(joyflags.load(Ordering::Relaxed));
-            core.run_frame();
-            if let Some(frame) = core.video_buffer() {
-                // mgba's native BGR555 goes up as-is; the framebuffer
-                // shader expands it to RGB on the GPU at draw time.
-                screen.write(frame);
-            }
-        }
-        // Wake the host's frame subscription so the UI rebuilds the
-        // texture for this frame. Notify coalesces — a slow UI doesn't
-        // queue up wakes.
-        wake.notify_one();
+}
 
-        let mut fps = f32::from_bits(shared.fps_bits.load(Ordering::Relaxed));
-        if fps <= 0.0 {
-            fps = EXPECTED_FPS;
-        }
-        next_tick += std::time::Duration::from_secs_f64(1.0 / fps as f64);
-        let now = std::time::Instant::now();
-        if next_tick > now {
-            std::thread::sleep(next_tick - now);
-        } else if now - next_tick > std::time::Duration::from_millis(250) {
-            // Fell way behind (debugger, laptop lid, ...): don't sprint
-            // to catch up, just resynchronize the cadence.
-            next_tick = now;
+impl DriveContext {
+    fn run(self) {
+        let mut pacer = crate::Pacer::new();
+        while !self.stop.load(Ordering::Relaxed) {
+            {
+                // Scoped: the audio callback pulls samples under this same
+                // mutex, so it must be free while we sleep off the tick.
+                let mut core = self.core.lock().unwrap();
+                core.set_keys(self.joyflags.load(Ordering::Relaxed));
+                core.run_frame();
+                if let Some(frame) = core.video_buffer() {
+                    // mgba's native BGR555 goes up as-is; the framebuffer
+                    // shader expands it to RGB on the GPU at draw time.
+                    self.screen.write(frame);
+                }
+            }
+            // Wake the host's frame subscription so the UI rebuilds the
+            // texture for this frame. Notify coalesces — a slow UI doesn't
+            // queue up wakes.
+            self.wake.notify_one();
+
+            pacer.wait(f32::from_bits(self.fps_bits.load(Ordering::Relaxed)));
         }
     }
 }

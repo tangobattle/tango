@@ -114,6 +114,66 @@ impl PauseGate {
     }
 }
 
+/// Wall-clock frame pacer for the session drive loops. It accumulates
+/// absolute `1/fps` deadlines (drift-free on average) and sleeps to
+/// each; a loop that falls far behind — a debugger pause, a laptop lid —
+/// resynchronizes its cadence instead of sprinting to catch up. Every
+/// session kind's drive thread paces through one of these, so the
+/// accumulate / sleep / resync policy lives in exactly one place.
+pub struct Pacer {
+    next_tick: std::time::Instant,
+}
+
+impl Default for Pacer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Pacer {
+    /// How far behind the deadline a loop must fall before the pacer
+    /// gives up catching up and resynchronizes from now.
+    const RESYNC_AFTER: std::time::Duration = std::time::Duration::from_millis(250);
+
+    pub fn new() -> Self {
+        Self {
+            next_tick: std::time::Instant::now(),
+        }
+    }
+
+    /// Sleep until the next `1/fps` deadline — call once per emulated
+    /// frame, after stepping it. A non-positive `fps` degrades to 60 (a
+    /// should-never-happen guard; the drive loops only ever pass a
+    /// positive rate).
+    pub fn wait(&mut self, fps: f32) {
+        let fps = if fps > 0.0 { fps } else { 60.0 };
+        self.next_tick += std::time::Duration::from_secs_f64(1.0 / fps as f64);
+        let now = std::time::Instant::now();
+        if self.next_tick > now {
+            std::thread::sleep(self.next_tick - now);
+        } else if now - self.next_tick > Self::RESYNC_AFTER {
+            // Fell way behind: don't sprint to catch up, just
+            // resynchronize the cadence.
+            self.next_tick = now;
+        }
+    }
+
+    /// Restart the cadence from now — after a pause/park, so idle time
+    /// doesn't accrue pacing debt the next `wait` would try to burn off.
+    pub fn resync(&mut self) {
+        self.next_tick = std::time::Instant::now();
+    }
+}
+
+/// Fast-forward pacing target: `base_fps * factor`, clamped to
+/// `[1, 4×base_fps]`. Above ~4× one audio callback interval's production
+/// overshoots the [`CoreStream`](core_stream::CoreStream) discard cap and
+/// fast-forward turns into constant skips, so the clamp keeps it coherent.
+/// Shared by the single-player and training `set_speed`.
+pub fn clamp_speed(base_fps: f32, factor: f32) -> f32 {
+    (base_fps * factor).clamp(1.0, base_fps * 4.0)
+}
+
 /// One shared GBA screen — mgba-native BGR555, 2 bytes/pixel — with
 /// a session's emu thread writing it and the session reading it back
 /// out for the host. Internal: sessions publish
