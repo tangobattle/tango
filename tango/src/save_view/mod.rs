@@ -1053,9 +1053,11 @@ pub enum Action {
     /// other embedders (replay, opponent panel) pass `None` and
     /// the button isn't rendered.
     PlayClicked,
-    /// Embedder-defined "start training here" action. Rendered
-    /// alongside Play under the same `play_button` gating; the play tab
-    /// routes it to `Effect::StartTraining`.
+    /// Embedder-defined "start training here" action, routed by the
+    /// play tab to `Effect::StartTraining`. Nothing raises it while the
+    /// Training button is hidden (see the actions row in [`view`]); the
+    /// route stays wired so restoring the button is a local change.
+    #[allow(dead_code)]
     TrainingClicked,
     // ----- Folder editor (only emitted when `view`'s `editable` is set) -----
     /// Enter folder edit mode. The play tab seeds tag state via
@@ -1278,19 +1280,9 @@ pub fn view<'a>(
             ));
         }
         if let Some(enabled) = play_button {
-            // Training sits next to Play under the same gating: a
-            // single-player ride with a do-nothing dummy controller.
-            let training_label = row![lucide_icons::Icon::Dumbbell.widget(), text(t!(lang, "play-training"))]
-                .spacing(6)
-                .align_y(Alignment::Center);
-            let mut training_btn = button(training_label).padding([4, 10]);
-            if enabled {
-                training_btn = training_btn.style(widgets::neutral).on_press(Action::TrainingClicked);
-            } else {
-                training_btn = training_btn.style(widgets::neutral);
-            }
-            actions = actions.push(training_btn);
-
+            // Training is hidden for now: the session, its action and
+            // everything behind [`Action::TrainingClicked`] are intact,
+            // so putting the button back is this block alone.
             let label = row![lucide_icons::Icon::Play.widget(), text(t!(lang, "play-play"))]
                 .spacing(6)
                 .align_y(Alignment::Center);
