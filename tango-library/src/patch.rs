@@ -14,14 +14,62 @@
 //! format made the client sha256 every file in the repo and download all
 //! of them (hundreds of MiB) before it could tell you what a patch was.
 
-use crate::library::rom::GameRef;
-use crate::library::scanner;
-use futures::StreamExt;
+use crate::http::{self, Fetch, Http};
+use crate::rom::GameRef;
+use crate::scanner;
+use crate::storage::{self, Listing, Storage};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tango_patch::{Compatibility, Package, Tag};
-use tokio::io::AsyncWriteExt;
+
+/// Everything that can go wrong reading, fetching, or applying a patch.
+///
+/// The `tango_patch::Error` sources are boxed: that type nests (its
+/// `At` variant wraps another one), so inlining it would make every
+/// `Result` in this module pay for the largest failure case.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Http(#[from] http::Error),
+    #[error(transparent)]
+    Package(Box<tango_patch::Error>),
+    #[error("bad patch name: {0}")]
+    BadName(String),
+    #[error("{name} {version}: {source}")]
+    NotWhatTheIndexPromised {
+        name: String,
+        version: semver::Version,
+        #[source]
+        source: Box<tango_patch::Error>,
+    },
+    #[error("{name} {version}: package contains {actual} instead")]
+    WrongPackage {
+        name: String,
+        version: semver::Version,
+        /// The `name version` the package actually declares. Kept
+        /// pre-formatted: a second `semver::Version` here would make
+        /// every `Result` in this module wider than the payload it
+        /// usually carries.
+        actual: String,
+    },
+    #[error("bad bps patch: {0}")]
+    BpsDecode(#[from] bps::DecodeError),
+    #[error("could not apply bps patch: {0}")]
+    BpsApply(#[from] bps::ApplyError),
+}
+
+impl From<tango_patch::Error> for Error {
+    fn from(e: tango_patch::Error) -> Self {
+        Error::Package(Box::new(e))
+    }
+}
+
+fn validate_name(name: &str) -> Result<(), Error> {
+    tango_patch::validate_name(name).map_err(|e| Error::BadName(e.to_string()))
+}
 
 /// One installed patch version — everything read out of its package at
 /// scan time. The BPS payloads stay in the file and are read on demand
@@ -211,50 +259,32 @@ pub fn scan_roots(patches_path: &Path) -> Vec<PathBuf> {
 }
 
 fn game_for(target: tango_patch::RomTarget) -> Option<GameRef> {
-    crate::library::game::find_by_rom_info(&target.code, target.revision)
+    crate::game::find_by_rom_info(&target.code, target.revision)
 }
 
 /// Read the installed packages and the cached index.
-pub fn scan(patches_path: &Path) -> std::io::Result<Catalog> {
-    let index = match std::fs::read_to_string(index_path(patches_path)) {
-        Ok(raw) => match tango_patch::Index::parse(&raw) {
+pub fn scan(storage: &dyn Storage, patches_path: &Path, listing: &Listing) -> Result<Catalog, Error> {
+    let index = match storage::read_opt(storage, &index_path(patches_path))? {
+        Some(raw) => match tango_patch::Index::parse(&String::from_utf8_lossy(&raw)) {
             Ok(index) => index,
             Err(e) => {
                 log::warn!("cached patch index is unusable, ignoring it: {e}");
                 tango_patch::Index::default()
             }
         },
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => tango_patch::Index::default(),
-        Err(e) => return Err(e),
+        None => tango_patch::Index::default(),
     };
 
     // Newest version wins for the patch-level display metadata, so
     // collect per version first and fold afterwards.
     let mut versions: BTreeMap<String, BTreeMap<semver::Version, (Arc<Version>, tango_patch::Manifest)>> =
         BTreeMap::new();
-    let read_dir = match std::fs::read_dir(patches_path) {
-        Ok(read_dir) => read_dir,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(Catalog {
-                installed: PatchMap::new(),
-                index,
-            })
-        }
-        Err(e) => return Err(e),
-    };
-
-    for entry in read_dir {
-        let path = match entry {
-            Ok(entry) => entry.path(),
-            Err(e) => {
-                log::warn!("patch scan: {e}");
-                continue;
-            }
-        };
+    for entry in listing.entries() {
+        let path = &entry.path;
         if path.extension().is_none_or(|e| e != tango_patch::EXTENSION) {
             continue;
         }
-        match read_package(&path) {
+        match read_package(storage, path) {
             Ok((manifest, version)) => {
                 versions
                     .entry(manifest.name.clone())
@@ -285,8 +315,8 @@ pub fn scan(patches_path: &Path) -> std::io::Result<Catalog> {
 }
 
 /// Read one package into a [`Version`] and its manifest.
-fn read_package(path: &Path) -> anyhow::Result<(tango_patch::Manifest, Version)> {
-    let mut package = Package::open(path)?;
+fn read_package(storage: &dyn Storage, path: &Path) -> Result<(tango_patch::Manifest, Version), Error> {
+    let mut package = Package::read(storage.open(path)?)?;
     let manifest = package.manifest().clone();
 
     // A package can be named for a game this build doesn't support (no
@@ -353,21 +383,26 @@ pub fn display_authors(authors: &[String]) -> Vec<String> {
 
 /// Read the BPS for `game` out of the installed package and apply it to
 /// `rom`, returning the patched image.
-pub fn apply_patch_from_disk(
+///
+/// Synchronous on purpose: every session construction path applies a
+/// patch, and making this async would turn all of them async for no
+/// gain. See [`crate::storage`] for why that is affordable.
+pub fn apply_patch(
+    storage: &dyn Storage,
     rom: &[u8],
     game: GameRef,
     patches_path: &Path,
     patch_name: &str,
     patch_version: &semver::Version,
-) -> anyhow::Result<Vec<u8>> {
+) -> Result<Vec<u8>, Error> {
     // Names are validated on the way in (`tango_patch::validate_name`
     // forbids separators), so a name can't escape the directory.
-    tango_patch::validate_name(patch_name).map_err(|e| anyhow::anyhow!("bad patch name: {e}"))?;
+    validate_name(patch_name)?;
 
     let path = package_path(patches_path, patch_name, patch_version);
     let (rom_code, revision) = game.rom_code_and_revision();
     let target = tango_patch::RomTarget::new(*rom_code, revision);
-    let raw = Package::open(&path)?.bps(target)?;
+    let raw = Package::read(storage.open(&path)?)?.bps(target)?;
     Ok(bps::Patch::decode(&raw)?.apply(rom)?)
 }
 
@@ -420,57 +455,52 @@ impl Download {
 
 pub type Downloads = std::collections::HashMap<VersionKey, Download>;
 
-const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-
-fn client() -> reqwest::Client {
-    reqwest::Client::new()
-}
-
-/// Fetch the repo index, writing it to disk when it changed.
+/// Fetch the repo index, writing it to storage when it changed.
 ///
-/// Returns `true` if the on-disk copy was replaced (the caller should
+/// Returns `true` if the stored copy was replaced (the caller should
 /// rescan). Conditional on the stored ETag, so the common case — the
 /// repo hasn't published anything since we last looked — is a 304 with
 /// no body, which is what lets this poll on a timer without being rude.
-pub async fn fetch_index(url: &str, patches_path: &Path) -> anyhow::Result<bool> {
-    std::fs::create_dir_all(patches_path)?;
+pub async fn fetch_index(
+    http: &dyn Http,
+    storage: &dyn Storage,
+    url: &str,
+    patches_path: &Path,
+) -> Result<bool, Error> {
+    storage.create_dir_all(patches_path)?;
     let path = index_path(patches_path);
     let etag_path = patches_path.join("index.etag");
 
-    let mut request = client()
-        .get(format!(
-            "{}/{}",
-            url.trim_end_matches('/'),
-            tango_patch::index::FILE_NAME
-        ))
-        .header("User-Agent", "tango")
-        .timeout(TIMEOUT);
     // Only send the validator if we still have the body it describes.
-    if path.is_file() {
-        if let Ok(etag) = std::fs::read_to_string(&etag_path) {
-            request = request.header(reqwest::header::IF_NONE_MATCH, etag.trim());
-        }
-    }
+    let etag = if storage.is_file(&path) {
+        storage::read_opt(storage, &etag_path)?.map(|raw| String::from_utf8_lossy(&raw).trim().to_owned())
+    } else {
+        None
+    };
 
-    let response = request.send().await?.error_for_status()?;
-    if response.status() == reqwest::StatusCode::NOT_MODIFIED {
-        return Ok(false);
-    }
-    let etag = response
-        .headers()
-        .get(reqwest::header::ETAG)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_owned());
-    let raw = response.text().await?;
+    let full_url = format!("{}/{}", url.trim_end_matches('/'), tango_patch::index::FILE_NAME);
+    let fetched = http
+        .get(http::Request {
+            url: &full_url,
+            if_none_match: etag.as_deref(),
+            max_len: None,
+            on_progress: None,
+        })
+        .await?;
+
+    let (etag, raw) = match fetched {
+        Fetch::NotModified | Fetch::Cancelled => return Ok(false),
+        Fetch::Body { etag, body } => (etag, body),
+    };
 
     // Parse before writing: a corrupt or future-format index shouldn't
     // clobber the usable one we already have.
-    let index = tango_patch::Index::parse(&raw)?;
-    std::fs::write(&path, &raw)?;
+    let index = tango_patch::Index::parse(&String::from_utf8_lossy(&raw))?;
+    storage::write_atomic(storage, &path, &raw)?;
     match etag {
-        Some(etag) => std::fs::write(&etag_path, etag)?,
+        Some(etag) => storage.write(&etag_path, etag.as_bytes())?,
         None => {
-            let _ = std::fs::remove_file(&etag_path);
+            let _ = storage.remove_file(&etag_path);
         }
     }
     log::info!(
@@ -486,85 +516,54 @@ pub async fn fetch_index(url: &str, patches_path: &Path) -> anyhow::Result<bool>
 #[derive(Debug)]
 pub enum Outcome {
     Installed,
-    /// `progress` asked to stop. The partial file is already gone.
+    /// `progress` asked to stop. Nothing was written.
     Cancelled,
 }
 
 /// Download one patch version into the patches directory.
 ///
-/// The package is verified against the index's hash and written through
-/// a temporary file, so a failed or truncated download can't leave a
+/// The package is verified against the index's hash *before* anything is
+/// written, so a failed, truncated, or cancelled download can't leave a
 /// half-written package that the next scan would treat as installed.
+/// The index fixes the exact byte count, which is passed down as the
+/// transfer's hard cap.
 ///
-/// `progress` returns false to cancel, which is checked once per chunk:
-/// stopping this way tidies the partial file up on the way out, which
-/// dropping the future could not do.
+/// `progress` returns false to cancel.
 pub async fn download(
+    http: &dyn Http,
+    storage: &dyn Storage,
     url: &str,
     patches_path: &Path,
     name: &str,
     version: &semver::Version,
     entry: &tango_patch::index::Entry,
-    progress: impl Fn(Progress) -> bool,
-) -> anyhow::Result<Outcome> {
-    tango_patch::validate_name(name).map_err(|e| anyhow::anyhow!("bad patch name: {e}"))?;
-    std::fs::create_dir_all(patches_path)?;
+    progress: impl Fn(Progress) -> bool + crate::marker::WasmNotSend + crate::marker::WasmNotSync,
+) -> Result<Outcome, Error> {
+    validate_name(name)?;
+    storage.create_dir_all(patches_path)?;
 
-    let response = client()
-        .get(format!("{}/{}", url.trim_end_matches('/'), entry.path))
-        .header("User-Agent", "tango")
-        .timeout(TIMEOUT)
-        .send()
-        .await?
-        .error_for_status()?;
+    let full_url = format!("{}/{}", url.trim_end_matches('/'), entry.path);
+    let on_progress = move |downloaded, total| progress(Progress { downloaded, total });
+    let fetched = http
+        .get(http::Request {
+            url: &full_url,
+            if_none_match: None,
+            max_len: Some(entry.size),
+            on_progress: Some(&on_progress),
+        })
+        .await?;
 
-    let total = response.content_length().unwrap_or(entry.size);
-    let temp = patches_path.join(format!(".{name}-{version}.part"));
-    let mut file = tokio::fs::File::create(&temp).await?;
-    let mut raw = Vec::with_capacity(entry.size as usize);
-    let mut stream = response.bytes_stream();
-    let cancelled = |file: tokio::fs::File, temp: &Path| {
-        drop(file);
-        let _ = std::fs::remove_file(temp);
+    let raw = match fetched {
+        Fetch::Cancelled => return Ok(Outcome::Cancelled),
+        // Nothing sends a validator here, so a 304 would be the server
+        // misbehaving; treat it as an empty body and let verify reject it.
+        Fetch::NotModified => Vec::new(),
+        Fetch::Body { body, .. } => body,
     };
-    if !progress(Progress { downloaded: 0, total }) {
-        cancelled(file, &temp);
-        return Ok(Outcome::Cancelled);
-    }
-    while let Some(chunk) = tokio::time::timeout(TIMEOUT, stream.next()).await? {
-        let chunk = chunk?;
-        // The index fixes the exact byte count; a server sending more than
-        // it promised is misbehaving, and buffering it unbounded would let
-        // it exhaust memory and disk before the post-download hash check
-        // ever runs. Stop as soon as it overruns.
-        if raw.len() as u64 + chunk.len() as u64 > entry.size {
-            drop(file);
-            let _ = tokio::fs::remove_file(&temp).await;
-            anyhow::bail!(
-                "{name} {version}: download exceeds the {} bytes the index promised",
-                entry.size
-            );
-        }
-        file.write_all(&chunk).await?;
-        raw.extend_from_slice(&chunk);
-        if !progress(Progress {
-            downloaded: raw.len() as u64,
-            total,
-        }) {
-            cancelled(file, &temp);
-            return Ok(Outcome::Cancelled);
-        }
-    }
-    file.flush().await?;
-    drop(file);
 
-    let verified = verify(&raw, entry, name, version);
-    if verified.is_err() {
-        let _ = std::fs::remove_file(&temp);
-    }
-    verified?;
+    verify(&raw, entry, name, version)?;
 
-    std::fs::rename(&temp, package_path(patches_path, name, version))?;
+    storage::write_atomic(storage, &package_path(patches_path, name, version), &raw)?;
     log::info!("installed {name} {version} ({} bytes)", raw.len());
     Ok(Outcome::Installed)
 }
@@ -572,114 +571,56 @@ pub async fn download(
 /// A downloaded package must be what the index promised, and must be
 /// what it says it is. The hash check is also what makes serving
 /// packages from a mirror or a CDN cache safe.
-fn verify(raw: &[u8], entry: &tango_patch::index::Entry, name: &str, version: &semver::Version) -> anyhow::Result<()> {
-    entry
-        .verify(raw)
-        .map_err(|e| anyhow::anyhow!("{name} {version}: {e}"))?;
+fn verify(raw: &[u8], entry: &tango_patch::index::Entry, name: &str, version: &semver::Version) -> Result<(), Error> {
+    entry.verify(raw).map_err(|source| Error::NotWhatTheIndexPromised {
+        name: name.to_owned(),
+        version: version.clone(),
+        source: Box::new(source),
+    })?;
     let manifest = Package::read(std::io::Cursor::new(raw))?.manifest().clone();
     if manifest.name != name || &manifest.version != version {
-        anyhow::bail!(
-            "{name} {version}: package contains {} {} instead",
-            manifest.name,
-            manifest.version
-        );
+        return Err(Error::WrongPackage {
+            name: name.to_owned(),
+            version: version.clone(),
+            actual: format!("{} {}", manifest.name, manifest.version),
+        });
     }
     Ok(())
 }
 
 /// Delete an installed package. The next scan drops it from the catalog;
 /// the index still lists it, so it can be reinstalled.
-pub fn uninstall(patches_path: &Path, name: &str, version: &semver::Version) -> anyhow::Result<()> {
-    tango_patch::validate_name(name).map_err(|e| anyhow::anyhow!("bad patch name: {e}"))?;
-    std::fs::remove_file(package_path(patches_path, name, version))?;
+pub fn uninstall(
+    storage: &dyn Storage,
+    patches_path: &Path,
+    name: &str,
+    version: &semver::Version,
+) -> Result<(), Error> {
+    validate_name(name)?;
+    storage.remove_file(&package_path(patches_path, name, version))?;
     Ok(())
-}
-
-/// Background index refresher.
-///
-/// Under the old format this re-hashed every file in the patch directory
-/// and downloaded whatever differed; now it re-fetches one small
-/// conditional GET, so it costs a 304 in the steady state.
-pub struct Autoupdater {
-    patches_path: PathBuf,
-    patch_repo: String,
-    patches_scanner: Scanner,
-    cancellation_token: Option<tokio_util::sync::CancellationToken>,
-}
-
-impl Autoupdater {
-    /// Fast enough to notice a new patch within the hour, slow enough
-    /// not to hammer the repo.
-    const INTERVAL: std::time::Duration = std::time::Duration::from_secs(15 * 60);
-
-    pub fn new(patches_path: PathBuf, patch_repo: String, patches_scanner: Scanner) -> Self {
-        Self {
-            patches_path,
-            patch_repo,
-            patches_scanner,
-            cancellation_token: None,
-        }
-    }
-
-    /// Start the background loop. Idempotent.
-    pub fn start(&mut self) {
-        if self.cancellation_token.is_some() {
-            return;
-        }
-        log::info!("starting patch index autoupdater (every {:?})", Self::INTERVAL);
-        let token = tokio_util::sync::CancellationToken::new();
-        let scanner = self.patches_scanner.clone();
-        let patches_path = self.patches_path.clone();
-        let patch_repo = if self.patch_repo.is_empty() {
-            crate::config::DEFAULT_PATCH_REPO.to_string()
-        } else {
-            self.patch_repo.clone()
-        };
-        tokio::task::spawn({
-            let token = token.clone();
-            async move {
-                loop {
-                    match fetch_index(&patch_repo, &patches_path).await {
-                        // Only a changed index is worth a rescan.
-                        Ok(true) => {
-                            let path = patches_path.clone();
-                            let scanner = scanner.clone();
-                            let _ = tokio::task::spawn_blocking(move || {
-                                scanner.rescan(|| scan(&path).ok());
-                            })
-                            .await;
-                        }
-                        Ok(false) => {}
-                        Err(e) => log::error!("patch index autoupdate failed: {e:?}"),
-                    }
-                    tokio::select! {
-                        _ = tokio::time::sleep(Self::INTERVAL) => {}
-                        _ = token.cancelled() => break,
-                    }
-                }
-                log::info!("stopped patch index autoupdater");
-            }
-        });
-        self.cancellation_token = Some(token);
-    }
-
-    pub fn stop(&mut self) {
-        if let Some(token) = self.cancellation_token.take() {
-            token.cancel();
-        }
-    }
-}
-
-impl Drop for Autoupdater {
-    fn drop(&mut self) {
-        self.stop();
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::http::ReqwestHttp;
+    use crate::storage::StdStorage;
     use tango_patch::bundle::Builder;
+
+    /// The scans and fetches under test take the seam traits; natively
+    /// those are just the filesystem and reqwest.
+    const FS: &StdStorage = &StdStorage;
+
+    fn net() -> ReqwestHttp {
+        ReqwestHttp::new()
+    }
+
+    /// Enumerate then scan, the way the frontend's rescan does.
+    async fn scanned(root: &Path) -> Catalog {
+        let listing = FS.list(&scan_roots(root)).await;
+        scan(FS, root, &listing).unwrap()
+    }
 
     /// A scratch data directory that cleans up on drop.
     struct TempDir(PathBuf);
@@ -748,19 +689,19 @@ netplay = "{netplay}"
     }
 
     fn bn6_falzar() -> GameRef {
-        crate::library::game::find_by_rom_info(b"BR6E", 0).expect("gamesupport-bn6 must be enabled for this test")
+        crate::game::find_by_rom_info(b"BR6E", 0).expect("gamesupport-bn6 must be enabled for this test")
     }
 
     fn v(s: &str) -> semver::Version {
         s.parse().unwrap()
     }
 
-    #[test]
-    fn scans_installed_packages() {
+    #[tokio::test]
+    async fn scans_installed_packages() {
         let dir = TempDir::new();
         install(&dir.0, "bn6_test", "1.0.0", "group:testing");
 
-        let catalog = scan(&dir.0).unwrap();
+        let catalog = scanned(&dir.0).await;
         assert_eq!(catalog.installed.len(), 1);
         assert_eq!(catalog.title("bn6_test"), Some("Test bn6_test"));
         // mailparse reduces the address to its display name.
@@ -779,16 +720,16 @@ netplay = "{netplay}"
         assert!(catalog.is_installed("bn6_test", &v("1.0.0")));
     }
 
-    #[test]
-    fn an_empty_or_absent_patches_dir_is_not_an_error() {
+    #[tokio::test]
+    async fn an_empty_or_absent_patches_dir_is_not_an_error() {
         let dir = TempDir::new();
-        assert!(scan(&dir.0).unwrap().installed.is_empty());
+        assert!(scanned(&dir.0).await.installed.is_empty());
         std::fs::create_dir_all(&dir.0).unwrap();
-        assert!(scan(&dir.0).unwrap().installed.is_empty());
+        assert!(scanned(&dir.0).await.installed.is_empty());
     }
 
-    #[test]
-    fn the_catalog_merges_installed_and_offered() {
+    #[tokio::test]
+    async fn the_catalog_merges_installed_and_offered() {
         let dir = TempDir::new();
         install(&dir.0, "bn6_test", "1.0.0", "group:testing");
         index_with(
@@ -801,7 +742,7 @@ netplay = "{netplay}"
             ],
         );
 
-        let catalog = scan(&dir.0).unwrap();
+        let catalog = scanned(&dir.0).await;
         assert_eq!(
             catalog.names().into_iter().collect::<Vec<_>>(),
             vec!["bn6_other", "bn6_test"]
@@ -821,14 +762,14 @@ netplay = "{netplay}"
         assert!(!catalog.is_installed("bn6_other", &v("1.0.0")));
     }
 
-    #[test]
-    fn tags_resolve_from_the_index_before_anything_is_downloaded() {
+    #[tokio::test]
+    async fn tags_resolve_from_the_index_before_anything_is_downloaded() {
         let dir = TempDir::new();
         index_with(
             &dir.0,
             &[("bn6_cosmetic", "1.0.0", "vanilla"), ("bn6_mod", "1.0.0", "isolated")],
         );
-        let catalog = scan(&dir.0).unwrap();
+        let catalog = scanned(&dir.0).await;
         let game = bn6_falzar();
 
         // This is what lets the lobby judge a peer's patch it has never
@@ -846,12 +787,12 @@ netplay = "{netplay}"
         assert_eq!(catalog.tag(game, Some(("bn6_unknown", &v("1.0.0")))), None);
     }
 
-    #[test]
-    fn the_index_and_the_package_agree_on_author_form() {
+    #[tokio::test]
+    async fn the_index_and_the_package_agree_on_author_form() {
         let dir = TempDir::new();
         install(&dir.0, "bn6_test", "1.0.0", "isolated");
         index_with(&dir.0, &[("bn6_test", "1.0.0", "isolated")]);
-        let catalog = scan(&dir.0).unwrap();
+        let catalog = scanned(&dir.0).await;
 
         let installed = &catalog.installed["bn6_test"].authors;
         let indexed = &catalog.entry("bn6_test", &v("1.0.0")).unwrap().authors;
@@ -863,15 +804,15 @@ netplay = "{netplay}"
         assert_eq!(display_authors(installed), vec!["Someone"]);
     }
 
-    #[test]
-    fn an_installed_package_outranks_the_index() {
+    #[tokio::test]
+    async fn an_installed_package_outranks_the_index() {
         // The installed package is the thing that would actually run, so
         // a stale or wrong index entry must not decide compatibility.
         let dir = TempDir::new();
         install(&dir.0, "bn6_test", "1.0.0", "isolated");
         index_with(&dir.0, &[("bn6_test", "1.0.0", "vanilla")]);
 
-        let catalog = scan(&dir.0).unwrap();
+        let catalog = scanned(&dir.0).await;
         assert_eq!(
             catalog.compatibility("bn6_test", &v("1.0.0")),
             Some(&Compatibility::Isolated)
@@ -882,19 +823,19 @@ netplay = "{netplay}"
         );
     }
 
-    #[test]
-    fn newest_version_spans_installed_and_offered() {
+    #[tokio::test]
+    async fn newest_version_spans_installed_and_offered() {
         let dir = TempDir::new();
         install(&dir.0, "bn6_test", "1.0.0", "isolated");
         index_with(&dir.0, &[("bn6_test", "1.2.0", "isolated")]);
-        let catalog = scan(&dir.0).unwrap();
+        let catalog = scanned(&dir.0).await;
         assert_eq!(catalog.newest_version("bn6_test", None), Some(v("1.2.0")));
         assert_eq!(catalog.newest_version("bn6_test", Some(bn6_falzar())), Some(v("1.2.0")));
         assert_eq!(catalog.newest_version("nonexistent", None), None);
     }
 
-    #[test]
-    fn a_corrupt_package_is_skipped_not_fatal() {
+    #[tokio::test]
+    async fn a_corrupt_package_is_skipped_not_fatal() {
         let dir = TempDir::new();
         install(&dir.0, "bn6_test", "1.0.0", "isolated");
         std::fs::write(
@@ -904,7 +845,7 @@ netplay = "{netplay}"
         .unwrap();
         // A file someone dropped in by hand shouldn't cost them the
         // rest of their patches.
-        let catalog = scan(&dir.0).unwrap();
+        let catalog = scanned(&dir.0).await;
         assert_eq!(catalog.installed.len(), 1);
         assert!(catalog.is_installed("bn6_test", &v("1.0.0")));
     }
@@ -992,11 +933,17 @@ netplay = "{netplay}"
         let data = TempDir::new();
 
         // First fetch pulls the index; the second is a 304.
-        assert!(fetch_index(&url, &data.0).await.unwrap(), "first fetch should store");
-        assert!(!fetch_index(&url, &data.0).await.unwrap(), "second fetch should 304");
+        assert!(
+            fetch_index(&net(), FS, &url, &data.0).await.unwrap(),
+            "first fetch should store"
+        );
+        assert!(
+            !fetch_index(&net(), FS, &url, &data.0).await.unwrap(),
+            "second fetch should 304"
+        );
 
         // The whole repo is browsable, with nothing downloaded.
-        let catalog = scan(&data.0).unwrap();
+        let catalog = scanned(&data.0).await;
         assert!(catalog.installed.is_empty());
         assert_eq!(
             catalog.names().into_iter().collect::<Vec<_>>(),
@@ -1018,7 +965,7 @@ netplay = "{netplay}"
         let entry = catalog.entry("bn6_two", &version).unwrap().clone();
         let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let seen_w = seen.clone();
-        download(&url, &data.0, "bn6_two", &version, &entry, move |p| {
+        download(&net(), FS, &url, &data.0, "bn6_two", &version, &entry, move |p| {
             seen_w.lock().unwrap().push(p.downloaded);
             true
         })
@@ -1030,7 +977,7 @@ netplay = "{netplay}"
             seen.lock().unwrap()
         );
 
-        let catalog = scan(&data.0).unwrap();
+        let catalog = scanned(&data.0).await;
         assert!(catalog.is_installed("bn6_two", &version));
         assert!(!catalog.is_installed("bn6_one", &v("1.0.0")), "only the asked-for one");
         assert_eq!(
@@ -1053,13 +1000,13 @@ netplay = "{netplay}"
         build_repo(&repo.0, &[("bn6_one", "1.0.0", "vanilla")]);
         let url = serve(repo.0.clone()).await;
         let data = TempDir::new();
-        fetch_index(&url, &data.0).await.unwrap();
+        fetch_index(&net(), FS, &url, &data.0).await.unwrap();
 
-        let catalog = scan(&data.0).unwrap();
+        let catalog = scanned(&data.0).await;
         let version = v("1.0.0");
         let entry = catalog.entry("bn6_one", &version).unwrap().clone();
 
-        let outcome = download(&url, &data.0, "bn6_one", &version, &entry, |_| false)
+        let outcome = download(&net(), FS, &url, &data.0, "bn6_one", &version, &entry, |_| false)
             .await
             .unwrap();
         assert!(matches!(outcome, Outcome::Cancelled), "{outcome:?}");
@@ -1068,10 +1015,10 @@ netplay = "{netplay}"
             .unwrap()
             .filter_map(|e| e.ok())
             .map(|e| e.file_name().to_string_lossy().into_owned())
-            .filter(|n| n.ends_with(".part"))
+            .filter(|n| n.ends_with(".tmp") || n.ends_with(".part"))
             .collect();
         assert!(leftovers.is_empty(), "left a partial file: {leftovers:?}");
-        assert!(!scan(&data.0).unwrap().is_installed("bn6_one", &version));
+        assert!(!scanned(&data.0).await.is_installed("bn6_one", &version));
     }
 
     #[tokio::test]
@@ -1080,14 +1027,14 @@ netplay = "{netplay}"
         build_repo(&repo.0, &[("bn6_one", "1.0.0", "vanilla")]);
         let url = serve(repo.0.clone()).await;
         let data = TempDir::new();
-        fetch_index(&url, &data.0).await.unwrap();
+        fetch_index(&net(), FS, &url, &data.0).await.unwrap();
 
-        let catalog = scan(&data.0).unwrap();
+        let catalog = scanned(&data.0).await;
         let version = v("1.0.0");
         let mut entry = catalog.entry("bn6_one", &version).unwrap().clone();
         entry.sha256 = "0".repeat(64);
 
-        let err = download(&url, &data.0, "bn6_one", &version, &entry, |_| true)
+        let err = download(&net(), FS, &url, &data.0, "bn6_one", &version, &entry, |_| true)
             .await
             .unwrap_err()
             .to_string();
@@ -1103,7 +1050,7 @@ netplay = "{netplay}"
             .collect();
         left.sort();
         assert_eq!(left, vec!["index.etag", "index.json"], "no leftovers");
-        assert!(scan(&data.0).unwrap().installed.is_empty());
+        assert!(scanned(&data.0).await.installed.is_empty());
     }
 
     #[tokio::test]
@@ -1112,23 +1059,23 @@ netplay = "{netplay}"
         build_repo(&repo.0, &[("bn6_one", "1.0.0", "vanilla")]);
         let url = serve(repo.0.clone()).await;
         let data = TempDir::new();
-        fetch_index(&url, &data.0).await.unwrap();
+        fetch_index(&net(), FS, &url, &data.0).await.unwrap();
 
         // Repo goes away (or serves garbage) — we keep browsing what we
         // last saw, which is what makes the app work offline.
         std::fs::write(repo.0.join(tango_patch::index::FILE_NAME), "not json at all").unwrap();
-        assert!(fetch_index(&url, &data.0).await.is_err());
-        let catalog = scan(&data.0).unwrap();
+        assert!(fetch_index(&net(), FS, &url, &data.0).await.is_err());
+        let catalog = scanned(&data.0).await;
         assert_eq!(catalog.names().len(), 1);
         assert!(catalog.entry("bn6_one", &v("1.0.0")).is_some());
     }
 
-    #[test]
-    fn a_corrupt_index_leaves_the_installed_patches_alone() {
+    #[tokio::test]
+    async fn a_corrupt_index_leaves_the_installed_patches_alone() {
         let dir = TempDir::new();
         install(&dir.0, "bn6_test", "1.0.0", "isolated");
         std::fs::write(index_path(&dir.0), "{ this is not json").unwrap();
-        let catalog = scan(&dir.0).unwrap();
+        let catalog = scanned(&dir.0).await;
         assert!(catalog.index.is_empty());
         assert!(catalog.is_installed("bn6_test", &v("1.0.0")));
     }

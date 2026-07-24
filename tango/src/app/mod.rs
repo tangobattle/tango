@@ -13,7 +13,8 @@
 //! `view` modules render the tab body, which `App::view` chooses
 //! between based on `self.tab`.
 
-use crate::library::{game, patch, replays, rom, save};
+use crate::library::storage::Listing;
+use crate::library::{autoupdate, game, patch, replays, rom, save};
 use crate::netplay::identity;
 use crate::platform::{audio, input};
 use crate::ui::theme::theme_for;
@@ -60,27 +61,51 @@ impl Scanners {
         }
     }
 
-    /// Rescan all four collections. Each scanner is gated on a stat
-    /// fingerprint of the tree it reads, so the automatic triggers
-    /// (tab entry, session close) skip the full read-and-parse
-    /// unless files actually changed — switching tabs costs four
-    /// metadata walks, not a re-read of every ROM and save on disk.
-    fn rescan(&self, config: &config::Config) {
-        let roms_path = config.roms_path();
-        let saves_path = config.saves_path();
+    /// What the four scans read, enumerated but not yet read: the cheap
+    /// half of a rescan, and the only asynchronous one. See
+    /// [`Scanners::rescan`].
+    async fn list(config: &config::Config) -> Listings {
+        let storage = crate::library::storage();
+        Listings {
+            roms: storage.list(&rom::scan_roots(&config.roms_path())).await,
+            saves: storage.list(&[config.saves_path()]).await,
+            patches: storage.list(&patch::scan_roots(&config.patches_path())).await,
+            replays: storage.list(&[config.replays_path()]).await,
+        }
+    }
+
+    /// Rescan all four collections from an already-gathered [`Listings`].
+    /// Each scanner is gated on its listing, so the automatic triggers
+    /// (tab entry, session close) skip the full read-and-parse unless
+    /// files actually changed — switching tabs costs the four metadata
+    /// walks `list` already did, not a re-read of every ROM and save on
+    /// disk.
+    ///
+    /// Synchronous, and CPU- and IO-bound: reading and parsing every ROM,
+    /// save, package and replay header. Callers run it on a blocking
+    /// worker.
+    fn rescan(&self, config: &config::Config, listings: &Listings) {
+        let storage = crate::library::storage();
         let patches_path = config.patches_path();
-        let replays_path = config.replays_path();
         self.roms
-            .rescan_if_changed(&rom::scan_roots(&roms_path), || Some(rom::scan_roms(&roms_path)));
-        self.saves.rescan_if_changed(std::slice::from_ref(&saves_path), || {
-            Some(save::scan_saves(&saves_path))
+            .rescan_if_changed(&listings.roms, || Some(rom::scan_roms(storage, &listings.roms)));
+        self.saves
+            .rescan_if_changed(&listings.saves, || Some(save::scan_saves(storage, &listings.saves)));
+        self.patches.rescan_if_changed(&listings.patches, || {
+            patch::scan(storage, &patches_path, &listings.patches).ok()
         });
-        self.patches
-            .rescan_if_changed(&patch::scan_roots(&patches_path), || patch::scan(&patches_path).ok());
-        self.replays.rescan_if_changed(std::slice::from_ref(&replays_path), || {
-            Some(replays::scan_replays(&replays_path))
+        self.replays.rescan_if_changed(&listings.replays, || {
+            Some(replays::scan_replays(storage, &listings.replays))
         });
     }
+}
+
+/// One [`Listing`] per scanner, as gathered by [`Scanners::list`].
+pub struct Listings {
+    roms: Listing,
+    saves: Listing,
+    patches: Listing,
+    replays: Listing,
 }
 
 pub struct App {
@@ -146,7 +171,7 @@ pub struct App {
     /// Background loop that re-fetches the patch index every 15 min
     /// (a conditional GET of metadata, not the packages) and refreshes
     /// the patches scanner in place.
-    patch_autoupdater: patch::Autoupdater,
+    patch_autoupdater: autoupdate::Autoupdater,
     /// A replay whose playback is waiting on a patch download. Set by
     /// `watch_replay`, resumed once the install rescan lands.
     pending_watch: Option<std::path::PathBuf>,
@@ -370,7 +395,9 @@ impl App {
         let _ = i18n::FALLBACK_LANG; // re-exported for use in config; suppress unused warning here
 
         let scanners = Scanners::new();
-        scanners.rescan(&config);
+        // Startup, before there is a window to keep responsive.
+        let listings = futures::executor::block_on(Scanners::list(&config));
+        scanners.rescan(&config, &listings);
         log::info!(
             "initial scan: {} rom(s), {} save game(s), {} patch(es), {} replay(s)",
             scanners.roms.read().len(),
@@ -439,7 +466,7 @@ impl App {
             }
         };
 
-        let mut patch_autoupdater = patch::Autoupdater::new(
+        let mut patch_autoupdater = autoupdate::Autoupdater::new(
             config.patches_path(),
             config.patch_repo.clone(),
             scanners.patches.clone(),
@@ -542,10 +569,11 @@ impl App {
         let stream = futures::stream::iter(paths)
             .then(|path| async move {
                 let p = path.clone();
-                let stats = tokio::task::spawn_blocking(move || replays::compute_stats(&p).ok())
-                    .await
-                    .ok()
-                    .flatten();
+                let stats =
+                    tokio::task::spawn_blocking(move || replays::compute_stats(crate::library::storage(), &p).ok())
+                        .await
+                        .ok()
+                        .flatten();
                 (path, stats)
             })
             .filter_map(|(path, stats)| async move { stats.map(|s| tabs::replays::Message::StatsLoaded(path, s)) });
@@ -654,7 +682,11 @@ impl App {
         let config = self.config.clone();
         iced::Task::perform(
             async move {
-                let _ = tokio::task::spawn_blocking(move || scanners.rescan(&config)).await;
+                // Enumerate here (cheap, metadata only), then read and
+                // parse on a blocking worker so the walk-and-parse of
+                // every ROM and save doesn't stall iced's update loop.
+                let listings = Scanners::list(&config).await;
+                let _ = tokio::task::spawn_blocking(move || scanners.rescan(&config, &listings)).await;
             },
             move |()| Message::Rescanned(followup),
         )

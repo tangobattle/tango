@@ -383,7 +383,7 @@ impl App {
                 let root = self.config.patches_path();
                 iced::Task::perform(
                     async move {
-                        patch::fetch_index(&url, &root)
+                        patch::fetch_index(crate::library::http(), crate::library::storage(), &url, &root)
                             .await
                             .map(|_changed| ())
                             .map_err(|e| e.to_string())
@@ -395,7 +395,9 @@ impl App {
             E::Install(key) => self.install_patch(key),
             E::CancelInstall(key) => self.cancel_download(key),
             E::Uninstall((name, version)) => {
-                if let Err(e) = patch::uninstall(&self.config.patches_path(), &name, &version) {
+                if let Err(e) =
+                    patch::uninstall(crate::library::storage(), &self.config.patches_path(), &name, &version)
+                {
                     log::warn!("uninstalling {name} {version}: {e}");
                 }
                 self.rescan_off_thread(RescanFollowup::Refresh)
@@ -482,14 +484,23 @@ impl App {
         let progress_tx = tx.clone();
         let progress_key = key.clone();
         tokio::task::spawn(async move {
-            let result = patch::download(&url, &root, &name, &version, &entry, move |p| {
-                let _ = progress_tx.unbounded_send(tabs::patches::Message::InstallProgress(
-                    progress_key.clone(),
-                    p.downloaded,
-                    p.total,
-                ));
-                !token.is_cancelled()
-            })
+            let result = patch::download(
+                crate::library::http(),
+                crate::library::storage(),
+                &url,
+                &root,
+                &name,
+                &version,
+                &entry,
+                move |p| {
+                    let _ = progress_tx.unbounded_send(tabs::patches::Message::InstallProgress(
+                        progress_key.clone(),
+                        p.downloaded,
+                        p.total,
+                    ));
+                    !token.is_cancelled()
+                },
+            )
             .await;
             let msg = match result {
                 // The cancel already cleaned up; the UI just drops it.
@@ -831,7 +842,7 @@ impl App {
                     .ok_or_else(|| anyhow::anyhow!("rom for {:?} not scanned", entry.family_and_variant()))?;
                 let rom = if let Some(patch_info) = gi.patch.as_ref() {
                     let v = semver::Version::parse(&patch_info.version)?;
-                    patch::apply_patch_from_disk(&rom, entry, &patches_path, &patch_info.name, &v)?
+                    patch::apply_patch(crate::library::storage(), &rom, entry, &patches_path, &patch_info.name, &v)?
                 } else {
                     rom
                 };
@@ -1073,8 +1084,9 @@ impl App {
                 // re-point the patch autoupdater at the new patches folder
                 // (it captured the old path at construction). The self-updater
                 // cache and log file follow the new path on next launch.
-                self.scanners.rescan(&self.config);
-                self.patch_autoupdater = patch::Autoupdater::new(
+                let listings = futures::executor::block_on(Scanners::list(&self.config));
+                self.scanners.rescan(&self.config, &listings);
+                self.patch_autoupdater = crate::library::autoupdate::Autoupdater::new(
                     self.config.patches_path(),
                     self.config.patch_repo.clone(),
                     self.scanners.patches.clone(),

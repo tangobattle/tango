@@ -98,6 +98,77 @@ impl Bnlc {
     }
 }
 
+/// Pull every recognized `.srl` ROM out of each installed volume's
+/// per-game `exeN.dat` archives.
+///
+/// This reads Steam's install directories, not the library's own
+/// storage — which is exactly why it stays native-only and outside
+/// [`crate::storage::Storage`]: there is no browser equivalent to
+/// abstract over.
+pub fn scan_steam_roms() -> std::collections::HashMap<crate::rom::GameRef, Vec<u8>> {
+    let mut roms = std::collections::HashMap::new();
+    for volume in [Volume::Vol1, Volume::Vol2] {
+        let Some(b) = get(volume) else {
+            continue;
+        };
+        for archive in b.rom_archives() {
+            roms.extend(scan_rom_archive(&archive));
+        }
+    }
+    roms
+}
+
+fn scan_rom_archive(path: &std::path::Path) -> std::collections::HashMap<crate::rom::GameRef, Vec<u8>> {
+    log::info!("scanning bnlc archive: {}", path.display());
+    let mut roms = std::collections::HashMap::new();
+    let f = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(e) => {
+            log::error!("failed to open lc archive {}: {e}", path.display());
+            return roms;
+        }
+    };
+    let mut za = match zip::ZipArchive::new(f) {
+        Ok(za) => za,
+        Err(e) => {
+            log::error!("failed to open lc archive {}: {e}", path.display());
+            return roms;
+        }
+    };
+    for i in 0..za.len() {
+        let mut entry = match za.by_index(i) {
+            Ok(e) => e,
+            Err(e) => {
+                log::warn!("bnlc: {}({}): {e}", path.display(), i);
+                continue;
+            }
+        };
+        let Some(entry_path) = entry.enclosed_name().map(|p| p.to_owned()) else {
+            continue;
+        };
+        if entry_path.extension() != Some(std::ffi::OsStr::new("srl")) {
+            continue;
+        }
+        let mut rom = vec![];
+        if let Err(e) = entry.read_to_end(&mut rom) {
+            log::warn!("bnlc: {}/{}: {e}", path.display(), entry_path.display());
+            continue;
+        }
+        let Some(game) = crate::game::detect(&rom) else {
+            log::warn!("bnlc: {}/{}: not recognized", path.display(), entry_path.display());
+            continue;
+        };
+        log::info!(
+            "bnlc: {}/{}: {:?}",
+            path.display(),
+            entry_path.display(),
+            game.family_and_variant()
+        );
+        roms.insert(game, rom);
+    }
+    roms
+}
+
 /// Process-lifetime cached [`Bnlc`] for a volume. The first call
 /// probes Steam + opens the shared archive; subsequent calls return
 /// the same `&'static Bnlc`. `None` whenever the volume isn't

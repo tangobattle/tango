@@ -54,6 +54,7 @@ rennet.workspace = true
 tango-net-protocol = { path = "../tango-net-protocol" }
 # Reads packages and the index; the app never writes a package.
 tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"] }
+tango-library = { path = "../tango-library" }
 tango-match = { path = "../tango-match" }
 tango-replay = { path = "../tango-replay" }
 tango-session = { path = "../tango-session" }
@@ -160,13 +161,13 @@ tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = [
 # compiled in by default; `gamesupport-all` enables every game. Shipped
 # builds pass `--features gamesupport-all`.
 default = []
-gamesupport-bn1 = ["dep:tango-gamesupport-bn1"]
-gamesupport-bn2 = ["dep:tango-gamesupport-bn2"]
-gamesupport-bn3 = ["dep:tango-gamesupport-bn3"]
-gamesupport-bn4 = ["dep:tango-gamesupport-bn4"]
-gamesupport-bn5 = ["dep:tango-gamesupport-bn5"]
-gamesupport-bn6 = ["dep:tango-gamesupport-bn6"]
-gamesupport-exe45 = ["dep:tango-gamesupport-exe45"]
+gamesupport-bn1 = ["dep:tango-gamesupport-bn1", "tango-library/gamesupport-bn1"]
+gamesupport-bn2 = ["dep:tango-gamesupport-bn2", "tango-library/gamesupport-bn2"]
+gamesupport-bn3 = ["dep:tango-gamesupport-bn3", "tango-library/gamesupport-bn3"]
+gamesupport-bn4 = ["dep:tango-gamesupport-bn4", "tango-library/gamesupport-bn4"]
+gamesupport-bn5 = ["dep:tango-gamesupport-bn5", "tango-library/gamesupport-bn5"]
+gamesupport-bn6 = ["dep:tango-gamesupport-bn6", "tango-library/gamesupport-bn6"]
+gamesupport-exe45 = ["dep:tango-gamesupport-exe45", "tango-library/gamesupport-exe45"]
 gamesupport-all = [
     "gamesupport-bn1",
     "gamesupport-bn2",

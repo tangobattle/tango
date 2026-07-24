@@ -16,7 +16,7 @@
 //! `save-<template>`), so there's no `game-<family>` key prefix to keep in
 //! sync — the family supplies the namespace.
 
-use crate::library::rom::GameRef;
+use crate::rom::GameRef;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
@@ -130,8 +130,8 @@ pub fn family_str(family: &str, lang: &unic_langid::LanguageIdentifier, key: &st
             return Some(s);
         }
     }
-    if *lang != crate::i18n::FALLBACK_LANG {
-        if let Some(bundle) = by_lang.get(&crate::i18n::FALLBACK_LANG) {
+    if *lang != crate::lang::FALLBACK_LANG {
+        if let Some(bundle) = by_lang.get(&crate::lang::FALLBACK_LANG) {
             if let Some(s) = get(bundle, key) {
                 return Some(s);
             }

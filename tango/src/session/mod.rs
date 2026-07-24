@@ -1096,7 +1096,7 @@ pub fn build_playback(
             .ok_or_else(|| anyhow::anyhow!("rom for {}/{} not scanned", gi.rom_family, gi.rom_variant))?;
         let rom = if let Some(patch_info) = gi.patch.as_ref() {
             let v = semver::Version::parse(&patch_info.version)?;
-            patch::apply_patch_from_disk(&rom, entry, &patches_path, &patch_info.name, &v)?
+            patch::apply_patch(crate::library::storage(), &rom, entry, &patches_path, &patch_info.name, &v)?
         } else {
             rom
         };
@@ -1139,7 +1139,14 @@ pub async fn spawn_pvp(
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("local rom not scanned"))?;
     let local_rom_bytes = if let Some((name, version)) = local_patch.as_ref() {
-        patch::apply_patch_from_disk(&local_rom_raw, local_game, &config.patches_path(), name, version)?
+        patch::apply_patch(
+            crate::library::storage(),
+            &local_rom_raw,
+            local_game,
+            &config.patches_path(),
+            name,
+            version,
+        )?
     } else {
         local_rom_raw
     };
@@ -1166,7 +1173,8 @@ pub async fn spawn_pvp(
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("remote rom not scanned"))?;
     let remote_rom_bytes = if let Some(p) = remote_gi.patch.as_ref() {
-        patch::apply_patch_from_disk(
+        patch::apply_patch(
+            crate::library::storage(),
             &remote_rom_raw,
             remote_game,
             &config.patches_path(),
@@ -1286,7 +1294,14 @@ pub fn spawn_singleplayer(
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("rom not in scanner cache"))?;
     let rom_bytes = if let Some(p) = loaded.patch.as_ref() {
-        patch::apply_patch_from_disk(&raw, loaded.game, &config.patches_path(), &p.name, &p.version)?
+        patch::apply_patch(
+            crate::library::storage(),
+            &raw,
+            loaded.game,
+            &config.patches_path(),
+            &p.name,
+            &p.version,
+        )?
     } else {
         raw
     };
@@ -1322,7 +1337,14 @@ pub fn spawn_training(
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("rom not in scanner cache"))?;
     let rom_bytes = if let Some(p) = loaded.patch.as_ref() {
-        patch::apply_patch_from_disk(&raw, loaded.game, &config.patches_path(), &p.name, &p.version)?
+        patch::apply_patch(
+            crate::library::storage(),
+            &raw,
+            loaded.game,
+            &config.patches_path(),
+            &p.name,
+            &p.version,
+        )?
     } else {
         raw
     };

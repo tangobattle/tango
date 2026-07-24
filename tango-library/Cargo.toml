@@ -1,0 +1,80 @@
+[package]
+name = "tango-library"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+# The user's game library and its persistence, extracted from the tango
+# bin crate so a second frontend (a browser build over OPFS) reuses the
+# registry, the scanners, the patch catalog, and the config model
+# verbatim. No UI toolkit, and no direct filesystem or HTTP access: all
+# I/O goes through the `storage::Storage` / `http::Http` traits, whose
+# std implementations are behind the default `native` feature. Builds
+# for native AND wasm32.
+[dependencies]
+futures.workspace = true
+image.workspace = true
+log.workspace = true
+mailparse = "0.14"
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+unic-langid.workspace = true
+
+bps = { git = "https://github.com/tangobattle/bps" }
+tango-dataview = { path = "../tango-dataview" }
+tango-gamesupport = { path = "../tango-gamesupport" }
+tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"] }
+tango-replay = { path = "../tango-replay" }
+
+fluent-templates = "0.14"
+
+tango-gamesupport-bn1 = { path = "../gamesupport/tango-gamesupport-bn1", optional = true }
+tango-gamesupport-bn2 = { path = "../gamesupport/tango-gamesupport-bn2", optional = true }
+tango-gamesupport-bn3 = { path = "../gamesupport/tango-gamesupport-bn3", optional = true }
+tango-gamesupport-bn4 = { path = "../gamesupport/tango-gamesupport-bn4", optional = true }
+tango-gamesupport-bn5 = { path = "../gamesupport/tango-gamesupport-bn5", optional = true }
+tango-gamesupport-bn6 = { path = "../gamesupport/tango-gamesupport-bn6", optional = true }
+tango-gamesupport-exe45 = { path = "../gamesupport/tango-gamesupport-exe45", optional = true }
+
+# The `native` feature's std implementations only. Nothing outside
+# `storage::std_impl` / `http::reqwest_impl` / `bnlc` may reference these,
+# or the wasm32 build breaks.
+reqwest = { version = "0.11", features = ["stream"], default-features = false, optional = true }
+steamlocate = { version = "2", optional = true }
+tokio = { workspace = true, features = ["time"], optional = true }
+walkdir = { version = "2", optional = true }
+zip = { workspace = true, features = ["deflate"], optional = true }
+
+[dev-dependencies]
+# The library never writes a package; the patch tests build one to scan,
+# and stand up a real HTTP server to fetch it from.
+tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index", "bundle"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }
+
+[features]
+default = ["native"]
+# std filesystem + reqwest HTTP + Steam (BNLC) discovery. A wasm build
+# turns this off and supplies its own OPFS / fetch implementations.
+native = ["dep:reqwest", "dep:steamlocate", "dep:tokio", "dep:walkdir", "dep:zip", "reqwest/native-tls"]
+gamesupport-bn1 = ["dep:tango-gamesupport-bn1"]
+gamesupport-bn2 = ["dep:tango-gamesupport-bn2"]
+gamesupport-bn3 = ["dep:tango-gamesupport-bn3"]
+gamesupport-bn4 = ["dep:tango-gamesupport-bn4"]
+gamesupport-bn5 = ["dep:tango-gamesupport-bn5"]
+gamesupport-bn6 = ["dep:tango-gamesupport-bn6"]
+gamesupport-exe45 = ["dep:tango-gamesupport-exe45"]
+gamesupport-all = [
+    "gamesupport-bn1",
+    "gamesupport-bn2",
+    "gamesupport-bn3",
+    "gamesupport-bn4",
+    "gamesupport-bn5",
+    "gamesupport-bn6",
+    "gamesupport-exe45",
+]
+
+[lints]
+workspace = true

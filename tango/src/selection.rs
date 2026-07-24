@@ -154,7 +154,14 @@ impl Loaded {
     ) -> Self {
         let (rom, applied_patch) = match patch {
             Some((name, version, meta)) => {
-                match crate::library::patch::apply_patch_from_disk(&rom, game, patches_path, &name, &version) {
+                match crate::library::patch::apply_patch(
+                    crate::library::storage(),
+                    &rom,
+                    game,
+                    patches_path,
+                    &name,
+                    &version,
+                ) {
                     Ok(patched) => (
                         patched,
                         Some(AppliedPatch {

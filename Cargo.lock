@@ -6086,6 +6086,7 @@ dependencies = [
  "tango-gamesupport-bn5",
  "tango-gamesupport-bn6",
  "tango-gamesupport-exe45",
+ "tango-library",
  "tango-match",
  "tango-net-protocol",
  "tango-patch",
@@ -6260,6 +6261,39 @@ dependencies = [
  "tango-dataview",
  "tango-gamesupport",
  "tango-match",
+]
+
+[[package]]
+name = "tango-library"
+version = "0.1.0"
+dependencies = [
+ "bps",
+ "fluent-templates",
+ "futures",
+ "image",
+ "log",
+ "mailparse",
+ "reqwest",
+ "semver",
+ "serde",
+ "serde_json",
+ "steamlocate",
+ "tango-dataview",
+ "tango-gamesupport",
+ "tango-gamesupport-bn1",
+ "tango-gamesupport-bn2",
+ "tango-gamesupport-bn3",
+ "tango-gamesupport-bn4",
+ "tango-gamesupport-bn5",
+ "tango-gamesupport-bn6",
+ "tango-gamesupport-exe45",
+ "tango-patch",
+ "tango-replay",
+ "thiserror 1.0.69",
+ "tokio",
+ "unic-langid",
+ "walkdir",
+ "zip",
 ]
 
 [[package]]

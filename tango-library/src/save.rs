@@ -1,4 +1,5 @@
-use crate::library::{rom::GameRef, scanner};
+use crate::storage::{Listing, Storage};
+use crate::{rom::GameRef, scanner};
 
 pub struct ScannedSave {
     pub path: std::path::PathBuf,
@@ -16,38 +17,23 @@ impl Clone for ScannedSave {
 
 pub type Scanner = scanner::Scanner<std::collections::HashMap<GameRef, Vec<ScannedSave>>>;
 
-pub fn scan_saves(path: &std::path::Path) -> std::collections::HashMap<GameRef, Vec<ScannedSave>> {
+pub fn scan_saves(storage: &dyn Storage, listing: &Listing) -> std::collections::HashMap<GameRef, Vec<ScannedSave>> {
     let mut by_game: std::collections::HashMap<GameRef, Vec<ScannedSave>> = std::collections::HashMap::new();
 
-    if std::fs::metadata(path).is_err() {
-        return by_game;
-    }
-
-    for entry in walkdir::WalkDir::new(path) {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(e) => {
-                log::warn!("save scan: {e:?}");
-                continue;
-            }
-        };
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let p = entry.path();
-        let buf = match std::fs::read(p) {
+    for entry in listing.entries() {
+        let buf = match storage.read(&entry.path) {
             Ok(b) => b,
             Err(e) => {
-                log::warn!("{}: {e}", p.display());
+                log::warn!("{}: {e}", entry.path.display());
                 continue;
             }
         };
 
         let mut matched = false;
-        for game in crate::library::game::GAMES.iter().copied() {
+        for game in crate::game::GAMES.iter().copied() {
             if let Ok(save) = game.parse_save(&buf) {
                 by_game.entry(game).or_default().push(ScannedSave {
-                    path: p.to_path_buf(),
+                    path: entry.path.clone(),
                     save,
                 });
                 matched = true;
@@ -55,7 +41,7 @@ pub fn scan_saves(path: &std::path::Path) -> std::collections::HashMap<GameRef, 
         }
 
         if !matched {
-            log::warn!("save scan: {}: no matching game", p.display());
+            log::warn!("save scan: {}: no matching game", entry.path.display());
         }
     }
 

@@ -1,0 +1,115 @@
+//! The replay index: what replays exist and what their headers say.
+//!
+//! Re-simulating a replay to produce match stats is deliberately *not*
+//! here — that needs an emulator core and the analysis engine, which is
+//! the session layer's business. This module only reads headers.
+
+use crate::scanner;
+use crate::storage::{Listing, Storage};
+
+pub struct ScannedReplay {
+    pub path: std::path::PathBuf,
+    /// The recorder's player slot — picks the "you" side out of the
+    /// metadata's player-ordered sides.
+    pub local_player_index: u8,
+    pub metadata: tango_replay::Metadata,
+}
+
+impl ScannedReplay {
+    pub fn local_side(&self) -> Option<&tango_replay::metadata::Side> {
+        self.metadata.side(self.local_player_index)
+    }
+
+    pub fn remote_side(&self) -> Option<&tango_replay::metadata::Side> {
+        self.metadata.side(1 - self.local_player_index)
+    }
+}
+
+/// Output of [`compute_stats`]. Cheap to copy.
+#[derive(Clone, Copy, Debug)]
+pub struct ReplayStats {
+    /// Sum of `rounds[i].len()` from the decoded replay — one
+    /// tick per recorded input pair. Convert at 60 FPS for
+    /// wall-clock duration.
+    pub tick_count: u32,
+    /// Number of rounds the recorded match got through. 2-3 for
+    /// a finished best-of-3; whatever made it to disk for
+    /// incompletes.
+    pub round_count: u32,
+    /// Whether the recorded stream ended with `END_OF_REPLAY`.
+    pub is_complete: bool,
+}
+
+pub type Scanner = scanner::Scanner<Vec<ScannedReplay>>;
+
+/// Whether the replay's local-side game is registered with the app. A
+/// replay with no recorded local game info can't be filtered on, so it's
+/// kept; one that names a game we don't have compiled in is hidden.
+fn local_game_registered(side: Option<&tango_replay::metadata::Side>) -> bool {
+    match side.and_then(|s| s.game_info.as_ref()) {
+        None => true,
+        Some(gi) => u8::try_from(gi.rom_variant)
+            .ok()
+            .and_then(|variant| crate::game::find_by_family_and_variant(&gi.rom_family, variant))
+            .is_some(),
+    }
+}
+
+/// Reads the metadata header out of each file in `listing`, skipping
+/// anything that doesn't parse. Goes through [`Storage::open`] rather
+/// than reading whole files — a replay runs to megabytes and only its
+/// header is wanted here. The heavier per-replay stats (length, round
+/// count, completion) are intentionally NOT computed either; see
+/// [`compute_stats`] for the lazy follow-up. Sorts results newest-first,
+/// with ties broken by link code.
+pub fn scan_replays(storage: &dyn Storage, listing: &Listing) -> Vec<ScannedReplay> {
+    let mut out = Vec::new();
+    for entry in listing.entries() {
+        let mut f = match storage.open(&entry.path) {
+            Ok(f) => f,
+            Err(e) => {
+                log::warn!("{}: {e}", entry.path.display());
+                continue;
+            }
+        };
+        let (local_player_index, metadata) = match tango_replay::read_metadata(&mut f) {
+            Ok((_version, lpi, m)) => (lpi, m),
+            Err(_) => continue,
+        };
+        // Hide replays whose game isn't registered (its
+        // `gamesupport-<game>` feature is disabled / its crate isn't
+        // compiled in) — there's no way to view or export them.
+        if !local_game_registered(metadata.side(local_player_index)) {
+            continue;
+        }
+        out.push(ScannedReplay {
+            path: entry.path.clone(),
+            local_player_index,
+            metadata,
+        });
+    }
+    out.sort_by_key(|r| (std::cmp::Reverse(r.metadata.ts), r.metadata.link_code.clone()));
+    out
+}
+
+/// Heavy stats computation for a single replay — full decode
+/// (metadata, both WRAM zstd frames, every input tick). Spawn
+/// this on a worker thread, never from the UI path.
+pub fn compute_stats(storage: &dyn Storage, path: &std::path::Path) -> std::io::Result<ReplayStats> {
+    let replay = tango_replay::Replay::decode(storage.open(path)?)?;
+    Ok(ReplayStats {
+        tick_count: replay.inputs.len() as u32,
+        round_count: replay.round_starts.len() as u32,
+        is_complete: replay.is_complete,
+    })
+}
+
+/// Pretty path relative to the replays root.
+pub fn format_rel_path(replays_path: &std::path::Path, path: &std::path::Path) -> String {
+    let s = path.strip_prefix(replays_path).unwrap_or(path).to_string_lossy();
+    if s.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{s}/")
+    }
+}
