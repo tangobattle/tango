@@ -61,6 +61,11 @@ pub enum Outcome {
 pub struct UnitObs {
     /// In-battle HP.
     pub hp: u16,
+    /// The tile the unit stands on, `(x, y)`, 1-based over the whole
+    /// field: x 1..=6 left to right (columns 1-3 are the left player's
+    /// side), y 1..=3 top to bottom. Where the unit IS — a move in
+    /// flight reads as its origin until it lands.
+    pub tile: (u8, u8),
     /// Loaded-chip token, `None` when the game reports no chip loaded (or
     /// reports no chip identity at all — bn1). The games spell this
     /// `0xFFFF` in RAM; that sentinel stops at the poller, and the

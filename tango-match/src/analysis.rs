@@ -732,8 +732,7 @@ pub fn fold_confirmed(
             buttons,
             // The stats format keeps the sentinel spelling; telemetry
             // carries the absence as `None`.
-            chips: [obs.units[local_player].chip, obs.units[1 - local_player].chip]
-                .map(|c| c.unwrap_or(NO_CHIP)),
+            chips: [obs.units[local_player].chip, obs.units[1 - local_player].chip].map(|c| c.unwrap_or(NO_CHIP)),
         });
     };
 
