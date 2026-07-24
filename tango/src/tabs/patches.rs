@@ -29,6 +29,10 @@ pub enum Message {
     Install(VersionKey),
     InstallProgress(VersionKey, u64, u64),
     InstallFinished(VersionKey, Result<(), String>),
+    /// Stop an in-flight download and forget it.
+    CancelInstall(VersionKey),
+    /// It stopped: the loop tidied its partial file up and reported back.
+    InstallCancelled(VersionKey),
     /// Delete an installed package. The index still lists it, so it can
     /// be reinstalled.
     Uninstall(VersionKey),
@@ -123,6 +127,8 @@ pub enum Effect {
     Rescan,
     /// A download failed — anything queued behind it should give up.
     InstallFailed,
+    /// Stop an in-flight download.
+    CancelInstall(VersionKey),
     /// Toggle the named patch's favorite status in `Config`.
     ToggleFavorite(String),
 }
@@ -189,6 +195,9 @@ impl PatchesState {
                     }
                 }
             }
+            Message::CancelInstall(key) => Some(Effect::CancelInstall(key)),
+            // App drops the row when it cancels; nothing left to do.
+            Message::InstallCancelled(_) => None,
             Message::Uninstall(key) => Some(Effect::Uninstall(key)),
             Message::ReadmeFetched(key, readme) => {
                 self.remote_readmes.insert(key.clone(), readme);
@@ -580,26 +589,42 @@ impl PatchesState {
             return row![].height(Length::Fixed(32.0)).into();
         };
 
+        // A download owns the whole row while it runs or after it fails
+        // — same widget the play strip, lobby and replay detail use.
+        match downloads.get(&key) {
+            Some(download) if download.is_running() => {
+                let caption = match download.percent() {
+                    Some(percent) => t!(lang, "patches-downloading-progress", percent = percent as i64),
+                    None => t!(lang, "patches-downloading"),
+                };
+                return container(widgets::download_row(
+                    caption,
+                    download.fraction(),
+                    false,
+                    None,
+                    Some((t!(lang, "patches-cancel"), Message::CancelInstall(key))),
+                ))
+                .height(Length::Fixed(32.0))
+                .align_y(Alignment::Center)
+                .into();
+            }
+            Some(Download::Failed) => {
+                return container(widgets::download_row(
+                    t!(lang, "patches-download-failed"),
+                    None,
+                    true,
+                    Some((t!(lang, "patches-retry"), Message::Install(key))),
+                    None,
+                ))
+                .height(Length::Fixed(32.0))
+                .align_y(Alignment::Center)
+                .into();
+            }
+            _ => {}
+        }
+
         let mut controls = row![].spacing(8).align_y(Alignment::Center);
-        if let Some(download) = downloads.get(&key).filter(|d| d.is_running()) {
-            let label = match download.percent() {
-                Some(percent) => t!(lang, "patches-downloading-progress", percent = percent as i64),
-                None => t!(lang, "patches-downloading"),
-            };
-            controls = controls.push(text(label).size(TEXT_CAPTION).style(widgets::muted_text_style));
-        } else if matches!(downloads.get(&key), Some(Download::Failed)) {
-            controls = controls.push(
-                text(t!(lang, "patches-download-failed"))
-                    .size(TEXT_CAPTION)
-                    .style(widgets::danger_text_style),
-            );
-            controls = controls.push(widgets::icon_button(
-                Icon::RefreshCw,
-                t!(lang, "patches-retry"),
-                Message::Install(key.clone()),
-                STANDARD_PADDING,
-            ));
-        } else if info.is_installed() {
+        if info.is_installed() {
             controls = controls.push(
                 text(t!(lang, "patches-installed"))
                     .size(TEXT_CAPTION)

@@ -6,10 +6,29 @@ impl App {
     /// follow-ups. The caller batches a lobby settings-resend after
     /// this, so a mid-lobby save/patch switch reaches the peer.
     pub(super) fn update_loadout(&mut self, msg: loadout::Message) -> iced::Task<Message> {
+        // Download controls act on the fetch, not the selection, so they
+        // carry their own key and skip the selection-changed follow-ups.
+        let download_key = match &msg {
+            loadout::Message::RetryPatchDownload(key) | loadout::Message::CancelPatchDownload(key) => Some(key.clone()),
+            _ => None,
+        };
         let Some(effect) = self.loadout.update(msg, &self.scanners, &self.config) else {
             return iced::Task::none();
         };
         match effect {
+            loadout::Effect::RetryDownload => {
+                let Some(key) = download_key else {
+                    return iced::Task::none();
+                };
+                self.downloads.remove(&key);
+                return self.install_patch(key);
+            }
+            loadout::Effect::CancelDownload => {
+                let Some(key) = download_key else {
+                    return iced::Task::none();
+                };
+                return self.cancel_download(key);
+            }
             loadout::Effect::SelectionChanged => {
                 self.refresh_loaded();
                 self.persist_selection();
@@ -326,10 +345,16 @@ impl App {
                     }),
                 );
             }
+            tabs::patches::Message::InstallCancelled(key) => {
+                self.download_cancels.remove(key);
+                self.downloads.remove(key);
+            }
             tabs::patches::Message::InstallFinished(key, Ok(())) => {
+                self.download_cancels.remove(key);
                 self.downloads.remove(key);
             }
             tabs::patches::Message::InstallFinished(key, Err(_)) => {
+                self.download_cancels.remove(key);
                 self.downloads.insert(key.clone(), patch::Download::Failed);
             }
             _ => {}
@@ -368,6 +393,7 @@ impl App {
                 .map(Message::Patches)
             }
             E::Install(key) => self.install_patch(key),
+            E::CancelInstall(key) => self.cancel_download(key),
             E::Uninstall((name, version)) => {
                 if let Err(e) = patch::uninstall(&self.config.patches_path(), &name, &version) {
                     log::warn!("uninstalling {name} {version}: {e}");
@@ -449,6 +475,9 @@ impl App {
             }),
         );
 
+        let token = tokio_util::sync::CancellationToken::new();
+        self.download_cancels.insert(key.clone(), token.clone());
+
         let (tx, rx) = futures::channel::mpsc::unbounded::<tabs::patches::Message>();
         let progress_tx = tx.clone();
         let progress_key = key.clone();
@@ -459,14 +488,34 @@ impl App {
                     p.downloaded,
                     p.total,
                 ));
+                !token.is_cancelled()
             })
             .await;
-            let _ = tx.unbounded_send(tabs::patches::Message::InstallFinished(
-                key,
-                result.map(|_| ()).map_err(|e| format!("{e:#}")),
-            ));
+            let msg = match result {
+                // The cancel already cleaned up; the UI just drops it.
+                Ok(patch::Outcome::Cancelled) => tabs::patches::Message::InstallCancelled(key),
+                Ok(patch::Outcome::Installed) => tabs::patches::Message::InstallFinished(key, Ok(())),
+                Err(e) => tabs::patches::Message::InstallFinished(key, Err(format!("{e:#}"))),
+            };
+            let _ = tx.unbounded_send(msg);
         });
         iced::Task::stream(rx).map(Message::Patches)
+    }
+
+    /// Stop an in-flight download and forget it: the loop notices its
+    /// token once per chunk, removes the partial file and reports back
+    /// as cancelled. Dropping the row here rather than waiting for that
+    /// keeps the click feeling immediate.
+    pub(super) fn cancel_download(&mut self, key: patch::VersionKey) -> iced::Task<Message> {
+        if let Some(token) = self.download_cancels.remove(&key) {
+            token.cancel();
+        }
+        self.downloads.remove(&key);
+        // Nothing is going to arrive for a replay queued behind it.
+        if self.pending_watch.is_some() {
+            self.pending_watch = None;
+        }
+        iced::Task::none()
     }
 
     /// Fetch the patch the play tab's picker just selected, if we don't
@@ -588,6 +637,7 @@ impl App {
             E::OpenPath(p) => open_path(p),
             E::RevealPath(p) => reveal_path(p),
             E::Watch(p) => self.watch_replay(p),
+            E::CancelPatchDownload(key) => self.cancel_download(key),
             // The dropped job closes its stream, whose completion
             // message clears the tab's pending marker — a later
             // focus retries the analysis.

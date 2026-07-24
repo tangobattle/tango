@@ -67,6 +67,9 @@ pub(super) struct Lobby<'a> {
     pub(super) streamer_mode: bool,
     pub(super) handoff_pending: bool,
     pub(super) frame_delay: u32,
+    /// In-flight patch downloads, so a `MissingPatch` verdict can say
+    /// how the fetch it triggered is actually going.
+    pub(super) downloads: &'a crate::library::patch::Downloads,
 }
 
 impl<'a> Lobby<'a> {
@@ -314,13 +317,47 @@ impl<'a> Lobby<'a> {
             Status::WaitingForOpponent => in_flight(t!(lang, "play-status-waiting-opponent")),
             Status::Negotiating => in_flight(t!(lang, "play-status-negotiating")),
             Status::Handshake => in_flight(t!(lang, "lobby-handshake")),
+            Status::Verdict(netplay::compat::Verdict::MissingPatch { name, version }) => {
+                // The app starts this fetch itself, so the honest thing
+                // to show is the fetch: progress while it runs, and the
+                // failure with a retry when it doesn't -- not a
+                // "downloading…" line that outlives the download.
+                let key = (name.clone(), version.clone());
+                return match self.downloads.get(&key) {
+                    Some(download) if download.is_running() => {
+                        let caption = match download.percent() {
+                            Some(percent) => t!(lang, "lobby-compat-fetching-patch-progress", percent = percent as i64),
+                            None => t!(lang, "lobby-compat-fetching-patch"),
+                        };
+                        widgets::download_row(caption, download.fraction(), false, None, None)
+                    }
+                    Some(crate::library::patch::Download::Failed) => widgets::download_row(
+                        t!(lang, "lobby-compat-patch-failed"),
+                        None,
+                        true,
+                        Some((
+                            t!(lang, "patches-retry"),
+                            // Same handler the play strip's retry uses.
+                            Message::Loadout(crate::loadout::Message::RetryPatchDownload(key)),
+                        )),
+                        None,
+                    ),
+                    // Not started yet: the trigger fires on the next
+                    // lobby state change.
+                    _ => text(t!(lang, "lobby-compat-fetching-patch"))
+                        .size(TEXT_BODY)
+                        .style(pulsing_style)
+                        .into(),
+                };
+            }
             Status::Verdict(verdict) => {
                 use netplay::compat::Verdict;
                 let label = match verdict {
                     Verdict::Compatible => t!(lang, "lobby-compat-ok"),
                     Verdict::MissingGame => t!(lang, "lobby-compat-missing-game"),
                     Verdict::MissingRom => t!(lang, "lobby-compat-missing-rom"),
-                    // Not a dead end: the app is already downloading it.
+                    // Handled above -- it reports as a download, not a
+                    // verdict, because it is one.
                     Verdict::MissingPatch { .. } => t!(lang, "lobby-compat-fetching-patch"),
                     Verdict::DifferentVersions => t!(lang, "lobby-compat-version-mismatch"),
                     Verdict::DifferentMatchTypes => t!(lang, "lobby-compat-match-mismatch"),

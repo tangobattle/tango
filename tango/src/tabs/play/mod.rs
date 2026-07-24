@@ -513,6 +513,7 @@ impl State {
                 streamer_mode,
                 handoff_pending: band.handoff_pending,
                 frame_delay: config.frame_delay,
+                downloads,
             }
             .view()
         } else {

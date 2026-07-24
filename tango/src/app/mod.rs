@@ -152,8 +152,12 @@ pub struct App {
     pending_watch: Option<std::path::PathBuf>,
     /// In-flight and failed patch downloads. App-level because the
     /// patches tab, the lobby, replay playback and the play tab's picker
-    /// all start them, and two tabs render them.
+    /// all start them, and every one of those surfaces renders them.
     downloads: patch::Downloads,
+    /// Cancel handles for the in-flight ones, keyed the same way. The
+    /// download loop checks its token once per chunk and tidies up its
+    /// own partial file, so cancelling leaves nothing behind.
+    download_cancels: std::collections::HashMap<patch::VersionKey, tokio_util::sync::CancellationToken>,
     /// Self-updater. Polls GitHub every 30 min, streams the
     /// platform installer into the cache dir, and on the
     /// `finish_update` call (or next launch) hands off to the
@@ -491,6 +495,7 @@ impl App {
             patch_autoupdater,
             pending_watch: None,
             downloads: patch::Downloads::new(),
+            download_cancels: Default::default(),
             updater,
             rescans_in_flight: 0,
             // Start at rest (no launch animation) — progress 1.0
@@ -1718,7 +1723,7 @@ impl App {
             }
             Tab::Replays => self
                 .replays
-                .view(lang, &self.scanners, &self.config, &self.netplay.phase)
+                .view(lang, &self.scanners, &self.config, &self.netplay.phase, &self.downloads)
                 .map(Message::Replays),
             Tab::Patches => self
                 .patches

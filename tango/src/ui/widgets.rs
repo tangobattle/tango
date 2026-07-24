@@ -2044,6 +2044,42 @@ pub fn slim_progress_bar(theme: &Theme) -> iced::widget::progress_bar::Style {
     }
 }
 
+/// One patch download, as the same row wherever it shows up: the
+/// patches tab, the play strip, the lobby band and the replay detail
+/// all fetch the same packages, and used to each say so differently.
+///
+/// Deliberately small — a short bar and a caption on one line, not a
+/// full-width meter. Running draws a determinate bar (flat until the
+/// server tells us the size); failed drops the bar for the caption in
+/// danger colour. `retry` and `cancel` are the surface's own messages;
+/// pass `None` to leave the affordance out. Captions arrive
+/// pre-resolved: this decides layout, not wording.
+pub fn download_row<'a, M: Clone + 'a>(
+    caption: String,
+    fraction: Option<f32>,
+    failed: bool,
+    retry: Option<(String, M)>,
+    cancel: Option<(String, M)>,
+) -> Element<'a, M> {
+    let mut controls = row![].spacing(6).align_y(Alignment::Center);
+    if !failed {
+        controls = controls.push(
+            iced::widget::progress_bar(0.0..=1.0, fraction.unwrap_or(0.0))
+                .girth(Length::Fixed(3.0))
+                .length(Length::Fixed(56.0))
+                .style(slim_progress_bar),
+        );
+    }
+    let style: fn(&Theme) -> iced::widget::text::Style = if failed { danger_text_style } else { muted_text_style };
+    controls = controls.push(text(caption).size(TEXT_CAPTION).style(style));
+    for (icon, action) in [(Icon::RefreshCw, retry), (Icon::X, cancel)] {
+        if let Some((label, msg)) = action {
+            controls = controls.push(icon_button(icon, label, msg, [1.0, 1.0]));
+        }
+    }
+    controls.into()
+}
+
 /// The "you vs opponent" matchup pane shared by the lobby band and
 /// the replay detail: the two side cards with a wide gap so the
 /// diagonal cut + VS badge from [`vs_splitter`] paints through the

@@ -407,6 +407,15 @@ impl Download {
     pub fn is_running(&self) -> bool {
         matches!(self, Download::Running(_))
     }
+
+    /// Completed fraction for a progress bar, `None` until the server
+    /// has told us how big the package is (and after a failure).
+    pub fn fraction(&self) -> Option<f32> {
+        match self {
+            Download::Running(p) if p.total > 0 => Some(p.downloaded as f32 / p.total as f32),
+            _ => None,
+        }
+    }
 }
 
 pub type Downloads = std::collections::HashMap<VersionKey, Download>;
@@ -472,19 +481,32 @@ pub async fn fetch_index(url: &str, patches_path: &Path) -> anyhow::Result<bool>
     Ok(true)
 }
 
+/// How a download ended, short of an error. The installed path isn't
+/// carried back — [`package_path`] derives it, and nothing needs it.
+#[derive(Debug)]
+pub enum Outcome {
+    Installed,
+    /// `progress` asked to stop. The partial file is already gone.
+    Cancelled,
+}
+
 /// Download one patch version into the patches directory.
 ///
 /// The package is verified against the index's hash and written through
 /// a temporary file, so a failed or truncated download can't leave a
 /// half-written package that the next scan would treat as installed.
+///
+/// `progress` returns false to cancel, which is checked once per chunk:
+/// stopping this way tidies the partial file up on the way out, which
+/// dropping the future could not do.
 pub async fn download(
     url: &str,
     patches_path: &Path,
     name: &str,
     version: &semver::Version,
     entry: &tango_patch::index::Entry,
-    progress: impl Fn(Progress),
-) -> anyhow::Result<PathBuf> {
+    progress: impl Fn(Progress) -> bool,
+) -> anyhow::Result<Outcome> {
     tango_patch::validate_name(name).map_err(|e| anyhow::anyhow!("bad patch name: {e}"))?;
     std::fs::create_dir_all(patches_path)?;
 
@@ -501,7 +523,14 @@ pub async fn download(
     let mut file = tokio::fs::File::create(&temp).await?;
     let mut raw = Vec::with_capacity(entry.size as usize);
     let mut stream = response.bytes_stream();
-    progress(Progress { downloaded: 0, total });
+    let cancelled = |file: tokio::fs::File, temp: &Path| {
+        drop(file);
+        let _ = std::fs::remove_file(temp);
+    };
+    if !progress(Progress { downloaded: 0, total }) {
+        cancelled(file, &temp);
+        return Ok(Outcome::Cancelled);
+    }
     while let Some(chunk) = tokio::time::timeout(TIMEOUT, stream.next()).await? {
         let chunk = chunk?;
         // The index fixes the exact byte count; a server sending more than
@@ -518,10 +547,13 @@ pub async fn download(
         }
         file.write_all(&chunk).await?;
         raw.extend_from_slice(&chunk);
-        progress(Progress {
+        if !progress(Progress {
             downloaded: raw.len() as u64,
             total,
-        });
+        }) {
+            cancelled(file, &temp);
+            return Ok(Outcome::Cancelled);
+        }
     }
     file.flush().await?;
     drop(file);
@@ -532,10 +564,9 @@ pub async fn download(
     }
     verified?;
 
-    let path = package_path(patches_path, name, version);
-    std::fs::rename(&temp, &path)?;
+    std::fs::rename(&temp, package_path(patches_path, name, version))?;
     log::info!("installed {name} {version} ({} bytes)", raw.len());
-    Ok(path)
+    Ok(Outcome::Installed)
 }
 
 /// A downloaded package must be what the index promised, and must be
@@ -988,7 +1019,8 @@ netplay = "{netplay}"
         let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let seen_w = seen.clone();
         download(&url, &data.0, "bn6_two", &version, &entry, move |p| {
-            seen_w.lock().unwrap().push(p.downloaded)
+            seen_w.lock().unwrap().push(p.downloaded);
+            true
         })
         .await
         .unwrap();
@@ -1011,6 +1043,37 @@ netplay = "{netplay}"
         );
     }
 
+    /// Cancelling mid-stream stops the download AND leaves nothing on
+    /// disk — not the package, and not the temporary it was streaming
+    /// into. That tidying is the whole reason cancellation is
+    /// cooperative rather than just dropping the future.
+    #[tokio::test]
+    async fn a_cancelled_download_leaves_nothing_behind() {
+        let repo = TempDir::new();
+        build_repo(&repo.0, &[("bn6_one", "1.0.0", "vanilla")]);
+        let url = serve(repo.0.clone()).await;
+        let data = TempDir::new();
+        fetch_index(&url, &data.0).await.unwrap();
+
+        let catalog = scan(&data.0).unwrap();
+        let version = v("1.0.0");
+        let entry = catalog.entry("bn6_one", &version).unwrap().clone();
+
+        let outcome = download(&url, &data.0, "bn6_one", &version, &entry, |_| false)
+            .await
+            .unwrap();
+        assert!(matches!(outcome, Outcome::Cancelled), "{outcome:?}");
+        assert!(!package_path(&data.0, "bn6_one", &version).exists());
+        let leftovers: Vec<_> = std::fs::read_dir(&data.0)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".part"))
+            .collect();
+        assert!(leftovers.is_empty(), "left a partial file: {leftovers:?}");
+        assert!(!scan(&data.0).unwrap().is_installed("bn6_one", &version));
+    }
+
     #[tokio::test]
     async fn a_package_that_is_not_what_the_index_promised_is_rejected() {
         let repo = TempDir::new();
@@ -1024,7 +1087,7 @@ netplay = "{netplay}"
         let mut entry = catalog.entry("bn6_one", &version).unwrap().clone();
         entry.sha256 = "0".repeat(64);
 
-        let err = download(&url, &data.0, "bn6_one", &version, &entry, |_| {})
+        let err = download(&url, &data.0, "bn6_one", &version, &entry, |_| true)
             .await
             .unwrap_err()
             .to_string();

@@ -38,6 +38,8 @@ pub enum Message {
     /// Reveal the replay file in the OS file manager, selected.
     RevealReplay(std::path::PathBuf),
     Watch(std::path::PathBuf),
+    /// Stop the patch download a Watch click started.
+    CancelPatchDownload(crate::library::patch::VersionKey),
     /// Export-panel interactions (form, render lifecycle, round
     /// mask), folded under one variant — see [`ExportMessage`] and
     /// [`ReplaysState::update_export`].
@@ -195,6 +197,8 @@ pub enum Effect {
     /// User clicked Watch on a replay; App spawns the playback
     /// session and stuffs it into `session.active`.
     Watch(std::path::PathBuf),
+    /// Stop the patch download a Watch click started.
+    CancelPatchDownload(crate::library::patch::VersionKey),
     /// A focused replay has no stats sidecar — App spawns
     /// `replays::compute_and_cache_match_stats` on a blocking worker
     /// and posts the result back as [`Message::HpStatsLoaded`].
@@ -313,6 +317,7 @@ impl ReplaysState {
             }
             Message::RevealReplay(p) => Some(Effect::RevealPath(p)),
             Message::Watch(p) => Some(Effect::Watch(p)),
+            Message::CancelPatchDownload(key) => Some(Effect::CancelPatchDownload(key)),
             Message::SaveViewAction(action) => {
                 // Clipboard outcomes need the App's clipboard collaborator
                 // — bubble them up as Effects. Anything else gets folded
@@ -434,6 +439,7 @@ impl ReplaysState {
         scanners: &'a Scanners,
         config: &'a config::Config,
         netplay_phase: &'a crate::netplay::Phase,
+        downloads: &'a crate::library::patch::Downloads,
     ) -> Element<'a, Message> {
         // Replay playback spawns an emulator session that would
         // conflict with an active netplay session. Disable the
@@ -467,7 +473,7 @@ impl ReplaysState {
             .as_ref()
             .and_then(|sel_path| filtered.iter().find(|r| &r.path == sel_path))
         {
-            let detail = replay_detail(lang, r, &replays_path, self, scanners, netplay_active);
+            let detail = replay_detail(lang, r, &replays_path, self, scanners, netplay_active, downloads);
             // Selection entrance: the detail panel rises up into
             // place.
             crate::ui::anim::slide_in_opt(
@@ -749,6 +755,54 @@ impl ReplaysState {
     }
 }
 
+/// The replay's own patch download, when it has one in flight or
+/// failed: the same row the patches tab, play strip and lobby use.
+/// Absent the rest of the time, so the detail carries no empty slot.
+fn patch_download_line<'a>(
+    lang: &'a LanguageIdentifier,
+    r: &replays::ScannedReplay,
+    scanners: &'a Scanners,
+    downloads: &'a crate::library::patch::Downloads,
+) -> Option<Element<'a, Message>> {
+    // Same pick App makes when Watch fires: the first side's patch we
+    // don't have. Both sides matter -- playback runs both games.
+    let patches = scanners.patches.read();
+    let key = [r.metadata.side(0), r.metadata.side(1)]
+        .into_iter()
+        .flatten()
+        .filter_map(|s| s.game_info.as_ref()?.patch.as_ref())
+        .find_map(|p| {
+            let version = semver::Version::parse(&p.version).ok()?;
+            (!patches.is_installed(&p.name, &version)).then_some((p.name.clone(), version))
+        });
+    let key = key?;
+    match downloads.get(&key) {
+        Some(download) if download.is_running() => {
+            let caption = match download.percent() {
+                Some(percent) => t!(lang, "replays-patch-downloading-progress", percent = percent as i64),
+                None => t!(lang, "replays-patch-downloading"),
+            };
+            Some(widgets::download_row(
+                caption,
+                download.fraction(),
+                false,
+                None,
+                Some((t!(lang, "patches-cancel"), Message::CancelPatchDownload(key))),
+            ))
+        }
+        Some(crate::library::patch::Download::Failed) => Some(widgets::download_row(
+            t!(lang, "replays-patch-download-failed"),
+            None,
+            true,
+            // Retrying is just watching again: App re-runs the fetch and
+            // queues the playback behind it.
+            Some((t!(lang, "patches-retry"), Message::Watch(r.path.clone()))),
+            None,
+        )),
+        _ => None,
+    }
+}
+
 fn replay_detail<'a>(
     lang: &'a LanguageIdentifier,
     r: &replays::ScannedReplay,
@@ -756,6 +810,7 @@ fn replay_detail<'a>(
     state: &'a ReplaysState,
     scanners: &'a Scanners,
     netplay_active: bool,
+    downloads: &'a crate::library::patch::Downloads,
 ) -> Element<'a, Message> {
     // Playback needs a scanned ROM for the local-side game; without
     // one the emulator session would error on construction. Resolve
@@ -883,6 +938,15 @@ fn replay_detail<'a>(
             // Top-align so the action buttons stay anchored when
             // a long title wraps to a second line.
             .align_y(Alignment::Start),
+            // Watch on a replay whose patch we lack starts a download;
+            // without this the click looked like it did nothing at all
+            // until playback appeared, and a failure looked like
+            // nothing happening forever. Only present while there is
+            // one -- no reserved gap the rest of the time.
+            Element::from(
+                patch_download_line(lang, r, scanners, downloads)
+                    .unwrap_or_else(|| iced::widget::space::vertical().height(Length::Fixed(0.0)).into())
+            ),
             // Metadata rows: file path, timestamp, match type,
             // duration. Stacked tight in a sub-column so the rows
             // read as one block (matches the patches detail-card
