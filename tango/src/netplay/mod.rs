@@ -880,7 +880,10 @@ pub use tango_session::pvp::PreMatchData;
 /// SendLocalSettings handler drop stale commits without forcing
 /// the user back to the Ready button every time their roms
 /// scanner repopulates.
-fn settings_materially_differ(a: &tango_net_protocol::control::Settings, b: &tango_net_protocol::control::Settings) -> bool {
+fn settings_materially_differ(
+    a: &tango_net_protocol::control::Settings,
+    b: &tango_net_protocol::control::Settings,
+) -> bool {
     a.game_info != b.game_info || a.match_type != b.match_type
 }
 

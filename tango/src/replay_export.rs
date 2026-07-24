@@ -657,4 +657,3 @@ pub fn export(
 
     pipeline.finish(settings, canceller, output_path, &chapters)
 }
-

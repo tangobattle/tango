@@ -569,11 +569,7 @@ fn clip_lift(state: &State) -> f32 {
 /// for a progress line while an export job is running. Lives between
 /// the scrubber and the transport row, only while the bar's scissors
 /// toggle is on.
-fn clip_strip<'a>(
-    lang: &'a LanguageIdentifier,
-    state: &'a State,
-    job: Option<ClipJob<'a>>,
-) -> Element<'a, Message> {
+fn clip_strip<'a>(lang: &'a LanguageIdentifier, state: &'a State, job: Option<ClipJob<'a>>) -> Element<'a, Message> {
     let chip = |icon: Icon, lit: bool, tip: String, msg: Option<Message>| -> Element<'a, Message> {
         let style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
             let mut st = telemetry_plate_button(theme, status);
@@ -615,7 +611,11 @@ fn clip_strip<'a>(
         let caption = if job.cancelling {
             t!(lang, "replays-export-cancelling")
         } else {
-            format!("{} {}%", t!(lang, "replays-export-progress"), (pct * 100.0).round() as u32)
+            format!(
+                "{} {}%",
+                t!(lang, "replays-export-progress"),
+                (pct * 100.0).round() as u32
+            )
         };
         let cancel = chip(
             Icon::X,

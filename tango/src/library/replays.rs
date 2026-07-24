@@ -164,13 +164,7 @@ pub fn compute_and_cache_match_stats(
     let (p1_game, p1_rom) = resolve(replay.metadata.side(0))?;
     let (p2_game, p2_rom) = resolve(replay.metadata.side(1))?;
 
-    let stats = analyze_replay(
-        &replay,
-        [p1_game, p2_game],
-        [p1_rom, p2_rom],
-        on_progress,
-        cancel,
-    )?;
+    let stats = analyze_replay(&replay, [p1_game, p2_game], [p1_rom, p2_rom], on_progress, cancel)?;
     write_match_stats(&stats_path(&cache_path, &replays_path, &path), &stats)?;
     Ok(stats)
 }

@@ -731,24 +731,23 @@ fn patch_download<'a>(
             };
             Some((
                 piece(
-                    container(
-                        iced::widget::progress_bar(0.0..=1.0, download.fraction().unwrap_or(0.0))
-                            .girth(Length::Fixed(4.0))
-                            .length(Length::Fill)
-                            .style(widgets::slim_progress_bar),
-                    )
-                    .padding([0, 6])
-                    .into(),
+                    iced::widget::progress_bar(0.0..=1.0, download.fraction().unwrap_or(0.0))
+                        .girth(Length::Fixed(4.0))
+                        .length(Length::Fill)
+                        .style(widgets::slim_progress_bar)
+                        .into(),
                     Length::FillPortion(2),
                 ),
                 piece(
-                    // Percent hugs the bar it belongs to, ✕ goes flush
-                    // to the row's right edge, so the strip runs the
-                    // full width the two pickers did instead of
-                    // petering out mid-row.
+                    // Percent and ✕ sit as one group at the row's right
+                    // edge, which puts the slack in a single place
+                    // instead of splitting it either side of the
+                    // readout. Right-aligning also pins the number's
+                    // right edge, so 9% → 100% grows leftwards into
+                    // that slack and moves nothing.
                     row![
-                        text(caption).size(TEXT_CAPTION).style(widgets::muted_text_style),
                         iced::widget::space::horizontal(),
+                        text(caption).size(TEXT_CAPTION).style(widgets::muted_text_style),
                         // Calling it off puts both pickers straight back.
                         widgets::icon_button(
                             lucide_icons::Icon::X,
