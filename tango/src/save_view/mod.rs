@@ -759,7 +759,8 @@ impl State {
             | Action::ClearAutoBattleData
             | Action::CopyTab(_)
             | Action::CopyTabImage(_)
-            | Action::PlayClicked => iced::Task::none(),
+            | Action::PlayClicked
+            | Action::TrainingClicked => iced::Task::none(),
         }
     }
 
@@ -809,6 +810,7 @@ impl State {
                 Some(Outcome::CopyImage(img))
             }
             Action::PlayClicked => Some(Outcome::Play),
+            Action::TrainingClicked => Some(Outcome::Training),
             // ----- Folder editor -----
             // EnterEdit needs the read view to seed tag state + build the
             // per-slot chip pickers, so it can't be folded without `loaded`.
@@ -1021,6 +1023,8 @@ pub enum Outcome {
     CopyImage(image::RgbaImage),
     /// The embedder-defined Play button was pressed.
     Play,
+    /// The embedder-defined Training button was pressed.
+    Training,
     /// Write every staged edit (folder + navicust + patch cards + auto
     /// battle data) to the .sav on disk in one shot.
     Commit,
@@ -1049,6 +1053,10 @@ pub enum Action {
     /// other embedders (replay, opponent panel) pass `None` and
     /// the button isn't rendered.
     PlayClicked,
+    /// Embedder-defined "start training here" action. Rendered
+    /// alongside Play under the same `play_button` gating; the play tab
+    /// routes it to `Effect::StartTraining`.
+    TrainingClicked,
     // ----- Folder editor (only emitted when `view`'s `editable` is set) -----
     /// Enter folder edit mode. The play tab seeds tag state via
     /// [`State::enter_edit`]; the rest is handled in [`State::apply`].
@@ -1270,6 +1278,19 @@ pub fn view<'a>(
             ));
         }
         if let Some(enabled) = play_button {
+            // Training sits next to Play under the same gating: a
+            // single-player ride with a do-nothing dummy controller.
+            let training_label = row![lucide_icons::Icon::Dumbbell.widget(), text(t!(lang, "play-training"))]
+                .spacing(6)
+                .align_y(Alignment::Center);
+            let mut training_btn = button(training_label).padding([4, 10]);
+            if enabled {
+                training_btn = training_btn.style(widgets::neutral).on_press(Action::TrainingClicked);
+            } else {
+                training_btn = training_btn.style(widgets::neutral);
+            }
+            actions = actions.push(training_btn);
+
             let label = row![lucide_icons::Icon::Play.widget(), text(t!(lang, "play-play"))]
                 .spacing(6)
                 .align_y(Alignment::Center);

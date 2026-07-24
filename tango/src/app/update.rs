@@ -137,6 +137,25 @@ impl App {
                 }
                 iced::Task::none()
             }
+            E::StartTraining => {
+                let Some(loaded) = self.loaded.as_ref() else {
+                    return iced::Task::none();
+                };
+                match session::spawn_training(&self.scanners, &self.config, &self.audio_binder, loaded) {
+                    Ok((s, audio)) => {
+                        self.session.active = Some(Box::new(s));
+                        self.session.audio_binding = audio;
+                        self.session.session_installed();
+                    }
+                    Err(e) => {
+                        // Log-only, same rationale as StartSinglePlayer: the
+                        // button is gated on a fully parsed rom + save, so
+                        // what's left is core construction failing.
+                        log::error!("training start failed: {e:#}");
+                    }
+                }
+                iced::Task::none()
+            }
             E::SaveDuplicate { new_stem } => {
                 if let Some(src) = self.loadout.save.clone() {
                     match duplicate_save(&src, &new_stem) {

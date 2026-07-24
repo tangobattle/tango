@@ -64,6 +64,7 @@ play-version-placeholder = —
 play-link-code = Link code (leave empty for a random one)
 play-link-code-random = Random link code
 play-play = Play
+play-training = Training
 play-fight = Fight
 play-cancel = Leave
 play-status-idle = Enter a link code to start netplay, or leave blank for single-player.

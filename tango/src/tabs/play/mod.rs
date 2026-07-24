@@ -179,6 +179,9 @@ pub enum Effect {
     /// User pressed Play → start a single-player session from the
     /// current selection.
     StartSinglePlayer,
+    /// User pressed Training → start a training session (single-player
+    /// ride + do-nothing dummy controller) from the current selection.
+    StartTraining,
     /// Duplicate the currently-selected save file as `new_stem` (no
     /// extension; the handler keeps the source's).
     SaveDuplicate { new_stem: String },
@@ -368,6 +371,7 @@ impl State {
                     Some(save_view::Outcome::CopyText(s)) => Some(Effect::CopyText(s)),
                     Some(save_view::Outcome::CopyImage(img)) => Some(Effect::CopyImage(img)),
                     Some(save_view::Outcome::Play) => Some(Effect::StartSinglePlayer),
+                    Some(save_view::Outcome::Training) => Some(Effect::StartTraining),
                     Some(save_view::Outcome::Commit) => Some(Effect::SaveEditCommit),
                     Some(save_view::Outcome::Cancel) => Some(Effect::SaveEditCancel),
                     None => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),

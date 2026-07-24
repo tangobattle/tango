@@ -9,6 +9,7 @@ pub mod pvp;
 pub mod replay;
 pub mod results;
 pub mod singleplayer;
+pub mod training;
 pub use results::results_view;
 
 /// One telemetry cell: a label `icon` and the current `value`, both
@@ -174,6 +175,8 @@ pub fn view<'a>(
         pvp::view(s, ctx)
     } else if let Some(s) = session.downcast_ref::<crate::session::singleplayer::SinglePlayerSession>() {
         singleplayer::view(s, ctx)
+    } else if let Some(s) = session.downcast_ref::<crate::session::training::TrainingSession>() {
+        training::view(s, ctx)
     } else {
         // Unreachable today — the three kinds above are the only
         // Session impls anywhere.

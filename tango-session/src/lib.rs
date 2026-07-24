@@ -13,6 +13,7 @@ pub mod replay;
 pub mod singleplayer;
 pub mod stats;
 pub mod stats_cache;
+pub mod training;
 
 /// Why a session failed to construct or boot, any kind. One enum for
 /// all three session kinds — their failure sets overlap heavily (core

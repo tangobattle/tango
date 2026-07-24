@@ -18,7 +18,7 @@
 pub mod scrubber;
 pub mod view;
 
-pub use tango_session::{pvp, replay, singleplayer, Session};
+pub use tango_session::{pvp, replay, singleplayer, training, Session};
 
 use crate::app::Scanners;
 use crate::config;
@@ -1291,6 +1291,45 @@ pub fn spawn_singleplayer(
         std::sync::Arc::new(rom_bytes),
         &loaded.save_path,
         audio_binder.sample_rate(),
+    )?;
+    Ok((session, bind_session_audio(audio_binder, audio)))
+}
+
+/// Boot the supplied selection in training mode — a local link battle
+/// (both cores run this selection) against a do-nothing dummy controller
+/// ([`training::NoopController`]) wired in as the integration seam. Same
+/// gating contract as [`spawn_singleplayer`]: the caller must already
+/// hold a complete (game + rom + save) Loaded.
+pub fn spawn_training(
+    scanners: &Scanners,
+    config: &config::Config,
+    audio_binder: &audio::LateBinder,
+    loaded: &selection::Loaded,
+) -> anyhow::Result<(training::TrainingSession, Option<audio::Binding>)> {
+    let game = game::from_gamedb_entry(loaded.game)
+        .ok_or_else(|| anyhow::anyhow!("no game impl for {:?}", loaded.game.family_and_variant()))?;
+    // Loaded stashes the *parsed* ROM (assets), not the raw bytes —
+    // grab them back from the scanner and re-apply the patch if any so
+    // the emulator sees the same image PvP would.
+    let raw = scanners
+        .roms
+        .read()
+        .get(&loaded.game)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("rom not in scanner cache"))?;
+    let rom_bytes = if let Some(p) = loaded.patch.as_ref() {
+        patch::apply_patch_from_disk(&raw, loaded.game, &config.patches_path(), &p.name, &p.version)?
+    } else {
+        raw
+    };
+    // The battle runs off an in-memory SRAM image (same as PvP), so
+    // nothing training does is written back to the save file.
+    let (session, audio) = training::TrainingSession::new(
+        game,
+        std::sync::Arc::new(rom_bytes),
+        loaded.save.to_sram_dump(),
+        audio_binder.sample_rate(),
+        Box::new(training::NoopController),
     )?;
     Ok((session, bind_session_audio(audio_binder, audio)))
 }
