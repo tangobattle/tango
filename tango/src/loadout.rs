@@ -56,7 +56,7 @@ pub enum Message {
 #[derive(Debug, Clone, Copy)]
 pub enum Effect {
     /// Selection (family / game / save / patch / version) changed.
-    /// App should rebuild its `Loaded` cache, persist config, and
+    /// App should rebuild its `OpenSave` cache, persist config, and
     /// resend lobby settings if one is live.
     SelectionChanged,
     /// Start a failed patch download again.

@@ -119,9 +119,9 @@ pub struct ReplaysState {
     /// they're incomplete once the lazy stats worker reports.
     pub show_incomplete: bool,
     pub selected: Option<std::path::PathBuf>,
-    /// Cached Loaded for the currently-selected replay's local side.
+    /// Cached OpenSave for the currently-selected replay's local side.
     /// Rebuilt by the App's `Selected` handler; view borrows read-only.
-    pub loaded: Option<crate::selection::Loaded>,
+    pub loaded: Option<crate::selection::OpenSave>,
     /// Path the cached `loaded` was built for. Used to invalidate the
     /// cache when the selection changes.
     pub loaded_cache_path: Option<std::path::PathBuf>,
@@ -172,7 +172,7 @@ pub struct HpChart {
 impl HpChart {
     fn new(
         stats: &tango_match::analysis::MatchStats,
-        loaded: Option<&crate::selection::Loaded>,
+        loaded: Option<&crate::selection::OpenSave>,
         planned: Option<&[u32]>,
     ) -> Self {
         // Both sides' chip ids resolve through the LOCAL side's chip
@@ -243,7 +243,7 @@ impl ReplaysState {
             Message::GameFilterSelected(pair) => {
                 self.game_filter = pair;
                 // Filter change can hide the current selection;
-                // drop the cached Loaded so the next interaction
+                // drop the cached OpenSave so the next interaction
                 // doesn't show a now-filtered-out detail panel.
                 self.clear_selection();
                 None
@@ -342,7 +342,7 @@ impl ReplaysState {
                 // Live preview: the in-flight analysis renders as a growing
                 // chart inside the layout fixed by the planned round spans.
                 // Selected-only, like `HpStatsLoaded` — chip names resolve
-                // through the selected replay's Loaded.
+                // through the selected replay's OpenSave.
                 if self.selected.as_ref() == Some(&path) {
                     self.hp_charts.insert(
                         path,
@@ -355,7 +355,7 @@ impl ReplaysState {
                 self.hp_pending.remove(&path);
                 match stats {
                     // Chip beads bake names through the selected replay's
-                    // Loaded; if the user has moved on to another replay by
+                    // OpenSave; if the user has moved on to another replay by
                     // the time the analysis lands, drop the result rather
                     // than resolving through the wrong game's chip table —
                     // the analysis already wrote the sidecar, so
@@ -390,7 +390,7 @@ impl ReplaysState {
     }
 
     /// Decode the currently-selected replay just enough to build
-    /// its save-view Loaded + populate the round count for the
+    /// its save-view OpenSave + populate the round count for the
     /// export form. Cached against the selected path so this only
     /// re-runs on selection change.
     fn refresh_loaded(&mut self, scanners: &Scanners, config: &config::Config) {
@@ -402,11 +402,11 @@ impl ReplaysState {
         if self.loaded_cache_path.as_ref() == Some(&path) {
             return;
         }
-        let res = (|| -> anyhow::Result<(crate::selection::Loaded, Vec<u32>)> {
+        let res = (|| -> anyhow::Result<(crate::selection::OpenSave, Vec<u32>)> {
             let f = std::fs::File::open(&path)?;
             let replay = tango_replay::Replay::decode(f)?;
             let round_ticks = replay.round_ranges().map(|r| r.len() as u32).collect();
-            let loaded = crate::selection::Loaded::for_replay_local(scanners, config, &replay)?;
+            let loaded = crate::selection::OpenSave::for_replay_local(scanners, config, &replay)?;
             Ok((loaded, round_ticks))
         })();
         match res {

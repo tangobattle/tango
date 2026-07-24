@@ -126,7 +126,7 @@ pub struct App {
 
     /// Owned game+save+assets for the current selection. Rebuilt only
     /// when game or save changes; per-frame view() borrows it.
-    loaded: Option<selection::Loaded>,
+    loaded: Option<selection::OpenSave>,
 
     /// The local loadout (family / game / save + patch overlay) —
     /// App-level so the lobby settings-resend sees every change the
@@ -829,7 +829,7 @@ impl App {
                 .unwrap_or_default(),
         );
         let patches_path = self.config.patches_path();
-        self.loaded = Some(selection::Loaded::build(
+        self.loaded = Some(selection::OpenSave::build(
             game,
             rom,
             save_path,
@@ -1240,7 +1240,7 @@ impl App {
                 // save file on disk (single-player writes via
                 // mgba's RW VFile). When the session ends, drop it
                 // first so mgba's thread joins + flushes its file
-                // handle, then re-scan saves + force a Loaded
+                // handle, then re-scan saves + force a OpenSave
                 // rebuild so the play tab's save view reflects the
                 // fresh on-disk SRAM. Detected by the active-slot
                 // transition (not the Close message) because Esc

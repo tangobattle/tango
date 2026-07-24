@@ -41,7 +41,7 @@ fn abd_grouped_sections(
 /// indicators, so `code=None` and a default badge struct (overridden only by
 /// the count); hover preview comes for free from `chip_row`.
 fn abd_grouped_section_rows<M: 'static>(
-    loaded: &Loaded,
+    loaded: &OpenSave,
     title: String,
     runs: &[(Option<usize>, usize)],
     chips_have_mb: bool,
@@ -69,7 +69,7 @@ fn abd_grouped_section_rows<M: 'static>(
     col.into()
 }
 
-pub(super) fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
+pub(super) fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave) -> Element<'static, M> {
     let Some(view) = loaded.save.view_auto_battle_data() else {
         return placeholder(t!(lang, "save-empty"));
     };
@@ -99,7 +99,7 @@ pub(super) fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loa
 /// (case-insensitive name match) and in `sort` order. Ties fall back to
 /// id for a stable order. Stable sorts (Id / Name) keep a row in place
 /// while its count fields are edited; Used reorders as counts change.
-fn sorted_auto_battle_data_chips(loaded: &Loaded, sort: AutoBattleDataSort, filter: &str) -> Vec<usize> {
+fn sorted_auto_battle_data_chips(loaded: &OpenSave, sort: AutoBattleDataSort, filter: &str) -> Vec<usize> {
     use tango_dataview::rom::ChipClass as CC;
     let assets = loaded.assets.as_ref();
     let view = loaded.save.view_auto_battle_data();
@@ -191,7 +191,7 @@ fn abd_count_cell<'a>(label: String, value: usize, make: impl Fn(usize) -> Actio
 /// stays aligned.
 fn abd_library_row<'a>(
     lang: &'a LanguageIdentifier,
-    loaded: &'a Loaded,
+    loaded: &'a OpenSave,
     id: usize,
     used: usize,
     secondary: Option<usize>,
@@ -244,7 +244,7 @@ fn abd_library_row<'a>(
 /// disk only on Save.
 pub(super) fn render_auto_battle_data_edit<'a>(
     lang: &'a LanguageIdentifier,
-    loaded: &'a Loaded,
+    loaded: &'a OpenSave,
     state: &'a State,
 ) -> Element<'a, Action> {
     // Only reached while editing, so the EditState is present.
@@ -362,7 +362,7 @@ const ABD_COUNT_COL_W: f32 = 104.0;
 const MAX_ABD_USE_COUNT: usize = u16::MAX as usize;
 
 /// The auto-battle-data tab as text.
-pub(crate) fn as_text(loaded: &Loaded) -> Option<String> {
+pub(crate) fn as_text(loaded: &OpenSave) -> Option<String> {
     let assets = loaded.assets.as_ref();
     let view = loaded.save.view_auto_battle_data()?;
     let mat = view.materialized();

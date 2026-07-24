@@ -260,7 +260,14 @@ impl App {
                 // reads `loaded.save` directly, so the change shows
                 // immediately; nothing is written to disk until Save.
                 if let Some(loaded) = self.loaded.as_mut() {
-                    crate::save_edit::apply_edit(loaded, edit);
+                    // The model keeps its own derived caches in step; the
+                    // baked grid image is ours, so re-bake it when the
+                    // edit says it went stale (a navi swap changes which
+                    // navicust — if any — the save even has).
+                    let invalidated = tango_savemodel::edit::apply_edit(&mut loaded.model, edit);
+                    if invalidated.navicust_render {
+                        loaded.rebuild_navicust_render();
+                    }
                 }
                 iced::Task::none()
             }
@@ -279,7 +286,7 @@ impl App {
                         // checksum and write once.
                         loaded.save.rebuild_checksum();
                         // Refresh the baked Navi-view image from the updated
-                        // save (commit keeps the in-memory Loaded, so without
+                        // save (commit keeps the in-memory OpenSave, so without
                         // this the read-only grid lags until reselection).
                         loaded.rebuild_navicust_render();
                         let sram = loaded.save.to_sram_dump();

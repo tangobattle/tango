@@ -8,6 +8,7 @@ members = [
     "tango-net-protocol",
     "tango-match",
     "tango-replay",
+    "tango-savemodel",
     "tango-session",
 ]
 # The per-game gamesupport crates auto-join this workspace as path
@@ -25,6 +26,7 @@ default-members = [
     "tango-net-protocol",
     "tango-match",
     "tango-replay",
+    "tango-savemodel",
     "tango-session",
 ]
 # One source of truth for every external dep shared by 2+ member crates,

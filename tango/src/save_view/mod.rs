@@ -1,5 +1,5 @@
 use crate::i18n::t;
-use crate::selection::Loaded;
+use crate::selection::OpenSave;
 use crate::ui::style::{self, TEXT_BODY, TEXT_CAPTION};
 use crate::ui::widgets::{muted_color, muted_text_style};
 use iced::widget::{button, container, image as iced_image, scrollable, stack, text, tooltip, Image, Space};
@@ -254,7 +254,7 @@ pub fn available_tabs(save: &dyn Save, streamer_mode: bool) -> Vec<Tab> {
 pub fn render<M: 'static>(
     lang: &LanguageIdentifier,
     tab: Tab,
-    loaded: &Loaded,
+    loaded: &OpenSave,
     opts: RenderOpts,
 ) -> Element<'static, M> {
     match tab {
@@ -344,22 +344,10 @@ pub struct State {
     tab_scroll: f32,
 }
 
-/// New index of an element originally at `i` after an ordered move that takes
-/// the element at `from` and reinserts it at `to` (i.e. `vec.remove(from);
-/// vec.insert(to, x)`). Elements between the two endpoints shift by one toward
-/// the vacated side; everything outside the range is unchanged. Used to keep
-/// slot-indexed references (REG/TAG, staged tags) aligned with a drag reorder.
-pub fn reorder_index(i: usize, from: usize, to: usize) -> usize {
-    if i == from {
-        to
-    } else if from < to && i > from && i <= to {
-        i - 1
-    } else if from > to && i >= to && i < from {
-        i + 1
-    } else {
-        i
-    }
-}
+// Reorder bookkeeping is a rule, not a rendering concern — the chip
+// editor's apply path needs the identical arithmetic to keep REG/TAG
+// slots aligned, so it lives with the model.
+pub use tango_savemodel::rules::reorder_index;
 
 /// Everything an in-progress save edit needs that's thrown away when the
 /// edit ends. Held as [`State::editing`]'s `Option` payload so one
@@ -431,7 +419,7 @@ impl State {
     /// Seeds the tag toggles from the equipped folder's current tag pair so
     /// they start in the right state. Needs `loaded` (the read view), so
     /// the play tab calls this rather than routing through [`Self::apply`].
-    pub fn enter_edit(&mut self, loaded: &Loaded) {
+    pub fn enter_edit(&mut self, loaded: &OpenSave) {
         // A fresh EditState — every editor opens with clean scratch state.
         self.editing = Some(EditState {
             // Seed the tag toggles from the equipped folder's tag pair, if
@@ -709,7 +697,7 @@ impl State {
             // slides up while the tab content drops); clicking the card again
             // while it's open closes it, dropping back to the tab the user came
             // from. The host opens the edit session on the way in — it needs
-            // `&Loaded` to seed tag state, same as `EnterEdit`.
+            // `&OpenSave` to seed tag state, same as `EnterEdit`.
             Action::EnterEditNavi => {
                 let now = iced::time::Instant::now();
                 if self.active_tab == Some(Tab::Navi) {
@@ -733,7 +721,7 @@ impl State {
                 }
                 iced::Task::none()
             }
-            // EnterEdit needs `&Loaded` (to seed tag state), and the
+            // EnterEdit needs `&OpenSave` (to seed tag state), and the
             // mutation / copy actions surface as host [`Outcome`]s —
             // all are computed in `outcome`, so they're no-ops here.
             Action::EnterEdit
@@ -772,7 +760,7 @@ impl State {
         &mut self,
         action: &Action,
         lang: &unic_langid::LanguageIdentifier,
-        loaded: Option<&Loaded>,
+        loaded: Option<&OpenSave>,
     ) -> (iced::Task<Action>, Option<Outcome>) {
         let task = self.fold(action);
         let outcome = self.outcome(action, lang, loaded);
@@ -788,9 +776,9 @@ impl State {
         &mut self,
         action: &Action,
         lang: &unic_langid::LanguageIdentifier,
-        loaded: Option<&Loaded>,
+        loaded: Option<&OpenSave>,
     ) -> Option<Outcome> {
-        use crate::save_edit::{
+        use tango_savemodel::edit::{
             AutoBattleDataEdit, ChipEdit, Edit, NaviEdit, NavicustEdit, PatchCard4Edit, PatchCard56Edit,
         };
         match action {
@@ -1016,7 +1004,7 @@ impl State {
 pub enum Outcome {
     /// Stage one edit into the loaded save in memory (the UI reads it
     /// live; nothing hits disk until [`Outcome::Commit`]).
-    Edit(crate::save_edit::Edit),
+    Edit(tango_savemodel::edit::Edit),
     /// Copy plain text to the clipboard.
     CopyText(String),
     /// Copy a raster image to the clipboard.
@@ -1069,7 +1057,7 @@ pub enum Action {
     /// strip's card, which is only a button while the global edit session is
     /// open. The navi has no tab of its own, so this points the body at the
     /// picker (handled in [`State::apply`]); the host opens the session if it
-    /// somehow isn't already (it needs `&Loaded`, like [`Action::EnterEdit`]).
+    /// somehow isn't already (it needs `&OpenSave`, like [`Action::EnterEdit`]).
     EnterEditNavi,
     /// Finish editing: commit the staged folder to the save file on
     /// disk, then leave edit mode.
@@ -1218,7 +1206,7 @@ pub enum Action {
 /// opponent panels pass `false`, so they never show the affordance.
 pub fn view<'a>(
     lang: &'a LanguageIdentifier,
-    loaded: &'a Loaded,
+    loaded: &'a OpenSave,
     state: &'a State,
     streamer_mode: bool,
     play_button: Option<bool>,
@@ -1538,7 +1526,7 @@ pub fn view<'a>(
 /// editable — a full 30 chips with no folder-limit violations (an
 /// incomplete or over-limit folder can't be written over the
 /// save); navicust / patch-card layouts are always valid to write.
-fn edit_buttons<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded) -> Element<'a, Action> {
+fn edit_buttons<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Element<'a, Action> {
     use crate::ui::widgets;
     use lucide_icons::Icon;
     let can_save = !loaded.editability.folder || {
@@ -1644,7 +1632,7 @@ fn render_extra<'a>(lang: &'a LanguageIdentifier, state: &'a State, tab: Tab, ki
 
 /// A save-view tab as TSV text for clipboard "copy as text", or `None` for
 /// tabs without a text form. The Folder branch honors `opts.folder_grouped`.
-pub fn tab_as_text(lang: &LanguageIdentifier, tab: Tab, loaded: &Loaded, opts: RenderOpts) -> Option<String> {
+pub fn tab_as_text(lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
     match tab {
         Tab::Folder => folder::as_text(loaded, opts),
         Tab::PatchCards => patch_cards::as_text(loaded),
@@ -1657,7 +1645,7 @@ pub fn tab_as_text(lang: &LanguageIdentifier, tab: Tab, loaded: &Loaded, opts: R
 
 /// Render a save-view tab to an RGBA image for clipboard "copy as image".
 /// Only Navi/NaviCust has an image form; `None` otherwise.
-pub fn tab_as_image(tab: Tab, loaded: &Loaded) -> Option<image::RgbaImage> {
+pub fn tab_as_image(tab: Tab, loaded: &OpenSave) -> Option<image::RgbaImage> {
     match tab {
         Tab::Navicust => navicust::as_image(loaded),
         _ => None,

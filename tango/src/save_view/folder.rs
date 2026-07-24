@@ -3,7 +3,7 @@ use sweeten::widget::{column, row};
 
 pub(super) fn render_folder<M: 'static>(
     lang: &LanguageIdentifier,
-    loaded: &Loaded,
+    loaded: &OpenSave,
     grouped: bool,
 ) -> Element<'static, M> {
     let Some(chips_view) = loaded.save.view_chips() else {
@@ -118,7 +118,7 @@ pub(super) fn render_folder<M: 'static>(
 /// by greying out library chips / REG / TAG toggles that would break them.
 pub(super) fn render_folder_edit<'a>(
     lang: &'a LanguageIdentifier,
-    loaded: &'a Loaded,
+    loaded: &'a OpenSave,
     state: &'a State,
 ) -> Element<'a, Action> {
     // Only reached while editing, so the EditState is present.
@@ -319,7 +319,7 @@ pub(super) fn render_folder_edit<'a>(
 /// list) plus Remove / REG / TAG controls (REG/TAG only where the game
 /// supports them); empty slots show a muted placeholder.
 fn folder_slot_row<'a>(
-    loaded: &'a Loaded,
+    loaded: &'a OpenSave,
     slot: usize,
     chip: Option<tango_dataview::save::Chip>,
     is_regular: bool,
@@ -401,7 +401,7 @@ fn folder_slot_row<'a>(
 /// chip+code into the folder; it's disabled (`addable == false`) when the
 /// folder is full or adding the chip would break the navi's folder limits.
 fn library_entry_row<'a>(
-    loaded: &'a Loaded,
+    loaded: &'a OpenSave,
     chip_id: usize,
     name: String,
     code: tango_dataview::save::ChipCode,
@@ -518,7 +518,10 @@ impl LibrarySort {
     }
 }
 
-fn sorted_library_entries(loaded: &Loaded, sort: LibrarySort) -> Vec<(usize, String, tango_dataview::save::ChipCode)> {
+fn sorted_library_entries(
+    loaded: &OpenSave,
+    sort: LibrarySort,
+) -> Vec<(usize, String, tango_dataview::save::ChipCode)> {
     use tango_dataview::save::ChipCode;
     let assets = loaded.assets.as_ref();
     let chips_view = loaded.save.view_chips();
@@ -594,142 +597,12 @@ fn sorted_library_entries(loaded: &Loaded, sort: LibrarySort) -> Vec<(usize, Str
     rows.into_iter().map(|e| (e.id, e.name, e.code)).collect()
 }
 
-/// Mega/Giga class usage and per-chip copies in one folder, used to honor
-/// the equipped navi's [`tango_dataview::save::FolderLimits`] in both the
-/// editor UI (greying out un-addable library chips) and the apply path
-/// ([`crate::app`]'s `apply_chip_edit`). Built by scanning the folder's 30
-/// slots; cheap enough to rebuild per edit / per frame.
-pub struct FolderUsage {
-    pub navi: usize,
-    pub mega: usize,
-    pub giga: usize,
-    pub dark: usize,
-    /// Copies installed per chip id (codes collapsed — the copy cap is
-    /// per chip, not per code).
-    pub copies: std::collections::HashMap<usize, usize>,
-}
-
-impl FolderUsage {
-    /// Tally the equipped folder's 30 slots.
-    pub fn scan(loaded: &Loaded, folder_idx: usize) -> Self {
-        use tango_dataview::rom::ChipClass;
-        let assets = loaded.assets.as_ref();
-        let mut navi = 0;
-        let mut mega = 0;
-        let mut giga = 0;
-        let mut dark = 0;
-        let mut copies: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
-        if let Some(view) = loaded.save.view_chips() {
-            for slot in 0..MAX_FOLDER_CHIPS {
-                let Some(c) = view.chip(folder_idx, slot) else { continue };
-                *copies.entry(c.id).or_insert(0) += 1;
-                let Some(chip) = assets.chip(c.id) else {
-                    continue;
-                };
-                if chip.dark() {
-                    dark += 1;
-                    continue;
-                }
-                match chip.class() {
-                    ChipClass::Navi => navi += 1,
-                    ChipClass::Mega => mega += 1,
-                    ChipClass::Giga => giga += 1,
-                    _ => {}
-                }
-            }
-        }
-        Self {
-            navi,
-            mega,
-            giga,
-            dark,
-            copies,
-        }
-    }
-
-    /// Whether one more copy of `chip_id` fits under `limits` — the
-    /// per-chip copy cap plus the mega/giga class cap. The folder-full
-    /// (30-slot) check is separate. Unknown chips aren't blocked.
-    pub fn can_add(&self, loaded: &Loaded, chip_id: usize, limits: &tango_dataview::save::FolderLimits) -> bool {
-        use tango_dataview::rom::ChipClass;
-        let Some(info) = loaded.assets.chip(chip_id) else {
-            return true;
-        };
-        if self.copies.get(&chip_id).copied().unwrap_or(0) >= (limits.max_copies)(info.as_ref()) {
-            return false;
-        }
-        if info.dark() {
-            return limits.dark_limit.map(|limit| self.dark < limit).unwrap_or(true);
-        }
-        match info.class() {
-            ChipClass::Navi => limits.navi_limit.map(|limit| self.navi < limit).unwrap_or(true),
-            ChipClass::Mega => limits.mega_limit.map(|limit| self.mega < limit).unwrap_or(true),
-            ChipClass::Giga => limits.giga_limit.map(|limit| self.giga < limit).unwrap_or(true),
-            _ => true,
-        }
-    }
-}
-
-/// Whether the equipped folder satisfies the navi's
-/// [`tango_dataview::save::FolderLimits`] — the mega/giga class caps, the
-/// per-chip copy cap, and Regular/Tag memory. `true` when the game defines
-/// no limits. Gates Save: the folder pane blocks *adding* a violation, but
-/// cross-tab edits can still leave an already-built folder illegal (e.g.
-/// pulling a MegFldr part on the Navi tab lowers the mega cap under the
-/// chips already in the folder), and a save edited elsewhere may arrive
-/// over a limit.
-pub(crate) fn folder_limits_satisfied(loaded: &Loaded) -> bool {
-    let Some(view) = loaded.save.view_chips() else {
-        return true;
-    };
-    let folder_idx = view.equipped_folder_index();
-    let limits = loaded
-        .save
-        .view_navi()
-        .map(|nv| nv.folder_limits(&*loaded.assets))
-        .unwrap_or_default();
-    let usage = FolderUsage::scan(loaded, folder_idx);
-    if limits.navi_limit.map(|limit| usage.navi > limit).unwrap_or(false)
-        || limits.mega_limit.map(|limit| usage.mega > limit).unwrap_or(false)
-        || limits.giga_limit.map(|limit| usage.giga > limit).unwrap_or(false)
-        || limits.dark_limit.map(|limit| usage.dark > limit).unwrap_or(false)
-    {
-        return false;
-    }
-    // Per-chip copy cap.
-    for (&id, &count) in &usage.copies {
-        if let Some(chip) = loaded.assets.chip(id) {
-            if count > (limits.max_copies)(chip.as_ref()) {
-                return false;
-            }
-        }
-    }
-    let mb_of = |slot: usize| {
-        view.chip(folder_idx, slot)
-            .and_then(|c| loaded.assets.chip(c.id))
-            .map_or(0u32, |c| c.mb() as u32)
-    };
-    // The Regular chip must fit Regular memory.
-    if let Some(cap) = limits.reg_memory {
-        if let Some(Some(reg)) = view.regular_chip_index(folder_idx) {
-            if mb_of(reg) > cap as u32 {
-                return false;
-            }
-        }
-    }
-    // The Tag pair's combined MB must fit Tag memory.
-    if let Some(budget) = limits.tag_memory {
-        if let Some(Some([a, b])) = view.tag_chip_indexes(folder_idx) {
-            if mb_of(a) + mb_of(b) > budget {
-                return false;
-            }
-        }
-    }
-    true
-}
-
-/// Number of chip slots in an equipped folder.
-pub const MAX_FOLDER_CHIPS: usize = 30;
+// The folder's legality rules — the 30-slot cap, the class/copy tallies,
+// and the whole-folder check that gates Save — live with the model, in
+// `tango_savemodel::rules`: the apply path enforces the same ones, so
+// there is one copy of each. Re-exported under the old paths because
+// this is where the panes that render them look.
+pub use tango_savemodel::rules::{folder_limits_satisfied, FolderUsage, MAX_FOLDER_CHIPS};
 
 #[derive(Default)]
 pub(crate) struct GroupedChip {
@@ -744,7 +617,7 @@ pub(crate) struct GroupedChip {
 // leading "N×" column — on for the folder's grouped mode, off
 // for ABD.
 pub(crate) fn chip_row<M: 'static>(
-    loaded: &Loaded,
+    loaded: &OpenSave,
     chip_id: Option<usize>,
     code: Option<String>,
     g: &folder::GroupedChip,
@@ -913,7 +786,7 @@ pub(crate) fn class_accent(class: Option<tango_dataview::rom::ChipClass>, dark: 
 
 /// 28×28 chip icon. Empty (`None`) renders a same-sized spacer so empty
 /// rows keep the same height as filled ones.
-pub(crate) fn chip_icon<'a>(loaded: &'a Loaded, chip_id: Option<usize>) -> Element<'a, Action> {
+pub(crate) fn chip_icon<'a>(loaded: &'a OpenSave, chip_id: Option<usize>) -> Element<'a, Action> {
     match chip_id.and_then(|id| loaded.chip_icons.get(id).cloned().flatten()) {
         Some(h) => Image::new(h)
             .width(Length::Fixed(28.0))
@@ -967,7 +840,7 @@ pub(crate) fn chip_popover<'a, M: 'a>(
 /// image and description (the read-only list's chip popover). No-op
 /// when the chip has neither, or for an empty slot.
 pub(crate) fn with_chip_tooltip<'a>(
-    loaded: &'a Loaded,
+    loaded: &'a OpenSave,
     chip_id: Option<usize>,
     accent: Option<iced::Color>,
     inner: Element<'a, Action>,
@@ -991,7 +864,11 @@ pub(crate) fn with_chip_tooltip<'a>(
 /// Element-icon / ATK / MB stat cells shared by both editor panes,
 /// matching the read-only chip list's columns. The MB cell collapses to
 /// nothing when the game doesn't use MB.
-pub(crate) fn chip_stat_cells<'a>(loaded: &'a Loaded, chip_id: usize, chips_have_mb: bool) -> [Element<'a, Action>; 3] {
+pub(crate) fn chip_stat_cells<'a>(
+    loaded: &'a OpenSave,
+    chip_id: usize,
+    chips_have_mb: bool,
+) -> [Element<'a, Action>; 3] {
     let info = loaded.assets.chip(chip_id);
     let element: Element<'a, Action> = info
         .as_ref()
@@ -1046,7 +923,7 @@ pub(crate) fn chip_tooltip_style(accent: Option<iced::Color>) -> impl Fn(&iced::
 }
 
 /// The folder tab as TSV text for clipboard "copy as text".
-pub(crate) fn as_text(loaded: &Loaded, opts: RenderOpts) -> Option<String> {
+pub(crate) fn as_text(loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
     let assets = loaded.assets.as_ref();
     let chips_view = loaded.save.view_chips()?;
     let folder_idx = chips_view.equipped_folder_index();

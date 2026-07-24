@@ -6,8 +6,6 @@
 //!   content scans below build on.
 //! * [`rom`] / [`save`] / [`patch`] / [`replays`]: one module per kind of
 //!   content the library folders hold.
-//! * [`rom_overrides`]: patch-driven chip/navicust/patch-card asset
-//!   overrides layered onto a ROM's assets.
 //! * [`bnlc`]: Battle Network Legacy Collection (Steam) discovery, an
 //!   extra source of ROMs — native only, and absent from a wasm build.
 //! * [`config`]: the persisted settings model.
@@ -27,7 +25,6 @@ pub mod marker;
 pub mod patch;
 pub mod replays;
 pub mod rom;
-pub mod rom_overrides;
 pub mod save;
 pub mod scanner;
 pub mod storage;

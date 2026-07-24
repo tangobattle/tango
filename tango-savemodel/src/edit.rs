@@ -3,13 +3,18 @@
 //! through the dataview's mutable views, and rebuild any derived
 //! mirrors (anti-cheat folder/library, materialized auto battle data)
 //! so they stay in sync. No disk I/O — the commit path only checksums
-//! and writes. The save view surfaces edits as
-//! [`crate::save_view::Outcome::Edit`]; the App routes them here.
+//! and writes.
+//!
+//! [`apply`] keeps everything the *model* derives in step by itself. A
+//! frontend's own derived state — anything it baked out of the assets
+//! for drawing — it cannot know about, so `apply` reports what it
+//! invalidated and leaves the re-deriving to the caller. See
+//! [`Invalidation`].
 
-use crate::selection;
+use crate::SaveModel;
 
 /// A single folder edit staged by the folder editor. Applied to the
-/// loaded save in memory; not persisted to disk until the user hits
+/// save save in memory; not persisted to disk until the user hits
 /// Save (the host's save-edit commit).
 #[derive(Debug, Clone)]
 pub enum ChipEdit {
@@ -34,7 +39,7 @@ pub enum ChipEdit {
 }
 
 /// A single navicust edit staged by the navicust editor. Applied to the
-/// loaded save in memory; not persisted to disk until the user hits Save.
+/// save save in memory; not persisted to disk until the user hits Save.
 #[derive(Debug, Clone)]
 pub enum NavicustEdit {
     /// Place a part into the first empty navicust slot.
@@ -45,7 +50,7 @@ pub enum NavicustEdit {
     ClearAll,
 }
 
-/// A staged navi-selection edit. Applied to the loaded save in memory;
+/// A staged navi-selection edit. Applied to the save save in memory;
 /// not persisted to disk until the user hits Save.
 #[derive(Debug, Clone)]
 pub enum NaviEdit {
@@ -54,7 +59,7 @@ pub enum NaviEdit {
 }
 
 /// A single BN5/BN6 patch-card edit staged by the editor. Applied to the
-/// loaded save in memory; not persisted to disk until the user hits Save.
+/// save save in memory; not persisted to disk until the user hits Save.
 #[derive(Debug, Clone)]
 pub enum PatchCard56Edit {
     /// Register patch card `id` (append to the list, enabled).
@@ -70,7 +75,7 @@ pub enum PatchCard56Edit {
 }
 
 /// A single BN4 patch-card edit staged by the editor. Applied to the
-/// loaded save in memory; not persisted to disk until the user hits Save.
+/// save save in memory; not persisted to disk until the user hits Save.
 /// BN4 is slot-based: every card belongs to one fixed catalog slot
 /// (0A–0F), so adding a card installs it into its own slot (replacing
 /// whatever was there).
@@ -87,7 +92,7 @@ pub enum PatchCard4Edit {
 }
 
 /// A single auto-battle-data edit staged by the editor. Applied to the
-/// loaded save in memory; not persisted to disk until the user hits
+/// save save in memory; not persisted to disk until the user hits
 /// Save. The deck is derived from per-chip use counts, so these set
 /// those counts; the applier rebuilds the materialized deck after each
 /// so the preview shows the change live.
@@ -101,7 +106,7 @@ pub enum AutoBattleDataEdit {
     ClearAll,
 }
 
-/// One staged edit to the loaded save, unifying the per-editor edit
+/// One staged edit to the save save, unifying the per-editor edit
 /// types so hosts can route every editor through a single effect.
 #[derive(Debug, Clone)]
 pub enum Edit {
@@ -113,28 +118,69 @@ pub enum Edit {
     AutoBattleData(AutoBattleDataEdit),
 }
 
-/// Apply one staged edit to the in-memory loaded save. The UI reads
-/// `loaded.save` directly, so the change shows immediately; nothing is
-/// written to disk until the host's save-edit commit.
-pub fn apply_edit(loaded: &mut selection::Loaded, edit: Edit) {
-    match edit {
-        Edit::Chips(e) => apply_chip_edit(loaded, e),
-        Edit::Navicust(e) => apply_navicust_edit(loaded, e),
-        Edit::Navi(e) => apply_navi_edit(loaded, e),
-        Edit::PatchCard56s(e) => apply_patch_card56_edit(loaded, e),
-        Edit::PatchCard4s(e) => apply_patch_card4_edit(loaded, e),
-        Edit::AutoBattleData(e) => apply_auto_battle_data_edit(loaded, e),
+/// What an applied edit invalidated in state the *frontend* derived from
+/// this save, and which only it can rebuild.
+///
+/// The model's own derived caches — the anti-cheat folder/library
+/// mirror, the materialized navicust and auto-battle-data WRAM — are
+/// kept in step by the appliers themselves and never appear here. This
+/// is only about what a frontend baked for drawing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Invalidation {
+    /// The navicust's contents or its very existence changed, so any
+    /// picture of the grid drawn from this save is stale. Note that the
+    /// navicust *editor*'s own edits don't set this: it paints from the
+    /// live view and only needs a re-bake once, at commit.
+    pub navicust_render: bool,
+}
+
+impl Invalidation {
+    fn navicust_render() -> Self {
+        Self { navicust_render: true }
     }
 }
 
-/// Apply one staged [`ChipEdit`] to a loaded save's
+/// Apply one staged edit to the in-memory save save. A frontend reads
+/// `save.save` directly, so the change shows immediately; nothing is
+/// written to disk until the host's save-edit commit.
+///
+/// Act on the returned [`Invalidation`] to keep frontend-side derived
+/// art in step.
+#[must_use = "an edit can invalidate frontend-derived art; see Invalidation"]
+pub fn apply_edit(save: &mut SaveModel, edit: Edit) -> Invalidation {
+    match edit {
+        Edit::Chips(e) => {
+            apply_chip_edit(save, e);
+            Invalidation::default()
+        }
+        Edit::Navicust(e) => {
+            apply_navicust_edit(save, e);
+            Invalidation::default()
+        }
+        Edit::Navi(e) => apply_navi_edit(save, e),
+        Edit::PatchCard56s(e) => {
+            apply_patch_card56_edit(save, e);
+            Invalidation::default()
+        }
+        Edit::PatchCard4s(e) => {
+            apply_patch_card4_edit(save, e);
+            Invalidation::default()
+        }
+        Edit::AutoBattleData(e) => {
+            apply_auto_battle_data_edit(save, e);
+            Invalidation::default()
+        }
+    }
+}
+
+/// Apply one staged [`ChipEdit`] to a save save's
 /// equipped folder, in memory. Guards that need the ROM assets (folder
-/// limits, chip MB) resolve against `loaded` first; the edit itself then
+/// limits, chip MB) resolve against `save` first; the edit itself then
 /// reads and writes through one [`ChipsViewMut`] and rebuilds the
 /// anti-cheat folder/library mirror so it stays in sync with the edit.
 /// No disk I/O — the commit path only checksums and writes.
-pub fn apply_chip_edit(loaded: &mut selection::Loaded, edit: ChipEdit) {
-    use crate::save_view::folder::MAX_FOLDER_CHIPS;
+pub fn apply_chip_edit(save: &mut SaveModel, edit: ChipEdit) {
+    use crate::rules::MAX_FOLDER_CHIPS;
     use tango_dataview::save::Chip;
 
     /// Rewrite the whole folder: every chip slot plus the REG/TAG pointers.
@@ -159,46 +205,46 @@ pub fn apply_chip_edit(loaded: &mut selection::Loaded, edit: ChipEdit) {
         chips.set_tag_chip_indexes(folder_idx, tags);
     }
 
-    let folder_idx = match loaded.save.view_chips() {
+    let folder_idx = match save.save.view_chips() {
         Some(v) => v.equipped_folder_index(),
         None => return,
     };
 
     // Guards that read the ROM assets (and FolderUsage, which scans all of
-    // `loaded`), resolved before the mutable chips view is taken.
+    // `save`), resolved before the mutable chips view is taken.
     match &edit {
         ChipEdit::AddChip { chip_id, .. } => {
             // Enforce the equipped navi's folder limits (mega/giga class
             // caps + the per-chip copy cap).
-            let limits = loaded
+            let limits = save
                 .save
                 .view_navi()
-                .map(|nv| nv.folder_limits(&*loaded.assets))
+                .map(|nv| nv.folder_limits(&*save.assets))
                 .unwrap_or_default();
-            if !crate::save_view::folder::FolderUsage::scan(loaded, folder_idx).can_add(loaded, *chip_id, &limits) {
+            if !crate::rules::FolderUsage::scan(save, folder_idx).can_add(save, *chip_id, &limits) {
                 return;
             }
         }
         ChipEdit::ToggleRegular { slot } => {
             // Setting a new Regular requires its MB to fit Regular memory
             // (the editor greys the toggle out otherwise). Clearing is free.
-            let current = loaded
+            let current = save
                 .save
                 .view_chips()
                 .and_then(|v| v.regular_chip_index(folder_idx))
                 .flatten();
             if current != Some(*slot) {
-                let limits = loaded
+                let limits = save
                     .save
                     .view_navi()
-                    .map(|nv| nv.folder_limits(&*loaded.assets))
+                    .map(|nv| nv.folder_limits(&*save.assets))
                     .unwrap_or_default();
                 if let Some(cap) = limits.reg_memory {
-                    let fits = loaded
+                    let fits = save
                         .save
                         .view_chips()
                         .and_then(|v| v.chip(folder_idx, *slot))
-                        .and_then(|c| loaded.assets.chip(c.id))
+                        .and_then(|c| save.assets.chip(c.id))
                         .is_none_or(|c| c.mb() <= cap);
                     if !fits {
                         return;
@@ -210,13 +256,13 @@ pub fn apply_chip_edit(loaded: &mut selection::Loaded, edit: ChipEdit) {
             // Reject a pair whose combined MB busts Tag memory (the editor
             // greys out the toggle that would form it, so this is a
             // backstop). `None` clears the pair and is always allowed.
-            let limits = loaded
+            let limits = save
                 .save
                 .view_navi()
-                .map(|nv| nv.folder_limits(&*loaded.assets))
+                .map(|nv| nv.folder_limits(&*save.assets))
                 .unwrap_or_default();
             if let Some(budget) = limits.tag_memory {
-                let lr: &selection::Loaded = loaded;
+                let lr: &SaveModel = save;
                 let mb_of = |slot: usize| {
                     lr.save
                         .view_chips()
@@ -232,7 +278,7 @@ pub fn apply_chip_edit(loaded: &mut selection::Loaded, edit: ChipEdit) {
         _ => {}
     }
 
-    let Some(mut chips) = loaded.save.view_chips_mut() else {
+    let Some(mut chips) = save.save.view_chips_mut() else {
         return;
     };
     let folder: Vec<Option<Chip>> = (0..MAX_FOLDER_CHIPS).map(|i| chips.chip(folder_idx, i)).collect();
@@ -295,7 +341,7 @@ pub fn apply_chip_edit(loaded: &mut selection::Loaded, edit: ChipEdit) {
             let moved = new_chips.remove(from);
             new_chips.insert(to, moved);
 
-            let remap = |i: usize| crate::save_view::reorder_index(i, from, to);
+            let remap = |i: usize| crate::rules::reorder_index(i, from, to);
             write_folder(
                 &mut *chips,
                 folder_idx,
@@ -321,18 +367,18 @@ pub fn apply_chip_edit(loaded: &mut selection::Loaded, edit: ChipEdit) {
     chips.rebuild_anticheat();
 }
 
-/// Apply one staged [`NavicustEdit`] to a loaded save's
+/// Apply one staged [`NavicustEdit`] to a save save's
 /// navicust, in memory. Writes the part slots, then rebuilds the
 /// materialized WRAM grid cache so it stays in sync with the edit (and
 /// the editor's live color-bar preview reflects it). No disk I/O — the
 /// commit path only checksums and writes. A no-op on saves without a
 /// writable navicust view (no navicust, or a link navi is equipped).
-pub fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: NavicustEdit) {
+pub fn apply_navicust_edit(save: &mut SaveModel, edit: NavicustEdit) {
     use tango_dataview::save::NavicustPart;
 
     // Disjoint field borrows: assets vs save.
-    let assets = loaded.assets.as_ref();
-    let Some(mut nc) = loaded.save.view_navicust_mut() else {
+    let assets = save.assets.as_ref();
+    let Some(mut nc) = save.save.view_navicust_mut() else {
         return;
     };
 
@@ -343,7 +389,7 @@ pub fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: NavicustEdit) {
             let copies = (0..nc.count())
                 .filter(|&i| nc.navicust_part(i).is_some_and(|p| p.id == part.id))
                 .count();
-            if copies >= crate::save_view::navicust::editor::MAX_COPIES_PER_PART {
+            if copies >= crate::rules::MAX_COPIES_PER_PART {
                 return;
             }
             let Some(slot) = (0..nc.count()).find(|&i| nc.navicust_part(i).is_none()) else {
@@ -377,40 +423,41 @@ pub fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: NavicustEdit) {
 }
 
 /// Apply a staged [`NaviEdit`] (the equipped-navi selection) to
-/// the loaded save in memory. No disk I/O — the commit path checksums and
+/// the save save in memory. No disk I/O — the commit path checksums and
 /// writes. A no-op on saves without a writable navi view.
-pub fn apply_navi_edit(loaded: &mut selection::Loaded, edit: NaviEdit) {
+#[must_use = "swapping the navi invalidates any drawn navicust grid"]
+pub fn apply_navi_edit(save: &mut SaveModel, edit: NaviEdit) -> Invalidation {
     match edit {
         NaviEdit::SetNavi(navi) => {
-            if let Some(mut nv) = loaded.save.view_navi_mut() {
+            if let Some(mut nv) = save.save.view_navi_mut() {
                 nv.set_navi(navi);
             }
         }
     }
     // Switching the equipped navi flips whether an editable navicust and patch
     // card list exist: a link navi has neither, the player's own navi does. The
-    // editability flags (and the baked read-only navicust grid image) are cached
-    // on `Loaded` (the per-frame view only holds `&Loaded`), so refresh them
-    // here — otherwise they stay stale until the save is reselected, leaving the
-    // NaviCust / patch card editors disabled (or showing the wrong grid) after a
-    // navi swap.
-    loaded.refresh_editability();
-    loaded.rebuild_navicust_render();
+    // editability flags are cached on `SaveModel` (a per-frame render only holds
+    // `&SaveModel`), so refresh them here — otherwise they stay stale until the
+    // save is reselected, leaving the NaviCust / patch card editors disabled
+    // after a navi swap. For the same reason any *drawn* grid is now wrong,
+    // which the caller is told about rather than us reaching into its art.
+    save.refresh_editability();
+    Invalidation::navicust_render()
 }
 
-/// Apply one staged [`PatchCard56Edit`] to a loaded save's
+/// Apply one staged [`PatchCard56Edit`] to a save save's
 /// registered patch-card list, in memory. Reads the current list,
 /// computes the new list, rewrites the slots via
 /// [`PatchCard56sViewMut`], then rebuilds the anti-cheat mirror so it
 /// stays in sync with the edit. No disk I/O — the commit path only
 /// checksums and writes. A no-op on saves whose patch-card view isn't the
 /// (writable) PatchCard56s variant.
-pub fn apply_patch_card56_edit(loaded: &mut selection::Loaded, edit: PatchCard56Edit) {
+pub fn apply_patch_card56_edit(save: &mut SaveModel, edit: PatchCard56Edit) {
     use tango_dataview::save::{PatchCard, PatchCardsViewMut};
 
     // Disjoint field borrows: assets vs save.
-    let assets = loaded.assets.as_ref();
-    let Some(PatchCardsViewMut::PatchCard56s(mut v)) = loaded.save.view_patch_cards_mut() else {
+    let assets = save.assets.as_ref();
+    let Some(PatchCardsViewMut::PatchCard56s(mut v)) = save.save.view_patch_cards_mut() else {
         return;
     };
     let cards: Vec<PatchCard> = (0..v.count()).filter_map(|i| v.patch_card(i)).collect();
@@ -432,7 +479,7 @@ pub fn apply_patch_card56_edit(loaded: &mut selection::Loaded, edit: PatchCard56
             // is just a guard. Appended, enabled, at the end of the list.
             if new_cards.len() >= max
                 || new_cards.iter().any(|c| c.id == id)
-                || enabled_mb(&new_cards) + card_mb(id) > crate::save_view::patch_cards::MAX_PATCH_CARD56_MB
+                || enabled_mb(&new_cards) + card_mb(id) > crate::rules::MAX_PATCH_CARD56_MB
             {
                 return;
             }
@@ -472,19 +519,19 @@ pub fn apply_patch_card56_edit(loaded: &mut selection::Loaded, edit: PatchCard56
 /// Number of BN4 patch-card catalog slots (0A–0F).
 const NUM_PATCH_CARD4_SLOTS: usize = 6;
 
-/// Apply one staged [`PatchCard4Edit`] to a loaded save's BN4
+/// Apply one staged [`PatchCard4Edit`] to a save save's BN4
 /// patch cards, in memory. BN4 is slot-based: every card belongs to one
 /// fixed catalog slot, so adding routes the card to its own `slot()`
 /// (replacing whatever was there). No MB budget, no list shifting. After
 /// writing it rebuilds the anti-cheat mirror so it stays in sync with the
 /// edit. No disk I/O — the commit path only checksums and writes. A no-op
 /// on saves whose patch-card view isn't the PatchCard4s variant.
-pub fn apply_patch_card4_edit(loaded: &mut selection::Loaded, edit: PatchCard4Edit) {
+pub fn apply_patch_card4_edit(save: &mut SaveModel, edit: PatchCard4Edit) {
     use tango_dataview::save::{PatchCard, PatchCardsViewMut};
 
     // Disjoint field borrows: assets vs save.
-    let assets = loaded.assets.as_ref();
-    let Some(PatchCardsViewMut::PatchCard4s(mut v)) = loaded.save.view_patch_cards_mut() else {
+    let assets = save.assets.as_ref();
+    let Some(PatchCardsViewMut::PatchCard4s(mut v)) = save.save.view_patch_cards_mut() else {
         return;
     };
 
@@ -525,17 +572,17 @@ pub fn apply_patch_card4_edit(loaded: &mut selection::Loaded, edit: PatchCard4Ed
     v.rebuild_anticheat();
 }
 
-/// Apply one staged [`AutoBattleDataEdit`] to a loaded save's
+/// Apply one staged [`AutoBattleDataEdit`] to a save save's
 /// auto-battle data, in memory. The deck is derived from per-chip use
 /// counts, so each edit sets a count (or zeroes them all) and then
 /// rebuilds the materialized WRAM deck so the editor's live preview — which
 /// reads the materialized cache — reflects the change. No disk I/O; the
 /// commit path checksums and writes. A no-op on saves without a writable
 /// auto-battle-data view (only BN4/BN5 have one).
-pub fn apply_auto_battle_data_edit(loaded: &mut selection::Loaded, edit: AutoBattleDataEdit) {
+pub fn apply_auto_battle_data_edit(save: &mut SaveModel, edit: AutoBattleDataEdit) {
     // Disjoint field borrows: assets vs save.
-    let assets = loaded.assets.as_ref();
-    let Some(mut v) = loaded.save.view_auto_battle_data_mut() else {
+    let assets = save.assets.as_ref();
+    let Some(mut v) = save.save.view_auto_battle_data_mut() else {
         return;
     };
 

@@ -1,9 +1,9 @@
 use super::*;
 use sweeten::widget::column;
 
-pub(super) fn render_cover<M: 'static>(_lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
+pub(super) fn render_cover<M: 'static>(_lang: &LanguageIdentifier, loaded: &OpenSave) -> Element<'static, M> {
     // The cover tab carries no save data of its own — it just shows the
-    // game's logo(s), decoded once in Loaded::build. Logos vary in
+    // game's logo(s), decoded once in OpenSave::build. Logos vary in
     // aspect ratio, so each is sized to a fixed height and Contain'd.
     let inner: Element<'static, M> = match loaded.logos.as_slice() {
         // Two variant logos in the family (e.g. Gregar/Falzar) — stack

@@ -1,7 +1,7 @@
 use super::*;
 use sweeten::widget::{column, row};
 
-pub(super) fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
+pub(super) fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave) -> Element<'static, M> {
     container(navi_card_content::<M>(lang, loaded, false))
         .width(Fill)
         .align_x(Alignment::Center)
@@ -18,7 +18,7 @@ pub(super) fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded
 /// button.
 fn navi_card_content<M: 'static>(
     lang: &LanguageIdentifier,
-    loaded: &Loaded,
+    loaded: &OpenSave,
     editing_hint: bool,
 ) -> Element<'static, M> {
     let assets = loaded.assets.as_ref();
@@ -117,7 +117,7 @@ fn navi_card_content<M: 'static>(
 /// picker as the body — there's no separate Edit pencil to confuse it with.
 pub(super) fn render_navi_strip<'a>(
     lang: &'a LanguageIdentifier,
-    loaded: &'a Loaded,
+    loaded: &'a OpenSave,
     edit: Option<Action>,
     actions: Element<'a, Action>,
 ) -> Element<'a, Action> {
@@ -166,7 +166,7 @@ fn stat_inline<M: 'static>(label: String, value: String) -> Element<'static, M> 
 /// The Navi tab as text: the equipped navi's name (for games with a link-navi
 /// roster) and its base max HP. Every game has a navi with HP, so this always
 /// returns something.
-pub(crate) fn navi_as_text(lang: &LanguageIdentifier, loaded: &Loaded) -> Option<String> {
+pub(crate) fn navi_as_text(lang: &LanguageIdentifier, loaded: &OpenSave) -> Option<String> {
     let assets = loaded.assets.as_ref();
     let navi = loaded.save.view_navi()?;
     let mut out = String::new();
@@ -190,7 +190,7 @@ pub(crate) fn navi_as_text(lang: &LanguageIdentifier, loaded: &Loaded) -> Option
 /// accent-tinted emblem plate (the equipped one lit up with a glow ring).
 /// Clicking a plate emits [`Action::SetNavi`], which the embedder stages
 /// into the loaded save.
-pub(super) fn render_navi_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded) -> Element<'a, Action> {
+pub(super) fn render_navi_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Element<'a, Action> {
     let assets = loaded.assets.as_ref();
     let current = loaded.save.view_navi().map(|nv| nv.navi());
 
@@ -237,7 +237,7 @@ pub(super) fn render_navi_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loa
 /// One selectable navi: its emblem on a circular accent-tinted plate (lit
 /// with a glow ring when it's the equipped navi), the name beneath, all
 /// wrapped in a borderless button that emits [`Action::SetNavi`].
-fn navi_cell(loaded: &Loaded, id: usize, name: String, selected: bool) -> Element<'static, Action> {
+fn navi_cell(loaded: &OpenSave, id: usize, name: String, selected: bool) -> Element<'static, Action> {
     let accent = loaded
         .navi_accents
         .get(&id)

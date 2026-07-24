@@ -1,86 +1,31 @@
+//! The frontend's half of a loaded save: the art baked out of it.
+//!
+//! The model — game, parsed save, assets, editability, applied patch —
+//! is [`tango_savemodel::SaveModel`], which knows nothing about a UI
+//! toolkit. What is left here is everything derived *for drawing*: chip
+//! icons, navi emblems, the pre-rendered NaviCust grid. Those are all
+//! iced image handles, which is precisely why they can't live with the
+//! model.
+//!
+//! [`OpenSave`] below bundles the two and derefs to the model, so
+//! `loaded.save` / `loaded.assets` / `loaded.game` read the same as they
+//! always did while `loaded.chip_icons` and friends stay frontend-local.
+//! Assets are derived from the ROM and the save's WRAM; image handles
+//! are derived from assets. All of it is rebuilt only when game or save
+//! changes, so per-frame `view()` stays cheap.
+
 use crate::library::rom::GameRef;
-use crate::library::rom_overrides::OverridenAssets;
 use iced::widget::image as iced_image;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// Currently committed game + save + their derived ROM/assets +
-/// preloaded icon image handles.
-///
-/// Assets are derived from the ROM and the save's WRAM; image handles
-/// are derived from assets. All of this is rebuilt only when game or
-/// save changes, so per-frame `view()` stays cheap.
-/// The currently committed patch (name + version + arc to the per-version
-/// metadata). Held alongside the loaded ROM so refresh decisions know
-/// whether the active selection still matches.
-#[derive(Clone)]
-pub struct AppliedPatch {
-    pub name: String,
-    pub version: semver::Version,
-    pub version_meta: Arc<crate::library::patch::Version>,
-}
+pub use tango_savemodel::AppliedPatch;
 
-/// Which sections of a loaded save can be edited in place. Each flag is a
-/// pure capability probe — `view_*_mut().is_some()` — which needs `&mut save`,
-/// so it's computed once and cached on the immutable `Loaded` (the per-frame
-/// view only holds `&Loaded`, and the read-only `view_*()` probes answer a
-/// different question: BN3 has a viewable-but-not-writable navicust, BN1–4 a
-/// viewable-but-not-writable navi). Swapping the equipped navi flips some of
-/// these (a link navi has no navicust / patch cards), so re-probe via
-/// [`Loaded::refresh_editability`] after any in-memory edit that can change
-/// capability.
-#[derive(Clone, Copy, Default)]
-pub struct Editability {
-    /// `view_chips_mut().is_some()` — drives the Folder tab's Edit button.
-    pub folder: bool,
-    /// `view_navicust_mut().is_some()` (BN4/5/6, and not a link navi).
-    pub navicust: bool,
-    /// `view_navi_mut().is_some()` — the equipped navi (BN5/BN6/BN4.5).
-    pub navi: bool,
-    /// `view_patch_cards_mut().is_some()` — BN4 (PatchCard4s, slot-based) and
-    /// BN5/BN6 (PatchCard56s, list-based); each gets its own editor.
-    pub patch_cards: bool,
-    /// `view_auto_battle_data_mut().is_some()` (BN4/BN5).
-    pub auto_battle_data: bool,
-}
-
-impl Editability {
-    /// Probe every section's writable view once. Constructing a mutable view
-    /// has no side effects, so this is a pure capability check.
-    fn probe(save: &mut (dyn tango_dataview::save::Save + Send + Sync)) -> Self {
-        // Each `is_some()` gets its own statement so the borrowed view temporary
-        // is dropped before the next probe — a single struct literal would keep
-        // every mutable borrow of `save` alive at once.
-        let folder = save.view_chips_mut().is_some();
-        let navicust = save.view_navicust_mut().is_some();
-        let navi = save.view_navi_mut().is_some();
-        let patch_cards = save.view_patch_cards_mut().is_some();
-        let auto_battle_data = save.view_auto_battle_data_mut().is_some();
-        Self {
-            folder,
-            navicust,
-            navi,
-            patch_cards,
-            auto_battle_data,
-        }
-    }
-
-    /// Whether *any* section is editable — drives the single save-level Edit
-    /// button (once open, the user navigates tabs to edit each section).
-    pub fn any(&self) -> bool {
-        self.folder || self.navicust || self.navi || self.patch_cards || self.auto_battle_data
-    }
-}
-
-pub struct Loaded {
-    pub game: GameRef,
-    pub save_path: std::path::PathBuf,
-    pub save: Box<dyn tango_dataview::save::Save + Send + Sync>,
-    /// Which sections of this save can be edited in place. See [`Editability`].
-    pub editability: Editability,
-    /// Patch+version baked into this Loaded, if any. `None` = raw ROM.
-    pub patch: Option<AppliedPatch>,
-    pub assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>,
+/// A loaded save's model plus this frontend's baked art for it.
+pub struct OpenSave {
+    /// Game, parsed save, assets, editability, applied patch. Reachable
+    /// directly through `Deref`, so `loaded.save` still works.
+    pub model: tango_savemodel::SaveModel,
     pub chip_icons: Vec<Option<iced_image::Handle>>,
     /// Full-size chip images (variable dimensions) for hover previews.
     pub chip_images: Vec<Option<(u32, u32, iced_image::Handle)>>,
@@ -106,7 +51,7 @@ pub struct Loaded {
     /// grid-sized transparent margin the palette wants would just push the
     /// name text away). Indexed by navicust slot; `None` for an empty slot
     /// or a part with no color / shape. Empty for saves without a navicust.
-    /// Rebuilt by [`Loaded::rebuild_navicust_render`].
+    /// Rebuilt by [`OpenSave::rebuild_navicust_render`].
     pub navicust_installed_part_thumbs: Vec<Option<(u32, u32, iced_image::Handle)>>,
     /// Logos for the Cover tab, as `(width, height, handle)`. The
     /// loaded game's own variant comes first; any sibling variants in
@@ -115,6 +60,19 @@ pub struct Loaded {
     /// `Game` registration. Built once here so the per-frame view()
     /// just clones the handles.
     pub logos: Vec<(u32, u32, iced_image::Handle)>,
+}
+
+impl std::ops::Deref for OpenSave {
+    type Target = tango_savemodel::SaveModel;
+    fn deref(&self) -> &Self::Target {
+        &self.model
+    }
+}
+
+impl std::ops::DerefMut for OpenSave {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.model
+    }
 }
 
 /// Cached NaviCust image plus everything needed to translate a pointer
@@ -136,14 +94,9 @@ pub struct NavicustRender {
     pub cell_part_idx: Vec<Option<usize>>,
 }
 
-impl Loaded {
+impl OpenSave {
     /// Build from a *raw* (unpatched) ROM, applying the selected patch
-    /// from disk first. On apply failure we fall back to the unpatched
-    /// ROM (and log) so the save view still renders. Callers that
-    /// already hold the patched image should use [`from_patched_rom`]
-    /// instead, to avoid applying the patch a second time.
-    ///
-    /// [`from_patched_rom`]: Self::from_patched_rom
+    /// first, then bake this frontend's art for it.
     pub fn build(
         game: GameRef,
         rom: Vec<u8>,
@@ -152,74 +105,45 @@ impl Loaded {
         patches_path: &std::path::Path,
         patch: Option<(String, semver::Version, Arc<crate::library::patch::Version>)>,
     ) -> Self {
-        let (rom, applied_patch) = match patch {
-            Some((name, version, meta)) => {
-                match crate::library::patch::apply_patch(
-                    crate::library::storage(),
-                    &rom,
-                    game,
-                    patches_path,
-                    &name,
-                    &version,
-                ) {
-                    Ok(patched) => (
-                        patched,
-                        Some(AppliedPatch {
-                            name,
-                            version,
-                            version_meta: meta,
-                        }),
-                    ),
-                    Err(e) => {
-                        log::error!(
-                            "failed to apply patch {name} v{version} to {:?}: {e}",
-                            game.family_and_variant()
-                        );
-                        (rom, None)
-                    }
-                }
-            }
-            None => (rom, None),
-        };
-        Self::from_patched_rom(game, rom, save_path, save, applied_patch)
+        Self::from_model(tango_savemodel::SaveModel::build(
+            crate::library::storage(),
+            game,
+            rom,
+            save_path,
+            save,
+            patches_path,
+            patch,
+        ))
     }
 
     /// Build from a ROM that's *already* had its patch applied, plus the
-    /// [`AppliedPatch`] that produced it (`None` for a raw ROM). Unlike
-    /// [`build`], this never touches the BPS patch — use it when the
-    /// caller already holds the patched image (e.g. a live session that
-    /// patched the ROM for the emulator) so the patch isn't re-applied
-    /// just to read the asset overrides + charset off `applied_patch`.
-    ///
-    /// [`build`]: Self::build
+    /// [`AppliedPatch`] that produced it (`None` for a raw ROM) — for
+    /// callers that already hold the patched image (e.g. a live session
+    /// that patched the ROM for the emulator), so the BPS patch isn't
+    /// applied a second time.
     pub fn from_patched_rom(
         game: GameRef,
         rom: Vec<u8>,
         save_path: std::path::PathBuf,
-        mut save: Box<dyn tango_dataview::save::Save + Send + Sync>,
+        save: Box<dyn tango_dataview::save::Save + Send + Sync>,
         applied_patch: Option<AppliedPatch>,
     ) -> Self {
-        // Probe section editability once (each needs `&mut save`, but the
-        // per-frame view only holds `&Loaded`). Constructing a mutable view has
-        // no side effects, so this is a pure capability check we can cache.
-        let editability = Editability::probe(&mut *save);
+        Self::from_model(tango_savemodel::SaveModel::from_patched_rom(
+            game,
+            rom,
+            save_path,
+            save,
+            applied_patch,
+        ))
+    }
 
-        let wram = save.as_raw_wram().into_owned();
-        let charset_owned: Option<Vec<&str>> = applied_patch
-            .as_ref()
-            .and_then(|p| p.version_meta.rom_overrides.charset.as_ref())
-            .map(|c| c.iter().map(|s| s.as_str()).collect());
-        let inner = game.load_rom_assets(&rom, &wram, charset_owned.as_deref());
-        let overrides = applied_patch
-            .as_ref()
-            .map(|p| p.version_meta.rom_overrides.clone())
-            .unwrap_or_default();
-        let assets: Box<dyn tango_dataview::rom::Assets + Send + Sync> =
-            Box::new(OverridenAssets::new(inner, overrides));
+    /// Bake every image handle the save view draws from, once per
+    /// game+save, so the per-frame `view()` only clones handles.
+    fn from_model(model: tango_savemodel::SaveModel) -> Self {
+        let assets = model.assets.as_ref();
 
         // Chip icons (14x14 cropped from 16x16) + full chip images for
-        // hover previews. Both lazy per id; pre-pass once at load time
-        // so the per-frame view() stays cheap.
+        // hover previews. Both lazy per id; pre-pass once at load time.
         let mut chip_icons: Vec<Option<iced_image::Handle>> = Vec::with_capacity(assets.num_chips());
         let mut chip_images: Vec<Option<(u32, u32, iced_image::Handle)>> = Vec::with_capacity(assets.num_chips());
         for id in 0..assets.num_chips() {
@@ -257,7 +181,7 @@ impl Loaded {
         }
 
         // Render the NaviCust grid once per save+game.
-        let navicust_render = build_navicust_render(save.as_ref(), assets.as_ref(), game);
+        let navicust_render = build_navicust_render(model.save.as_ref(), assets, model.game);
 
         // Bake the grid-sized shape thumbnail per navicust part for the
         // editor palette (aligned blocks). The read-only viewer's inline
@@ -280,15 +204,15 @@ impl Loaded {
                 (w, h, iced_image::Handle::from_rgba(w, h, img.into_raw()))
             }));
         }
-        let navicust_installed_part_thumbs = build_navicust_part_thumbs(save.as_ref(), assets.as_ref());
+        let navicust_installed_part_thumbs = build_navicust_part_thumbs(model.save.as_ref(), assets);
 
         // Logos for the Cover tab. The loaded variant goes first; its
         // family siblings (the other color version, where one exists)
         // follow so the Cover tab can fan both out. The per-game
         // `LazyImage` caches the PNG decode; `to_rgba8` + `from_rgba`
         // run once here so the per-frame view() just clones handles.
-        let (family, variant) = game.family_and_variant();
-        let mut logo_order: Vec<GameRef> = vec![game];
+        let (family, variant) = model.game.family_and_variant();
+        let mut logo_order: Vec<GameRef> = vec![model.game];
         for g in crate::library::game::games_in_family(family) {
             if g.family_and_variant().1 != variant {
                 logo_order.push(g);
@@ -296,7 +220,7 @@ impl Loaded {
         }
         let logos: Vec<(u32, u32, iced_image::Handle)> = logo_order
             .into_iter()
-            .filter_map(|g| crate::library::game::from_gamedb_entry(g))
+            .filter_map(crate::library::game::from_gamedb_entry)
             .map(|gi| {
                 let img = gi.logo_image.to_rgba8();
                 let (w, h) = img.dimensions();
@@ -305,12 +229,7 @@ impl Loaded {
             .collect();
 
         Self {
-            game,
-            save_path,
-            save,
-            editability,
-            patch: applied_patch,
-            assets,
+            model,
             chip_icons,
             chip_images,
             element_icons,
@@ -326,22 +245,14 @@ impl Loaded {
     /// Recompute the baked NaviCust grid image — and the per-slot parts-list
     /// thumbnails — from the current in-memory save. The navicust editor
     /// commits edits into `self.save` (and rebuilds the materialized WRAM
-    /// cache) without triggering a full `Loaded` rebuild, so these cached
+    /// cache) without triggering a full `OpenSave` rebuild, so these cached
     /// images would otherwise stay stale until the next reselection.
     pub fn rebuild_navicust_render(&mut self) {
         self.navicust_render = build_navicust_render(self.save.as_ref(), self.assets.as_ref(), self.game);
         self.navicust_installed_part_thumbs = build_navicust_part_thumbs(self.save.as_ref(), self.assets.as_ref());
     }
 
-    /// Re-probe section [`Editability`] from the current in-memory save.
-    /// Swapping the equipped navi flips navicust / patch-card capability, so
-    /// the edit path calls this after a navi change to keep the cached flags
-    /// in sync (they're read from the `&Loaded`-only per-frame view).
-    pub fn refresh_editability(&mut self) {
-        self.editability = Editability::probe(&mut *self.save);
-    }
-
-    /// Build a Loaded for the local side of a replay — used by the
+    /// Build a OpenSave for the local side of a replay — used by the
     /// replays tab to embed the save view in its detail panel. Pulls
     /// the local rom + patch from the scanners cache; returns Err
     /// if anything's missing.

@@ -204,7 +204,8 @@ pub const DISPLAY_W: f32 = 360.0;
 const CORNER_RADIUS_DISPLAY: f32 = 4.0;
 
 /// Maximum number of copies of one part (by id) allowed on the grid.
-pub const MAX_COPIES_PER_PART: usize = 9;
+/// Enforced in the apply path too, so it lives with the model.
+pub use tango_savemodel::rules::MAX_COPIES_PER_PART;
 
 /// The held part, pre-resolved for the ghost preview.
 #[derive(Clone)]

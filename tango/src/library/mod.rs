@@ -17,7 +17,7 @@
 pub mod autoupdate;
 pub mod replays;
 
-pub use tango_library::{bnlc, game, patch, rom, rom_overrides, save, storage};
+pub use tango_library::{bnlc, game, patch, rom, save, storage};
 
 use tango_library::http::Http;
 use tango_library::storage::Storage;

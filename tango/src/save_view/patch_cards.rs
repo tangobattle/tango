@@ -3,7 +3,7 @@ use sweeten::widget::{column, pick_list, row};
 
 // ---------- Patch cards ----------
 
-pub(super) fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
+pub(super) fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave) -> Element<'static, M> {
     let Some(view) = loaded.save.view_patch_cards() else {
         return placeholder(t!(lang, "save-empty"));
     };
@@ -114,7 +114,7 @@ pub(super) fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: 
 /// Every PatchCard56 the ROM defines, as `(id, name, mb)`, in `sort`
 /// order. The caller applies the name filter and excludes ids already in
 /// the registered list. Ties fall back to id for a stable order.
-fn sorted_patch_card56_library(loaded: &Loaded, sort: PatchCard56Sort) -> Vec<(usize, String, u8)> {
+fn sorted_patch_card56_library(loaded: &OpenSave, sort: PatchCard56Sort) -> Vec<(usize, String, u8)> {
     let assets = loaded.assets.as_ref();
     let mut rows: Vec<(usize, String, u8)> = Vec::new();
     for id in 0..assets.num_patch_card56s() {
@@ -151,7 +151,7 @@ fn patch_card_name<'a, M: 'a>(name: String, enabled: bool) -> Element<'a, M> {
 /// Callers wrap these with a leading cell (index / add button) and, for the
 /// registered list, trailing edit controls.
 fn patch_card56_cells<'a, M: 'static>(
-    loaded: &Loaded,
+    loaded: &OpenSave,
     name: &str,
     mb: u8,
     enabled: bool,
@@ -181,7 +181,7 @@ fn patch_card56_cells<'a, M: 'static>(
 /// Every registered card is active — there's no enable/disable toggle — so the
 /// list is simply the set of equipped cards, MB-budgeted via the library.
 fn patch_card56_list_row<'a>(
-    loaded: &'a Loaded,
+    loaded: &'a OpenSave,
     slot: usize,
     card: tango_dataview::save::PatchCard,
 ) -> Element<'a, Action> {
@@ -228,7 +228,7 @@ fn patch_card56_list_row<'a>(
 /// and unclickable (`selectable` is false), so the MB limit is enforced by
 /// disabling the selection rather than an after-the-fact toggle.
 fn patch_card56_library_row<'a>(
-    loaded: &'a Loaded,
+    loaded: &'a OpenSave,
     id: usize,
     name: String,
     mb: u8,
@@ -259,7 +259,7 @@ fn patch_card56_library_row<'a>(
 /// editors — the only thing they share is the tab.
 pub(super) fn render_patch_cards_edit<'a>(
     lang: &'a LanguageIdentifier,
-    loaded: &'a Loaded,
+    loaded: &'a OpenSave,
     state: &'a State,
 ) -> Element<'a, Action> {
     match loaded.save.view_patch_cards() {
@@ -277,7 +277,7 @@ pub(super) fn render_patch_cards_edit<'a>(
 /// only on Save.
 fn render_patch_card56s_edit<'a>(
     lang: &'a LanguageIdentifier,
-    loaded: &'a Loaded,
+    loaded: &'a OpenSave,
     state: &'a State,
 ) -> Element<'a, Action> {
     // Only reached while editing, so the EditState is present.
@@ -380,7 +380,7 @@ const PATCH_CARD4_SLOT_LABELS: [&str; 6] = ["0A", "0B", "0C", "0D", "0E", "0F"];
 /// toggle for the installed card, and — since a card's downside isn't in
 /// the dropdown label — its bug line in purple underneath.
 fn patch_card4_slot_row<'a>(
-    loaded: &'a Loaded,
+    loaded: &'a OpenSave,
     slot: usize,
     installed: Option<tango_dataview::save::PatchCard>,
     choices: Vec<PatchCard4Choice>,
@@ -450,7 +450,7 @@ fn patch_card4_slot_row<'a>(
 /// written to disk only on Save.
 fn render_patch_card4s_edit<'a>(
     lang: &'a LanguageIdentifier,
-    loaded: &'a Loaded,
+    loaded: &'a OpenSave,
     state: &'a State,
 ) -> Element<'a, Action> {
     use crate::ui::widgets;
@@ -512,8 +512,9 @@ fn render_patch_card4s_edit<'a>(
 
 /// Total MB an enabled patch-card set may use in BN5/BN6. Enabling a card
 /// past this is blocked, and a freshly added card lands disabled if it
-/// wouldn't fit — so a committed save never exceeds the in-game limit.
-pub const MAX_PATCH_CARD56_MB: u32 = 80;
+/// Total MB budget across enabled PatchCard56s. Enforced in the apply
+/// path too, so it lives with the model.
+pub use tango_savemodel::rules::MAX_PATCH_CARD56_MB;
 
 /// Sort order for the BN5/BN6 patch-card editor's library pane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -555,7 +556,7 @@ impl PatchCard4Choice {
         }
     }
 
-    fn card(loaded: &Loaded, id: usize) -> Self {
+    fn card(loaded: &OpenSave, id: usize) -> Self {
         let info = loaded.assets.patch_card4(id);
         let name = info.as_ref().and_then(|c| c.name()).unwrap_or_else(|| format!("#{id}"));
         // 3-digit catalog number prefix (also disambiguates same-named
@@ -680,7 +681,7 @@ fn patch_card4_bugs_label(bugs: &[tango_dataview::rom::PatchCard4Bug]) -> Option
 }
 
 /// The patch-cards tab as TSV text.
-pub(crate) fn as_text(loaded: &Loaded) -> Option<String> {
+pub(crate) fn as_text(loaded: &OpenSave) -> Option<String> {
     let assets = loaded.assets.as_ref();
     let view = loaded.save.view_patch_cards()?;
     let mut out = String::new();

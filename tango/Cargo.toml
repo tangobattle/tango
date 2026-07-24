@@ -57,6 +57,7 @@ tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = [
 tango-library = { path = "../tango-library" }
 tango-match = { path = "../tango-match" }
 tango-replay = { path = "../tango-replay" }
+tango-savemodel = { path = "../tango-savemodel" }
 tango-session = { path = "../tango-session" }
 tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
 datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }

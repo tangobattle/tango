@@ -6091,6 +6091,7 @@ dependencies = [
  "tango-net-protocol",
  "tango-patch",
  "tango-replay",
+ "tango-savemodel",
  "tango-session",
  "tango-signaling",
  "tempfile",
@@ -6348,6 +6349,19 @@ dependencies = [
  "prost-build",
  "serde",
  "zstd",
+]
+
+[[package]]
+name = "tango-savemodel"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "log",
+ "semver",
+ "tango-dataview",
+ "tango-gamesupport",
+ "tango-library",
+ "tango-patch",
 ]
 
 [[package]]

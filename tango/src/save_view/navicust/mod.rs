@@ -9,7 +9,13 @@ pub mod grid;
 /// uncompressed shape is drawn live by a small canvas ([`PartThumb`]) so
 /// we never re-bake an image (which would mint a fresh texture id every
 /// frame). `dim` fades it for at-cap rows. `None` for an empty shape.
-fn part_thumb<'a>(loaded: &'a Loaded, id: usize, rot: u8, compressed: bool, dim: bool) -> Option<Element<'a, Action>> {
+fn part_thumb<'a>(
+    loaded: &'a OpenSave,
+    id: usize,
+    rot: u8,
+    compressed: bool,
+    dim: bool,
+) -> Option<Element<'a, Action>> {
     if rot == 0 && compressed {
         let (w, h, handle) = loaded.navicust_part_icons.get(id)?.as_ref()?;
         return Some(
@@ -85,7 +91,7 @@ fn ncp_colors(color: NavicustPartColor) -> (iced::Color, iced::Color) {
 /// the orientation the part is picked up in.
 pub(super) fn render_navicust_edit<'a>(
     lang: &'a LanguageIdentifier,
-    loaded: &'a Loaded,
+    loaded: &'a OpenSave,
     state: &'a State,
 ) -> Element<'a, Action> {
     use crate::ui::widgets;
@@ -320,7 +326,7 @@ pub(super) fn render_navicust_edit<'a>(
 // ---------- NaviCust ----------
 
 /// The NaviCust tab: the equipped navi's customizer grid.
-pub(super) fn render_navicust_tab<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
+pub(super) fn render_navicust_tab<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave) -> Element<'static, M> {
     let Some(v) = loaded.save.view_navicust() else {
         return placeholder(t!(lang, "save-empty"));
     };
@@ -333,7 +339,7 @@ pub(super) fn render_navicust_tab<M: 'static>(lang: &LanguageIdentifier, loaded:
 /// `None` when nothing is installed. Shared by the read-only Navi view and
 /// the editor's grid pane.
 fn navicust_installed_parts<M: 'static>(
-    loaded: &Loaded,
+    loaded: &OpenSave,
     v: &dyn tango_dataview::save::NavicustView,
 ) -> Option<Element<'static, M>> {
     let assets = loaded.assets.as_ref();
@@ -382,7 +388,7 @@ fn navicust_installed_parts<M: 'static>(
 /// same ordering the badge strip used. `None` when nothing is
 /// installed.
 fn navicust_parts_panel<M: 'static>(
-    loaded: &Loaded,
+    loaded: &OpenSave,
     v: &dyn tango_dataview::save::NavicustView,
 ) -> Option<Element<'static, M>> {
     let assets = loaded.assets.as_ref();
@@ -468,7 +474,7 @@ fn navicust_parts_panel<M: 'static>(
 
 fn render_navicust<M: 'static>(
     lang: &LanguageIdentifier,
-    loaded: &Loaded,
+    loaded: &OpenSave,
     v: &dyn tango_dataview::save::NavicustView,
 ) -> Element<'static, M> {
     let assets = loaded.assets.as_ref();
@@ -660,7 +666,7 @@ fn ncp_color_rank(color: &Option<NavicustPartColor>) -> u8 {
 /// order. Color/solidity are used for the Color sort but the palette
 /// reads the rest (shape, color) from the baked thumbnails. Ties fall
 /// back to id for a stable order.
-fn sorted_navicust_parts(loaded: &Loaded, sort: NavicustSort, filter: &str) -> Vec<(usize, String, Option<String>)> {
+fn sorted_navicust_parts(loaded: &OpenSave, sort: NavicustSort, filter: &str) -> Vec<(usize, String, Option<String>)> {
     let assets = loaded.assets.as_ref();
     let filter = filter.to_lowercase();
     struct E {
@@ -714,7 +720,7 @@ fn sorted_navicust_parts(loaded: &Loaded, sort: NavicustSort, filter: &str) -> V
 /// row-by-row to match the side-by-side layout the UI renders. The
 /// trailing tab keeps a paste parsing as two columns even when the last
 /// solid row has no plus partner.
-pub(crate) fn navicust_as_text(loaded: &Loaded) -> Option<String> {
+pub(crate) fn navicust_as_text(loaded: &OpenSave) -> Option<String> {
     let assets = loaded.assets.as_ref();
     let v = loaded.save.view_navicust()?;
     let mut out = String::new();
@@ -751,7 +757,7 @@ pub(crate) fn navicust_as_text(loaded: &Loaded) -> Option<String> {
 
 /// The NaviCust grid rendered to an RGBA image for "copy as image". `None`
 /// for non-NaviCust navi views (only the grid has a meaningful image).
-pub(crate) fn as_image(loaded: &Loaded) -> Option<image::RgbaImage> {
+pub(crate) fn as_image(loaded: &OpenSave) -> Option<image::RgbaImage> {
     let v = loaded.save.view_navicust()?;
     let layout = loaded.assets.navicust_layout()?;
     let materialized = v.materialized();

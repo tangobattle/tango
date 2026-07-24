@@ -14,7 +14,6 @@ mod netplay;
 
 // App-level state the tabs share.
 mod loadout;
-mod save_edit;
 mod selection;
 
 // Screens.

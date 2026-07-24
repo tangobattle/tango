@@ -92,16 +92,16 @@ pub struct ReplayChart {
 /// the post-match results cook ([`MatchResults::capture`]).
 pub struct PvpPanes {
     /// Local side's loaded selection — the "my setup" drawer.
-    pub local_loaded: Option<selection::Loaded>,
+    pub local_loaded: Option<selection::OpenSave>,
     /// Opponent's loaded selection, unless they blinded their setup.
-    pub opponent_loaded: Option<selection::Loaded>,
+    pub opponent_loaded: Option<selection::OpenSave>,
     /// Active-tab / grouping state for the self save-view panel.
     pub local_save_view: save_view::State,
     /// Active-tab / grouping state for the opponent save-view panel.
     pub opponent_save_view: save_view::State,
 }
 
-// A Loaded is a whole parsed rom + save; a placeholder keeps the
+// A OpenSave is a whole parsed rom + save; a placeholder keeps the
 // enclosing app Message (which carries a `Slot<(PvpSession, PvpPanes)>`)
 // derivable, same as PreMatchData.
 impl std::fmt::Debug for PvpPanes {
@@ -267,7 +267,7 @@ pub struct RoundCard {
     /// Chip-use events per side (`[you, opponent]`), cooked for the
     /// graph's event lanes. Names/icons are resolved at capture time —
     /// the session (and both sides' Loadeds) is gone while the card is
-    /// on screen — each side through its own Loaded, the opponent
+    /// on screen — each side through its own OpenSave, the opponent
     /// falling back to the local game's table when they blinded their
     /// setup. Empty on games whose traps don't report chips (bn1).
     pub chip_uses: [Vec<crate::ui::widgets::ChipUseMark>; 2],
@@ -1185,9 +1185,9 @@ pub async fn spawn_pvp(
         remote_rom_raw
     };
 
-    // Build the opponent's Loaded only if they didn't blind their
+    // Build the opponent's OpenSave only if they didn't blind their
     // setup — otherwise we don't have visibility into their save.
-    // Loaded parses chip/navi/navicust assets from the rom + wram,
+    // OpenSave parses chip/navi/navicust assets from the rom + wram,
     // so the session pane can render them with the same widgets we
     // use for the local side.
     let opponent_loaded = if !pre_match.remote_settings.blind_setup {
@@ -1206,7 +1206,7 @@ pub async fn spawn_pvp(
                 version_meta,
             })
         });
-        Some(crate::selection::Loaded::from_patched_rom(
+        Some(crate::selection::OpenSave::from_patched_rom(
             remote_game,
             remote_rom_bytes.clone(),
             std::path::PathBuf::new(),
@@ -1217,7 +1217,7 @@ pub async fn spawn_pvp(
         None
     };
 
-    // Build the local-side Loaded so the in-session "my setup"
+    // Build the local-side OpenSave so the in-session "my setup"
     // toggle can render the same save-view we use for the
     // opponent panel.
     let local_loaded = {
@@ -1236,7 +1236,7 @@ pub async fn spawn_pvp(
                 version_meta,
             })
         });
-        Some(crate::selection::Loaded::from_patched_rom(
+        Some(crate::selection::OpenSave::from_patched_rom(
             local_game,
             local_rom_bytes.clone(),
             std::path::PathBuf::new(),
@@ -1273,18 +1273,18 @@ pub async fn spawn_pvp(
 }
 
 /// Boot the supplied selection in single-player mode. Caller must
-/// already have a complete (game + rom + save) Loaded — there's no
+/// already have a complete (game + rom + save) OpenSave — there's no
 /// fallback for missing pieces, so the Play button is responsible for
 /// gating.
 pub fn spawn_singleplayer(
     scanners: &Scanners,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
-    loaded: &selection::Loaded,
+    loaded: &selection::OpenSave,
 ) -> anyhow::Result<(singleplayer::SinglePlayerSession, Option<audio::Binding>)> {
     let game = game::from_gamedb_entry(loaded.game)
         .ok_or_else(|| anyhow::anyhow!("no game impl for {:?}", loaded.game.family_and_variant()))?;
-    // Loaded stashes the *parsed* ROM (assets), not the raw bytes —
+    // OpenSave stashes the *parsed* ROM (assets), not the raw bytes —
     // grab them back from the scanner and re-apply the patch if any so
     // the emulator sees the same image it would in the legacy app.
     let raw = scanners
@@ -1318,16 +1318,16 @@ pub fn spawn_singleplayer(
 /// (both cores run this selection) against a do-nothing dummy controller
 /// ([`training::NoopController`]) wired in as the integration seam. Same
 /// gating contract as [`spawn_singleplayer`]: the caller must already
-/// hold a complete (game + rom + save) Loaded.
+/// hold a complete (game + rom + save) OpenSave.
 pub fn spawn_training(
     scanners: &Scanners,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
-    loaded: &selection::Loaded,
+    loaded: &selection::OpenSave,
 ) -> anyhow::Result<(training::TrainingSession, Option<audio::Binding>)> {
     let game = game::from_gamedb_entry(loaded.game)
         .ok_or_else(|| anyhow::anyhow!("no game impl for {:?}", loaded.game.family_and_variant()))?;
-    // Loaded stashes the *parsed* ROM (assets), not the raw bytes —
+    // OpenSave stashes the *parsed* ROM (assets), not the raw bytes —
     // grab them back from the scanner and re-apply the patch if any so
     // the emulator sees the same image PvP would.
     let raw = scanners

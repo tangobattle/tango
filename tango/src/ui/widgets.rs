@@ -2401,11 +2401,11 @@ pub struct ChipUseMark {
 /// Cook one side's chip-use events (`(tick, chip id)` as the stats
 /// record them) into [`ChipUseMark`]s: x normalized via `x_of`, name and
 /// icon resolved through `loaded`'s assets (`"???"`/no icon when no
-/// Loaded is available or the game doesn't know that id). The pre-baked
+/// OpenSave is available or the game doesn't know that id). The pre-baked
 /// icon handles are Arc-backed — cloning one per use is a refcount bump.
 fn chip_use_marks(
     uses: &[(u32, u16)],
-    loaded: Option<&crate::selection::Loaded>,
+    loaded: Option<&crate::selection::OpenSave>,
     x_of: impl Fn(u32) -> f32,
 ) -> Vec<ChipUseMark> {
     uses.iter()
@@ -2457,7 +2457,7 @@ pub struct CookedHpRound {
 /// its own first sample.
 pub fn cook_hp_rounds(
     stats: &tango_match::analysis::MatchStats,
-    loadeds: [Option<&crate::selection::Loaded>; 2],
+    loadeds: [Option<&crate::selection::OpenSave>; 2],
     planned: Option<&[u32]>,
 ) -> (Vec<CookedHpRound>, f32) {
     let max_hp = stats

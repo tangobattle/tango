@@ -207,7 +207,7 @@ pub enum Effect {
     SaveViewTask(iced::Task<Message>),
     /// Save editor: stage one edit into the loaded save in memory
     /// (UI updates live; nothing hits disk yet).
-    Edit(crate::save_edit::Edit),
+    Edit(tango_savemodel::edit::Edit),
     /// Global save editor: write every staged edit (folder + navicust +
     /// patch cards + auto battle data) to the .sav on disk in one shot.
     SaveEditCommit,
@@ -224,7 +224,7 @@ impl State {
         msg: Message,
         scanners: &Scanners,
         config: &config::Config,
-        loaded: Option<&selection::Loaded>,
+        loaded: Option<&selection::OpenSave>,
         loadout: &Loadout,
     ) -> Option<Effect> {
         let action_before = self.save_action.clone();
@@ -290,7 +290,7 @@ impl State {
         msg: Message,
         scanners: &Scanners,
         config: &config::Config,
-        loaded: Option<&selection::Loaded>,
+        loaded: Option<&selection::OpenSave>,
         loadout: &Loadout,
     ) -> Option<Effect> {
         match msg {
@@ -431,7 +431,7 @@ impl State {
         lang: &'a LanguageIdentifier,
         scanners: &'a Scanners,
         loadout: &'a Loadout,
-        loaded: Option<&'a selection::Loaded>,
+        loaded: Option<&'a selection::OpenSave>,
         streamer_mode: bool,
         config: &'a config::Config,
         downloads: &'a crate::library::patch::Downloads,
@@ -538,7 +538,7 @@ impl State {
         lang: &'a LanguageIdentifier,
         scanners: &'a Scanners,
         loadout: &'a Loadout,
-        loaded: Option<&'a selection::Loaded>,
+        loaded: Option<&'a selection::OpenSave>,
         streamer_mode: bool,
         config: &'a config::Config,
         netplay_phase: &'a crate::netplay::Phase,
@@ -604,7 +604,7 @@ impl State {
     fn save_view<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
-        loaded: Option<&'a selection::Loaded>,
+        loaded: Option<&'a selection::OpenSave>,
         streamer_mode: bool,
         netplay_phase: &'a crate::netplay::Phase,
         patch_ready: bool,
