@@ -18,7 +18,7 @@ use crate::config;
 use crate::i18n::t;
 use crate::library::{game, rom};
 use crate::ui::widgets;
-use iced::widget::{column, row};
+use iced::widget::row;
 use iced::{Alignment, Element, Length};
 use unic_langid::LanguageIdentifier;
 
@@ -43,11 +43,10 @@ pub enum Message {
     /// Real patch name; empty string is the "no patch" sentinel.
     PatchSelected(String),
     PatchVersionSelected(semver::Version),
-    /// Retry / stop the download the strip is reporting on. The picker
-    /// keeps showing the version either way — these act on the fetch,
-    /// not on the selection.
+    /// Start a failed patch download again. Raised by the lobby, whose
+    /// band has the room to offer a retry; acts on the fetch, not on
+    /// the selection.
     RetryPatchDownload(crate::library::patch::VersionKey),
-    CancelPatchDownload(crate::library::patch::VersionKey),
 }
 
 /// Side-effects bubble-up, mirroring the tab modules' convention:
@@ -59,10 +58,8 @@ pub enum Effect {
     /// App should rebuild its `Loaded` cache, persist config, and
     /// resend lobby settings if one is live.
     SelectionChanged,
-    /// Start the selected version's download again after a failure.
+    /// Start a failed patch download again.
     RetryDownload,
-    /// Stop the selected version's download.
-    CancelDownload,
 }
 
 impl Loadout {
@@ -132,7 +129,6 @@ impl Loadout {
                 Some(Effect::SelectionChanged)
             }
             Message::RetryPatchDownload(_) => return Some(Effect::RetryDownload),
-            Message::CancelPatchDownload(_) => return Some(Effect::CancelDownload),
             Message::PatchVersionSelected(v) => {
                 // The version list is filtered to versions supporting
                 // the current variant, so nothing else needs fixing up.
@@ -668,52 +664,9 @@ pub fn game_row<'a>(
     let game = family_picker(loadout, lang, scanners).width(Length::FillPortion(3));
 
     let patch = patch_picker(loadout, lang, scanners, config).width(Length::FillPortion(2));
-    let version = version_picker(loadout, lang, scanners);
+    let version = version_picker(loadout, lang, scanners, downloads);
 
-    let pickers = row![game, patch, version].spacing(8).align_y(Alignment::Center);
-    // The download line only exists while there IS a download: an
-    // always-reserved slot costs the strip height it can't spare.
-    match patch_download_slot(loadout, lang, downloads) {
-        Some(line) => column![pickers, line].spacing(4).into(),
-        None => pickers.into(),
-    }
-}
-
-/// The strip's download line for the selected patch version: a short
-/// progress bar while it fetches, the failure with a retry when it
-/// doesn't, and nothing at all the rest of the time.
-fn patch_download_slot<'a>(
-    loadout: &'a Loadout,
-    lang: &'a LanguageIdentifier,
-    downloads: &'a crate::library::patch::Downloads,
-) -> Option<Element<'a, Message>> {
-    let key = match (loadout.patch.clone(), loadout.patch_version.clone()) {
-        (Some(name), Some(version)) => (name, version),
-        _ => return None,
-    };
-    match downloads.get(&key) {
-        Some(download) if download.is_running() => {
-            let caption = match download.percent() {
-                Some(percent) => t!(lang, "play-patch-downloading-progress", percent = percent as i64),
-                None => t!(lang, "play-patch-downloading"),
-            };
-            Some(widgets::download_row(
-                caption,
-                download.fraction(),
-                false,
-                None,
-                Some((t!(lang, "patches-cancel"), Message::CancelPatchDownload(key))),
-            ))
-        }
-        Some(crate::library::patch::Download::Failed) => Some(widgets::download_row(
-            t!(lang, "play-patch-download-failed"),
-            None,
-            true,
-            Some((t!(lang, "patches-retry"), Message::RetryPatchDownload(key))),
-            None,
-        )),
-        _ => None,
-    }
+    row![game, patch, version].spacing(8).align_y(Alignment::Center).into()
 }
 
 fn family_picker<'a>(
@@ -783,6 +736,7 @@ fn version_picker<'a>(
     loadout: &'a Loadout,
     lang: &'a LanguageIdentifier,
     scanners: &'a Scanners,
+    downloads: &'a crate::library::patch::Downloads,
 ) -> Element<'a, Message> {
     let options = version_options(loadout, scanners);
     if options.is_empty() {
@@ -791,14 +745,26 @@ fn version_picker<'a>(
             .into();
     }
 
-    // The picker always shows the version. A fetch in flight reports
-    // itself in the strip's own download slot below, so this control
-    // stays a control -- and an older version that IS downloaded can
-    // still be chosen while another lands.
-    let selected = loadout
-        .patch_version
-        .as_ref()
-        .and_then(|version| options.iter().find(|o| &o.value == version).cloned());
+    let selected = loadout.patch_version.as_ref().and_then(|version| {
+        let mut choice = options.iter().find(|o| &o.value == version).cloned()?;
+        // A version being fetched reports progress through its own
+        // label. This slot is 100px and the strip is dense, so the
+        // status goes where the version already is: a separate line
+        // under the pickers was tried and reads as jumpy — it appears
+        // and disappears under the row, shoving the save row with it.
+        // The picker stays live either way, so an older version that
+        // IS downloaded can still be chosen while this one lands.
+        if let Some(download) = downloads.get(&(loadout.patch.clone()?, version.clone())) {
+            choice.label = match download {
+                crate::library::patch::Download::Failed => t!(lang, "play-patch-download-failed"),
+                running => match running.percent() {
+                    Some(percent) => t!(lang, "play-patch-downloading-progress", percent = percent as i64),
+                    None => t!(lang, "play-patch-downloading"),
+                },
+            };
+        }
+        Some(choice)
+    });
     widgets::picker(options, selected, |c: widgets::Choice<semver::Version>| {
         Message::PatchVersionSelected(c.value)
     })

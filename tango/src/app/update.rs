@@ -9,7 +9,7 @@ impl App {
         // Download controls act on the fetch, not the selection, so they
         // carry their own key and skip the selection-changed follow-ups.
         let download_key = match &msg {
-            loadout::Message::RetryPatchDownload(key) | loadout::Message::CancelPatchDownload(key) => Some(key.clone()),
+            loadout::Message::RetryPatchDownload(key) => Some(key.clone()),
             _ => None,
         };
         let Some(effect) = self.loadout.update(msg, &self.scanners, &self.config) else {
@@ -22,12 +22,6 @@ impl App {
                 };
                 self.downloads.remove(&key);
                 return self.install_patch(key);
-            }
-            loadout::Effect::CancelDownload => {
-                let Some(key) = download_key else {
-                    return iced::Task::none();
-                };
-                return self.cancel_download(key);
             }
             loadout::Effect::SelectionChanged => {
                 self.refresh_loaded();
