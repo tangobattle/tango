@@ -184,3 +184,16 @@ workspace = true
 [dependencies.opener]
 version = "0.8"
 features = ["reveal"]
+
+# Never used from our code: this exists only to constrain the resolver.
+# cpal 0.18 takes `windows` and `windows-core` as two independent
+# `>=0.61, <=0.62` dependencies, so cargo may land on a different
+# generation for each — and does, since iced (via mundy) holds `windows`
+# at 0.61 while `windows-core` floats up to 0.62. cpal's
+# `#[windows::core::implement]` sites then expand against the 0.62
+# `windows_core` while the interfaces they implement come from the 0.61
+# one re-exported through `windows`, and the Windows build dies with
+# "multiple different versions of crate `windows_core`". Pinning the
+# range here keeps both halves on 0.61.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-core = "0.61"

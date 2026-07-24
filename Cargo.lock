@@ -6101,6 +6101,7 @@ dependencies = [
  "unic-langid",
  "walkdir",
  "wgpu",
+ "windows-core 0.61.2",
  "zip",
  "zstd",
 ]
