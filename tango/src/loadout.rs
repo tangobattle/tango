@@ -667,80 +667,96 @@ pub fn game_row<'a>(
 ) -> Element<'a, Message> {
     let game = family_picker(loadout, lang, scanners).width(Length::FillPortion(3));
 
-    // While the selected patch is being fetched, its own slot carries
-    // the progress instead of the name: same width, and the row's
-    // height comes from the pickers on either side of it, so swapping
-    // this one out moves nothing. The version picker stays live and
-    // keeps showing the version, so the fetch never hides what it is.
-    let patch: Element<'a, Message> = match patch_download_slot(loadout, lang, downloads) {
-        Some(slot) => slot,
-        None => patch_picker(loadout, lang, scanners, config)
-            .width(Length::FillPortion(2))
-            .into(),
+    // While the selected patch is being fetched, both of its slots
+    // carry the download instead of the pickers: the bar takes the
+    // name's width and the controls take the version's. Neither slot
+    // changes size doing it, so the row and the game picker beside it
+    // stay exactly where they were.
+    let (patch, version) = match patch_download_slots(loadout, lang, downloads) {
+        Some(slots) => slots,
+        None => (
+            patch_picker(loadout, lang, scanners, config)
+                .width(Length::FillPortion(2))
+                .into(),
+            version_picker(loadout, lang, scanners),
+        ),
     };
-    let version = version_picker(loadout, lang, scanners);
 
     row![game, patch, version].spacing(8).align_y(Alignment::Center).into()
 }
 
-/// The patch slot while a download is in flight or failed: a bar and
-/// its percent in the space the name picker occupies, with a ✕ to call
-/// it off (which puts the picker straight back). `None` whenever
-/// there's nothing to report, so the picker is the normal case.
-fn patch_download_slot<'a>(
+/// Width of the version slot. Shared by the picker and whatever
+/// replaces it, so a swap can't change the row's shape.
+const VERSION_PICKER_WIDTH: f32 = 100.0;
+
+/// The patch and version slots while a download is in flight or
+/// failed: the bar takes the name slot, its percent and a ✕ take the
+/// version slot. `None` whenever there's nothing to report, so the
+/// pickers are the normal case.
+///
+/// Both carry the height and width their picker lays out to, so the
+/// swap is invisible to the layout around them.
+fn patch_download_slots<'a>(
     loadout: &'a Loadout,
     lang: &'a LanguageIdentifier,
     downloads: &'a crate::library::patch::Downloads,
-) -> Option<Element<'a, Message>> {
+) -> Option<(Element<'a, Message>, Element<'a, Message>)> {
     let key = (loadout.patch.clone()?, loadout.patch_version.clone()?);
-    // Exactly the height the picker it replaces lays out to, so the
-    // row measures the same with either one in the slot.
-    let slot = |content| {
+    let slot = |content: Element<'a, Message>, width| {
         Element::from(
             container(content)
-                .width(Length::FillPortion(2))
+                .width(width)
                 .height(Length::Fixed(crate::ui::style::PICKER_HEIGHT))
                 .align_y(Alignment::Center),
         )
     };
+    let name_slot = |content: Element<'a, Message>| slot(content, Length::FillPortion(2));
+    let version_slot = |content: Element<'a, Message>| slot(content, Length::Fixed(VERSION_PICKER_WIDTH));
+
     match downloads.get(&key) {
         Some(download) if download.is_running() => {
             let caption = match download.percent() {
                 Some(percent) => t!(lang, "play-patch-downloading-progress", percent = percent as i64),
                 None => t!(lang, "play-patch-downloading"),
             };
-            Some(slot(
-                row![
+            Some((
+                name_slot(
                     iced::widget::progress_bar(0.0..=1.0, download.fraction().unwrap_or(0.0))
                         .girth(Length::Fixed(4.0))
                         .length(Length::Fill)
-                        .style(widgets::slim_progress_bar),
-                    text(caption).size(TEXT_CAPTION).style(widgets::muted_text_style),
-                    widgets::icon_button(
-                        lucide_icons::Icon::X,
-                        t!(lang, "patches-cancel"),
-                        Message::CancelPatchDownload(key),
-                        [1.0, 1.0],
-                    ),
-                ]
-                .spacing(6)
-                .align_y(Alignment::Center),
+                        .style(widgets::slim_progress_bar)
+                        .into(),
+                ),
+                version_slot(
+                    row![
+                        text(caption).size(TEXT_CAPTION).style(widgets::muted_text_style),
+                        // Calling it off puts both pickers straight back.
+                        widgets::icon_button(
+                            lucide_icons::Icon::X,
+                            t!(lang, "patches-cancel"),
+                            Message::CancelPatchDownload(key),
+                            [1.0, 1.0],
+                        ),
+                    ]
+                    .spacing(4)
+                    .align_y(Alignment::Center)
+                    .into(),
+                ),
             ))
         }
-        Some(crate::library::patch::Download::Failed) => Some(slot(
-            row![
+        Some(crate::library::patch::Download::Failed) => Some((
+            name_slot(
                 text(t!(lang, "play-patch-download-failed"))
                     .size(TEXT_CAPTION)
-                    .style(widgets::danger_text_style),
-                widgets::icon_button(
-                    lucide_icons::Icon::RefreshCw,
-                    t!(lang, "patches-retry"),
-                    Message::RetryPatchDownload(key),
-                    [1.0, 1.0],
-                ),
-            ]
-            .spacing(6)
-            .align_y(Alignment::Center),
+                    .style(widgets::danger_text_style)
+                    .into(),
+            ),
+            version_slot(widgets::icon_button(
+                lucide_icons::Icon::RefreshCw,
+                t!(lang, "patches-retry"),
+                Message::RetryPatchDownload(key),
+                [1.0, 1.0],
+            )),
         )),
         _ => None,
     }
@@ -817,7 +833,7 @@ fn version_picker<'a>(
     let options = version_options(loadout, scanners);
     if options.is_empty() {
         return widgets::disabled_pick_list(t!(lang, "play-version-placeholder"))
-            .width(Length::Fixed(100.0))
+            .width(Length::Fixed(VERSION_PICKER_WIDTH))
             .into();
     }
 
@@ -830,6 +846,6 @@ fn version_picker<'a>(
         Message::PatchVersionSelected(c.value)
     })
     .placeholder(t!(lang, "play-version-placeholder"))
-    .width(Length::Fixed(100.0))
+    .width(Length::Fixed(VERSION_PICKER_WIDTH))
     .into()
 }
