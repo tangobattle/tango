@@ -1,0 +1,55 @@
+[package]
+name = "tango-netplay"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+# The netplay session state machine: connection choreography
+# (Idle → Connecting → Negotiating → Lobby), the settings exchange, the
+# ready-commitment handshake, and the handoff into a live match.
+#
+# Extracted from the tango bin crate so a second frontend drives the
+# identical choreography rather than reimplementing it — getting that
+# wrong is a desync, not a cosmetic bug. It used to return
+# `iced::Task<Message>`, which was its only tie to a UI toolkit; it now
+# returns `Effect`, and the host decides how to run it.
+#
+# Sits above tango-session, which owns the transports this drives
+# (`PacketSink` / `PacketStream`, the two data channels, the link
+# rebuild). tango-net-protocol therefore stays *below* session and is not
+# merged in here: doing so would be a dependency cycle.
+#
+# Unlike tango-library and tango-savemodel this does NOT build for wasm32
+# yet, and no feature flag would fix that: it reaches tango-session, whose
+# transport is libdatachannel (C++) and whose sessions are mgba (C). A
+# browser build needs those replaced — the browser's own RTCPeerConnection
+# behind `net::PacketSink`/`PacketStream`, and mgba compiled to wasm —
+# which is separate work. What this extraction buys today is that the
+# choreography itself is no longer tied to a UI toolkit, so both clients
+# can run the identical state machine instead of two hand-matched copies:
+# a divergence there is a desync, not a cosmetic bug.
+[dependencies]
+futures.workspace = true
+log.workspace = true
+rand.workspace = true
+rand_pcg.workspace = true
+semver.workspace = true
+sha3 = "0.10"
+subtle = "2"
+sha2.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "time", "rt", "macros"] }
+tokio-util = { workspace = true, features = ["rt"] }
+unic-langid.workspace = true
+zstd.workspace = true
+
+datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }
+tango-library = { path = "../tango-library", default-features = false }
+tango-net-protocol = { path = "../tango-net-protocol" }
+tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"] }
+tango-session = { path = "../tango-session" }
+tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
+
+[lints]
+workspace = true

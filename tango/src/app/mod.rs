@@ -660,9 +660,11 @@ impl App {
         }
         self.apply_default_match_type();
         let settings = self.make_local_settings();
-        self.netplay
-            .update(netplay::Message::SendLocalSettings(Box::new(settings)))
-            .map(Message::Netplay)
+        netplay::run(
+            self.netplay
+                .update(netplay::Message::SendLocalSettings(Box::new(settings))),
+        )
+        .map(Message::Netplay)
     }
 
     /// Run a full `Scanners::rescan` on a tokio blocking worker so
@@ -1313,7 +1315,7 @@ impl App {
                 // netplay::State::update::SendLocalSettings makes
                 // unchanged dispatches a no-op.
                 let was_lobby = matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
-                let task = self.netplay.update(m).map(Message::Netplay);
+                let task = netplay::run(self.netplay.update(m)).map(Message::Netplay);
                 let became_lobby = !was_lobby && matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
                 // Opponent just completed the handshake — flash the
                 // taskbar / bounce the dock so the lobby host

@@ -14,7 +14,10 @@
 //! endpoint, so an absent identity is also the steady state when mTLS is off —
 //! sending one is always safe, and not sending one never breaks the dial.
 
-use sha2::{Digest, Sha256};
+// Fingerprint hashing + hex formatting are netplay-domain concerns; one
+// copy of each lives with the crate that logs and displays them.
+pub(crate) use tango_netplay::cert_fingerprint as fingerprint;
+use tango_netplay::hex;
 
 /// Certificate file (PEM) under the config dir.
 const CERT_FILE: &str = "identity.pem";
@@ -129,21 +132,4 @@ fn parse_single_key(pem: &str) -> anyhow::Result<Vec<u8>> {
         .into_iter()
         .next()
         .ok_or_else(|| anyhow::anyhow!("no PKCS#8 private key in identity PEM"))
-}
-
-/// Lowercase hex, no separators — the SHA-256 of the DER certificate.
-/// Raw SHA-256 digest of a DER certificate — the fingerprint bytes the
-/// signaling server observes on the TLS handshake and the replay metadata
-/// records per side.
-pub(crate) fn fingerprint(cert_der: &[u8]) -> Vec<u8> {
-    Sha256::digest(cert_der).to_vec()
-}
-
-pub(crate) fn hex(bytes: &[u8]) -> String {
-    use std::fmt::Write as _;
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        let _ = write!(s, "{b:02x}");
-    }
-    s
 }

@@ -6089,6 +6089,7 @@ dependencies = [
  "tango-library",
  "tango-match",
  "tango-net-protocol",
+ "tango-netplay",
  "tango-patch",
  "tango-replay",
  "tango-savemodel",
@@ -6323,6 +6324,31 @@ dependencies = [
  "semver",
  "serde",
  "sha3",
+]
+
+[[package]]
+name = "tango-netplay"
+version = "0.1.0"
+dependencies = [
+ "datachannel-wrapper",
+ "futures",
+ "log",
+ "rand",
+ "rand_pcg",
+ "semver",
+ "sha2",
+ "sha3",
+ "subtle",
+ "tango-library",
+ "tango-net-protocol",
+ "tango-patch",
+ "tango-session",
+ "tango-signaling",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "unic-langid",
+ "zstd",
 ]
 
 [[package]]

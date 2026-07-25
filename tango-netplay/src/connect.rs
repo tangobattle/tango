@@ -4,6 +4,7 @@
 //! handlers that sequence them (signaling hello → peer await →
 //! negotiate → lobby-loop spawn).
 
+use crate::Effect;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
@@ -16,7 +17,7 @@ use super::{
 /// Intermediate hand-off between `run_signaling_connect` (server
 /// hello arrived) and `run_await_peer` (WebRTC handshake done).
 /// Wraps `tango_signaling::Connecting` so the Connecting future
-/// can ferry through iced's Slot<T> dispatch.
+/// can ferry through the [`Slot<T>`](crate::Slot) dispatch.
 pub struct SignalingHello {
     pub connecting: tango_signaling::Connecting,
 }
@@ -31,15 +32,15 @@ impl std::fmt::Debug for SignalingHello {
 /// receiver (the lobby + match loops own them from here) and the
 /// peer-conn handle they need to stay alive against.
 pub struct NegotiationOutput {
-    pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
-    pub receiver: crate::net::Receiver,
+    pub sender: Arc<tokio::sync::Mutex<tango_session::net::Sender>>,
+    pub receiver: tango_session::net::Receiver,
     /// Unreliable in-match channel's send half. Idle until the match starts,
     /// when it becomes the `Link`'s `InMatchTx` sink.
-    pub in_match_sender: crate::net::data::Sender,
+    pub in_match_sender: tango_session::net::data::Sender,
     /// Unreliable in-match channel's receive half. Parked for the PvP handoff
     /// the moment negotiate completes — nothing flows on it during the lobby,
     /// so unlike the reliable receiver it isn't owned by the lobby loop.
-    pub in_match_receiver: crate::net::data::Receiver,
+    pub in_match_receiver: tango_session::net::data::Receiver,
     /// The peer connection. Set by both transports. See
     /// [`ConnectionHandles::peer_conn`] for the lifetime contract.
     pub peer_conn: datachannel_wrapper::PeerConnection,
@@ -59,7 +60,7 @@ pub struct NegotiationOutput {
     pub peer_dtls_fingerprint: Vec<u8>,
     /// The peer's persistent install identity: SHA-256 of the mTLS client
     /// certificate it presented on its signaling websocket, server-attested
-    /// (see [`crate::net::channel::Channels::peer_client_cert_fingerprint`]).
+    /// (see [`tango_session::net::channel::Channels::peer_client_cert_fingerprint`]).
     /// Empty on the direct path or when the peer presented none.
     pub peer_client_cert_fingerprint: Vec<u8>,
 }
@@ -78,7 +79,7 @@ impl State {
         endpoint: String,
         use_relay: Option<bool>,
         identity: Option<tango_signaling::ClientIdentity>,
-    ) -> iced::Task<Message> {
+    ) -> Effect {
         self.cancel_and_renew();
         // Stash what a mid-match re-rendezvous needs (the session_id is derived
         // later from the shared RNG seed; see take_pre_match). Set *after*
@@ -93,14 +94,14 @@ impl State {
             waiting_for_opponent: false,
         };
         let cancel = self.cancel.clone();
-        iced::Task::perform(
+        Effect::perform(
             run_signaling_connect(endpoint, link_code, use_relay, identity, cancel),
             map_signaling_hello_result,
         )
     }
 
     /// `Message::ConnectDirect` — start the signaling-free direct path.
-    pub(super) fn connect_direct(&mut self, role: DirectRole) -> iced::Task<Message> {
+    pub(super) fn connect_direct(&mut self, role: DirectRole) -> Effect {
         self.cancel_and_renew();
         // Host = "waiting for inbound peer" (accept() is
         // the slow await); Connect = "actively dialing"
@@ -112,47 +113,47 @@ impl State {
             waiting_for_opponent,
         };
         let cancel = self.cancel.clone();
-        iced::Task::perform(run_direct_rtc_negotiate(role, cancel), map_negotiate_result)
+        Effect::perform(run_direct_rtc_negotiate(role, cancel), map_negotiate_result)
     }
 
     /// `Message::SignalingHelloReceived` — server hello arrived; flip to
     /// "waiting for opponent" and kick off the WebRTC await task.
-    pub(super) fn on_signaling_hello(&mut self, slot_rx: Slot<SignalingHello>) -> iced::Task<Message> {
+    pub(super) fn on_signaling_hello(&mut self, slot_rx: Slot<SignalingHello>) -> Effect {
         let ident = match &self.phase {
             Phase::Connecting { ident, .. } => ident.clone(),
             // Cancelled / superseded — late delivery, ignore.
-            _ => return iced::Task::none(),
+            _ => return Effect::none(),
         };
         let Some(hello) = slot_rx.lock().unwrap().take() else {
-            return iced::Task::none();
+            return Effect::none();
         };
         self.phase = Phase::Connecting {
             ident,
             waiting_for_opponent: true,
         };
         let cancel = self.cancel.clone();
-        iced::Task::perform(run_await_peer(hello, cancel), map_connect_result)
+        Effect::perform(run_await_peer(hello, cancel), map_connect_result)
     }
 
     /// `Message::SignalingDone` — WebRTC handshake resolved; run the protocol
     /// negotiate task before lifecycle moves out of Connecting.
-    pub(super) fn on_signaling_done(&mut self, slot_rx: Slot<crate::net::channel::Channels>) -> iced::Task<Message> {
+    pub(super) fn on_signaling_done(&mut self, slot_rx: Slot<tango_session::net::channel::Channels>) -> Effect {
         let ident = match &self.phase {
             Phase::Connecting { ident, .. } => ident.clone(),
             // Cancelled / superseded — late delivery, ignore.
-            _ => return iced::Task::none(),
+            _ => return Effect::none(),
         };
         let Some(channels) = slot_rx.lock().unwrap().take() else {
-            return iced::Task::none();
+            return Effect::none();
         };
         self.phase = Phase::Negotiating { ident };
         let cancel = self.cancel.clone();
-        iced::Task::perform(run_negotiate(channels, cancel), map_negotiate_result)
+        Effect::perform(run_negotiate(channels, cancel), map_negotiate_result)
     }
 
     /// `Message::NegotiationDone` — protocol handshake complete; install the
     /// connection handles, park the in-match receiver, and spawn the lobby loop.
-    pub(super) fn on_negotiation_done(&mut self, slot_rx: Slot<NegotiationOutput>) -> iced::Task<Message> {
+    pub(super) fn on_negotiation_done(&mut self, slot_rx: Slot<NegotiationOutput>) -> Effect {
         // Accept both `Connecting` (direct path: the bring-up
         // and negotiate are folded into one task and skip the
         // intermediate Negotiating phase) and `Negotiating`
@@ -163,10 +164,10 @@ impl State {
         let ident = match &self.phase {
             Phase::Negotiating { ident } => ident.clone(),
             Phase::Connecting { ident, .. } => ident.clone(),
-            _ => return iced::Task::none(),
+            _ => return Effect::none(),
         };
         let Some(out) = slot_rx.lock().unwrap().take() else {
-            return iced::Task::none();
+            return Effect::none();
         };
         // The peer's install identity, as attested by the matchmaking server —
         // the counterpart of the "client identity loaded" line we log for our
@@ -174,7 +175,7 @@ impl State {
         if !out.peer_client_cert_fingerprint.is_empty() {
             log::info!(
                 "peer client identity (sha256 fingerprint: {})",
-                super::identity::hex(&out.peer_client_cert_fingerprint)
+                crate::hex(&out.peer_client_cert_fingerprint)
             );
         }
         let sender = out.sender.clone();
@@ -214,8 +215,8 @@ impl State {
         });
         // Spawn the lobby loop as a detached tokio task.
         // It owns the data-channel receiver and bridges
-        // its observations through `event_tx` to the iced
-        // subscription. Decoupling the loop from the iced
+        // its observations through `event_tx` to the host's
+        // bridge. Decoupling the loop from that bridge
         // subscription's future means an incidental
         // subscription drop (e.g. take_pre_match flipping
         // phase → Idle before the loop has noticed the
@@ -230,7 +231,7 @@ impl State {
             let _ = post_lobby_tx.send(receiver);
         });
         self.phase = Phase::Lobby { ident };
-        iced::Task::none()
+        Effect::none()
     }
 }
 
@@ -241,7 +242,7 @@ fn map_signaling_hello_result(result: Result<SignalingHello, AsyncError>) -> Mes
     }
 }
 
-fn map_connect_result(result: Result<crate::net::channel::Channels, AsyncError>) -> Message {
+fn map_connect_result(result: Result<tango_session::net::channel::Channels, AsyncError>) -> Message {
     match result {
         Ok(channels) => Message::SignalingDone(slot(channels)),
         Err(e) => map_async_err(e),
@@ -282,8 +283,8 @@ async fn run_signaling_connect(
             // specs the direct path uses — see `net::channel`). Order matters:
             // `run_await_peer` maps the returned channels back by this order.
             vec![
-                crate::net::channel::control_channel(),
-                crate::net::channel::in_match_channel(),
+                tango_session::net::channel::control_channel(),
+                tango_session::net::channel::in_match_channel(),
             ],
             // The persistent self-signed identity (threaded from app state),
             // presented as the websocket's mTLS client certificate so the
@@ -293,7 +294,7 @@ async fn run_signaling_connect(
             identity,
         )
         .await
-        .map_err(|e| AsyncError::Failed(super::Error::Other(format!("signaling: {e}"))))?;
+        .map_err(|e| AsyncError::Failed(crate::Error::Other(format!("signaling: {e}"))))?;
         Ok::<_, AsyncError>(SignalingHello { connecting })
     };
     tokio::select! {
@@ -308,16 +309,16 @@ async fn run_signaling_connect(
 async fn run_await_peer(
     hello: SignalingHello,
     cancel: CancellationToken,
-) -> Result<crate::net::channel::Channels, AsyncError> {
+) -> Result<tango_session::net::channel::Channels, AsyncError> {
     let work = async {
         let connected = hello
             .connecting
             .await
-            .map_err(|e| AsyncError::Failed(super::Error::Other(format!("webrtc: {e}"))))?;
+            .map_err(|e| AsyncError::Failed(crate::Error::Other(format!("webrtc: {e}"))))?;
         // Same split + pairing a mid-match reconnect uses, so both bundle a
         // matchmaking connection identically (see [`Channels::from_signaling`]).
-        crate::net::channel::Channels::from_signaling(connected)
-            .map_err(|e| AsyncError::Failed(super::Error::Other(e.to_string())))
+        tango_session::net::channel::Channels::from_signaling(connected)
+            .map_err(|e| AsyncError::Failed(crate::Error::Other(e.to_string())))
     };
     tokio::select! {
         biased;
@@ -330,7 +331,7 @@ async fn run_await_peer(
 /// connection whose SDP both sides fabricate from fixed ICE creds
 /// (host listens on a pinned UDP port; connect dials it), then run
 /// the same `protocol::negotiate` handshake the matchmaking WebRTC
-/// path uses. No signaling server — see [`crate::net::direct_rtc`].
+/// path uses. No signaling server — see [`tango_session::net::direct_rtc`].
 /// `is_offerer` is set from the role (host = true) so the
 /// `pick_local_player_index` symmetry break still has a stable
 /// asymmetric input.
@@ -345,14 +346,14 @@ async fn run_direct_rtc_negotiate(
     let reconnect = Some(role.clone());
     let work = async {
         let channels = match role {
-            DirectRole::Host { port } => crate::net::direct_rtc::host(port)
+            DirectRole::Host { port } => tango_session::net::direct_rtc::host(port)
                 .await
-                .map_err(|e| AsyncError::Failed(super::Error::Other(format!("direct host: {e}"))))?,
-            DirectRole::Connect { addr } => crate::net::direct_rtc::connect(&addr)
+                .map_err(|e| AsyncError::Failed(crate::Error::Other(format!("direct host: {e}"))))?,
+            DirectRole::Connect { addr } => tango_session::net::direct_rtc::connect(&addr)
                 .await
-                .map_err(|e| AsyncError::Failed(super::Error::Other(format!("direct connect: {e}"))))?,
+                .map_err(|e| AsyncError::Failed(crate::Error::Other(format!("direct connect: {e}"))))?,
         };
-        let crate::net::channel::Channels {
+        let tango_session::net::channel::Channels {
             control: (mut sender, mut receiver),
             in_match: (in_match_sender, in_match_receiver),
             peer_conn,
@@ -365,7 +366,7 @@ async fn run_direct_rtc_negotiate(
         } = channels;
         // Handshake on the reliable channel; the unreliable in-match channel
         // shares the association and is open by the time the match starts.
-        crate::net::negotiate(&mut sender, &mut receiver)
+        tango_session::net::negotiate(&mut sender, &mut receiver)
             .await
             .map_err(negotiation_error)?;
         Ok::<_, AsyncError>(NegotiationOutput {
@@ -388,27 +389,27 @@ async fn run_direct_rtc_negotiate(
     }
 }
 
-/// Map `net::NegotiationError` to the typed netplay [`super::Error`]
+/// Map `net::NegotiationError` to the typed netplay [`crate::Error`]
 /// the UI routes to a localized template. The three named variants get
 /// dedicated variants; the `Other` catch-all keeps the raw error text
 /// so a transport-level failure is still surfaced (just unlocalized).
-fn negotiation_error(e: crate::net::NegotiationError) -> AsyncError {
-    use crate::net::NegotiationError as N;
+fn negotiation_error(e: tango_session::net::NegotiationError) -> AsyncError {
+    use tango_session::net::NegotiationError as N;
     AsyncError::Failed(match e {
-        N::ExpectedHello => super::Error::NegotiateExpectedHello,
-        N::RemoteProtocolVersionTooOld => super::Error::NegotiateVersionTooOld,
-        N::RemoteProtocolVersionTooNew => super::Error::NegotiateVersionTooNew,
-        N::Other(inner) => super::Error::Negotiate(inner.to_string()),
+        N::ExpectedHello => crate::Error::NegotiateExpectedHello,
+        N::RemoteProtocolVersionTooOld => crate::Error::NegotiateVersionTooOld,
+        N::RemoteProtocolVersionTooNew => crate::Error::NegotiateVersionTooNew,
+        N::Other(inner) => crate::Error::Negotiate(inner.to_string()),
     })
 }
 
 /// Run `protocol::negotiate` over the already-built channels. Aborts on
 /// cancel.
 async fn run_negotiate(
-    channels: crate::net::channel::Channels,
+    channels: tango_session::net::channel::Channels,
     cancel: CancellationToken,
 ) -> Result<NegotiationOutput, AsyncError> {
-    let crate::net::channel::Channels {
+    let tango_session::net::channel::Channels {
         control: (mut sender, mut receiver),
         in_match: (in_match_sender, in_match_receiver),
         peer_conn,
@@ -418,7 +419,7 @@ async fn run_negotiate(
     } = channels;
     // The channels were paired when the connection was bundled; the handshake
     // runs on the reliable channel.
-    let work = crate::net::negotiate(&mut sender, &mut receiver);
+    let work = tango_session::net::negotiate(&mut sender, &mut receiver);
     tokio::select! {
         biased;
         _ = cancel.cancelled() => Err(AsyncError::Cancelled),

@@ -72,7 +72,7 @@ impl App {
                     },
                     netplay::LinkIdent::Direct(role) => netplay::Message::ConnectDirect { role },
                 };
-                let task = self.netplay.update(msg).map(Message::Netplay);
+                let task = netplay::run(self.netplay.update(msg)).map(Message::Netplay);
                 // Connect wipes lobby state — re-apply the
                 // default-MT policy now so the picker shows the
                 // right value from the moment the waiting screen
@@ -115,7 +115,7 @@ impl App {
                     self.config.last_blind_setup = *v;
                     self.persist_config();
                 }
-                self.netplay.update(m).map(Message::Netplay)
+                netplay::run(self.netplay.update(m)).map(Message::Netplay)
             }
             E::ReadyWithSave => {
                 // View-time gating disables the Ready button when
@@ -125,9 +125,7 @@ impl App {
                     return iced::Task::none();
                 };
                 let save_sram = loaded.save.to_sram_dump();
-                self.netplay
-                    .update(netplay::Message::Commit { save_sram })
-                    .map(Message::Netplay)
+                netplay::run(self.netplay.update(netplay::Message::Commit { save_sram })).map(Message::Netplay)
             }
             E::OpenPath(p) => open_path(p),
             E::RevealPath(p) => reveal_path(p),
@@ -314,8 +312,7 @@ impl App {
                 // a hash of our pre-edit save.
                 let recommit =
                     if matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) && self.netplay.local_ready() {
-                        self.netplay
-                            .update(netplay::Message::Commit { save_sram: sram })
+                        netplay::run(self.netplay.update(netplay::Message::Commit { save_sram: sram }))
                             .map(Message::Netplay)
                     } else {
                         iced::Task::none()

@@ -1,69 +1,15 @@
-//! The post-negotiate lobby: the detached background loop that owns
-//! the reliable receiver (pings, settings/commit/chunk/start-match
-//! dispatch) and the iced subscription bridge that ferries its
-//! events into the update loop.
+//! The post-negotiate lobby: the detached background loop that owns the
+//! reliable receiver (pings, settings/commit/chunk/start-match dispatch).
+//!
+//! The loop emits its observations down an unbounded channel; bridging
+//! that channel into a host's event loop is the host's business (see
+//! [`State::take_lobby_events`](crate::State::take_lobby_events)), which
+//! is the only part of this module that ever knew about a UI toolkit.
 
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
-use super::{Message, Phase, State};
-
-/// Subscription that forwards messages from the detached lobby
-/// task to the iced event loop. Re-keyed on `session_id` so a
-/// fresh Connect tears the previous bridge down; short-circuits
-/// to empty when we're not in the lobby phase. The actual loop
-/// runs on a `tokio::spawn` task owned by [`NegotiationDone`],
-/// so dropping this subscription cannot abort the loop or strand
-/// the data-channel receiver.
-pub fn subscription(state: &State) -> iced::Subscription<Message> {
-    if !matches!(state.phase, Phase::Lobby { .. }) {
-        return iced::Subscription::none();
-    }
-    iced::Subscription::run_with(
-        LobbyTag {
-            session_id: state.session_id,
-            event_rx_slot: state.lobby_event_rx_slot.clone(),
-        },
-        build_lobby_stream,
-    )
-}
-
-/// Identity + payload for the lobby subscription. iced 0.14
-/// hashes this to decide whether to keep the existing stream or
-/// tear it down + restart: only `session_id` is mixed into the
-/// hash, so the Arc can change freely without re-keying.
-struct LobbyTag {
-    session_id: u64,
-    event_rx_slot: Arc<std::sync::Mutex<Option<futures::channel::mpsc::UnboundedReceiver<Message>>>>,
-}
-
-impl std::hash::Hash for LobbyTag {
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        // Tag string + session id only. cancel_and_renew bumps
-        // session_id so a fresh Connect re-keys the subscription.
-        "netplay-lobby".hash(h);
-        self.session_id.hash(h);
-    }
-}
-
-/// Body of the lobby subscription. Pulled out as a free `fn`
-/// because iced 0.14's `run_with` takes a function pointer, not
-/// a closure, so the only state available is what comes in
-/// through the [`LobbyTag`] argument. Just a passthrough that
-/// drains the per-session event channel — owns no transport
-/// state, so dropping it is harmless.
-fn build_lobby_stream(tag: &LobbyTag) -> impl futures::Stream<Item = Message> {
-    use futures::StreamExt;
-    let rx = tag.event_rx_slot.lock().unwrap().take();
-    match rx {
-        Some(rx) => rx.left_stream(),
-        // Re-key polled an already-consumed slot. Empty stream
-        // until a new session repopulates lobby_event_rx_slot
-        // (which only happens behind a fresh session_id, i.e.
-        // a re-keyed Subscription anyway).
-        None => futures::stream::empty().right_stream(),
-    }
-}
+use crate::Message;
 
 /// Lobby background loop: pings every second, reads incoming
 /// packets, responds to Ping with Pong, measures Pong RTT. Any
@@ -78,12 +24,12 @@ fn build_lobby_stream(tag: &LobbyTag) -> impl futures::Stream<Item = Message> {
 /// would prevent the cancel arm from being re-polled and the
 /// task could hang past `cancel.cancel()`.
 pub(super) async fn run_lobby_loop(
-    mut receiver: crate::net::Receiver,
-    sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
+    mut receiver: tango_session::net::Receiver,
+    sender: Arc<tokio::sync::Mutex<tango_session::net::Sender>>,
     tx: futures::channel::mpsc::UnboundedSender<Message>,
     cancel: CancellationToken,
-) -> crate::net::Receiver {
-    let mut ping_timer = tokio::time::interval(crate::net::PING_INTERVAL);
+) -> tango_session::net::Receiver {
+    let mut ping_timer = tokio::time::interval(tango_session::net::PING_INTERVAL);
     // First interval tick fires immediately by default; skip so
     // we don't ping before the peer is ready.
     ping_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -95,7 +41,7 @@ pub(super) async fn run_lobby_loop(
                 let now_short = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u16;
                 if let Err(e) = sender.lock().await.send_ping(now_short).await {
                     log::warn!("lobby: send_ping failed: {e}");
-                    let _ = tx.unbounded_send(Message::Failed(super::Error::Other(format!("ping: {e}"))));
+                    let _ = tx.unbounded_send(Message::Failed(crate::Error::Other(format!("ping: {e}"))));
                     return receiver;
                 }
             }
@@ -104,7 +50,7 @@ pub(super) async fn run_lobby_loop(
                     Ok(tango_net_protocol::control::Packet::Ping(p)) => {
                         if let Err(e) = sender.lock().await.send_pong(p.ts).await {
                             log::warn!("lobby: send_pong failed: {e}");
-                            let _ = tx.unbounded_send(Message::Failed(super::Error::Other(format!("pong: {e}"))));
+                            let _ = tx.unbounded_send(Message::Failed(crate::Error::Other(format!("pong: {e}"))));
                             return receiver;
                         }
                     }
@@ -145,7 +91,7 @@ pub(super) async fn run_lobby_loop(
                     }
                     Err(e) => {
                         log::warn!("lobby: receive failed: {e}");
-                        let _ = tx.unbounded_send(Message::Failed(super::Error::Other(format!("recv: {e}"))));
+                        let _ = tx.unbounded_send(Message::Failed(crate::Error::Other(format!("recv: {e}"))));
                         return receiver;
                     }
                 }

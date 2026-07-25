@@ -22,7 +22,7 @@
 //! When it would, the missing package is a [`Verdict::MissingPatch`] the
 //! app resolves by fetching it, rather than a dead end.
 
-use crate::library::patch::Catalog;
+use tango_library::patch::Catalog;
 use tango_net_protocol::control as protocol;
 
 /// Resolve the netplay tag of a `protocol::GameInfo` (what we receive
@@ -31,7 +31,7 @@ use tango_net_protocol::control as protocol;
 /// reads as "can't vouch for this".
 pub fn tag_from_game_info(g: &protocol::GameInfo, catalog: &Catalog) -> Option<tango_patch::Tag> {
     let game =
-        crate::library::game::find_by_family_and_variant(g.family_and_variant.0.as_str(), g.family_and_variant.1)?;
+        tango_library::game::find_by_family_and_variant(g.family_and_variant.0.as_str(), g.family_and_variant.1)?;
     catalog.tag(game, g.patch.as_ref().map(|p| (p.name.as_str(), &p.version)))
 }
 
@@ -63,7 +63,7 @@ pub enum Verdict {
 pub fn check(
     local: &protocol::Settings,
     remote: &protocol::Settings,
-    roms: &std::collections::HashMap<crate::library::rom::GameRef, Vec<u8>>,
+    roms: &std::collections::HashMap<tango_library::rom::GameRef, Vec<u8>>,
     catalog: &Catalog,
 ) -> Verdict {
     let (Some(local_gi), Some(remote_gi)) = (local.game_info.as_ref(), remote.game_info.as_ref()) else {
@@ -73,7 +73,7 @@ pub fn check(
     // The match runs the peer's game locally (their patch is applied to
     // our copy of their rom at spawn), so their rom must be scanned. An
     // unknown family/variant reads as "not installed" too.
-    let Some(remote_game) = crate::library::game::find_by_family_and_variant(
+    let Some(remote_game) = tango_library::game::find_by_family_and_variant(
         remote_gi.family_and_variant.0.as_str(),
         remote_gi.family_and_variant.1,
     ) else {

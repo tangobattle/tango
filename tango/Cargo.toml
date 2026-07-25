@@ -52,6 +52,7 @@ discord-ipc = { git = "https://github.com/tangobattle/discord-ipc" }
 mgba.workspace = true
 rennet.workspace = true
 tango-net-protocol = { path = "../tango-net-protocol" }
+tango-netplay = { path = "../tango-netplay" }
 # Reads packages and the index; the app never writes a package.
 tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"] }
 tango-library = { path = "../tango-library" }
