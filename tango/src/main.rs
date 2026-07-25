@@ -22,7 +22,7 @@ mod session;
 mod tabs;
 
 // The replays tab's ffmpeg encode pipeline (runs on its own thread).
-mod replay_export;
+mod replay_render;
 
 // Side services, and the app shell that ties everything together.
 mod app;

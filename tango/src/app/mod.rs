@@ -35,7 +35,7 @@ use unic_langid::LanguageIdentifier;
 mod update;
 
 /// Bundle of decoded-replay state the export task needs.
-/// Pulled together synchronously in `start_replay_export` so the
+/// Pulled together synchronously in `start_replay_render` so the
 /// spawned future doesn't have to touch `&self`.
 struct ExportPrep {
     games: [crate::library::rom::GameRef; 2],
@@ -1310,7 +1310,7 @@ impl App {
                         .active_as::<session::replay::ReplaySession>()
                         .map(|s| (s.clip_start_snapshot(start), s.round_boundaries()))
                         .unwrap_or_default();
-                    let clip = crate::replay_export::Clip {
+                    let clip = crate::replay_render::Clip {
                         start,
                         end,
                         snapshot,

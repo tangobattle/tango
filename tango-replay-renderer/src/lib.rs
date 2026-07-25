@@ -1,5 +1,5 @@
-//! Replay video export: re-simulates a recorded replay through
-//! [`tango_match::playback`] and feeds its frames and audio to
+//! Turning a recorded replay back into video: re-simulates it through
+//! [`tango_match::playback`] and feeds the frames and audio to
 //! [`encoder_facade`], which encodes and muxes them into a video file.
 //!
 //! Nothing here picks an encoder or opens a file. [`encoder_facade`]
@@ -8,13 +8,13 @@
 //! seekable to write to — a `File`, a `Cursor<Vec<u8>>`, a shim over an
 //! OPFS sync handle — so the same re-simulation serves both.
 //!
-//! An export is driven, not run: [`Export::pump`] advances a slice of
+//! A render is driven, not run: [`Render::pump`] advances a slice of
 //! ticks and hands control back. A thread can pump until it's done —
-//! that's [`export`], which is what the desktop app calls — while a
+//! that's [`render`], which is what the desktop app calls — while a
 //! browser pumps from its event loop, which is the only way the
 //! WebCodecs backend can work at all, since its encoders deliver their
 //! packets through callbacks that a blocking loop would starve.
-//! [`Progress`] says which phase an export is in and how far along, and
+//! [`Progress`] says which phase a render is in and how far along, and
 //! the [`Canceller`] stops it wherever it is.
 
 use std::sync::Arc;
@@ -28,7 +28,7 @@ pub use encoder_facade::{Canceller, Chapter};
 pub enum Error {
     /// Encoding, muxing, or writing the output. Carries
     /// [`encoder_facade::Error::Cancelled`] too — a killed
-    /// [`Canceller`] ends the export as an error, and hosts tell that
+    /// [`Canceller`] ends the render as an error, and hosts tell that
     /// apart from a failure by asking the canceller.
     #[error(transparent)]
     Encoder(#[from] encoder_facade::Error),
@@ -38,17 +38,17 @@ pub enum Error {
     /// A replay naming a side the two-core pair doesn't have.
     #[error("bad local player index {0}")]
     BadLocalPlayer(usize),
-    /// [`Export::pump`] called after it reported [`Progress::Done`].
-    #[error("this export has already finished")]
+    /// [`Render::pump`] called after it reported [`Progress::Done`].
+    #[error("this render has already finished")]
     AlreadyFinished,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// What an export can write its container to: anything seekable, since
+/// What a render can write its container to: anything seekable, since
 /// a finished container has fields that can only be filled in once the
 /// stream ends. A `File` on a desktop, a `Cursor<Vec<u8>>` for an
-/// export that hands the bytes to a browser download, a shim over an
+/// render that hands the bytes to a browser download, a shim over an
 /// OPFS sync access handle for one that streams to disk in a worker.
 pub trait Writer: std::io::Read + std::io::Write + std::io::Seek {}
 
@@ -130,13 +130,13 @@ const KEYFRAME_INTERVAL: u32 = 30;
 /// reports a depth at all.
 const MAX_ENCODER_QUEUE: u32 = 30;
 
-/// Ticks one [`export`] pump slice runs before reporting progress. Small
+/// Ticks one [`render`] pump slice runs before reporting progress. Small
 /// enough that a progress bar moves several times a second, large enough
 /// that the per-slice bookkeeping is noise next to the emulation.
 const BLOCKING_SLICE_TICKS: usize = 8;
 
-/// The tick window an export writes, plus everything positional that
-/// goes with it. A whole-replay export is just the degenerate clip
+/// The tick window a render writes, plus everything positional that
+/// goes with it. A whole-replay render is just the degenerate clip
 /// `0..=total` with no snapshot.
 #[derive(Clone)]
 pub struct Clip {
@@ -157,7 +157,7 @@ pub struct Clip {
     /// boundaries for recordings that predate the markers). The round
     /// ordinal at any tick — for `rounds_mask` indexing and chapter
     /// titles — is the count of marks at or before it; a jump-started
-    /// pair couldn't answer that from live telemetry, so no export
+    /// pair couldn't answer that from live telemetry, so no render
     /// runs any.
     pub round_marks: Vec<u32>,
 }
@@ -174,7 +174,7 @@ impl std::fmt::Debug for Clip {
 }
 
 /// One replay render: which replay, which of it, and how it should
-/// look. Everything an export needs that isn't an encoder, an output, or
+/// look. Everything a render needs that isn't an encoder, an output, or
 /// a way to report back.
 pub struct Request<'a> {
     /// Both sides' ROMs, saves and match settings — the same boot the
@@ -206,7 +206,7 @@ pub struct Request<'a> {
     pub twosided: bool,
 }
 
-/// Where a [`Export::pump`] left the export.
+/// Where a [`Render::pump`] left the render.
 #[derive(Debug)]
 pub enum Progress<T> {
     /// Still re-simulating: `done` of `total` ticks, counted from where
@@ -220,28 +220,28 @@ pub enum Progress<T> {
     Done(T),
 }
 
-/// Which half of the export a driver is in.
+/// Which half of the render a driver is in.
 enum Phase {
     Rendering,
     Flushing,
     Finished,
 }
 
-/// A running export of an SIO replay ([`tango_replay::VERSION`]).
+/// A running render of an SIO replay ([`tango_replay::VERSION`]).
 ///
 /// One linear pair re-sim produces both perspectives at once, so the
 /// two-sided layout is a compose of the two framebuffers rather than a
 /// second simulation. A tick reaches the encoders when it's inside the
 /// clip's span AND its round is selected in [`Request::rounds_mask`] —
-/// the same ordering as an export form's round checkboxes, which come
+/// the same ordering as a render form's round checkboxes, which come
 /// from the same file marks. Unwritten spans still simulate; they just
 /// aren't written. Each written round becomes a chapter in the output
 /// container.
-pub struct Export<W: Writer> {
+pub struct Render<W: Writer> {
     playback: tango_match::playback::Playback,
     session: encoder_facade::Session,
     /// The container bytes' destination, wrapped in the appender +
-    /// fixup applier every export needs from it. Taken at the close,
+    /// fixup applier every render needs from it. Taken at the close,
     /// which consumes it.
     output: Option<encoder_facade::Output<W>>,
     canceller: Canceller,
@@ -276,7 +276,7 @@ pub struct Export<W: Writer> {
     progress_total: usize,
 }
 
-impl<W: Writer> Export<W> {
+impl<W: Writer> Render<W> {
     /// Boot the re-simulation and open the encoders.
     ///
     /// `open_output` opens the destination. The encoders start first, so
@@ -308,7 +308,7 @@ impl<W: Writer> Export<W> {
         let output = encoder_facade::Output::new(open_output()?);
 
         // Boot + prime. This is encoder-free but bounded (~a few hundred
-        // ticks), and it's the one part of an export that can't be
+        // ticks), and it's the one part of a render that can't be
         // sliced: the pair primes by running until its traps say it's
         // there.
         let lifecycle = tango_match::telemetry::LifecycleSink::new();
@@ -366,7 +366,7 @@ impl<W: Writer> Export<W> {
         })
     }
 
-    /// Advance the export by at most `max_ticks` re-simulated ticks, or
+    /// Advance the render by at most `max_ticks` re-simulated ticks, or
     /// drive one step of the close, and report where that left it.
     ///
     /// A slice also ends early when the encoders are running behind
@@ -483,7 +483,7 @@ impl<W: Writer> Export<W> {
             self.frames_written += 1;
         }
         // Whatever the encoders have finished goes to the output as
-        // the export runs, so memory stays flat however long the
+        // the render runs, so memory stays flat however long the
         // replay is.
         let bytes = self.session.take_output();
         self.output.as_mut().ok_or(Error::AlreadyFinished)?.append(&bytes)?;
@@ -506,19 +506,19 @@ impl<W: Writer> Export<W> {
     }
 }
 
-/// Run an export to completion on the calling thread, reporting
+/// Run a render to completion on the calling thread, reporting
 /// `(done, total)` ticks as it goes — the shape a host with a thread to
-/// spare wants. A browser host drives [`Export`] from its event loop
+/// spare wants. A browser host drives [`Render`] from its event loop
 /// instead; see the module docs.
-pub fn export<W: Writer>(
+pub fn render<W: Writer>(
     request: &Request<'_>,
     open_output: impl FnOnce() -> encoder_facade::Result<W>,
     canceller: &Canceller,
     progress_callback: impl Fn(usize, usize),
 ) -> Result<W> {
-    let mut export = Export::new(request, open_output, canceller)?;
+    let mut render = Render::new(request, open_output, canceller)?;
     loop {
-        match export.pump(BLOCKING_SLICE_TICKS)? {
+        match render.pump(BLOCKING_SLICE_TICKS)? {
             Progress::Rendering { done, total } => progress_callback(done, total),
             Progress::Flushing => {}
             Progress::Done(done) => return Ok(done),

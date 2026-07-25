@@ -11,8 +11,7 @@
 //! looping it against the host's own pacer; in a browser, `requestAnimationFrame`
 //! and the audio sink's queue reports pumping it from the event loop,
 //! where there are no threads to spawn. Nothing below the driver knows
-//! which one it is. [`replay_export`] is the same shape without the
-//! pacing — it pumps as fast as the encoders allow.
+//! which one it is.
 //!
 //! Modules the browser can't have yet — the netplay transport and the
 //! sessions built on it — are gated to native; the rest compiles for
@@ -48,11 +47,6 @@ pub mod platform;
 /// so the Replays tab never re-simulates one it has already seen.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod stats;
-
-/// Rendering a recorded replay to video. Not a session at all — it
-/// drives the same re-simulation as fast as the encoders allow, and is
-/// here because that re-simulation is.
-pub mod replay_export;
 
 /// Why a session failed to construct or boot, any kind. One enum for
 /// all three session kinds — their failure sets overlap heavily (core

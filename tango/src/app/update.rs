@@ -703,7 +703,7 @@ impl App {
                 rounds,
                 clip,
             } => self
-                .spawn_replay_export(replay, output, settings, rounds, clip)
+                .spawn_replay_render(replay, output, settings, rounds, clip)
                 .map(Message::Replays),
             E::AnalyzeReplay(path) => {
                 // Full re-simulation of the replay — seconds of CPU on a
@@ -795,7 +795,7 @@ impl App {
         stem_suffix: &str,
         make_msg: impl Fn(std::path::PathBuf) -> tabs::replays::Message + Send + Sync + 'static,
     ) -> iced::Task<Message> {
-        let container = crate::replay_export::container(lossless);
+        let container = crate::replay_render::container(lossless);
         let ext = container.extension();
         let filter_name = match container {
             encoder_facade::Container::Mp4 => "MP4",
@@ -828,17 +828,17 @@ impl App {
         .map(Message::Replays)
     }
 
-    /// Spawn the crate::replay_export task with a progress
+    /// Spawn the crate::replay_render task with a progress
     /// callback that forwards into the replays-tab message
     /// stream. The user-picked output path + form snapshot come
     /// from the tab module's `ExportStart` effect.
-    fn spawn_replay_export(
+    fn spawn_replay_render(
         &mut self,
         replay_path: std::path::PathBuf,
         output_path: std::path::PathBuf,
         user_settings: tabs::replays::ExportSettings,
         rounds_mask: Vec<bool>,
-        clip: Option<crate::replay_export::Clip>,
+        clip: Option<crate::replay_render::Clip>,
     ) -> iced::Task<tabs::replays::Message> {
         // Decode just enough of the replay to get both sides' game
         // registrations + raw ROM bytes. Failures show up as a
@@ -984,7 +984,7 @@ impl App {
                         (c, all_rounds)
                     }
                     None => (
-                        crate::replay_export::Clip {
+                        crate::replay_render::Clip {
                             start: 0,
                             end: inputs.len() as u32,
                             snapshot: None,
@@ -996,7 +996,7 @@ impl App {
                 if user_settings.disable_bgm {
                     clip.snapshot = None;
                 }
-                let request = crate::replay_export::Request {
+                let request = crate::replay_render::Request {
                     config: &config,
                     inputs: &inputs,
                     local_player: replay.local_player_index as usize,
@@ -1006,7 +1006,7 @@ impl App {
                     scale: scale_arg,
                     twosided: user_settings.twosided,
                 };
-                let result = crate::replay_export::export(&request, &output_for_thread, &canceller_thread, cb)
+                let result = crate::replay_render::render(&request, &output_for_thread, &canceller_thread, cb)
                     .map(|()| output_for_thread)
                     .map_err(|e| format!("{e}"));
                 *done_arc_thread.lock().unwrap() = Some(result);

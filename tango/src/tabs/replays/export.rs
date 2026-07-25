@@ -66,13 +66,13 @@ pub enum ExportMessage {
     PanelOpen(std::path::PathBuf),
     PanelClose(std::path::PathBuf),
     /// The player's Export-clip flow landed a save path: start a clip
-    /// export ([`crate::replay_export::Clip`] — the marked span, the
+    /// export ([`crate::replay_render::Clip`] — the marked span, the
     /// jump-start snapshot, and the session's round marks were all
     /// captured when the scissors chip was pressed).
     StartClip {
         replay: std::path::PathBuf,
         output: std::path::PathBuf,
-        clip: crate::replay_export::Clip,
+        clip: crate::replay_render::Clip,
     },
 }
 
@@ -244,7 +244,7 @@ pub struct ExportJob {
     /// chrome (button greys out, caption flips to "Cancelling…") and
     /// lets `Message::ExportFinished` distinguish a user-cancelled
     /// run from a real failure.
-    pub canceller: crate::replay_export::Canceller,
+    pub canceller: crate::replay_render::Canceller,
 }
 
 impl ExportJob {
@@ -254,7 +254,7 @@ impl ExportJob {
             total: 0,
             result: None,
             output,
-            canceller: crate::replay_export::Canceller::new(),
+            canceller: crate::replay_render::Canceller::new(),
         }
     }
 }
@@ -281,7 +281,7 @@ pub struct PerReplay {
 }
 
 /// User-tunable settings the export form passes to
-/// `crate::replay_export::export(...)`. Defaults match the
+/// `crate::replay_render::render(...)`. Defaults match the
 /// legacy replay-dump window.
 #[derive(Clone, Copy, Debug)]
 pub struct ExportSettings {

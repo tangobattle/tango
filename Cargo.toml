@@ -10,6 +10,7 @@ members = [
     "tango-match",
     "tango-netplay",
     "tango-replay",
+    "tango-replay-renderer",
     "tango-savemodel",
     "tango-session",
     # The browser host for tango-session. wasm32-only, so it stays out
@@ -34,6 +35,7 @@ default-members = [
     "tango-match",
     "tango-netplay",
     "tango-replay",
+    "tango-replay-renderer",
     "tango-savemodel",
     "tango-session",
 ]

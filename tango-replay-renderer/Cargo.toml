@@ -1,0 +1,25 @@
+[package]
+name = "tango-replay-renderer"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+# Turning a recorded replay back into video: re-simulate it through
+# tango-match, hand the frames and audio to encoder-facade.
+#
+# Its own crate rather than a corner of tango-session because it shares
+# nothing with a session — no `Session`, no `Drive`, no audio stream, no
+# transport. A replay renderer is a pipeline from a file to a file, and
+# the one thing it does have in common with a session (that a host pumps
+# it rather than it running itself) is a shape, not a dependency.
+[dependencies]
+encoder-facade = { path = "../encoder-facade" }
+mgba.workspace = true
+tango-dataview = { path = "../tango-dataview" }
+tango-match = { path = "../tango-match" }
+tango-replay = { path = "../tango-replay" }
+thiserror.workspace = true
+
+[lints]
+workspace = true

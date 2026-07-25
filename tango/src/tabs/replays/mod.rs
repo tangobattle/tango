@@ -214,7 +214,7 @@ pub enum Effect {
     /// for scaled exports.
     OpenExportSaveDialog { replay: std::path::PathBuf, lossless: bool },
     /// User confirmed an export. App decodes the replay, resolves
-    /// hooks + ROMs, spawns the crate::replay_export task,
+    /// hooks + ROMs, spawns the crate::replay_render task,
     /// and streams `Message::ExportProgress` / `ExportFinished`
     /// back into this module. `clip` is the player's marked span
     /// (`None` = whole replay, gated by `rounds`; the spawn builds
@@ -224,7 +224,7 @@ pub enum Effect {
         output: std::path::PathBuf,
         settings: ExportSettings,
         rounds: Vec<bool>,
-        clip: Option<crate::replay_export::Clip>,
+        clip: Option<crate::replay_render::Clip>,
     },
     /// Task returned from save_view::State::apply. Generic Task
     /// pipe so save_view-internal side effects (currently just

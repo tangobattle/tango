@@ -58,6 +58,7 @@ tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = [
 tango-library = { path = "../tango-library" }
 tango-match = { path = "../tango-match" }
 tango-replay = { path = "../tango-replay" }
+tango-replay-renderer = { path = "../tango-replay-renderer" }
 tango-savemodel = { path = "../tango-savemodel" }
 tango-session = { path = "../tango-session" }
 tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
@@ -120,8 +121,8 @@ tango-gamesupport-bn5 = { path = "../gamesupport/tango-gamesupport-bn5", optiona
 tango-gamesupport-bn6 = { path = "../gamesupport/tango-gamesupport-bn6", optional = true }
 tango-gamesupport-exe45 = { path = "../gamesupport/tango-gamesupport-exe45", optional = true }
 tango-dataview = { path = "../tango-dataview" }
-# Replay video export (`replay_export.rs`): encoding and muxing live
-# here, so this crate only feeds it frames and samples.
+# Named directly only for `Container` and `Settings`, which the export
+# dialog builds; the rendering itself is tango-replay-renderer's.
 encoder-facade = { path = "../encoder-facade" }
 walkdir = "2"
 directories-next = "2"

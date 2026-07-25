@@ -6370,6 +6370,7 @@ dependencies = [
  "tango-netplay",
  "tango-patch",
  "tango-replay",
+ "tango-replay-renderer",
  "tango-savemodel",
  "tango-session",
  "tango-signaling",
@@ -6653,6 +6654,18 @@ dependencies = [
  "prost-build",
  "serde",
  "zstd",
+]
+
+[[package]]
+name = "tango-replay-renderer"
+version = "0.1.0"
+dependencies = [
+ "encoder-facade",
+ "mgba",
+ "tango-dataview",
+ "tango-match",
+ "tango-replay",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
