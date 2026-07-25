@@ -305,6 +305,7 @@ patches-filter-all = すべて
 patches-filter-installed = インストール済み
 patches-filter-available = 利用可能
 patches-select-prompt = パッチを選択してください。
+patches-scanning = パッチをスキャンしています…
 patches-readme-placeholder = このパッチにはREADMEがありません。
 patches-details-authors = 作者:
 patches-details-license = ライセンス:

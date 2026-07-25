@@ -1811,7 +1811,13 @@ impl App {
                 .map(Message::Replays),
             Tab::Patches => self
                 .patches
-                .view(lang, &self.scanners, &self.config, &self.downloads)
+                .view(
+                    lang,
+                    &self.scanners,
+                    &self.config,
+                    &self.downloads,
+                    !self.library_scanned,
+                )
                 .map(Message::Patches),
             Tab::Settings => {
                 tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking(), None)

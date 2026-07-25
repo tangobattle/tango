@@ -458,13 +458,16 @@ impl State {
         // The strip goes inert during the handoff window: the PvP
         // session is being built from the committed state and
         // selection changes would only confuse.
-        let inner = column![
-            self.selector_strip(lang, scanners, loadout, config, downloads, band.handoff_pending),
-            save_body,
-        ]
-        .spacing(style::PANE_GAP)
-        .padding(style::PANE_GAP)
-        .height(Fill);
+        //
+        // It's absent entirely until the startup scan lands: there is
+        // nothing to select from yet, so the pickers would offer empty
+        // lists and then have the restored selection replace them under
+        // the user. The scanning card holds the pane on its own.
+        let mut inner = column![].spacing(style::PANE_GAP).padding(style::PANE_GAP).height(Fill);
+        if !scanning {
+            inner = inner.push(self.selector_strip(lang, scanners, loadout, config, downloads, band.handoff_pending));
+        }
+        let inner = inner.push(save_body);
 
         let mut col = column![].width(Fill).height(Fill);
         col = col.push(inner);

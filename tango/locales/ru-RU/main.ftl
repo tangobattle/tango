@@ -350,6 +350,7 @@ replays-incomplete = неполный
 patches-updating = Обновление…
 patches-update-failed = Сбой обновления: { $error }
 patches-select-prompt = Выберите патч.
+patches-scanning = Сканирование патчей…
 patches-readme-placeholder = У этого патча нет README.
 patches-netplay-compatibility = Совместимость netplay:
 patches-netplay-isolated = Только эта версия

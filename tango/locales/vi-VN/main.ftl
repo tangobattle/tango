@@ -330,6 +330,7 @@ replays-incomplete = chưa hoàn tất
 patches-updating = Đang cập nhật…
 patches-update-failed = Cập nhật thất bại: { $error }
 patches-select-prompt = Chọn một bản vá.
+patches-scanning = Đang quét bản vá…
 patches-readme-placeholder = Bản vá này không có README.
 patches-netplay-compatibility = Tương thích netplay:
 patches-netplay-isolated = Chỉ phiên bản này

@@ -305,6 +305,7 @@ patches-filter-all = 全部
 patches-filter-installed = 已安装
 patches-filter-available = 可用
 patches-select-prompt = 选择一个补丁。
+patches-scanning = 正在扫描补丁…
 patches-readme-placeholder = 此补丁没有 README。
 patches-details-authors = 作者：
 patches-details-license = 许可证：

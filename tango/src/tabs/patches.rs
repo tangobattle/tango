@@ -269,11 +269,14 @@ impl PatchesState {
         scanners: &'a Scanners,
         config: &'a crate::config::Config,
         downloads: &'a Downloads,
+        // The startup scan hasn't landed yet; until it does, an empty
+        // catalog means "not read yet", not "no patches".
+        scanning: bool,
     ) -> Element<'a, Message> {
         let patches = scanners.patches.read();
 
         let top = self.top_strip(lang);
-        let left = self.patch_list(&patches, config);
+        let left = self.patch_list(lang, &patches, config, scanning);
         let right: Element<'_, Message> = match self.selected.as_ref().filter(|n| patches.title(n).is_some()) {
             Some(name) => crate::ui::anim::slide_in_opt(
                 self.patch_detail(lang, config, &patches, name, downloads),
@@ -339,10 +342,19 @@ impl PatchesState {
     /// offers, not just what's downloaded. Favorites first (with a
     /// leading gold star), and anything not installed is captioned as
     /// available.
-    fn patch_list<'a>(&'a self, patches: &Catalog, config: &crate::config::Config) -> Element<'a, Message> {
+    fn patch_list<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        patches: &Catalog,
+        config: &crate::config::Config,
+        scanning: bool,
+    ) -> Element<'a, Message> {
         let query = self.search.trim().to_lowercase();
-        let mut names: Vec<&str> = patches
-            .names()
+        let all_names = patches.names();
+        // Emptiness of the whole catalog, not of the filtered list: a
+        // search that matches nothing is a different (and settled) state.
+        let nothing_scanned = all_names.is_empty();
+        let mut names: Vec<&str> = all_names
             .into_iter()
             .filter(|name| self.filter.accepts(patches.installed.contains_key(*name)))
             .filter(|name| {
@@ -401,7 +413,20 @@ impl PatchesState {
                 .on_press(Message::Selected(name.to_owned())),
             );
         }
-        container(scrollable(list).style(widgets::chunky_scrollable).height(Fill))
+        // Scanning with nothing scanned yet: say so where the rows would
+        // be, the same way the replays list does.
+        let body: Element<'_, Message> = if scanning && nothing_scanned {
+            container(
+                text(t!(lang, "patches-scanning"))
+                    .size(TEXT_BODY)
+                    .style(widgets::muted_text_style),
+            )
+            .center(Fill)
+            .into()
+        } else {
+            scrollable(list).style(widgets::chunky_scrollable).height(Fill).into()
+        };
+        container(body)
             .width(Length::Fixed(280.0))
             .height(Fill)
             .style(widgets::pane)

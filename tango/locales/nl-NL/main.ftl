@@ -345,6 +345,7 @@ replays-incomplete = onvolledig
 patches-updating = Bijwerken…
 patches-update-failed = Bijwerken mislukt: { $error }
 patches-select-prompt = Selecteer een patch.
+patches-scanning = Patches scannen…
 patches-readme-placeholder = Deze patch heeft geen README.
 patches-netplay-compatibility = Netplay-compatibiliteit:
 patches-netplay-isolated = Alleen deze versie

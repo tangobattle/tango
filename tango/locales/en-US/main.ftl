@@ -318,6 +318,7 @@ patches-filter-all = All
 patches-filter-installed = Installed
 patches-filter-available = Available
 patches-select-prompt = Select a patch.
+patches-scanning = Scanning patches…
 patches-readme-placeholder = This patch has no README.
 patches-details-authors = Authors:
 patches-details-license = License:

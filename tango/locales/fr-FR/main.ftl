@@ -345,6 +345,7 @@ replays-incomplete = incomplet
 patches-updating = Mise à jour…
 patches-update-failed = Échec de la mise à jour: { $error }
 patches-select-prompt = Sélectionnez un patch.
+patches-scanning = Analyse des patchs…
 patches-readme-placeholder = Ce patch n'a pas de README.
 patches-netplay-compatibility = Compatibilité netplay :
 patches-netplay-isolated = Cette version uniquement
