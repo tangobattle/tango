@@ -699,7 +699,6 @@ impl App {
 
     /// Snapshot of the inputs that determine `loaded`, used to skip
     /// rebuilds when nothing relevant changed.
-    /// Build the current Settings packet + dispatch SendLocalSettings
     /// Default match-type policy:
     ///   - Game JUST changed (or first selection in this lobby):
     ///     pick Triple (mode=1) if the game supports it, else
@@ -736,21 +735,43 @@ impl App {
         }
     }
 
-    /// — only meaningful while netplay is in Lobby phase; outside
-    /// that this returns `Task::none()`. Wrapped in a helper because
-    /// it has three callers: lobby entry, selection change, and
-    /// match-type change.
+    /// Both sides have exchanged StartMatch: drain the lobby-side state
+    /// into a `PreMatchData` and kick off async PvP setup. The lobby pump
+    /// has been cancel-signaled; `spawn_pvp` polls the receiver-handoff
+    /// slot until it releases ownership. On success we land back in
+    /// `Message::PvpSessionBuilt`.
+    fn start_pvp_handoff(&mut self) -> iced::Task<Message> {
+        let Some(pre_match) = self.netplay.take_pre_match() else {
+            return iced::Task::none();
+        };
+        let scanners = self.scanners.clone();
+        let config = self.config.clone();
+        let audio_binder = self.audio_binder.clone();
+        let local_game = self.loadout.game;
+        let local_patch = self.loadout.patch.clone().zip(self.loadout.patch_version.clone());
+        iced::Task::perform(
+            async move {
+                let Some(local_game) = local_game else {
+                    return Err(anyhow::anyhow!("no local game selected"));
+                };
+                session::spawn_pvp(scanners, config, audio_binder, local_game, local_patch, pre_match).await
+            },
+            |result| Message::PvpSessionBuilt(std::sync::Arc::new(std::sync::Mutex::new(Some(result)))),
+        )
+    }
+
+    /// Build the current Settings packet and push it to the peer — only
+    /// meaningful while netplay is in Lobby phase; outside that this
+    /// returns `Task::none()`. Wrapped in a helper because it has three
+    /// callers: lobby entry, selection change, and match-type change.
     fn resend_settings_if_lobby(&mut self) -> iced::Task<Message> {
         if !matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) {
             return iced::Task::none();
         }
         self.apply_default_match_type();
         let settings = self.make_local_settings();
-        netplay::run(
-            self.netplay
-                .update(netplay::Message::SendLocalSettings(Box::new(settings))),
-        )
-        .map(Message::Netplay)
+        self.netplay.send_local_settings(settings);
+        iced::Task::none()
     }
 
     /// Run a full `Scanners::rescan` on a tokio blocking worker so
@@ -794,24 +815,27 @@ impl App {
     /// handlers don't catch — peer changing their game/patch/
     /// match_type, or our own available_patches shrinking out from
     /// under a previously-valid commit.
-    fn uncommit_if_incompat(&self) -> iced::Task<Message> {
-        if !matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) {
-            return iced::Task::none();
+    fn uncommit_if_incompat(&mut self) {
+        if !matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) || !self.netplay.local_ready() {
+            return;
         }
-        if !self.netplay.local_ready() {
-            return iced::Task::none();
-        }
-        let (Some(local), Some(remote)) = (self.netplay.lobby.local.as_ref(), self.netplay.lobby.remote.as_ref())
-        else {
-            return iced::Task::none();
+        // Scoped so the scanner read guards (and the borrows of
+        // `netplay.lobby`) are released before the uncommit.
+        let compatible = {
+            let (Some(local), Some(remote)) = (self.netplay.lobby.local.as_ref(), self.netplay.lobby.remote.as_ref())
+            else {
+                return;
+            };
+            let roms = self.scanners.roms.read();
+            let patches = self.scanners.patches.read();
+            matches!(
+                netplay::compat::check(local, remote, &roms, &patches),
+                netplay::compat::Verdict::Compatible
+            )
         };
-        let roms = self.scanners.roms.read();
-        let patches = self.scanners.patches.read();
-        let verdict = netplay::compat::check(local, remote, &roms, &patches);
-        if matches!(verdict, netplay::compat::Verdict::Compatible) {
-            return iced::Task::none();
+        if !compatible {
+            self.netplay.uncommit();
         }
-        iced::Task::done(Message::Netplay(netplay::Message::Uncommit))
     }
 
     /// Fetch a patch the lobby needs but doesn't have.
@@ -964,20 +988,24 @@ pub enum Message {
     Settings(tabs::settings::Message),
     Welcome(tabs::welcome::Message),
     Session(session::Message),
-    Netplay(netplay::Message),
+    Netplay(netplay::Delivery),
     /// Carries the freshly-constructed PvP session (plus its setup-pane
     /// presentation state and audio binding) back into the App after the
-    /// async build task in `spawn_pvp` resolves. `Slot` because
-    /// PvpSession isn't Clone.
+    /// async build task in `spawn_pvp` resolves. Ferried in a once-take
+    /// cell because PvpSession isn't Clone.
     #[allow(clippy::type_complexity)]
     PvpSessionBuilt(
-        netplay::Slot<
-            anyhow::Result<(
-                session::pvp::PvpSession,
-                session::PvpPanes,
-                Option<audio::Binding>,
-                std::thread::JoinHandle<()>,
-            )>,
+        std::sync::Arc<
+            std::sync::Mutex<
+                Option<
+                    anyhow::Result<(
+                        session::pvp::PvpSession,
+                        session::PvpPanes,
+                        Option<audio::Binding>,
+                        std::thread::JoinHandle<()>,
+                    )>,
+                >,
+            >,
         >,
     ),
     /// 1 Hz tick: refresh Discord rich-presence + drain any
@@ -1385,40 +1413,22 @@ impl App {
                 };
                 iced::Task::batch([task, sp_rescan, pvp_rescan])
             }
-            Message::Netplay(netplay::Message::MatchHandoffReady) => {
-                // Drain the lobby-side state into a PreMatchData
-                // and kick off async PvP setup. The lobby loop
-                // has been cancel-signaled; spawn_pvp polls the
-                // receiver-handoff slot until the loop releases
-                // ownership. On success we land back in
-                // Message::PvpSessionBuilt below.
-                let Some(pre_match) = self.netplay.take_pre_match() else {
+            Message::Netplay(delivery) => {
+                // A re-delivery of an already-applied report: nothing left
+                // in the cell (see `netplay::Delivery`).
+                let Some(incoming) = delivery.take() else {
                     return iced::Task::none();
                 };
-                let scanners = self.scanners.clone();
-                let config = self.config.clone();
-                let audio_binder = self.audio_binder.clone();
-                let local_game = self.loadout.game;
-                let local_patch = self.loadout.patch.clone().zip(self.loadout.patch_version.clone());
-                iced::Task::perform(
-                    async move {
-                        let Some(local_game) = local_game else {
-                            return Err(anyhow::anyhow!("no local game selected"));
-                        };
-                        session::spawn_pvp(scanners, config, audio_binder, local_game, local_patch, pre_match).await
-                    },
-                    |result| Message::PvpSessionBuilt(std::sync::Arc::new(std::sync::Mutex::new(Some(result)))),
-                )
-            }
-            Message::Netplay(m) => {
-                // Always resend after a netplay message too: this
-                // covers the Negotiating → Lobby transition (first
-                // announce) and lobby-state mutations like
-                // SetMatchType / SetFrameDelay. The dedupe inside
-                // netplay::State::update::SendLocalSettings makes
-                // unchanged dispatches a no-op.
+                // Always resend after a report: this covers the
+                // Negotiating → Lobby transition (first announce) and
+                // lobby-state mutations. The dedupe inside
+                // `send_local_settings` makes unchanged dispatches a no-op.
                 let was_lobby = matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
-                let task = netplay::run(self.netplay.update(m)).map(Message::Netplay);
+                let event = self.netplay.apply(incoming);
+                let task = match event {
+                    Some(netplay::Event::MatchReady) => self.start_pvp_handoff(),
+                    None => iced::Task::none(),
+                };
                 let became_lobby = !was_lobby && matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
                 // Opponent just completed the handshake — flash the
                 // taskbar / bounce the dock so the lobby host
@@ -1432,9 +1442,9 @@ impl App {
                     iced::Task::none()
                 };
                 let resend = self.resend_settings_if_lobby();
-                let uncommit = self.uncommit_if_incompat();
+                self.uncommit_if_incompat();
                 let fetch = self.fetch_missing_patch();
-                iced::Task::batch([task, resend, uncommit, fetch, attention])
+                iced::Task::batch([task, resend, fetch, attention])
             }
             Message::PvpSessionBuilt(slot) => {
                 let Some(result) = slot.lock().unwrap().take() else {

@@ -44,7 +44,7 @@ pub enum Message {
     FightPressed,
     Disconnect,
     /// Lobby UI: user picked a different match type. App routes
-    /// this through netplay::Message::SetMatchType so the resend
+    /// this through Effect::SetMatchType so the resend
     /// machinery picks it up.
     SetMatchType((u8, u8)),
     /// Lobby UI: user dragged the frame-delay slider, OR pressed
@@ -56,7 +56,7 @@ pub enum Message {
     SetBlindSetup(bool),
     /// Lobby UI: user pressed Ready. App loads the local
     /// save's raw SRAM, builds a NegotiatedState, and
-    /// dispatches netplay::Message::Commit.
+    /// commits the local save.
     Ready,
     /// Lobby UI: user pressed Unready (Ready button while
     /// already committed). Sends an Uncommit packet.
@@ -159,14 +159,20 @@ pub enum Effect {
         ident: crate::netplay::LinkIdent,
         copy_code: Option<String>,
     },
-    /// Forward verbatim to the netplay subsystem.
-    Netplay(crate::netplay::Message),
+    /// Leave the lobby / cancel a connection attempt.
+    Disconnect,
+    /// Lobby match-type picker moved. App records it and resends Settings.
+    SetMatchType((u8, u8)),
+    /// Lobby "blind my setup" toggled. App records it, persists the
+    /// choice, and resends Settings.
+    SetBlindSetup(bool),
+    /// Lobby Un-ready — drop our commitment and tell the peer.
+    Unready,
     /// Lobby frame-delay slider moved. App persists `config.frame_delay`; it's
     /// this side's local frame delay (snapshotted into the match at
     /// start, not negotiated with the peer), so there's nothing live to update.
     SetFrameDelay(u32),
-    /// Lobby Ready — App reads the local save SRAM and
-    /// dispatches `netplay::Message::Commit`.
+    /// Lobby Ready — App reads the local save SRAM and commits it.
     ReadyWithSave,
     /// `open::that(_)` on a file or folder.
     OpenPath(std::path::PathBuf),
@@ -354,12 +360,12 @@ impl State {
                 })
             }
             Message::Noop => None,
-            Message::Disconnect => Some(Effect::Netplay(crate::netplay::Message::Disconnect)),
-            Message::SetMatchType(mt) => Some(Effect::Netplay(crate::netplay::Message::SetMatchType(mt))),
+            Message::Disconnect => Some(Effect::Disconnect),
+            Message::SetMatchType(mt) => Some(Effect::SetMatchType(mt)),
             Message::SetFrameDelay(d) => Some(Effect::SetFrameDelay(d)),
-            Message::SetBlindSetup(v) => Some(Effect::Netplay(crate::netplay::Message::SetBlindSetup(v))),
+            Message::SetBlindSetup(v) => Some(Effect::SetBlindSetup(v)),
             Message::Ready => Some(Effect::ReadyWithSave),
-            Message::Unready => Some(Effect::Netplay(crate::netplay::Message::Uncommit)),
+            Message::Unready => Some(Effect::Unready),
             Message::SaveViewAction(action) => {
                 // `apply` folds the action into save-view state and hands
                 // back what's left for the App: staged edits, clipboard

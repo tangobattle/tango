@@ -63,16 +63,18 @@ impl App {
                 iced::Task::none()
             }
             E::Connect { ident, copy_code } => {
-                let msg = match ident {
-                    netplay::LinkIdent::Matchmaking(link_code) => netplay::Message::Connect {
-                        link_code,
-                        endpoint: self.config.matchmaking_endpoint.clone(),
-                        use_relay: self.config.relay_mode.use_relay(),
-                        identity: self.identity.clone(),
-                    },
-                    netplay::LinkIdent::Direct(role) => netplay::Message::ConnectDirect { role },
+                let task = match ident {
+                    netplay::LinkIdent::Matchmaking(link_code) => netplay::connect(
+                        &mut self.netplay,
+                        netplay::MatchmakingParams {
+                            link_code,
+                            endpoint: self.config.matchmaking_endpoint.clone(),
+                            use_relay: self.config.relay_mode.use_relay(),
+                            identity: self.identity.clone(),
+                        },
+                    ),
+                    netplay::LinkIdent::Direct(role) => netplay::connect_direct(&mut self.netplay, role),
                 };
-                let task = netplay::run(self.netplay.update(msg)).map(Message::Netplay);
                 // Connect wipes lobby state — re-apply the
                 // default-MT policy now so the picker shows the
                 // right value from the moment the waiting screen
@@ -92,7 +94,12 @@ impl App {
                     None => task,
                 }
             }
-            E::Netplay(m) => {
+            E::Disconnect => {
+                self.netplay.disconnect();
+                iced::Task::none()
+            }
+            E::SetMatchType(mt) => {
+                self.netplay.set_match_type(mt);
                 // An explicit user pick of match type pre-Lobby
                 // would otherwise be clobbered the first time
                 // `resend_settings_if_lobby` runs in Lobby —
@@ -103,19 +110,23 @@ impl App {
                 // any default was applied. Stamp the slot here
                 // so the policy treats the pick as already
                 // having defaulted for this game.
-                if let netplay::Message::SetMatchType(_) = &m {
-                    if let Some(g) = self.loadout.game {
-                        let (fam, var) = g.family_and_variant();
-                        self.netplay.lobby.default_mt_for_game = Some((fam.to_string(), var));
-                    }
+                if let Some(g) = self.loadout.game {
+                    let (fam, var) = g.family_and_variant();
+                    self.netplay.lobby.default_mt_for_game = Some((fam.to_string(), var));
                 }
-                // Remember the blind-setup choice so the next lobby
-                // (this session or a future launch) defaults to it.
-                if let netplay::Message::SetBlindSetup(v) = &m {
-                    self.config.last_blind_setup = *v;
-                    self.persist_config();
-                }
-                netplay::run(self.netplay.update(m)).map(Message::Netplay)
+                self.resend_settings_if_lobby()
+            }
+            E::SetBlindSetup(v) => {
+                self.netplay.set_blind_setup(v);
+                // Remember the choice so the next lobby (this session or
+                // a future launch) defaults to it.
+                self.config.last_blind_setup = v;
+                self.persist_config();
+                self.resend_settings_if_lobby()
+            }
+            E::Unready => {
+                self.netplay.uncommit();
+                iced::Task::none()
             }
             E::ReadyWithSave => {
                 // View-time gating disables the Ready button when
@@ -125,7 +136,10 @@ impl App {
                     return iced::Task::none();
                 };
                 let save_sram = loaded.save.to_sram_dump();
-                netplay::run(self.netplay.update(netplay::Message::Commit { save_sram })).map(Message::Netplay)
+                match self.netplay.commit(save_sram) {
+                    Some(netplay::Event::MatchReady) => self.start_pvp_handoff(),
+                    None => iced::Task::none(),
+                }
             }
             E::OpenPath(p) => open_path(p),
             E::RevealPath(p) => reveal_path(p),
@@ -316,8 +330,10 @@ impl App {
                 // a hash of our pre-edit save.
                 let recommit =
                     if matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) && self.netplay.local_ready() {
-                        netplay::run(self.netplay.update(netplay::Message::Commit { save_sram: sram }))
-                            .map(Message::Netplay)
+                        match self.netplay.commit(sram) {
+                            Some(netplay::Event::MatchReady) => self.start_pvp_handoff(),
+                            None => iced::Task::none(),
+                        }
                     } else {
                         iced::Task::none()
                     };

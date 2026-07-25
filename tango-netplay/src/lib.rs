@@ -1,28 +1,22 @@
-//! Netplay state + connection lifecycle: the session-layer state
-//! machine (connection choreography, settings exchange, match
-//! handoff) sitting atop [`crate::net`], which owns the wire
-//! protocols and channel mechanics.
+//! Netplay state + connection lifecycle: the connection choreography,
+//! settings exchange, ready handshake and match handoff, sitting atop
+//! [`tango_session::net`], which owns the wire protocols and channel
+//! mechanics.
 //!
-//! Phase transitions:
-//! `Idle → Connecting → Negotiating → Lobby` (any → `Failed` on
-//! error; any → `Idle` on user Disconnect). A live [`CancellationToken`]
-//! kept on the State aborts the in-flight async task on Disconnect /
-//! re-Connect — without it the orphaned future would keep racing the
-//! new one and clobber state when it eventually resolved. Each
-//! Message handler verifies `phase` before applying so late results
-//! from a cancelled task no-op cleanly.
+//! **The shape.** Bringing a connection up is one linear `async fn`
+//! ([`connect`] / [`connect_direct`]); once it's up, the lobby is a
+//! synchronous state machine ([`State`]) that a host drives by calling
+//! methods on it. Neither half asks the host for an architecture: a host
+//! spawns the connect future however its runtime spawns futures, and
+//! pumps [`State::apply`] with whatever comes down the progress channel.
 //!
-//! The lobby background loop (post-negotiate) is spawned as a
-//! detached `tokio::spawn` task in the `NegotiationDone` handler.
-//! It owns the data-channel `Receiver` and emits its observations
-//! through an unbounded futures channel, which the host drains via
-//! [`State::take_lobby_events`] keyed on [`State::session_id`] so a
-//! fresh Connect tears the bridge down. Keeping the loop OUT of
-//! whatever the host builds to drain it means an incidental drop of
-//! that bridge can no longer abort the loop mid-`.await` and lose the
-//! data-channel receiver. The detached task exits only when the
-//! cancellation token fires, and on exit it sends the receiver down
-//! the per-session oneshot for the PvP handoff to take.
+//! **Phases.** `Idle → Connecting → Negotiating → Lobby` (any → `Failed`
+//! on error; any → `Idle` on [`State::disconnect`]). A live
+//! [`CancellationToken`] kept on the State aborts the in-flight work when
+//! the user disconnects or starts over — without it the orphaned future
+//! would keep racing the new one and clobber state when it resolved. The
+//! progress channel is per-attempt too, so a dying attempt's reports land
+//! on a dropped receiver instead of the live session.
 
 // In a browser the things these `Arc`s hold — the core, the transport —
 // are genuinely not `Send`, because the browser's own handles aren't.
@@ -34,19 +28,21 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 pub mod compat;
-pub mod effect;
 pub mod randomcode;
 
 mod connect;
 mod handshake;
 mod lobby;
 
-pub use connect::{NegotiationOutput, SignalingHello};
-pub use effect::{Effect, Step};
+pub use connect::connect;
+#[cfg(not(target_arch = "wasm32"))]
+pub use connect::connect_direct;
+pub use connect::Connected;
 pub use tango_session::net::link::{DirectRole, LinkParts, ReconnectRecipe};
 
 pub use handshake::ReadyView;
 use handshake::{Handshake, LocalReady, RemoteReady};
+use lobby::Command;
 
 // The protocol version and its version-history changelog live in the
 // shared tango-net-protocol crate (every client implementation bumps
@@ -100,18 +96,18 @@ pub enum Phase {
     /// No connection attempt in flight.
     #[default]
     Idle,
-    /// Signaling task in flight. `waiting_for_opponent` flips true
-    /// once the matchmaking server's Hello arrives; up to that
-    /// point we're still negotiating with the server, after we're
-    /// blocked on the peer joining + the WebRTC handshake.
+    /// Bring-up in flight. `waiting_for_opponent` flips true once the
+    /// matchmaking server's Hello arrives; up to that point we're still
+    /// negotiating with the server, after we're blocked on the peer
+    /// joining + the WebRTC handshake.
     Connecting {
         ident: LinkIdent,
         waiting_for_opponent: bool,
     },
     /// Data channel up; exchanging Hello packets / verifying both
-    /// peers speak the same `protocol::VERSION`.
+    /// peers speak the same `PROTOCOL_VERSION`.
     Negotiating { ident: LinkIdent },
-    /// Both peers agreed on the protocol. Lobby loop is running in
+    /// Both peers agreed on the protocol. The lobby pump is running in
     /// the background; settings exchange + match start come next.
     Lobby { ident: LinkIdent },
     /// Last attempt failed. Stays here until the user starts a new
@@ -119,9 +115,19 @@ pub enum Phase {
     Failed { error: Error },
 }
 
+/// How far a connection attempt has got. Reported by the connect futures
+/// as they pass each milestone; folded into [`Phase`] by [`State::apply`].
+#[derive(Debug, Clone, Copy)]
+pub enum Status {
+    /// Peer is up; running the protocol-version handshake.
+    Negotiating,
+    /// Matchmaking server accepted us; blocked on the opponent joining.
+    WaitingForOpponent,
+}
+
 /// Structured identifier for the current connection. Kept in
 /// `Phase` across the lifecycle, and also the payload of the
-/// play-tab's connect Effect, so consumers (UI header, status
+/// play-tab's connect action, so consumers (UI header, status
 /// line, Discord rich presence, replay filenames) can render or
 /// dispatch on the actual structure rather than re-parsing a
 /// flat string. Matchmaking carries the raw user-supplied code;
@@ -147,52 +153,130 @@ impl LinkIdent {
     }
 }
 
+/// What a matchmaking dial needs. Also stashed for the duration of the
+/// session: a mid-match re-rendezvous replays these params against a
+/// `session_id` derived later from the shared RNG seed (see
+/// [`State::take_pre_match`]).
+#[derive(Clone)]
+pub struct MatchmakingParams {
+    pub link_code: String,
+    pub endpoint: String,
+    /// `None` = auto (ICE picks), `Some(true)` = relay only,
+    /// `Some(false)` = never relay.
+    pub use_relay: Option<bool>,
+    /// The persistent client identity, presented as the signaling
+    /// websocket's mTLS client certificate. `None` when none could be
+    /// loaded — dial without one.
+    pub identity: Option<tango_signaling::ClientIdentity>,
+}
+
+/// Something the connection reported. Opaque on purpose: a host's only
+/// job is to move these from the progress channel into [`State::apply`],
+/// which is where the meaning lives.
+pub struct Incoming(Inbound);
+
+impl std::fmt::Debug for Incoming {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Incoming { .. }")
+    }
+}
+
+pub(crate) enum Inbound {
+    Status(Status),
+    Connected(Box<Connected>),
+    Failed(Error),
+    PeerDisconnected,
+    Ping(std::time::Duration),
+    RemoteSettings(Box<tango_net_protocol::control::Settings>),
+    RemoteCommit([u8; 16]),
+    RemoteUncommit,
+    RemoteChunkStart(u64),
+    RemoteChunk(Vec<u8>),
+    RemoteStartMatch,
+}
+
+/// The reporting end of one connection attempt. Handed to the connect
+/// future and held by the lobby pump; everything it reports arrives at
+/// [`State::apply`] via the attempt's progress channel.
+#[derive(Clone)]
+pub struct Progress(futures::channel::mpsc::UnboundedSender<Incoming>);
+
+impl Progress {
+    /// Note a milestone in the bring-up (see [`Status`]).
+    pub fn status(&self, status: Status) {
+        self.send(Inbound::Status(status));
+    }
+
+    pub(crate) fn send(&self, inbound: Inbound) {
+        let _ = self.0.unbounded_send(Incoming(inbound));
+    }
+
+    /// Report a transport error, prefixed with the operation that hit it.
+    pub(crate) fn fail(&self, what: &str, e: impl std::fmt::Display) {
+        log::warn!("lobby: {what} failed: {e}");
+        self.send(Inbound::Failed(Error::Other(format!("{what}: {e}"))));
+    }
+}
+
+/// What a host has to do something about. Everything else [`State::apply`]
+/// handles internally and leaves visible in [`State::phase`] /
+/// [`State::lobby`] for the next render.
+#[derive(Debug, Clone, Copy)]
+pub enum Event {
+    /// Both sides have exchanged StartMatch. Drain
+    /// [`State::take_pre_match`] and build the live match.
+    MatchReady,
+}
+
 pub struct State {
     pub phase: Phase,
     /// Live connection objects, when post-negotiate. Cleared on
-    /// Disconnect / Failed / on the next Connect.
+    /// disconnect / failure / on the next attempt.
     conn: Option<ConnectionHandles>,
     /// The "ready" commitment exchange — the local + remote ready
     /// ladders. Reset together (`Handshake::default()`) on every
     /// session boundary.
     handshake: Handshake,
-    /// Cancellation token shared with every in-flight async task
-    /// (signaling, negotiate, lobby loop). `Disconnect` calls
-    /// `cancel()`, which makes the running task short-circuit via
-    /// the `tokio::select!` arms below; the late result Message
-    /// then no-ops because `phase` no longer matches.
+    /// Cancellation token shared with every in-flight async task (the
+    /// connect future, the lobby pump, the reveal stream). Cancelling it
+    /// makes them short-circuit; their late reports then land on the
+    /// dropped progress channel of the attempt they belonged to.
     cancel: CancellationToken,
-    /// Monotonic counter keying the host's lobby-event bridge. Bumped
-    /// on every Connect so the prior bridge is torn down even if the
-    /// user reconnects within the same Phase::Lobby.
+    /// Monotonic counter keying the host's progress bridge. Bumped on
+    /// every attempt so the prior bridge is torn down even if the user
+    /// reconnects from within [`Phase::Lobby`].
     session_id: u64,
-    /// Receiving half of the bridge between the detached lobby
-    /// task and the host. Spawn-time `NegotiationDone` installs a
-    /// fresh `(tx, rx)` pair; the host takes `rx` out on first poll
-    /// (see [`State::take_lobby_events`]). Stored as a once-take slot
-    /// so a host can consume it from a `&State`.
-    lobby_event_rx_slot: Arc<std::sync::Mutex<Option<futures::channel::mpsc::UnboundedReceiver<Message>>>>,
+    /// Receiving half of this attempt's progress channel. Installed by
+    /// `begin`; the host takes it out on first poll (see
+    /// [`State::take_incoming`]). Stored as a once-take slot so a host
+    /// can consume it from a `&State`.
+    incoming_rx_slot: Arc<std::sync::Mutex<Option<futures::channel::mpsc::UnboundedReceiver<Incoming>>>>,
+    /// Sending half, kept so the state machine can report its own
+    /// failures the same way the background tasks do.
+    progress: Option<Progress>,
+    /// Queue into the lobby pump. `None` until the connection is up.
+    commands: Option<futures::channel::mpsc::UnboundedSender<Command>>,
     /// Lobby-only state — what each side has advertised so far.
     /// `local` is what we sent; `remote` is what came in over the
     /// Settings packet. Both being `Some` means the lobby pane
     /// can render the symmetric "you vs them" view.
     pub lobby: LobbyState,
-
-    /// Matchmaking connection params stashed at `Connect`, used in
-    /// `take_pre_match` to build a [`ReconnectRecipe::Matchmaking`]. `None` on
-    /// the direct path (its recipe rides `ConnectionHandles::reconnect` instead).
-    matchmaking_reconnect: Option<MatchmakingReconnect>,
+    /// Matchmaking params stashed at connect time, used in
+    /// `take_pre_match` to build a [`ReconnectRecipe::Matchmaking`].
+    /// `None` on the direct path (its recipe rides
+    /// `ConnectionHandles::reconnect` instead).
+    matchmaking_reconnect: Option<MatchmakingParams>,
 }
 
 #[derive(Clone)]
 pub struct LobbyState {
     pub local: Option<tango_net_protocol::control::Settings>,
     pub remote: Option<tango_net_protocol::control::Settings>,
-    /// Round-trip ping measurements, fed one-per-Pong by `PingMeasured` from
-    /// the lobby loop. Empty before the first Pong. Its `latest()` (raw) drives
-    /// the latency line in the pane; its `median()` smooths the per-second
-    /// jitter so the frame-delay "suggest" button recommends a stable value
-    /// rather than chasing the latest spike.
+    /// Round-trip ping measurements, fed one per Pong. Empty before the
+    /// first Pong. Its `latest()` (raw) drives the latency line in the
+    /// pane; its `median()` smooths the per-second jitter so the
+    /// frame-delay "suggest" button recommends a stable value rather than
+    /// chasing the latest spike.
     pub latency_counter: tango_session::net::LatencyCounter,
     /// User-picked match type (mode + subtype). Defaults to (0, 0)
     /// = Single. Local-only UI state; gets folded into Settings
@@ -246,7 +330,9 @@ impl Default for State {
             conn: None,
             cancel: CancellationToken::new(),
             session_id: 0,
-            lobby_event_rx_slot: Arc::new(std::sync::Mutex::new(None)),
+            incoming_rx_slot: Arc::new(std::sync::Mutex::new(None)),
+            progress: None,
+            commands: None,
             lobby: LobbyState::default(),
             handshake: Handshake::default(),
             matchmaking_reconnect: None,
@@ -254,170 +340,41 @@ impl Default for State {
     }
 }
 
-/// Handles we hang onto for the duration of a connected session: the
-/// Sender (locked behind a tokio Mutex because the lobby loop and the
-/// eventual battle loop share it), and the peer-connection itself so
-/// the underlying RTC stays up. The PvP-handoff path
-/// (`take_pre_match`) drains these into the PvpSession.
+/// Handles we hang onto for the duration of a connected session. The
+/// PvP-handoff path (`take_pre_match`) drains these into the PvpSession.
 struct ConnectionHandles {
-    /// Reliable, ordered control/lobby channel sender. Shared by the lobby loop
-    /// and (parked, idle) the match.
+    /// Reliable, ordered control/lobby channel sender. Shared by the lobby
+    /// pump and (parked, idle) the match.
     sender: Arc<tokio::sync::Mutex<tango_session::net::Sender>>,
     /// Unreliable, unordered in-match channel sender — idle during the lobby,
     /// handed to the PvP session to carry the live `data::wire` datagrams.
     in_match_sender: tango_session::net::data::Sender,
-    /// Unreliable in-match channel's receive half, parked here the moment
-    /// `NegotiationDone` fires (nothing flows on it during the lobby, so it
-    /// isn't owned by the lobby loop).
+    /// Unreliable in-match channel's receive half, parked here the moment the
+    /// connection lands (nothing flows on it during the lobby, so — unlike
+    /// the reliable receiver — it isn't owned by the pump).
     in_match_receiver: tango_session::net::data::Receiver,
-    /// The reliable receiver, sent by the lobby loop on cancel-exit. One
-    /// oneshot per session, so a dying loop from a previous session can't
-    /// deposit a stale receiver into the next one.
+    /// The reliable receiver, sent by the pump on cancel-exit. One oneshot
+    /// per session, so a dying pump from a previous session can't deposit a
+    /// stale receiver into the next one.
     post_lobby_rx: tokio::sync::oneshot::Receiver<tango_session::net::Receiver>,
-    /// The peer connection, kept alive for the duration of the
-    /// session. Both transports (matchmaking WebRTC and the
-    /// signaling-free direct link) bring one up.
+    /// The peer connection, kept alive for the duration of the session.
+    /// Both transports bring one up.
     peer_conn: datachannel_wrapper::PeerConnection,
-    /// `true` iff we're the "offer side" for symmetry-breaking
-    /// purposes — i.e. we wrote the SDP offer on the matchmaking path,
-    /// or we're the host on the direct link. Drives the session's
-    /// `pick_local_player_index` tie-break.
+    /// See [`Connected::is_offerer`].
     is_offerer: bool,
     /// Direct-link rebuild recipe for transparent mid-match reconnection,
-    /// or `None` for the matchmaking transport. See
-    /// [`NegotiationOutput::reconnect`].
+    /// or `None` for the matchmaking transport.
     reconnect: Option<DirectRole>,
-    /// This connection's two DTLS certificate fingerprints, captured at connect
-    /// time and folded into the matchmaking reconnect `session_id` once the
-    /// shared RNG seed exists (see [`State::take_pre_match`]). Empty on the
-    /// direct path.
+    /// This connection's two DTLS certificate fingerprints, captured at
+    /// connect time and folded into the matchmaking reconnect `session_id`
+    /// once the shared RNG seed exists (see [`State::take_pre_match`]).
+    /// Empty on the direct path.
     local_dtls_fingerprint: Vec<u8>,
     peer_dtls_fingerprint: Vec<u8>,
-    /// The peer's install identity: SHA-256 of the mTLS client certificate it
-    /// presented on its signaling websocket, server-attested (see
-    /// [`NegotiationOutput::peer_client_cert_fingerprint`]). Recorded into the
-    /// replay metadata's remote side. Empty on the direct path.
+    /// The peer's install identity: SHA-256 of the mTLS client certificate
+    /// it presented on its signaling websocket, server-attested. Recorded
+    /// into the replay metadata's remote side. Empty on the direct path.
     peer_client_cert_fingerprint: Vec<u8>,
-}
-
-/// Messages the netplay subsystem emits + accepts. App routes
-/// these via `Message::Netplay(_)`.
-#[derive(Debug, Clone)]
-pub enum Message {
-    /// User pressed Play with a link code. Kicks off the async
-    /// connect task. `use_relay` is `config.relay_mode` at press
-    /// time, in the form `tango_signaling::connect` expects: `None`
-    /// = auto, `Some(true)` = relay only, `Some(false)` = never.
-    Connect {
-        link_code: String,
-        endpoint: String,
-        use_relay: Option<bool>,
-        /// The App's persistent client identity (cloned from app state),
-        /// presented as the signaling websocket's mTLS client certificate.
-        /// `None` when no identity could be loaded — dial without one.
-        identity: Option<tango_signaling::ClientIdentity>,
-    },
-    /// Direct local-play entry. Bypasses the signaling server —
-    /// runs the protocol-version negotiate handshake over a
-    /// libdatachannel peer connection whose SDP both sides fabricate
-    /// from fixed ICE creds (see [`tango_session::net::direct_rtc`]). `role`
-    /// says whether we're the host (pins the UDP port) or the dialer;
-    /// the UI-side identifier is derived from it (see [`LinkIdent`]).
-    /// Native-only — see [`State::connect_direct`].
-    #[cfg(not(target_arch = "wasm32"))]
-    ConnectDirect { role: DirectRole },
-    /// Tear down the active / pending connection. Cancels the
-    /// running async task; drops the connection handles.
-    Disconnect,
-    /// Internal: matchmaking-server hello arrived (ICE config in
-    /// hand, awaiting peer). Flips Connecting.waiting_for_opponent
-    /// true and kicks off the WebRTC await task.
-    SignalingHelloReceived(Slot<SignalingHello>),
-    /// Internal: the signaling + WebRTC handshake resolved. We then
-    /// kick off the protocol negotiate task before lifecycle moves
-    /// out of Connecting.
-    SignalingDone(Slot<tango_session::net::channel::Channels>),
-    /// Internal: protocol negotiate succeeded. Receiver is parked
-    /// in the slot for the lobby subscription to take.
-    NegotiationDone(Slot<NegotiationOutput>),
-    /// Internal: any step (signaling, datachannel, negotiate, or
-    /// lobby loop) failed. Carries the typed failure the UI
-    /// localizes.
-    Failed(Error),
-    /// Internal: the running async task short-circuited because the
-    /// cancellation token fired (user clicked Disconnect, or a
-    /// fresh Connect superseded us). No-op — phase has already
-    /// been moved to Idle by whoever cancelled.
-    Cancelled,
-    /// Internal: lobby loop noticed the peer disconnected (data
-    /// channel closed cleanly without a Failed-worthy error).
-    /// We end the session quietly back at Idle.
-    PeerDisconnected,
-    /// Internal: lobby loop measured a round-trip ping. Drives the
-    /// latency indicator on the lobby pane.
-    PingMeasured(std::time::Duration),
-    /// User has reached the lobby and we have the data needed to
-    /// build a Settings packet — send it over the wire. App
-    /// dispatches this exactly once per Lobby entry.
-    SendLocalSettings(Box<tango_net_protocol::control::Settings>),
-    /// Internal: lobby loop saw a Settings packet from the peer.
-    RemoteSettings(Box<tango_net_protocol::control::Settings>),
-    /// Internal: ack that some background wire send (Settings,
-    /// Commit, Uncommit, Chunk-stream, StartMatch) made it onto
-    /// the wire. No-op message; just bumps the state-changed
-    /// counter so the host re-renders.
-    WireOpDone,
-    /// User changed the match-type pick. Lobby state updates and
-    /// the App resends the Settings packet.
-    SetMatchType((u8, u8)),
-    /// User toggled the "blind setup" checkbox. Triggers a
-    /// Settings resend (the flag's part of the wire format).
-    SetBlindSetup(bool),
-    /// User pressed the Ready button. Payload is the local
-    /// save's raw SRAM — packed into NegotiatedState, zstd'd,
-    /// committed to, then Chunk'd over the wire.
-    Commit { save_sram: Vec<u8> },
-    /// User un-pressed Ready (or a settings change invalidated
-    /// the commitment). Sends an Uncommit packet so the peer
-    /// knows we're no longer ready.
-    Uncommit,
-    /// Internal: peer sent us a Commit packet.
-    RemoteCommit([u8; 16]),
-    /// Internal: peer sent us an Uncommit packet.
-    RemoteUncommit,
-    /// Internal: peer announced their reveal's total byte length —
-    /// their Chunk stream follows.
-    RemoteChunkStart(u64),
-    /// Internal: peer sent us a Chunk packet.
-    RemoteChunk(Vec<u8>),
-    /// Internal: peer sent us a StartMatch packet. Once both
-    /// sides have exchanged StartMatch, the App picks this up
-    /// via `MatchHandoffReady` and spins up a PvpSession.
-    RemoteStartMatch,
-    /// Internal: both peers have committed, exchanged chunks,
-    /// verified commitments, and both StartMatch packets are
-    /// accounted for. The App handler drains
-    /// `take_pre_match()` and constructs the live match.
-    MatchHandoffReady,
-}
-
-/// Single-take Arc<Mutex<Option<T>>> we use to pass non-Clone /
-/// non-Sync payloads through the [`Message`] boundary. `Message` has to
-/// be `Clone + Send` for hosts to route it, and DataChannel /
-/// PeerConnection aren't Clone — this wrapper papers over that by
-/// taking the inner once on receipt and going None afterwards.
-pub type Slot<T> = Arc<std::sync::Mutex<Option<T>>>;
-
-/// Matchmaking connection params stashed at `Connect` (before the shared RNG
-/// seed exists), combined with the derived `session_id` in [`take_pre_match`]
-/// to form a [`ReconnectRecipe::Matchmaking`].
-///
-/// [`take_pre_match`]: State::take_pre_match
-#[derive(Clone)]
-struct MatchmakingReconnect {
-    endpoint: String,
-    use_relay: Option<bool>,
-    identity: Option<tango_signaling::ClientIdentity>,
 }
 
 impl State {
@@ -425,80 +382,114 @@ impl State {
         Self::default()
     }
 
-    /// Reset the cancellation token + bump session_id. Called from
-    /// every transition that starts or stops async work so the
-    /// background tasks notice and the subscription rekeys. We
-    /// replace the per-session event-rx slot Arc rather than
-    /// clearing it, so a dying lobby task from the previous session
-    /// can't deposit into the next session's slot — it scribbles
-    /// into the orphaned Arc and the payload gets dropped along
-    /// with it. (The receiver handback needs no such guard: its
-    /// oneshot is per-session by construction, and dropping `conn`
-    /// drops the receiving end.)
+    /// Start a matchmaking attempt. Returns what [`connect`] needs: the
+    /// token that cancels it and the channel it reports on.
+    pub fn begin_matchmaking(&mut self, params: &MatchmakingParams) -> (CancellationToken, Progress) {
+        let out = self.begin(LinkIdent::Matchmaking(params.link_code.clone()), false);
+        // Set *after* `begin`, which clears it. The session_id half of the
+        // recipe is derived later, from the shared RNG seed.
+        self.matchmaking_reconnect = Some(params.clone());
+        out
+    }
+
+    /// Start a direct attempt. Returns what [`connect_direct`] needs.
+    ///
+    /// Host = "waiting for inbound peer" (accept is the slow await);
+    /// Connect = "actively dialing" — mirroring the matchmaking-path
+    /// semantics so the existing waiting-screen UI reads correctly.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn begin_direct(&mut self, role: &DirectRole) -> (CancellationToken, Progress) {
+        let waiting = matches!(role, DirectRole::Host { .. });
+        self.begin(LinkIdent::Direct(role.clone()), waiting)
+    }
+
+    fn begin(&mut self, ident: LinkIdent, waiting_for_opponent: bool) -> (CancellationToken, Progress) {
+        self.cancel_and_renew();
+        self.phase = Phase::Connecting {
+            ident,
+            waiting_for_opponent,
+        };
+        let (tx, rx) = futures::channel::mpsc::unbounded();
+        *self.incoming_rx_slot.lock().unwrap() = Some(rx);
+        let progress = Progress(tx);
+        self.progress = Some(progress.clone());
+        (self.cancel.clone(), progress)
+    }
+
+    /// Reset the cancellation token + bump session_id. Called from every
+    /// transition that starts or stops async work so the background tasks
+    /// notice and the host's bridge rekeys. We replace the per-session
+    /// rx slot Arc rather than clearing it, so a dying pump from the
+    /// previous session can't deposit into the next session's slot — it
+    /// scribbles into the orphaned Arc and the payload gets dropped along
+    /// with it. (The receiver handback needs no such guard: its oneshot
+    /// is per-session by construction, and dropping `conn` drops the
+    /// receiving end.)
     fn cancel_and_renew(&mut self) {
         self.cancel.cancel();
         self.cancel = CancellationToken::new();
         self.session_id = self.session_id.wrapping_add(1);
-        self.lobby_event_rx_slot = Arc::new(std::sync::Mutex::new(None));
+        self.incoming_rx_slot = Arc::new(std::sync::Mutex::new(None));
+        self.progress = None;
+        self.commands = None;
         self.conn = None;
         self.lobby = LobbyState::default();
         self.handshake = Handshake::default();
         self.matchmaking_reconnect = None;
     }
 
-    /// A monotonic id for the current connection attempt, bumped on
-    /// every Connect. A host keys its lobby-event bridge on this so the
-    /// previous one is torn down even when the user reconnects without
-    /// leaving [`Phase::Lobby`].
+    /// A monotonic id for the current attempt, bumped each time one
+    /// starts. A host keys its progress bridge on this so the previous
+    /// one is torn down even when the user reconnects without leaving
+    /// [`Phase::Lobby`].
     pub fn session_id(&self) -> u64 {
         self.session_id
     }
 
-    /// Take the receiving half of the lobby loop's event channel, if it
-    /// hasn't been taken yet. A host polls this once per `session_id`
-    /// and forwards everything it yields into [`Self::update`].
+    /// Take the receiving half of this attempt's progress channel, if it
+    /// hasn't been taken yet. A host polls this once per `session_id` and
+    /// forwards everything it yields into [`Self::apply`].
     ///
     /// Once-take rather than borrowed so a host can consume it from a
-    /// `&State`; a fresh Connect installs a new channel behind a new
+    /// `&State`; a fresh attempt installs a new channel behind a new
     /// `session_id`.
-    pub fn take_lobby_events(&self) -> Option<futures::channel::mpsc::UnboundedReceiver<Message>> {
-        self.lobby_event_rx_slot.lock().unwrap().take()
+    pub fn take_incoming(&self) -> Option<futures::channel::mpsc::UnboundedReceiver<Incoming>> {
+        self.incoming_rx_slot.lock().unwrap().take()
     }
 
-    /// Apply a Message. Returns what the host should do next; see
-    /// [`Effect`].
-    pub fn update(&mut self, msg: Message) -> Effect {
-        match msg {
-            Message::Connect {
-                link_code,
-                endpoint,
-                use_relay,
-                identity,
-            } => self.connect(link_code, endpoint, use_relay, identity),
-            #[cfg(not(target_arch = "wasm32"))]
-            Message::ConnectDirect { role } => self.connect_direct(role),
-            Message::SignalingHelloReceived(slot_rx) => self.on_signaling_hello(slot_rx),
-            Message::SignalingDone(slot_rx) => self.on_signaling_done(slot_rx),
-            Message::NegotiationDone(slot_rx) => self.on_negotiation_done(slot_rx),
-            Message::PingMeasured(dur) => {
+    /// Fold one report from the connection into the state machine.
+    pub fn apply(&mut self, incoming: Incoming) -> Option<Event> {
+        match incoming.0 {
+            Inbound::Status(status) => {
+                self.on_status(status);
+                None
+            }
+            Inbound::Connected(connected) => {
+                self.enter_lobby(*connected);
+                None
+            }
+            Inbound::Failed(e) => {
+                self.cancel_and_renew();
+                self.phase = Phase::Failed { error: e };
+                None
+            }
+            // Remote side closed the data channel. Park in Failed (with a
+            // peer-cancelled marker the UI surfaces) rather than silently
+            // dropping back to Idle, so the user sees what happened and
+            // clears it explicitly.
+            Inbound::PeerDisconnected => {
+                self.fail_keeping_lobby(Error::PeerDisconnected);
+                None
+            }
+            Inbound::Ping(dur) => {
                 self.lobby.latency_counter.mark(dur);
-                Effect::none()
+                None
             }
-            Message::SendLocalSettings(settings) => self.send_local_settings(settings),
-            Message::WireOpDone => Effect::none(),
-            Message::RemoteSettings(settings) => self.on_remote_settings(*settings),
-            Message::SetMatchType(mt) => {
-                self.lobby.match_type = mt;
-                // Don't unready here directly — the App fires a
-                // settings resend right after this, and
-                // SendLocalSettings handles the unready via the
-                // material-diff check.
-                Effect::none()
+            Inbound::RemoteSettings(settings) => {
+                self.on_remote_settings(*settings);
+                None
             }
-            Message::SetBlindSetup(v) => self.set_blind_setup(v),
-            Message::Commit { save_sram } => self.commit_local(save_sram),
-            Message::Uncommit => self.invalidate_local_commit(),
-            Message::RemoteCommit(c) => {
+            Inbound::RemoteCommit(c) => {
                 // A fresh commitment starts a fresh reveal — any prior
                 // chunks / StartMatch belonged to the pairing it replaces.
                 self.handshake.remote = RemoteReady::Committed {
@@ -508,89 +499,22 @@ impl State {
                     revealed: false,
                     start_match: false,
                 };
-                // First chunk send happens once both sides have
-                // committed. Until then we just sit ready.
-                self.maybe_kick_chunk_exchange()
+                // The reveal goes out once both sides have committed.
+                // Until then we just sit ready.
+                self.maybe_kick_reveal();
+                None
             }
-            Message::RemoteUncommit => {
+            Inbound::RemoteUncommit => {
                 // Their reveal (and any StartMatch riding on the voided
                 // pairing) goes with the commitment; our own StartMatch
                 // was predicated on that reveal, so it regresses too.
                 self.handshake.remote = RemoteReady::NotReady;
                 self.handshake.local.revoke_start_match();
-                Effect::none()
+                None
             }
-            Message::RemoteChunkStart(len) => match &mut self.handshake.remote {
-                RemoteReady::Committed { expected, revealed, .. } if expected.is_none() => {
-                    *expected = Some(len);
-                    if len == 0 {
-                        // Degenerate but well-formed: a zero-length
-                        // reveal is complete on arrival (verification
-                        // will reject it downstream).
-                        *revealed = true;
-                        self.maybe_finish_handshake()
-                    } else {
-                        Effect::none()
-                    }
-                }
-                RemoteReady::Committed { .. } => Effect::done(Message::Failed(Error::Other(
-                    "peer sent a second ChunkStart within one reveal".to_string(),
-                ))),
-                RemoteReady::NotReady => {
-                    // No commitment on hand — a straggler from a voided
-                    // pairing (the peer's chunk task outliving its
-                    // Uncommit); drop it like stray chunks.
-                    log::warn!("netplay: ignoring ChunkStart received before Commit");
-                    Effect::none()
-                }
-            },
-            Message::RemoteChunk(c) => {
-                // Chunk bytes accumulate into the remote ladder's reveal
-                // buffer until the ChunkStart-announced length is all
-                // here — no end-of-stream sentinel on the wire.
-                match &mut self.handshake.remote {
-                    RemoteReady::Committed { revealed: true, .. } => {
-                        // The reveal is already complete — anything more
-                        // is a stray from a voided pairing; drop it.
-                        log::warn!("netplay: ignoring chunk received after complete reveal");
-                        Effect::none()
-                    }
-                    RemoteReady::Committed {
-                        expected: Some(expected),
-                        chunks,
-                        revealed,
-                        ..
-                    } => {
-                        chunks.extend_from_slice(&c);
-                        if (chunks.len() as u64) > *expected {
-                            Effect::done(Message::Failed(Error::Other(format!(
-                                "peer sent more reveal bytes than announced ({} > {})",
-                                chunks.len(),
-                                expected
-                            ))))
-                        } else if (chunks.len() as u64) == *expected {
-                            *revealed = true;
-                            self.maybe_finish_handshake()
-                        } else {
-                            Effect::none()
-                        }
-                    }
-                    RemoteReady::Committed { expected: None, .. } => {
-                        // On the ordered channel a reveal's ChunkStart
-                        // always precedes its chunks, so these are strays
-                        // from a voided pairing; drop them.
-                        log::warn!("netplay: ignoring chunk received before ChunkStart");
-                        Effect::none()
-                    }
-                    RemoteReady::NotReady => {
-                        // Chunks with no commitment to verify against —
-                        // protocol violation; drop them.
-                        log::warn!("netplay: ignoring chunk received before Commit");
-                        Effect::none()
-                    }
-                }
-            }
-            Message::RemoteStartMatch => {
+            Inbound::RemoteChunkStart(len) => self.on_remote_chunk_start(len),
+            Inbound::RemoteChunk(c) => self.on_remote_chunk(c),
+            Inbound::RemoteStartMatch => {
                 match &mut self.handshake.remote {
                     RemoteReady::Committed { start_match, .. } => *start_match = true,
                     RemoteReady::NotReady => {
@@ -599,86 +523,154 @@ impl State {
                         log::warn!("netplay: ignoring StartMatch received before Commit");
                     }
                 }
-                self.maybe_signal_pvp_handoff()
-            }
-            Message::MatchHandoffReady => {
-                // Pure signal — the App picks it up and pulls
-                // pre-match data via take_pre_match. We just
-                // re-render here.
-                Effect::none()
-            }
-            Message::Failed(e) => {
-                self.cancel_and_renew();
-                self.phase = Phase::Failed { error: e };
-                Effect::none()
-            }
-            Message::Cancelled => Effect::none(),
-            Message::PeerDisconnected => self.on_peer_disconnected(),
-            Message::Disconnect => {
-                self.cancel_and_renew();
-                self.phase = Phase::Idle;
-                Effect::none()
+                self.match_ready_event()
             }
         }
     }
 
-    /// `Message::SendLocalSettings` — push our Settings packet (Lobby only),
-    /// deduping against the last sent value and dropping the local commit on a
-    /// material change.
-    fn send_local_settings(&mut self, settings: Box<tango_net_protocol::control::Settings>) -> Effect {
-        // Only meaningful in Lobby phase; ignore late
-        // arrivals after a Disconnect/Failed.
+    /// A bring-up milestone. Ignored unless we're still bringing up —
+    /// a late report from a superseded attempt has nothing to advance.
+    fn on_status(&mut self, status: Status) {
+        let Phase::Connecting { ident, .. } = &self.phase else {
+            return;
+        };
+        let ident = ident.clone();
+        self.phase = match status {
+            Status::WaitingForOpponent => Phase::Connecting {
+                ident,
+                waiting_for_opponent: true,
+            },
+            Status::Negotiating => Phase::Negotiating { ident },
+        };
+    }
+
+    /// The connection is up: install the handles, park the in-match
+    /// receiver, and start the lobby pump.
+    fn enter_lobby(&mut self, connected: Connected) {
+        // Accept both `Negotiating` and `Connecting` — a direct attempt
+        // can land straight from `Connecting` if its status report and
+        // its completion arrive back to back.
+        let ident = match &self.phase {
+            Phase::Negotiating { ident } | Phase::Connecting { ident, .. } => ident.clone(),
+            // Cancelled / superseded — nothing to attach this to.
+            _ => return,
+        };
+        // The peer's install identity, as attested by the matchmaking
+        // server — the counterpart of the "client identity loaded" line
+        // logged for our own certificate at startup.
+        if !connected.peer_client_cert_fingerprint.is_empty() {
+            log::info!(
+                "peer client identity (sha256 fingerprint: {})",
+                hex(&connected.peer_client_cert_fingerprint)
+            );
+        }
+        // Resolve how the transport actually flows for the lobby's ping
+        // line. We read the selected ICE pair — a `typ relay` candidate on
+        // either end means TURN. The signaling-free direct path only ever
+        // forms host candidate pairs, so it resolves to Direct.
+        self.lobby.connection_kind = connected
+            .peer_conn
+            .selected_candidate_pair()
+            .ok()
+            .map(|(local, remote)| {
+                if local.contains("typ relay") || remote.contains("typ relay") {
+                    ConnectionKind::Relayed
+                } else {
+                    ConnectionKind::Direct
+                }
+            });
+        // Channel for the pump to hand the reliable receiver back on
+        // cancel-exit. One per session, so a dying pump from a previous
+        // session can't deposit a stale receiver into the next one — its
+        // send lands on a dropped rx and the receiver is dropped with it.
+        let (post_lobby_tx, post_lobby_rx) = tokio::sync::oneshot::channel();
+        let sender = connected.sender.clone();
+        self.conn = Some(ConnectionHandles {
+            sender: connected.sender,
+            in_match_sender: connected.in_match_sender,
+            in_match_receiver: connected.in_match_receiver,
+            post_lobby_rx,
+            peer_conn: connected.peer_conn,
+            is_offerer: connected.is_offerer,
+            reconnect: connected.reconnect,
+            local_dtls_fingerprint: connected.local_dtls_fingerprint,
+            peer_dtls_fingerprint: connected.peer_dtls_fingerprint,
+            peer_client_cert_fingerprint: connected.peer_client_cert_fingerprint,
+        });
+        let (cmd_tx, cmd_rx) = futures::channel::mpsc::unbounded();
+        self.commands = Some(cmd_tx);
+        let Some(progress) = self.progress.clone() else {
+            return;
+        };
+        let cancel = self.cancel.clone();
+        let receiver = connected.receiver;
+        tango_session::platform::spawn(async move {
+            let receiver = lobby::run_pump(receiver, sender, cmd_rx, progress, cancel).await;
+            let _ = post_lobby_tx.send(receiver);
+        });
+        self.phase = Phase::Lobby { ident };
+    }
+
+    /// Queue a wire send. Silently drops when there's no live pump — every
+    /// caller is a lobby-phase action, and a stale one has nothing to say.
+    fn send(&self, cmd: Command) {
+        if let Some(commands) = &self.commands {
+            let _ = commands.unbounded_send(cmd);
+        }
+    }
+
+    /// Report a local failure the same way the background tasks do, so it
+    /// arrives through [`Self::apply`] and takes the same path.
+    pub(crate) fn fail(&self, error: Error) {
+        if let Some(progress) = &self.progress {
+            progress.send(Inbound::Failed(error));
+        }
+    }
+
+    /// Tear the active or pending connection down. Cancels the in-flight
+    /// work and drops the handles.
+    pub fn disconnect(&mut self) {
+        self.cancel_and_renew();
+        self.phase = Phase::Idle;
+    }
+
+    /// Push our Settings packet (Lobby only), deduping against the last
+    /// sent value and dropping the local commit on a material change.
+    pub fn send_local_settings(&mut self, settings: tango_net_protocol::control::Settings) {
+        // Only meaningful in Lobby phase; ignore late calls after a
+        // disconnect / failure.
         if !matches!(self.phase, Phase::Lobby { .. }) {
-            return Effect::none();
+            return;
         }
-        // Dedupe — `make_local_settings()` re-runs on
-        // every Play / Netplay handler dispatch and most
-        // of those don't actually change anything that
-        // crosses the wire.
-        if self.lobby.local.as_ref() == Some(&*settings) {
-            return Effect::none();
+        // Dedupe — the host rebuilds this on every dispatch and most of
+        // those don't actually change anything that crosses the wire.
+        if self.lobby.local.as_ref() == Some(&settings) {
+            return;
         }
-        let Some(sender) = self.conn.as_ref().map(|c| c.sender.clone()) else {
-            return Effect::none();
-        };
-        // If the material parts of Settings changed (game
-        // selection / match type — i.e. anything the
-        // commitment was implicitly tied to) drop the
-        // local commit so the peer doesn't think we're
-        // still committed to the old save. Nickname /
-        // available-games churn is excluded so harmless
-        // metadata refreshes don't kick the user out of
-        // the ready state.
-        let invalidate = match self.lobby.local.as_ref() {
-            Some(prev) if settings_materially_differ(prev, &settings) => self.invalidate_local_commit(),
-            _ => Effect::none(),
-        };
-        self.lobby.local = Some(*settings.clone());
-        let send = Effect::perform(
-            async move {
-                sender
-                    .lock()
-                    .await
-                    .send_settings(*settings)
-                    .await
-                    .map_err(|e| Error::Other(format!("send_settings: {e}")))
-            },
-            |r| match r {
-                Ok(()) => Message::WireOpDone,
-                Err(e) => Message::Failed(e),
-            },
-        );
-        Effect::batch([invalidate, send])
+        // If the material parts of Settings changed (game selection /
+        // match type — i.e. anything the commitment was implicitly tied
+        // to) drop the local commit so the peer doesn't think we're still
+        // committed to the old save. Nickname / available-games churn is
+        // excluded so harmless metadata refreshes don't kick the user out
+        // of the ready state.
+        if self
+            .lobby
+            .local
+            .as_ref()
+            .is_some_and(|prev| settings_materially_differ(prev, &settings))
+        {
+            self.invalidate_local_commit();
+        }
+        self.lobby.local = Some(settings.clone());
+        self.send(Command::Settings(Box::new(settings)));
     }
 
-    /// `Message::RemoteSettings` — peer's Settings landed; record them and
-    /// drop our commit if they downgraded visibility.
-    fn on_remote_settings(&mut self, settings: tango_net_protocol::control::Settings) -> Effect {
-        // Visibility downgrade (peer's setup used to be
-        // visible, now they've blinded it): drop our local
-        // commit so we re-commit explicitly under the new
-        // visibility contract. Matches the legacy app
-        // (gui/play_pane.rs::handle_settings).
+    /// Peer's Settings landed; record them and drop our commit if they
+    /// downgraded visibility.
+    fn on_remote_settings(&mut self, settings: tango_net_protocol::control::Settings) {
+        // Visibility downgrade (peer's setup used to be visible, now
+        // they've blinded it): drop our local commit so we re-commit
+        // explicitly under the new visibility contract.
         let downgrade = self
             .lobby
             .remote
@@ -687,47 +679,107 @@ impl State {
             .unwrap_or(false);
         self.lobby.remote = Some(settings);
         if downgrade {
-            self.invalidate_local_commit()
-        } else {
-            Effect::none()
+            self.invalidate_local_commit();
         }
     }
 
-    /// `Message::SetBlindSetup` — toggle our blind-setup flag; flipping it on
-    /// drops the peer's commit (they must re-commit under the new contract).
-    fn set_blind_setup(&mut self, v: bool) -> Effect {
+    /// The user picked a match type. The host follows this with a settings
+    /// resend, and `send_local_settings`'s material-diff check does the
+    /// unready — so deliberately not done here.
+    pub fn set_match_type(&mut self, match_type: (u8, u8)) {
+        self.lobby.match_type = match_type;
+    }
+
+    /// The user toggled the blind-setup checkbox.
+    pub fn set_blind_setup(&mut self, v: bool) {
         let prev = self.lobby.blind_setup;
         self.lobby.blind_setup = v;
-        // Downgrading our own visibility (blind flips on):
-        // drop the *peer's* commit so they re-commit under
-        // the new visibility contract. Matches legacy
-        // `set_reveal_setup` in gui/play_pane.rs. Our own
-        // StartMatch was predicated on their now-voided
+        // Downgrading our own visibility (blind flips on): drop the
+        // *peer's* commit so they re-commit under the new visibility
+        // contract. Our own StartMatch was predicated on their now-voided
         // reveal, so it regresses a rung with it.
         if !prev && v {
             self.handshake.remote = RemoteReady::NotReady;
             self.handshake.local.revoke_start_match();
         }
-        // App fires a settings resend after this. The
-        // SendLocalSettings material-diff check doesn't
-        // include blind_setup, so a same-game blind
-        // toggle doesn't drop our own commit unnecessarily.
-        Effect::none()
+        // The host fires a settings resend after this. The
+        // `send_local_settings` material-diff check doesn't include
+        // blind_setup, so a same-game blind toggle doesn't drop our own
+        // commit unnecessarily.
     }
 
-    /// `Message::PeerDisconnected` — peer closed the data channel cleanly.
-    /// Tear the live connection down into a sticky Failed banner, but keep
-    /// `self.lobby` so the opponent card still has a face on it.
-    fn on_peer_disconnected(&mut self) -> Effect {
-        // Remote side cancelled / closed the data channel. Park
-        // netplay in Failed (with a peer-cancelled marker the UI
-        // surfaces) instead of silently dropping back to Idle, so
-        // the user sees what happened and clears it explicitly.
-        self.fail_keeping_lobby(Error::PeerDisconnected);
-        Effect::none()
+    /// Peer announced their reveal's total length. Chunks before it are
+    /// strays from a voided pairing and get dropped.
+    fn on_remote_chunk_start(&mut self, len: u64) -> Option<Event> {
+        match &mut self.handshake.remote {
+            RemoteReady::Committed { expected, revealed, .. } if expected.is_none() => {
+                *expected = Some(len);
+                if len == 0 {
+                    // Degenerate but well-formed: a zero-length reveal is
+                    // complete on arrival (verification rejects it
+                    // downstream).
+                    *revealed = true;
+                    return self.maybe_finish_handshake();
+                }
+            }
+            RemoteReady::Committed { .. } => {
+                self.fail(Error::Other(
+                    "peer sent a second ChunkStart within one reveal".to_string(),
+                ));
+            }
+            RemoteReady::NotReady => {
+                // No commitment on hand — a straggler from a voided pairing
+                // (the peer's reveal outliving its Uncommit); drop it like
+                // stray chunks.
+                log::warn!("netplay: ignoring ChunkStart received before Commit");
+            }
+        }
+        None
     }
 
-    /// The App failed to build the PvP session after the handoff (rom /
+    /// Chunk bytes accumulate into the remote ladder's reveal buffer until
+    /// the announced length is all here — there's no end-of-stream
+    /// sentinel on the wire.
+    fn on_remote_chunk(&mut self, chunk: Vec<u8>) -> Option<Event> {
+        match &mut self.handshake.remote {
+            RemoteReady::Committed { revealed: true, .. } => {
+                // The reveal is already complete — anything more is a stray
+                // from a voided pairing; drop it.
+                log::warn!("netplay: ignoring chunk received after complete reveal");
+            }
+            RemoteReady::Committed {
+                expected: Some(expected),
+                chunks,
+                revealed,
+                ..
+            } => {
+                chunks.extend_from_slice(&chunk);
+                let (got, want) = (chunks.len() as u64, *expected);
+                if got > want {
+                    self.fail(Error::Other(format!(
+                        "peer sent more reveal bytes than announced ({got} > {want})"
+                    )));
+                } else if got == want {
+                    *revealed = true;
+                    return self.maybe_finish_handshake();
+                }
+            }
+            RemoteReady::Committed { expected: None, .. } => {
+                // On the ordered channel a reveal's ChunkStart always
+                // precedes its chunks, so these are strays from a voided
+                // pairing; drop them.
+                log::warn!("netplay: ignoring chunk received before ChunkStart");
+            }
+            RemoteReady::NotReady => {
+                // Chunks with no commitment to verify against — protocol
+                // violation; drop them.
+                log::warn!("netplay: ignoring chunk received before Commit");
+            }
+        }
+        None
+    }
+
+    /// The host failed to build the PvP session after the handoff (rom /
     /// patch / core construction). Park netplay in the same sticky Failed
     /// state every other netplay failure lands in — the lobby chrome is
     /// still on screen at this point (`handoff_pending` kept it up while
@@ -745,7 +797,9 @@ impl State {
         self.cancel.cancel();
         self.cancel = CancellationToken::new();
         self.session_id = self.session_id.wrapping_add(1);
-        self.lobby_event_rx_slot = Arc::new(std::sync::Mutex::new(None));
+        self.incoming_rx_slot = Arc::new(std::sync::Mutex::new(None));
+        self.progress = None;
+        self.commands = None;
         self.conn = None;
         self.handshake = Handshake::default();
         self.phase = Phase::Failed { error };
@@ -756,18 +810,20 @@ impl State {
     /// handoff point yet, or it's already been drained. After
     /// this call the netplay subsystem retains no live handles
     /// — the cancellation token fires (which tears down the
-    /// lobby loop), and the App owns sender / receiver /
+    /// lobby pump), and the host owns sender / receiver /
     /// peer_conn / negotiated state.
     ///
     /// `phase` and `lobby` are deliberately NOT cleared here —
     /// the lobby UI keeps rendering its post-ready snapshot while
-    /// `spawn_pvp` builds the live session in the background, so
+    /// the host builds the live session in the background, so
     /// the user doesn't see the bottom strip flash back to the
-    /// singleplayer Fight/link-code chrome. The App calls
-    /// [`finish_handoff`] once the PvP session is built — or
-    /// [`fail_session_build`](State::fail_session_build) if the
-    /// build fails, parking the failure in the lobby's sticky
-    /// Failed status.
+    /// singleplayer chrome. The host calls [`finish_handoff`]
+    /// once the PvP session is built — or [`fail_session_build`]
+    /// if the build fails, parking the failure in the lobby's
+    /// sticky Failed status.
+    ///
+    /// [`finish_handoff`]: State::finish_handoff
+    /// [`fail_session_build`]: State::fail_session_build
     pub fn take_pre_match(&mut self) -> Option<PreMatchData> {
         if !(self.handshake.local.match_ready() && self.handshake.remote.start_match()) {
             return None;
@@ -800,12 +856,11 @@ impl State {
             Ok(s) => s,
             Err(e) => return self.fail_handoff(Error::Other(format!("decode peer state: {e}"))),
         };
-        // Direct-TCP codes carry no remote-discoverable identity,
-        // so the replay metadata's `link_code` slot is left empty
-        // for them — the replay filename and view substitute
-        // their own placeholder. Matchmaking codes round-trip
-        // verbatim so a recorded match can be cross-referenced
-        // with the matchmaking-server logs.
+        // Direct codes carry no remote-discoverable identity, so the
+        // replay metadata's `link_code` slot is left empty for them — the
+        // replay filename and view substitute their own placeholder.
+        // Matchmaking codes round-trip verbatim so a recorded match can be
+        // cross-referenced with the matchmaking-server logs.
         let link_code = match &self.phase {
             Phase::Lobby {
                 ident: LinkIdent::Matchmaking(code),
@@ -823,14 +878,15 @@ impl State {
         let rng_seed = tango_net_protocol::derive::derive_rng_seed(&local_commit.state.nonce, &peer_state.nonce);
         let match_ts =
             tango_net_protocol::derive::pick_match_ts(handles.is_offerer, local_commit.state.ts, peer_state.ts);
-        // Cancel the lobby loop so it returns ownership of the receiver via
-        // the handles' oneshot. The loop sends the receiver down it on
-        // cancel-exit; `Link::bring_up` awaits it.
+        // Cancel the pump so it returns ownership of the receiver via the
+        // handles' oneshot. It sends the receiver down it on cancel-exit;
+        // `Link::bring_up` awaits it.
         self.cancel.cancel();
         // Both install identities, for the replay metadata: ours recomputed
         // from the certificate this connection actually presented (stashed at
-        // Connect), the peer's as the server attested it during signaling.
-        // Direct connections have neither — no signaling identity in play.
+        // connect time), the peer's as the server attested it during
+        // signaling. Direct connections have neither — no signaling identity
+        // in play.
         let local_client_cert_fingerprint = self
             .matchmaking_reconnect
             .as_ref()
@@ -839,8 +895,8 @@ impl State {
             .unwrap_or_default();
         // Build the mid-match reconnect recipe. The direct path carries its
         // recipe on ConnectionHandles; the matchmaking path combines the params
-        // stashed at Connect with a session_id derived from the shared RNG seed
-        // (now known), so both peers re-rendezvous on the same secret id.
+        // stashed at connect time with a session_id derived from the shared RNG
+        // seed (now known), so both peers re-rendezvous on the same secret id.
         let recipe = if let Some(role) = handles.reconnect {
             Some(ReconnectRecipe::Direct(role))
         } else {
@@ -884,10 +940,10 @@ impl State {
 
     /// A handoff-time decode failure: the peer's revealed state won't parse
     /// even though its hash matched the commitment (checked back in
-    /// `try_finish_handshake`). By this point `take_pre_match` has already
+    /// `maybe_finish_handshake`). By this point `take_pre_match` has already
     /// consumed the connection handles, so the session can't proceed — tear it
     /// down into a visible Failed banner. Returning a bare `None` instead
-    /// would read as "already drained" to the App, leaving the lobby stuck on
+    /// would read as "already drained" to the host, leaving the lobby stuck on
     /// its "Starting match…" chrome with no error.
     fn fail_handoff(&mut self, error: Error) -> Option<PreMatchData> {
         self.cancel_and_renew();
@@ -896,9 +952,9 @@ impl State {
     }
 
     /// Clear the lobby snapshot that `take_pre_match` left visible.
-    /// Called by the App once `spawn_pvp` resolves (either the PvP
-    /// view has taken over, or the build failed and `last_error`
-    /// is showing). Idempotent.
+    /// Called by the host once the session build resolves (either the PvP
+    /// view has taken over, or the build failed and the error is showing).
+    /// Idempotent.
     pub fn finish_handoff(&mut self) {
         self.phase = Phase::Idle;
         self.lobby = LobbyState::default();
@@ -907,9 +963,10 @@ impl State {
 
     /// True once both sides have exchanged StartMatch and the
     /// connection handles have been drained into a PreMatchData,
-    /// but before [`finish_handoff`] fires. The lobby UI uses
-    /// this to disable the ready / cancel chrome and show a
-    /// "Starting match…" placeholder while `spawn_pvp` runs.
+    /// but before [`finish_handoff`](State::finish_handoff) fires.
+    /// The lobby UI uses this to disable the ready / cancel chrome
+    /// and show a "Starting match…" placeholder while the session
+    /// is built.
     pub fn handoff_pending(&self) -> bool {
         matches!(self.handshake.local, LocalReady::HandedOff) && self.handshake.remote.start_match()
     }
@@ -922,8 +979,8 @@ pub use tango_session::pvp::PreMatchData;
 /// Does this settings change warrant auto-unready? `true` for
 /// game-info or match-type changes (the user's effectively
 /// changed what they're offering up), `false` for nickname /
-/// available-games churn (cosmetic / metadata-only). Lets the
-/// SendLocalSettings handler drop stale commits without forcing
+/// available-games churn (cosmetic / metadata-only). Lets
+/// `send_local_settings` drop stale commits without forcing
 /// the user back to the Ready button every time their roms
 /// scanner repopulates.
 fn settings_materially_differ(
@@ -931,23 +988,4 @@ fn settings_materially_differ(
     b: &tango_net_protocol::control::Settings,
 ) -> bool {
     a.game_info != b.game_info || a.match_type != b.match_type
-}
-
-fn slot<T>(payload: T) -> Slot<T> {
-    Arc::new(std::sync::Mutex::new(Some(payload)))
-}
-
-/// Distinct error variants for the async tasks so the message
-/// handler can tell a user-initiated Disconnect (Cancelled, no
-/// UI noise) from a real error (Failed, surface to the user).
-enum AsyncError {
-    Cancelled,
-    Failed(Error),
-}
-
-fn map_async_err(e: AsyncError) -> Message {
-    match e {
-        AsyncError::Cancelled => Message::Cancelled,
-        AsyncError::Failed(s) => Message::Failed(s),
-    }
 }

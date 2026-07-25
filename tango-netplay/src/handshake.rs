@@ -10,12 +10,11 @@
 //! and the transitions live next to the states they connect. The UI
 //! reads a derived [`ReadyView`] projection.
 
-use crate::Effect;
 use subtle::ConstantTimeEq;
 
 use tango_net_protocol::control::make_commitment;
 
-use super::{map_async_err, AsyncError, Message, Phase, State};
+use super::{Command, Error, Event, Phase, State};
 
 #[derive(Clone)]
 pub(super) struct LocalCommit {
@@ -154,162 +153,91 @@ impl State {
         }
     }
 
-    /// Whether we've committed — the App's re-commit / uncommit
+    /// Whether we've committed — the host's re-commit / uncommit
     /// triggers key off this.
     pub fn local_ready(&self) -> bool {
         self.handshake.local.is_ready()
     }
 
-    /// Drop the local commitment (ladder back to `NotReady`).
-    /// If we had previously sent a Commit, also fires an Uncommit
-    /// packet so the peer doesn't sit waiting for our chunks.
-    pub(super) fn invalidate_local_commit(&mut self) -> Effect {
-        let had_commit = self.handshake.local.is_ready();
-        self.handshake.local = LocalReady::NotReady;
-        if !had_commit {
-            return Effect::none();
-        }
-        let Some(sender) = self.conn.as_ref().map(|c| c.sender.clone()) else {
-            return Effect::none();
-        };
-        Effect::perform(
-            async move {
-                sender
-                    .lock()
-                    .await
-                    .send_uncommit()
-                    .await
-                    .map_err(|e| crate::Error::Other(format!("send_uncommit: {e}")))
-            },
-            |r| match r {
-                Ok(()) => Message::WireOpDone,
-                Err(e) => Message::Failed(e),
-            },
-        )
+    /// The user un-pressed Ready. Drops the local commitment (ladder back
+    /// to `NotReady`) and, if we'd already sent a Commit, fires an
+    /// Uncommit so the peer doesn't sit waiting for our chunks.
+    pub fn uncommit(&mut self) {
+        self.invalidate_local_commit();
     }
 
-    /// Build a NegotiatedState from a fresh nonce + the local
-    /// save's SRAM, zstd-compress it, hash it for the commitment,
-    /// send the Commit packet, then kick the chunk exchange if
-    /// the peer has already committed — and re-verify their reveal
-    /// if it's already complete (a re-commit after our Uncommit:
-    /// the peer won't re-send what we already hold).
-    pub(super) fn commit_local(&mut self, save_sram: Vec<u8>) -> Effect {
-        if !matches!(self.phase, Phase::Lobby { .. }) {
-            return Effect::none();
+    pub(super) fn invalidate_local_commit(&mut self) {
+        let had_commit = self.handshake.local.is_ready();
+        self.handshake.local = LocalReady::NotReady;
+        if had_commit {
+            self.send(Command::Uncommit);
         }
-        let Some(sender) = self.conn.as_ref().map(|c| c.sender.clone()) else {
-            return Effect::none();
-        };
+    }
+
+    /// The user pressed Ready. Builds a NegotiatedState from a fresh
+    /// nonce + the local save's SRAM, zstd-compresses it, hashes it for
+    /// the commitment and sends the Commit packet — then kicks the reveal
+    /// if the peer has already committed, and re-verifies their reveal if
+    /// it's already complete (a re-commit after our Uncommit: the peer
+    /// won't re-send what we already hold).
+    pub fn commit(&mut self, save_sram: Vec<u8>) -> Option<Event> {
+        if !matches!(self.phase, Phase::Lobby { .. }) {
+            return None;
+        }
         let mut nonce = [0u8; 16];
         rand::Rng::fill(&mut rand::thread_rng(), &mut nonce);
         let state = tango_net_protocol::control::NegotiatedState {
             nonce,
-            ts: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+            ts: web_time::SystemTime::now()
+                .duration_since(web_time::UNIX_EPOCH)
+                .unwrap_or_default()
                 .as_millis() as u64,
             save_data: save_sram,
         };
         let bin = match state.serialize() {
             Ok(b) => b,
             Err(e) => {
-                return Effect::done(Message::Failed(crate::Error::Other(format!("serialize state: {e}"))));
+                self.fail(Error::Other(format!("serialize state: {e}")));
+                return None;
             }
         };
         let compressed = match zstd::stream::encode_all(std::io::Cursor::new(&bin), 3) {
             Ok(c) => c,
             Err(e) => {
-                return Effect::done(Message::Failed(crate::Error::Other(format!("zstd encode: {e}"))));
+                self.fail(Error::Other(format!("zstd encode: {e}")));
+                return None;
             }
         };
         let commitment = make_commitment(&compressed);
         self.handshake.local = LocalReady::Committed(LocalCommit { state, compressed });
-
-        let send_commit = Effect::perform(
-            async move {
-                sender
-                    .lock()
-                    .await
-                    .send_commit(commitment)
-                    .await
-                    .map_err(|e| crate::Error::Other(format!("send_commit: {e}")))
-            },
-            |r| match r {
-                Ok(()) => Message::WireOpDone,
-                Err(e) => Message::Failed(e),
-            },
-        );
-        Effect::batch([
-            send_commit,
-            self.maybe_kick_chunk_exchange(),
-            self.maybe_finish_handshake(),
-        ])
+        self.send(Command::Commit(commitment));
+        self.maybe_kick_reveal();
+        self.maybe_finish_handshake()
     }
 
-    /// If both sides have committed and we haven't sent our
-    /// chunks yet (local ladder at `Committed`), spawn the
-    /// chunk-streaming task and advance to `ChunksSent`. Idempotent:
-    /// called from both Commit and RemoteCommit handlers, fires
-    /// the task exactly once per commit pairing.
-    pub(super) fn maybe_kick_chunk_exchange(&mut self) -> Effect {
+    /// If both sides have committed and we haven't sent our reveal yet
+    /// (local ladder at `Committed`), queue the reveal stream and advance
+    /// to `ChunksSent`. Idempotent: called from both the local commit and
+    /// the peer's, and fires exactly once per commit pairing — the rung
+    /// itself is the guard.
+    pub(super) fn maybe_kick_reveal(&mut self) {
         if !matches!(self.handshake.local, LocalReady::Committed(_)) || !self.handshake.remote.is_ready() {
-            return Effect::none();
+            return;
         }
-        let Some(sender) = self.conn.as_ref().map(|c| c.sender.clone()) else {
-            return Effect::none();
-        };
         let LocalReady::Committed(commit) = std::mem::take(&mut self.handshake.local) else {
             unreachable!();
         };
-        let compressed = commit.compressed.clone();
+        self.send(Command::Reveal(commit.compressed.clone()));
         self.handshake.local = LocalReady::ChunksSent(commit);
-        let cancel = self.cancel.clone();
-        Effect::perform(
-            async move {
-                // Announce the total length up front — the receiver
-                // counts arriving bytes against it, so there's no
-                // end-of-stream sentinel to send.
-                let total = compressed.len() as u64;
-                {
-                    let sender = sender.clone();
-                    let result: std::io::Result<()> = tokio::select! {
-                        biased;
-                        _ = cancel.cancelled() => return Err(AsyncError::Cancelled),
-                        r = async move { sender.lock().await.send_chunk_start(total).await } => r,
-                    };
-                    result.map_err(|e| AsyncError::Failed(crate::Error::Other(format!("send_chunk_start: {e}"))))?;
-                }
-                // bincode-framed Packet caps at 64 KB; 32 KB
-                // payload leaves room for the discriminant +
-                // length prefix. Protocol-visible, so the size
-                // lives with the codec.
-                for chunk in compressed.chunks(tango_net_protocol::control::REVEAL_CHUNK_SIZE) {
-                    let buf = chunk.to_vec();
-                    let sender = sender.clone();
-                    let result: std::io::Result<()> = tokio::select! {
-                        biased;
-                        _ = cancel.cancelled() => return Err(AsyncError::Cancelled),
-                        r = async move { sender.lock().await.send_chunk(buf).await } => r,
-                    };
-                    result.map_err(|e| AsyncError::Failed(crate::Error::Other(format!("send_chunk: {e}"))))?;
-                }
-                Ok::<(), AsyncError>(())
-            },
-            |r| match r {
-                Ok(()) => Message::WireOpDone,
-                Err(e) => map_async_err(e),
-            },
-        )
     }
 
-    /// If the peer's reveal is complete and we've sent our chunks,
-    /// verify their reveal against their commitment, advance to
-    /// `StartMatchSent`, and fire StartMatch. No-op from any other
-    /// rung pairing: before their reveal completes it just waits; after
-    /// `StartMatchSent` it's a duplicate trip; before our commit the
-    /// reveal is held (`revealed` stays latched) until we commit.
-    pub(super) fn maybe_finish_handshake(&mut self) -> Effect {
+    /// If the peer's reveal is complete and we've sent ours, verify theirs
+    /// against their commitment, advance to `StartMatchSent`, and fire
+    /// StartMatch. No-op from any other rung pairing: before their reveal
+    /// completes it just waits; after `StartMatchSent` it's a duplicate
+    /// trip; before our commit the reveal is held (`revealed` stays
+    /// latched) until we commit.
+    pub(super) fn maybe_finish_handshake(&mut self) -> Option<Event> {
         let RemoteReady::Committed {
             commitment,
             chunks,
@@ -317,63 +245,42 @@ impl State {
             ..
         } = &self.handshake.remote
         else {
-            return Effect::none();
+            return None;
         };
         if !matches!(self.handshake.local, LocalReady::ChunksSent(_)) {
-            return Effect::none();
+            return None;
         }
         let actual = make_commitment(chunks);
         if !bool::from(actual.ct_eq(commitment)) {
-            return Effect::done(Message::Failed(crate::Error::Other(
-                "peer commitment mismatch".to_string(),
-            )));
+            self.fail(Error::Other("peer commitment mismatch".to_string()));
+            return None;
         }
-        // Decompress + decode the peer's NegotiatedState. We
-        // don't use it for anything until the PvP session
-        // handoff, but verifying that it parses now means we
-        // catch wire-format breakage before the user hits Play.
+        // Decompress + decode the peer's NegotiatedState. We don't use it
+        // for anything until the PvP session handoff, but verifying that
+        // it parses now means we catch wire-format breakage before the
+        // user hits Play.
         let peer_state_bytes = match zstd::stream::decode_all(std::io::Cursor::new(chunks)) {
             Ok(b) => b,
             Err(e) => {
-                return Effect::done(Message::Failed(crate::Error::Other(format!("zstd decode: {e}"))));
+                self.fail(Error::Other(format!("zstd decode: {e}")));
+                return None;
             }
         };
         if let Err(e) = tango_net_protocol::control::NegotiatedState::deserialize(&peer_state_bytes) {
-            return Effect::done(Message::Failed(crate::Error::Other(format!("decode peer state: {e}"))));
+            self.fail(Error::Other(format!("decode peer state: {e}")));
+            return None;
         }
         let LocalReady::ChunksSent(commit) = std::mem::take(&mut self.handshake.local) else {
             unreachable!();
         };
         self.handshake.local = LocalReady::StartMatchSent(commit);
-
-        let Some(sender) = self.conn.as_ref().map(|c| c.sender.clone()) else {
-            return Effect::none();
-        };
-        let send_sm = Effect::perform(
-            async move {
-                sender
-                    .lock()
-                    .await
-                    .send_start_match()
-                    .await
-                    .map_err(|e| crate::Error::Other(format!("send_start_match: {e}")))
-            },
-            |r| match r {
-                Ok(()) => Message::WireOpDone,
-                Err(e) => Message::Failed(e),
-            },
-        );
-        Effect::batch([send_sm, self.maybe_signal_pvp_handoff()])
+        self.send(Command::StartMatch);
+        self.match_ready_event()
     }
 
-    /// Both sides have sent + received StartMatch — emit the
-    /// signal the App listens for to spin up the live match.
-    /// No-op until both halves are present.
-    pub(super) fn maybe_signal_pvp_handoff(&mut self) -> Effect {
-        if self.handshake.local.match_ready() && self.handshake.remote.start_match() {
-            Effect::done(Message::MatchHandoffReady)
-        } else {
-            Effect::none()
-        }
+    /// Both sides have sent + received StartMatch — the host's cue to spin
+    /// up the live match. `None` until both halves are present.
+    pub(super) fn match_ready_event(&self) -> Option<Event> {
+        (self.handshake.local.match_ready() && self.handshake.remote.start_match()).then_some(Event::MatchReady)
     }
 }
