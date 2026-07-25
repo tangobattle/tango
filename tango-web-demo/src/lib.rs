@@ -44,14 +44,6 @@ static FAMILIES: LazyLock<Vec<&'static tango_gamesupport::Family>> = LazyLock::n
 static GAMES: LazyLock<Vec<&'static tango_gamesupport::Game>> =
     LazyLock::new(|| tango_gamesupport::games_of(&FAMILIES));
 
-/// The mgba C shim's clock, which a browser has to supply: wasm32 has
-/// no `gettimeofday`, so mgba-sys leaves this symbol for the host to
-/// define (savestate stamps and the cart RTC's default read it).
-#[no_mangle]
-pub extern "C" fn mgba_sys_now_unix_ms() -> f64 {
-    js_sys::Date::now()
-}
-
 #[wasm_bindgen(start)]
 pub fn init() {
     console_error_panic_hook::set_once();

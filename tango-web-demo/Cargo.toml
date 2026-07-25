@@ -37,7 +37,6 @@ console_error_panic_hook = "0.1"
 # the only log this host has.
 console_log = "1"
 futures.workspace = true
-js-sys = "0.3"
 log.workspace = true
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
