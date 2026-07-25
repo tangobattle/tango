@@ -18,7 +18,7 @@
 //!
 //! [`Code`]: iced::keyboard::key::Code
 
-use gamepad_facade::GamepadId;
+use gamepad_facade::Id as GamepadId;
 use iced::keyboard::key::{Code, NativeCode, Physical};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};

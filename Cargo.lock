@@ -2036,7 +2036,7 @@ dependencies = [
 [[package]]
 name = "gamepad-facade"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/gamepad-facade#cea6c2395fed6776d1e63fc7672ee200d7d316c0"
+source = "git+https://github.com/tangobattle/gamepad-facade#3b2e3455e92521ca4d13f31cf706719b45d06948"
 dependencies = [
  "js-sys",
  "log",

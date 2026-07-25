@@ -32,13 +32,13 @@ use iced::advanced::widget::{Operation, Tree};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::{mouse, window, Element, Event, Length, Rectangle, Size, Vector};
 
-use gamepad_facade::GamepadEvent;
+use gamepad_facade::Event as GamepadEvent;
 
 /// Tagged input handed to the [`InputCapture`] callback. Keyboard
 /// events borrow the iced event so the caller can pattern-match
 /// without cloning; gamepad events come pre-normalized from the
-/// [`gamepad_facade`] crate (SDL3-derived but with the call-site facing
-/// surface narrowed).
+/// [`gamepad_facade`] crate, which presents one backend-neutral surface
+/// over SDL3 and the browser Gamepad API.
 pub enum Input<'a> {
     Keyboard(&'a iced::keyboard::Event),
     Gamepad(&'a GamepadEvent),
@@ -62,7 +62,7 @@ impl Input<'_> {
                 _ => return None,
             },
             Input::Gamepad(ev) => {
-                use gamepad_facade::GamepadEventKind as K;
+                use gamepad_facade::EventKind as K;
                 let id = ev.id;
                 match ev.kind {
                     K::ButtonDown(b) => crate::platform::input::Event::Button {
