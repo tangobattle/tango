@@ -91,6 +91,13 @@ pub use mgba_rollback::throttler::Throttler;
 /// readout.
 pub use mgba_rollback::Link;
 
+/// Booting a link of one's own — what a host does for a session this
+/// crate doesn't run itself (tango's single-player machine, which is a
+/// link with nobody on the other end). Re-exported for the same reason
+/// as [`Link`]: hosts shouldn't need their own mgba-rollback
+/// dependency to name its constructor's arguments.
+pub use mgba_rollback::{LinkOptions, Peripheral, SideOptions};
+
 /// Cross-thread readout handle to a running match's pair (see
 /// [`Match::pair_handle`](engine::Match::pair_handle)).
 pub use mgba_rollback::session::LinkHandle;

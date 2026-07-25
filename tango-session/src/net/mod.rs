@@ -23,9 +23,15 @@
 //! `tango_net_protocol::control`, etc.; the data plane's same-named transport types stay
 //! under `crate::net::data` to keep the two straight.
 
+use crate::platform::{WasmNotSend, WasmNotSync};
+
 pub mod channel;
 pub mod control;
 pub mod data;
+/// Signaling-free direct play, over a UDP socket this side owns. Native
+/// by nature: a browser has no UDP, and its peer connections come from
+/// the page's own signaling.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod direct_rtc;
 pub mod link;
 
@@ -40,16 +46,22 @@ pub use data::{InMatchTx, PvpReceiver, PvpSender};
 /// channel's properties — the control channel is reliable + ordered, the
 /// in-match channel unreliable + unordered — not this trait's; it only promises
 /// boundaries.
-#[async_trait::async_trait]
-pub trait PacketSink: Send + Sync {
+// A browser's channels aren't `Send`, so neither are the futures
+// that touch them; see [`crate::marker`].
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
+pub trait PacketSink: WasmNotSend + WasmNotSync {
     async fn send(&mut self, bytes: &[u8]) -> std::io::Result<()>;
 }
 
 /// One half of a peer connection's receive side. See [`PacketSink`] for the
 /// contract on message boundaries. A clean stream close is reported as
 /// `io::ErrorKind::UnexpectedEof`.
-#[async_trait::async_trait]
-pub trait PacketStream: Send + Sync {
+// A browser's channels aren't `Send`, so neither are the futures
+// that touch them; see [`crate::marker`].
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
+pub trait PacketStream: WasmNotSend + WasmNotSync {
     async fn recv(&mut self) -> std::io::Result<Vec<u8>>;
 }
 

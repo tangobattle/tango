@@ -133,7 +133,7 @@ struct InMatchState {
     /// it, and the freshest just-confirmed entry dates the round-trip. This is
     /// how RTT is measured now that there's no separate ping/pong probe — the
     /// ack the peer already piggybacks on every frame is the echo.
-    sent_times: std::collections::VecDeque<(u32, std::time::Instant)>,
+    sent_times: std::collections::VecDeque<(u32, web_time::Instant)>,
 }
 
 /// What [`InMatchTx::recv`] extracts from one incoming frame: the elements it
@@ -185,7 +185,7 @@ impl InMatchTx {
             data_sends: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
             heartbeat,
         };
-        tokio::spawn(this.clone().run_heartbeat(cancel));
+        crate::platform::spawn(this.clone().run_heartbeat(cancel));
         this
     }
 
@@ -208,7 +208,7 @@ impl InMatchTx {
             // touch this, so the time stays anchored to first transmission.
             if let Some(seq) = st.out.newest_seq() {
                 if st.sent_times.back().is_none_or(|&(prev, _)| seq > prev) {
-                    st.sent_times.push_back((seq, std::time::Instant::now()));
+                    st.sent_times.push_back((seq, web_time::Instant::now()));
                     while st.sent_times.len() > MAX_RTT_SAMPLES {
                         st.sent_times.pop_front();
                     }
@@ -312,7 +312,7 @@ impl InMatchTx {
         while st.sent_times.front().is_some_and(|&(seq, _)| seq < frontier) {
             confirmed_at = st.sent_times.pop_front().map(|(_, t)| t);
         }
-        let rtt = confirmed_at.map(|t| std::time::Instant::now().saturating_duration_since(t));
+        let rtt = confirmed_at.map(|t| web_time::Instant::now().saturating_duration_since(t));
         let delivered = st.inn.accept(frame)?;
         Ok(Delivery {
             elements: delivered.entries,
@@ -336,7 +336,7 @@ impl PvpSender {
         // The retransmit heartbeat is the in-match channel's own concern
         // (started by `InMatchTx::new`), so the pump just forwards inputs.
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Input>(SEND_PUMP_DEPTH);
-        tokio::spawn(async move {
+        crate::platform::spawn(async move {
             while let Some(input) = rx.recv().await {
                 if let Err(e) = im.send_input(input.joyflags, input.tick_advantage).await {
                     // Non-terminal: the element was pushed into the out-stream's

@@ -57,6 +57,9 @@ impl Channels {
     /// each, and carry the connection's DTLS fingerprints through. The initial
     /// connect and a mid-match reconnect both funnel through here, so they bundle
     /// a matchmaking connection identically.
+    ///
+    /// Native-only, like the signaling client it takes its input from.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn from_signaling(connected: tango_signaling::Connected) -> std::io::Result<Self> {
         let tango_signaling::Connected {
             channels: dcs,
@@ -126,7 +129,10 @@ struct DataChannelSink {
     inner: datachannel_wrapper::DataChannelSender,
 }
 
-#[async_trait::async_trait]
+// A browser's channels aren't `Send`, so neither are the futures
+// that touch them; see [`crate::marker`].
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 impl PacketSink for DataChannelSink {
     async fn send(&mut self, bytes: &[u8]) -> std::io::Result<()> {
         self.inner.send(bytes).await?;
@@ -138,7 +144,10 @@ struct DataChannelStream {
     inner: datachannel_wrapper::DataChannelReceiver,
 }
 
-#[async_trait::async_trait]
+// A browser's channels aren't `Send`, so neither are the futures
+// that touch them; see [`crate::marker`].
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 impl PacketStream for DataChannelStream {
     async fn recv(&mut self) -> std::io::Result<Vec<u8>> {
         self.inner

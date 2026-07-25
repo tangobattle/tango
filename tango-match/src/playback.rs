@@ -375,103 +375,197 @@ impl Playback {
 /// lock-free UI reads); `publish_landing` shows a landed snapshot;
 /// `on_resume` unpauses the host's drive loop when a request asked to
 /// resume after landing.
-pub fn run_seek_worker(
-    ctrl: &crate::playback::SeekController,
-    playback: &Mutex<Option<Playback>>,
-    store: &SnapshotStore,
-    rewind: &RewindRing,
-    on_progress: &mut dyn FnMut(u32),
-    publish_landing: &mut dyn FnMut(&Snapshot),
-    on_resume: &mut dyn FnMut(),
-) {
-    while ctrl.wait_for_request() {
-        ctrl.begin_pass();
-        'plan: loop {
-            let target = ctrl.take_target();
-            rewind.set_anchor(target);
+/// One seek chase, walked a slice of ticks at a time.
+///
+/// A chase is a plan (find the best snapshot at or before the target and
+/// load it) followed by a walk (step to the target, capturing as it
+/// goes). Splitting it this way is what lets a host without threads run
+/// one: [`SeekChase::step`] does a bounded amount of work and returns,
+/// so a browser can keep painting and a desktop can keep its dedicated
+/// worker thread ([`run_seek_worker`], which is just this in a loop).
+///
+/// A newer request landing mid-walk re-plans on the next step, and a
+/// cancelled controller ends the pass wherever it is.
+#[derive(Default)]
+pub struct SeekChase {
+    /// Where this chase is going, once it has planned a route. `None`
+    /// between chases and after a re-plan.
+    target: Option<u32>,
+    /// Newest snapshot captured on the way, published on landing.
+    landing: Option<Arc<Snapshot>>,
+}
 
-            let mut guard = playback.lock().unwrap();
-            let Some(pb) = guard.as_mut() else {
-                // Still booting — drop the request; the user can seek
-                // again once the pair is up.
-                break 'plan;
-            };
+/// What one [`SeekChase::step`] did.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ChaseStep {
+    /// No request was pending; nothing happened.
+    Idle,
+    /// Still walking — call again.
+    Working,
+    /// The chase landed (or gave up on a plan it couldn't make), and
+    /// the controller's pass has ended.
+    Landed,
+}
 
-            let cur = pb.cursor();
-            let start = if target < cur {
-                let best = [rewind.best_at_or_before(target), store.best_at_or_before(target)]
-                    .into_iter()
-                    .flatten()
-                    .max_by_key(|s| s.tick);
-                match best {
-                    Some(snap) => Some(snap),
-                    None => break 'plan,
+impl SeekChase {
+    /// Advance a seek by at most `budget` ticks, planning one first if a
+    /// request is pending.
+    ///
+    /// `on_progress` reports the moving cursor, `publish_landing` shows
+    /// the landing snapshot, and `on_resume` unpauses a host whose seek
+    /// asked to resume playback when it lands.
+    pub fn step(
+        &mut self,
+        ctrl: &SeekController,
+        playback: &Mutex<Option<Playback>>,
+        store: &SnapshotStore,
+        rewind: &RewindRing,
+        budget: u32,
+        on_progress: &mut dyn FnMut(u32),
+        publish_landing: &mut dyn FnMut(&Snapshot),
+        on_resume: &mut dyn FnMut(),
+    ) -> ChaseStep {
+        if ctrl.is_cancelled() {
+            return self.finish(ctrl, on_resume);
+        }
+        if self.target.is_none() && !ctrl.is_dirty() {
+            return ChaseStep::Idle;
+        }
+        // One lock for the whole slice: with an unbounded budget (a
+        // worker thread) that means the pair is held for the entire
+        // chase, as it always was — nothing else may step it out from
+        // under a walk.
+        let mut guard = playback.lock().unwrap();
+        let Some(pb) = guard.as_mut() else {
+            drop(guard);
+            return self.finish(ctrl, on_resume);
+        };
+        if self.target.is_none() {
+            match self.plan(ctrl, pb, store, rewind, on_progress, publish_landing) {
+                Plan::Walk(target) => self.target = Some(target),
+                Plan::Done => {
+                    drop(guard);
+                    return self.finish(ctrl, on_resume);
                 }
-            } else {
-                [
-                    rewind.best_in_range(cur, target.max(cur)),
-                    store.best_in_range(cur, target.max(cur)),
-                ]
+            }
+        }
+        let target = self.target.expect("planned above");
+        for _ in 0..budget {
+            if pb.cursor() >= target {
+                break;
+            }
+            if ctrl.is_cancelled() {
+                drop(guard);
+                return self.finish(ctrl, on_resume);
+            }
+            if ctrl.is_dirty() {
+                // A newer target: abandon this walk and re-plan on the
+                // next step, with the pass still open.
+                self.target = None;
+                self.landing = None;
+                drop(guard);
+                return ChaseStep::Working;
+            }
+            if !pb.step() {
+                break;
+            }
+            on_progress(pb.cursor());
+            match pb.capture() {
+                Ok(snap) => {
+                    if store.snapshot_needed(snap.tick) {
+                        store.push(snap.clone());
+                    }
+                    rewind.insert(snap.clone());
+                    self.landing = Some(snap);
+                }
+                Err(e) => log::warn!("pvp seek: capture failed: {e:?}"),
+            }
+        }
+        if pb.cursor() < target && pb.cursor() < pb.total() {
+            drop(guard);
+            return ChaseStep::Working;
+        }
+        // The catch-up run pushed fast-forward audio into the cores'
+        // buffers; purge it so the callback doesn't play a garbled
+        // burst.
+        for i in 0..2 {
+            pb.pair_mut().core_mut(i).audio_buffer().clear();
+        }
+        drop(guard);
+        if let Some(snap) = self.landing.take() {
+            publish_landing(&snap);
+        }
+        self.finish(ctrl, on_resume)
+    }
+
+    /// Plan a chase: consume the request, load the best snapshot at or
+    /// before it, and say whether there's a walk left to do.
+    fn plan(
+        &mut self,
+        ctrl: &SeekController,
+        pb: &mut Playback,
+        store: &SnapshotStore,
+        rewind: &RewindRing,
+        on_progress: &mut dyn FnMut(u32),
+        publish_landing: &mut dyn FnMut(&Snapshot),
+    ) -> Plan {
+        ctrl.begin_pass();
+        let target = ctrl.take_target();
+        rewind.set_anchor(target);
+
+        let cur = pb.cursor();
+        let start = if target < cur {
+            let best = [rewind.best_at_or_before(target), store.best_at_or_before(target)]
                 .into_iter()
                 .flatten()
-                .max_by_key(|s| s.tick)
-            };
+                .max_by_key(|s| s.tick);
+            match best {
+                Some(snap) => Some(snap),
+                None => return Plan::Done,
+            }
+        } else {
+            [
+                rewind.best_in_range(cur, target.max(cur)),
+                store.best_in_range(cur, target.max(cur)),
+            ]
+            .into_iter()
+            .flatten()
+            .max_by_key(|s| s.tick)
+        };
 
-            if let Some(snap) = &start {
-                rewind.insert(snap.clone());
-                if let Err(e) = pb.load(snap) {
-                    log::error!("pvp seek: snapshot load failed: {e:?}");
-                    break 'plan;
-                }
-                on_progress(pb.cursor());
-                if snap.tick >= target {
-                    publish_landing(snap);
-                    break 'plan;
-                }
+        if let Some(snap) = &start {
+            rewind.insert(snap.clone());
+            if let Err(e) = pb.load(snap) {
+                log::error!("pvp seek: snapshot load failed: {e:?}");
+                return Plan::Done;
             }
-
-            let mut landing: Option<Arc<Snapshot>> = None;
-            while pb.cursor() < target {
-                if ctrl.is_cancelled() {
-                    ctrl.end_pass();
-                    return;
-                }
-                if ctrl.is_dirty() {
-                    drop(guard);
-                    continue 'plan;
-                }
-                if !pb.step() {
-                    break;
-                }
-                on_progress(pb.cursor());
-                match pb.capture() {
-                    Ok(snap) => {
-                        if store.snapshot_needed(snap.tick) {
-                            store.push(snap.clone());
-                        }
-                        rewind.insert(snap.clone());
-                        landing = Some(snap);
-                    }
-                    Err(e) => log::warn!("pvp seek: capture failed: {e:?}"),
-                }
+            on_progress(pb.cursor());
+            if snap.tick >= target {
+                publish_landing(snap);
+                return Plan::Done;
             }
-            // The catch-up run pushed fast-forward audio into the cores'
-            // buffers; purge it so the callback doesn't play a garbled
-            // burst.
-            for i in 0..2 {
-                pb.pair_mut().core_mut(i).audio_buffer().clear();
-            }
-            if let Some(snap) = landing {
-                publish_landing(&snap);
-            }
-            break 'plan;
         }
-        ctrl.end_pass();
+        Plan::Walk(target)
+    }
 
-        if !ctrl.is_dirty() && ctrl.take_resume() {
+    /// End the pass: clear the chase, and run the resume the seek
+    /// scheduled unless a newer request has already superseded it.
+    fn finish(&mut self, ctrl: &SeekController, on_resume: &mut dyn FnMut()) -> ChaseStep {
+        self.target = None;
+        self.landing = None;
+        ctrl.end_pass();
+        if !ctrl.is_dirty() && !ctrl.is_cancelled() && ctrl.take_resume() {
             on_resume();
         }
+        ChaseStep::Landed
     }
+}
+
+enum Plan {
+    /// Walk to this target.
+    Walk(u32),
+    /// Nothing left to do — landed on the plan, or couldn't make one.
+    Done,
 }
 
 /// Body of the background prefetch worker: boots its own pair and runs
@@ -488,90 +582,146 @@ pub fn run_seek_worker(
 /// hook once per tick; the finished stats are returned. One simulation,
 /// both products — mirroring the trap engine's `run_prefetch`.
 #[allow(clippy::too_many_arguments)]
-pub fn run_prefetch(
-    config: &BootConfig,
-    inputs: &[[u32; 2]],
+pub struct Prefetch {
+    pair: mgba_rollback::Link,
+    observer: Telemetry,
+    telemetry_store: crate::telemetry::TelemetryHandle,
+    builder: Option<crate::analysis::StatsBuilder>,
+    inputs: Arc<Vec<[u32; 2]>>,
     local_player: usize,
     store: SnapshotStore,
     progress: Arc<AtomicU32>,
     round_marks: Option<Arc<Mutex<Vec<u32>>>>,
     cancel: Arc<AtomicBool>,
-    stats: Option<(
-        crate::analysis::ChipSemantics,
-        bool,
-        &mut dyn FnMut(u32, u32, &crate::analysis::StatsBuilder),
-    )>,
-) -> Result<Option<crate::analysis::MatchStats>, crate::Error> {
-    let lifecycle = crate::telemetry::LifecycleSink::new();
-    let mut pair = boot_and_prime(config, true, Some(&cancel), &lifecycle)?;
+    /// Ticks consumed so far; the pass is done when it reaches the
+    /// input stream's length.
+    cursor: usize,
+    rounds_started: u32,
+}
 
-    let (mut observer, telemetry_store) = Telemetry::new(
-        [config.support[0].core_poller(0), config.support[1].core_poller(1)],
-        lifecycle,
-    );
-    let (mut builder, mut on_progress) = match stats {
-        Some((chip_semantics, counts_buster, hook)) => (
-            Some(crate::analysis::StatsBuilder::new(chip_semantics, counts_buster)),
-            Some(hook),
-        ),
-        None => (None, None),
-    };
+impl Prefetch {
+    /// Boot the prefetch pair and capture the tick-0 keyframe.
+    ///
+    /// Blocks for the priming walk (a few hundred ticks) the same way
+    /// every other pair boot does — the one part of a pass that can't be
+    /// sliced, since priming runs until the games' own traps say it's
+    /// there.
+    pub fn open(
+        config: &BootConfig,
+        inputs: Arc<Vec<[u32; 2]>>,
+        local_player: usize,
+        store: SnapshotStore,
+        progress: Arc<AtomicU32>,
+        round_marks: Option<Arc<Mutex<Vec<u32>>>>,
+        cancel: Arc<AtomicBool>,
+        stats: Option<(crate::analysis::ChipSemantics, bool)>,
+    ) -> Result<Self, crate::Error> {
+        let lifecycle = crate::telemetry::LifecycleSink::new();
+        let mut pair = boot_and_prime(config, true, Some(&cancel), &lifecycle)?;
 
-    // Keyframe at tick 0: the primed pre-battle state every backward
-    // seek bottoms out on.
-    let capture = |pair: &mut mgba_rollback::Link, tick: u32| -> Result<Arc<Snapshot>, crate::Error> {
-        let state = pair.save()?;
-        let framebuffers = [
-            pair.video_buffer(0).map(|b| b.to_vec()).unwrap_or_default(),
-            pair.video_buffer(1).map(|b| b.to_vec()).unwrap_or_default(),
-        ];
-        Ok(Arc::new(Snapshot {
-            tick,
-            state,
-            framebuffers,
-        }))
-    };
-    store.push(capture(&mut pair, 0)?);
+        let (observer, telemetry_store) = Telemetry::new(
+            [config.support[0].core_poller(0), config.support[1].core_poller(1)],
+            lifecycle,
+        );
 
-    let total = inputs.len() as u32;
-    let mut rounds_started = 0u32;
+        // Keyframe at tick 0: the primed pre-battle state every backward
+        // seek bottoms out on.
+        store.push(capture_pair(&mut pair, 0)?);
 
-    for (i, &keys) in inputs.iter().enumerate() {
-        if cancel.load(Ordering::Relaxed) {
-            return Ok(None);
-        }
-        let tick = i as u32 + 1;
-        pair.tick(&keys);
-        mgba_rollback::session::TickObserver::on_tick(&mut observer, &mut pair, tick);
+        Ok(Self {
+            pair,
+            observer,
+            telemetry_store,
+            builder: stats
+                .map(|(chip_semantics, counts_buster)| {
+                    crate::analysis::StatsBuilder::new(chip_semantics, counts_buster)
+                }),
+            inputs,
+            local_player,
+            store,
+            progress,
+            round_marks,
+            cancel,
+            cursor: 0,
+            rounds_started: 0,
+        })
+    }
 
-        let (samples, events) = telemetry_store.lock().unwrap().drain_confirmed(tick);
-        if let Some(round_marks) = &round_marks {
-            for (event_tick, event) in &events {
-                if let crate::telemetry::RoundEvent::Started = event {
-                    rounds_started += 1;
-                    if rounds_started > 1 {
-                        round_marks.lock().unwrap().push(*event_tick);
+    /// Run up to `budget` ticks of the pass. `true` while there is more
+    /// to do; `false` once the stream is finished or the cancel flag has
+    /// flipped.
+    ///
+    /// `on_stats_progress` sees the running fold once per tick, for a
+    /// host drawing a live preview.
+    pub fn step(
+        &mut self,
+        budget: u32,
+        on_stats_progress: Option<&mut dyn FnMut(u32, u32, &crate::analysis::StatsBuilder)>,
+    ) -> Result<bool, crate::Error> {
+        let total = self.inputs.len() as u32;
+        let mut hook = on_stats_progress;
+        for _ in 0..budget {
+            if self.cancel.load(Ordering::Relaxed) {
+                return Ok(false);
+            }
+            let Some(&keys) = self.inputs.get(self.cursor) else {
+                return Ok(false);
+            };
+            let tick = self.cursor as u32 + 1;
+            self.cursor += 1;
+            self.pair.tick(&keys);
+            mgba_rollback::session::TickObserver::on_tick(&mut self.observer, &mut self.pair, tick);
+
+            let (samples, events) = self.telemetry_store.lock().unwrap().drain_confirmed(tick);
+            if let Some(round_marks) = &self.round_marks {
+                for (event_tick, event) in &events {
+                    if let crate::telemetry::RoundEvent::Started = event {
+                        self.rounds_started += 1;
+                        if self.rounds_started > 1 {
+                            round_marks.lock().unwrap().push(*event_tick);
+                        }
                     }
                 }
             }
-        }
-        if let Some(builder) = &mut builder {
-            crate::analysis::fold_confirmed(builder, local_player, samples, events, &mut |t| {
-                (t == tick).then_some(keys)
-            });
-            if let Some(hook) = &mut on_progress {
-                hook(tick, total, builder);
+            if let Some(builder) = &mut self.builder {
+                crate::analysis::fold_confirmed(builder, self.local_player, samples, events, &mut |t| {
+                    (t == tick).then_some(keys)
+                });
+                if let Some(hook) = &mut hook {
+                    hook(tick, total, builder);
+                }
             }
-        }
 
-        if store.snapshot_needed(tick) {
-            store.push(capture(&mut pair, tick)?);
+            if self.store.snapshot_needed(tick) {
+                self.store.push(capture_pair(&mut self.pair, tick)?);
+            }
+            self.progress.store(tick, Ordering::Relaxed);
         }
-        progress.store(tick, Ordering::Relaxed);
+        Ok(self.cursor < self.inputs.len())
     }
 
-    Ok(builder.map(|b| b.finish()))
+    /// The finished analysis, if this pass was asked for one. Meaningful
+    /// once [`Prefetch::step`] has reported the pass done; a cancelled
+    /// pass yields nothing.
+    pub fn finish(self) -> Option<crate::analysis::MatchStats> {
+        (self.cursor >= self.inputs.len()).then(|| self.builder.map(|b| b.finish()))?
+    }
 }
+
+/// A whole-pair snapshot at `tick`, framebuffers included.
+fn capture_pair(pair: &mut mgba_rollback::Link, tick: u32) -> Result<Arc<Snapshot>, crate::Error> {
+    let state = pair.save()?;
+    let framebuffers = [
+        pair.video_buffer(0).map(|b| b.to_vec()).unwrap_or_default(),
+        pair.video_buffer(1).map(|b| b.to_vec()).unwrap_or_default(),
+    ];
+    Ok(Arc::new(Snapshot {
+        tick,
+        state,
+        framebuffers,
+    }))
+}
+
 
 // ---------------------------------------------------------------------------
 // Seek coordination (host-facing half of the seek machinery).

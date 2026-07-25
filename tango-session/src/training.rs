@@ -121,7 +121,6 @@ pub struct TrainingSession {
     stop: Arc<AtomicBool>,
     screen: Arc<crate::Framebuffer>,
     wake: Arc<tokio::sync::Notify>,
-    drive: Option<std::thread::JoinHandle<()>>,
 }
 
 impl TrainingSession {
@@ -139,9 +138,11 @@ impl TrainingSession {
         game: &'static tango_gamesupport::Game,
         rom: Arc<Vec<u8>>,
         save_sram: Vec<u8>,
+        rtc: std::time::SystemTime,
+        rng_seed: [u8; 16],
         sample_rate: u32,
         controller: Box<dyn TrainingController>,
-    ) -> Result<(Self, crate::core_stream::CoreStream), crate::Error> {
+    ) -> Result<(Self, Driver, crate::audio::CoreStream), crate::Error> {
         // The engine's local core is core 0; `advance` always feeds core
         // 0 and `add_remote_input` core 1. The player starts on core 0
         // (the dummy on core 1); a swap only re-routes which input source
@@ -156,8 +157,8 @@ impl TrainingSession {
             saves: [save_sram.clone(), save_sram],
             support: [game.pvp, game.pvp],
             match_type: TRAINING_MATCH_TYPE,
-            rng_seed: rand::random(),
-            rtc: std::time::SystemTime::now(),
+            rng_seed,
+            rtc,
             local_player: 0,
             present_delay: 0,
             disable_bgm: false,
@@ -191,36 +192,34 @@ impl TrainingSession {
         // path as PvP), rate control following the pacing target. The
         // `player` closure is re-read every fill, so a swap moves the
         // sound to the side the player is now driving.
-        let audio = crate::core_stream::CoreStream::new(
-            crate::core_stream::PairCorePull {
+        let audio = crate::audio::CoreStream::new(
+            crate::audio::PairCorePull {
                 pair: match_.pair_handle(),
                 player: {
                     let controlled = controlled.clone();
                     Box::new(move || controlled.load(Ordering::Relaxed))
                 },
             },
-            crate::core_stream::CoreStream::fps_from_bits(fps_bits.clone()),
+            crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
             sample_rate,
         );
 
-        let drive = std::thread::Builder::new().name("training".to_owned()).spawn({
-            let ctx = DriveContext {
-                match_,
-                controlled: controlled.clone(),
-                joyflags: joyflags.clone(),
-                controller: controller.clone(),
-                fps_bits: fps_bits.clone(),
-                dummy_joyflags: dummy_joyflags.clone(),
-                show_pip: show_pip.clone(),
-                pip: pip.clone(),
-                pip_fresh: pip_fresh.clone(),
-                ended: ended.clone(),
-                stop: stop.clone(),
-                screen: screen.clone(),
-                wake: wake.clone(),
-            };
-            move || ctx.run()
-        })?;
+        let driver = Driver {
+            match_,
+            controlled: controlled.clone(),
+            joyflags: joyflags.clone(),
+            controller: controller.clone(),
+            fps_bits: fps_bits.clone(),
+            dummy_joyflags: dummy_joyflags.clone(),
+            show_pip: show_pip.clone(),
+            pip: pip.clone(),
+            pip_fresh: pip_fresh.clone(),
+            ended: ended.clone(),
+            stop: stop.clone(),
+            screen: screen.clone(),
+            wake: wake.clone(),
+            frame: 0,
+        };
 
         Ok((
             Self {
@@ -237,8 +236,8 @@ impl TrainingSession {
                 stop,
                 screen,
                 wake,
-                drive: Some(drive),
             },
+            driver,
             audio,
         ))
     }
@@ -325,16 +324,14 @@ impl crate::Session for TrainingSession {
 }
 
 impl Drop for TrainingSession {
+    /// Tell whoever is driving to stop; the next `tick` returns false.
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
-        if let Some(drive) = self.drive.take() {
-            let _ = drive.join();
-        }
     }
 }
 
-/// Everything the drive thread owns for the session's life.
-struct DriveContext {
+/// Everything the driver owns for the session's life.
+pub struct Driver {
     match_: Match,
     controlled: Arc<AtomicUsize>,
     joyflags: Arc<AtomicU32>,
@@ -348,15 +345,33 @@ struct DriveContext {
     stop: Arc<AtomicBool>,
     screen: Arc<crate::Framebuffer>,
     wake: Arc<tokio::sync::Notify>,
+    /// Ticks run, handed to the dummy controller so it can time its
+    /// takes.
+    frame: u64,
 }
 
-impl DriveContext {
-    fn run(mut self) {
-        let mask = tango_match::input::JOYFLAGS_MASK as u32;
-        let mut frame: u64 = 0;
-        let mut pacer = crate::Pacer::new();
+impl crate::Drive for Driver {
+    fn tick(&mut self) -> bool {
+        Driver::tick(self)
+    }
 
-        while !self.stop.load(Ordering::Relaxed) {
+    fn fps_target(&self) -> f32 {
+        f32::from_bits(self.fps_bits.load(Ordering::Relaxed))
+    }
+}
+
+impl Driver {
+    /// Advance the battle one tick: poll the dummy, route both inputs,
+    /// step the pair, publish the screens. `false` once the session has
+    /// ended — the battle's own match-end path, a failed advance, or the
+    /// session being dropped.
+    pub fn tick(&mut self) -> bool {
+        let mask = tango_match::input::JOYFLAGS_MASK as u32;
+        let frame = self.frame;
+        if self.stop.load(Ordering::Relaxed) {
+            return false;
+        }
+        {
             // Which core the player drives this tick; the dummy takes the
             // other. A swap flips this between ticks.
             let controlled = self.controlled.load(Ordering::Relaxed);
@@ -393,7 +408,7 @@ impl DriveContext {
                     log::error!("training: advance failed: {e}");
                     self.ended.store(true, Ordering::Release);
                     self.wake.notify_one();
-                    break;
+                    return false;
                 }
             };
 
@@ -405,7 +420,7 @@ impl DriveContext {
             if events.iter().any(|(_, e)| matches!(e, RoundEvent::MatchEnded)) {
                 self.ended.store(true, Ordering::Release);
                 self.wake.notify_one();
-                break;
+                return false;
             }
 
             // Publish the controlled core to the main screen; the other
@@ -423,11 +438,9 @@ impl DriveContext {
                     self.pip_fresh.store(false, Ordering::Relaxed);
                 }
             });
-            frame = frame.wrapping_add(1);
+            self.frame = frame.wrapping_add(1);
             self.wake.notify_one();
-
-            // Pace at the target rate (realtime unless fast-forwarding).
-            pacer.wait(f32::from_bits(self.fps_bits.load(Ordering::Relaxed)));
         }
+        true
     }
 }

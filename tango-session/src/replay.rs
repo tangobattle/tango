@@ -7,7 +7,7 @@
 //! asynchronous: requests land on a [`SeekController`] and a dedicated
 //! worker chases the newest target, so the UI never blocks on catch-up
 //! emulation. Audio is pulled straight off the pair via
-//! [`crate::core_stream::CoreStream`].
+//! [`crate::audio::CoreStream`].
 //!
 //! [`SnapshotStore`]: tango_match::playback::SnapshotStore
 //! [`RewindRing`]: tango_match::playback::RewindRing
@@ -82,11 +82,10 @@ struct Engine {
     rewind: tango_match::playback::RewindRing,
     prefetch_progress: Arc<AtomicU32>,
     seek: Arc<SeekController>,
-    /// Cancels the drive + prefetch threads on Drop.
+    /// Cancels the loops the host is running, on Drop; whoever is
+    /// running them notices on their next tick (and a host with threads
+    /// joins them afterwards).
     cancel: Arc<AtomicBool>,
-    /// Joined on Drop, after `cancel` and the seek controller's
-    /// shutdown, so no thread outlives the surfaces they publish to.
-    threads: Vec<std::thread::JoinHandle<()>>,
 }
 
 type SharedSioPlayback = Arc<Mutex<Option<tango_match::playback::Playback>>>;
@@ -94,12 +93,9 @@ type SharedSioPlayback = Arc<Mutex<Option<tango_match::playback::Playback>>>;
 impl Drop for Engine {
     fn drop(&mut self) {
         self.cancel.store(true, Ordering::Relaxed);
-        // Release a gate-parked drive thread so the join below is prompt.
+        // Release a gate-parked drive loop so the host's join is prompt.
         self.paused.set(false);
         self.seek.shutdown();
-        for h in self.threads.drain(..) {
-            let _ = h.join();
-        }
     }
 }
 
@@ -110,7 +106,7 @@ impl Drop for Engine {
 /// lands anyway.
 struct SioPlaybackPull(SharedSioPlayback);
 
-impl crate::core_stream::PairPull for SioPlaybackPull {
+impl crate::audio::PairPull for SioPlaybackPull {
     fn with_pair(&self, f: &mut dyn FnMut(&mut tango_match::Link)) {
         if let Ok(mut guard) = self.0.try_lock() {
             if let Some(pb) = guard.as_mut() {
@@ -138,7 +134,7 @@ impl ReplaySession {
         sample_rate: u32,
         show_pip: bool,
         stats_job: Option<PrefetchStatsJob>,
-    ) -> Result<(Self, crate::core_stream::CoreStream), crate::Error> {
+    ) -> Result<(Self, Workers, crate::audio::CoreStream), crate::Error> {
         use tango_match::playback as sio_playback;
 
         let local_player = replay.local_player_index as usize;
@@ -226,138 +222,60 @@ impl ReplaySession {
             local_player,
         };
 
-        let mut threads = Vec::new();
-
-        // The drive thread: boots + primes the pair, then paces the
-        // linear re-sim at the published fps target, capturing every
-        // tick into the rewind ring (keyframes shared into the store)
-        // and publishing frames.
-        threads.push(
-            std::thread::Builder::new()
-                .name("tango-sio-replay-drive".to_owned())
-                .spawn({
-                    let boot_config = boot();
-                    let inputs = inputs.clone();
-                    let playback = playback.clone();
-                    let cursor = cursor.clone();
-                    let paused = paused.clone();
-                    let fps_bits = fps_bits.clone();
-                    let snapshots = snapshots.clone();
-                    let rewind = rewind.clone();
-                    let cancel = cancel.clone();
-                    let surfaces = surfaces.clone();
-                    move || {
-                        run_drive(
-                            boot_config,
-                            inputs,
-                            playback,
-                            cursor,
-                            paused,
-                            fps_bits,
-                            snapshots,
-                            rewind,
-                            cancel,
-                            surfaces,
-                        )
-                    }
-                })?,
-        );
-
-        // The prefetch worker: races its own pair through the whole
-        // stream for keyframes, round marks, and (optionally) the
-        // match-stats analysis — the SIO analogue of [`Prefetcher`].
-        threads.push(
-            std::thread::Builder::new()
-                .name("tango-sio-replay-prefetch".to_owned())
-                .spawn({
-                    let boot_config = boot();
-                    let inputs = inputs.clone();
-                    let snapshots = snapshots.clone();
-                    let prefetch_progress = prefetch_progress.clone();
-                    let round_marks = discover_marks.then(|| round_marks.clone());
-                    let cancel = cancel.clone();
-                    let chip_semantics = games[local_player].pvp.chip_semantics(roms[local_player].as_ref());
-                    let counts_buster = games[local_player].pvp.counts_buster(roms[local_player].as_ref());
-                    move || {
-                        const PREVIEW_EVERY: std::time::Duration = std::time::Duration::from_millis(33);
-                        let mut last_preview = std::time::Instant::now();
-                        let mut on_stats_progress =
-                            |_tick: u32, _total: u32, builder: &tango_match::analysis::StatsBuilder| {
-                                let Some(job) = &stats_job else { return };
-                                let now = std::time::Instant::now();
-                                if now.duration_since(last_preview) < PREVIEW_EVERY {
-                                    return;
-                                }
-                                last_preview = now;
-                                let _ = job.partial_tx.unbounded_send(builder.preview());
-                            };
-                        match sio_playback::run_prefetch(
-                            &boot_config,
-                            &inputs,
-                            local_player,
-                            snapshots,
-                            prefetch_progress,
-                            round_marks,
-                            cancel,
-                            stats_job.is_some().then_some((
-                                chip_semantics,
-                                counts_buster,
-                                &mut on_stats_progress as &mut dyn FnMut(u32, u32, &tango_match::analysis::StatsBuilder),
-                            )),
-                        ) {
-                            Ok(Some(stats)) => {
-                                if let Some(job) = &stats_job {
-                                    if let Err(e) = crate::stats_cache::write_match_stats(&job.stats_file, &stats)
-                                    {
-                                        log::warn!("prefetch stats cache write failed: {e:?}");
-                                    }
-                                    *job.done.lock().unwrap() = Some(stats);
-                                }
-                            }
-                            Ok(None) => {}
-                            // Session closed while the prefetch pair was
-                            // still priming — a normal teardown, not noise
-                            // for the error log.
-                            Err(tango_match::Error::Cancelled) => {}
-                            Err(e) => log::error!("sio replay prefetch worker exited with error: {e:?}"),
-                        }
-                    }
-                })?,
-        );
-
-        // The seek worker: chases seek targets on the playback pair.
-        threads.push(
-            std::thread::Builder::new()
-                .name("tango-sio-replay-seek".to_owned())
-                .spawn({
-                    let seek = seek.clone();
-                    let playback = playback.clone();
-                    let cursor = cursor.clone();
-                    let paused = paused.clone();
-                    let snapshots = snapshots.clone();
-                    let rewind = rewind.clone();
-                    let surfaces = surfaces.clone();
-                    move || {
-                        tango_match::playback::run_seek_worker(
-                            &seek,
-                            &playback,
-                            &snapshots,
-                            &rewind,
-                            &mut |tick| cursor.store(tick, Ordering::Relaxed),
-                            &mut |snap| {
-                                surfaces.publish_snapshot(snap);
-                            },
-                            &mut || paused.set(false),
-                        );
-                    }
-                })?,
-        );
+        // The three loops this session needs run. Which of them get
+        // threads is the host's call: a desktop gives each one
+        // ([`Workers::split`]), a browser ticks them in turn
+        // ([`Workers::into_driver`]).
+        let workers = Workers {
+            drive: DriveWorker {
+                boot_config: boot(),
+                inputs: inputs.clone(),
+                playhead: Playhead {
+                    playback: playback.clone(),
+                    cursor: cursor.clone(),
+                    paused: paused.clone(),
+                    snapshots: snapshots.clone(),
+                    rewind: rewind.clone(),
+                    cancel: cancel.clone(),
+                    surfaces: surfaces.clone(),
+                },
+                fps_bits: fps_bits.clone(),
+                paused: paused.clone(),
+                cancel: cancel.clone(),
+                booted: false,
+            },
+            seek: SeekWorker {
+                seek: seek.clone(),
+                playback: playback.clone(),
+                cursor: cursor.clone(),
+                paused: paused.clone(),
+                snapshots: snapshots.clone(),
+                rewind: rewind.clone(),
+                surfaces: surfaces.clone(),
+            },
+            prefetch: PrefetchWorker {
+                boot_config: boot(),
+                inputs: inputs.clone(),
+                local_player,
+                snapshots: snapshots.clone(),
+                progress: prefetch_progress.clone(),
+                round_marks: discover_marks.then(|| round_marks.clone()),
+                cancel: cancel.clone(),
+                stats: stats_job.as_ref().map(|_| {
+                    (
+                        games[local_player].pvp.chip_semantics(roms[local_player].as_ref()),
+                        games[local_player].pvp.counts_buster(roms[local_player].as_ref()),
+                    )
+                }),
+                stats_job,
+            },
+        };
 
         // Audio: play the shown perspective's core straight off the
         // pair, following the drive loop's pacing (see
         // [`crate::core_stream`]).
-        let audio = crate::core_stream::CoreStream::new(
-            crate::core_stream::PairCorePull {
+        let audio = crate::audio::CoreStream::new(
+            crate::audio::PairCorePull {
                 pair: SioPlaybackPull(playback.clone()),
                 player: {
                     let swap_perspective = swap_perspective.clone();
@@ -370,7 +288,7 @@ impl ReplaySession {
                     })
                 },
             },
-            crate::core_stream::CoreStream::fps_from_bits(fps_bits.clone()),
+            crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
             sample_rate,
         );
 
@@ -395,10 +313,9 @@ impl ReplaySession {
                 prefetch_progress,
                 seek,
                 cancel,
-                threads,
             },
         };
-        Ok((session, audio))
+        Ok((session, workers, audio))
     }
 
     /// Whether the opponent-screen PiP is on — drives the transport bar
@@ -771,82 +688,334 @@ impl Surfaces {
 /// publishing frames. Reaching end-of-stream pauses; unpausing there is
 /// a no-op until a seek moves the playhead back.
 #[allow(clippy::too_many_arguments)]
-fn run_drive(
-    boot_config: tango_match::playback::BootConfig,
-    inputs: Arc<Vec<[u32; 2]>>,
+/// Everything the playback half of a replay session needs, whoever is
+/// driving it. A desktop gives each of the session's three concerns a
+/// thread of its own (see [`Workers::split`]); a browser has one event
+/// loop, so [`Driver`] interleaves them.
+struct Playhead {
     playback: SharedSioPlayback,
     cursor: Arc<AtomicU32>,
     paused: Arc<crate::PauseGate>,
-    fps_bits: Arc<AtomicU32>,
     snapshots: tango_match::playback::SnapshotStore,
     rewind: tango_match::playback::RewindRing,
     cancel: Arc<AtomicBool>,
     surfaces: Surfaces,
-) {
-    // The display pair runs no telemetry observer — its lifecycle sink
-    // is a write-only stub.
-    let pb = match tango_match::playback::Playback::new(&boot_config, inputs, &tango_match::telemetry::LifecycleSink::new())
-    {
-        Ok(pb) => pb,
-        Err(e) => {
-            log::error!("sio replay: boot failed: {e:?}");
-            return;
-        }
-    };
-    *playback.lock().unwrap() = Some(pb);
+}
 
-    // Show the primed first frame while paused-at-start or still
-    // spinning up.
-    if let Some(pb) = playback.lock().unwrap().as_mut() {
-        surfaces.publish_pair(pb.pair_mut());
+impl Playhead {
+    /// Boot + prime the display pair and show its first frame. Blocks
+    /// for the priming walk — the one part of a session that can't be
+    /// sliced, since it runs until the games' own traps say it's there.
+    fn boot(
+        &self,
+        boot_config: &tango_match::playback::BootConfig,
+        inputs: Arc<Vec<[u32; 2]>>,
+    ) -> bool {
+        // The display pair runs no telemetry observer — its lifecycle
+        // sink is a write-only stub.
+        let pb = match tango_match::playback::Playback::new(
+            boot_config,
+            inputs,
+            &tango_match::telemetry::LifecycleSink::new(),
+        ) {
+            Ok(pb) => pb,
+            Err(e) => {
+                log::error!("sio replay: boot failed: {e:?}");
+                return false;
+            }
+        };
+        *self.playback.lock().unwrap() = Some(pb);
+        // Show the primed first frame while paused-at-start or still
+        // spinning up.
+        if let Some(pb) = self.playback.lock().unwrap().as_mut() {
+            self.surfaces.publish_pair(pb.pair_mut());
+        }
+        true
     }
 
-    let mut next_tick = std::time::Instant::now();
-    loop {
-        if cancel.load(Ordering::Relaxed) {
-            return;
+    /// Advance the playhead one tick, capturing and publishing it.
+    /// `false` once there is nothing left to drive — cancelled, or the
+    /// pair went away.
+    fn step(&self) -> bool {
+        if self.cancel.load(Ordering::Relaxed) {
+            return false;
         }
-        if paused.paused() {
-            // Park on the gate (cancel releases it via Engine::drop);
-            // restart the cadence from the wake so paused time doesn't
-            // accrue pacing debt.
-            paused.wait();
-            next_tick = std::time::Instant::now();
-            continue;
+        let mut guard = self.playback.lock().unwrap();
+        let Some(pb) = guard.as_mut() else { return false };
+        if pb.at_end() {
+            self.paused.set(true);
+            return true;
         }
-
-        {
-            let mut guard = playback.lock().unwrap();
-            let Some(pb) = guard.as_mut() else { return };
-            if pb.at_end() {
-                paused.set(true);
-                continue;
-            }
-            pb.step();
-            cursor.store(pb.cursor(), Ordering::Relaxed);
-            match pb.capture() {
-                Ok(snap) => {
-                    if snapshots.snapshot_needed(snap.tick) {
-                        snapshots.push(snap.clone());
-                    }
-                    rewind.insert(snap);
+        pb.step();
+        self.cursor.store(pb.cursor(), Ordering::Relaxed);
+        match pb.capture() {
+            Ok(snap) => {
+                if self.snapshots.snapshot_needed(snap.tick) {
+                    self.snapshots.push(snap.clone());
                 }
-                Err(e) => log::warn!("sio replay: frame capture failed: {e:?}"),
+                self.rewind.insert(snap);
             }
-            surfaces.publish_pair(pb.pair_mut());
+            Err(e) => log::warn!("sio replay: frame capture failed: {e:?}"),
         }
+        self.surfaces.publish_pair(pb.pair_mut());
+        true
+    }
+}
 
-        // Pace at the published target (60 × speed factor).
-        let fps = f32::from_bits(fps_bits.load(Ordering::Relaxed)).max(1.0);
-        next_tick += std::time::Duration::from_secs_f64(1.0 / fps as f64);
-        let now = std::time::Instant::now();
-        if next_tick > now {
-            std::thread::sleep(next_tick - now);
-        } else if now - next_tick > std::time::Duration::from_millis(250) {
-            // Fell way behind (debugger, laptop lid, a long seek holding
-            // the pair): resynchronize the cadence instead of sprinting.
-            next_tick = now;
+/// The playback loop, as something a host drives: boot on the first
+/// tick, then advance the playhead one frame per tick at the rate
+/// [`Drive::fps_target`] publishes.
+///
+/// Pausing is the host's too — a paused tick does nothing and says so,
+/// so a thread can sleep on the gate and an event loop can just come
+/// back later.
+pub struct DriveWorker {
+    boot_config: tango_match::playback::BootConfig,
+    inputs: Arc<Vec<[u32; 2]>>,
+    playhead: Playhead,
+    fps_bits: Arc<AtomicU32>,
+    paused: Arc<crate::PauseGate>,
+    cancel: Arc<AtomicBool>,
+    booted: bool,
+}
+
+impl DriveWorker {
+    /// Boot the display pair if this is the first tick. Blocks for the
+    /// priming walk; `false` if it failed, which ends the session.
+    fn boot_if_needed(&mut self) -> bool {
+        if self.booted {
+            return true;
         }
+        self.booted = true;
+        self.playhead.boot(&self.boot_config, self.inputs.clone())
+    }
+
+    /// Whether the user has playback stopped. A host that can park
+    /// (a thread) should, rather than spinning on ticks that do nothing.
+    pub fn paused(&self) -> bool {
+        self.paused.paused()
+    }
+
+    /// Park until unpaused, for a host that has a thread to park.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn wait_while_paused(&self) {
+        self.paused.wait();
+    }
+}
+
+impl crate::Drive for DriveWorker {
+    fn tick(&mut self) -> bool {
+        if self.cancel.load(Ordering::Relaxed) {
+            return false;
+        }
+        if !self.boot_if_needed() {
+            return false;
+        }
+        if self.paused.paused() {
+            return true;
+        }
+        self.playhead.step()
+    }
+
+    fn fps_target(&self) -> f32 {
+        f32::from_bits(self.fps_bits.load(Ordering::Relaxed)).max(1.0)
+    }
+}
+
+/// The seek loop: chases the targets the transport bar requests.
+pub struct SeekWorker {
+    seek: Arc<tango_match::playback::SeekController>,
+    playback: SharedSioPlayback,
+    cursor: Arc<AtomicU32>,
+    paused: Arc<crate::PauseGate>,
+    snapshots: tango_match::playback::SnapshotStore,
+    rewind: tango_match::playback::RewindRing,
+    surfaces: Surfaces,
+}
+
+impl SeekWorker {
+    /// Advance an in-flight chase by at most `budget` ticks, starting
+    /// one if a request is pending. `true` while a chase is still
+    /// walking — a pumped host should come straight back rather than
+    /// advancing playback underneath it.
+    pub fn step(&self, chase: &mut tango_match::playback::SeekChase, budget: u32) -> bool {
+        chase.step(
+            &self.seek,
+            &self.playback,
+            &self.snapshots,
+            &self.rewind,
+            budget,
+            &mut |tick| self.cursor.store(tick, Ordering::Relaxed),
+            &mut |snap| self.surfaces.publish_snapshot(snap),
+            &mut || self.paused.set(false),
+        ) == tango_match::playback::ChaseStep::Working
+    }
+
+    /// Park until a seek is requested, or the session shuts down
+    /// (`false`). What a host's seek thread waits on between chases; a
+    /// pumped host just keeps calling [`SeekWorker::step`], which does
+    /// nothing until there's something to chase.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn wait_for_request(&self) -> bool {
+        self.seek.wait_for_request()
+    }
+}
+
+/// The prefetch loop: races its own pair through the whole stream for
+/// keyframes, round marks and (when the host asked for them) the
+/// match-stats analysis.
+pub struct PrefetchWorker {
+    boot_config: tango_match::playback::BootConfig,
+    inputs: Arc<Vec<[u32; 2]>>,
+    local_player: usize,
+    snapshots: tango_match::playback::SnapshotStore,
+    progress: Arc<AtomicU32>,
+    round_marks: Option<Arc<Mutex<Vec<u32>>>>,
+    cancel: Arc<AtomicBool>,
+    stats: Option<(tango_match::analysis::ChipSemantics, bool)>,
+    stats_job: Option<PrefetchStatsJob>,
+}
+
+impl PrefetchWorker {
+    /// Open the prefetch pair. Blocks for its priming walk — the one
+    /// part of a pass that can't be sliced.
+    pub fn open(&self) -> Result<tango_match::playback::Prefetch, tango_match::Error> {
+        tango_match::playback::Prefetch::open(
+            &self.boot_config,
+            self.inputs.clone(),
+            self.local_player,
+            self.snapshots.clone(),
+            self.progress.clone(),
+            self.round_marks.clone(),
+            self.cancel.clone(),
+            self.stats,
+        )
+    }
+
+    /// The stats job this pass was opened for, if any — the host
+    /// delivers to it when the pass finishes, and previews into it as
+    /// the fold runs.
+    pub fn stats_job(&self) -> Option<&PrefetchStatsJob> {
+        self.stats_job.as_ref()
+    }
+
+    /// Hand a finished pass's stats to that job. The cache write is the
+    /// host's on a desktop; a browser has nowhere to put it.
+    fn deliver(&self, stats: Option<tango_match::analysis::MatchStats>) {
+        let (Some(stats), Some(job)) = (stats, self.stats_job.as_ref()) else {
+            return;
+        };
+        *job.done.lock().unwrap() = Some(stats);
+    }
+}
+
+/// The three loops a replay session needs run, before anyone has
+/// decided what runs them.
+pub struct Workers {
+    pub drive: DriveWorker,
+    pub seek: SeekWorker,
+    pub prefetch: PrefetchWorker,
+}
+
+impl Workers {
+    /// Take the three loops apart, for a host that gives each a thread.
+    pub fn split(self) -> (DriveWorker, SeekWorker, PrefetchWorker) {
+        (self.drive, self.seek, self.prefetch)
+    }
+
+    /// Fold them into one driver, for a host with a single event loop.
+    pub fn into_driver(self) -> Driver {
+        Driver {
+            drive: self.drive,
+            seek: self.seek,
+            chase: tango_match::playback::SeekChase::default(),
+            prefetch: self.prefetch,
+            pass: None,
+            done_prefetching: false,
+        }
+    }
+}
+
+/// All three replay loops on one thread of control, a slice at a time.
+///
+/// A seek in flight owns the tick — advancing playback underneath a
+/// chase would fight it — and otherwise the playhead advances. The
+/// prefetch pass is *not* in here: it's background work on the same
+/// thread, so the host schedules it with
+/// [`Driver::prefetch_step`] out of whatever the frame left over.
+pub struct Driver {
+    drive: DriveWorker,
+    seek: SeekWorker,
+    chase: tango_match::playback::SeekChase,
+    prefetch: PrefetchWorker,
+    pass: Option<tango_match::playback::Prefetch>,
+    /// The pass finished, failed, or was cancelled — don't reopen it.
+    done_prefetching: bool,
+}
+
+impl Driver {
+    /// Ticks of chase per pumped frame. A seek is the user waiting, so
+    /// it gets the most.
+    const SEEK_SLICE: u32 = 64;
+
+    /// Advance the prefetch pass, opening its pair on the first call.
+    /// `false` once the pass is done (or was never wanted).
+    ///
+    /// Deliberately not part of [`Drive::tick`]: this is background work
+    /// that competes with playback for the same thread, so *when* and
+    /// *how much* is the host's to decide — a browser has to fit it into
+    /// whatever the frame left over, and getting that wrong pegs the
+    /// event loop.
+    pub fn prefetch_step(&mut self, budget: u32) -> bool {
+        if self.pass.is_none() {
+            if self.done_prefetching {
+                return false;
+            }
+            match self.prefetch.open() {
+                Ok(pass) => self.pass = Some(pass),
+                Err(tango_match::Error::Cancelled) => {
+                    self.done_prefetching = true;
+                    return false;
+                }
+                Err(e) => {
+                    log::error!("sio replay prefetch failed to open: {e:?}");
+                    self.done_prefetching = true;
+                    return false;
+                }
+            }
+        }
+        let Some(pass) = self.pass.as_mut() else {
+            return false;
+        };
+        match pass.step(budget, None) {
+            Ok(true) => true,
+            Ok(false) => {
+                let stats = self.pass.take().and_then(|p| p.finish());
+                self.prefetch.deliver(stats);
+                self.done_prefetching = true;
+                false
+            }
+            Err(e) => {
+                log::error!("sio replay prefetch failed: {e:?}");
+                self.pass = None;
+                self.done_prefetching = true;
+                false
+            }
+        }
+    }
+}
+
+impl crate::Drive for Driver {
+    fn tick(&mut self) -> bool {
+        if self.seek.step(&mut self.chase, Self::SEEK_SLICE) {
+            // A chase is mid-walk: it owns this tick.
+            return true;
+        }
+        self.drive.tick()
+    }
+
+    fn fps_target(&self) -> f32 {
+        self.drive.fps_target()
     }
 }
 

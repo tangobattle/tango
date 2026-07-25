@@ -25,20 +25,25 @@ use tokio_util::sync::CancellationToken;
 /// How long the link keeps trying to rebuild a dropped direct connection
 /// before giving up. Generous: the sim is paused throughout, so a long outage
 /// costs nothing but the wait.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 const RECONNECT_DIRECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 /// Per-attempt cap on a single `host`/`connect` + `negotiate` rebuild — the
 /// dialer's `connect` will hang on ICE until the host is listening again, so
 /// bound it and retry rather than blocking the whole budget on one attempt.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 const RECONNECT_DIRECT_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 /// Give-up window for the matchmaking path — longer than direct's, since each
 /// attempt re-rendezvouses on the signaling server then re-gathers ICE (and
 /// possibly TURN), which is much slower than re-binding a known local port.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 const RECONNECT_MATCHMAKING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 /// Per-attempt cap for a matchmaking rebuild (signaling rendezvous + ICE/TURN
 /// gathering + negotiate).
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 const RECONNECT_MATCHMAKING_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 /// Pause between failed rebuild attempts (e.g. dialer racing ahead of the host
 /// re-binding its port).
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 const RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(250);
 /// Give-up window for a reconnect triggered by a channel *close* (rather than
 /// a stalled input queue). libdatachannel tears connections down gracefully,
@@ -51,6 +56,7 @@ const RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(
 /// while a quit whose goodbye was lost finds no peer and ends without a long
 /// "Reconnecting…". Applies to both transports (the cost of a needless wait is
 /// the same either way).
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 const RECONNECT_CLEAN_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
 /// Cap on the deliberate-quit `Goodbye` send. Best-effort by design — a
 /// wedged transport must not delay the local teardown; the peer just falls
@@ -117,6 +123,11 @@ pub enum ReconnectRecipe {
     /// re-pairs them with no server-side changes. `is_offerer`/player index stay
     /// fixed from the original match, so the re-assigned offerer/answerer roles
     /// here don't matter.
+    ///
+    /// Native-only: the signaling client is a WebSocket with an mTLS
+    /// client certificate, which is a native shape — a browser
+    /// rendezvouses through its own page instead.
+    #[cfg(not(target_arch = "wasm32"))]
     Matchmaking {
         endpoint: String,
         session_id: String,
@@ -193,8 +204,8 @@ pub enum LinkHealth {
     /// The transport dropped and [`Link::reconnect`] is rebuilding it. The
     /// emulator is paused for the duration.
     Reconnecting {
-        started: std::time::Instant,
-        give_up_at: std::time::Instant,
+        started: web_time::Instant,
+        give_up_at: web_time::Instant,
     },
     /// A reconnect gave up (or the recipe was unusable). Terminal.
     Dead,
@@ -203,6 +214,9 @@ pub enum LinkHealth {
 /// A logical connection to the peer that outlives physical transports: owns
 /// the peer connection, both channels' halves, and the mid-match reconnect
 /// mechanism. See the module docs for the design.
+// `rng_seed` and `cancel` feed the matchmaking reconnect, which a
+// browser doesn't have yet (see `rebuild_connection`).
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub struct Link {
     /// The current peer connection. `reconnect` drops the old one and slots
     /// the rebuilt one in; the link keeps it alive for the channels' lifetime,
@@ -400,11 +414,12 @@ impl Link {
         // short window instead (likely a quit — don't hang on it; a real
         // drop's peer is already at the rendezvous). Retire the latency
         // readout for the duration.
-        let started = std::time::Instant::now();
+        let started = web_time::Instant::now();
         let timeout = match cause {
             ReconnectCause::CleanClose => RECONNECT_CLEAN_CLOSE_TIMEOUT,
             ReconnectCause::Stall => match recipe {
                 ReconnectRecipe::Direct(_) => RECONNECT_DIRECT_TIMEOUT,
+                #[cfg(not(target_arch = "wasm32"))]
                 ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_TIMEOUT,
             },
         };
@@ -434,7 +449,9 @@ impl Link {
             control: (new_control_sender, new_control_receiver),
             in_match: (new_in_match_sender, new_in_match_receiver),
             peer_conn: new_peer_conn,
+            #[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
             local_dtls_fingerprint,
+            #[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
             peer_dtls_fingerprint,
             // Informational on a reconnect: the rendezvous is already bound to
             // this match by the derived session_id. Logged so a hijack attempt
@@ -456,6 +473,7 @@ impl Link {
         // server has already seen. The direct path's recipe (re-run
         // host/connect) needs no fingerprints, so its empty pair leaves the
         // seed-only fallback in place harmlessly.
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(ReconnectRecipe::Matchmaking { session_id, .. }) = self.recipe.lock().unwrap().as_mut() {
             *session_id = derive_reconnect_session_id(&self.rng_seed, &local_dtls_fingerprint, &peer_dtls_fingerprint);
         }
@@ -491,17 +509,24 @@ impl Link {
     /// shape (fingerprints and all).
     ///
     /// [`Channels::from_signaling`]: super::channel::Channels::from_signaling
+    ///
+    /// Native-only for now. Both recipes reach for something a browser
+    /// doesn't have — a UDP socket for the direct path, the native
+    /// WebSocket signaling client for matchmaking — so on wasm a dropped
+    /// link stays dropped until a browser signaling client exists. The
+    /// rest of the transport is portable; this is the one hole.
+    #[cfg(not(target_arch = "wasm32"))]
     async fn rebuild_connection(
         &self,
         recipe: &ReconnectRecipe,
-        deadline: std::time::Instant,
+        deadline: web_time::Instant,
     ) -> Option<super::channel::Channels> {
         let attempt_timeout = match recipe {
             ReconnectRecipe::Direct(_) => RECONNECT_DIRECT_ATTEMPT_TIMEOUT,
             ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_ATTEMPT_TIMEOUT,
         };
         loop {
-            let now = std::time::Instant::now();
+            let now = web_time::Instant::now();
             if self.cancel.is_cancelled() || now >= deadline {
                 return None;
             }
@@ -561,6 +586,20 @@ impl Link {
                 _ = tokio::time::sleep(RECONNECT_BACKOFF) => {}
             }
         }
+    }
+}
+
+impl Link {
+    /// See the native [`Link::rebuild_connection`]: a browser has no way
+    /// to re-rendezvous yet, so a drop is final.
+    #[cfg(target_arch = "wasm32")]
+    async fn rebuild_connection(
+        &self,
+        _recipe: &ReconnectRecipe,
+        _deadline: web_time::Instant,
+    ) -> Option<super::channel::Channels> {
+        log::warn!("netplay: reconnecting isn't supported in a browser yet");
+        None
     }
 }
 

@@ -5,11 +5,16 @@ edition = "2021"
 license = "MPL-2.0"
 publish = false
 
+# What the replay exporter needs — the half of this crate that builds
+# for the browser as well as the desktop (see the crate docs).
 [dependencies]
 async-trait.workspace = true
 bytemuck.workspace = true
 chrono = "0.4"
+# One data-channel API over libdatachannel natively and the browser's
+# own WebRTC on wasm.
 datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }
+encoder-facade = { path = "../encoder-facade" }
 futures.workspace = true
 log.workspace = true
 mgba.workspace = true
@@ -18,13 +23,28 @@ rand_pcg.workspace = true
 rennet.workspace = true
 tango-dataview = { path = "../tango-dataview" }
 tango-gamesupport = { path = "../tango-gamesupport" }
-tango-net-protocol = { path = "../tango-net-protocol" }
 tango-match = { path = "../tango-match" }
+tango-net-protocol = { path = "../tango-net-protocol" }
 tango-replay = { path = "../tango-replay" }
-tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
 thiserror.workspace = true
-tokio = { workspace = true, features = ["io-util", "time", "rt", "net", "sync", "macros"] }
+# Everything but `net`, which is mio-backed and has no wasm32 support;
+# the native table below adds it.
+tokio = { workspace = true, features = ["io-util", "time", "rt", "sync", "macros"] }
 tokio-util = { workspace = true, features = ["io", "rt"] }
+# `std::time::Instant` panics in a browser; this is the same API backed
+# by `performance.now()` there and by std everywhere else.
+web-time = "1"
+
+
+# The live-session half: threads, sockets and wall clocks, none of which
+# wasm32 has. Gated so a browser build doesn't drag in tokio's mio-backed
+# networking, which doesn't compile there at all.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
+tokio = { workspace = true, features = ["net"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
 
 [lints]
 workspace = true

@@ -1,19 +1,50 @@
-//! Live emulator-session machinery, UI-toolkit-agnostic: the session
-//! kinds (single-player, live PvP, replay playback), the drive threads
-//! that pace them, the shared audio stream, and the netplay transport
-//! they run over. The app owns everything presentational — views,
-//! input mapping, per-session UI state — and drives a session through
+//! Emulator-session machinery, UI-toolkit-agnostic: the session kinds
+//! (single-player, live PvP, replay playback), the loops that pace
+//! them, the shared audio stream, and the netplay transport they run
+//! over. The host owns everything presentational — views, input
+//! mapping, per-session UI state — and drives a session through
 //! [`Session`] plus each kind's concrete surface.
+//!
+//! **Sessions are driven, not self-running.** Each kind exposes a
+//! driver whose `tick` advances exactly one emulated frame, and a host
+//! decides what turns the crank: on a desktop, a thread per session
+//! looping it against the host's own pacer; in a browser, `requestAnimationFrame`
+//! and the audio sink's queue reports pumping it from the event loop,
+//! where there are no threads to spawn. Nothing below the driver knows
+//! which one it is. [`replay_export`] is the same shape without the
+//! pacing — it pumps as fast as the encoders allow.
+//!
+//! Modules the browser can't have yet — the netplay transport and the
+//! sessions built on it — are gated to native; the rest compiles for
+//! wasm32.
 
-pub mod audio;
-pub mod core_stream;
-pub mod net;
-pub mod pvp;
+// The session kinds. Each hands a host a [`Drive`] and publishes what
+// the host shows; nothing here spawns or sleeps.
 pub mod replay;
 pub mod singleplayer;
-pub mod stats;
-pub mod stats_cache;
 pub mod training;
+/// Live netplay, on the transport below.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod pvp;
+
+// What they're built out of.
+pub mod audio;
+pub mod platform;
+/// The netplay transport: two byte-pipe planes over one peer
+/// connection. Native for now — the pipes build for the browser, but
+/// the signaling client that gets a peer connection in the first place
+/// is a native WebSocket.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod net;
+/// The match-stats sidecar a finished match leaves next to its replay,
+/// so the Replays tab never re-simulates one it has already seen.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod stats;
+
+/// Rendering a recorded replay to video. Not a session at all — it
+/// drives the same re-simulation as fast as the encoders allow, and is
+/// here because that re-simulation is.
+pub mod replay_export;
 
 /// Why a session failed to construct or boot, any kind. One enum for
 /// all three session kinds — their failure sets overlap heavily (core
@@ -31,8 +62,9 @@ pub enum Error {
     #[error(transparent)]
     Engine(#[from] tango_match::Error),
     /// The netplay handoff's transport bundle failed to assemble.
+    #[cfg(not(target_arch = "wasm32"))]
     #[error(transparent)]
-    LinkBringUp(#[from] net::link::BringUpError),
+    LinkBringUp(#[from] crate::net::link::BringUpError),
     #[error("replay has a bad local player index")]
     BadLocalPlayerIndex,
     #[error("replay has no inputs")]
@@ -69,11 +101,15 @@ pub fn new_gba_core(rom: &[u8]) -> Result<mgba::core::OwnedCore, mgba::Error> {
     Ok(core)
 }
 
-/// A pause flag a drive thread can block on — flag + condvar instead of a
-/// poll-sleep, so a parked loop costs zero wakeups. `wait` carries a
-/// defensive timeout so a cancellation signalled without a `set(false)`
-/// (or a lost notify) degrades to a slow re-check instead of a wedge;
-/// cancel paths should still release the gate for a prompt exit.
+/// A pause flag a drive thread can block on — flag + condvar instead of
+/// a poll-sleep, so a parked loop costs zero wakeups. A pumped host
+/// reads the flag and simply doesn't tick; only [`PauseGate::wait`]
+/// parks a thread, which is why it's the one native-only part.
+///
+/// `wait` carries a defensive timeout so a cancellation signalled
+/// without a `set(false)` (or a lost notify) degrades to a slow
+/// re-check instead of a wedge; cancel paths should still release the
+/// gate for a prompt exit.
 pub struct PauseGate {
     paused: std::sync::Mutex<bool>,
     unpaused: std::sync::Condvar,
@@ -82,6 +118,7 @@ pub struct PauseGate {
 impl PauseGate {
     /// Upper bound on one `wait` — how long a parked loop can take to
     /// notice out-of-band state (cancellation) nobody notified for.
+    #[cfg(not(target_arch = "wasm32"))]
     const DEFENSIVE_TICK: std::time::Duration = std::time::Duration::from_millis(250);
 
     pub fn new(paused: bool) -> Self {
@@ -104,64 +141,15 @@ impl PauseGate {
 
     /// Park until unpaused or the defensive tick elapses (returns
     /// immediately if not paused). Callers loop around this, re-checking
-    /// their cancellation flag between waits.
+    /// their cancellation flag between waits. A host without threads
+    /// polls [`PauseGate::paused`] instead.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn wait(&self) {
         let g = self.paused.lock().unwrap();
         let _ = self
             .unpaused
             .wait_timeout_while(g, Self::DEFENSIVE_TICK, |paused| *paused)
             .unwrap();
-    }
-}
-
-/// Wall-clock frame pacer for the session drive loops. It accumulates
-/// absolute `1/fps` deadlines (drift-free on average) and sleeps to
-/// each; a loop that falls far behind — a debugger pause, a laptop lid —
-/// resynchronizes its cadence instead of sprinting to catch up. Every
-/// session kind's drive thread paces through one of these, so the
-/// accumulate / sleep / resync policy lives in exactly one place.
-pub struct Pacer {
-    next_tick: std::time::Instant,
-}
-
-impl Default for Pacer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Pacer {
-    /// How far behind the deadline a loop must fall before the pacer
-    /// gives up catching up and resynchronizes from now.
-    const RESYNC_AFTER: std::time::Duration = std::time::Duration::from_millis(250);
-
-    pub fn new() -> Self {
-        Self {
-            next_tick: std::time::Instant::now(),
-        }
-    }
-
-    /// Sleep until the next `1/fps` deadline — call once per emulated
-    /// frame, after stepping it. A non-positive `fps` degrades to 60 (a
-    /// should-never-happen guard; the drive loops only ever pass a
-    /// positive rate).
-    pub fn wait(&mut self, fps: f32) {
-        let fps = if fps > 0.0 { fps } else { 60.0 };
-        self.next_tick += std::time::Duration::from_secs_f64(1.0 / fps as f64);
-        let now = std::time::Instant::now();
-        if self.next_tick > now {
-            std::thread::sleep(self.next_tick - now);
-        } else if now - self.next_tick > Self::RESYNC_AFTER {
-            // Fell way behind: don't sprint to catch up, just
-            // resynchronize the cadence.
-            self.next_tick = now;
-        }
-    }
-
-    /// Restart the cadence from now — after a pause/park, so idle time
-    /// doesn't accrue pacing debt the next `wait` would try to burn off.
-    pub fn resync(&mut self) {
-        self.next_tick = std::time::Instant::now();
     }
 }
 
@@ -210,6 +198,29 @@ impl Framebuffer {
     pub fn read(&self) -> Vec<u8> {
         self.0.lock().unwrap().clone()
     }
+}
+
+/// One emulated frame at a time, for whoever is turning the crank.
+///
+/// Each session kind that a host drives exposes one of these. The
+/// desktop runs it on a thread that sleeps to [`Drive::fps_target`]
+/// between ticks; a browser calls `tick` from its event loop, paced by
+/// how much audio its sink is short of. The session itself neither
+/// spawns nor sleeps — that is the whole point of the split.
+///
+/// Not `Send`: a browser's driver is full of `Rc`s and never leaves its
+/// thread. A host that wants to move one onto a thread asks for `Send`
+/// where it spawns.
+pub trait Drive {
+    /// Advance one emulated frame, publishing whatever it produced.
+    /// `false` once the session is over (dropped, ended, or failed) and
+    /// there is nothing left to drive.
+    fn tick(&mut self) -> bool;
+
+    /// The rate this session wants to run at, in frames per second —
+    /// realtime, or faster while the user holds fast-forward. A host
+    /// paces to it, and the session's audio stream stretches to match.
+    fn fps_target(&self) -> f32;
 }
 
 /// A running emulator session — replay playback, single-player, or

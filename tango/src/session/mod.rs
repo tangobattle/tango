@@ -339,11 +339,77 @@ fn capture_results(session: &dyn Session, panes: Option<&PvpPanes>) -> Option<Ma
 }
 
 /// Per-session UI state. App holds `session: State`; the Play and
+/// Where a single-player session's savedata goes.
+///
+/// The session keeps its SRAM in memory — it runs on a link, like every
+/// other session kind, and a link takes its save as bytes — so nothing
+/// writes the user's `.sav` unless we do. This copies it out on a timer
+/// while the game runs and once more at teardown, skipping the write
+/// when the image hasn't changed (a game that isn't saving shouldn't
+/// keep touching the disk).
+struct SaveBackup {
+    path: std::path::PathBuf,
+    /// The file as it was when the session booted. A cart's live
+    /// savedata can be shorter than its file — BN1's SRAM is 32K inside
+    /// a 64K `.sav` — and the memory-mapped path this replaced only
+    /// ever wrote the leading bytes, so the tail is preserved rather
+    /// than truncated away.
+    original: Vec<u8>,
+    /// The file's contents as last written, so an unchanged save costs
+    /// nothing.
+    written: Vec<u8>,
+    next_check: std::time::Instant,
+}
+
+impl SaveBackup {
+    /// How often the running session's savedata is compared against
+    /// what's on disk. Long enough to be free, short enough that a
+    /// crash costs a few seconds of play rather than the session.
+    const INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+
+    fn new(path: std::path::PathBuf, initial: Vec<u8>) -> Self {
+        Self {
+            path,
+            written: initial.clone(),
+            original: initial,
+            next_check: std::time::Instant::now() + Self::INTERVAL,
+        }
+    }
+
+    /// Write the cart's `image` back if it changed anything. Failures
+    /// are logged, not surfaced: a full disk shouldn't take the session
+    /// down mid-battle, and the next check tries again.
+    fn store(&mut self, image: Option<Vec<u8>>) {
+        let Some(image) = image else { return };
+        let mut file = self.original.clone();
+        if image.len() >= file.len() {
+            file = image;
+        } else {
+            file[..image.len()].copy_from_slice(&image);
+        }
+        if file == self.written {
+            return;
+        }
+        if let Err(e) = std::fs::write(&self.path, &file) {
+            log::error!("writing {}: {e}", self.path.display());
+            return;
+        }
+        self.written = file;
+    }
+}
+
 /// Replays tabs swap an `Session` into `active` to start a
 /// session, then [`State::update`] handles the rest until [`Close`]
 /// clears it.
 pub struct State {
     pub active: Option<Box<dyn Session>>,
+    /// The threads driving `active` — one for the kinds with a single
+    /// loop, three for replay playback (playhead, seek, prefetch).
+    /// Joined after the session drops, so a torn-down session can't
+    /// still be stepping while the next one boots.
+    drive: Vec<std::thread::JoinHandle<()>>,
+    /// Set alongside a single-player `active`; see [`SaveBackup`].
+    singleplayer_save: Option<SaveBackup>,
     /// Count of sessions ever installed — bumped by
     /// [`session_installed`](Self::session_installed), and the frame
     /// [`subscription`]'s identity for the active session. Keying the
@@ -468,6 +534,8 @@ impl Default for State {
     fn default() -> Self {
         Self {
             active: None,
+            drive: Vec::new(),
+            singleplayer_save: None,
             session_seq: 0,
             audio_binding: None,
             pvp_panes: None,
@@ -692,10 +760,18 @@ impl State {
         if let Some(s) = self.active.as_ref() {
             s.request_close();
         }
+        // Last write before the session (and its SRAM) goes away.
+        self.flush_singleplayer_save();
+        self.singleplayer_save = None;
         // Unbind audio before dropping the session so the output stream
         // stops pulling from cores that are about to wind down.
         self.audio_binding = None;
         self.active = None;
+        // Dropping the session stopped its loops; wait for the threads
+        // to notice before anything else claims the audio device.
+        for drive in self.drive.drain(..) {
+            let _ = drive.join();
+        }
         self.pvp_panes = None;
         self.replay_chart = None;
         self.current_frame = None;
@@ -706,6 +782,53 @@ impl State {
         self.match_settings.close();
         self.scrub.clear();
         self.esc_hold = None;
+    }
+
+    /// Start keeping `path` current with the newly installed
+    /// single-player session's savedata. Called by the host right after
+    /// it installs one; other session kinds own their own persistence
+    /// (PvP writes replays, replay playback writes nothing).
+    pub fn attach_save_backup(&mut self, path: std::path::PathBuf, initial: Vec<u8>) {
+        self.singleplayer_save = Some(SaveBackup::new(path, initial));
+    }
+
+    /// Take ownership of the threads driving the session just installed.
+    pub fn attach_drive_threads(
+        &mut self,
+        drive: impl IntoIterator<Item = std::thread::JoinHandle<()>>,
+    ) {
+        self.drive = drive.into_iter().collect();
+    }
+
+    /// Copy the running single-player session's savedata to disk if the
+    /// backup interval has elapsed. Called once per displayed frame.
+    fn autosave_singleplayer(&mut self) {
+        let Some(backup) = self.singleplayer_save.as_mut() else {
+            return;
+        };
+        if std::time::Instant::now() < backup.next_check {
+            return;
+        }
+        backup.next_check = std::time::Instant::now() + SaveBackup::INTERVAL;
+        let image = self
+            .active
+            .as_deref()
+            .and_then(|s| s.downcast_ref::<singleplayer::SinglePlayerSession>())
+            .and_then(|s| s.export_save());
+        backup.store(image);
+    }
+
+    /// Write the single-player savedata out now, whatever the timer
+    /// says — the session is about to go.
+    fn flush_singleplayer_save(&mut self) {
+        let image = self
+            .active
+            .as_deref()
+            .and_then(|s| s.downcast_ref::<singleplayer::SinglePlayerSession>())
+            .and_then(|s| s.export_save());
+        if let Some(backup) = self.singleplayer_save.as_mut() {
+            backup.store(image);
+        }
     }
 
     /// Play/pause the active replay (no-op for other session kinds).
@@ -845,6 +968,9 @@ impl State {
                 self.settings.close();
             }
             Message::UpdateFramebuffer => {
+                // Keep the user's .sav current while they play — see
+                // [`SaveBackup`]. No-op for every other session kind.
+                self.autosave_singleplayer();
                 // Telemetry snapshot for the popover sparklines, captured while
                 // the session is borrowed below and pushed afterward. `None`
                 // (no live PvP match) clears the history so a fresh match — or
@@ -1046,7 +1172,7 @@ fn thumbnail_handle(framebuffer: &[u8]) -> iced::widget::image::Handle {
 /// depends on the audio device.
 fn bind_session_audio(
     audio_binder: &audio::LateBinder,
-    stream: tango_session::core_stream::CoreStream,
+    stream: tango_session::audio::CoreStream,
 ) -> Option<audio::Binding> {
     match audio_binder.bind(Some(Box::new(stream))) {
         Ok(b) => Some(b),
@@ -1070,7 +1196,11 @@ pub fn build_playback(
     // Have the prefetch pass double as the match-stats analysis — see
     // [`replay::PrefetchStatsJob`] and `App::replay_stats_takeover`.
     stats_job: Option<replay::PrefetchStatsJob>,
-) -> anyhow::Result<(replay::ReplaySession, Option<audio::Binding>)> {
+) -> anyhow::Result<(
+    replay::ReplaySession,
+    Option<audio::Binding>,
+    Vec<std::thread::JoinHandle<()>>,
+)> {
     let f = std::fs::File::open(path)?;
     let replay = std::sync::Arc::new(tango_replay::Replay::decode(f)?);
     let patches_path = config.patches_path();
@@ -1105,7 +1235,7 @@ pub fn build_playback(
 
     let (p1_game, p1_rom) = resolve_rom(replay.metadata.side(0))?;
     let (p2_game, p2_rom) = resolve_rom(replay.metadata.side(1))?;
-    let (session, audio) = replay::ReplaySession::new(
+    let (session, workers, audio) = replay::ReplaySession::new(
         [p1_game, p2_game],
         [p1_rom, p2_rom],
         replay,
@@ -1113,7 +1243,53 @@ pub fn build_playback(
         config.show_opponent_pip,
         stats_job,
     )?;
-    Ok((session, bind_session_audio(audio_binder, audio)))
+    // Three loops, three threads — ours to spawn, and ours to pace: the
+    // playhead runs at the transport's speed, while the seek chase and
+    // the prefetch pass run flat out.
+    let (drive, seek, prefetch) = workers.split();
+    let mut threads = Vec::with_capacity(3);
+    threads.push(
+        std::thread::Builder::new()
+            .name("tango-sio-replay-drive".to_owned())
+            .spawn(move || {
+                let mut pacer = Pacer::new();
+                let mut drive = drive;
+                loop {
+                    if drive.paused() {
+                        // Park on the gate rather than spinning through
+                        // ticks that do nothing; the cadence restarts on
+                        // the wake so paused time accrues no debt.
+                        drive.wait_while_paused();
+                        pacer.resync();
+                        continue;
+                    }
+                    use tango_session::Drive as _;
+                    if !drive.tick() {
+                        return;
+                    }
+                    pacer.wait(drive.fps_target());
+                }
+            })?,
+    );
+    threads.push(
+        std::thread::Builder::new()
+            .name("tango-sio-replay-seek".to_owned())
+            .spawn(move || {
+                // Park until the transport asks for a seek, then walk the
+                // whole chase in one go — a thread has nothing better to
+                // do, and the pair is better held once than per tick.
+                let mut chase = tango_match::playback::SeekChase::default();
+                while seek.wait_for_request() {
+                    while seek.step(&mut chase, u32::MAX) {}
+                }
+            })?,
+    );
+    threads.push(
+        std::thread::Builder::new()
+            .name("tango-sio-replay-prefetch".to_owned())
+            .spawn(move || run_prefetch_pass(prefetch))?,
+    );
+    Ok((session, bind_session_audio(audio_binder, audio), threads))
 }
 
 /// Build the live PvP session from the netplay handoff data
@@ -1129,7 +1305,12 @@ pub async fn spawn_pvp(
     local_game: crate::library::rom::GameRef,
     local_patch: Option<(String, semver::Version)>,
     pre_match: crate::netplay::PreMatchData,
-) -> anyhow::Result<(pvp::PvpSession, PvpPanes, Option<audio::Binding>)> {
+) -> anyhow::Result<(
+    pvp::PvpSession,
+    PvpPanes,
+    Option<audio::Binding>,
+    std::thread::JoinHandle<()>,
+)> {
     let local_game_impl =
         game::from_gamedb_entry(local_game).ok_or_else(|| anyhow::anyhow!("no impl for local game"))?;
     let local_rom_raw = scanners
@@ -1245,7 +1426,7 @@ pub async fn spawn_pvp(
         ))
     };
 
-    let (session, audio) = pvp::PvpSession::new(pvp::PvpSessionArgs {
+    let (session, boot) = pvp::PvpSession::new(pvp::PvpSessionArgs {
         local_game: local_game_impl,
         local_rom: std::sync::Arc::new(local_rom_bytes),
         remote_game: remote_game_impl,
@@ -1260,6 +1441,13 @@ pub async fn spawn_pvp(
         sample_rate: audio_binder.sample_rate(),
     })
     .await?;
+    // Booting primes the pair — seconds of emulation — so it runs on a
+    // blocking thread rather than on this async task, and the match then
+    // gets a drive thread of its own like every other session kind.
+    let (driver, audio) = tokio::task::spawn_blocking(move || boot.boot())
+        .await
+        .map_err(|e| anyhow::anyhow!("pvp boot thread died: {e}"))??;
+    let drive = spawn_drive_thread("tango-sio-drive", driver)?;
     Ok((
         session,
         PvpPanes {
@@ -1269,7 +1457,122 @@ pub async fn spawn_pvp(
             opponent_save_view: save_view::State::new(),
         },
         bind_session_audio(&audio_binder, audio),
+        drive,
     ))
+}
+
+/// Wall-clock frame pacer for the drive threads below. It accumulates
+/// absolute `1/fps` deadlines (drift-free on average) and sleeps to
+/// each; a loop that falls far behind — a debugger pause, a laptop lid —
+/// resynchronizes its cadence instead of sprinting to catch up.
+///
+/// This is the host's job, not the session's: a session only knows how
+/// to advance a frame and what rate it wants. A browser host paces the
+/// same drivers off its event loop, with nothing to sleep at all.
+struct Pacer {
+    next_tick: std::time::Instant,
+}
+
+impl Pacer {
+    /// How far behind the deadline a loop must fall before the pacer
+    /// gives up catching up and resynchronizes from now.
+    const RESYNC_AFTER: std::time::Duration = std::time::Duration::from_millis(250);
+
+    fn new() -> Self {
+        Self {
+            next_tick: std::time::Instant::now(),
+        }
+    }
+
+    /// Sleep until the next `1/fps` deadline — call once per emulated
+    /// frame, after stepping it. A non-positive `fps` degrades to 60 (a
+    /// should-never-happen guard; the drivers only ever ask for a
+    /// positive rate).
+    fn wait(&mut self, fps: f32) {
+        let fps = if fps > 0.0 { fps } else { 60.0 };
+        self.next_tick += std::time::Duration::from_secs_f64(1.0 / fps as f64);
+        let now = std::time::Instant::now();
+        if self.next_tick > now {
+            std::thread::sleep(self.next_tick - now);
+        } else if now - self.next_tick > Self::RESYNC_AFTER {
+            // Fell way behind: don't sprint to catch up, just
+            // resynchronize the cadence.
+            self.next_tick = now;
+        }
+    }
+
+    /// Restart the cadence from now — after a park or a stall, so the
+    /// idle time doesn't accrue pacing debt the next `wait` burns off.
+    fn resync(&mut self) {
+        self.next_tick = std::time::Instant::now();
+    }
+}
+
+/// Race the prefetch pair through the whole replay: keyframes so
+/// seeking backwards works, round marks for recordings without them,
+/// and — when the tab asked for it — the match-stats analysis, previewed
+/// as it folds and cached when it finishes.
+fn run_prefetch_pass(worker: replay::PrefetchWorker) {
+    /// Live-preview cadence. Each report clones the folded rounds and
+    /// becomes a chart rebuild on the UI thread, so pace it to the
+    /// display rather than to the simulation.
+    const PREVIEW_EVERY: std::time::Duration = std::time::Duration::from_millis(33);
+
+    let mut prefetch: tango_match::playback::Prefetch = match worker.open() {
+        Ok(prefetch) => prefetch,
+        // Session closed while the pair was still priming — a normal
+        // teardown, not noise for the error log.
+        Err(tango_match::Error::Cancelled) => return,
+        Err(e) => {
+            log::error!("sio replay prefetch failed: {e:?}");
+            return;
+        }
+    };
+    let mut last_preview = std::time::Instant::now();
+    let mut on_progress = |_tick: u32, _total: u32, builder: &tango_match::analysis::StatsBuilder| {
+        let Some(job) = worker.stats_job() else { return };
+        let now = std::time::Instant::now();
+        if now.duration_since(last_preview) < PREVIEW_EVERY {
+            return;
+        }
+        last_preview = now;
+        let _ = job.partial_tx.unbounded_send(builder.preview());
+    };
+    loop {
+        match prefetch.step(1024, Some(&mut on_progress)) {
+            Ok(true) => continue,
+            Ok(false) => break,
+            Err(e) => {
+                log::error!("sio replay prefetch failed: {e:?}");
+                return;
+            }
+        }
+    }
+    let Some(stats) = prefetch.finish() else { return };
+    if let Some(job) = worker.stats_job() {
+        if let Err(e) = tango_session::stats::write_match_stats(&job.stats_file, &stats) {
+            log::warn!("prefetch stats cache write failed: {e:?}");
+        }
+        *job.done.lock().unwrap() = Some(stats);
+    }
+}
+
+/// Run a session's driver on a thread of its own, paced to the fps the
+/// session publishes — the desktop's answer to "who turns the crank".
+/// (A browser host pumps the same driver from its event loop instead.)
+///
+/// The loop ends when the session is dropped, which is what makes
+/// `tick` return false; the caller joins the handle after dropping it.
+fn spawn_drive_thread(
+    name: &str,
+    mut driver: impl tango_session::Drive + Send + 'static,
+) -> std::io::Result<std::thread::JoinHandle<()>> {
+    std::thread::Builder::new().name(name.to_owned()).spawn(move || {
+        let mut pacer = Pacer::new();
+        while driver.tick() {
+            pacer.wait(driver.fps_target());
+        }
+    })
 }
 
 /// Boot the supplied selection in single-player mode. Caller must
@@ -1281,7 +1584,12 @@ pub fn spawn_singleplayer(
     config: &config::Config,
     audio_binder: &audio::LateBinder,
     loaded: &selection::OpenSave,
-) -> anyhow::Result<(singleplayer::SinglePlayerSession, Option<audio::Binding>)> {
+) -> anyhow::Result<(
+    singleplayer::SinglePlayerSession,
+    Option<audio::Binding>,
+    Vec<u8>,
+    std::thread::JoinHandle<()>,
+)> {
     let game = game::from_gamedb_entry(loaded.game)
         .ok_or_else(|| anyhow::anyhow!("no game impl for {:?}", loaded.game.family_and_variant()))?;
     // OpenSave stashes the *parsed* ROM (assets), not the raw bytes —
@@ -1305,13 +1613,21 @@ pub fn spawn_singleplayer(
     } else {
         raw
     };
-    let (session, audio) = singleplayer::SinglePlayerSession::new(
+    // The session runs on a link, which holds its savedata in memory
+    // rather than memory-mapping the file mgba used to write through —
+    // so the bytes go in here and come back out through
+    // [`SaveBackup`], which is what actually keeps the file current.
+    let save = std::fs::read(&loaded.save_path)?;
+    let (session, driver, audio) = singleplayer::SinglePlayerSession::new(
         game,
         std::sync::Arc::new(rom_bytes),
-        &loaded.save_path,
+        Some(save.clone()),
+        // Leave the cart clock on the real one, as it has always been.
+        None,
         audio_binder.sample_rate(),
     )?;
-    Ok((session, bind_session_audio(audio_binder, audio)))
+    let drive = spawn_drive_thread("singleplayer", driver)?;
+    Ok((session, bind_session_audio(audio_binder, audio), save, drive))
 }
 
 /// Boot the supplied selection in training mode — a local link battle
@@ -1324,7 +1640,11 @@ pub fn spawn_training(
     config: &config::Config,
     audio_binder: &audio::LateBinder,
     loaded: &selection::OpenSave,
-) -> anyhow::Result<(training::TrainingSession, Option<audio::Binding>)> {
+) -> anyhow::Result<(
+    training::TrainingSession,
+    Option<audio::Binding>,
+    std::thread::JoinHandle<()>,
+)> {
     let game = game::from_gamedb_entry(loaded.game)
         .ok_or_else(|| anyhow::anyhow!("no game impl for {:?}", loaded.game.family_and_variant()))?;
     // OpenSave stashes the *parsed* ROM (assets), not the raw bytes —
@@ -1350,14 +1670,17 @@ pub fn spawn_training(
     };
     // The battle runs off an in-memory SRAM image (same as PvP), so
     // nothing training does is written back to the save file.
-    let (session, audio) = training::TrainingSession::new(
+    let (session, driver, audio) = training::TrainingSession::new(
         game,
         std::sync::Arc::new(rom_bytes),
         loaded.save.to_sram_dump(),
+        std::time::SystemTime::now(),
+        rand::random(),
         audio_binder.sample_rate(),
         Box::new(training::NoopController),
     )?;
-    Ok((session, bind_session_audio(audio_binder, audio)))
+    let drive = spawn_drive_thread("training", driver)?;
+    Ok((session, bind_session_audio(audio_binder, audio), drive))
 }
 
 /// Convert a tick count (60 Hz GBA frames) into `m:ss` for the scrub
@@ -1368,3 +1691,7 @@ pub fn format_tick(tick: u32) -> String {
     let s = total_s % 60;
     format!("{m}:{s:02}")
 }
+
+
+
+

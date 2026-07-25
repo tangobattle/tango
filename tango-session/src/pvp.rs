@@ -65,12 +65,6 @@ const IN_MATCH_HEARTBEAT: std::time::Duration =
 /// cosmetic.
 const RECONNECT_UI_TICK: std::time::Duration = std::time::Duration::from_millis(33);
 
-/// The stalled drive loop's block on the remote-input queue, per
-/// iteration: a peer input wakes it immediately; the timeout only bounds
-/// how long cancellation and the supervisor's queue_len metric wait for
-/// their next look. (The reconnect pause parks on a PauseGate instead.)
-const STALL_TICK: std::time::Duration = std::time::Duration::from_millis(10);
-
 /// Grace window after a successful reconnect during which the stall watchdog
 /// is suppressed. On reconnect the local input queue is still pegged at
 /// [`crate::net::data::RECONNECT_QUEUE_LENGTH`] — that's *why* we reconnected
@@ -109,7 +103,7 @@ struct EndState {
     /// `EndOfMatch` exactly once on the `None → Some` edge, and `is_ended`
     /// reads the stamp as the fallback grace deadline so a silent peer
     /// can't pin us forever.
-    local_ended_at: Arc<Mutex<Option<std::time::Instant>>>,
+    local_ended_at: Arc<Mutex<Option<web_time::Instant>>>,
 }
 
 /// Live per-frame readouts the drive thread publishes for the UI —
@@ -143,7 +137,7 @@ pub struct PvpSession {
     end: EndState,
     /// Sliding-window timestamp counter marked once per drive-loop frame —
     /// yields the true simulation TPS regardless of how often the UI polls.
-    tps_counter: Arc<Mutex<crate::stats::Counter>>,
+    tps_counter: Arc<Mutex<TpsCounter>>,
     /// Drops fire-cancellation through the drive thread and the network
     /// tasks. On Close we cancel + drop the session, which tears the
     /// network loop down cleanly.
@@ -181,7 +175,7 @@ pub struct PvpSession {
     /// receive pump, the reconnect supervisor, the peer-end grace).
     wake: Arc<tokio::sync::Notify>,
     /// When the session was built, for the results screen's match duration.
-    started_at: std::time::Instant,
+    started_at: web_time::Instant,
 }
 
 /// Everything the app needs to build a PvpSession: the negotiated match
@@ -260,7 +254,7 @@ impl PvpSession {
     /// local core's samples at the args' `sample_rate`, rate control
     /// following the drive loop's published fps target) for the host to
     /// route to its output.
-    pub async fn new(args: PvpSessionArgs<'_>) -> Result<(Self, crate::core_stream::CoreStream), crate::Error> {
+    pub async fn new(args: PvpSessionArgs<'_>) -> Result<(Self, PvpBoot), crate::Error> {
         let PvpSessionArgs {
             local_game,
             local_rom,
@@ -270,6 +264,9 @@ impl PvpSession {
             frame_delay,
             disable_bgm,
             replays_path,
+            // Only the stats sidecar's path uses this, and only on a
+            // desktop — a browser has nowhere to write one.
+            #[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
             cache_path,
             sample_rate,
         } = args;
@@ -334,7 +331,7 @@ impl PvpSession {
         let metrics = Arc::new(Metrics::default());
         let drive_paused = Arc::new(crate::PauseGate::new(false));
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
-        let tps_counter = Arc::new(Mutex::new(crate::stats::Counter::new(60)));
+        let tps_counter = Arc::new(Mutex::new(TpsCounter::new(60)));
         let screen = crate::Framebuffer::new();
         let wake = Arc::new(tokio::sync::Notify::new());
 
@@ -370,14 +367,13 @@ impl PvpSession {
             )
         };
 
-        // Boot + prime + run on a dedicated drive thread (the pair is
-        // single-threaded by design). Construction happens on the thread —
-        // priming is a couple seconds of emulation — and readiness comes
-        // back over a oneshot so `new` can fail cleanly.
-        let (ready_tx, ready_rx) =
-            tokio::sync::oneshot::channel::<Result<tango_match::LinkHandle, tango_match::Error>>();
-        {
-            let boot = BootPieces {
+        // Everything the match needs to boot, handed back for the host
+        // to run: the pair is single-threaded by design and priming it
+        // is seconds of emulation, so *where* that happens is the host's
+        // call — a blocking thread on a desktop, the event loop in a
+        // browser.
+        let boot = PvpBoot {
+            pieces: BootPieces {
                 roms,
                 saves,
                 supports,
@@ -387,8 +383,8 @@ impl PvpSession {
                 local_player: local_player_index as usize,
                 present_delay: frame_delay.load(Ordering::Relaxed),
                 disable_bgm,
-            };
-            let drive = DriveContext {
+            },
+            drive: DriveContext {
                 joyflags: joyflags.clone(),
                 frame_delay: frame_delay.clone(),
                 metrics: metrics.clone(),
@@ -401,42 +397,20 @@ impl PvpSession {
                 in_match: in_match.clone(),
                 replay_writer,
                 stats: stats.clone(),
+                #[cfg(not(target_arch = "wasm32"))]
                 stats_path: replay_path
                     .as_ref()
-                    .map(|p| crate::stats_cache::stats_path(cache_path, replays_path, p)),
+                    .map(|p| crate::stats::stats_path(cache_path, replays_path, p)),
                 tps_counter: tps_counter.clone(),
                 screen: screen.clone(),
                 wake: wake.clone(),
                 local_player: local_player_index as usize,
                 rt: tokio::runtime::Handle::current(),
-            };
-            std::thread::Builder::new()
-                .name("tango-sio-drive".to_owned())
-                .spawn(move || drive.run(boot, ready_tx))?;
-        }
-
-        // Wait for boot + priming before declaring the session live. Ready
-        // hands back the handle to the live pair for the audio stream.
-        let pair_handle = ready_rx.await.map_err(|_| crate::Error::DriveThreadDied)??;
-
-        // Audio: the host output stream plays the local core directly,
-        // pulling and resampling its samples straight off the pair (rate
-        // control follows the drive loop's published fps target) — see
-        // [`crate::core_stream::CoreStream`].
-        let audio = crate::core_stream::CoreStream::new(
-            crate::core_stream::PairCorePull {
-                pair: pair_handle,
-                player: {
-                    let local_player = local_player_index as usize;
-                    Box::new(move || local_player)
-                },
-            },
-            {
-                let metrics = metrics.clone();
-                move || f32::from_bits(metrics.fps_target.load(Ordering::Relaxed))
             },
             sample_rate,
-        );
+            local_player: local_player_index as usize,
+            metrics: metrics.clone(),
+        };
 
         // Receive pump + link supervisor: reads peer frames into the event
         // queue, watches for stalls, and runs the transparent reconnect.
@@ -469,9 +443,9 @@ impl PvpSession {
             replay_path,
             screen,
             wake,
-            started_at: std::time::Instant::now(),
+            started_at: web_time::Instant::now(),
         };
-        Ok((session, audio))
+        Ok((session, boot))
     }
 
     /// This side's player index (P1 = 0, P2 = 1) for the match. Stable across
@@ -514,7 +488,7 @@ impl PvpSession {
                     .as_secs_f32()
                     .max(f32::EPSILON);
                 let remaining = give_up_at
-                    .saturating_duration_since(std::time::Instant::now())
+                    .saturating_duration_since(web_time::Instant::now())
                     .as_secs_f32();
                 Some((remaining / total).clamp(0.0, 1.0))
             }
@@ -747,8 +721,11 @@ struct DriveContext {
     in_match: crate::net::InMatchTx,
     replay_writer: Option<tango_replay::Writer>,
     stats: Arc<Mutex<tango_match::analysis::StatsBuilder>>,
+    /// Where this match's stats sidecar goes. Native-only: the cache is
+    /// a file next to the replay, and a browser has no such place.
+    #[cfg(not(target_arch = "wasm32"))]
     stats_path: Option<std::path::PathBuf>,
-    tps_counter: Arc<Mutex<crate::stats::Counter>>,
+    tps_counter: Arc<Mutex<TpsCounter>>,
     screen: Arc<crate::Framebuffer>,
     wake: Arc<tokio::sync::Notify>,
     local_player: usize,
@@ -756,12 +733,10 @@ struct DriveContext {
 }
 
 impl DriveContext {
-    fn run(
-        mut self,
-        pieces: BootPieces,
-        ready_tx: tokio::sync::oneshot::Sender<Result<tango_match::LinkHandle, tango_match::Error>>,
-    ) {
-        let mut match_ = match Match::new(MatchConfig {
+    /// Boot the match, then hand back the driver that runs it and a
+    /// readout handle to its pair.
+    fn boot(mut self, pieces: BootPieces) -> Result<(PvpDriver, tango_match::LinkHandle), tango_match::Error> {
+        let match_ = Match::new(MatchConfig {
             roms: pieces.roms,
             saves: pieces.saves,
             support: [pieces.supports[0], pieces.supports[1]],
@@ -771,14 +746,8 @@ impl DriveContext {
             local_player: pieces.local_player,
             present_delay: pieces.present_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
             disable_bgm: pieces.disable_bgm,
-        }) {
-            Ok(m) => m,
-            Err(e) => {
-                let _ = ready_tx.send(Err(e));
-                return;
-            }
-        };
-        let _ = ready_tx.send(Ok(match_.pair_handle()));
+        })?;
+        let pair_handle = match_.pair_handle();
 
         if let Some(w) = self.replay_writer.as_mut() {
             // The SIO stream is one continuous run of pair ticks; the
@@ -786,246 +755,20 @@ impl DriveContext {
             let _ = w.start_round();
         }
 
-        let mut throttler = tango_match::Throttler::new();
-        let mut pacer = crate::Pacer::new();
-        // (tick, [p0, p1]) confirmed input pairs not yet folded into
-        // stats (the telemetry for those ticks may confirm later).
-        let mut pending_buttons: std::collections::VecDeque<(u32, [u32; 2])> = std::collections::VecDeque::new();
-        // Whether the first round's Started has been seen. Later Started
-        // events stamp round markers into the replay stream.
-        let mut first_round_started = false;
-        // Confirmed ticks whose replay input record must carry a
-        // round-start marker (see the write loop below).
-        let mut pending_round_marks: std::collections::VecDeque<u32> = std::collections::VecDeque::new();
-        let mut fired_end_of_match = false;
-
-        loop {
-            if self.cancel.is_cancelled() {
-                break;
-            }
-            if self.drive_paused.paused() {
-                // Park on the gate (the reconnect supervisor releases it
-                // on every exit path); restart the cadence from the wake
-                // so paused time doesn't accrue pacing debt.
-                self.drive_paused.wait();
-                pacer.resync();
-                continue;
-            }
-
-            // Live present-delay adjustment from the footer slider.
-            let pd = self.frame_delay.load(Ordering::Relaxed);
-            if pd != match_.present_delay() {
-                match_.set_present_delay(pd);
-            }
-
-            // Drain the network before advancing: every confirmed tick we
-            // ingest now is a rollback we don't take deeper.
-            for input in self.event_rx.try_iter() {
-                match_.add_remote_input(input.joyflags as u32, input.tick_advantage);
-            }
-
-            // Stall guard: the peer is too far behind (or gone) — advancing
-            // further would run the input stream past the rennet horizon.
-            // The in-match heartbeat keeps the redundancy window + acks
-            // flowing while we wait; the supervisor watches queue_len and
-            // decides whether this is a reconnect.
-            //
-            // But hold ONLY when advancing can't make progress. `advance` is
-            // the sole thing that drains the local queue (it matches buffered
-            // remote inputs against local ones and confirms the pairs); merely
-            // ingesting remote inputs above just buffers them. So if the peer
-            // is still feeding us matchable inputs — exactly the case during a
-            // post-reconnect resend burst — we must keep advancing to settle
-            // them, even at a full queue: each such advance nets the queue
-            // *down* (drains ≥1, adds 1 local). Skipping advance whenever the
-            // queue is full instead would leave those resends forever
-            // unconsumed — the queue never drains, the stall never clears, and
-            // the link "reconnects but never resumes". Only a genuinely dead
-            // link (nothing matchable) parks here.
-            let queue_len = match_.local_queue_length() as u32;
-            self.metrics.queue_len.store(queue_len, Ordering::Relaxed);
-            if queue_len as usize >= crate::net::data::RECONNECT_QUEUE_LENGTH && match_.matchable() == 0 {
-                // Block on the event queue rather than poll it: the only
-                // thing that clears a stall is the peer's next input, and
-                // it arrives exactly here. Ingest it and loop — the drain
-                // + stall re-check above decide whether we're unstuck.
-                match self.event_rx.recv_timeout(STALL_TICK) {
-                    Ok(input) => {
-                        match_.add_remote_input(input.joyflags as u32, input.tick_advantage);
-                    }
-                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-                    // Sender gone (link swap in flight): the supervisor
-                    // owns what happens next — hold the old poll cadence
-                    // rather than hot-spinning on a dead channel.
-                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => std::thread::sleep(STALL_TICK),
-                }
-                pacer.resync();
-                continue;
-            }
-
-            // Sample the skew before `advance` enqueues this tick's local
-            // input, so our half matches the advantage we ship the peer.
-            let skew = match_.skew();
-            self.metrics.skew.store(skew, Ordering::Relaxed);
-
-            let keys = self.joyflags.load(Ordering::Relaxed) & tango_match::input::JOYFLAGS_MASK as u32;
-            let (outgoing, report) = match match_.advance(keys) {
-                Ok(r) => r,
-                Err(e) => {
-                    log::error!("pvp: sio advance failed: {e}");
-                    self.cancel.cancel();
-                    break;
-                }
-            };
-            self.metrics.depth.store(report.rolled_back, Ordering::Relaxed);
-
-            // Ship this tick's local input. Push-before-send semantics live
-            // in the pump; a transport error is non-terminal (the heartbeat
-            // retransmits once the reconnect swaps a live channel back in).
-            if self
-                .sender
-                .send(&crate::net::data::Input {
-                    joyflags: outgoing.keys as u16,
-                    tick_advantage: outgoing.tick_advantage,
-                })
-                .is_err()
-            {
-                log::warn!("pvp: send pump terminated; ending match");
-                self.end.remote_disconnected.store(true, Ordering::Release);
-                self.cancel.cancel();
-                break;
-            }
-
-            // Confirmed telemetry, drained before the replay write so this
-            // batch's round-start events can stamp markers onto this
-            // batch's input records. Everything at or below the confirmed
-            // boundary is final — no revocation bookkeeping needed on this
-            // side of the engine.
-            let (samples, events) = match_.telemetry().lock().unwrap().drain_confirmed(report.confirmed);
-
-            // Round lifecycle, trap-driven off the games' own code paths:
-            // a round start (after the first) stamps a marker into the
-            // replay; the match-end anchor firing means the players left
-            // the battle loop for good — the direct successor of the trap
-            // engine's match-end hook.
-            let mut match_ended = false;
-            for (tick, event) in &events {
-                match event {
-                    telemetry::RoundEvent::Started => {
-                        if first_round_started {
-                            pending_round_marks.push_back(*tick);
-                        }
-                        first_round_started = true;
-                    }
-                    telemetry::RoundEvent::Ended { .. } => {}
-                    telemetry::RoundEvent::MatchEnded => {
-                        match_ended = true;
-                    }
-                }
-            }
-
-            // Confirmed inputs: replay sink + the buttons half of the
-            // stats merge below.
-            let confirmed_inputs = match_.drain_confirmed();
-            if let Some(w) = self.replay_writer.as_mut() {
-                for (tick, keys) in &confirmed_inputs {
-                    if pending_round_marks.front().is_some_and(|t| t <= tick) {
-                        pending_round_marks.pop_front();
-                        let _ = w.start_round();
-                    }
-                    if let Err(e) = w.write_input([keys[0] as u16, keys[1] as u16]) {
-                        log::warn!("pvp: replay write failed (recording stops): {e}");
-                        self.replay_writer = None;
-                        break;
-                    }
-                }
-            }
-            pending_buttons.extend(confirmed_inputs);
-
-            if !samples.is_empty() || !events.is_empty() {
-                self.fold_confirmed_telemetry(samples, events, &mut pending_buttons);
-            }
-
-            // Completion: the games' own match-end path ran (confirmed —
-            // both peers see it at the same pair tick). No runout needed:
-            // the anchor fires after the result screens have played.
-            if match_ended {
-                self.completed.store(true, Ordering::Release);
-            }
-            if self.completed.load(Ordering::Acquire) && !fired_end_of_match {
-                fired_end_of_match = true;
-                let first_completion = {
-                    let mut completed_at = self.end.local_ended_at.lock().unwrap();
-                    if completed_at.is_some() {
-                        false
-                    } else {
-                        *completed_at = Some(std::time::Instant::now());
-                        true
-                    }
-                };
-                if first_completion {
-                    // In-band EndOfMatch: rides the same ordered seq stream
-                    // as inputs, so the peer sees it exactly once and only
-                    // after every preceding input.
-                    let in_match = self.in_match.clone();
-                    self.rt.spawn(async move {
-                        if let Err(e) = in_match.send_end_of_match().await {
-                            log::warn!("pvp: send EndOfMatch failed: {e}");
-                        }
-                    });
-                    // Wall-clock fallback wake so `is_ended` is rechecked
-                    // even if the peer never sends EndOfMatch.
-                    let wake = self.wake.clone();
-                    self.rt.spawn(async move {
-                        tokio::time::sleep(PEER_END_GRACE).await;
-                        wake.notify_one();
-                    });
-                }
-            }
-
-            // Present the local screen to the UI. (Audio needs no push —
-            // the output stream pulls it straight off the pair.)
-            if let Some(buf) = match_.local_video_buffer() {
-                self.screen.write(&buf);
-            }
-            self.tps_counter.lock().unwrap().mark();
-            self.wake.notify_one();
-
-            // Clock sync: only the leading peer shaves tick rate, and only
-            // once the presented frame actually speculates past the present
-            // delay.
-            let slowdown = throttler.step(skew, match_.speculation_balance());
-            let target = EXPECTED_FPS - slowdown;
-            self.metrics.fps_target.store(target.to_bits(), Ordering::Relaxed);
-
-            // Pace at the base rate minus whatever the throttler shaved.
-            pacer.wait(target);
-        }
-
-        // Teardown: flush the replay tail. Finalize (write the EOR
-        // sentinel) only if the match completed — same policy as the trap
-        // engine, so an aborted match leaves a truncated-but-parseable
-        // recording.
-        if let Some(mut w) = self.replay_writer.take() {
-            for (_, keys) in match_.drain_confirmed() {
-                let _ = w.write_input([keys[0] as u16, keys[1] as u16]);
-            }
-            if self.completed.load(Ordering::Acquire) {
-                if let Err(e) = w.finish() {
-                    log::error!("finish replay failed: {e}");
-                }
-                // Cache the finished match's stats — each round already
-                // folded as it ended, so the Replays tab never has to
-                // re-simulate this one.
-                if let Some(stats_path) = self.stats_path.as_ref() {
-                    let snapshot = self.stats.lock().unwrap().snapshot();
-                    if let Err(e) = crate::stats_cache::write_match_stats(stats_path, &snapshot) {
-                        log::warn!("failed to write replay stats cache entry: {e}");
-                    }
-                }
-            }
-        }
+        Ok((
+            PvpDriver {
+                ctx: self,
+                match_,
+                throttler: tango_match::Throttler::new(),
+                pending_buttons: std::collections::VecDeque::new(),
+                first_round_started: false,
+                pending_round_marks: std::collections::VecDeque::new(),
+                fired_end_of_match: false,
+            },
+            pair_handle,
+        ))
     }
+
 
     /// Fold a batch of confirmed telemetry into the stats builder (the
     /// shared [`tango_match::analysis::fold_confirmed`], so live stats
@@ -1128,7 +871,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
         }
     };
 
-    tokio::task::spawn(async move {
+    crate::platform::spawn(async move {
         // Why the receive loop ended this iteration.
         enum Trip {
             /// Clean local teardown (user closed / cancelled). Announces the
@@ -1157,7 +900,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
         // Set after each successful reconnect to `now + RECONNECT_DRAIN_GRACE`:
         // the stall watch stays quiet until the queue recovers or this passes,
         // so the just-reconnected (still-full) queue can't instantly re-trip.
-        let mut drain_until: Option<std::time::Instant> = None;
+        let mut drain_until: Option<web_time::Instant> = None;
         loop {
             // The stall watch: poll the drive thread's published queue
             // length. Coarse (10 Hz) is fine — the queue takes seconds to
@@ -1170,7 +913,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
                     let queue_len = metrics.queue_len.load(Ordering::Relaxed) as usize;
                     if queue_len < crate::net::data::RECONNECT_QUEUE_LENGTH {
                         drain_until = None;
-                    } else if drain_until.is_none_or(|t| std::time::Instant::now() >= t) {
+                    } else if drain_until.is_none_or(|t| web_time::Instant::now() >= t) {
                         return;
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1272,7 +1015,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
             // still-full queue back below the threshold (or the grace lapses),
             // so the stale-high `queue_len` can't instantly re-trip the stall
             // and bounce us straight back into another reconnect.
-            drain_until = Some(std::time::Instant::now() + RECONNECT_DRAIN_GRACE);
+            drain_until = Some(web_time::Instant::now() + RECONNECT_DRAIN_GRACE);
             drive_paused.set(false);
             wake.notify_one();
             log::info!("pvp transparently reconnected the link");
@@ -1409,4 +1152,362 @@ fn build_replay_writer(
         [srams[0].as_slice(), srams[1].as_slice()],
     )?;
     Ok((writer, replay_filename))
+}
+
+/// A match waiting to be booted.
+///
+/// Handed back by [`PvpSession::new`] instead of being run inside it:
+/// priming the pair is seconds of blocking emulation, and every other
+/// session kind here leaves that decision — a thread, a blocking pool,
+/// an event loop — to the host.
+pub struct PvpBoot {
+    pieces: BootPieces,
+    drive: DriveContext,
+    sample_rate: u32,
+    local_player: usize,
+    metrics: Arc<Metrics>,
+}
+
+impl PvpBoot {
+    /// Boot and prime the pair. Blocks for seconds; run it somewhere
+    /// that can afford to.
+    ///
+    /// Hands back the driver to tick and the session's audio stream —
+    /// the local core resampled to the rate asked for at construction,
+    /// following the loop's published fps target (see
+    /// [`crate::audio::CoreStream`]).
+    pub fn boot(self) -> Result<(PvpDriver, crate::audio::CoreStream), crate::Error> {
+        let local_player = self.local_player;
+        let metrics = self.metrics;
+        let sample_rate = self.sample_rate;
+        let (driver, pair) = self.drive.boot(self.pieces)?;
+        let audio = crate::audio::CoreStream::new(
+            crate::audio::PairCorePull {
+                pair,
+                player: Box::new(move || local_player),
+            },
+            move || f32::from_bits(metrics.fps_target.load(Ordering::Relaxed)),
+            sample_rate,
+        );
+        Ok((driver, audio))
+    }
+}
+
+/// A live match, one tick at a time.
+///
+/// The state below used to be locals of a `loop` on a thread of its
+/// own; naming it is what lets a host drive the match instead — a
+/// desktop thread paced by the wall clock today, an event loop once the
+/// browser's signaling exists.
+pub struct PvpDriver {
+    ctx: DriveContext,
+    match_: Match,
+    throttler: tango_match::Throttler,
+    /// (tick, [p0, p1]) confirmed input pairs not yet folded into
+    /// stats (the telemetry for those ticks may confirm later).
+    pending_buttons: std::collections::VecDeque<(u32, [u32; 2])>,
+    /// Whether the first round's Started has been seen. Later Started
+    /// events stamp round markers into the replay stream.
+    first_round_started: bool,
+    /// Confirmed ticks whose replay input record must carry a
+    /// round-start marker.
+    pending_round_marks: std::collections::VecDeque<u32>,
+    fired_end_of_match: bool,
+}
+
+impl PvpDriver {
+    /// Advance the match one tick. `false` once it's over — cancelled,
+    /// a dead link, or a failed advance — after which the host calls
+    /// [`PvpDriver::finish`].
+    pub fn tick(&mut self) -> bool {
+        if self.ctx.cancel.is_cancelled() {
+            return false;
+        }
+        if self.ctx.drive_paused.paused() {
+            // The reconnect supervisor releases the gate on every
+            // exit path. Nothing to advance meanwhile, so the tick
+            // goes back to the host — which is also what lets a
+            // browser pause without a thread to park.
+            return true;
+        }
+
+        // Live present-delay adjustment from the footer slider.
+        let pd = self.ctx.frame_delay.load(Ordering::Relaxed);
+        if pd != self.match_.present_delay() {
+            self.match_.set_present_delay(pd);
+        }
+
+        // Drain the network before advancing: every confirmed tick we
+        // ingest now is a rollback we don't take deeper.
+        for input in self.ctx.event_rx.try_iter() {
+            self.match_.add_remote_input(input.joyflags as u32, input.tick_advantage);
+        }
+
+        // Stall guard: the peer is too far behind (or gone) — advancing
+        // further would run the input stream past the rennet horizon.
+        // The in-match heartbeat keeps the redundancy window + acks
+        // flowing while we wait; the supervisor watches queue_len and
+        // decides whether this is a reconnect.
+        //
+        // But hold ONLY when advancing can't make progress. `advance` is
+        // the sole thing that drains the local queue (it matches buffered
+        // remote inputs against local ones and confirms the pairs); merely
+        // ingesting remote inputs above just buffers them. So if the peer
+        // is still feeding us matchable inputs — exactly the case during a
+        // post-reconnect resend burst — we must keep advancing to settle
+        // them, even at a full queue: each such advance nets the queue
+        // *down* (drains ≥1, adds 1 local). Skipping advance whenever the
+        // queue is full instead would leave those resends forever
+        // unconsumed — the queue never drains, the stall never clears, and
+        // the link "reconnects but never resumes". Only a genuinely dead
+        // link (nothing matchable) parks here.
+        let queue_len = self.match_.local_queue_length() as u32;
+        self.ctx.metrics.queue_len.store(queue_len, Ordering::Relaxed);
+        if queue_len as usize >= crate::net::data::RECONNECT_QUEUE_LENGTH && self.match_.matchable() == 0 {
+            // Block on the event queue rather than poll it: the only
+            // thing that clears a stall is the peer's next input, and
+            // it arrives exactly here. Ingest it and loop — the drain
+            // + stall re-check above decide whether we're unstuck.
+            // The only thing that clears a stall is the peer's
+            // next input. Take whatever has landed and give the
+            // tick back; the drain + stall re-check above decide
+            // next time whether we're unstuck. A dead channel
+            // yields too — the supervisor owns what happens next,
+            // and spinning on it would burn the host's loop.
+            if let Ok(input) = self.ctx.event_rx.try_recv() {
+                self.match_.add_remote_input(input.joyflags as u32, input.tick_advantage);
+            }
+            return true;
+        }
+
+        // Sample the skew before `advance` enqueues this tick's local
+        // input, so our half matches the advantage we ship the peer.
+        let skew = self.match_.skew();
+        self.ctx.metrics.skew.store(skew, Ordering::Relaxed);
+
+        let keys = self.ctx.joyflags.load(Ordering::Relaxed) & tango_match::input::JOYFLAGS_MASK as u32;
+        let (outgoing, report) = match self.match_.advance(keys) {
+            Ok(r) => r,
+            Err(e) => {
+                log::error!("pvp: sio advance failed: {e}");
+                self.ctx.cancel.cancel();
+                return false;
+            }
+        };
+        self.ctx.metrics.depth.store(report.rolled_back, Ordering::Relaxed);
+
+        // Ship this tick's local input. Push-before-send semantics live
+        // in the pump; a transport error is non-terminal (the heartbeat
+        // retransmits once the reconnect swaps a live channel back in).
+        if self
+            .ctx
+            .sender
+            .send(&crate::net::data::Input {
+                joyflags: outgoing.keys as u16,
+                tick_advantage: outgoing.tick_advantage,
+            })
+            .is_err()
+        {
+            log::warn!("pvp: send pump terminated; ending match");
+            self.ctx.end.remote_disconnected.store(true, Ordering::Release);
+            self.ctx.cancel.cancel();
+            return false;
+        }
+
+        // Confirmed telemetry, drained before the replay write so this
+        // batch's round-start events can stamp markers onto this
+        // batch's input records. Everything at or below the confirmed
+        // boundary is final — no revocation bookkeeping needed on this
+        // side of the engine.
+        let (samples, events) = self.match_.telemetry().lock().unwrap().drain_confirmed(report.confirmed);
+
+        // Round lifecycle, trap-driven off the games' own code paths:
+        // a round start (after the first) stamps a marker into the
+        // replay; the match-end anchor firing means the players left
+        // the battle loop for good — the direct successor of the trap
+        // engine's match-end hook.
+        let mut match_ended = false;
+        for (tick, event) in &events {
+            match event {
+                telemetry::RoundEvent::Started => {
+                    if self.first_round_started {
+                        self.pending_round_marks.push_back(*tick);
+                    }
+                    self.first_round_started = true;
+                }
+                telemetry::RoundEvent::Ended { .. } => {}
+                telemetry::RoundEvent::MatchEnded => {
+                    match_ended = true;
+                }
+            }
+        }
+
+        // Confirmed inputs: replay sink + the buttons half of the
+        // stats merge below.
+        let confirmed_inputs = self.match_.drain_confirmed();
+        if let Some(w) = self.ctx.replay_writer.as_mut() {
+            for (tick, keys) in &confirmed_inputs {
+                if self.pending_round_marks.front().is_some_and(|t| t <= tick) {
+                    self.pending_round_marks.pop_front();
+                    let _ = w.start_round();
+                }
+                if let Err(e) = w.write_input([keys[0] as u16, keys[1] as u16]) {
+                    log::warn!("pvp: replay write failed (recording stops): {e}");
+                    self.ctx.replay_writer = None;
+                    break;
+                }
+            }
+        }
+        self.pending_buttons.extend(confirmed_inputs);
+
+        if !samples.is_empty() || !events.is_empty() {
+            self.ctx.fold_confirmed_telemetry(samples, events, &mut self.pending_buttons);
+        }
+
+        // Completion: the games' own match-end path ran (confirmed —
+        // both peers see it at the same pair tick). No runout needed:
+        // the anchor fires after the result screens have played.
+        if match_ended {
+            self.ctx.completed.store(true, Ordering::Release);
+        }
+        if self.ctx.completed.load(Ordering::Acquire) && !self.fired_end_of_match {
+            self.fired_end_of_match = true;
+            let first_completion = {
+                let mut completed_at = self.ctx.end.local_ended_at.lock().unwrap();
+                if completed_at.is_some() {
+                    false
+                } else {
+                    *completed_at = Some(web_time::Instant::now());
+                    true
+                }
+            };
+            if first_completion {
+                // In-band EndOfMatch: rides the same ordered seq stream
+                // as inputs, so the peer sees it exactly once and only
+                // after every preceding input.
+                let in_match = self.ctx.in_match.clone();
+                #[cfg(not(target_arch = "wasm32"))]
+                self.ctx.rt.spawn(async move {
+                    if let Err(e) = in_match.send_end_of_match().await {
+                        log::warn!("pvp: send EndOfMatch failed: {e}");
+                    }
+                });
+                #[cfg(target_arch = "wasm32")]
+                crate::platform::spawn(async move {
+                    if let Err(e) = in_match.send_end_of_match().await {
+                        log::warn!("pvp: send EndOfMatch failed: {e}");
+                    }
+                });
+                // Wall-clock fallback wake so `is_ended` is rechecked
+                // even if the peer never sends EndOfMatch.
+                let wake = self.ctx.wake.clone();
+                self.ctx.rt.spawn(async move {
+                    tokio::time::sleep(PEER_END_GRACE).await;
+                    wake.notify_one();
+                });
+            }
+        }
+
+        // Present the local screen to the UI. (Audio needs no push —
+        // the output stream pulls it straight off the pair.)
+        if let Some(buf) = self.match_.local_video_buffer() {
+            self.ctx.screen.write(&buf);
+        }
+        self.ctx.tps_counter.lock().unwrap().mark();
+        self.ctx.wake.notify_one();
+
+        // Clock sync: only the leading peer shaves tick rate, and only
+        // once the presented frame actually speculates past the present
+        // delay.
+        let slowdown = self.throttler.step(skew, self.match_.speculation_balance());
+        let target = EXPECTED_FPS - slowdown;
+        self.ctx.metrics.fps_target.store(target.to_bits(), Ordering::Relaxed);
+
+        true
+    }
+
+    /// Flush the replay tail and cache the match's stats. Called once,
+    /// after [`PvpDriver::tick`] reports the match over.
+    pub fn finish(mut self) {
+
+        // Teardown: flush the replay tail. Finalize (write the EOR
+        // sentinel) only if the match completed — same policy as the trap
+        // engine, so an aborted match leaves a truncated-but-parseable
+        // recording.
+        if let Some(mut w) = self.ctx.replay_writer.take() {
+            for (_, keys) in self.match_.drain_confirmed() {
+                let _ = w.write_input([keys[0] as u16, keys[1] as u16]);
+            }
+            if self.ctx.completed.load(Ordering::Acquire) {
+                if let Err(e) = w.finish() {
+                    log::error!("finish replay failed: {e}");
+                }
+                // Cache the finished match's stats — each round already
+                // folded as it ended, so the Replays tab never has to
+                // re-simulate this one.
+                #[cfg(not(target_arch = "wasm32"))]
+                if let Some(stats_path) = self.ctx.stats_path.as_ref() {
+                    let snapshot = self.ctx.stats.lock().unwrap().snapshot();
+                    if let Err(e) = crate::stats::write_match_stats(stats_path, &snapshot) {
+                        log::warn!("failed to write replay stats cache entry: {e}");
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl crate::Drive for PvpDriver {
+    fn tick(&mut self) -> bool {
+        PvpDriver::tick(self)
+    }
+
+    /// The throttler's target: the base rate minus whatever it shaved
+    /// to bring the peers' clocks together.
+    fn fps_target(&self) -> f32 {
+        f32::from_bits(self.ctx.metrics.fps_target.load(Ordering::Relaxed))
+    }
+}
+
+/// Rolling-window tick counter behind the status bar's TPS readout.
+/// Marked once per emulated frame, so the reading follows the match
+/// rather than the host's refresh rate.
+use std::collections::VecDeque;
+use std::time::Duration;
+use web_time::Instant;
+
+pub struct TpsCounter {
+    marks: VecDeque<Instant>,
+    window_size: usize,
+}
+
+impl TpsCounter {
+    pub fn new(window_size: usize) -> Self {
+        Self {
+            marks: VecDeque::with_capacity(window_size),
+            window_size,
+        }
+    }
+
+    pub fn mark(&mut self) {
+        while self.marks.len() >= self.window_size {
+            self.marks.pop_front();
+        }
+        self.marks.push_back(Instant::now());
+    }
+
+    /// Average interval between consecutive marks. ZERO if the
+    /// counter has fewer than two marks.
+    pub fn mean_duration(&self) -> Duration {
+        if self.marks.len() < 2 {
+            return Duration::ZERO;
+        }
+        let mut total = Duration::ZERO;
+        let mut count = 0u32;
+        for (a, b) in self.marks.iter().zip(self.marks.iter().skip(1)) {
+            total += *b - *a;
+            count += 1;
+        }
+        total / count
+    }
 }

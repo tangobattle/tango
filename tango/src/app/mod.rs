@@ -971,7 +971,14 @@ pub enum Message {
     /// PvpSession isn't Clone.
     #[allow(clippy::type_complexity)]
     PvpSessionBuilt(
-        netplay::Slot<anyhow::Result<(session::pvp::PvpSession, session::PvpPanes, Option<audio::Binding>)>>,
+        netplay::Slot<
+            anyhow::Result<(
+                session::pvp::PvpSession,
+                session::PvpPanes,
+                Option<audio::Binding>,
+                std::thread::JoinHandle<()>,
+            )>,
+        >,
     ),
     /// 1 Hz tick: refresh Discord rich-presence + drain any
     /// Discord-initiated join secret into the play link-code
@@ -1318,10 +1325,11 @@ impl App {
                             &path,
                             stats_job,
                         ) {
-                            Ok((s, audio)) => {
+                            Ok((s, audio, threads)) => {
                                 self.session.replay_chart = Some(self.replay_chart_for(&path, &s));
                                 self.session.active = Some(Box::new(s));
                                 self.session.audio_binding = audio;
+                                self.session.attach_drive_threads(threads);
                                 self.session.session_installed();
                             }
                             // The dropped job closes its stream, whose
@@ -1433,7 +1441,7 @@ impl App {
                     return iced::Task::none();
                 };
                 match result {
-                    Ok((session, panes, audio)) => {
+                    Ok((session, panes, audio, drive)) => {
                         // Both setup drawers start closed — the edge
                         // handles are the invitation; a pane that
                         // barges in over the match start isn't.
@@ -1444,6 +1452,7 @@ impl App {
                         self.session.active = Some(Box::new(session));
                         self.session.pvp_panes = Some(panes);
                         self.session.audio_binding = audio;
+                        self.session.attach_drive_threads([drive]);
                         if auto_open {
                             self.session.opponent_panel.open();
                         } else {

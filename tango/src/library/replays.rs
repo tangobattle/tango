@@ -14,7 +14,7 @@ pub use tango_library::replays::*;
 // re-exported so app callers keep one replays-module surface. Written
 // at match teardown for live matches and by
 // [`compute_and_cache_match_stats`] for everything else.
-pub use tango_session::stats_cache::{load_match_stats, stats_path, write_match_stats};
+pub use tango_session::stats::{load_match_stats, stats_path, write_match_stats};
 
 use crate::library::rom::GameRef;
 

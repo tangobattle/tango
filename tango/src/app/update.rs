@@ -138,10 +138,13 @@ impl App {
                 let Some(loaded) = self.loaded.as_ref() else {
                     return iced::Task::none();
                 };
+                let save_path = loaded.save_path.clone();
                 match session::spawn_singleplayer(&self.scanners, &self.config, &self.audio_binder, loaded) {
-                    Ok((s, audio)) => {
+                    Ok((s, audio, save, drive)) => {
                         self.session.active = Some(Box::new(s));
                         self.session.audio_binding = audio;
+                        self.session.attach_save_backup(save_path, save);
+                        self.session.attach_drive_threads([drive]);
                         self.session.session_installed();
                     }
                     Err(e) => {
@@ -159,9 +162,10 @@ impl App {
                     return iced::Task::none();
                 };
                 match session::spawn_training(&self.scanners, &self.config, &self.audio_binder, loaded) {
-                    Ok((s, audio)) => {
+                    Ok((s, audio, drive)) => {
                         self.session.active = Some(Box::new(s));
                         self.session.audio_binding = audio;
+                        self.session.attach_drive_threads([drive]);
                         self.session.session_installed();
                     }
                     Err(e) => {
@@ -576,10 +580,11 @@ impl App {
 
         let (stats_job, stats_task) = self.replay_stats_takeover(&p);
         match session::build_playback(&self.scanners, &self.config, &self.audio_binder, &p, stats_job) {
-            Ok((s, audio)) => {
+            Ok((s, audio, threads)) => {
                 self.session.replay_chart = Some(self.replay_chart_for(&p, &s));
                 self.session.active = Some(Box::new(s));
                 self.session.audio_binding = audio;
+                self.session.attach_drive_threads(threads);
                 self.session.session_installed();
             }
             // The dropped job closes its stream, whose completion
@@ -779,7 +784,6 @@ impl App {
         let filter_name = match container {
             encoder_facade::Container::Mp4 => "MP4",
             encoder_facade::Container::Matroska => "Matroska",
-            encoder_facade::Container::WebM => "WebM",
         };
         let stem = replay_path
             .file_stem()
@@ -922,14 +926,13 @@ impl App {
                 let ExportPrep { games, roms, replay } = prep;
                 // scale == 0 is the slider's lossless stop (RGB-domain
                 // H.264, no upscale); 1..=10 is a lossy render at that
-                // nearest-neighbor upscale. `Settings::with_scale` picks
-                // the codecs and container to match.
+                // nearest-neighbor upscale. The exporter picks the
+                // codecs and container to match.
                 let scale_arg = if user_settings.scale == 0 {
                     None
                 } else {
                     Some(user_settings.scale as usize)
                 };
-                let settings = crate::replay_export::Settings::with_scale(scale_arg);
                 // Clone the sender into the callback. The original
                 // `progress_tx` stays alive on the thread scope until
                 // *after* `done_arc_thread` is set; otherwise the
@@ -977,21 +980,19 @@ impl App {
                 if user_settings.disable_bgm {
                     clip.snapshot = None;
                 }
-                let result = crate::replay_export::export(
-                    &config,
-                    &inputs,
-                    replay.local_player_index as usize,
-                    &rounds_mask,
-                    &round_titles,
-                    &clip,
-                    &output_for_thread,
-                    &settings,
-                    &canceller_thread,
-                    cb,
-                    user_settings.twosided,
-                )
-                .map(|()| output_for_thread)
-                .map_err(|e| format!("{e}"));
+                let request = crate::replay_export::Request {
+                    config: &config,
+                    inputs: &inputs,
+                    local_player: replay.local_player_index as usize,
+                    rounds_mask: &rounds_mask,
+                    round_titles: &round_titles,
+                    clip: &clip,
+                    scale: scale_arg,
+                    twosided: user_settings.twosided,
+                };
+                let result = crate::replay_export::export(&request, &output_for_thread, &canceller_thread, cb)
+                    .map(|()| output_for_thread)
+                    .map_err(|e| format!("{e}"));
                 *done_arc_thread.lock().unwrap() = Some(result);
                 // `progress_tx` drops here, closing the channel, which
                 // signals the iced stream to read `done_arc` — which is
