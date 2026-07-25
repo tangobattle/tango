@@ -5,7 +5,7 @@
 //! thread drains that stdout continuously (a process can deadlock
 //! against its own pipe if the writer waits for the reader while the
 //! reader waits for the writer), and the export thread turns those bytes
-//! into packets through [`crate::es`].
+//! into packets through [`es`].
 //!
 //! Two constraints shape the ffmpeg command lines:
 //!
@@ -28,7 +28,9 @@ use std::sync::{Arc, Mutex};
 use std::os::windows::process::CommandExt;
 
 use crate::cancel::ChildSlot;
-use crate::es::{self, EsParser};
+pub(crate) mod es;
+
+use es::EsParser;
 use crate::{
     AudioCodec, AudioSettings, Backend, Canceller, Error, Packet, Settings, VideoCodec, VideoQuality, VideoSettings,
 };
@@ -525,7 +527,7 @@ fn base_command(ffmpeg: &Path) -> Command {
 }
 
 /// The elementary-stream output format for each codec — the framing
-/// [`crate::es`] knows how to read back.
+/// [`es`] knows how to read back.
 fn video_format(codec: VideoCodec) -> &'static str {
     match codec {
         VideoCodec::H264 => "h264",

@@ -24,11 +24,11 @@
 
 use mp4_atom::{Any, Atom, Encode, FourCC};
 
-use super::{Chapter, MuxConfig, Patch};
+use super::{Chapter, Container, MuxConfig, Muxer, Patch};
 use crate::packet::ticks_to_ns;
-use crate::{AudioCodec, VideoCodec};
+use crate::{AudioCodec, AudioTrackInfo, VideoCodec, VideoTrackInfo};
 
-pub const VIDEO_TRACK: usize = 0;
+
 
 /// `mvhd`/chapter timescale. Milliseconds is the conventional choice
 /// for the movie clock; each track keeps its own exact timescale.
@@ -66,58 +66,27 @@ struct Chunk {
     samples: u32,
 }
 
+/// Which kind of track this is, and everything its sample entry is built
+/// from — which the codec does, not this module.
 enum TrackKind {
-    Video {
-        width: u32,
-        height: u32,
-        codec_private: Vec<u8>,
-        color: Option<crate::ColorInfo>,
-    },
-    Audio {
-        sample_rate: u32,
-        channels: u8,
-        codec: AudioCodec,
-        codec_private: Vec<u8>,
-        codec_delay_samples: u64,
-    },
+    Video(VideoTrackInfo),
+    Audio(AudioTrackInfo),
 }
 
 impl Mp4Muxer {
     pub fn new(config: MuxConfig) -> crate::Result<Self> {
-        if config.video.codec != VideoCodec::H264 {
-            return Err(crate::Error::internal(format!(
-                "the MP4 muxer only writes H.264 video, not {:?}",
-                config.video.codec
-            )));
+        // Refuse a codec MP4 can't carry before writing a byte, rather
+        // than at the close when the sample entry can't be built.
+        for audio in &config.audio {
+            Container::Mp4.accepts(config.video.codec, audio.codec)?;
         }
         let mut tracks = vec![Track::new(
             config.video.timescale,
             false,
-            TrackKind::Video {
-                width: config.video.width,
-                height: config.video.height,
-                codec_private: config.video.codec_private.clone(),
-                color: config.video.color,
-            },
+            TrackKind::Video(config.video.clone()),
         )];
         for audio in &config.audio {
-            if audio.codec != AudioCodec::Aac {
-                return Err(crate::Error::internal(format!(
-                    "the MP4 muxer only writes AAC audio, not {:?}",
-                    audio.codec
-                )));
-            }
-            tracks.push(Track::new(
-                audio.sample_rate,
-                true,
-                TrackKind::Audio {
-                    sample_rate: audio.sample_rate,
-                    channels: audio.channels,
-                    codec: audio.codec,
-                    codec_private: audio.codec_private.clone(),
-                    codec_delay_samples: audio.codec_delay_samples,
-                },
-            ));
+            tracks.push(Track::new(audio.sample_rate, true, TrackKind::Audio(audio.clone())));
         }
         let mut muxer = Self {
             config,
@@ -154,7 +123,14 @@ impl Mp4Muxer {
         Ok(())
     }
 
-    pub fn write(&mut self, track: usize, packet: &crate::Packet) -> crate::Result<()> {
+    fn emit(&mut self, bytes: &[u8]) {
+        self.out.extend_from_slice(bytes);
+        self.pos += bytes.len() as u64;
+    }
+}
+
+impl Muxer for Mp4Muxer {
+    fn write(&mut self, track: usize, packet: &crate::Packet) -> crate::Result<()> {
         if track >= self.tracks.len() {
             return Err(crate::Error::internal(format!("no track {track}")));
         }
@@ -193,11 +169,11 @@ impl Mp4Muxer {
         Ok(())
     }
 
-    pub fn take_output(&mut self) -> Vec<u8> {
+    fn take_output(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.out)
     }
 
-    pub fn finish(&mut self, chapters: &[Chapter]) -> crate::Result<Vec<Patch>> {
+    fn finish(&mut self, chapters: &[Chapter]) -> crate::Result<Vec<Patch>> {
         let mdat_size = self.pos - self.mdat_start;
         let movie_duration = self
             .tracks
@@ -240,11 +216,6 @@ impl Mp4Muxer {
             bytes: mdat_size.to_be_bytes().to_vec(),
         }])
     }
-
-    fn emit(&mut self, bytes: &[u8]) {
-        self.out.extend_from_slice(bytes);
-        self.pos += bytes.len() as u64;
-    }
 }
 
 impl Track {
@@ -277,15 +248,15 @@ impl Track {
             matrix: mp4_atom::Matrix::default(),
             width: mp4_atom::FixedPoint::new(
                 match &self.kind {
-                    TrackKind::Video { width, .. } => *width as u16,
-                    TrackKind::Audio { .. } => 0,
+                    TrackKind::Video(video) => video.width as u16,
+                    TrackKind::Audio(_) => 0,
                 },
                 0,
             ),
             height: mp4_atom::FixedPoint::new(
                 match &self.kind {
-                    TrackKind::Video { height, .. } => *height as u16,
-                    TrackKind::Audio { .. } => 0,
+                    TrackKind::Video(video) => video.height as u16,
+                    TrackKind::Audio(_) => 0,
                 },
                 0,
             ),
@@ -299,10 +270,8 @@ impl Track {
         // audio does; an edit list that starts the track's presentation
         // at the end of the priming is how MP4 says "discard these".
         // Without it the audio plays that much late against the video.
-        if let TrackKind::Audio {
-            codec_delay_samples, ..
-        } = self.kind
-        {
+        if let TrackKind::Audio(audio) = &self.kind {
+            let codec_delay_samples = audio.codec_delay_samples;
             if codec_delay_samples > 0 {
                 mp4_atom::Edts {
                     elst: Some(mp4_atom::Elst {
@@ -420,116 +389,109 @@ impl Track {
     }
 
     fn encode_stsd(&self, out: &mut Vec<u8>) -> crate::Result<()> {
-        match &self.kind {
-            TrackKind::Video {
-                width,
-                height,
-                codec_private,
-                color,
-            } => {
-                // The bare record the H.264 parser produced, no box
-                // header around it.
-                let avcc = mp4_atom::Avcc::decode_body(&mut codec_private.as_slice())
-                    .map_err(|e| crate::Error::bitstream("H.264", format!("unusable avcC record: {e}")))?;
-                mp4_atom::Stsd {
-                    codecs: vec![mp4_atom::Avc1 {
-                        visual: mp4_atom::Visual {
-                            data_reference_index: 1,
-                            width: *width as u16,
-                            height: *height as u16,
-                            horizresolution: mp4_atom::FixedPoint::new(72, 0),
-                            vertresolution: mp4_atom::FixedPoint::new(72, 0),
-                            frame_count: 1,
-                            compressor: Default::default(),
-                            depth: 24,
-                        },
-                        avcc,
-                        colr: color.map(|c| mp4_atom::Colr::Nclx {
-                            colour_primaries: c.primaries as u16,
-                            transfer_characteristics: c.transfer as u16,
-                            matrix_coefficients: c.matrix as u16,
-                            full_range_flag: c.full_range,
-                        }),
-                        pasp: None,
-                        btrt: None,
-                        taic: None,
-                        fiel: None,
-                    }
-                    .into()],
-                }
-                .encode(out)?;
-            }
-            TrackKind::Audio {
-                sample_rate,
-                channels,
-                codec,
-                codec_private,
-                ..
-            } => {
-                if *codec != AudioCodec::Aac {
-                    return Err(crate::Error::internal(format!(
-                        "unsupported MP4 audio codec {codec:?}"
-                    )));
-                }
-                mp4_atom::Stsd {
-                    codecs: vec![mp4_atom::Mp4a {
-                        audio: mp4_atom::Audio {
-                            data_reference_index: 1,
-                            channel_count: *channels as u16,
-                            sample_size: 16,
-                            sample_rate: mp4_atom::FixedPoint::new(*sample_rate as u16, 0),
-                        },
-                        esds: aac_esds(codec_private)?,
-                        btrt: None,
-                        taic: None,
-                    }
-                    .into()],
-                }
-                .encode(out)?;
-            }
-        }
+        let codec = match &self.kind {
+            TrackKind::Video(video) => video_sample_entry(video)?,
+            TrackKind::Audio(audio) => audio_sample_entry(audio)?,
+        };
+        mp4_atom::Stsd { codecs: vec![codec] }.encode(out)?;
         Ok(())
     }
 }
 
-/// The `esds` descriptor chain for an AAC track, built from the
-/// `AudioSpecificConfig` the stream reported.
+/// The sample entry describing a video track.
+fn video_sample_entry(video: &VideoTrackInfo) -> crate::Result<mp4_atom::Codec> {
+    if video.codec != VideoCodec::H264 {
+        return Err(crate::Error::internal(format!(
+            "MP4 has no sample entry here for {:?}",
+            video.codec
+        )));
+    }
+    // The bare record the H.264 parser produced, no box header around it.
+    let avcc = mp4_atom::Avcc::decode_body(&mut video.codec_private.as_slice())
+        .map_err(|e| crate::Error::bitstream("H.264", format!("unusable avcC record: {e}")))?;
+    Ok(mp4_atom::Avc1 {
+        visual: mp4_atom::Visual {
+            data_reference_index: 1,
+            width: video.width as u16,
+            height: video.height as u16,
+            horizresolution: mp4_atom::FixedPoint::new(72, 0),
+            vertresolution: mp4_atom::FixedPoint::new(72, 0),
+            frame_count: 1,
+            compressor: Default::default(),
+            depth: 24,
+        },
+        avcc,
+        colr: video.color.map(|c| mp4_atom::Colr::Nclx {
+            colour_primaries: c.primaries as u16,
+            transfer_characteristics: c.transfer as u16,
+            matrix_coefficients: c.matrix as u16,
+            full_range_flag: c.full_range,
+        }),
+        pasp: None,
+        btrt: None,
+        taic: None,
+        fiel: None,
+    }
+    .into())
+}
+
+/// The sample entry describing an audio track, with the `esds`
+/// descriptor chain built from the `AudioSpecificConfig` the stream
+/// reported.
 ///
-/// mp4-atom models the config by its fields rather than as a blob and
-/// re-encodes it, so the two config bytes are unpacked here: 5 bits of
-/// audio object type, 4 of sampling frequency index, 4 of channel
-/// configuration (ISO/IEC 14496-3).
-fn aac_esds(audio_specific_config: &[u8]) -> crate::Result<mp4_atom::Esds> {
-    let (a, b) = match audio_specific_config {
+/// mp4-atom models that config by its fields rather than as a blob and
+/// re-encodes it, so the two bytes are unpacked here: 5 bits of audio
+/// object type, 4 of sampling frequency index, 4 of channel configuration
+/// (ISO/IEC 14496-3).
+fn audio_sample_entry(audio: &AudioTrackInfo) -> crate::Result<mp4_atom::Codec> {
+    if audio.codec != AudioCodec::Aac {
+        return Err(crate::Error::internal(format!(
+            "MP4 has no sample entry here for {:?}",
+            audio.codec
+        )));
+    }
+    let (a, b) = match audio.codec_private.as_slice() {
         [a, b, ..] => (*a, *b),
-        _ => {
+        other => {
             return Err(crate::Error::bitstream(
                 "AAC",
-                format!("expected a 2-byte AudioSpecificConfig, got {audio_specific_config:?}"),
+                format!("expected a 2-byte AudioSpecificConfig, got {other:?}"),
             ))
         }
     };
-    Ok(mp4_atom::Esds {
-        es_desc: mp4_atom::esds::EsDescriptor {
-            es_id: 1,
-            dec_config: mp4_atom::esds::DecoderConfig {
-                // 0x40 is MPEG-4 audio; stream type 5 is audio.
-                object_type_indication: 0x40,
-                stream_type: 5,
-                up_stream: 0,
-                buffer_size_db: [0, 0, 0].into(),
-                max_bitrate: 0,
-                avg_bitrate: 0,
-                dec_specific: mp4_atom::esds::DecoderSpecific {
-                    profile: a >> 3,
-                    freq_index: ((a & 0b111) << 1) | (b >> 7),
-                    chan_conf: (b >> 3) & 0b1111,
-                },
-            },
-            sl_config: mp4_atom::esds::SLConfig::default(),
+    Ok(mp4_atom::Mp4a {
+        audio: mp4_atom::Audio {
+            data_reference_index: 1,
+            channel_count: audio.channels as u16,
+            sample_size: 16,
+            sample_rate: mp4_atom::FixedPoint::new(audio.sample_rate as u16, 0),
         },
-    })
+        esds: mp4_atom::Esds {
+            es_desc: mp4_atom::esds::EsDescriptor {
+                es_id: 1,
+                dec_config: mp4_atom::esds::DecoderConfig {
+                    // 0x40 is MPEG-4 audio; stream type 5 is audio.
+                    object_type_indication: 0x40,
+                    stream_type: 5,
+                    up_stream: 0,
+                    buffer_size_db: [0, 0, 0].into(),
+                    max_bitrate: 0,
+                    avg_bitrate: 0,
+                    dec_specific: mp4_atom::esds::DecoderSpecific {
+                        profile: a >> 3,
+                        freq_index: ((a & 0b111) << 1) | (b >> 7),
+                        chan_conf: (b >> 3) & 0b1111,
+                    },
+                },
+                sl_config: mp4_atom::esds::SLConfig::default(),
+            },
+        },
+        btrt: None,
+        taic: None,
+    }
+    .into())
 }
+
 
 /// A Nero `chpl` box: the chapter form ffmpeg writes into `moov/udta`
 /// and that ffmpeg, VLC and mpv all read back.
@@ -565,7 +527,7 @@ fn chpl_atom(chapters: &[Chapter], config: &MuxConfig) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AudioTrackInfo, ColorInfo, Container, Packet, VideoTrackInfo};
+    use crate::{AudioTrackInfo, ColorInfo, Container, Packet, VideoTrackInfo, VIDEO_TRACK};
 
     /// A minimal but real avcC record: one SPS and one PPS.
     fn avcc() -> Vec<u8> {

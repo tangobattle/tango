@@ -1,6 +1,6 @@
 //! What can go wrong, as something a caller can match on.
 
-use crate::{AudioCodec, Container, VideoCodec};
+use crate::Container;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -26,8 +26,8 @@ pub enum Error {
     #[error("{container:?} cannot carry {video:?} video with {audio:?} audio")]
     CodecNotInContainer {
         container: Container,
-        video: VideoCodec,
-        audio: AudioCodec,
+        video: crate::codec::VideoCodec,
+        audio: crate::codec::AudioCodec,
     },
 
     /// An encoder's output didn't match the format it was asked for.

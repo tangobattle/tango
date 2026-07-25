@@ -1,13 +1,25 @@
-//! Reading a compressed audio packet's length out of the packet itself.
-//!
-//! Both backends need this and neither is told it: an elementary stream
-//! carries no timestamps, and WebCodecs doesn't report how many samples
-//! a chunk decodes to. Every codec here states it in its own first
-//! bytes, so the length is read from the packet rather than guessed —
-//! which is what keeps a track's timeline exact rather than merely
-//! plausible.
+//! The codecs an export can produce, and reading a compressed audio
+//! packet's length out of the packet itself.
 
-use crate::AudioCodec;
+/// Video codecs a backend can produce and a muxer can carry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VideoCodec {
+    H264,
+    Vp8,
+    Vp9,
+}
+
+/// Audio codecs a backend can produce and a muxer can carry.
+///
+/// [`AudioCodec::PcmS16Le`] never reaches an encoder — the samples the
+/// caller already holds *are* the packets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AudioCodec {
+    Aac,
+    Opus,
+    Flac,
+    PcmS16Le,
+}
 
 /// Samples per AAC frame with `frameLengthFlag` clear, which is what
 /// every encoder here produces.

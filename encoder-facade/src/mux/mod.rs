@@ -13,7 +13,8 @@
 //! `await`ed. Neither concern reaches the muxers, which stay
 //! synchronous, allocation-bounded and testable against a `Vec<u8>`.
 
-use crate::{AudioCodec, AudioTrackInfo, Packet, VideoCodec, VideoTrackInfo};
+use crate::codec::{AudioCodec, VideoCodec};
+use crate::{AudioTrackInfo, Packet, VideoTrackInfo};
 
 mod matroska;
 mod mp4;
@@ -36,17 +37,12 @@ impl Container {
     /// halfway through an export.
     pub fn accepts(self, video: VideoCodec, audio: AudioCodec) -> crate::Result<()> {
         let ok = match self {
-            // Everything here is muxed the way ISO/IEC 14496 defines
-            // it; VP8/VP9 in MP4 exist but nothing needs them, so
-            // they're refused rather than half-supported.
-            Container::Mp4 => matches!(
-                (video, audio),
-                (VideoCodec::H264, AudioCodec::Aac) | (VideoCodec::H264, AudioCodec::Opus)
-            ),
+            // Everything here is muxed the way ISO/IEC 14496 defines it.
+            // VP8/VP9 in MP4 exist but nothing needs them, so they're
+            // refused rather than half-supported.
+            Container::Mp4 => video == VideoCodec::H264 && audio == AudioCodec::Aac,
             Container::Matroska => true,
-            Container::WebM => {
-                matches!(video, VideoCodec::Vp8 | VideoCodec::Vp9) && audio == AudioCodec::Opus
-            }
+            Container::WebM => matches!(video, VideoCodec::Vp8 | VideoCodec::Vp9) && audio == AudioCodec::Opus,
         };
         if !ok {
             return Err(crate::Error::CodecNotInContainer {
@@ -100,59 +96,35 @@ pub struct MuxConfig {
 }
 
 /// A container writer. One per export.
-pub enum Muxer {
-    Mp4(mp4::Mp4Muxer),
-    Matroska(matroska::MatroskaMuxer),
+pub trait Muxer {
+    /// Add one packet to a track, numbered as [`crate::VIDEO_TRACK`] and
+    /// the audio tracks after it. Packets arrive in time order across
+    /// tracks — [`crate::Session`] guarantees that much — so a muxer
+    /// never has to reorder.
+    fn write(&mut self, track: usize, packet: &Packet) -> crate::Result<()>;
+
+    /// Container bytes produced so far. Called regularly, which is what
+    /// keeps a muxer's memory flat rather than growing with the length of
+    /// the export.
+    fn take_output(&mut self) -> Vec<u8>;
+
+    /// Close the container: write what belongs at the end (indexes,
+    /// chapters, cues) and report the patches that complete the parts
+    /// written earlier. [`Muxer::take_output`] is drained once more after
+    /// this, and then the patches are applied.
+    fn finish(&mut self, chapters: &[Chapter]) -> crate::Result<Vec<Patch>>;
 }
 
-impl Muxer {
-    /// Open a container and write its header. Fails if any track's
-    /// codec doesn't belong in this container.
-    pub fn new(config: MuxConfig) -> crate::Result<Self> {
-        for audio in &config.audio {
-            config.container.accepts(config.video.codec, audio.codec)?;
-        }
-        Ok(match config.container {
-            Container::Mp4 => Muxer::Mp4(mp4::Mp4Muxer::new(config)?),
-            Container::Matroska | Container::WebM => Muxer::Matroska(matroska::MatroskaMuxer::new(config)?),
-        })
+/// Open a container and write its header. Fails if any track's codec
+/// doesn't belong in the container asked for.
+pub fn open(config: MuxConfig) -> crate::Result<Box<dyn Muxer>> {
+    for audio in &config.audio {
+        config.container.accepts(config.video.codec, audio.codec)?;
     }
-
-    pub fn write_video(&mut self, packet: &Packet) -> crate::Result<()> {
-        match self {
-            Muxer::Mp4(m) => m.write(mp4::VIDEO_TRACK, packet),
-            Muxer::Matroska(m) => m.write(matroska::VIDEO_TRACK, packet),
-        }
-    }
-
-    /// `track` indexes [`MuxConfig::audio`].
-    pub fn write_audio(&mut self, track: usize, packet: &Packet) -> crate::Result<()> {
-        match self {
-            Muxer::Mp4(m) => m.write(mp4::VIDEO_TRACK + 1 + track, packet),
-            Muxer::Matroska(m) => m.write(matroska::VIDEO_TRACK + 1 + track, packet),
-        }
-    }
-
-    /// Container bytes produced so far. Call regularly — this is what
-    /// keeps a muxer's memory bounded rather than growing with the
-    /// length of the export.
-    pub fn take_output(&mut self) -> Vec<u8> {
-        match self {
-            Muxer::Mp4(m) => m.take_output(),
-            Muxer::Matroska(m) => m.take_output(),
-        }
-    }
-
-    /// Close the container: write everything that belongs at the end
-    /// (indexes, chapters, cues) and report the patches that finish the
-    /// parts written earlier. Drain [`Muxer::take_output`] once more
-    /// after this, then apply the patches.
-    pub fn finish(&mut self, chapters: &[Chapter]) -> crate::Result<Vec<Patch>> {
-        match self {
-            Muxer::Mp4(m) => m.finish(chapters),
-            Muxer::Matroska(m) => m.finish(chapters),
-        }
-    }
+    Ok(match config.container {
+        Container::Mp4 => Box::new(mp4::Mp4Muxer::new(config)?),
+        Container::Matroska | Container::WebM => Box::new(matroska::MatroskaMuxer::new(config)?),
+    })
 }
 
 /// Convert a chapter's frame bounds to nanoseconds using the video

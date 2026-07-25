@@ -25,11 +25,11 @@ use mkv_element::prelude::*;
 use mkv_element::io::blocking_impl::WriteTo;
 use mkv_element::ClusterBlock;
 
-use super::{Chapter, MuxConfig, Patch};
+use super::{Chapter, MuxConfig, Muxer, Patch};
 use crate::packet::ticks_to_ns;
-use crate::{AudioCodec, Container, Packet, VideoCodec};
+use crate::{AudioCodec, Container, Packet, VideoCodec, VIDEO_TRACK};
 
-pub const VIDEO_TRACK: usize = 0;
+
 
 /// Matroska timestamps are counted in `TimestampScale` nanoseconds. One
 /// millisecond is what every muxer uses and what keeps a SimpleBlock's
@@ -45,8 +45,8 @@ const RESERVED_HEAD: usize = 1024;
 /// keyframes can't overflow a block's 16-bit relative timestamp.
 const MAX_CLUSTER_SPAN_MS: i64 = 5_000;
 
-/// Opus decoders need audio before the seek point to converge, and 80 ms
-/// is the value RFC 7845 §4.2 recommends a muxer declare.
+/// Opus decoders need audio before a seek point to converge, and 80 ms is
+/// what RFC 7845 §4.2 recommends a muxer declare.
 const OPUS_SEEK_PREROLL_NS: u64 = 80_000_000;
 
 pub struct MatroskaMuxer {
@@ -188,6 +188,8 @@ impl MatroskaMuxer {
                 audio: Some(Audio {
                     sampling_frequency: SamplingFrequency(audio.sample_rate as f64),
                     channels: Channels(audio.channels as u64),
+                    // PCM's codec ID doesn't imply a sample width, so
+                    // Matroska wants it stated.
                     bit_depth: (audio.codec == AudioCodec::PcmS16Le).then_some(BitDepth(16)),
                     ..Default::default()
                 }),
@@ -199,8 +201,10 @@ impl MatroskaMuxer {
             ..Default::default()
         })
     }
+}
 
-    pub fn write(&mut self, track: usize, packet: &Packet) -> crate::Result<()> {
+impl Muxer for MatroskaMuxer {
+    fn write(&mut self, track: usize, packet: &Packet) -> crate::Result<()> {
         let is_video = track == VIDEO_TRACK;
         let timescale = if is_video {
             self.config.video.timescale
@@ -240,28 +244,11 @@ impl MatroskaMuxer {
         Ok(())
     }
 
-    fn flush_cluster(&mut self) -> crate::Result<()> {
-        if !self.cluster_open || self.cluster.is_empty() {
-            self.cluster.clear();
-            return Ok(());
-        }
-        if let Some(cue_ms) = self.cluster_cue_ms.take() {
-            self.cues.push((cue_ms, self.pos - self.segment_data_start));
-        }
-        let cluster = Cluster {
-            timestamp: Timestamp(self.cluster_start_ms.max(0) as u64),
-            blocks: std::mem::take(&mut self.cluster),
-            ..Default::default()
-        };
-        self.emit_element(&cluster)?;
-        Ok(())
-    }
-
-    pub fn take_output(&mut self) -> Vec<u8> {
+    fn take_output(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.out)
     }
 
-    pub fn finish(&mut self, chapters: &[Chapter]) -> crate::Result<Vec<Patch>> {
+    fn finish(&mut self, chapters: &[Chapter]) -> crate::Result<Vec<Patch>> {
         self.flush_cluster()?;
         self.cluster_open = false;
 
@@ -345,6 +332,27 @@ impl MatroskaMuxer {
                 bytes: head,
             },
         ])
+    }
+}
+
+impl MatroskaMuxer {
+    /// Write out the cluster being assembled, recording a cue for it if
+    /// it opened on a keyframe.
+    fn flush_cluster(&mut self) -> crate::Result<()> {
+        if !self.cluster_open || self.cluster.is_empty() {
+            self.cluster.clear();
+            return Ok(());
+        }
+        if let Some(cue_ms) = self.cluster_cue_ms.take() {
+            self.cues.push((cue_ms, self.pos - self.segment_data_start));
+        }
+        let cluster = Cluster {
+            timestamp: Timestamp(self.cluster_start_ms.max(0) as u64),
+            blocks: std::mem::take(&mut self.cluster),
+            ..Default::default()
+        };
+        self.emit_element(&cluster)?;
+        Ok(())
     }
 
     fn build_chapters(&self, chapters: &[Chapter]) -> Chapters {
@@ -620,7 +628,7 @@ mod tests {
     fn webm_rejects_h264() {
         let mut config = config(Container::WebM);
         config.audio[0].codec = AudioCodec::Opus;
-        assert!(super::super::Muxer::new(config).is_err());
+        assert!(super::super::open(config).is_err());
     }
 
     #[test]

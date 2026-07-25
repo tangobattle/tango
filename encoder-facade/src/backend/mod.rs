@@ -61,3 +61,13 @@ pub trait Backend {
     /// return `false` and let the caller come back.
     fn poll_flush(&mut self) -> crate::Result<bool>;
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod ffmpeg;
+#[cfg(target_arch = "wasm32")]
+pub(crate) mod webcodecs;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use ffmpeg::FfmpegBackend;
+#[cfg(target_arch = "wasm32")]
+pub use webcodecs::WebCodecsBackend;

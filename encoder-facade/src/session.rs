@@ -19,7 +19,7 @@ use std::collections::VecDeque;
 
 use crate::backend::{Backend, VIDEO_TRACK};
 use crate::error::check;
-use crate::mux::{Chapter, MuxConfig, Muxer, Patch};
+use crate::mux::{self, Chapter, MuxConfig, Muxer, Patch};
 use crate::packet::ticks_to_ns;
 use crate::{AudioTrackInfo, Packet, Settings, VideoTrackInfo};
 
@@ -27,7 +27,7 @@ pub struct Session<B: Backend> {
     backend: B,
     settings: Settings,
     /// Set once every track has revealed its codec configuration.
-    muxer: Option<Muxer>,
+    muxer: Option<Box<dyn Muxer>>,
     /// Queue per track: video first, then audio in order.
     queues: Vec<VecDeque<Packet>>,
     timescales: Vec<u32>,
@@ -165,12 +165,9 @@ impl<B: Backend> Session<B> {
             }
             let Some((track, _)) = earliest else { break };
             let packet = self.queues[track].pop_front().expect("front was just read");
-            let muxer = self.muxer.as_mut().expect("checked above");
-            if track == VIDEO_TRACK {
-                muxer.write_video(&packet)?;
-            } else {
-                muxer.write_audio(track - 1, &packet)?;
-            }
+            // Track numbering is the muxers' too, so it passes straight
+            // through.
+            self.muxer.as_mut().expect("checked above").write(track, &packet)?;
         }
         let bytes = self.muxer.as_mut().expect("checked above").take_output();
         self.output.extend_from_slice(&bytes);
@@ -199,7 +196,7 @@ impl<B: Backend> Session<B> {
             });
         }
         let video = &self.settings.video;
-        self.muxer = Some(Muxer::new(MuxConfig {
+        self.muxer = Some(mux::open(MuxConfig {
             container: self.settings.container,
             video: VideoTrackInfo {
                 codec: video.codec,
