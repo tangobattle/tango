@@ -57,9 +57,6 @@ impl Channels {
     /// each, and carry the connection's DTLS fingerprints through. The initial
     /// connect and a mid-match reconnect both funnel through here, so they bundle
     /// a matchmaking connection identically.
-    ///
-    /// Native-only, like the signaling client it takes its input from.
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn from_signaling(connected: tango_signaling::Connected) -> std::io::Result<Self> {
         let tango_signaling::Connected {
             channels: dcs,

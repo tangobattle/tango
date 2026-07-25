@@ -285,7 +285,7 @@ dependencies = [
  "enumflags2",
  "futures-channel",
  "futures-util",
- "rand",
+ "rand 0.8.5",
  "serde",
  "serde_repr",
  "url",
@@ -603,7 +603,7 @@ dependencies = [
  "bitflags 2.11.1",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -1542,7 +1542,7 @@ dependencies = [
  "log",
  "num-derive",
  "num-traits",
- "rand",
+ "rand 0.8.5",
  "serde",
  "serde-hex",
  "serde_json",
@@ -1728,7 +1728,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2381,7 +2381,7 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "futures-util",
- "http",
+ "http 0.2.12",
  "indexmap",
  "slab",
  "tokio",
@@ -2504,13 +2504,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "http"
+version = "1.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6970f50e31d6fc17d3fa27329444bfa74e196cf62e95052a3f6fee181dba6425"
+dependencies = [
+ "bytes",
+ "itoa",
+]
+
+[[package]]
 name = "http-body"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ceab25649e9960c0311ea418d17bee82c0dcec1bd053b5f9a66e265a693bed2"
 dependencies = [
  "bytes",
- "http",
+ "http 0.2.12",
  "pin-project-lite",
 ]
 
@@ -2543,7 +2553,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "h2",
- "http",
+ "http 0.2.12",
  "http-body",
  "httparse",
  "httpdate",
@@ -3271,7 +3281,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.53.3",
 ]
 
 [[package]]
@@ -4950,7 +4960,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6c3320f9abac597dcbc668774ef006702672474aad53c6d596b62e487b40b1"
 dependencies = [
  "heck",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "log",
  "multimap",
  "once_cell",
@@ -4970,7 +4980,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9120690fafc389a67ba3803df527d0ec9cbbc9cc45e4cc20b332996dfb672425"
 dependencies = [
  "anyhow",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
@@ -5071,8 +5081,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
 dependencies = [
  "libc",
- "rand_chacha",
- "rand_core",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.4",
+]
+
+[[package]]
+name = "rand"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9ef1d0d795eb7d84685bca4f72f3649f064e6641543d3a8c415898726a57b41"
+dependencies = [
+ "rand_chacha 0.9.0",
+ "rand_core 0.9.5",
 ]
 
 [[package]]
@@ -5082,7 +5102,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
 dependencies = [
  "ppv-lite86",
- "rand_core",
+ "rand_core 0.6.4",
+]
+
+[[package]]
+name = "rand_chacha"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb"
+dependencies = [
+ "ppv-lite86",
+ "rand_core 0.9.5",
 ]
 
 [[package]]
@@ -5095,12 +5125,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_core"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
+dependencies = [
+ "getrandom 0.3.3",
+]
+
+[[package]]
 name = "rand_pcg"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59cad018caf63deb318e5a4586d99a24424a364f40f1e5778c29aca23f4fc73e"
 dependencies = [
- "rand_core",
+ "rand_core 0.6.4",
  "serde",
 ]
 
@@ -5151,8 +5190,8 @@ dependencies = [
  "once_cell",
  "paste",
  "profiling",
- "rand",
- "rand_chacha",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
  "simd_helpers",
  "system-deps",
  "thiserror 1.0.69",
@@ -5321,7 +5360,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "h2",
- "http",
+ "http 0.2.12",
  "http-body",
  "hyper",
  "hyper-tls",
@@ -5480,7 +5519,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.11.0",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6277,7 +6316,7 @@ dependencies = [
  "minidumper",
  "open",
  "opener",
- "rand",
+ "rand 0.8.5",
  "rand_pcg",
  "rcgen",
  "regex",
@@ -6363,7 +6402,7 @@ dependencies = [
  "mgba",
  "mgba-rollback",
  "num-traits",
- "rand",
+ "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
  "tango-match",
@@ -6381,7 +6420,7 @@ dependencies = [
  "mgba",
  "mgba-rollback",
  "num-traits",
- "rand",
+ "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
  "tango-match",
@@ -6401,7 +6440,7 @@ dependencies = [
  "mgba-rollback",
  "ndarray",
  "num-traits",
- "rand",
+ "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
  "tango-match",
@@ -6419,7 +6458,7 @@ dependencies = [
  "mgba-rollback",
  "ndarray",
  "num-traits",
- "rand",
+ "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
  "tango-match",
@@ -6438,7 +6477,7 @@ dependencies = [
  "mgba-rollback",
  "ndarray",
  "num-traits",
- "rand",
+ "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
  "tango-match",
@@ -6457,7 +6496,7 @@ dependencies = [
  "mgba-rollback",
  "ndarray",
  "num-traits",
- "rand",
+ "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
  "tango-match",
@@ -6474,7 +6513,7 @@ dependencies = [
  "mgba",
  "mgba-rollback",
  "num-traits",
- "rand",
+ "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
  "tango-match",
@@ -6533,7 +6572,7 @@ name = "tango-net-protocol"
 version = "0.1.0"
 dependencies = [
  "bincode",
- "rand",
+ "rand 0.8.5",
  "rand_pcg",
  "rennet",
  "semver",
@@ -6548,7 +6587,7 @@ dependencies = [
  "datachannel-wrapper",
  "futures",
  "log",
- "rand",
+ "rand 0.8.5",
  "rand_pcg",
  "semver",
  "sha2",
@@ -6617,7 +6656,7 @@ dependencies = [
  "futures",
  "log",
  "mgba",
- "rand",
+ "rand 0.8.5",
  "rand_pcg",
  "rennet",
  "tango-dataview",
@@ -6636,20 +6675,21 @@ dependencies = [
 [[package]]
 name = "tango-signaling"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/tango-signaling#38cf8885bbb25cdd80291f589ee45d1a7c82feec"
+source = "git+https://github.com/tangobattle/tango-signaling#8671d4b67185a834155b89eb2347dfb679ef732e"
 dependencies = [
  "datachannel-wrapper",
  "futures",
  "futures-util",
- "http",
+ "http 0.2.12",
  "log",
  "prost",
  "prost-build",
- "rand",
+ "rand 0.8.5",
  "rustls",
  "thiserror 1.0.69",
  "tokio",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.16.1",
+ "tokio-tungstenite-wasm",
  "url",
  "urlencoding",
  "webpki-roots",
@@ -6700,7 +6740,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix 1.1.2",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6860,9 +6900,7 @@ dependencies = [
  "io-uring",
  "libc",
  "mio",
- "parking_lot",
  "pin-project-lite",
- "signal-hook-registry",
  "slab",
  "socket2 0.6.0",
  "tokio-macros",
@@ -6912,9 +6950,40 @@ dependencies = [
  "rustls",
  "tokio",
  "tokio-rustls",
- "tungstenite",
+ "tungstenite 0.16.0",
  "webpki",
  "webpki-roots",
+]
+
+[[package]]
+name = "tokio-tungstenite"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d25a406cddcc431a75d3d9afc6a7c0f7428d4891dd973e4d54c56b46127bf857"
+dependencies = [
+ "futures-util",
+ "log",
+ "tokio",
+ "tungstenite 0.28.0",
+]
+
+[[package]]
+name = "tokio-tungstenite-wasm"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ccecee909c02b8863f9bda87253127eb4da0e7e1342330b2583fbc4d1795c2f8"
+dependencies = [
+ "bytes",
+ "futures-channel",
+ "futures-util",
+ "http 1.4.2",
+ "httparse",
+ "js-sys",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite 0.28.0",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -7072,16 +7141,33 @@ dependencies = [
  "base64 0.13.1",
  "byteorder",
  "bytes",
- "http",
+ "http 0.2.12",
  "httparse",
  "log",
- "rand",
+ "rand 0.8.5",
  "rustls",
  "sha-1",
  "thiserror 1.0.69",
  "url",
  "utf-8",
  "webpki",
+]
+
+[[package]]
+name = "tungstenite"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8628dcc84e5a09eb3d8423d6cb682965dea9133204e8fb3efee74c2a0c259442"
+dependencies = [
+ "bytes",
+ "data-encoding",
+ "http 1.4.2",
+ "httparse",
+ "log",
+ "rand 0.9.5",
+ "sha1",
+ "thiserror 2.0.18",
+ "utf-8",
 ]
 
 [[package]]
@@ -7804,7 +7890,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -8570,7 +8656,7 @@ dependencies = [
  "hex",
  "nix 0.29.0",
  "ordered-stream",
- "rand",
+ "rand 0.8.5",
  "serde",
  "serde_repr",
  "sha1",

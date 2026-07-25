@@ -24,6 +24,7 @@ rennet.workspace = true
 tango-dataview = { path = "../tango-dataview" }
 tango-gamesupport = { path = "../tango-gamesupport" }
 tango-match = { path = "../tango-match" }
+tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
 tango-net-protocol = { path = "../tango-net-protocol" }
 tango-replay = { path = "../tango-replay" }
 thiserror.workspace = true
@@ -40,8 +41,9 @@ web-time = "1"
 # wasm32 has. Gated so a browser build doesn't drag in tokio's mio-backed
 # networking, which doesn't compile there at all.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
-tokio = { workspace = true, features = ["net"] }
+# `net` for the direct transport's UDP socket; `rt-multi-thread` for the
+# reconnect tests, which run both peers at once.
+tokio = { workspace = true, features = ["net", "rt-multi-thread"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4"

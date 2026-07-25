@@ -21,7 +21,14 @@
 // The session kinds. Each hands a host a [`Drive`] and publishes what
 // the host shows; nothing here spawns or sleeps.
 /// Live netplay, on the transport below.
-#[cfg(not(target_arch = "wasm32"))]
+///
+/// **Compiles for wasm32, but doesn't run there yet.** Everything below
+/// it is portable now — the transport rides a facade that is the
+/// browser's own WebRTC, and the signaling client the browser's own
+/// WebSocket — but the plumbing still waits on `tokio::time`, which
+/// needs a tokio runtime that a browser host doesn't have. The
+/// remaining work is a timer seam in [`platform`] (tokio natively,
+/// `gloo-timers` in a browser), not more porting.
 pub mod pvp;
 pub mod replay;
 pub mod singleplayer;
@@ -30,10 +37,7 @@ pub mod training;
 // What they're built out of.
 pub mod audio;
 /// The netplay transport: two byte-pipe planes over one peer
-/// connection. Native for now — the pipes build for the browser, but
-/// the signaling client that gets a peer connection in the first place
-/// is a native WebSocket.
-#[cfg(not(target_arch = "wasm32"))]
+/// connection, and the signaling rendezvous that produces it.
 pub mod net;
 pub mod platform;
 /// The match-stats sidecar a finished match leaves next to its replay,
@@ -62,7 +66,6 @@ pub enum Error {
     #[error(transparent)]
     Engine(#[from] tango_match::Error),
     /// The netplay handoff's transport bundle failed to assemble.
-    #[cfg(not(target_arch = "wasm32"))]
     #[error(transparent)]
     LinkBringUp(#[from] crate::net::link::BringUpError),
     #[error("replay has a bad local player index")]

@@ -405,6 +405,7 @@ impl PvpSession {
                 screen: screen.clone(),
                 wake: wake.clone(),
                 local_player: local_player_index as usize,
+                #[cfg(not(target_arch = "wasm32"))]
                 rt: tokio::runtime::Handle::current(),
             },
             sample_rate,
@@ -729,6 +730,10 @@ struct DriveContext {
     screen: Arc<crate::Framebuffer>,
     wake: Arc<tokio::sync::Notify>,
     local_player: usize,
+    /// The runtime the EndOfMatch send goes onto. Native-only:
+    /// `Handle::current()` panics where there is no runtime, and a
+    /// browser spawns onto its microtask queue instead.
+    #[cfg(not(target_arch = "wasm32"))]
     rt: tokio::runtime::Handle,
 }
 
@@ -1401,10 +1406,16 @@ impl PvpDriver {
                 // Wall-clock fallback wake so `is_ended` is rechecked
                 // even if the peer never sends EndOfMatch.
                 let wake = self.ctx.wake.clone();
+                #[cfg(not(target_arch = "wasm32"))]
                 self.ctx.rt.spawn(async move {
                     tokio::time::sleep(PEER_END_GRACE).await;
                     wake.notify_one();
                 });
+                // A browser has no runtime to hold this timer; the
+                // grace wake waits on the timer seam netplay still
+                // needs there (see the crate docs).
+                #[cfg(target_arch = "wasm32")]
+                let _ = wake;
             }
         }
 

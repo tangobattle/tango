@@ -123,11 +123,6 @@ pub enum ReconnectRecipe {
     /// re-pairs them with no server-side changes. `is_offerer`/player index stay
     /// fixed from the original match, so the re-assigned offerer/answerer roles
     /// here don't matter.
-    ///
-    /// Native-only: the signaling client is a WebSocket with an mTLS
-    /// client certificate, which is a native shape — a browser
-    /// rendezvouses through its own page instead.
-    #[cfg(not(target_arch = "wasm32"))]
     Matchmaking {
         endpoint: String,
         session_id: String,
@@ -419,7 +414,6 @@ impl Link {
             ReconnectCause::CleanClose => RECONNECT_CLEAN_CLOSE_TIMEOUT,
             ReconnectCause::Stall => match recipe {
                 ReconnectRecipe::Direct(_) => RECONNECT_DIRECT_TIMEOUT,
-                #[cfg(not(target_arch = "wasm32"))]
                 ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_TIMEOUT,
             },
         };
@@ -473,7 +467,6 @@ impl Link {
         // server has already seen. The direct path's recipe (re-run
         // host/connect) needs no fingerprints, so its empty pair leaves the
         // seed-only fallback in place harmlessly.
-        #[cfg(not(target_arch = "wasm32"))]
         if let Some(ReconnectRecipe::Matchmaking { session_id, .. }) = self.recipe.lock().unwrap().as_mut() {
             *session_id = derive_reconnect_session_id(&self.rng_seed, &local_dtls_fingerprint, &peer_dtls_fingerprint);
         }
