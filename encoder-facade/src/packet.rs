@@ -2,8 +2,7 @@
 //! plus the per-track facts a container needs to describe the stream it
 //! belongs to.
 
-use crate::codec::{AudioCodec, VideoCodec};
-use crate::settings::ColorInfo;
+use crate::settings::{AudioCodec, ColorInfo, VideoCodec};
 
 /// One encoded access unit — a video frame or an audio frame — ready to
 /// be muxed.
@@ -53,15 +52,15 @@ pub struct AudioTrackInfo {
     pub codec: AudioCodec,
     pub sample_rate: u32,
     pub channels: u8,
-    /// `AudioSpecificConfig` for AAC, `OpusHead` for Opus, `fLaC` magic
-    /// plus metadata blocks for FLAC, empty for PCM.
+    /// `AudioSpecificConfig` for AAC, `fLaC` magic plus metadata blocks
+    /// for FLAC.
     pub codec_private: Vec<u8>,
     /// Encoder priming: samples the decoder emits before the real audio
     /// starts, which a player must discard to stay in sync.
     ///
     /// Every lossy audio encoder has some — AAC's MDCT costs a full
-    /// 1024-sample frame, Opus reports its own in the `OpusHead` — and
-    /// left unsignalled it becomes a fixed audio lag against the video
+    /// 1024-sample frame — and left unsignalled it becomes a fixed
+    /// audio lag against the video
     /// (21 ms for AAC at 48 kHz, enough to notice). Containers signal it
     /// differently (Matroska `CodecDelay`, MP4 edit list), so it travels
     /// as samples and each muxer converts.
@@ -113,11 +112,11 @@ mod tests {
     #[test]
     fn aac_priming_is_one_frame_at_48k() {
         let info = AudioTrackInfo {
-            codec: AudioCodec::Aac,
+            codec: AudioCodec::Aac { bitrate: 384_000 },
             sample_rate: 48_000,
             channels: 2,
             codec_private: vec![],
-            codec_delay_samples: crate::codec::AAC_SAMPLES_PER_FRAME,
+            codec_delay_samples: crate::settings::AAC_SAMPLES_PER_FRAME,
         };
         // 1024/48000 s = 21.333 ms.
         assert_eq!(info.codec_delay_ns(), 21_333_333);

@@ -12,13 +12,11 @@
 //!
 //!   * [`settings`] — what to produce: codecs, quality, geometry,
 //!     timebase. The caller's choices, all checked before anything runs.
-//!   * [`codec`] — the codecs themselves, each answering for its own
-//!     container IDs, sample entries, encoder flags and stream parsing.
 //!   * [`backend`] — the encoders. `FfmpegBackend` runs a subprocess per
-//!     stream and parses back the elementary streams they write;
+//!     stream and reads back the fragmented MP4 each one writes;
 //!     `WebCodecsBackend` drives the browser's encoders on wasm32.
 //!   * [`packet`] — what comes out of them and goes into a container.
-//!   * [`mux`] — the containers: MP4, Matroska, WebM.
+//!   * [`mux`] — the containers: MP4 and Matroska.
 //!   * [`Session`] — the pipeline: interleaves packets and drives the
 //!     muxer.
 //!
@@ -34,31 +32,26 @@
 //! both to [`Output`].
 
 pub mod backend;
-pub mod codec;
 pub mod mux;
 pub mod packet;
 pub mod settings;
 
 mod cancel;
 mod error;
+mod output;
 mod session;
 
 pub use backend::{Backend, VIDEO_TRACK};
 pub use cancel::Canceller;
 pub use error::{Error, Result};
-pub use codec::{AudioCodec, VideoCodec};
 pub use mux::{Chapter, Container};
+pub use output::Output;
 pub use packet::{AudioTrackInfo, Packet, VideoTrackInfo};
 pub use session::Session;
-pub use settings::{AudioSettings, ColorInfo, Settings, VideoQuality, VideoSettings};
-
-#[cfg(not(target_arch = "wasm32"))]
-mod output;
+pub use settings::{AudioCodec, AudioSettings, ColorInfo, H264Quality, Settings, VideoCodec, VideoSettings};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use backend::FfmpegBackend;
-#[cfg(not(target_arch = "wasm32"))]
-pub use output::Output;
 
 #[cfg(target_arch = "wasm32")]
 pub use backend::WebCodecsBackend;

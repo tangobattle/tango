@@ -13,7 +13,7 @@
 //! `await`ed. Neither concern reaches the muxers, which stay
 //! synchronous, allocation-bounded and testable against a `Vec<u8>`.
 
-use crate::codec::{AudioCodec, VideoCodec};
+use crate::settings::{AudioCodec, VideoCodec};
 use crate::{AudioTrackInfo, Packet, VideoTrackInfo};
 
 mod matroska;
@@ -23,12 +23,9 @@ mod mp4;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Container {
     Mp4,
-    /// Matroska proper: carries every codec here, including the
-    /// lossless pairing MP4 can't.
+    /// Matroska: carries every codec here, including the lossless
+    /// pairing MP4 can't.
     Matroska,
-    /// WebM — Matroska restricted to the codecs the format allows, and
-    /// what the WebCodecs backend produces.
-    WebM,
 }
 
 impl Container {
@@ -36,13 +33,13 @@ impl Container {
     /// checked before anything is encoded so a bad pairing can't fail
     /// halfway through an export.
     pub fn accepts(self, video: VideoCodec, audio: AudioCodec) -> crate::Result<()> {
+        // FLAC in MP4 is defined, but the lossless pairing goes to
+        // Matroska anyway, so MP4 carries the one combination ISO/IEC
+        // 14496 is unambiguous about rather than half-supporting a
+        // second.
         let ok = match self {
-            // Everything here is muxed the way ISO/IEC 14496 defines it.
-            // VP8/VP9 in MP4 exist but nothing needs them, so they're
-            // refused rather than half-supported.
-            Container::Mp4 => video == VideoCodec::H264 && audio == AudioCodec::Aac,
+            Container::Mp4 => matches!(audio, AudioCodec::Aac { .. }),
             Container::Matroska => true,
-            Container::WebM => matches!(video, VideoCodec::Vp8 | VideoCodec::Vp9) && audio == AudioCodec::Opus,
         };
         if !ok {
             return Err(crate::Error::CodecNotInContainer {
@@ -59,7 +56,6 @@ impl Container {
         match self {
             Container::Mp4 => "mp4",
             Container::Matroska => "mkv",
-            Container::WebM => "webm",
         }
     }
 }
@@ -158,7 +154,7 @@ pub fn open(config: MuxConfig) -> crate::Result<Box<dyn Muxer>> {
     }
     Ok(match config.container {
         Container::Mp4 => Box::new(mp4::Mp4Muxer::new(config)?),
-        Container::Matroska | Container::WebM => Box::new(matroska::MatroskaMuxer::new(config)?),
+        Container::Matroska => Box::new(matroska::MatroskaMuxer::new(config)?),
     })
 }
 

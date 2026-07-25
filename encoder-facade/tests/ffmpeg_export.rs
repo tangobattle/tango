@@ -2,9 +2,9 @@
 //!
 //! The unit tests cover the muxers against synthetic packets; these
 //! cover the part that can only be checked against the real thing —
-//! that ffmpeg's elementary streams parse, that the containers we build
-//! from them satisfy libavformat, and that the audio comes out where the
-//! video expects it.
+//! that what ffmpeg writes reads back, that the containers we build from
+//! it satisfy libavformat, and that the audio comes out where the video
+//! expects it.
 //!
 //! Set `ENCODER_FACADE_TEST_FFMPEG` to an ffmpeg binary to run them;
 //! without it they skip, since not every machine has one and the sidecar
@@ -20,9 +20,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use encoder_facade::{
-    AudioCodec, AudioSettings, Canceller, Chapter, Container, FfmpegBackend, Output, Session, Settings, VideoCodec,
-    VideoQuality, VideoSettings,
+    AudioCodec, AudioSettings, Canceller, Chapter, Container, FfmpegBackend, H264Quality, Output, Session, Settings,
+    VideoCodec, VideoSettings,
 };
+
+/// Per-track audio rate for the lossy codecs under test.
+const AUDIO_BITRATE: u32 = 192_000;
 
 const WIDTH: u32 = 240;
 const HEIGHT: u32 = 160;
@@ -59,24 +62,28 @@ macro_rules! require_ffmpeg {
     };
 }
 
-fn settings(container: Container, video: VideoCodec, audio: AudioCodec, quality: VideoQuality) -> Settings {
+fn settings(container: Container, video: VideoCodec, audio: AudioCodec) -> Settings {
+    let lossless = matches!(
+        video,
+        VideoCodec::H264 {
+            quality: H264Quality::Lossless
+        }
+    );
     Settings {
         video: VideoSettings {
             codec: video,
-            quality,
             width: WIDTH,
             height: HEIGHT,
-            scale: if quality == VideoQuality::Lossless { 1 } else { 2 },
+            scale: if lossless { 1 } else { 2 },
             keyframe_interval: 60,
             timescale: TIMESCALE,
             frame_duration: FRAME_DURATION,
-            color: (quality != VideoQuality::Lossless).then_some(encoder_facade::ColorInfo::SRGB_FULL),
+            color: (!lossless).then_some(encoder_facade::ColorInfo::SRGB_FULL),
         },
         audio: AudioSettings {
             codec: audio,
             sample_rate: SAMPLE_RATE,
             channels: CHANNELS,
-            bitrate: 192_000,
         },
         container,
         audio_tracks: 1,
@@ -219,7 +226,11 @@ fn mp4_h264_aac_is_what_ffprobe_expects() {
     let ffmpeg = require_ffmpeg!();
     let file = export(
         &ffmpeg,
-        settings(Container::Mp4, VideoCodec::H264, AudioCodec::Aac, VideoQuality::Crf(20)),
+        settings(
+            Container::Mp4,
+            VideoCodec::H264 { quality: H264Quality::Crf(20) },
+            AudioCodec::Aac { bitrate: AUDIO_BITRATE },
+        ),
         &[],
         "h264-aac",
     );
@@ -250,9 +261,10 @@ fn matroska_lossless_h264_flac_is_what_ffprobe_expects() {
         &ffmpeg,
         settings(
             Container::Matroska,
-            VideoCodec::H264,
+            VideoCodec::H264 {
+                quality: H264Quality::Lossless,
+            },
             AudioCodec::Flac,
-            VideoQuality::Lossless,
         ),
         &[],
         "lossless",
@@ -267,25 +279,42 @@ fn matroska_lossless_h264_flac_is_what_ffprobe_expects() {
     assert!(probed.contains("height=160"), "{probed}");
 }
 
+/// A packet's timing is read out of what the encoder wrote rather than
+/// counted here, so this is the check that the exact GBA tick makes the
+/// round trip through ffmpeg.
+///
+/// MP4 is where it's observable: the track keeps the timescale it was
+/// encoded in, so ffprobe reports the frame clock as the ratio it
+/// actually is. (Matroska counts in milliseconds, which rounds
+/// 16.7418... ms however exactly the packets were timed.)
 #[test]
-fn webm_vp9_opus_is_what_ffprobe_expects() {
+fn frame_timing_survives_the_encoder_exactly() {
     let ffmpeg = require_ffmpeg!();
     let file = export(
         &ffmpeg,
         settings(
-            Container::WebM,
-            VideoCodec::Vp9,
-            AudioCodec::Opus,
-            VideoQuality::Bitrate(2_000_000),
+            Container::Mp4,
+            VideoCodec::H264 { quality: H264Quality::Crf(24) },
+            AudioCodec::Aac { bitrate: AUDIO_BITRATE },
         ),
         &[],
-        "vp9-opus",
+        "timing",
     );
     let Some(probed) = probe(&ffmpeg, &file) else {
         return;
     };
-    assert!(probed.contains("codec_name=\"vp9\""), "{probed}");
-    assert!(probed.contains("codec_name=\"opus\""), "{probed}");
+    assert!(
+        probed.contains(&format!("time_base=\"1/{TIMESCALE}\"")),
+        "the video track must keep the timebase it was encoded in: {probed}"
+    );
+    // 16777216/280896 in lowest terms. A frame rate that came back as
+    // anything else means a duration was rounded on the way through.
+    assert!(
+        probed.contains("r_frame_rate=\"262144/4389\""),
+        "the exact frame clock must come back out: {probed}"
+    );
+    // 120 frames of 280896 ticks: 2.0091247... s, to the tick.
+    assert!(probed.contains("duration=\"2.009125\""), "{probed}");
 }
 
 /// Chapters are the reason this crate assembles its own containers
@@ -306,23 +335,25 @@ fn chapters_come_back_out_of_both_containers() {
             end_frame: FRAMES,
         },
     ];
-    for (container, video, audio, quality, name) in [
+    for (container, video, audio, name) in [
         (
             Container::Mp4,
-            VideoCodec::H264,
-            AudioCodec::Aac,
-            VideoQuality::Crf(24),
+            VideoCodec::H264 {
+                quality: H264Quality::Crf(24),
+            },
+            AudioCodec::Aac { bitrate: AUDIO_BITRATE },
             "chapters-mp4",
         ),
         (
             Container::Matroska,
-            VideoCodec::H264,
-            AudioCodec::Aac,
-            VideoQuality::Crf(24),
+            VideoCodec::H264 {
+                quality: H264Quality::Crf(24),
+            },
+            AudioCodec::Aac { bitrate: AUDIO_BITRATE },
             "chapters-mkv",
         ),
     ] {
-        let file = export(&ffmpeg, settings(container, video, audio, quality), &chapters, name);
+        let file = export(&ffmpeg, settings(container, video, audio), &chapters, name);
         let Some(probed) = probe(&ffmpeg, &file) else {
             return;
         };
@@ -354,7 +385,11 @@ fn audio_is_not_shifted_by_encoder_priming() {
     for (container, name) in [(Container::Mp4, "sync-mp4"), (Container::Matroska, "sync-mkv")] {
         let file = export(
             &ffmpeg,
-            settings(container, VideoCodec::H264, AudioCodec::Aac, VideoQuality::Crf(24)),
+            settings(
+            container,
+            VideoCodec::H264 { quality: H264Quality::Crf(24) },
+            AudioCodec::Aac { bitrate: AUDIO_BITRATE },
+        ),
             &[],
             name,
         );
@@ -378,9 +413,10 @@ fn lossless_audio_survives_bit_exact() {
         &ffmpeg,
         settings(
             Container::Matroska,
-            VideoCodec::H264,
+            VideoCodec::H264 {
+                quality: H264Quality::Lossless,
+            },
             AudioCodec::Flac,
-            VideoQuality::Lossless,
         ),
         &[],
         "flac-exact",
@@ -406,17 +442,16 @@ fn lossless_audio_survives_bit_exact() {
 #[test]
 fn ffmpeg_can_remux_our_output() {
     let ffmpeg = require_ffmpeg!();
-    for (container, name) in [
-        (Container::Mp4, "remux-mp4"),
-        (Container::Matroska, "remux-mkv"),
-        (Container::WebM, "remux-webm"),
+    for (container, audio, name) in [
+        (Container::Mp4, AudioCodec::Aac { bitrate: AUDIO_BITRATE }, "remux-mp4"),
+        (Container::Matroska, AudioCodec::Aac { bitrate: AUDIO_BITRATE }, "remux-mkv"),
+        // The lossless pairing, which only Matroska carries.
+        (Container::Matroska, AudioCodec::Flac, "remux-flac"),
     ] {
-        let (video, audio, quality) = if container == Container::WebM {
-            (VideoCodec::Vp9, AudioCodec::Opus, VideoQuality::Bitrate(1_500_000))
-        } else {
-            (VideoCodec::H264, AudioCodec::Aac, VideoQuality::Crf(26))
+        let video = VideoCodec::H264 {
+            quality: H264Quality::Crf(26),
         };
-        let file = export(&ffmpeg, settings(container, video, audio, quality), &[], name);
+        let file = export(&ffmpeg, settings(container, video, audio), &[], name);
         let out = file.with_extension("remuxed.mkv");
         let result = Command::new(&ffmpeg)
             .args(["-hide_banner", "-loglevel", "error", "-y", "-i"])
@@ -440,7 +475,11 @@ fn ffmpeg_can_remux_our_output() {
 #[test]
 fn a_two_sided_export_carries_a_track_per_side() {
     let ffmpeg = require_ffmpeg!();
-    let mut settings = settings(Container::Mp4, VideoCodec::H264, AudioCodec::Aac, VideoQuality::Crf(24));
+    let mut settings = settings(
+            Container::Mp4,
+            VideoCodec::H264 { quality: H264Quality::Crf(24) },
+            AudioCodec::Aac { bitrate: AUDIO_BITRATE },
+        );
     settings.video.width = WIDTH * 2;
     settings.audio_tracks = 2;
 
@@ -506,7 +545,11 @@ fn a_faststart_mp4_is_still_a_valid_mp4() {
         start_frame: 0,
         end_frame: FRAMES,
     }];
-    let mut settings = settings(Container::Mp4, VideoCodec::H264, AudioCodec::Aac, VideoQuality::Crf(24));
+    let mut settings = settings(
+            Container::Mp4,
+            VideoCodec::H264 { quality: H264Quality::Crf(24) },
+            AudioCodec::Aac { bitrate: AUDIO_BITRATE },
+        );
     settings.faststart = true;
     let file = export(&ffmpeg, settings, &chapters, "faststart");
 
@@ -543,12 +586,16 @@ fn a_faststart_mp4_is_still_a_valid_mp4() {
     );
 }
 
-/// A build without the raw output formats has to say so, rather than
-/// failing somewhere deep in an export.
+/// A build without the output format has to say so, rather than failing
+/// somewhere deep in an export.
 #[test]
-fn a_build_without_elementary_formats_is_reported_clearly() {
+fn a_build_without_the_output_format_is_reported_clearly() {
     let ffmpeg = require_ffmpeg!();
-    let mut settings = settings(Container::Mp4, VideoCodec::H264, AudioCodec::Aac, VideoQuality::Crf(24));
+    let mut settings = settings(
+            Container::Mp4,
+            VideoCodec::H264 { quality: H264Quality::Crf(24) },
+            AudioCodec::Aac { bitrate: AUDIO_BITRATE },
+        );
     settings.audio_tracks = 1;
     // A binary that exists but is not ffmpeg at all.
     let mut fake = std::env::temp_dir().join("encoder-facade-not-ffmpeg");

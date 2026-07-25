@@ -1,9 +1,14 @@
-//! Writing a session's bytes to a seekable file.
+//! Writing a session's bytes to a seekable stream.
 //!
-//! A convenience for native callers: a [`Session`](crate::Session)
-//! deliberately does no I/O, and this is the whole of what a synchronous
-//! caller needs to do with what it produces — append the bytes as they
-//! come, then apply the closing [`Fixup`]s.
+//! A [`Session`](crate::Session) deliberately does no I/O, and this is
+//! the whole of what a caller needs to do with what it produces —
+//! append the bytes as they come, then apply the closing [`Fixup`]s.
+//!
+//! Nothing here is native-only: it wants a `Read + Write + Seek`, which
+//! is a [`std::fs::File`] on a desktop, an OPFS
+//! `FileSystemSyncAccessHandle` shim in a browser worker, or a
+//! [`std::io::Cursor`] over a `Vec<u8>` for an export that hands the
+//! finished bytes to a download.
 
 use std::io::{Read, Seek, SeekFrom, Write};
 

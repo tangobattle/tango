@@ -16,20 +16,14 @@ log.workspace = true
 #   mp4-atom:    typed ISOBMFF atoms. Sample tables are ours to build,
 #                but every box we need exists (avcC, esds, colr, elst)
 #                and `Any::Unknown` carries the one box it doesn't
-#                model (Nero `chpl` chapters).
+#                model (Nero `chpl` chapters). It also reads the
+#                fragmented MP4 the ffmpeg backend gets its packets
+#                back from, so that path needs no parser of its own.
 mkv-element = "0.4"
 mp4-atom = "0.14"
 # mkv-element's binary elements are `Bytes`, and both muxers encode
 # through `BufMut`.
 bytes = "1"
-
-# Elementary-stream parsers for the ffmpeg backend's output. Native
-# only: the WebCodecs backend gets packets and codec-private blobs
-# handed to it by the browser, already framed.
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-adts-reader = "0.4"
-h264-reader = "0.8"
-ogg = "0.9"
 
 # The WebCodecs backend. Bindings are hand-rolled rather than web-sys's:
 # web-sys gates WebCodecs behind the `web_sys_unstable_apis` cfg, a

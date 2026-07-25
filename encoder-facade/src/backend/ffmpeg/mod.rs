@@ -1,22 +1,34 @@
 //! The native encoder backend: one ffmpeg subprocess per stream.
 //!
-//! Each child reads raw frames or samples on its stdin and writes a bare
-//! elementary stream on its stdout — no container, no muxing. A reader
-//! thread drains that stdout continuously (a process can deadlock
-//! against its own pipe if the writer waits for the reader while the
-//! reader waits for the writer), and the export thread turns those bytes
-//! into packets through [`es`].
+//! Each child reads raw frames or samples on its stdin and writes a
+//! fragmented MP4 carrying that one stream on its stdout, which [`fmp4`]
+//! reads back as samples. A reader thread drains that stdout
+//! continuously (a process can deadlock against its own pipe if the
+//! writer waits for the reader while the reader waits for the writer),
+//! and the export thread turns those bytes into packets.
 //!
-//! Two constraints shape the ffmpeg command lines:
+//! ffmpeg muxes each stream into a *transport*, never into the output:
+//! the container the export actually writes is assembled in
+//! [`crate::mux`] from the packets of every stream at once. Asking for a
+//! container here rather than a bare elementary stream is what makes
+//! that cheap — the fragments state each sample's size, duration and
+//! sync flag, and the `moov` states the codec configuration, so nothing
+//! has to be recovered by parsing a bitstream.
 //!
-//!   * **No B-frames** (`-bf 0`). An elementary stream carries no
-//!     timestamps, so packets are timed by their ordinal; that's only
-//!     correct while output order equals input order, which frame
-//!     reordering would break. The cost is a few percent of bitrate.
+//! Three flags shape the command lines:
+//!
+//!   * **No B-frames** (`-bf 0`). Presentation order is storage order
+//!     everywhere downstream — [`Packet`] has no separate DTS — so frame
+//!     reordering is turned off rather than carried. The cost is a few
+//!     percent of bitrate.
 //!   * **Encoder-side scaling.** Pre-scaled frames would mean pushing
 //!     the upscaled bytes through a pipe — at 10× that is hundreds of
 //!     megabytes a second — so the scale filter runs in ffmpeg and the
 //!     caller keeps pushing frames at their native size.
+//!   * **Timed fragments** ([`FRAGMENT_MICROS`]). Left to itself the
+//!     muxer would hold a stream with no keyframes — any audio track —
+//!     until the export ended, and the session would hold every video
+//!     packet waiting for it.
 
 use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
@@ -28,18 +40,20 @@ use std::sync::{Arc, Mutex};
 use std::os::windows::process::CommandExt;
 
 use crate::cancel::ChildSlot;
-pub(crate) mod es;
-
-use es::EsParser;
+use crate::settings::AAC_SAMPLES_PER_FRAME;
 use crate::{
-    AudioCodec, AudioSettings, Backend, Canceller, Error, Packet, Settings, VideoCodec, VideoQuality, VideoSettings,
+    AudioCodec, AudioSettings, Backend, Canceller, Error, H264Quality, Packet, Settings, VideoCodec, VideoSettings,
 };
 
-/// ffmpeg's native AAC encoder primes with one full frame, which a
-/// player has to discard to stay in sync with the video. It isn't
-/// recoverable from an ADTS stream, so it's stated here — the one place
-/// that knows which encoder produced the stream.
-const AAC_ENCODER_DELAY_SAMPLES: u64 = 1024;
+pub(crate) mod fmp4;
+
+/// How much media a child may hold before it must write a fragment.
+/// Bounds both the reader's memory and how far one stream can lag the
+/// others in the session's interleaving.
+const FRAGMENT_MICROS: u32 = 250_000;
+
+/// The one output format an export asks ffmpeg for.
+const OUTPUT_FORMAT: &str = "mp4";
 
 /// Keep the last of a child's stderr for error messages. A failing
 /// ffmpeg explains itself there and nowhere else, and in a GUI build
@@ -48,6 +62,14 @@ const STDERR_TAIL_LINES: usize = 12;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// One encoded access unit as the encoder's stream described it.
+pub struct Sample {
+    pub data: Vec<u8>,
+    pub keyframe: bool,
+    /// Length in the track's timescale.
+    pub duration: u64,
+}
 
 /// `ffmpeg` beside the running executable if it's there, else whatever
 /// `PATH` finds.
@@ -69,13 +91,11 @@ pub fn resolve_path(configured: &Option<PathBuf>) -> PathBuf {
     }
 }
 
-/// Check that this ffmpeg can write the elementary-stream formats an
-/// export needs.
+/// Check that this ffmpeg can write the output format an export needs.
 ///
-/// Worth doing up front because a build trimmed to muxing duties — as a
-/// bundled sidecar tends to be — can have every encoder we ask for and
-/// still lack the raw output formats, and ffmpeg's own complaint
-/// ("Requested output format 'h264' is not known") doesn't say that the
+/// Worth doing up front because a build trimmed down — as a bundled
+/// sidecar tends to be — can have every encoder we ask for and still
+/// lack the muxer, and ffmpeg's own complaint doesn't say that the
 /// *build* is the problem.
 pub fn check_formats(ffmpeg: &Path, formats: &[&str]) -> crate::Result<()> {
     let mut command = Command::new(ffmpeg);
@@ -87,7 +107,7 @@ pub fn check_formats(ffmpeg: &Path, formats: &[&str]) -> crate::Result<()> {
         source: e,
     })?;
     let listing = String::from_utf8_lossy(&output.stdout);
-    // Lines look like "  E  h264   raw H.264 video"; take the name
+    // Lines look like "  E  mp4    MP4 (MPEG-4 Part 14)"; take the name
     // column of anything marked as a muxer.
     let available: Vec<&str> = listing
         .lines()
@@ -109,17 +129,22 @@ pub fn check_formats(ffmpeg: &Path, formats: &[&str]) -> crate::Result<()> {
     Ok(())
 }
 
-/// One encoder subprocess and the parser for what it produces.
+/// Every output format an export will ask this ffmpeg for.
+pub fn required_formats() -> Vec<&'static str> {
+    vec![OUTPUT_FORMAT]
+}
+
+/// One encoder subprocess and the reader for what it produces.
 pub struct Encoder {
     slot: ChildSlot,
     stdin: Option<std::process::ChildStdin>,
     stdout: Receiver<Vec<u8>>,
     stderr: Arc<Mutex<Vec<String>>>,
     reader: Option<std::thread::JoinHandle<()>>,
-    parser: Box<dyn EsParser>,
-    /// Track ticks per unit of the parser's reported durations: a frame
-    /// duration for video, 1 for audio (whose unit is already a sample).
-    ticks_per_unit: u64,
+    stream: fmp4::Reader,
+    /// The timebase this track's packets must be in. The child is asked
+    /// to write in it, and refuses to be believed until it has.
+    timescale: u32,
     next_pts: u64,
 }
 
@@ -149,21 +174,15 @@ impl Encoder {
         for arg in video_encode_args(settings) {
             command.arg(arg);
         }
-        command.args(["-f", video_format(settings.codec), "pipe:1"]);
-        Self::spawn(
-            command,
-            canceller,
-            es::for_video(settings.codec),
-            settings.frame_duration,
-        )
+        // Ask for the export's own timebase, so a frame's duration comes
+        // back as the exact tick count it was pushed with rather than a
+        // rate rounded into whatever unit the muxer would have picked.
+        command.args(["-video_track_timescale", &settings.timescale.to_string()]);
+        Self::spawn(command, canceller, settings.timescale)
     }
 
-    /// Spawn one audio encoder. Returns `None` for PCM, which needs no
-    /// encoder at all.
-    pub fn audio(ffmpeg: &Path, settings: &AudioSettings, canceller: &Canceller) -> crate::Result<Option<Self>> {
-        let Some(parser) = es::for_audio(settings.codec) else {
-            return Ok(None);
-        };
+    /// Spawn one audio encoder.
+    pub fn audio(ffmpeg: &Path, settings: &AudioSettings, canceller: &Canceller) -> crate::Result<Self> {
         let mut command = base_command(ffmpeg);
         command.args([
             "-f",
@@ -178,16 +197,22 @@ impl Encoder {
         for arg in audio_encode_args(settings) {
             command.arg(arg);
         }
-        command.args(["-f", audio_format(settings.codec), "pipe:1"]);
-        Self::spawn(command, canceller, parser, 1).map(Some)
+        // An audio track's timebase is its sample rate, which is what
+        // the MP4 muxer uses unasked — so a packet's duration arrives
+        // already counted in samples.
+        Self::spawn(command, canceller, settings.sample_rate)
     }
 
-    fn spawn(
-        mut command: Command,
-        canceller: &Canceller,
-        parser: Box<dyn EsParser>,
-        ticks_per_unit: u64,
-    ) -> crate::Result<Self> {
+    fn spawn(mut command: Command, canceller: &Canceller, timescale: u32) -> crate::Result<Self> {
+        command.args([
+            "-movflags",
+            "empty_moov+default_base_moof",
+            "-frag_duration",
+            &FRAGMENT_MICROS.to_string(),
+            "-f",
+            OUTPUT_FORMAT,
+            "pipe:1",
+        ]);
         let mut child = command.spawn().map_err(|e| Error::FfmpegSpawn {
             path: command.get_program().to_string_lossy().into_owned(),
             source: e,
@@ -240,8 +265,8 @@ impl Encoder {
             stdout,
             stderr,
             reader: Some(reader),
-            parser,
-            ticks_per_unit,
+            stream: fmp4::Reader::new(),
+            timescale,
             next_pts: 0,
         })
     }
@@ -264,15 +289,13 @@ impl Encoder {
 
     /// Packets the encoder has produced so far. Never blocks.
     pub fn poll(&mut self) -> crate::Result<Vec<Packet>> {
-        while let Ok(chunk) = self.stdout.try_recv() {
-            self.parser.push(&chunk).map_err(|e| self.error(e.to_string()))?;
-        }
-        Ok(self.drain_parser())
+        self.read_available()?;
+        self.drain_stream()
     }
 
     /// Codec configuration, once the stream has revealed it.
     pub fn codec_private(&self) -> Option<Vec<u8>> {
-        self.parser.codec_private()
+        self.stream.codec_private()
     }
 
     /// Stop feeding the encoder. EOF on stdin is what tells ffmpeg to
@@ -289,11 +312,8 @@ impl Encoder {
             // the child exits, so this also waits out the encode tail.
             let _ = reader.join();
         }
-        while let Ok(chunk) = self.stdout.try_recv() {
-            self.parser.push(&chunk).map_err(|e| self.error(e.to_string()))?;
-        }
-        self.parser.flush().map_err(|e| self.error(e.to_string()))?;
-        let packets = self.drain_parser();
+        self.read_available()?;
+        let packets = self.drain_stream()?;
 
         let taken = self.slot.lock().unwrap().take();
         let mut child = taken.ok_or_else(|| Error::internal("the encoder was already reaped"))?;
@@ -304,32 +324,47 @@ impl Encoder {
         Ok(packets)
     }
 
-    /// Encoder priming this stream needs a player to discard, in
-    /// samples: whatever the stream declared, else what we know about
-    /// the encoder we asked for.
-    pub fn codec_delay_samples(&self, codec: AudioCodec) -> u64 {
-        self.parser.declared_codec_delay().unwrap_or(match codec {
-            AudioCodec::Aac => AAC_ENCODER_DELAY_SAMPLES,
-            _ => 0,
-        })
+    fn read_available(&mut self) -> crate::Result<()> {
+        while let Ok(chunk) = self.stdout.try_recv() {
+            self.stream.push(&chunk).map_err(|e| self.error(e.to_string()))?;
+        }
+        Ok(())
     }
 
-    fn drain_parser(&mut self) -> Vec<Packet> {
-        self.parser
-            .take_packets()
+    /// Turn the samples read so far into packets, timed by running
+    /// total. The durations are the stream's own, in the timebase this
+    /// encoder was asked for, so the total stays exact however long an
+    /// export runs.
+    fn drain_stream(&mut self) -> crate::Result<Vec<Packet>> {
+        let samples = self.stream.take_samples();
+        if samples.is_empty() {
+            return Ok(Vec::new());
+        }
+        // Timing depends on the child having written the timebase it was
+        // asked for; a stream in some other unit would be silently out
+        // of sync, so it's refused instead.
+        match self.stream.timescale() {
+            Some(timescale) if timescale == self.timescale => {}
+            other => {
+                return Err(self.error(format!(
+                    "ffmpeg wrote a stream timed in {other:?} ticks per second, not {}",
+                    self.timescale
+                )))
+            }
+        }
+        Ok(samples
             .into_iter()
-            .map(|unit| {
-                let duration = unit.duration * self.ticks_per_unit;
+            .map(|sample| {
                 let pts = self.next_pts;
-                self.next_pts += duration;
+                self.next_pts += sample.duration;
                 Packet {
                     pts,
-                    duration,
-                    keyframe: unit.keyframe,
-                    data: unit.data,
+                    duration: sample.duration,
+                    keyframe: sample.keyframe,
+                    data: sample.data,
                 }
             })
-            .collect()
+            .collect())
     }
 
     /// Attach the encoder's own last words to a failure.
@@ -357,16 +392,11 @@ impl Drop for Encoder {
 /// The native [`Backend`]: an encoder subprocess per stream.
 pub struct FfmpegBackend {
     video: Encoder,
-    /// One per audio track. `None` where the codec is PCM — those
-    /// samples are already packets and never see an encoder.
-    audio: Vec<Option<Encoder>>,
+    /// One per audio track.
+    audio: Vec<Encoder>,
     audio_codec: AudioCodec,
-    channels: u8,
-    /// Running sample counts for PCM tracks, which are timed here rather
-    /// than by an encoder.
-    pcm_pts: Vec<u64>,
-    /// Packets produced outside a `poll` — PCM passthrough, and the
-    /// tails collected while flushing.
+    /// The tails collected while flushing, which arrive outside a
+    /// `poll`.
     ready: Vec<(usize, Packet)>,
     flush_done: Vec<bool>,
 }
@@ -378,7 +408,7 @@ impl FfmpegBackend {
         settings.validate()?;
         canceller.check()?;
         let path = resolve_path(&ffmpeg);
-        check_formats(&path, &required_formats(settings.video.codec, settings.audio.codec))?;
+        check_formats(&path, &required_formats())?;
 
         let video = Encoder::video(
             &path,
@@ -395,22 +425,19 @@ impl FfmpegBackend {
             video,
             audio,
             audio_codec: settings.audio.codec,
-            channels: settings.audio.channels,
-            pcm_pts: vec![0; settings.audio_tracks],
             ready: Vec::new(),
             // Video plus one per audio track.
             flush_done: vec![false; settings.audio_tracks + 1],
         })
     }
 
-    fn encoder(&mut self, track: usize) -> crate::Result<Option<&mut Encoder>> {
+    fn encoder(&mut self, track: usize) -> crate::Result<&mut Encoder> {
         if track == crate::VIDEO_TRACK {
-            return Ok(Some(&mut self.video));
+            return Ok(&mut self.video);
         }
-        match self.audio.get_mut(track - 1) {
-            Some(slot) => Ok(slot.as_mut()),
-            None => Err(Error::internal(format!("no track {track}"))),
-        }
+        self.audio
+            .get_mut(track - 1)
+            .ok_or_else(|| Error::internal(format!("no track {track}")))
     }
 }
 
@@ -421,28 +448,7 @@ impl Backend for FfmpegBackend {
 
     fn submit_audio(&mut self, track: usize, samples: &[i16]) -> crate::Result<()> {
         let bytes: Vec<u8> = samples.iter().flat_map(|s| s.to_le_bytes()).collect();
-        match self.encoder(track + 1)? {
-            Some(encoder) => encoder.write(&bytes),
-            None => {
-                // PCM: the samples are the packet, so this is where they
-                // get timed.
-                let frames = samples.len() as u64 / self.channels.max(1) as u64;
-                if frames > 0 {
-                    let pts = self.pcm_pts[track];
-                    self.pcm_pts[track] += frames;
-                    self.ready.push((
-                        track + 1,
-                        Packet {
-                            pts,
-                            duration: frames,
-                            keyframe: true,
-                            data: bytes,
-                        },
-                    ));
-                }
-                Ok(())
-            }
-        }
+        self.encoder(track + 1)?.write(&bytes)
     }
 
     fn poll(&mut self) -> crate::Result<Vec<(usize, Packet)>> {
@@ -451,10 +457,8 @@ impl Backend for FfmpegBackend {
             out.push((crate::VIDEO_TRACK, packet));
         }
         for track in 0..self.audio.len() {
-            if let Some(encoder) = self.audio[track].as_mut() {
-                for packet in encoder.poll()? {
-                    out.push((track + 1, packet));
-                }
+            for packet in self.audio[track].poll()? {
+                out.push((track + 1, packet));
             }
         }
         Ok(out)
@@ -464,27 +468,26 @@ impl Backend for FfmpegBackend {
         if track == crate::VIDEO_TRACK {
             return self.video.codec_private();
         }
-        match self.audio.get(track - 1) {
-            // PCM describes itself entirely through the track header.
-            Some(None) => Some(Vec::new()),
-            Some(Some(encoder)) => encoder.codec_private(),
-            None => None,
-        }
+        self.audio.get(track - 1)?.codec_private()
     }
 
     fn codec_delay_samples(&self, track: usize) -> u64 {
         if track == crate::VIDEO_TRACK {
             return 0;
         }
-        match self.audio.get(track - 1) {
-            Some(Some(encoder)) => encoder.codec_delay_samples(self.audio_codec),
-            _ => 0,
+        match self.audio_codec {
+            // ffmpeg's native AAC encoder primes with one full frame,
+            // which a player has to discard to stay in sync with the
+            // video. Nothing in the stream states it, so it's stated
+            // here — the one place that knows which encoder produced it.
+            AudioCodec::Aac { .. } => AAC_SAMPLES_PER_FRAME,
+            AudioCodec::Flac => 0,
         }
     }
 
     fn begin_flush(&mut self) -> crate::Result<()> {
         self.video.close_input();
-        for encoder in self.audio.iter_mut().flatten() {
+        for encoder in &mut self.audio {
             encoder.close_input();
         }
         Ok(())
@@ -504,10 +507,8 @@ impl Backend for FfmpegBackend {
             if self.flush_done[track + 1] {
                 continue;
             }
-            if let Some(encoder) = self.audio[track].as_mut() {
-                let tail = encoder.finish()?;
-                self.ready.extend(tail.into_iter().map(|p| (track + 1, p)));
-            }
+            let tail = self.audio[track].finish()?;
+            self.ready.extend(tail.into_iter().map(|p| (track + 1, p)));
             self.flush_done[track + 1] = true;
         }
         Ok(true)
@@ -526,78 +527,32 @@ fn base_command(ffmpeg: &Path) -> Command {
     command
 }
 
-/// The elementary-stream output format for each codec — the framing
-/// [`es`] knows how to read back.
-fn video_format(codec: VideoCodec) -> &'static str {
-    match codec {
-        VideoCodec::H264 => "h264",
-        VideoCodec::Vp8 | VideoCodec::Vp9 => "ivf",
-    }
-}
-
-fn audio_format(codec: AudioCodec) -> &'static str {
-    match codec {
-        AudioCodec::Aac => "adts",
-        // Ogg is the only framing ffmpeg will write for these that
-        // preserves packet boundaries.
-        AudioCodec::Opus => "opus",
-        AudioCodec::Flac => "ogg",
-        AudioCodec::PcmS16Le => "s16le",
-    }
-}
-
-/// Every output format an export will ask this ffmpeg for.
-pub fn required_formats(video: VideoCodec, audio: AudioCodec) -> Vec<&'static str> {
-    let mut formats = vec![video_format(video)];
-    if audio != AudioCodec::PcmS16Le {
-        formats.push(audio_format(audio));
-    }
-    formats
-}
-
 fn video_encode_args(settings: &VideoSettings) -> Vec<String> {
     let mut args: Vec<String> = Vec::new();
     let scale = settings.scale;
-    match settings.codec {
-        VideoCodec::H264 => match settings.quality {
-            VideoQuality::Lossless => {
-                // RGB in, RGB out: no color conversion, nothing to
-                // lose. An RGB H.264 stream can't carry color tags at
-                // all, which is why this path sets none.
-                args.extend(["-c:v", "libx264rgb", "-preset", "ultrafast", "-qp", "0"].map(String::from));
-                if scale > 1 {
-                    args.extend(["-vf".into(), format!("scale=iw*{scale}:ih*{scale}:flags=neighbor")]);
-                }
+    let VideoCodec::H264 { quality } = settings.codec;
+    match quality {
+        H264Quality::Lossless => {
+            // RGB in, RGB out: no color conversion, nothing to lose. An
+            // RGB H.264 stream can't carry color tags at all, which is
+            // why this path sets none.
+            args.extend(["-c:v", "libx264rgb", "-preset", "ultrafast", "-qp", "0"].map(String::from));
+            if scale > 1 {
+                args.extend(["-vf".into(), format!("scale=iw*{scale}:ih*{scale}:flags=neighbor")]);
             }
-            VideoQuality::Crf(crf) => {
-                args.extend(["-c:v", "libx264"].map(String::from));
-                args.extend(["-vf".into(), yuv_filter_chain(scale, settings)]);
-                args.extend(["-crf".into(), crf.to_string()]);
-            }
-            VideoQuality::Bitrate(bits) => {
-                args.extend(["-c:v", "libx264"].map(String::from));
-                args.extend(["-vf".into(), yuv_filter_chain(scale, settings)]);
-                args.extend(["-b:v".into(), bits.to_string()]);
-            }
-        },
-        VideoCodec::Vp8 | VideoCodec::Vp9 => {
-            let encoder = if settings.codec == VideoCodec::Vp8 {
-                "libvpx"
-            } else {
-                "libvpx-vp9"
-            };
-            args.extend(["-c:v", encoder, "-deadline", "good", "-cpu-used", "4"].map(String::from));
+        }
+        H264Quality::Crf(crf) => {
+            args.extend(["-c:v", "libx264"].map(String::from));
             args.extend(["-vf".into(), yuv_filter_chain(scale, settings)]);
-            let bits = match settings.quality {
-                VideoQuality::Bitrate(bits) => bits,
-                // libvpx wants a rate target; pick one rather than let
-                // it fall back to its 256 kbit/s default.
-                _ => 4_000_000,
-            };
+            args.extend(["-crf".into(), crf.to_string()]);
+        }
+        H264Quality::Bitrate(bits) => {
+            args.extend(["-c:v", "libx264"].map(String::from));
+            args.extend(["-vf".into(), yuv_filter_chain(scale, settings)]);
             args.extend(["-b:v".into(), bits.to_string()]);
         }
     }
-    // Frame reordering would break ordinal timing; see the module docs.
+    // Frame reordering has nowhere to go downstream; see the module docs.
     args.extend(["-bf".into(), "0".into()]);
     args.extend(["-g".into(), settings.keyframe_interval.max(1).to_string()]);
     args
@@ -641,16 +596,11 @@ fn yuv_filter_chain(scale: u32, settings: &VideoSettings) -> String {
 fn audio_encode_args(settings: &AudioSettings) -> Vec<String> {
     let mut args: Vec<String> = Vec::new();
     match settings.codec {
-        AudioCodec::Aac => {
+        AudioCodec::Aac { bitrate } => {
             args.extend(["-c:a", "aac"].map(String::from));
-            args.extend(["-b:a".into(), settings.bitrate.to_string()]);
-        }
-        AudioCodec::Opus => {
-            args.extend(["-c:a", "libopus"].map(String::from));
-            args.extend(["-b:a".into(), settings.bitrate.to_string()]);
+            args.extend(["-b:a".into(), bitrate.to_string()]);
         }
         AudioCodec::Flac => args.extend(["-c:a", "flac"].map(String::from)),
-        AudioCodec::PcmS16Le => args.extend(["-c:a", "pcm_s16le"].map(String::from)),
     }
     args.extend(["-ar".into(), settings.sample_rate.to_string()]);
     args.extend(["-ac".into(), settings.channels.to_string()]);
@@ -662,10 +612,9 @@ mod tests {
     use super::*;
     use crate::ColorInfo;
 
-    fn video_settings(quality: VideoQuality, scale: u32) -> VideoSettings {
+    fn video_settings(quality: H264Quality, scale: u32) -> VideoSettings {
         VideoSettings {
-            codec: VideoCodec::H264,
-            quality,
+            codec: VideoCodec::H264 { quality },
             width: 240,
             height: 160,
             scale,
@@ -678,7 +627,7 @@ mod tests {
 
     #[test]
     fn lossless_uses_the_rgb_encoder_and_no_color_conversion() {
-        let args = video_encode_args(&video_settings(VideoQuality::Lossless, 1)).join(" ");
+        let args = video_encode_args(&video_settings(H264Quality::Lossless, 1)).join(" ");
         assert!(args.contains("libx264rgb"), "{args}");
         assert!(args.contains("-qp 0"), "{args}");
         assert!(!args.contains("yuv420p"), "lossless must not convert: {args}");
@@ -686,7 +635,7 @@ mod tests {
 
     #[test]
     fn scaled_output_scales_in_ffmpeg_and_tags_full_range_srgb() {
-        let args = video_encode_args(&video_settings(VideoQuality::Crf(18), 3)).join(" ");
+        let args = video_encode_args(&video_settings(H264Quality::Crf(18), 3)).join(" ");
         assert!(args.contains("scale=iw*3:ih*3:flags=neighbor"), "{args}");
         assert!(args.contains("out_range=pc"), "{args}");
         assert!(args.contains("setparams=range=pc:colorspace=bt709"), "{args}");
@@ -695,32 +644,21 @@ mod tests {
 
     #[test]
     fn unscaled_lossy_output_still_converts_and_tags() {
-        let args = video_encode_args(&video_settings(VideoQuality::Crf(18), 1)).join(" ");
+        let args = video_encode_args(&video_settings(H264Quality::Crf(18), 1)).join(" ");
         assert!(!args.contains("scale="), "no scaling at 1x: {args}");
         assert!(args.contains("format=yuv420p,setparams=range=pc"), "{args}");
     }
 
-    /// Ordinal timing depends on it, so every video configuration must
-    /// disable frame reordering.
+    /// Nothing downstream carries a decode order distinct from the
+    /// presentation one, so every video configuration must disable frame
+    /// reordering.
     #[test]
     fn b_frames_are_always_off() {
-        for quality in [VideoQuality::Lossless, VideoQuality::Crf(18), VideoQuality::Bitrate(2_000_000)] {
+        for quality in [H264Quality::Lossless, H264Quality::Crf(18), H264Quality::Bitrate(2_000_000)] {
             for scale in [1, 3] {
                 let args = video_encode_args(&video_settings(quality, scale)).join(" ");
                 assert!(args.contains("-bf 0"), "{quality:?} at {scale}x: {args}");
             }
         }
-    }
-
-    #[test]
-    fn formats_are_the_elementary_ones() {
-        assert_eq!(required_formats(VideoCodec::H264, AudioCodec::Aac), vec!["h264", "adts"]);
-        assert_eq!(required_formats(VideoCodec::Vp9, AudioCodec::Opus), vec!["ivf", "opus"]);
-        assert_eq!(required_formats(VideoCodec::H264, AudioCodec::Flac), vec!["h264", "ogg"]);
-        assert_eq!(
-            required_formats(VideoCodec::H264, AudioCodec::PcmS16Le),
-            vec!["h264"],
-            "PCM needs no encoder, so it needs no output format"
-        );
     }
 }

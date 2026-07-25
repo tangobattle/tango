@@ -448,13 +448,12 @@ impl Track {
 
 /// The sample entry describing a video track.
 fn video_sample_entry(video: &VideoTrackInfo) -> crate::Result<mp4_atom::Codec> {
-    if video.codec != VideoCodec::H264 {
-        return Err(crate::Error::internal(format!(
-            "MP4 has no sample entry here for {:?}",
-            video.codec
-        )));
-    }
-    // The bare record the H.264 parser produced, no box header around it.
+    // Exhaustive on purpose: a new video codec needs its own sample
+    // entry, and should fail to compile here rather than be written out
+    // as `avc1`.
+    let VideoCodec::H264 { .. } = video.codec;
+    // The bare record the backend read out of the stream, no box header
+    // around it.
     let avcc = mp4_atom::Avcc::decode_body(&mut video.codec_private.as_slice())
         .map_err(|e| crate::Error::bitstream("H.264", format!("unusable avcC record: {e}")))?;
     Ok(mp4_atom::Avc1 {
@@ -492,12 +491,14 @@ fn video_sample_entry(video: &VideoTrackInfo) -> crate::Result<mp4_atom::Codec> 
 /// object type, 4 of sampling frequency index, 4 of channel configuration
 /// (ISO/IEC 14496-3).
 fn audio_sample_entry(audio: &AudioTrackInfo) -> crate::Result<mp4_atom::Codec> {
-    if audio.codec != AudioCodec::Aac {
+    // FLAC reaches Matroska instead; `Container::accepts` refuses it
+    // here before an encoder is spawned.
+    let AudioCodec::Aac { .. } = audio.codec else {
         return Err(crate::Error::internal(format!(
             "MP4 has no sample entry here for {:?}",
             audio.codec
         )));
-    }
+    };
     let (a, b) = match audio.codec_private.as_slice() {
         [a, b, ..] => (*a, *b),
         other => {
@@ -589,7 +590,9 @@ mod tests {
         MuxConfig {
             container: Container::Mp4,
             video: VideoTrackInfo {
-                codec: VideoCodec::H264,
+                codec: VideoCodec::H264 {
+                    quality: crate::H264Quality::Crf(18),
+                },
                 width: 720,
                 height: 480,
                 timescale: 16_777_216,
@@ -598,7 +601,7 @@ mod tests {
                 codec_private: avcc(),
             },
             audio: vec![AudioTrackInfo {
-                codec: AudioCodec::Aac,
+                codec: AudioCodec::Aac { bitrate: 384_000 },
                 sample_rate: 48_000,
                 channels: 2,
                 codec_private: vec![0x11, 0x90],
@@ -888,10 +891,13 @@ mod tests {
         );
     }
 
+    /// MP4 carries H.264 with AAC and nothing else here, and says so
+    /// before a byte is written rather than when the sample entry can't
+    /// be built.
     #[test]
-    fn non_h264_video_is_refused_up_front() {
+    fn a_codec_mp4_does_not_carry_is_refused_up_front() {
         let mut config = config();
-        config.video.codec = VideoCodec::Vp9;
+        config.audio[0].codec = AudioCodec::Flac;
         assert!(Mp4Muxer::new(config).is_err());
     }
 }

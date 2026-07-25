@@ -7,7 +7,7 @@
 //! the audio tracks in order.
 //!
 //! Encoders are pipelines, not functions: work goes in, packets come out
-//! later, and the ffmpeg path has an operating-system pipe in between.
+//! later, and the ffmpeg path has an operating system pipe in between.
 //! So the trait is a submit/poll pair rather than something that returns
 //! a packet per frame, and the shutdown is two-phase — ask the encoders
 //! to finish, then poll until they have. That's what lets one session
@@ -34,10 +34,23 @@ pub trait Backend {
     /// block: a backend with nothing ready returns an empty vector.
     fn poll(&mut self) -> crate::Result<Vec<(usize, Packet)>>;
 
+    /// Frames submitted that the encoders haven't produced packets for
+    /// yet — the backpressure signal for a caller that can't be blocked.
+    ///
+    /// A backend whose [`Backend::submit_video`] blocks until the
+    /// encoder keeps up (the ffmpeg one, whose pipes do it for free)
+    /// needs none and reports 0 — the default. One that accepts
+    /// everything and queues it (WebCodecs, which can't block an event
+    /// loop) reports its queue, so an export can stop feeding it
+    /// instead of running ahead into memory.
+    fn queue_depth(&self) -> u32 {
+        0
+    }
+
     /// A track's codec configuration in the form containers want it
-    /// (`avcC` for H.264, `AudioSpecificConfig` for AAC, `OpusHead` for
-    /// Opus), or `None` while the encoder hasn't revealed it yet. Codecs
-    /// that need none report an empty vector.
+    /// (`avcC` for H.264, `AudioSpecificConfig` for AAC, `fLaC` magic
+    /// and metadata blocks for FLAC), or `None` while the encoder hasn't
+    /// revealed it yet.
     ///
     /// This is why a container's header can't be written when an export
     /// opens: H.264's parameter sets don't exist until a frame has been

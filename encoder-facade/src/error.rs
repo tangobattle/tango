@@ -26,8 +26,8 @@ pub enum Error {
     #[error("{container:?} cannot carry {video:?} video with {audio:?} audio")]
     CodecNotInContainer {
         container: Container,
-        video: crate::codec::VideoCodec,
-        audio: crate::codec::AudioCodec,
+        video: crate::VideoCodec,
+        audio: crate::AudioCodec,
     },
 
     /// An encoder's output didn't match the format it was asked for.
@@ -46,9 +46,8 @@ pub enum Error {
         source: std::io::Error,
     },
 
-    /// This ffmpeg build has no muxer for an elementary-stream format
-    /// the export needs — the usual shape of a sidecar build trimmed
-    /// down to muxing duties.
+    /// This ffmpeg build has no muxer for an output format the export
+    /// needs — the usual shape of a sidecar build trimmed down.
     #[error(
         "this ffmpeg build cannot write the {formats} output format(s) this export needs; \
          rebuild it with --enable-muxer={formats}"

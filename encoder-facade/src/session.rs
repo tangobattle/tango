@@ -94,6 +94,13 @@ impl<B: Backend> Session<B> {
         self.video_frames
     }
 
+    /// The backend's unfinished queue — see [`Backend::queue_depth`].
+    /// An export that can't be blocked pushes until this is deep, then
+    /// goes away and comes back.
+    pub fn queue_depth(&self) -> u32 {
+        self.backend.queue_depth()
+    }
+
     /// Ask the encoders to finish. Then call [`Session::poll_finish`]
     /// until it yields the fixups.
     pub fn begin_finish(&mut self) -> crate::Result<()> {
@@ -226,7 +233,7 @@ impl<B: Backend> Session<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AudioCodec, AudioSettings, Container, VideoCodec, VideoQuality, VideoSettings};
+    use crate::{AudioCodec, AudioSettings, Container, H264Quality, VideoCodec, VideoSettings};
 
     /// A backend that hands back packets on demand, so the session's own
     /// behaviour — ordering, header timing, output draining — can be
@@ -271,8 +278,9 @@ mod tests {
     fn settings() -> Settings {
         Settings {
             video: VideoSettings {
-                codec: VideoCodec::H264,
-                quality: VideoQuality::Crf(18),
+                codec: VideoCodec::H264 {
+                    quality: H264Quality::Crf(18),
+                },
                 width: 240,
                 height: 160,
                 scale: 3,
@@ -282,10 +290,9 @@ mod tests {
                 color: None,
             },
             audio: AudioSettings {
-                codec: AudioCodec::Aac,
+                codec: AudioCodec::Aac { bitrate: 384_000 },
                 sample_rate: 48_000,
                 channels: 2,
-                bitrate: 384_000,
             },
             container: Container::Matroska,
             audio_tracks: 1,

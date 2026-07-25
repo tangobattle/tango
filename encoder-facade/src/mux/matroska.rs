@@ -1,5 +1,4 @@
-//! Matroska and WebM, written with [`mkv_element`]'s typed element
-//! tree.
+//! Matroska, written with [`mkv_element`]'s typed element tree.
 //!
 //! Layout, in the order bytes reach the output:
 //!
@@ -27,7 +26,7 @@ use mkv_element::ClusterBlock;
 
 use super::{Chapter, Finished, Fixup, MuxConfig, Muxer};
 use crate::packet::ticks_to_ns;
-use crate::{AudioCodec, Container, Packet, VideoCodec, VIDEO_TRACK};
+use crate::{AudioCodec, Packet, VideoCodec, VIDEO_TRACK};
 
 
 
@@ -44,10 +43,6 @@ const RESERVED_HEAD: usize = 1024;
 /// clusters long before this; it's a backstop so a stream with sparse
 /// keyframes can't overflow a block's 16-bit relative timestamp.
 const MAX_CLUSTER_SPAN_MS: i64 = 5_000;
-
-/// Opus decoders need audio before a seek point to converge, and 80 ms is
-/// what RFC 7845 §4.2 recommends a muxer declare.
-const OPUS_SEEK_PREROLL_NS: u64 = 80_000_000;
 
 pub struct MatroskaMuxer {
     config: MuxConfig,
@@ -92,13 +87,12 @@ impl MatroskaMuxer {
     }
 
     fn write_head(&mut self) -> crate::Result<()> {
-        let webm = self.config.container == Container::WebM;
         let ebml = Ebml {
             ebml_version: Some(EbmlVersion(1)),
             ebml_read_version: Some(EbmlReadVersion(1)),
             ebml_max_id_length: EbmlMaxIdLength(4),
             ebml_max_size_length: EbmlMaxSizeLength(8),
-            doc_type: Some(DocType(if webm { "webm".into() } else { "matroska".into() })),
+            doc_type: Some(DocType("matroska".into())),
             doc_type_version: Some(DocTypeVersion(4)),
             doc_type_read_version: Some(DocTypeReadVersion(2)),
             ..Default::default()
@@ -135,9 +129,7 @@ impl MatroskaMuxer {
             flag_lacing: FlagLacing(0),
             codec_id: CodecId(
                 match video.codec {
-                    VideoCodec::H264 => "V_MPEG4/ISO/AVC",
-                    VideoCodec::Vp8 => "V_VP8",
-                    VideoCodec::Vp9 => "V_VP9",
+                    VideoCodec::H264 { .. } => "V_MPEG4/ISO/AVC",
                 }
                 .into(),
             ),
@@ -168,10 +160,8 @@ impl MatroskaMuxer {
                 flag_lacing: FlagLacing(0),
                 codec_id: CodecId(
                     match audio.codec {
-                        AudioCodec::Aac => "A_AAC",
-                        AudioCodec::Opus => "A_OPUS",
+                        AudioCodec::Aac { .. } => "A_AAC",
                         AudioCodec::Flac => "A_FLAC",
-                        AudioCodec::PcmS16Le => "A_PCM/INT/LIT",
                     }
                     .into(),
                 ),
@@ -180,17 +170,9 @@ impl MatroskaMuxer {
                 // What a player must discard so the audio it plays
                 // lines up with the video.
                 codec_delay: CodecDelay(audio.codec_delay_ns()),
-                seek_pre_roll: SeekPreRoll(if audio.codec == AudioCodec::Opus {
-                    OPUS_SEEK_PREROLL_NS
-                } else {
-                    0
-                }),
                 audio: Some(Audio {
                     sampling_frequency: SamplingFrequency(audio.sample_rate as f64),
                     channels: Channels(audio.channels as u64),
-                    // PCM's codec ID doesn't imply a sample width, so
-                    // Matroska wants it stated.
-                    bit_depth: (audio.codec == AudioCodec::PcmS16Le).then_some(BitDepth(16)),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -508,11 +490,13 @@ mod tests {
     use crate::mux::apply;
     use crate::{AudioTrackInfo, ColorInfo, VideoTrackInfo};
 
-    fn config(container: Container) -> MuxConfig {
+    fn config() -> MuxConfig {
         MuxConfig {
-            container,
+            container: crate::Container::Matroska,
             video: VideoTrackInfo {
-                codec: VideoCodec::H264,
+                codec: VideoCodec::H264 {
+                    quality: crate::H264Quality::Crf(18),
+                },
                 width: 240,
                 height: 160,
                 timescale: 16_777_216,
@@ -521,7 +505,7 @@ mod tests {
                 codec_private: vec![1, 0x64, 0, 0x0d, 0xff, 0xe1, 0, 2, 0x67, 0x64, 0x01, 0, 4, 0x68, 0xee],
             },
             audio: vec![AudioTrackInfo {
-                codec: AudioCodec::Aac,
+                codec: AudioCodec::Aac { bitrate: 384_000 },
                 sample_rate: 48_000,
                 channels: 2,
                 codec_private: vec![0x11, 0x90],
@@ -539,8 +523,8 @@ mod tests {
 
     /// Mux a few frames and hand the bytes back, as a finished file
     /// would look on disk.
-    fn mux(container: Container, chapters: &[Chapter]) -> Vec<u8> {
-        let mut muxer = MatroskaMuxer::new(config(container)).unwrap();
+    fn mux(chapters: &[Chapter]) -> Vec<u8> {
+        let mut muxer = MatroskaMuxer::new(config()).unwrap();
         let mut file = Vec::new();
         for frame in 0..10u64 {
             muxer
@@ -576,7 +560,7 @@ mod tests {
     /// make sense of the file.
     #[test]
     fn output_satisfies_an_independent_demuxer() {
-        let file = mux(Container::Matroska, &[]);
+        let file = mux(&[]);
         let mut mkv = matroska_demuxer::MatroskaFile::open(std::io::Cursor::new(file)).unwrap();
         let tracks = mkv.tracks();
         assert_eq!(tracks.len(), 2);
@@ -612,7 +596,7 @@ mod tests {
                 end_frame: 10,
             },
         ];
-        let file = mux(Container::Matroska, &chapters);
+        let file = mux(&chapters);
         let mkv = matroska_demuxer::MatroskaFile::open(std::io::Cursor::new(file)).unwrap();
         let editions = mkv.chapters().expect("the file must carry chapters");
         assert_eq!(editions.len(), 1);
@@ -625,10 +609,14 @@ mod tests {
         assert_eq!(atoms[1].time_start(), 83_713_531);
     }
 
+    /// Matroska carries the lossless pairing that MP4 doesn't, which is
+    /// the reason the two containers exist side by side here.
     #[test]
-    fn webm_rejects_h264() {
-        let mut config = config(Container::WebM);
-        config.audio[0].codec = AudioCodec::Opus;
+    fn flac_is_accepted_where_mp4_refuses_it() {
+        let mut config = config();
+        config.audio[0].codec = AudioCodec::Flac;
+        assert!(super::super::open(config.clone()).is_ok());
+        config.container = crate::Container::Mp4;
         assert!(super::super::open(config).is_err());
     }
 
