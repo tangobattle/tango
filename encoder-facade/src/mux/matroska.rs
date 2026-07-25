@@ -25,7 +25,7 @@ use mkv_element::prelude::*;
 use mkv_element::io::blocking_impl::WriteTo;
 use mkv_element::ClusterBlock;
 
-use super::{Chapter, MuxConfig, Muxer, Patch};
+use super::{Chapter, Fixup, MuxConfig, Muxer};
 use crate::packet::ticks_to_ns;
 use crate::{AudioCodec, Container, Packet, VideoCodec, VIDEO_TRACK};
 
@@ -248,7 +248,7 @@ impl Muxer for MatroskaMuxer {
         std::mem::take(&mut self.out)
     }
 
-    fn finish(&mut self, chapters: &[Chapter]) -> crate::Result<Vec<Patch>> {
+    fn finish(&mut self, chapters: &[Chapter]) -> crate::Result<Vec<Fixup>> {
         self.flush_cluster()?;
         self.cluster_open = false;
 
@@ -323,11 +323,11 @@ impl Muxer for MatroskaMuxer {
 
         let segment_size = self.pos - self.segment_data_start;
         Ok(vec![
-            Patch {
+            Fixup::Overwrite {
                 position: self.segment_size_pos,
                 bytes: fixed_width_size(segment_size),
             },
-            Patch {
+            Fixup::Overwrite {
                 position: self.reserved_pos,
                 bytes: head,
             },
@@ -502,6 +502,7 @@ fn void_element(total: usize) -> crate::Result<Option<Vec<u8>>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mux::apply;
     use crate::{AudioTrackInfo, ColorInfo, VideoTrackInfo};
 
     fn config(container: Container) -> MuxConfig {
@@ -524,6 +525,7 @@ mod tests {
                 codec_delay_samples: 1024,
             }],
             writing_app: "encoder-facade-test".into(),
+            faststart: false,
         }
     }
 
@@ -562,13 +564,9 @@ mod tests {
                 .unwrap();
             file.extend_from_slice(&muxer.take_output());
         }
-        let patches = muxer.finish(chapters).unwrap();
+        let fixups = muxer.finish(chapters).unwrap();
         file.extend_from_slice(&muxer.take_output());
-        for patch in patches {
-            let at = patch.position as usize;
-            file[at..at + patch.bytes.len()].copy_from_slice(&patch.bytes);
-        }
-        file
+        apply(file, &fixups)
     }
 
     /// The real test of a muxer: a demuxer nobody here wrote has to

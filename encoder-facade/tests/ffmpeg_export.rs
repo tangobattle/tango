@@ -80,6 +80,9 @@ fn settings(container: Container, video: VideoCodec, audio: AudioCodec, quality:
         },
         container,
         audio_tracks: 1,
+        // Exercised on its own below; the shared setup keeps the simple
+        // layout.
+        faststart: false,
     }
 }
 
@@ -131,7 +134,15 @@ const SILENT_SAMPLES: u64 = 24_000;
 /// Run a whole export and return the file it wrote.
 fn export(ffmpeg: &Path, settings: Settings, chapters: &[Chapter], name: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!("encoder-facade-{name}.{}", settings.container.extension()));
-    let file = std::fs::File::create(&path).expect("create the output file");
+    // Read access too: a faststart layout moves the media to make room
+    // for the index, which means reading it back.
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&path)
+        .expect("create the output file");
     let mut output = Output::new(file);
 
     let canceller = Canceller::new();
@@ -481,6 +492,54 @@ fn a_two_sided_export_carries_a_track_per_side() {
     assert!(
         probed.matches("duration=\"2.0").count() >= 3,
         "video and both audio tracks should run the same length: {probed}"
+    );
+}
+
+/// Faststart moves the index in front of the media once the export is
+/// done. The result has to be a file players and libavformat still
+/// accept, with everything the plain layout carries.
+#[test]
+fn a_faststart_mp4_is_still_a_valid_mp4() {
+    let ffmpeg = require_ffmpeg!();
+    let chapters = vec![Chapter {
+        title: "Round 1".into(),
+        start_frame: 0,
+        end_frame: FRAMES,
+    }];
+    let mut settings = settings(Container::Mp4, VideoCodec::H264, AudioCodec::Aac, VideoQuality::Crf(24));
+    settings.faststart = true;
+    let file = export(&ffmpeg, settings, &chapters, "faststart");
+
+    // moov ahead of mdat is the whole point.
+    let bytes = std::fs::read(&file).expect("read the export back");
+    let moov = bytes
+        .windows(4)
+        .position(|w| w == b"moov")
+        .expect("a moov must be present");
+    let mdat = bytes
+        .windows(4)
+        .position(|w| w == b"mdat")
+        .expect("an mdat must be present");
+    assert!(moov < mdat, "the index must come before the media: {moov} vs {mdat}");
+
+    if let Some(probed) = probe(&ffmpeg, &file) {
+        assert!(probed.contains("codec_name=\"h264\""), "{probed}");
+        assert!(probed.contains("codec_name=\"aac\""), "{probed}");
+        assert!(
+            probed.contains(&format!("nb_frames=\"{FRAMES}\"")),
+            "the relocated index must still describe every frame: {probed}"
+        );
+        assert!(probed.contains("Round 1"), "chapters survive relocation: {probed}");
+    }
+
+    // Decoding is what proves the shifted chunk offsets point at the
+    // right bytes: a wrong offset gives a decode error, not just an odd
+    // duration.
+    let decoded = decode_audio(&ffmpeg, &file);
+    let step = first_loud_sample(&decoded).expect("the audio must decode");
+    assert!(
+        (step as i64 - SILENT_SAMPLES as i64).abs() <= 256,
+        "audio decoded from a faststart file landed at {step}, not {SILENT_SAMPLES}"
     );
 }
 

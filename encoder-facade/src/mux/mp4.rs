@@ -10,13 +10,14 @@
 //!   moov (written at the close, once the sample tables are complete)
 //! ```
 //!
-//! `moov` goes last because its tables describe every sample's size and
-//! position, which is only known when the stream ends. That rules out
-//! `faststart` layout (where `moov` precedes `mdat` so a player can
-//! begin before the whole file arrives) — reaching it would mean
-//! rewriting the media afterwards. Local playback and every editor are
-//! unaffected; only progressive playback straight off a web server
-//! notices.
+//! `moov` has to be built last: its tables describe every sample's size
+//! and position, which is only known when the stream ends. With
+//! [`MuxConfig::faststart`] it doesn't have to *stay* last — it comes
+//! back as a [`Fixup::Insert`] that goes in front of `mdat`, with every
+//! chunk offset shifted by its own length, so a player reading the file
+//! in order finds the index before the media it describes. The cost is
+//! moving the media along once, which is the same bargain ffmpeg's
+//! `+faststart` makes.
 //!
 //! Sample *metadata* is buffered, not sample data: an hour-long export
 //! holds a few hundred kilobytes of tables while the media streams
@@ -24,7 +25,7 @@
 
 use mp4_atom::{Any, Atom, Encode, FourCC};
 
-use super::{Chapter, Container, MuxConfig, Muxer, Patch};
+use super::{Chapter, Container, Fixup, MuxConfig, Muxer};
 use crate::packet::ticks_to_ns;
 use crate::{AudioCodec, AudioTrackInfo, VideoCodec, VideoTrackInfo};
 
@@ -173,8 +174,50 @@ impl Muxer for Mp4Muxer {
         std::mem::take(&mut self.out)
     }
 
-    fn finish(&mut self, chapters: &[Chapter]) -> crate::Result<Vec<Patch>> {
+    fn finish(&mut self, chapters: &[Chapter]) -> crate::Result<Vec<Fixup>> {
         let mdat_size = self.pos - self.mdat_start;
+        // The mdat size sits after ftyp, so a relocated moov moves it;
+        // fixups are applied in order, and this one is written while the
+        // file still has its original layout.
+        let mut fixups = vec![Fixup::Overwrite {
+            position: self.mdat_size_pos + 8,
+            bytes: mdat_size.to_be_bytes().to_vec(),
+        }];
+
+        if !self.config.faststart {
+            let moov = self.build_moov(chapters, 0)?;
+            self.emit(&moov);
+            return Ok(fixups);
+        }
+
+        // Faststart: moov goes in front of mdat, so every chunk offset
+        // moves forward by moov's own length — which depends on those
+        // offsets, since a file crossing 4 GiB needs 64-bit ones. Build
+        // until the length agrees with the shift it was built for. Only
+        // the offset table's width can change the length, and only once,
+        // so this settles in two rounds.
+        let mut shift = 0u64;
+        for _ in 0..3 {
+            let moov = self.build_moov(chapters, shift)?;
+            if moov.len() as u64 == shift {
+                fixups.push(Fixup::Insert {
+                    position: self.mdat_size_pos,
+                    bytes: moov,
+                });
+                return Ok(fixups);
+            }
+            shift = moov.len() as u64;
+        }
+        Err(crate::Error::internal(
+            "a faststart moov's size would not settle".to_string(),
+        ))
+    }
+}
+
+impl Mp4Muxer {
+    /// Build the `moov` atom. `offset_shift` is added to every chunk
+    /// offset, which is how a relocated index still points at its media.
+    fn build_moov(&self, chapters: &[Chapter], offset_shift: u64) -> crate::Result<Vec<u8>> {
         let movie_duration = self
             .tracks
             .iter()
@@ -182,10 +225,10 @@ impl Muxer for Mp4Muxer {
             .max()
             .unwrap_or(0);
 
-        // moov is assembled as a container atom holding
-        // library-encoded children, which is what lets the Nero `chpl`
-        // chapter box ride along: mp4-atom models `udta` with a fixed
-        // set of children, and `chpl` isn't one of them.
+        // moov is assembled as a container atom holding library-encoded
+        // children, which is what lets the Nero `chpl` chapter box ride
+        // along: mp4-atom models `udta` with a fixed set of children, and
+        // `chpl` isn't one of them.
         let mut children = Vec::new();
         mp4_atom::Mvhd {
             creation_time: 0,
@@ -199,22 +242,15 @@ impl Muxer for Mp4Muxer {
         }
         .encode(&mut children)?;
         for (i, track) in self.tracks.iter().enumerate() {
-            track.encode_trak(i as u32 + 1, movie_duration, &mut children)?;
+            track.encode_trak(i as u32 + 1, movie_duration, offset_shift, &mut children)?;
         }
         if !chapters.is_empty() {
             let chpl = chpl_atom(chapters, &self.config);
-            let udta = Any::Unknown(FourCC::new(b"udta"), chpl);
-            udta.encode(&mut children)?;
+            Any::Unknown(FourCC::new(b"udta"), chpl).encode(&mut children)?;
         }
-        let moov = Any::Unknown(FourCC::new(b"moov"), children);
-        let mut buf = Vec::new();
-        moov.encode(&mut buf)?;
-        self.emit(&buf);
-
-        Ok(vec![Patch {
-            position: self.mdat_size_pos + 8,
-            bytes: mdat_size.to_be_bytes().to_vec(),
-        }])
+        let mut moov = Vec::new();
+        Any::Unknown(FourCC::new(b"moov"), children).encode(&mut moov)?;
+        Ok(moov)
     }
 }
 
@@ -232,7 +268,13 @@ impl Track {
         }
     }
 
-    fn encode_trak(&self, id: u32, movie_duration: u64, out: &mut Vec<u8>) -> crate::Result<()> {
+    fn encode_trak(
+        &self,
+        id: u32,
+        movie_duration: u64,
+        offset_shift: u64,
+        out: &mut Vec<u8>,
+    ) -> crate::Result<()> {
         let is_video = matches!(self.kind, TrackKind::Video { .. });
         let duration_ms = ticks_to_ns(self.total_duration, self.timescale) / 1_000_000;
 
@@ -315,14 +357,14 @@ impl Track {
             },
         }
         .encode(&mut minf)?;
-        self.encode_stbl(&mut minf)?;
+        self.encode_stbl(offset_shift, &mut minf)?;
         Any::Unknown(FourCC::new(b"minf"), minf).encode(&mut mdia)?;
         Any::Unknown(FourCC::new(b"mdia"), mdia).encode(&mut trak)?;
         Any::Unknown(FourCC::new(b"trak"), trak).encode(out)?;
         Ok(())
     }
 
-    fn encode_stbl(&self, out: &mut Vec<u8>) -> crate::Result<()> {
+    fn encode_stbl(&self, offset_shift: u64, out: &mut Vec<u8>) -> crate::Result<()> {
         let mut stbl = Vec::new();
         self.encode_stsd(&mut stbl)?;
 
@@ -375,7 +417,7 @@ impl Track {
         // 32-bit chunk offsets while the file fits in 4 GiB, which is
         // the more widely understood form; past that they have to be
         // 64-bit.
-        let offsets: Vec<u64> = self.chunks.iter().map(|c| c.offset).collect();
+        let offsets: Vec<u64> = self.chunks.iter().map(|c| c.offset + offset_shift).collect();
         if offsets.iter().any(|&o| o > u32::MAX as u64) {
             mp4_atom::Co64 { entries: offsets }.encode(&mut stbl)?;
         } else {
@@ -527,6 +569,7 @@ fn chpl_atom(chapters: &[Chapter], config: &MuxConfig) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mux::apply;
     use crate::{AudioTrackInfo, ColorInfo, Container, Packet, VideoTrackInfo, VIDEO_TRACK};
 
     /// A minimal but real avcC record: one SPS and one PPS.
@@ -556,11 +599,23 @@ mod tests {
                 codec_delay_samples: 1024,
             }],
             writing_app: "encoder-facade-test".into(),
+            faststart: false,
         }
     }
 
     fn mux(chapters: &[Chapter]) -> Vec<u8> {
-        let mut muxer = Mp4Muxer::new(config()).unwrap();
+        mux_with(config(), chapters)
+    }
+
+    /// Same file, index in front of the media.
+    fn mux_faststart(chapters: &[Chapter]) -> Vec<u8> {
+        let mut config = config();
+        config.faststart = true;
+        mux_with(config, chapters)
+    }
+
+    fn mux_with(config: MuxConfig, chapters: &[Chapter]) -> Vec<u8> {
+        let mut muxer = Mp4Muxer::new(config).unwrap();
         let mut file = Vec::new();
         for frame in 0..10u64 {
             muxer
@@ -587,13 +642,9 @@ mod tests {
                 .unwrap();
             file.extend_from_slice(&muxer.take_output());
         }
-        let patches = muxer.finish(chapters).unwrap();
+        let fixups = muxer.finish(chapters).unwrap();
         file.extend_from_slice(&muxer.take_output());
-        for patch in patches {
-            let at = patch.position as usize;
-            file[at..at + patch.bytes.len()].copy_from_slice(&patch.bytes);
-        }
-        file
+        apply(file, &fixups)
     }
 
     fn sample_sizes(samples: &mp4_atom::StszSamples) -> Vec<u32> {
@@ -603,49 +654,65 @@ mod tests {
         }
     }
 
+    /// One top-level atom: what it is, where it starts, how long it is.
+    struct AtomSpan {
+        kind: String,
+        start: u64,
+        size: u64,
+        /// Bytes of header before the payload: 8, or 16 for the 64-bit
+        /// size form.
+        header: u64,
+    }
+
     /// Walk the top-level atoms and check they tile the file exactly —
     /// the failure mode a wrong size field produces.
-    fn top_level_atoms(file: &[u8]) -> Vec<(String, u64)> {
+    fn top_level_atoms(file: &[u8]) -> Vec<AtomSpan> {
         let mut atoms = Vec::new();
         let mut at = 0usize;
         while at + 8 <= file.len() {
             let size32 = u32::from_be_bytes(file[at..at + 4].try_into().unwrap()) as u64;
             let kind = String::from_utf8_lossy(&file[at + 4..at + 8]).to_string();
-            let (size, _header) = if size32 == 1 {
-                (
-                    u64::from_be_bytes(file[at + 8..at + 16].try_into().unwrap()),
-                    16,
-                )
+            let (size, header) = if size32 == 1 {
+                (u64::from_be_bytes(file[at + 8..at + 16].try_into().unwrap()), 16)
             } else {
                 (size32, 8)
             };
             assert!(size >= 8, "atom {kind} has an impossible size {size}");
-            atoms.push((kind, size));
+            atoms.push(AtomSpan {
+                kind,
+                start: at as u64,
+                size,
+                header,
+            });
             at += size as usize;
         }
         assert_eq!(at, file.len(), "atoms must tile the file exactly");
         atoms
     }
 
+    fn atom_named(file: &[u8], kind: &str) -> AtomSpan {
+        top_level_atoms(file)
+            .into_iter()
+            .find(|atom| atom.kind == kind)
+            .unwrap_or_else(|| panic!("the file must have a {kind}"))
+    }
+
     #[test]
     fn file_is_ftyp_mdat_moov() {
         let file = mux(&[]);
-        let atoms = top_level_atoms(&file);
-        let kinds: Vec<&str> = atoms.iter().map(|(k, _)| k.as_str()).collect();
+        let kinds: Vec<String> = top_level_atoms(&file).into_iter().map(|a| a.kind).collect();
         assert_eq!(kinds, vec!["ftyp", "mdat", "moov"]);
         // 10 video samples of 40 bytes and 10 audio of 20, plus the
         // 16-byte 64-bit mdat header.
-        assert_eq!(atoms[1].1, 16 + 10 * 40 + 10 * 20);
+        assert_eq!(atom_named(&file, "mdat").size, 16 + 10 * 40 + 10 * 20);
     }
 
-    /// Parse the moov the muxer wrote. `decode_body` starts at an atom's
-    /// payload, so the 8-byte header is skipped.
+    /// Parse the moov the muxer wrote, wherever it put it.
+    /// `decode_body` starts at an atom's payload, so the header is
+    /// skipped.
     fn parse_moov(file: &[u8]) -> mp4_atom::Moov {
-        let moov_size = top_level_atoms(file)
-            .last()
-            .map(|(_, size)| *size as usize)
-            .expect("a moov must be present");
-        let body = &file[file.len() - moov_size + 8..];
+        let moov = atom_named(file, "moov");
+        let body = &file[(moov.start + moov.header) as usize..(moov.start + moov.size) as usize];
         mp4_atom::Moov::decode_body(&mut &body[..]).expect("moov must parse")
     }
 
@@ -680,11 +747,18 @@ mod tests {
 
     #[test]
     fn every_sample_offset_lands_inside_mdat_at_the_right_size() {
-        let file = mux(&[]);
-        let atoms = top_level_atoms(&file);
-        let mdat_start = atoms[0].1;
-        let mdat_end = mdat_start + atoms[1].1;
-        let moov = parse_moov(&file);
+        for file in [mux(&[]), mux_faststart(&[])] {
+            check_sample_offsets(&file);
+        }
+    }
+
+    /// Every sample's bytes must sit inside mdat, which is what catches a
+    /// chunk offset that wasn't shifted when the index moved.
+    fn check_sample_offsets(file: &[u8]) {
+        let mdat = atom_named(file, "mdat");
+        let mdat_start = mdat.start;
+        let mdat_end = mdat.start + mdat.size;
+        let moov = parse_moov(file);
         for trak in &moov.trak {
             let stbl = &trak.mdia.minf.stbl;
             let sizes = sample_sizes(&stbl.stsz.samples);
@@ -718,6 +792,61 @@ mod tests {
             }
             assert_eq!(sample, sizes.len(), "stsc must account for every sample");
         }
+    }
+
+    /// Faststart moves the index in front of the media. The media itself
+    /// must come through unchanged, and the index must still point at it.
+    #[test]
+    fn faststart_puts_the_index_first_without_disturbing_the_media() {
+        let plain = mux(&[]);
+        let fast = mux_faststart(&[]);
+
+        let kinds: Vec<String> = top_level_atoms(&fast).into_iter().map(|a| a.kind).collect();
+        assert_eq!(kinds, vec!["ftyp", "moov", "mdat"], "the index goes first");
+
+        // Byte-for-byte the same media, just further along in the file.
+        let plain_mdat = atom_named(&plain, "mdat");
+        let fast_mdat = atom_named(&fast, "mdat");
+        assert_eq!(plain_mdat.size, fast_mdat.size);
+        let media = |file: &[u8], atom: &AtomSpan| {
+            file[(atom.start + atom.header) as usize..(atom.start + atom.size) as usize].to_vec()
+        };
+        assert_eq!(media(&plain, &plain_mdat), media(&fast, &fast_mdat));
+        assert!(fast_mdat.start > plain_mdat.start, "the media moved along");
+
+        // And the tables describe the same samples, at their new places.
+        let shift = fast_mdat.start - plain_mdat.start;
+        let (plain_moov, fast_moov) = (parse_moov(&plain), parse_moov(&fast));
+        for (before, after) in plain_moov.trak.iter().zip(fast_moov.trak.iter()) {
+            let offsets = |trak: &mp4_atom::Trak| -> Vec<u64> {
+                let stbl = &trak.mdia.minf.stbl;
+                match (&stbl.stco, &stbl.co64) {
+                    (Some(stco), _) => stco.entries.iter().map(|&o| o as u64).collect(),
+                    (_, Some(co64)) => co64.entries.clone(),
+                    _ => panic!("a track needs chunk offsets"),
+                }
+            };
+            let shifted: Vec<u64> = offsets(before).iter().map(|o| o + shift).collect();
+            assert_eq!(offsets(after), shifted, "every chunk offset moves by the index's size");
+            assert_eq!(
+                sample_sizes(&before.mdia.minf.stbl.stsz.samples),
+                sample_sizes(&after.mdia.minf.stbl.stsz.samples),
+            );
+        }
+    }
+
+    #[test]
+    fn faststart_keeps_its_chapters() {
+        let file = mux_faststart(&[Chapter {
+            title: "Round 1".into(),
+            start_frame: 0,
+            end_frame: 10,
+        }]);
+        assert!(
+            file.windows(4).any(|w| w == b"chpl"),
+            "the chapter box survives relocation"
+        );
+        check_sample_offsets(&file);
     }
 
     #[test]

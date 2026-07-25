@@ -28,10 +28,10 @@
 //! implementing [`mux::Muxer`], with nothing else changing.
 //!
 //! Nothing here does I/O. A session produces bytes to append and, at the
-//! close, [`mux::Patch`]es to write back over positions already passed —
-//! so a caller holding a [`std::fs::File`] and one awaiting a browser's
-//! file stream drive the same session the same way. Native callers can
-//! hand both to [`Output`].
+//! close, [`mux::Fixup`]s that finish the parts written earlier — so a
+//! caller holding a [`std::fs::File`] and one awaiting a browser's file
+//! stream drive the same session the same way. Native callers can hand
+//! both to [`Output`].
 
 pub mod backend;
 pub mod codec;

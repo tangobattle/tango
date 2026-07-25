@@ -13,13 +13,13 @@
 //! [`Session::take_output`] for the caller to append however it writes
 //! files — synchronously to a [`std::fs::File`], or awaited into a
 //! browser's file stream — and [`Session::poll_finish`] hands back the
-//! [`Patch`]es that complete the parts written earlier.
+//! [`Fixup`]s that complete the parts written earlier.
 
 use std::collections::VecDeque;
 
 use crate::backend::{Backend, VIDEO_TRACK};
 use crate::error::check;
-use crate::mux::{self, Chapter, MuxConfig, Muxer, Patch};
+use crate::mux::{self, Chapter, Fixup, MuxConfig, Muxer};
 use crate::packet::ticks_to_ns;
 use crate::{AudioTrackInfo, Packet, Settings, VideoTrackInfo};
 
@@ -92,17 +92,17 @@ impl<B: Backend> Session<B> {
     }
 
     /// Ask the encoders to finish. Then call [`Session::poll_finish`]
-    /// until it yields the patches.
+    /// until it yields the fixups.
     pub fn begin_finish(&mut self) -> crate::Result<()> {
         self.flushing = true;
         self.backend.begin_flush()
     }
 
     /// Drive the shutdown. Returns `None` while the encoders are still
-    /// working, or the patches to apply once the container is closed.
+    /// working, or the fixups to apply once the container is closed.
     ///
     /// `chapters` are in output video frames.
-    pub fn poll_finish(&mut self, chapters: &[Chapter]) -> crate::Result<Option<Vec<Patch>>> {
+    pub fn poll_finish(&mut self, chapters: &[Chapter]) -> crate::Result<Option<Vec<Fixup>>> {
         check!(self.flushing, "begin_finish must come first");
         let done = self.backend.poll_flush()?;
         // Collect whatever flushing produced before deciding anything:
@@ -115,10 +115,10 @@ impl<B: Backend> Session<B> {
         let Some(muxer) = self.muxer.as_mut() else {
             return Err(crate::Error::Empty);
         };
-        let patches = muxer.finish(chapters)?;
+        let fixups = muxer.finish(chapters)?;
         let bytes = muxer.take_output();
         self.output.extend_from_slice(&bytes);
-        Ok(Some(patches))
+        Ok(Some(fixups))
     }
 
     /// Collect what the encoders have produced and write out what's
@@ -209,6 +209,7 @@ impl<B: Backend> Session<B> {
             },
             audio,
             writing_app: concat!("encoder-facade ", env!("CARGO_PKG_VERSION")).to_string(),
+            faststart: self.settings.faststart,
         })?);
         Ok(())
     }
@@ -280,6 +281,7 @@ mod tests {
             },
             container: Container::Matroska,
             audio_tracks: 1,
+            faststart: false,
         }
     }
 
@@ -355,7 +357,7 @@ mod tests {
     }
 
     #[test]
-    fn finish_drains_everything_and_reports_patches() {
+    fn finish_drains_everything_and_reports_fixups() {
         let mut session = Session::new(FakeBackend::default(), settings()).unwrap();
         session.backend.video_private = Some(avcc());
         session.backend.audio_private = Some(vec![0x11, 0x90]);
@@ -367,17 +369,14 @@ mod tests {
             file.extend_from_slice(&session.take_output());
         }
         session.begin_finish().unwrap();
-        let patches = loop {
-            if let Some(patches) = session.poll_finish(&[]).unwrap() {
-                break patches;
+        let fixups = loop {
+            if let Some(fixups) = session.poll_finish(&[]).unwrap() {
+                break fixups;
             }
         };
         file.extend_from_slice(&session.take_output());
-        assert!(!patches.is_empty(), "Matroska patches its segment size at least");
-        for patch in patches {
-            let at = patch.position as usize;
-            file[at..at + patch.bytes.len()].copy_from_slice(&patch.bytes);
-        }
+        assert!(!fixups.is_empty(), "Matroska fixes up its segment size at least");
+        let file = crate::mux::apply(file, &fixups);
         // The result has to satisfy a demuxer nobody here wrote.
         let mut mkv = matroska_demuxer::MatroskaFile::open(std::io::Cursor::new(file)).unwrap();
         let mut frames = 0;

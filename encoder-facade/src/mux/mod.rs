@@ -76,13 +76,36 @@ pub struct Chapter {
     pub end_frame: u64,
 }
 
-/// Bytes that have to be written back over a position already passed:
-/// a size that wasn't known until the stream ended, or a header field
-/// reserved up front and filled in at the close.
+/// A correction to bytes already written, reported when a container
+/// closes and applied in the order given.
 #[derive(Clone, Debug)]
-pub struct Patch {
-    pub position: u64,
-    pub bytes: Vec<u8>,
+pub enum Fixup {
+    /// Write these bytes over a position already passed: a size that
+    /// wasn't known until the stream ended, or a header field reserved up
+    /// front and filled in at the close.
+    Overwrite { position: u64, bytes: Vec<u8> },
+    /// Put these bytes *into* the output at this position, moving
+    /// everything after it along.
+    ///
+    /// This is how MP4 reaches `faststart` layout: its index can only be
+    /// built once the stream ends, but belongs in front of the media, so
+    /// the media has to shift to make room. Costs one pass over the file,
+    /// which is why it only happens when asked for.
+    Insert { position: u64, bytes: Vec<u8> },
+}
+
+impl Fixup {
+    pub fn position(&self) -> u64 {
+        match self {
+            Fixup::Overwrite { position, .. } | Fixup::Insert { position, .. } => *position,
+        }
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        match self {
+            Fixup::Overwrite { bytes, .. } | Fixup::Insert { bytes, .. } => bytes,
+        }
+    }
 }
 
 /// Everything a muxer needs about the streams it's about to carry.
@@ -93,6 +116,10 @@ pub struct MuxConfig {
     pub video: VideoTrackInfo,
     pub audio: Vec<AudioTrackInfo>,
     pub writing_app: String,
+    /// Put the index in front of the media, so a player reading the file
+    /// in order can start before it has all of it. MP4 only; Matroska
+    /// always writes a seek index at the head.
+    pub faststart: bool,
 }
 
 /// A container writer. One per export.
@@ -109,10 +136,10 @@ pub trait Muxer {
     fn take_output(&mut self) -> Vec<u8>;
 
     /// Close the container: write what belongs at the end (indexes,
-    /// chapters, cues) and report the patches that complete the parts
+    /// chapters, cues) and report the [`Fixup`]s that complete the parts
     /// written earlier. [`Muxer::take_output`] is drained once more after
-    /// this, and then the patches are applied.
-    fn finish(&mut self, chapters: &[Chapter]) -> crate::Result<Vec<Patch>>;
+    /// this, and then the fixups are applied in order.
+    fn finish(&mut self, chapters: &[Chapter]) -> crate::Result<Vec<Fixup>>;
 }
 
 /// Open a container and write its header. Fails if any track's codec
@@ -125,6 +152,16 @@ pub fn open(config: MuxConfig) -> crate::Result<Box<dyn Muxer>> {
         Container::Mp4 => Box::new(mp4::Mp4Muxer::new(config)?),
         Container::Matroska | Container::WebM => Box::new(matroska::MatroskaMuxer::new(config)?),
     })
+}
+
+/// Apply fixups to a finished file in memory, the way a caller's
+/// [`crate::Output`] does to one on disk — so the tests exercise the
+/// same application path the real thing uses.
+#[cfg(test)]
+pub(crate) fn apply(file: Vec<u8>, fixups: &[Fixup]) -> Vec<u8> {
+    let mut output = crate::Output::new(std::io::Cursor::new(file));
+    output.finish(fixups).expect("apply the fixups");
+    output.into_inner().into_inner()
 }
 
 /// Convert a chapter's frame bounds to nanoseconds using the video

@@ -77,6 +77,11 @@ impl Settings {
             },
             container: self.container(),
             audio_tracks,
+            // What the old pipeline's `-movflags +faststart` did: the
+            // index goes in front of the media, so a player reading the
+            // file in order can start before it has all of it. Matroska
+            // ignores it.
+            faststart: !lossless,
         }
     }
 }
@@ -184,7 +189,16 @@ pub fn export(
     let encoder_settings = settings.encoder_settings(width_screens, audio_tracks);
     let backend = encoder_facade::FfmpegBackend::new(&encoder_settings, settings.ffmpeg.clone(), canceller)?;
     let mut session = encoder_facade::Session::new(backend, encoder_settings)?;
-    let mut output = encoder_facade::Output::new(std::fs::File::create(output_path)?);
+    // Opened for reading as well: a faststart MP4 relocates its index,
+    // which moves the media that follows it.
+    let mut output = encoder_facade::Output::new(
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(output_path)?,
+    );
 
     // Boot + prime. This is encoder-free but bounded (~a few hundred
     // ticks), so a cancel lands at the next loop check.

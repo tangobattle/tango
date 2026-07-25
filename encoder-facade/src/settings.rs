@@ -119,6 +119,13 @@ pub struct Settings {
     /// How many audio tracks to open. A two-sided layout carries one per
     /// side.
     pub audio_tracks: usize,
+    /// Put the index in front of the media, so a player reading the file
+    /// in order can start before it has all of it — MP4's `faststart`.
+    ///
+    /// The index can only be built once the stream ends, so reaching that
+    /// layout costs one pass over the finished file to make room for it.
+    /// Matroska ignores this: it always writes a seek index at the head.
+    pub faststart: bool,
 }
 
 impl Settings {
