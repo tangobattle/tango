@@ -34,7 +34,7 @@ cargo build --bin tango --features gamesupport-all --target=aarch64-apple-darwin
 cargo build --bin tango --features gamesupport-all --target=x86_64-apple-darwin --profile release-dist
 lipo -create target/{aarch64-apple-darwin,x86_64-apple-darwin}/release-dist/tango -output Tango.app/Contents/MacOS/tango
 
-ffmpeg_version="8.1.1"
+ffmpeg_version="8.1.2"
 
 mkdir -p tango_macos_workdir
 wget -O tango_macos_workdir/ffmpeg-arm64 "https://github.com/tangobattle/ffmpeg-build/releases/download/ffmpeg-${ffmpeg_version}/ffmpeg-macos-arm64"

@@ -23,7 +23,7 @@ cp linux/tango.desktop tango_linux_workdir/tango.desktop
 cp "target/${target_arch}-unknown-linux-gnu/release-dist/tango" "tango_linux_workdir/${target_arch}/bin/tango"
 
 # Bundle ffmpeg.
-ffmpeg_version="8.1.1"
+ffmpeg_version="8.1.2"
 
 wget "https://github.com/tangobattle/ffmpeg-build/releases/download/ffmpeg-${ffmpeg_version}/ffmpeg-linux-x86_64" -O "tango_linux_workdir/${target_arch}/bin/ffmpeg"
 chmod a+x "tango_linux_workdir/${target_arch}/bin/ffmpeg"
