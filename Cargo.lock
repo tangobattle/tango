@@ -542,7 +542,7 @@ dependencies = [
  "bitflags 2.11.1",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -1345,11 +1345,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a2330da5de22e8a3cb63252ce2abb30116bf5265e89c0e01bc17015ce30a476"
 
 [[package]]
-name = "datachannel-wrapper"
+name = "datachannel-facade"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/datachannel-wrapper#c82f340b0b5b9f0127aaeab29d39bdef5dbf7dfb"
+source = "git+https://github.com/tangobattle/datachannel-facade#ef7758df4662205415631eaeaba1795f7c305a54"
 dependencies = [
  "libdatachannel",
+ "log",
+ "web-datachannel",
+]
+
+[[package]]
+name = "datachannel-wrapper"
+version = "0.1.0"
+source = "git+https://github.com/tangobattle/datachannel-wrapper#06228a5a68b5ff78c51da17b37a5d849116c0668"
+dependencies = [
+ "datachannel-facade",
  "log",
  "tokio",
 ]
@@ -3142,7 +3152,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.53.3",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -4757,7 +4767,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6c3320f9abac597dcbc668774ef006702672474aad53c6d596b62e487b40b1"
 dependencies = [
  "heck",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "multimap",
  "once_cell",
@@ -4777,7 +4787,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9120690fafc389a67ba3803df527d0ec9cbbc9cc45e4cc20b332996dfb672425"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "syn",
@@ -5265,7 +5275,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -7334,6 +7344,18 @@ dependencies = [
  "log",
  "once_cell",
  "pkg-config",
+]
+
+[[package]]
+name = "web-datachannel"
+version = "0.1.0"
+source = "git+https://github.com/tangobattle/datachannel-facade#ef7758df4662205415631eaeaba1795f7c305a54"
+dependencies = [
+ "js-sys",
+ "log",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
