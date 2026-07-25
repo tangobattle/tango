@@ -533,16 +533,18 @@ impl App {
         iced::Task::none()
     }
 
-    /// Fetch the patch the play tab's picker just selected, if we don't
-    /// have it.
+    /// Fetch the patch the loadout currently names, if we don't have it.
     ///
     /// The picker lists everything the repo offers, not just what's on
-    /// disk, so choosing an entry is how you install it. Cheap to call on
-    /// every selection change: `install_patch` ignores a request for
-    /// something already downloading, and this returns early for anything
-    /// already installed. A download that failed is retried, so a
-    /// selection change picks up again once the network comes back.
-    fn fetch_selected_patch(&mut self) -> iced::Task<Message> {
+    /// disk, so choosing an entry is how you install it — and the same
+    /// goes for the selection restored at startup, which comes back off
+    /// the same index and can equally name something this machine has
+    /// never downloaded. Cheap to call on every selection change:
+    /// `install_patch` ignores a request for something already
+    /// downloading, and this returns early for anything already
+    /// installed. A download that failed is retried, so a selection
+    /// change picks up again once the network comes back.
+    pub(super) fn fetch_selected_patch(&mut self) -> iced::Task<Message> {
         let (Some(name), Some(version)) = (self.loadout.patch.clone(), self.loadout.patch_version.clone()) else {
             return iced::Task::none();
         };
@@ -554,7 +556,7 @@ impl App {
                 return iced::Task::none();
             }
         }
-        log::info!("play tab selected {name} {version}, fetching");
+        log::info!("selection needs {name} {version}, fetching");
         self.install_patch((name, version))
     }
 

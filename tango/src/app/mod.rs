@@ -1471,7 +1471,7 @@ impl App {
             }
             Message::Rescanned(followup) => {
                 self.rescans_in_flight = self.rescans_in_flight.saturating_sub(1);
-                match followup {
+                let task = match followup {
                     RescanFollowup::Boot => {
                         self.library_scanned = true;
                         log::info!(
@@ -1525,6 +1525,21 @@ impl App {
                         self.refresh_loaded();
                         iced::Task::none()
                     }
+                };
+                // One rule for every landing: the selection's patch
+                // should be on disk. At startup that's the restored
+                // selection, which resolves against the repo index and
+                // so can name a version this machine never downloaded;
+                // afterwards it's the play tab re-asserting itself on
+                // entry, since a trip to the patches tab can have
+                // removed the package underneath it. Deliberately not
+                // while the patches tab is up: re-downloading what the
+                // user just removed, as they watch, is not help.
+                if followup == RescanFollowup::Boot || self.tab == Tab::Play {
+                    let fetch = self.fetch_selected_patch();
+                    iced::Task::batch([task, fetch])
+                } else {
+                    task
                 }
             }
         }
