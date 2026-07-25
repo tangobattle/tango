@@ -48,7 +48,7 @@ save-new-confirm = 作成
 save-template-default = （デフォルト）
 save-template-pick = テンプレートを選択…
 empty-scanning-title = ライブラリをスキャンしています…
-empty-scanning-body = ROM・セーブ・パッチ・リプレイを読み込んでいます。
+empty-scanning-body = ROM・セーブ・パッチを読み込んでいます。
 
 # Empty-state hints
 empty-no-roms-title = ROMが見つかりません

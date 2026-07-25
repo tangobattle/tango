@@ -50,7 +50,7 @@ save-template-pick = Pick a template…
 
 # Empty-state hints
 empty-scanning-title = Scanning your library…
-empty-scanning-body = Reading ROMs, saves, patches and replays.
+empty-scanning-body = Reading ROMs, saves and patches.
 empty-no-roms-title = No game ROMs found
 empty-no-roms-body = Drop your Battle Network / Rockman EXE .gba files into:
 empty-no-saves-title = No save files for this game

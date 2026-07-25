@@ -48,7 +48,7 @@ save-new-confirm = 建立
 save-template-default = （預設）
 save-template-pick = 選擇範本…
 empty-scanning-title = 正在掃描遊戲庫…
-empty-scanning-body = 正在讀取 ROM、存檔、補丁與重播。
+empty-scanning-body = 正在讀取 ROM、存檔與補丁。
 
 # Empty-state hints
 empty-no-roms-title = 找不到遊戲 ROM

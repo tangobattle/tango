@@ -85,12 +85,26 @@ impl Scanners {
     /// save, package and replay header. Callers run it on a blocking
     /// worker.
     fn rescan(&self, config: &config::Config, listings: &Listings) {
+        self.rescan_library(config, listings);
+        self.rescan_replays(&listings.replays);
+    }
+
+    /// Everything the play tab is built from. Split out from the replay
+    /// index so startup can bring the main screen up without waiting on
+    /// it — nothing on the play tab reads a replay, and the replay index
+    /// is the collection that grows without bound.
+    ///
+    /// Patches belong here rather than with the replays: the saved
+    /// selection's patch overlay is resolved against this catalog (see
+    /// [`App::restore_selection`]), so restoring before it lands would
+    /// quietly drop the patch the user last played with.
+    fn rescan_library(&self, config: &config::Config, listings: &Listings) {
         let storage = crate::library::storage();
         let patches_path = config.patches_path();
-        // Timed per phase because the four are individually unbounded
-        // and individually quiet — a scan that takes minutes otherwise
-        // shows up in a log as nothing but a gap. A phase gated out by
-        // an unchanged listing just reads as ~0.
+        // Timed per phase because each is individually unbounded and
+        // individually quiet — a scan that takes minutes otherwise shows
+        // up in a log as nothing but a gap. A phase gated out by an
+        // unchanged listing just reads as ~0.
         let start = std::time::Instant::now();
         self.roms
             .rescan_if_changed(&listings.roms, || Some(rom::scan_roms(storage, &listings.roms)));
@@ -102,11 +116,16 @@ impl Scanners {
             patch::scan(storage, &patches_path, &listings.patches).ok()
         });
         let patches = start.elapsed() - roms - saves;
-        self.replays.rescan_if_changed(&listings.replays, || {
-            Some(replays::scan_replays(storage, &listings.replays))
-        });
-        let replays = start.elapsed() - roms - saves - patches;
-        log::debug!("rescan: roms {roms:.1?}, saves {saves:.1?}, patches {patches:.1?}, replays {replays:.1?}");
+        log::debug!("rescan: roms {roms:.1?}, saves {saves:.1?}, patches {patches:.1?}");
+    }
+
+    /// The replay index, from its own listing.
+    fn rescan_replays(&self, listing: &Listing) {
+        let storage = crate::library::storage();
+        let start = std::time::Instant::now();
+        self.replays
+            .rescan_if_changed(listing, || Some(replays::scan_replays(storage, listing)));
+        log::debug!("rescan: replays {:.1?}", start.elapsed());
     }
 }
 
@@ -206,12 +225,16 @@ pub struct App {
     /// (e.g. the patch autoupdater fires its own rescan separately
     /// from an automatic one).
     rescans_in_flight: u32,
-    /// False until the startup scan lands. Deliberately not
-    /// `rescans_in_flight > 0`: this one means "the library has never
-    /// been read", which is what tells an empty scanner apart from an
-    /// empty library. A later background rescan must not flip a
-    /// settled empty state back to "scanning…".
+    /// False until the startup scan's first stage lands (roms, saves,
+    /// patches — everything the play tab is built from). Deliberately
+    /// not `rescans_in_flight > 0`: this one means "the library has
+    /// never been read", which is what tells an empty scanner apart
+    /// from an empty library. A later background rescan must not flip
+    /// a settled empty state back to "scanning…".
     library_scanned: bool,
+    /// Same, for the startup scan's second stage — the replay index,
+    /// which only the replays tab waits on.
+    replays_scanned: bool,
     /// Entrance glide played on freshly-swapped content whenever
     /// the [`screen_key`] changes (tab switch, welcome → main,
     /// session start/end). Restarted at 0 → 1 on each trigger;
@@ -505,6 +528,7 @@ impl App {
             updater,
             rescans_in_flight: 0,
             library_scanned: false,
+            replays_scanned: false,
             // Start at rest (no launch animation) — progress 1.0
             // and not animating until first triggered.
             screen_enter: anim::Enter::default(),
@@ -513,8 +537,48 @@ impl App {
             lobby_exit_snapshot: None,
         };
         app.refresh_loaded();
-        let scan = app.rescan_off_thread(RescanFollowup::Boot);
+        let scan = app.boot_scan();
         (app, scan)
+    }
+
+    /// The startup scan, in two stages: first everything the play tab
+    /// is built from, then the replay index. They're separate because
+    /// they're waited on separately — the play tab has no reason to sit
+    /// behind a replay collection that can run to thousands of files,
+    /// and the replays tab is the only screen that does.
+    ///
+    /// Each stage lands as its own `Rescanned` message, so the counter
+    /// takes two.
+    fn boot_scan(&mut self) -> iced::Task<Message> {
+        self.rescans_in_flight += 2;
+        let scanners = self.scanners.clone();
+        let config = self.config.clone();
+        // One enumeration feeds both stages: it covers all four roots
+        // and costs metadata only, so the first stage hands the replays
+        // listing to the second rather than walking that tree twice.
+        iced::Task::perform(
+            async move {
+                let listings = Scanners::list(&config).await;
+                let replays = listings.replays.clone();
+                let _ = tokio::task::spawn_blocking(move || scanners.rescan_library(&config, &listings)).await;
+                replays
+            },
+            |listing| listing,
+        )
+        .then({
+            let scanners = self.scanners.clone();
+            move |listing| {
+                let scanners = scanners.clone();
+                // The play tab is live from here; the replay index
+                // lands whenever it lands.
+                iced::Task::done(Message::Rescanned(RescanFollowup::Boot)).chain(iced::Task::perform(
+                    async move {
+                        let _ = tokio::task::spawn_blocking(move || scanners.rescan_replays(&listing)).await;
+                    },
+                    |()| Message::Rescanned(RescanFollowup::BootReplays),
+                ))
+            }
+        })
     }
 
     /// Resolve the saved selection against the scanners, now that the
@@ -942,13 +1006,15 @@ pub enum Message {
 /// distinct Message variant per call site.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RescanFollowup {
-    /// The startup scan (the only one that runs against empty
-    /// scanners): resolve the saved selection now that there is
-    /// something to resolve it against, then refresh and warm the
-    /// replay stats like any other scan. Also what flips
-    /// `library_scanned` — the views say "scanning…" rather than
-    /// "your library is empty" until it does.
+    /// The startup scan's first stage — roms, saves and patches, the
+    /// only scanners the play tab reads. Resolves the saved selection
+    /// now that there is something to resolve it against, and flips
+    /// `library_scanned`: the play and patches tabs say "scanning…"
+    /// rather than "your library is empty" until it does.
     Boot,
+    /// The startup scan's second stage — the replay index. Flips
+    /// `replays_scanned` and warms the stats cache.
+    BootReplays,
     /// A patch a replay was waiting on just installed — start playback
     /// now that the scan can see it.
     RetryPendingWatch,
@@ -1409,14 +1475,18 @@ impl App {
                     RescanFollowup::Boot => {
                         self.library_scanned = true;
                         log::info!(
-                            "initial scan: {} rom(s), {} save game(s), {} patch(es), {} replay(s)",
+                            "initial scan: {} rom(s), {} save game(s), {} patch(es)",
                             self.scanners.roms.read().len(),
                             self.scanners.saves.read().values().map(|v| v.len()).sum::<usize>(),
                             self.scanners.patches.read().installed.len(),
-                            self.scanners.replays.read().len(),
                         );
                         self.restore_selection();
                         self.refresh_loaded();
+                        iced::Task::none()
+                    }
+                    RescanFollowup::BootReplays => {
+                        self.replays_scanned = true;
+                        log::info!("initial scan: {} replay(s)", self.scanners.replays.read().len());
                         self.refresh_replay_stats().map(Message::Replays)
                     }
                     RescanFollowup::Refresh => {
@@ -1806,7 +1876,7 @@ impl App {
                     &self.config,
                     &self.netplay.phase,
                     &self.downloads,
-                    !self.library_scanned,
+                    !self.replays_scanned,
                 )
                 .map(Message::Replays),
             Tab::Patches => self
