@@ -550,10 +550,15 @@ impl State {
         scanning: bool,
         netplay_phase: &'a crate::netplay::Phase,
     ) -> Element<'a, Message> {
-        // Nothing scanned yet — the startup scan is still running.
-        // Same card shape as the empty states below it, so landing on
-        // the real one doesn't move anything.
-        if scanning && scanners.roms.read().is_empty() {
+        // The startup scan is still running. Gated on the scan itself,
+        // not on any one scanner being empty: the four phases publish as
+        // they finish, so between ROMs landing and saves landing an
+        // emptiness test reads as "you own games but no saves" — and
+        // with the strip hidden there'd be nothing on screen to fix it
+        // with. One state until the whole scan is in. Same card shape as
+        // the empty states below, so landing on the real one doesn't
+        // move anything.
+        if scanning {
             return empty_state_card(t!(lang, "empty-scanning-title"), vec![t!(lang, "empty-scanning-body")], None);
         }
         // No ROMs at all: explain where to put them.
@@ -565,14 +570,12 @@ impl State {
                 Some((t!(lang, "save-open-folder"), roms_path)),
             );
         }
-        // Family selected but no save files anywhere in it — but not
-        // while the scan is mid-flight, where the saves may simply not
-        // have been read yet (the four phases land one at a time).
+        // Family selected but no save files anywhere in it.
         if let Some(family) = loadout.family {
             let saves = scanners.saves.read();
             let has_saves =
                 game::games_in_family(family).any(|g| saves.get(&g).map(|v| !v.is_empty()).unwrap_or(false));
-            if !has_saves && loadout.save.is_none() && !scanning {
+            if !has_saves && loadout.save.is_none() {
                 let saves_path = config.saves_path();
                 return empty_state_card(
                     t!(lang, "empty-no-saves-title"),

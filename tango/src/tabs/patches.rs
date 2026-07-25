@@ -350,11 +350,8 @@ impl PatchesState {
         scanning: bool,
     ) -> Element<'a, Message> {
         let query = self.search.trim().to_lowercase();
-        let all_names = patches.names();
-        // Emptiness of the whole catalog, not of the filtered list: a
-        // search that matches nothing is a different (and settled) state.
-        let nothing_scanned = all_names.is_empty();
-        let mut names: Vec<&str> = all_names
+        let mut names: Vec<&str> = patches
+            .names()
             .into_iter()
             .filter(|name| self.filter.accepts(patches.installed.contains_key(*name)))
             .filter(|name| {
@@ -413,9 +410,10 @@ impl PatchesState {
                 .on_press(Message::Selected(name.to_owned())),
             );
         }
-        // Scanning with nothing scanned yet: say so where the rows would
-        // be, the same way the replays list does.
-        let body: Element<'_, Message> = if scanning && nothing_scanned {
+        // Say so where the rows would be, the same way the replays list
+        // does — and for the same reason, gated on the scan rather than
+        // on the catalog being empty.
+        let body: Element<'_, Message> = if scanning {
             container(
                 text(t!(lang, "patches-scanning"))
                     .size(TEXT_BODY)

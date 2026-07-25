@@ -463,11 +463,13 @@ impl ReplaysState {
         for (idx, r) in filtered.iter().enumerate() {
             list = list.push(self.replay_list_row(lang, r, idx));
         }
-        // Scanning with nothing scanned yet: say so where the rows
-        // would be. An empty pane here is indistinguishable from a
-        // library with no replays in it, and the scan is exactly the
-        // part that can take a while on a big collection.
-        let left_body: Element<'_, Message> = if scanning && replays.is_empty() {
+        // Say so where the rows would be: an empty pane here is
+        // indistinguishable from a library with no replays in it, and
+        // the scan is exactly the part that can take a while on a big
+        // collection. Gated on the scan rather than on the list being
+        // empty — the four scan phases publish as they finish, so a
+        // half-scanned list is no more trustworthy than an empty one.
+        let left_body: Element<'_, Message> = if scanning {
             container(
                 text(t!(lang, "replays-scanning"))
                     .size(TEXT_BODY)
