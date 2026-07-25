@@ -45,6 +45,20 @@ jobs:
       CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
     steps:
+      # Windows caps paths at 260 characters, and libgit2 (what cargo
+      # checks git dependencies out with) refuses to write past that
+      # unless core.longpaths says otherwise. datachannel-facade nests
+      # libdatachannel two crates deep, and libdatachannel vendors
+      # nlohmann/json, whose benchmark-report fixtures have very long
+      # names — the worst lands at 266 characters under ~/.cargo/git and
+      # failed the checkout outright ("path too long; class=Filesystem").
+      # First step so the repo's own submodule checkout is covered too.
+      - name: Allow long paths
+        shell: bash
+        run: |
+          git config --global core.longpaths true
+          git config --system core.longpaths true || true
+
       # `gamesupport` is a private submodule; the PAT authenticates its
       # checkout. The token is used over HTTPS, so the submodule URL is
       # HTTPS — see .gitmodules.
