@@ -25,7 +25,7 @@
 
 use mp4_atom::{Any, Atom, Encode, FourCC};
 
-use super::{Chapter, Container, Fixup, MuxConfig, Muxer};
+use super::{Chapter, Container, Finished, Fixup, MuxConfig, Muxer};
 use crate::packet::ticks_to_ns;
 use crate::{AudioCodec, AudioTrackInfo, VideoCodec, VideoTrackInfo};
 
@@ -174,7 +174,7 @@ impl Muxer for Mp4Muxer {
         std::mem::take(&mut self.out)
     }
 
-    fn finish(&mut self, chapters: &[Chapter]) -> crate::Result<Vec<Fixup>> {
+    fn finish(mut self: Box<Self>, chapters: &[Chapter]) -> crate::Result<Finished> {
         let mdat_size = self.pos - self.mdat_start;
         // The mdat size sits after ftyp, so a relocated moov moves it;
         // fixups are applied in order, and this one is written while the
@@ -187,7 +187,10 @@ impl Muxer for Mp4Muxer {
         if !self.config.faststart {
             let moov = self.build_moov(chapters, 0)?;
             self.emit(&moov);
-            return Ok(fixups);
+            return Ok(Finished {
+                bytes: std::mem::take(&mut self.out),
+                fixups,
+            });
         }
 
         // Faststart: moov goes in front of mdat, so every chunk offset
@@ -204,7 +207,10 @@ impl Muxer for Mp4Muxer {
                     position: self.mdat_size_pos,
                     bytes: moov,
                 });
-                return Ok(fixups);
+                return Ok(Finished {
+                    bytes: std::mem::take(&mut self.out),
+                    fixups,
+                });
             }
             shift = moov.len() as u64;
         }
@@ -642,9 +648,9 @@ mod tests {
                 .unwrap();
             file.extend_from_slice(&muxer.take_output());
         }
-        let fixups = muxer.finish(chapters).unwrap();
-        file.extend_from_slice(&muxer.take_output());
-        apply(file, &fixups)
+        let closed = Box::new(muxer).finish(chapters).unwrap();
+        file.extend_from_slice(&closed.bytes);
+        apply(file, &closed.fixups)
     }
 
     fn sample_sizes(samples: &mp4_atom::StszSamples) -> Vec<u32> {

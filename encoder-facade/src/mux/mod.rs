@@ -122,6 +122,15 @@ pub struct MuxConfig {
     pub faststart: bool,
 }
 
+/// Everything a container has left to say once it's closed.
+#[derive(Debug, Default)]
+pub struct Finished {
+    /// The last bytes to append — indexes, chapters, cues.
+    pub bytes: Vec<u8>,
+    /// Corrections to what was written earlier, to apply in order.
+    pub fixups: Vec<Fixup>,
+}
+
 /// A container writer. One per export.
 pub trait Muxer {
     /// Add one packet to a track, numbered as [`crate::VIDEO_TRACK`] and
@@ -135,11 +144,10 @@ pub trait Muxer {
     /// the export.
     fn take_output(&mut self) -> Vec<u8>;
 
-    /// Close the container: write what belongs at the end (indexes,
-    /// chapters, cues) and report the [`Fixup`]s that complete the parts
-    /// written earlier. [`Muxer::take_output`] is drained once more after
-    /// this, and then the fixups are applied in order.
-    fn finish(&mut self, chapters: &[Chapter]) -> crate::Result<Vec<Fixup>>;
+    /// Close the container. Takes the muxer by value: closing is the last
+    /// thing that happens to it, so nothing can be written afterwards and
+    /// nothing can close it twice.
+    fn finish(self: Box<Self>, chapters: &[Chapter]) -> crate::Result<Finished>;
 }
 
 /// Open a container and write its header. Fails if any track's codec
@@ -159,9 +167,8 @@ pub fn open(config: MuxConfig) -> crate::Result<Box<dyn Muxer>> {
 /// same application path the real thing uses.
 #[cfg(test)]
 pub(crate) fn apply(file: Vec<u8>, fixups: &[Fixup]) -> Vec<u8> {
-    let mut output = crate::Output::new(std::io::Cursor::new(file));
-    output.finish(fixups).expect("apply the fixups");
-    output.into_inner().into_inner()
+    let output = crate::Output::new(std::io::Cursor::new(file));
+    output.finish(fixups).expect("apply the fixups").into_inner()
 }
 
 /// Convert a chapter's frame bounds to nanoseconds using the video

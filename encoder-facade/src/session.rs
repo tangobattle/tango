@@ -13,7 +13,8 @@
 //! [`Session::take_output`] for the caller to append however it writes
 //! files — synchronously to a [`std::fs::File`], or awaited into a
 //! browser's file stream — and [`Session::poll_finish`] hands back the
-//! [`Fixup`]s that complete the parts written earlier.
+//! last bytes plus the [`Fixup`]s that complete the parts written
+//! earlier. Closing consumes the muxer, so it happens exactly once.
 
 use std::collections::VecDeque;
 
@@ -34,6 +35,7 @@ pub struct Session<B: Backend> {
     output: Vec<u8>,
     video_frames: u64,
     flushing: bool,
+    finished: bool,
 }
 
 impl<B: Backend> Session<B> {
@@ -49,6 +51,7 @@ impl<B: Backend> Session<B> {
             output: Vec::new(),
             video_frames: 0,
             flushing: false,
+            finished: false,
             settings,
         })
     }
@@ -104,6 +107,7 @@ impl<B: Backend> Session<B> {
     /// `chapters` are in output video frames.
     pub fn poll_finish(&mut self, chapters: &[Chapter]) -> crate::Result<Option<Vec<Fixup>>> {
         check!(self.flushing, "begin_finish must come first");
+        check!(!self.finished, "this session has already been finished");
         let done = self.backend.poll_flush()?;
         // Collect whatever flushing produced before deciding anything:
         // the tail of a stream can arrive in the same step that reports
@@ -112,13 +116,15 @@ impl<B: Backend> Session<B> {
         if !done {
             return Ok(None);
         }
-        let Some(muxer) = self.muxer.as_mut() else {
+        // Closing consumes the muxer, so nothing can be written to the
+        // container after this and nothing can close it twice.
+        let Some(muxer) = self.muxer.take() else {
             return Err(crate::Error::Empty);
         };
-        let fixups = muxer.finish(chapters)?;
-        let bytes = muxer.take_output();
-        self.output.extend_from_slice(&bytes);
-        Ok(Some(fixups))
+        self.finished = true;
+        let closed = muxer.finish(chapters)?;
+        self.output.extend_from_slice(&closed.bytes);
+        Ok(Some(closed.fixups))
     }
 
     /// Collect what the encoders have produced and write out what's
@@ -176,7 +182,9 @@ impl<B: Backend> Session<B> {
 
     /// Open the container once every track can describe itself.
     fn open_muxer_if_ready(&mut self) -> crate::Result<()> {
-        if self.muxer.is_some() {
+        // Not after the close: a write that arrived late must not start a
+        // second container.
+        if self.muxer.is_some() || self.finished {
             return Ok(());
         }
         let Some(video_private) = self.backend.codec_private(VIDEO_TRACK) else {
@@ -385,6 +393,39 @@ mod tests {
             frames += 1;
         }
         assert_eq!(frames, 20);
+    }
+
+    /// Closing is terminal: the muxer is consumed by it, so a second
+    /// close has to be refused rather than write a second index.
+    #[test]
+    fn finishing_twice_is_refused() {
+        let mut session = Session::new(FakeBackend::default(), settings()).unwrap();
+        session.backend.video_private = Some(avcc());
+        session.backend.audio_private = Some(vec![0x11, 0x90]);
+        session.backend.ready.push((0, packet(0, 280_896)));
+        session.backend.ready.push((1, packet(0, 1024)));
+        session.write_video(&vec![0u8; 240 * 160 * 4]).unwrap();
+        session.begin_finish().unwrap();
+        assert!(session.poll_finish(&[]).unwrap().is_some());
+        assert!(session.poll_finish(&[]).is_err(), "a second close must be refused");
+    }
+
+    /// A write that arrives after the close must not start a second
+    /// container.
+    #[test]
+    fn writing_after_the_close_adds_nothing() {
+        let mut session = Session::new(FakeBackend::default(), settings()).unwrap();
+        session.backend.video_private = Some(avcc());
+        session.backend.audio_private = Some(vec![0x11, 0x90]);
+        session.write_video(&vec![0u8; 240 * 160 * 4]).unwrap();
+        session.begin_finish().unwrap();
+        session.poll_finish(&[]).unwrap().expect("closes");
+        let _ = session.take_output();
+        session.write_video(&vec![0u8; 240 * 160 * 4]).unwrap();
+        assert!(
+            session.take_output().is_empty(),
+            "nothing more should reach the output after the close"
+        );
     }
 
     #[test]

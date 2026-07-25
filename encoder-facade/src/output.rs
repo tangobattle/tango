@@ -37,9 +37,12 @@ impl<W: Write + Seek> Output<W> {
 
 impl<W: Read + Write + Seek> Output<W> {
     /// Apply the fixups from [`Session::poll_finish`](crate::Session::poll_finish),
-    /// in order, and flush. Append any final bytes first — the fixups
-    /// refer to positions in the complete file.
-    pub fn finish(&mut self, fixups: &[Fixup]) -> crate::Result<()> {
+    /// in order, flush, and hand back the writer.
+    ///
+    /// Takes the output by value: the fixups describe the finished file,
+    /// so this is the last thing that happens to it. Append any final
+    /// bytes first.
+    pub fn finish(mut self, fixups: &[Fixup]) -> crate::Result<W> {
         for fixup in fixups {
             match fixup {
                 Fixup::Overwrite { position, bytes } => {
@@ -50,7 +53,7 @@ impl<W: Read + Write + Seek> Output<W> {
             }
         }
         self.inner.flush()?;
-        Ok(())
+        Ok(self.inner)
     }
 
     /// Make room at `position` and put `bytes` there.
@@ -92,51 +95,51 @@ impl<W: Read + Write + Seek> Output<W> {
 mod tests {
     use super::*;
 
-    fn output() -> Output<std::io::Cursor<Vec<u8>>> {
-        Output::new(std::io::Cursor::new(Vec::new()))
+    /// Append `content`, finish with `fixups`, and hand back the file.
+    fn write(content: &[&[u8]], fixups: &[Fixup]) -> Vec<u8> {
+        let mut output = Output::new(std::io::Cursor::new(Vec::new()));
+        for chunk in content {
+            output.append(chunk).unwrap();
+        }
+        output.finish(fixups).unwrap().into_inner()
     }
 
     #[test]
     fn overwrites_land_where_they_are_addressed() {
-        let mut output = output();
-        output.append(b"0123456789").unwrap();
-        output
-            .finish(&[Fixup::Overwrite {
+        let file = write(
+            &[b"0123456789"],
+            &[Fixup::Overwrite {
                 position: 2,
                 bytes: b"ab".to_vec(),
-            }])
-            .unwrap();
-        assert_eq!(output.into_inner().into_inner(), b"01ab456789");
+            }],
+        );
+        assert_eq!(file, b"01ab456789");
     }
 
     #[test]
     fn an_insert_moves_the_tail_along() {
-        let mut output = output();
-        output.append(b"HEADTAIL").unwrap();
-        output
-            .finish(&[Fixup::Insert {
+        let file = write(
+            &[b"HEADTAIL"],
+            &[Fixup::Insert {
                 position: 4,
                 bytes: b"MID".to_vec(),
-            }])
-            .unwrap();
-        assert_eq!(output.into_inner().into_inner(), b"HEADMIDTAIL");
+            }],
+        );
+        assert_eq!(file, b"HEADMIDTAIL");
     }
 
     /// The tail is moved in chunks, so a tail longer than one chunk is
     /// the case that catches a copy going the wrong way.
     #[test]
     fn a_long_tail_survives_being_moved() {
-        let mut output = output();
         let tail: Vec<u8> = (0..(SHIFT_CHUNK * 2 + 12345)).map(|i| (i % 251) as u8).collect();
-        output.append(b"HEAD").unwrap();
-        output.append(&tail).unwrap();
-        output
-            .finish(&[Fixup::Insert {
+        let file = write(
+            &[b"HEAD", &tail],
+            &[Fixup::Insert {
                 position: 4,
                 bytes: vec![0xAA; 4096],
-            }])
-            .unwrap();
-        let file = output.into_inner().into_inner();
+            }],
+        );
         assert_eq!(&file[..4], b"HEAD");
         assert_eq!(&file[4..4100], &[0xAA; 4096]);
         assert_eq!(&file[4100..], &tail[..], "every byte of the tail must survive");
@@ -144,10 +147,9 @@ mod tests {
 
     #[test]
     fn fixups_apply_in_order() {
-        let mut output = output();
-        output.append(b"0123456789").unwrap();
-        output
-            .finish(&[
+        let file = write(
+            &[b"0123456789"],
+            &[
                 // Addressed in the pre-insert layout...
                 Fixup::Overwrite {
                     position: 8,
@@ -158,14 +160,14 @@ mod tests {
                     position: 0,
                     bytes: b"--".to_vec(),
                 },
-            ])
-            .unwrap();
-        assert_eq!(output.into_inner().into_inner(), b"--01234567xy");
+            ],
+        );
+        assert_eq!(file, b"--01234567xy");
     }
 
     #[test]
     fn an_insert_past_the_end_is_refused() {
-        let mut output = output();
+        let mut output = Output::new(std::io::Cursor::new(Vec::new()));
         output.append(b"0123").unwrap();
         assert!(output
             .finish(&[Fixup::Insert {

@@ -329,13 +329,13 @@ pub fn export(
     }
 
     session.begin_finish()?;
-    let patches = loop {
+    let fixups = loop {
         canceller.check()?;
-        if let Some(patches) = session.poll_finish(&chapters)? {
-            break patches;
+        if let Some(fixups) = session.poll_finish(&chapters)? {
+            break fixups;
         }
     };
     output.append(&session.take_output())?;
-    output.finish(&patches)?;
+    output.finish(&fixups)?;
     Ok(())
 }

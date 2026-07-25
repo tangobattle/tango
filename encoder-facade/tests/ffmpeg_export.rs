@@ -156,13 +156,13 @@ fn export(ffmpeg: &Path, settings: Settings, chapters: &[Chapter], name: &str) -
         output.append(&session.take_output()).expect("append output");
     }
     session.begin_finish().expect("begin finishing");
-    let patches = loop {
-        if let Some(patches) = session.poll_finish(chapters).expect("finish") {
-            break patches;
+    let fixups = loop {
+        if let Some(fixups) = session.poll_finish(chapters).expect("finish") {
+            break fixups;
         }
     };
     output.append(&session.take_output()).expect("append the tail");
-    output.finish(&patches).expect("apply the patches");
+    output.finish(&fixups).expect("apply the fixups");
     path
 }
 

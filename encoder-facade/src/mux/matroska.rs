@@ -25,7 +25,7 @@ use mkv_element::prelude::*;
 use mkv_element::io::blocking_impl::WriteTo;
 use mkv_element::ClusterBlock;
 
-use super::{Chapter, Fixup, MuxConfig, Muxer};
+use super::{Chapter, Finished, Fixup, MuxConfig, Muxer};
 use crate::packet::ticks_to_ns;
 use crate::{AudioCodec, Container, Packet, VideoCodec, VIDEO_TRACK};
 
@@ -248,7 +248,7 @@ impl Muxer for MatroskaMuxer {
         std::mem::take(&mut self.out)
     }
 
-    fn finish(&mut self, chapters: &[Chapter]) -> crate::Result<Vec<Fixup>> {
+    fn finish(mut self: Box<Self>, chapters: &[Chapter]) -> crate::Result<Finished> {
         self.flush_cluster()?;
         self.cluster_open = false;
 
@@ -322,16 +322,19 @@ impl Muxer for MatroskaMuxer {
         head.extend_from_slice(&void_padding(RESERVED_HEAD - head.len())?);
 
         let segment_size = self.pos - self.segment_data_start;
-        Ok(vec![
-            Fixup::Overwrite {
-                position: self.segment_size_pos,
-                bytes: fixed_width_size(segment_size),
-            },
-            Fixup::Overwrite {
-                position: self.reserved_pos,
-                bytes: head,
-            },
-        ])
+        Ok(Finished {
+            bytes: std::mem::take(&mut self.out),
+            fixups: vec![
+                Fixup::Overwrite {
+                    position: self.segment_size_pos,
+                    bytes: fixed_width_size(segment_size),
+                },
+                Fixup::Overwrite {
+                    position: self.reserved_pos,
+                    bytes: head,
+                },
+            ],
+        })
     }
 }
 
@@ -564,9 +567,9 @@ mod tests {
                 .unwrap();
             file.extend_from_slice(&muxer.take_output());
         }
-        let fixups = muxer.finish(chapters).unwrap();
-        file.extend_from_slice(&muxer.take_output());
-        apply(file, &fixups)
+        let closed = Box::new(muxer).finish(chapters).unwrap();
+        file.extend_from_slice(&closed.bytes);
+        apply(file, &closed.fixups)
     }
 
     /// The real test of a muxer: a demuxer nobody here wrote has to
