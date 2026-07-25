@@ -87,16 +87,26 @@ impl Scanners {
     fn rescan(&self, config: &config::Config, listings: &Listings) {
         let storage = crate::library::storage();
         let patches_path = config.patches_path();
+        // Timed per phase because the four are individually unbounded
+        // and individually quiet — a scan that takes minutes otherwise
+        // shows up in a log as nothing but a gap. A phase gated out by
+        // an unchanged listing just reads as ~0.
+        let start = std::time::Instant::now();
         self.roms
             .rescan_if_changed(&listings.roms, || Some(rom::scan_roms(storage, &listings.roms)));
+        let roms = start.elapsed();
         self.saves
             .rescan_if_changed(&listings.saves, || Some(save::scan_saves(storage, &listings.saves)));
+        let saves = start.elapsed() - roms;
         self.patches.rescan_if_changed(&listings.patches, || {
             patch::scan(storage, &patches_path, &listings.patches).ok()
         });
+        let patches = start.elapsed() - roms - saves;
         self.replays.rescan_if_changed(&listings.replays, || {
             Some(replays::scan_replays(storage, &listings.replays))
         });
+        let replays = start.elapsed() - roms - saves - patches;
+        log::debug!("rescan: roms {roms:.1?}, saves {saves:.1?}, patches {patches:.1?}, replays {replays:.1?}");
     }
 }
 
@@ -196,6 +206,12 @@ pub struct App {
     /// (e.g. the patch autoupdater fires its own rescan separately
     /// from an automatic one).
     rescans_in_flight: u32,
+    /// False until the startup scan lands. Deliberately not
+    /// `rescans_in_flight > 0`: this one means "the library has never
+    /// been read", which is what tells an empty scanner apart from an
+    /// empty library. A later background rescan must not flip a
+    /// settled empty state back to "scanning…".
+    library_scanned: bool,
     /// Entrance glide played on freshly-swapped content whenever
     /// the [`screen_key`] changes (tab switch, welcome → main,
     /// session start/end). Restarted at 0 → 1 on each trigger;
@@ -395,23 +411,17 @@ impl App {
         let _ = i18n::FALLBACK_LANG; // re-exported for use in config; suppress unused warning here
 
         let scanners = Scanners::new();
-        // Startup, before there is a window to keep responsive.
-        let listings = futures::executor::block_on(Scanners::list(&config));
-        scanners.rescan(&config, &listings);
-        log::info!(
-            "initial scan: {} rom(s), {} save game(s), {} patch(es), {} replay(s)",
-            scanners.roms.read().len(),
-            scanners.saves.read().values().map(|v| v.len()).sum::<usize>(),
-            scanners.patches.read().installed.len(),
-            scanners.replays.read().len(),
-        );
-
-        // Restore the last selection from config, but only the bits
-        // that still resolve against the current scanners.
-        let mut restored = loadout::Loadout {
+        // The scan itself runs off-thread from the task below: reading
+        // and parsing the library is unbounded work (a big replay or ROM
+        // collection, a slow disk), and running it here would hold the
+        // window closed for its whole duration — iced doesn't open one
+        // until this returns. The selection restore that needs the
+        // results moves with it, into `RescanFollowup::Boot`.
+        let restored = loadout::Loadout {
             // Restore the selected family (drives the picker even when no
             // owned-ROM game resolves under it); falls back to the family of
             // `last_game` for configs written before `last_family` existed.
+            // Static lookups, so this half needs no scan.
             family: config
                 .last_family
                 .as_deref()
@@ -419,37 +429,6 @@ impl App {
                 .or_else(|| config.last_game.as_ref().and_then(|(f, _)| game::family_static(f))),
             ..Default::default()
         };
-        if let Some((family, variant)) = config.last_game.as_ref() {
-            if let Some(game) = crate::library::game::find_by_family_and_variant(family, *variant) {
-                if scanners.roms.read().contains_key(&game) {
-                    restored.game = Some(game);
-                    restored.family = Some(game.family_and_variant().0);
-                    if let Some(rel) = config.last_save_per_game.get(&config::game_key(game)) {
-                        let abs = config.data_relative_to_absolute(rel);
-                        if scanners
-                            .saves
-                            .read()
-                            .get(&game)
-                            .map(|v| v.iter().any(|s| s.path == abs))
-                            .unwrap_or(false)
-                        {
-                            restored.save = Some(abs);
-                            // The patch overlay hangs off the save — restore
-                            // whatever this save was last used with, if the
-                            // patch still exists and supports the variant.
-                            if let Some(Some((n, v))) = config.last_patch_per_save.get(rel) {
-                                let patches = scanners.patches.read();
-                                let ok = patches.supported_games(n, v).contains(&game);
-                                if ok {
-                                    restored.patch = Some(n.clone());
-                                    restored.patch_version = Some(v.clone());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
         let welcome = tabs::welcome::State::from_nickname(config.nickname.as_deref());
 
         // Spin up the CPAL audio backend once at startup with the
@@ -525,6 +504,7 @@ impl App {
             download_cancels: Default::default(),
             updater,
             rescans_in_flight: 0,
+            library_scanned: false,
             // Start at rest (no launch animation) — progress 1.0
             // and not animating until first triggered.
             screen_enter: anim::Enter::default(),
@@ -533,8 +513,50 @@ impl App {
             lobby_exit_snapshot: None,
         };
         app.refresh_loaded();
-        let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
-        (app, iced::Task::batch([stats_task]))
+        let scan = app.rescan_off_thread(RescanFollowup::Boot);
+        (app, scan)
+    }
+
+    /// Resolve the saved selection against the scanners, now that the
+    /// startup scan has filled them. Only the family half is restorable
+    /// without a scan (see [`App::new`]); the game, its save and that
+    /// save's patch overlay each have to still exist to come back.
+    fn restore_selection(&mut self) {
+        let Some((family, variant)) = self.config.last_game.as_ref() else {
+            return;
+        };
+        let Some(game) = crate::library::game::find_by_family_and_variant(family, *variant) else {
+            return;
+        };
+        if !self.scanners.roms.read().contains_key(&game) {
+            return;
+        }
+        self.loadout.game = Some(game);
+        self.loadout.family = Some(game.family_and_variant().0);
+        let Some(rel) = self.config.last_save_per_game.get(&config::game_key(game)) else {
+            return;
+        };
+        let abs = self.config.data_relative_to_absolute(rel);
+        if !self
+            .scanners
+            .saves
+            .read()
+            .get(&game)
+            .map(|v| v.iter().any(|s| s.path == abs))
+            .unwrap_or(false)
+        {
+            return;
+        }
+        self.loadout.save = Some(abs);
+        // The patch overlay hangs off the save — restore whatever this
+        // save was last used with, if the patch still exists and
+        // supports the variant.
+        if let Some(Some((n, v))) = self.config.last_patch_per_save.get(rel) {
+            if self.scanners.patches.read().supported_games(n, v).contains(&game) {
+                self.loadout.patch = Some(n.clone());
+                self.loadout.patch_version = Some(v.clone());
+            }
+        }
     }
 
     /// Drops cached replay stats for paths that no longer exist in
@@ -920,6 +942,13 @@ pub enum Message {
 /// distinct Message variant per call site.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RescanFollowup {
+    /// The startup scan (the only one that runs against empty
+    /// scanners): resolve the saved selection now that there is
+    /// something to resolve it against, then refresh and warm the
+    /// replay stats like any other scan. Also what flips
+    /// `library_scanned` — the views say "scanning…" rather than
+    /// "your library is empty" until it does.
+    Boot,
     /// A patch a replay was waiting on just installed — start playback
     /// now that the scan can see it.
     RetryPendingWatch,
@@ -1377,6 +1406,19 @@ impl App {
             Message::Rescanned(followup) => {
                 self.rescans_in_flight = self.rescans_in_flight.saturating_sub(1);
                 match followup {
+                    RescanFollowup::Boot => {
+                        self.library_scanned = true;
+                        log::info!(
+                            "initial scan: {} rom(s), {} save game(s), {} patch(es), {} replay(s)",
+                            self.scanners.roms.read().len(),
+                            self.scanners.saves.read().values().map(|v| v.len()).sum::<usize>(),
+                            self.scanners.patches.read().installed.len(),
+                            self.scanners.replays.read().len(),
+                        );
+                        self.restore_selection();
+                        self.refresh_loaded();
+                        self.refresh_replay_stats().map(Message::Replays)
+                    }
                     RescanFollowup::Refresh => {
                         self.refresh_loaded();
                         iced::Task::none()
@@ -1743,6 +1785,7 @@ impl App {
                         self.config.streamer_mode,
                         &self.config,
                         &self.downloads,
+                        !self.library_scanned,
                         tabs::play::LobbyBandCtx {
                             phase: &self.netplay.phase,
                             lobby: &self.netplay.lobby,
@@ -1757,7 +1800,14 @@ impl App {
             }
             Tab::Replays => self
                 .replays
-                .view(lang, &self.scanners, &self.config, &self.netplay.phase, &self.downloads)
+                .view(
+                    lang,
+                    &self.scanners,
+                    &self.config,
+                    &self.netplay.phase,
+                    &self.downloads,
+                    !self.library_scanned,
+                )
                 .map(Message::Replays),
             Tab::Patches => self
                 .patches

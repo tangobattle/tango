@@ -49,6 +49,8 @@ save-template-default = (default)
 save-template-pick = Pick a template…
 
 # Empty-state hints
+empty-scanning-title = Scanning your library…
+empty-scanning-body = Reading ROMs, saves, patches and replays.
 empty-no-roms-title = No game ROMs found
 empty-no-roms-body = Drop your Battle Network / Rockman EXE .gba files into:
 empty-no-saves-title = No save files for this game
@@ -281,6 +283,7 @@ playback-reconnecting-detail = Reconnecting…
 playback-exit-hold = Quitting…
 playback-exit-hold-detail = Keep holding Esc to quit — release to cancel.
 replays-select-prompt = Select a replay.
+replays-scanning = Scanning replays…
 play-opponent = Opponent
 replays-match-type = Match type:
 replays-duration = Duration:

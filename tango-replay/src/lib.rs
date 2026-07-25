@@ -78,15 +78,23 @@ impl Metadata {
     }
 }
 
+/// Ceiling on the declared metadata length. The proto is two sides'
+/// nicknames plus their game info — hundreds of bytes, not megabytes —
+/// so a length past this is a corrupt header rather than a big match,
+/// and reading it as one would mean allocating whatever the file says.
+const MAX_METADATA_LEN: u32 = 1024 * 1024;
+
+fn unsupported_version(version: u8) -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        format!("unsupported replay version: {version:02x}"),
+    )
+}
+
 pub fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Error> {
     Ok(match version {
         VERSION => protos::replay11::Metadata::decode(raw)?,
-        _ => {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("unsupported replay version: {:02x}", version),
-            ));
-        }
+        _ => return Err(unsupported_version(version)),
     })
 }
 
@@ -100,8 +108,24 @@ pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(u8, u8, Metadata), s
     }
 
     let version = r.read_u8()?;
+    // Everything past this byte is laid out per VERSION, so the schema
+    // has to be settled before any of it is read — not after, on the
+    // decoded metadata. Older files carry no perspective byte, which
+    // slides the length field by one: read anyway, it picks up the
+    // proto's leading field tag as its high byte and asks for ~128 MiB
+    // per file, which is what made scanning a library carried across
+    // the 0x1D bump take minutes.
+    if version != VERSION {
+        return Err(unsupported_version(version));
+    }
     let local_player_index = r.read_u8()?;
     let metadata_len = r.read_u32::<byteorder::LittleEndian>()?;
+    if metadata_len > MAX_METADATA_LEN {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("metadata length {metadata_len} exceeds the {MAX_METADATA_LEN}-byte limit"),
+        ));
+    }
     let mut raw = vec![0u8; metadata_len as usize];
     r.read_exact(&mut raw[..])?;
     Ok((version, local_player_index, decode_metadata(version, &raw)?))
@@ -341,5 +365,36 @@ mod tests {
         assert_eq!(a.round_starts, b.round_starts);
         assert_eq!(a.local_side(), b.remote_side());
         assert_eq!(a.remote_side(), b.local_side());
+    }
+
+    /// A pre-0x1D file has no perspective byte, so its metadata length
+    /// sits where ours reads `local_player_index` + the low three bytes
+    /// of the length. Reading the length before checking the version
+    /// picks up the proto's leading tag as its high byte — here 0x08,
+    /// `ts`'s field tag, for a demand of 128 MiB out of a 20-byte file.
+    /// The version check has to come first, and the whole header has to
+    /// be rejected from the bytes alone.
+    #[test]
+    fn old_schema_is_rejected_before_the_length_is_trusted() {
+        let metadata = Metadata {
+            ts: 1_752_000_000_000,
+            ..Default::default()
+        }
+        .encode_to_vec();
+        assert_eq!(metadata[0], 0x08, "test rests on ts being the leading field");
+
+        let mut old = Vec::new();
+        old.extend_from_slice(HEADER);
+        old.push(0x1C); // trap-era schema: version, then straight to the length
+        old.extend_from_slice(&(metadata.len() as u32).to_le_bytes());
+        old.extend_from_slice(&metadata);
+
+        // The length the unchecked read would have believed.
+        let would_have_read = u32::from_le_bytes(old[6..10].try_into().unwrap());
+        assert!(would_have_read > 100 * 1024 * 1024, "{would_have_read}");
+
+        let err = read_metadata(&mut &old[..]).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("unsupported replay version: 1c"), "{err}");
     }
 }

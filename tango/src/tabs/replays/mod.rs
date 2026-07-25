@@ -440,6 +440,9 @@ impl ReplaysState {
         config: &'a config::Config,
         netplay_phase: &'a crate::netplay::Phase,
         downloads: &'a crate::library::patch::Downloads,
+        // The startup scan hasn't landed yet; until it does, an empty
+        // list means "not read yet", not "no replays".
+        scanning: bool,
     ) -> Element<'a, Message> {
         // Replay playback spawns an emulator session that would
         // conflict with an active netplay session. Disable the
@@ -460,7 +463,22 @@ impl ReplaysState {
         for (idx, r) in filtered.iter().enumerate() {
             list = list.push(self.replay_list_row(lang, r, idx));
         }
-        let left = container(scrollable(list).style(widgets::chunky_scrollable).height(Fill))
+        // Scanning with nothing scanned yet: say so where the rows
+        // would be. An empty pane here is indistinguishable from a
+        // library with no replays in it, and the scan is exactly the
+        // part that can take a while on a big collection.
+        let left_body: Element<'_, Message> = if scanning && replays.is_empty() {
+            container(
+                text(t!(lang, "replays-scanning"))
+                    .size(TEXT_BODY)
+                    .style(widgets::muted_text_style),
+            )
+            .center(Fill)
+            .into()
+        } else {
+            scrollable(list).style(widgets::chunky_scrollable).height(Fill).into()
+        };
+        let left = container(left_body)
             .width(Length::Fixed(360.0))
             .height(Fill)
             .style(widgets::pane);

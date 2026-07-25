@@ -435,10 +435,13 @@ impl State {
         streamer_mode: bool,
         config: &'a config::Config,
         downloads: &'a crate::library::patch::Downloads,
+        // The startup scan hasn't landed yet, so empty scanners mean
+        // "not read yet" rather than "nothing installed".
+        scanning: bool,
         band: LobbyBandCtx<'a>,
     ) -> Element<'a, Message> {
         let now = iced::time::Instant::now();
-        let mut save_body = self.body(lang, scanners, loadout, loaded, streamer_mode, config, band.phase);
+        let mut save_body = self.body(lang, scanners, loadout, loaded, streamer_mode, config, scanning, band.phase);
         // A family switch replaces the entire bottom of the tab, so
         // the whole pane glides in (the App starts `save_body_enter`
         // when `loadout.family` flips); save switches within the
@@ -541,8 +544,15 @@ impl State {
         loaded: Option<&'a selection::OpenSave>,
         streamer_mode: bool,
         config: &'a config::Config,
+        scanning: bool,
         netplay_phase: &'a crate::netplay::Phase,
     ) -> Element<'a, Message> {
+        // Nothing scanned yet — the startup scan is still running.
+        // Same card shape as the empty states below it, so landing on
+        // the real one doesn't move anything.
+        if scanning && scanners.roms.read().is_empty() {
+            return empty_state_card(t!(lang, "empty-scanning-title"), vec![t!(lang, "empty-scanning-body")], None);
+        }
         // No ROMs at all: explain where to put them.
         if scanners.roms.read().is_empty() {
             let roms_path = config.roms_path();
@@ -552,12 +562,14 @@ impl State {
                 Some((t!(lang, "save-open-folder"), roms_path)),
             );
         }
-        // Family selected but no save files anywhere in it.
+        // Family selected but no save files anywhere in it — but not
+        // while the scan is mid-flight, where the saves may simply not
+        // have been read yet (the four phases land one at a time).
         if let Some(family) = loadout.family {
             let saves = scanners.saves.read();
             let has_saves =
                 game::games_in_family(family).any(|g| saves.get(&g).map(|v| !v.is_empty()).unwrap_or(false));
-            if !has_saves && loadout.save.is_none() {
+            if !has_saves && loadout.save.is_none() && !scanning {
                 let saves_path = config.saves_path();
                 return empty_state_card(
                     t!(lang, "empty-no-saves-title"),

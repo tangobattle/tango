@@ -74,7 +74,14 @@ pub fn scan_replays(storage: &dyn Storage, listing: &Listing) -> Vec<ScannedRepl
         };
         let (local_player_index, metadata) = match tango_replay::read_metadata(&mut f) {
             Ok((_version, lpi, m)) => (lpi, m),
-            Err(_) => continue,
+            // Debug, not warn: a library carried across a schema bump is
+            // full of recordings this build can't read, and that's not
+            // news every launch. Logged at all because a silent skip is
+            // what made a pathological one invisible.
+            Err(e) => {
+                log::debug!("replay scan: {}: {e}", entry.path.display());
+                continue;
+            }
         };
         // Hide replays whose game isn't registered (its
         // `gamesupport-<game>` feature is disabled / its crate isn't
