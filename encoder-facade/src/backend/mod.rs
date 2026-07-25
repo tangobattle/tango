@@ -84,3 +84,14 @@ pub(crate) mod webcodecs;
 pub use ffmpeg::FfmpegBackend;
 #[cfg(target_arch = "wasm32")]
 pub use webcodecs::WebCodecsBackend;
+
+/// The encoder this target has — ffmpeg subprocesses natively, WebCodecs
+/// in the browser.
+///
+/// There is exactly one per platform, so which to use isn't a choice a
+/// caller makes: it's what [`Session::new`](crate::Session::new) opens,
+/// and the reason nothing above this crate has to know a backend exists.
+#[cfg(not(target_arch = "wasm32"))]
+pub type PlatformBackend = FfmpegBackend;
+#[cfg(target_arch = "wasm32")]
+pub type PlatformBackend = WebCodecsBackend;

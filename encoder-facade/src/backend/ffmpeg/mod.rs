@@ -73,10 +73,7 @@ pub struct Sample {
 
 /// `ffmpeg` beside the running executable if it's there, else whatever
 /// `PATH` finds.
-pub fn resolve_path(configured: &Option<PathBuf>) -> PathBuf {
-    if let Some(path) = configured {
-        return path.clone();
-    }
+pub fn resolve_path() -> PathBuf {
     let mut beside = std::env::current_exe()
         .ok()
         .as_ref()
@@ -402,12 +399,23 @@ pub struct FfmpegBackend {
 }
 
 impl FfmpegBackend {
-    /// Spawn the encoders for `settings`. `ffmpeg` selects the binary;
-    /// `None` looks beside the running executable and then on `PATH`.
-    pub fn new(settings: &Settings, ffmpeg: Option<PathBuf>, canceller: &Canceller) -> crate::Result<Self> {
+    /// Spawn the encoders for `settings`, with the ffmpeg beside the
+    /// running executable if there is one and whatever `PATH` finds
+    /// otherwise.
+    ///
+    /// This is the shape every backend's constructor has, so that
+    /// [`Session::new`](crate::Session::new) can open one without
+    /// knowing which platform it's on.
+    pub fn open(settings: &Settings, canceller: &Canceller) -> crate::Result<Self> {
+        Self::with_ffmpeg(settings, resolve_path(), canceller)
+    }
+
+    /// Spawn the encoders using a particular ffmpeg binary, for a caller
+    /// that ships or locates its own.
+    pub fn with_ffmpeg(settings: &Settings, ffmpeg: PathBuf, canceller: &Canceller) -> crate::Result<Self> {
         settings.validate()?;
         canceller.check()?;
-        let path = resolve_path(&ffmpeg);
+        let path = ffmpeg;
         check_formats(&path, &required_formats())?;
 
         let video = Encoder::video(

@@ -25,6 +25,11 @@
 //! plugs in by implementing [`Backend`] and a new container by
 //! implementing [`mux::Muxer`], with nothing else changing.
 //!
+//! Neither seam is a decision a caller has to make. There is one encoder
+//! per target — ffmpeg natively, WebCodecs in a browser — so
+//! [`Session::new`] opens [`PlatformBackend`] and nothing above this
+//! crate has to know a backend exists, let alone `#[cfg]` on one.
+//!
 //! Nothing here does I/O. A session produces bytes to append and, at the
 //! close, [`mux::Fixup`]s that finish the parts written earlier — so a
 //! caller holding a [`std::fs::File`] and one awaiting a browser's file
@@ -41,7 +46,7 @@ mod error;
 mod output;
 mod session;
 
-pub use backend::{Backend, VIDEO_TRACK};
+pub use backend::{Backend, PlatformBackend, VIDEO_TRACK};
 pub use cancel::Canceller;
 pub use error::{Error, Result};
 pub use mux::{Chapter, Container};

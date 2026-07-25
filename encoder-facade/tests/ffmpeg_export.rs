@@ -154,8 +154,8 @@ fn export(ffmpeg: &Path, settings: Settings, chapters: &[Chapter], name: &str) -
 
     let canceller = Canceller::new();
     let backend =
-        FfmpegBackend::new(&settings, Some(ffmpeg.to_path_buf()), &canceller).expect("spawn the encoders");
-    let mut session = Session::new(backend, settings).expect("open the session");
+        FfmpegBackend::with_ffmpeg(&settings, ffmpeg.to_path_buf(), &canceller).expect("spawn the encoders");
+    let mut session = Session::with_backend(backend, settings).expect("open the session");
 
     for index in 0..FRAMES {
         session.write_video(&frame(index)).expect("write a frame");
@@ -486,9 +486,9 @@ fn a_two_sided_export_carries_a_track_per_side() {
     let path = std::env::temp_dir().join("encoder-facade-two-sided.mp4");
     let mut output = Output::new(std::fs::File::create(&path).expect("create the output"));
     let canceller = Canceller::new();
-    let backend = FfmpegBackend::new(&settings, Some(ffmpeg.clone()), &canceller).expect("spawn the encoders");
+    let backend = FfmpegBackend::with_ffmpeg(&settings, ffmpeg.clone(), &canceller).expect("spawn the encoders");
     let frame_bytes = settings.video.frame_bytes();
-    let mut session = Session::new(backend, settings).expect("open the session");
+    let mut session = Session::with_backend(backend, settings).expect("open the session");
 
     for index in 0..FRAMES {
         // Two screens side by side, each the single-screen frame.
@@ -603,7 +603,7 @@ fn a_build_without_the_output_format_is_reported_clearly() {
     std::fs::File::create(&fake)
         .and_then(|mut f| f.write_all(b"not an executable"))
         .expect("write the stand-in");
-    let message = match FfmpegBackend::new(&settings, Some(fake.clone()), &Canceller::new()) {
+    let message = match FfmpegBackend::with_ffmpeg(&settings, fake.clone(), &Canceller::new()) {
         Ok(_) => panic!("a non-ffmpeg binary must not produce a working backend"),
         Err(error) => error.to_string(),
     };

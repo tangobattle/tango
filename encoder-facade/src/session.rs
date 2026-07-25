@@ -18,13 +18,13 @@
 
 use std::collections::VecDeque;
 
-use crate::backend::{Backend, VIDEO_TRACK};
+use crate::backend::{Backend, PlatformBackend, VIDEO_TRACK};
 use crate::error::check;
 use crate::mux::{self, Chapter, Fixup, MuxConfig, Muxer};
 use crate::packet::ticks_to_ns;
-use crate::{AudioTrackInfo, Packet, Settings, VideoTrackInfo};
+use crate::{AudioTrackInfo, Canceller, Packet, Settings, VideoTrackInfo};
 
-pub struct Session<B: Backend> {
+pub struct Session<B: Backend = PlatformBackend> {
     backend: B,
     settings: Settings,
     /// Set once every track has revealed its codec configuration.
@@ -38,8 +38,26 @@ pub struct Session<B: Backend> {
     finished: bool,
 }
 
+impl Session<PlatformBackend> {
+    /// Open an export: check the settings, then start this platform's
+    /// encoders on them.
+    ///
+    /// Which encoder that is isn't a choice — there is one per target
+    /// (see [`PlatformBackend`]), so a caller that would only ever have
+    /// written `#[cfg]` to pick shouldn't have to.
+    pub fn new(settings: Settings, canceller: &Canceller) -> crate::Result<Self> {
+        settings.validate()?;
+        canceller.check()?;
+        let backend = PlatformBackend::open(&settings, canceller)?;
+        Self::with_backend(backend, settings)
+    }
+}
+
 impl<B: Backend> Session<B> {
-    pub fn new(backend: B, settings: Settings) -> crate::Result<Self> {
+    /// Open an export on a backend of your own — a test double, or an
+    /// encoder this crate doesn't know about. [`Session::new`] is the
+    /// one to reach for otherwise.
+    pub fn with_backend(backend: B, settings: Settings) -> crate::Result<Self> {
         settings.validate()?;
         let mut timescales = vec![settings.video.timescale];
         timescales.extend(std::iter::repeat_n(settings.audio.sample_rate, settings.audio_tracks));
@@ -318,7 +336,7 @@ mod tests {
 
     #[test]
     fn nothing_is_written_until_every_track_can_describe_itself() {
-        let mut session = Session::new(FakeBackend::default(), settings()).unwrap();
+        let mut session = Session::with_backend(FakeBackend::default(), settings()).unwrap();
         session.backend.ready.push((0, packet(0, 280_896)));
         session.write_video(&vec![0u8; 240 * 160 * 4]).unwrap();
         assert!(session.take_output().is_empty(), "no header without codec configuration");
@@ -340,7 +358,7 @@ mod tests {
     /// still-missing packet from another track could come before it.
     #[test]
     fn a_packet_waits_for_the_other_track_to_catch_up() {
-        let mut session = Session::new(FakeBackend::default(), settings()).unwrap();
+        let mut session = Session::with_backend(FakeBackend::default(), settings()).unwrap();
         session.backend.video_private = Some(avcc());
         session.backend.audio_private = Some(vec![0x11, 0x90]);
         // Drain the header first, so what's measured below is packet
@@ -373,7 +391,7 @@ mod tests {
 
     #[test]
     fn finish_drains_everything_and_reports_fixups() {
-        let mut session = Session::new(FakeBackend::default(), settings()).unwrap();
+        let mut session = Session::with_backend(FakeBackend::default(), settings()).unwrap();
         session.backend.video_private = Some(avcc());
         session.backend.audio_private = Some(vec![0x11, 0x90]);
         let mut file = Vec::new();
@@ -406,7 +424,7 @@ mod tests {
     /// close has to be refused rather than write a second index.
     #[test]
     fn finishing_twice_is_refused() {
-        let mut session = Session::new(FakeBackend::default(), settings()).unwrap();
+        let mut session = Session::with_backend(FakeBackend::default(), settings()).unwrap();
         session.backend.video_private = Some(avcc());
         session.backend.audio_private = Some(vec![0x11, 0x90]);
         session.backend.ready.push((0, packet(0, 280_896)));
@@ -421,7 +439,7 @@ mod tests {
     /// container.
     #[test]
     fn writing_after_the_close_adds_nothing() {
-        let mut session = Session::new(FakeBackend::default(), settings()).unwrap();
+        let mut session = Session::with_backend(FakeBackend::default(), settings()).unwrap();
         session.backend.video_private = Some(avcc());
         session.backend.audio_private = Some(vec![0x11, 0x90]);
         session.write_video(&vec![0u8; 240 * 160 * 4]).unwrap();
@@ -437,13 +455,13 @@ mod tests {
 
     #[test]
     fn poll_finish_before_begin_finish_is_refused() {
-        let mut session = Session::new(FakeBackend::default(), settings()).unwrap();
+        let mut session = Session::with_backend(FakeBackend::default(), settings()).unwrap();
         assert!(session.poll_finish(&[]).is_err());
     }
 
     #[test]
     fn a_wrong_sized_frame_is_refused() {
-        let mut session = Session::new(FakeBackend::default(), settings()).unwrap();
+        let mut session = Session::with_backend(FakeBackend::default(), settings()).unwrap();
         assert!(session.write_video(&[0u8; 16]).is_err());
     }
 }

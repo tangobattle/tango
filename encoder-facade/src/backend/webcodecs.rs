@@ -153,7 +153,12 @@ impl WebCodecsBackend {
     /// being encoded. Callers that want to know whether a browser has
     /// the encoder at all should ask `VideoEncoder.isConfigSupported`
     /// first; a configure the browser rejects surfaces here.
-    pub fn new(settings: &Settings) -> crate::Result<Self> {
+    ///
+    /// This is the shape every backend's constructor has, so that
+    /// [`Session::new`](crate::Session::new) can open one without
+    /// knowing which platform it's on. The `canceller` is unused: a
+    /// browser encoder is closed by dropping it, not killed.
+    pub fn open(settings: &Settings, _canceller: &crate::Canceller) -> crate::Result<Self> {
         settings.validate()?;
         check_encodable(settings)?;
         let error: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
