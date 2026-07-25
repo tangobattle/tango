@@ -234,7 +234,7 @@ mod tests {
                 crate::net::negotiate(&mut conn_ch.control.0, &mut conn_ch.control.1),
             )
         };
-        tokio::time::timeout(std::time::Duration::from_secs(15), handshake)
+        crate::platform::timeout(std::time::Duration::from_secs(15), handshake)
             .await
             .expect("handshake timed out — channel never opened")
             .expect("negotiate failed");
@@ -248,7 +248,7 @@ mod tests {
             let got_at_host = host_ch.in_match.1.recv().await?;
             Ok::<_, std::io::Error>((got_at_conn, got_at_host))
         };
-        let (got_at_conn, got_at_host) = tokio::time::timeout(std::time::Duration::from_secs(15), in_match)
+        let (got_at_conn, got_at_host) = crate::platform::timeout(std::time::Duration::from_secs(15), in_match)
             .await
             .expect("in-match datagram timed out — second channel never opened")
             .expect("in-match send/recv failed");
@@ -278,7 +278,7 @@ mod tests {
                     crate::net::negotiate(&mut conn_ch.control.0, &mut conn_ch.control.1),
                 )
             };
-            tokio::time::timeout(std::time::Duration::from_secs(15), handshake)
+            crate::platform::timeout(std::time::Duration::from_secs(15), handshake)
                 .await
                 .expect("handshake timed out — channel never opened")
                 .expect("negotiate failed");
@@ -313,7 +313,7 @@ mod tests {
             let at_host = host_ch.in_match.1.recv().await?;
             Ok::<_, std::io::Error>((at_conn, at_host))
         };
-        let (at_conn, at_host) = tokio::time::timeout(std::time::Duration::from_secs(15), roundtrip)
+        let (at_conn, at_host) = crate::platform::timeout(std::time::Duration::from_secs(15), roundtrip)
             .await
             .expect("post-reconnect datagram timed out — rebuilt channel never opened")
             .expect("post-reconnect send/recv failed");
@@ -377,7 +377,7 @@ mod skew_ab {
                        to: std::net::SocketAddr,
                        wait: std::time::Duration| async move {
             if !wait.is_zero() {
-                tokio::time::sleep(wait).await;
+                crate::platform::sleep(wait).await;
             }
             let _ = sock.send_to(&payload, to).await;
         };
@@ -446,7 +446,7 @@ mod skew_ab {
                         break;
                     }
                 }
-                _ = tokio::time::sleep(std::time::Duration::from_millis(500)), if tick >= ticks => break,
+                _ = crate::platform::sleep(std::time::Duration::from_millis(500)), if tick >= ticks => break,
             }
         }
         skew_samples
@@ -517,7 +517,7 @@ mod skew_ab {
                     crate::net::negotiate(&mut conn_ch.control.0, &mut conn_ch.control.1),
                 )
             };
-            tokio::time::timeout(std::time::Duration::from_secs(20), handshake)
+            crate::platform::timeout(std::time::Duration::from_secs(20), handshake)
                 .await
                 .expect("handshake timed out")
                 .expect("negotiate failed");
@@ -535,7 +535,7 @@ mod skew_ab {
             drop(host_ch.peer_conn);
             drop(conn_ch.peer_conn);
             // Let the ports free up before the next scenario re-binds.
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            crate::platform::sleep(std::time::Duration::from_millis(500)).await;
         }
     }
 }

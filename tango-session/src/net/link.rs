@@ -266,7 +266,7 @@ impl Link {
         heartbeat: std::time::Duration,
         cancel: CancellationToken,
     ) -> Result<Self, BringUpError> {
-        let control_receiver = tokio::time::timeout(HANDOFF_TIMEOUT, parts.control_receiver_rx)
+        let control_receiver = crate::platform::timeout(HANDOFF_TIMEOUT, parts.control_receiver_rx)
             .await
             .map_err(|_| BringUpError::ReceiverHandoffTimeout)?
             .map_err(|_| BringUpError::ReceiverHandoffDropped)?;
@@ -379,7 +379,7 @@ impl Link {
             let mut sender = self.control_sender.lock().await;
             sender.send_goodbye().await
         };
-        match tokio::time::timeout(GOODBYE_SEND_TIMEOUT, send).await {
+        match crate::platform::timeout(GOODBYE_SEND_TIMEOUT, send).await {
             Ok(Ok(())) => {}
             Ok(Err(e)) => log::debug!("goodbye send failed: {e}"),
             Err(_) => log::debug!("goodbye send timed out"),
@@ -566,7 +566,7 @@ impl Link {
             let outcome = tokio::select! {
                 biased;
                 _ = self.cancel.cancelled() => return None,
-                r = tokio::time::timeout(this_timeout, attempt) => r,
+                r = crate::platform::timeout(this_timeout, attempt) => r,
             };
             match outcome {
                 Ok(Ok(channels)) => return Some(channels),
@@ -576,7 +576,7 @@ impl Link {
             tokio::select! {
                 biased;
                 _ = self.cancel.cancelled() => return None,
-                _ = tokio::time::sleep(RECONNECT_BACKOFF) => {}
+                _ = crate::platform::sleep(RECONNECT_BACKOFF) => {}
             }
         }
     }
@@ -687,7 +687,7 @@ mod tests {
                 crate::net::negotiate(&mut conn_ch.control.0, &mut conn_ch.control.1),
             )
         };
-        tokio::time::timeout(std::time::Duration::from_secs(15), handshake)
+        crate::platform::timeout(std::time::Duration::from_secs(15), handshake)
             .await
             .expect("handshake timed out — channel never opened")
             .expect("negotiate failed");
@@ -710,7 +710,7 @@ mod tests {
         for joyflags in 1..=5u16 {
             host_link.in_match().send_input(joyflags, 0).await.expect("send");
         }
-        let got = tokio::time::timeout(std::time::Duration::from_secs(15), recv_joyflags(&mut conn_rx, 5))
+        let got = crate::platform::timeout(std::time::Duration::from_secs(15), recv_joyflags(&mut conn_rx, 5))
             .await
             .expect("phase-1 recv timed out");
         assert_eq!(got, (1..=5).collect::<Vec<u16>>());
@@ -727,10 +727,10 @@ mod tests {
         });
         let observe_reconnecting = async {
             while !matches!(host_link.health(), LinkHealth::Reconnecting { .. }) {
-                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                crate::platform::sleep(std::time::Duration::from_millis(5)).await;
             }
         };
-        tokio::time::timeout(std::time::Duration::from_secs(5), observe_reconnecting)
+        crate::platform::timeout(std::time::Duration::from_secs(5), observe_reconnecting)
             .await
             .expect("host never entered Reconnecting");
 
@@ -741,14 +741,14 @@ mod tests {
             let _ = host_link.in_match().send_input(joyflags, 0).await;
         }
 
-        let conn_restored = tokio::time::timeout(
+        let conn_restored = crate::platform::timeout(
             std::time::Duration::from_secs(30),
             conn_link.reconnect(ReconnectCause::Stall),
         )
         .await
         .expect("dialer reconnect timed out");
         assert!(conn_restored, "dialer reconnect gave up");
-        let host_restored = tokio::time::timeout(std::time::Duration::from_secs(30), host_reconnect)
+        let host_restored = crate::platform::timeout(std::time::Duration::from_secs(30), host_reconnect)
             .await
             .expect("host reconnect timed out")
             .expect("host reconnect task panicked");
@@ -761,7 +761,7 @@ mod tests {
         // unacked window (nothing acked it: the host never read the dialer's
         // heartbeat acks in this test) is resent across the swap.
         let mut conn_rx = receiver_for(&conn_link);
-        let got = tokio::time::timeout(std::time::Duration::from_secs(15), recv_joyflags(&mut conn_rx, 5))
+        let got = crate::platform::timeout(std::time::Duration::from_secs(15), recv_joyflags(&mut conn_rx, 5))
             .await
             .expect("phase-3 recv timed out");
         assert_eq!(got, (6..=10).collect::<Vec<u16>>());
@@ -794,7 +794,7 @@ mod tests {
                 crate::net::negotiate(&mut conn_ch.control.0, &mut conn_ch.control.1),
             )
         };
-        tokio::time::timeout(std::time::Duration::from_secs(15), handshake)
+        crate::platform::timeout(std::time::Duration::from_secs(15), handshake)
             .await
             .expect("handshake timed out — channel never opened")
             .expect("negotiate failed");
@@ -818,7 +818,7 @@ mod tests {
             host_link.in_match().send_input(joyflags, 0).await.expect("host send");
             conn_link.in_match().send_input(joyflags, 0).await.expect("conn send");
         }
-        let (h1, c1) = tokio::time::timeout(
+        let (h1, c1) = crate::platform::timeout(
             std::time::Duration::from_secs(15),
             async { tokio::join!(recv_joyflags(&mut host_rx, 3), recv_joyflags(&mut conn_rx, 3)) },
         )
@@ -838,20 +838,20 @@ mod tests {
         });
         let observe_reconnecting = async {
             while !matches!(host_link.health(), LinkHealth::Reconnecting { .. }) {
-                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                crate::platform::sleep(std::time::Duration::from_millis(5)).await;
             }
         };
-        tokio::time::timeout(std::time::Duration::from_secs(5), observe_reconnecting)
+        crate::platform::timeout(std::time::Duration::from_secs(5), observe_reconnecting)
             .await
             .expect("host never entered Reconnecting");
-        let conn_restored = tokio::time::timeout(
+        let conn_restored = crate::platform::timeout(
             std::time::Duration::from_secs(30),
             conn_link.reconnect(ReconnectCause::Stall),
         )
         .await
         .expect("dialer reconnect timed out");
         assert!(conn_restored, "dialer reconnect gave up");
-        let host_restored = tokio::time::timeout(std::time::Duration::from_secs(30), host_reconnect)
+        let host_restored = crate::platform::timeout(std::time::Duration::from_secs(30), host_reconnect)
             .await
             .expect("host reconnect timed out")
             .expect("host reconnect task panicked");
@@ -864,7 +864,7 @@ mod tests {
             host_link.in_match().send_input(joyflags, 0).await.expect("host post-reconnect send");
             conn_link.in_match().send_input(joyflags, 0).await.expect("conn post-reconnect send");
         }
-        let (h2, c2) = tokio::time::timeout(
+        let (h2, c2) = crate::platform::timeout(
             std::time::Duration::from_secs(15),
             async { tokio::join!(recv_joyflags(&mut host_rx, 3), recv_joyflags(&mut conn_rx, 3)) },
         )
@@ -900,7 +900,7 @@ mod tests {
                 crate::net::negotiate(&mut conn_ch.control.0, &mut conn_ch.control.1),
             )
         };
-        tokio::time::timeout(std::time::Duration::from_secs(15), handshake)
+        crate::platform::timeout(std::time::Duration::from_secs(15), handshake)
             .await
             .expect("handshake timed out — channel never opened")
             .expect("negotiate failed");
@@ -915,13 +915,13 @@ mod tests {
         conn_link.send_goodbye().await;
         drop(conn_link);
 
-        let end = tokio::time::timeout(std::time::Duration::from_secs(15), host_link.watch_control())
+        let end = crate::platform::timeout(std::time::Duration::from_secs(15), host_link.watch_control())
             .await
             .expect("watch timed out — goodbye never arrived");
         assert_eq!(end, ControlEnd::Goodbye);
 
         // Watching again rides out the teardown's actual close as a bare EOF.
-        let end = tokio::time::timeout(std::time::Duration::from_secs(15), host_link.watch_control())
+        let end = crate::platform::timeout(std::time::Duration::from_secs(15), host_link.watch_control())
             .await
             .expect("watch timed out — close never arrived");
         assert_eq!(end, ControlEnd::Eof);

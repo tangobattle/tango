@@ -267,8 +267,7 @@ impl InMatchTx {
     /// `cancel` fires (match teardown) — a transport error is non-terminal so it
     /// survives a mid-match reconnect.
     async fn run_heartbeat(self, cancel: tokio_util::sync::CancellationToken) {
-        let mut interval = tokio::time::interval(self.heartbeat);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut interval = crate::platform::Ticker::immediate(self.heartbeat);
         let mut last_seen = self.data_sends.load(std::sync::atomic::Ordering::Relaxed);
         loop {
             tokio::select! {

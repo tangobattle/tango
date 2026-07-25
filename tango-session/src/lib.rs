@@ -22,13 +22,11 @@
 // the host shows; nothing here spawns or sleeps.
 /// Live netplay, on the transport below.
 ///
-/// **Compiles for wasm32, but doesn't run there yet.** Everything below
-/// it is portable now — the transport rides a facade that is the
-/// browser's own WebRTC, and the signaling client the browser's own
-/// WebSocket — but the plumbing still waits on `tokio::time`, which
-/// needs a tokio runtime that a browser host doesn't have. The
-/// remaining work is a timer seam in [`platform`] (tokio natively,
-/// `gloo-timers` in a browser), not more porting.
+/// Builds for wasm32: the transport rides a facade that is the
+/// browser's own WebRTC, signaling is the browser's own WebSocket, and
+/// the waiting goes through [`platform`] rather than a tokio runtime a
+/// browser host doesn't have. Untried against a live browser match —
+/// nothing above this crate can start one yet.
 pub mod pvp;
 pub mod replay;
 pub mod singleplayer;

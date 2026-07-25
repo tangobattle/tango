@@ -405,8 +405,6 @@ impl PvpSession {
                 screen: screen.clone(),
                 wake: wake.clone(),
                 local_player: local_player_index as usize,
-                #[cfg(not(target_arch = "wasm32"))]
-                rt: tokio::runtime::Handle::current(),
             },
             sample_rate,
             local_player: local_player_index as usize,
@@ -730,11 +728,6 @@ struct DriveContext {
     screen: Arc<crate::Framebuffer>,
     wake: Arc<tokio::sync::Notify>,
     local_player: usize,
-    /// The runtime the EndOfMatch send goes onto. Native-only:
-    /// `Handle::current()` panics where there is no runtime, and a
-    /// browser spawns onto its microtask queue instead.
-    #[cfg(not(target_arch = "wasm32"))]
-    rt: tokio::runtime::Handle,
 }
 
 impl DriveContext {
@@ -921,7 +914,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
                     } else if drain_until.is_none_or(|t| web_time::Instant::now() >= t) {
                         return;
                     }
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    crate::platform::sleep(std::time::Duration::from_millis(100)).await;
                 }
             };
             let trip = tokio::select! {
@@ -985,7 +978,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
             // drive loop produces no frames.
             let restored = {
                 let ui_tick = async {
-                    let mut iv = tokio::time::interval(RECONNECT_UI_TICK);
+                    let mut iv = crate::platform::Ticker::immediate(RECONNECT_UI_TICK);
                     loop {
                         iv.tick().await;
                         wake.notify_one();
@@ -1391,13 +1384,6 @@ impl PvpDriver {
                 // as inputs, so the peer sees it exactly once and only
                 // after every preceding input.
                 let in_match = self.ctx.in_match.clone();
-                #[cfg(not(target_arch = "wasm32"))]
-                self.ctx.rt.spawn(async move {
-                    if let Err(e) = in_match.send_end_of_match().await {
-                        log::warn!("pvp: send EndOfMatch failed: {e}");
-                    }
-                });
-                #[cfg(target_arch = "wasm32")]
                 crate::platform::spawn(async move {
                     if let Err(e) = in_match.send_end_of_match().await {
                         log::warn!("pvp: send EndOfMatch failed: {e}");
@@ -1406,16 +1392,10 @@ impl PvpDriver {
                 // Wall-clock fallback wake so `is_ended` is rechecked
                 // even if the peer never sends EndOfMatch.
                 let wake = self.ctx.wake.clone();
-                #[cfg(not(target_arch = "wasm32"))]
-                self.ctx.rt.spawn(async move {
-                    tokio::time::sleep(PEER_END_GRACE).await;
+                crate::platform::spawn(async move {
+                    crate::platform::sleep(PEER_END_GRACE).await;
                     wake.notify_one();
                 });
-                // A browser has no runtime to hold this timer; the
-                // grace wake waits on the timer seam netplay still
-                // needs there (see the crate docs).
-                #[cfg(target_arch = "wasm32")]
-                let _ = wake;
             }
         }
 

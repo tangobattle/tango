@@ -1567,7 +1567,12 @@ fn spawn_drive_thread(
     name: &str,
     mut driver: impl tango_session::Drive + Send + 'static,
 ) -> std::io::Result<std::thread::JoinHandle<()>> {
+    // The thread runs inside our runtime's context, so a driver that
+    // wants to fire an async send or a timer just calls `tokio::spawn`
+    // — no runtime handle to thread down to the call site.
+    let rt = tokio::runtime::Handle::current();
     std::thread::Builder::new().name(name.to_owned()).spawn(move || {
+        let _guard = rt.enter();
         let mut pacer = Pacer::new();
         while driver.tick() {
             pacer.wait(driver.fps_target());
