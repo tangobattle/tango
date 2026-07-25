@@ -310,6 +310,7 @@ patches-downloading-progress = Downloading… { $percent }%
 patches-download-failed = Download failed
 patches-retry = Retry
 patches-reveal-package = Show package
+patches-open-folder = Open folder
 patches-favorite = Favorite
 patches-unfavorite = Unfavorite
 patches-search-placeholder = Search patches…
