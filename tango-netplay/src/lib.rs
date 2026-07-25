@@ -24,6 +24,12 @@
 //! cancellation token fires, and on exit it sends the receiver down
 //! the per-session oneshot for the PvP handoff to take.
 
+// In a browser the things these `Arc`s hold — the core, the transport —
+// are genuinely not `Send`, because the browser's own handles aren't.
+// The alternative is cfg-splitting `Arc`/`Rc` through every shared type
+// for no gain: wasm is single-threaded, so the atomics cost nothing real.
+#![cfg_attr(target_arch = "wasm32", allow(clippy::arc_with_non_send_sync))]
+
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
@@ -317,6 +323,8 @@ pub enum Message {
     /// from fixed ICE creds (see [`tango_session::net::direct_rtc`]). `role`
     /// says whether we're the host (pins the UDP port) or the dialer;
     /// the UI-side identifier is derived from it (see [`LinkIdent`]).
+    /// Native-only — see [`State::connect_direct`].
+    #[cfg(not(target_arch = "wasm32"))]
     ConnectDirect { role: DirectRole },
     /// Tear down the active / pending connection. Cancels the
     /// running async task; drops the connection handles.
@@ -467,6 +475,7 @@ impl State {
                 use_relay,
                 identity,
             } => self.connect(link_code, endpoint, use_relay, identity),
+            #[cfg(not(target_arch = "wasm32"))]
             Message::ConnectDirect { role } => self.connect_direct(role),
             Message::SignalingHelloReceived(slot_rx) => self.on_signaling_hello(slot_rx),
             Message::SignalingDone(slot_rx) => self.on_signaling_done(slot_rx),

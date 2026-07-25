@@ -101,6 +101,11 @@ impl State {
     }
 
     /// `Message::ConnectDirect` — start the signaling-free direct path.
+    ///
+    /// Native-only: it runs over a UDP socket this side owns, which a
+    /// browser has no way to open. A browser reaches a peer through the
+    /// signaling server or not at all.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(super) fn connect_direct(&mut self, role: DirectRole) -> Effect {
         self.cancel_and_renew();
         // Host = "waiting for inbound peer" (accept() is
@@ -226,7 +231,7 @@ impl State {
         *self.lobby_event_rx_slot.lock().unwrap() = Some(event_rx);
         let cancel = self.cancel.clone();
         let receiver = out.receiver;
-        tokio::spawn(async move {
+        tango_session::platform::spawn(async move {
             let receiver = run_lobby_loop(receiver, sender, event_tx, cancel).await;
             let _ = post_lobby_tx.send(receiver);
         });
@@ -335,6 +340,7 @@ async fn run_await_peer(
 /// `is_offerer` is set from the role (host = true) so the
 /// `pick_local_player_index` symmetry break still has a stable
 /// asymmetric input.
+#[cfg(not(target_arch = "wasm32"))]
 async fn run_direct_rtc_negotiate(
     role: DirectRole,
     cancel: CancellationToken,

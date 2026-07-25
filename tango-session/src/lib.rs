@@ -18,6 +18,12 @@
 //! sessions built on it — are gated to native; the rest compiles for
 //! wasm32.
 
+// In a browser the things these `Arc`s hold — the core, the transport —
+// are genuinely not `Send`, because the browser's own handles aren't.
+// The alternative is cfg-splitting `Arc`/`Rc` through every shared type
+// for no gain: wasm is single-threaded, so the atomics cost nothing real.
+#![cfg_attr(target_arch = "wasm32", allow(clippy::arc_with_non_send_sync))]
+
 // The session kinds. Each hands a host a [`Drive`] and publishes what
 // the host shows; nothing here spawns or sleeps.
 /// Live netplay, on the transport below.

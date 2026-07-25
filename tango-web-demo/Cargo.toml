@@ -16,6 +16,8 @@ crate-type = ["cdylib", "rlib"]
 mgba.workspace = true
 tango-dataview = { path = "../tango-dataview" }
 tango-gamesupport = { path = "../tango-gamesupport" }
+# The lobby + negotiation state machine that gets a browser to a match.
+tango-netplay = { path = "../tango-netplay" }
 tango-replay = { path = "../tango-replay" }
 tango-session = { path = "../tango-session" }
 

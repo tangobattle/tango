@@ -6726,6 +6726,7 @@ dependencies = [
  "tango-gamesupport-bn5",
  "tango-gamesupport-bn6",
  "tango-gamesupport-exe45",
+ "tango-netplay",
  "tango-replay",
  "tango-session",
  "wasm-bindgen",
