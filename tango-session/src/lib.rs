@@ -20,22 +20,22 @@
 
 // The session kinds. Each hands a host a [`Drive`] and publishes what
 // the host shows; nothing here spawns or sleeps.
-pub mod replay;
-pub mod singleplayer;
-pub mod training;
 /// Live netplay, on the transport below.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod pvp;
+pub mod replay;
+pub mod singleplayer;
+pub mod training;
 
 // What they're built out of.
 pub mod audio;
-pub mod platform;
 /// The netplay transport: two byte-pipe planes over one peer
 /// connection. Native for now — the pipes build for the browser, but
 /// the signaling client that gets a peer connection in the first place
 /// is a native WebSocket.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod net;
+pub mod platform;
 /// The match-stats sidecar a finished match leaves next to its replay,
 /// so the Replays tab never re-simulates one it has already seen.
 #[cfg(not(target_arch = "wasm32"))]
@@ -82,23 +82,6 @@ pub enum Error {
     /// The PvP drive thread died before reporting boot success.
     #[error("sio drive thread died during boot")]
     DriveThreadDied,
-}
-
-/// Create the mgba core every session boots from: a GBA core with audio-sync
-/// on, its video buffer enabled, and `rom` loaded. Callers then load the save
-/// (which differs per session — RW file vs in-memory SRAM dump) and install
-/// their own traps.
-pub fn new_gba_core(rom: &[u8]) -> Result<mgba::core::OwnedCore, mgba::Error> {
-    let mut core = mgba::core::OwnedCore::new_gba(
-        "tango",
-        &mgba::core::Options {
-            audio_sync: true,
-            ..Default::default()
-        },
-    )?;
-    core.enable_video_buffer();
-    core.load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
-    Ok(core)
 }
 
 /// A pause flag a drive thread can block on — flag + condvar instead of
