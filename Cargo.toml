@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "encoder-facade",
     "tango",
     "tango-dataview",
     "tango-gamesupport",
@@ -20,6 +21,7 @@ members = [
 # real members; the probes still build on demand via
 # `cargo run -p tango-gamesupport-<game> --example <probe>`.
 default-members = [
+    "encoder-facade",
     "tango",
     "tango-dataview",
     "tango-gamesupport",
