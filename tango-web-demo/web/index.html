@@ -27,14 +27,22 @@
   <button id="start" disabled>Start</button>
   <button id="download-save" disabled>Download save</button>
 </div>
+<div id="bar">
+  <label>link code <input id="code" size="12" placeholder="anything, both sides"></label>
+  <label>as <input id="nick" size="10" value="browser"></label>
+  <button id="netplay" disabled>Netplay</button>
+  <button id="ready" hidden>Ready</button>
+  <button id="leave" hidden>Leave</button>
+</div>
 <div id="status">pick a ROM</div>
+<div id="lobby" style="opacity:.7"></div>
 <div style="opacity:.55">
   <kbd>←↑↓→</kbd> d-pad · <kbd>Z</kbd> A · <kbd>X</kbd> B · <kbd>A</kbd> L · <kbd>S</kbd> R ·
   <kbd>Enter</kbd> start · <kbd>Shift</kbd> select
 </div>
 
 <script type="module">
-import init, { Demo } from './pkg/tango_web_demo.js';
+import init, { Demo, Netplay } from './pkg/tango_web_demo.js';
 
 const wasm = await init();
 const canvas = document.getElementById('screen');
@@ -59,7 +67,12 @@ const MAX_BURST = 8;
 // spends its deficit on. Set once the sink's rate is known.
 let SAMPLES_PER_FRAME = 800;
 
+// The matchmaking server the desktop client ships with. Override with
+// `?endpoint=` when testing against a local one.
+const DEFAULT_ENDPOINT = 'wss://matchmaking.tango.n1gp.net';
+
 let demo = null;
+let netplay = null;
 let romBytes = null, saveBytes = null, replayBytes = null;
 let audio = null, sink = null, sinkQueued = 0;
 let keys = 0, frames = 0, lastReport = performance.now();
@@ -84,12 +97,15 @@ const BITS = Object.fromEntries(Object.entries(BINDINGS).map(([code, name]) => [
 // — handy for iterating on one ROM, and what the automated check uses.
 const params = new URLSearchParams(location.search);
 if (params.has('training')) document.getElementById('training').checked = true;
+if (params.has('code')) document.getElementById('code').value = params.get('code');
+if (params.has('nick')) document.getElementById('nick').value = params.get('nick');
 if (params.has('rom')) {
   const fetchBytes = async (url) => new Uint8Array(await (await fetch(url)).arrayBuffer());
   romBytes = await fetchBytes(params.get('rom'));
   if (params.has('save')) saveBytes = await fetchBytes(params.get('save'));
   if (params.has('replay')) replayBytes = await fetchBytes(params.get('replay'));
   document.getElementById('start').disabled = false;
+  document.getElementById('netplay').disabled = false;
   status.textContent = 'ready';
 }
 
@@ -99,6 +115,7 @@ const readFile = (input) =>
 document.getElementById('rom').addEventListener('change', async (e) => {
   romBytes = await readFile(e.target);
   document.getElementById('start').disabled = !romBytes;
+  document.getElementById('netplay').disabled = !romBytes;
   status.textContent = romBytes ? 'ready' : 'pick a ROM';
 });
 document.getElementById('save').addEventListener('change', async (e) => {
@@ -108,8 +125,10 @@ document.getElementById('replay').addEventListener('change', async (e) => {
   replayBytes = await readFile(e.target);
 });
 
-document.getElementById('start').addEventListener('click', async () => {
-  // An AudioContext may only start from a user gesture — this click.
+// An AudioContext may only start from a user gesture, so every entry
+// point calls this from its click handler.
+async function startAudio() {
+  if (audio) return;
   audio = new AudioContext();
   await audio.audioWorklet.addModule('./sink-worklet.js');
   sink = new AudioWorkletNode(audio, 'tango-demo-sink', { outputChannelCount: [2] });
@@ -124,7 +143,20 @@ document.getElementById('start').addEventListener('click', async () => {
     sinkQueued = e.data;
     pump();
   };
+}
 
+// A session just booted: reset the pump's clock and start painting.
+function startPump() {
+  SAMPLES_PER_FRAME = audio.sampleRate / FPS;
+  owed = 0;
+  lastPump = performance.now();
+  document.getElementById('download-save').disabled = false;
+  status.textContent = `running ${demo.game()}`;
+  requestAnimationFrame(frame);
+}
+
+document.getElementById('start').addEventListener('click', async () => {
+  await startAudio();
   try {
     if (replayBytes) {
       prefetching = true;
@@ -146,13 +178,85 @@ document.getElementById('start').addEventListener('click', async () => {
     status.textContent = `${e}`;
     return;
   }
-  SAMPLES_PER_FRAME = audio.sampleRate / FPS;
-  owed = 0;
-  lastPump = performance.now();
-  document.getElementById('download-save').disabled = false;
-  status.textContent = `running ${demo.game()}`;
-  requestAnimationFrame(frame);
+  startPump();
 });
+
+// --- Netplay ---------------------------------------------------------
+//
+// The lobby is a state machine the page pumps, exactly like a session:
+// `poll()` folds in whatever the connection reported, and everything
+// else is reading it back out. When it says the handshake is done, the
+// lobby is traded in for a live match and the normal pump takes over.
+
+const lobbyLine = document.getElementById('lobby');
+const readyButton = document.getElementById('ready');
+const leaveButton = document.getElementById('leave');
+
+document.getElementById('netplay').addEventListener('click', async () => {
+  if (!saveBytes) { status.textContent = 'netplay needs a save to commit to'; return; }
+  await startAudio();
+  const code = document.getElementById('code').value.trim();
+  if (!code) { status.textContent = 'pick a link code — both sides type the same one'; return; }
+  try {
+    netplay = Netplay.connect(
+      params.get('endpoint') ?? DEFAULT_ENDPOINT,
+      code,
+      document.getElementById('nick').value.trim() || 'browser',
+      romBytes,
+      saveBytes,
+      audio.sampleRate,
+    );
+  } catch (e) {
+    status.textContent = `${e}`;
+    return;
+  }
+  leaveButton.hidden = false;
+  pollLobby();
+});
+
+readyButton.addEventListener('click', () => netplay?.ready());
+leaveButton.addEventListener('click', () => {
+  netplay?.disconnect();
+  netplay = null;
+  readyButton.hidden = leaveButton.hidden = true;
+  lobbyLine.textContent = '';
+});
+
+// One turn of the lobby crank. Re-arms itself on a timer rather than
+// rAF: a lobby has nothing to paint, and it must keep running when the
+// tab is in the background waiting for an opponent.
+async function pollLobby() {
+  if (!netplay) return;
+  const live = netplay.poll();
+  status.textContent = `netplay: ${netplay.phase()}`;
+  lobbyLine.textContent = netplay.status();
+  readyButton.hidden = netplay.phase() !== 'lobby';
+  if (netplay.is_match_ready()) {
+    const lobby = netplay;
+    netplay = null;
+    readyButton.hidden = leaveButton.hidden = true;
+    status.textContent = 'starting match — booting and priming both cores';
+    try {
+      // Consumes the lobby: the transport belongs to the match now.
+      // Blocks this tab for the couple of seconds priming takes, the
+      // same couple of seconds a desktop spends on its drive thread.
+      demo = await lobby.start_match('/replays');
+    } catch (e) {
+      status.textContent = `${e}`;
+      return;
+    }
+    startPump();
+    return;
+  }
+  if (!live) {
+    // Idle or failed: `status()` says which, and there's nothing left
+    // to poll.
+    readyButton.hidden = leaveButton.hidden = true;
+    netplay = null;
+    return;
+  }
+  setTimeout(pollLobby, 50);
+}
 
 document.getElementById('download-save').addEventListener('click', () => {
   const save = demo?.export_save();

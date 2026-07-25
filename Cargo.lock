@@ -603,7 +603,7 @@ dependencies = [
  "bitflags 2.11.1",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -1097,6 +1097,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "console_log"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86919cef3e37b9356ccf54d4421208c17ecfda01beae61393e7ffd72916c0ef1"
+dependencies = [
+ "log",
+ "web-sys",
+]
+
+[[package]]
 name = "constant_time_eq"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1418,7 +1428,7 @@ checksum = "2a2330da5de22e8a3cb63252ce2abb30116bf5265e89c0e01bc17015ce30a476"
 [[package]]
 name = "datachannel-facade"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/datachannel-facade#229acc19f71af3a04277e19cadf870525e25485d"
+source = "git+https://github.com/tangobattle/datachannel-facade#379c7587cf7ce5e93de028352cd76bf84e72936e"
 dependencies = [
  "libdatachannel",
  "log",
@@ -1428,11 +1438,11 @@ dependencies = [
 [[package]]
 name = "datachannel-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/datachannel-wrapper#06228a5a68b5ff78c51da17b37a5d849116c0668"
+source = "git+https://github.com/tangobattle/datachannel-wrapper#c43778f22dc7e24ac741bbc615e556c32c0bcae9"
 dependencies = [
  "datachannel-facade",
+ "futures",
  "log",
- "tokio",
 ]
 
 [[package]]
@@ -1728,7 +1738,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -3256,7 +3266,7 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 [[package]]
 name = "libdatachannel"
 version = "0.2.0+0.24.3"
-source = "git+https://github.com/tangobattle/datachannel-facade#229acc19f71af3a04277e19cadf870525e25485d"
+source = "git+https://github.com/tangobattle/datachannel-facade#379c7587cf7ce5e93de028352cd76bf84e72936e"
 dependencies = [
  "libdatachannel-sys",
  "log",
@@ -3268,7 +3278,7 @@ dependencies = [
 [[package]]
 name = "libdatachannel-sys"
 version = "0.24.3"
-source = "git+https://github.com/tangobattle/datachannel-facade#229acc19f71af3a04277e19cadf870525e25485d"
+source = "git+https://github.com/tangobattle/datachannel-facade#379c7587cf7ce5e93de028352cd76bf84e72936e"
 dependencies = [
  "bindgen",
  "cmake",
@@ -3293,7 +3303,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.53.3",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -4972,7 +4982,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6c3320f9abac597dcbc668774ef006702672474aad53c6d596b62e487b40b1"
 dependencies = [
  "heck",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "multimap",
  "once_cell",
@@ -4992,7 +5002,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9120690fafc389a67ba3803df527d0ec9cbbc9cc45e4cc20b332996dfb672425"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
@@ -5531,7 +5541,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.11.0",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6689,11 +6699,12 @@ dependencies = [
 [[package]]
 name = "tango-signaling"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/tango-signaling#8671d4b67185a834155b89eb2347dfb679ef732e"
+source = "git+https://github.com/tangobattle/tango-signaling#3356bb9a84e542dc1fbc9aa3f1e8118c0d69d00f"
 dependencies = [
  "datachannel-wrapper",
  "futures",
  "futures-util",
+ "gloo-timers",
  "http 0.2.12",
  "log",
  "prost",
@@ -6706,6 +6717,7 @@ dependencies = [
  "tokio-tungstenite-wasm",
  "url",
  "urlencoding",
+ "wasm-bindgen-futures",
  "webpki-roots",
 ]
 
@@ -6714,6 +6726,8 @@ name = "tango-web-demo"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
+ "console_log",
+ "futures",
  "getrandom 0.2.16",
  "js-sys",
  "log",
@@ -6727,10 +6741,12 @@ dependencies = [
  "tango-gamesupport-bn5",
  "tango-gamesupport-bn6",
  "tango-gamesupport-exe45",
+ "tango-net-protocol",
  "tango-netplay",
  "tango-replay",
  "tango-session",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -6755,7 +6771,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix 1.1.2",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -7678,7 +7694,7 @@ dependencies = [
 [[package]]
 name = "web-datachannel"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/datachannel-facade#229acc19f71af3a04277e19cadf870525e25485d"
+source = "git+https://github.com/tangobattle/datachannel-facade#379c7587cf7ce5e93de028352cd76bf84e72936e"
 dependencies = [
  "js-sys",
  "log",
@@ -7905,7 +7921,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

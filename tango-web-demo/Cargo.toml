@@ -18,6 +18,7 @@ tango-dataview = { path = "../tango-dataview" }
 tango-gamesupport = { path = "../tango-gamesupport" }
 # The lobby + negotiation state machine that gets a browser to a match.
 tango-netplay = { path = "../tango-netplay" }
+tango-net-protocol = { path = "../tango-net-protocol" }
 tango-replay = { path = "../tango-replay" }
 tango-session = { path = "../tango-session" }
 
@@ -32,9 +33,14 @@ tango-gamesupport-bn6 = { path = "../gamesupport/tango-gamesupport-bn6" }
 tango-gamesupport-exe45 = { path = "../gamesupport/tango-gamesupport-exe45" }
 
 console_error_panic_hook = "0.1"
+# So the crates below can say what they're doing; a browser's console is
+# the only log this host has.
+console_log = "1"
+futures.workspace = true
 js-sys = "0.3"
 log.workspace = true
 wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
 # The game-support crates use `rand`, whose getrandom needs to be told
 # where a browser's entropy comes from. Feature unification means only
 # the crate at the root of the build can say so, which is this one.

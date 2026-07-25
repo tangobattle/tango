@@ -113,9 +113,9 @@ fn open_channels(mut pc: PeerConnection) -> Channels {
 /// event stream is otherwise unused on the direct path, so without this a
 /// drop's cause (ICE/SCTP tearing the link down) is invisible. The task ends
 /// when the connection is dropped (the event sender goes away).
-fn spawn_state_logger(mut events: tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>) {
+fn spawn_state_logger(mut events: datachannel_wrapper::EventReceiver) {
     tokio::spawn(async move {
-        while let Some(ev) = events.recv().await {
+        while let Some(ev) = futures::StreamExt::next(&mut events).await {
             if let datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(state) = ev {
                 log::info!("pvp peer connection state: {state:?}");
             }

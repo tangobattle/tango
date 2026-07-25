@@ -17,6 +17,8 @@
 
 #![cfg(target_arch = "wasm32")]
 
+pub mod netplay;
+
 use std::sync::LazyLock;
 
 use tango_session::replay::ReplaySession;
@@ -53,6 +55,7 @@ pub extern "C" fn mgba_sys_now_unix_ms() -> f64 {
 #[wasm_bindgen(start)]
 pub fn init() {
     console_error_panic_hook::set_once();
+    let _ = console_log::init_with_level(log::Level::Debug);
 }
 
 /// A booted session plus the scratch the page reads it through.
@@ -178,7 +181,7 @@ impl Demo {
         Ok(Demo::wrap(Box::new(session), Box::new(driver), audio))
     }
 
-    fn wrap(
+    pub(crate) fn wrap(
         session: Box<dyn Session>,
         driver: Box<dyn Drive>,
         audio: tango_session::audio::CoreStream,

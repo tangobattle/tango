@@ -29,6 +29,25 @@ press Start — the AudioContext needs that gesture. Buttons are
 for L/R, <kbd>Enter</kbd>/<kbd>Shift</kbd> for start/select. "Download
 save" pulls the cartridge's savedata back out of the running session.
 
+## Netplay
+
+Type the same link code in two tabs (or two machines), pick the same ROM
+and a save on each, and press Netplay. The lobby line shows the opponent
+and the ready state; press Ready on both and the match starts.
+
+`?rom=&save=&code=&nick=` load and fill everything from the URL, which is
+how two tabs get set up quickly:
+
+```
+localhost:8080/?rom=bn6.gba&save=bn6.sav&code=whatever&nick=alpha
+localhost:8080/?rom=bn6.gba&save=bn6.sav&code=whatever&nick=beta
+```
+
+Both sides must load the *same* ROM file: the demo has no ROM library to
+resolve the opponent's from, so it runs theirs on a copy of yours. The
+lobby announces each side's game, so a mismatch is visible before anyone
+presses Ready. `?endpoint=` overrides the matchmaking server.
+
 `?rom=<url>&save=<url>` loads from the server instead of the pickers,
 which is handy when iterating on one ROM. `window.demoStats()` in the
 console reports what the pump is doing: audio state, sink queue depth,
