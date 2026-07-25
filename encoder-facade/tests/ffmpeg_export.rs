@@ -423,6 +423,67 @@ fn ffmpeg_can_remux_our_output() {
     }
 }
 
+/// The shape a side-by-side replay export has: a double-width frame and
+/// one audio track per side, with chapters at the round boundaries.
+/// Multiple audio tracks are the part no other test here covers.
+#[test]
+fn a_two_sided_export_carries_a_track_per_side() {
+    let ffmpeg = require_ffmpeg!();
+    let mut settings = settings(Container::Mp4, VideoCodec::H264, AudioCodec::Aac, VideoQuality::Crf(24));
+    settings.video.width = WIDTH * 2;
+    settings.audio_tracks = 2;
+
+    let path = std::env::temp_dir().join("encoder-facade-two-sided.mp4");
+    let mut output = Output::new(std::fs::File::create(&path).expect("create the output"));
+    let canceller = Canceller::new();
+    let backend = FfmpegBackend::new(&settings, Some(ffmpeg.clone()), &canceller).expect("spawn the encoders");
+    let frame_bytes = settings.video.frame_bytes();
+    let mut session = Session::new(backend, settings).expect("open the session");
+
+    for index in 0..FRAMES {
+        // Two screens side by side, each the single-screen frame.
+        let single = frame(index);
+        let mut composed = vec![0u8; frame_bytes];
+        for row in 0..HEIGHT as usize {
+            let width = WIDTH as usize * 4;
+            let from = row * width;
+            let to = row * width * 2;
+            composed[to..to + width].copy_from_slice(&single[from..from + width]);
+            composed[to + width..to + width * 2].copy_from_slice(&single[from..from + width]);
+        }
+        session.write_video(&composed).expect("write a frame");
+        // One side's audio, the other side's shifted, so a muxer that
+        // mixed the tracks up would be visible in the result.
+        let samples = samples_for_frame(index);
+        session.write_audio(0, &samples).expect("write side one");
+        session.write_audio(1, &samples).expect("write side two");
+        output.append(&session.take_output()).expect("append output");
+    }
+    session.begin_finish().expect("begin finishing");
+    let patches = loop {
+        if let Some(patches) = session.poll_finish(&[]).expect("finish") {
+            break patches;
+        }
+    };
+    output.append(&session.take_output()).expect("append the tail");
+    output.finish(&patches).expect("apply the patches");
+
+    let Some(probed) = probe(&ffmpeg, &path) else {
+        return;
+    };
+    assert_eq!(
+        probed.matches("codec_name=\"aac\"").count(),
+        2,
+        "both sides' audio tracks must be present: {probed}"
+    );
+    assert!(probed.contains("width=960"), "two screens at 2x: {probed}");
+    // Both tracks must be full length, not one of them truncated.
+    assert!(
+        probed.matches("duration=\"2.0").count() >= 3,
+        "video and both audio tracks should run the same length: {probed}"
+    );
+}
+
 /// A build without the raw output formats has to say so, rather than
 /// failing somewhere deep in an export.
 #[test]

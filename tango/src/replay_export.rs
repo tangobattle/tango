@@ -1,132 +1,94 @@
 //! Replay video export: re-simulates a recorded replay through
-//! [`tango_match::playback`] and pipes the frames + audio through ffmpeg
-//! subprocesses into a video file. Fully synchronous — the app runs it on a
-//! dedicated thread ([`crate::app`]'s `spawn_replay_export`); the replays
-//! tab's inline panel ([`crate::tabs::replays`]) owns the [`Canceller`] and
-//! renders the progress callback.
+//! [`tango_match::playback`] and feeds its frames and audio to
+//! [`encoder_facade`], which encodes and muxes them into a video file.
+//! Fully synchronous — the app runs it on a dedicated thread
+//! ([`crate::app`]'s `spawn_replay_export`); the replays tab's inline
+//! panel ([`crate::tabs::replays`]) owns the [`Canceller`] and renders
+//! the progress callback.
+//!
+//! ffmpeg is only an *encoder* here: it is asked for bare elementary
+//! streams (`-f h264`, `-f adts`, `-f ogg`) and the containers are
+//! written in Rust. That means the bundled ffmpeg has to be built with
+//! those output formats — `--enable-muxer=h264,adts,ogg` — and an
+//! export that finds one without them says so before it starts.
 
-use std::io::Write;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use image::EncodableLayout;
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
+/// The cancel handle and the chapter list both belong to the encoder
+/// now; the tab and the app still reach them through this module.
+pub use encoder_facade::{Canceller, Chapter};
 
-/// Caller-side cancel handle. `kill()` does two things:
-///
-///   * Sets an internal flag the export checks every iteration (and
-///     at each ffmpeg-free boundary: start of function, start of
-///     each per-replay setup) so a cancel takes effect promptly
-///     regardless of which phase the export is in — pre-ffmpeg,
-///     between replays, or mid-encode-loop during a skipped round
-///     where no pipe writes are happening.
-///   * Terminates every ffmpeg subprocess that has been registered,
-///     so the encode loop's current pipe write (if mid-write) and
-///     the post-loop `wait()` on each child return Err immediately.
-///
-/// Either signal alone is enough to unblock the export; both fire
-/// from one `kill()` so neither has to cover the other's gap.
-#[derive(Clone, Default)]
-pub struct Canceller {
-    inner: Arc<CancellerInner>,
-}
-
-impl std::fmt::Debug for Canceller {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Canceller").finish_non_exhaustive()
-    }
-}
-
-#[derive(Default)]
-struct CancellerInner {
-    cancelled: AtomicBool,
-    children: std::sync::Mutex<Vec<Arc<std::sync::Mutex<Option<std::process::Child>>>>>,
-}
-
-impl Canceller {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Mark this canceller cancelled and kill every ffmpeg subprocess
-    /// it has registered. Safe to call from any thread, multiple times.
-    pub fn kill(&self) {
-        self.inner.cancelled.store(true, Ordering::Relaxed);
-        for slot in self.inner.children.lock().unwrap().iter() {
-            if let Some(child) = slot.lock().unwrap().as_mut() {
-                let _ = child.kill();
-            }
-        }
-    }
-
-    pub fn is_cancelled(&self) -> bool {
-        self.inner.cancelled.load(Ordering::Relaxed)
-    }
-
-    fn register(&self, child: std::process::Child) -> Arc<std::sync::Mutex<Option<std::process::Child>>> {
-        let slot = Arc::new(std::sync::Mutex::new(Some(child)));
-        self.inner.children.lock().unwrap().push(slot.clone());
-        // Race guard: if kill() already fired before this child was
-        // registered, kill it on arrival so it doesn't slip the net.
-        if self.inner.cancelled.load(Ordering::Relaxed) {
-            if let Some(c) = slot.lock().unwrap().as_mut() {
-                let _ = c.kill();
-            }
-        }
-        slot
-    }
-}
-
+/// How an export should look. The scale doubles as the quality choice,
+/// which is how the form presents it: one slider whose leftmost stop is
+/// lossless.
 pub struct Settings {
+    /// `ffmpeg` binary to encode with. `None` looks beside the running
+    /// executable and then on `PATH`.
     pub ffmpeg: Option<std::path::PathBuf>,
-    pub ffmpeg_audio_flags: String,
-    pub ffmpeg_video_flags: String,
-    pub ffmpeg_mux_flags: String,
-    pub disable_bgm: bool,
+    /// `None` renders losslessly at native size; `Some(n)` renders an
+    /// `n`-times nearest-neighbor upscale.
+    pub scale: Option<usize>,
 }
 
 impl Settings {
-    pub fn default_with_scale(factor: Option<usize>) -> Self {
-        Self {
-            ffmpeg: None,
-            ffmpeg_audio_flags: if factor.is_some() {
-                "-c:a aac -ar 48000 -b:a 384k -ac 2".to_string()
-            } else {
-                "-c:a flac".to_string()
+    pub fn with_scale(scale: Option<usize>) -> Self {
+        Self { ffmpeg: None, scale }
+    }
+
+    /// The container this export will write.
+    pub fn container(&self) -> encoder_facade::Container {
+        container(self.scale.is_none())
+    }
+
+    /// Translate into the encoder's settings. `width_screens` is the
+    /// output width in GBA screens (1 one-sided, 2 side-by-side) and
+    /// `audio_tracks` is one per screen.
+    fn encoder_settings(&self, width_screens: u32, audio_tracks: usize) -> encoder_facade::Settings {
+        let lossless = self.scale.is_none();
+        encoder_facade::Settings {
+            video: encoder_facade::VideoSettings {
+                codec: encoder_facade::VideoCodec::H264,
+                quality: if lossless {
+                    encoder_facade::VideoQuality::Lossless
+                } else {
+                    encoder_facade::VideoQuality::Crf(18)
+                },
+                width: mgba::gba::SCREEN_WIDTH * width_screens,
+                height: mgba::gba::SCREEN_HEIGHT,
+                scale: self.scale.unwrap_or(1) as u32,
+                keyframe_interval: KEYFRAME_INTERVAL,
+                timescale: TIMESCALE,
+                frame_duration: FRAME_DURATION,
+                // A lossless render stays in RGB, and an RGB H.264
+                // stream can't carry these at all.
+                color: (!lossless).then_some(encoder_facade::ColorInfo::SRGB_FULL),
             },
-            ffmpeg_video_flags: if let Some(factor) = factor {
-                // Convert RGB→YUV with the BT.709 matrix in full range, and tag
-                // the stream as full-range sRGB (BT.709 primaries + matrix,
-                // IEC 61966-2-1 transfer) via `setparams`. Without tags the
-                // decoder guesses a steeper "video" gamma and the export looks
-                // more saturated than the on-screen sRGB colors; pinning the
-                // conversion matrix to the tagged one avoids a hue shift.
-                // `-color_*` output options don't stick through the filtergraph
-                // (only the matrix/range do), hence `setparams`.
-                //
-                // The lossless 1× path below stays untagged: gbrp/RGB H.264
-                // streams can't carry primaries/transfer at all, so there's no
-                // equivalent fix there.
-                format!(
-                    "-c:v libx264 -vf scale=iw*{f}:ih*{f}:flags=neighbor:out_range=pc:out_color_matrix=bt709,format=yuv420p,setparams=range=pc:colorspace=bt709:color_primaries=bt709:color_trc=iec61966-2-1 -force_key_frames expr:gte(t,n_forced/2) -crf 18 -bf 2",
-                    f = factor
-                )
-            } else {
-                "-c:v libx264rgb -preset ultrafast -qp 0".to_string()
+            audio: encoder_facade::AudioSettings {
+                codec: if lossless {
+                    encoder_facade::AudioCodec::Flac
+                } else {
+                    encoder_facade::AudioCodec::Aac
+                },
+                sample_rate: SAMPLE_RATE as u32,
+                channels: AUDIO_CHANNELS as u8,
+                bitrate: 384_000,
             },
-            // Scaled exports mux into .mp4 (faststart for streaming);
-            // lossless exports mux into .mkv, which takes none of these
-            // mp4-only flags. The output extension is chosen by the caller
-            // (app.rs save dialog) to match.
-            ffmpeg_mux_flags: if factor.is_some() {
-                "-movflags +faststart -strict -2".to_string()
-            } else {
-                String::new()
-            },
-            disable_bgm: false,
+            container: self.container(),
+            audio_tracks,
         }
+    }
+}
+
+/// Which container a render lands in, and so which extension the save
+/// dialog offers. Lossless is RGB H.264 with FLAC, neither of which MP4
+/// carries, so it goes to Matroska.
+pub fn container(lossless: bool) -> encoder_facade::Container {
+    if lossless {
+        encoder_facade::Container::Matroska
+    } else {
+        encoder_facade::Container::Mp4
     }
 }
 
@@ -134,181 +96,15 @@ const SAMPLE_RATE: f64 = 48000.0;
 
 const AUDIO_CHANNELS: usize = 2;
 
-fn resolve_ffmpeg_path(ffmpeg: &Option<std::path::PathBuf>) -> std::path::PathBuf {
-    ffmpeg.clone().unwrap_or_else(|| {
-        let mut p = std::env::current_exe()
-            .ok()
-            .as_ref()
-            .and_then(|p| p.parent())
-            .map(|p| p.join("ffmpeg"))
-            .unwrap_or("ffmpeg".into());
-        p.set_extension(std::env::consts::EXE_EXTENSION);
+/// The GBA frame clock: 280896 cycles at 2^24 Hz, stated as a timebase
+/// so the encoder can time frames exactly rather than in rounded
+/// milliseconds.
+const TIMESCALE: u32 = 16_777_216;
+const FRAME_DURATION: u64 = 280_896;
 
-        if p.exists() {
-            p
-        } else {
-            "ffmpeg".into()
-        }
-    })
-}
-
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-/// RAII wrapper around an ffmpeg subprocess. Holds the stdin handle
-/// directly (so the encode loop writes without locking) and a shared
-/// `Arc<Mutex<Option<Child>>>` slot registered with the `Canceller`
-/// — `Canceller::kill()` reaches in through that slot to terminate
-/// the process. On Drop (early return / panic / cancel) the wrapper
-/// kills + reaps the child if it hasn't been waited for yet.
-struct FfmpegChild {
-    slot: Arc<std::sync::Mutex<Option<std::process::Child>>>,
-    stdin: Option<std::process::ChildStdin>,
-}
-
-impl FfmpegChild {
-    fn from_spawn(mut child: std::process::Child, canceller: &Canceller) -> Self {
-        let stdin = child.stdin.take();
-        let slot = canceller.register(child);
-        Self { slot, stdin }
-    }
-
-    fn stdin(&mut self) -> &mut std::process::ChildStdin {
-        self.stdin.as_mut().expect("ffmpeg stdin closed")
-    }
-
-    /// Drop the stdin handle so ffmpeg sees EOF and finishes encoding.
-    fn close_stdin(&mut self) {
-        self.stdin.take();
-    }
-
-    /// Block until ffmpeg exits. If the canceller already killed the
-    /// process, `wait()` returns with a non-success status and we
-    /// surface that as Err — no polling, no fixed cancel latency.
-    fn wait(self) -> anyhow::Result<()> {
-        let taken = self.slot.lock().unwrap().take();
-        let mut child = taken.ok_or_else(|| anyhow::anyhow!("ffmpeg child already taken"))?;
-        let status = child.wait()?;
-        if !status.success() {
-            anyhow::bail!("ffmpeg exited with status {status:?}");
-        }
-        Ok(())
-    }
-}
-
-impl Drop for FfmpegChild {
-    fn drop(&mut self) {
-        let taken = self.slot.lock().unwrap().take();
-        if let Some(mut child) = taken {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-    }
-}
-
-fn make_video_ffmpeg(
-    ffmpeg: &Option<std::path::PathBuf>,
-    output_path: &std::path::Path,
-    width: usize,
-    height: usize,
-    flags: &[std::ffi::OsString],
-    canceller: &Canceller,
-) -> anyhow::Result<FfmpegChild> {
-    let mut child = std::process::Command::new(resolve_ffmpeg_path(ffmpeg));
-    child
-        .stdin(std::process::Stdio::piped())
-        .args(["-y"])
-        // Input args.
-        .args([
-            "-f",
-            "rawvideo",
-            "-pixel_format",
-            "rgba",
-            "-video_size",
-            &format!("{}x{}", width, height),
-            "-framerate",
-            "16777216/280896",
-            "-i",
-            "pipe:",
-        ])
-        // Output args.
-        .args(flags)
-        .args(["-f", "matroska"])
-        .arg(output_path);
-    #[cfg(windows)]
-    child.creation_flags(CREATE_NO_WINDOW);
-    Ok(FfmpegChild::from_spawn(child.spawn()?, canceller))
-}
-
-fn make_audio_ffmpeg(
-    ffmpeg: &Option<std::path::PathBuf>,
-    output_path: &std::path::Path,
-    flags: &[std::ffi::OsString],
-    canceller: &Canceller,
-) -> anyhow::Result<FfmpegChild> {
-    let mut child = std::process::Command::new(resolve_ffmpeg_path(ffmpeg));
-    child
-        .stdin(std::process::Stdio::piped())
-        .args(["-y"])
-        // Input args.
-        .args(["-f", "s16le", "-ar", "48k", "-ac", "2", "-i", "pipe:"])
-        // Output args.
-        .args(flags)
-        .args(["-f", "matroska"])
-        .arg(output_path);
-    #[cfg(windows)]
-    child.creation_flags(CREATE_NO_WINDOW);
-    Ok(FfmpegChild::from_spawn(child.spawn()?, canceller))
-}
-
-fn make_mux_ffmpeg(
-    ffmpeg: &Option<std::path::PathBuf>,
-    output_path: &std::path::Path,
-    video_input_path: &std::path::Path,
-    audio_input_paths: &[&std::path::Path],
-    chapters_path: Option<&std::path::Path>,
-    flags: &[std::ffi::OsString],
-    canceller: &Canceller,
-) -> anyhow::Result<FfmpegChild> {
-    let mut child = std::process::Command::new(resolve_ffmpeg_path(ffmpeg));
-    child.args(["-y"]).args(["-i"]).arg(video_input_path);
-
-    for path in audio_input_paths {
-        child.args(["-i"]).arg(path);
-    }
-
-    if let Some(path) = chapters_path {
-        child.args(["-f", "ffmetadata", "-i"]).arg(path);
-    }
-
-    child.args(["-c:v", "copy", "-c:a", "copy"]);
-
-    child.args(["-map", "0"]);
-    for i in 0..audio_input_paths.len() {
-        child.arg("-map").arg(format!("{}", i + 1));
-    }
-    if chapters_path.is_some() {
-        // The ffmetadata input carries no streams, only chapters —
-        // it gets a -map_chapters instead of a -map.
-        child
-            .arg("-map_chapters")
-            .arg(format!("{}", audio_input_paths.len() + 1));
-    }
-
-    child.args(flags);
-    child.arg(output_path);
-
-    #[cfg(windows)]
-    child.creation_flags(CREATE_NO_WINDOW);
-    Ok(FfmpegChild::from_spawn(child.spawn()?, canceller))
-}
-
-fn split_flags(flags: &str) -> anyhow::Result<Vec<std::ffi::OsString>> {
-    Ok(shell_words::split(flags)?
-        .into_iter()
-        .map(std::ffi::OsString::from)
-        .collect())
-}
+/// Frames between keyframes — about half a second, which is what the
+/// old flag string forced and fine granularity for scrubbing a replay.
+const KEYFRAME_INTERVAL: u32 = 30;
 
 /// The tick window an export writes, plus everything positional that
 /// goes with it. A whole-replay export is just the degenerate clip
@@ -324,9 +120,8 @@ pub struct Clip {
     /// instead of simulating from boot. Without one the prefix
     /// simulates unwritten, same as a deselected round.
     ///
-    /// A savestate restore replaces the priming-time pokes, so
-    /// callers wanting `Settings::disable_bgm` honored must pass
-    /// `None` and eat the full re-sim.
+    /// A savestate restore replaces the priming-time pokes, so callers
+    /// wanting BGM muted must pass `None` and eat the full re-sim.
     pub snapshot: Option<Arc<tango_match::playback::Snapshot>>,
     /// Inter-round transition ticks ([`tango_replay::Replay`]'s
     /// `round_starts` minus the leading 0, or the player's discovered
@@ -346,147 +141,6 @@ impl std::fmt::Debug for Clip {
             .field("snapshot_tick", &self.snapshot.as_ref().map(|s| s.tick))
             .field("round_marks", &self.round_marks)
             .finish()
-    }
-}
-
-/// One chapter in the output container, spanning `[start_frame,
-/// end_frame)` in *output* video frames — i.e. frames actually written
-/// to the encoder, not simulation ticks, so unselected rounds don't
-/// leave holes in the timeline.
-struct Chapter {
-    title: String,
-    start_frame: u64,
-    end_frame: u64,
-}
-
-/// Backslash-escape the characters the ffmetadata format treats
-/// specially in values ('=', ';', '#', '\' and newline).
-fn escape_ffmetadata(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        if matches!(c, '=' | ';' | '#' | '\\' | '\n') {
-            out.push('\\');
-        }
-        out.push(c);
-    }
-    out
-}
-
-/// Write the chapter list as an ffmetadata file for the mux step.
-/// TIMEBASE is the GBA frame clock (280896 cycles/frame at 2^24 Hz —
-/// the reciprocal of the encoder's declared framerate), so START/END
-/// are exact output frame indices with no rounding through seconds.
-fn write_chapters_file(chapters: &[Chapter]) -> anyhow::Result<tempfile::NamedTempFile> {
-    let mut file = tempfile::NamedTempFile::new()?;
-    let mut buf = String::from(";FFMETADATA1\n");
-    for chapter in chapters {
-        buf.push_str("[CHAPTER]\nTIMEBASE=280896/16777216\n");
-        buf.push_str(&format!("START={}\n", chapter.start_frame));
-        buf.push_str(&format!("END={}\n", chapter.end_frame));
-        buf.push_str(&format!("title={}\n", escape_ffmetadata(&chapter.title)));
-    }
-    file.write_all(buf.as_bytes())?;
-    file.flush()?;
-    Ok(file)
-}
-
-/// The ffmpeg leg of an export: one video encoder + N audio encoders
-/// (one per track), each writing to its own temp file, muxed into the
-/// final container once every stream is done.
-struct EncodePipeline {
-    video: FfmpegChild,
-    video_output: tempfile::NamedTempFile,
-    audios: Vec<(FfmpegChild, tempfile::NamedTempFile)>,
-}
-
-impl EncodePipeline {
-    /// Spawn the encoder children. `width_screens` is the output width
-    /// in GBA screens (1 = one-sided, 2 = side-by-side).
-    fn spawn(
-        settings: &Settings,
-        canceller: &Canceller,
-        width_screens: usize,
-        audio_tracks: usize,
-    ) -> anyhow::Result<Self> {
-        let video_output = tempfile::NamedTempFile::new()?;
-        let video = make_video_ffmpeg(
-            &settings.ffmpeg,
-            video_output.path(),
-            mgba::gba::SCREEN_WIDTH as usize * width_screens,
-            mgba::gba::SCREEN_HEIGHT as usize,
-            &split_flags(&settings.ffmpeg_video_flags)?,
-            canceller,
-        )?;
-        let audios = (0..audio_tracks)
-            .map(|_| {
-                let output = tempfile::NamedTempFile::new()?;
-                let child = make_audio_ffmpeg(
-                    &settings.ffmpeg,
-                    output.path(),
-                    &split_flags(&settings.ffmpeg_audio_flags)?,
-                    canceller,
-                )?;
-                Ok((child, output))
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        Ok(Self {
-            video,
-            video_output,
-            audios,
-        })
-    }
-
-    fn write_video(&mut self, frame: &[u8]) -> std::io::Result<()> {
-        self.video.stdin().write_all(frame)
-    }
-
-    /// Write one run of interleaved samples to audio track `track` as
-    /// s16le bytes (the format the audio child was spawned to read).
-    fn write_audio(&mut self, track: usize, samples: &[i16]) -> std::io::Result<()> {
-        let bytes: Vec<u8> = samples.iter().flat_map(|s| s.to_le_bytes()).collect();
-        self.audios[track].0.stdin().write_all(&bytes)
-    }
-
-    /// Close every encoder's stdin (EOF makes them finish encoding),
-    /// wait for each, then mux the encoded streams into `output_path`
-    /// with the audio tracks in spawn order and one chapter per entry
-    /// of `chapters`.
-    fn finish(
-        self,
-        settings: &Settings,
-        canceller: &Canceller,
-        output_path: &std::path::Path,
-        chapters: &[Chapter],
-    ) -> anyhow::Result<()> {
-        let Self {
-            mut video,
-            video_output,
-            audios,
-        } = self;
-        video.close_stdin();
-        video.wait()?;
-        let mut audio_outputs = Vec::with_capacity(audios.len());
-        for (mut child, output) in audios {
-            child.close_stdin();
-            child.wait()?;
-            audio_outputs.push(output);
-        }
-        let chapters_file = if chapters.is_empty() {
-            None
-        } else {
-            Some(write_chapters_file(chapters)?)
-        };
-        let mux_child = make_mux_ffmpeg(
-            &settings.ffmpeg,
-            output_path,
-            video_output.path(),
-            &audio_outputs.iter().map(|o| o.path()).collect::<Vec<_>>(),
-            chapters_file.as_ref().map(|f| f.path()),
-            &split_flags(&settings.ffmpeg_mux_flags)?,
-            canceller,
-        )?;
-        mux_child.wait()?;
-        Ok(())
     }
 }
 
@@ -516,9 +170,7 @@ pub fn export(
     progress_callback: impl Fn(usize, usize),
     twosided: bool,
 ) -> anyhow::Result<()> {
-    if canceller.is_cancelled() {
-        anyhow::bail!("cancelled");
-    }
+    canceller.check()?;
     anyhow::ensure!(local_player < 2, "bad local player index");
     let last_selected = rounds_mask.iter().rposition(|&s| s);
 
@@ -526,9 +178,15 @@ pub fn export(
     let mut vbuf = image::RgbaImage::new(w, h);
     let mut composed_vbuf = image::RgbaImage::new(w * 2, h);
     let (width_screens, audio_tracks) = if twosided { (2, 2) } else { (1, 1) };
-    let mut pipeline = EncodePipeline::spawn(settings, canceller, width_screens, audio_tracks)?;
 
-    // Boot + prime. This is ffmpeg-free but bounded (~a few hundred
+    // Encoders first: a bad ffmpeg or an impossible codec pairing should
+    // fail before a re-simulation runs.
+    let encoder_settings = settings.encoder_settings(width_screens, audio_tracks);
+    let backend = encoder_facade::FfmpegBackend::new(&encoder_settings, settings.ffmpeg.clone(), canceller)?;
+    let mut session = encoder_facade::Session::new(backend, encoder_settings)?;
+    let mut output = encoder_facade::Output::new(std::fs::File::create(output_path)?);
+
+    // Boot + prime. This is encoder-free but bounded (~a few hundred
     // ticks), so a cancel lands at the next loop check.
     let lifecycle = tango_match::telemetry::LifecycleSink::new();
     let mut pb = tango_match::playback::Playback::new(config, Arc::new(inputs.to_vec()), &lifecycle)?;
@@ -584,9 +242,7 @@ pub fn export(
         .min(pb.total() as usize)
         .saturating_sub(progress_base);
     while pb.step() {
-        if canceller.is_cancelled() {
-            anyhow::bail!("cancelled");
-        }
+        canceller.check()?;
         let tick = pb.cursor();
         let cur_round = clip.round_marks.partition_point(|&m| m <= tick);
         if tick > clip.end || last_selected.is_none_or(|last| cur_round > last) {
@@ -632,7 +288,7 @@ pub fn export(
                 frames
             };
             if should_write {
-                pipeline.write_audio(slot, &samples[..n * AUDIO_CHANNELS])?;
+                session.write_audio(slot, &samples[..n * AUDIO_CHANNELS])?;
                 if let Some(fb) = pair.video_buffer(core_idx) {
                     tango_dataview::rom::bgr555_to_rgba8(fb, &mut vbuf);
                     if twosided {
@@ -643,17 +299,29 @@ pub fn export(
         }
         if should_write {
             if twosided {
-                pipeline.write_video(composed_vbuf.as_bytes())?;
+                session.write_video(composed_vbuf.as_bytes())?;
             } else {
-                pipeline.write_video(&vbuf)?;
+                session.write_video(vbuf.as_bytes())?;
             }
             frames_written += 1;
         }
+        // Whatever the encoders have finished goes to the file as the
+        // export runs, so memory stays flat however long the replay is.
+        output.append(&session.take_output())?;
         progress_callback((tick as usize).saturating_sub(progress_base), progress_total);
     }
     if let Some(open) = open_chapter {
         close_chapter(&mut chapters, open, frames_written);
     }
 
-    pipeline.finish(settings, canceller, output_path, &chapters)
+    session.begin_finish()?;
+    let patches = loop {
+        canceller.check()?;
+        if let Some(patches) = session.poll_finish(&chapters)? {
+            break patches;
+        }
+    };
+    output.append(&session.take_output())?;
+    output.finish(&patches)?;
+    Ok(())
 }

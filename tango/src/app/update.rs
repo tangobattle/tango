@@ -762,10 +762,11 @@ impl App {
     /// video and dispatch `make_msg(picked_path)` into the replays-tab
     /// message stream — or NoOp on dismissal, keeping any open form
     /// untouched since no job ever started. `lossless` selects the
-    /// default extension/filter: .mkv for lossless (libx264rgb +
-    /// flac), .mp4 for scaled exports. `stem_suffix` is appended to
-    /// the replay's file stem (the clip flow names its file apart so
-    /// it doesn't collide with a whole-replay export's default).
+    /// default extension and filter, by asking the exporter which
+    /// container that setting writes rather than restating the mapping.
+    /// `stem_suffix` is appended to the replay's file stem (the clip
+    /// flow names its file apart so it doesn't collide with a
+    /// whole-replay export's default).
     pub(super) fn export_save_dialog(
         &self,
         replay_path: std::path::PathBuf,
@@ -773,8 +774,13 @@ impl App {
         stem_suffix: &str,
         make_msg: impl Fn(std::path::PathBuf) -> tabs::replays::Message + Send + Sync + 'static,
     ) -> iced::Task<Message> {
-        let ext = if lossless { "mkv" } else { "mp4" };
-        let filter_name = if lossless { "Matroska" } else { "MP4" };
+        let container = crate::replay_export::container(lossless);
+        let ext = container.extension();
+        let filter_name = match container {
+            encoder_facade::Container::Mp4 => "MP4",
+            encoder_facade::Container::Matroska => "Matroska",
+            encoder_facade::Container::WebM => "WebM",
+        };
         let stem = replay_path
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
@@ -914,17 +920,16 @@ impl App {
             .name("replay-export".to_string())
             .spawn(move || {
                 let ExportPrep { games, roms, replay } = prep;
-                // scale == 0 is the slider's lossless stop → libx264rgb
-                // -qp 0 (RGB-domain lossless); 1..=10 → libx264 + nearest
-                // upscale at that factor. `default_with_scale` builds the
-                // ffmpeg flags accordingly.
+                // scale == 0 is the slider's lossless stop (RGB-domain
+                // H.264, no upscale); 1..=10 is a lossy render at that
+                // nearest-neighbor upscale. `Settings::with_scale` picks
+                // the codecs and container to match.
                 let scale_arg = if user_settings.scale == 0 {
                     None
                 } else {
                     Some(user_settings.scale as usize)
                 };
-                let mut settings = crate::replay_export::Settings::default_with_scale(scale_arg);
-                settings.disable_bgm = user_settings.disable_bgm;
+                let settings = crate::replay_export::Settings::with_scale(scale_arg);
                 // Clone the sender into the callback. The original
                 // `progress_tx` stays alive on the thread scope until
                 // *after* `done_arc_thread` is set; otherwise the
