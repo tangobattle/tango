@@ -18,8 +18,8 @@
 //!
 //! [`Code`]: iced::keyboard::key::Code
 
+use gamepad_facade::GamepadId;
 use iced::keyboard::key::{Code, NativeCode, Physical};
-use sdl3_gamepad::GamepadId;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -217,7 +217,7 @@ pub enum AxisDir {
 }
 
 /// Gamepad buttons we expose for binding — the full set SDL3 can
-/// report, mapped from [`sdl3_gamepad::Button`] in [`Self::from_gamepad`].
+/// report, mapped from [`gamepad_facade::Button`] in [`Self::from_gamepad`].
 /// This mirror carries the serde representation of the on-disk config
 /// and the localized display labels, which the SDL-facing crate
 /// deliberately doesn't. Beyond the standard Xbox/PS face/shoulder/d-pad
@@ -258,8 +258,8 @@ pub enum GamepadButton {
 }
 
 impl GamepadButton {
-    pub fn from_gamepad(b: sdl3_gamepad::Button) -> Self {
-        use sdl3_gamepad::Button as B;
+    pub fn from_gamepad(b: gamepad_facade::Button) -> Self {
+        use gamepad_facade::Button as B;
         match b {
             B::South => Self::South,
             B::East => Self::East,
@@ -337,9 +337,9 @@ pub enum GamepadAxis {
 }
 
 impl GamepadAxis {
-    /// Map a raw [`sdl3_gamepad::Axis`] to our binding-facing axis.
-    pub fn from_gamepad(a: sdl3_gamepad::Axis) -> Self {
-        use sdl3_gamepad::Axis as A;
+    /// Map a raw [`gamepad_facade::Axis`] to our binding-facing axis.
+    pub fn from_gamepad(a: gamepad_facade::Axis) -> Self {
+        use gamepad_facade::Axis as A;
         match a {
             A::LeftX => Self::LeftStickX,
             A::LeftY => Self::LeftStickY,
@@ -513,7 +513,7 @@ pub enum MappedKey {
 /// [`crate::platform::input_capture::Input::to_event`]).
 ///
 /// Gamepad events are tagged with the source [`GamepadId`]: the
-/// [`sdl3_gamepad`] crate emits per-device now, and [`HeldState`]
+/// [`gamepad_facade`] crate emits per-device now, and [`HeldState`]
 /// coalesces every pad into one logical controller (see its docs).
 #[derive(Debug, Clone)]
 pub enum Event {
@@ -543,7 +543,7 @@ pub enum Event {
 /// gamepad. The session loop updates this on every key/gamepad
 /// event then asks the Mapping to compute the resulting joyflags.
 ///
-/// Gamepad state is tracked per device: the [`sdl3_gamepad`] crate
+/// Gamepad state is tracked per device: the [`gamepad_facade`] crate
 /// reports each pad's buttons/axes separately, and this type does the
 /// coalescing — a binding counts as held if *any* connected pad holds
 /// it. Keeping the pads separate is what lets one controller unplug

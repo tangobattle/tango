@@ -381,7 +381,7 @@ fn run_app() -> iced::Result {
     // SDL_Init + enumerating + opening every attached controller. sdl3
     // enforces "first thread to call init owns the pump", so this has to
     // happen on the iced/winit main thread.
-    sdl3_gamepad::init("Tango");
+    gamepad_facade::init("Tango");
 
     // Windows-only auto-fallback to ANGLE for old Intel iGPUs.
     // We enumerate `Backends::PRIMARY` (DX12 + Vulkan) up front

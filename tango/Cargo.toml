@@ -64,10 +64,11 @@ tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
 datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }
 bincode = "1"
 async-trait.workspace = true
-# Gamepad input via a gamepad-only SDL3 build. All the SDL glue and the
-# subsystem trim live in this crate; tango sees only its SDL-free
-# `Button`/`Axis`/`GamepadEvent` types.
-sdl3-gamepad = { git = "https://github.com/tangobattle/sdl3-gamepad" }
+# Gamepad input. The crate is a facade over a gamepad-only SDL3 build
+# natively and the browser Gamepad API on wasm; all the backend glue and
+# the SDL subsystem trim live there, and tango sees only its
+# backend-neutral `Button`/`Axis`/`GamepadEvent` types.
+gamepad-facade = { git = "https://github.com/tangobattle/gamepad-facade" }
 # Native audio output. The session side always mixes at 48 kHz; this
 # boundary negotiates the current default device's format and converts
 # to it, so a device swap can change sample rate without rebuilding the

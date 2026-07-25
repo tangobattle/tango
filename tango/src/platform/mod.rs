@@ -4,7 +4,7 @@
 //! * [`audio`]: CPAL audio output and session-stream routing.
 //! * [`input`] + [`input_capture`]: physical-input mapping for the
 //!   emulator sessions and the capture flow that rebinds it. Gamepad
-//!   input itself comes from the standalone [`sdl3_gamepad`] crate.
+//!   input itself comes from the standalone [`gamepad_facade`] crate.
 //! * [`video`]: the wgpu framebuffer widget and its upscale effects.
 //! * [`crash_log`]: the in-process half of native crash capture (the
 //!   supervisor half lives in `main`).

@@ -2034,6 +2034,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "gamepad-facade"
+version = "0.1.0"
+source = "git+https://github.com/tangobattle/gamepad-facade#cea6c2395fed6776d1e63fc7672ee200d7d316c0"
+dependencies = [
+ "js-sys",
+ "log",
+ "sdl3",
+ "sdl3-sys",
+ "send_wrapper",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5388,17 +5402,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sdl3-gamepad"
-version = "0.1.0"
-source = "git+https://github.com/tangobattle/sdl3-gamepad#31ba5cb50f2150f4ac608d44e641299ec9e4e1e7"
-dependencies = [
- "log",
- "sdl3",
- "sdl3-sys",
- "send_wrapper",
-]
-
-[[package]]
 name = "sdl3-image-src"
 version = "3.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6045,6 +6048,7 @@ dependencies = [
  "env_logger",
  "fluent-templates",
  "futures",
+ "gamepad-facade",
  "iced",
  "iced_graphics",
  "iced_tiny_skia",
@@ -6067,7 +6071,6 @@ dependencies = [
  "reqwest",
  "rfd",
  "rustls-pemfile",
- "sdl3-gamepad",
  "semver",
  "serde",
  "serde_json",
