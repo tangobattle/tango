@@ -35,6 +35,9 @@ pub enum Message {
     /// only.
     ShowIncompleteToggled(bool),
     Selected(std::path::PathBuf),
+    /// Unmask the selected replay's HP chart, which streamer mode otherwise
+    /// replaces with a placeholder.
+    RevealChart,
     /// Reveal the replay file in the OS file manager, selected.
     RevealReplay(std::path::PathBuf),
     Watch(std::path::PathBuf),
@@ -119,6 +122,11 @@ pub struct ReplaysState {
     /// they're incomplete once the lazy stats worker reports.
     pub show_incomplete: bool,
     pub selected: Option<std::path::PathBuf>,
+    /// The one replay whose HP chart the user has explicitly unmasked in
+    /// streamer mode. Held as a path rather than a flag so selecting anything
+    /// else re-masks on its own — revealing one match's chip history
+    /// shouldn't make the next replay clicked come up bare.
+    pub revealed: Option<std::path::PathBuf>,
     /// Cached OpenSave for the currently-selected replay's local side.
     /// Rebuilt by the App's `Selected` handler; view borrows read-only.
     pub loaded: Option<crate::selection::OpenSave>,
@@ -273,9 +281,17 @@ impl ReplaysState {
                 self.show_incomplete = v;
                 None
             }
+            Message::RevealChart => {
+                self.revealed = self.selected.clone();
+                None
+            }
             Message::Selected(p) => {
                 if self.selected.as_ref() != Some(&p) {
                     self.detail_enter.start(iced::time::Instant::now());
+                    // Moving off a replay re-masks it, so coming back to one
+                    // that was unmasked earlier doesn't put its chart straight
+                    // back on the stream.
+                    self.revealed = None;
                 }
                 self.selected = Some(p.clone());
                 self.refresh_loaded(scanners, config);
@@ -493,7 +509,16 @@ impl ReplaysState {
             .as_ref()
             .and_then(|sel_path| filtered.iter().find(|r| &r.path == sel_path))
         {
-            let detail = replay_detail(lang, r, &replays_path, self, scanners, netplay_active, downloads);
+            let detail = replay_detail(
+                lang,
+                r,
+                &replays_path,
+                self,
+                scanners,
+                netplay_active,
+                config.streamer_mode,
+                downloads,
+            );
             // Selection entrance: the detail panel rises up into
             // place.
             crate::ui::anim::slide_in_opt(
@@ -823,6 +848,36 @@ fn patch_download_line<'a>(
     }
 }
 
+/// What stands in for the HP chart while streamer mode has it masked: the
+/// reason and the button that unmasks it, on one row so the whole thing fits
+/// the height the chart would have taken. Same [`DETAIL_HP_GRAPH_H`] as the
+/// chart, so revealing swaps the pane's contents without moving the panes
+/// below it.
+fn streamer_masked_chart<'a>(lang: &'a LanguageIdentifier) -> Element<'a, Message> {
+    container(
+        row![
+            text(t!(lang, "replays-streamer-hidden"))
+                .size(TEXT_CAPTION)
+                .style(widgets::muted_text_style),
+            widgets::labeled_icon_button(
+                lucide_icons::Icon::Eye,
+                t!(lang, "replays-streamer-show"),
+                Message::RevealChart,
+                [4.0, 10.0],
+                widgets::neutral,
+            ),
+        ]
+        .spacing(12)
+        .align_y(Alignment::Center),
+    )
+    .center(Fill)
+    .height(Length::Fixed(DETAIL_HP_GRAPH_H))
+    .width(Fill)
+    .style(widgets::pane)
+    .into()
+}
+
+#[allow(clippy::too_many_arguments)]
 fn replay_detail<'a>(
     lang: &'a LanguageIdentifier,
     r: &replays::ScannedReplay,
@@ -830,6 +885,7 @@ fn replay_detail<'a>(
     state: &'a ReplaysState,
     scanners: &'a Scanners,
     netplay_active: bool,
+    streamer_mode: bool,
     downloads: &'a crate::library::patch::Downloads,
 ) -> Element<'a, Message> {
     // Playback needs a scanned ROM for the local-side game; without
@@ -1054,7 +1110,13 @@ fn replay_detail<'a>(
     // chart exists from the start (empty segments at their final widths,
     // seeded on selection) and the re-simulation draws into it live — no
     // placeholder state.
-    let hp_pane: Element<'_, Message> = {
+    //
+    // Streamer mode masks it instead: the trace reads out how a match went
+    // round by round, and the event lanes name every chip both players used.
+    // The mask is per-selection (see `ReplaysState::revealed`).
+    let hp_pane: Element<'_, Message> = if streamer_mode && state.revealed.as_ref() != Some(&r.path) {
+        streamer_masked_chart(lang)
+    } else {
         // The pane renders whether or not a chart exists yet (a missing
         // entry — e.g. a failed analysis — draws as an empty frame), so
         // the detail column's layout never shifts with analysis state.
