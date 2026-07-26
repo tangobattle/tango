@@ -13,10 +13,6 @@ members = [
     "tango-replay-renderer",
     "tango-savemodel",
     "tango-session",
-    # The browser host for tango-session. wasm32-only, so it stays out
-    # of default-members below — `cargo build` at the root would fail to
-    # compile it for the host target on purpose.
-    "tango-web-demo",
 ]
 # The per-game gamesupport crates auto-join this workspace as path
 # dependencies (they live under the workspace directory), which drags
