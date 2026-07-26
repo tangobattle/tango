@@ -32,9 +32,19 @@ pub enum NegotiationError {
 /// other packet is sent.
 pub async fn negotiate(sender: &mut Sender, receiver: &mut Receiver) -> Result<(), NegotiationError> {
     sender.send_hello().await.map_err(NegotiationError::Other)?;
-    let hello = match receiver.receive().await.map_err(|_| NegotiationError::ExpectedHello)? {
-        protocol::Packet::Hello(h) => h,
-        _ => return Err(NegotiationError::ExpectedHello),
+    let hello = match receiver.receive().await {
+        Ok(protocol::Packet::Hello(h)) => h,
+        Ok(other) => {
+            log::warn!("negotiate: first packet was {:?}, not a hello", std::mem::discriminant(&other));
+            return Err(NegotiationError::ExpectedHello);
+        }
+        // Losing this would leave "the peer didn't say hello" standing in
+        // for a dead transport, which is the same words for a different
+        // problem.
+        Err(e) => {
+            log::warn!("negotiate: no hello came back: {e}");
+            return Err(NegotiationError::ExpectedHello);
+        }
     };
     if hello.protocol_version < protocol::VERSION {
         return Err(NegotiationError::RemoteProtocolVersionTooOld);

@@ -603,7 +603,7 @@ dependencies = [
  "bitflags 2.11.1",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -3303,7 +3303,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -3596,7 +3596,7 @@ dependencies = [
 [[package]]
 name = "mgba"
 version = "4.0.32"
-source = "git+https://github.com/tangobattle/mgba-rs#04f79412ae46b2c4d0f427bd5f04039b851d5de6"
+source = "git+https://github.com/tangobattle/mgba-rs#3a4621b158adef0ca1d82cde79d54ea52a795587"
 dependencies = [
  "log",
  "mgba-sys",
@@ -3607,7 +3607,7 @@ dependencies = [
 [[package]]
 name = "mgba-rollback"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/mgba-rollback#75bcabd45ee7992f879c8aeeb2031375d39a0370"
+source = "git+https://github.com/tangobattle/mgba-rollback#6911e1870fe102ed9eba5d1a17d191eaa4898d7d"
 dependencies = [
  "crc32fast",
  "getgud",
@@ -3619,7 +3619,7 @@ dependencies = [
 [[package]]
 name = "mgba-sys"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/mgba-rs#04f79412ae46b2c4d0f427bd5f04039b851d5de6"
+source = "git+https://github.com/tangobattle/mgba-rs#3a4621b158adef0ca1d82cde79d54ea52a795587"
 dependencies = [
  "bindgen",
  "cc",
@@ -4983,7 +4983,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6c3320f9abac597dcbc668774ef006702672474aad53c6d596b62e487b40b1"
 dependencies = [
  "heck",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "multimap",
  "once_cell",
@@ -5003,7 +5003,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9120690fafc389a67ba3803df527d0ec9cbbc9cc45e4cc20b332996dfb672425"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "syn 2.0.106",

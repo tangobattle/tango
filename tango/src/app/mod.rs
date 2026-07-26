@@ -1369,15 +1369,15 @@ impl App {
                     }
                     return iced::Task::none();
                 }
-                // The active session may have mutated the user's
-                // save file on disk (single-player writes via
-                // mgba's RW VFile). When the session ends, drop it
-                // first so mgba's thread joins + flushes its file
-                // handle, then re-scan saves + force a OpenSave
-                // rebuild so the play tab's save view reflects the
-                // fresh on-disk SRAM. Detected by the active-slot
-                // transition (not the Close message) because Esc
-                // closes SP sessions inside the session update.
+                // The active session may have changed the user's
+                // save: a single-player session runs off an in-memory
+                // image that `SaveBackup` writes back. When the session
+                // ends, drop it first so that write lands, then re-scan
+                // saves + force a OpenSave rebuild so the play tab's
+                // save view reflects the fresh on-disk SRAM. Detected
+                // by the active-slot transition (not the Close message)
+                // because Esc closes SP sessions inside the session
+                // update.
                 let was_sp = self
                     .session
                     .active_as::<session::singleplayer::SinglePlayerSession>()
