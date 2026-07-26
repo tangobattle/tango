@@ -141,8 +141,15 @@ fn setup_sidebar_plate(theme: &iced::Theme) -> iced::widget::container::Style {
 }
 
 /// Width of the resize grip carved out of a setup drawer's inner
-/// edge — the strip that takes the drag.
+/// edge — the strip that takes the drag. Deliberately wider than what
+/// it paints ([`SETUP_GRIP_RULE_W`]): the edge has to be easy to hit,
+/// but a 6px band running the drawer's full height would read as a
+/// structural divider rather than a hairline.
 const SETUP_GRIP_W: f32 = 6.0;
+
+/// Painted width of the grip — a hairline hugging the pane's true
+/// inner edge, inside the wider hit band.
+const SETUP_GRIP_RULE_W: f32 = 1.0;
 
 /// The grip's hairline: a faint vertical rule down the drawer's inner
 /// edge. It's the only resting mark that the edge is draggable — the
@@ -150,7 +157,7 @@ const SETUP_GRIP_W: f32 = 6.0;
 fn setup_grip_plate(theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(iced::Background::Color(iced::Color {
-            a: 0.12,
+            a: 0.08,
             ..theme.palette().text
         })),
         ..Default::default()
@@ -256,12 +263,22 @@ fn setup_drawers_overlay<'a>(lang: &'a LanguageIdentifier, state: &'a State) -> 
         let body = container(panel).width(Fill).height(Fill).padding(style::PANE_PADDING);
         // The inner edge doubles as the drawer's resize grip — carved
         // out of the pane's own width, so a drag moves that edge while
-        // the outer one stays docked to the screen.
+        // the outer one stays docked to the screen. The band is the hit
+        // area; the hairline it paints sits at the far side of it, on
+        // the pane's actual edge.
+        let rule = container(iced::widget::Space::new().width(Fill).height(Fill))
+            .width(iced::Length::Fixed(SETUP_GRIP_RULE_W))
+            .height(Fill)
+            .style(setup_grip_plate);
         let grip = iced::widget::mouse_area(
-            container(iced::widget::Space::new().width(Fill).height(Fill))
+            container(rule)
                 .width(iced::Length::Fixed(SETUP_GRIP_W))
                 .height(Fill)
-                .style(setup_grip_plate),
+                .align_x(if on_left {
+                    iced::alignment::Horizontal::Right
+                } else {
+                    iced::alignment::Horizontal::Left
+                }),
         )
         .interaction(iced::mouse::Interaction::ResizingHorizontally)
         .on_press(Message::StartPaneResize(side, width));
