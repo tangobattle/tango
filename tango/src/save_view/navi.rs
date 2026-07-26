@@ -16,6 +16,11 @@ pub(super) fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSa
 /// (BN1–4) drop the emblem/name and just show the base HP. With `editing_hint`
 /// set, a small pencil sits by the name to signal the card is the change-navi
 /// button.
+///
+/// Nothing in here wraps. Squeezed narrow — a dragged-in PvP setup drawer is
+/// the usual way — the card runs off its own edge and its host clips it; a
+/// name breaking to a second line, or a stat label stacking over its value,
+/// would grow the card's height and shove the whole tab body down.
 fn navi_card_content<M: 'static>(
     lang: &LanguageIdentifier,
     loaded: &OpenSave,
@@ -83,9 +88,10 @@ fn navi_card_content<M: 'static>(
 
         // Emblem on the left, name stacked over its stats on the right. While
         // editing, a pencil glyph trails the name as the change-navi cue.
+        let name_text = text(name).size(style::TEXT_TITLE).wrapping(text::Wrapping::None);
         let name_el: Element<'static, M> = if editing_hint {
             row![
-                text(name).size(style::TEXT_TITLE),
+                name_text,
                 lucide_icons::Icon::Pencil
                     .widget()
                     .size(TEXT_CAPTION)
@@ -95,7 +101,7 @@ fn navi_card_content<M: 'static>(
             .align_y(Alignment::Center)
             .into()
         } else {
-            text(name).size(style::TEXT_TITLE).into()
+            name_text.into()
         };
         let info = column![name_el, stats].spacing(4);
         row![emblem, info].spacing(10).align_y(Alignment::Center).into()
@@ -140,8 +146,13 @@ pub(super) fn render_navi_strip<'a>(
     // A little horizontal breathing room for the actions cluster (none
     // vertically — the row centers it).
     let actions = container(actions).padding([0.0, 4.0]);
+    // The card takes the Fill slot (which is what pushed the actions to the
+    // right edge before) and clips: when the strip runs out of room the card
+    // is what gets cut off, so Edit / Play stay reachable no matter how far
+    // in the drawer is dragged. Its content doesn't wrap, so the cut lands
+    // mid-name or mid-stats rather than reflowing into a taller strip.
     container(
-        row![card, Space::new().width(Fill), actions]
+        row![container(card).width(Fill).clip(true), actions]
             .align_y(Alignment::Center)
             .width(Fill),
     )
@@ -152,11 +163,14 @@ pub(super) fn render_navi_strip<'a>(
 }
 
 /// One stat as a tight inline pair: a muted label with its value flush beside
-/// it (no stretched gap).
+/// it (no stretched gap). Neither half wraps — see [`navi_card_content`].
 fn stat_inline<M: 'static>(label: String, value: String) -> Element<'static, M> {
     row![
-        text(label).size(TEXT_CAPTION).style(muted_text_style),
-        text(value).size(style::TEXT_HEADING),
+        text(label)
+            .size(TEXT_CAPTION)
+            .style(muted_text_style)
+            .wrapping(text::Wrapping::None),
+        text(value).size(style::TEXT_HEADING).wrapping(text::Wrapping::None),
     ]
     .spacing(5)
     .align_y(Alignment::End)
