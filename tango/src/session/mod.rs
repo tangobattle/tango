@@ -71,19 +71,6 @@ impl MetricSample {
 /// How many frames of telemetry the sparklines retain (~3 s at 60 fps).
 const METRIC_HISTORY_LEN: usize = 180;
 
-/// The watched replay's cooked analysis rounds, drawn as the minimal
-/// hover strip above the playback transport's scrubber
-/// ([`crate::ui::widgets::hp_hover_strip`]). Cooked by the App when the
-/// playback session starts (from the Replays tab's already-cooked
-/// chart when available, else from the stats sidecar) and re-cooked
-/// live while a background analysis is still building this replay's
-/// stats — the App watches the tab's progress messages for `path`.
-/// Empty `rounds` (no stats at all) draw no strip.
-pub struct ReplayChart {
-    pub path: std::path::PathBuf,
-    pub rounds: Vec<crate::ui::widgets::CookedHpRound>,
-}
-
 /// PvP-only presentation state riding alongside the session engine:
 /// both sides' fully-loaded selections (rom + parsed save + derived
 /// assets) for the in-match setup drawers, plus each drawer's
@@ -434,10 +421,11 @@ pub struct State {
     /// session engine deliberately doesn't carry. Set alongside
     /// `active` when a PvP session installs, cleared on close.
     pub pvp_panes: Option<PvpPanes>,
-    /// Analysis chart for the active replay-playback session — see
-    /// [`ReplayChart`]. Set alongside `active` on watch, cleared on
-    /// close.
-    pub replay_chart: Option<ReplayChart>,
+    /// Path of the replay the active playback session is watching —
+    /// what the transport bar's clip export addresses (the export job
+    /// itself lives in the Replays tab, keyed by path). Set alongside
+    /// `active` on watch, cleared on close.
+    pub replay_path: Option<std::path::PathBuf>,
     /// Post-match results, `Some` from a PvP session's natural end until the
     /// user dismisses the results screen. Deliberately not cleared by
     /// [`close_session`](State::close_session): watching the recorded replay
@@ -543,7 +531,7 @@ impl Default for State {
             session_seq: 0,
             audio_binding: None,
             pvp_panes: None,
-            replay_chart: None,
+            replay_path: None,
             results: None,
             opponent_panel: anim::Overlay::new(false),
             self_panel: anim::Overlay::new(false),
@@ -777,7 +765,7 @@ impl State {
             let _ = drive.join();
         }
         self.pvp_panes = None;
-        self.replay_chart = None;
+        self.replay_path = None;
         self.current_frame = None;
         self.pip_frame = None;
         self.controls_hovered = false;

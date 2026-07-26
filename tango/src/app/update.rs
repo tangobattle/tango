@@ -596,7 +596,7 @@ impl App {
         let (stats_job, stats_task) = self.replay_stats_takeover(&p);
         match session::build_playback(&self.scanners, &self.config, &self.audio_binder, &p, stats_job) {
             Ok((s, audio, threads)) => {
-                self.session.replay_chart = Some(self.replay_chart_for(&p, &s));
+                self.session.replay_path = Some(p.clone());
                 self.session.active = Some(Box::new(s));
                 self.session.audio_binding = audio;
                 self.session.attach_drive_threads(threads);
@@ -637,30 +637,16 @@ impl App {
     }
 
     pub(super) fn update_replays(&mut self, msg: tabs::replays::Message) -> iced::Task<Message> {
-        // A replay being watched follows its analysis live: whether the
-        // stats come from the tab's worker or the session's own
-        // prefetcher, they arrive as these progress messages, and the
-        // strip re-cooks straight from the carried stats — no detour
-        // through the tab's chart cache, which only holds the selected
-        // replay (a results-screen watch may not be selected at all).
-        let stats_progress = match &msg {
-            tabs::replays::Message::HpStatsPartial(p, partial) => Some((p.clone(), Some(partial.clone()), false)),
-            tabs::replays::Message::HpStatsLoaded(p, stats) => Some((p.clone(), stats.clone(), true)),
+        // An analysis that ran to completion on its own — whether from
+        // the tab's worker or a playback session's prefetcher — reports
+        // in as this message; drop its cancel handles.
+        let finished = match &msg {
+            tabs::replays::Message::HpStatsLoaded(p, _) => Some(p.clone()),
             _ => None,
         };
         let effect = self.replays.update(msg, &self.scanners, &self.config);
-        if let Some((p, stats, is_final)) = stats_progress {
-            if is_final {
-                // Worker ran to completion on its own — drop its cancel
-                // handles.
-                self.replay_analysis_jobs.remove(&p);
-            }
-            if self.session.replay_chart.as_ref().is_some_and(|c| c.path == p) {
-                if let (Some(stats), Some(s)) = (&stats, self.session.active_as::<session::replay::ReplaySession>()) {
-                    let rounds = widgets::cook_hp_rounds(stats, [None, None], Some(&planned_spans(s))).0;
-                    self.session.replay_chart = Some(session::ReplayChart { path: p, rounds });
-                }
-            }
+        if let Some(p) = finished {
+            self.replay_analysis_jobs.remove(&p);
         }
         // Pure state mutations live in the tab module; only side
         // effects (clipboard, OS open, session host handoff,

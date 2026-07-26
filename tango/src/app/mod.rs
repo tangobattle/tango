@@ -325,31 +325,6 @@ fn open_path(path: impl AsRef<std::path::Path>) -> iced::Task<Message> {
 }
 
 impl App {
-    /// The analysis rounds to draw as a playback session's hover strip:
-    /// the Replays tab's already-cooked chart when it has one (that
-    /// covers an in-flight analysis too — the tab seeds a planned empty
-    /// frame and re-cooks on every progress message), else cooked fresh
-    /// from the stats sidecar, else empty (no stats — no strip). `s` is
-    /// the replay's session: the fresh cook reconstructs the planned
-    /// round spans from its boundary map, keeping the strip on the
-    /// scrubber's exact tick scale even when the tab never cooked this
-    /// replay (e.g. watched straight from the results screen).
-    fn replay_chart_for(&self, path: &std::path::Path, s: &session::replay::ReplaySession) -> session::ReplayChart {
-        if let Some(c) = self.replays.hp_charts.get(path) {
-            return session::ReplayChart {
-                path: path.to_path_buf(),
-                rounds: c.rounds.clone(),
-            };
-        }
-        let rounds = replays::load_match_stats(&self.config.cache_path(), &self.config.replays_path(), path)
-            .map(|stats| widgets::cook_hp_rounds(&stats, [None, None], Some(&planned_spans(s))).0)
-            .unwrap_or_default();
-        session::ReplayChart {
-            path: path.to_path_buf(),
-            rounds,
-        }
-    }
-
     /// Stats duty for a playback session about to start on `path`. With
     /// no readable stats sidecar, the session's prefetcher — which runs
     /// the very simulation the analysis needs anyway — takes the
@@ -391,19 +366,6 @@ impl App {
             }));
         (Some(job), iced::Task::stream(stream).map(Message::Replays))
     }
-}
-
-/// The planned per-round tick spans (= the recorded round lengths) of a
-/// playback session, reconstructed from its boundary map — the layout
-/// frame `widgets::cook_hp_rounds` needs so a chart cooked for the
-/// session's analysis strip shares the scrubber's exact tick scale.
-fn planned_spans(s: &session::replay::ReplaySession) -> Vec<u32> {
-    let boundaries = s.round_boundaries();
-    std::iter::once(0)
-        .chain(boundaries.iter().copied())
-        .zip(boundaries.iter().copied().chain(std::iter::once(s.total_ticks())))
-        .map(|(a, b)| b.saturating_sub(a))
-        .collect()
 }
 
 /// Reveal a file in the OS file manager with the file itself selected,
@@ -1292,7 +1254,7 @@ impl App {
                 // live there). The session handler itself is a no-op.
                 if let session::Message::Replay(session::view::replay::Message::ExportClip { start, end }) = &m {
                     let (start, end) = (*start, *end);
-                    let Some(path) = self.session.replay_chart.as_ref().map(|c| c.path.clone()) else {
+                    let Some(path) = self.session.replay_path.clone() else {
                         return iced::Task::none();
                     };
                     let (snapshot, round_marks) = self
@@ -1320,7 +1282,7 @@ impl App {
                 // own cancel handler — the job and its canceller live
                 // there, whichever surface started the export.
                 if let session::Message::Replay(session::view::replay::Message::CancelClipExport) = &m {
-                    if let Some(path) = self.session.replay_chart.as_ref().map(|c| c.path.clone()) {
+                    if let Some(path) = self.session.replay_path.clone() {
                         return self.update_replays(tabs::replays::Message::Export(
                             tabs::replays::ExportMessage::Cancel(path),
                         ));
@@ -1344,7 +1306,7 @@ impl App {
                             stats_job,
                         ) {
                             Ok((s, audio, threads)) => {
-                                self.session.replay_chart = Some(self.replay_chart_for(&path, &s));
+                                self.session.replay_path = Some(path.clone());
                                 self.session.active = Some(Box::new(s));
                                 self.session.audio_binding = audio;
                                 self.session.attach_drive_threads(threads);
@@ -1708,9 +1670,9 @@ impl App {
             // the job itself stays owned by the replays tab.
             let clip_job = self
                 .session
-                .replay_chart
+                .replay_path
                 .as_ref()
-                .and_then(|c| self.replays.job(&c.path))
+                .and_then(|p| self.replays.job(p))
                 .map(|j| session::view::ClipJob {
                     completed: j.completed,
                     total: j.total,

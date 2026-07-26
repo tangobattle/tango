@@ -104,8 +104,8 @@ pub struct MenuButton<'a, M> {
     menu_width: f32,
     /// Published whenever the dropdown opens (`true`) or closes
     /// (`false`) — lets the host pin surrounding chrome (e.g. the
-    /// replay transport bar and its hover strip) while the pane, which
-    /// can reach outside its host's hover region, is up.
+    /// replay transport bar) while the pane, which can reach outside
+    /// its host's hover region, is up.
     on_toggle: Option<Box<dyn Fn(bool) -> M + 'a>>,
 }
 

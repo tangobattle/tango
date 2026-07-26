@@ -169,30 +169,9 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
 /// Vertical clearance that floats a bottom-anchored popover just
 /// above the replay transport bar (bottom margin + strip padding
 /// + control height + row spacing to the collapsed clip-strip slot
-/// + row spacing + scrub bar + row spacing to the collapsed
-/// analysis-strip slot + plate border + gap). The clip strip's
+/// + row spacing + scrub bar + plate border + gap). The clip strip's
 /// expanded height rides on top via [`clip_lift`].
-const POPOVER_LIFT: f32 = 12.0 + 16.0 + 32.0 + 4.0 + 4.0 + 26.0 + 4.0 + 2.0 + 6.0;
-
-/// Height of the hover analysis strip above the scrubber — what the
-/// bar (and anything floating above it) grows by while the strip is
-/// expanded (its slot and row spacing are always in the layout; see
-/// `replay_bar` for why it collapses instead of unmounting).
-const HOVER_CHART_LIFT: f32 = 40.0;
-
-/// Extra clearance for bottom-anchored floats while the analysis strip
-/// is expanded above the scrubber (see `replay_bar`): the strip shows
-/// while the transport is engaged — cursor on the bar, or a drag in
-/// flight — and anything sitting just above the bar has to ride up
-/// with it or the taller plate slides underneath.
-fn hover_chart_lift(state: &State) -> f32 {
-    let engaged = state.controls_hovered || state.bar_menu_open || state.scrub.preview.is_some();
-    if engaged && state.replay_chart.as_ref().is_some_and(|c| !c.rounds.is_empty()) {
-        HOVER_CHART_LIFT
-    } else {
-        0.0
-    }
-}
+const POPOVER_LIFT: f32 = 12.0 + 16.0 + 32.0 + 4.0 + 4.0 + 26.0 + 2.0 + 6.0;
 
 /// Replay playback: emulator + click-to-play base, the transport bar,
 /// input display, PiP inset, and the scrub hover thumbnail.
@@ -472,40 +451,8 @@ fn replay_bar<'a>(
     )
     .gap(4);
 
-    // The analysis strip, YouTube-style: a minimal trace chart
-    // ([`widgets::hp_hover_strip`]) that expands directly above the
-    // scrubber while the cursor rests on the bar (the panel's hover
-    // pin) or a scrub drag is in flight. Both rows span the bar and
-    // map ticks linearly across it, so every trace point sits directly
-    // over the scrubber position that seeks to it. Passive: the
-    // scrubber below stays the seek surface and its handle is the
-    // position indicator.
-    //
-    // The strip is ALWAYS in the tree, collapsing to zero height
-    // rather than unmounting: iced diffs widget state by tree
-    // position, so mounting it on hover would shift the scrubber +
-    // controls subtree and reset their widget state mid-interaction —
-    // the speed menu's open dropdown (which reaches above the panel,
-    // where the cursor drops the hover pin) died exactly that way.
-    // Empty rounds = no stats at all (and none building), so the slot
-    // just never expands; an in-flight analysis has planned-width
-    // rounds from its first progress message, so it draws (and fills
-    // in live) from the start.
-    let bar_engaged = state.controls_hovered || state.bar_menu_open || state.scrub.preview.is_some();
-    let rounds = state
-        .replay_chart
-        .as_ref()
-        .map(|c| c.rounds.as_slice())
-        .unwrap_or_default();
-    let strip_h = if bar_engaged && !rounds.is_empty() {
-        HOVER_CHART_LIFT
-    } else {
-        0.0
-    };
-    let graph = crate::ui::widgets::hp_hover_strip::<Message>(rounds, strip_h);
-
-    // YouTube-style rows: [strip] / [scrubber, full width] / [play +
-    // readout + spacer + chips].
+    // YouTube-style rows: [scrubber, full width] / [play + readout +
+    // spacer + chips].
     let total = r.total_ticks().max(1);
     let scrub = scrubber::Scrubber::new(
         playhead_tick(r, state),
@@ -519,11 +466,11 @@ fn replay_bar<'a>(
     .clip_marks((mark_in, mark_out))
     .view();
 
-    // The clip strip's slot is always in the tree (collapsed to a
-    // sliver, not unmounted) for the same reason as the analysis
-    // strip above: iced diffs widget state by tree position, so
-    // mounting it on toggle would shift the controls subtree and
-    // reset its widget state mid-interaction.
+    // The clip strip's slot is always in the tree, collapsed to a
+    // sliver rather than unmounted: iced diffs widget state by tree
+    // position, so mounting it on toggle would shift the controls
+    // subtree and reset its widget state mid-interaction — the speed
+    // menu's open dropdown died exactly that way.
     let clip_row: Element<'a, Message> = if tools_open {
         clip_strip(lang, state, clip_job)
     } else {
@@ -542,7 +489,6 @@ fn replay_bar<'a>(
         .spacing(4)
         .padding([8, 8])
         .width(Fill)
-        .push(graph)
         .push(scrub)
         .push(clip_row)
         .push(controls)
@@ -555,7 +501,7 @@ fn replay_bar<'a>(
 const CLIP_ROW_H: f32 = 28.0;
 
 /// How much the expanded clip strip grows the bar — added to the
-/// bottom-anchored floats' lift alongside [`hover_chart_lift`].
+/// bottom-anchored floats' resting lift ([`POPOVER_LIFT`]).
 fn clip_lift(state: &State) -> f32 {
     if state.scrub.tools_open {
         CLIP_ROW_H
@@ -854,11 +800,9 @@ fn scrub_thumbnail_overlay(state: &State) -> Option<Element<'_, Message>> {
     const THUMB_H: f32 = 120.0;
     const CARD_PAD: f32 = 4.0;
     const EDGE_MARGIN: f32 = 8.0;
-    // A visible hover means the bar is engaged, which is exactly when
-    // the analysis strip expands above the scrubber — lift the card
-    // over it (and over the clip strip, when open) so they never
-    // overlap.
-    let lift = POPOVER_LIFT + hover_chart_lift(state) + clip_lift(state);
+    // Lift the card over the bar (and over the clip strip, when open)
+    // so they never overlap.
+    let lift = POPOVER_LIFT + clip_lift(state);
     Some(
         iced::widget::responsive(move |size| {
             let img = iced::widget::image(handle.clone())
@@ -1044,10 +988,9 @@ fn input_display_overlay<'a>(
         .padding(iced::Padding {
             top: 0.0,
             right: 12.0,
-            // Rides up with the analysis strip (and the clip strip)
-            // so the engaged bar's taller plate never slides
-            // underneath the pads.
-            bottom: POPOVER_LIFT + hover_chart_lift(state) + clip_lift(state),
+            // Rides up with the clip strip so the expanded bar's
+            // taller plate never slides underneath the pads.
+            bottom: POPOVER_LIFT + clip_lift(state),
             left: 12.0,
         })
         .into(),
