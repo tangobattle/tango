@@ -104,8 +104,6 @@ fn open_channels(mut pc: PeerConnection) -> Channels {
         // derived session_id. Leave the pair empty.
         local_dtls_fingerprint: Vec::new(),
         peer_dtls_fingerprint: Vec::new(),
-        // No signaling server to attest an identity on the direct path.
-        peer_client_cert_fingerprint: Vec::new(),
     }
 }
 

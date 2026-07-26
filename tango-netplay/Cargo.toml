@@ -30,7 +30,6 @@ rand_pcg.workspace = true
 semver.workspace = true
 sha3 = "0.10"
 subtle = "2"
-sha2.workspace = true
 thiserror.workspace = true
 # Sync primitives and `select!` only — the waiting and spawning here go
 # through tango-session's platform seam, so there's no runtime to ask

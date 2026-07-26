@@ -70,7 +70,6 @@ impl App {
                             link_code,
                             endpoint: self.config.matchmaking_endpoint.clone(),
                             use_relay: self.config.relay_mode.use_relay(),
-                            identity: self.identity.clone(),
                         },
                     ),
                     netplay::LinkIdent::Direct(role) => netplay::connect_direct(&mut self.netplay, role),

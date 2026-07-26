@@ -42,11 +42,6 @@ pub struct Connected {
     /// via `reconnect`).
     pub(crate) local_dtls_fingerprint: Vec<u8>,
     pub(crate) peer_dtls_fingerprint: Vec<u8>,
-    /// The peer's persistent install identity: SHA-256 of the mTLS client
-    /// certificate it presented on its signaling websocket, server-attested
-    /// (see [`tango_session::net::channel::Channels::peer_client_cert_fingerprint`]).
-    /// Empty on the direct path or when the peer presented none.
-    pub(crate) peer_client_cert_fingerprint: Vec<u8>,
 }
 
 impl std::fmt::Debug for Connected {
@@ -82,11 +77,6 @@ pub async fn connect(params: MatchmakingParams, cancel: CancellationToken, progr
                 tango_session::net::channel::control_channel(),
                 tango_session::net::channel::in_match_channel(),
             ],
-            // The persistent self-signed identity (threaded from app state),
-            // presented as the websocket's mTLS client certificate so the
-            // server can log our fingerprint. `None` when it couldn't be
-            // loaded — the dial still succeeds, just without a client cert.
-            params.identity,
         )
         .await
         .map_err(|e| Error::Other(format!("signaling: {e}")))?;
@@ -147,7 +137,6 @@ async fn negotiate(
         peer_conn,
         local_dtls_fingerprint,
         peer_dtls_fingerprint,
-        peer_client_cert_fingerprint,
     } = channels;
     // The channels were paired when the connection was bundled; the
     // handshake runs on the reliable one. The unreliable in-match channel
@@ -175,7 +164,6 @@ async fn negotiate(
         reconnect,
         local_dtls_fingerprint,
         peer_dtls_fingerprint,
-        peer_client_cert_fingerprint,
     })
 }
 

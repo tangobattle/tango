@@ -180,8 +180,7 @@ pub fn game_key(game: crate::library::rom::GameRef) -> String {
     format!("{family}/{variant}")
 }
 
-/// The platform config directory Tango stores `config.json` (and the
-/// persistent client identity — see [`crate::netplay::identity`]) under.
+/// The platform config directory Tango stores `config.json` under.
 /// `None` only when the OS user-dirs lookup fails, the same degraded
 /// case [`Config::load_or_create`] already tolerates.
 pub fn config_dir() -> Option<std::path::PathBuf> {

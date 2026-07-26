@@ -137,9 +137,6 @@ through the inverse transform.
 - **No picture-in-picture** on playback, and no clip export. The inset
   is a second screen's worth of pixels on a display that hasn't room
   for the first.
-- **No client identity.** A page can't attach an mTLS client certificate
-  to a `WebSocket`, so connections are anonymous to the matchmaking
-  server and the peer sees an empty fingerprint.
 - **No signaling-free direct connections.** They need a UDP socket of
   their own, which a browser won't give out.
 - **Priming blocks.** Booting a match primes both games to the link

@@ -201,12 +201,6 @@ pub struct PreMatchData {
     pub remote_settings: tango_net_protocol::control::Settings,
     pub link_code: String,
     pub match_type: (u8, u8),
-    /// Both sides' install identities (SHA-256 of the mTLS client certificate
-    /// presented to the matchmaking server), recorded into the replay
-    /// metadata: ours self-computed, the peer's server-attested. Empty on
-    /// direct connections or when a side presented no certificate.
-    pub local_client_cert_fingerprint: Vec<u8>,
-    pub peer_client_cert_fingerprint: Vec<u8>,
 }
 
 // The channel/peer-conn handles aren't `Debug`; a placeholder keeps any
@@ -1162,7 +1156,6 @@ fn build_replay_writer(
         // blind-setup inversion and still stores the
         // positive "reveal" sense.
         reveal_setup: !local_settings.blind_setup,
-        client_cert_fingerprint_sha256: pre_match.local_client_cert_fingerprint.clone(),
     });
     let remote_side = Some(tango_replay::metadata::Side {
         nickname: remote_settings.nickname.clone(),
@@ -1178,7 +1171,6 @@ fn build_replay_writer(
                 }),
         }),
         reveal_setup: !remote_settings.blind_setup,
-        client_cert_fingerprint_sha256: pre_match.peer_client_cert_fingerprint.clone(),
     });
     // The recorder is where perspective enters the format: everything in
     // the file is absolute player order, so seat the two sides (and the

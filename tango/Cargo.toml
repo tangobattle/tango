@@ -61,7 +61,6 @@ tango-replay = { path = "../tango-replay" }
 tango-replay-renderer = { path = "../tango-replay-renderer" }
 tango-savemodel = { path = "../tango-savemodel" }
 tango-session = { path = "../tango-session" }
-tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
 datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }
 bincode = "1"
 async-trait.workspace = true
@@ -91,15 +90,6 @@ rand_pcg.workspace = true
 sha3 = "0.10"
 zstd.workspace = true
 subtle = "2"
-# Persistent client identity (`identity.rs`): a self-signed certificate kept
-# in the config dir and presented as the matchmaking websocket's mTLS client
-# cert. rcgen mints it, rustls-pemfile reads it back from the PEM on disk as
-# the DER `tango_signaling::ClientIdentity` wants, sha2 derives the SHA-256
-# fingerprint we log. rcgen pinned to the rustls-0.20-era release so it reuses
-# the ring 0.16 build already in the graph.
-rcgen = "0.11"
-rustls-pemfile = "1"
-sha2.workspace = true
 bytemuck.workspace = true
 thiserror.workspace = true
 chrono = "0.4"

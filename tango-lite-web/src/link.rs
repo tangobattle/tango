@@ -10,12 +10,6 @@
 //! the one genuinely frontend-shaped step — turning a `PreMatchData`
 //! into a booted session, which on a desktop means a blocking thread and
 //! here means a yield and a few seconds of the main thread.
-//!
-//! What deliberately *isn't* here is the client identity the desktop
-//! presents as the matchmaking websocket's mTLS certificate: a page has
-//! no way to attach a client certificate to a `WebSocket`. Connections
-//! from here are anonymous to the server, and the peer sees an empty
-//! fingerprint.
 
 use std::cell::RefCell;
 
@@ -207,9 +201,6 @@ pub fn connect(link_code: String, nickname: String) {
         // Let ICE pick: direct when the peers can reach each other,
         // TURN when they can't.
         use_relay: None,
-        // A page can't present a client certificate on a WebSocket, so
-        // this connection is anonymous to the matchmaking server.
-        identity: None,
     };
     let (cancel, progress) = LINK.with(|l| {
         let mut link = l.borrow_mut();

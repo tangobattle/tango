@@ -49,25 +49,6 @@ use lobby::Command;
 // and documents them there).
 pub use tango_net_protocol::PROTOCOL_VERSION;
 
-/// Raw SHA-256 digest of a DER certificate — the fingerprint bytes the
-/// signaling server observes on the TLS handshake, and the replay
-/// metadata records per side.
-pub fn cert_fingerprint(cert_der: &[u8]) -> Vec<u8> {
-    use sha2::Digest as _;
-    sha2::Sha256::digest(cert_der).to_vec()
-}
-
-/// Lowercase hex of a raw digest — how every certificate fingerprint in
-/// this subsystem is logged and displayed.
-pub fn hex(bytes: &[u8]) -> String {
-    use std::fmt::Write as _;
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        let _ = write!(s, "{b:02x}");
-    }
-    s
-}
-
 /// Why a netplay session failed — typed so the UI can route each
 /// failure mode to its own localized copy instead of string-matching
 /// sentinel values out of a flat string.
@@ -164,10 +145,6 @@ pub struct MatchmakingParams {
     /// `None` = auto (ICE picks), `Some(true)` = relay only,
     /// `Some(false)` = never relay.
     pub use_relay: Option<bool>,
-    /// The persistent client identity, presented as the signaling
-    /// websocket's mTLS client certificate. `None` when none could be
-    /// loaded — dial without one.
-    pub identity: Option<tango_signaling::ClientIdentity>,
 }
 
 /// Something the connection reported. Opaque on purpose: a host's only
@@ -371,10 +348,6 @@ struct ConnectionHandles {
     /// Empty on the direct path.
     local_dtls_fingerprint: Vec<u8>,
     peer_dtls_fingerprint: Vec<u8>,
-    /// The peer's install identity: SHA-256 of the mTLS client certificate
-    /// it presented on its signaling websocket, server-attested. Recorded
-    /// into the replay metadata's remote side. Empty on the direct path.
-    peer_client_cert_fingerprint: Vec<u8>,
 }
 
 impl State {
@@ -555,15 +528,6 @@ impl State {
             // Cancelled / superseded — nothing to attach this to.
             _ => return,
         };
-        // The peer's install identity, as attested by the matchmaking
-        // server — the counterpart of the "client identity loaded" line
-        // logged for our own certificate at startup.
-        if !connected.peer_client_cert_fingerprint.is_empty() {
-            log::info!(
-                "peer client identity (sha256 fingerprint: {})",
-                hex(&connected.peer_client_cert_fingerprint)
-            );
-        }
         // Resolve how the transport actually flows for the lobby's ping
         // line. We read the selected ICE pair — a `typ relay` candidate on
         // either end means TURN. The signaling-free direct path only ever
@@ -595,7 +559,6 @@ impl State {
             reconnect: connected.reconnect,
             local_dtls_fingerprint: connected.local_dtls_fingerprint,
             peer_dtls_fingerprint: connected.peer_dtls_fingerprint,
-            peer_client_cert_fingerprint: connected.peer_client_cert_fingerprint,
         });
         let (cmd_tx, cmd_rx) = futures::channel::mpsc::unbounded();
         self.commands = Some(cmd_tx);
@@ -882,17 +845,6 @@ impl State {
         // handles' oneshot. It sends the receiver down it on cancel-exit;
         // `Link::bring_up` awaits it.
         self.cancel.cancel();
-        // Both install identities, for the replay metadata: ours recomputed
-        // from the certificate this connection actually presented (stashed at
-        // connect time), the peer's as the server attested it during
-        // signaling. Direct connections have neither — no signaling identity
-        // in play.
-        let local_client_cert_fingerprint = self
-            .matchmaking_reconnect
-            .as_ref()
-            .and_then(|mm| mm.identity.as_ref())
-            .map(|id| cert_fingerprint(&id.cert_der))
-            .unwrap_or_default();
         // Build the mid-match reconnect recipe. The direct path carries its
         // recipe on ConnectionHandles; the matchmaking path combines the params
         // stashed at connect time with a session_id derived from the shared RNG
@@ -910,7 +862,6 @@ impl State {
                         &handles.peer_dtls_fingerprint,
                     ),
                     use_relay: mm.use_relay,
-                    identity: mm.identity,
                 })
         };
         let pre_match = PreMatchData {
@@ -932,8 +883,6 @@ impl State {
             remote_settings,
             link_code,
             match_type: self.lobby.match_type,
-            local_client_cert_fingerprint,
-            peer_client_cert_fingerprint: handles.peer_client_cert_fingerprint,
         };
         Some(pre_match)
     }

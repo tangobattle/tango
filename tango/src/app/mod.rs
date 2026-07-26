@@ -15,7 +15,6 @@
 
 use crate::library::storage::Listing;
 use crate::library::{autoupdate, game, patch, replays, rom, save};
-use crate::netplay::identity;
 use crate::platform::{audio, input};
 use crate::ui::theme::theme_for;
 use crate::ui::{anim, widgets};
@@ -176,12 +175,6 @@ pub struct App {
     settings: tabs::settings::State,
     welcome: tabs::welcome::State,
     netplay: netplay::State,
-    /// Persistent self-signed client identity, loaded once at startup
-    /// (see [`crate::netplay::identity`]). Cloned into each matchmaking
-    /// `Connect` so the lobby websocket presents it as the mTLS client
-    /// certificate. `None` if it couldn't be loaded/created — netplay
-    /// then dials without a client cert.
-    identity: Option<tango_signaling::ClientIdentity>,
 
     /// Active emulator session (replay playback or single-player) plus
     /// the cached framebuffer Handle. While `session.is_active()`, the
@@ -499,8 +492,6 @@ impl App {
             play.adopt_link_code(code.clone());
         }
 
-        let identity = identity::load();
-
         let mut app = Self {
             config,
             config_writer: config::Writer::new(),
@@ -518,7 +509,6 @@ impl App {
             patches: PatchesState::default(),
             session: session::State::new(),
             netplay: netplay::State::new(),
-            identity,
             discord: discord::Client::new(),
             session_started_at: None,
             patch_autoupdater,

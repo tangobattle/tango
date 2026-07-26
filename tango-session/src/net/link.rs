@@ -121,7 +121,6 @@ pub enum ReconnectRecipe {
         endpoint: String,
         session_id: String,
         use_relay: Option<bool>,
-        identity: Option<tango_signaling::ClientIdentity>,
     },
 }
 
@@ -129,16 +128,6 @@ pub enum ReconnectRecipe {
 // its construction (and full security rationale) lives in the shared
 // protocol crate.
 pub use tango_net_protocol::derive::derive_reconnect_session_id;
-
-/// Lowercase hex of a fingerprint digest, for the reconnect log line.
-fn hex(bytes: &[u8]) -> String {
-    use std::fmt::Write as _;
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        let _ = write!(s, "{b:02x}");
-    }
-    s
-}
 
 /// Why [`Link::bring_up`] failed to assemble the transport bundle —
 /// both variants are the lobby loop failing to hand its control
@@ -436,18 +425,7 @@ impl Link {
             peer_conn: new_peer_conn,
             local_dtls_fingerprint,
             peer_dtls_fingerprint,
-            // Informational on a reconnect: the rendezvous is already bound to
-            // this match by the derived session_id. Logged so a hijack attempt
-            // (same session_id, different install) at least leaves a trace.
-            peer_client_cert_fingerprint,
         } = channels;
-
-        if !peer_client_cert_fingerprint.is_empty() {
-            log::info!(
-                "reconnected peer client identity (sha256 fingerprint: {})",
-                hex(&peer_client_cert_fingerprint)
-            );
-        }
 
         // Refresh the matchmaking rendezvous so the *next* drop re-dials a
         // fresh, unguessable `session_id` derived from this new connection's
@@ -533,7 +511,6 @@ impl Link {
                         endpoint,
                         session_id,
                         use_relay,
-                        identity,
                     } => {
                         let connecting = tango_signaling::connect(
                             endpoint,
@@ -541,7 +518,6 @@ impl Link {
                             *use_relay,
                             tango_net_protocol::PROTOCOL_VERSION,
                             vec![super::channel::control_channel(), super::channel::in_match_channel()],
-                            identity.clone(),
                         )
                         .await
                         .map_err(|e| std::io::Error::other(format!("signaling: {e}")))?;

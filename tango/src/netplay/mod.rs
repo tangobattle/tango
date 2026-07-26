@@ -11,13 +11,6 @@
 //!   update loop.
 //! * [`Delivery`]: iced routes messages by value and demands `Clone`;
 //!   what comes down that channel owns a live data channel and can't be.
-//!
-//! [`identity`] also stays here: it presents a client certificate as the
-//! matchmaking websocket's mTLS credential, which a browser cannot do at
-//! all — so a web frontend needs a different scheme rather than a port of
-//! this one.
-
-pub mod identity;
 
 pub use tango_netplay::{
     compat, randomcode, ConnectionKind, DirectRole, Error, Event, Incoming, LinkIdent, LobbyState, MatchmakingParams,
