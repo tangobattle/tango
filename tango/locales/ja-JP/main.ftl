@@ -138,7 +138,6 @@ session-results-done = 完了
 
 # Save view sub-tabs
 save-tab-cover = カバー
-save-tab-navi = ナビ
 save-tab-folder = フォルダ
 save-tab-patch-cards = パッチカード
 save-tab-auto-battle-data = オートバトルデータ

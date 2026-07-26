@@ -105,7 +105,6 @@ settings-ui-scale = Escala de interfaz
 settings-fractional-scaling = Escalado fraccional
 settings-hide-emulator-border = Ocultar borde del emulador
 save-tab-cover = Cubierta
-save-tab-navi = Navi
 save-tab-folder = Folder
 save-tab-patch-cards = Patch Cards
 save-tab-auto-battle-data = Auto Battle Data

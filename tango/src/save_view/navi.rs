@@ -1,15 +1,6 @@
 use super::*;
 use sweeten::widget::{column, row};
 
-pub(super) fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave) -> Element<'static, M> {
-    container(navi_card_content::<M>(lang, loaded, false))
-        .width(Fill)
-        .align_x(Alignment::Center)
-        .padding(crate::ui::style::PANE_PADDING)
-        .style(crate::ui::widgets::pane)
-        .into()
-}
-
 /// The navi card's inner content (no pane wrapper): emblem on the left, the
 /// navi's name stacked over its stats on the right — base max HP and, where the
 /// game exposes them (BN6), the live MegaBuster levels. The navi-less games
@@ -175,29 +166,6 @@ fn stat_inline<M: 'static>(label: String, value: String) -> Element<'static, M> 
     .spacing(5)
     .align_y(Alignment::End)
     .into()
-}
-
-/// The Navi tab as text: the equipped navi's name (for games with a link-navi
-/// roster) and its base max HP. Every game has a navi with HP, so this always
-/// returns something.
-pub(crate) fn navi_as_text(lang: &LanguageIdentifier, loaded: &OpenSave) -> Option<String> {
-    let assets = loaded.assets.as_ref();
-    let navi = loaded.save.view_navi()?;
-    let mut out = String::new();
-    // Only a real roster navi (BN5/BN6/EXE4.5) has a name; BN1–4 report a
-    // placeholder the ROM has no entry for, so they lead straight with the HP.
-    if assets.navi(navi.navi()).is_some() {
-        let name = assets
-            .navi(navi.navi())
-            .and_then(|n| n.name())
-            .unwrap_or_else(|| format!("#{}", navi.navi()));
-        out.push_str(&name);
-        out.push('\n');
-    }
-    out.push_str(&t!(lang, "navi-base-hp"));
-    out.push('\t');
-    out.push_str(&navi.max_hp(assets).to_string());
-    Some(out)
 }
 
 /// The Navi editor: a grid of the game's navis, each on its own

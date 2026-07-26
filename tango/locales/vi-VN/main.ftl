@@ -105,7 +105,6 @@ settings-ui-scale = Tỉ lệ giao diện
 settings-fractional-scaling = Tỉ lệ phân số
 settings-hide-emulator-border = Ẩn viền giả lập
 save-tab-cover = Cover
-save-tab-navi = Navi
 save-tab-folder = Folder
 save-tab-patch-cards = Patch Cards
 save-tab-auto-battle-data = Auto Battle Data

@@ -325,7 +325,7 @@ impl ReplaysState {
                 // SaveViewTask (currently used for the scroll-to-top snap
                 // on a tab change). Edit/Play outcomes can't fire here:
                 // the replay save view renders read-only.
-                let (sv_task, outcome) = self.save_view.apply(&action, &config.language, self.loaded.as_ref());
+                let (sv_task, outcome) = self.save_view.apply(&action, self.loaded.as_ref());
                 match outcome {
                     Some(save_view::Outcome::CopyText(s)) => Some(Effect::CopyText(s)),
                     Some(save_view::Outcome::CopyImage(img)) => Some(Effect::CopyImage(img)),

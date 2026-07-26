@@ -105,7 +105,6 @@ settings-ui-scale = Масштаб интерфейса
 settings-fractional-scaling = Дробное масштабирование
 settings-hide-emulator-border = Скрыть рамку эмулятора
 save-tab-cover = Покрытие
-save-tab-navi = Нави
 save-tab-folder = Папка
 save-tab-patch-cards = Мод карты
 save-tab-auto-battle-data = Данные автобоя

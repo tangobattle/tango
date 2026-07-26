@@ -134,7 +134,6 @@ session-results-done = 完成
 
 # Save view sub-tabs
 save-tab-cover = 封面
-save-tab-navi = 领航员
 save-tab-navicust = 领航定制
 save-tab-folder = 卡组
 save-tab-patch-cards = 改造卡

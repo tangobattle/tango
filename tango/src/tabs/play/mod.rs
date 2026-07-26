@@ -371,7 +371,7 @@ impl State {
                 // back what's left for the App: staged edits, clipboard
                 // copies, launches. Everything else flows through as a
                 // generic save-view-internal task.
-                let (sv_task, outcome) = self.save_view.apply(&action, &config.language, loaded);
+                let (sv_task, outcome) = self.save_view.apply(&action, loaded);
                 match outcome {
                     Some(save_view::Outcome::Edit(edit)) => Some(Effect::Edit(edit)),
                     Some(save_view::Outcome::CopyText(s)) => Some(Effect::CopyText(s)),

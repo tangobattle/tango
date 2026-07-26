@@ -24,7 +24,6 @@ pub(crate) mod patch_cards;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tab {
     Cover,
-    Navi,
     Navicust,
     Folder,
     PatchCards,
@@ -259,7 +258,6 @@ pub fn render<M: 'static>(
 ) -> Element<'static, M> {
     match tab {
         Tab::Cover => cover::render_cover(lang, loaded),
-        Tab::Navi => navi::render_navi(lang, loaded),
         Tab::Navicust => navicust::render_navicust_tab(lang, loaded),
         Tab::Folder => folder::render_folder(lang, loaded, opts.folder_grouped),
         Tab::PatchCards => patch_cards::render_patch_cards(lang, loaded),
@@ -272,7 +270,6 @@ fn tab_icon(tab: Tab) -> lucide_icons::Icon {
     use lucide_icons::Icon;
     match tab {
         Tab::Cover => Icon::Eye,
-        Tab::Navi => Icon::Bot,
         Tab::Navicust => Icon::Puzzle,
         Tab::Folder => Icon::Files,
         Tab::PatchCards => Icon::CreditCard,
@@ -334,10 +331,11 @@ pub struct State {
     /// while the user flips between editor tabs.
     pub edit_anim: crate::ui::anim::Transition,
     /// Show/hide transition for the navi picker over the [tab strip + body]
-    /// region. Driven in lockstep with `active_tab == Some(Tab::Navi)` as the
-    /// change-navi card toggles it; the incoming side (the picker on open, the
-    /// tab strip + body on dismiss) slides up into place — a plain vertical
-    /// slide, matching every other screen/tab transition (no fade).
+    /// region, and the authority on whether the picker is open at all — the
+    /// change-navi card toggles it, and `active_tab` stays put underneath (the
+    /// picker isn't a tab). The incoming side (the picker on open, the tab
+    /// strip + body on dismiss) slides up into place — a plain vertical slide,
+    /// matching every other screen/tab transition (no fade).
     pub navi_select: crate::ui::anim::Transition,
     /// Horizontal scroll offset of the sub-tab strip (relative, 0..=1). Tracked
     /// so the strip's edge fades only appear on the side that has hidden tabs.
@@ -564,12 +562,6 @@ impl State {
             // Dropping the whole EditState clears every editor's scratch.
             Action::SaveEdit | Action::CancelEdit => {
                 self.editing = None;
-                // The navi picker is reached by parking `active_tab` on the
-                // tab-less `Tab::Navi`; once editing ends there's nothing to
-                // show for it, so fall back to the default tab.
-                if self.active_tab == Some(Tab::Navi) {
-                    self.active_tab = None;
-                }
                 // Returning read-only body rises in (mirroring
                 // `enter_edit`) while Save / Cancel slide back out.
                 let now = iced::time::Instant::now();
@@ -693,32 +685,22 @@ impl State {
                 self.auto_battle_data_sort = *s;
                 iced::Task::none()
             }
-            // Toggle the navi picker. Opening points the body at it (the picker
-            // slides up while the tab content drops); clicking the card again
-            // while it's open closes it, dropping back to the tab the user came
-            // from. The host opens the edit session on the way in — it needs
-            // `&OpenSave` to seed tag state, same as `EnterEdit`.
+            // Toggle the navi picker, which shows over the [tab strip + body]
+            // region: it slides up while the tab content drops, and clicking
+            // the card again drops it back to the tab underneath — `active_tab`
+            // never moves, the picker just covers it. The host opens the edit
+            // session on the way in — it needs `&OpenSave` to seed tag state,
+            // same as `EnterEdit`.
             Action::EnterEditNavi => {
                 let now = iced::time::Instant::now();
-                if self.active_tab == Some(Tab::Navi) {
-                    self.active_tab = self.prev_tab;
-                    self.navi_select.set(false, now);
-                } else {
-                    self.prev_tab = self.active_tab;
-                    self.active_tab = Some(Tab::Navi);
-                    self.navi_select.set(true, now);
-                }
+                self.navi_select.set(!self.navi_select.shown(), now);
                 iced::Task::none()
             }
-            // Picking a navi closes the picker: drop back to the tab the user
-            // was on when they opened it (still inside the edit session), the
-            // picker dropping away while the tab strip + body rise back in. The
-            // host stages the chosen navi via its own Effect.
+            // Picking a navi closes the picker (still inside the edit session):
+            // it drops away while the tab strip + body rise back in. The host
+            // stages the chosen navi via its own Effect.
             Action::SetNavi(_) => {
-                if self.active_tab == Some(Tab::Navi) {
-                    self.active_tab = self.prev_tab;
-                    self.navi_select.set(false, iced::time::Instant::now());
-                }
+                self.navi_select.set(false, iced::time::Instant::now());
                 iced::Task::none()
             }
             // EnterEdit needs `&OpenSave` (to seed tag state), and the
@@ -756,14 +738,9 @@ impl State {
     /// it into the [`Outcome`] the host must act on. `loaded` feeds the
     /// arms that read the save (copy rendering, edit-session seeding,
     /// drop-target resolution).
-    pub fn apply(
-        &mut self,
-        action: &Action,
-        lang: &unic_langid::LanguageIdentifier,
-        loaded: Option<&OpenSave>,
-    ) -> (iced::Task<Action>, Option<Outcome>) {
+    pub fn apply(&mut self, action: &Action, loaded: Option<&OpenSave>) -> (iced::Task<Action>, Option<Outcome>) {
         let task = self.fold(action);
-        let outcome = self.outcome(action, lang, loaded);
+        let outcome = self.outcome(action, loaded);
         (task, outcome)
     }
 
@@ -772,12 +749,7 @@ impl State {
     /// (staged tags, held part) that must stay aligned with the edit.
     /// `None` means the action was fully folded into view state; hosts
     /// forward [`fold`](Self::fold)'s task instead.
-    fn outcome(
-        &mut self,
-        action: &Action,
-        lang: &unic_langid::LanguageIdentifier,
-        loaded: Option<&OpenSave>,
-    ) -> Option<Outcome> {
+    fn outcome(&mut self, action: &Action, loaded: Option<&OpenSave>) -> Option<Outcome> {
         use tango_savemodel::edit::{
             AutoBattleDataEdit, ChipEdit, Edit, NaviEdit, NavicustEdit, PatchCard4Edit, PatchCard56Edit,
         };
@@ -788,7 +760,7 @@ impl State {
                 };
                 // Only a copy that actually produced text earns the
                 // "Copied!" flash.
-                let text = loaded.and_then(|l| tab_as_text(lang, *tab, l, opts))?;
+                let text = loaded.and_then(|l| tab_as_text(*tab, l, opts))?;
                 crate::ui::copy_feedback::flash(&copy_flash_key(*tab, false));
                 Some(Outcome::CopyText(text))
             }
@@ -1344,7 +1316,6 @@ pub fn view<'a>(
     for tab in &available {
         let label = match tab {
             Tab::Cover => t!(lang, "save-tab-cover"),
-            Tab::Navi => t!(lang, "save-tab-navi"),
             Tab::Navicust => t!(lang, "save-tab-navicust"),
             Tab::Folder => t!(lang, "save-tab-folder"),
             Tab::PatchCards => t!(lang, "save-tab-patch-cards"),
@@ -1433,8 +1404,8 @@ pub fn view<'a>(
     let tab_pane = container(tab_row.padding([4, 8])).width(Fill).style(widgets::pane);
 
     // The navi picker shows over the [tab strip + body] region, reached via the
-    // header's change-navi card (which parks `active_tab` on the tab-less
-    // `Tab::Navi`). `navi_select` tracks it while the navi is editable; the
+    // header's change-navi card. It isn't a tab — `navi_select` alone says
+    // whether it's up, and `active_tab` stays on whatever it's covering; the
     // incoming side slides up into place on open/dismiss — a plain vertical
     // slide like every tab/screen transition. The equipped navi stays visible in
     // the header above throughout.
@@ -1581,7 +1552,6 @@ fn extra_kinds(tab: Tab) -> Vec<ExtraKind> {
         Tab::Folder => vec![ExtraKind::FolderGroup, ExtraKind::Copy],
         // The navi card copies as text only; the navicust grid also
         // copies as an image.
-        Tab::Navi => vec![ExtraKind::Copy],
         Tab::Navicust => vec![ExtraKind::CopyImage, ExtraKind::Copy],
         Tab::PatchCards | Tab::AutoBattleData => vec![ExtraKind::Copy],
         Tab::Cover => vec![],
@@ -1632,12 +1602,11 @@ fn render_extra<'a>(lang: &'a LanguageIdentifier, state: &'a State, tab: Tab, ki
 
 /// A save-view tab as TSV text for clipboard "copy as text", or `None` for
 /// tabs without a text form. The Folder branch honors `opts.folder_grouped`.
-pub fn tab_as_text(lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
+pub fn tab_as_text(tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
     match tab {
         Tab::Folder => folder::as_text(loaded, opts),
         Tab::PatchCards => patch_cards::as_text(loaded),
         Tab::AutoBattleData => abd::as_text(loaded),
-        Tab::Navi => navi::navi_as_text(lang, loaded),
         Tab::Navicust => navicust::navicust_as_text(loaded),
         Tab::Cover => None,
     }
