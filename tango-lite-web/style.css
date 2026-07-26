@@ -466,6 +466,46 @@ button.chip {
     accent-color: var(--accent);
 }
 
+/* Playback transport. Along the bottom, where the pad isn't: a replay
+ * takes no input, so the thumbs are free. */
+.transport {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(10px + var(--safe-bottom));
+    z-index: 7;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: min(560px, calc(100% - 24px));
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(21, 25, 34, 0.78);
+    border: 1px solid var(--line);
+}
+
+.transport .chip {
+    background: none;
+    border: 0;
+    padding: 0 4px;
+    flex: none;
+}
+
+.transport button.chip {
+    min-width: 34px;
+    justify-content: center;
+    font-size: 14px;
+}
+
+.scrub {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+    min-height: 0;
+    accent-color: var(--accent);
+    touch-action: none;
+}
+
 /* Inert everywhere; a coarse-pointer screen (a phone or a tablet) turns
  * the pad on over the stage. A mouse gets the keyboard instead. */
 .touch-controls {

@@ -3,13 +3,15 @@
 Tango, phone-sized, in a browser tab. Load a ROM, play it, or dial a
 link code and play someone — patches included.
 
-Everything below the UI is the workspace's own crates, unmodified.
+Everything below the UI is the workspace's own crates.
 [`tango-session`] was written so a session is *driven* by its host
 rather than running itself, [`tango-netplay`] so that bringing a
 connection up is one linear future and the lobby is a plain state
 machine, and [`tango-library`] so that all of its I/O goes through two
 traits a frontend supplies. This crate is the browser end of those three
-contracts and nothing else.
+contracts and little else — the one thing it needed adding was
+`tango_session::pvp::ReplayStore`, because recording a match was the
+last place the live session still assumed a filesystem.
 
 ## What it is
 
@@ -18,12 +20,14 @@ contracts and nothing else.
 | Play | Single-player, and live rollback netplay over the matchmaking server |
 | Games | All seven families, same registry and the same `gamesupport-*` features as the desktop |
 | Patches | The real `.tangopatch` catalog: index, install, apply, and auto-fetch what your opponent brings |
+| Replays | Every match records itself; play back, scrub, import and export |
 | Storage | ROMs, saves, patch packages and config, kept on the device |
 | Input | gbaroll's slide-aware touch overlay, plus a keyboard |
 
-Deliberately absent: the ROM scanner, replays, the save editor, the
-results screen, Discord presence, localization. Lite means the two
-things you'd open a phone for.
+Deliberately absent: the ROM scanner, the save editor, the results
+screen, Discord presence, and any localization of the app's own words —
+though the *games* are named properly, because every family already
+ships Fluent fragments and it would be silly not to.
 
 ## Building
 
@@ -58,10 +62,13 @@ is used if present — the unoptimised module is ~14MB, most of it mgba.
       audio.rs     an AudioWorklet, fed by a push pump
       input.rs     touch + keyboard, folded into one joyflag word
     link.rs      netplay: spawn the connect future, pump the lobby, hand off
+    recording.rs a match's ReplayStore: buffer, then one atomic put
+    playback.rs  opening a recording: resolve its ROMs, boot, hand to the pump
+    lang.rs      which locale the game names come out in
     app.rs       the shell, and the one place polling becomes reactivity
-    ui/          the three screens, and the touch overlay
+    ui/          the four screens, and the touch overlay
 
-Five decisions are worth knowing about before changing anything.
+Six decisions are worth knowing about before changing anything.
 
 **The engine, the library and the netplay state machine live in
 thread-locals, not signals.** None of them is `Clone`, the engine is
@@ -101,6 +108,14 @@ inconvenience: it backs the peer's input queue up until their supervisor
 gives the link up for dead. `pump_now` advances by elapsed wall clock,
 so three uncoordinated callers drive one loop correctly.
 
+**A recording is bytes to the host, not a file.** `ReplayStore::create`
+names a recording and hands back somewhere to write it; the desktop
+opens a file, and `recording.rs` buffers it and does one atomic put when
+the match lets go. That release is the only moment available — the
+writer is a `Box<dyn Write + Send>` held for the whole match, so there
+is no completion callback, but there is a `Drop`, and it runs on both
+the finished path and the abandoned one.
+
 **The pad is gbaroll's overlay, and the D-pad is one control rather than
 four buttons.** Where a finger lands inside its circle is the direction,
 a dead zone in the middle is neutral, and `pointermove` re-steers
@@ -115,8 +130,13 @@ through the inverse transform.
 
 ## Known gaps
 
-- **No replays.** There is no filesystem to record into; the writer
-  fails to open and the match runs without one.
+- **No match-stats sidecar.** The desktop caches a cooked
+  `MatchStats` next to each replay so its Replays tab doesn't
+  re-simulate; there is no results screen here to feed, so
+  `ReplayStore::root` returns `None` and nothing is written.
+- **No picture-in-picture** on playback, and no clip export. The inset
+  is a second screen's worth of pixels on a display that hasn't room
+  for the first.
 - **No client identity.** A page can't attach an mTLS client certificate
   to a `WebSocket`, so connections are anonymous to the matchmaking
   server and the peer sees an empty fingerprint.

@@ -68,6 +68,22 @@ impl Files {
         self.inner.borrow().values().map(|v| v.len() as u64).sum()
     }
 
+    /// Every path under `root`. `Storage::list` answers the same
+    /// question, but asynchronously and wrapped in a `Listing` for the
+    /// scanners' change detection — this is for callers that just want
+    /// the names.
+    pub fn paths_under(&self, root: &Path) -> Vec<PathBuf> {
+        let mut paths: Vec<PathBuf> = self
+            .inner
+            .borrow()
+            .keys()
+            .filter(|path| path.starts_with(root))
+            .cloned()
+            .collect();
+        paths.sort();
+        paths
+    }
+
     /// Push one path's current state to the mirror. Fire-and-forget: a
     /// failed write costs persistence across a reload, never the running
     /// session, so it is logged rather than surfaced.

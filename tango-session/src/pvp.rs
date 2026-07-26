@@ -218,6 +218,66 @@ impl std::fmt::Debug for PreMatchData {
     }
 }
 
+/// Where a match's recording goes.
+///
+/// The session composes the name — it encodes the timestamp, the
+/// matchup and which seat we were, and both peers derive their own —
+/// and hands over the bytes. What a name *refers to* is the host's:
+/// a file under the replays directory on a desktop, a row in an object
+/// store in a browser. This is the one place the live match assumed a
+/// filesystem, and a browser is the host that doesn't have one.
+pub trait ReplayStore: crate::platform::WasmNotSend + crate::platform::WasmNotSync {
+    /// Open a recording. `name` carries no extension and no directory.
+    fn create(&self, name: &str) -> std::io::Result<Recording>;
+
+    /// The directory recordings land in, if they land in one. `None`
+    /// for a host with no filesystem — which is also the host with no
+    /// match-stats sidecar to key against it.
+    fn root(&self) -> Option<&Path> {
+        None
+    }
+}
+
+/// An open recording: where the bytes go, and how to find it again.
+pub struct Recording {
+    /// `Send` because [`tango_replay::Writer`] holds it as
+    /// `Box<dyn Write + Send>`, which is what lets a desktop host move
+    /// a match onto a thread.
+    pub sink: Box<dyn std::io::Write + Send>,
+    /// How this recording is identified afterwards — the file's path
+    /// where there are files, and otherwise whatever key the host
+    /// filed it under. Surfaced as
+    /// [`PvpSession::replay_path`](PvpSession::replay_path).
+    pub key: std::path::PathBuf,
+}
+
+/// [`ReplayStore`] over a directory: the desktop's, and the behaviour
+/// the live match had built in before the trait existed.
+#[cfg(not(target_arch = "wasm32"))]
+pub struct DirReplayStore(pub std::path::PathBuf);
+
+#[cfg(not(target_arch = "wasm32"))]
+impl ReplayStore for DirReplayStore {
+    fn create(&self, name: &str) -> std::io::Result<Recording> {
+        std::fs::create_dir_all(&self.0)?;
+        let key = self.0.join(format!("{name}.{}", tango_replay::EXTENSION));
+        log::info!("pvp: opening replay file {}", key.display());
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&key)?;
+        Ok(Recording {
+            sink: Box::new(file),
+            key,
+        })
+    }
+
+    fn root(&self) -> Option<&Path> {
+        Some(&self.0)
+    }
+}
+
 /// Everything [`PvpSession::new`] needs, as named fields. Assembled by
 /// the app's `spawn_pvp` glue.
 pub struct PvpSessionArgs<'a> {
@@ -237,7 +297,13 @@ pub struct PvpSessionArgs<'a> {
     /// with or sent to the peer — sound-driver state never feeds battle
     /// logic.
     pub disable_bgm: bool,
-    pub replays_path: &'a Path,
+    /// Where the match is recorded, or `None` not to record it.
+    pub replays: Option<&'a dyn ReplayStore>,
+    /// Where the match-stats sidecar goes. Native-only: the cache is a
+    /// file keyed against the store's directory, and a host whose
+    /// [`ReplayStore`] has no [`root`](ReplayStore::root) has nowhere
+    /// to put one and nothing to key it by.
+    #[cfg(not(target_arch = "wasm32"))]
     pub cache_path: &'a Path,
     /// The host output rate the session's audio stream resamples to.
     pub sample_rate: u32,
@@ -263,10 +329,8 @@ impl PvpSession {
             pre_match,
             frame_delay,
             disable_bgm,
-            replays_path,
-            // Only the stats sidecar's path uses this, and only on a
-            // desktop — a browser has nowhere to write one.
-            #[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
+            replays,
+            #[cfg(not(target_arch = "wasm32"))]
             cache_path,
             sample_rate,
         } = args;
@@ -300,18 +364,21 @@ impl PvpSession {
 
         // Replay writer. Failing to open it shouldn't kill the
         // match — log and continue without recording.
-        let (replay_writer, replay_path) = match build_replay_writer(
-            replays_path,
-            &pre_match,
-            local_player_index,
-            local_save.as_ref(),
-            remote_save.as_ref(),
-        ) {
-            Ok((writer, path)) => (Some(writer), Some(path)),
-            Err(e) => {
-                log::warn!("pvp: replay writer open failed: {e}");
-                (None, None)
-            }
+        let (replay_writer, replay_path) = match replays {
+            None => (None, None),
+            Some(store) => match build_replay_writer(
+                store,
+                &pre_match,
+                local_player_index,
+                local_save.as_ref(),
+                remote_save.as_ref(),
+            ) {
+                Ok((writer, path)) => (Some(writer), Some(path)),
+                Err(e) => {
+                    log::warn!("pvp: replay writer open failed: {e}");
+                    (None, None)
+                }
+            },
         };
 
         // Assemble the peer link from the lobby handoff — this awaits the
@@ -397,10 +464,15 @@ impl PvpSession {
                 in_match: in_match.clone(),
                 replay_writer,
                 stats: stats.clone(),
+                // Keyed against the store's own directory, so a store
+                // that isn't one (a browser's) simply has no sidecar —
+                // which is also the only kind of host that has nowhere
+                // to write it.
                 #[cfg(not(target_arch = "wasm32"))]
                 stats_path: replay_path
                     .as_ref()
-                    .map(|p| crate::stats::stats_path(cache_path, replays_path, p)),
+                    .zip(replays.and_then(|store| store.root()))
+                    .map(|(path, root)| crate::stats::stats_path(cache_path, root, path)),
                 tps_counter: tps_counter.clone(),
                 screen: screen.clone(),
                 wake: wake.clone(),
@@ -1034,10 +1106,10 @@ fn spawn_supervisor(ctx: SupervisorContext) {
 /// along with the path it records to (surfaced on the session so the
 /// post-match results screen can offer playback). Everything the metadata
 /// needs lives on `pre_match` (settings, seed, match clock, link code).
-/// Filename format mirrors the legacy app:
-/// `YYYYMMDDhhmmss-<link_code>-<compat>-vs-<opponent>-p<idx>.tangoreplay`.
+/// Name format mirrors the legacy app:
+/// `YYYYMMDDhhmmss-<link_code>-<compat>-vs-<opponent>-p<idx>`.
 fn build_replay_writer(
-    replays_path: &Path,
+    store: &dyn ReplayStore,
     pre_match: &crate::pvp::PreMatchData,
     local_player_index: u8,
     local_save: &(dyn tango_dataview::save::Save + Send + Sync),
@@ -1046,7 +1118,6 @@ fn build_replay_writer(
     let link_code = &pre_match.link_code;
     let local_settings = &pre_match.local_settings;
     let remote_settings = &pre_match.remote_settings;
-    std::fs::create_dir_all(replays_path)?;
     let local_gi = local_settings
         .game_info
         .as_ref()
@@ -1071,14 +1142,7 @@ fn build_replay_writer(
         local_player_index + 1
     );
     let safe_name: String = raw_name.chars().filter(|c| !"/\\?%*:|\"<>. ".contains(*c)).collect();
-    let replay_filename = replays_path.join(format!("{safe_name}.tangoreplay"));
-    log::info!("pvp: opening replay file {}", replay_filename.display());
-
-    let file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(&replay_filename)?;
+    let Recording { sink, key } = store.create(&safe_name)?;
     let local_sram = local_save.to_sram_dump();
     let remote_sram = remote_save.to_sram_dump();
     let local_side = Some(tango_replay::metadata::Side {
@@ -1130,7 +1194,7 @@ fn build_replay_writer(
         // syscalls each time. The format already recovers truncated tails,
         // so a hard crash losing the buffered tail of an (already
         // incomplete) replay changes nothing; finish() flushes.
-        std::io::BufWriter::new(file),
+        std::io::BufWriter::new(sink),
         // SIO-engine stream: one continuous run of pair ticks.
         tango_replay::VERSION,
         local_player_index,
@@ -1150,7 +1214,7 @@ fn build_replay_writer(
         pre_match.rng_seed,
         [srams[0].as_slice(), srams[1].as_slice()],
     )?;
-    Ok((writer, replay_filename))
+    Ok((writer, key))
 }
 
 /// A match waiting to be booted.

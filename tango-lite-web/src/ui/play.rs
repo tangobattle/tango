@@ -46,7 +46,13 @@ pub fn Play(status: ReadSignal<Option<Status>>, onexit: EventHandler<()>) -> Ele
                     MatchHud { status: pvp.clone() }
                 }
             }
-            TouchControls {}
+            if let Some((playhead, total)) = status.as_ref().and_then(|s| s.playhead) {
+                Transport { playhead, total, paused: status.as_ref().is_some_and(|s| s.paused) }
+            } else {
+                // A replay takes no input, so it gets the transport
+                // instead of the pad rather than both.
+                TouchControls {}
+            }
             if pvp.is_some_and(|s| s.reconnecting) {
                 div { class: "overlay",
                     div { class: "box",
@@ -57,6 +63,47 @@ pub fn Play(status: ReadSignal<Option<Status>>, onexit: EventHandler<()>) -> Ele
             }
         }
     }
+}
+
+/// Playback transport: play/pause and a scrub bar.
+///
+/// Along the bottom rather than the top, because the touch pad is
+/// hidden during a replay — there is nothing to press — so the bottom
+/// of the screen is free and is where a thumb already is.
+#[component]
+fn Transport(playhead: u32, total: u32, paused: bool) -> Element {
+    rsx! {
+        div { class: "transport",
+            button {
+                class: "chip",
+                onpointerdown: move |_| crate::engine::set_paused(!paused),
+                if paused { "▶" } else { "❚❚" }
+            }
+            input {
+                r#type: "range",
+                class: "scrub",
+                min: "0",
+                max: "{total.saturating_sub(1)}",
+                value: "{playhead}",
+                // `oninput`, not `onchange`: a seek is a chase the
+                // engine slices across frames, so scrubbing shows where
+                // you are going as you drag.
+                oninput: move |event| {
+                    if let Ok(tick) = event.value().parse::<u32>() {
+                        crate::engine::seek_to(tick);
+                    }
+                },
+            }
+            span { class: "chip", "{seconds(playhead)} / {seconds(total)}" }
+        }
+    }
+}
+
+/// Ticks as mm:ss. A tick is one GBA frame, and the pair runs at the
+/// hardware's real rate, not a round 60.
+fn seconds(ticks: u32) -> String {
+    let total = (ticks as f32 / tango_session::pvp::EXPECTED_FPS) as u32;
+    format!("{}:{:02}", total / 60, total % 60)
 }
 
 #[component]

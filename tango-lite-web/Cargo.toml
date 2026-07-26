@@ -44,6 +44,8 @@ bytemuck.workspace = true
 futures.workspace = true
 log.workspace = true
 semver.workspace = true
+# Timestamps on the replays list.
+chrono = { version = "0.4", default-features = false, features = ["clock", "wasmbind"] }
 # Language tags, for matching the browser's locale against the ones the
 # game families ship Fluent fragments for.
 unic-langid.workspace = true
@@ -79,6 +81,7 @@ web-sys = { version = "0.3", features = [
     "File",
     "FileList",
     "Headers",
+    "HtmlAnchorElement",
     "HtmlAudioElement",
     "HtmlCanvasElement",
     "HtmlElement",
@@ -109,6 +112,7 @@ web-sys = { version = "0.3", features = [
     "Response",
     "Storage",
     "Url",
+    "VisibilityState",
     "Window",
     "Worker",
     "Worklet",
@@ -129,6 +133,7 @@ tango-gamesupport = { path = "../tango-gamesupport" }
 tango-library = { path = "../tango-library", default-features = false }
 tango-match = { path = "../tango-match" }
 tango-net-protocol = { path = "../tango-net-protocol" }
+tango-replay = { path = "../tango-replay" }
 tango-netplay = { path = "../tango-netplay" }
 tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"] }
 tango-session = { path = "../tango-session" }

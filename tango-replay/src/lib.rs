@@ -23,6 +23,11 @@ pub use protos::replay11::metadata;
 pub type Metadata = protos::replay11::Metadata;
 
 pub const HEADER: &[u8] = b"TOOT";
+
+/// The file extension recordings carry, without the dot. Named here
+/// rather than spelled out at each site so a recorder and a scanner
+/// can't disagree about it.
+pub const EXTENSION: &str = "tangoreplay";
 /// SIO-engine replays — the only readable schema. The input stream is
 /// one continuous run of pair ticks from session start, replayed by
 /// rebooting and re-priming an `mgba_rollback::Link` and feeding it

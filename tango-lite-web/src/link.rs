@@ -18,7 +18,6 @@
 //! fingerprint.
 
 use std::cell::RefCell;
-use std::path::Path;
 
 use futures::StreamExt as _;
 
@@ -393,11 +392,10 @@ async fn build(pre_match: tango_netplay::PreMatchData) -> Result<(), String> {
         pre_match,
         frame_delay: frame_delay(),
         disable_bgm: false,
-        // There is no filesystem to record into: the replay writer fails
-        // to open, logs it, and the match runs without a recording. The
-        // stats sidecar is compiled out on wasm entirely.
-        replays_path: Path::new("/replays"),
-        cache_path: Path::new("/cache"),
+        // Recorded into storage rather than a file — see
+        // `crate::recording`. The stats sidecar has no browser
+        // counterpart and is compiled out on wasm entirely.
+        replays: Some(&crate::recording::BrowserReplayStore),
         sample_rate: crate::audio::sample_rate(),
     })
     .await

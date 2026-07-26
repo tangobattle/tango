@@ -236,6 +236,115 @@ pub fn bytes_used() -> u64 {
 }
 
 // ---------------------------------------------------------------------
+// Replays
+
+/// Where recordings live. Not a config path like the others, because
+/// `Config` derives its own from the data root and this one has to
+/// agree with it.
+pub fn replays_path() -> PathBuf {
+    PathBuf::from(DATA_ROOT).join("replays")
+}
+
+/// A recorded match: its key, and enough of the metadata to list it
+/// without decoding the whole file.
+#[derive(Clone, PartialEq)]
+pub struct ReplayEntry {
+    pub path: PathBuf,
+    pub name: String,
+    /// Both sides' nicknames, recorder first.
+    pub sides: (String, String),
+    /// Which game it was, already localized.
+    pub game: String,
+    /// Milliseconds since the epoch, from the match clock.
+    pub ts: u64,
+    pub bytes: u64,
+}
+
+/// Everything recorded, newest first. Reads each file's header — the
+/// metadata sits at the front, so this doesn't decode the input stream.
+pub fn replays() -> Vec<ReplayEntry> {
+    let Some(library) = LIBRARY.with(|l| l.borrow().clone()) else {
+        return Vec::new();
+    };
+    let mut out: Vec<ReplayEntry> = Vec::new();
+    for path in library.files.paths_under(&replays_path()) {
+        let Ok(raw) = library.files.read(&path) else { continue };
+        let mut cursor = std::io::Cursor::new(&raw);
+        let Ok((_, local_player_index, metadata)) = tango_replay::read_metadata(&mut cursor) else {
+            log::warn!("replay scan: {}: unreadable", path.display());
+            continue;
+        };
+        let side = |s: Option<&tango_replay::metadata::Side>| s.map(|s| s.nickname.clone()).unwrap_or_default();
+        let (p1, p2) = (side(metadata.p1_side.as_ref()), side(metadata.p2_side.as_ref()));
+        let mine = local_player_index == 0;
+        let game = metadata
+            .p1_side
+            .as_ref()
+            .and_then(|s| s.game_info.as_ref())
+            .map(|g| crate::lang::game_name_of(&g.rom_family, g.rom_variant as u8))
+            .unwrap_or_default();
+        out.push(ReplayEntry {
+            name: path
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            sides: if mine { (p1, p2) } else { (p2, p1) },
+            game,
+            ts: metadata.ts,
+            bytes: raw.len() as u64,
+            path,
+        });
+    }
+    // Newest first: the one you just played is the one you want.
+    out.sort_by(|a, b| b.ts.cmp(&a.ts).then_with(|| b.name.cmp(&a.name)));
+    out
+}
+
+/// Decode a recording into something playable.
+pub fn read_replay(path: &Path) -> Result<tango_replay::Replay, String> {
+    let raw = with(|library| library.files.read(path))
+        .ok_or_else(|| "library not open".to_string())?
+        .map_err(|e| e.to_string())?;
+    tango_replay::Replay::decode(std::io::Cursor::new(raw)).map_err(|e| e.to_string())
+}
+
+/// Take in a `.tangoreplay` from the device — one recorded on a
+/// desktop, or sent by an opponent.
+pub async fn import_replay(file_name: &str, bytes: &[u8]) -> bool {
+    // Decode before storing: a file that won't parse is one the
+    // replays list would show and then fail to open.
+    if tango_replay::Replay::decode(std::io::Cursor::new(bytes)).is_err() {
+        log::warn!("{file_name}: not a readable replay");
+        return false;
+    }
+    let stem = Path::new(file_name)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "imported".to_string());
+    let path = replays_path().join(format!("{stem}.{}", tango_replay::EXTENSION));
+    if with(|library| library.files.write(&path, bytes)).is_none() {
+        return false;
+    }
+    touch();
+    true
+}
+
+/// The bytes behind a recording, for handing to a download.
+pub fn replay_bytes(path: &Path) -> Option<Vec<u8>> {
+    with(|library| library.files.read(path))?.ok()
+}
+
+/// File a finished recording. Synchronous because it is called from the
+/// sink's `Drop` (see [`crate::recording`]), which can't await — the
+/// storage mirror's write-back is asynchronous on its own.
+pub fn write_replay(path: &Path, bytes: &[u8]) {
+    if with(|library| library.files.write(path, bytes)).is_none() {
+        return;
+    }
+    touch();
+}
+
+// ---------------------------------------------------------------------
 // Patches
 
 /// Pull the repo index. Runs once at startup and on the Patches screen's

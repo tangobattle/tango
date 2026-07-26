@@ -45,6 +45,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
 use tango_session::pvp::{PvpDriver, PvpSession};
+use tango_session::replay::ReplaySession;
 use tango_session::singleplayer::SinglePlayerSession;
 use tango_session::Session;
 
@@ -69,6 +70,12 @@ const MAX_CATCHUP_MS: f64 = 250.0;
 /// occluded window, which reports itself visible. Asking "has a frame
 /// happened lately" covers every case without naming any of them.
 const FALLBACK_AFTER_MS: f64 = 50.0;
+
+/// Ticks of a replay's keyframe pass per displayed frame. Each one is
+/// real emulation on a second pair, so this is a rate, not a hurry: at
+/// 60 frames a second it lays a half-hour replay down in under a
+/// minute while leaving the frame's own work room to breathe.
+const PREFETCH_SLICE: u32 = 16;
 
 /// Ceiling on ticks per pump call, so catch-up can't monopolise the
 /// main thread. At 60Hz this still allows 4x realtime, which is more
@@ -149,6 +156,10 @@ enum Driver {
     SinglePlayer(tango_session::singleplayer::Driver),
     /// `None` once `finish` has consumed it.
     Pvp(Option<PvpDriver>),
+    /// Playback's three loops — drive, seek chase, prefetch — folded
+    /// into one, which is the shape `tango_session::replay` offers a
+    /// host that has one thread of control rather than three.
+    Replay(tango_session::replay::Driver),
 }
 
 impl Driver {
@@ -157,6 +168,7 @@ impl Driver {
             Driver::SinglePlayer(d) => d.tick(),
             Driver::Pvp(Some(d)) => d.tick(),
             Driver::Pvp(None) => false,
+            Driver::Replay(d) => tango_session::Drive::tick(d),
         }
     }
 
@@ -165,6 +177,20 @@ impl Driver {
             Driver::SinglePlayer(d) => d.fps_target(),
             Driver::Pvp(Some(d)) => tango_session::Drive::fps_target(d),
             Driver::Pvp(None) => 60.0,
+            Driver::Replay(d) => tango_session::Drive::fps_target(d),
+        }
+    }
+
+    /// Spend a slice on a replay's prefetch pass.
+    ///
+    /// Deliberately the host's call, and it isn't optional in practice:
+    /// the pass races a second pair through the stream laying down
+    /// keyframes, and without them a backward seek has nothing to
+    /// restore from and has to re-simulate its way there. Skipping it
+    /// entirely makes the scrub bar look broken.
+    fn prefetch(&mut self, budget: u32) {
+        if let Driver::Replay(driver) = self {
+            driver.prefetch_step(budget);
         }
     }
 
@@ -183,6 +209,7 @@ impl Driver {
 pub enum Kind {
     SinglePlayer,
     Pvp,
+    Replay,
 }
 
 /// The cheap read-out the UI polls. Everything expensive stays behind
@@ -203,6 +230,9 @@ pub struct Status {
     pub reconnecting: bool,
     pub local_player_index: u8,
     pub opponent: String,
+    /// Replay only: `(playhead, total)` in ticks.
+    pub playhead: Option<(u32, u32)>,
+    pub paused: bool,
 }
 
 struct Engine {
@@ -336,7 +366,10 @@ pub fn status() -> Option<Status> {
         let engine = e.borrow();
         let engine = engine.as_ref()?;
         let pvp = engine.session.downcast_ref::<PvpSession>();
+        let replay = engine.session.downcast_ref::<ReplaySession>();
         Some(Status {
+            playhead: replay.map(|r| (r.current_tick(), r.total_ticks())),
+            paused: replay.is_some_and(|r| r.is_paused()),
             kind: engine.kind,
             ended: engine.session.is_ended(),
             latency_ms: pvp.and_then(|p| p.latency()).map(|d| d.as_millis() as u32),
@@ -347,6 +380,48 @@ pub fn status() -> Option<Status> {
             opponent: pvp.map(|p| p.remote_nickname.clone()).unwrap_or_default(),
         })
     })
+}
+
+/// Install a replay and start playing it back.
+pub fn start_replay(
+    session: ReplaySession,
+    driver: tango_session::replay::Driver,
+    stream: tango_session::audio::CoreStream,
+    sink: Option<Rc<RefCell<crate::audio::Sink>>>,
+) {
+    install(
+        Box::new(session),
+        Driver::Replay(driver),
+        stream,
+        sink,
+        Kind::Replay,
+        None,
+    );
+}
+
+/// Replay transport: pause, resume, and jump.
+pub fn set_paused(paused: bool) {
+    with_replay(|replay| replay.set_paused(paused));
+}
+
+pub fn seek_to(tick: u32) {
+    // `resume_after` follows what the transport was doing, so scrubbing
+    // a paused replay leaves it paused and scrubbing a playing one
+    // picks straight back up.
+    with_replay(|replay| {
+        let resume = !replay.is_paused();
+        replay.seek_to(tick, resume);
+    });
+}
+
+fn with_replay(f: impl FnOnce(&ReplaySession)) {
+    ENGINE.with(|e| {
+        if let Some(engine) = e.borrow().as_ref() {
+            if let Some(replay) = engine.session.downcast_ref::<ReplaySession>() {
+                f(replay);
+            }
+        }
+    });
 }
 
 /// Live-set the local frame delay from the in-match slider. Purely
@@ -372,7 +447,19 @@ pub fn pump_now() {
     if now_ms() - LAST_FRAME_MS.with(|t| t.get()) < FALLBACK_AFTER_MS {
         return;
     }
-    pump(false);
+    // If rAF has stopped but the page is still on screen, this is the
+    // only thing left that can draw — and a frozen picture over a
+    // running simulation is worse than the cost of painting. A hidden
+    // page gets no paint at all, which is the usual case here and the
+    // whole reason painting isn't done on every tick.
+    pump(page_visible());
+}
+
+fn page_visible() -> bool {
+    web_sys::window()
+        .and_then(|window| window.document())
+        .map(|document| document.visibility_state() == web_sys::VisibilityState::Visible)
+        .unwrap_or(false)
 }
 
 /// Advance the session by however much wall clock has passed, top the
@@ -433,6 +520,14 @@ impl Engine {
         if on_frame && self.fresh {
             self.fresh = false;
             self.paint();
+        }
+
+        // Whatever the frame has left over goes to a replay's keyframe
+        // pass. Only on the frame path: it is a whole second simulation
+        // of the match, and the fallback path exists for keeping a
+        // session alive, not for getting work done.
+        if on_frame {
+            self.driver.prefetch(PREFETCH_SLICE);
         }
 
         if let (Some(sink), Some(stream)) = (self.sink.as_ref(), self.stream.as_mut()) {

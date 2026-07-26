@@ -51,6 +51,10 @@ mod link;
 #[cfg(target_arch = "wasm32")]
 mod loadout;
 #[cfg(target_arch = "wasm32")]
+mod playback;
+#[cfg(target_arch = "wasm32")]
+mod recording;
+#[cfg(target_arch = "wasm32")]
 mod storage;
 #[cfg(target_arch = "wasm32")]
 mod ui;

@@ -1440,7 +1440,7 @@ pub async fn spawn_pvp(
         // to the supported range), not negotiated with the peer.
         frame_delay: config.frame_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
         disable_bgm: config.disable_bgm_in_pvp,
-        replays_path: &config.replays_path(),
+        replays: Some(&pvp::DirReplayStore(config.replays_path())),
         cache_path: &config.cache_path(),
         sample_rate: audio_binder.sample_rate(),
     })

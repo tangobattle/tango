@@ -24,6 +24,7 @@ const HEARTBEAT: std::time::Duration = std::time::Duration::from_millis(100);
 enum Screen {
     Library,
     Link,
+    Replays,
     Play,
 }
 
@@ -39,6 +40,9 @@ pub fn App() -> Element {
     let mut engine_status = use_signal(|| None::<engine::Status>);
     let nickname = use_signal(|| crate::storage::prefs::get("nickname").unwrap_or_default());
     let code = use_signal(|| crate::storage::prefs::get("code").unwrap_or_default());
+    // The one place a failure that isn't a session's own gets said out
+    // loud: a replay that won't open, usually because a ROM is missing.
+    let mut notice = use_signal(|| None::<String>);
 
     // Startup: read the persisted files, then pull the patch index. The
     // index is best-effort — offline, the cached copy from last time is
@@ -108,6 +112,7 @@ pub fn App() -> Element {
         screen.set(match status.kind {
             engine::Kind::Pvp => Screen::Link,
             engine::Kind::SinglePlayer => Screen::Library,
+            engine::Kind::Replay => Screen::Replays,
         });
     });
 
@@ -124,10 +129,16 @@ pub fn App() -> Element {
                     crate::ui::play::Play {
                         status: engine_status(),
                         onexit: move |_| {
+                            let kind = engine_status.peek().as_ref().map(|status| status.kind);
                             engine::stop();
                             crate::input::touch_clear();
                             engine_status.set(None);
-                            screen.set(Screen::Library);
+                            // Back where it was started from.
+                            screen.set(match kind {
+                                Some(engine::Kind::Pvp) => Screen::Link,
+                                Some(engine::Kind::Replay) => Screen::Replays,
+                                _ => Screen::Library,
+                            });
                         },
                     }
                 },
@@ -147,6 +158,14 @@ pub fn App() -> Element {
                         loadout: loadout(),
                         nickname,
                         code,
+                    }
+                    Tabs { screen }
+                },
+                Screen::Replays => rsx! {
+                    Header { title: "Replays", subtitle: notice().unwrap_or_default() }
+                    crate::ui::replays::Replays {
+                        revision: revision(),
+                        onerror: move |message| notice.set(Some(message)),
                     }
                     Tabs { screen }
                 },
@@ -185,6 +204,11 @@ fn Tabs(screen: Signal<Screen>) -> Element {
                 "aria-selected": "{screen() == Screen::Link}",
                 onclick: move |_| screen.set(Screen::Link),
                 "Link battle"
+            }
+            button {
+                "aria-selected": "{screen() == Screen::Replays}",
+                onclick: move |_| screen.set(Screen::Replays),
+                "Replays"
             }
         }
     }
