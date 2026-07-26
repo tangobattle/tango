@@ -278,24 +278,21 @@ impl StatsBuilder {
         ));
     }
 
-    /// The rounds folded so far — the round in progress isn't included.
+    /// The stats as they stand: the rounds folded so far, plus the round
+    /// in progress folded as an undecided round. A round the recording
+    /// never finished — a mid-round disconnect, a truncated replay, an
+    /// in-flight analysis' current round — keeps its telemetry and
+    /// simply reports no outcome; nothing is dropped for want of a
+    /// verdict.
+    ///
     /// A clone (cheap: change-point curves and event lists, not raw
-    /// samples), so the live teardown can hand one copy to the sidecar
-    /// writer and another to the results card while the builder stays in
-    /// place.
+    /// samples), so an in-flight analysis can draw a live preview, and
+    /// the live teardown can hand one copy to the sidecar writer and
+    /// another to the results card, while the builder stays in place.
+    /// Non-mutating: the in-progress fold runs on a scratch copy of the
+    /// stale-trim state, so a later [`end_round`](Self::end_round)
+    /// produces the identical final round.
     pub fn snapshot(&self) -> MatchStats {
-        MatchStats {
-            rounds: self.rounds.clone(),
-        }
-    }
-
-    /// [`snapshot`](Self::snapshot) plus the round in progress folded as
-    /// an undecided round — the live preview an in-flight analysis
-    /// renders from. Non-mutating: the in-progress fold runs on a
-    /// scratch copy of the stale-trim state, so a later
-    /// [`end_round`](Self::end_round) produces the identical final
-    /// round.
-    pub fn preview(&self) -> MatchStats {
         let mut rounds = self.rounds.clone();
         if !self.current.is_empty() {
             let mut prev_final = self.prev_final;
@@ -310,9 +307,12 @@ impl StatsBuilder {
         MatchStats { rounds }
     }
 
-    /// Finish, discarding any round still in progress — callers that
-    /// want it folded call [`end_round`](Self::end_round) first.
-    pub fn finish(self) -> MatchStats {
+    /// Finish, folding any round still in progress as an undecided round
+    /// — the consuming twin of [`snapshot`](Self::snapshot).
+    pub fn finish(mut self) -> MatchStats {
+        if !self.current.is_empty() {
+            self.end_round(None);
+        }
         MatchStats { rounds: self.rounds }
     }
 }

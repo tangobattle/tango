@@ -86,13 +86,14 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
 
     // Verdict = round majority, matching the game's own call. A match that
     // tore down before any round was decided (comm error mid-round-1) gets a
-    // neutral headline instead of a fake draw — and a match the remote
+    // neutral headline instead of a fake draw — its rounds are still on the
+    // card, they just carry no outcome to tally — and a match the remote
     // dropped out of gets "connection lost" instead of a verdict, whatever
     // the score stood at.
-    let no_contest = results.rounds.is_empty();
     let wins = count(results, BattleOutcome::Win);
     let losses = count(results, BattleOutcome::Loss);
     let draws = count(results, BattleOutcome::Draw);
+    let no_contest = wins + losses + draws == 0;
     let (headline, headline_style) = if results.end == MatchEnd::Disconnected {
         (t!(lang, "session-results-disconnected"), muted_style())
     } else if no_contest {
@@ -143,7 +144,11 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
     }
     body = body.push(text(context).size(TEXT_BODY).style(widgets::muted_text_style));
 
-    if no_contest {
+    // Nothing was ever sampled — not even an undecided round — so there is
+    // no chart to draw and the card says so. A round that ran but was never
+    // decided still gets the full layout: its trace is the record of what
+    // happened, with the score simply not counting it.
+    if results.rounds.is_empty() {
         body = body.push(iced::widget::Space::new().height(10)).push(
             text(t!(lang, "session-results-no-rounds"))
                 .size(TEXT_CAPTION)
@@ -163,7 +168,10 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
             if pop <= 0.0 {
                 break;
             }
-            let k = match round.outcome {
+            // An undecided round sweeps like any other but tallies
+            // nowhere — there is no numeral for "no verdict".
+            let Some(outcome) = round.outcome else { continue };
+            let k = match outcome {
                 BattleOutcome::Win => 0,
                 BattleOutcome::Loss => 1,
                 BattleOutcome::Draw => 2,
@@ -225,7 +233,7 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
                 trace: &r.trace,
                 custom: &r.custom,
                 chip_uses: [&r.chip_uses[0], &r.chip_uses[1]],
-                outcome: Some(r.outcome),
+                outcome: r.outcome,
                 weight: r.weight,
             })
             .collect();
@@ -320,7 +328,7 @@ fn cubic_out_inv(t: f32) -> f32 {
 }
 
 fn count(results: &MatchResults, which: BattleOutcome) -> usize {
-    results.rounds.iter().filter(|r| r.outcome == which).count()
+    results.rounds.iter().filter(|r| r.outcome == Some(which)).count()
 }
 
 /// Plain-muted text style with the same fn-pointer type as the

@@ -746,7 +746,7 @@ impl App {
                                 return;
                             }
                             last_preview = now;
-                            let _ = progress_tx.unbounded_send(builder.preview());
+                            let _ = progress_tx.unbounded_send(builder.snapshot());
                         },
                         &cancel_worker,
                     )

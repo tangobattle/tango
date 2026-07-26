@@ -2350,12 +2350,17 @@ pub fn hp_opponent_color(_theme: &Theme) -> iced::Color {
     FIELD_BLUE
 }
 
-/// The list-row / results-card mark for a round outcome.
-pub fn outcome_mark(outcome: tango_match::analysis::BattleOutcome) -> (Icon, fn(&Theme) -> iced::widget::text::Style) {
+/// The list-row / results-card mark for a round outcome. `None` — a round
+/// the recording never decided — gets its own open mark rather than the
+/// draw's dash: it was played, it just has no verdict.
+pub fn outcome_mark(
+    outcome: Option<tango_match::analysis::BattleOutcome>,
+) -> (Icon, fn(&Theme) -> iced::widget::text::Style) {
     match outcome {
-        tango_match::analysis::BattleOutcome::Win => (Icon::Check, success_text_style),
-        tango_match::analysis::BattleOutcome::Loss => (Icon::X, danger_text_style),
-        tango_match::analysis::BattleOutcome::Draw => (Icon::Minus, muted_text_style),
+        Some(tango_match::analysis::BattleOutcome::Win) => (Icon::Check, success_text_style),
+        Some(tango_match::analysis::BattleOutcome::Loss) => (Icon::X, danger_text_style),
+        Some(tango_match::analysis::BattleOutcome::Draw) => (Icon::Minus, muted_text_style),
+        None => (Icon::CircleDashed, muted_text_style),
     }
 }
 

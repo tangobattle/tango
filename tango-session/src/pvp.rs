@@ -550,8 +550,9 @@ impl PvpSession {
     }
 
     /// The match stats aggregated so far, in play order. Read at teardown
-    /// for the post-match results screen; rounds the match never finished
-    /// (mid-round disconnect) simply aren't in it.
+    /// for the post-match results screen; a round the match never
+    /// finished (mid-round disconnect) is in it with its telemetry
+    /// intact and no outcome — only the verdict is missing.
     pub fn stats_snapshot(&self) -> tango_match::analysis::MatchStats {
         self.stats.lock().unwrap().snapshot()
     }

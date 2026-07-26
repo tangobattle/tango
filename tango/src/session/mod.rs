@@ -235,9 +235,11 @@ pub struct MatchResults {
     /// How the match ended — picks the card's dress (verdict reveal vs
     /// the quiet disconnect layout).
     pub end: MatchEnd,
-    /// Per-round outcome + presentation-ready HP trace, in play order. Empty
-    /// when the match tore down before any round finished (e.g. a comm error
-    /// mid-round-1) — the screen shows a neutral headline then.
+    /// Per-round outcome + presentation-ready HP trace, in play order —
+    /// including a round the match never decided, which carries its trace
+    /// with no outcome. Empty only when the match tore down before any
+    /// round was sampled at all (e.g. a comm error in the intro) — the
+    /// screen shows a neutral headline then.
     pub rounds: Vec<RoundCard>,
     /// Session start to local completion.
     pub duration: std::time::Duration,
@@ -261,7 +263,10 @@ pub struct MatchResults {
 /// `[start, end)` x spans where the custom screen stood open. Empty when the
 /// round produced no HP samples (torn down mid-intro).
 pub struct RoundCard {
-    pub outcome: tango_match::analysis::BattleOutcome,
+    /// `None` for a round the match never decided — a mid-round
+    /// disconnect keeps the round and its trace, it just has no verdict
+    /// to report.
+    pub outcome: Option<tango_match::analysis::BattleOutcome>,
     pub trace: Vec<(f32, f32, f32)>,
     pub custom: Vec<(f32, f32)>,
     /// Chip-use events per side (`[you, opponent]`), cooked for the
@@ -292,16 +297,15 @@ impl MatchResults {
         let (cooked, max_hp) = crate::ui::widgets::cook_hp_rounds(&stats, loadeds, None);
         let rounds = cooked
             .into_iter()
-            .filter_map(|c| {
-                // Live reports always carry an outcome — the match only
-                // pushes them when a round actually ends.
-                Some(RoundCard {
-                    outcome: c.outcome?,
-                    trace: c.trace,
-                    custom: c.custom,
-                    chip_uses: c.chip_uses,
-                    weight: c.weight,
-                })
+            // Every round the match simulated is on the card, decided or
+            // not: the last one of a mid-round disconnect comes through
+            // with its trace and no outcome.
+            .map(|c| RoundCard {
+                outcome: c.outcome,
+                trace: c.trace,
+                custom: c.custom,
+                chip_uses: c.chip_uses,
+                weight: c.weight,
             })
             .collect::<Vec<_>>();
         let results = Self {
@@ -1536,7 +1540,7 @@ fn run_prefetch_pass(worker: replay::PrefetchWorker) {
             return;
         }
         last_preview = now;
-        let _ = job.partial_tx.unbounded_send(builder.preview());
+        let _ = job.partial_tx.unbounded_send(builder.snapshot());
     };
     loop {
         match prefetch.step(1024, Some(&mut on_progress)) {
