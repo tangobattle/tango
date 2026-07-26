@@ -63,13 +63,42 @@ fn key_mask(code: &str) -> Option<u32> {
     })
 }
 
-/// Install the page-wide key listeners. Once, at startup: they cost
-/// nothing while no session is running, and installing them per screen
-/// would lose a key held across a screen change.
+/// Whether this key event belongs to the emulator rather than to the
+/// page.
+///
+/// Three ways it doesn't, and all three matter: half the button map is
+/// ordinary letters (`wasdzxqe`) plus Backspace, so a listener that
+/// takes them unconditionally makes every text field on the site
+/// unusable — you cannot type a link code or a nickname, and you cannot
+/// delete what you did manage to type. Which is exactly what happened.
+fn is_for_the_game(event: &web_sys::KeyboardEvent) -> bool {
+    // Nothing to play.
+    if !crate::engine::is_running() {
+        return false;
+    }
+    // A shortcut, not a button. (Shift is excluded from this test on
+    // purpose — it's SELECT.)
+    if event.ctrl_key() || event.meta_key() || event.alt_key() {
+        return false;
+    }
+    // Someone is typing into something.
+    let Some(target) = event.target() else { return true };
+    match target.dyn_into::<web_sys::Element>() {
+        Ok(element) => !matches!(element.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT"),
+        Err(_) => true,
+    }
+}
+
+/// Install the page-wide key listeners. Once, at startup: installing
+/// them per screen would lose a key held across a screen change, and
+/// they defer to the page unless [`is_for_the_game`] says otherwise.
 pub fn install_keyboard() {
     let Some(window) = web_sys::window() else { return };
 
     let down = Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(|e: web_sys::KeyboardEvent| {
+        if !is_for_the_game(&e) {
+            return;
+        }
         // A repeat isn't a new press, and the arrows and Backspace
         // scroll or navigate away if we let them through.
         if let Some(mask) = key_mask(&e.code()) {
@@ -80,8 +109,10 @@ pub fn install_keyboard() {
         }
     });
     let up = Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(|e: web_sys::KeyboardEvent| {
+        // Deliberately not gated on `is_for_the_game`: a key pressed
+        // during a session and released after it ended (or after focus
+        // moved into a field) must still clear, or it stays held.
         if let Some(mask) = key_mask(&e.code()) {
-            e.prevent_default();
             KEYBOARD.with(|k| k.set(k.get() & !mask));
         }
     });

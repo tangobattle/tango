@@ -43,6 +43,8 @@ mod http;
 #[cfg(target_arch = "wasm32")]
 mod input;
 #[cfg(target_arch = "wasm32")]
+mod lang;
+#[cfg(target_arch = "wasm32")]
 mod library;
 #[cfg(target_arch = "wasm32")]
 mod link;

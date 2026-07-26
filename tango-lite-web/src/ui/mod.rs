@@ -9,24 +9,12 @@ use dioxus::prelude::*;
 
 use tango_library::rom::GameRef;
 
-/// How a game names itself. The families ship Fluent translations for
-/// their real titles, but a lite build has no localizer — and
-/// `family`/`variant` is the vocabulary the wire protocol, the storage
-/// keys and the compatibility check all already speak, so the label
-/// stays in it rather than inventing a second one the user would have to
-/// map back.
+/// How a game names itself: its real title, in the viewer's language.
+/// See [`crate::lang`] — the families ship the Fluent fragments and
+/// tango-library resolves them, so this is a re-export with a shorter
+/// name rather than a policy of its own.
 pub fn game_label(game: GameRef) -> String {
-    let (family, variant) = game.family_and_variant();
-    game_label_parts(family, variant)
-}
-
-pub fn game_label_parts(family: &str, variant: u8) -> String {
-    let base = family.to_ascii_uppercase();
-    if variant == 0 {
-        base
-    } else {
-        format!("{base} · {variant}")
-    }
+    crate::lang::game_name(game)
 }
 
 /// The name a save file shows as: what the user called it, minus the

@@ -45,6 +45,14 @@ body {
     -webkit-tap-highlight-color: transparent;
 }
 
+/* …but a field you're meant to type in has to be selectable, or iOS
+ * won't put a caret in it. */
+input,
+textarea {
+    -webkit-user-select: text;
+    user-select: text;
+}
+
 #main {
     height: 100%;
 }
@@ -87,10 +95,18 @@ body {
     text-overflow: ellipsis;
 }
 
+/* Game names are real titles now ("Mega Man Battle Network 6: Cybeast
+ * Falzar"), so the subtitle has to be allowed to lose its tail rather
+ * than push the heading off the bar. */
 .topbar .sub {
     color: var(--dim);
     font-size: 13px;
     font-weight: 400;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .tabs {
@@ -287,11 +303,18 @@ select {
     min-width: 0;
 }
 
+/* Meta lines truncate; a game's title is allowed a second line rather
+ * than being cut off mid-word. */
 .item .stack > * {
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.item .stack > .title {
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 /* A button that is the row's tap target rather than a control of its

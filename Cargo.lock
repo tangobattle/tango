@@ -7811,6 +7811,7 @@ dependencies = [
  "tango-netplay",
  "tango-patch",
  "tango-session",
+ "unic-langid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

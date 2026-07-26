@@ -280,7 +280,7 @@ fn MatchTypes(loadout: ReadSignal<Loadout>, selected: (u8, u8)) -> Element {
                         class: "item",
                         "aria-selected": "{selected == (mode, subtype)}",
                         onclick: move |_| crate::link::set_match_type((mode, subtype)),
-                        span { class: "grow title", "{match_type_label(mode, subtype)}" }
+                        span { class: "grow title", "{crate::lang::match_type_name(game, mode, subtype)}" }
                     }
                 }
             }
@@ -288,18 +288,3 @@ fn MatchTypes(loadout: ReadSignal<Loadout>, selected: (u8, u8)) -> Element {
     }
 }
 
-/// The games' own names for these are in per-family Fluent bundles this
-/// build doesn't load, so the label is the wire value spelled out. Both
-/// sides pick from the same list, which is what actually has to match.
-fn match_type_label(mode: u8, subtype: u8) -> String {
-    let base = match mode {
-        0 => "Single",
-        1 => "Triple",
-        other => return format!("Mode {other} · {subtype}"),
-    };
-    if subtype == 0 {
-        base.to_string()
-    } else {
-        format!("{base} · {subtype}")
-    }
-}

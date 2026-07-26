@@ -44,6 +44,9 @@ bytemuck.workspace = true
 futures.workspace = true
 log.workspace = true
 semver.workspace = true
+# Language tags, for matching the browser's locale against the ones the
+# game families ship Fluent fragments for.
+unic-langid.workspace = true
 console_log = "1"
 console_error_panic_hook = "0.1"
 

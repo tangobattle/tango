@@ -114,7 +114,7 @@ fn StorageCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Elemen
                 button {
                     class: "btn small danger",
                     onclick: move |_| confirming.set(true),
-                    "Remove {game_label(game)}"
+                    "Remove {crate::lang::variant_name(game)}"
                 }
             }
         }

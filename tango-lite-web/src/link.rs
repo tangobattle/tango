@@ -160,7 +160,10 @@ fn describe(error: &tango_netplay::Error) -> String {
 
 fn describe_game_info(info: &protocol::GameInfo) -> String {
     let (family, variant) = &info.family_and_variant;
-    let base = crate::ui::game_label_parts(family, *variant);
+    // Off the wire, so it may name a game this build has no support
+    // for — `game_name_of` falls back to the raw pair rather than
+    // pretending not to know what they said.
+    let base = crate::lang::game_name_of(family, *variant);
     match &info.patch {
         Some(patch) => format!("{base} · {} {}", patch.name, patch.version),
         None => base,

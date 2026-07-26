@@ -19,10 +19,19 @@
 //!   an `AudioContext` that never got a user gesture is suspended, and a
 //!   suspended context renders nothing and reports nothing.
 //!
-//! All three call [`pump_now`], which is idempotent in the sense that
-//! matters: it advances by however much wall clock has actually passed,
-//! so being called twice in one millisecond does nothing the second
-//! time. That is what lets three uncoordinated sources drive one loop.
+//! They are not equals. **While rAF is running it is the only clock**;
+//! the other two check how long it has been since the last animation
+//! frame and do nothing unless it has gone quiet. Letting all three tick
+//! is what the first version did, and it stutters: the frame you see is
+//! whichever one the sim happened to reach when rAF sampled it, so ticks
+//! landing a few milliseconds either side of the frame boundary show up
+//! as motion that jitters even though the average rate is exactly right.
+//! One clock per displayed frame is what makes it smooth.
+//!
+//! Painting is likewise rAF's alone, and only when a tick has actually
+//! produced something new — there is no point uploading a frame the
+//! display will never show, and at 285 combined calls a second that
+//! upload was most of the main thread.
 //!
 //! The session lives in a thread-local rather than a Dioxus signal.
 //! Nothing in it is `Clone`, it is touched 60 times a second, and the UI
@@ -51,6 +60,16 @@ const CANVAS_ID: &str = "tango-screen";
 /// minute of emulation; it starts from now.
 const MAX_CATCHUP_MS: f64 = 250.0;
 
+/// How long rAF has to have been silent before the fallback sources
+/// take over the clock. Comfortably longer than a frame at any refresh
+/// rate, so they stay out of the way while it is running, and short
+/// enough that a tab going to the background barely breaks stride.
+///
+/// Deliberately not `document.hidden`: rAF also stops for a fully
+/// occluded window, which reports itself visible. Asking "has a frame
+/// happened lately" covers every case without naming any of them.
+const FALLBACK_AFTER_MS: f64 = 50.0;
+
 /// Ceiling on ticks per pump call, so catch-up can't monopolise the
 /// main thread. At 60Hz this still allows 4x realtime, which is more
 /// headroom than any of the pacing paths ask for.
@@ -62,6 +81,10 @@ thread_local! {
     /// Whether an animation frame is already scheduled, so the other
     /// tick sources' pump calls don't queue a second one.
     static RAF_PENDING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// When the last animation frame ran. The fallback sources read it
+    /// to decide whether rAF still owns the clock (see
+    /// [`FALLBACK_AFTER_MS`]).
+    static LAST_FRAME_MS: std::cell::Cell<f64> = const { std::cell::Cell::new(f64::NEG_INFINITY) };
     /// The hidden-tab heartbeat. Built once and told to start and stop,
     /// rather than spawned per session: a worker costs a thread to start
     /// up, and sessions come and go.
@@ -196,6 +219,13 @@ struct Engine {
     debt: f64,
     /// Reused RGBA staging for the canvas blit.
     rgba: Vec<u8>,
+    /// The JS-side twin of `rgba` and the `ImageData` aliasing it, built
+    /// once per canvas. See [`Engine::paint`].
+    surface: Option<(js_sys::Uint8ClampedArray, web_sys::ImageData)>,
+    /// A tick has produced a frame that hasn't been drawn yet. Cleared
+    /// by the paint, so a display refresh with nothing new behind it
+    /// costs nothing.
+    fresh: bool,
     /// Resolved lazily: the pump can start before the canvas has been
     /// rendered, and the canvas is replaced whenever the screen changes.
     ctx: Option<web_sys::CanvasRenderingContext2d>,
@@ -272,6 +302,8 @@ fn install(
             last_ms: now,
             debt: 0.0,
             rgba: vec![0u8; SCREEN_W * SCREEN_H * 4],
+            surface: None,
+            fresh: false,
             ctx: None,
             save_path,
             last_save_ms: now,
@@ -329,24 +361,34 @@ pub fn set_frame_delay(frame_delay: u32) {
     });
 }
 
-/// Advance the session by however much wall clock has passed, then
-/// repaint and top the audio ring up. Safe to call from anywhere and as
-/// often as you like — the work it does is proportional to elapsed time,
-/// not to the number of calls.
+/// Advance the session from one of the fallback tick sources — the
+/// worker heartbeat or the audio queue report.
+///
+/// Does nothing while animation frames are still arriving. rAF is a
+/// better clock than either of these (it is *the* clock the picture is
+/// sampled on), and having several of them drive the same loop is what
+/// makes motion jitter, so they only take over once it has gone quiet.
 pub fn pump_now() {
+    if now_ms() - LAST_FRAME_MS.with(|t| t.get()) < FALLBACK_AFTER_MS {
+        return;
+    }
+    pump(false);
+}
+
+/// Advance the session by however much wall clock has passed, top the
+/// audio ring up, and — on the frame path, and only if a tick actually
+/// produced one — put the new picture up.
+fn pump(on_frame: bool) {
     let now = now_ms();
     let over = ENGINE.with(|e| {
         let mut slot = e.borrow_mut();
         let Some(engine) = slot.as_mut() else {
             return false;
         };
-        if !engine.step(now) {
-            // Take it out from under the borrow so teardown — which
-            // drops the session, and with it the cancellation token the
-            // network tasks watch — runs with the cell free.
-            return true;
-        }
-        false
+        // Take it out from under the borrow if it's over: teardown drops
+        // the session, and with it the cancellation token the network
+        // tasks watch, so it wants the cell free.
+        !engine.step(now, on_frame)
     });
     if over {
         stop();
@@ -355,7 +397,7 @@ pub fn pump_now() {
 
 impl Engine {
     /// One pump. `false` once the session is over.
-    fn step(&mut self, now: f64) -> bool {
+    fn step(&mut self, now: f64, on_frame: bool) -> bool {
         let elapsed = (now - self.last_ms).clamp(0.0, MAX_CATCHUP_MS);
         self.last_ms = now;
 
@@ -375,6 +417,7 @@ impl Engine {
             if !self.driver.tick() {
                 return false;
             }
+            self.fresh = true;
         }
         // Whatever we couldn't afford this time is not owed forever;
         // carrying it would turn one long stall into a permanent
@@ -383,7 +426,14 @@ impl Engine {
             self.debt = 1.0;
         }
 
-        self.paint();
+        // Only from an animation frame, and only if there is something
+        // new to show: a repaint the display won't sample is pure cost,
+        // and it is a large one — a screen's worth of conversion and a
+        // 150KB upload into JS.
+        if on_frame && self.fresh {
+            self.fresh = false;
+            self.paint();
+        }
 
         if let (Some(sink), Some(stream)) = (self.sink.as_ref(), self.stream.as_mut()) {
             sink.borrow_mut().pump(stream);
@@ -399,6 +449,7 @@ impl Engine {
     fn paint(&mut self) {
         if self.ctx.is_none() {
             self.ctx = canvas_context();
+            self.surface = None;
         }
         let Some(ctx) = self.ctx.as_ref() else { return };
         let frame = self.session.frame();
@@ -408,14 +459,27 @@ impl Engine {
         // mgba hands out its native BGR555; the shared LUT conversion is
         // the same one the desktop's replay renderer uses.
         tango_dataview::rom::bgr555_to_rgba8(&frame, &mut self.rgba);
-        let Ok(image) = web_sys::ImageData::new_with_u8_clamped_array_and_sh(
-            wasm_bindgen::Clamped(&self.rgba),
-            SCREEN_W as u32,
-            SCREEN_H as u32,
-        ) else {
-            return;
-        };
-        let _ = ctx.put_image_data(&image, 0.0, 0.0);
+
+        // One JS-side buffer for the session's life, with an ImageData
+        // view onto it. `new ImageData(array, …)` aliases the array it
+        // is given rather than copying, so writing through the handle
+        // updates what `put_image_data` will draw — which turns a
+        // per-frame allocation of a 150KB typed array (and the garbage
+        // that came with it) into a plain copy.
+        if self.surface.is_none() {
+            let array = js_sys::Uint8ClampedArray::new_with_length((SCREEN_W * SCREEN_H * 4) as u32);
+            let Ok(image) = web_sys::ImageData::new_with_js_u8_clamped_array_and_sh(
+                &array,
+                SCREEN_W as u32,
+                SCREEN_H as u32,
+            ) else {
+                return;
+            };
+            self.surface = Some((array, image));
+        }
+        let Some((array, image)) = self.surface.as_ref() else { return };
+        array.copy_from(&self.rgba);
+        let _ = ctx.put_image_data(image, 0.0, 0.0);
     }
 }
 
@@ -452,7 +516,16 @@ fn canvas_context() -> Option<web_sys::CanvasRenderingContext2d> {
         .ok()?;
     canvas.set_width(SCREEN_W as u32);
     canvas.set_height(SCREEN_H as u32);
-    canvas.get_context("2d").ok()??.dyn_into().ok()
+    // A GBA frame is fully opaque, and saying so lets the compositor
+    // skip blending the canvas against what is behind it — which it
+    // does on every one of these, upscaled.
+    let options = js_sys::Object::new();
+    let _ = js_sys::Reflect::set(&options, &"alpha".into(), &JsValue::FALSE);
+    canvas
+        .get_context_with_context_options("2d", &options)
+        .ok()??
+        .dyn_into()
+        .ok()
 }
 
 /// Drop the cached canvas handle. Called when the screen the canvas
@@ -462,6 +535,9 @@ pub fn invalidate_canvas() {
     ENGINE.with(|e| {
         if let Some(engine) = e.borrow_mut().as_mut() {
             engine.ctx = None;
+            // The ImageData belongs to the context it was drawn
+            // through; a new canvas gets a new one.
+            engine.surface = None;
         }
     });
 }
@@ -484,7 +560,11 @@ fn schedule_frame() {
         if slot.is_none() {
             *slot = Some(Closure::new(move |_: f64| {
                 RAF_PENDING.with(|p| p.set(false));
-                pump_now();
+                // Stamped before the pump, not after: this is what the
+                // fallback sources measure against, and it should say
+                // "a frame is happening", not "a frame finished".
+                LAST_FRAME_MS.with(|t| t.set(now_ms()));
+                pump(true);
                 if is_running() {
                     schedule_frame();
                 }
