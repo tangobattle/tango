@@ -60,8 +60,17 @@ textarea {
     user-select: text;
 }
 
+/* The app root is pinned to the viewport rather than sized against
+ * `body`. In a standalone PWA on iOS, `height: 100%` on html/body
+ * resolves short of the screen, and `body`'s `overflow: hidden` then
+ * *clips* whatever the app does about its own height — which is the
+ * dead band under the tab bar, and why setting `.app`'s height alone
+ * didn't move it. A fixed box with `inset: 0` is the viewport by
+ * definition, which is the same mechanism the play screen already
+ * relies on. */
 #main {
-    height: 100%;
+    position: fixed;
+    inset: 0;
 }
 
 .boot {
@@ -79,10 +88,8 @@ textarea {
 .app {
     display: flex;
     flex-direction: column;
-    /* Measured in index.html rather than `100dvh`, which comes back
-     * short in a standalone PWA on iOS and leaves a dead band under the
-     * tab bar. The fallback is for the moment before the probe runs. */
-    height: var(--app-vh, 100dvh);
+    /* Of `#main`, which is the viewport — see above. */
+    height: 100%;
 }
 
 /* ---------------------------------------------------------------- bars */
