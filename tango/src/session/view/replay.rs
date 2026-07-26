@@ -179,7 +179,7 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
     let Ctx { lang, state, .. } = ctx;
     let now = iced::time::Instant::now();
     let frame = framebuffer_view(state, ctx.fractional_scaling, ctx.effect);
-    let body = emulator_body(r.local_game(), frame, ctx.hide_emulator_border, [false, false]);
+    let body = emulator_body(r.local_game(), frame, ctx.hide_emulator_border, [None, None]);
     // Clicking the screen itself plays/pauses, like any video player.
     // This is the stack's bottom layer, and iced dispatches presses
     // topmost-first with capture — so the transport bar's controls

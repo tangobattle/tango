@@ -1231,6 +1231,16 @@ impl App {
                     self.config.frame_delay = *d;
                     self.persist_config();
                 }
+                // A setup drawer just finished being dragged: the live
+                // widths ride on the session's panes (the drag moves
+                // them there), so mirror the pair into config on
+                // release — one write per drag, not per mouse move.
+                if let session::Message::Pvp(session::view::pvp::Message::EndPaneResize) = &m {
+                    if let Some(panes) = self.session.pvp_panes.as_ref() {
+                        self.config.pvp_setup_pane_widths = panes.pane_widths;
+                        self.persist_config();
+                    }
+                }
                 // Replay input display toggle: the flag lives in config
                 // (so the choice sticks across replays); the session
                 // handler itself is a no-op.

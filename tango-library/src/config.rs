@@ -37,6 +37,10 @@ fn default_ui_scale() -> f32 {
     1.0
 }
 
+fn default_setup_pane_widths() -> [f32; 2] {
+    [420.0; 2]
+}
+
 fn default_language() -> unic_langid::LanguageIdentifier {
     crate::lang::FALLBACK_LANG
 }
@@ -160,6 +164,12 @@ pub struct Config {
     /// transport bar, like [`show_replay_inputs`](Self::show_replay_inputs).
     #[serde(default)]
     pub show_opponent_pip: bool,
+    /// Width in logical pixels of each PvP setup drawer, `[self,
+    /// opponent]`. Dragged from the drawer's inner edge during a match
+    /// and persisted on release, so the next one opens the panes where
+    /// the user left them.
+    #[serde(default = "default_setup_pane_widths")]
+    pub pvp_setup_pane_widths: [f32; 2],
     /// When true, the self-updater (`updater::Updater`) runs in
     /// the background and downloads any newer GitHub release.
     /// Toggle takes effect immediately via Settings; downloaded
@@ -296,6 +306,7 @@ impl Default for Config {
             hide_emulator_border: false,
             show_replay_inputs: false,
             show_opponent_pip: false,
+            pvp_setup_pane_widths: default_setup_pane_widths(),
             enable_updater: true,
             allow_prerelease_upgrades: false,
             last_game: None,

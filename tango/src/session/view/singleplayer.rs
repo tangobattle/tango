@@ -10,7 +10,7 @@ pub(crate) fn view<'a>(s: &'a SinglePlayerSession, ctx: Ctx<'a>) -> Element<'a, 
     let Ctx { lang, state, .. } = ctx;
     let now = iced::time::Instant::now();
     let frame = framebuffer_view(state, ctx.fractional_scaling, ctx.effect);
-    let body = emulator_body(s.local_game(), frame, ctx.hide_emulator_border, [false, false]);
+    let body = emulator_body(s.local_game(), frame, ctx.hide_emulator_border, [None, None]);
     let mut stacked = stack![body];
     if state.controls_anim.visible(now) {
         stacked = stacked.push(corner_commands_overlay(lang, state, SessionMessage::Close, false));

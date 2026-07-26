@@ -39,7 +39,7 @@ pub(crate) fn view<'a>(s: &'a TrainingSession, ctx: Ctx<'a>) -> Element<'a, Sess
     let Ctx { lang, state, .. } = ctx;
     let now = iced::time::Instant::now();
     let frame = framebuffer_view(state, ctx.fractional_scaling, ctx.effect);
-    let body = emulator_body(s.local_game(), frame, ctx.hide_emulator_border, [false, false]);
+    let body = emulator_body(s.local_game(), frame, ctx.hide_emulator_border, [None, None]);
     let mut stacked = stack![body];
     // Opponent-screen PiP — outside the controls gate, so it doesn't tuck
     // away with the idle cursor (same treatment as replay).

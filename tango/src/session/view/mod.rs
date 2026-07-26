@@ -106,9 +106,13 @@ fn hud_chip_plate(theme: &iced::Theme) -> iced::widget::container::Style {
     }
 }
 
-/// Width of a PvP setup side pane (the save view inside the
-/// drawer) — the width [`emulator_body`]'s drawer slots reserve.
-const SETUP_PANE_WIDTH: f32 = 420.0;
+/// How wide a PvP setup side pane is allowed to get by dragging its
+/// inner edge. The floor keeps the save view's tab strip legible; the
+/// ceiling keeps the emulator from being squeezed off a modest window
+/// with both drawers out. The resting width is the user's — persisted
+/// as `config.pvp_setup_pane_widths` and carried on `PvpPanes`.
+pub(crate) const SETUP_PANE_MIN_WIDTH: f32 = 300.0;
+pub(crate) const SETUP_PANE_MAX_WIDTH: f32 = 720.0;
 
 /// How far the floating controls sink when hiding — past the
 /// window's bottom edge (panel height + bottom margin, with a
@@ -283,14 +287,14 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
 /// BNLC background art (cover-fit, crops as needed) or a pure-black
 /// backdrop when BNLC isn't installed. The backdrop spans the full
 /// body width so the setup panes float on top of the same bezel art.
-/// `slots` are the PvP setup-drawer slots (`[left, right]`) — see the
-/// comment on `drawer_slot` below; always `[false, false]` outside
-/// PvP.
+/// `slots` are the PvP setup-drawer slots (`[left, right]`), each
+/// `Some(width)` while that drawer holds the row open — see the
+/// comment on `drawer_slot` below; always `[None, None]` outside PvP.
 fn emulator_body<'a>(
     game: &'static crate::library::game::Game,
     frame: Element<'a, Message>,
     hide_emulator_border: bool,
-    slots: [bool; 2],
+    slots: [Option<f32>; 2],
 ) -> Element<'a, Message> {
     let frame_container = container(frame).center(Fill);
     let bnlc_bg = if hide_emulator_border {
@@ -321,19 +325,16 @@ fn emulator_body<'a>(
     // closing the slot collapses — the emulator expands right away —
     // and the exit slide plays out over the reflowed body. The
     // matching edge handle rides the drawer's inner edge either way
-    // (`setup_handles_overlay`).
-    let drawer_slot = || {
-        iced::widget::Space::new()
-            .width(iced::Length::Fixed(SETUP_PANE_WIDTH))
-            .height(Fill)
-    };
+    // (`setup_handles_overlay`). A slot's width is its drawer's, so a
+    // resize drag moves the emulator's edge in step with the pane's.
+    let drawer_slot = |w: f32| iced::widget::Space::new().width(iced::Length::Fixed(w)).height(Fill);
     let mut content_row = row![].spacing(0).height(Fill).width(Fill);
-    if slots[0] {
-        content_row = content_row.push(drawer_slot());
+    if let Some(w) = slots[0] {
+        content_row = content_row.push(drawer_slot(w));
     }
     content_row = content_row.push(container(frame_container).width(Fill).height(Fill));
-    if slots[1] {
-        content_row = content_row.push(drawer_slot());
+    if let Some(w) = slots[1] {
+        content_row = content_row.push(drawer_slot(w));
     }
     let body = stack![backdrop, Element::from(content_row)];
     container(body).width(Fill).height(Fill).into()

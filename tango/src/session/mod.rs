@@ -86,6 +86,30 @@ pub struct PvpPanes {
     pub local_save_view: save_view::State,
     /// Active-tab / grouping state for the opponent save-view panel.
     pub opponent_save_view: save_view::State,
+    /// Current width of each setup drawer (`[self, opponent]`), seeded
+    /// from `config.pvp_setup_pane_widths` at match start and moved by
+    /// dragging a drawer's inner edge. The App mirrors it back into
+    /// config when a drag ends.
+    pub pane_widths: [f32; 2],
+    /// The drawer edge currently being dragged, `None` at rest.
+    pub pane_drag: Option<PaneDrag>,
+}
+
+/// A setup drawer being sized by its inner edge. `anchor_x` is latched
+/// on the drag's FIRST move rather than at the press: iced's
+/// `mouse_area` press carries no cursor position, so the first move
+/// establishes the origin and every move after it is a delta off
+/// `start_width` — which keeps the pane from jumping to sit centered
+/// under the cursor when the grab lands off the edge's exact pixel.
+#[derive(Clone, Copy)]
+pub struct PaneDrag {
+    /// Which drawer, indexing [`PvpPanes::pane_widths`]: 0 = self
+    /// (left edge), 1 = opponent (right).
+    pub side: usize,
+    /// The drawer's width when the grab started.
+    pub start_width: f32,
+    /// Window x the drag measures from, `None` until the first move.
+    pub anchor_x: Option<f32>,
 }
 
 // A OpenSave is a whole parsed rom + save; a placeholder keeps the
@@ -1447,6 +1471,13 @@ pub async fn spawn_pvp(
             opponent_loaded,
             local_save_view: save_view::State::new(),
             opponent_save_view: save_view::State::new(),
+            // Clamped on the way in: the persisted pair predates the
+            // current bounds on an older config, or the window it was
+            // sized against is gone.
+            pane_widths: [0, 1].map(|i| {
+                config.pvp_setup_pane_widths[i].clamp(view::SETUP_PANE_MIN_WIDTH, view::SETUP_PANE_MAX_WIDTH)
+            }),
+            pane_drag: None,
         },
         bind_session_audio(&audio_binder, audio),
         drive,
