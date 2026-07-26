@@ -32,8 +32,11 @@ sha3 = "0.10"
 subtle = "2"
 sha2.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["sync", "time", "rt", "macros"] }
-tokio-util = { workspace = true, features = ["rt"] }
+# Sync primitives and `select!` only — the waiting and spawning here go
+# through tango-session's platform seam, so there's no runtime to ask
+# tokio for on either target.
+tokio = { workspace = true, features = ["sync", "macros"] }
+tokio-util = { workspace = true }
 unic-langid.workspace = true
 web-time = "1"
 zstd.workspace = true

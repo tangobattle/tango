@@ -27,10 +27,14 @@ tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
 tango-net-protocol = { path = "../tango-net-protocol" }
 tango-replay = { path = "../tango-replay" }
 thiserror.workspace = true
-# Everything but `net`, which is mio-backed and has no wasm32 support;
-# the native table below adds it.
-tokio = { workspace = true, features = ["io-util", "time", "rt", "sync", "macros"] }
-tokio-util = { workspace = true, features = ["io", "rt"] }
+# Only the parts of tokio that need no runtime under them: the sync
+# primitives (which are plain futures) and the `select!`/`join!` macros.
+# `time` and `rt` are native-only below — a browser has no driver for
+# either, and asking for them here is what let `tokio::time` compile for
+# wasm32 and then panic on `Instant::now` at run time. Now it doesn't
+# compile, which is where that belongs.
+tokio = { workspace = true, features = ["sync", "macros"] }
+tokio-util = { workspace = true }
 # `std::time::Instant` panics in a browser; this is the same API backed
 # by `performance.now()` there and by std everywhere else.
 web-time = "1"
@@ -40,9 +44,12 @@ web-time = "1"
 # wasm32 has. Gated so a browser build doesn't drag in tokio's mio-backed
 # networking, which doesn't compile there at all.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-# `net` for the direct transport's UDP socket; `rt-multi-thread` for the
-# reconnect tests, which run both peers at once.
-tokio = { workspace = true, features = ["net", "rt-multi-thread"] }
+# `net` for the direct transport's UDP socket (mio-backed, so it has no
+# wasm32 support at all); `rt`/`rt-multi-thread` for spawning, `time` for
+# the waits a browser takes from the page instead, `io-util` for the
+# replay reader.
+tokio = { workspace = true, features = ["io-util", "net", "rt", "rt-multi-thread", "time"] }
+tokio-util = { workspace = true, features = ["io", "rt"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # The page's timers, for the netplay plumbing's waits — a browser has no

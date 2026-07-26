@@ -25,25 +25,20 @@ use tokio_util::sync::CancellationToken;
 /// How long the link keeps trying to rebuild a dropped direct connection
 /// before giving up. Generous: the sim is paused throughout, so a long outage
 /// costs nothing but the wait.
-#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 const RECONNECT_DIRECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 /// Per-attempt cap on a single `host`/`connect` + `negotiate` rebuild — the
 /// dialer's `connect` will hang on ICE until the host is listening again, so
 /// bound it and retry rather than blocking the whole budget on one attempt.
-#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 const RECONNECT_DIRECT_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 /// Give-up window for the matchmaking path — longer than direct's, since each
 /// attempt re-rendezvouses on the signaling server then re-gathers ICE (and
 /// possibly TURN), which is much slower than re-binding a known local port.
-#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 const RECONNECT_MATCHMAKING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 /// Per-attempt cap for a matchmaking rebuild (signaling rendezvous + ICE/TURN
 /// gathering + negotiate).
-#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 const RECONNECT_MATCHMAKING_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 /// Pause between failed rebuild attempts (e.g. dialer racing ahead of the host
 /// re-binding its port).
-#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 const RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(250);
 /// Give-up window for a reconnect triggered by a channel *close* (rather than
 /// a stalled input queue). libdatachannel tears connections down gracefully,
@@ -56,7 +51,6 @@ const RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(
 /// while a quit whose goodbye was lost finds no peer and ends without a long
 /// "Reconnecting…". Applies to both transports (the cost of a needless wait is
 /// the same either way).
-#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 const RECONNECT_CLEAN_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
 /// Cap on the deliberate-quit `Goodbye` send. Best-effort by design — a
 /// wedged transport must not delay the local teardown; the peer just falls
@@ -209,9 +203,6 @@ pub enum LinkHealth {
 /// A logical connection to the peer that outlives physical transports: owns
 /// the peer connection, both channels' halves, and the mid-match reconnect
 /// mechanism. See the module docs for the design.
-// `rng_seed` and `cancel` feed the matchmaking reconnect, which a
-// browser doesn't have yet (see `rebuild_connection`).
-#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub struct Link {
     /// The current peer connection. `reconnect` drops the old one and slots
     /// the rebuilt one in; the link keeps it alive for the channels' lifetime,
@@ -443,9 +434,7 @@ impl Link {
             control: (new_control_sender, new_control_receiver),
             in_match: (new_in_match_sender, new_in_match_receiver),
             peer_conn: new_peer_conn,
-            #[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
             local_dtls_fingerprint,
-            #[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
             peer_dtls_fingerprint,
             // Informational on a reconnect: the rendezvous is already bound to
             // this match by the derived session_id. Logged so a hijack attempt
@@ -503,12 +492,10 @@ impl Link {
     ///
     /// [`Channels::from_signaling`]: super::channel::Channels::from_signaling
     ///
-    /// Native-only for now. Both recipes reach for something a browser
-    /// doesn't have — a UDP socket for the direct path, the native
-    /// WebSocket signaling client for matchmaking — so on wasm a dropped
-    /// link stays dropped until a browser signaling client exists. The
-    /// rest of the transport is portable; this is the one hole.
-    #[cfg(not(target_arch = "wasm32"))]
+    /// Both transports rebuild in a browser except the direct one, which
+    /// re-dials a UDP socket a browser can't open — and can't be holding
+    /// a direct link in the first place, so that arm is unreachable there
+    /// rather than merely unavailable.
     async fn rebuild_connection(
         &self,
         recipe: &ReconnectRecipe,
@@ -529,8 +516,19 @@ impl Link {
             let this_timeout = attempt_timeout.min(deadline.saturating_duration_since(now));
             let attempt = async {
                 let mut channels = match recipe {
+                    #[cfg(not(target_arch = "wasm32"))]
                     ReconnectRecipe::Direct(DirectRole::Host { port }) => super::direct_rtc::host(*port).await?,
+                    #[cfg(not(target_arch = "wasm32"))]
                     ReconnectRecipe::Direct(DirectRole::Connect { addr }) => super::direct_rtc::connect(addr).await?,
+                    // A browser can't have built a direct link, so it can't
+                    // be rebuilding one either.
+                    #[cfg(target_arch = "wasm32")]
+                    ReconnectRecipe::Direct(_) => {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::Unsupported,
+                            "a direct link can't be rebuilt in a browser",
+                        ))
+                    }
                     ReconnectRecipe::Matchmaking {
                         endpoint,
                         session_id,
@@ -579,20 +577,6 @@ impl Link {
                 _ = crate::platform::sleep(RECONNECT_BACKOFF) => {}
             }
         }
-    }
-}
-
-impl Link {
-    /// See the native [`Link::rebuild_connection`]: a browser has no way
-    /// to re-rendezvous yet, so a drop is final.
-    #[cfg(target_arch = "wasm32")]
-    async fn rebuild_connection(
-        &self,
-        _recipe: &ReconnectRecipe,
-        _deadline: web_time::Instant,
-    ) -> Option<super::channel::Channels> {
-        log::warn!("netplay: reconnecting isn't supported in a browser yet");
-        None
     }
 }
 

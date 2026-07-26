@@ -13,9 +13,10 @@
 //! where there are no threads to spawn. Nothing below the driver knows
 //! which one it is.
 //!
-//! Modules the browser can't have yet — the netplay transport and the
-//! sessions built on it — are gated to native; the rest compiles for
-//! wasm32.
+//! Everything here compiles for wasm32 except the stats sidecar (which
+//! wants a filesystem) and the signaling-free direct transport (which
+//! wants a UDP socket of its own). Live netplay, reconnect included,
+//! is not among the exceptions.
 
 // In a browser the things these `Arc`s hold — the core, the transport —
 // are genuinely not `Send`, because the browser's own handles aren't.
@@ -30,8 +31,8 @@
 /// Builds for wasm32: the transport rides a facade that is the
 /// browser's own WebRTC, signaling is the browser's own WebSocket, and
 /// the waiting goes through [`platform`] rather than a tokio runtime a
-/// browser host doesn't have. Untried against a live browser match —
-/// nothing above this crate can start one yet.
+/// browser host doesn't have. A browser has played a real match over
+/// it; the reconnect path is the one part still unexercised there.
 pub mod pvp;
 pub mod replay;
 pub mod singleplayer;
