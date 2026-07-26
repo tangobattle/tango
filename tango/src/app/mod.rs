@@ -197,6 +197,18 @@ pub struct App {
     /// A replay whose playback is waiting on a patch download. Set by
     /// `watch_replay`, resumed once the install rescan lands.
     pending_watch: Option<std::path::PathBuf>,
+    /// Playback speed to apply to the next queued replay as it installs,
+    /// carried off the session it replaces. Set only on a queue handoff —
+    /// watching a replay from the tab still starts at realtime — and
+    /// consumed by `watch_replay`, so it survives the deferred install when
+    /// the next replay has to fetch a patch first.
+    queue_carry_speed: Option<f32>,
+    /// Whether the active replay was running (rather than paused) the last
+    /// time the frame handler looked. The queue advances on the edge into
+    /// end-of-stream, and only when playback ran into it: scrubbing pauses
+    /// first, so dragging the playhead onto the final tick reads as parking
+    /// there rather than as the replay having run out.
+    replay_was_playing: bool,
     /// In-flight and failed patch downloads. App-level because the
     /// patches tab, the lobby, replay playback and the play tab's picker
     /// all start them, and every one of those surfaces renders them.
@@ -325,6 +337,40 @@ fn open_path(path: impl AsRef<std::path::Path>) -> iced::Task<Message> {
 }
 
 impl App {
+    /// Hand a played-out replay session over to the next queued replay.
+    ///
+    /// Called on every frame message, so it is mostly a pair of atomic loads.
+    /// It fires only on the transition into end-of-stream while playback was
+    /// actually running: `replay_was_playing` is what separates "ran out" from
+    /// "the user dragged the playhead to the last tick", since scrubbing
+    /// pauses before it seeks. With nothing queued the finished replay just
+    /// stays parked on its final frame, as it always has.
+    fn advance_replay_queue(&mut self) -> iced::Task<Message> {
+        let Some(s) = self.session.active_as::<session::replay::ReplaySession>() else {
+            self.replay_was_playing = false;
+            return iced::Task::none();
+        };
+        let was_playing = std::mem::replace(&mut self.replay_was_playing, !s.is_paused());
+        // A pending seek means the playhead is on its way somewhere else —
+        // the tick it reads right now says nothing about the stream ending.
+        let ran_out = was_playing && s.pending_seek_target().is_none() && s.current_tick() >= s.total_ticks();
+        if !ran_out || self.replays.queue.is_empty() {
+            return iced::Task::none();
+        }
+        let next = self.replays.queue.remove(0);
+        // Whatever speed they were watching at carries to the next one —
+        // someone skimming a queue at 4× means it for the queue, not for the
+        // one replay.
+        self.queue_carry_speed = Some(s.speed());
+        // Close before building: dropping the old session by overwriting the
+        // slot would leave its drive thread unjoined and its audio still
+        // bound. `watch_replay` handles the rest, including parking on a
+        // patch download if the next replay needs one it hasn't got.
+        self.session.close_session();
+        self.replay_was_playing = false;
+        self.watch_replay(next)
+    }
+
     /// Stats duty for a playback session about to start on `path`. With
     /// no readable stats sidecar, the session's prefetcher — which runs
     /// the very simulation the analysis needs anyway — takes the
@@ -468,6 +514,8 @@ impl App {
             play,
             replays: ReplaysState::default(),
             replay_analysis_jobs: Default::default(),
+            queue_carry_speed: None,
+            replay_was_playing: false,
             patches: PatchesState::default(),
             session: session::State::new(),
             netplay: netplay::State::new(),
@@ -1299,6 +1347,22 @@ impl App {
                     }
                     return iced::Task::none();
                 }
+                // The bar's up-next chip: drop this replay and start the next
+                // queued one. Same handoff `advance_replay_queue` does when a
+                // replay plays out, just user-driven and without waiting.
+                if let session::Message::Replay(session::view::replay::Message::SkipToQueued) = &m {
+                    if self.replays.queue.is_empty() {
+                        return iced::Task::none();
+                    }
+                    let next = self.replays.queue.remove(0);
+                    self.queue_carry_speed = self
+                        .session
+                        .active_as::<session::replay::ReplaySession>()
+                        .map(|s| s.speed());
+                    self.session.close_session();
+                    self.replay_was_playing = false;
+                    return self.watch_replay(next);
+                }
                 // Results screen's Watch button: building a playback session
                 // needs the scanners + config, so it's handled here (the
                 // session module's handler is a no-op). The results stay set
@@ -1352,6 +1416,12 @@ impl App {
                 // session was active before and isn't after.
                 let was_pvp = self.session.active_as::<session::pvp::PvpSession>().is_some();
                 let task = self.session.update(m, &self.config.input_mapping).map(Message::Session);
+                // A replay that just played out hands off to the queue. Done
+                // here rather than through `Session::is_ended` on purpose:
+                // that would tear a finished replay down even with an empty
+                // queue, and parking on the last frame (scrub back, export a
+                // clip) is the behavior playback has always had.
+                let queue_advance = self.advance_replay_queue();
                 // Rescan + reload run off-thread; the Rescanned
                 // followup forces a `loaded` rebuild past the
                 // same-key dedupe so the play tab's save view
@@ -1373,7 +1443,7 @@ impl App {
                 } else {
                     iced::Task::none()
                 };
-                iced::Task::batch([task, sp_rescan, pvp_rescan])
+                iced::Task::batch([task, queue_advance, sp_rescan, pvp_rescan])
             }
             Message::Netplay(delivery) => {
                 // A re-delivery of an already-applied report: nothing left
@@ -1699,6 +1769,7 @@ impl App {
                 self.config.hide_emulator_border,
                 self.config.show_replay_inputs,
                 clip_job,
+                self.replays.queue.len(),
                 crate::platform::video::effects::effect_for(&self.config.video_filter),
             )
             .map(Message::Session);

@@ -71,6 +71,10 @@ pub enum Message {
     /// Cancel the running export shown in the clip strip. Also
     /// App-handled — the job's canceller lives in the replays tab.
     CancelClipExport,
+    /// Abandon this replay and start the next queued one (the bar's
+    /// up-next chip). App-handled: the queue lives in the replays tab and
+    /// only the App can build a playback session. No-op here.
+    SkipToQueued,
 }
 
 /// Apply a replay-view message. Takes the whole session [`State`]:
@@ -159,7 +163,7 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
         Message::ToggleClipTools => {
             state.scrub.tools_open = !state.scrub.tools_open;
         }
-        Message::ExportClip { .. } | Message::CancelClipExport => {
+        Message::ExportClip { .. } | Message::CancelClipExport | Message::SkipToQueued => {
             // App-side: see the wrappers in crate::app.
         }
     }
@@ -195,7 +199,14 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
     // in the tree at all, so no invisible buttons linger where it
     // used to be.
     if state.controls_anim.visible(now) {
-        stacked = stacked.push(replay_controls(lang, r, state, ctx.show_replay_inputs, ctx.clip_job));
+        stacked = stacked.push(replay_controls(
+            lang,
+            r,
+            state,
+            ctx.show_replay_inputs,
+            ctx.clip_job,
+            ctx.queued,
+        ));
         stacked = stacked.push(corner_commands_overlay(lang, state, SessionMessage::Close, false));
     }
     // Input display, above the transport bar's resting spot.
@@ -229,10 +240,11 @@ fn replay_controls<'a>(
     state: &'a State,
     show_replay_inputs: bool,
     clip_job: Option<ClipJob<'a>>,
+    queued: usize,
 ) -> Element<'a, SessionMessage> {
     let now = iced::time::Instant::now();
     let hide_progress = state.controls_anim.progress(now);
-    let panel = container(replay_bar(lang, r, state, show_replay_inputs, clip_job))
+    let panel = container(replay_bar(lang, r, state, show_replay_inputs, clip_job, queued))
         .width(Fill)
         .style(hud_chip_plate);
     // The bar's own messages are replay-local; lift them into the
@@ -267,6 +279,7 @@ fn replay_bar<'a>(
     state: &'a State,
     show_replay_inputs: bool,
     clip_job: Option<ClipJob<'a>>,
+    queued: usize,
 ) -> Element<'a, Message> {
     // No ellipsis popover for replays — the speed picker sits
     // directly in the bar, and Settings + Close float top-right
@@ -478,7 +491,7 @@ fn replay_bar<'a>(
     };
 
     let controls = row![].spacing(10).align_y(Alignment::Center);
-    let controls = replay_transport(lang, r, state, controls)
+    let controls = replay_transport(lang, r, state, controls, queued)
         .push(clip_toggle)
         .push(speed_menu)
         .push(input_toggle)
@@ -699,6 +712,7 @@ fn replay_transport<'a>(
     r: &'a ReplaySession,
     state: &State,
     controls: sweeten::widget::Row<'a, Message>,
+    queued: usize,
 ) -> sweeten::widget::Row<'a, Message> {
     let total = r.total_ticks().max(1);
     let cur = playhead_tick(r, state);
@@ -760,8 +774,36 @@ fn replay_transport<'a>(
     let tick_style = |theme: &iced::Theme| iced::widget::text::Style {
         color: Some(theme.palette().primary),
     };
+    // Skip-to-next, immediately right of Play — it's transport, not a
+    // display toggle, so it belongs in this cluster rather than out with
+    // the chips. Icon only: the count is a detail, so it rides the
+    // tooltip instead of putting a live number in the bar. Absent
+    // entirely when nothing is queued.
+    let skip_btn: Option<Element<'a, Message>> = (queued > 0).then(|| {
+        iced::widget::tooltip(
+            button(
+                iced::widget::container(Icon::SkipForward.widget().size(16.0))
+                    .width(iced::Length::Fixed(18.0))
+                    .height(iced::Length::Fixed(18.0))
+                    .center(Fill),
+            )
+            .padding(0)
+            .width(iced::Length::Fixed(32.0))
+            .height(iced::Length::Fixed(32.0))
+            .style(telemetry_plate_button)
+            .on_press(Message::SkipToQueued),
+            widgets::tooltip_bubble(t!(lang, "replays-queue-up-next", n = queued as i64)),
+            iced::widget::tooltip::Position::Top,
+        )
+        .gap(4)
+        .into()
+    });
+    let controls = controls.push(play_pause_btn);
+    let controls = match skip_btn {
+        Some(b) => controls.push(b),
+        None => controls,
+    };
     controls
-        .push(play_pause_btn)
         .push(
             row![
                 text(format_tick(cur))

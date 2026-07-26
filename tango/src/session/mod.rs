@@ -770,9 +770,11 @@ impl State {
     /// Tear down the active session: PvP pre-drop close request, then
     /// drop-by-clearing plus the reset of every piece of per-session
     /// UI state. Shared by [`Message::Close`] (the Close button /
-    /// disconnect confirm) and the Esc hold-to-quit expiry in
-    /// [`update`](State::update).
-    fn close_session(&mut self) {
+    /// disconnect confirm), the Esc hold-to-quit expiry in
+    /// [`update`](State::update), and the App's replay-queue advance —
+    /// which has to wind the finished session down before installing the
+    /// next one over the slot.
+    pub(crate) fn close_session(&mut self) {
         if let Some(s) = self.active.as_ref() {
             s.request_close();
         }

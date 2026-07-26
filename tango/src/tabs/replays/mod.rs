@@ -38,6 +38,18 @@ pub enum Message {
     /// Unmask the selected replay's HP chart, which streamer mode otherwise
     /// replaces with a placeholder.
     RevealChart,
+    /// Append a replay to the playback queue (the detail panel's Queue
+    /// button). The same replay can be queued more than once.
+    Enqueue(std::path::PathBuf),
+    /// Drop one entry from the queue — the ✕ on its row. By position, not
+    /// path: the same replay can appear more than once, and removing one
+    /// copy shouldn't take its twin with it.
+    Dequeue(usize),
+    /// Empty the queue outright.
+    ClearQueue,
+    /// Start the queue now: pops the front and watches it, rather than
+    /// waiting for a currently-playing replay to run out.
+    PlayQueue,
     /// Reveal the replay file in the OS file manager, selected.
     RevealReplay(std::path::PathBuf),
     Watch(std::path::PathBuf),
@@ -122,6 +134,12 @@ pub struct ReplaysState {
     /// they're incomplete once the lazy stats worker reports.
     pub show_incomplete: bool,
     pub selected: Option<std::path::PathBuf>,
+    /// Replays to play after the current one, in order. Strictly "what's up
+    /// next": [`Message::Watch`] doesn't touch it, and reaching the end of a
+    /// playback session pops the front and plays it (see
+    /// `App::advance_replay_queue`). Lives here rather than on the App because
+    /// this tab is where it's built and shown; the App only drains it.
+    pub queue: Vec<std::path::PathBuf>,
     /// The one replay whose HP chart the user has explicitly unmasked in
     /// streamer mode. Held as a path rather than a flag so selecting anything
     /// else re-masks on its own — revealing one match's chip history
@@ -284,6 +302,30 @@ impl ReplaysState {
             Message::RevealChart => {
                 self.revealed = self.selected.clone();
                 None
+            }
+            Message::Enqueue(p) => {
+                self.queue.push(p);
+                None
+            }
+            Message::Dequeue(i) => {
+                if i < self.queue.len() {
+                    self.queue.remove(i);
+                }
+                None
+            }
+            Message::ClearQueue => {
+                self.queue.clear();
+                None
+            }
+            Message::PlayQueue => {
+                // Popping here (rather than letting the App do it) keeps the
+                // queue meaning "after this one" no matter which way playback
+                // started.
+                if self.queue.is_empty() {
+                    None
+                } else {
+                    Some(Effect::Watch(self.queue.remove(0)))
+                }
             }
             Message::Selected(p) => {
                 if self.selected.as_ref() != Some(&p) {
@@ -496,10 +538,18 @@ impl ReplaysState {
         } else {
             scrollable(list).style(widgets::chunky_scrollable).height(Fill).into()
         };
-        let left = container(left_body)
-            .width(Length::Fixed(360.0))
-            .height(Fill)
-            .style(widgets::pane);
+        let list_pane = container(left_body).width(Fill).height(Fill).style(widgets::pane);
+        // The queue is its own pane under the list it was built from, and
+        // only exists when something is in it — an empty bar would be a
+        // standing reminder of a feature most sessions never touch.
+        let left: Element<'_, Message> = match self.queue_strip(lang, &replays, netplay_active) {
+            Some(strip) => column![list_pane, strip]
+                .spacing(style::PANE_GAP)
+                .width(Length::Fixed(360.0))
+                .height(Fill)
+                .into(),
+            None => container(list_pane).width(Length::Fixed(360.0)).height(Fill).into(),
+        };
 
         // Right panel: replay_detail returns a column of panes
         // when something is selected; the empty-state collapses to
@@ -531,6 +581,143 @@ impl ReplaysState {
         };
 
         widgets::top_split_pane(top, left, right)
+    }
+
+    /// The playback queue, its own pane under the replay list — `None` when
+    /// nothing is queued, so the tab looks exactly as it did for anyone who
+    /// never uses it. A header (count + Play + Clear) over one row per
+    /// waiting replay, each carrying the same two lines the list row it came
+    /// from carries. Play is disabled for the same reason Watch is: a
+    /// playback session can't start while netplay holds the emulator.
+    fn queue_strip<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        replays: &[replays::ScannedReplay],
+        netplay_active: bool,
+    ) -> Option<Element<'a, Message>> {
+        if self.queue.is_empty() {
+            return None;
+        }
+        // Count leads; the action pair rides the right edge with Clear
+        // immediately left of Play. Play carries the primary treatment —
+        // starting the queue is the header's one real action, and it reads
+        // as the counterpart to the detail panel's Watch button.
+        let header = row![
+            text(t!(lang, "replays-queue-count", n = self.queue.len() as i64))
+                .size(TEXT_CAPTION)
+                .style(widgets::muted_text_style),
+            Space::new().width(Fill),
+            widgets::icon_button(
+                Icon::Trash2,
+                t!(lang, "replays-queue-clear"),
+                Message::ClearQueue,
+                style::ROW_PADDING,
+            ),
+            widgets::icon_button_styled(
+                Icon::Play,
+                t!(lang, "replays-queue-play"),
+                (!netplay_active).then_some(Message::PlayQueue),
+                style::ROW_PADDING,
+                if netplay_active {
+                    widgets::neutral
+                } else {
+                    widgets::primary_button
+                },
+            ),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center);
+
+        // Vertical breathing room only — horizontal inset is each row's own,
+        // so the scrollable spans the pane edge to edge and its bar sits
+        // flush with the right edge, matching the replay list above.
+        let mut rows = column![].spacing(2).padding([4, 0]);
+        for (i, path) in self.queue.iter().enumerate() {
+            // A queued replay that has since left the scan (deleted on disk)
+            // still gets a row, so it can be taken out by hand rather than
+            // just failing when its turn comes.
+            let scanned = replays.iter().find(|r| &r.path == path);
+            let (line, caption) = match scanned {
+                Some(r) => Self::replay_caption(lang, r),
+                None => (
+                    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                    t!(lang, "replays-queue-missing"),
+                ),
+            };
+            // The position number is the whole point of a queue, so it leads
+            // each row in a fixed-width gutter — the rows stay aligned as the
+            // count crosses into double digits.
+            rows = rows.push(
+                container(
+                    row![
+                        container(
+                            text(format!("{}", i + 1))
+                                .size(TEXT_CAPTION)
+                                .style(widgets::muted_text_style)
+                        )
+                        .width(Length::Fixed(18.0)),
+                        column![
+                            text(line).size(TEXT_CAPTION).wrapping(text::Wrapping::None),
+                            text(caption)
+                                .size(TEXT_CAPTION)
+                                .style(widgets::muted_text_style)
+                                .wrapping(text::Wrapping::None),
+                        ]
+                        .spacing(1)
+                        .width(Fill),
+                        // Understated on purpose: removing one entry is
+                        // incidental next to the header's Play and Clear, so
+                        // it's a borderless muted glyph that only picks up a
+                        // plate on hover.
+                        widgets::icon_button_styled(
+                            Icon::X,
+                            t!(lang, "replays-queue-remove"),
+                            Some(Message::Dequeue(i)),
+                            [2.0, 6.0],
+                            |theme: &iced::Theme, status| {
+                                let mut st = widgets::flat(theme, status);
+                                if matches!(status, iced::widget::button::Status::Active) {
+                                    st.text_color = widgets::muted_color(theme);
+                                }
+                                st
+                            },
+                        ),
+                    ]
+                    .spacing(6)
+                    .align_y(Alignment::Center),
+                )
+                .padding(style::ROW_PADDING)
+                .width(Fill)
+                .clip(true),
+            );
+        }
+
+        // Height-capped and scrollable: a long queue is the normal case for
+        // this feature, and it must not push the list it was built from off
+        // the tab.
+        const QUEUE_MAX_H: f32 = 168.0;
+        Some(
+            container(
+                column![
+                    // Only the header is inset, and by the same 8px the
+                    // list's own column uses at its top — a full PANE_PADDING
+                    // here left the queue looking loose against the tight
+                    // list above it. Horizontally it lines the count up with
+                    // the row text below. The pane itself carries no padding,
+                    // so the scrollable can run to the edges.
+                    container(header).padding([8.0, style::ROW_PADDING[1]]).width(Fill),
+                    scrollable(rows)
+                        .style(widgets::chunky_scrollable)
+                        .height(Length::Shrink)
+                        .width(Fill),
+                ]
+                .width(Fill),
+            )
+            .max_height(QUEUE_MAX_H)
+            .width(Fill)
+            .style(widgets::pane)
+            .into(),
+        )
     }
 
     /// Top strip: game + date filter dropdowns, the free-text
@@ -646,22 +833,13 @@ impl ReplaysState {
         g_ok && d_ok && s_ok && c_ok
     }
 
-    /// One row of the replay list: timestamp + status glyph, the
-    /// "game @ code · nicknames" line, an optional stats line once the
-    /// lazy stats worker gets here, and a bottom progress strip while
-    /// an export render is in flight.
-    fn replay_list_row<'a>(
-        &'a self,
-        lang: &'a LanguageIdentifier,
-        r: &replays::ScannedReplay,
-        idx: usize,
-    ) -> Element<'a, Message> {
+    /// The two lines that name a replay in the list: its timestamp, and the
+    /// "game @ code · nicknames" caption under it. Shared with the playback
+    /// queue, so a queued entry reads exactly like the row it was added from.
+    fn replay_caption(lang: &LanguageIdentifier, r: &replays::ScannedReplay) -> (String, String) {
         let md = &r.metadata;
         let local_nick = r.local_side().map(|s| s.nickname.clone()).unwrap_or_default();
         let remote_nick = r.remote_side().map(|s| s.nickname.clone()).unwrap_or_default();
-
-        let ts_str = format_ts(md.ts, "%Y-%m-%d %H:%M:%S");
-
         let local_gi = r.local_side().and_then(|s| s.game_info.as_ref());
         let game_label = local_gi
             .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
@@ -674,6 +852,28 @@ impl ReplaysState {
         } else {
             format!("{local_nick} vs {remote_nick}")
         };
+        (
+            format_ts(md.ts, "%Y-%m-%d %H:%M:%S"),
+            format!(
+                "{game_label} @ {}  ·  {nick_pair}",
+                link_code_display(lang, &md.link_code)
+            ),
+        )
+    }
+
+    /// One row of the replay list: timestamp + status glyph, the
+    /// "game @ code · nicknames" line, an optional stats line once the
+    /// lazy stats worker gets here, and a bottom progress strip while
+    /// an export render is in flight.
+    fn replay_list_row<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        r: &replays::ScannedReplay,
+        idx: usize,
+    ) -> Element<'a, Message> {
+        let md = &r.metadata;
+        let (ts_str, caption) = Self::replay_caption(lang, r);
+        let local_gi = r.local_side().and_then(|s| s.game_info.as_ref());
 
         let selected = self.selected.as_ref() == Some(&r.path);
         // Right-edge status glyph: a clapperboard while a render
@@ -767,12 +967,9 @@ impl ReplaysState {
             // it never moves as the optional stats line loads or
             // the glyph changes.
             row![text(ts_str).size(TEXT_BODY), Space::new().width(Fill), badge].align_y(Alignment::Center),
-            text(format!(
-                "{game_label} @ {}  ·  {nick_pair}",
-                link_code_display(lang, &md.link_code)
-            ))
-            .size(TEXT_CAPTION)
-            .style(widgets::list_caption_style(selected)),
+            text(caption)
+                .size(TEXT_CAPTION)
+                .style(widgets::list_caption_style(selected)),
         ]
         .spacing(2)
         .width(Fill);
@@ -970,6 +1167,15 @@ fn replay_detail<'a>(
                     Icon::FolderOpen,
                     t!(lang, "patches-open-folder"),
                     Message::RevealReplay(r.path.clone()),
+                    STANDARD_PADDING,
+                ),
+                // Queue: line this replay up to play when the current one
+                // runs out. Repeatable — queueing the same replay twice
+                // plays it twice.
+                widgets::icon_button(
+                    Icon::ListPlus,
+                    t!(lang, "replays-queue-add"),
+                    Message::Enqueue(r.path.clone()),
                     STANDARD_PADDING,
                 ),
                 // Watch is the main action of the detail view —

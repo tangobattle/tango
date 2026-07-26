@@ -145,6 +145,10 @@ pub struct Ctx<'a> {
     pub hide_emulator_border: bool,
     pub show_replay_inputs: bool,
     pub clip_job: Option<ClipJob<'a>>,
+    /// How many replays are waiting behind this one. The queue itself lives
+    /// in the replays tab; the transport bar only needs the count, to say so
+    /// and to offer the skip. `0` = nothing queued, and the bar shows neither.
+    pub queued: usize,
     pub effect: &'static Effect,
 }
 
@@ -156,6 +160,7 @@ pub fn view<'a>(
     hide_emulator_border: bool,
     show_replay_inputs: bool,
     clip_job: Option<ClipJob<'a>>,
+    queued: usize,
     effect: &'static Effect,
 ) -> Element<'a, Message> {
     let Some(session) = state.active.as_deref() else {
@@ -168,6 +173,7 @@ pub fn view<'a>(
         hide_emulator_border,
         show_replay_inputs,
         clip_job,
+        queued,
         effect,
     };
     // Each session kind assembles its own screen. The engine-side

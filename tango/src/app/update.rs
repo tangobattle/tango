@@ -598,6 +598,14 @@ impl App {
             Ok((s, audio, threads)) => {
                 self.session.replay_path = Some(p.clone());
                 self.session.active = Some(Box::new(s));
+                // A queue handoff carries the speed of the replay it
+                // replaced; a plain Watch has nothing pending and starts at
+                // realtime.
+                if let Some(factor) = self.queue_carry_speed.take() {
+                    if let Some(s) = self.session.active.as_ref() {
+                        s.set_speed(factor);
+                    }
+                }
                 self.session.audio_binding = audio;
                 self.session.attach_drive_threads(threads);
                 self.session.session_installed();
