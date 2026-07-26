@@ -376,194 +376,226 @@ select {
 
 /* --------------------------------------------------------------- play */
 
-.play {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
+/* The session owns the viewport: the stage fills it and everything else
+ * floats on top, so the picture is as large as the device can show. */
+.session {
+    position: fixed;
+    inset: 0;
     background: #000;
+    overflow: hidden;
 }
 
 .stage {
-    flex: none;
+    position: absolute;
+    inset: 0;
     display: grid;
     place-items: center;
-    background: #000;
 }
 
 canvas.screen {
     display: block;
-    width: 100%;
-    max-width: min(100vw, calc((100dvh - 300px) * 1.5));
+    /* Integer scaling: the GBA is 240x160, and a fractional factor makes
+     * some pixel rows a row taller than their neighbours. Round down to
+     * a whole multiple of 240 and letterbox the remainder. */
+    width: max(240px, round(down, min(100dvw, 100dvh * 1.5), 240px));
     aspect-ratio: 240 / 160;
-    /* The GBA is 240x160; anything but nearest-neighbour turns pixel art
-     * into soup. */
+    /* Anything but nearest-neighbour turns pixel art into soup. */
     image-rendering: pixelated;
     background: #000;
 }
 
-.hud {
+/* Chips along the top. Above the pad, so the L shoulder can't eat the
+ * Quit button. */
+.session-hud {
+    position: absolute;
+    top: calc(6px + var(--safe-top));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 7;
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 6px var(--pad);
-    background: var(--panel);
-    border-bottom: 1px solid var(--line);
-    font-size: 12px;
+    gap: 6px;
+    max-width: 100%;
+    padding: 0 6px;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: rgba(21, 25, 34, 0.72);
+    border: 1px solid var(--line);
     color: var(--dim);
-    flex: none;
+    font-size: 12px;
+    white-space: nowrap;
 }
 
-.hud .grow {
-    flex: 1;
+button.chip {
+    font-weight: 600;
+    color: var(--text);
 }
 
-.hud input[type="range"] {
-    width: 90px;
+.chip input[type="range"] {
+    width: 70px;
     accent-color: var(--accent);
 }
 
-/* The pad. `touch-action: none` on every control is what stops a press
- * turning into a page pan or a double-tap zoom. */
-.pad {
-    flex: 1;
-    min-height: 0;
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    grid-template-rows: auto 1fr auto;
-    align-content: end;
-    gap: 10px;
-    padding: 10px var(--pad) calc(10px + var(--safe-bottom));
-    background: var(--bg);
-    touch-action: none;
+/* Inert everywhere; a coarse-pointer screen (a phone or a tablet) turns
+ * the pad on over the stage. A mouse gets the keyboard instead. */
+.touch-controls {
+    display: none;
 }
 
-.pad button {
-    touch-action: none;
-    border: 1px solid var(--line);
-    background: var(--panel-2);
-    color: var(--text);
-    font-weight: 700;
-    border-radius: 12px;
-}
-
-.pad button:active,
-.pad button[data-held="true"] {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #241a05;
-}
-
-.dpad {
-    grid-column: 1;
-    grid-row: 2;
-    display: grid;
-    grid-template-columns: repeat(3, 52px);
-    grid-template-rows: repeat(3, 52px);
-    gap: 4px;
-}
-
-.dpad button {
-    font-size: 17px;
-}
-
-.dpad .hole {
-    border: 0;
-    background: none;
-}
-
-.face {
-    grid-column: 3;
-    grid-row: 2;
-    display: grid;
-    grid-template-columns: repeat(2, 62px);
-    grid-template-rows: repeat(2, 62px);
-    gap: 8px;
-    align-items: center;
-}
-
-/* B lower-left, A upper-right — the GBA's own diagonal. */
-.face .b {
-    grid-area: 2 / 1;
-    border-radius: 50%;
-}
-
-.face .a {
-    grid-area: 1 / 2;
-    border-radius: 50%;
-}
-
-.shoulders {
-    grid-column: 1 / -1;
-    grid-row: 1;
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
-}
-
-.shoulders button {
-    min-height: 40px;
-    flex: 0 0 96px;
-    font-size: 13px;
-}
-
-.menu-keys {
-    grid-column: 2;
-    grid-row: 3;
-    display: flex;
-    justify-content: center;
-    align-items: flex-end;
-    gap: 10px;
-}
-
-.menu-keys button {
-    min-height: 40px;
-    padding: 0 16px;
-    font-size: 12px;
-    border-radius: 999px;
-}
-
-/* Landscape: the screen goes in the middle and the pad flanks it, which
- * is the only way both fit on a phone held sideways. */
-@media (orientation: landscape) and (max-height: 520px) {
-    .play {
-        flex-direction: row;
-        align-items: stretch;
-    }
-
-    .stage {
-        order: 2;
-        flex: 1;
-        min-width: 0;
-    }
-
-    canvas.screen {
-        width: auto;
-        height: 100%;
-        max-width: 100%;
-        max-height: 100dvh;
-    }
-
-    .pad {
-        order: 1;
+@media (pointer: coarse) {
+    .touch-controls {
+        display: block;
         position: absolute;
         inset: 0;
-        background: none;
+        z-index: 6;
+        /* Only the controls take touches; the stage between them stays
+         * reachable. */
         pointer-events: none;
-        align-content: end;
+        touch-action: none;
+        -webkit-touch-callout: none;
+        color: var(--dim);
+        font-size: 12px;
     }
 
-    .pad > * {
+    .touch-controls > * {
         pointer-events: auto;
+        position: absolute;
+        touch-action: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(36, 40, 59, 0.4);
+        border: 1px solid rgba(59, 66, 97, 0.6);
+        font-weight: 600;
     }
 
-    .hud {
+    .tc-dpad {
+        left: calc(14px + var(--safe-left));
+        bottom: calc(16px + var(--safe-bottom));
+        /* Mirrored by DPAD_SIZE in ui/touch.rs. */
+        width: 132px;
+        height: 132px;
+        border-radius: 50%;
+    }
+
+    /* The cross glyph. Inert — the whole circle is one control, and the
+     * arms are only there to say which way is which. */
+    .tc-dpad::before,
+    .tc-dpad::after {
+        content: "";
         position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(232, 236, 244, 0.1);
+        border-radius: 8px;
+        pointer-events: none;
+    }
+
+    .tc-dpad::before {
+        width: 34px;
+        height: 100px;
+    }
+
+    .tc-dpad::after {
+        width: 100px;
+        height: 34px;
+    }
+
+    .tc-btn {
+        border-radius: 50%;
+    }
+
+    .tc-dpad.held,
+    .tc-btn.held {
+        background: rgba(232, 177, 61, 0.3);
+        border-color: var(--accent);
+        color: var(--text);
+    }
+
+    /* B lower-left of A — the GBA's own diagonal. */
+    .tc-a {
+        right: calc(16px + var(--safe-right));
+        bottom: calc(78px + var(--safe-bottom));
+        width: 58px;
+        height: 58px;
+    }
+
+    .tc-b {
+        right: calc(82px + var(--safe-right));
+        bottom: calc(22px + var(--safe-bottom));
+        width: 58px;
+        height: 58px;
+    }
+
+    /* Shoulders hug the top corners, like the real thing. */
+    .tc-l,
+    .tc-r {
         top: 0;
+        width: 92px;
+        height: 32px;
+    }
+
+    .tc-l {
         left: 0;
+        border-radius: 0 0 12px 0;
+        border-width: 0 1px 1px 0;
+    }
+
+    .tc-r {
         right: 0;
-        background: rgba(11, 13, 18, 0.75);
-        z-index: 2;
+        border-radius: 0 0 0 12px;
+        border-width: 0 0 1px 1px;
+    }
+
+    .tc-pill {
+        border-radius: 999px;
+        height: 26px;
+        padding: 0 14px;
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .tc-start {
+        left: 50%;
+        transform: translateX(8px);
+        bottom: calc(12px + var(--safe-bottom));
+    }
+
+    .tc-select {
+        left: 50%;
+        transform: translateX(calc(-100% - 8px));
+        bottom: calc(12px + var(--safe-bottom));
+    }
+}
+
+/* A phone held upright: the session never squeezes into portrait — it
+ * renders landscape and is rotated onto the tall screen, so turning the
+ * phone gives an upright picture and the pad's corners land where
+ * fingers rest. The touch maths survives the rotation because
+ * offsetX/offsetY map through the inverse transform. */
+@media (pointer: coarse) and (orientation: portrait) {
+    .session {
+        /* inset:0 still pins top/left; the explicit size takes over
+         * from right/bottom. */
+        width: 100dvh;
+        height: 100dvw;
+        transform-origin: top left;
+        transform: rotate(90deg) translateY(-100dvw);
+    }
+
+    /* The rotated session's axes are swapped relative to the viewport,
+     * so the viewport-unit sizing above swaps with them. */
+    canvas.screen {
+        width: max(240px, round(down, min(100dvh, 100dvw * 1.5), 240px));
     }
 }
 

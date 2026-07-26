@@ -3,6 +3,7 @@
 pub mod library;
 pub mod link;
 pub mod play;
+pub mod touch;
 
 use dioxus::prelude::*;
 

@@ -24,14 +24,15 @@ pub fn joyflags() -> u32 {
     TOUCH.with(|t| t.get()) | KEYBOARD.with(|k| k.get())
 }
 
-/// A touch button went down. `mask` may name several keys — the D-pad's
-/// corners are a diagonal, which is one press of two directions.
-pub fn touch_press(mask: u32) {
-    TOUCH.with(|t| t.set(t.get() | mask));
-}
-
-pub fn touch_release(mask: u32) {
-    TOUCH.with(|t| t.set(t.get() & !mask));
+/// Replace the bits under `mask` with `bits`.
+///
+/// Set rather than press/release because the D-pad is one control, not
+/// four: a finger sliding across it goes from LEFT to LEFT|UP to UP
+/// without ever lifting, and that is a single write of the whole
+/// direction field. A plain button is the degenerate case —
+/// `touch_set(A, A)` down, `touch_set(A, 0)` up.
+pub fn touch_set(mask: u32, bits: u32) {
+    TOUCH.with(|t| t.set((t.get() & !mask) | bits));
 }
 
 /// Drop everything held by touch. Used when the screen the pad lives on
@@ -39,6 +40,9 @@ pub fn touch_release(mask: u32) {
 pub fn touch_clear() {
     TOUCH.with(|t| t.set(0));
 }
+
+/// Every direction bit, as one field for [`touch_set`].
+pub const DPAD: u32 = keys::UP | keys::DOWN | keys::LEFT | keys::RIGHT;
 
 /// The desktop-shaped bindings, close enough to Tango's defaults to be
 /// muscle-memory-compatible. Deliberately not configurable: a lite build
@@ -99,21 +103,3 @@ pub fn install_keyboard() {
     blur.forget();
 }
 
-/// The on-screen pad's buttons, as the UI lays them out. The D-pad is a
-/// 3x3 grid so the corners give real diagonals rather than making the
-/// player chord two buttons.
-pub mod pad {
-    use super::keys;
-
-    pub const DPAD: [(&str, u32); 9] = [
-        ("↖", keys::UP | keys::LEFT),
-        ("↑", keys::UP),
-        ("↗", keys::UP | keys::RIGHT),
-        ("←", keys::LEFT),
-        ("", 0),
-        ("→", keys::RIGHT),
-        ("↙", keys::DOWN | keys::LEFT),
-        ("↓", keys::DOWN),
-        ("↘", keys::DOWN | keys::RIGHT),
-    ];
-}

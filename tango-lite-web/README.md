@@ -19,7 +19,7 @@ contracts and nothing else.
 | Games | All seven families, same registry and the same `gamesupport-*` features as the desktop |
 | Patches | The real `.tangopatch` catalog: index, install, apply, and auto-fetch what your opponent brings |
 | Storage | ROMs, saves, patch packages and config, kept on the device |
-| Input | On-screen pad with real diagonals, plus a keyboard |
+| Input | gbaroll's slide-aware touch overlay, plus a keyboard |
 
 Deliberately absent: the ROM scanner, replays, the save editor, the
 results screen, Discord presence, localization. Lite means the two
@@ -59,9 +59,9 @@ is used if present — the unoptimised module is ~14MB, most of it mgba.
       input.rs     touch + keyboard, folded into one joyflag word
     link.rs      netplay: spawn the connect future, pump the lobby, hand off
     app.rs       the shell, and the one place polling becomes reactivity
-    ui/          the three screens
+    ui/          the three screens, and the touch overlay
 
-Four decisions are worth knowing about before changing anything.
+Five decisions are worth knowing about before changing anything.
 
 **The engine, the library and the netplay state machine live in
 thread-locals, not signals.** None of them is `Clone`, the engine is
@@ -100,6 +100,18 @@ backgrounded netplay tab stalls, and a stalled simulation isn't a local
 inconvenience: it backs the peer's input queue up until their supervisor
 gives the link up for dead. `pump_now` advances by elapsed wall clock,
 so three uncoordinated callers drive one loop correctly.
+
+**The pad is gbaroll's overlay, and the D-pad is one control rather than
+four buttons.** Where a finger lands inside its circle is the direction,
+a dead zone in the middle is neutral, and `pointermove` re-steers
+mid-press — so left → up-left → up is one continuous slide, which is how
+a thumb moves and what a grid of nine buttons can't do. It floats over
+the stage (`pointer-events: none` on the container, `auto` on the
+controls) so the picture gets the whole viewport, which is also why a
+phone held upright renders the session landscape and rotates it onto the
+tall screen: the pad's corners have to land where fingers actually rest.
+The touch maths survives that rotation because `offsetX`/`offsetY` map
+through the inverse transform.
 
 ## Known gaps
 
