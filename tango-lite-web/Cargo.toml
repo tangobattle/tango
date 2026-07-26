@@ -125,6 +125,10 @@ web-sys = { version = "0.3", features = [
 # design. Named here purely to turn that feature on for the whole build.
 getrandom = { version = "0.2", features = ["js"] }
 
+# Gamepads. The crate is a facade over SDL3 natively and the browser's
+# Gamepad API on wasm; `default-features = false` drops the SDL half,
+# which this target never links anyway.
+gamepad-facade = { git = "https://github.com/tangobattle/gamepad-facade", default-features = false }
 mgba.workspace = true
 tango-dataview = { path = "../tango-dataview" }
 tango-gamesupport = { path = "../tango-gamesupport" }

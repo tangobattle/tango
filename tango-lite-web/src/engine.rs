@@ -580,6 +580,10 @@ impl Engine {
         let fps = self.driver.fps_target().max(1.0) as f64;
         self.debt += elapsed * fps / 1000.0;
 
+        // The browser's Gamepad API has no events — it is a snapshot
+        // you diff — so a controller is read here, on the same beat the
+        // joyflags are handed over, rather than from a listener.
+        crate::input::poll_gamepads();
         self.session.set_joyflags(crate::input::joyflags());
 
         let mut budget = MAX_TICKS_PER_PUMP;

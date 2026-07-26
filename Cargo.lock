@@ -7800,6 +7800,7 @@ dependencies = [
  "dioxus",
  "encoder-facade",
  "futures",
+ "gamepad-facade",
  "getrandom 0.2.16",
  "js-sys",
  "log",

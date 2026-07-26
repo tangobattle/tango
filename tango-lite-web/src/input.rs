@@ -1,13 +1,15 @@
-//! One mgba joyflag word, from touch and from a keyboard.
+//! One mgba joyflag word, from touch, a keyboard, and a gamepad.
 //!
 //! The session takes the whole bitmap at once ([`Session::set_joyflags`]),
-//! so both sources fold into one held-buttons word that the pump reads
-//! each frame. Two sources rather than one because the same page is a
-//! phone and a laptop; they simply OR together.
+//! so every source folds into one held-buttons word that the pump reads
+//! each frame. Three rather than one because the same page is a phone, a
+//! laptop, and a phone with a controller clipped to it; they simply OR
+//! together, and none of them has to know about the others.
 //!
 //! [`Session::set_joyflags`]: tango_session::Session::set_joyflags
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -17,11 +19,28 @@ use mgba::input::keys;
 thread_local! {
     static TOUCH: Cell<u32> = const { Cell::new(0) };
     static KEYBOARD: Cell<u32> = const { Cell::new(0) };
+    /// Per-pad, because a stick and a d-pad drive the same four bits:
+    /// merged into one word, centring the stick would release a d-pad
+    /// direction that is still held. Keyed by device so unplugging one
+    /// can't leave another's buttons stuck down.
+    static PADS: RefCell<HashMap<gamepad_facade::Id, Pad>> = RefCell::new(HashMap::new());
 }
 
-/// Everything currently held, from either source.
+/// One controller's contribution, split by what produced it.
+#[derive(Default, Clone, Copy)]
+struct Pad {
+    buttons: u32,
+    axes: u32,
+}
+
+/// Everything currently held, from any source.
 pub fn joyflags() -> u32 {
-    TOUCH.with(|t| t.get()) | KEYBOARD.with(|k| k.get())
+    let pads = PADS.with(|pads| {
+        pads.borrow()
+            .values()
+            .fold(0, |held, pad| held | pad.buttons | pad.axes)
+    });
+    TOUCH.with(|t| t.get()) | KEYBOARD.with(|k| k.get()) | pads
 }
 
 /// Replace the bits under `mask` with `bits`.
@@ -43,6 +62,95 @@ pub fn touch_clear() {
 
 /// Every direction bit, as one field for [`touch_set`].
 pub const DPAD: u32 = keys::UP | keys::DOWN | keys::LEFT | keys::RIGHT;
+
+/// How far a stick has to leave centre to count as a direction. The
+/// games are digital, so this is a threshold rather than a curve; half
+/// travel is far enough to be deliberate and near enough that diagonals
+/// still come out.
+const STICK_THRESHOLD: f32 = 0.5;
+
+/// Start listening for controllers. Once, at startup — the browser's
+/// Gamepad API only reveals a pad after the user presses something on
+/// it, so there is nothing to wait for and nothing to re-init.
+pub fn install_gamepads() {
+    gamepad_facade::init("Tango Lite");
+}
+
+/// Drain whatever the controllers have done since the last call.
+///
+/// Driven from the pump rather than an event listener because the
+/// browser's Gamepad API has no events to listen to — it is a snapshot
+/// you diff, which is exactly what the facade does inside `next_event`.
+pub fn poll_gamepads() {
+    while let Some(event) = gamepad_facade::next_event() {
+        PADS.with(|pads| {
+            let mut pads = pads.borrow_mut();
+            match event.kind {
+                gamepad_facade::EventKind::Connected => {
+                    pads.entry(event.id).or_default();
+                }
+                // Drop its state rather than leaving the bits it was
+                // holding folded into every later frame.
+                gamepad_facade::EventKind::Disconnected => {
+                    pads.remove(&event.id);
+                }
+                gamepad_facade::EventKind::ButtonDown(button) => {
+                    if let Some(mask) = button_mask(button) {
+                        pads.entry(event.id).or_default().buttons |= mask;
+                    }
+                }
+                gamepad_facade::EventKind::ButtonUp(button) => {
+                    if let Some(mask) = button_mask(button) {
+                        pads.entry(event.id).or_default().buttons &= !mask;
+                    }
+                }
+                gamepad_facade::EventKind::AxisMotion { axis, value } => {
+                    let (negative, positive) = match axis {
+                        gamepad_facade::Axis::LeftX => (keys::LEFT, keys::RIGHT),
+                        // Up is negative, in SDL's convention and the
+                        // browser's alike.
+                        gamepad_facade::Axis::LeftY => (keys::UP, keys::DOWN),
+                        // The right stick and the triggers have nothing
+                        // to drive on a GBA.
+                        _ => return,
+                    };
+                    let held = &mut pads.entry(event.id).or_default().axes;
+                    *held &= !(negative | positive);
+                    if value <= -STICK_THRESHOLD {
+                        *held |= negative;
+                    } else if value >= STICK_THRESHOLD {
+                        *held |= positive;
+                    }
+                }
+            }
+        });
+    }
+}
+
+/// The desktop app's default pad layout, which is the legacy app's:
+/// face buttons in the Xbox arrangement, shoulders for L/R.
+fn button_mask(button: gamepad_facade::Button) -> Option<u32> {
+    use gamepad_facade::Button as B;
+    Some(match button {
+        B::South => keys::A,
+        B::East => keys::B,
+        B::LeftShoulder => keys::L,
+        B::RightShoulder => keys::R,
+        B::Start => keys::START,
+        B::Back => keys::SELECT,
+        B::DPadUp => keys::UP,
+        B::DPadDown => keys::DOWN,
+        B::DPadLeft => keys::LEFT,
+        B::DPadRight => keys::RIGHT,
+        _ => return None,
+    })
+}
+
+/// Forget every controller's held state. Used alongside
+/// [`touch_clear`] when a session goes away mid-press.
+pub fn gamepads_clear() {
+    PADS.with(|pads| pads.borrow_mut().clear());
+}
 
 /// The desktop-shaped bindings, close enough to Tango's defaults to be
 /// muscle-memory-compatible. Deliberately not configurable: a lite build

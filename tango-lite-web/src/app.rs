@@ -89,6 +89,7 @@ pub fn App() -> Element {
             // `status`, which is `None` by the time anyone looks.
             if let Some(kind) = engine::take_ended() {
                 crate::input::touch_clear();
+                crate::input::gamepads_clear();
                 engine_status.set(None);
                 screen.set(match kind {
                     engine::Kind::Pvp => Screen::Link,
@@ -130,6 +131,7 @@ pub fn App() -> Element {
                             // let the latch fire a second one.
                             let _ = engine::take_ended();
                             crate::input::touch_clear();
+                            crate::input::gamepads_clear();
                             engine_status.set(None);
                             // Back where it was started from.
                             screen.set(match kind {

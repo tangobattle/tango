@@ -22,7 +22,7 @@ last place the live session still assumed a filesystem.
 | Patches | The real `.tangopatch` catalog: index, install, apply, and auto-fetch what your opponent brings |
 | Replays | Every match records itself; play back, scrub, import and export |
 | Storage | ROMs, saves, patch packages and config, kept on the device |
-| Input | gbaroll's slide-aware touch overlay, plus a keyboard |
+| Input | gbaroll's slide-aware touch overlay, a keyboard, and gamepads |
 
 Deliberately absent: the ROM scanner, the save editor, the results
 screen, Discord presence, and any localization of the app's own words —
@@ -60,7 +60,7 @@ is used if present — the unoptimised module is ~14MB, most of it mgba.
     loadout.rs   the current pick, and what it takes to run it
     engine.rs    the pump — three tick sources, one canvas
       audio.rs     an AudioWorklet, fed by a push pump
-      input.rs     touch + keyboard, folded into one joyflag word
+      input.rs     touch + keyboard + gamepad, folded into one joyflag word
     link.rs      netplay: spawn the connect future, pump the lobby, hand off
     recording.rs a match's ReplayStore: buffer, then one atomic put
     playback.rs  opening a recording: resolve its ROMs, boot, hand to the pump
