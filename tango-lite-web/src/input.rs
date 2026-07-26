@@ -152,21 +152,22 @@ pub fn gamepads_clear() {
     PADS.with(|pads| pads.borrow_mut().clear());
 }
 
-/// The desktop-shaped bindings, close enough to Tango's defaults to be
-/// muscle-memory-compatible. Deliberately not configurable: a lite build
-/// that needs a remapping screen isn't lite.
+/// The desktop app's default bindings, key for key: arrows to move,
+/// Z/X for A/B, A/S for L/R, Enter/Space for Start/Select. Deliberately
+/// not configurable: a lite build that needs a remapping screen isn't
+/// lite.
 fn key_mask(code: &str) -> Option<u32> {
     Some(match code {
-        "ArrowUp" | "KeyW" => keys::UP,
-        "ArrowDown" | "KeyS" => keys::DOWN,
-        "ArrowLeft" | "KeyA" => keys::LEFT,
-        "ArrowRight" | "KeyD" => keys::RIGHT,
+        "ArrowUp" => keys::UP,
+        "ArrowDown" => keys::DOWN,
+        "ArrowLeft" => keys::LEFT,
+        "ArrowRight" => keys::RIGHT,
         "KeyZ" => keys::A,
         "KeyX" => keys::B,
-        "KeyQ" => keys::L,
-        "KeyE" => keys::R,
+        "KeyA" => keys::L,
+        "KeyS" => keys::R,
         "Enter" => keys::START,
-        "Backspace" | "ShiftRight" | "ShiftLeft" => keys::SELECT,
+        "Space" => keys::SELECT,
         _ => return None,
     })
 }
@@ -175,17 +176,17 @@ fn key_mask(code: &str) -> Option<u32> {
 /// page.
 ///
 /// Three ways it doesn't, and all three matter: half the button map is
-/// ordinary letters (`wasdzxqe`) plus Backspace, so a listener that
-/// takes them unconditionally makes every text field on the site
-/// unusable — you cannot type a link code or a nickname, and you cannot
-/// delete what you did manage to type. Which is exactly what happened.
+/// ordinary letters (`zxas`) plus Space, so a listener that takes them
+/// unconditionally makes every text field on the site unusable — you
+/// cannot type a link code or a nickname. Which is exactly what
+/// happened.
 fn is_for_the_game(event: &web_sys::KeyboardEvent) -> bool {
     // Nothing to play.
     if !crate::engine::is_running() {
         return false;
     }
-    // A shortcut, not a button. (Shift is excluded from this test on
-    // purpose — it's SELECT.)
+    // A shortcut, not a button. (Shift isn't tested: alone it's no
+    // browser shortcut, and holding it shouldn't swallow a button.)
     if event.ctrl_key() || event.meta_key() || event.alt_key() {
         return false;
     }
@@ -207,8 +208,8 @@ pub fn install_keyboard() {
         if !is_for_the_game(&e) {
             return;
         }
-        // A repeat isn't a new press, and the arrows and Backspace
-        // scroll or navigate away if we let them through.
+        // A repeat isn't a new press, and the arrows and Space scroll
+        // the page if we let them through.
         if let Some(mask) = key_mask(&e.code()) {
             e.prevent_default();
             if !e.repeat() {
