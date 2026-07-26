@@ -291,8 +291,10 @@ pub struct SaveOption {
     pub path: std::path::PathBuf,
     /// Pre-computed display label: the save's path relative to the
     /// saves dir, forward-slash separated (so nested folders show up
-    /// in the picker). Built when the option list is constructed
-    /// because `Display::fmt` doesn't get the saves root as input.
+    /// in the picker), behind the short variant tag when the family has
+    /// more than one variant to tell apart. Built when the option list
+    /// is constructed because `Display::fmt` gets neither the saves root
+    /// nor the language as input.
     pub display: String,
     /// The concrete game this save resolves to *within its family*
     /// (White/Blue picked from the save's own contents). Selecting the
@@ -319,8 +321,17 @@ impl std::hash::Hash for SaveOption {
 }
 
 impl SaveOption {
-    pub fn new(saves_path: &std::path::Path, path: std::path::PathBuf, game: rom::GameRef, available: bool) -> Self {
-        let display = path
+    /// `variant` is the save's short variant tag (e.g. "Blue Moon"),
+    /// `None` for families with only one variant — nothing to tell apart
+    /// there, so the row stays bare.
+    pub fn new(
+        saves_path: &std::path::Path,
+        path: std::path::PathBuf,
+        game: rom::GameRef,
+        available: bool,
+        variant: Option<&str>,
+    ) -> Self {
+        let name = path
             .strip_prefix(saves_path)
             .ok()
             .map(|rel| {
@@ -331,6 +342,13 @@ impl SaveOption {
             })
             .or_else(|| path.file_name().map(|n| n.to_string_lossy().into_owned()))
             .unwrap_or_else(|| path.display().to_string());
+        // Variant first: the list intermingles a family's variants, and a
+        // save's file name seldom says which one it belongs to. Same
+        // "<variant> – <name>" shape the new-save template picker uses.
+        let display = match variant {
+            Some(variant) => format!("{variant} \u{2013} {name}"),
+            None => name,
+        };
         Self {
             path,
             display,
@@ -383,59 +401,80 @@ pub fn family_options(lang: &LanguageIdentifier, scanners: &Scanners) -> Vec<Fam
     family_options
 }
 
-/// Every save across the selected family's color variants,
-/// intermingled. Each save is tagged with the concrete game it
-/// resolves to and whether that game's ROM is owned (so the row can
-/// grey out). A path appears under exactly one variant within a
-/// family, but de-dup defensively. The list itself isn't trimmed by
+/// Every save across the selected family's color variants, grouped by
+/// variant. Each save is tagged with the concrete game it resolves to
+/// and whether that game's ROM is owned (so the row can grey out), and —
+/// for families with more than one variant — labelled with that
+/// variant's short name. A path appears under exactly one variant within
+/// a family, but de-dup defensively. The list itself isn't trimmed by
 /// the active patch — `save_picker` instead greys out (disables) saves
 /// the active patch can't run, so the set stays stable while the
 /// patch comes and goes.
-pub fn save_options(loadout: &Loadout, scanners: &Scanners, config: &config::Config) -> Vec<SaveOption> {
+pub fn save_options(
+    loadout: &Loadout,
+    lang: &LanguageIdentifier,
+    scanners: &Scanners,
+    config: &config::Config,
+) -> Vec<SaveOption> {
     let saves_path = config.saves_path();
     let roms = scanners.roms.read();
     let saves = scanners.saves.read();
     let mut save_options: Vec<SaveOption> = Vec::new();
     if let Some(family) = loadout.family {
+        // Single-variant families (bn1, bn2, exe45) have nothing to tell
+        // apart, so their rows carry no tag.
+        let multi_variant = game::games_in_family(family).count() > 1;
         let mut seen: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
         for g in game::games_in_family(family) {
             let available = roms.contains_key(&g);
+            let variant = multi_variant.then(|| game::variant_short_name(lang, g));
             if let Some(saves_for_game) = saves.get(&g) {
                 for s in saves_for_game {
                     if seen.insert(s.path.clone()) {
-                        save_options.push(SaveOption::new(&saves_path, s.path.clone(), g, available));
+                        save_options.push(SaveOption::new(
+                            &saves_path,
+                            s.path.clone(),
+                            g,
+                            available,
+                            variant.as_deref(),
+                        ));
                     }
                 }
             }
         }
     }
-    // Folder-first recursive sort: at the first differing path
-    // component, whichever side still has components after it
-    // (i.e. is "inside a folder at this level") wins. Files at
-    // a given level sort below any subfolders at that level, and
-    // order among themselves by their extensionless name — so
-    // "Blue.sav" sits next to "Blue Moon.sav" instead of wherever
-    // the '.' happens to fall against spaces and digits — with the
-    // raw name breaking stem ties.
+    // Variant first, so the list reads as one block per variant in the
+    // order the games themselves are numbered — matching the tag every
+    // row now carries. Within a variant, a folder-first recursive sort:
+    // at the first differing path component, whichever side still has
+    // components after it (i.e. is "inside a folder at this level")
+    // wins. Files at a given level sort below any subfolders at that
+    // level, and order among themselves by their extensionless name — so
+    // "Blue.sav" sits next to "Blue Moon.sav" instead of wherever the
+    // '.' happens to fall against spaces and digits — with the raw name
+    // breaking stem ties.
     save_options.sort_by(|a, b| {
-        let av: Vec<&std::ffi::OsStr> = a.path.strip_prefix(&saves_path).unwrap_or(&a.path).iter().collect();
-        let bv: Vec<&std::ffi::OsStr> = b.path.strip_prefix(&saves_path).unwrap_or(&b.path).iter().collect();
-        for i in 0..av.len().min(bv.len()) {
-            if av[i] != bv[i] {
-                let a_is_dir = i + 1 < av.len();
-                let b_is_dir = i + 1 < bv.len();
-                return match (a_is_dir, b_is_dir) {
-                    (true, false) => std::cmp::Ordering::Less,
-                    (false, true) => std::cmp::Ordering::Greater,
-                    (true, true) => av[i].cmp(bv[i]),
-                    (false, false) => std::path::Path::new(av[i])
-                        .file_stem()
-                        .cmp(&std::path::Path::new(bv[i]).file_stem())
-                        .then_with(|| av[i].cmp(bv[i])),
-                };
+        let variant = |o: &SaveOption| o.game.family_and_variant().1;
+        variant(a).cmp(&variant(b)).then_with(|| {
+            let av: Vec<&std::ffi::OsStr> = a.path.strip_prefix(&saves_path).unwrap_or(&a.path).iter().collect();
+            let bv: Vec<&std::ffi::OsStr> = b.path.strip_prefix(&saves_path).unwrap_or(&b.path).iter().collect();
+            for i in 0..av.len().min(bv.len()) {
+                if av[i] != bv[i] {
+                    let a_is_dir = i + 1 < av.len();
+                    let b_is_dir = i + 1 < bv.len();
+                    return match (a_is_dir, b_is_dir) {
+                        (true, false) => std::cmp::Ordering::Less,
+                        (false, true) => std::cmp::Ordering::Greater,
+                        (true, true) => av[i].cmp(bv[i]),
+                        (false, false) => std::path::Path::new(av[i])
+                            .file_stem()
+                            .cmp(&std::path::Path::new(bv[i]).file_stem())
+                            .then_with(|| av[i].cmp(bv[i])),
+                    };
+                }
             }
-        }
-        av.len().cmp(&bv.len())
+            av.len().cmp(&bv.len())
+        })
     });
     save_options
 }
@@ -836,7 +875,7 @@ pub fn save_picker<'a>(
     scanners: &'a Scanners,
     config: &'a config::Config,
 ) -> sweeten::widget::PickList<'a, SaveOption, Vec<SaveOption>, SaveOption, Message> {
-    let options = save_options(loadout, scanners, config);
+    let options = save_options(loadout, lang, scanners, config);
     let selected = loadout
         .save
         .as_ref()
