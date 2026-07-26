@@ -1,33 +1,46 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Tango Lite">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Tango Lite">
     <!--
-        Tango, drawn as line art.
+        Tango, flattened.
 
-        The desktop icon is a shaded 3D render of the same character:
-        green head, leaf ruff, cream face, and the antenna blade. None
-        of that survives 16 pixels, so this keeps only what identifies
-        him at a glance — the ear triangles, the round head, the blade —
-        and states it in strokes.
-
-        The outline is the point, not a shortcut: an outlined mark
-        against the desktop's filled one is the ordinary way a family
-        says "lighter weight", so the two read as the same app at
-        different sizes rather than two apps.
+        The desktop icon is a shaded 3D render; this is the same
+        character reduced to the shapes that still read at sixteen
+        pixels — the blade, the tall ears, the green head, and the cream
+        face and muzzle inside it. The two-tone face is what makes it
+        *him* rather than a generic animal head, which an earlier
+        outline-only attempt learned the hard way.
     -->
-    <g fill="none" stroke="#4caf50" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round">
-        <!-- The blade, standing in for the whole antenna. -->
-        <path d="M16 3.4v5.6" stroke="#c9d1cd" stroke-width="2.8" />
-        <!-- Ears, kept sharp: they carry the silhouette when the rest
-             of the strokes blur together. -->
-        <path d="M9.4 12.6 8.1 7.4l4.6 2.6" />
-        <path d="M22.6 12.6l1.3-5.2-4.6 2.6" />
-        <!-- Head. -->
-        <circle cx="16" cy="19" r="7.9" />
-    </g>
-    <!-- Eyes and nose: filled, because at this size a stroked dot is
-         nothing at all. -->
-    <g fill="#4caf50">
-        <circle cx="12.9" cy="17.7" r="1.35" />
-        <circle cx="19.1" cy="17.7" r="1.35" />
-        <circle cx="16" cy="21.4" r="1.15" />
-    </g>
+    <defs>
+        <linearGradient id="blade" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#f4f7f5" />
+            <stop offset="1" stop-color="#aeb9b4" />
+        </linearGradient>
+    </defs>
+
+    <!-- The antenna blade, behind the head. A clean tapered bar: the
+         render's stepped notch turns into a pinched waist once it is
+         this small. -->
+    <path d="M28.9 2.6h6.2a1.6 1.6 0 0 1 1.6 1.7l-.9 21.2h-7.6l-.9-21.2a1.6 1.6 0 0 1 1.6-1.7z" fill="url(#blade)" />
+
+    <!-- Ears: green outer, cream inner. -->
+    <path d="M14 32.5 10.2 12.5 27 21z" fill="#43a349" />
+    <path d="M50 32.5 53.8 12.5 37 21z" fill="#43a349" />
+    <path d="M17.2 28 15 17.4l9.6 4.9z" fill="#e6dfb4" />
+    <path d="M46.8 28 49 17.4l-9.6 4.9z" fill="#e6dfb4" />
+
+    <!-- Head. -->
+    <circle cx="32" cy="39" r="21" fill="#4caf50" />
+
+    <!-- Face, sitting low so a clear band of green stays above it —
+         that band is most of what the silhouette reads by. -->
+    <ellipse cx="32" cy="43.2" rx="14.6" ry="13.8" fill="#efe9c4" />
+    <!-- The muzzle: two lobes, a shade lighter, as in the render. -->
+    <ellipse cx="27.4" cy="48.6" rx="6.2" ry="5.4" fill="#f7f2da" />
+    <ellipse cx="36.6" cy="48.6" rx="6.2" ry="5.4" fill="#f7f2da" />
+
+    <!-- Eyes: small and close, the way the original has them. Round
+         and wide-set is what makes a face like this look babyish. -->
+    <ellipse cx="26.4" cy="38.6" rx="2" ry="2.9" fill="#1b1b1b" />
+    <ellipse cx="37.6" cy="38.6" rx="2" ry="2.9" fill="#1b1b1b" />
+    <!-- Nose, seated in the cleft between the lobes. -->
+    <path d="M32 46.4c-1.7 0-2.7-1-2.7-2s1-1.5 2.7-1.5 2.7.5 2.7 1.5-1 2-2.7 2z" fill="#1b1b1b" />
 </svg>

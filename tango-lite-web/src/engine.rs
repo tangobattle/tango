@@ -71,18 +71,40 @@ const MAX_CATCHUP_MS: f64 = 250.0;
 /// happened lately" covers every case without naming any of them.
 const FALLBACK_AFTER_MS: f64 = 50.0;
 
-/// Ticks of a replay's keyframe pass per attempt, and the wall-clock
-/// mark past which a frame stops attempting.
+/// A replay's keyframe pass runs one tick at a time, against whatever
+/// is left of the frame after the picture is on screen.
 ///
-/// A flat slice per frame is what a first cut does and it is wrong:
-/// each of these ticks is real emulation on a *second* pair, so
-/// sixteen of them is sixteen extra frames of work behind every frame
-/// shown, and playback visibly stutters. The budget is what "whatever
-/// the frame left over" actually means — a frame that spent its time
-/// on the picture prefetches nothing, and one that came in early lays
-/// down keyframes until the deadline.
-const PREFETCH_SLICE: u32 = 4;
+/// Two versions of this were wrong before this one. A flat slice per
+/// frame is wrong because each of these ticks is real emulation on a
+/// *second* pair, so a slice of sixteen is sixteen extra frames of work
+/// behind every frame shown. A fixed deadline with a multi-tick slice
+/// is wrong on a slow device, where a single slice can cost more than
+/// the entire budget and the overshoot is exactly the stutter it was
+/// supposed to prevent.
+///
+/// So: one tick at a time, and never start one the remaining budget
+/// can't pay for — which needs an estimate of what a tick costs *here*,
+/// measured rather than assumed, because that is the number that
+/// differs by an order of magnitude between a laptop and a phone.
+const PREFETCH_SLICE: u32 = 1;
+
+/// Ceiling on the share of a frame the pass may take, and the fraction
+/// of the frame's own interval it may take when that is shorter. A
+/// device that can barely hold playback has nothing spare and does
+/// nothing — which is the right answer: a stuttering picture is worse
+/// than a scrub bar that fills slowly. Pausing gives the whole budget
+/// back, since a paused frame does no emulation of its own.
 const PREFETCH_UNTIL_MS: f64 = 9.0;
+const PREFETCH_FRAME_SHARE: f64 = 0.5;
+
+/// Smoothing on the measured per-tick cost. Slow enough not to chase a
+/// single unlucky tick, fast enough to notice the device throttling.
+const PREFETCH_COST_DECAY: f64 = 0.8;
+
+/// What a prefetch tick is assumed to cost before one has been timed.
+/// Deliberately not zero: a first slice that runs unconditionally is
+/// exactly the overshoot this is here to avoid.
+const PREFETCH_COST_GUESS_MS: f64 = 1.0;
 
 /// Ceiling on ticks per pump call, so catch-up can't monopolise the
 /// main thread. At 60Hz this still allows 4x realtime, which is more
@@ -269,6 +291,10 @@ struct Engine {
     /// by the paint, so a display refresh with nothing new behind it
     /// costs nothing.
     fresh: bool,
+    /// Measured cost of one replay prefetch tick on this device, so a
+    /// frame can tell whether it can afford another one. See
+    /// [`PREFETCH_SLICE`].
+    prefetch_cost_ms: f64,
     /// Resolved lazily: the pump can start before the canvas has been
     /// rendered, and the canvas is replaced whenever the screen changes.
     ctx: Option<web_sys::CanvasRenderingContext2d>,
@@ -347,6 +373,7 @@ fn install(
             rgba: vec![0u8; SCREEN_W * SCREEN_H * 4],
             surface: None,
             fresh: false,
+            prefetch_cost_ms: PREFETCH_COST_GUESS_MS,
             ctx: None,
             save_path,
             last_save_ms: now,
@@ -541,10 +568,21 @@ impl Engine {
         // leftover time and not extra time. Only on the frame path: the
         // fallback exists to keep a session alive, not to get work done.
         if on_frame {
-            while now_ms() - now < PREFETCH_UNTIL_MS {
+            // Against this frame's own interval, so a display running
+            // at 120Hz doesn't hand out a 60Hz frame's worth of slack.
+            let interval = elapsed.clamp(8.0, 33.0);
+            let deadline = now + PREFETCH_UNTIL_MS.min(interval * PREFETCH_FRAME_SHARE);
+            loop {
+                let started = now_ms();
+                if started + self.prefetch_cost_ms > deadline {
+                    break;
+                }
                 if !self.driver.prefetch(PREFETCH_SLICE) {
                     break;
                 }
+                let cost = now_ms() - started;
+                self.prefetch_cost_ms =
+                    self.prefetch_cost_ms * PREFETCH_COST_DECAY + cost * (1.0 - PREFETCH_COST_DECAY);
             }
         }
 

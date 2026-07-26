@@ -27,10 +27,36 @@
              icons nor transparency. -->
         <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+        <link rel="manifest" href="./manifest.webmanifest" />
         <link rel="stylesheet" href="./style.css" />
     </head>
 
     <body>
+        <script>
+            // The viewport, measured rather than asked for.
+            //
+            // `100dvh` is supposed to be the screen in a standalone PWA
+            // and on iOS it comes back short, which lands as a dead band
+            // along the bottom — and, because the portrait play screen
+            // is a box rotated about its top-left corner, as a band the
+            // rotation can't cover either. `innerWidth`/`innerHeight`
+            // are the layout viewport and are right in every mode, so
+            // everything that has to fill the screen uses these.
+            //
+            // Deliberately not `visualViewport`: that shrinks when the
+            // keyboard opens, and the app must not resize under a
+            // nickname field.
+            (function () {
+                var root = document.documentElement;
+                function measure() {
+                    root.style.setProperty("--app-vw", window.innerWidth + "px");
+                    root.style.setProperty("--app-vh", window.innerHeight + "px");
+                }
+                measure();
+                addEventListener("resize", measure);
+                addEventListener("orientationchange", measure);
+            })();
+        </script>
         <!-- Outside #main, and removed once the module is live: dioxus
              mounts by appending to its root, so a placeholder left inside
              it would still be on screen under the app. -->
@@ -41,6 +67,14 @@
             import init from "./tango-lite-web.js";
             await init();
             document.getElementById("boot")?.remove();
+
+            // Registered after boot, so fetching the worker never
+            // competes with fetching the ~14MB module it exists to
+            // make instant next time. Failure is not worth reporting:
+            // it costs offline, not the app.
+            if ("serviceWorker" in navigator) {
+                navigator.serviceWorker.register("./sw.js").catch(() => {});
+            }
         </script>
     </body>
 </html>

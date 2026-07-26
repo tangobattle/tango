@@ -71,12 +71,18 @@ textarea {
     color: var(--dim);
 }
 
+/* No safe-area padding here on purpose. Padding the whole app pushes
+ * the chrome inward and leaves the inset strip showing bare background
+ * — under a home indicator that reads as a dead band below the tab bar.
+ * The bars run to the screen edges instead and inset their own
+ * contents, which is what a native app does. */
 .app {
     display: flex;
     flex-direction: column;
-    /* dvh, so the iOS URL bar collapsing doesn't leave a dead strip. */
-    height: 100dvh;
-    padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+    /* Measured in index.html rather than `100dvh`, which comes back
+     * short in a standalone PWA on iOS and leaves a dead band under the
+     * tab bar. The fallback is for the moment before the probe runs. */
+    height: var(--app-vh, 100dvh);
 }
 
 /* ---------------------------------------------------------------- bars */
@@ -85,7 +91,8 @@ textarea {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px var(--pad);
+    padding: calc(10px + var(--safe-top)) calc(var(--pad) + var(--safe-right)) 10px
+        calc(var(--pad) + var(--safe-left));
     border-bottom: 1px solid var(--line);
     background: var(--panel);
     flex: none;
@@ -121,6 +128,9 @@ textarea {
     flex: none;
     border-top: 1px solid var(--line);
     background: var(--panel);
+    /* The bar's background reaches the bottom of the screen; its
+     * buttons stop above the home indicator. */
+    padding-bottom: var(--safe-bottom);
 }
 
 .tabs button {
@@ -149,7 +159,7 @@ textarea {
     min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    padding: var(--pad);
+    padding: var(--pad) calc(var(--pad) + var(--safe-right)) var(--pad) calc(var(--pad) + var(--safe-left));
     display: flex;
     flex-direction: column;
     gap: var(--pad);
@@ -451,7 +461,7 @@ canvas.screen {
     /* Integer scaling: the GBA is 240x160, and a fractional factor makes
      * some pixel rows a row taller than their neighbours. Round down to
      * a whole multiple of 240 and letterbox the remainder. */
-    width: max(240px, round(down, min(100dvw, 100dvh * 1.5), 240px));
+    width: max(240px, round(down, min(var(--app-vw, 100dvw), var(--app-vh, 100dvh) * 1.5), 240px));
     aspect-ratio: 240 / 160;
     /* Anything but nearest-neighbour turns pixel art into soup. */
     image-rendering: pixelated;
@@ -744,16 +754,31 @@ button.chip {
     .session {
         /* inset:0 still pins top/left; the explicit size takes over
          * from right/bottom. */
-        width: 100dvh;
-        height: 100dvw;
+        width: var(--app-vh, 100dvh);
+        height: var(--app-vw, 100dvw);
         transform-origin: top left;
-        transform: rotate(90deg) translateY(-100dvw);
+        transform: rotate(90deg) translateY(calc(-1 * var(--app-vw, 100dvw)));
+
+        /* The transform turns the box but not `env(safe-area-inset-*)`,
+         * which is defined against the *device* and stays put. So every
+         * inset inside here lands on the wrong edge — which is why the
+         * d-pad, sitting at what is now the screen's top, was reaching
+         * into the notch with the (zero) left inset applied.
+         *
+         * The rotation maps this box's top edge onto the device's right,
+         * its left onto the device's top, and so on round. Restating the
+         * variables in those terms is what makes every `var(--safe-*)`
+         * below mean the edge it looks like it means. */
+        --safe-top: env(safe-area-inset-right, 0px);
+        --safe-right: env(safe-area-inset-bottom, 0px);
+        --safe-bottom: env(safe-area-inset-left, 0px);
+        --safe-left: env(safe-area-inset-top, 0px);
     }
 
     /* The rotated session's axes are swapped relative to the viewport,
      * so the viewport-unit sizing above swaps with them. */
     canvas.screen {
-        width: max(240px, round(down, min(100dvh, 100dvw * 1.5), 240px));
+        width: max(240px, round(down, min(var(--app-vh, 100dvh), var(--app-vw, 100dvw) * 1.5), 240px));
     }
 }
 
