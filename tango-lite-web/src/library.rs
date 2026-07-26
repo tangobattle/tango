@@ -79,7 +79,7 @@ pub fn revision() -> u64 {
     REVISION.with(|r| r.get())
 }
 
-fn touch() {
+pub(crate) fn touch() {
     REVISION.with(|r| r.set(r.get() + 1));
 }
 

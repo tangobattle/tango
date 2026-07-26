@@ -18,13 +18,14 @@ use std::sync::Arc;
 use tango_library::game;
 use tango_library::rom::GameRef;
 
-/// Boot the recording at `path` and hand it to the pump.
-pub async fn open(path: std::path::PathBuf) -> Result<(), String> {
-    let replay = Arc::new(crate::library::read_replay(&path)?);
-
-    // Absolute player order throughout — the file's one
-    // perspective-dependent byte is `local_player_index`, and it is
-    // deliberately not consulted here.
+/// Both sides' games and the exact ROMs they were played on.
+///
+/// Absolute player order throughout — the file's one
+/// perspective-dependent byte is `local_player_index`, and it is
+/// deliberately not consulted here. Shared with the exporter, which
+/// re-simulates the same match through a different pipeline and so
+/// needs the identical pair.
+pub fn resolve(replay: &tango_replay::Replay) -> Result<([GameRef; 2], [Arc<Vec<u8>>; 2]), String> {
     let sides = [replay.metadata.p1_side.as_ref(), replay.metadata.p2_side.as_ref()];
     let mut games: Vec<GameRef> = Vec::new();
     let mut roms: Vec<Arc<Vec<u8>>> = Vec::new();
@@ -53,11 +54,18 @@ pub async fn open(path: std::path::PathBuf) -> Result<(), String> {
         games.push(game);
         roms.push(Arc::new(rom));
     }
+    Ok(([games[0], games[1]], [roms[0].clone(), roms[1].clone()]))
+}
+
+/// Boot the recording at `path` and hand it to the pump.
+pub async fn open(path: std::path::PathBuf) -> Result<(), String> {
+    let replay = Arc::new(crate::library::read_replay(&path)?);
+    let (games, roms) = resolve(&replay)?;
 
     let sink = crate::audio::sink().await;
     let (session, workers, stream) = tango_session::replay::ReplaySession::new(
-        [games[0], games[1]],
-        [roms[0].clone(), roms[1].clone()],
+        games,
+        roms,
         replay,
         crate::audio::sample_rate(),
         // No picture-in-picture: the inset is a second screen's worth

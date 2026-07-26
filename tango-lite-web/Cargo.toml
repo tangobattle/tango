@@ -101,6 +101,7 @@ web-sys = { version = "0.3", features = [
     # across the graph, so enabling it here is what makes dioxus-web
     # compile without dragging its dev-server client in.
     "Location",
+    "MessageChannel",
     "MessageEvent",
     "MessagePort",
     "Navigator",
@@ -134,6 +135,10 @@ tango-library = { path = "../tango-library", default-features = false }
 tango-match = { path = "../tango-match" }
 tango-net-protocol = { path = "../tango-net-protocol" }
 tango-replay = { path = "../tango-replay" }
+# Replay -> video. On wasm32 encoder-facade's backend is WebCodecs and
+# its muxers are pure Rust, so the export pipeline is the desktop's.
+tango-replay-renderer = { path = "../tango-replay-renderer" }
+encoder-facade.workspace = true
 tango-netplay = { path = "../tango-netplay" }
 tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"] }
 tango-session = { path = "../tango-session" }

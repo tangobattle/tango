@@ -7,17 +7,24 @@
  * short axis, because that is the smallest thing a thumb hits reliably.
  */
 
+/* The palette is desktop Tango's dark theme: Tango green (#4caf50 —
+ * theme-independent there, the default of the accent picker) on its
+ * neutral dark greys, rather than a scheme of this build's own. */
 :root {
-    --bg: #0b0d12;
-    --panel: #151922;
-    --panel-2: #1d222d;
-    --line: #262c3a;
-    --text: #e8ecf4;
-    --dim: #8b93a7;
-    --accent: #e8b13d;
-    --accent-dim: #6b5220;
-    --good: #4ec97a;
-    --bad: #e8604d;
+    --bg: #0e1011;
+    --panel: #16191a;
+    --panel-2: #1e2223;
+    --line: #2b3032;
+    --text: #eceeed;
+    --dim: #8f9694;
+    --accent: #4caf50;
+    /* The wash behind a selected row, and the pressed state on the pad. */
+    --accent-soft: rgba(76, 175, 80, 0.3);
+    --accent-dim: #1b3a1e;
+    /* Green is light enough that dark ink out-reads white on it. */
+    --on-accent: #08210b;
+    --good: #4caf50;
+    --bad: #ff5252;
     --pad: 14px;
     --radius: 12px;
     --safe-top: env(safe-area-inset-top, 0px);
@@ -118,6 +125,9 @@ textarea {
 
 .tabs button {
     flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     min-height: 52px;
     background: none;
     border: 0;
@@ -201,13 +211,25 @@ input {
     color: var(--text);
 }
 
+/* Centred explicitly rather than relying on the default, because `.btn`
+ * is worn by both `<button>` (which centres its text) and `<label>`
+ * (which doesn't) — the file pickers are labels, and they sat
+ * left-aligned next to identical-looking buttons. Same reason the
+ * alignment is stated on every button-ish class below rather than
+ * inherited from whatever the element happens to be. */
 .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     min-height: 46px;
     padding: 0 18px;
     border-radius: 10px;
     border: 1px solid var(--line);
     background: var(--panel-2);
     font-weight: 600;
+    text-align: center;
+    line-height: 1.2;
 }
 
 .btn:disabled {
@@ -217,7 +239,7 @@ input {
 .btn.primary {
     background: var(--accent);
     border-color: var(--accent);
-    color: #241a05;
+    color: var(--on-accent);
 }
 
 .btn.danger {
@@ -226,6 +248,15 @@ input {
 
 .btn.wide {
     width: 100%;
+}
+
+/* A card is a flex column, so a button dropped straight into one would
+ * stretch to its width while the same button inside a `.row` sits at
+ * its natural size — which is why "Add ROM" and "Add save" didn't
+ * match. Natural width is the default; `.wide` is how a full-width
+ * action asks for it. */
+.card > .btn:not(.wide) {
+    align-self: flex-start;
 }
 
 .btn.small {
@@ -246,10 +277,10 @@ select {
 }
 
 /* A file input styled as a button: the native control is unusable on a
- * phone, but its click behaviour is the only way to open the picker. */
+ * phone, but its click behaviour is the only way to open the picker.
+ * The layout comes from `.btn`; this only has to trap the input. */
 .file {
     position: relative;
-    display: inline-flex;
     overflow: hidden;
 }
 
@@ -445,6 +476,7 @@ canvas.screen {
 .chip {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
     height: 28px;
     padding: 0 10px;
@@ -497,13 +529,76 @@ button.chip {
     font-size: 14px;
 }
 
+/* The track is drawn here rather than by the input, so it can show
+ * three things at once: played, prefetched, and the rest. Shading what
+ * the keyframe pass has reached is the same promise a video player's
+ * buffer bar makes — a seek inside it lands at once, one past it has to
+ * re-simulate its way there. */
+.scrub-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    height: 28px;
+}
+
+.scrub-wrap::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(
+        to right,
+        var(--accent) 0 var(--played),
+        var(--accent-soft) var(--played) var(--buffered),
+        var(--line) var(--buffered) 100%
+    );
+}
+
 .scrub {
+    position: relative;
     flex: 1;
     min-width: 0;
     width: auto;
     min-height: 0;
-    accent-color: var(--accent);
+    margin: 0;
     touch-action: none;
+    /* The custom track above replaces the native one. */
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+}
+
+.scrub::-webkit-slider-runnable-track {
+    height: 4px;
+    background: transparent;
+}
+
+.scrub::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -5px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 0;
+}
+
+.scrub::-moz-range-track {
+    height: 4px;
+    background: transparent;
+}
+
+.scrub::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 0;
 }
 
 /* Inert everywhere; a coarse-pointer screen (a phone or a tablet) turns
@@ -578,7 +673,7 @@ button.chip {
 
     .tc-dpad.held,
     .tc-btn.held {
-        background: rgba(232, 177, 61, 0.3);
+        background: var(--accent-soft);
         border-color: var(--accent);
         color: var(--text);
     }

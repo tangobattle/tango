@@ -43,16 +43,13 @@ pub async fn read_picked_file(event: &Event<FormData>) -> Option<(String, Vec<u8
 /// The only way out of origin-private storage: a blob URL behind a
 /// synthetic anchor click. Worth having — a recording that can only be
 /// watched on the device that made it is half a feature.
-pub fn download(path: &std::path::Path, name: &str) {
+pub fn download(bytes: &[u8], filename: &str) {
     use wasm_bindgen::JsCast as _;
 
-    let Some(bytes) = crate::library::replay_bytes(path) else {
-        return;
-    };
     let Some(document) = web_sys::window().and_then(|w| w.document()) else {
         return;
     };
-    let parts = js_sys::Array::of1(&js_sys::Uint8Array::from(&bytes[..]).into());
+    let parts = js_sys::Array::of1(&js_sys::Uint8Array::from(bytes).into());
     let options = web_sys::BlobPropertyBag::new();
     options.set_type("application/octet-stream");
     let Ok(blob) = web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &options) else {
@@ -66,7 +63,7 @@ pub fn download(path: &std::path::Path, name: &str) {
             .map_err(|_| wasm_bindgen::JsValue::NULL)
     }) {
         anchor.set_href(&url);
-        anchor.set_download(&format!("{name}.{}", tango_replay::EXTENSION));
+        anchor.set_download(filename);
         anchor.click();
     }
     // The download holds its own reference; ours is done.

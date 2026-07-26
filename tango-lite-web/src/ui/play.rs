@@ -47,7 +47,12 @@ pub fn Play(status: ReadSignal<Option<Status>>, onexit: EventHandler<()>) -> Ele
                 }
             }
             if let Some((playhead, total)) = status.as_ref().and_then(|s| s.playhead) {
-                Transport { playhead, total, paused: status.as_ref().is_some_and(|s| s.paused) }
+                Transport {
+                    playhead,
+                    total,
+                    prefetched: status.as_ref().map(|s| s.prefetched).unwrap_or(0),
+                    paused: status.as_ref().is_some_and(|s| s.paused),
+                }
             } else {
                 // A replay takes no input, so it gets the transport
                 // instead of the pad rather than both.
@@ -70,8 +75,31 @@ pub fn Play(status: ReadSignal<Option<Status>>, onexit: EventHandler<()>) -> Ele
 /// Along the bottom rather than the top, because the touch pad is
 /// hidden during a replay — there is nothing to press — so the bottom
 /// of the screen is free and is where a thumb already is.
+///
+/// The track shades how far the keyframe pass has got, the way a video
+/// player shades what it has buffered — and it means the same thing
+/// here: a seek inside the shading lands on a keyframe immediately,
+/// one past it has to re-simulate its way there and takes a moment.
 #[component]
-fn Transport(playhead: u32, total: u32, paused: bool) -> Element {
+fn Transport(playhead: u32, total: u32, prefetched: u32, paused: bool) -> Element {
+    let fraction = |ticks: u32| {
+        if total == 0 {
+            0.0
+        } else {
+            (ticks as f32 / total as f32).clamp(0.0, 1.0) * 100.0
+        }
+    };
+    let played = fraction(playhead);
+    // Never behind the playhead: everything already played has been
+    // captured as it went, whatever the background pass has reached.
+    let buffered = fraction(prefetched).max(played);
+    // And the same point is as far as a seek may go. Past it there is
+    // no keyframe to restore from, so the chase would have to
+    // re-simulate its way there — seconds of nothing, from a control
+    // that looked instant. The thumb sticks at the edge instead,
+    // because the re-render keeps putting it back.
+    let seekable = prefetched.max(playhead).min(total.saturating_sub(1));
+
     rsx! {
         div { class: "transport",
             button {
@@ -79,20 +107,24 @@ fn Transport(playhead: u32, total: u32, paused: bool) -> Element {
                 onpointerdown: move |_| crate::engine::set_paused(!paused),
                 if paused { "▶" } else { "❚❚" }
             }
-            input {
-                r#type: "range",
-                class: "scrub",
-                min: "0",
-                max: "{total.saturating_sub(1)}",
-                value: "{playhead}",
-                // `oninput`, not `onchange`: a seek is a chase the
-                // engine slices across frames, so scrubbing shows where
-                // you are going as you drag.
-                oninput: move |event| {
-                    if let Ok(tick) = event.value().parse::<u32>() {
-                        crate::engine::seek_to(tick);
-                    }
-                },
+            div {
+                class: "scrub-wrap",
+                style: "--played: {played}%; --buffered: {buffered}%",
+                input {
+                    r#type: "range",
+                    class: "scrub",
+                    min: "0",
+                    max: "{total.saturating_sub(1)}",
+                    value: "{playhead}",
+                    // `oninput`, not `onchange`: a seek is a chase the
+                    // engine slices across frames, so scrubbing shows
+                    // where you are going as you drag.
+                    oninput: move |event| {
+                        if let Ok(tick) = event.value().parse::<u32>() {
+                            crate::engine::seek_to(tick.min(seekable));
+                        }
+                    },
+                }
             }
             span { class: "chip", "{seconds(playhead)} / {seconds(total)}" }
         }

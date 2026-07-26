@@ -71,11 +71,18 @@ const MAX_CATCHUP_MS: f64 = 250.0;
 /// happened lately" covers every case without naming any of them.
 const FALLBACK_AFTER_MS: f64 = 50.0;
 
-/// Ticks of a replay's keyframe pass per displayed frame. Each one is
-/// real emulation on a second pair, so this is a rate, not a hurry: at
-/// 60 frames a second it lays a half-hour replay down in under a
-/// minute while leaving the frame's own work room to breathe.
-const PREFETCH_SLICE: u32 = 16;
+/// Ticks of a replay's keyframe pass per attempt, and the wall-clock
+/// mark past which a frame stops attempting.
+///
+/// A flat slice per frame is what a first cut does and it is wrong:
+/// each of these ticks is real emulation on a *second* pair, so
+/// sixteen of them is sixteen extra frames of work behind every frame
+/// shown, and playback visibly stutters. The budget is what "whatever
+/// the frame left over" actually means — a frame that spent its time
+/// on the picture prefetches nothing, and one that came in early lays
+/// down keyframes until the deadline.
+const PREFETCH_SLICE: u32 = 4;
+const PREFETCH_UNTIL_MS: f64 = 9.0;
 
 /// Ceiling on ticks per pump call, so catch-up can't monopolise the
 /// main thread. At 60Hz this still allows 4x realtime, which is more
@@ -181,16 +188,18 @@ impl Driver {
         }
     }
 
-    /// Spend a slice on a replay's prefetch pass.
+    /// Spend a slice on a replay's prefetch pass. `false` once there is
+    /// nothing left to prefetch (or this isn't a replay at all).
     ///
     /// Deliberately the host's call, and it isn't optional in practice:
     /// the pass races a second pair through the stream laying down
     /// keyframes, and without them a backward seek has nothing to
     /// restore from and has to re-simulate its way there. Skipping it
     /// entirely makes the scrub bar look broken.
-    fn prefetch(&mut self, budget: u32) {
-        if let Driver::Replay(driver) = self {
-            driver.prefetch_step(budget);
+    fn prefetch(&mut self, budget: u32) -> bool {
+        match self {
+            Driver::Replay(driver) => driver.prefetch_step(budget),
+            _ => false,
         }
     }
 
@@ -232,6 +241,10 @@ pub struct Status {
     pub opponent: String,
     /// Replay only: `(playhead, total)` in ticks.
     pub playhead: Option<(u32, u32)>,
+    /// Replay only: how far the keyframe pass has got, in ticks. What
+    /// the scrub bar shades — seeking inside it lands immediately,
+    /// past it has to re-simulate.
+    pub prefetched: u32,
     pub paused: bool,
 }
 
@@ -369,6 +382,7 @@ pub fn status() -> Option<Status> {
         let replay = engine.session.downcast_ref::<ReplaySession>();
         Some(Status {
             playhead: replay.map(|r| (r.current_tick(), r.total_ticks())),
+            prefetched: replay.map(|r| r.prefetch_progress()).unwrap_or(0),
             paused: replay.is_some_and(|r| r.is_paused()),
             kind: engine.kind,
             ended: engine.session.is_ended(),
@@ -523,11 +537,15 @@ impl Engine {
         }
 
         // Whatever the frame has left over goes to a replay's keyframe
-        // pass. Only on the frame path: it is a whole second simulation
-        // of the match, and the fallback path exists for keeping a
-        // session alive, not for getting work done.
+        // pass — measured from the top of this frame's work, so it is
+        // leftover time and not extra time. Only on the frame path: the
+        // fallback exists to keep a session alive, not to get work done.
         if on_frame {
-            self.driver.prefetch(PREFETCH_SLICE);
+            while now_ms() - now < PREFETCH_UNTIL_MS {
+                if !self.driver.prefetch(PREFETCH_SLICE) {
+                    break;
+                }
+            }
         }
 
         if let (Some(sink), Some(stream)) = (self.sink.as_ref(), self.stream.as_mut()) {

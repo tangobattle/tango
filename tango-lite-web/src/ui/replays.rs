@@ -17,6 +17,9 @@ pub fn Replays(revision: ReadSignal<u64>, onerror: EventHandler<String>) -> Elem
 
     rsx! {
         div { class: "pane",
+            if let Some(state) = crate::export::state() {
+                ExportCard { state }
+            }
             div { class: "card",
                 h2 { "Recordings" }
                 if entries.is_empty() {
@@ -44,6 +47,39 @@ pub fn Replays(revision: ReadSignal<u64>, onerror: EventHandler<String>) -> Elem
                 div { class: "muted",
                     "Playback re-simulates the match, so it needs both players' ROMs and the patches they were using."
                 }
+            }
+        }
+    }
+}
+
+/// The in-flight render. A phone can't do this in the background — the
+/// tab has to stay open — so it says so, and gives you a way out.
+#[component]
+fn ExportCard(state: crate::export::State) -> Element {
+    use crate::export::State;
+    rsx! {
+        div { class: "card",
+            h2 { "Exporting video" }
+            match &state {
+                State::Rendering { done, total } => {
+                    let percent = if *total == 0 { 0 } else { done * 100 / total };
+                    rsx! {
+                        div { class: "bar", div { style: "width: {percent}%" } }
+                        div { class: "muted", "{percent}% — keep this tab open." }
+                    }
+                }
+                State::Flushing => rsx! {
+                    div { class: "bar", div { style: "width: 100%" } }
+                    div { class: "muted", "Finishing the file…" }
+                },
+                State::Failed(message) => rsx! {
+                    div { class: "error", "{message}" }
+                },
+            }
+            if matches!(state, State::Failed(_)) {
+                button { class: "btn small", onclick: move |_| crate::export::clear(), "Dismiss" }
+            } else {
+                button { class: "btn small danger", onclick: move |_| crate::export::cancel(), "Cancel" }
             }
         }
     }
@@ -82,9 +118,22 @@ fn Row(entry: ReplayEntry, onerror: EventHandler<String>) -> Element {
                 class: "btn small",
                 onclick: {
                     let (path, name) = (path.clone(), entry.name.clone());
-                    move |_| crate::ui::download(&path, &name)
+                    move |_| {
+                        if let Some(bytes) = crate::library::replay_bytes(&path) {
+                            crate::ui::download(&bytes, &format!("{name}.{}", tango_replay::EXTENSION));
+                        }
+                    }
                 },
                 "Save"
+            }
+            button {
+                class: "btn small",
+                disabled: crate::export::is_running(),
+                onclick: {
+                    let (path, name) = (path.clone(), entry.name.clone());
+                    move |_| crate::export::run(path.clone(), name.clone())
+                },
+                "Video"
             }
         }
     }
