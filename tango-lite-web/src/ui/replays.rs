@@ -35,7 +35,6 @@ pub fn Replays(revision: ReadSignal<u64>, onerror: EventHandler<String>) -> Elem
                 }
                 crate::ui::FilePicker {
                     label: "Import a replay".to_string(),
-                    accept: ".tangoreplay".to_string(),
                     onpick: move |(name, bytes): (String, Vec<u8>)| async move {
                         if !crate::library::import_replay(&name, &bytes).await {
                             onerror.call(format!("{name} isn't a replay this build can read."));

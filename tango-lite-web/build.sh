@@ -40,7 +40,7 @@ else
     echo "note: wasm-opt not found; shipping the unoptimised module" >&2
 fi
 
-cp index.html style.css "$out/"
+cp index.html style.css assets/favicon.svg assets/apple-touch-icon.png "$out/"
 
 echo "built $out"
 echo "serve it with any static file server, e.g.:  python3 -m http.server -d $out 8080"

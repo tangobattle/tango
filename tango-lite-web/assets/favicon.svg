@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Tango Lite">
+    <!--
+        Tango, drawn as line art.
+
+        The desktop icon is a shaded 3D render of the same character:
+        green head, leaf ruff, cream face, and the antenna blade. None
+        of that survives 16 pixels, so this keeps only what identifies
+        him at a glance — the ear triangles, the round head, the blade —
+        and states it in strokes.
+
+        The outline is the point, not a shortcut: an outlined mark
+        against the desktop's filled one is the ordinary way a family
+        says "lighter weight", so the two read as the same app at
+        different sizes rather than two apps.
+    -->
+    <g fill="none" stroke="#4caf50" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round">
+        <!-- The blade, standing in for the whole antenna. -->
+        <path d="M16 3.4v5.6" stroke="#c9d1cd" stroke-width="2.8" />
+        <!-- Ears, kept sharp: they carry the silhouette when the rest
+             of the strokes blur together. -->
+        <path d="M9.4 12.6 8.1 7.4l4.6 2.6" />
+        <path d="M22.6 12.6l1.3-5.2-4.6 2.6" />
+        <!-- Head. -->
+        <circle cx="16" cy="19" r="7.9" />
+    </g>
+    <!-- Eyes and nose: filled, because at this size a stroked dot is
+         nothing at all. -->
+    <g fill="#4caf50">
+        <circle cx="12.9" cy="17.7" r="1.35" />
+        <circle cx="19.1" cy="17.7" r="1.35" />
+        <circle cx="16" cy="21.4" r="1.15" />
+    </g>
+</svg>

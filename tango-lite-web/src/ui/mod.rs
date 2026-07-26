@@ -73,14 +73,28 @@ pub fn download(bytes: &[u8], filename: &str) {
 /// A labelled file picker. The native control is unusable on a phone, so
 /// it sits invisibly on top of a normal-looking button and lends it its
 /// click behaviour — which is the only way to open the picker at all.
+///
+/// # No `accept`
+///
+/// It would be natural to filter by extension here, and it is actively
+/// harmful. iOS resolves `accept` to UTIs, and not one of the
+/// extensions this app deals in has one — `.gba`, `.srl`, `.sav`,
+/// `.srm`, `.tangoreplay` are all unknown to it — so the filter matches
+/// nothing and Files greys out every file the user came to pick. A
+/// picker that cannot pick is worse than an unfiltered one.
+///
+/// Nothing is lost by dropping it, because the extension was never what
+/// identified these files: a ROM is recognized by its header and CRC32,
+/// a save by which game can parse it, a replay by decoding it. A file
+/// picked here is checked for what it actually is, and told so if it
+/// isn't.
 #[component]
-pub fn FilePicker(label: String, accept: String, onpick: EventHandler<(String, Vec<u8>)>) -> Element {
+pub fn FilePicker(label: String, onpick: EventHandler<(String, Vec<u8>)>) -> Element {
     rsx! {
         label { class: "btn file",
             "{label}"
             input {
                 r#type: "file",
-                accept: "{accept}",
                 onchange: move |event| async move {
                     if let Some(picked) = read_picked_file(&event).await {
                         onpick.call(picked);

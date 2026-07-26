@@ -49,7 +49,6 @@ pub fn Library(loadout: Signal<Loadout>, revision: ReadSignal<u64>, onplay: Even
                 }
                 FilePicker {
                     label: "Add ROM".to_string(),
-                    accept: ".gba,.bin".to_string(),
                     onpick: move |(name, bytes): (String, Vec<u8>)| async move {
                         match crate::library::import_rom(&name, &bytes).await {
                             Some(game) => {
@@ -198,7 +197,6 @@ fn SaveCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
             div { class: "row",
                 FilePicker {
                     label: "Add save".to_string(),
-                    accept: ".sav,.srm,.bin".to_string(),
                     onpick: move |(name, bytes): (String, Vec<u8>)| async move {
                         if crate::library::import_save(&name, &bytes).await {
                             loadout.write().reconcile();
