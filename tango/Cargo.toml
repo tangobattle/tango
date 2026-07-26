@@ -123,7 +123,7 @@ tango-gamesupport-exe45 = { path = "../gamesupport/tango-gamesupport-exe45", opt
 tango-dataview = { path = "../tango-dataview" }
 # Named directly only for `Container` and `Settings`, which the export
 # dialog builds; the rendering itself is tango-replay-renderer's.
-encoder-facade = { path = "../encoder-facade" }
+encoder-facade.workspace = true
 walkdir = "2"
 directories-next = "2"
 log.workspace = true

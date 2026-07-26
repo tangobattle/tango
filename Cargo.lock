@@ -1624,11 +1624,11 @@ dependencies = [
 [[package]]
 name = "encoder-facade"
 version = "0.1.0"
+source = "git+https://github.com/tangobattle/encoder-facade#fbf14c5c1057270b818a91d2b0f57c3849b27c2b"
 dependencies = [
  "bytes",
  "js-sys",
  "log",
- "matroska-demuxer",
  "mkv-element",
  "mp4-atom",
  "thiserror 1.0.69",
@@ -3509,12 +3509,6 @@ dependencies = [
  "autocfg",
  "rawpointer",
 ]
-
-[[package]]
-name = "matroska-demuxer"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7037404c874fc7a465dd0356d7d8f9f3237b425511942eb64dbe956e6adc7c01"
 
 [[package]]
 name = "maybe-rayon"
@@ -6667,7 +6661,6 @@ dependencies = [
  "bytemuck",
  "chrono",
  "datachannel-wrapper",
- "encoder-facade",
  "futures",
  "gloo-timers",
  "log",

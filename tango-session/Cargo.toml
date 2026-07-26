@@ -14,7 +14,6 @@ chrono = "0.4"
 # One data-channel API over libdatachannel natively and the browser's
 # own WebRTC on wasm.
 datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }
-encoder-facade = { path = "../encoder-facade" }
 futures.workspace = true
 log.workspace = true
 mgba.workspace = true

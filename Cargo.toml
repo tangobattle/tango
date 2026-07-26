@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "encoder-facade",
     "tango",
     "tango-dataview",
     "tango-gamesupport",
@@ -22,7 +21,6 @@ members = [
 # real members; the probes still build on demand via
 # `cargo run -p tango-gamesupport-<game> --example <probe>`.
 default-members = [
-    "encoder-facade",
     "tango",
     "tango-dataview",
     "tango-gamesupport",
@@ -48,6 +46,9 @@ byteorder = "1"
 clap = { version = "4", features = ["derive"] }
 crc32fast = "1"
 futures = "0.3"
+# Encoding + muxing, extracted so a non-tango host can render video
+# without cloning this workspace.
+encoder-facade = { git = "https://github.com/tangobattle/encoder-facade" }
 # The engine crates (pulled out of this workspace so gbaroll can depend
 # on them without cloning tango).
 getgud = { git = "https://github.com/tangobattle/getgud" }
