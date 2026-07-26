@@ -73,7 +73,31 @@
             // make instant next time. Failure is not worth reporting:
             // it costs offline, not the app.
             if ("serviceWorker" in navigator) {
-                navigator.serviceWorker.register("./sw.js").catch(() => {});
+                // The page is served from cache first, so a load that
+                // happens after a deploy shows the *previous* build.
+                // Left alone that is not "one stale load", it is one
+                // stale load every time — close the app there and it
+                // stays a version behind forever, which is exactly how
+                // a fixed layout kept looking unfixed.
+                //
+                // A changed build changes sw.js (build.sh stamps a
+                // digest into it), so the browser installs the new
+                // worker, it claims this page, and the reload below
+                // picks up the shell it just cached. Only when there
+                // was already a controller: on a first visit claiming
+                // is expected and reloading would be a wasted trip.
+                if (navigator.serviceWorker.controller) {
+                    var reloading = false;
+                    navigator.serviceWorker.addEventListener("controllerchange", function () {
+                        if (reloading) return;
+                        reloading = true;
+                        location.reload();
+                    });
+                }
+                // `updateViaCache: none` so the worker script itself is
+                // never answered from the HTTP cache — it is the one
+                // file whose freshness the whole scheme rests on.
+                navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).catch(function () {});
             }
         </script>
     </body>
