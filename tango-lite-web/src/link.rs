@@ -143,6 +143,12 @@ fn describe(error: &tango_netplay::Error) -> String {
     use tango_netplay::Error as E;
     match error {
         E::PeerDisconnected => "Opponent disconnected.".into(),
+        E::SignalingVersionTooOld => "This Tango is too old for the matchmaking server. Reload to update.".into(),
+        E::SignalingVersionTooNew => "The matchmaking server is out of date for this Tango.".into(),
+        E::SignalingRejected(reason) => format!("The matchmaking server refused the connection: {reason}"),
+        E::SignalingUnreachable(inner) => format!("Couldn't reach the matchmaking server: {inner}"),
+        E::Signaling(inner) => format!("Matchmaking failed: {inner}"),
+        E::PeerConnection(inner) => format!("Couldn't connect to the opponent: {inner}"),
         E::NegotiateExpectedHello => "The other side didn't speak Tango.".into(),
         E::NegotiateVersionTooOld => "Their Tango is too old for this one.".into(),
         E::NegotiateVersionTooNew => "Their Tango is newer — update this one.".into(),

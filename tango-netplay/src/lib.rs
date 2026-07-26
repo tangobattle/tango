@@ -56,6 +56,27 @@ pub use tango_net_protocol::PROTOCOL_VERSION;
 pub enum Error {
     /// Peer closed the connection cleanly (left the lobby / quit).
     PeerDisconnected,
+    /// The matchmaking server won't matchmake for a protocol as old as
+    /// ours — this Tango needs updating before it can play online.
+    /// Distinct from [`Error::NegotiateVersionTooOld`], which is about
+    /// the *peer's* version: here there is no peer yet.
+    SignalingVersionTooOld,
+    /// The matchmaking server is older than this Tango.
+    SignalingVersionTooNew,
+    /// The server turned us away for some other reason, carrying the
+    /// name of the `Abort` reason it gave. The remaining reasons (no
+    /// session id, not an upgrade) mean a broken client rather than
+    /// anything a player can act on, so they share one variant.
+    SignalingRejected(String),
+    /// Never reached the matchmaking server at all: offline, bad
+    /// endpoint, DNS, TLS.
+    SignalingUnreachable(String),
+    /// Signaling failed some other way — a malformed or unexpected
+    /// packet from a server we did reach.
+    Signaling(String),
+    /// Signaling worked and the peer connection didn't: the WebRTC
+    /// connection never came up, or dropped during the SDP exchange.
+    PeerConnection(String),
     /// Version negotiate: the first packet wasn't a Hello.
     NegotiateExpectedHello,
     /// Peer speaks an older protocol version than ours.
@@ -65,8 +86,8 @@ pub enum Error {
     /// Negotiate failed below the version check (transport error).
     Negotiate(String),
     /// Any other failure, with a short context prefix baked into the
-    /// text (e.g. "signaling: …", "send_chunk: …"). Surfaced raw
-    /// through the generic "Connection failed:" template.
+    /// text (e.g. "send_chunk: …"). Surfaced raw through the generic
+    /// "Connection failed:" template.
     Other(String),
 }
 

@@ -79,11 +79,13 @@ pub async fn connect(params: MatchmakingParams, cancel: CancellationToken, progr
             ],
         )
         .await
-        .map_err(|e| Error::Other(format!("signaling: {e}")))?;
+        .map_err(signaling_error)?;
         // Server hello is in hand (ICE config settled). From here the
         // await is the slow one — blocked on the peer actually joining.
+        // It fails with the same type as the dial did: a server that
+        // turns us away does it here, having taken the socket first.
         progress.status(Status::WaitingForOpponent);
-        let connected = connecting.await.map_err(|e| Error::Other(format!("webrtc: {e}")))?;
+        let connected = connecting.await.map_err(signaling_error)?;
         // Same split + pairing a mid-match reconnect uses, so both bundle a
         // matchmaking connection identically (see [`Channels::from_signaling`]).
         let channels = tango_session::net::channel::Channels::from_signaling(connected)
@@ -183,6 +185,34 @@ async fn report(
     match outcome {
         Ok(connected) => progress.send(Inbound::Connected(Box::new(connected))),
         Err(e) => progress.send(Inbound::Failed(e)),
+    }
+}
+
+/// Map `tango_signaling::Error` to the typed netplay [`Error`] the UI
+/// routes to a localized template. Both halves of a matchmaking dial —
+/// the connect and the wait for the peer — fail with this one type, so
+/// both go through here rather than each flattening it into a string
+/// under its own prefix. The two reasons a player can act on (their
+/// Tango is too old for the server, or newer than it) get dedicated
+/// variants; the rest keep their text so a failure is still surfaced,
+/// just unlocalized.
+fn signaling_error(e: tango_signaling::Error) -> Error {
+    use tango_signaling::AbortReason as R;
+    use tango_signaling::Error as S;
+    match e {
+        S::ServerAbort(R::ProtocolVersionTooOld) => Error::SignalingVersionTooOld,
+        S::ServerAbort(R::ProtocolVersionTooNew) => Error::SignalingVersionTooNew,
+        // `as_str_name` rather than `Debug`: it's the name in the proto,
+        // which is what a bug report about one of these wants to quote.
+        S::ServerAbort(reason) => Error::SignalingRejected(reason.as_str_name().to_owned()),
+        // Never got a usable socket to the server. Tungstenite's Display
+        // is the readable one; the variant's own is `{0:?}`.
+        S::Websocket(inner) => Error::SignalingUnreachable(inner.to_string()),
+        S::Io(inner) => Error::SignalingUnreachable(inner.to_string()),
+        e @ (S::PeerConnectionDisconnected | S::PeerConnectionFailed | S::PeerConnectionClosed) => {
+            Error::PeerConnection(e.to_string())
+        }
+        e => Error::Signaling(e.to_string()),
     }
 }
 

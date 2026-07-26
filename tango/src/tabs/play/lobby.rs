@@ -289,6 +289,18 @@ impl<'a> Lobby<'a> {
                 // error text.
                 let label = match error {
                     netplay::Error::PeerDisconnected => t!(lang, "play-status-peer-disconnected"),
+                    netplay::Error::SignalingVersionTooOld => t!(lang, "play-status-signaling-version-too-old"),
+                    netplay::Error::SignalingVersionTooNew => t!(lang, "play-status-signaling-version-too-new"),
+                    netplay::Error::SignalingRejected(e) => {
+                        t!(lang, "play-status-signaling-rejected", reason = e.clone())
+                    }
+                    netplay::Error::SignalingUnreachable(e) => {
+                        t!(lang, "play-status-signaling-unreachable", error = e.clone())
+                    }
+                    netplay::Error::Signaling(e) => t!(lang, "play-status-signaling-failed", error = e.clone()),
+                    netplay::Error::PeerConnection(e) => {
+                        t!(lang, "play-status-peer-connection-failed", error = e.clone())
+                    }
                     netplay::Error::NegotiateExpectedHello => t!(lang, "play-status-negotiate-expected-hello"),
                     netplay::Error::NegotiateVersionTooOld => t!(lang, "play-status-negotiate-version-too-old"),
                     netplay::Error::NegotiateVersionTooNew => t!(lang, "play-status-negotiate-version-too-new"),
