@@ -151,7 +151,10 @@ fn SaveCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
     })
     .unwrap_or_default();
     let picked = loadout().save_path;
-    let has_template = !game.save_templates.is_empty();
+    let templates = crate::library::save_templates(game);
+    // One template is a button; several are a choice, and the names are
+    // the whole point of the choice (BN3 ships eight styles).
+    let mut choosing = use_signal(|| false);
 
     rsx! {
         div { class: "card",
@@ -174,7 +177,7 @@ fn SaveCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
                                     let path = path.clone();
                                     move |_| loadout.write().save_path = Some(path.clone())
                                 },
-                                "{save_label(&path)}"
+                                "{save_label(&path, game)}"
                             }
                             button {
                                 class: "btn small danger",
@@ -205,18 +208,36 @@ fn SaveCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
                         }
                     },
                 }
-                if has_template {
+                if !templates.is_empty() {
                     button {
                         class: "btn",
-                        onclick: move |_| async move {
-                            // A starter save so a first-time player can
-                            // get into a link battle without hunting one
-                            // down on a phone.
-                            if crate::library::create_starter_save(game).await {
-                                loadout.write().reconcile();
-                            }
-                        },
+                        onclick: move |_| choosing.toggle(),
                         "New save"
+                    }
+                }
+            }
+            // A starter save, so a first-time player can get into a link
+            // battle without hunting a `.sav` down on a phone.
+            if choosing() {
+                div { class: "list",
+                    for (template , label) in templates {
+                        button {
+                            key: "{template}",
+                            class: "item",
+                            onclick: {
+                                let template = template.clone();
+                                move |_| {
+                                    let template = template.clone();
+                                    async move {
+                                        if crate::library::create_starter_save(game, &template).await {
+                                            loadout.write().reconcile();
+                                        }
+                                        choosing.set(false);
+                                    }
+                                }
+                            },
+                            span { class: "grow title", "{label}" }
+                        }
                     }
                 }
             }

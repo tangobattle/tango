@@ -28,6 +28,11 @@ pub fn Play(status: ReadSignal<Option<Status>>, onexit: EventHandler<()>) -> Ele
 
     let status = status();
     let pvp = status.as_ref().filter(|s| s.kind == Kind::Pvp);
+    // Leaving a match is not undoable and it costs someone else their
+    // game too, so it asks first. Nothing else here does — quitting
+    // single-player or a replay loses nothing.
+    let in_match = pvp.is_some();
+    let mut confirming = use_signal(|| false);
 
     rsx! {
         div { class: "session",
@@ -39,7 +44,13 @@ pub fn Play(status: ReadSignal<Option<Status>>, onexit: EventHandler<()>) -> Ele
                     class: "chip",
                     // Pointer, not click: the overlay swallows the
                     // events that would otherwise become one.
-                    onpointerdown: move |_| onexit.call(()),
+                    onpointerdown: move |_| {
+                        if in_match {
+                            confirming.set(true);
+                        } else {
+                            onexit.call(());
+                        }
+                    },
                     "Quit"
                 }
                 if let Some(pvp) = pvp {
@@ -57,6 +68,31 @@ pub fn Play(status: ReadSignal<Option<Status>>, onexit: EventHandler<()>) -> Ele
                 // A replay takes no input, so it gets the transport
                 // instead of the pad rather than both.
                 TouchControls {}
+            }
+            if confirming() {
+                div { class: "overlay",
+                    div { class: "box",
+                        div { "Leave the match?" }
+                        div { class: "muted",
+                            "Your opponent is told you left, and the match ends for both of you."
+                        }
+                        div { class: "row",
+                            button {
+                                class: "btn danger grow",
+                                onpointerdown: move |_| {
+                                    confirming.set(false);
+                                    onexit.call(());
+                                },
+                                "Leave"
+                            }
+                            button {
+                                class: "btn primary grow",
+                                onpointerdown: move |_| confirming.set(false),
+                                "Keep playing"
+                            }
+                        }
+                    }
+                }
             }
             if pvp.is_some_and(|s| s.reconnecting) {
                 div { class: "overlay",

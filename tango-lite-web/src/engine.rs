@@ -38,7 +38,7 @@
 //! wants a handful of numbers off it at ~10Hz — so the UI polls
 //! [`status`] instead of the engine pushing.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
@@ -106,6 +106,11 @@ const PREFETCH_COST_DECAY: f64 = 0.8;
 /// exactly the overshoot this is here to avoid.
 const PREFETCH_COST_GUESS_MS: f64 = 1.0;
 
+/// How long a closed session is kept alive so its quit announcement can
+/// reach the peer. Comfortably past the `Goodbye` send's own one-second
+/// cap, and invisible either way — the UI has already moved on.
+const GOODBYE_GRACE: std::time::Duration = std::time::Duration::from_millis(1500);
+
 /// Ceiling on ticks per pump call, so catch-up can't monopolise the
 /// main thread. At 60Hz this still allows 4x realtime, which is more
 /// headroom than any of the pacing paths ask for.
@@ -125,6 +130,9 @@ thread_local! {
     /// rather than spawned per session: a worker costs a thread to start
     /// up, and sessions come and go.
     static TICKER: RefCell<Option<Ticker>> = const { RefCell::new(None) };
+    /// A session that ended by itself, waiting to be collected by the
+    /// UI. See [`take_ended`].
+    static ENDED: Cell<Option<Kind>> = const { Cell::new(None) };
 }
 
 /// The worker whose messages keep a backgrounded session ticking.
@@ -360,6 +368,10 @@ fn install(
         sink.flush();
         sink.prime();
     }
+    // A player holding still through a custom screen is idle as far as
+    // the OS is concerned, and a phone that locks mid-match stalls the
+    // simulation — which the peer experiences as a dead link.
+    crate::wakelock::hold();
     let now = now_ms();
     ENGINE.with(|e| {
         *e.borrow_mut() = Some(Engine {
@@ -386,14 +398,29 @@ fn install(
 /// Tear the running session down. Idempotent.
 pub fn stop() {
     set_ticking(false);
+    crate::wakelock::release();
     let engine = ENGINE.with(|e| e.borrow_mut().take());
     let Some(mut engine) = engine else { return };
     flush_save(&mut engine);
+    // For a match this is the quit announcement: it cancels the token
+    // the supervisor watches, and the supervisor puts a `Goodbye` on the
+    // control channel on its way out. Without it the peer sees a bare
+    // channel close, which is indistinguishable from its own reconnect
+    // dropping a transport — so it spends its give-up window waiting for
+    // someone who already left.
     engine.session.request_close();
     engine.driver.finish();
     if let Some(sink) = &engine.sink {
         sink.borrow_mut().flush();
     }
+    // And that announcement is asynchronous, so the session has to
+    // outlive this turn. Dropping it here would take the transport down
+    // with it before the supervisor ever got scheduled, and the goodbye
+    // would never reach the wire.
+    wasm_bindgen_futures::spawn_local(async move {
+        tango_session::platform::sleep(GOODBYE_GRACE).await;
+        drop(engine);
+    });
 }
 
 pub fn is_running() -> bool {
@@ -519,8 +546,25 @@ fn pump(on_frame: bool) {
         !engine.step(now, on_frame)
     });
     if over {
+        // Record what ended *before* tearing it down, so the UI can
+        // find out afterwards. Watching `status().ended` instead does
+        // not work: the moment a session is over the pump stops it, and
+        // `status()` is `None` from that instant — a poll fast enough
+        // to catch the flag in between is not something to rely on.
+        let kind = ENGINE.with(|e| e.borrow().as_ref().map(|engine| engine.kind));
+        ENDED.with(|c| c.set(kind));
         stop();
     }
+}
+
+/// The kind of session that just ended on its own, if one did. Consumed
+/// by the read, so it fires exactly one navigation.
+///
+/// Only set when a session ends *itself* — a match finishing, a peer
+/// leaving, a dead link. A user quitting already knows where they are
+/// going and clears this on the way out.
+pub fn take_ended() -> Option<Kind> {
+    ENDED.with(|c| c.take())
 }
 
 impl Engine {

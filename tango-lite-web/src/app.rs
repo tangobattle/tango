@@ -82,6 +82,20 @@ pub fn App() -> Element {
             if *engine_status.peek() != status {
                 engine_status.set(status);
             }
+
+            // A session that ended by itself — a match finished, the peer
+            // left, the link died — puts the user back where they
+            // started it from. Collected here rather than watched for on
+            // `status`, which is `None` by the time anyone looks.
+            if let Some(kind) = engine::take_ended() {
+                crate::input::touch_clear();
+                engine_status.set(None);
+                screen.set(match kind {
+                    engine::Kind::Pvp => Screen::Link,
+                    engine::Kind::SinglePlayer => Screen::Library,
+                    engine::Kind::Replay => Screen::Replays,
+                });
+            }
         }
     });
 
@@ -95,25 +109,6 @@ pub fn App() -> Element {
         if engine_status().is_some() && *screen.peek() != Screen::Play {
             screen.set(Screen::Play);
         }
-    });
-
-    // A session that ended on its own — the match finished, the peer
-    // quit, the link died — tears its screen down rather than leaving a
-    // frozen frame up. A finished match goes back to the lobby it came
-    // from, since the usual next thing is another one.
-    use_effect(move || {
-        let Some(status) = engine_status() else { return };
-        if !status.ended {
-            return;
-        }
-        engine::stop();
-        crate::input::touch_clear();
-        engine_status.set(None);
-        screen.set(match status.kind {
-            engine::Kind::Pvp => Screen::Link,
-            engine::Kind::SinglePlayer => Screen::Library,
-            engine::Kind::Replay => Screen::Replays,
-        });
     });
 
     if !opened() {
@@ -131,6 +126,9 @@ pub fn App() -> Element {
                         onexit: move |_| {
                             let kind = engine_status.peek().as_ref().map(|status| status.kind);
                             engine::stop();
+                            // Quitting is a navigation of its own; don't
+                            // let the latch fire a second one.
+                            let _ = engine::take_ended();
                             crate::input::touch_clear();
                             engine_status.set(None);
                             // Back where it was started from.

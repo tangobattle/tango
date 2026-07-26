@@ -18,10 +18,20 @@ pub fn game_label(game: GameRef) -> String {
     crate::lang::game_name(game)
 }
 
-/// The name a save file shows as: what the user called it, minus the
-/// game prefix the importer added.
-pub fn save_label(path: &std::path::Path) -> String {
-    path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
+/// The name a save file shows as.
+///
+/// Files are stored `<family>-<variant>-<name>` so two games' saves
+/// can't collide, but the list showing them is already one game's, so
+/// the prefix is noise — "Heat Guts", not "bn3-0-Heat Guts".
+pub fn save_label(path: &std::path::Path, game: GameRef) -> String {
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let (family, variant) = game.family_and_variant();
+    stem.strip_prefix(&format!("{family}-{variant}-"))
+        .map(str::to_string)
+        .unwrap_or(stem)
 }
 
 /// Read the bytes out of a file input, if one was picked. Async because

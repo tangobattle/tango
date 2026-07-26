@@ -263,6 +263,42 @@ pub fn set_match_type(match_type: (u8, u8)) {
     after_state_change();
 }
 
+/// Default the match type to Triple where the game has one — that is
+/// what people actually play, and both sides have to agree on it before
+/// either can ready up, so defaulting to the less-used mode costs every
+/// pair a negotiation.
+///
+/// Re-defaults when the game changes but leaves an explicit pick for the
+/// *same* game alone, which is what `default_mt_for_game` remembers. Also
+/// repairs a pick the current game doesn't have — match-type tables
+/// differ per family, so a pick carried over from another game can be out
+/// of range.
+fn apply_default_match_type() {
+    LINK.with(|l| {
+        let mut link = l.borrow_mut();
+        let Some(game) = link.loadout.game else { return };
+        // Entry `i` is how many subtypes mode `i` has; mode 1 is Triple.
+        let table = game.match_types;
+        let (family, variant) = game.family_and_variant();
+        let key = (family.to_string(), variant);
+
+        let game_changed = link.net.lobby.default_mt_for_game.as_ref() != Some(&key);
+        let (mode, subtype) = link.net.lobby.match_type;
+        let in_range = table
+            .get(mode as usize)
+            .is_some_and(|subtypes| (subtype as usize) < *subtypes);
+        if !game_changed && in_range {
+            return;
+        }
+        link.net.lobby.match_type = if table.get(1).copied().unwrap_or(0) > 0 {
+            (1, 0)
+        } else {
+            (0, 0)
+        };
+        link.net.lobby.default_mt_for_game = Some(key);
+    });
+}
+
 /// Push the current pick to the peer. A no-op outside the lobby, and
 /// deduped against the last value sent, so it is safe to call from any
 /// state change — which is exactly how it gets sent on lobby entry,
@@ -312,6 +348,7 @@ pub fn set_ready(ready: bool) {
 ///   verdict resolves from the index, so we know the matchup would be
 ///   playable before the package is anywhere near this device.
 fn after_state_change() {
+    apply_default_match_type();
     push_settings();
 
     let missing = LINK.with(|l| {

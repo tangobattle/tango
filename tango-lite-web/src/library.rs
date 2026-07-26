@@ -167,11 +167,16 @@ pub async fn import_save(file_name: &str, bytes: &[u8]) -> bool {
 
 /// Write out a game's bundled starter save, so a first-time player can
 /// get into a link battle without hunting down a `.sav` on a phone.
-pub async fn create_starter_save(game: GameRef) -> bool {
-    let Some((_, template)) = game
+///
+/// Named after the template in the family's own words — "Heat Guts",
+/// "Saito/Normal" — because that name is the only thing distinguishing
+/// one starter from another, and a file called `bn3-0-new` tells you
+/// nothing about which style is in it.
+pub async fn create_starter_save(game: GameRef, template_name: &str) -> bool {
+    let Some((template_name, template)) = game
         .save_templates
         .iter()
-        .find(|(name, _)| name.is_empty())
+        .find(|(name, _)| *name == template_name)
         .or_else(|| game.save_templates.first())
     else {
         return false;
@@ -181,16 +186,50 @@ pub async fn create_starter_save(game: GameRef) -> bool {
     // that parse back as nothing, which reads as "New save did nothing".
     let mut save = template.clone_box();
     save.rebuild_checksum();
-    let (family, variant) = game.family_and_variant();
-    let path = match with(|library| library.config.saves_path().join(format!("{family}-{variant}-new.sav"))) {
-        Some(p) => p,
-        None => return false,
+    let Some(path) = free_save_path(game, &crate::lang::save_template_name(game, template_name)) else {
+        return false;
     };
     if with(|library| library.files.write(&path, &save.to_sram_dump())).is_none() {
         return false;
     }
     rescan().await;
     true
+}
+
+/// The starter saves this game ships, as `(template, label)` — BN3
+/// alone has eight, and they are only distinguishable by name.
+pub fn save_templates(game: GameRef) -> Vec<(String, String)> {
+    game.save_templates
+        .iter()
+        .map(|(name, _)| (name.to_string(), crate::lang::save_template_name(game, name)))
+        .collect()
+}
+
+/// A save path for `game` called `name`, with a counter appended if that
+/// is taken — pressing "New save" twice should give two saves, not
+/// silently overwrite the first.
+fn free_save_path(game: GameRef, name: &str) -> Option<PathBuf> {
+    let (family, variant) = game.family_and_variant();
+    // Saves are keyed by game in the filename, and the name comes from a
+    // translation, so strip what a path can't carry.
+    let name: String = name
+        .chars()
+        .map(|c| if "/\\?%*:|\"<>".contains(c) { '-' } else { c })
+        .collect();
+    let name = name.trim();
+    let saves = with(|library| library.config.saves_path())?;
+    for attempt in 0..100 {
+        let stem = if attempt == 0 {
+            format!("{family}-{variant}-{name}")
+        } else {
+            format!("{family}-{variant}-{name} {}", attempt + 1)
+        };
+        let path = saves.join(format!("{stem}.sav"));
+        if !with(|library| library.files.is_file(&path)).unwrap_or(false) {
+            return Some(path);
+        }
+    }
+    None
 }
 
 /// Persist a session's savedata back over the file it was loaded from.
