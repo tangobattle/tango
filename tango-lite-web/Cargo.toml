@@ -1,0 +1,156 @@
+[package]
+name = "tango-lite-web"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+# A phone-sized Tango: pick a ROM, play it, or dial a link code and play
+# someone. Everything below the UI is the workspace's own crates — the
+# library and its patch catalog, the netplay choreography, the live PvP
+# engine — taken as-is, because they were already written to compile for
+# wasm32 and to be *driven* by a host rather than to run themselves.
+# What lives here is only the browser half of those contracts: an
+# event-loop pump instead of a drive thread, a canvas instead of a wgpu
+# pane, a ScriptProcessor instead of cpal, `fetch` and IndexedDB behind
+# tango-library's two I/O seams, and touch buttons instead of a keyboard
+# map.
+#
+# wasm32-only by construction (see the compile_error in main.rs), so it
+# is a workspace member but NOT a default member: a plain `cargo build`
+# at the root skips it.
+
+[[bin]]
+name = "tango-lite-web"
+path = "src/main.rs"
+
+[dependencies]
+# `default-features = false` deliberately: the default set pulls
+# devtools/logger/asset/cli-config, all of which expect the `dx` CLI to
+# have built the app. This crate builds with plain cargo + wasm-bindgen
+# (see build.sh), so it takes only the renderer and the parts of the
+# framework it actually uses.
+dioxus = { version = "0.7", default-features = false, features = [
+    "macro",
+    "html",
+    "signals",
+    "hooks",
+    "launch",
+    "document",
+    "web",
+] }
+
+bytemuck.workspace = true
+futures.workspace = true
+log.workspace = true
+semver.workspace = true
+console_log = "1"
+console_error_panic_hook = "0.1"
+
+# The browser bindings. web-sys is feature-gated per interface, so the
+# list below is exactly what this crate touches — canvas + ImageData for
+# the screen, the WebAudio graph for the sound, IndexedDB behind the
+# library's Storage seam, `fetch` + a stream reader behind its Http one,
+# and the file/keyboard/pointer events the UI listens on.
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "AudioContext",
+    "AudioContextOptions",
+    "AudioContextState",
+    "AudioDestinationNode",
+    "AudioNode",
+    "AudioWorklet",
+    "AudioWorkletNode",
+    "AudioWorkletNodeOptions",
+    "BaseAudioContext",
+    "Blob",
+    "BlobPropertyBag",
+    "CanvasRenderingContext2d",
+    "Document",
+    "DomException",
+    "Element",
+    "Event",
+    "EventTarget",
+    "File",
+    "FileList",
+    "Headers",
+    "HtmlAudioElement",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "HtmlInputElement",
+    "IdbDatabase",
+    "IdbFactory",
+    "IdbObjectStore",
+    "IdbOpenDbRequest",
+    "IdbRequest",
+    "IdbTransaction",
+    "IdbTransactionMode",
+    "ImageData",
+    "KeyboardEvent",
+    # Not ours: dioxus-web's history module calls `window().location()`
+    # unconditionally but only declares the feature under its `devtools`
+    # feature, which this crate turns off. web-sys features are additive
+    # across the graph, so enabling it here is what makes dioxus-web
+    # compile without dragging its dev-server client in.
+    "Location",
+    "MessageEvent",
+    "MessagePort",
+    "Navigator",
+    "Performance",
+    "ReadableStream",
+    "ReadableStreamDefaultReader",
+    "Request",
+    "RequestInit",
+    "Response",
+    "Storage",
+    "Url",
+    "Window",
+    "Worker",
+    "Worklet",
+] }
+
+# `getrandom` reaches the graph through rand (nonces, the reveal) and is
+# the one dependency that needs telling it is in a browser: without the
+# `js` feature its wasm32-unknown-unknown backend is a compile error, by
+# design. Named here purely to turn that feature on for the whole build.
+getrandom = { version = "0.2", features = ["js"] }
+
+mgba.workspace = true
+tango-dataview = { path = "../tango-dataview" }
+tango-gamesupport = { path = "../tango-gamesupport" }
+# `native` off: that feature is the std-fs + reqwest + Steam half. This
+# crate supplies the browser implementations of the two seams instead
+# (see `storage` / `http`).
+tango-library = { path = "../tango-library", default-features = false }
+tango-match = { path = "../tango-match" }
+tango-net-protocol = { path = "../tango-net-protocol" }
+tango-netplay = { path = "../tango-netplay" }
+tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"] }
+tango-session = { path = "../tango-session" }
+
+[features]
+# Same shape as the desktop app's: no games compiled in by default, one
+# feature per game, `gamesupport-all` for the shipped build. Each one
+# also switches the game on in tango-library, which owns the registry.
+default = []
+gamesupport-bn1 = ["tango-library/gamesupport-bn1"]
+gamesupport-bn2 = ["tango-library/gamesupport-bn2"]
+gamesupport-bn3 = ["tango-library/gamesupport-bn3"]
+gamesupport-bn4 = ["tango-library/gamesupport-bn4"]
+gamesupport-bn5 = ["tango-library/gamesupport-bn5"]
+gamesupport-bn6 = ["tango-library/gamesupport-bn6"]
+gamesupport-exe45 = ["tango-library/gamesupport-exe45"]
+gamesupport-all = [
+    "gamesupport-bn1",
+    "gamesupport-bn2",
+    "gamesupport-bn3",
+    "gamesupport-bn4",
+    "gamesupport-bn5",
+    "gamesupport-bn6",
+    "gamesupport-exe45",
+]
+
+[lints]
+workspace = true

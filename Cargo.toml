@@ -5,6 +5,10 @@ members = [
     "tango-dataview",
     "tango-gamesupport",
     "tango-library",
+    # wasm32-only; deliberately absent from `default-members` below, so a
+    # plain root `cargo build`/`test` skips it rather than failing to
+    # link a browser app for the host.
+    "tango-lite-web",
     "tango-net-protocol",
     "tango-match",
     "tango-netplay",

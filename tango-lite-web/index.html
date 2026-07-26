@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <!-- `viewport-fit=cover` so the play screen can reach under a notch and
+         claim it back with env(safe-area-inset-*); `user-scalable=no` because
+         a double-tap on the D-pad must not zoom the page. -->
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1"
+        />
+        <meta name="theme-color" content="#0b0d12" />
+        <meta name="color-scheme" content="dark" />
+        <!-- Installed to the home screen, this runs without browser chrome —
+         which is most of what makes it feel like an app on a phone. -->
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta
+            name="apple-mobile-web-app-status-bar-style"
+            content="black-translucent"
+        />
+        <meta name="apple-mobile-web-app-title" content="Tango Lite" />
+        <title>Tango Lite</title>
+        <link rel="stylesheet" href="./style.css" />
+    </head>
+
+    <body>
+        <!-- Outside #main, and removed once the module is live: dioxus
+             mounts by appending to its root, so a placeholder left inside
+             it would still be on screen under the app. -->
+        <div id="boot" class="boot">Loading Tango Lite…</div>
+        <!-- dioxus-web mounts here (`#main` is its default root). -->
+        <div id="main"></div>
+        <script type="module">
+            import init from "./tango-lite-web.js";
+            await init();
+            document.getElementById("boot")?.remove();
+        </script>
+    </body>
+</html>
