@@ -112,7 +112,7 @@ pub fn render(
         _ => (native, 1.0),
     };
 
-    if let Some(name) = view.style().and_then(|sid| assets.style(sid).and_then(|s| s.name())) {
+    if let Some(name) = view.style().and_then(|sid| assets.style_name(sid)) {
         // The BN3 bar's right-flush tile stripe is four SQUARE_SIZE/4
         // tiles plus the border; the label fills the gap to its left.
         let tiles_w_native = SQUARE_SIZE + BORDER_WIDTH;
@@ -917,7 +917,7 @@ fn paint_ghost<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, g: &Geomet
     }
 }
 
-pub(crate) fn to_color(c: [u8; 4]) -> Color {
+pub fn to_color(c: [u8; 4]) -> Color {
     Color::from_rgba8(c[0], c[1], c[2], c[3] as f32 / 255.0)
 }
 

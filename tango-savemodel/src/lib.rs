@@ -49,8 +49,9 @@ pub struct Editability {
     pub navicust: bool,
     /// `view_navi_mut().is_some()` — the equipped navi (BN5/BN6/BN4.5).
     pub navi: bool,
-    /// `view_patch_cards_mut().is_some()` — BN4 (PatchCard4s, slot-based) and
-    /// BN5/BN6 (PatchCard56s, list-based); each gets its own editor.
+    /// `view_patch_card56s_mut().is_some()` — the BN5/BN6 list. BN4's
+    /// slot-based Mod Cards are that game's own model; its UI crate
+    /// answers for their editability itself (`SaveUi::tab_editable`).
     pub patch_cards: bool,
     /// `view_auto_battle_data_mut().is_some()` (BN4/BN5).
     pub auto_battle_data: bool,
@@ -66,7 +67,7 @@ impl Editability {
         let folder = save.view_chips_mut().is_some();
         let navicust = save.view_navicust_mut().is_some();
         let navi = save.view_navi_mut().is_some();
-        let patch_cards = save.view_patch_cards_mut().is_some();
+        let patch_cards = save.view_patch_card56s_mut().is_some();
         let auto_battle_data = save.view_auto_battle_data_mut().is_some();
         Self {
             folder,

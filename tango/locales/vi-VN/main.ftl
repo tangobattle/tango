@@ -15,7 +15,6 @@ window-title = Tango
     .running = Tango (đang chạy)
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = Thoát Tango
-play-play = Chơi
 play-training = Luyện tập
 training-pip = Màn hình đối thủ
 training-swap = Đổi bên
@@ -104,21 +103,8 @@ settings-fullscreen = Toàn màn hình
 settings-ui-scale = Tỉ lệ giao diện
 settings-fractional-scaling = Tỉ lệ phân số
 settings-hide-emulator-border = Ẩn viền giả lập
-save-tab-cover = Cover
-save-tab-folder = Folder
-save-tab-patch-cards = Patch Cards
-save-tab-auto-battle-data = Auto Battle Data
-auto-battle-data-secondary-standard-chips = Standard chips (secondary)
-auto-battle-data-standard-chips = Standard chips
-auto-battle-data-mega-chips = Mega chips
-auto-battle-data-giga-chip = Giga chip
-auto-battle-data-combos = Combo
-auto-battle-data-program-advance = Program advance
 
 # Auto Battle Data editor
-auto-battle-data-edit-used = Đã dùng
-auto-battle-data-edit-secondary = Phụ
-auto-battle-data-edit-count = { $count } chip
 welcome-open-folder = Mở thư mục
 welcome-continue = Đã xong!
 discord-presence-looking = Đang tìm trận
@@ -222,64 +208,21 @@ session-results-draws = { $count } vòng kết thúc với kết quả hòa
 session-results-watch-replay = Xem replay
 session-results-done = Xong
 navi-style = Style
-folder-group = Nhóm theo chip
 save-copy = Sao chép
 copied = Đã sao chép!
-save-copy-image = Sao chép thành ảnh
 navi-id = Navi ID
 navi-link-navi = Link Navi
-navi-base-hp = HP
 navi-buster = Buster
-navi-buster-attack = Tấn công
-navi-buster-rapid = Tốc độ bắn
-navi-buster-charge = Tích lực
 navi-power-attack = Đòn đánh mạnh
 navi-style-unset = (không có style)
-navicust-grid-size = Lưới: { $cols } × { $rows }
 navicust-parts = Bộ phận đã lắp
 navicust-empty = (chưa lắp gì)
 
 # Folder editor
-save-edit = Sửa
-save-edit-save = Lưu
-save-edit-cancel = Hủy
-folder-edit-search = Tìm chip…
-folder-edit-folder = Folder
-folder-edit-count = { $count } / { $limit }
-folder-edit-navi = Navi { $used } / { $limit }
-folder-edit-mega = Mega { $used } / { $limit }
-folder-edit-giga = Giga { $used } / { $limit }
-folder-edit-dark = Dark { $used } / { $limit }
-folder-edit-reg-memory = Reg { $mb }MB
-folder-edit-tag-memory = Tag { $mb }MB
-save-edit-sort = Sắp xếp
-save-edit-clear = Xóa tất cả
-folder-sort-id = ID
-folder-sort-name = Tên
-folder-sort-code = Mã
-folder-sort-attack = Tấn công
-folder-sort-element = Hệ
-folder-sort-mb = MB
 
 # Navicust editor
-navicust-edit-grid = NaviCust
-navicust-edit-count = { $count } bộ phận
-navicust-edit-rotate = Xoay
-navicust-edit-compress = Nén
-navicust-edit-uncompress = Bỏ nén
-navicust-edit-search = Tìm bộ phận…
-navicust-sort-id = ID
-navicust-sort-name = Tên
-navicust-sort-color = Màu
 
 # Patch card editor
-patch-card-edit-search = Tìm thẻ…
-patch-card-edit-count = { $count } thẻ
-patch-card-edit-mb = { $mb }MB / { $limit }MB
-patch-card-sort-id = ID
-patch-card-sort-name = Tên
-patch-card-sort-mb = MB
-patch-card4-none = Không
 save-empty = Save này không có dữ liệu cho mục này.
 play-no-selection = Chọn một game và save để xem.
 replays-filter-all-games = Tất cả game
@@ -420,8 +363,6 @@ rescan = Quét lại
 
 # Reconnect / data folder / save-view tabs
 session-stat-lead = Dẫn trước
-save-tab-navicust = NaviCust
-navi-edit-select = Navi
 playback-reconnecting = Mất kết nối
 playback-reconnecting-detail = Đang kết nối lại…
 playback-exit-hold = Đang thoát…

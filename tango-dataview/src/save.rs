@@ -11,14 +11,29 @@ where
     }
 }
 
-pub enum PatchCardsView<'a> {
-    PatchCard4s(Box<dyn PatchCard4sView + 'a>),
-    PatchCard56s(Box<dyn PatchCard56sView + 'a>),
+/// `Any`-upcast, blanket-implemented for every concrete type so trait
+/// objects ([`Save`], [`crate::rom::Assets`]) can be downcast to their
+/// game's concrete type. This is how game-specific model surface (BN4's
+/// patch cards, BN3's styles) stays out of the shared traits: the
+/// game's own UI crate downcasts and uses the concrete API.
+///
+/// Careful with boxes: the blanket impl covers `Box<dyn Save>` itself
+/// too, so `boxed.as_any()` answers for the *box*. Go through the trait
+/// object — `boxed.as_ref().as_any()` / `boxed.as_mut().as_any_mut()` —
+/// to reach the concrete save.
+pub trait AsAny {
+    fn as_any(&self) -> &dyn std::any::Any;
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
 
-pub enum PatchCardsViewMut<'a> {
-    PatchCard4s(Box<dyn PatchCard4sViewMut + 'a>),
-    PatchCard56s(Box<dyn PatchCard56sViewMut + 'a>),
+impl<T: std::any::Any> AsAny for T {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 pub struct FolderLimits {
@@ -50,7 +65,7 @@ impl Default for FolderLimits {
 
 pub trait Save
 where
-    Self: SaveClone,
+    Self: SaveClone + AsAny,
 {
     fn to_sram_dump(&self) -> Vec<u8>;
     fn as_raw_wram(&self) -> std::borrow::Cow<'_, [u8]>;
@@ -65,11 +80,14 @@ where
         None
     }
 
-    fn view_patch_cards(&self) -> Option<PatchCardsView<'_>> {
+    /// The BN5/BN6 patch-card list. BN4's slot-based Mod Cards are that
+    /// game's own model — its save exposes them concretely (reach it via
+    /// [`AsAny`]), not through the shared trait.
+    fn view_patch_card56s(&self) -> Option<Box<dyn PatchCard56sView + '_>> {
         None
     }
 
-    fn view_patch_cards_mut(&mut self) -> Option<PatchCardsViewMut<'_>> {
+    fn view_patch_card56s_mut(&mut self) -> Option<Box<dyn PatchCard56sViewMut + '_>> {
         None
     }
 
@@ -98,15 +116,6 @@ where
 
     fn view_auto_battle_data_mut(&mut self) -> Option<Box<dyn AutoBattleDataViewMut + '_>> {
         None
-    }
-
-    fn bugfrags(&self) -> Option<u32> {
-        None
-    }
-
-    fn set_bugfrags(&mut self, count: u32) -> bool {
-        let _ = count;
-        false
     }
 }
 
@@ -292,15 +301,6 @@ pub trait PatchCard56sViewMut: PatchCard56sView {
     fn rebuild_anticheat(&mut self);
 }
 
-pub trait PatchCard4sView {
-    fn patch_card(&self, slot: usize) -> Option<PatchCard>;
-}
-
-pub trait PatchCard4sViewMut: PatchCard4sView {
-    fn set_patch_card(&mut self, slot: usize, patch_card: Option<PatchCard>) -> bool;
-    fn rebuild_anticheat(&mut self);
-}
-
 /// The save's navi: which navi is equipped (a link navi when `navi() != 0`,
 /// the player's own navi otherwise). Deliberately its own view, separate
 /// from [`NavicustView`], so it can grow more navi-level fields without
@@ -364,10 +364,11 @@ pub trait NavicustView {
     fn count(&self) -> usize {
         25
     }
+    /// The equipped style's id, for games whose navicust carries one
+    /// (BN3). The id resolves to a display name via
+    /// [`crate::rom::Assets::style_name`]; everything else about the
+    /// style system is the game's own model.
     fn style(&self) -> Option<usize> {
-        None
-    }
-    fn ex_code(&self) -> Option<usize> {
         None
     }
     fn size(&self) -> [usize; 2];
@@ -377,10 +378,6 @@ pub trait NavicustView {
 }
 
 pub trait NavicustViewMut: NavicustView {
-    fn set_style(&mut self, _style: usize) -> bool {
-        false
-    }
-
     /// Write slot `i`. `None` empties the slot. Returns `false` (no
     /// write) if `i` is out of range or the part id is invalid.
     fn set_navicust_part(&mut self, i: usize, part: Option<NavicustPart>) -> bool;

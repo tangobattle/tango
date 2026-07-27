@@ -6,7 +6,7 @@
 //! come straight from the `lucide-icons` crate — call sites pass
 //! `Icon::Foo` directly.
 
-use crate::ui::style::{PANE_GAP, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING};
+use crate::style::{PANE_GAP, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING};
 use iced::widget::{button, container, text, tooltip};
 use iced::{Alignment, Element, Length, Theme};
 use lucide_icons::Icon;
@@ -41,7 +41,7 @@ pub fn menu_button<'a, M: Clone + 'a>(
         items,
         enabled,
         padding,
-        crate::ui::style::STANDARD_PADDING,
+        crate::style::STANDARD_PADDING,
         neutral,
     );
     // Tooltip above, not below — below is where the dropdown lands,
@@ -65,13 +65,13 @@ pub fn icon_button_maybe<'a, M: Clone + 'a>(
 
 /// Icon button for clipboard copies, with feedback: once the copy
 /// actually lands, the update path calls
-/// [`crate::ui::copy_feedback::flash`] with this button's `key`, and
+/// [`crate::copy_feedback::flash`] with this button's `key`, and
 /// until the flash expires the glyph flips to a primary-tinted
 /// clipboard-check and the tooltip to `copied_label` ("Copied!").
 /// `icon` is the idle glyph — ClipboardCopy for plain copies,
 /// something more specific (ImageDown) where the payload kind needs
 /// distinguishing. `key` must be stable and unique per button — see
-/// [`crate::ui::copy_feedback`].
+/// [`crate::copy_feedback`].
 pub fn copy_icon_button<'a, M: Clone + 'a>(
     key: &str,
     icon: Icon,
@@ -81,7 +81,7 @@ pub fn copy_icon_button<'a, M: Clone + 'a>(
     msg: Option<M>,
     padding: [f32; 2],
 ) -> Element<'a, M> {
-    let lit = crate::ui::copy_feedback::is_lit(key);
+    let lit = crate::copy_feedback::is_lit(key);
     let (glyph, tip) = if lit {
         (Icon::ClipboardCheck, copied_label)
     } else {
@@ -124,7 +124,7 @@ pub fn list_item(selected: bool, idx: usize) -> impl Fn(&Theme, button::Status) 
             // gradient with navy ink text, like the music player's
             // active track bar. Stays gold under every accent, the
             // gold chrome included.
-            let sel = crate::ui::theme::SELECT_YELLOW;
+            let sel = crate::theme::SELECT_YELLOW;
             let amber = mix(sel, iced::Color::from_rgb(0.95, 0.55, 0.05), 0.40);
             let lighter = mix(sel, iced::Color::WHITE, 0.15);
             let (top, bottom, glow_alpha) = match status {
@@ -722,7 +722,7 @@ pub fn pane_prompt<'a, M: 'a>(message: String) -> Element<'a, M> {
 }
 
 /// The [`pane`] plate fill. Exposed so exit washes
-/// ([`crate::ui::anim::exit_fade`]) can dissolve departing controls
+/// ([`crate::anim::exit_fade`]) can dissolve departing controls
 /// into the same color they sit on. On dark, the lift runs through
 /// [`plate_lift`] (neutral with a whisper of accent); on light, a
 /// 5% nudge toward text. Either way it's just enough contrast
@@ -1401,12 +1401,12 @@ pub fn hex_chain<'a, M: 'a>(height: f32) -> Element<'a, M> {
 /// normally a left→right primary→cooler gradient so the rule has
 /// motion — not a single flat color stripe across the window.
 pub fn hud_scanline_top<'a, M: 'a>() -> Element<'a, M> {
-    hud_scanline(crate::ui::theme::is_gay_time().then(|| flag_background(&crate::ui::theme::rainbow_flag_stops())))
+    hud_scanline(crate::theme::is_gay_time().then(|| flag_background(&crate::theme::rainbow_flag_stops())))
 }
 
 /// The bottom-edge accent strip.
 pub fn hud_scanline_bottom<'a, M: 'a>() -> Element<'a, M> {
-    hud_scanline(crate::ui::theme::is_gay_time().then(|| flag_background(&crate::ui::theme::trans_flag_stops())))
+    hud_scanline(crate::theme::is_gay_time().then(|| flag_background(&crate::theme::trans_flag_stops())))
 }
 
 /// A flat left→right linear gradient through `stops`, packaged as a
@@ -1540,7 +1540,7 @@ pub fn modal_layer<'a, M: Clone + 'a>(
         container(iced::widget::Space::new().width(Length::Fill).height(Length::Fill))
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(crate::ui::anim::backdrop_style(backdrop_alpha)),
+            .style(crate::anim::backdrop_style(backdrop_alpha)),
     );
     if let Some(m) = dismiss {
         backdrop = backdrop.on_press(move |_| m.clone());
@@ -1733,7 +1733,7 @@ pub fn chunky_text_input(
 /// the returned picker; compact in-pane variants (CONTROL_PADDING +
 /// smaller text) keep hand-building.
 ///
-/// [`STANDARD_PADDING`]: crate::ui::style::STANDARD_PADDING
+/// [`STANDARD_PADDING`]: crate::style::STANDARD_PADDING
 pub fn picker<'a, T, L, V, M>(
     options: L,
     selected: Option<V>,
@@ -1746,7 +1746,7 @@ where
     M: Clone,
 {
     sweeten::widget::pick_list(options, selected, on_selected)
-        .padding(crate::ui::style::STANDARD_PADDING)
+        .padding(crate::style::STANDARD_PADDING)
         .style(chunky_pick_list)
 }
 
@@ -1837,7 +1837,7 @@ pub fn disabled_pick_list_style(theme: &Theme) -> iced::widget::container::Style
 /// doesn't shift when toggling between enabled/disabled states.
 pub fn disabled_pick_list<'a, M: 'a>(label: impl Into<String>) -> iced::widget::Container<'a, M> {
     iced::widget::container(iced::widget::text(label.into()))
-        .padding(crate::ui::style::STANDARD_PADDING)
+        .padding(crate::style::STANDARD_PADDING)
         .style(disabled_pick_list_style)
 }
 
@@ -2094,7 +2094,7 @@ pub fn matchup_pane<'a, M: 'a>(left: Element<'a, M>, right: Element<'a, M>) -> E
         iced::widget::Stack::new()
             .push(
                 container(sides_row)
-                    .padding(crate::ui::style::PANE_PADDING)
+                    .padding(crate::style::PANE_PADDING)
                     .width(Length::Fill),
             )
             .push_under(vs_splitter()),
@@ -2410,7 +2410,7 @@ pub struct ChipUseMark {
 /// icon handles are Arc-backed — cloning one per use is a refcount bump.
 fn chip_use_marks(
     uses: &[(u32, u16)],
-    loaded: Option<&crate::selection::OpenSave>,
+    loaded: Option<&crate::loaded::OpenSave>,
     x_of: impl Fn(u32) -> f32,
 ) -> Vec<ChipUseMark> {
     uses.iter()
@@ -2462,7 +2462,7 @@ pub struct CookedHpRound {
 /// its own first sample.
 pub fn cook_hp_rounds(
     stats: &tango_match::analysis::MatchStats,
-    loadeds: [Option<&crate::selection::OpenSave>; 2],
+    loadeds: [Option<&crate::loaded::OpenSave>; 2],
     planned: Option<&[u32]>,
 ) -> (Vec<CookedHpRound>, f32) {
     let max_hp = stats

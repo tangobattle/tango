@@ -1,11 +1,7 @@
 use super::*;
 use sweeten::widget::{column, row};
 
-pub(super) fn render_folder<M: 'static>(
-    lang: &LanguageIdentifier,
-    loaded: &OpenSave,
-    grouped: bool,
-) -> Element<'static, M> {
+pub fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave, grouped: bool) -> Element<'static, M> {
     let Some(chips_view) = loaded.save.view_chips() else {
         return placeholder(t!(lang, "save-empty"));
     };
@@ -106,7 +102,7 @@ pub(super) fn render_folder<M: 'static>(
     // Rows are flush to the pane edges; the outer scrollable in
     // `view` handles vertical overflow once total content exceeds
     // the available height.
-    container(body).width(Fill).style(crate::ui::widgets::pane).into()
+    container(body).width(Fill).style(crate::widgets::pane).into()
 }
 
 /// Editable folder view: the folder (left) beside the chip library
@@ -117,7 +113,7 @@ pub(super) fn render_folder<M: 'static>(
 /// [`tango_dataview::save::FolderLimits`] (mega/giga caps, per-chip copy
 /// cap, Regular/Tag memory) are surfaced in the folder header and enforced
 /// by greying out library chips / REG / TAG toggles that would break them.
-pub(super) fn render_folder_edit<'a>(
+pub fn render_folder_edit<'a>(
     lang: &'a LanguageIdentifier,
     loaded: &'a OpenSave,
     state: &'a State,
@@ -411,7 +407,7 @@ fn library_entry_row<'a>(
     chips_have_mb: bool,
     addable: bool,
 ) -> Element<'a, Action> {
-    use crate::ui::widgets;
+    use crate::widgets;
     let info = loaded.assets.chip(chip_id);
     let accent = class_accent(
         info.as_ref().map(|i| i.class()),
@@ -487,7 +483,7 @@ fn library_entry_row<'a>(
 
 /// Sort order for the editor's chip-library (right) pane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LibrarySort {
+pub enum LibrarySort {
     Id,
     Name,
     Code,
@@ -508,7 +504,7 @@ impl LibrarySort {
 }
 
 impl LibrarySort {
-    fn label(self, lang: &LanguageIdentifier) -> String {
+    pub fn label(self, lang: &LanguageIdentifier) -> String {
         match self {
             LibrarySort::Id => t!(lang, "folder-sort-id"),
             LibrarySort::Name => t!(lang, "folder-sort-name"),
@@ -607,18 +603,18 @@ fn sorted_library_entries(
 pub use tango_savemodel::rules::{folder_limits_satisfied, FolderUsage};
 
 #[derive(Default)]
-pub(crate) struct GroupedChip {
-    pub(crate) count: usize,
-    pub(crate) is_regular: bool,
-    pub(crate) has_tag1: bool,
-    pub(crate) has_tag2: bool,
+pub struct GroupedChip {
+    pub count: usize,
+    pub is_regular: bool,
+    pub has_tag1: bool,
+    pub has_tag2: bool,
 }
 
 // `code = None` skips the code badge (Auto Battle Data slots
 // have a chip id but no code). `show_count_cell` toggles the
 // leading "N×" column — on for the folder's grouped mode, off
 // for ABD.
-pub(crate) fn chip_row<M: 'static>(
+pub fn chip_row<M: 'static>(
     loaded: &OpenSave,
     chip_id: Option<usize>,
     code: Option<String>,
@@ -775,7 +771,7 @@ pub(crate) fn chip_row<M: 'static>(
 
 /// Accent color for the left edge of a chip row. None = no accent (the
 /// row reads as a default chip with no class adornment).
-pub(crate) fn class_accent(class: Option<tango_dataview::rom::ChipClass>, dark: bool) -> Option<iced::Color> {
+pub fn class_accent(class: Option<tango_dataview::rom::ChipClass>, dark: bool) -> Option<iced::Color> {
     if dark {
         return Some(iced::Color::from_rgb8(0x4a, 0x55, 0x82));
     }
@@ -788,7 +784,7 @@ pub(crate) fn class_accent(class: Option<tango_dataview::rom::ChipClass>, dark: 
 
 /// 28×28 chip icon. Empty (`None`) renders a same-sized spacer so empty
 /// rows keep the same height as filled ones.
-pub(crate) fn chip_icon<'a>(loaded: &'a OpenSave, chip_id: Option<usize>) -> Element<'a, Action> {
+pub fn chip_icon<'a>(loaded: &'a OpenSave, chip_id: Option<usize>) -> Element<'a, Action> {
     match chip_id.and_then(|id| loaded.chip_icons.get(id).cloned().flatten()) {
         Some(h) => Image::new(h)
             .width(Length::Fixed(28.0))
@@ -807,7 +803,7 @@ pub(crate) fn chip_icon<'a>(loaded: &'a OpenSave, chip_id: Option<usize>) -> Ele
 /// `inner` with it as a follow-cursor tooltip. Returns `inner` unchanged when
 /// the chip has neither artwork nor a description. `accent` tints the popover
 /// background to match the chip's class stripe.
-pub(crate) fn chip_popover<'a, M: 'a>(
+pub fn chip_popover<'a, M: 'a>(
     inner: Element<'a, M>,
     image_handle: Option<(u32, u32, iced_image::Handle)>,
     description: Option<String>,
@@ -841,7 +837,7 @@ pub(crate) fn chip_popover<'a, M: 'a>(
 /// Wrap `inner` so hovering anywhere over it shows the chip's full
 /// image and description (the read-only list's chip popover). No-op
 /// when the chip has neither, or for an empty slot.
-pub(crate) fn with_chip_tooltip<'a>(
+pub fn with_chip_tooltip<'a>(
     loaded: &'a OpenSave,
     chip_id: Option<usize>,
     accent: Option<iced::Color>,
@@ -866,11 +862,7 @@ pub(crate) fn with_chip_tooltip<'a>(
 /// Element-icon / ATK / MB stat cells shared by both editor panes,
 /// matching the read-only chip list's columns. The MB cell collapses to
 /// nothing when the game doesn't use MB.
-pub(crate) fn chip_stat_cells<'a>(
-    loaded: &'a OpenSave,
-    chip_id: usize,
-    chips_have_mb: bool,
-) -> [Element<'a, Action>; 3] {
+pub fn chip_stat_cells<'a>(loaded: &'a OpenSave, chip_id: usize, chips_have_mb: bool) -> [Element<'a, Action>; 3] {
     let info = loaded.assets.chip(chip_id);
     let element: Element<'a, Action> = info
         .as_ref()
@@ -908,7 +900,7 @@ pub(crate) fn chip_stat_cells<'a>(
 /// accent so mega / giga / dark chips get a background that matches
 /// the row's left-edge stripe. Standard chips (accent = None) fall
 /// back to the default near-black tooltip.
-pub(crate) fn chip_tooltip_style(accent: Option<iced::Color>) -> impl Fn(&iced::Theme) -> container::Style {
+pub fn chip_tooltip_style(accent: Option<iced::Color>) -> impl Fn(&iced::Theme) -> container::Style {
     move |_theme: &iced::Theme| {
         let bg = accent.unwrap_or_else(|| iced::Color::from_rgba8(0, 0, 0, 0.85));
         container::Style {
@@ -925,7 +917,7 @@ pub(crate) fn chip_tooltip_style(accent: Option<iced::Color>) -> impl Fn(&iced::
 }
 
 /// The folder tab as TSV text for clipboard "copy as text".
-pub(crate) fn as_text(loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
+pub fn as_text(loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
     let assets = loaded.assets.as_ref();
     let chips_view = loaded.save.view_chips()?;
     let folder_idx = chips_view.equipped_folder_index();

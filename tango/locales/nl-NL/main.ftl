@@ -15,7 +15,6 @@ window-title = Tango
     .running = Tango (actief)
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = Tango afsluiten
-play-play = Spelen
 play-training = Training
 training-pip = Scherm van tegenstander
 training-swap = Van kant wisselen
@@ -104,24 +103,8 @@ settings-fullscreen = Volledig scherm
 settings-ui-scale = UI-schaal
 settings-fractional-scaling = Fractionele schaling
 settings-hide-emulator-border = Emulator-rand verbergen
-save-tab-cover = Omslag
-save-tab-folder = Map
-save-tab-patch-cards = Patch Cards
-save-tab-auto-battle-data = Auto Battle Data
-auto-battle-data-secondary-standard-chips = Standaard chips (secundair)
-auto-battle-data-standard-chips = Standaard chips
-auto-battle-data-mega-chips = Mega chips
-auto-battle-data-giga-chip = Giga chip
-auto-battle-data-combos = Combo's
-auto-battle-data-program-advance = Program advance
 
 # Auto Battle Data editor
-auto-battle-data-edit-used = Gebruikt
-auto-battle-data-edit-secondary = Sec.
-auto-battle-data-edit-count = { $count ->
-    [one] { $count } chip
-   *[other] { $count } chips
-}
 welcome-open-folder = Map openen
 welcome-continue = Ik ben klaar!
 discord-presence-looking = Op zoek naar een spel
@@ -228,70 +211,21 @@ session-results-draws = { $count ->
 session-results-watch-replay = Replay bekijken
 session-results-done = Klaar
 navi-style = Stijl
-folder-group = Groeperen per chip
 save-copy = Kopiëren
 copied = Gekopieerd!
-save-copy-image = Als afbeelding kopiëren
 navi-id = Navi-ID
 navi-link-navi = Link Navi
-navi-base-hp = HP
 navi-buster = Buster
-navi-buster-attack = Aanval
-navi-buster-rapid = Rapid
-navi-buster-charge = Charge
 navi-power-attack = Krachtaanval
 navi-style-unset = (geen stijl)
-navicust-grid-size = Raster: { $cols } × { $rows }
 navicust-parts = Geïnstalleerde onderdelen
 navicust-empty = (geen geïnstalleerd)
 
 # Folder editor
-save-edit = Bewerken
-save-edit-save = Opslaan
-save-edit-cancel = Annuleren
-folder-edit-search = Chips zoeken…
-folder-edit-folder = Map
-folder-edit-count = { $count } / { $limit }
-folder-edit-navi = Navi { $used } / { $limit }
-folder-edit-mega = Mega { $used } / { $limit }
-folder-edit-giga = Giga { $used } / { $limit }
-folder-edit-dark = Dark { $used } / { $limit }
-folder-edit-reg-memory = Reg { $mb }MB
-folder-edit-tag-memory = Tag { $mb }MB
-save-edit-sort = Sorteren
-save-edit-clear = Alles wissen
-folder-sort-id = ID
-folder-sort-name = Naam
-folder-sort-code = Code
-folder-sort-attack = Aanval
-folder-sort-element = Element
-folder-sort-mb = MB
 
 # Navicust editor
-navicust-edit-grid = NaviCust
-navicust-edit-count = { $count ->
-    [one] { $count } onderdeel
-   *[other] { $count } onderdelen
-}
-navicust-edit-rotate = Draaien
-navicust-edit-compress = Comprimeren
-navicust-edit-uncompress = Decomprimeren
-navicust-edit-search = Onderdelen zoeken…
-navicust-sort-id = ID
-navicust-sort-name = Naam
-navicust-sort-color = Kleur
 
 # Patch card editor
-patch-card-edit-search = Kaarten zoeken…
-patch-card-edit-count = { $count ->
-    [one] { $count } kaart
-   *[other] { $count } kaarten
-}
-patch-card-edit-mb = { $mb }MB / { $limit }MB
-patch-card-sort-id = ID
-patch-card-sort-name = Naam
-patch-card-sort-mb = MB
-patch-card4-none = Geen
 save-empty = Deze save heeft geen gegevens voor deze weergave.
 play-no-selection = Kies een spel en save om te bekijken.
 replays-filter-all-games = Alle spellen
@@ -435,8 +369,6 @@ rescan = Opnieuw scannen
 
 # Reconnect / data folder / save-view tabs
 session-stat-lead = Voorsprong
-save-tab-navicust = NaviCust
-navi-edit-select = Navi
 playback-reconnecting = Verbinding verbroken
 playback-reconnecting-detail = Opnieuw verbinden…
 playback-exit-hold = Afsluiten…

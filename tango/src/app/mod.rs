@@ -941,14 +941,7 @@ impl App {
                 .unwrap_or_default(),
         );
         let patches_path = self.config.patches_path();
-        self.loaded = Some(selection::OpenSave::build(
-            game,
-            rom,
-            save_path,
-            save,
-            &patches_path,
-            patch_meta,
-        ));
+        self.loaded = Some(selection::build(game, rom, save_path, save, &patches_path, patch_meta));
         // We just swapped in a freshly-built save, so any in-progress
         // edit (which lived in the previous in-memory save) is gone —
         // leave the global edit mode so the UI doesn't show stale state.

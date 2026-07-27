@@ -1,7 +1,7 @@
 use crate::i18n::t;
-use crate::selection::OpenSave;
-use crate::ui::style::{self, TEXT_BODY, TEXT_CAPTION};
-use crate::ui::widgets::{muted_color, muted_text_style};
+use crate::loaded::OpenSave;
+use crate::style::{self, TEXT_BODY, TEXT_CAPTION};
+use crate::widgets::{muted_color, muted_text_style};
 use iced::widget::{button, container, image as iced_image, scrollable, stack, text, tooltip, Image, Space};
 use sweeten::widget::{column, pick_list, row, text_input};
 
@@ -11,15 +11,14 @@ use sweeten::widget::{column, pick_list, row, text_input};
 /// The Element is generic over the embedder's Message type.
 use iced::{Alignment, ContentFit, Element, Fill, Length};
 use tango_dataview::rom::NavicustPartColor;
-use tango_dataview::save::Save;
 use unic_langid::LanguageIdentifier;
 
-pub(crate) mod abd;
-mod cover;
-pub(crate) mod folder;
-mod navi;
+pub mod abd;
+pub mod cover;
+pub mod folder;
+pub mod navi;
 pub mod navicust;
-pub(crate) mod patch_cards;
+pub mod patch_cards;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tab {
@@ -28,6 +27,26 @@ pub enum Tab {
     Folder,
     PatchCards,
     AutoBattleData,
+    /// Battle Chip Challenge's wired deck board — BCC's replacement for
+    /// the flat Folder list.
+    ProgramDeck,
+}
+
+impl Tab {
+    /// Which [`tango_savemodel::Editability`] section gates this tab's
+    /// editor body (and its inclusion in the one global edit session) —
+    /// the default answer for [`crate::save_ui::SaveUi::tab_editable`];
+    /// games whose section lives outside the shared model override it
+    /// there.
+    pub fn editable_on(self, e: &tango_savemodel::Editability) -> bool {
+        match self {
+            Tab::Cover => false,
+            Tab::Navicust => e.navicust,
+            Tab::Folder | Tab::ProgramDeck => e.folder,
+            Tab::PatchCards => e.patch_cards,
+            Tab::AutoBattleData => e.auto_battle_data,
+        }
+    }
 }
 
 #[derive(Default, Clone, Copy)]
@@ -62,7 +81,7 @@ impl<S> std::fmt::Display for SortChoice<S> {
 /// `search_placeholder` is the filter box's pre-resolved placeholder
 /// text (`t!` only takes literal keys, so the lookup stays at the call
 /// site); `sort_label` is the sort enum's `label` method.
-fn library_header<'a, S: Copy + PartialEq + 'static>(
+pub fn library_header<'a, S: Copy + PartialEq + 'static>(
     lang: &LanguageIdentifier,
     search_placeholder: String,
     filter_value: &str,
@@ -77,7 +96,7 @@ fn library_header<'a, S: Copy + PartialEq + 'static>(
         .padding(style::CONTROL_PADDING)
         .size(TEXT_BODY)
         .width(Fill)
-        .style(crate::ui::widgets::chunky_text_input);
+        .style(crate::widgets::chunky_text_input);
     let sort_options: Vec<SortChoice<S>> = sorts
         .iter()
         .map(|&sort| SortChoice {
@@ -89,7 +108,7 @@ fn library_header<'a, S: Copy + PartialEq + 'static>(
     let sort_pick = pick_list(sort_options, sort_selected, move |c: SortChoice<S>| on_sort(c.sort))
         .padding(style::CONTROL_PADDING)
         .text_size(TEXT_BODY)
-        .style(crate::ui::widgets::chunky_pick_list);
+        .style(crate::widgets::chunky_pick_list);
     container(
         row![
             filter_input,
@@ -109,26 +128,26 @@ fn library_header<'a, S: Copy + PartialEq + 'static>(
 /// One editor pane: a header strip pinned above a scrollable body, on
 /// the standard pane plate. Every pane in the four editors is this
 /// shape.
-fn editor_pane<'a>(
+pub fn editor_pane<'a>(
     header: impl Into<Element<'a, Action>>,
     body: impl Into<Element<'a, Action>>,
 ) -> Element<'a, Action> {
     container(column![
         header.into(),
         scrollable(body.into())
-            .style(crate::ui::widgets::chunky_scrollable)
+            .style(crate::widgets::chunky_scrollable)
             .height(Fill)
             .width(Fill)
     ])
     .width(Fill)
     .height(Fill)
-    .style(crate::ui::widgets::pane)
+    .style(crate::widgets::pane)
     .into()
 }
 
 /// The editors' two-pane layout: working set on the left, library /
 /// palette on the right.
-fn editor_panes<'a>(left: Element<'a, Action>, right: Element<'a, Action>) -> Element<'a, Action> {
+pub fn editor_panes<'a>(left: Element<'a, Action>, right: Element<'a, Action>) -> Element<'a, Action> {
     row![left, right]
         .spacing(style::PANE_GAP)
         .width(Fill)
@@ -139,13 +158,13 @@ fn editor_panes<'a>(left: Element<'a, Action>, right: Element<'a, Action>) -> El
 /// The red "Clear" button atop every save-editor pane — identical across the
 /// folder / navicust / patch-card / auto-battle-data panes apart from the
 /// action it fires.
-fn clear_all_button<'a>(lang: &LanguageIdentifier, action: Action) -> Element<'a, Action> {
-    crate::ui::widgets::labeled_icon_button(
+pub fn clear_all_button<'a>(lang: &LanguageIdentifier, action: Action) -> Element<'a, Action> {
+    crate::widgets::labeled_icon_button(
         lucide_icons::Icon::Trash2,
         t!(lang, "save-edit-clear"),
         action,
         style::CONTROL_PADDING,
-        crate::ui::widgets::danger_button,
+        crate::widgets::danger_button,
     )
 }
 
@@ -153,7 +172,7 @@ fn clear_all_button<'a>(lang: &LanguageIdentifier, action: Action) -> Element<'a
 /// captions (`extras`), a flexible spacer, then the clear-all button. Shared
 /// by the navicust / patch-card / auto-battle-data panes; the folder pane adds
 /// a second stats line and builds its own column.
-fn editor_header<'a>(
+pub fn editor_header<'a>(
     lang: &LanguageIdentifier,
     title: String,
     extras: Vec<Element<'a, Action>>,
@@ -172,7 +191,7 @@ fn editor_header<'a>(
 /// Caption text that turns danger-red when an editor budget is blown
 /// (folder class limits, patch-card MB, folder over-fill) and reads
 /// muted otherwise.
-fn limit_caption<'a>(label: String, over: bool) -> iced::widget::Text<'a> {
+pub fn limit_caption<'a>(label: String, over: bool) -> iced::widget::Text<'a> {
     text(label)
         .size(TEXT_CAPTION)
         .style(move |theme: &iced::Theme| iced::widget::text::Style {
@@ -201,7 +220,7 @@ fn tab_fade_right(theme: &iced::Theme) -> container::Style {
 /// A one-sided fade from the pane plate (at the `angle`-direction edge) to
 /// transparent, for the tab strip's scroll-edge fades.
 fn edge_fade(theme: &iced::Theme, angle: f32) -> container::Style {
-    let plate = crate::ui::widgets::plate_color(theme);
+    let plate = crate::widgets::plate_color(theme);
     let transparent = iced::Color { a: 0.0, ..plate };
     container::Style {
         background: Some(iced::Background::Gradient(iced::Gradient::Linear(
@@ -217,7 +236,7 @@ fn edge_fade(theme: &iced::Theme, angle: f32) -> container::Style {
 /// the resting affordance) and revealing the standard chunky scrollbar only
 /// while the strip is hovered or dragged.
 fn tab_scrollbar(theme: &iced::Theme, status: iced::widget::scrollable::Status) -> iced::widget::scrollable::Style {
-    let mut style = crate::ui::widgets::chunky_scrollable(theme, status);
+    let mut style = crate::widgets::chunky_scrollable(theme, status);
     if matches!(status, iced::widget::scrollable::Status::Active { .. }) {
         for rail in [&mut style.horizontal_rail, &mut style.vertical_rail] {
             rail.background = None;
@@ -227,42 +246,18 @@ fn tab_scrollbar(theme: &iced::Theme, status: iced::widget::scrollable::Status) 
     style
 }
 
-pub fn available_tabs(save: &dyn Save, streamer_mode: bool) -> Vec<Tab> {
+/// The tab list for this save: the game's own sections (via its
+/// [`crate::save_ui::SaveUi`]), with Cover prepended in streamer mode.
+/// The equipped navi (emblem / name / HP / buster) is not a tab — it
+/// lives in the persistent strip above the body (see [`view`]), so it's
+/// always on screen regardless of the active section.
+pub fn available_tabs(loaded: &OpenSave, streamer_mode: bool) -> Vec<Tab> {
     let mut tabs = vec![];
     if streamer_mode {
         tabs.push(Tab::Cover);
     }
-    // The equipped navi (emblem / name / HP / buster) is no longer a tab — it
-    // lives in the persistent strip above the body (see [`view`]), so it's
-    // always on screen regardless of the active section.
-    if save.view_navicust().is_some() {
-        tabs.push(Tab::Navicust);
-    }
-    if save.view_chips().is_some() {
-        tabs.push(Tab::Folder);
-    }
-    if save.view_patch_cards().is_some() {
-        tabs.push(Tab::PatchCards);
-    }
-    if save.view_auto_battle_data().is_some() {
-        tabs.push(Tab::AutoBattleData);
-    }
+    tabs.extend(loaded.save_ui.tabs(loaded));
     tabs
-}
-
-pub fn render<M: 'static>(
-    lang: &LanguageIdentifier,
-    tab: Tab,
-    loaded: &OpenSave,
-    opts: RenderOpts,
-) -> Element<'static, M> {
-    match tab {
-        Tab::Cover => cover::render_cover(lang, loaded),
-        Tab::Navicust => navicust::render_navicust_tab(lang, loaded),
-        Tab::Folder => folder::render_folder(lang, loaded, opts.folder_grouped),
-        Tab::PatchCards => patch_cards::render_patch_cards(lang, loaded),
-        Tab::AutoBattleData => abd::render_auto_battle_data(lang, loaded),
-    }
 }
 
 /// Per-tab Lucide icon glyph used by the tab strip in [`view`].
@@ -274,6 +269,7 @@ fn tab_icon(tab: Tab) -> lucide_icons::Icon {
         Tab::Folder => Icon::Files,
         Tab::PatchCards => Icon::CreditCard,
         Tab::AutoBattleData => Icon::Swords,
+        Tab::ProgramDeck => Icon::CircuitBoard,
     }
 }
 
@@ -313,7 +309,7 @@ pub struct State {
     /// (and the per-tab extras in the strip's tail) slides in,
     /// direction following the strip's order like the app's
     /// top-level tabs.
-    pub enter: crate::ui::anim::Enter,
+    pub enter: crate::anim::Enter,
     /// Starting offset for `enter`. Horizontal (sign following
     /// the direction of travel along the strip) for sub-tab
     /// switches; vertical for whole-body swaps (edit mode toggles,
@@ -329,14 +325,14 @@ pub struct State {
     /// mode opens and back out when it closes — and because this
     /// is keyed on the mode (not the sub-tab), they stay planted
     /// while the user flips between editor tabs.
-    pub edit_anim: crate::ui::anim::Transition,
+    pub edit_anim: crate::anim::Transition,
     /// Show/hide transition for the navi picker over the [tab strip + body]
     /// region, and the authority on whether the picker is open at all — the
     /// change-navi card toggles it, and `active_tab` stays put underneath (the
     /// picker isn't a tab). The incoming side (the picker on open, the tab
     /// strip + body on dismiss) slides up into place — a plain vertical slide,
     /// matching every other screen/tab transition (no fade).
-    pub navi_select: crate::ui::anim::Transition,
+    pub navi_select: crate::anim::Transition,
     /// Horizontal scroll offset of the sub-tab strip (relative, 0..=1). Tracked
     /// so the strip's edge fades only appear on the side that has hidden tabs.
     tab_scroll: f32,
@@ -373,6 +369,10 @@ pub struct EditState {
     pub patch_card56_filter: String,
     /// Auto-battle-data editor: chip library filter text.
     pub auto_battle_data_filter: String,
+    /// Slot-targeted editors (BCC's program deck board): the deck slot
+    /// the library pane is currently aimed at, or `None` when no slot is
+    /// picked. Slot indexes are the game's `ChipsView` slot indexes.
+    pub selected_deck_slot: Option<usize>,
 }
 
 impl EditState {
@@ -402,11 +402,11 @@ impl State {
             navicust_sort: navicust::NavicustSort::Id,
             patch_card56_sort: patch_cards::PatchCard56Sort::Id,
             auto_battle_data_sort: abd::AutoBattleDataSort::Id,
-            enter: crate::ui::anim::Enter::default(),
+            enter: crate::anim::Enter::default(),
             enter_from: iced::Vector::new(24.0, 0.0),
             prev_tab: None,
-            edit_anim: crate::ui::anim::Transition::swap(false),
-            navi_select: crate::ui::anim::Transition::new(false),
+            edit_anim: crate::anim::Transition::swap(false),
+            navi_select: crate::anim::Transition::new(false),
             tab_scroll: 0.0,
         }
     }
@@ -703,10 +703,20 @@ impl State {
                 self.navi_select.set(false, iced::time::Instant::now());
                 iced::Task::none()
             }
+            // Slot-targeted editors (the BCC program deck board): picking a
+            // slot is view-local — the library pane re-aims at it.
+            Action::SelectDeckSlot(slot) => {
+                if let Some(e) = self.editing.as_mut() {
+                    e.selected_deck_slot = *slot;
+                }
+                iced::Task::none()
+            }
             // EnterEdit needs `&OpenSave` (to seed tag state), and the
             // mutation / copy actions surface as host [`Outcome`]s —
             // all are computed in `outcome`, so they're no-ops here.
             Action::EnterEdit
+            | Action::SetDeckChip { .. }
+            | Action::ClearDeckChip { .. }
             | Action::AddChip { .. }
             | Action::RemoveChip { .. }
             | Action::ReorderChips(_)
@@ -720,10 +730,7 @@ impl State {
             | Action::RemovePatchCard56 { .. }
             | Action::ReorderPatchCard56s(_)
             | Action::ClearPatchCard56s
-            | Action::AddPatchCard4 { .. }
-            | Action::RemovePatchCard4 { .. }
-            | Action::TogglePatchCard4 { .. }
-            | Action::ClearPatchCard4s
+            | Action::Game(_)
             | Action::SetChipUseCount { .. }
             | Action::SetSecondaryChipUseCount { .. }
             | Action::ClearAutoBattleData
@@ -750,9 +757,7 @@ impl State {
     /// `None` means the action was fully folded into view state; hosts
     /// forward [`fold`](Self::fold)'s task instead.
     fn outcome(&mut self, action: &Action, loaded: Option<&OpenSave>) -> Option<Outcome> {
-        use tango_savemodel::edit::{
-            AutoBattleDataEdit, ChipEdit, Edit, NaviEdit, NavicustEdit, PatchCard4Edit, PatchCard56Edit,
-        };
+        use tango_savemodel::edit::{AutoBattleDataEdit, ChipEdit, Edit, NaviEdit, NavicustEdit, PatchCard56Edit};
         match action {
             Action::CopyTab(tab) => {
                 let opts = RenderOpts {
@@ -761,12 +766,12 @@ impl State {
                 // Only a copy that actually produced text earns the
                 // "Copied!" flash.
                 let text = loaded.and_then(|l| tab_as_text(*tab, l, opts))?;
-                crate::ui::copy_feedback::flash(&copy_flash_key(*tab, false));
+                crate::copy_feedback::flash(&copy_flash_key(*tab, false));
                 Some(Outcome::CopyText(text))
             }
             Action::CopyTabImage(tab) => {
                 let img = loaded.and_then(|l| tab_as_image(*tab, l))?;
-                crate::ui::copy_feedback::flash(&copy_flash_key(*tab, true));
+                crate::copy_feedback::flash(&copy_flash_key(*tab, true));
                 Some(Outcome::CopyImage(img))
             }
             Action::PlayClicked => Some(Outcome::Play),
@@ -858,6 +863,18 @@ impl State {
                 }
                 Some(Outcome::Edit(Edit::Chips(ChipEdit::ClearFolder)))
             }
+            // ----- Slot-targeted deck editor (BCC program deck) -----
+            Action::SetDeckChip { slot, chip_id, code } => Some(Outcome::Edit(Edit::Chips(ChipEdit::SetChip {
+                slot: *slot,
+                chip: Some(tango_dataview::save::Chip {
+                    id: *chip_id,
+                    code: *code,
+                }),
+            }))),
+            Action::ClearDeckChip { slot } => Some(Outcome::Edit(Edit::Chips(ChipEdit::SetChip {
+                slot: *slot,
+                chip: None,
+            }))),
             Action::ToggleRegular { slot } => Some(Outcome::Edit(Edit::Chips(ChipEdit::ToggleRegular { slot: *slot }))),
             Action::ToggleTag { slot } => {
                 // `toggle_tag` updates the in-progress UI selection and
@@ -942,15 +959,8 @@ impl State {
                     _ => None,
                 }
             }
-            // ----- BN4 patch-card editor -----
-            Action::AddPatchCard4 { id } => Some(Outcome::Edit(Edit::PatchCard4s(PatchCard4Edit::AddCard { id: *id }))),
-            Action::RemovePatchCard4 { slot } => Some(Outcome::Edit(Edit::PatchCard4s(PatchCard4Edit::RemoveCard {
-                slot: *slot,
-            }))),
-            Action::TogglePatchCard4 { slot } => Some(Outcome::Edit(Edit::PatchCard4s(PatchCard4Edit::ToggleCard {
-                slot: *slot,
-            }))),
-            Action::ClearPatchCard4s => Some(Outcome::Edit(Edit::PatchCard4s(PatchCard4Edit::ClearAll))),
+            // ----- Game-specific editors -----
+            Action::Game(e) => Some(Outcome::Edit(Edit::Game(e.clone()))),
             // ----- Auto Battle Data editor -----
             Action::SetChipUseCount { id, count } => {
                 Some(Outcome::Edit(Edit::AutoBattleData(AutoBattleDataEdit::SetUseCount {
@@ -1061,6 +1071,22 @@ pub enum Action {
     ToggleTag {
         slot: usize,
     },
+    // ----- Slot-targeted deck editor (BCC program deck; only emitted
+    // when `editable` is set) -----
+    /// Board pane: aim the library at this deck slot (`None` clears the
+    /// selection).
+    SelectDeckSlot(Option<usize>),
+    /// Library pane: install this chip into deck slot `slot`, replacing
+    /// whatever occupied it.
+    SetDeckChip {
+        slot: usize,
+        chip_id: usize,
+        code: tango_dataview::save::ChipCode,
+    },
+    /// Board pane: empty deck slot `slot`.
+    ClearDeckChip {
+        slot: usize,
+    },
     /// Library pane: the filter text changed.
     LibraryFilterChanged(String),
     /// Library pane: the sort order changed.
@@ -1124,22 +1150,12 @@ pub enum Action {
     PatchCard56FilterChanged(String),
     /// Library pane: the sort order changed.
     PatchCard56SortChanged(patch_cards::PatchCard56Sort),
-    // ----- BN4 patch-card editor (only emitted when `editable` is set) -----
-    /// A slot's dropdown picked card `id` — install it into its own catalog
-    /// slot, enabled (replacing whatever card occupied that slot).
-    AddPatchCard4 {
-        id: usize,
-    },
-    /// A slot's dropdown picked "None" — clear catalog slot `slot`.
-    RemovePatchCard4 {
-        slot: usize,
-    },
-    /// Toggle slot `slot`'s card between enabled and disabled.
-    TogglePatchCard4 {
-        slot: usize,
-    },
-    /// Clear every slot.
-    ClearPatchCard4s,
+    // ----- Game-specific editors (only emitted when `editable` is set) -----
+    /// A staged edit whose model belongs to one game (BN4's Mod Cards):
+    /// the game's UI crate builds a [`tango_savemodel::edit::GameEdit`]
+    /// and this carries it to the host unchanged. `Arc` keeps the
+    /// message `Clone`.
+    Game(std::sync::Arc<dyn tango_savemodel::edit::GameEdit>),
     // ----- Auto Battle Data editor (only emitted when `editable` is set) -----
     /// Library pane: set chip `id`'s primary use count (the count that
     /// drives the materialized deck for every section).
@@ -1185,10 +1201,10 @@ pub fn view<'a>(
     inline_actions: bool,
     editable: bool,
 ) -> Element<'a, Action> {
-    use crate::ui::widgets;
+    use crate::widgets;
     use iced::{Alignment, Fill};
 
-    let available = available_tabs(loaded.save.as_ref(), streamer_mode);
+    let available = available_tabs(loaded, streamer_mode);
 
     let now = iced::time::Instant::now();
     // Body entrance — restarted on sub-tab switches (sliding along the strip's
@@ -1196,7 +1212,7 @@ pub fn view<'a>(
     // vertically).
     let enter = state.enter.progress(now);
     let enter_from = state.enter_from;
-    let entered = move |el: Element<'a, Action>| crate::ui::anim::slide_in_opt(el, enter, enter_from);
+    let entered = move |el: Element<'a, Action>| crate::anim::slide_in_opt(el, enter, enter_from);
     // Tab-tail extras animate only when their content actually changed — a
     // sub-tab switch (horizontal enter). A game/save swap rises the body in, but
     // the extras are typically identical across saves, and re-animating them
@@ -1204,11 +1220,11 @@ pub fn view<'a>(
     let tail_slide = enter.filter(|_| enter_from.x != 0.0);
     let extras_dx = if enter_from.x != 0.0 { enter_from.x } else { 24.0 };
     let extras_entered =
-        move |el: Element<'a, Action>| crate::ui::anim::slide_in_opt(el, tail_slide, iced::Vector::new(extras_dx, 0.0));
+        move |el: Element<'a, Action>| crate::anim::slide_in_opt(el, tail_slide, iced::Vector::new(extras_dx, 0.0));
     // Edit-mode morph: the navi header's Edit / Play and the Save / Cancel pair
     // fade-through swap in both directions, so Edit visibly turns into Save /
     // Cancel and back.
-    let (edit_side, edit_swap) = crate::ui::anim::swap_phase(&state.edit_anim, now);
+    let (edit_side, edit_swap) = crate::anim::swap_phase(&state.edit_anim, now);
     let render_edit_buttons = editable && edit_side;
     // One global edit session covers the whole save (entered from the Edit button
     // in the navi header); `editing_session` is on whenever it's open and selects
@@ -1257,11 +1273,11 @@ pub fn view<'a>(
     }
     let mut actions_tail: Element<'a, Action> = actions.into();
     if let Some(phase) = edit_swap {
-        actions_tail = crate::ui::anim::swap_transform(
+        actions_tail = crate::anim::swap_transform(
             actions_tail,
             phase,
             iced::Vector::new(32.0, 0.0),
-            crate::ui::widgets::plate_color,
+            crate::widgets::plate_color,
         );
     }
 
@@ -1290,11 +1306,7 @@ pub fn view<'a>(
         .unwrap_or(available[0]);
 
     // The global edit session selects each section's editable body below.
-    let folder_editing = editing_session && loaded.editability.folder;
-    let navicust_editing = editing_session && loaded.editability.navicust;
     let navi_editing = editing_session && loaded.editability.navi;
-    let patch_cards_editing = editing_session && loaded.editability.patch_cards;
-    let auto_battle_data_editing = editing_session && loaded.editability.auto_battle_data;
 
     // Tab strip: tabs left, the active tab's contextual extras (copy, folder
     // group toggle, copy-as-image) right — the save-level actions live in the
@@ -1317,6 +1329,7 @@ pub fn view<'a>(
             Tab::Folder => t!(lang, "save-tab-folder"),
             Tab::PatchCards => t!(lang, "save-tab-patch-cards"),
             Tab::AutoBattleData => t!(lang, "save-tab-auto-battle-data"),
+            Tab::ProgramDeck => t!(lang, "save-tab-program-deck"),
         };
         tabs_only = tabs_only.push(widgets::tab_button(
             tab_icon(*tab),
@@ -1382,12 +1395,7 @@ pub fn view<'a>(
     }
     let mut tail: Element<'a, Action> = side.into();
     if let Some(phase) = edit_swap {
-        tail = crate::ui::anim::swap_transform(
-            tail,
-            phase,
-            iced::Vector::new(32.0, 0.0),
-            crate::ui::widgets::plate_color,
-        );
+        tail = crate::anim::swap_transform(tail, phase, iced::Vector::new(32.0, 0.0), crate::widgets::plate_color);
     }
     let tab_row = row![
         container(tabs_only).width(Fill),
@@ -1416,37 +1424,32 @@ pub fn view<'a>(
     let (region, mut fill): (Element<'a, Action>, bool) = if show_picker {
         (navi::render_navi_edit(lang, loaded), true)
     } else {
-        let (body, body_fill): (Element<'a, Action>, bool) = if folder_editing && active == Tab::Folder {
-            // The folder editor lays out two side-by-side panes, each with its
-            // own scrollbar, and wants the full height — so it bypasses the
-            // read-only views' shared shrink-height body scrollable.
-            (folder::render_folder_edit(lang, loaded, state), true)
-        } else if navicust_editing && active == Tab::Navicust {
-            (navicust::render_navicust_edit(lang, loaded, state), true)
-        } else if patch_cards_editing && active == Tab::PatchCards {
-            (patch_cards::render_patch_cards_edit(lang, loaded, state), true)
-        } else if auto_battle_data_editing && active == Tab::AutoBattleData {
-            (abd::render_auto_battle_data_edit(lang, loaded, state), true)
-        } else if active == Tab::Cover {
-            // The Cover tab is a single full-height pane (logo banner).
-            (cover::render_cover::<Action>(lang, loaded), true)
-        } else {
-            let opts = RenderOpts {
-                folder_grouped: state.folder_grouped,
+        let (body, body_fill): (Element<'a, Action>, bool) =
+            if editing_session && loaded.save_ui.tab_editable(active, loaded) {
+                // The editors lay out side-by-side panes, each with its own
+                // scrollbar, and want the full height — so they bypass the
+                // read-only views' shared shrink-height body scrollable.
+                (loaded.save_ui.render_edit(lang, active, loaded, state), true)
+            } else if active == Tab::Cover {
+                // The Cover tab is a single full-height pane (logo banner).
+                (cover::render_cover::<Action>(lang, loaded), true)
+            } else {
+                let opts = RenderOpts {
+                    folder_grouped: state.folder_grouped,
+                };
+                let body = loaded.save_ui.render(lang, active, loaded, opts);
+                // Each render_* returns one-or-more pane-styled containers stacked
+                // into an Element. We wrap that whole group in a shrink-height
+                // scrollable so when its panes don't fill the available space the
+                // column hugs them, and when they do the user can scroll past the
+                // visible window. The per-instance id is what [`State::apply`] snaps
+                // to the top on tab changes.
+                let body_scrollable = scrollable(body)
+                    .id(state.body_scroll_id.clone())
+                    .style(crate::widgets::chunky_scrollable)
+                    .width(Fill);
+                (body_scrollable.into(), false)
             };
-            let body = render::<Action>(lang, active, loaded, opts);
-            // Each render_* returns one-or-more pane-styled containers stacked
-            // into an Element. We wrap that whole group in a shrink-height
-            // scrollable so when its panes don't fill the available space the
-            // column hugs them, and when they do the user can scroll past the
-            // visible window. The per-instance id is what [`State::apply`] snaps
-            // to the top on tab changes.
-            let body_scrollable = scrollable(body)
-                .id(state.body_scroll_id.clone())
-                .style(crate::ui::widgets::chunky_scrollable)
-                .width(Fill);
-            (body_scrollable.into(), false)
-        };
         // The whole region (tab strip + body) slides as one while the picker
         // animates; the tab-switch slide is suppressed then (the navi slide owns
         // the motion), and the tab strip rides along instead of popping.
@@ -1470,7 +1473,7 @@ pub fn view<'a>(
         } else {
             1.0 - progress
         };
-        crate::ui::anim::slide_in(region, entrance, iced::Vector::new(0.0, 20.0))
+        crate::anim::slide_in(region, entrance, iced::Vector::new(0.0, 20.0))
     } else {
         region
     };
@@ -1491,15 +1494,9 @@ pub fn view<'a>(
 /// incomplete or over-limit folder can't be written over the
 /// save); navicust / patch-card layouts are always valid to write.
 fn edit_buttons<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Element<'a, Action> {
-    use crate::ui::widgets;
+    use crate::widgets;
     use lucide_icons::Icon;
-    let can_save = !loaded.editability.folder || {
-        let full = loaded.save.view_chips().is_none_or(|v| {
-            let folder = v.equipped_folder_index();
-            (0..v.folder_size()).all(|i| v.chip(folder, i).is_some())
-        });
-        full && folder::folder_limits_satisfied(loaded)
-    };
+    let can_save = !loaded.editability.folder || loaded.save_ui.can_save(loaded);
     row![
         widgets::labeled_icon_button(
             Icon::X,
@@ -1546,7 +1543,7 @@ fn extra_kinds(tab: Tab) -> Vec<ExtraKind> {
         // The navi card copies as text only; the navicust grid also
         // copies as an image.
         Tab::Navicust => vec![ExtraKind::CopyImage, ExtraKind::Copy],
-        Tab::PatchCards | Tab::AutoBattleData => vec![ExtraKind::Copy],
+        Tab::PatchCards | Tab::AutoBattleData | Tab::ProgramDeck => vec![ExtraKind::Copy],
         Tab::Cover => vec![],
     }
 }
@@ -1554,7 +1551,7 @@ fn extra_kinds(tab: Tab) -> Vec<ExtraKind> {
 /// Stable copy-feedback key for a tab's copy buttons — shared between
 /// the view (which renders the "Copied!" flash) and the host tabs'
 /// update paths (which fire it once the copy actually lands on the
-/// clipboard). See [`crate::ui::copy_feedback`].
+/// clipboard). See [`crate::copy_feedback`].
 pub fn copy_flash_key(tab: Tab, image: bool) -> String {
     format!("save-view-copy-{}-{}", if image { "image" } else { "text" }, tab as u8)
 }
@@ -1562,7 +1559,7 @@ pub fn copy_flash_key(tab: Tab, image: bool) -> String {
 /// Build one tail control. `tab` parameterizes the copy actions'
 /// target.
 fn render_extra<'a>(lang: &'a LanguageIdentifier, state: &'a State, tab: Tab, kind: ExtraKind) -> Element<'a, Action> {
-    use crate::ui::widgets;
+    use crate::widgets;
     use lucide_icons::Icon;
     match kind {
         ExtraKind::FolderGroup => iced::widget::checkbox(state.folder_grouped)
@@ -1570,7 +1567,7 @@ fn render_extra<'a>(lang: &'a LanguageIdentifier, state: &'a State, tab: Tab, ki
             .on_toggle(Action::ToggleFolderGrouped)
             .size(TEXT_BODY)
             .text_size(12)
-            .style(crate::ui::widgets::chunky_checkbox)
+            .style(crate::widgets::chunky_checkbox)
             .into(),
         ExtraKind::CopyImage => widgets::copy_icon_button(
             &copy_flash_key(tab, true),
@@ -1594,40 +1591,32 @@ fn render_extra<'a>(lang: &'a LanguageIdentifier, state: &'a State, tab: Tab, ki
 }
 
 /// A save-view tab as TSV text for clipboard "copy as text", or `None` for
-/// tabs without a text form. The Folder branch honors `opts.folder_grouped`.
+/// tabs without a text form — the game's own [`crate::save_ui::SaveUi`]
+/// decides.
 pub fn tab_as_text(tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
-    match tab {
-        Tab::Folder => folder::as_text(loaded, opts),
-        Tab::PatchCards => patch_cards::as_text(loaded),
-        Tab::AutoBattleData => abd::as_text(loaded),
-        Tab::Navicust => navicust::navicust_as_text(loaded),
-        Tab::Cover => None,
-    }
+    loaded.save_ui.tab_as_text(tab, loaded, opts)
 }
 
-/// Render a save-view tab to an RGBA image for clipboard "copy as image".
-/// Only Navi/NaviCust has an image form; `None` otherwise.
+/// Render a save-view tab to an RGBA image for clipboard "copy as image",
+/// or `None` for tabs without an image form.
 pub fn tab_as_image(tab: Tab, loaded: &OpenSave) -> Option<image::RgbaImage> {
-    match tab {
-        Tab::Navicust => navicust::as_image(loaded),
-        _ => None,
-    }
+    loaded.save_ui.tab_as_image(tab, loaded)
 }
 
 /// The "✕" button that removes a chip / patch-card from its slot, backing the
 /// row out to the library. Identical across the folder and patch-card editors
 /// apart from the action it fires.
-fn remove_button<'a>(action: Action) -> Element<'a, Action> {
+pub fn remove_button<'a>(action: Action) -> Element<'a, Action> {
     button(lucide_icons::Icon::X.widget().size(TEXT_BODY))
         .padding([3, 8])
-        .style(crate::ui::widgets::neutral)
+        .style(crate::widgets::neutral)
         .on_press(action)
         .into()
 }
 
 /// Wrap an editor row's content with the class-accent stripe + zebra
 /// background, matching the read-only chip list.
-fn edit_row_wrap<'a>(
+pub fn edit_row_wrap<'a>(
     inner: Element<'a, Action>,
     accent: Option<iced::Color>,
     row_idx: usize,
@@ -1650,7 +1639,7 @@ fn edit_row_wrap<'a>(
     r = r.push(stripe).push(container(inner).width(Fill));
     container(r)
         .width(Fill)
-        .style(crate::ui::widgets::zebra_row(row_idx))
+        .style(crate::widgets::zebra_row(row_idx))
         .into()
 }
 
@@ -1659,7 +1648,7 @@ fn edit_row_wrap<'a>(
 /// affordance, in a fixed-width cell so rows line up. Wrapped in a `mouse_area`
 /// only to show the grab-hand cursor on hover — it sets no handlers, so it
 /// doesn't capture the press (the drag gesture still reaches the column).
-fn drag_handle<'a>() -> Element<'a, Action> {
+pub fn drag_handle<'a>() -> Element<'a, Action> {
     use lucide_icons::Icon;
     let grip = container(Icon::GripVertical.widget().size(TEXT_BODY).style(muted_text_style))
         .width(Length::Fixed(16.0))
@@ -1673,7 +1662,7 @@ fn drag_handle<'a>() -> Element<'a, Action> {
 /// default sweeten style tints the rows that shift aside with the theme's
 /// *primary* color (green in this app); we don't want any overlay, so it's
 /// turned off. The floating ghost is softened to a plain panel.
-fn reorder_drag_style(theme: &iced::Theme) -> sweeten::widget::column::Style {
+pub fn reorder_drag_style(theme: &iced::Theme) -> sweeten::widget::column::Style {
     let ep = theme.extended_palette();
     let ghost = {
         let mut c = ep.background.weak.color;
@@ -1699,7 +1688,7 @@ fn reorder_drag_style(theme: &iced::Theme) -> sweeten::widget::column::Style {
 /// unclickable) — for the folder REG/TAG toggles when the chip's MB won't
 /// fit Regular/Tag memory, or the patch-card toggle when enabling would
 /// blow the MB budget.
-fn edit_toggle_maybe<'a>(
+pub fn edit_toggle_maybe<'a>(
     label: &'static str,
     on: bool,
     on_color: iced::Color,
@@ -1710,10 +1699,10 @@ fn edit_toggle_maybe<'a>(
         b = b.on_press(msg);
     }
     if on {
-        b.style(move |theme: &iced::Theme, status| crate::ui::widgets::tinted_button(theme, status, on_color))
+        b.style(move |theme: &iced::Theme, status| crate::widgets::tinted_button(theme, status, on_color))
             .into()
     } else {
-        b.style(crate::ui::widgets::neutral).into()
+        b.style(crate::widgets::neutral).into()
     }
 }
 
@@ -1724,7 +1713,7 @@ fn edit_toggle_maybe<'a>(
 /// accent strip sits as a sibling element on the left and paints
 /// over the zebra wash where present. Rows without an accent
 /// reserve the same 6 px gutter so columns line up across rows.
-fn card_wrap<M: 'static>(
+pub fn card_wrap<M: 'static>(
     inner: Element<'static, M>,
     accent: Option<iced::Color>,
     row_idx: usize,
@@ -1766,14 +1755,14 @@ fn card_wrap<M: 'static>(
     container(row![strip, body].height(Length::Shrink))
         .width(Fill)
         .style(move |theme: &iced::Theme| {
-            let mut s = crate::ui::widgets::zebra_row(row_idx)(theme);
+            let mut s = crate::widgets::zebra_row(row_idx)(theme);
             s.border.radius = outer_radius;
             s
         })
         .into()
 }
 
-fn badge<M: 'static>(label: &'static str, color: iced::Color) -> Element<'static, M> {
+pub fn badge<M: 'static>(label: &'static str, color: iced::Color) -> Element<'static, M> {
     container(text(label).size(10).color(iced::Color::WHITE))
         .padding([1, 4])
         .style(move |_| container::Style {
@@ -1787,7 +1776,7 @@ fn badge<M: 'static>(label: &'static str, color: iced::Color) -> Element<'static
         .into()
 }
 
-fn colored_badge<M: 'static>(label: String, bg: iced::Color, text_color: iced::Color) -> Element<'static, M> {
+pub fn colored_badge<M: 'static>(label: String, bg: iced::Color, text_color: iced::Color) -> Element<'static, M> {
     // Same dimensions as the NaviCust parts badges so the
     // patch-card effect chips and the NCP parts read as
     // family — chunkier than a chrome chip but smaller than a
@@ -1797,7 +1786,7 @@ fn colored_badge<M: 'static>(label: String, bg: iced::Color, text_color: iced::C
 
 /// Variant that lets callers (NCP parts list) pick a larger text size
 /// when the badge is being used as primary content rather than chrome.
-fn colored_badge_sized<M: 'static>(
+pub fn colored_badge_sized<M: 'static>(
     label: String,
     bg: iced::Color,
     text_color: iced::Color,
@@ -1818,11 +1807,11 @@ fn colored_badge_sized<M: 'static>(
 }
 
 // muted_color / muted_text_style / success_text_style /
-// danger_text_style now live in `crate::ui::widgets`. Kept here as
+// danger_text_style now live in `crate::widgets`. Kept here as
 // nothing — every call site outside this module reaches the
 // widgets module directly.
 
-fn tooltip_style(_theme: &iced::Theme) -> container::Style {
+pub fn tooltip_style(_theme: &iced::Theme) -> container::Style {
     container::Style {
         background: Some(iced::Background::Color(iced::Color::from_rgba8(0, 0, 0, 0.85))),
         text_color: Some(iced::Color::WHITE),
@@ -1835,7 +1824,7 @@ fn tooltip_style(_theme: &iced::Theme) -> container::Style {
     }
 }
 
-fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {
+pub fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {
     // Centered icon-over-message card rather than a bare line of
     // text in the pane corner — the empty state is a whole-pane
     // situation, so let it own the pane like one.
@@ -1845,7 +1834,7 @@ fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {
                 .widget()
                 .size(36.0)
                 .style(muted_text_style),
-            text(msg).size(crate::ui::style::TEXT_HEADING).style(muted_text_style),
+            text(msg).size(crate::style::TEXT_HEADING).style(muted_text_style),
         ]
         .spacing(8)
         .align_x(Alignment::Center),
@@ -1853,6 +1842,6 @@ fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {
     .width(Fill)
     .align_x(Alignment::Center)
     .padding(32)
-    .style(crate::ui::widgets::pane)
+    .style(crate::widgets::pane)
     .into()
 }

@@ -65,7 +65,6 @@ play-version-placeholder = —
 # Play bottom strip
 play-link-code = 連線代碼（留空則隨機產生）
 play-link-code-random = 隨機連線代碼
-play-play = 開始
 play-training = 訓練
 training-pip = 對手畫面
 training-swap = 交換位置
@@ -133,88 +132,30 @@ session-results-watch-replay = 觀看重播
 session-results-done = 完成
 
 # Save view sub-tabs
-save-tab-cover = 封面
-save-tab-navicust = 領航客製
-save-tab-folder = 卡組
-save-tab-patch-cards = 改造卡
-save-tab-auto-battle-data = 自動戰鬥資料
 
 # Navi pane
 navi-style = 樣式
 
 # Folder pane
-folder-group = 依晶片分組
 save-copy = 複製
 copied = 已複製！
-save-copy-image = 複製為圖片
-save-edit = 編輯
-save-edit-save = 儲存
-save-edit-cancel = 取消
-folder-edit-search = 搜尋晶片…
-folder-edit-folder = 卡組
-folder-edit-count = { $count } / { $limit }
-folder-edit-navi = 領航員 { $used } / { $limit }
-folder-edit-mega = MEGA { $used } / { $limit }
-folder-edit-giga = GIGA { $used } / { $limit }
-folder-edit-dark = 黑暗 { $used } / { $limit }
-folder-edit-reg-memory = 常規 { $mb }MB
-folder-edit-tag-memory = 搭檔 { $mb }MB
-save-edit-sort = 排序
-save-edit-clear = 全部清除
-folder-sort-id = ID
-folder-sort-name = 名稱
-folder-sort-code = 代碼
-folder-sort-attack = 攻擊力
-folder-sort-element = 屬性
-folder-sort-mb = MB
 
 # Navi pane
 navi-id = 領航員 ID
 navi-link-navi = 連結領航員
-navi-base-hp = HP
 navi-buster = 洛克砲
-navi-buster-attack = 攻擊
-navi-buster-rapid = 連射
-navi-buster-charge = 蓄力
 navi-power-attack = 強力攻擊
-navi-edit-select = 領航員
 navi-style-unset = （無樣式）
-navicust-grid-size = 格線：{ $cols } × { $rows }
 navicust-parts = 已安裝的程式零件
 navicust-empty = （未安裝）
 
 # Navicust editor
-navicust-edit-grid = 領航客製
-navicust-edit-count = { $count } 個程式零件
-navicust-edit-rotate = 旋轉
-navicust-edit-compress = 壓縮
-navicust-edit-uncompress = 解壓縮
-navicust-edit-search = 搜尋程式零件…
-navicust-sort-id = ID
-navicust-sort-name = 名稱
-navicust-sort-color = 顏色
 
 # Patch card editor
-patch-card-edit-search = 搜尋卡片…
-patch-card-edit-count = { $count } 張卡片
-patch-card-edit-mb = { $mb }MB / { $limit }MB
-patch-card-sort-id = ID
-patch-card-sort-name = 名稱
-patch-card-sort-mb = MB
-patch-card4-none = 無
 
 # Auto Battle Data pane
-auto-battle-data-secondary-standard-chips = 標準晶片（副）
-auto-battle-data-standard-chips = 標準晶片
-auto-battle-data-mega-chips = MEGA 晶片
-auto-battle-data-giga-chip = GIGA 晶片
-auto-battle-data-combos = 連段
-auto-battle-data-program-advance = 程式進階
 
 # Auto Battle Data editor
-auto-battle-data-edit-used = 已使用
-auto-battle-data-edit-secondary = 副
-auto-battle-data-edit-count = { $count } 個晶片
 
 # Common
 save-empty = 此存檔沒有此檢視的資料。

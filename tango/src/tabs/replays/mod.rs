@@ -464,7 +464,7 @@ impl ReplaysState {
             let f = std::fs::File::open(&path)?;
             let replay = tango_replay::Replay::decode(f)?;
             let round_ticks = replay.round_ranges().map(|r| r.len() as u32).collect();
-            let loaded = crate::selection::OpenSave::for_replay_local(scanners, config, &replay)?;
+            let loaded = crate::selection::for_replay_local(scanners, config, &replay)?;
             Ok((loaded, round_ticks))
         })();
         match res {
@@ -609,7 +609,10 @@ impl ReplaysState {
             // Body-sized against the caption beside it: a glyph shrunk to
             // caption size reads as a smudge, and muted keeps it from
             // outweighing the header's buttons.
-            Icon::ListVideo.widget().size(TEXT_BODY).style(widgets::muted_text_style),
+            Icon::ListVideo
+                .widget()
+                .size(TEXT_BODY)
+                .style(widgets::muted_text_style),
             text(t!(lang, "replays-queue-count", n = self.queue.len() as i64))
                 .size(TEXT_CAPTION)
                 .style(widgets::muted_text_style),
@@ -647,7 +650,9 @@ impl ReplaysState {
             let (line, caption) = match scanned {
                 Some(r) => Self::replay_caption(lang, r),
                 None => (
-                    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                    path.file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
                     t!(lang, "replays-queue-missing"),
                 ),
             };

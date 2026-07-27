@@ -4,7 +4,7 @@
 //! package format, and the bundler validates it at pack time). This
 //! module is only the runtime layering.
 
-use tango_patch::overrides::{ChipOverride, NavicustPartOverride, PatchCard56Override, StyleOverride};
+use tango_patch::overrides::{ChipOverride, NavicustPartOverride, PatchCard56Override};
 
 /// A patch card effect name template, resolved against an effect's
 /// parameter. The format stores parts as `{ t = "text" }` or
@@ -152,29 +152,6 @@ impl<'a> tango_dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
     }
 }
 
-pub struct OverridenStyle<'a> {
-    style: Box<dyn tango_dataview::rom::Style + 'a>,
-    id: usize,
-    overrides: Option<&'a Vec<StyleOverride>>,
-}
-
-impl tango_dataview::rom::Style for OverridenStyle<'_> {
-    fn name(&self) -> Option<String> {
-        self.overrides
-            .and_then(|v| v.get(self.id).and_then(|v| v.name.clone()))
-            .or_else(|| self.style.name())
-    }
-    fn typ(&self) -> tango_dataview::rom::StyleType {
-        self.style.typ()
-    }
-    fn element(&self) -> usize {
-        self.style.element()
-    }
-    fn extra_ncp_color(&self) -> Option<tango_dataview::rom::NavicustPartColor> {
-        self.style.extra_ncp_color()
-    }
-}
-
 impl tango_dataview::rom::Assets for OverridenAssets {
     fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn tango_dataview::rom::Chip + 'a>> {
         self.assets.chip(id).map(|chip| {
@@ -204,12 +181,6 @@ impl tango_dataview::rom::Assets for OverridenAssets {
     fn num_patch_card56s(&self) -> usize {
         self.assets.num_patch_card56s()
     }
-    fn patch_card4<'a>(&'a self, id: usize) -> Option<Box<dyn tango_dataview::rom::PatchCard4 + 'a>> {
-        self.assets.patch_card4(id)
-    }
-    fn num_patch_card4s(&self) -> usize {
-        self.assets.num_patch_card4s()
-    }
     fn navicust_part<'a>(&'a self, id: usize) -> Option<Box<dyn tango_dataview::rom::NavicustPart + 'a>> {
         self.assets.navicust_part(id).map(|navicust_part| {
             Box::new(OverridenNavicustPart {
@@ -222,17 +193,12 @@ impl tango_dataview::rom::Assets for OverridenAssets {
     fn num_navicust_parts(&self) -> usize {
         self.assets.num_navicust_parts()
     }
-    fn style<'a>(&'a self, id: usize) -> Option<Box<dyn tango_dataview::rom::Style + 'a>> {
-        self.assets.style(id).map(|style| {
-            Box::new(OverridenStyle {
-                style,
-                id,
-                overrides: self.overrides.styles.as_ref(),
-            }) as Box<dyn tango_dataview::rom::Style + 'a>
-        })
-    }
-    fn num_styles(&self) -> usize {
-        self.assets.num_styles()
+    fn style_name(&self, id: usize) -> Option<String> {
+        self.overrides
+            .styles
+            .as_ref()
+            .and_then(|v| v.get(id).and_then(|v| v.name.clone()))
+            .or_else(|| self.assets.style_name(id))
     }
     fn navi<'a>(&'a self, id: usize) -> Option<Box<dyn tango_dataview::rom::Navi + 'a>> {
         self.assets.navi(id)
@@ -246,10 +212,14 @@ impl tango_dataview::rom::Assets for OverridenAssets {
     fn navicust_layout(&self) -> Option<tango_dataview::rom::NavicustLayout> {
         self.assets.navicust_layout()
     }
-    fn ex_code(&self, code: u8) -> Option<tango_dataview::rom::ExCode> {
-        self.assets.ex_code(code)
-    }
     fn chips_have_mb(&self) -> bool {
         self.assets.chips_have_mb()
+    }
+    fn underlying_any(&self) -> &dyn std::any::Any {
+        // Game-specific UIs downcast through this to the game's own
+        // assets (BN4's Mod Card catalog). Only name-override-able
+        // entities live on the shared trait, so skipping this layer
+        // loses nothing a patch could have overridden.
+        self.assets.underlying_any()
     }
 }

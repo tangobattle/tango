@@ -7546,13 +7546,22 @@ dependencies = [
  "tango-dataview",
  "tango-gamesupport",
  "tango-gamesupport-bcc",
+ "tango-gamesupport-bcc-ui",
  "tango-gamesupport-bn1",
+ "tango-gamesupport-bn1-ui",
  "tango-gamesupport-bn2",
+ "tango-gamesupport-bn2-ui",
  "tango-gamesupport-bn3",
+ "tango-gamesupport-bn3-ui",
  "tango-gamesupport-bn4",
+ "tango-gamesupport-bn4-ui",
  "tango-gamesupport-bn5",
+ "tango-gamesupport-bn5-ui",
  "tango-gamesupport-bn6",
+ "tango-gamesupport-bn6-ui",
  "tango-gamesupport-exe45",
+ "tango-gamesupport-exe45-ui",
+ "tango-gamesupport-ui",
  "tango-library",
  "tango-match",
  "tango-net-protocol",
@@ -7618,6 +7627,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tango-gamesupport-bcc-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "lucide-icons",
+ "tango-dataview",
+ "tango-gamesupport-bcc",
+ "tango-gamesupport-ui",
+ "tango-savemodel",
+ "unic-langid",
+]
+
+[[package]]
 name = "tango-gamesupport-bn1"
 version = "0.1.0"
 dependencies = [
@@ -7632,6 +7654,15 @@ dependencies = [
  "tango-dataview",
  "tango-gamesupport",
  "tango-match",
+]
+
+[[package]]
+name = "tango-gamesupport-bn1-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "tango-gamesupport-ui",
+ "unic-langid",
 ]
 
 [[package]]
@@ -7650,6 +7681,15 @@ dependencies = [
  "tango-dataview",
  "tango-gamesupport",
  "tango-match",
+]
+
+[[package]]
+name = "tango-gamesupport-bn2-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "tango-gamesupport-ui",
+ "unic-langid",
 ]
 
 [[package]]
@@ -7673,6 +7713,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tango-gamesupport-bn3-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "image",
+ "tango-gamesupport-ui",
+ "unic-langid",
+]
+
+[[package]]
 name = "tango-gamesupport-bn4"
 version = "0.1.0"
 dependencies = [
@@ -7688,6 +7738,20 @@ dependencies = [
  "tango-dataview",
  "tango-gamesupport",
  "tango-match",
+]
+
+[[package]]
+name = "tango-gamesupport-bn4-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "image",
+ "sweeten",
+ "tango-dataview",
+ "tango-gamesupport-bn4",
+ "tango-gamesupport-ui",
+ "tango-savemodel",
+ "unic-langid",
 ]
 
 [[package]]
@@ -7710,6 +7774,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tango-gamesupport-bn5-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "image",
+ "tango-gamesupport-ui",
+ "unic-langid",
+]
+
+[[package]]
 name = "tango-gamesupport-bn6"
 version = "0.1.0"
 dependencies = [
@@ -7729,6 +7803,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tango-gamesupport-bn6-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "image",
+ "tango-gamesupport-ui",
+ "unic-langid",
+]
+
+[[package]]
 name = "tango-gamesupport-exe45"
 version = "0.1.0"
 dependencies = [
@@ -7743,6 +7827,38 @@ dependencies = [
  "tango-dataview",
  "tango-gamesupport",
  "tango-match",
+]
+
+[[package]]
+name = "tango-gamesupport-exe45-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "tango-gamesupport-ui",
+ "unic-langid",
+]
+
+[[package]]
+name = "tango-gamesupport-ui"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "fluent-templates",
+ "iced",
+ "iced_graphics",
+ "iced_tiny_skia",
+ "image",
+ "indexmap",
+ "itertools 0.13.0",
+ "log",
+ "lucide-icons",
+ "sweeten",
+ "tango-dataview",
+ "tango-library",
+ "tango-match",
+ "tango-savemodel",
+ "tiny-skia",
+ "unic-langid",
 ]
 
 [[package]]

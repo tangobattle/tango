@@ -811,10 +811,7 @@ impl State {
     }
 
     /// Take ownership of the threads driving the session just installed.
-    pub fn attach_drive_threads(
-        &mut self,
-        drive: impl IntoIterator<Item = std::thread::JoinHandle<()>>,
-    ) {
+    pub fn attach_drive_threads(&mut self, drive: impl IntoIterator<Item = std::thread::JoinHandle<()>>) {
         self.drive = drive.into_iter().collect();
     }
 
@@ -1407,7 +1404,7 @@ pub async fn spawn_pvp(
                 version_meta,
             })
         });
-        Some(crate::selection::OpenSave::from_patched_rom(
+        Some(crate::selection::from_patched_rom(
             remote_game,
             remote_rom_bytes.clone(),
             std::path::PathBuf::new(),
@@ -1437,7 +1434,7 @@ pub async fn spawn_pvp(
                 version_meta,
             })
         });
-        Some(crate::selection::OpenSave::from_patched_rom(
+        Some(crate::selection::from_patched_rom(
             local_game,
             local_rom_bytes.clone(),
             std::path::PathBuf::new(),
@@ -1478,9 +1475,8 @@ pub async fn spawn_pvp(
             // Clamped on the way in: the persisted pair predates the
             // current bounds on an older config, or the window it was
             // sized against is gone.
-            pane_widths: [0, 1].map(|i| {
-                config.pvp_setup_pane_widths[i].clamp(view::SETUP_PANE_MIN_WIDTH, view::SETUP_PANE_MAX_WIDTH)
-            }),
+            pane_widths: [0, 1]
+                .map(|i| config.pvp_setup_pane_widths[i].clamp(view::SETUP_PANE_MIN_WIDTH, view::SETUP_PANE_MAX_WIDTH)),
             pane_drag: None,
         },
         bind_session_audio(&audio_binder, audio),
@@ -1727,7 +1723,3 @@ pub fn format_tick(tick: u32) -> String {
     let s = total_s % 60;
     format!("{m}:{s:02}")
 }
-
-
-
-

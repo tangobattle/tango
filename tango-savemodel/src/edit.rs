@@ -36,6 +36,15 @@ pub enum ChipEdit {
     ToggleRegular { slot: usize },
     /// Set (or clear, with `None`) the folder's Tag chip pair.
     SetTags(Option<[usize; 2]>),
+    /// Write `slot` directly: install the chip (replacing whatever occupied
+    /// the slot), or empty it with `None` — with **no** compaction and no
+    /// REG/TAG bookkeeping. For slot-addressed decks (BCC's program deck
+    /// board), where a gap is a legal state; the BN folder editors stick to
+    /// the compacting `AddChip`/`RemoveChip` pair above.
+    SetChip {
+        slot: usize,
+        chip: Option<tango_dataview::save::Chip>,
+    },
 }
 
 /// A single navicust edit staged by the navicust editor. Applied to the
@@ -74,23 +83,6 @@ pub enum PatchCard56Edit {
     ClearAll,
 }
 
-/// A single BN4 patch-card edit staged by the editor. Applied to the
-/// save save in memory; not persisted to disk until the user hits Save.
-/// BN4 is slot-based: every card belongs to one fixed catalog slot
-/// (0A–0F), so adding a card installs it into its own slot (replacing
-/// whatever was there).
-#[derive(Debug, Clone)]
-pub enum PatchCard4Edit {
-    /// Install patch card `id` into its own catalog slot, enabled.
-    AddCard { id: usize },
-    /// Clear catalog slot `slot`.
-    RemoveCard { slot: usize },
-    /// Toggle slot `slot`'s card between enabled and disabled.
-    ToggleCard { slot: usize },
-    /// Clear every slot.
-    ClearAll,
-}
-
 /// A single auto-battle-data edit staged by the editor. Applied to the
 /// save save in memory; not persisted to disk until the user hits
 /// Save. The deck is derived from per-chip use counts, so these set
@@ -106,6 +98,18 @@ pub enum AutoBattleDataEdit {
     ClearAll,
 }
 
+/// A game's own staged edit — the extension point for save sections
+/// whose model lives in the game's crates rather than here (BN4's
+/// slot-based Mod Cards). The game's UI crate defines the edit type and
+/// its application; it reaches the concrete save through
+/// [`tango_dataview::save::AsAny`]. Applications follow the same
+/// contract as the shared appliers: mutate the in-memory save (keeping
+/// any anti-cheat mirror in sync), no disk I/O.
+pub trait GameEdit: std::fmt::Debug + Send + Sync {
+    #[must_use = "an edit can invalidate frontend-derived art; see Invalidation"]
+    fn apply(&self, save: &mut SaveModel) -> Invalidation;
+}
+
 /// One staged edit to the save save, unifying the per-editor edit
 /// types so hosts can route every editor through a single effect.
 #[derive(Debug, Clone)]
@@ -114,7 +118,9 @@ pub enum Edit {
     Navicust(NavicustEdit),
     Navi(NaviEdit),
     PatchCard56s(PatchCard56Edit),
-    PatchCard4s(PatchCard4Edit),
+    /// A game's own edit (BN4's Mod Cards, or anything else without a
+    /// shared model) — see [`GameEdit`]. `Arc` so `Edit` stays `Clone`.
+    Game(std::sync::Arc<dyn GameEdit>),
     AutoBattleData(AutoBattleDataEdit),
 }
 
@@ -162,10 +168,7 @@ pub fn apply_edit(save: &mut SaveModel, edit: Edit) -> Invalidation {
             apply_patch_card56_edit(save, e);
             Invalidation::default()
         }
-        Edit::PatchCard4s(e) => {
-            apply_patch_card4_edit(save, e);
-            Invalidation::default()
-        }
+        Edit::Game(e) => e.apply(save),
         Edit::AutoBattleData(e) => {
             apply_auto_battle_data_edit(save, e);
             Invalidation::default()
@@ -360,6 +363,22 @@ pub fn apply_chip_edit(save: &mut SaveModel, edit: ChipEdit) {
         ChipEdit::SetTags(pair) => {
             chips.set_tag_chip_indexes(folder_idx, pair);
         }
+        ChipEdit::SetChip { slot, chip } => {
+            // Direct slot write — no compaction. The game's own view keeps
+            // any cross-referenced state (BCC's folder-entry back-references)
+            // consistent inside set_chip/clear_chip.
+            if slot >= folder_size {
+                return;
+            }
+            match chip {
+                Some(chip) => {
+                    chips.set_chip(folder_idx, slot, chip);
+                }
+                None => {
+                    chips.clear_chip(folder_idx, slot);
+                }
+            }
+        }
     }
 
     // Keep the anti-cheat folder/library mirror in sync with the edit, so
@@ -450,14 +469,14 @@ pub fn apply_navi_edit(save: &mut SaveModel, edit: NaviEdit) -> Invalidation {
 /// computes the new list, rewrites the slots via
 /// [`PatchCard56sViewMut`], then rebuilds the anti-cheat mirror so it
 /// stays in sync with the edit. No disk I/O — the commit path only
-/// checksums and writes. A no-op on saves whose patch-card view isn't the
-/// (writable) PatchCard56s variant.
+/// checksums and writes. A no-op on saves without a writable
+/// patch-card list.
 pub fn apply_patch_card56_edit(save: &mut SaveModel, edit: PatchCard56Edit) {
-    use tango_dataview::save::{PatchCard, PatchCardsViewMut};
+    use tango_dataview::save::PatchCard;
 
     // Disjoint field borrows: assets vs save.
     let assets = save.assets.as_ref();
-    let Some(PatchCardsViewMut::PatchCard56s(mut v)) = save.save.view_patch_cards_mut() else {
+    let Some(mut v) = save.save.view_patch_card56s_mut() else {
         return;
     };
     let cards: Vec<PatchCard> = (0..v.count()).filter_map(|i| v.patch_card(i)).collect();
@@ -511,62 +530,6 @@ pub fn apply_patch_card56_edit(save: &mut SaveModel, edit: PatchCard56Edit) {
         v.set_patch_card(slot, card.clone());
     }
     v.set_count(new_cards.len());
-    // Keep the anti-cheat mirror in sync with the edit, so commit only
-    // has to checksum + write (see SaveEditCommit).
-    v.rebuild_anticheat();
-}
-
-/// Number of BN4 patch-card catalog slots (0A–0F).
-const NUM_PATCH_CARD4_SLOTS: usize = 6;
-
-/// Apply one staged [`PatchCard4Edit`] to a save save's BN4
-/// patch cards, in memory. BN4 is slot-based: every card belongs to one
-/// fixed catalog slot, so adding routes the card to its own `slot()`
-/// (replacing whatever was there). No MB budget, no list shifting. After
-/// writing it rebuilds the anti-cheat mirror so it stays in sync with the
-/// edit. No disk I/O — the commit path only checksums and writes. A no-op
-/// on saves whose patch-card view isn't the PatchCard4s variant.
-pub fn apply_patch_card4_edit(save: &mut SaveModel, edit: PatchCard4Edit) {
-    use tango_dataview::save::{PatchCard, PatchCardsViewMut};
-
-    // Disjoint field borrows: assets vs save.
-    let assets = save.assets.as_ref();
-    let Some(PatchCardsViewMut::PatchCard4s(mut v)) = save.save.view_patch_cards_mut() else {
-        return;
-    };
-
-    match edit {
-        PatchCard4Edit::AddCard { id } => {
-            // Route the card to its own catalog slot.
-            match assets.patch_card4(id).map(|c| c.slot() as usize) {
-                Some(slot) if slot < NUM_PATCH_CARD4_SLOTS => {
-                    v.set_patch_card(slot, Some(PatchCard { id, enabled: true }));
-                }
-                _ => return,
-            }
-        }
-        PatchCard4Edit::RemoveCard { slot } => {
-            v.set_patch_card(slot, None);
-        }
-        PatchCard4Edit::ToggleCard { slot } => {
-            let Some(c) = v.patch_card(slot) else {
-                return;
-            };
-            v.set_patch_card(
-                slot,
-                Some(PatchCard {
-                    id: c.id,
-                    enabled: !c.enabled,
-                }),
-            );
-        }
-        PatchCard4Edit::ClearAll => {
-            for slot in 0..NUM_PATCH_CARD4_SLOTS {
-                v.set_patch_card(slot, None);
-            }
-        }
-    }
-
     // Keep the anti-cheat mirror in sync with the edit, so commit only
     // has to checksum + write (see SaveEditCommit).
     v.rebuild_anticheat();

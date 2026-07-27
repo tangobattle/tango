@@ -65,7 +65,6 @@ play-version-placeholder = —
 # Play bottom strip
 play-link-code = リンクコード（空欄でランダム生成）
 play-link-code-random = ランダムリンクコード
-play-play = プレイ
 play-training = トレーニング
 training-pip = 相手の画面
 training-swap = 左右を入れ替える
@@ -137,88 +136,32 @@ session-results-watch-replay = リプレイを再生
 session-results-done = 完了
 
 # Save view sub-tabs
-save-tab-cover = カバー
-save-tab-folder = フォルダ
-save-tab-patch-cards = パッチカード
-save-tab-auto-battle-data = オートバトルデータ
 
 # Navi pane
 navi-style = スタイル
 
 # Folder pane
-folder-group = チップでまとめる
 save-copy = コピー
 copied = コピーしました！
-save-copy-image = 画像をコピー
 
 # Navi pane
 navi-id = ナビID
 navi-link-navi = リンクナビ
-navi-base-hp = HP
 navi-buster = バスター
-navi-buster-attack = アタック
-navi-buster-rapid = ラピッド
-navi-buster-charge = チャージ
 navi-power-attack = パワーアタック
 navi-style-unset = （スタイルなし）
-navicust-grid-size = グリッド: { $cols } × { $rows }
 navicust-parts = 設定済みパーツ
 navicust-empty = （未設定）
 
 # Folder editor
-save-edit = 編集
-save-edit-save = 保存
-save-edit-cancel = キャンセル
-folder-edit-search = チップを検索…
-folder-edit-folder = フォルダ
-folder-edit-count = { $count } / { $limit }
-folder-edit-navi = ナビ { $used } / { $limit }
-folder-edit-mega = メガ { $used } / { $limit }
-folder-edit-giga = ギガ { $used } / { $limit }
-folder-edit-dark = ダーク { $used } / { $limit }
-folder-edit-reg-memory = レギュラー { $mb }MB
-folder-edit-tag-memory = タッグ { $mb }MB
-save-edit-sort = 並べ替え
-save-edit-clear = すべてクリア
-folder-sort-id = ID
-folder-sort-name = 名前
-folder-sort-code = コード
-folder-sort-attack = 攻撃力
-folder-sort-element = 属性
-folder-sort-mb = MB
 
 # Navicust editor
-navicust-edit-grid = ナビカスタマイザー
-navicust-edit-count = { $count } パーツ
-navicust-edit-rotate = 回転
-navicust-edit-compress = 圧縮
-navicust-edit-uncompress = 解凍
-navicust-edit-search = パーツを検索…
-navicust-sort-id = ID
-navicust-sort-name = 名前
-navicust-sort-color = 色
 
 # Patch card editor
-patch-card-edit-search = カードを検索…
-patch-card-edit-count = { $count } 枚
-patch-card-edit-mb = { $mb }MB / { $limit }MB
-patch-card-sort-id = ID
-patch-card-sort-name = 名前
-patch-card-sort-mb = MB
-patch-card4-none = なし
 
 # Auto Battle Data pane
-auto-battle-data-secondary-standard-chips = スタンダードチップ（補助）
-auto-battle-data-standard-chips = スタンダードチップ
-auto-battle-data-mega-chips = メガチップ
-auto-battle-data-giga-chip = ギガチップ
-auto-battle-data-combos = コンボ
-auto-battle-data-program-advance = プログラムアドバンス
 
 # Auto Battle Data editor
-auto-battle-data-edit-used = 使用回数
-auto-battle-data-edit-secondary = 補助
-auto-battle-data-edit-count = { $count } 枚
 
 # Common
 save-empty = このセーブにはこのビューのデータがありません。
@@ -443,8 +386,6 @@ rescan = 再スキャン
 
 # Reconnect / data folder / save-view tabs
 session-stat-lead = リード
-save-tab-navicust = ナビカス
-navi-edit-select = ナビ
 playback-reconnecting = 接続が切れました
 playback-reconnecting-detail = 再接続中…
 playback-exit-hold = 終了中…

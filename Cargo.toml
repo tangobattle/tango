@@ -4,6 +4,7 @@ members = [
     "tango",
     "tango-dataview",
     "tango-gamesupport",
+    "tango-gamesupport-ui",
     "tango-library",
     # wasm32-only; deliberately absent from `default-members` below, so a
     # plain root `cargo build`/`test` skips it rather than failing to
@@ -28,6 +29,7 @@ default-members = [
     "tango",
     "tango-dataview",
     "tango-gamesupport",
+    "tango-gamesupport-ui",
     "tango-library",
     "tango-net-protocol",
     "tango-match",
@@ -57,6 +59,15 @@ encoder-facade = { git = "https://github.com/tangobattle/encoder-facade" }
 # on them without cloning tango).
 getgud = { git = "https://github.com/tangobattle/getgud" }
 image = { version = "0.25", default-features = false }
+# The UI toolkit stack, shared by the tango app, the shared save-editor
+# component crate (tango-gamesupport-ui) and the per-game UI crates in
+# the gamesupport submodule. One version here so widget types unify.
+iced = { version = "0.14", features = ["tokio", "image-without-codecs", "markdown", "canvas", "advanced"] }
+iced_graphics = { version = "0.14", features = ["geometry"] }
+iced_tiny_skia = { version = "0.14", features = ["geometry"] }
+sweeten = "0.14"
+lucide-icons = { version = "1.16", features = ["iced"] }
+fluent-templates = "0.14"
 itertools = "0.13"
 log = "0.4"
 mgba = { git = "https://github.com/tangobattle/mgba-rs" }

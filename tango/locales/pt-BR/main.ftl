@@ -15,7 +15,6 @@ window-title = Tango
     .running = Tango (em execução)
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = Sair do Tango
-play-play = Jogar
 play-training = Treino
 training-pip = Tela do oponente
 training-swap = Trocar de lado
@@ -104,24 +103,8 @@ settings-fullscreen = Tela cheia
 settings-ui-scale = Escala da interface
 settings-fractional-scaling = Escala fracionária
 settings-hide-emulator-border = Ocultar borda do emulador
-save-tab-cover = Capa
-save-tab-folder = Folder
-save-tab-patch-cards = Patch Cards
-save-tab-auto-battle-data = Auto Battle Data
-auto-battle-data-secondary-standard-chips = Standard chips (secundários)
-auto-battle-data-standard-chips = Standard chips
-auto-battle-data-mega-chips = Mega chips
-auto-battle-data-giga-chip = Giga chip
-auto-battle-data-combos = Combos
-auto-battle-data-program-advance = Program advance
 
 # Auto Battle Data editor
-auto-battle-data-edit-used = Usos
-auto-battle-data-edit-secondary = Sec.
-auto-battle-data-edit-count = { $count ->
-    [one] { $count } chip
-   *[other] { $count } chips
-}
 welcome-open-folder = Abrir pasta
 welcome-continue = Terminei!
 discord-presence-looking = Procurando Partida
@@ -228,70 +211,21 @@ session-results-draws = { $count ->
 session-results-watch-replay = Assistir replay
 session-results-done = Concluído
 navi-style = Estilo
-folder-group = Agrupar por chip
 save-copy = Copiar
 copied = Copiado!
-save-copy-image = Copiar como imagem
 navi-id = ID do Navi
 navi-link-navi = Link Navi
-navi-base-hp = HP
 navi-buster = Buster
-navi-buster-attack = Ataque
-navi-buster-rapid = Rapidez
-navi-buster-charge = Carga
 navi-power-attack = Ataque poderoso
 navi-style-unset = (sem estilo)
-navicust-grid-size = Grade: { $cols } × { $rows }
 navicust-parts = Peças instaladas
 navicust-empty = (nenhuma instalada)
 
 # Folder editor
-save-edit = Editar
-save-edit-save = Salvar
-save-edit-cancel = Cancelar
-folder-edit-search = Buscar chips…
-folder-edit-folder = Folder
-folder-edit-count = { $count } / { $limit }
-folder-edit-navi = Navi { $used } / { $limit }
-folder-edit-mega = Mega { $used } / { $limit }
-folder-edit-giga = Giga { $used } / { $limit }
-folder-edit-dark = Dark { $used } / { $limit }
-folder-edit-reg-memory = Reg { $mb }MB
-folder-edit-tag-memory = Tag { $mb }MB
-save-edit-sort = Ordenar
-save-edit-clear = Limpar tudo
-folder-sort-id = ID
-folder-sort-name = Nome
-folder-sort-code = Código
-folder-sort-attack = Ataque
-folder-sort-element = Elemento
-folder-sort-mb = MB
 
 # Navicust editor
-navicust-edit-grid = NaviCust
-navicust-edit-count = { $count ->
-    [one] { $count } peça
-   *[other] { $count } peças
-}
-navicust-edit-rotate = Girar
-navicust-edit-compress = Comprimir
-navicust-edit-uncompress = Descomprimir
-navicust-edit-search = Buscar peças…
-navicust-sort-id = ID
-navicust-sort-name = Nome
-navicust-sort-color = Cor
 
 # Patch card editor
-patch-card-edit-search = Buscar cartas…
-patch-card-edit-count = { $count ->
-    [one] { $count } carta
-   *[other] { $count } cartas
-}
-patch-card-edit-mb = { $mb }MB / { $limit }MB
-patch-card-sort-id = ID
-patch-card-sort-name = Nome
-patch-card-sort-mb = MB
-patch-card4-none = Nenhuma
 save-empty = Este save não tem dados para esta visualização.
 play-no-selection = Selecione um jogo e um save para inspecionar.
 replays-filter-all-games = Todos os jogos
@@ -435,8 +369,6 @@ rescan = Recarregar
 
 # Reconnect / data folder / save-view tabs
 session-stat-lead = Vantagem
-save-tab-navicust = NaviCust
-navi-edit-select = Navi
 playback-reconnecting = Conexão perdida
 playback-reconnecting-detail = Reconectando…
 playback-exit-hold = Saindo…

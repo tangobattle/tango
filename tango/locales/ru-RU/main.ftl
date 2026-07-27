@@ -15,7 +15,6 @@ window-title = Танго
     .running = Танго(запушен)
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = Выйти из Танго
-play-play = Воспроизвести
 play-training = Тренировка
 training-pip = Экран соперника
 training-swap = Поменять стороны
@@ -104,25 +103,8 @@ settings-fullscreen = Полноэкранный режим
 settings-ui-scale = Масштаб интерфейса
 settings-fractional-scaling = Дробное масштабирование
 settings-hide-emulator-border = Скрыть рамку эмулятора
-save-tab-cover = Покрытие
-save-tab-folder = Папка
-save-tab-patch-cards = Мод карты
-save-tab-auto-battle-data = Данные автобоя
-auto-battle-data-secondary-standard-chips = Стандартные чипы (второстепенные)
-auto-battle-data-standard-chips = Стандартные чипы
-auto-battle-data-mega-chips = Мега чипы
-auto-battle-data-giga-chip = Гига чип
-auto-battle-data-combos = Комбо
-auto-battle-data-program-advance = Продвинутые программы
 
 # Auto Battle Data editor
-auto-battle-data-edit-used = Использовано
-auto-battle-data-edit-secondary = Втор.
-auto-battle-data-edit-count = { $count ->
-    [one] { $count } чип
-    [few] { $count } чипа
-   *[other] { $count } чипов
-}
 welcome-open-folder = Открыть папку
 welcome-continue = Я Готов!
 discord-presence-looking = Поиск матча
@@ -230,72 +212,21 @@ session-results-draws = { $count ->
 session-results-watch-replay = Смотреть повтор
 session-results-done = Готово
 navi-style = Стиль
-folder-group = Группировать по чипу
 save-copy = Копировать
 copied = Скопировано!
-save-copy-image = Копировать как изображение
 navi-id = ID Navi
 navi-link-navi = Link Navi
-navi-base-hp = HP
 navi-buster = Бастер
-navi-buster-attack = Атака
-navi-buster-rapid = Скорострельность
-navi-buster-charge = Заряд
 navi-power-attack = Мощная атака
 navi-style-unset = (без стиля)
-navicust-grid-size = Сетка: { $cols } × { $rows }
 navicust-parts = Установленные детали
 navicust-empty = (ничего не установлено)
 
 # Folder editor
-save-edit = Изменить
-save-edit-save = Сохранить
-save-edit-cancel = Отмена
-folder-edit-search = Поиск чипов…
-folder-edit-folder = Папка
-folder-edit-count = { $count } / { $limit }
-folder-edit-navi = Нави { $used } / { $limit }
-folder-edit-mega = Мега { $used } / { $limit }
-folder-edit-giga = Гига { $used } / { $limit }
-folder-edit-dark = Дарк { $used } / { $limit }
-folder-edit-reg-memory = Reg { $mb }MB
-folder-edit-tag-memory = Tag { $mb }MB
-save-edit-sort = Сортировка
-save-edit-clear = Очистить всё
-folder-sort-id = ID
-folder-sort-name = Название
-folder-sort-code = Код
-folder-sort-attack = Атака
-folder-sort-element = Элемент
-folder-sort-mb = MB
 
 # Navicust editor
-navicust-edit-grid = NaviCust
-navicust-edit-count = { $count ->
-    [one] { $count } деталь
-    [few] { $count } детали
-   *[other] { $count } деталей
-}
-navicust-edit-rotate = Повернуть
-navicust-edit-compress = Сжать
-navicust-edit-uncompress = Разжать
-navicust-edit-search = Поиск деталей…
-navicust-sort-id = ID
-navicust-sort-name = Название
-navicust-sort-color = Цвет
 
 # Patch card editor
-patch-card-edit-search = Поиск карт…
-patch-card-edit-count = { $count ->
-    [one] { $count } карта
-    [few] { $count } карты
-   *[other] { $count } карт
-}
-patch-card-edit-mb = { $mb }MB / { $limit }MB
-patch-card-sort-id = ID
-patch-card-sort-name = Название
-patch-card-sort-mb = MB
-patch-card4-none = Нет
 save-empty = В этом сохранении нет данных для этого вида.
 play-no-selection = Выберите игру и сохранение для просмотра.
 replays-filter-all-games = Все игры
@@ -440,8 +371,6 @@ rescan = Пересканировать
 
 # Reconnect / data folder / save-view tabs
 session-stat-lead = Опережение
-save-tab-navicust = NaviCust
-navi-edit-select = Нави
 playback-reconnecting = Соединение потеряно
 playback-reconnecting-detail = Переподключение…
 playback-exit-hold = Выход…

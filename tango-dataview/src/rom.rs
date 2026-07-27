@@ -1,39 +1,5 @@
 use byteorder::ReadBytesExt;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ExCodeEffect {
-    MaxHp(u16),
-    SuperArmor,
-    BreakBuster,
-    BreakCharge,
-    ShadowShoes,
-    FloatShoes,
-    AirShoes,
-    UnderShirt,
-    Block,
-    Shield,
-    Reflect,
-    AntiDamage,
-    MegaFolder(u8),
-    GigaFolder(u8),
-    FastGauge,
-    SneakRun,
-    Humor,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ExCodeBug {
-    Custom(u8),
-    PoisonPanelStep,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ExCode {
-    pub code: u8,
-    pub effect: ExCodeEffect,
-    pub bug: Option<ExCodeBug>,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ChipClass {
     Standard,
@@ -146,186 +112,6 @@ pub enum PatchCard56EffectKind {
     BChargeChip,
 }
 
-/// A BN4 patch-card (modcard) effect, reverse-engineered from the game's
-/// effect jump table at `0x8041e8c`: each modcard id dispatches to a small
-/// handler that calls `set_effect(id, param)` (`0x800d78a`). The variant
-/// names the effect; a numeric payload is the raw game parameter (a chip /
-/// soul / panel index, or an amount), so it stays faithful to the binary.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PatchCard4Effect {
-    /// No in-battle effect — the cosmetic PET-menu recolor cards.
-    None,
-    /// Max HP increased by this many points (direct `MaxHp += N`).
-    MaxHp(u16),
-    /// Buster attack power set to this level (`set_effect 0x05`).
-    BusterAttack(u8),
-    /// B Button shortcut / normal-shot modifier (`set_effect 0x09`).
-    BButton(PatchCard4Shot),
-    /// B + charge fires this chip (`set_effect 0x0a`).
-    BCharge(PatchCard4Shot),
-    /// B + ← fires this chip (`set_effect 0x0c`).
-    BLeft(PatchCard4Shot),
-    /// +N Custom-screen slots, capped at 8 (`set_effect 0x12`).
-    CustomSlots(u8),
-    /// +N Mega-chip folder limit, capped at 10 (`set_effect 0x13`).
-    MegaFolder(u8),
-    /// +N Giga-chip folder limit, capped at 10 (`set_effect 0x14`).
-    GigaFolder(u8),
-    /// Triple Supporter — needs both the 1/2 and 2/2 cards (`set_effect 0x18`).
-    TripleSupporter,
-    /// Stepping off a panel leaves this terrain (`set_effect 0x1b`).
-    PanelStep(PatchCard4Panel),
-    /// Start the battle in Full Synchro (`set_effect 0x1f`).
-    FullSynchro,
-    /// Start the battle with this aura / barrier (`set_effect 0x21`).
-    Aura(PatchCard4Aura),
-    /// Start the battle in this Soul Unison (`set_effect 0x24`).
-    Soul(PatchCard4Soul),
-    /// MegaMan recolor (`set_effect 0x27`).
-    Color(PatchCard4Color),
-    /// All Guard — needs both the 1/2 and 2/2 cards (`set_effect 0x28`).
-    AllGuard,
-    /// Recolors the overworld PET menu — a non-battle cosmetic, so the
-    /// modcard's battle handler is empty (no `set_effect`); the colour is
-    /// taken from the card.
-    PetMenu(PatchCard4PetColor),
-}
-
-/// Terrain laid by a [`PatchCard4Effect::PanelStep`] card (`set_effect 0x1b`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PatchCard4Panel {
-    Broken,  // 1
-    Cracked, // 3
-    Metal,   // 5
-    Holy,    // 9
-}
-
-/// Battle-start aura from a [`PatchCard4Effect::Aura`] card (`set_effect 0x21`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PatchCard4Aura {
-    Barrier100, // 2
-    Barrier200, // 3
-    LifeAura,   // 6
-}
-
-/// Soul Unison from a [`PatchCard4Effect::Soul`] card (`set_effect 0x24`, 1-based).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PatchCard4Soul {
-    Roll,
-    Guts,
-    Wind,
-    Search,
-    Fire,
-    Thunder,
-    Proto,
-    Number,
-    Metal,
-    Junk,
-    Aqua,
-    Wood,
-}
-
-/// MegaMan recolor from a [`PatchCard4Effect::Color`] card (`set_effect 0x27`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PatchCard4Color {
-    Red,    // 1
-    Yellow, // 2
-    White,  // 3
-    Green,  // 4
-}
-
-/// PET-menu colour from a [`PatchCard4Effect::PetMenu`] card.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PatchCard4PetColor {
-    Blue,
-    Pink,
-    Green,
-    Black,
-}
-
-/// The chip/shot a [`PatchCard4Effect::BButton`]/[`BCharge`](PatchCard4Effect::BCharge)/
-/// [`BLeft`](PatchCard4Effect::BLeft) card assigns. The discriminant is the
-/// raw game param the modcard's `set_effect` writes (so `as u16` recovers it).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u16)]
-pub enum PatchCard4Shot {
-    ZapRing = 4,
-    WaterGun = 32,
-    Flower = 33,
-    Reflect = 38,
-    GutsMachineGun = 40,
-    Cannon = 41,
-    MiniBomb = 42,
-    HeatShot = 43,
-    Bubbler = 44,
-    Thunder1 = 45,
-    Sword = 46,
-    Spreader = 47,
-    RandomTrapChip = 49,
-    CrackedPanel = 52,
-    PoisonPanel = 53,
-    Crackout = 54,
-    CopyDamage = 55,
-    WideShot1 = 56,
-    Thunder2 = 58,
-    DoubleCrack = 60,
-    WideSword = 62,
-    Recov10 = 64,
-    Lance = 65,
-    Hole = 66,
-    WideShot2 = 67,
-    SandRing = 68,
-    EnergyBomb = 69,
-    Thunder3 = 70,
-    TripleCrack = 72,
-    LongSword = 73,
-    FullCustom = 75,
-    WideShot3 = 76,
-    WindRack = 78,
-    MegaEnergyBomb = 79,
-    Ball = 80,
-    BugBomb = 81,
-    WideBlade = 82,
-    LongBlade = 83,
-    NorthWind = 84,
-    PanelReturn = 85,
-    Blind = 90,
-    Blizzard = 91,
-    HeatBreath = 92,
-    WoodyPowder = 93,
-    Repair = 94,
-    AirShot = 95,
-    ElecShock = 96,
-    Guard1 = 98,
-    GrassPanel = 104,
-    IcePanel = 105,
-}
-
-/// A BN4 patch-card drawback ("bug"), from `set_bug(category, param)`
-/// (`0x80476e0`). A card can carry more than one.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PatchCard4Bug {
-    /// Start the battle Confused (`set_bug 0x01, 1`).
-    Confused,
-    /// MegaMan auto-moves forward (`set_bug 0x01, 2`).
-    AutoMove,
-    /// HP drains during the battle (`set_bug 0x02, n`) — `n` is the severity.
-    Hp(u8),
-    /// Custom gauge HP bug (`set_bug 0x03, 1`).
-    CustomHP,
-    /// Custom gauge −1 (`set_bug 0x03, 2`).
-    CustomMinus1,
-    /// Poison panels appear as you step (`set_bug 0x04, 3`).
-    PoisonPanelStep,
-}
-
-pub trait PatchCard4 {
-    fn name(&self) -> Option<String>;
-    fn slot(&self) -> u8;
-    fn effect(&self) -> PatchCard4Effect;
-    fn bugs(&self) -> &[PatchCard4Bug];
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, std::hash::Hash)]
 pub enum NavicustPartColor {
     White,
@@ -348,26 +134,6 @@ pub trait NavicustPart {
     fn is_solid(&self) -> bool;
     fn compressed_bitmap(&self) -> Option<NavicustBitmap>;
     fn uncompressed_bitmap(&self) -> NavicustBitmap;
-}
-
-pub trait Style {
-    fn name(&self) -> Option<String>;
-    fn typ(&self) -> StyleType;
-    fn element(&self) -> usize;
-    fn extra_ncp_color(&self) -> Option<NavicustPartColor>;
-}
-
-#[derive(Clone, Copy)]
-pub enum StyleType {
-    Normal,
-    Guts,
-    Custom,
-    Team,
-    Shield,
-    Ground,
-    Shadow,
-    Bug,
-    Hub,
 }
 
 #[derive(Debug, Clone)]
@@ -396,7 +162,7 @@ pub struct NavicustLayout {
     pub background: image::Rgba<u8>,
 }
 
-pub trait Assets {
+pub trait Assets: crate::save::AsAny {
     fn chip(&self, id: usize) -> Option<Box<dyn Chip + '_>>;
     fn num_chips(&self) -> usize;
     fn chips_have_mb(&self) -> bool {
@@ -410,13 +176,6 @@ pub trait Assets {
     fn num_patch_card56s(&self) -> usize {
         0
     }
-    fn patch_card4(&self, id: usize) -> Option<Box<dyn PatchCard4 + '_>> {
-        let _ = id;
-        None
-    }
-    fn num_patch_card4s(&self) -> usize {
-        0
-    }
     fn navicust_part(&self, id: usize) -> Option<Box<dyn NavicustPart + '_>> {
         let _ = id;
         None
@@ -424,12 +183,14 @@ pub trait Assets {
     fn num_navicust_parts(&self) -> usize {
         0
     }
-    fn style(&self, id: usize) -> Option<Box<dyn Style + '_>> {
+    /// The display name of the style `NavicustView::style()` points at.
+    /// The style *system* (types, elements, the extra-NCP color) is
+    /// BN3's own model; the equipped style's name is part of the shared
+    /// navicust view (the grid's color bar is titled with it), so it
+    /// stays a narrow hook here — and patches can override it.
+    fn style_name(&self, id: usize) -> Option<String> {
         let _ = id;
         None
-    }
-    fn num_styles(&self) -> usize {
-        0
     }
     fn navi(&self, id: usize) -> Option<Box<dyn Navi + '_>> {
         let _ = id;
@@ -447,8 +208,14 @@ pub trait Assets {
     fn navicust_layout(&self) -> Option<NavicustLayout> {
         None
     }
-    fn ex_code(&self, _code: u8) -> Option<ExCode> {
-        None
+    /// The game's own concrete assets, for game-specific UIs to downcast
+    /// (BN4's Mod Card catalog lives there, not on this trait). Layering
+    /// wrappers (the patch-override layer) forward to what they wrap;
+    /// everything else answers with itself, which the default provides.
+    /// Only name-override-able entities are on the shared trait, so
+    /// bypassing a wrapper here loses nothing.
+    fn underlying_any(&self) -> &dyn std::any::Any {
+        self.as_any()
     }
 }
 

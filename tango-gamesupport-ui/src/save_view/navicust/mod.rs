@@ -89,12 +89,12 @@ fn ncp_colors(color: NavicustPartColor) -> (iced::Color, iced::Color) {
 /// the read-only viewer and the clipboard image, and ghosts the held part.
 /// Each palette row carries its own rotate / (de)compress buttons that set
 /// the orientation the part is picked up in.
-pub(super) fn render_navicust_edit<'a>(
+pub fn render_navicust_edit<'a>(
     lang: &'a LanguageIdentifier,
     loaded: &'a OpenSave,
     state: &'a State,
 ) -> Element<'a, Action> {
-    use crate::ui::widgets;
+    use crate::widgets;
     // Only reached while editing, so the EditState is present.
     let Some(edit) = state.editing.as_ref() else {
         return placeholder(t!(lang, "save-empty"));
@@ -326,7 +326,7 @@ pub(super) fn render_navicust_edit<'a>(
 // ---------- NaviCust ----------
 
 /// The NaviCust tab: the equipped navi's customizer grid.
-pub(super) fn render_navicust_tab<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave) -> Element<'static, M> {
+pub fn render_navicust_tab<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave) -> Element<'static, M> {
     let Some(v) = loaded.save.view_navicust() else {
         return placeholder(t!(lang, "save-empty"));
     };
@@ -589,8 +589,8 @@ fn render_navicust<M: 'static>(
 
     let _ = (cols, rows_n);
     container(content)
-        .padding(crate::ui::style::PANE_PADDING)
-        .style(crate::ui::widgets::pane)
+        .padding(crate::style::PANE_PADDING)
+        .style(crate::widgets::pane)
         .into()
 }
 
@@ -626,7 +626,7 @@ impl HeldPart {
 
 /// Sort order for the navicust editor's palette pane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NavicustSort {
+pub enum NavicustSort {
     Id,
     Name,
     Color,
@@ -635,7 +635,7 @@ pub(crate) enum NavicustSort {
 impl NavicustSort {
     pub const ALL: [NavicustSort; 3] = [NavicustSort::Id, NavicustSort::Name, NavicustSort::Color];
 
-    fn label(self, lang: &LanguageIdentifier) -> String {
+    pub fn label(self, lang: &LanguageIdentifier) -> String {
         match self {
             NavicustSort::Id => t!(lang, "navicust-sort-id"),
             NavicustSort::Name => t!(lang, "navicust-sort-name"),
@@ -720,12 +720,12 @@ fn sorted_navicust_parts(loaded: &OpenSave, sort: NavicustSort, filter: &str) ->
 /// row-by-row to match the side-by-side layout the UI renders. The
 /// trailing tab keeps a paste parsing as two columns even when the last
 /// solid row has no plus partner.
-pub(crate) fn navicust_as_text(loaded: &OpenSave) -> Option<String> {
+pub fn navicust_as_text(loaded: &OpenSave) -> Option<String> {
     let assets = loaded.assets.as_ref();
     let v = loaded.save.view_navicust()?;
     let mut out = String::new();
     if let Some(style_id) = v.style() {
-        if let Some(name) = assets.style(style_id).and_then(|s| s.name()) {
+        if let Some(name) = assets.style_name(style_id) {
             out.push_str(&name);
             out.push('\n');
         }
@@ -757,11 +757,11 @@ pub(crate) fn navicust_as_text(loaded: &OpenSave) -> Option<String> {
 
 /// The NaviCust grid rendered to an RGBA image for "copy as image". `None`
 /// for non-NaviCust navi views (only the grid has a meaningful image).
-pub(crate) fn as_image(loaded: &OpenSave) -> Option<image::RgbaImage> {
+pub fn as_image(loaded: &OpenSave) -> Option<image::RgbaImage> {
     let v = loaded.save.view_navicust()?;
     let layout = loaded.assets.navicust_layout()?;
     let materialized = v.materialized();
-    let lang = crate::library::game::region_to_language(loaded.game.region());
+    let lang = tango_library::game::region_to_language(loaded.game.region());
     // Clipboard / export path: render at native (high) resolution.
     Some(grid::render(
         &materialized,

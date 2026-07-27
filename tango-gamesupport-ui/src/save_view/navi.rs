@@ -117,7 +117,7 @@ fn navi_card_content<M: 'static>(
 /// Saves with no navi to identify (Battle Chip Challenge) get the same strip
 /// with an empty card slot: Play lives here and nowhere else, so the strip
 /// can't be conditional on having a navi.
-pub(super) fn render_navi_strip<'a>(
+pub fn render_navi_strip<'a>(
     lang: &'a LanguageIdentifier,
     loaded: &'a OpenSave,
     edit: Option<Action>,
@@ -135,7 +135,7 @@ pub(super) fn render_navi_strip<'a>(
         match edit {
             Some(action) => button(navi_card_content::<Action>(lang, loaded, true))
                 .padding([4.0, 6.0])
-                .style(crate::ui::widgets::flat)
+                .style(crate::widgets::flat)
                 .on_press(action)
                 .into(),
             None => container(navi_card_content::<Action>(lang, loaded, false))
@@ -158,7 +158,7 @@ pub(super) fn render_navi_strip<'a>(
     )
     .padding(6.0)
     .width(Fill)
-    .style(crate::ui::widgets::pane)
+    .style(crate::widgets::pane)
     .into()
 }
 
@@ -181,7 +181,7 @@ fn stat_inline<M: 'static>(label: String, value: String) -> Element<'static, M> 
 /// accent-tinted emblem plate (the equipped one lit up with a glow ring).
 /// Clicking a plate emits [`Action::SetNavi`], which the embedder stages
 /// into the loaded save.
-pub(super) fn render_navi_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Element<'a, Action> {
+pub fn render_navi_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Element<'a, Action> {
     let assets = loaded.assets.as_ref();
     let current = loaded.save.view_navi().map(|nv| nv.navi());
 
@@ -214,12 +214,12 @@ pub(super) fn render_navi_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Ope
     // pane's right edge like every other editor pane (a `.padding()` on the
     // outer container would inset the whole scrollable, scrollbar included).
     container(
-        scrollable(container(body).padding(crate::ui::style::PANE_PADDING).width(Fill))
-            .style(crate::ui::widgets::chunky_scrollable)
+        scrollable(container(body).padding(crate::style::PANE_PADDING).width(Fill))
+            .style(crate::widgets::chunky_scrollable)
             .height(Fill)
             .width(Fill),
     )
-    .style(crate::ui::widgets::pane)
+    .style(crate::widgets::pane)
     .width(Fill)
     .height(Fill)
     .into()
@@ -265,7 +265,7 @@ fn navi_cell(loaded: &OpenSave, id: usize, name: String, selected: bool) -> Elem
         .style(move |theme: &iced::Theme| {
             let bg = theme.palette().background;
             container::Style {
-                background: Some(iced::Background::Color(crate::ui::widgets::mix(
+                background: Some(iced::Background::Color(crate::widgets::mix(
                     bg,
                     accent,
                     if selected { 0.40 } else { 0.14 },

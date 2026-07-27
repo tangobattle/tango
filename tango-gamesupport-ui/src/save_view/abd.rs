@@ -69,7 +69,7 @@ fn abd_grouped_section_rows<M: 'static>(
     col.into()
 }
 
-pub(super) fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave) -> Element<'static, M> {
+pub fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave) -> Element<'static, M> {
     let Some(view) = loaded.save.view_auto_battle_data() else {
         return placeholder(t!(lang, "save-empty"));
     };
@@ -85,10 +85,10 @@ pub(super) fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loa
 
     // Each section becomes its own pane so the outer scrollable in `view`
     // shows them as distinct demarcated regions.
-    let mut col = column![].spacing(crate::ui::style::PANE_GAP).width(Fill);
+    let mut col = column![].spacing(crate::style::PANE_GAP).width(Fill);
     for (title, runs) in abd_grouped_sections(lang, &grouped) {
         let rows = abd_grouped_section_rows::<M>(loaded, title, &runs, chips_have_mb);
-        col = col.push(container(rows).width(Fill).style(crate::ui::widgets::pane));
+        col = col.push(container(rows).width(Fill).style(crate::widgets::pane));
     }
     col.into()
 }
@@ -164,7 +164,7 @@ fn abd_count_input<'a>(value: usize, make: impl Fn(usize) -> Action + 'a) -> Ele
         .width(Length::Fixed(54.0))
         .padding([4, 8])
         .size(TEXT_BODY)
-        .style(crate::ui::widgets::chunky_text_input)
+        .style(crate::widgets::chunky_text_input)
         .into()
 }
 
@@ -242,7 +242,7 @@ fn abd_library_row<'a>(
 /// restages the counts and rebuilds the materialized deck, so the left
 /// preview updates live. Edits stage in the loaded save and are written to
 /// disk only on Save.
-pub(super) fn render_auto_battle_data_edit<'a>(
+pub fn render_auto_battle_data_edit<'a>(
     lang: &'a LanguageIdentifier,
     loaded: &'a OpenSave,
     state: &'a State,
@@ -330,7 +330,7 @@ pub(super) fn render_auto_battle_data_edit<'a>(
 
 /// Sort order for the auto-battle-data editor's chip library pane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AutoBattleDataSort {
+pub enum AutoBattleDataSort {
     Id,
     Name,
     Used,
@@ -343,7 +343,7 @@ impl AutoBattleDataSort {
         AutoBattleDataSort::Used,
     ];
 
-    fn label(self, lang: &LanguageIdentifier) -> String {
+    pub fn label(self, lang: &LanguageIdentifier) -> String {
         match self {
             AutoBattleDataSort::Id => t!(lang, "folder-sort-id"),
             AutoBattleDataSort::Name => t!(lang, "folder-sort-name"),
@@ -362,7 +362,7 @@ const ABD_COUNT_COL_W: f32 = 104.0;
 const MAX_ABD_USE_COUNT: usize = u16::MAX as usize;
 
 /// The auto-battle-data tab as text.
-pub(crate) fn as_text(loaded: &OpenSave) -> Option<String> {
+pub fn as_text(loaded: &OpenSave) -> Option<String> {
     let assets = loaded.assets.as_ref();
     let view = loaded.save.view_auto_battle_data()?;
     let mat = view.materialized();

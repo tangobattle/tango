@@ -26,7 +26,7 @@ pub const TEXT_CAPTION: f32 = 11.0;
 // size inherit the app default.
 pub const STANDARD_PADDING: [f32; 2] = [6.0, 14.0];
 
-/// The height a [`crate::ui::widgets::picker`] lays out to: its text's
+/// The height a [`crate::widgets::picker`] lays out to: its text's
 /// line box (iced's default 1.3 relative line height over the app's
 /// body size) plus its vertical padding. Borders draw inside the
 /// bounds, so they don't add to it.
@@ -55,7 +55,7 @@ pub const ROW_PADDING: [f32; 2] = [6.0, 10.0];
 /// same height naturally (no outer container pinning needed).
 pub const BAR_CONTROL_HEIGHT: f32 = 40.0;
 
-/// Standard internal padding for [`crate::ui::widgets::pane`] containers.
+/// Standard internal padding for [`crate::widgets::pane`] containers.
 /// Use this on `.padding(...)` so every demarcation pane has the same
 /// gap between its edge and its content.
 pub const PANE_PADDING: f32 = 12.0;
