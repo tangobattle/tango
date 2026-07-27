@@ -571,9 +571,10 @@ pub(super) fn telemetry_overlay<'a>(
         //
         // The red/blue dots are FIELD sides (same coding as the
         // setup toggles and the matchup pane: red = your half,
-        // blue = the opponent's), so your row always leads with
-        // the red dot; the seat assignment rides in the P1/P2
-        // label next to it.
+        // blue = the opponent's), so your row leads with the red
+        // dot and the seat assignment rides in the P1/P2 label
+        // next to it — except where the game itself colors by
+        // seat, see below.
         let collapse = button(Icon::ChevronDown.widget().size(14.0))
             .padding([4.0, 8.0])
             .style(widgets::neutral)
@@ -602,15 +603,26 @@ pub(super) fn telemetry_overlay<'a>(
             .into()
         };
         use widgets::{FIELD_BLUE, FIELD_RED};
-        let (local_seat, remote_seat) = if pvp.local_player_index() == 0 {
-            ("P1", "P2")
+        let local_is_p1 = pvp.local_player_index() == 0;
+        let (you, opponent) = (t!(lang, "play-you"), t!(lang, "play-opponent"));
+        // Battle Chip Challenge colors its players by seat rather than
+        // by field half — P1 is red, P2 is blue, both in game — so its
+        // panel lists the seats in that fixed order instead of leading
+        // with the local player.
+        let players = if matches!(pvp.local_game().family, "bcc" | "exebcgp") {
+            let (p1, p2) = if local_is_p1 {
+                (you, opponent)
+            } else {
+                (opponent, you)
+            };
+            row![side(FIELD_RED, "P1", p1), side(FIELD_BLUE, "P2", p2)]
         } else {
-            ("P2", "P1")
-        };
-        let players = row![
-            side(FIELD_RED, local_seat, t!(lang, "play-you")),
-            side(FIELD_BLUE, remote_seat, t!(lang, "play-opponent")),
-        ]
+            let (local_seat, remote_seat) = if local_is_p1 { ("P1", "P2") } else { ("P2", "P1") };
+            row![
+                side(FIELD_RED, local_seat, you),
+                side(FIELD_BLUE, remote_seat, opponent),
+            ]
+        }
         .spacing(12)
         .align_y(Alignment::Center);
         let header = row![players, horizontal_space(), collapse]
