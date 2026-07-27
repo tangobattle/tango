@@ -34,8 +34,11 @@ pub enum Region {
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error(transparent)]
-    DataView(#[from] tango_dataview::save::Error),
+    /// The dump failed to parse as this game's save format. The concrete
+    /// error type is the private gamesupport layer's; boxed here because
+    /// the app only displays it.
+    #[error("{0}")]
+    Save(Box<dyn std::error::Error + Send + Sync>),
 
     /// `parse_save` was given a save for a different region/variant than
     /// this game.
@@ -72,19 +75,37 @@ pub struct BackgroundRef {
     pub tga: &'static str,
 }
 
+/// A parsed save, as [`Game::parse_save`] hands it out. Implemented
+/// only by the private gamesupport layer — the full view surface behind
+/// it is private knowledge; the app clones it, serializes it, and hands
+/// it back to [`SaveUi::load`].
+pub trait SaveData: std::any::Any + Send + Sync {
+    /// Serialize back to a cartridge SRAM dump.
+    fn to_sram_dump(&self) -> Vec<u8>;
+    /// Recompute the save's checksum. Needed after cloning a bundled
+    /// template into a fresh save file — the template's checksum
+    /// predates the clone.
+    fn rebuild_checksum(&mut self);
+    fn clone_box(&self) -> BoxedSave;
+}
+
+/// Parsed ROM assets, as [`Game::load_rom_assets`] hands them out.
+/// Purely opaque: only the private gamesupport layer reads them.
+pub trait AssetsData: std::any::Any + Send + Sync {}
+
 /// Bundled save templates for a game. Each entry is a
 /// `(template_name, save)` pair; the empty-string name is the default
 /// template. Lazily parsed from `include_bytes!` blobs on first access.
-pub type SaveTemplates = LazyLock<Vec<(&'static str, &'static (dyn tango_dataview::save::Save + Send + Sync))>>;
+pub type SaveTemplates = LazyLock<Vec<(&'static str, BoxedSave)>>;
 
 /// Lazily-decoded bundled image (logo). The `include_bytes!` blob is held
 /// in `.rodata`; the decode runs on first access.
 pub type LazyImage = LazyLock<image::DynamicImage>;
 
-/// Boxed save trait object the parsers hand back.
-pub type BoxedSave = Box<dyn tango_dataview::save::Save + Send + Sync>;
-/// Boxed ROM assets trait object the parsers hand back.
-pub type BoxedAssets = Box<dyn tango_dataview::rom::Assets + Send + Sync>;
+/// Boxed opaque save the parsers hand back.
+pub type BoxedSave = Box<dyn SaveData>;
+/// Boxed opaque ROM assets the parsers hand back.
+pub type BoxedAssets = Box<dyn AssetsData>;
 
 // The save-editor embedding API, feature-gated so the base crate stays
 // a pure detection/registry surface. Deliberately shape-oblivious: the

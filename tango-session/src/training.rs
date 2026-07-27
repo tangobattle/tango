@@ -416,7 +416,12 @@ impl Driver {
             // path so the session can tear down cleanly (with a
             // do-nothing dummy the player wins and the battle ends). We
             // don't fold stats — training records nothing.
-            let (_samples, events) = self.match_.telemetry().lock().unwrap().drain_confirmed(report.confirmed);
+            let (_samples, events) = self
+                .match_
+                .telemetry()
+                .lock()
+                .unwrap()
+                .drain_confirmed(report.confirmed);
             if events.iter().any(|(_, e)| matches!(e, RoundEvent::MatchEnded)) {
                 self.ended.store(true, Ordering::Release);
                 self.wake.notify_one();

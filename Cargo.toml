@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
     "tango",
-    "tango-dataview",
     "tango-gamesupport",
     "tango-library",
     # wasm32-only; deliberately absent from `default-members` below, so a
@@ -26,7 +25,6 @@ members = [
 # `cargo run -p tango-gamesupport-<game> --example <probe>`.
 default-members = [
     "tango",
-    "tango-dataview",
     "tango-gamesupport",
     "tango-library",
     "tango-net-protocol",

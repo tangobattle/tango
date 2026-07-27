@@ -1176,7 +1176,7 @@ const ESC_QUIT_HOLD: std::time::Duration = std::time::Duration::from_secs(3);
 /// changes.
 fn thumbnail_handle(framebuffer: &[u8]) -> iced::widget::image::Handle {
     let mut rgba = vec![0u8; framebuffer.len() * 2];
-    tango_dataview::rom::bgr555_to_rgba8(framebuffer, &mut rgba);
+    tango_replay_renderer::bgr555_to_rgba8(framebuffer, &mut rgba);
     iced::widget::image::Handle::from_rgba(replay::SCREEN_WIDTH, replay::SCREEN_HEIGHT, rgba)
 }
 

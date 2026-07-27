@@ -58,7 +58,7 @@ pub struct Replay {
     pub local_player_index: u8,
     pub rng_seed: [u8; 16],
     /// Each player's SRAM dump as
-    /// `tango_dataview::save::Save::to_sram_dump` produces it — ready
+    /// the save's `to_sram_dump` produces it — ready
     /// to hand to `mgba::core::Core::load_save` without further
     /// conversion.
     pub srams: [Vec<u8>; 2],

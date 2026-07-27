@@ -123,11 +123,7 @@ pub struct CoreStream {
 }
 
 impl CoreStream {
-    pub fn new(
-        pull: impl CorePull + 'static,
-        fps_target: impl Fn() -> f32 + Send + 'static,
-        out_rate: u32,
-    ) -> Self {
+    pub fn new(pull: impl CorePull + 'static, fps_target: impl Fn() -> f32 + Send + 'static, out_rate: u32) -> Self {
         let dest_capacity = super::SAMPLES * 2;
         Self {
             pull: Box::new(pull),
@@ -156,8 +152,7 @@ impl super::Stream for CoreStream {
         let needed = frame_count.saturating_mul(2);
         if needed > self.dest_capacity {
             let new_capacity = needed.next_power_of_two().max(super::SAMPLES * 2);
-            self.dest_buffer =
-                mgba::audio::OwnedAudioBuffer::new(new_capacity, super::NUM_CHANNELS as u32);
+            self.dest_buffer = mgba::audio::OwnedAudioBuffer::new(new_capacity, super::NUM_CHANNELS as u32);
             self.dest_capacity = new_capacity;
         }
 
@@ -228,12 +223,8 @@ impl super::Stream for CoreStream {
         }
 
         let available = self.dest_buffer.available().min(frame_count);
-        self.dest_buffer.read(
-            &mut linear_buf[..available * super::NUM_CHANNELS],
-            available,
-        );
+        self.dest_buffer
+            .read(&mut linear_buf[..available * super::NUM_CHANNELS], available);
         available
     }
 }
-
-

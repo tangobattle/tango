@@ -3,7 +3,7 @@ use crate::{rom::GameRef, scanner};
 
 pub struct ScannedSave {
     pub path: std::path::PathBuf,
-    pub save: Box<dyn tango_dataview::save::Save + Send + Sync>,
+    pub save: tango_gamesupport::BoxedSave,
 }
 
 impl Clone for ScannedSave {

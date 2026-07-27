@@ -167,9 +167,8 @@ impl ReplaySession {
             }
         };
 
-        let nickname_of = |side: Option<&tango_replay::metadata::Side>| {
-            side.map(|s| s.nickname.clone()).unwrap_or_default()
-        };
+        let nickname_of =
+            |side: Option<&tango_replay::metadata::Side>| side.map(|s| s.nickname.clone()).unwrap_or_default();
         let input_display = Box::new(InputDisplay {
             pairs: replay
                 .inputs
@@ -181,10 +180,7 @@ impl ReplaySession {
                     )
                 })
                 .collect(),
-            nicknames: (
-                nickname_of(replay.local_side()),
-                nickname_of(replay.remote_side()),
-            ),
+            nicknames: (nickname_of(replay.local_side()), nickname_of(replay.remote_side())),
         });
 
         let screen = crate::Framebuffer::new();
@@ -706,11 +702,7 @@ impl Playhead {
     /// Boot + prime the display pair and show its first frame. Blocks
     /// for the priming walk — the one part of a session that can't be
     /// sliced, since it runs until the games' own traps say it's there.
-    fn boot(
-        &self,
-        boot_config: &tango_match::playback::BootConfig,
-        inputs: Arc<Vec<[u32; 2]>>,
-    ) -> bool {
+    fn boot(&self, boot_config: &tango_match::playback::BootConfig, inputs: Arc<Vec<[u32; 2]>>) -> bool {
         // The display pair runs no telemetry observer — its lifecycle
         // sink is a write-only stub.
         let pb = match tango_match::playback::Playback::new(

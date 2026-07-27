@@ -341,7 +341,10 @@ impl PvpSession {
             })?;
         let local_save = local_game
             .parse_save(&pre_match.local_save_data)
-            .map_err(|e| crate::Error::ParseSave { side: "local", source: e })?;
+            .map_err(|e| crate::Error::ParseSave {
+                side: "local",
+                source: e,
+            })?;
 
         let local_sio = local_game.pvp;
         let remote_sio = remote_game.pvp;
@@ -834,7 +837,6 @@ impl DriveContext {
         ))
     }
 
-
     /// Fold a batch of confirmed telemetry into the stats builder (the
     /// shared [`tango_match::analysis::fold_confirmed`], so live stats
     /// and offline re-analysis stay byte-equivalent) and drive the round
@@ -1106,8 +1108,8 @@ fn build_replay_writer(
     store: &dyn ReplayStore,
     pre_match: &crate::pvp::PreMatchData,
     local_player_index: u8,
-    local_save: &(dyn tango_dataview::save::Save + Send + Sync),
-    remote_save: &(dyn tango_dataview::save::Save + Send + Sync),
+    local_save: &dyn tango_gamesupport::SaveData,
+    remote_save: &dyn tango_gamesupport::SaveData,
 ) -> Result<(tango_replay::Writer, std::path::PathBuf), crate::Error> {
     let link_code = &pre_match.link_code;
     let local_settings = &pre_match.local_settings;
@@ -1295,7 +1297,8 @@ impl PvpDriver {
         // Drain the network before advancing: every confirmed tick we
         // ingest now is a rollback we don't take deeper.
         for input in self.ctx.event_rx.try_iter() {
-            self.match_.add_remote_input(input.joyflags as u32, input.tick_advantage);
+            self.match_
+                .add_remote_input(input.joyflags as u32, input.tick_advantage);
         }
 
         // Stall guard: the peer is too far behind (or gone) — advancing
@@ -1330,7 +1333,8 @@ impl PvpDriver {
             // yields too — the supervisor owns what happens next,
             // and spinning on it would burn the host's loop.
             if let Ok(input) = self.ctx.event_rx.try_recv() {
-                self.match_.add_remote_input(input.joyflags as u32, input.tick_advantage);
+                self.match_
+                    .add_remote_input(input.joyflags as u32, input.tick_advantage);
             }
             return true;
         }
@@ -1374,7 +1378,12 @@ impl PvpDriver {
         // batch's input records. Everything at or below the confirmed
         // boundary is final — no revocation bookkeeping needed on this
         // side of the engine.
-        let (samples, events) = self.match_.telemetry().lock().unwrap().drain_confirmed(report.confirmed);
+        let (samples, events) = self
+            .match_
+            .telemetry()
+            .lock()
+            .unwrap()
+            .drain_confirmed(report.confirmed);
 
         // Round lifecycle, trap-driven off the games' own code paths:
         // a round start (after the first) stamps a marker into the
@@ -1416,7 +1425,8 @@ impl PvpDriver {
         self.pending_buttons.extend(confirmed_inputs);
 
         if !samples.is_empty() || !events.is_empty() {
-            self.ctx.fold_confirmed_telemetry(samples, events, &mut self.pending_buttons);
+            self.ctx
+                .fold_confirmed_telemetry(samples, events, &mut self.pending_buttons);
         }
 
         // Completion: the games' own match-end path ran (confirmed —
@@ -1479,7 +1489,6 @@ impl PvpDriver {
     /// [`crate::Drive::finish`], which is why a host must wind a driver
     /// down rather than drop it.
     pub fn finish(mut self) {
-
         // Teardown: flush the replay tail. Finalize (write the EOR
         // sentinel) only if the match completed — same policy as the trap
         // engine, so an aborted match leaves a truncated-but-parseable

@@ -30,7 +30,7 @@ pub fn build(
     game: crate::library::rom::GameRef,
     rom: Vec<u8>,
     save_path: std::path::PathBuf,
-    save: Box<dyn tango_dataview::save::Save + Send + Sync>,
+    save: tango_gamesupport::BoxedSave,
     patches_path: &std::path::Path,
     patch: Option<(String, semver::Version, Arc<crate::library::patch::Version>)>,
 ) -> SaveViewData {
@@ -75,7 +75,7 @@ pub fn from_patched_rom(
     game: crate::library::rom::GameRef,
     rom: Vec<u8>,
     save_path: std::path::PathBuf,
-    save: Box<dyn tango_dataview::save::Save + Send + Sync>,
+    save: tango_gamesupport::BoxedSave,
     applied_patch: Option<AppliedPatch>,
 ) -> SaveViewData {
     game.save_ui

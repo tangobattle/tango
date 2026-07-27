@@ -20,7 +20,6 @@ mgba.workspace = true
 rand.workspace = true
 rand_pcg.workspace = true
 rennet.workspace = true
-tango-dataview = { path = "../tango-dataview" }
 tango-gamesupport = { path = "../tango-gamesupport" }
 tango-match = { path = "../tango-match" }
 tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }

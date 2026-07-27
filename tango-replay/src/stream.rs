@@ -246,7 +246,8 @@ mod tests {
         roundtrip(&[]);
         roundtrip(&vec![(false, [0, 0]); 500]); // idle: 1 byte/tick
         roundtrip(&[(false, [1, 2]), (false, [1, 2]), (false, [1, 2])]); // held
-        roundtrip(&[(false, [0x3ff, 0x155]), (false, [0, 0x2aa]), (false, [0x100, 0])]); // 10-bit
+        roundtrip(&[(false, [0x3ff, 0x155]), (false, [0, 0x2aa]), (false, [0x100, 0])]);
+        // 10-bit
     }
 
     #[test]
@@ -290,7 +291,10 @@ mod tests {
             w.push([0, 0]).unwrap();
         }
         let bytes = w.finish().unwrap();
-        assert_eq!(bytes, [vec![P0_DEFAULT | P1_DEFAULT; 100], vec![END_OF_STREAM]].concat());
+        assert_eq!(
+            bytes,
+            [vec![P0_DEFAULT | P1_DEFAULT; 100], vec![END_OF_STREAM]].concat()
+        );
     }
 
     #[test]

@@ -84,7 +84,7 @@ pub struct Version {
     /// Per-game save templates the patch ships. Keyed by template name
     /// (empty string = the default template); values are owned Save
     /// trait objects ready to be serialized via `to_sram_dump`.
-    pub save_templates: HashMap<GameRef, BTreeMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>>,
+    pub save_templates: HashMap<GameRef, BTreeMap<String, tango_gamesupport::BoxedSave>>,
     pub readme: Option<String>,
 }
 
@@ -323,8 +323,7 @@ fn read_package(storage: &dyn Storage, path: &Path) -> Result<(tango_patch::Mani
     // gamesupport feature, or a rom we don't know); that just means
     // fewer supported games, not a bad package.
     let mut supported_games = HashSet::new();
-    let mut save_templates: HashMap<GameRef, BTreeMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>> =
-        HashMap::new();
+    let mut save_templates: HashMap<GameRef, BTreeMap<String, tango_gamesupport::BoxedSave>> = HashMap::new();
     for target in package.targets().collect::<Vec<_>>() {
         let Some(game) = game_for(target) else {
             continue;

@@ -35,7 +35,10 @@ pub async fn negotiate(sender: &mut Sender, receiver: &mut Receiver) -> Result<(
     let hello = match receiver.receive().await {
         Ok(protocol::Packet::Hello(h)) => h,
         Ok(other) => {
-            log::warn!("negotiate: first packet was {:?}, not a hello", std::mem::discriminant(&other));
+            log::warn!(
+                "negotiate: first packet was {:?}, not a hello",
+                std::mem::discriminant(&other)
+            );
             return Err(NegotiationError::ExpectedHello);
         }
         // Losing this would leave "the peer didn't say hello" standing in
@@ -117,8 +120,7 @@ impl Sender {
     /// Announce a deliberate mid-match quit, just before teardown (see
     /// [`protocol::Packet::Goodbye`]).
     pub async fn send_goodbye(&mut self) -> std::io::Result<()> {
-        self.send_packet(&protocol::Packet::Goodbye(protocol::Goodbye {}))
-            .await
+        self.send_packet(&protocol::Packet::Goodbye(protocol::Goodbye {})).await
     }
 
     // EndOfRound / EndOfMatch are no longer reliable-channel packets — they

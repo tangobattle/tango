@@ -548,7 +548,7 @@ fn templates_for_game(
     patch_name: Option<&str>,
     patch_version: Option<&semver::Version>,
     scanners: &Scanners,
-) -> Option<indexmap::IndexMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>> {
+) -> Option<indexmap::IndexMap<String, tango_gamesupport::BoxedSave>> {
     // IndexMap (not BTreeMap) so templates iterate in declaration order
     // — patch-provided first, then the game's bundled order — instead
     // of alphabetically by raw key.
@@ -606,7 +606,7 @@ pub fn creation_template(
     template_name: &str,
     loadout: &Loadout,
     scanners: &Scanners,
-) -> Option<Box<dyn tango_dataview::save::Save + Send + Sync>> {
+) -> Option<tango_gamesupport::BoxedSave> {
     let tmpls = templates_for_game(game, loadout.patch.as_deref(), loadout.patch_version.as_ref(), scanners)?;
     tmpls
         .get(template_name)
@@ -744,7 +744,7 @@ pub fn rename_save(src: &std::path::Path, new_stem: &str) -> anyhow::Result<std:
 pub fn create_new_save(
     saves_dir: &std::path::Path,
     name: &str,
-    template: &dyn tango_dataview::save::Save,
+    template: &dyn tango_gamesupport::SaveData,
 ) -> anyhow::Result<std::path::PathBuf> {
     let name = name.trim();
     if name.is_empty() {

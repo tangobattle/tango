@@ -60,18 +60,12 @@ pub struct Elapsed;
 
 /// Run `future` with a deadline.
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn timeout<F: std::future::Future>(
-    duration: std::time::Duration,
-    future: F,
-) -> Result<F::Output, Elapsed> {
+pub async fn timeout<F: std::future::Future>(duration: std::time::Duration, future: F) -> Result<F::Output, Elapsed> {
     tokio::time::timeout(duration, future).await.map_err(|_| Elapsed)
 }
 
 #[cfg(target_arch = "wasm32")]
-pub async fn timeout<F: std::future::Future>(
-    duration: std::time::Duration,
-    future: F,
-) -> Result<F::Output, Elapsed> {
+pub async fn timeout<F: std::future::Future>(duration: std::time::Duration, future: F) -> Result<F::Output, Elapsed> {
     use futures::future::Either;
     futures::pin_mut!(future);
     match futures::future::select(future, Box::pin(sleep(duration))).await {
@@ -105,10 +99,7 @@ impl Ticker {
             Self { inner }
         }
         #[cfg(target_arch = "wasm32")]
-        Self {
-            period,
-            first: true,
-        }
+        Self { period, first: true }
     }
 
     /// Tick every `period`, starting one period from now.
@@ -120,10 +111,7 @@ impl Ticker {
             Self { inner }
         }
         #[cfg(target_arch = "wasm32")]
-        Self {
-            period,
-            first: false,
-        }
+        Self { period, first: false }
     }
 
     pub async fn tick(&mut self) {
