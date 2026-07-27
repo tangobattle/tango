@@ -79,9 +79,9 @@ const METRIC_HISTORY_LEN: usize = 180;
 /// the post-match results cook ([`MatchResults::capture`]).
 pub struct PvpPanes {
     /// Local side's loaded selection — the "my setup" drawer.
-    pub local_loaded: Option<selection::OpenSave>,
+    pub local_loaded: Option<selection::SaveViewData>,
     /// Opponent's loaded selection, unless they blinded their setup.
-    pub opponent_loaded: Option<selection::OpenSave>,
+    pub opponent_loaded: Option<selection::SaveViewData>,
     /// Active-tab / grouping state for the self save-view panel.
     pub local_save_view: save_view::State,
     /// Active-tab / grouping state for the opponent save-view panel.
@@ -112,7 +112,7 @@ pub struct PaneDrag {
     pub anchor_x: Option<f32>,
 }
 
-// A OpenSave is a whole parsed rom + save; a placeholder keeps the
+// A SaveViewData is a whole parsed rom + save; a placeholder keeps the
 // enclosing app Message (which carries a `Slot<(PvpSession, PvpPanes)>`)
 // derivable, same as PreMatchData.
 impl std::fmt::Debug for PvpPanes {
@@ -282,8 +282,8 @@ pub struct RoundCard {
     pub custom: Vec<(f32, f32)>,
     /// Chip-use events per side (`[you, opponent]`), cooked for the
     /// graph's event lanes. Names/icons are resolved at capture time —
-    /// the session (and both sides' Loadeds) is gone while the card is
-    /// on screen — each side through its own OpenSave, the opponent
+    /// the session (and both sides' loadeds) is gone while the card is
+    /// on screen — each side through its own SaveViewData, the opponent
     /// falling back to the local game's table when they blinded their
     /// setup. Empty on games whose traps don't report chips (bn1).
     pub chip_uses: [Vec<crate::ui::widgets::ChipUseMark>; 2],
@@ -1383,9 +1383,9 @@ pub async fn spawn_pvp(
         remote_rom_raw
     };
 
-    // Build the opponent's OpenSave only if they didn't blind their
+    // Build the opponent's SaveViewData only if they didn't blind their
     // setup — otherwise we don't have visibility into their save.
-    // OpenSave parses chip/navi/navicust assets from the rom + wram,
+    // Loading parses chip/navi/navicust assets from the rom + wram,
     // so the session pane can render them with the same widgets we
     // use for the local side.
     let opponent_loaded = if !pre_match.remote_settings.blind_setup {
@@ -1415,7 +1415,7 @@ pub async fn spawn_pvp(
         None
     };
 
-    // Build the local-side OpenSave so the in-session "my setup"
+    // Build the local-side SaveViewData so the in-session "my setup"
     // toggle can render the same save-view we use for the
     // opponent panel.
     let local_loaded = {
@@ -1608,14 +1608,14 @@ fn spawn_drive_thread(
 }
 
 /// Boot the supplied selection in single-player mode. Caller must
-/// already have a complete (game + rom + save) OpenSave — there's no
+/// already have a complete (game + rom + save) SaveViewData — there's no
 /// fallback for missing pieces, so the Play button is responsible for
 /// gating.
 pub fn spawn_singleplayer(
     scanners: &Scanners,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
-    loaded: &selection::OpenSave,
+    loaded: &selection::SaveViewData,
 ) -> anyhow::Result<(
     singleplayer::SinglePlayerSession,
     Option<audio::Binding>,
@@ -1624,7 +1624,7 @@ pub fn spawn_singleplayer(
 )> {
     let game = game::from_gamedb_entry(loaded.game)
         .ok_or_else(|| anyhow::anyhow!("no game impl for {:?}", loaded.game.family_and_variant()))?;
-    // OpenSave stashes the *parsed* ROM (assets), not the raw bytes —
+    // SaveViewData stashes the *parsed* ROM (assets), not the raw bytes —
     // grab them back from the scanner and re-apply the patch if any so
     // the emulator sees the same image it would in the legacy app.
     let raw = scanners
@@ -1666,12 +1666,12 @@ pub fn spawn_singleplayer(
 /// (both cores run this selection) against a do-nothing dummy controller
 /// ([`training::NoopController`]) wired in as the integration seam. Same
 /// gating contract as [`spawn_singleplayer`]: the caller must already
-/// hold a complete (game + rom + save) OpenSave.
+/// hold a complete (game + rom + save) SaveViewData.
 pub fn spawn_training(
     scanners: &Scanners,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
-    loaded: &selection::OpenSave,
+    loaded: &selection::SaveViewData,
 ) -> anyhow::Result<(
     training::TrainingSession,
     Option<audio::Binding>,
@@ -1679,7 +1679,7 @@ pub fn spawn_training(
 )> {
     let game = game::from_gamedb_entry(loaded.game)
         .ok_or_else(|| anyhow::anyhow!("no game impl for {:?}", loaded.game.family_and_variant()))?;
-    // OpenSave stashes the *parsed* ROM (assets), not the raw bytes —
+    // SaveViewData stashes the *parsed* ROM (assets), not the raw bytes —
     // grab them back from the scanner and re-apply the patch if any so
     // the emulator sees the same image PvP would.
     let raw = scanners
@@ -1705,7 +1705,7 @@ pub fn spawn_training(
     let (session, driver, audio) = training::TrainingSession::new(
         game,
         std::sync::Arc::new(rom_bytes),
-        loaded.save.to_sram_dump(),
+        loaded.ui.sram(loaded),
         std::time::SystemTime::now(),
         rand::random(),
         audio_binder.sample_rate(),

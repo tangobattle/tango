@@ -154,7 +154,7 @@ pub struct App {
 
     /// Owned game+save+assets for the current selection. Rebuilt only
     /// when game or save changes; per-frame view() borrows it.
-    loaded: Option<selection::OpenSave>,
+    loaded: Option<selection::SaveViewData>,
 
     /// The local loadout (family / game / save + patch overlay) —
     /// App-level so the lobby settings-resend sees every change the
@@ -1156,7 +1156,7 @@ impl App {
         // within the family only re-renders the save's content — rise
         // just the panes under the save view's sub-tab strip, leaving
         // the strip itself planted. (Sub-tab switches slide the inner
-        // panes horizontally instead; see save_view::State::apply.)
+        // panes horizontally instead; the save view folds those itself.)
         if family_before != self.loadout.family {
             self.play.animate_family_switch(now);
         } else if selection_before != (self.loadout.game, self.loadout.save.clone()) {
@@ -1392,7 +1392,7 @@ impl App {
                 // save: a single-player session runs off an in-memory
                 // image that `SaveBackup` writes back. When the session
                 // ends, drop it first so that write lands, then re-scan
-                // saves + force a OpenSave rebuild so the play tab's
+                // saves + force a SaveViewData rebuild so the play tab's
                 // save view reflects the fresh on-disk SRAM. Detected
                 // by the active-slot transition (not the Close message)
                 // because Esc closes SP sessions inside the session

@@ -1,7 +1,6 @@
 use crate::app::Scanners;
 use crate::i18n::t;
 use crate::library::replays;
-use crate::save_view::StateExt as _;
 use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::ui::widgets;
 use crate::{config, save_view};
@@ -74,7 +73,7 @@ pub enum Message {
     /// marker so a later re-focus can retry (e.g. after the user
     /// installs the ROM).
     HpStatsLoaded(std::path::PathBuf, Option<tango_match::analysis::MatchStats>),
-    SaveViewAction(save_view::Action),
+    SaveViewAction(save_view::Msg),
     /// Used by Tasks that need a Message to return but want no
     /// state mutation. Currently: the user dismissed the Save As
     /// file dialog without picking a path — the export form should
@@ -146,9 +145,10 @@ pub struct ReplaysState {
     /// else re-masks on its own — revealing one match's chip history
     /// shouldn't make the next replay clicked come up bare.
     pub revealed: Option<std::path::PathBuf>,
-    /// Cached OpenSave for the currently-selected replay's local side.
-    /// Rebuilt by the App's `Selected` handler; view borrows read-only.
-    pub loaded: Option<crate::selection::OpenSave>,
+    /// Cached SaveViewData for the currently-selected replay's local
+    /// side. Rebuilt by the App's `Selected` handler; view borrows
+    /// read-only.
+    pub loaded: Option<crate::selection::SaveViewData>,
     /// Path the cached `loaded` was built for. Used to invalidate the
     /// cache when the selection changes.
     pub loaded_cache_path: Option<std::path::PathBuf>,
@@ -199,7 +199,7 @@ pub struct HpChart {
 impl HpChart {
     fn new(
         stats: &tango_match::analysis::MatchStats,
-        loaded: Option<&crate::selection::OpenSave>,
+        loaded: Option<&crate::selection::SaveViewData>,
         planned: Option<&[u32]>,
     ) -> Self {
         // Both sides' chip ids resolve through the LOCAL side's chip
@@ -253,7 +253,7 @@ pub enum Effect {
         rounds: Vec<bool>,
         clip: Option<crate::replay_render::Clip>,
     },
-    /// Task returned from save_view::State::apply. Generic Task
+    /// Task returned from the save view's `ui.update`. Generic Task
     /// pipe so save_view-internal side effects (currently just
     /// the scroll-to-top snap on tab changes) flow through here
     /// without per-feature Effect variants.
@@ -377,14 +377,16 @@ impl ReplaysState {
             Message::RevealReplay(p) => Some(Effect::RevealPath(p)),
             Message::Watch(p) => Some(Effect::Watch(p)),
             Message::CancelPatchDownload(key) => Some(Effect::CancelPatchDownload(key)),
-            Message::SaveViewAction(action) => {
+            Message::SaveViewAction(msg) => {
                 // Clipboard outcomes need the App's clipboard collaborator
                 // — bubble them up as Effects. Anything else gets folded
                 // into save_view-internal state and surfaces as a generic
                 // SaveViewTask (currently used for the scroll-to-top snap
                 // on a tab change). Edit/Play outcomes can't fire here:
                 // the replay save view renders read-only.
-                let (sv_task, outcome) = self.save_view.apply(&action, self.loaded.as_ref());
+                let data = self.loaded.as_mut()?;
+                let ui = data.ui;
+                let (sv_task, outcome) = ui.update(&mut *self.save_view, Some(data), &*msg);
                 match outcome {
                     Some(save_view::Outcome::CopyText(s)) => Some(Effect::CopyText(s)),
                     Some(save_view::Outcome::CopyImage(img)) => Some(Effect::CopyImage(img)),
@@ -461,7 +463,7 @@ impl ReplaysState {
         if self.loaded_cache_path.as_ref() == Some(&path) {
             return;
         }
-        let res = (|| -> anyhow::Result<(crate::selection::OpenSave, Vec<u32>)> {
+        let res = (|| -> anyhow::Result<(crate::selection::SaveViewData, Vec<u32>)> {
             let f = std::fs::File::open(&path)?;
             let replay = tango_replay::Replay::decode(f)?;
             let round_ticks = replay.round_ranges().map(|r| r.len() as u32).collect();
@@ -1376,7 +1378,10 @@ fn replay_detail<'a>(
     // when a save is loaded; otherwise a single placeholder pane
     // explaining the empty state.
     let preview: Element<'_, Message> = if let Some(loaded) = state.loaded.as_ref() {
-        save_view::view(lang, loaded, &state.save_view, false, None, true, false).map(Message::SaveViewAction)
+        loaded
+            .ui
+            .view(lang, loaded, &*state.save_view, false, None, true, false)
+            .map(Message::SaveViewAction)
     } else {
         container(
             text(t!(lang, "save-empty"))

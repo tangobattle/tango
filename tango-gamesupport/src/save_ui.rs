@@ -1,73 +1,129 @@
-//! The per-game save-editor interface.
+//! The save-editor embedding API — the one thing this crate knows about
+//! the save UI: it can be loaded, held, rendered and updated. Every
+//! actual shape (the view state's internals, the message vocabulary,
+//! the loaded bundle) is private gamesupport knowledge; here they are
+//! opaque marker traits, so the app embeds a save editor while staying
+//! completely game-agnostic, and this crate stays oblivious to how any
+//! of it works.
 //!
-//! Each game's UI crate (in the `gamesupport` submodule) implements
-//! [`SaveUi`] and hands tango a `&'static` instance; the shell in
-//! [`crate::save_view`] dispatches every game-shaped question — which
-//! section tabs exist, how a tab's body renders, what its clipboard
-//! forms are — through it instead of probing the dataview generically.
-//! The shared chrome (tab strip, navi header, edit-session state
-//! machine, Save/Cancel) stays in the shell; game knowledge lives on
-//! the other side of this trait.
+//! The private UI layer implements [`SaveUi`] once (a generic shell
+//! over its per-game interface), so `Game::save_ui` is a real,
+//! renderable trait object — no downcasting anywhere in the dispatch.
 
-use crate::loaded::OpenSave;
-use crate::save_view::{RenderOpts, State, Tab};
-use iced::Element;
 use unic_langid::LanguageIdentifier;
 
-pub use crate::save_view::Action;
+/// A patch applied on top of a ROM, as the save UI needs to know it:
+/// its identity plus the `[rom_overrides]` scanned from its package
+/// (charset + display-name overrides).
+#[derive(Clone)]
+pub struct AppliedPatch {
+    pub name: String,
+    pub version: semver::Version,
+    pub rom_overrides: tango_patch::Overrides,
+}
 
+/// A message minted inside the save-editor view. Implemented (and
+/// consumed) only by the private UI layer; the app routes
+/// `Arc<dyn SaveUiMessage>` through its message enums without looking
+/// inside (the `Arc` keeps it cheaply `Clone`, as iced messages must
+/// be).
+pub trait SaveUiMessage: std::any::Any + std::fmt::Debug + Send + Sync {}
+
+/// Opaque per-embed view state (active tab, edit session, scroll and
+/// animation bookkeeping). One `Box<dyn SaveViewState>` per on-screen
+/// save view; outlives game and save switches. Created by
+/// [`SaveUi::new_state`] — or, before any game is loaded, by the
+/// private layer's game-independent constructor.
+pub trait SaveViewState: std::any::Any + Send + Sync {}
+
+/// The private UI layer's loaded bundle (model + baked art), as held
+/// behind [`SaveViewData::payload`]. Opaque by design; only that layer
+/// implements and reads it.
+pub trait SaveViewPayload: std::any::Any + Send + Sync {}
+
+/// A loaded save, ready to render: the game-agnostic facts the app
+/// needs for launching and committing (game, path, patch), the UI to
+/// drive it with, and the private layer's loaded bundle behind an
+/// opaque payload.
+pub struct SaveViewData {
+    /// The save editor driving this data — render with
+    /// [`SaveUi::view`], mutate with [`SaveUi::update`].
+    pub ui: &'static dyn SaveUi,
+    pub game: crate::GameRef,
+    /// Where a commit writes back to. Empty for saves without a backing
+    /// file (a replay's embedded SRAM).
+    pub save_path: std::path::PathBuf,
+    pub patch: Option<AppliedPatch>,
+    /// The private UI layer's loaded bundle (model + baked art).
+    pub payload: Box<dyn SaveViewPayload>,
+}
+
+/// What the app must act on after an [`SaveUi::update`] — deliberately
+/// app-semantic only (clipboard, launches, disk writes); staged edits
+/// are applied to the data internally and never surface.
+pub enum SaveUiOutcome {
+    /// Copy plain text to the clipboard.
+    CopyText(String),
+    /// Copy a raster image to the clipboard.
+    CopyImage(image::RgbaImage),
+    /// The embedder-defined Play button was pressed.
+    Play,
+    /// The embedder-defined Training button was pressed.
+    Training,
+    /// The edit session committed: write `sram` to the data's
+    /// [`save_path`](SaveViewData::save_path) (the in-memory save is
+    /// already the committed state).
+    Commit { sram: Vec<u8> },
+    /// The edit session was discarded — reload the on-disk original.
+    Cancel,
+}
+
+/// A game's save editor, as [`crate::Game::save_ui`] carries it. The
+/// contract is exactly "load, render, update": everything else about
+/// the editor is the private layer's business.
 pub trait SaveUi: Send + Sync {
-    /// The section tabs this game's save editor offers, in display
-    /// order. The shell prepends [`Tab::Cover`] itself in streamer mode.
-    /// Called per frame — must stay cheap. Capability that genuinely
-    /// varies at runtime (a BN6 link navi has no navicust) is this
-    /// method's to probe; everything else should be declared statically.
-    fn tabs(&self, loaded: &OpenSave) -> Vec<Tab>;
+    /// Bundle a parsed save (+ its already-patched ROM) into renderable
+    /// data. `logo_games` is the cover art order — the loaded game
+    /// first, then family siblings — resolved by the caller against its
+    /// game registry.
+    fn load(
+        &'static self,
+        game: crate::GameRef,
+        patched_rom: Vec<u8>,
+        save_path: std::path::PathBuf,
+        save: crate::BoxedSave,
+        patch: Option<AppliedPatch>,
+        logo_games: &[crate::GameRef],
+    ) -> SaveViewData;
 
-    /// Read-only body for `tab`. May borrow from `loaded` (most
-    /// components return owned `'static` trees, which coerce).
-    fn render<'a>(
+    /// Fresh per-embed view state.
+    fn new_state(&self) -> Box<dyn SaveViewState>;
+
+    /// Render the save view. `play_button`: `None` hides the Play
+    /// button, `Some(enabled)` renders it. `editable` gates the whole
+    /// edit affordance (only the play tab passes true).
+    fn view<'a>(
         &self,
         lang: &'a LanguageIdentifier,
-        tab: Tab,
-        loaded: &'a OpenSave,
-        opts: RenderOpts,
-    ) -> Element<'a, Action>;
+        data: &'a SaveViewData,
+        state: &'a dyn SaveViewState,
+        streamer_mode: bool,
+        play_button: Option<bool>,
+        inline_actions: bool,
+        editable: bool,
+    ) -> iced::Element<'a, std::sync::Arc<dyn SaveUiMessage>>;
 
-    /// Editor body for `tab`. Only called while the global edit session
-    /// is open *and* the tab's section is editable on this save (per
-    /// [`crate::model::Editability`]).
-    fn render_edit<'a>(
+    /// Fold a message into the state (and the data, when given — staged
+    /// edits mutate it in place, including derived art). Returns a
+    /// follow-up task plus whatever the app must act on.
+    fn update(
         &self,
-        lang: &'a LanguageIdentifier,
-        tab: Tab,
-        loaded: &'a OpenSave,
-        state: &'a State,
-    ) -> Element<'a, Action>;
+        state: &mut dyn SaveViewState,
+        data: Option<&mut SaveViewData>,
+        msg: &dyn SaveUiMessage,
+    ) -> (iced::Task<std::sync::Arc<dyn SaveUiMessage>>, Option<SaveUiOutcome>);
 
-    /// Whether `tab`'s section participates in the global edit session
-    /// on this save. The default maps the shared
-    /// [`crate::model::Editability`] capability probe; a game whose
-    /// section lives outside the shared model (BN4's Mod Cards)
-    /// overrides the answer for that tab.
-    fn tab_editable(&self, tab: Tab, loaded: &OpenSave) -> bool {
-        tab.editable_on(&loaded.editability)
-    }
-
-    /// The tab as TSV-ish clipboard text, or `None` for tabs without a
-    /// text form.
-    fn tab_as_text(&self, tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String>;
-
-    /// The tab as a raster image for the clipboard, or `None` for tabs
-    /// without an image form.
-    fn tab_as_image(&self, tab: Tab, loaded: &OpenSave) -> Option<image::RgbaImage> {
-        let _ = (tab, loaded);
-        None
-    }
-
-    /// Whether the edit session may commit right now. Required (no
-    /// default): the Battle Network folder rule lives in the private UI
-    /// layer as `bn_folder_can_save`, which the BN games' impls call;
-    /// BCC's program deck legally has gaps and answers `true`.
-    fn can_save(&self, loaded: &OpenSave) -> bool;
+    /// Serialize the current in-memory save (staged edits included) —
+    /// what a netplay commitment or session launch runs on.
+    fn sram(&self, data: &SaveViewData) -> Vec<u8>;
 }

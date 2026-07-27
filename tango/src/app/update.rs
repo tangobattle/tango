@@ -47,7 +47,7 @@ impl App {
     pub(super) fn update_play(&mut self, msg: tabs::play::Message) -> iced::Task<Message> {
         let Some(effect) = self
             .play
-            .update(msg, &self.scanners, &self.config, self.loaded.as_ref(), &self.loadout)
+            .update(msg, &self.scanners, &self.config, self.loaded.as_mut(), &self.loadout)
         else {
             return iced::Task::none();
         };
@@ -134,7 +134,7 @@ impl App {
                 let Some(loaded) = self.loaded.as_ref() else {
                     return iced::Task::none();
                 };
-                let save_sram = loaded.save.to_sram_dump();
+                let save_sram = loaded.ui.sram(loaded);
                 match self.netplay.commit(save_sram) {
                     Some(netplay::Event::MatchReady) => self.start_pvp_handoff(),
                     None => iced::Task::none(),
@@ -270,55 +270,24 @@ impl App {
                 }
                 iced::Task::none()
             }
-            E::Edit(edit) => {
-                // Stage one edit into the in-memory loaded save. The UI
-                // reads `loaded.save` directly, so the change shows
-                // immediately; nothing is written to disk until Save.
-                if let Some(loaded) = self.loaded.as_mut() {
-                    // The model keeps its own derived caches in step; the
-                    // baked grid image is ours, so re-bake it when the
-                    // edit says it went stale (a navi swap changes which
-                    // navicust — if any — the save even has).
-                    let invalidated = tango_gamesupport_common::model::apply_edit(&mut loaded.model, edit);
-                    if invalidated.navicust_render {
-                        tango_gamesupport_common::loaded::rebuild_navicust_render(loaded);
-                    }
-                }
-                iced::Task::none()
-            }
-            E::SaveEditCommit => {
-                // `Some(sram)` once the edited save is written; the SRAM is
-                // reused below to refresh a live netplay commitment.
-                let saved_sram = if let Some(loaded) = self.loaded.as_mut() {
-                    if loaded.save_path.as_os_str().is_empty() {
-                        None
-                    } else {
-                        // Every staged edit already keeps its view's derived
-                        // caches in sync as it's applied — the anti-cheat
-                        // folder/patch-card mirror (chips, patch cards) and
-                        // the materialized WRAM caches (navicust, auto-battle
-                        // data). So commit only has to recompute the whole-SRAM
-                        // checksum and write once.
-                        loaded.save.rebuild_checksum();
-                        // Refresh the baked Navi-view image from the updated
-                        // save (commit keeps the in-memory OpenSave, so without
-                        // this the read-only grid lags until reselection).
-                        tango_gamesupport_common::loaded::rebuild_navicust_render(loaded);
-                        let sram = loaded.save.to_sram_dump();
-                        let path = loaded.save_path.clone();
-                        match std::fs::write(&path, &sram) {
-                            Ok(()) => {
-                                log::info!("saved edited save: {}", path.display());
-                                Some(sram)
-                            }
-                            Err(e) => {
-                                log::error!("save edited save: {e}");
-                                None
-                            }
+            E::SaveEditCommit { sram } => {
+                // The edit session already staged everything into the
+                // in-memory save, recomputed the checksum, and serialized
+                // it — all that's left app-side is the disk write.
+                // `Some(sram)` once written; the SRAM is reused below to
+                // refresh a live netplay commitment.
+                let saved_sram = match self.loaded.as_ref().map(|l| l.save_path.as_path()) {
+                    Some(path) if !path.as_os_str().is_empty() => match std::fs::write(path, &sram) {
+                        Ok(()) => {
+                            log::info!("saved edited save: {}", path.display());
+                            Some(sram)
                         }
-                    }
-                } else {
-                    None
+                        Err(e) => {
+                            log::error!("save edited save: {e}");
+                            None
+                        }
+                    },
+                    _ => None,
                 };
                 let Some(sram) = saved_sram else {
                     return iced::Task::none();

@@ -14,8 +14,6 @@ mod save_manage;
 
 pub use save_manage::{create_new_save, creation_template, duplicate_save, rename_save, SaveAction};
 
-use crate::save_view::StateExt as _;
-
 use crate::app::Scanners;
 use crate::i18n::t;
 use crate::library::{game, rom};
@@ -36,7 +34,7 @@ pub enum Message {
     /// Loadout strip interaction. Routed by the App to the shared
     /// [`Loadout`] state — never reaches [`State::update`].
     Loadout(loadout::Message),
-    SaveViewAction(save_view::Action),
+    SaveViewAction(save_view::Msg),
 
     LinkCodeChanged(String),
     /// Copy plain text to the clipboard — the lobby's copy-link-code
@@ -107,8 +105,8 @@ pub struct State {
     /// re-hosts the same code.
     pending_generated_code: Option<String>,
     /// Persistent state for the embedded save view (active tab,
-    /// folder grouping). Apply incoming `SaveViewAction`s via
-    /// [`save_view::State::apply`].
+    /// folder grouping). Opaque to the app; incoming `SaveViewAction`s
+    /// fold through the loaded data's `ui.update(..)`.
     save_view: save_view::State,
     /// Inline state for the save-management actions (rename / delete).
     save_action: SaveAction,
@@ -208,17 +206,15 @@ pub enum Effect {
         /// game's template and adopts it as the loadout's game.
         game: rom::GameRef,
     },
-    /// Task returned from save_view::State::apply. Generic pipe
+    /// Task returned from the save view's `ui.update`. Generic pipe
     /// so save_view-internal side effects (e.g. the scroll-to-top
     /// snap on tab change) flow through without per-feature
     /// Effect variants.
     SaveViewTask(iced::Task<Message>),
-    /// Save editor: stage one edit into the loaded save in memory
-    /// (UI updates live; nothing hits disk yet).
-    Edit(tango_gamesupport::model::edit::Edit),
-    /// Global save editor: write every staged edit (folder + navicust +
-    /// patch cards + auto battle data) to the .sav on disk in one shot.
-    SaveEditCommit,
+    /// Global save editor committed: the edit session already staged
+    /// everything into the in-memory save and serialized it — write
+    /// `sram` to the loaded save's path on disk.
+    SaveEditCommit { sram: Vec<u8> },
     /// Global save editor: discard all staged edits, reloading the on-disk
     /// original.
     SaveEditCancel,
@@ -232,7 +228,7 @@ impl State {
         msg: Message,
         scanners: &Scanners,
         config: &config::Config,
-        loaded: Option<&selection::OpenSave>,
+        loaded: Option<&mut selection::SaveViewData>,
         loadout: &Loadout,
     ) -> Option<Effect> {
         let action_before = self.save_action.clone();
@@ -289,8 +285,7 @@ impl State {
     /// under the save view's sub-tab strip rise, leaving the strip
     /// planted.
     pub fn animate_save_switch(&mut self, now: iced::time::Instant) {
-        self.save_view.enter_from = iced::Vector::new(0.0, 20.0);
-        self.save_view.enter.start(now);
+        self.save_view.animate_save_switch(now);
     }
 
     fn update_inner(
@@ -298,7 +293,7 @@ impl State {
         msg: Message,
         scanners: &Scanners,
         config: &config::Config,
-        loaded: Option<&selection::OpenSave>,
+        loaded: Option<&mut selection::SaveViewData>,
         loadout: &Loadout,
     ) -> Option<Effect> {
         match msg {
@@ -368,19 +363,21 @@ impl State {
             Message::SetBlindSetup(v) => Some(Effect::SetBlindSetup(v)),
             Message::Ready => Some(Effect::ReadyWithSave),
             Message::Unready => Some(Effect::Unready),
-            Message::SaveViewAction(action) => {
-                // `apply` folds the action into save-view state and hands
-                // back what's left for the App: staged edits, clipboard
-                // copies, launches. Everything else flows through as a
-                // generic save-view-internal task.
-                let (sv_task, outcome) = self.save_view.apply(&action, loaded);
+            Message::SaveViewAction(msg) => {
+                // `ui.update` folds the message into save-view state —
+                // staging edits straight into the loaded data — and
+                // hands back what's left for the App: clipboard copies,
+                // launches, the committed SRAM. Everything else flows
+                // through as a generic save-view-internal task.
+                let data = loaded?;
+                let ui = data.ui;
+                let (sv_task, outcome) = ui.update(&mut *self.save_view, Some(data), &*msg);
                 match outcome {
-                    Some(save_view::Outcome::Edit(edit)) => Some(Effect::Edit(edit)),
                     Some(save_view::Outcome::CopyText(s)) => Some(Effect::CopyText(s)),
                     Some(save_view::Outcome::CopyImage(img)) => Some(Effect::CopyImage(img)),
                     Some(save_view::Outcome::Play) => Some(Effect::StartSinglePlayer),
                     Some(save_view::Outcome::Training) => Some(Effect::StartTraining),
-                    Some(save_view::Outcome::Commit) => Some(Effect::SaveEditCommit),
+                    Some(save_view::Outcome::Commit { sram }) => Some(Effect::SaveEditCommit { sram }),
                     Some(save_view::Outcome::Cancel) => Some(Effect::SaveEditCancel),
                     None => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
                 }
@@ -439,7 +436,7 @@ impl State {
         lang: &'a LanguageIdentifier,
         scanners: &'a Scanners,
         loadout: &'a Loadout,
-        loaded: Option<&'a selection::OpenSave>,
+        loaded: Option<&'a selection::SaveViewData>,
         streamer_mode: bool,
         config: &'a config::Config,
         downloads: &'a crate::library::patch::Downloads,
@@ -561,7 +558,7 @@ impl State {
         lang: &'a LanguageIdentifier,
         scanners: &'a Scanners,
         loadout: &'a Loadout,
-        loaded: Option<&'a selection::OpenSave>,
+        loaded: Option<&'a selection::SaveViewData>,
         streamer_mode: bool,
         config: &'a config::Config,
         scanning: bool,
@@ -643,7 +640,7 @@ impl State {
     fn save_view<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
-        loaded: Option<&'a selection::OpenSave>,
+        loaded: Option<&'a selection::SaveViewData>,
         streamer_mode: bool,
         netplay_phase: &'a crate::netplay::Phase,
         patch_ready: bool,
@@ -659,17 +656,19 @@ impl State {
         // and while the selected patch is still downloading, since the
         // session would otherwise boot the game unpatched.
         let play_button = Some(matches!(netplay_phase, crate::netplay::Phase::Idle) && patch_ready);
-        save_view::view(
-            lang,
-            loaded,
-            &self.save_view,
-            streamer_mode,
-            play_button,
-            true,
-            // The save editor is always available (no longer experimental).
-            true,
-        )
-        .map(Message::SaveViewAction)
+        loaded
+            .ui
+            .view(
+                lang,
+                loaded,
+                &*self.save_view,
+                streamer_mode,
+                play_button,
+                true,
+                // The save editor is always available (no longer experimental).
+                true,
+            )
+            .map(Message::SaveViewAction)
     }
 
     /// The idle bottom band: link-code input + Fight CTA. The lobby

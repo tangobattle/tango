@@ -86,25 +86,14 @@ pub type BoxedSave = Box<dyn tango_dataview::save::Save + Send + Sync>;
 /// Boxed ROM assets trait object the parsers hand back.
 pub type BoxedAssets = Box<dyn tango_dataview::rom::Assets + Send + Sync>;
 
-// The minimum typed surface for [`Game::save_ui`], feature-gated so the
-// base crate stays a pure detection/registry surface: the `SaveUi`
-// trait, the game-neutral save model + staged edits, `OpenSave`'s shape
-// (its baking is view code, in the private tango-gamesupport-common),
-// and the save-view *state* layer (tabs, `State`, `Action`, `Outcome`).
-// Everything that draws lives in tango-gamesupport-common; the anim /
-// copy-feedback re-exports below are what the state layer itself
-// touches.
-#[cfg(feature = "ui")]
-pub use tango_ui::{anim, copy_feedback};
-
-#[cfg(feature = "ui")]
-pub mod loaded;
-#[cfg(feature = "ui")]
-pub mod model;
+// The save-editor embedding API, feature-gated so the base crate stays
+// a pure detection/registry surface. Deliberately shape-oblivious: the
+// trait speaks opaque envelopes; the private gamesupport UI layer
+// implements it.
 #[cfg(feature = "ui")]
 pub mod save_ui;
 #[cfg(feature = "ui")]
-pub mod save_view;
+pub use save_ui::{AppliedPatch, SaveUi, SaveUiMessage, SaveUiOutcome, SaveViewData, SaveViewPayload, SaveViewState};
 
 /// One ROM revision Tango supports, with all of its per-game info.
 ///
@@ -143,9 +132,10 @@ pub struct Game {
     /// Pointer to the BNLC-hosted background TGA.
     pub background: BackgroundRef,
 
-    /// The game's save-editor UI. Exists only when this crate's `ui`
-    /// feature is on — headless builds (the pvp probes, engine hosts)
-    /// have no field and never link a UI toolkit. A game crate built
+    /// The game's save editor — a real, renderable [`save_ui::SaveUi`]
+    /// (load / render / update; every shape behind it is opaque). Exists
+    /// only when this crate's `ui` feature is on — headless builds (the
+    /// pvp probes, engine hosts) have no field. A game crate built
     /// alongside a `ui` consumer must have its own `ui` feature on to
     /// initialize it (tango's `gamesupport-*` features pair the two);
     /// mixing them is a missing-field error here, on purpose.

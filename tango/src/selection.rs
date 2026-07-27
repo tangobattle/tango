@@ -1,16 +1,13 @@
-//! App-side constructors for [`OpenSave`].
-//!
-//! The type itself — the loaded save's model plus the baked art the
-//! save view draws from — lives in `tango_gamesupport::loaded`;
-//! everything that needs app collaborators stays here: applying the
-//! selected patch (the scanner types and storage root are the app's)
-//! and resolving the Cover tab's logo order from the game registry.
-//! The save-editor UI comes straight off `Game::save_ui`.
+//! App-side constructors for [`SaveViewData`] — a loaded save bundled
+//! with the UI that renders it, produced through `Game::save_ui`'s
+//! opaque embedding API. Everything that needs app collaborators stays
+//! here: applying the selected patch (the scanner types and storage
+//! root are the app's) and resolving the Cover tab's logo order from
+//! the game registry.
 
 use std::sync::Arc;
 
-pub use tango_gamesupport::loaded::OpenSave;
-pub use tango_gamesupport::model::AppliedPatch;
+pub use tango_gamesupport::{AppliedPatch, SaveViewData};
 
 /// The Cover tab's logo order: the loaded variant first, then its
 /// family siblings (the other color version, where one exists) so
@@ -36,7 +33,7 @@ pub fn build(
     save: Box<dyn tango_dataview::save::Save + Send + Sync>,
     patches_path: &std::path::Path,
     patch: Option<(String, semver::Version, Arc<crate::library::patch::Version>)>,
-) -> OpenSave {
+) -> SaveViewData {
     let (rom, applied_patch) = match patch {
         Some((name, version, meta)) => {
             match crate::library::patch::apply_patch(
@@ -80,12 +77,12 @@ pub fn from_patched_rom(
     save_path: std::path::PathBuf,
     save: Box<dyn tango_dataview::save::Save + Send + Sync>,
     applied_patch: Option<AppliedPatch>,
-) -> OpenSave {
-    let model = tango_gamesupport_common::model::from_patched_rom(game, rom, save_path, save, applied_patch);
-    tango_gamesupport_common::loaded::from_model(model, game.save_ui, &logo_games(game))
+) -> SaveViewData {
+    game.save_ui
+        .load(game, rom, save_path.clone(), save, applied_patch, &logo_games(game))
 }
 
-/// Build an [`OpenSave`] for the local side of a replay — used by the
+/// Build a [`SaveViewData`] for the local side of a replay — used by the
 /// replays tab to embed the save view in its detail panel. Pulls
 /// the local rom + patch from the scanners cache; returns Err
 /// if anything's missing.
@@ -93,7 +90,7 @@ pub fn for_replay_local(
     scanners: &crate::app::Scanners,
     config: &crate::config::Config,
     replay: &tango_replay::Replay,
-) -> anyhow::Result<OpenSave> {
+) -> anyhow::Result<SaveViewData> {
     let side = replay
         .local_side()
         .ok_or_else(|| anyhow::anyhow!("replay missing local side metadata"))?;

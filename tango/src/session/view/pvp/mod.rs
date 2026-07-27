@@ -4,7 +4,6 @@
 //! their [`update`] handler.
 
 use super::*;
-use crate::save_view::StateExt as _;
 use crate::session::pvp::PvpSession;
 use crate::session::Message as SessionMessage;
 // Explicit so these win over iced's prelude `column!`/`row!` macros (see mod.rs).
@@ -39,10 +38,10 @@ pub enum Message {
     ToggleSelfPanel,
     /// User interacted with the opponent's save-view (tab swap,
     /// folder-group toggle, hover, …).
-    OpponentSaveView(save_view::Action),
+    OpponentSaveView(save_view::Msg),
     /// Mirror of [`OpponentSaveView`](Self::OpponentSaveView) for the
     /// local panel.
-    SelfSaveView(save_view::Action),
+    SelfSaveView(save_view::Msg),
     /// A setup drawer's inner edge was grabbed to resize it. Carries
     /// the side (0 = self, 1 = opponent) and that drawer's width at
     /// the grab, which the drag then works in deltas off.
@@ -84,14 +83,23 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
         Message::ToggleSelfPanel => {
             state.self_panel.toggle();
         }
-        Message::OpponentSaveView(action) => {
+        Message::OpponentSaveView(msg) => {
+            // View-local folds only (`data: None` — tab swaps, hovers):
+            // the in-match drawers render read-only, so no data
+            // mutation can occur and the loaded side stays untouched.
             if let Some(panes) = state.pvp_panes.as_mut() {
-                return panes.opponent_save_view.fold(&action).map(Message::OpponentSaveView);
+                if let Some(data) = panes.opponent_loaded.as_ref() {
+                    let (task, _) = data.ui.update(&mut *panes.opponent_save_view, None, &*msg);
+                    return task.map(Message::OpponentSaveView);
+                }
             }
         }
-        Message::SelfSaveView(action) => {
+        Message::SelfSaveView(msg) => {
             if let Some(panes) = state.pvp_panes.as_mut() {
-                return panes.local_save_view.fold(&action).map(Message::SelfSaveView);
+                if let Some(data) = panes.local_loaded.as_ref() {
+                    let (task, _) = data.ui.update(&mut *panes.local_save_view, None, &*msg);
+                    return task.map(Message::SelfSaveView);
+                }
             }
         }
         Message::StartPaneResize(side, width) => {
@@ -310,7 +318,10 @@ fn setup_drawers_overlay<'a>(lang: &'a LanguageIdentifier, state: &'a State) -> 
         .as_ref()
         .filter(|_| state.self_panel.shown() || state.self_panel.is_animating(now))
     {
-        let panel = save_view::view(lang, me, &s.local_save_view, true, None, false, false).map(Message::SelfSaveView);
+        let panel = me
+            .ui
+            .view(lang, me, &*s.local_save_view, true, None, false, false)
+            .map(Message::SelfSaveView);
         let pane = setup_pane(panel, 0, state.self_panel.progress(now));
         panes.push(
             container(pane)
@@ -325,7 +336,9 @@ fn setup_drawers_overlay<'a>(lang: &'a LanguageIdentifier, state: &'a State) -> 
         .as_ref()
         .filter(|_| state.opponent_panel.shown() || state.opponent_panel.is_animating(now))
     {
-        let panel = save_view::view(lang, opponent, &s.opponent_save_view, true, None, false, false)
+        let panel = opponent
+            .ui
+            .view(lang, opponent, &*s.opponent_save_view, true, None, false, false)
             .map(Message::OpponentSaveView);
         let pane = setup_pane(panel, 1, state.opponent_panel.progress(now));
         panes.push(
