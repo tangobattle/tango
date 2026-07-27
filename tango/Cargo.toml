@@ -59,7 +59,6 @@ tango-library = { path = "../tango-library" }
 tango-match = { path = "../tango-match" }
 tango-replay = { path = "../tango-replay" }
 tango-replay-renderer = { path = "../tango-replay-renderer" }
-tango-savemodel = { path = "../tango-savemodel" }
 tango-session = { path = "../tango-session" }
 datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }
 bincode = "1"
@@ -105,14 +104,14 @@ unic-langid = { version = "0.9", features = ["likelysubtags"] }
 tango-gamesupport = { path = "../tango-gamesupport" }
 tango-gamesupport-common = { path = "../gamesupport/tango-gamesupport-common" }
 tango-ui = { path = "../tango-ui" }
-tango-gamesupport-bcc-ui = { path = "../gamesupport/tango-gamesupport-bcc-ui", optional = true }
-tango-gamesupport-bn1-ui = { path = "../gamesupport/tango-gamesupport-bn1-ui", optional = true }
-tango-gamesupport-bn2-ui = { path = "../gamesupport/tango-gamesupport-bn2-ui", optional = true }
-tango-gamesupport-bn3-ui = { path = "../gamesupport/tango-gamesupport-bn3-ui", optional = true }
-tango-gamesupport-bn4-ui = { path = "../gamesupport/tango-gamesupport-bn4-ui", optional = true }
-tango-gamesupport-bn5-ui = { path = "../gamesupport/tango-gamesupport-bn5-ui", optional = true }
-tango-gamesupport-bn6-ui = { path = "../gamesupport/tango-gamesupport-bn6-ui", optional = true }
-tango-gamesupport-exe45-ui = { path = "../gamesupport/tango-gamesupport-exe45-ui", optional = true }
+tango-gamesupport-bcc = { path = "../gamesupport/tango-gamesupport-bcc", optional = true }
+tango-gamesupport-bn1 = { path = "../gamesupport/tango-gamesupport-bn1", optional = true }
+tango-gamesupport-bn2 = { path = "../gamesupport/tango-gamesupport-bn2", optional = true }
+tango-gamesupport-bn3 = { path = "../gamesupport/tango-gamesupport-bn3", optional = true }
+tango-gamesupport-bn4 = { path = "../gamesupport/tango-gamesupport-bn4", optional = true }
+tango-gamesupport-bn5 = { path = "../gamesupport/tango-gamesupport-bn5", optional = true }
+tango-gamesupport-bn6 = { path = "../gamesupport/tango-gamesupport-bn6", optional = true }
+tango-gamesupport-exe45 = { path = "../gamesupport/tango-gamesupport-exe45", optional = true }
 tango-dataview = { path = "../tango-dataview" }
 # Named directly only for `Container` and `Settings`, which the export
 # dialog builds; the rendering itself is tango-replay-renderer's.
@@ -158,14 +157,14 @@ tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = [
 # `gamesupport-all` enables every game. Shipped builds pass
 # `--features gamesupport-all`.
 default = []
-gamesupport-bcc = ["dep:tango-gamesupport-bcc-ui", "tango-library/gamesupport-bcc"]
-gamesupport-bn1 = ["dep:tango-gamesupport-bn1-ui", "tango-library/gamesupport-bn1"]
-gamesupport-bn2 = ["dep:tango-gamesupport-bn2-ui", "tango-library/gamesupport-bn2"]
-gamesupport-bn3 = ["dep:tango-gamesupport-bn3-ui", "tango-library/gamesupport-bn3"]
-gamesupport-bn4 = ["dep:tango-gamesupport-bn4-ui", "tango-library/gamesupport-bn4"]
-gamesupport-bn5 = ["dep:tango-gamesupport-bn5-ui", "tango-library/gamesupport-bn5"]
-gamesupport-bn6 = ["dep:tango-gamesupport-bn6-ui", "tango-library/gamesupport-bn6"]
-gamesupport-exe45 = ["dep:tango-gamesupport-exe45-ui", "tango-library/gamesupport-exe45"]
+gamesupport-bcc = ["dep:tango-gamesupport-bcc", "tango-gamesupport-bcc/ui", "tango-library/gamesupport-bcc"]
+gamesupport-bn1 = ["dep:tango-gamesupport-bn1", "tango-gamesupport-bn1/ui", "tango-library/gamesupport-bn1"]
+gamesupport-bn2 = ["dep:tango-gamesupport-bn2", "tango-gamesupport-bn2/ui", "tango-library/gamesupport-bn2"]
+gamesupport-bn3 = ["dep:tango-gamesupport-bn3", "tango-gamesupport-bn3/ui", "tango-library/gamesupport-bn3"]
+gamesupport-bn4 = ["dep:tango-gamesupport-bn4", "tango-gamesupport-bn4/ui", "tango-library/gamesupport-bn4"]
+gamesupport-bn5 = ["dep:tango-gamesupport-bn5", "tango-gamesupport-bn5/ui", "tango-library/gamesupport-bn5"]
+gamesupport-bn6 = ["dep:tango-gamesupport-bn6", "tango-gamesupport-bn6/ui", "tango-library/gamesupport-bn6"]
+gamesupport-exe45 = ["dep:tango-gamesupport-exe45", "tango-gamesupport-exe45/ui", "tango-library/gamesupport-exe45"]
 gamesupport-all = [
     "gamesupport-bcc",
     "gamesupport-bn1",

@@ -7545,15 +7545,15 @@ dependencies = [
  "sweeten",
  "tango-dataview",
  "tango-gamesupport",
- "tango-gamesupport-bcc-ui",
- "tango-gamesupport-bn1-ui",
- "tango-gamesupport-bn2-ui",
- "tango-gamesupport-bn3-ui",
- "tango-gamesupport-bn4-ui",
- "tango-gamesupport-bn5-ui",
- "tango-gamesupport-bn6-ui",
+ "tango-gamesupport-bcc",
+ "tango-gamesupport-bn1",
+ "tango-gamesupport-bn2",
+ "tango-gamesupport-bn3",
+ "tango-gamesupport-bn4",
+ "tango-gamesupport-bn5",
+ "tango-gamesupport-bn6",
  "tango-gamesupport-common",
- "tango-gamesupport-exe45-ui",
+ "tango-gamesupport-exe45",
  "tango-library",
  "tango-match",
  "tango-net-protocol",
@@ -7561,7 +7561,6 @@ dependencies = [
  "tango-patch",
  "tango-replay",
  "tango-replay-renderer",
- "tango-savemodel",
  "tango-session",
  "tango-ui",
  "thiserror 1.0.69",
@@ -7611,24 +7610,15 @@ version = "0.1.0"
 dependencies = [
  "byteorder",
  "env_logger",
+ "iced",
  "image",
+ "lucide-icons",
  "mgba",
  "mgba-rollback",
  "tango-dataview",
  "tango-gamesupport",
- "tango-match",
-]
-
-[[package]]
-name = "tango-gamesupport-bcc-ui"
-version = "0.1.0"
-dependencies = [
- "iced",
- "lucide-icons",
- "tango-dataview",
- "tango-gamesupport-bcc",
  "tango-gamesupport-common",
- "tango-savemodel",
+ "tango-match",
  "unic-langid",
 ]
 
@@ -7639,6 +7629,7 @@ dependencies = [
  "bytemuck",
  "byteorder",
  "env_logger",
+ "iced",
  "image",
  "mgba",
  "mgba-rollback",
@@ -7646,15 +7637,8 @@ dependencies = [
  "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
- "tango-match",
-]
-
-[[package]]
-name = "tango-gamesupport-bn1-ui"
-version = "0.1.0"
-dependencies = [
- "iced",
  "tango-gamesupport-common",
+ "tango-match",
  "unic-langid",
 ]
 
@@ -7666,6 +7650,7 @@ dependencies = [
  "byteorder",
  "c2rust-bitfields",
  "env_logger",
+ "iced",
  "image",
  "mgba",
  "mgba-rollback",
@@ -7673,15 +7658,8 @@ dependencies = [
  "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
- "tango-match",
-]
-
-[[package]]
-name = "tango-gamesupport-bn2-ui"
-version = "0.1.0"
-dependencies = [
- "iced",
  "tango-gamesupport-common",
+ "tango-match",
  "unic-langid",
 ]
 
@@ -7694,6 +7672,7 @@ dependencies = [
  "byteorder",
  "c2rust-bitfields",
  "env_logger",
+ "iced",
  "image",
  "mgba",
  "mgba-rollback",
@@ -7702,16 +7681,8 @@ dependencies = [
  "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
- "tango-match",
-]
-
-[[package]]
-name = "tango-gamesupport-bn3-ui"
-version = "0.1.0"
-dependencies = [
- "iced",
- "image",
  "tango-gamesupport-common",
+ "tango-match",
  "unic-langid",
 ]
 
@@ -7722,28 +7693,18 @@ dependencies = [
  "bytemuck",
  "c2rust-bitfields",
  "env_logger",
+ "iced",
  "image",
  "mgba",
  "mgba-rollback",
  "ndarray",
  "num-traits",
  "rand 0.8.5",
- "tango-dataview",
- "tango-gamesupport",
- "tango-match",
-]
-
-[[package]]
-name = "tango-gamesupport-bn4-ui"
-version = "0.1.0"
-dependencies = [
- "iced",
- "image",
  "sweeten",
  "tango-dataview",
- "tango-gamesupport-bn4",
+ "tango-gamesupport",
  "tango-gamesupport-common",
- "tango-savemodel",
+ "tango-match",
  "unic-langid",
 ]
 
@@ -7755,6 +7716,7 @@ dependencies = [
  "bytemuck",
  "c2rust-bitfields",
  "env_logger",
+ "iced",
  "image",
  "mgba",
  "mgba-rollback",
@@ -7763,16 +7725,8 @@ dependencies = [
  "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
- "tango-match",
-]
-
-[[package]]
-name = "tango-gamesupport-bn5-ui"
-version = "0.1.0"
-dependencies = [
- "iced",
- "image",
  "tango-gamesupport-common",
+ "tango-match",
  "unic-langid",
 ]
 
@@ -7784,6 +7738,7 @@ dependencies = [
  "bytemuck",
  "c2rust-bitfields",
  "env_logger",
+ "iced",
  "image",
  "mgba",
  "mgba-rollback",
@@ -7792,16 +7747,8 @@ dependencies = [
  "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
- "tango-match",
-]
-
-[[package]]
-name = "tango-gamesupport-bn6-ui"
-version = "0.1.0"
-dependencies = [
- "iced",
- "image",
  "tango-gamesupport-common",
+ "tango-match",
  "unic-langid",
 ]
 
@@ -7818,11 +7765,12 @@ dependencies = [
  "itertools 0.13.0",
  "log",
  "lucide-icons",
+ "semver",
  "sweeten",
  "tango-dataview",
- "tango-library",
+ "tango-gamesupport",
  "tango-match",
- "tango-savemodel",
+ "tango-patch",
  "tango-ui",
  "tiny-skia",
  "unic-langid",
@@ -7835,6 +7783,7 @@ dependencies = [
  "bytemuck",
  "c2rust-bitfields",
  "env_logger",
+ "iced",
  "image",
  "mgba",
  "mgba-rollback",
@@ -7842,15 +7791,8 @@ dependencies = [
  "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
- "tango-match",
-]
-
-[[package]]
-name = "tango-gamesupport-exe45-ui"
-version = "0.1.0"
-dependencies = [
- "iced",
  "tango-gamesupport-common",
+ "tango-match",
  "unic-langid",
 ]
 
@@ -8010,19 +7952,6 @@ dependencies = [
  "tango-match",
  "tango-replay",
  "thiserror 1.0.69",
-]
-
-[[package]]
-name = "tango-savemodel"
-version = "0.1.0"
-dependencies = [
- "image",
- "log",
- "semver",
- "tango-dataview",
- "tango-gamesupport",
- "tango-library",
- "tango-patch",
 ]
 
 [[package]]

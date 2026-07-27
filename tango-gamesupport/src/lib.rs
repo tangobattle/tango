@@ -122,6 +122,15 @@ pub struct Game {
     pub logo_image: &'static LazyImage,
     /// Pointer to the BNLC-hosted background TGA.
     pub background: BackgroundRef,
+
+    /// The game's save-editor UI, when its crate was built with its `ui`
+    /// feature; `None` in headless builds (the pvp probes and engine
+    /// hosts never link a UI toolkit). Type-erased because the concrete
+    /// registration type lives in `tango-gamesupport-common`, which sits
+    /// *above* this crate (its model types reach back to [`Game`]) — so
+    /// it can't be named here without a cycle. Resolve it through
+    /// `tango_gamesupport_common::save_ui::save_ui_of`, never by hand.
+    pub save_ui: Option<&'static (dyn std::any::Any + Send + Sync)>,
 }
 
 impl Game {

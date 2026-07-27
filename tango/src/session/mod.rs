@@ -1397,11 +1397,11 @@ pub async fn spawn_pvp(
         // hand both straight to `from_patched_rom` — no second BPS apply.
         let applied_patch = remote_gi.patch.as_ref().and_then(|p| {
             let patches = scanners.patches.read();
-            let version_meta = patches.version(&p.name, &p.version).cloned()?;
+            let version_meta = patches.version(&p.name, &p.version)?;
             Some(crate::selection::AppliedPatch {
                 name: p.name.clone(),
                 version: p.version.clone(),
-                version_meta,
+                rom_overrides: version_meta.rom_overrides.clone(),
             })
         });
         Some(crate::selection::from_patched_rom(
@@ -1427,11 +1427,11 @@ pub async fn spawn_pvp(
         // instead of re-applying the BPS patch.
         let applied_patch = local_patch.as_ref().and_then(|(name, version)| {
             let patches = scanners.patches.read();
-            let version_meta = patches.version(name, version).cloned()?;
+            let version_meta = patches.version(name, version)?;
             Some(crate::selection::AppliedPatch {
                 name: name.clone(),
                 version: version.clone(),
-                version_meta,
+                rom_overrides: version_meta.rom_overrides.clone(),
             })
         });
         Some(crate::selection::from_patched_rom(

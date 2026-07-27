@@ -14,7 +14,6 @@ members = [
     "tango-netplay",
     "tango-replay",
     "tango-replay-renderer",
-    "tango-savemodel",
     "tango-session",
     "tango-ui",
 ]
@@ -35,7 +34,6 @@ default-members = [
     "tango-netplay",
     "tango-replay",
     "tango-replay-renderer",
-    "tango-savemodel",
     "tango-session",
     "tango-ui",
 ]
