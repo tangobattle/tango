@@ -7552,7 +7552,6 @@ dependencies = [
  "tango-gamesupport-bn4",
  "tango-gamesupport-bn5",
  "tango-gamesupport-bn6",
- "tango-gamesupport-common",
  "tango-gamesupport-exe45",
  "tango-library",
  "tango-match",
@@ -7598,10 +7597,24 @@ name = "tango-gamesupport"
 version = "0.1.0"
 dependencies = [
  "crc32fast",
+ "fluent-templates",
+ "iced",
+ "iced_graphics",
+ "iced_tiny_skia",
  "image",
+ "indexmap",
+ "itertools 0.13.0",
+ "log",
+ "lucide-icons",
+ "semver",
+ "sweeten",
  "tango-dataview",
  "tango-match",
+ "tango-patch",
+ "tango-ui",
  "thiserror 1.0.69",
+ "tiny-skia",
+ "unic-langid",
 ]
 
 [[package]]
@@ -7617,7 +7630,6 @@ dependencies = [
  "mgba-rollback",
  "tango-dataview",
  "tango-gamesupport",
- "tango-gamesupport-common",
  "tango-match",
  "unic-langid",
 ]
@@ -7637,7 +7649,6 @@ dependencies = [
  "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
- "tango-gamesupport-common",
  "tango-match",
  "unic-langid",
 ]
@@ -7658,7 +7669,6 @@ dependencies = [
  "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
- "tango-gamesupport-common",
  "tango-match",
  "unic-langid",
 ]
@@ -7681,7 +7691,6 @@ dependencies = [
  "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
- "tango-gamesupport-common",
  "tango-match",
  "unic-langid",
 ]
@@ -7703,7 +7712,6 @@ dependencies = [
  "sweeten",
  "tango-dataview",
  "tango-gamesupport",
- "tango-gamesupport-common",
  "tango-match",
  "unic-langid",
 ]
@@ -7725,7 +7733,6 @@ dependencies = [
  "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
- "tango-gamesupport-common",
  "tango-match",
  "unic-langid",
 ]
@@ -7747,32 +7754,7 @@ dependencies = [
  "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
- "tango-gamesupport-common",
  "tango-match",
- "unic-langid",
-]
-
-[[package]]
-name = "tango-gamesupport-common"
-version = "0.1.0"
-dependencies = [
- "fluent-templates",
- "iced",
- "iced_graphics",
- "iced_tiny_skia",
- "image",
- "indexmap",
- "itertools 0.13.0",
- "log",
- "lucide-icons",
- "semver",
- "sweeten",
- "tango-dataview",
- "tango-gamesupport",
- "tango-match",
- "tango-patch",
- "tango-ui",
- "tiny-skia",
  "unic-langid",
 ]
 
@@ -7791,7 +7773,6 @@ dependencies = [
  "rand 0.8.5",
  "tango-dataview",
  "tango-gamesupport",
- "tango-gamesupport-common",
  "tango-match",
  "unic-langid",
 ]

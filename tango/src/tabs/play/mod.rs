@@ -213,7 +213,7 @@ pub enum Effect {
     SaveViewTask(iced::Task<Message>),
     /// Save editor: stage one edit into the loaded save in memory
     /// (UI updates live; nothing hits disk yet).
-    Edit(tango_gamesupport_common::model::edit::Edit),
+    Edit(tango_gamesupport::model::edit::Edit),
     /// Global save editor: write every staged edit (folder + navicust +
     /// patch cards + auto battle data) to the .sav on disk in one shot.
     SaveEditCommit,

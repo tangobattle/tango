@@ -101,8 +101,7 @@ tokio-util = { workspace = true, features = ["io", "rt"] }
 futures.workspace = true
 fluent-templates = "0.14"
 unic-langid = { version = "0.9", features = ["likelysubtags"] }
-tango-gamesupport = { path = "../tango-gamesupport" }
-tango-gamesupport-common = { path = "../gamesupport/tango-gamesupport-common" }
+tango-gamesupport = { path = "../tango-gamesupport", features = ["ui"] }
 tango-ui = { path = "../tango-ui" }
 tango-gamesupport-bcc = { path = "../gamesupport/tango-gamesupport-bcc", optional = true }
 tango-gamesupport-bn1 = { path = "../gamesupport/tango-gamesupport-bn1", optional = true }

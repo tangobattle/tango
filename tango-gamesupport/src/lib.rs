@@ -86,6 +86,30 @@ pub type BoxedSave = Box<dyn tango_dataview::save::Save + Send + Sync>;
 /// Boxed ROM assets trait object the parsers hand back.
 pub type BoxedAssets = Box<dyn tango_dataview::rom::Assets + Send + Sync>;
 
+// The save-editor UI layer, feature-gated so the base crate stays a
+// pure detection/registry surface: the shared save-view components the
+// per-game `ui` modules compose, the `SaveUi` trait they implement (and
+// [`Game::save_ui`] carries), the save model + staged edits, `OpenSave`
+// (the baked-art bundle), the match-analysis widgets, and the
+// save-editor fluent bundle. Everything draws with the game-agnostic
+// `tango-ui` toolkit, re-exported here so module paths inside (and the
+// per-game crates) read `crate::widgets` / `crate::style` / etc.
+#[cfg(feature = "ui")]
+pub use tango_ui::{anim, copy_feedback, style, theme, widgets};
+
+#[cfg(feature = "ui")]
+pub mod i18n;
+#[cfg(feature = "ui")]
+pub mod loaded;
+#[cfg(feature = "ui")]
+pub mod matchup;
+#[cfg(feature = "ui")]
+pub mod model;
+#[cfg(feature = "ui")]
+pub mod save_ui;
+#[cfg(feature = "ui")]
+pub mod save_view;
+
 /// One ROM revision Tango supports, with all of its per-game info.
 ///
 /// Built as a `&'static` in the owning `tango-gamesupport-<game>` crate.
@@ -123,14 +147,14 @@ pub struct Game {
     /// Pointer to the BNLC-hosted background TGA.
     pub background: BackgroundRef,
 
-    /// The game's save-editor UI, when its crate was built with its `ui`
-    /// feature; `None` in headless builds (the pvp probes and engine
-    /// hosts never link a UI toolkit). Type-erased because the concrete
-    /// registration type lives in `tango-gamesupport-common`, which sits
-    /// *above* this crate (its model types reach back to [`Game`]) — so
-    /// it can't be named here without a cycle. Resolve it through
-    /// `tango_gamesupport_common::save_ui::save_ui_of`, never by hand.
-    pub save_ui: Option<&'static (dyn std::any::Any + Send + Sync)>,
+    /// The game's save-editor UI. Exists only when this crate's `ui`
+    /// feature is on — headless builds (the pvp probes, engine hosts)
+    /// have no field and never link a UI toolkit. A game crate built
+    /// alongside a `ui` consumer must have its own `ui` feature on to
+    /// initialize it (tango's `gamesupport-*` features pair the two);
+    /// mixing them is a missing-field error here, on purpose.
+    #[cfg(feature = "ui")]
+    pub save_ui: &'static dyn save_ui::SaveUi,
 }
 
 impl Game {

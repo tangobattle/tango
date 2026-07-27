@@ -16,10 +16,10 @@ mod netplay;
 mod loadout;
 mod selection;
 
-// Screens. The save view itself lives in the private
-// `tango-gamesupport-common` crate (the per-game UI crates compose its
-// components); what stays here is the per-family `SaveUi` registry in
-// `save_view`'s module file.
+// Screens. The save view itself lives in `tango-gamesupport`'s
+// feature-gated `ui` layer (each game's editor is a feature-gated
+// module in its own crate, carried on `Game::save_ui`); `save_view`
+// here is just the path shim.
 mod save_view;
 mod session;
 mod tabs;

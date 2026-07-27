@@ -1,23 +1,16 @@
 //! App-side constructors for [`OpenSave`].
 //!
 //! The type itself — the loaded save's model plus the baked art the
-//! save view draws from — lives in `tango_gamesupport_common::loaded`;
+//! save view draws from — lives in `tango_gamesupport::loaded`;
 //! everything that needs app collaborators stays here: applying the
-//! selected patch (the scanner types and storage root are the app's),
-//! resolving the game's save-editor UI off `Game::save_ui` (with the
-//! app's game-blind fallback), and resolving the Cover tab's logo order
-//! from the game registry.
+//! selected patch (the scanner types and storage root are the app's)
+//! and resolving the Cover tab's logo order from the game registry.
+//! The save-editor UI comes straight off `Game::save_ui`.
 
 use std::sync::Arc;
 
-pub use tango_gamesupport_common::loaded::OpenSave;
-pub use tango_gamesupport_common::model::AppliedPatch;
-
-/// The game's own editor UI (carried on `Game::save_ui` when its crate
-/// was built with the `ui` feature), or the app's fallback.
-fn save_ui_for(game: crate::library::rom::GameRef) -> &'static dyn crate::save_view::SaveUi {
-    tango_gamesupport_common::save_ui::save_ui_of(game).unwrap_or(&crate::save_view::FALLBACK_SAVE_UI)
-}
+pub use tango_gamesupport::loaded::OpenSave;
+pub use tango_gamesupport::model::AppliedPatch;
 
 /// The Cover tab's logo order: the loaded variant first, then its
 /// family siblings (the other color version, where one exists) so
@@ -88,8 +81,8 @@ pub fn from_patched_rom(
     save: Box<dyn tango_dataview::save::Save + Send + Sync>,
     applied_patch: Option<AppliedPatch>,
 ) -> OpenSave {
-    let model = tango_gamesupport_common::model::SaveModel::from_patched_rom(game, rom, save_path, save, applied_patch);
-    OpenSave::from_model(model, save_ui_for(game), &logo_games(game))
+    let model = tango_gamesupport::model::SaveModel::from_patched_rom(game, rom, save_path, save, applied_patch);
+    OpenSave::from_model(model, game.save_ui, &logo_games(game))
 }
 
 /// Build an [`OpenSave`] for the local side of a replay — used by the

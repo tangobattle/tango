@@ -279,7 +279,7 @@ impl App {
                     // baked grid image is ours, so re-bake it when the
                     // edit says it went stale (a navi swap changes which
                     // navicust — if any — the save even has).
-                    let invalidated = tango_gamesupport_common::model::edit::apply_edit(&mut loaded.model, edit);
+                    let invalidated = tango_gamesupport::model::edit::apply_edit(&mut loaded.model, edit);
                     if invalidated.navicust_render {
                         loaded.rebuild_navicust_render();
                     }

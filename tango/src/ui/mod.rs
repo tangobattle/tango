@@ -16,7 +16,7 @@ pub use tango_ui::{anim, copy_feedback, style};
 /// call sites don't care which side of the submodule boundary a widget
 /// lives on.
 pub mod widgets {
-    pub use tango_gamesupport_common::matchup::*;
+    pub use tango_gamesupport::matchup::*;
     pub use tango_ui::widgets::*;
 }
 
