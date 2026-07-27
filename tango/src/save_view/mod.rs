@@ -1271,21 +1271,18 @@ pub fn view<'a>(
     // save-level actions sit at its right edge. While editing (and the navi is
     // editable) the card itself becomes the change-navi affordance — clicking it
     // opens the picker as the body.
+    // Always rendered, navi or not: the strip is where Play lives, and Play
+    // is the only way to start the game.
     let navi_edit = (editing_session && loaded.editability.navi).then_some(Action::EnterEditNavi);
-    let navi_strip = loaded
-        .save
-        .view_navi()
-        .is_some()
-        .then(|| navi::render_navi_strip(lang, loaded, navi_edit, actions_tail));
+    let navi_strip = navi::render_navi_strip(lang, loaded, navi_edit, actions_tail);
 
     if available.is_empty() {
-        // No section tabs (an unsupported / empty save) — still surface the navi
-        // header (it carries Play) if there's a navi to show.
-        let mut col = column![].spacing(style::PANE_GAP).width(Fill);
-        if let Some(strip) = navi_strip {
-            col = col.push(strip);
-        }
-        return col.push(placeholder(t!(lang, "save-empty"))).into();
+        // No section tabs (an unsupported / empty save) — the strip still
+        // goes up, since it carries Play.
+        return column![navi_strip, placeholder(t!(lang, "save-empty"))]
+            .spacing(style::PANE_GAP)
+            .width(Fill)
+            .into();
     }
     let active = state
         .active_tab
@@ -1478,12 +1475,8 @@ pub fn view<'a>(
         region
     };
 
-    // Assemble: persistent navi header (if any), then the body region.
-    let mut col = column![].spacing(style::PANE_GAP).width(Fill);
-    if let Some(strip) = navi_strip {
-        col = col.push(strip);
-    }
-    col = col.push(region);
+    // Assemble: the persistent strip, then the body region.
+    let mut col = column![navi_strip, region].spacing(style::PANE_GAP).width(Fill);
     if fill {
         col = col.height(Fill);
     }

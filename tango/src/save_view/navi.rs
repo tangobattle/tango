@@ -106,12 +106,17 @@ fn navi_card_content<M: 'static>(
     }
 }
 
-/// The persistent navi identity strip shown above the tab body (it replaces the
-/// old standalone Navi tab) and the home for the save's primary actions. The
-/// card on the left, the `actions` cluster (Edit / Play, or Save / Cancel while
-/// editing) on the right. When `edit` is `Some`, the card itself becomes the
-/// change-navi button (a flat press target with a pencil hint), opening the
-/// picker as the body — there's no separate Edit pencil to confuse it with.
+/// The persistent strip shown above the tab body on every save and the home
+/// for the save's primary actions: the navi identity card on the left (it
+/// replaces the old standalone Navi tab), the `actions` cluster (Edit / Play,
+/// or Save / Cancel while editing) on the right. When `edit` is `Some`, the
+/// card itself becomes the change-navi button (a flat press target with a
+/// pencil hint), opening the picker as the body — there's no separate Edit
+/// pencil to confuse it with.
+///
+/// Saves with no navi to identify (Battle Chip Challenge) get the same strip
+/// with an empty card slot: Play lives here and nowhere else, so the strip
+/// can't be conditional on having a navi.
 pub(super) fn render_navi_strip<'a>(
     lang: &'a LanguageIdentifier,
     loaded: &'a OpenSave,
@@ -124,15 +129,19 @@ pub(super) fn render_navi_strip<'a>(
     // hover-highlight area). Both card modes pad identically so toggling edit
     // doesn't nudge it: flat press target in edit mode (with a pencil cue), plain
     // container otherwise.
-    let card: Element<'a, Action> = match edit {
-        Some(action) => button(navi_card_content::<Action>(lang, loaded, true))
-            .padding([4.0, 6.0])
-            .style(crate::ui::widgets::flat)
-            .on_press(action)
-            .into(),
-        None => container(navi_card_content::<Action>(lang, loaded, false))
-            .padding([4.0, 6.0])
-            .into(),
+    let card: Element<'a, Action> = if loaded.save.view_navi().is_none() {
+        Space::new().into()
+    } else {
+        match edit {
+            Some(action) => button(navi_card_content::<Action>(lang, loaded, true))
+                .padding([4.0, 6.0])
+                .style(crate::ui::widgets::flat)
+                .on_press(action)
+                .into(),
+            None => container(navi_card_content::<Action>(lang, loaded, false))
+                .padding([4.0, 6.0])
+                .into(),
+        }
     };
     // A little horizontal breathing room for the actions cluster (none
     // vertically — the row centers it).
