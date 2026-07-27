@@ -255,10 +255,10 @@ fn value_text<'a>(s: String, tone: Option<StatTone>) -> Element<'a, Message> {
         .into()
 }
 
-/// TPS readout: current rate over its live cap. It stacked the two when the
-/// readout lived in a 50px column; on its own line under the chart there's room
-/// to read it as the one fraction it is. The current rate carries the health
-/// tone, the cap rides muted behind the slash.
+/// TPS readout: current rate over its live cap, as one line. The current rate
+/// carries the health tone and the cap rides muted behind the slash, both at
+/// [`TEXT_BODY`] like every other readout — the two halves are one number, so
+/// shrinking the cap only made the fraction read as two different things.
 fn tps_value<'a>(tps: f32, fps_target: f32, tone: StatTone) -> Element<'a, Message> {
     row![
         text(format!("{:.2}", tps))
@@ -268,7 +268,7 @@ fn tps_value<'a>(tps: f32, fps_target: f32, tone: StatTone) -> Element<'a, Messa
                 color: Some(stat_tone_color(theme, tone)),
             }),
         text(format!("/ {:.2}", fps_target))
-            .size(TEXT_CAPTION)
+            .size(TEXT_BODY)
             .font(iced::Font::MONOSPACE)
             .style(widgets::muted_text_style),
     ]
