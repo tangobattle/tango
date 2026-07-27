@@ -154,7 +154,12 @@ pub async fn import_save(file_name: &str, bytes: &[u8]) -> bool {
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "save".to_string());
-    let path = match with(|library| library.config.saves_path().join(format!("{family}-{variant}-{stem}.sav"))) {
+    let path = match with(|library| {
+        library
+            .config
+            .saves_path()
+            .join(format!("{family}-{variant}-{stem}.sav"))
+    }) {
         Some(p) => p,
         None => return false,
     };

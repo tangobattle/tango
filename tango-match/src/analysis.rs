@@ -412,7 +412,10 @@ impl MatchStats {
             };
             let n_hp = u32_of(&mut r)?;
             if n_hp as usize > MAX_HP_POINTS_PER_ROUND {
-                return Err(ReadError::ImplausibleCount { what: "hp point", n: n_hp });
+                return Err(ReadError::ImplausibleCount {
+                    what: "hp point",
+                    n: n_hp,
+                });
             }
             let mut hp = Vec::with_capacity(n_hp as usize);
             for _ in 0..n_hp {

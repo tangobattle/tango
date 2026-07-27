@@ -66,10 +66,8 @@ impl Http for BrowserHttp {
                 // hash check reject it.
                 return Ok(Fetch::Body { etag, body: Vec::new() });
             };
-            let reader: web_sys::ReadableStreamDefaultReader = stream
-                .get_reader()
-                .dyn_into()
-                .map_err(|e| transport("getReader", e))?;
+            let reader: web_sys::ReadableStreamDefaultReader =
+                stream.get_reader().dyn_into().map_err(|e| transport("getReader", e))?;
 
             let mut body: Vec<u8> = Vec::with_capacity(total as usize);
             if let Some(progress) = request.on_progress {

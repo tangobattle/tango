@@ -80,7 +80,9 @@ impl Loadout {
                 .unwrap_or(true);
             (has_rom, saves, patch_ok)
         });
-        let Some((has_rom, saves, patch_ok)) = known else { return };
+        let Some((has_rom, saves, patch_ok)) = known else {
+            return;
+        };
         if !has_rom {
             *self = Self::default();
             return;

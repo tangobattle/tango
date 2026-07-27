@@ -39,12 +39,7 @@ pub fn Link(
 }
 
 #[component]
-fn Dial(
-    snapshot: Snapshot,
-    loadout: ReadSignal<Loadout>,
-    nickname: Signal<String>,
-    code: Signal<String>,
-) -> Element {
+fn Dial(snapshot: Snapshot, loadout: ReadSignal<Loadout>, nickname: Signal<String>, code: Signal<String>) -> Element {
     let ready_to_dial = loadout().is_playable() && !code().trim().is_empty();
 
     rsx! {
@@ -239,7 +234,8 @@ fn VerdictLine(verdict: Verdict) -> Element {
         // A ROM is the one thing the app can't go and get for you.
         Verdict::MissingRom => (
             "error",
-            "You don't have your opponent's ROM. Both sides are simulated locally, so you need a copy of their game.".to_string(),
+            "You don't have your opponent's ROM. Both sides are simulated locally, so you need a copy of their game."
+                .to_string(),
         ),
         Verdict::Fetching { name } => ("muted", format!("Downloading {name}…")),
         Verdict::DifferentVersions => (
@@ -287,4 +283,3 @@ fn MatchTypes(loadout: ReadSignal<Loadout>, selected: (u8, u8)) -> Element {
         }
     }
 }
-

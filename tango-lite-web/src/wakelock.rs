@@ -121,8 +121,7 @@ fn watch_visibility() {
             request();
         }
     });
-    let _ = document
-        .add_event_listener_with_callback("visibilitychange", on_change.as_ref().unchecked_ref());
+    let _ = document.add_event_listener_with_callback("visibilitychange", on_change.as_ref().unchecked_ref());
     // Page-lifetime listener: leaking it is how you say "never removed".
     on_change.forget();
 }

@@ -667,16 +667,16 @@ impl Engine {
         // that came with it) into a plain copy.
         if self.surface.is_none() {
             let array = js_sys::Uint8ClampedArray::new_with_length((SCREEN_W * SCREEN_H * 4) as u32);
-            let Ok(image) = web_sys::ImageData::new_with_js_u8_clamped_array_and_sh(
-                &array,
-                SCREEN_W as u32,
-                SCREEN_H as u32,
-            ) else {
+            let Ok(image) =
+                web_sys::ImageData::new_with_js_u8_clamped_array_and_sh(&array, SCREEN_W as u32, SCREEN_H as u32)
+            else {
                 return;
             };
             self.surface = Some((array, image));
         }
-        let Some((array, image)) = self.surface.as_ref() else { return };
+        let Some((array, image)) = self.surface.as_ref() else {
+            return;
+        };
         array.copy_from(&self.rgba);
         let _ = ctx.put_image_data(image, 0.0, 0.0);
     }

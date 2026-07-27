@@ -26,7 +26,11 @@ fn main() {
             let tag = format!(
                 "p{}{}",
                 player + 1,
-                if player == replay.local_player_index { " (recorder)" } else { "" }
+                if player == replay.local_player_index {
+                    " (recorder)"
+                } else {
+                    ""
+                }
             );
             if let Some(side) = side {
                 let gi = side.game_info.as_ref();

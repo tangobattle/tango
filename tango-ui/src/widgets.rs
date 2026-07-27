@@ -12,7 +12,9 @@ use iced::{Alignment, Element, Length, Theme};
 use lucide_icons::Icon;
 use sweeten::widget::{column, row};
 
+mod match_graph;
 mod menu_button;
+pub use match_graph::*;
 pub use menu_button::{MenuButton, MenuItem};
 
 /// Icon-only button for low-emphasis toolbar actions (rescan,

@@ -7593,16 +7593,35 @@ dependencies = [
 name = "tango-gamesupport-bcc"
 version = "0.1.0"
 dependencies = [
- "byteorder",
  "env_logger",
- "iced",
  "image",
- "lucide-icons",
  "mgba",
  "mgba-rollback",
  "tango-gamesupport",
+ "tango-gamesupport-bcc-dataview",
+ "tango-gamesupport-bcc-ui",
  "tango-gamesupport-common",
  "tango-match",
+ "unic-langid",
+]
+
+[[package]]
+name = "tango-gamesupport-bcc-dataview"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "image",
+ "tango-gamesupport-common",
+]
+
+[[package]]
+name = "tango-gamesupport-bcc-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "lucide-icons",
+ "tango-gamesupport-bcc-dataview",
+ "tango-gamesupport-common",
  "unic-langid",
 ]
 
@@ -7611,17 +7630,33 @@ name = "tango-gamesupport-bn1"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "byteorder",
  "env_logger",
- "iced",
  "image",
  "mgba",
  "mgba-rollback",
- "num-traits",
- "rand 0.8.5",
  "tango-gamesupport",
+ "tango-gamesupport-bn1-dataview",
+ "tango-gamesupport-bn1-ui",
  "tango-gamesupport-common",
  "tango-match",
+]
+
+[[package]]
+name = "tango-gamesupport-bn1-dataview"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "image",
+ "num-traits",
+ "tango-gamesupport-common",
+]
+
+[[package]]
+name = "tango-gamesupport-bn1-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "tango-gamesupport-common",
  "unic-langid",
 ]
 
@@ -7630,18 +7665,35 @@ name = "tango-gamesupport-bn2"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "byteorder",
- "c2rust-bitfields",
  "env_logger",
- "iced",
  "image",
  "mgba",
  "mgba-rollback",
- "num-traits",
  "rand 0.8.5",
  "tango-gamesupport",
+ "tango-gamesupport-bn2-dataview",
+ "tango-gamesupport-bn2-ui",
  "tango-gamesupport-common",
  "tango-match",
+]
+
+[[package]]
+name = "tango-gamesupport-bn2-dataview"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "c2rust-bitfields",
+ "image",
+ "num-traits",
+ "tango-gamesupport-common",
+]
+
+[[package]]
+name = "tango-gamesupport-bn2-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "tango-gamesupport-common",
  "unic-langid",
 ]
 
@@ -7649,21 +7701,39 @@ dependencies = [
 name = "tango-gamesupport-bn3"
 version = "0.1.0"
 dependencies = [
- "bitvec",
  "bytemuck",
- "byteorder",
- "c2rust-bitfields",
  "env_logger",
- "iced",
  "image",
  "mgba",
  "mgba-rollback",
- "ndarray",
- "num-traits",
  "rand 0.8.5",
  "tango-gamesupport",
+ "tango-gamesupport-bn3-dataview",
+ "tango-gamesupport-bn3-ui",
  "tango-gamesupport-common",
  "tango-match",
+]
+
+[[package]]
+name = "tango-gamesupport-bn3-dataview"
+version = "0.1.0"
+dependencies = [
+ "bitvec",
+ "bytemuck",
+ "c2rust-bitfields",
+ "image",
+ "ndarray",
+ "num-traits",
+ "tango-gamesupport-common",
+]
+
+[[package]]
+name = "tango-gamesupport-bn3-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "image",
+ "tango-gamesupport-common",
  "unic-langid",
 ]
 
@@ -7672,19 +7742,39 @@ name = "tango-gamesupport-bn4"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "c2rust-bitfields",
  "env_logger",
- "iced",
  "image",
  "mgba",
  "mgba-rollback",
- "ndarray",
- "num-traits",
- "rand 0.8.5",
- "sweeten",
  "tango-gamesupport",
+ "tango-gamesupport-bn4-dataview",
+ "tango-gamesupport-bn4-ui",
  "tango-gamesupport-common",
  "tango-match",
+ "unic-langid",
+]
+
+[[package]]
+name = "tango-gamesupport-bn4-dataview"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "c2rust-bitfields",
+ "image",
+ "ndarray",
+ "num-traits",
+ "tango-gamesupport-common",
+]
+
+[[package]]
+name = "tango-gamesupport-bn4-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "image",
+ "sweeten",
+ "tango-gamesupport-bn4-dataview",
+ "tango-gamesupport-common",
  "unic-langid",
 ]
 
@@ -7692,20 +7782,37 @@ dependencies = [
 name = "tango-gamesupport-bn5"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "bytemuck",
- "c2rust-bitfields",
  "env_logger",
- "iced",
  "image",
  "mgba",
  "mgba-rollback",
- "ndarray",
- "num-traits",
- "rand 0.8.5",
  "tango-gamesupport",
+ "tango-gamesupport-bn5-dataview",
+ "tango-gamesupport-bn5-ui",
  "tango-gamesupport-common",
  "tango-match",
+]
+
+[[package]]
+name = "tango-gamesupport-bn5-dataview"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "c2rust-bitfields",
+ "image",
+ "ndarray",
+ "num-traits",
+ "tango-gamesupport-common",
+]
+
+[[package]]
+name = "tango-gamesupport-bn5-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "image",
+ "tango-gamesupport-common",
  "unic-langid",
 ]
 
@@ -7713,20 +7820,37 @@ dependencies = [
 name = "tango-gamesupport-bn6"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "bytemuck",
- "c2rust-bitfields",
  "env_logger",
- "iced",
  "image",
  "mgba",
  "mgba-rollback",
- "ndarray",
- "num-traits",
- "rand 0.8.5",
  "tango-gamesupport",
+ "tango-gamesupport-bn6-dataview",
+ "tango-gamesupport-bn6-ui",
  "tango-gamesupport-common",
  "tango-match",
+]
+
+[[package]]
+name = "tango-gamesupport-bn6-dataview"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "c2rust-bitfields",
+ "image",
+ "ndarray",
+ "num-traits",
+ "tango-gamesupport-common",
+]
+
+[[package]]
+name = "tango-gamesupport-bn6-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "image",
+ "tango-gamesupport-common",
  "unic-langid",
 ]
 
@@ -7767,17 +7891,34 @@ name = "tango-gamesupport-exe45"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "c2rust-bitfields",
  "env_logger",
- "iced",
  "image",
  "mgba",
  "mgba-rollback",
- "num-traits",
- "rand 0.8.5",
  "tango-gamesupport",
  "tango-gamesupport-common",
+ "tango-gamesupport-exe45-dataview",
+ "tango-gamesupport-exe45-ui",
  "tango-match",
+]
+
+[[package]]
+name = "tango-gamesupport-exe45-dataview"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "c2rust-bitfields",
+ "image",
+ "num-traits",
+ "tango-gamesupport-common",
+]
+
+[[package]]
+name = "tango-gamesupport-exe45-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "tango-gamesupport-common",
  "unic-langid",
 ]
 

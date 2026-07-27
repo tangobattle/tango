@@ -16,8 +16,8 @@ use std::cell::RefCell;
 use futures::StreamExt as _;
 
 use tango_library::game;
-use tango_netplay::{compat, Event, LinkIdent, MatchmakingParams, Phase, State};
 use tango_net_protocol::control as protocol;
+use tango_netplay::{compat, Event, LinkIdent, MatchmakingParams, Phase, State};
 
 use crate::loadout::Loadout;
 
@@ -411,10 +411,7 @@ async fn build(pre_match: tango_netplay::PreMatchData) -> Result<(), String> {
     let (family, variant) = &remote_info.family_and_variant;
     let remote_game = game::find_by_family_and_variant(family, *variant)
         .ok_or_else(|| format!("unknown opponent game {family} v{variant}"))?;
-    let remote_patch = remote_info
-        .patch
-        .as_ref()
-        .map(|p| (p.name.clone(), p.version.clone()));
+    let remote_patch = remote_info.patch.as_ref().map(|p| (p.name.clone(), p.version.clone()));
     let remote_rom = crate::library::patched_rom(remote_game, remote_patch.as_ref())?;
 
     let sink = crate::audio::sink().await;
@@ -458,10 +455,9 @@ fn frame_delay() -> u32 {
         let median = l.borrow().net.lobby.latency_counter.median();
         (!median.is_zero()).then(|| tango_session::pvp::suggest_frame_delay(median))
     });
-    suggested.unwrap_or(2).clamp(
-        tango_session::pvp::MIN_FRAME_DELAY,
-        tango_session::pvp::MAX_FRAME_DELAY,
-    )
+    suggested
+        .unwrap_or(2)
+        .clamp(tango_session::pvp::MIN_FRAME_DELAY, tango_session::pvp::MAX_FRAME_DELAY)
 }
 
 /// A fresh random link code, in the user's language, for the "make me

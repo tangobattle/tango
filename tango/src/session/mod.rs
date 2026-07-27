@@ -277,7 +277,7 @@ pub struct RoundCard {
     /// `None` for a round the match never decided — a mid-round
     /// disconnect keeps the round and its trace, it just has no verdict
     /// to report.
-    pub outcome: Option<tango_match::analysis::BattleOutcome>,
+    pub outcome: Option<crate::ui::widgets::RoundOutcome>,
     pub trace: Vec<(f32, f32, f32)>,
     pub custom: Vec<(f32, f32)>,
     /// Chip-use events per side (`[you, opponent]`), cooked for the

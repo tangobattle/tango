@@ -15,11 +15,11 @@
 use crate::i18n::t;
 use crate::ui::style::{STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY};
 use crate::ui::widgets;
+use crate::ui::widgets::RoundOutcome;
 use iced::widget::{button, container, text};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
 use sweeten::widget::{column, row};
-use tango_match::analysis::BattleOutcome;
 use unic_langid::LanguageIdentifier;
 
 use super::super::{MatchEnd, MatchResults};
@@ -90,9 +90,9 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
     // card, they just carry no outcome to tally — and a match the remote
     // dropped out of gets "connection lost" instead of a verdict, whatever
     // the score stood at.
-    let wins = count(results, BattleOutcome::Win);
-    let losses = count(results, BattleOutcome::Loss);
-    let draws = count(results, BattleOutcome::Draw);
+    let wins = count(results, RoundOutcome::Win);
+    let losses = count(results, RoundOutcome::Loss);
+    let draws = count(results, RoundOutcome::Draw);
     let no_contest = wins + losses + draws == 0;
     let (headline, headline_style) = if results.end == MatchEnd::Disconnected {
         (t!(lang, "session-results-disconnected"), muted_style())
@@ -172,9 +172,9 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
             // nowhere — there is no numeral for "no verdict".
             let Some(outcome) = round.outcome else { continue };
             let k = match outcome {
-                BattleOutcome::Win => 0,
-                BattleOutcome::Loss => 1,
-                BattleOutcome::Draw => 2,
+                RoundOutcome::Win => 0,
+                RoundOutcome::Loss => 1,
+                RoundOutcome::Draw => 2,
             };
             shown[k] += 1;
             pops[k] = pop;
@@ -327,7 +327,7 @@ fn cubic_out_inv(t: f32) -> f32 {
     (1.0 - t).powi(3)
 }
 
-fn count(results: &MatchResults, which: BattleOutcome) -> usize {
+fn count(results: &MatchResults, which: RoundOutcome) -> usize {
     results.rounds.iter().filter(|r| r.outcome == Some(which)).count()
 }
 

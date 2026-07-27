@@ -40,7 +40,10 @@ const SCALE: Option<usize> = Some(2);
 /// How far along, for the replays screen.
 #[derive(Clone, PartialEq, Debug)]
 pub enum State {
-    Rendering { done: usize, total: usize },
+    Rendering {
+        done: usize,
+        total: usize,
+    },
     /// Frames are all in; the encoders are draining.
     Flushing,
     Failed(String),

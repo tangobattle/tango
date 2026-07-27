@@ -242,4 +242,3 @@ pub fn install_keyboard() {
     up.forget();
     blur.forget();
 }
-

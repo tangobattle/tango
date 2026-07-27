@@ -632,10 +632,9 @@ impl Prefetch {
             pair,
             observer,
             telemetry_store,
-            builder: stats
-                .map(|(chip_semantics, counts_buster)| {
-                    crate::analysis::StatsBuilder::new(chip_semantics, counts_buster)
-                }),
+            builder: stats.map(|(chip_semantics, counts_buster)| {
+                crate::analysis::StatsBuilder::new(chip_semantics, counts_buster)
+            }),
             inputs,
             local_player,
             store,
@@ -721,7 +720,6 @@ fn capture_pair(pair: &mut mgba_rollback::Link, tick: u32) -> Result<Arc<Snapsho
         framebuffers,
     }))
 }
-
 
 // ---------------------------------------------------------------------------
 // Seek coordination (host-facing half of the seek machinery).

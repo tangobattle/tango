@@ -49,8 +49,8 @@ pub fn resolve(replay: &tango_replay::Replay) -> Result<([GameRef; 2], [Arc<Vec<
                     .map_err(|_| format!("{} has an unreadable version ({})", p.name, p.version))
             })
             .transpose()?;
-        let rom = crate::library::patched_rom(game, patch.as_ref())
-            .map_err(|e| format!("player {}: {e}", index + 1))?;
+        let rom =
+            crate::library::patched_rom(game, patch.as_ref()).map_err(|e| format!("player {}: {e}", index + 1))?;
         games.push(game);
         roms.push(Arc::new(rom));
     }
