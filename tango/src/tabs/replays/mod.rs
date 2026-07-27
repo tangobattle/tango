@@ -598,11 +598,18 @@ impl ReplaysState {
         if self.queue.is_empty() {
             return None;
         }
-        // Count leads; the action pair rides the right edge with Clear
-        // immediately left of Play. Play carries the primary treatment —
-        // starting the queue is the header's one real action, and it reads
-        // as the counterpart to the detail panel's Watch button.
+        // A glyph and the count lead; the action pair rides the right edge
+        // with Clear immediately left of Play. Play carries the primary
+        // treatment — starting the queue is the header's one real action, and
+        // it reads as the counterpart to the detail panel's Watch button.
         let header = row![
+            // The pane sits directly under the replay list with nothing but a
+            // count to say what it is, so it gets the list-of-videos glyph —
+            // the same family as the ListPlus on the button that fills it.
+            // Body-sized against the caption beside it: a glyph shrunk to
+            // caption size reads as a smudge, and muted keeps it from
+            // outweighing the header's buttons.
+            Icon::ListVideo.widget().size(TEXT_BODY).style(widgets::muted_text_style),
             text(t!(lang, "replays-queue-count", n = self.queue.len() as i64))
                 .size(TEXT_CAPTION)
                 .style(widgets::muted_text_style),
