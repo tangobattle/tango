@@ -1,8 +1,9 @@
 //! PvP telemetry: the bottom-right signal indicator and the
 //! match-settings popover it expands into. The deck tags P1/P2,
-//! draws a per-metric sparkline (TPS, frame skew, local lead,
-//! rollback depth, ping) next to its current value colored by health
-//! (green/amber/red), and stacks the live frame-delay knob beneath.
+//! draws a full-width per-metric sparkline (TPS, frame skew, local
+//! lead, rollback depth, ping) over its current value colored by
+//! health (green/amber/red), and stacks the live frame-delay knob
+//! beneath.
 //! The plate is a button: clicking the instrument panel toggles the
 //! popover, which is gated on a live latency reading and retires
 //! itself the moment the remote drops. Split out of the session view
@@ -70,13 +71,11 @@ fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a PvpSession) ->
 }
 
 // Panel + sparkline geometry. The cards are all `PANEL_W` wide so the metrics
-// line up; the metric value reads in a fixed `VALUE_W` column on the right
-// (sized to the widest readout, `NNN ms`) so every number right-aligns and
-// every chart ends at the same x, with the chart filling everything to its
-// left. The frame-delay control spans the same width: a turtle-icon heading
-// over a lobby-style slider row.
+// line up; each chart spans that full width with its value right-aligned on
+// its own line underneath, so the numbers still line up down the panel while
+// the trace gets every pixel of the card. The frame-delay control spans the
+// same width: a turtle-icon heading over a lobby-style slider row.
 const PANEL_W: f32 = 228.0;
-const VALUE_W: f32 = 50.0;
 const SPARK_H: f32 = 24.0;
 // Each metric's full-height value span (sample saturates into it). Chosen to
 // line up with the tone thresholds so a point's height roughly tracks its color.
@@ -212,12 +211,13 @@ impl canvas::Program<Message> for Sparkline {
     }
 }
 
-/// One telemetry card: `icon caption` on top, `control value` below — the shape
-/// shared by every metric (control = sparkline) and the frame-delay knob
-/// (control = slider). Icon + caption ride muted; `control` fills the row while
-/// `value` sits right-aligned in a fixed [`VALUE_W`] column, so every readout
-/// lines up and every chart ends at the same x. Fixed at [`PANEL_W`] so the
-/// cards align with one another.
+/// One telemetry card: `icon caption` on top, the chart across the card's whole
+/// width below it, and the value on its own line under that, right-aligned.
+/// Icon + caption ride muted. The readout used to sit in a fixed column beside
+/// the chart, which cost the trace a fifth of the card for a number that only
+/// ever needs one line; underneath it still right-aligns, so the values line up
+/// down the panel exactly as they did. Fixed at [`PANEL_W`] so the cards align
+/// with one another.
 fn telemetry_card<'a>(
     icon: Icon,
     caption: String,
@@ -231,19 +231,16 @@ fn telemetry_card<'a>(
     .spacing(6)
     .align_y(Alignment::Center)
     .width(Fill);
-    let value_row = row![
+    column![
+        caption_row,
         control,
         container(value)
-            .width(Length::Fixed(VALUE_W))
+            .width(Fill)
             .align_x(iced::alignment::Horizontal::Right),
     ]
-    .spacing(8)
-    .align_y(Alignment::Center)
-    .width(Fill);
-    column![caption_row, value_row]
-        .spacing(3)
-        .width(Length::Fixed(PANEL_W))
-        .into()
+    .spacing(3)
+    .width(Length::Fixed(PANEL_W))
+    .into()
 }
 
 /// A right-aligned monospace value readout, tinted by `tone` (or default text
@@ -258,26 +255,25 @@ fn value_text<'a>(s: String, tone: Option<StatTone>) -> Element<'a, Message> {
         .into()
 }
 
-/// TPS readout: current rate over its live cap, stacked to stay narrow. The
-/// current rate carries the health tone; the cap rides muted underneath.
+/// TPS readout: current rate over its live cap. It stacked the two when the
+/// readout lived in a 50px column; on its own line under the chart there's room
+/// to read it as the one fraction it is. The current rate carries the health
+/// tone, the cap rides muted behind the slash.
 fn tps_value<'a>(tps: f32, fps_target: f32, tone: StatTone) -> Element<'a, Message> {
-    use iced::widget::text::LineHeight;
-    column![
+    row![
         text(format!("{:.2}", tps))
             .size(TEXT_BODY)
             .font(iced::Font::MONOSPACE)
-            .line_height(LineHeight::Relative(1.0))
             .style(move |theme: &iced::Theme| iced::widget::text::Style {
                 color: Some(stat_tone_color(theme, tone)),
             }),
-        text(format!("{:.2}", fps_target))
+        text(format!("/ {:.2}", fps_target))
             .size(TEXT_CAPTION)
             .font(iced::Font::MONOSPACE)
-            .line_height(LineHeight::Relative(1.0))
             .style(widgets::muted_text_style),
     ]
-    .spacing(2)
-    .align_x(Alignment::End)
+    .spacing(4)
+    .align_y(Alignment::Center)
     .into()
 }
 
