@@ -81,7 +81,7 @@ pub fn from_patched_rom(
     save: Box<dyn tango_dataview::save::Save + Send + Sync>,
     applied_patch: Option<AppliedPatch>,
 ) -> OpenSave {
-    let model = tango_gamesupport::model::SaveModel::from_patched_rom(game, rom, save_path, save, applied_patch);
+    let model = tango_gamesupport_common::model::from_patched_rom(game, rom, save_path, save, applied_patch);
     tango_gamesupport_common::loaded::from_model(model, game.save_ui, &logo_games(game))
 }
 

@@ -4,6 +4,7 @@
 //! their [`update`] handler.
 
 use super::*;
+use crate::save_view::StateExt as _;
 use crate::session::pvp::PvpSession;
 use crate::session::Message as SessionMessage;
 // Explicit so these win over iced's prelude `column!`/`row!` macros (see mod.rs).

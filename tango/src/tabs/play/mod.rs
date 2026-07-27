@@ -14,6 +14,8 @@ mod save_manage;
 
 pub use save_manage::{create_new_save, creation_template, duplicate_save, rename_save, SaveAction};
 
+use crate::save_view::StateExt as _;
+
 use crate::app::Scanners;
 use crate::i18n::t;
 use crate::library::{game, rom};

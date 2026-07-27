@@ -14,10 +14,6 @@
 //! the ROM and the save, and gets back a model.
 
 pub mod edit;
-pub mod rom_overrides;
-pub mod rules;
-
-use rom_overrides::OverridenAssets;
 
 pub use crate::GameRef;
 
@@ -62,26 +58,6 @@ pub struct Editability {
 }
 
 impl Editability {
-    /// Probe every section's writable view once. Constructing a mutable view
-    /// has no side effects, so this is a pure capability check.
-    fn probe(save: &mut (dyn tango_dataview::save::Save + Send + Sync)) -> Self {
-        // Each `is_some()` gets its own statement so the borrowed view temporary
-        // is dropped before the next probe — a single struct literal would keep
-        // every mutable borrow of `save` alive at once.
-        let folder = save.view_chips_mut().is_some();
-        let navicust = save.view_navicust_mut().is_some();
-        let navi = save.view_navi_mut().is_some();
-        let patch_cards = save.view_patch_card56s_mut().is_some();
-        let auto_battle_data = save.view_auto_battle_data_mut().is_some();
-        Self {
-            folder,
-            navicust,
-            navi,
-            patch_cards,
-            auto_battle_data,
-        }
-    }
-
     /// Whether *any* section is editable — drives the single save-level Edit
     /// button (once open, the user navigates tabs to edit each section).
     pub fn any(&self) -> bool {
@@ -99,57 +75,4 @@ pub struct SaveModel {
     /// Patch+version baked into this SaveModel, if any. `None` = raw ROM.
     pub patch: Option<AppliedPatch>,
     pub assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>,
-}
-
-impl SaveModel {
-    /// Build from a ROM that's *already* had its patch applied, plus the
-    /// [`AppliedPatch`] that produced it (`None` for a raw ROM). Unlike
-    /// [`build`], this never touches the BPS patch — use it when the
-    /// caller already holds the patched image (e.g. a live session that
-    /// patched the ROM for the emulator) so the patch isn't re-applied
-    /// just to read the asset overrides + charset off `applied_patch`.
-    ///
-    /// [`build`]: Self::build
-    pub fn from_patched_rom(
-        game: GameRef,
-        rom: Vec<u8>,
-        save_path: std::path::PathBuf,
-        mut save: Box<dyn tango_dataview::save::Save + Send + Sync>,
-        applied_patch: Option<AppliedPatch>,
-    ) -> Self {
-        // Probe section editability once (each needs `&mut save`, but a
-        // per-frame render only holds `&SaveModel`). Constructing a mutable view
-        // has no side effects, so this is a pure capability check we can cache.
-        let editability = Editability::probe(&mut *save);
-
-        let wram = save.as_raw_wram().into_owned();
-        let charset_owned: Option<Vec<&str>> = applied_patch
-            .as_ref()
-            .and_then(|p| p.rom_overrides.charset.as_ref())
-            .map(|c| c.iter().map(|s| s.as_str()).collect());
-        let inner = game.load_rom_assets(&rom, &wram, charset_owned.as_deref());
-        let overrides = applied_patch
-            .as_ref()
-            .map(|p| p.rom_overrides.clone())
-            .unwrap_or_default();
-        let assets: Box<dyn tango_dataview::rom::Assets + Send + Sync> =
-            Box::new(OverridenAssets::new(inner, overrides));
-
-        Self {
-            game,
-            save_path,
-            save,
-            editability,
-            patch: applied_patch,
-            assets,
-        }
-    }
-
-    /// Re-probe section [`Editability`] from the current in-memory save.
-    /// Swapping the equipped navi flips navicust / patch-card capability, so
-    /// the edit path calls this after a navi change to keep the cached flags
-    /// in sync.
-    pub fn refresh_editability(&mut self) {
-        self.editability = Editability::probe(&mut *self.save);
-    }
 }

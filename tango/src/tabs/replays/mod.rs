@@ -1,6 +1,7 @@
 use crate::app::Scanners;
 use crate::i18n::t;
 use crate::library::replays;
+use crate::save_view::StateExt as _;
 use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::ui::widgets;
 use crate::{config, save_view};

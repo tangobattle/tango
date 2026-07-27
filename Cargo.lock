@@ -7776,6 +7776,7 @@ dependencies = [
  "tango-dataview",
  "tango-gamesupport",
  "tango-match",
+ "tango-patch",
  "tango-ui",
  "tiny-skia",
  "unic-langid",
