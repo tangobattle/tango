@@ -163,7 +163,7 @@ gamesupport-bn5 = ["dep:tango-gamesupport-bn5", "tango-library/gamesupport-bn5"]
 gamesupport-bn6 = ["dep:tango-gamesupport-bn6", "tango-library/gamesupport-bn6"]
 gamesupport-exe45 = ["dep:tango-gamesupport-exe45", "tango-library/gamesupport-exe45"]
 gamesupport-all = [
-    # "gamesupport-bcc",
+    "gamesupport-bcc",
     "gamesupport-bn1",
     "gamesupport-bn2",
     "gamesupport-bn3",
