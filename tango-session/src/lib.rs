@@ -206,6 +206,17 @@ pub trait Drive {
     /// realtime, or faster while the user holds fast-forward. A host
     /// paces to it, and the session's audio stream stretches to match.
     fn fps_target(&self) -> f32;
+
+    /// Wind the session down once [`tick`](Self::tick) has reported it
+    /// over. A host that drives a session to its end must call this
+    /// instead of just dropping it — a PvP match's replay is only
+    /// finalized here, and a dropped driver leaves the recording
+    /// truncated no matter how cleanly the match ended.
+    fn finish(self)
+    where
+        Self: Sized,
+    {
+    }
 }
 
 /// A running emulator session — replay playback, single-player, or

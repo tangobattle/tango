@@ -1475,7 +1475,9 @@ impl PvpDriver {
     }
 
     /// Flush the replay tail and cache the match's stats. Called once,
-    /// after [`PvpDriver::tick`] reports the match over.
+    /// after [`PvpDriver::tick`] reports the match over — reached through
+    /// [`crate::Drive::finish`], which is why a host must wind a driver
+    /// down rather than drop it.
     pub fn finish(mut self) {
 
         // Teardown: flush the replay tail. Finalize (write the EOR
@@ -1508,6 +1510,10 @@ impl PvpDriver {
 impl crate::Drive for PvpDriver {
     fn tick(&mut self) -> bool {
         PvpDriver::tick(self)
+    }
+
+    fn finish(self) {
+        PvpDriver::finish(self)
     }
 
     /// The throttler's target: the base rate minus whatever it shaved

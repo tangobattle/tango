@@ -1283,10 +1283,12 @@ pub fn build_playback(
                     }
                     use tango_session::Drive as _;
                     if !drive.tick() {
-                        return;
+                        break;
                     }
                     pacer.wait(drive.fps_target());
                 }
+                use tango_session::Drive as _;
+                drive.finish();
             })?,
     );
     threads.push(
@@ -1602,6 +1604,10 @@ fn spawn_drive_thread(
         while driver.tick() {
             pacer.wait(driver.fps_target());
         }
+        // The session is over: wind it down rather than dropping it, or
+        // a PvP match's replay never gets its end-of-stream sentinel and
+        // reads back as truncated.
+        driver.finish();
     })
 }
 
