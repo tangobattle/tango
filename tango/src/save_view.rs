@@ -1,7 +1,7 @@
-//! The save view lives in `tango-gamesupport`'s feature-gated `ui`
-//! layer; each game carries its own editor as a feature-gated `ui`
-//! module, and `Game::save_ui` points at it — correctly typed, present
-//! only when the `ui` feature is on. Nothing is left to do here but
-//! keep the app's `crate::save_view::*` paths.
+//! The save-view state layer (tabs, `State`, `Action`, `Outcome`) is
+//! public API on `tango_gamesupport::save_view` — the minimum that
+//! types `Game::save_ui`. The rendering shell and shared components are
+//! private gamesupport knowledge in `tango-gamesupport-common`, which
+//! re-exports the state layer, so one glob here covers both.
 
-pub use tango_gamesupport::save_view::*;
+pub use tango_gamesupport_common::save_view::*;

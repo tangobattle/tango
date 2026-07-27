@@ -281,7 +281,7 @@ impl App {
                     // navicust — if any — the save even has).
                     let invalidated = tango_gamesupport::model::edit::apply_edit(&mut loaded.model, edit);
                     if invalidated.navicust_render {
-                        loaded.rebuild_navicust_render();
+                        tango_gamesupport_common::loaded::rebuild_navicust_render(loaded);
                     }
                 }
                 iced::Task::none()
@@ -303,7 +303,7 @@ impl App {
                         // Refresh the baked Navi-view image from the updated
                         // save (commit keeps the in-memory OpenSave, so without
                         // this the read-only grid lags until reselection).
-                        loaded.rebuild_navicust_render();
+                        tango_gamesupport_common::loaded::rebuild_navicust_render(loaded);
                         let sram = loaded.save.to_sram_dump();
                         let path = loaded.save_path.clone();
                         match std::fs::write(&path, &sram) {

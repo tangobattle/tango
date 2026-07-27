@@ -11,21 +11,17 @@ tango-dataview = { path = "../tango-dataview" }
 tango-match = { path = "../tango-match" }
 thiserror.workspace = true
 
-# The save-editor UI layer (the `ui` feature). Optional so the base
+# The minimum save-editor surface (the `ui` feature): just what
+# `Game::save_ui`'s type reaches — the SaveUi trait, the save model,
+# OpenSave's shape and the save-view state layer. Optional so the base
 # crate stays a pure detection surface: headless consumers (the pvp
-# probes, engine hosts) never link a UI toolkit.
+# probes, engine hosts) never link a UI toolkit. Everything that draws
+# is in the private tango-gamesupport-common.
 tango-ui = { path = "../tango-ui", optional = true }
 tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"], optional = true }
 iced = { workspace = true, optional = true }
-iced_graphics = { workspace = true, optional = true }
-iced_tiny_skia = { workspace = true, optional = true }
-tiny-skia = { version = "0.11", optional = true }
 sweeten = { workspace = true, optional = true }
-lucide-icons = { workspace = true, optional = true }
-fluent-templates = { workspace = true, optional = true }
 unic-langid = { workspace = true, optional = true }
-indexmap = { version = "2", optional = true }
-itertools = { workspace = true, optional = true }
 log = { workspace = true, optional = true }
 semver = { workspace = true, optional = true }
 
@@ -34,15 +30,8 @@ ui = [
     "dep:tango-ui",
     "dep:tango-patch",
     "dep:iced",
-    "dep:iced_graphics",
-    "dep:iced_tiny_skia",
-    "dep:tiny-skia",
     "dep:sweeten",
-    "dep:lucide-icons",
-    "dep:fluent-templates",
     "dep:unic-langid",
-    "dep:indexmap",
-    "dep:itertools",
     "dep:log",
     "dep:semver",
 ]

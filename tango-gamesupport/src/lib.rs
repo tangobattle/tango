@@ -86,23 +86,19 @@ pub type BoxedSave = Box<dyn tango_dataview::save::Save + Send + Sync>;
 /// Boxed ROM assets trait object the parsers hand back.
 pub type BoxedAssets = Box<dyn tango_dataview::rom::Assets + Send + Sync>;
 
-// The save-editor UI layer, feature-gated so the base crate stays a
-// pure detection/registry surface: the shared save-view components the
-// per-game `ui` modules compose, the `SaveUi` trait they implement (and
-// [`Game::save_ui`] carries), the save model + staged edits, `OpenSave`
-// (the baked-art bundle), the match-analysis widgets, and the
-// save-editor fluent bundle. Everything draws with the game-agnostic
-// `tango-ui` toolkit, re-exported here so module paths inside (and the
-// per-game crates) read `crate::widgets` / `crate::style` / etc.
+// The minimum typed surface for [`Game::save_ui`], feature-gated so the
+// base crate stays a pure detection/registry surface: the `SaveUi`
+// trait, the game-neutral save model + staged edits, `OpenSave`'s shape
+// (its baking is view code, in the private tango-gamesupport-common),
+// and the save-view *state* layer (tabs, `State`, `Action`, `Outcome`).
+// Everything that draws lives in tango-gamesupport-common; the anim /
+// copy-feedback re-exports below are what the state layer itself
+// touches.
 #[cfg(feature = "ui")]
-pub use tango_ui::{anim, copy_feedback, style, theme, widgets};
+pub use tango_ui::{anim, copy_feedback};
 
 #[cfg(feature = "ui")]
-pub mod i18n;
-#[cfg(feature = "ui")]
 pub mod loaded;
-#[cfg(feature = "ui")]
-pub mod matchup;
 #[cfg(feature = "ui")]
 pub mod model;
 #[cfg(feature = "ui")]
