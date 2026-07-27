@@ -1,7 +1,7 @@
 //! App-side constructors for [`OpenSave`].
 //!
 //! The type itself — the loaded save's model plus the baked art the
-//! save view draws from — lives in `tango_gamesupport_ui::loaded`; the
+//! save view draws from — lives in `tango_gamesupport_common::loaded`; the
 //! constructors that need app collaborators (the storage root, the
 //! scanner caches, the config) stay here. Every construction resolves
 //! the game's save-editor UI through [`crate::save_view::save_ui_for`],
@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-pub use tango_gamesupport_ui::loaded::OpenSave;
+pub use tango_gamesupport_common::loaded::OpenSave;
 pub use tango_savemodel::AppliedPatch;
 
 /// Build from a *raw* (unpatched) ROM, applying the selected patch

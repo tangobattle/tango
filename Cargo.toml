@@ -4,7 +4,6 @@ members = [
     "tango",
     "tango-dataview",
     "tango-gamesupport",
-    "tango-gamesupport-ui",
     "tango-library",
     # wasm32-only; deliberately absent from `default-members` below, so a
     # plain root `cargo build`/`test` skips it rather than failing to
@@ -17,6 +16,7 @@ members = [
     "tango-replay-renderer",
     "tango-savemodel",
     "tango-session",
+    "tango-ui",
 ]
 # The per-game gamesupport crates auto-join this workspace as path
 # dependencies (they live under the workspace directory), which drags
@@ -29,7 +29,6 @@ default-members = [
     "tango",
     "tango-dataview",
     "tango-gamesupport",
-    "tango-gamesupport-ui",
     "tango-library",
     "tango-net-protocol",
     "tango-match",
@@ -38,6 +37,7 @@ default-members = [
     "tango-replay-renderer",
     "tango-savemodel",
     "tango-session",
+    "tango-ui",
 ]
 # One source of truth for every external dep shared by 2+ member crates,
 # so versions can't silently drift apart (we shipped four itertools and
@@ -59,9 +59,9 @@ encoder-facade = { git = "https://github.com/tangobattle/encoder-facade" }
 # on them without cloning tango).
 getgud = { git = "https://github.com/tangobattle/getgud" }
 image = { version = "0.25", default-features = false }
-# The UI toolkit stack, shared by the tango app, the shared save-editor
-# component crate (tango-gamesupport-ui) and the per-game UI crates in
-# the gamesupport submodule. One version here so widget types unify.
+# The UI toolkit stack, shared by the tango app, tango-ui, and the
+# gamesupport UI crates in the submodule. One version here so widget
+# types unify.
 iced = { version = "0.14", features = ["tokio", "image-without-codecs", "markdown", "canvas", "advanced"] }
 iced_graphics = { version = "0.14", features = ["geometry"] }
 iced_tiny_skia = { version = "0.14", features = ["geometry"] }

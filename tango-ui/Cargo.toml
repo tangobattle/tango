@@ -1,0 +1,21 @@
+[package]
+name = "tango-ui"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+# The app's look-and-feel toolkit: reusable widgets, the style constants
+# and theme decorations they render with, animation timelines, and the
+# "Copied!" flash. Deliberately game-agnostic — the gamesupport UI layer
+# (in the private gamesupport repo) builds on this, and so does every
+# screen in the app.
+
+[dependencies]
+iced.workspace = true
+sweeten.workspace = true
+lucide-icons.workspace = true
+chrono = "0.4"
+
+[lints]
+workspace = true

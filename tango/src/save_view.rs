@@ -1,11 +1,13 @@
-//! The save view lives in `tango-gamesupport-ui`; each game family's
-//! editor lives in its own UI crate in the `gamesupport` submodule.
-//! What stays here is the one thing only the app can own: the
-//! per-family [`SaveUi`] registry, because the `gamesupport-*` feature
-//! gates are this crate's.
+//! The save view lives in the private `tango-gamesupport-common` crate;
+//! each game family's editor is its own UI crate alongside it in the
+//! `gamesupport` submodule. What stays here is the one thing only the
+//! app can own: the per-family [`SaveUi`] registry, because the
+//! `gamesupport-*` feature gates are this crate's. (The family names
+//! below are already public via those features, so this match reveals
+//! nothing the manifest doesn't.)
 
-pub use tango_gamesupport_ui::save_ui::SaveUi;
-pub use tango_gamesupport_ui::save_view::*;
+pub use tango_gamesupport_common::save_ui::SaveUi;
+pub use tango_gamesupport_common::save_view::*;
 
 use crate::library::rom::GameRef;
 
@@ -31,6 +33,6 @@ pub fn save_ui_for(game: GameRef) -> &'static dyn SaveUi {
         "bn6" | "exe6" => &tango_gamesupport_bn6_ui::SAVE_UI,
         #[cfg(feature = "gamesupport-exe45")]
         "exe45" => &tango_gamesupport_exe45_ui::SAVE_UI,
-        _ => &tango_gamesupport_ui::save_ui::FALLBACK_SAVE_UI,
+        _ => &tango_gamesupport_common::save_ui::FALLBACK_SAVE_UI,
     }
 }

@@ -234,9 +234,7 @@ fn telemetry_card<'a>(
     column![
         caption_row,
         control,
-        container(value)
-            .width(Fill)
-            .align_x(iced::alignment::Horizontal::Right),
+        container(value).width(Fill).align_x(iced::alignment::Horizontal::Right),
     ]
     .spacing(3)
     .width(Length::Fixed(PANEL_W))

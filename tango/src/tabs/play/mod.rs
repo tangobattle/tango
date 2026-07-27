@@ -447,7 +447,16 @@ impl State {
         band: LobbyBandCtx<'a>,
     ) -> Element<'a, Message> {
         let now = iced::time::Instant::now();
-        let mut save_body = self.body(lang, scanners, loadout, loaded, streamer_mode, config, scanning, band.phase);
+        let mut save_body = self.body(
+            lang,
+            scanners,
+            loadout,
+            loaded,
+            streamer_mode,
+            config,
+            scanning,
+            band.phase,
+        );
         // A family switch replaces the entire bottom of the tab, so
         // the whole pane glides in (the App starts `save_body_enter`
         // when `loadout.family` flips); save switches within the
@@ -565,7 +574,11 @@ impl State {
         // the empty states below, so landing on the real one doesn't
         // move anything.
         if scanning {
-            return empty_state_card(t!(lang, "empty-scanning-title"), vec![t!(lang, "empty-scanning-body")], None);
+            return empty_state_card(
+                t!(lang, "empty-scanning-title"),
+                vec![t!(lang, "empty-scanning-body")],
+                None,
+            );
         }
         // No ROMs at all: explain where to put them.
         if scanners.roms.read().is_empty() {

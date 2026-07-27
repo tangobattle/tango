@@ -8,14 +8,14 @@
 //!
 //! The config-independent constants and decorations
 //! (`TANGO_GREEN`, `SELECT_YELLOW`, the pride-flag stops) live in
-//! `tango_gamesupport_ui::theme` — the shared widgets draw with
-//! them. `TANGO_GREEN` is re-exported (the palettes below anchor
-//! on it); reach the rest via `tango_gamesupport_ui::theme`.
+//! `tango_ui::theme` — the shared widgets draw with them.
+//! `TANGO_GREEN` is re-exported (the palettes below anchor on it);
+//! reach the rest via `tango_ui::theme`.
 
 use crate::config;
 use iced::Theme;
 
-pub use tango_gamesupport_ui::theme::TANGO_GREEN;
+pub use tango_ui::theme::TANGO_GREEN;
 
 /// The chrome color for a [`config::AccentColor`] choice, per theme
 /// mode. Dark mode wants bright accents that glow against the
