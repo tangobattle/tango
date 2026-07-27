@@ -216,6 +216,11 @@ pub struct Chip {
 
 pub trait ChipsView {
     fn num_folders(&self) -> usize;
+    /// How many chip slots a folder holds. Thirty in the Battle Network
+    /// games; Battle Chip Challenge's program deck is twelve.
+    fn folder_size(&self) -> usize {
+        30
+    }
     fn equipped_folder_index(&self) -> usize;
     /// The folder's Regular chip slot. Outer `None` means the game has
     /// no Regular chip feature; inner `None` means it has one but none

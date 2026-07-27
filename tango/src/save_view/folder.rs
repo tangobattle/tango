@@ -20,8 +20,9 @@ pub(super) fn render_folder<M: 'static>(
     // Pull the 30-chip folder. The Regular chip is stored at its real
     // grid slot in every game that has one, so `regular_idx` already is
     // its display position.
+    let folder_size = chips_view.folder_size();
     let chips: Vec<Option<tango_dataview::save::Chip>> =
-        (0..MAX_FOLDER_CHIPS).map(|i| chips_view.chip(folder_idx, i)).collect();
+        (0..folder_size).map(|i| chips_view.chip(folder_idx, i)).collect();
 
     // Build display items: either grouped (collapsed by chip identity)
     // or per-slot (one row per slot, possibly empty).
@@ -157,11 +158,12 @@ pub(super) fn render_folder_edit<'a>(
     };
 
     // ----- Left pane: the folder -----
-    let filled = (0..MAX_FOLDER_CHIPS)
+    let folder_size = chips_view.folder_size();
+    let filled = (0..folder_size)
         .filter(|&i| chips_view.chip(folder_idx, i).is_some())
         .count();
-    let mut folder_rows: Vec<Element<'a, Action>> = Vec::with_capacity(MAX_FOLDER_CHIPS);
-    for slot in 0..MAX_FOLDER_CHIPS {
+    let mut folder_rows: Vec<Element<'a, Action>> = Vec::with_capacity(folder_size);
+    for slot in 0..folder_size {
         let chip = chips_view.chip(folder_idx, slot);
         let is_regular = regular_idx == Some(slot);
         let is_tag = edit.tags.contains(&slot);
@@ -220,9 +222,9 @@ pub(super) fn render_folder_edit<'a>(
             lang,
             "folder-edit-count",
             count = filled as i64,
-            limit = MAX_FOLDER_CHIPS
+            limit = folder_size as i64
         ),
-        filled < MAX_FOLDER_CHIPS,
+        filled < folder_size,
     );
     let header_row = row![
         text(t!(lang, "folder-edit-folder")).size(TEXT_BODY),
@@ -298,7 +300,7 @@ pub(super) fn render_folder_edit<'a>(
         }
         // Disabled when the folder is full or adding this chip would break
         // the navi's mega/giga/copy limits.
-        let addable = filled < MAX_FOLDER_CHIPS && usage.can_add(loaded, id, &limits);
+        let addable = filled < folder_size && usage.can_add(loaded, id, &limits);
         lib_list = lib_list.push(library_entry_row(loaded, id, name, code, shown, chips_have_mb, addable));
         shown += 1;
     }
@@ -602,7 +604,7 @@ fn sorted_library_entries(
 // `tango_savemodel::rules`: the apply path enforces the same ones, so
 // there is one copy of each. Re-exported under the old paths because
 // this is where the panes that render them look.
-pub use tango_savemodel::rules::{folder_limits_satisfied, FolderUsage, MAX_FOLDER_CHIPS};
+pub use tango_savemodel::rules::{folder_limits_satisfied, FolderUsage};
 
 #[derive(Default)]
 pub(crate) struct GroupedChip {
@@ -931,8 +933,9 @@ pub(crate) fn as_text(loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
     let regular_idx = chips_view.regular_chip_index(folder_idx).flatten();
     let tag_idxs = chips_view.tag_chip_indexes(folder_idx).flatten();
 
-    let chips: Vec<Option<tango_dataview::save::Chip>> =
-        (0..MAX_FOLDER_CHIPS).map(|i| chips_view.chip(folder_idx, i)).collect();
+    let chips: Vec<Option<tango_dataview::save::Chip>> = (0..chips_view.folder_size())
+        .map(|i| chips_view.chip(folder_idx, i))
+        .collect();
 
     let mut out = String::new();
     if opts.folder_grouped {

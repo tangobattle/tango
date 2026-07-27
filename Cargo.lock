@@ -7545,6 +7545,7 @@ dependencies = [
  "sweeten",
  "tango-dataview",
  "tango-gamesupport",
+ "tango-gamesupport-bcc",
  "tango-gamesupport-bn1",
  "tango-gamesupport-bn2",
  "tango-gamesupport-bn3",
@@ -7600,6 +7601,20 @@ dependencies = [
  "tango-dataview",
  "tango-match",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tango-gamesupport-bcc"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "env_logger",
+ "image",
+ "mgba",
+ "mgba-rollback",
+ "tango-dataview",
+ "tango-gamesupport",
+ "tango-match",
 ]
 
 [[package]]
@@ -7747,6 +7762,7 @@ dependencies = [
  "steamlocate",
  "tango-dataview",
  "tango-gamesupport",
+ "tango-gamesupport-bcc",
  "tango-gamesupport-bn1",
  "tango-gamesupport-bn2",
  "tango-gamesupport-bn3",

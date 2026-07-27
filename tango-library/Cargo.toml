@@ -31,6 +31,7 @@ tango-replay = { path = "../tango-replay" }
 
 fluent-templates = "0.14"
 
+tango-gamesupport-bcc = { path = "../gamesupport/tango-gamesupport-bcc", optional = true }
 tango-gamesupport-bn1 = { path = "../gamesupport/tango-gamesupport-bn1", optional = true }
 tango-gamesupport-bn2 = { path = "../gamesupport/tango-gamesupport-bn2", optional = true }
 tango-gamesupport-bn3 = { path = "../gamesupport/tango-gamesupport-bn3", optional = true }
@@ -59,6 +60,7 @@ default = ["native"]
 # std filesystem + reqwest HTTP + Steam (BNLC) discovery. A wasm build
 # turns this off and supplies its own OPFS / fetch implementations.
 native = ["dep:reqwest", "dep:steamlocate", "dep:tokio", "dep:walkdir", "dep:zip", "reqwest/native-tls"]
+gamesupport-bcc = ["dep:tango-gamesupport-bcc"]
 gamesupport-bn1 = ["dep:tango-gamesupport-bn1"]
 gamesupport-bn2 = ["dep:tango-gamesupport-bn2"]
 gamesupport-bn3 = ["dep:tango-gamesupport-bn3"]
@@ -67,6 +69,7 @@ gamesupport-bn5 = ["dep:tango-gamesupport-bn5"]
 gamesupport-bn6 = ["dep:tango-gamesupport-bn6"]
 gamesupport-exe45 = ["dep:tango-gamesupport-exe45"]
 gamesupport-all = [
+    "gamesupport-bcc",
     "gamesupport-bn1",
     "gamesupport-bn2",
     "gamesupport-bn3",

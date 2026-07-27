@@ -180,7 +180,6 @@ pub fn apply_edit(save: &mut SaveModel, edit: Edit) -> Invalidation {
 /// anti-cheat folder/library mirror so it stays in sync with the edit.
 /// No disk I/O — the commit path only checksums and writes.
 pub fn apply_chip_edit(save: &mut SaveModel, edit: ChipEdit) {
-    use crate::rules::MAX_FOLDER_CHIPS;
     use tango_dataview::save::Chip;
 
     /// Rewrite the whole folder: every chip slot plus the REG/TAG pointers.
@@ -281,7 +280,8 @@ pub fn apply_chip_edit(save: &mut SaveModel, edit: ChipEdit) {
     let Some(mut chips) = save.save.view_chips_mut() else {
         return;
     };
-    let folder: Vec<Option<Chip>> = (0..MAX_FOLDER_CHIPS).map(|i| chips.chip(folder_idx, i)).collect();
+    let folder_size = chips.folder_size();
+    let folder: Vec<Option<Chip>> = (0..folder_size).map(|i| chips.chip(folder_idx, i)).collect();
     let regular = chips.regular_chip_index(folder_idx).flatten();
     let tags = chips.tag_chip_indexes(folder_idx).flatten();
 
@@ -290,7 +290,7 @@ pub fn apply_chip_edit(save: &mut SaveModel, edit: ChipEdit) {
             // First empty slot; no-op if the folder is full. New chips go in at
             // the top, sliding the chips above the gap down into it. REG/TAG
             // slot pointers shift down with them.
-            let Some(gap) = (0..MAX_FOLDER_CHIPS).find(|&i| folder[i].is_none()) else {
+            let Some(gap) = (0..folder_size).find(|&i| folder[i].is_none()) else {
                 return;
             };
             let mut new_chips = folder;
@@ -331,7 +331,7 @@ pub fn apply_chip_edit(save: &mut SaveModel, edit: ChipEdit) {
             // Ordered move (remove at `from`, insert at `to`). Both ends must
             // be filled — the editor never drags an empty slot or drops into a
             // gap — and REG/TAG slot pointers follow the permutation.
-            if from == to || from >= MAX_FOLDER_CHIPS || to >= MAX_FOLDER_CHIPS {
+            if from == to || from >= folder_size || to >= folder_size {
                 return;
             }
             if folder[from].is_none() || folder[to].is_none() {
@@ -351,7 +351,7 @@ pub fn apply_chip_edit(save: &mut SaveModel, edit: ChipEdit) {
             );
         }
         ChipEdit::ClearFolder => {
-            write_folder(&mut *chips, folder_idx, &vec![None; MAX_FOLDER_CHIPS], None, None);
+            write_folder(&mut *chips, folder_idx, &vec![None; folder_size], None, None);
         }
         ChipEdit::ToggleRegular { slot } => {
             // Clicking the regular chip again clears it; otherwise set it.

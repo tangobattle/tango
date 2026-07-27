@@ -802,7 +802,7 @@ impl State {
                 // TAG selection to match.
                 if let Some(gap) = loaded.and_then(|l| l.save.view_chips()).and_then(|v| {
                     let fi = v.equipped_folder_index();
-                    (0..folder::MAX_FOLDER_CHIPS).find(|&i| v.chip(fi, i).is_none())
+                    (0..v.folder_size()).find(|&i| v.chip(fi, i).is_none())
                 }) {
                     self.shift_tags_for_top_insert(gap);
                 }
@@ -829,7 +829,7 @@ impl State {
                 // Live folder occupancy, to validate + resolve the drop.
                 let filled = loaded.and_then(|l| l.save.view_chips()).map(|v| {
                     let fi = v.equipped_folder_index();
-                    (0..folder::MAX_FOLDER_CHIPS)
+                    (0..v.folder_size())
                         .map(|i| v.chip(fi, i).is_some())
                         .collect::<Vec<bool>>()
                 })?;
@@ -1503,7 +1503,7 @@ fn edit_buttons<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Eleme
     let can_save = !loaded.editability.folder || {
         let full = loaded.save.view_chips().is_none_or(|v| {
             let folder = v.equipped_folder_index();
-            (0..folder::MAX_FOLDER_CHIPS).all(|i| v.chip(folder, i).is_some())
+            (0..v.folder_size()).all(|i| v.chip(folder, i).is_some())
         });
         full && folder::folder_limits_satisfied(loaded)
     };

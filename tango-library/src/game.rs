@@ -33,6 +33,8 @@ pub use tango_gamesupport::{Family, Game, Region};
 pub static FAMILIES: LazyLock<Vec<&'static Family>> = LazyLock::new(|| {
     #[allow(unused_mut)]
     let mut families: Vec<&'static Family> = Vec::new();
+    #[cfg(feature = "gamesupport-bcc")]
+    families.extend_from_slice(tango_gamesupport_bcc::FAMILIES);
     #[cfg(feature = "gamesupport-bn1")]
     families.extend_from_slice(tango_gamesupport_bn1::FAMILIES);
     #[cfg(feature = "gamesupport-bn2")]

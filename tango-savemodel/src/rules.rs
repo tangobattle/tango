@@ -8,7 +8,11 @@
 
 use crate::SaveModel;
 
-/// Number of chip slots in an equipped folder.
+/// Number of chip slots in an equipped folder for the Battle Network
+/// games. Games whose folder is a different size report their own
+/// through [`tango_dataview::save::ChipsView::folder_size`]; prefer that
+/// wherever a view is in hand, and keep this for the places that size a
+/// buffer before one is.
 pub const MAX_FOLDER_CHIPS: usize = 30;
 
 /// Maximum number of copies of one NaviCust part (by id) allowed on the
@@ -44,7 +48,7 @@ impl FolderUsage {
         let mut dark = 0;
         let mut copies: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
         if let Some(view) = save.save.view_chips() {
-            for slot in 0..MAX_FOLDER_CHIPS {
+            for slot in 0..view.folder_size() {
                 let Some(c) = view.chip(folder_idx, slot) else { continue };
                 *copies.entry(c.id).or_insert(0) += 1;
                 let Some(chip) = assets.chip(c.id) else {
