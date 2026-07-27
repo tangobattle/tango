@@ -605,11 +605,7 @@ pub(super) fn telemetry_overlay<'a>(
         use widgets::{FIELD_BLUE, FIELD_RED};
         let local_is_p1 = pvp.local_player_index() == 0;
         let (you, opponent) = (t!(lang, "play-you"), t!(lang, "play-opponent"));
-        // Battle Chip Challenge colors its players by seat rather than
-        // by field half — P1 is red, P2 is blue, both in game — so its
-        // panel lists the seats in that fixed order instead of leading
-        // with the local player.
-        let players = if matches!(pvp.local_game().family, "bcc" | "exebcgp") {
+        let players = if pvp.local_game().players_colored_by_seat {
             let (p1, p2) = if local_is_p1 {
                 (you, opponent)
             } else {

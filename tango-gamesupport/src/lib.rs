@@ -148,6 +148,12 @@ pub struct Game {
     /// Length-per-mode list. Entry `i` is how many subtypes mode `i` has —
     /// e.g. BN6 is `[1, 1]`. Drives the match-type pick_list in the lobby.
     pub match_types: &'static [usize],
+    /// Whether this game colors its players by *seat* rather than by
+    /// field half. The BN games put your own navi on the red half
+    /// whichever seat you take, so their panels lead with your side;
+    /// Battle Chip Challenge instead paints P1 red and P2 blue for both
+    /// players, and its panels follow that fixed order.
+    pub players_colored_by_seat: bool,
     /// Bundled save templates, lazily parsed on first access.
     pub save_templates: &'static SaveTemplates,
     /// Logo for the game, decoded on first access.
