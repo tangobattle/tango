@@ -78,7 +78,7 @@ pub struct BackgroundRef {
 /// A parsed save, as [`Game::parse_save`] hands it out. Implemented
 /// only by the private gamesupport layer — the full view surface behind
 /// it is private knowledge; the app clones it, serializes it, and hands
-/// it back to [`SaveUi::load`].
+/// it back to [`SaveEditor::load`].
 pub trait SaveData: std::any::Any + Send + Sync {
     /// Serialize back to a cartridge SRAM dump.
     fn to_sram_dump(&self) -> Vec<u8>;
@@ -112,9 +112,11 @@ pub type BoxedAssets = Box<dyn AssetsData>;
 // trait speaks opaque envelopes; the private gamesupport UI layer
 // implements it.
 #[cfg(feature = "ui")]
-pub mod save_ui;
+pub mod save_editor;
 #[cfg(feature = "ui")]
-pub use save_ui::{AppliedPatch, SaveUi, SaveUiMessage, SaveUiOutcome, SaveViewData, SaveViewPayload, SaveViewState};
+pub use save_editor::{
+    AppliedPatch, LoadedSave, LoadedSavePayload, SaveEditor, SaveEditorEvent, SaveEditorMessage, SaveEditorState,
+};
 
 /// One ROM revision Tango supports, with all of its per-game info.
 ///
@@ -153,7 +155,7 @@ pub struct Game {
     /// Pointer to the BNLC-hosted background TGA.
     pub background: BackgroundRef,
 
-    /// The game's save editor — a real, renderable [`save_ui::SaveUi`]
+    /// The game's save editor — a real, renderable [`save_editor::SaveEditor`]
     /// (load / render / update; every shape behind it is opaque). Exists
     /// only when this crate's `ui` feature is on — headless builds (the
     /// pvp probes, engine hosts) have no field. A game crate built
@@ -161,7 +163,7 @@ pub struct Game {
     /// initialize it (tango's `gamesupport-*` features pair the two);
     /// mixing them is a missing-field error here, on purpose.
     #[cfg(feature = "ui")]
-    pub save_ui: &'static dyn save_ui::SaveUi,
+    pub save_editor: &'static dyn save_editor::SaveEditor,
 }
 
 impl Game {

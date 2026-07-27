@@ -134,7 +134,7 @@ impl App {
                 let Some(loaded) = self.loaded.as_ref() else {
                     return iced::Task::none();
                 };
-                let save_sram = loaded.ui.sram(loaded);
+                let save_sram = loaded.editor.sram(loaded);
                 match self.netplay.commit(save_sram) {
                     Some(netplay::Event::MatchReady) => self.start_pvp_handoff(),
                     None => iced::Task::none(),
@@ -319,7 +319,7 @@ impl App {
                 self.refresh_loaded();
                 iced::Task::none()
             }
-            E::SaveViewTask(t) => t.map(Message::Play),
+            E::SaveEditorTask(t) => t.map(Message::Play),
         }
     }
 
@@ -737,7 +737,7 @@ impl App {
                 self.replay_analysis_jobs.insert(path, (cancel, handle));
                 task
             }
-            E::SaveViewTask(t) => t.map(Message::Replays),
+            E::SaveEditorTask(t) => t.map(Message::Replays),
         }
     }
 

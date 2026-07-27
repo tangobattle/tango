@@ -370,7 +370,7 @@ pub fn view<'a>(
 ) -> Element<'a, Message> {
     let active = state.active_tab;
     // Vertical tab strip on the left; selected pane on the right.
-    // Pill style matches the global top nav + save_view sub-nav
+    // Pill style matches the global top nav + save_editor sub-nav
     // so every tab affordance in the app reads as the same
     // widget family.
     let side_btn = |icon: Icon, label: String, tab: SettingsTab| {

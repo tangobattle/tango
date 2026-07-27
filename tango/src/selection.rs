@@ -1,5 +1,5 @@
-//! App-side constructors for [`SaveViewData`] — a loaded save bundled
-//! with the UI that renders it, produced through `Game::save_ui`'s
+//! App-side constructors for [`LoadedSave`] — a loaded save bundled
+//! with the UI that renders it, produced through `Game::save_editor`'s
 //! opaque embedding API. Everything that needs app collaborators stays
 //! here: applying the selected patch (the scanner types and storage
 //! root are the app's) and resolving the Cover tab's logo order from
@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-pub use tango_gamesupport::{AppliedPatch, SaveViewData};
+pub use tango_gamesupport::{AppliedPatch, LoadedSave};
 
 /// The Cover tab's logo order: the loaded variant first, then its
 /// family siblings (the other color version, where one exists) so
@@ -33,7 +33,7 @@ pub fn build(
     save: tango_gamesupport::BoxedSave,
     patches_path: &std::path::Path,
     patch: Option<(String, semver::Version, Arc<crate::library::patch::Version>)>,
-) -> SaveViewData {
+) -> LoadedSave {
     let (rom, applied_patch) = match patch {
         Some((name, version, meta)) => {
             match crate::library::patch::apply_patch(
@@ -77,12 +77,12 @@ pub fn from_patched_rom(
     save_path: std::path::PathBuf,
     save: tango_gamesupport::BoxedSave,
     applied_patch: Option<AppliedPatch>,
-) -> SaveViewData {
-    game.save_ui
+) -> LoadedSave {
+    game.save_editor
         .load(game, rom, save_path.clone(), save, applied_patch, &logo_games(game))
 }
 
-/// Build a [`SaveViewData`] for the local side of a replay — used by the
+/// Build a [`LoadedSave`] for the local side of a replay — used by the
 /// replays tab to embed the save view in its detail panel. Pulls
 /// the local rom + patch from the scanners cache; returns Err
 /// if anything's missing.
@@ -90,7 +90,7 @@ pub fn for_replay_local(
     scanners: &crate::app::Scanners,
     config: &crate::config::Config,
     replay: &tango_replay::Replay,
-) -> anyhow::Result<SaveViewData> {
+) -> anyhow::Result<LoadedSave> {
     let side = replay
         .local_side()
         .ok_or_else(|| anyhow::anyhow!("replay missing local side metadata"))?;

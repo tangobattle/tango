@@ -38,10 +38,10 @@ pub enum Message {
     ToggleSelfPanel,
     /// User interacted with the opponent's save-view (tab swap,
     /// folder-group toggle, hover, …).
-    OpponentSaveView(save_view::Msg),
+    OpponentSaveView(save_editor::Msg),
     /// Mirror of [`OpponentSaveView`](Self::OpponentSaveView) for the
     /// local panel.
-    SelfSaveView(save_view::Msg),
+    SelfSaveView(save_editor::Msg),
     /// A setup drawer's inner edge was grabbed to resize it. Carries
     /// the side (0 = self, 1 = opponent) and that drawer's width at
     /// the grab, which the drag then works in deltas off.
@@ -89,7 +89,7 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
             // mutation can occur and the loaded side stays untouched.
             if let Some(panes) = state.pvp_panes.as_mut() {
                 if let Some(data) = panes.opponent_loaded.as_ref() {
-                    let (task, _) = data.ui.update(&mut *panes.opponent_save_view, None, &*msg);
+                    let (task, _) = data.editor.update(&mut *panes.opponent_save_editor, None, &*msg);
                     return task.map(Message::OpponentSaveView);
                 }
             }
@@ -97,7 +97,7 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
         Message::SelfSaveView(msg) => {
             if let Some(panes) = state.pvp_panes.as_mut() {
                 if let Some(data) = panes.local_loaded.as_ref() {
-                    let (task, _) = data.ui.update(&mut *panes.local_save_view, None, &*msg);
+                    let (task, _) = data.editor.update(&mut *panes.local_save_editor, None, &*msg);
                     return task.map(Message::SelfSaveView);
                 }
             }
@@ -319,8 +319,8 @@ fn setup_drawers_overlay<'a>(lang: &'a LanguageIdentifier, state: &'a State) -> 
         .filter(|_| state.self_panel.shown() || state.self_panel.is_animating(now))
     {
         let panel = me
-            .ui
-            .view(lang, me, &*s.local_save_view, true, None, false, false)
+            .editor
+            .view(lang, me, &*s.local_save_editor, true, None, false, false)
             .map(Message::SelfSaveView);
         let pane = setup_pane(panel, 0, state.self_panel.progress(now));
         panes.push(
@@ -337,8 +337,8 @@ fn setup_drawers_overlay<'a>(lang: &'a LanguageIdentifier, state: &'a State) -> 
         .filter(|_| state.opponent_panel.shown() || state.opponent_panel.is_animating(now))
     {
         let panel = opponent
-            .ui
-            .view(lang, opponent, &*s.opponent_save_view, true, None, false, false)
+            .editor
+            .view(lang, opponent, &*s.opponent_save_editor, true, None, false, false)
             .map(Message::OpponentSaveView);
         let pane = setup_pane(panel, 1, state.opponent_panel.progress(now));
         panes.push(

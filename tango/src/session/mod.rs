@@ -27,7 +27,7 @@ use crate::library::game;
 use crate::library::patch;
 use crate::platform::audio;
 use crate::platform::video::framebuffer::Effect;
-use crate::save_view;
+use crate::save_editor;
 use crate::selection;
 use crate::ui::anim;
 use crate::ui::style::{self, TEXT_BODY, TEXT_CAPTION};
@@ -79,13 +79,13 @@ const METRIC_HISTORY_LEN: usize = 180;
 /// the post-match results cook ([`MatchResults::capture`]).
 pub struct PvpPanes {
     /// Local side's loaded selection — the "my setup" drawer.
-    pub local_loaded: Option<selection::SaveViewData>,
+    pub local_loaded: Option<selection::LoadedSave>,
     /// Opponent's loaded selection, unless they blinded their setup.
-    pub opponent_loaded: Option<selection::SaveViewData>,
+    pub opponent_loaded: Option<selection::LoadedSave>,
     /// Active-tab / grouping state for the self save-view panel.
-    pub local_save_view: save_view::State,
+    pub local_save_editor: save_editor::State,
     /// Active-tab / grouping state for the opponent save-view panel.
-    pub opponent_save_view: save_view::State,
+    pub opponent_save_editor: save_editor::State,
     /// Current width of each setup drawer (`[self, opponent]`), seeded
     /// from `config.pvp_setup_pane_widths` at match start and moved by
     /// dragging a drawer's inner edge. The App mirrors it back into
@@ -112,7 +112,7 @@ pub struct PaneDrag {
     pub anchor_x: Option<f32>,
 }
 
-// A SaveViewData is a whole parsed rom + save; a placeholder keeps the
+// A LoadedSave is a whole parsed rom + save; a placeholder keeps the
 // enclosing app Message (which carries a `Slot<(PvpSession, PvpPanes)>`)
 // derivable, same as PreMatchData.
 impl std::fmt::Debug for PvpPanes {
@@ -283,7 +283,7 @@ pub struct RoundCard {
     /// Chip-use events per side (`[you, opponent]`), cooked for the
     /// graph's event lanes. Names/icons are resolved at capture time —
     /// the session (and both sides' loadeds) is gone while the card is
-    /// on screen — each side through its own SaveViewData, the opponent
+    /// on screen — each side through its own LoadedSave, the opponent
     /// falling back to the local game's table when they blinded their
     /// setup. Empty on games whose traps don't report chips (bn1).
     pub chip_uses: [Vec<crate::ui::widgets::ChipUseMark>; 2],
@@ -1383,7 +1383,7 @@ pub async fn spawn_pvp(
         remote_rom_raw
     };
 
-    // Build the opponent's SaveViewData only if they didn't blind their
+    // Build the opponent's LoadedSave only if they didn't blind their
     // setup — otherwise we don't have visibility into their save.
     // Loading parses chip/navi/navicust assets from the rom + wram,
     // so the session pane can render them with the same widgets we
@@ -1415,7 +1415,7 @@ pub async fn spawn_pvp(
         None
     };
 
-    // Build the local-side SaveViewData so the in-session "my setup"
+    // Build the local-side LoadedSave so the in-session "my setup"
     // toggle can render the same save-view we use for the
     // opponent panel.
     let local_loaded = {
@@ -1470,8 +1470,8 @@ pub async fn spawn_pvp(
         PvpPanes {
             local_loaded,
             opponent_loaded,
-            local_save_view: save_view::State::new(),
-            opponent_save_view: save_view::State::new(),
+            local_save_editor: save_editor::State::new(),
+            opponent_save_editor: save_editor::State::new(),
             // Clamped on the way in: the persisted pair predates the
             // current bounds on an older config, or the window it was
             // sized against is gone.
@@ -1608,14 +1608,14 @@ fn spawn_drive_thread(
 }
 
 /// Boot the supplied selection in single-player mode. Caller must
-/// already have a complete (game + rom + save) SaveViewData — there's no
+/// already have a complete (game + rom + save) LoadedSave — there's no
 /// fallback for missing pieces, so the Play button is responsible for
 /// gating.
 pub fn spawn_singleplayer(
     scanners: &Scanners,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
-    loaded: &selection::SaveViewData,
+    loaded: &selection::LoadedSave,
 ) -> anyhow::Result<(
     singleplayer::SinglePlayerSession,
     Option<audio::Binding>,
@@ -1624,7 +1624,7 @@ pub fn spawn_singleplayer(
 )> {
     let game = game::from_gamedb_entry(loaded.game)
         .ok_or_else(|| anyhow::anyhow!("no game impl for {:?}", loaded.game.family_and_variant()))?;
-    // SaveViewData stashes the *parsed* ROM (assets), not the raw bytes —
+    // LoadedSave stashes the *parsed* ROM (assets), not the raw bytes —
     // grab them back from the scanner and re-apply the patch if any so
     // the emulator sees the same image it would in the legacy app.
     let raw = scanners
@@ -1666,12 +1666,12 @@ pub fn spawn_singleplayer(
 /// (both cores run this selection) against a do-nothing dummy controller
 /// ([`training::NoopController`]) wired in as the integration seam. Same
 /// gating contract as [`spawn_singleplayer`]: the caller must already
-/// hold a complete (game + rom + save) SaveViewData.
+/// hold a complete (game + rom + save) LoadedSave.
 pub fn spawn_training(
     scanners: &Scanners,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
-    loaded: &selection::SaveViewData,
+    loaded: &selection::LoadedSave,
 ) -> anyhow::Result<(
     training::TrainingSession,
     Option<audio::Binding>,
@@ -1679,7 +1679,7 @@ pub fn spawn_training(
 )> {
     let game = game::from_gamedb_entry(loaded.game)
         .ok_or_else(|| anyhow::anyhow!("no game impl for {:?}", loaded.game.family_and_variant()))?;
-    // SaveViewData stashes the *parsed* ROM (assets), not the raw bytes —
+    // LoadedSave stashes the *parsed* ROM (assets), not the raw bytes —
     // grab them back from the scanner and re-apply the patch if any so
     // the emulator sees the same image PvP would.
     let raw = scanners
@@ -1705,7 +1705,7 @@ pub fn spawn_training(
     let (session, driver, audio) = training::TrainingSession::new(
         game,
         std::sync::Arc::new(rom_bytes),
-        loaded.ui.sram(loaded),
+        loaded.editor.sram(loaded),
         std::time::SystemTime::now(),
         rand::random(),
         audio_binder.sample_rate(),
