@@ -134,10 +134,6 @@ impl crate::Session for SinglePlayerSession {
         self.layout.clone()
     }
 
-    fn frame_size(&self) -> (u32, u32) {
-        crate::stacked_size(&self.layout)
-    }
-
     fn wake(&self) -> Arc<tokio::sync::Notify> {
         self.wake.clone()
     }

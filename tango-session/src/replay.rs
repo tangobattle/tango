@@ -40,6 +40,9 @@ pub struct ReplaySession {
     /// [`Self::nicknames`]). Boxed to keep this struct — and with it
     /// the `Session` enum — small, same as the PvP variant.
     input_display: Box<InputDisplay>,
+    /// The console's screens, as the local game's engine presents them
+    /// — what both surfaces below are sized for.
+    layout: tango_match::ScreenLayout,
     /// This session's display, kept so [`Self::scrub_preview`] can blit
     /// snapshot framebuffers without going through the emulator at all.
     screen: Arc<crate::Framebuffer>,
@@ -322,6 +325,7 @@ impl ReplaySession {
             round_boundaries: round_marks,
             total_ticks,
             input_display,
+            layout,
             screen,
             wake,
             show_pip,
@@ -596,6 +600,10 @@ impl crate::Session for ReplaySession {
 
     fn frame(&self) -> Vec<u8> {
         self.screen.read()
+    }
+
+    fn screen_layout(&self) -> tango_match::ScreenLayout {
+        self.layout.clone()
     }
 
     fn wake(&self) -> Arc<tokio::sync::Notify> {

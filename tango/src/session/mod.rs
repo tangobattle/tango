@@ -204,8 +204,12 @@ impl Scrub {
             let snap_tick = snap.key_tick();
             if self.thumb.as_ref().map(|(t, _)| *t) != Some(snap_tick) {
                 let fb = snap.local_framebuffer();
-                if !fb.is_empty() {
-                    self.thumb = Some((snap_tick, thumbnail_handle(fb)));
+                // Length-checked rather than just non-empty: a capture
+                // that doesn't match the session's declared shape would
+                // otherwise upload as a sheared texture.
+                let (w, h) = replay.frame_size();
+                if fb.len() == (w * h * 4) as usize {
+                    self.thumb = Some((snap_tick, thumbnail_handle(w, h, fb)));
                 }
             }
         }
@@ -1028,8 +1032,10 @@ impl State {
                             self.pip_revision = self.pip_revision.wrapping_add(1);
                             crate::platform::video::framebuffer::Frame {
                                 pixels: std::sync::Arc::new(pixels),
-                                width: replay::SCREEN_WIDTH,
-                                height: replay::SCREEN_HEIGHT,
+                                // The PiP surface shares the main
+                                // screen's layout.
+                                width,
+                                height,
                                 revision: self.pip_revision,
                                 // The PiP draws at a small fixed size; no
                                 // upscale filter, just the plain surface.
@@ -1172,8 +1178,8 @@ const ESC_QUIT_HOLD: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Wrap a snapshot's RGBA8 pixels into an image handle for the hover
 /// thumbnail; it only runs when the hovered keyframe changes.
-fn thumbnail_handle(pixels: Vec<u8>) -> iced::widget::image::Handle {
-    iced::widget::image::Handle::from_rgba(replay::SCREEN_WIDTH, replay::SCREEN_HEIGHT, pixels)
+fn thumbnail_handle(width: u32, height: u32, pixels: Vec<u8>) -> iced::widget::image::Handle {
+    iced::widget::image::Handle::from_rgba(width, height, pixels)
 }
 
 /// Route a freshly-built session's audio stream into the host output,

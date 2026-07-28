@@ -141,6 +141,10 @@ pub struct PvpSession {
     /// tasks. On Close we cancel + drop the session, which tears the
     /// network loop down cleanly.
     cancellation_token: tokio_util::sync::CancellationToken,
+    /// The console's screens, as the local game's engine presents them
+    /// — what `screen` is sized for and what the host sizes its
+    /// texture from.
+    layout: tango_match::ScreenLayout,
     /// The peer link: owns the peer connection, both channels' halves, the
     /// latency readout, and the transparent mid-match reconnect (see
     /// [`crate::net::link`]). The supervisor task holds its own `Arc`; the
@@ -401,7 +405,8 @@ impl PvpSession {
         let drive_paused = Arc::new(crate::PauseGate::new(false));
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
         let tps_counter = Arc::new(Mutex::new(TpsCounter::new(60)));
-        let screen = crate::Framebuffer::new(&local_game.pvp.screen_layout());
+        let layout = local_game.pvp.screen_layout();
+        let screen = crate::Framebuffer::new(&layout);
         let wake = Arc::new(tokio::sync::Notify::new());
         // The two-sided ready gate. Priming takes as long as the machine
         // running it takes, so each peer announces when its own pair
@@ -546,6 +551,7 @@ impl PvpSession {
             frame_delay,
             stats,
             replay_path,
+            layout,
             screen,
             wake,
             started_at: web_time::Instant::now(),
@@ -693,6 +699,10 @@ impl crate::Session for PvpSession {
 
     fn frame(&self) -> Vec<u8> {
         self.screen.read()
+    }
+
+    fn screen_layout(&self) -> tango_match::ScreenLayout {
+        self.layout.clone()
     }
 
     fn wake(&self) -> Arc<tokio::sync::Notify> {

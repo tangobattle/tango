@@ -3,7 +3,6 @@ use super::*;
 // would otherwise clash with the sweeten ones re-exported via `super::*`.
 use sweeten::widget::{column, row};
 
-use crate::session::replay::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 pub mod pvp;
 pub mod replay;
@@ -229,10 +228,21 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
     // `framebuffer` shader uploads.
     // The widget is sized to native·scale — the same rectangle the old CPU
     // upscalers produced — and the effect's fragment shader magnifies the
-    // native texture to fill it.
+    // native texture to fill it. Native size comes from the session,
+    // which knows its console's screens from boot — a DS stacks two
+    // 256-wide screens where a GBA has one — so the pane holds the right
+    // shape before the first frame lands.
     let scale = effect.scale;
-    let img_w = (SCREEN_WIDTH * scale) as f32;
-    let img_h = (SCREEN_HEIGHT * scale) as f32;
+    let (native_w, native_h) = state
+        .active
+        .as_ref()
+        .map(|s| s.frame_size())
+        // Unreachable in practice — the app only renders this view over
+        // an active session — and an absent one draws only the black
+        // placeholder, where shape doesn't matter.
+        .unwrap_or((1, 1));
+    let img_w = (native_w * scale) as f32;
+    let img_h = (native_h * scale) as f32;
 
     iced::widget::responsive(move |size| {
         let raw = (size.width / img_w).min(size.height / img_h);

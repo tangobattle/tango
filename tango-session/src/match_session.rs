@@ -122,12 +122,8 @@ impl crate::Session for MatchSession {
         self.game
     }
 
-    fn frame_size(&self) -> (u32, u32) {
-        // Screens stack vertically in the buffer, so the frame is as
-        // wide as the widest and as tall as all of them together.
-        let width = self.layout.screens.iter().map(|s| s.width).max().unwrap_or(0);
-        let height = self.layout.screens.iter().map(|s| s.height).sum();
-        (width, height)
+    fn screen_layout(&self) -> ScreenLayout {
+        self.layout.clone()
     }
 
     fn frame(&self) -> Vec<u8> {

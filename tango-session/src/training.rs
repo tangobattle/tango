@@ -110,6 +110,9 @@ pub struct TrainingSession {
     /// Whether `pip` holds a frame from the current PiP activation
     /// (cleared while off, so a stale capture never flashes on re-toggle).
     pip_fresh: Arc<AtomicBool>,
+    /// The console's screens, as the game's engine presents them —
+    /// what the session's surfaces are sized for.
+    layout: tango_match::ScreenLayout,
     /// Latched once the battle's own match-end path fires — flips
     /// [`is_ended`](crate::Session::is_ended) so the host tears the
     /// session down.
@@ -224,6 +227,7 @@ impl TrainingSession {
                 pip_fresh,
                 ended,
                 stop,
+                layout,
                 screen,
                 wake,
             },
@@ -284,6 +288,10 @@ impl crate::Session for TrainingSession {
 
     fn frame(&self) -> Vec<u8> {
         self.screen.read()
+    }
+
+    fn screen_layout(&self) -> tango_match::ScreenLayout {
+        self.layout.clone()
     }
 
     fn wake(&self) -> Arc<tokio::sync::Notify> {

@@ -59,10 +59,6 @@ pub mod stats;
 /// with X and Y, so one set of names covers both consoles.
 pub use tango_match::keys;
 
-/// A GBA screen, the default a session reports when it does not say
-/// otherwise.
-const GBA_SCREEN: (u32, u32) = (240, 160);
-
 
 /// Placeholder marker: see [`Error::UnsupportedEngine`].
 ///
@@ -272,20 +268,19 @@ pub trait Session: std::any::Any {
     /// the emulator pane.
     fn local_game(&self) -> &'static tango_gamesupport::Game;
 
-    /// The pixel dimensions of [`frame`](Self::frame)'s buffer.
-    ///
-    /// Defaults to a single GBA screen. A console with more than one —
-    /// a DS stacks two — reports the whole buffer, so a host sizes its
-    /// texture from the session instead of assuming a shape.
+    /// The pixel dimensions of [`frame`](Self::frame)'s buffer — the
+    /// console's screens stacked ([`stacked_size`]), so a host sizes
+    /// its texture from the session instead of assuming a shape.
     fn frame_size(&self) -> (u32, u32) {
-        GBA_SCREEN
+        stacked_size(&self.screen_layout())
     }
 
     /// The screens this session's console presents, which is what
-    /// [`frame_size`](Self::frame_size) is a summary of.
-    fn screen_layout(&self) -> tango_match::ScreenLayout {
-        tango_match::ScreenLayout::single(GBA_SCREEN.0, GBA_SCREEN.1)
-    }
+    /// [`frame_size`](Self::frame_size) is a summary of. Required
+    /// rather than defaulted to a GBA shape: the frames themselves
+    /// come from the engine, so a session reporting a shape its
+    /// engine doesn't produce renders every row misaligned.
+    fn screen_layout(&self) -> tango_match::ScreenLayout;
 
     /// This session's current display frame, as RGBA8 (4 bytes per
     /// pixel) — the host uploads it to a GPU texture every repaint, so
