@@ -28,6 +28,25 @@ pub const SAMPLE_RATE: f64 = 48_000.0;
 /// scales against when a host paces the simulation faster or slower.
 pub const FPS: f64 = 33_513_982.0 / 560_190.0;
 
+/// How long a second of this console's production lasts once the host
+/// paces the simulation at `fps_target`.
+///
+/// Native over target, *not* the other way round: at twice the DS's
+/// framerate the SPU emits twice the audio per wall-clock second, so
+/// what it produced in a second now has to play in half of one and the
+/// ratio falls. Same shape as mgba's
+/// `clockRate / (desiredFrameRate * frameCycles)`, which is what the
+/// stream's faux clock and its stretcher are both written against —
+/// the stretcher runs at `1 / ratio`, so inverting this makes a
+/// fast-forward play *slower* rather than faster.
+pub fn framerate_ratio(fps_target: f64) -> f64 {
+    if fps_target > 0.0 {
+        FPS / fps_target
+    } else {
+        1.0
+    }
+}
+
 /// The DS presents two identically-sized screens, top then bottom.
 const SCREENS: [Screen; 2] = [
     Screen {
