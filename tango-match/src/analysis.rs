@@ -100,6 +100,14 @@ pub enum ChipSemantics {
     /// departing = that chip being used, EXCEPT the first departure
     /// after each custom close (the new selection landing).
     LoadedChip,
+    /// Each report is the chip the player is acting with right now,
+    /// [`NO_CHIP`] between actions (BCC): its ARRIVAL is the use. The
+    /// loaded-chip games report a pick that sits in the cell until it
+    /// fires, so a departure is the use there; BCC has no pick to sit —
+    /// its turns resolve straight out of the deck — and the cell is set
+    /// for as long as the action plays out, so waiting for the
+    /// departure would mark the animation's end rather than the hit.
+    ActingChip,
     /// Each report is the sum of the ids remaining in the player's
     /// dealt queue (exe45). The queue only ever gains chips (deals) or
     /// loses exactly the fired chip, so a drop in the sum IS a use
@@ -114,7 +122,8 @@ pub enum ChipSemantics {
 /// [`ChipSemantics::LoadedChip`]: a loaded chip departing = that chip
 /// being used — EXCEPT the first departure after each custom close,
 /// which is the new selection landing on top of whatever was left (see
-/// the per-game chip-block docs). [`ChipSemantics::QueueSum`]: a drop
+/// the per-game chip-block docs). [`ChipSemantics::ActingChip`]: a chip
+/// arriving in the cell is the use. [`ChipSemantics::QueueSum`]: a drop
 /// in the reported sum is a use of the delta.
 fn usage_events(
     samples: &[RoundSample],
@@ -164,6 +173,14 @@ fn usage_events(
                             // flipping to the sentinel), which can't be a
                             // real use.
                             chip_uses[side].push((s.tick, prev_chip & CHIP_ID_MASK));
+                        }
+                        prev_chip = chip;
+                    }
+                }
+                ChipSemantics::ActingChip => {
+                    if chip != prev_chip {
+                        if chip != NO_CHIP {
+                            chip_uses[side].push((s.tick, chip & CHIP_ID_MASK));
                         }
                         prev_chip = chip;
                     }
