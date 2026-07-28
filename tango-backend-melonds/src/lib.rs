@@ -10,6 +10,8 @@
 //! rather than on the emulator directly.
 
 
+pub mod audio;
+
 use tango_match::{Backend, Screen, ScreenLayout};
 
 /// The DS SPU's output rate.

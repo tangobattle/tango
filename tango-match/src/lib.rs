@@ -18,6 +18,7 @@
 //! - [`throttler`]: the clock-sync governor both engines pace with.
 //! - [`keys`]: the joypad bit vocabulary.
 
+pub mod audio;
 pub mod backend;
 pub mod engine;
 pub mod battle;
@@ -25,6 +26,7 @@ pub mod input;
 pub mod telemetry;
 pub mod throttler;
 
+pub use audio::AudioPull;
 pub use backend::{Backend, MatchFactory, RunningMatch, Screen, ScreenLayout, StartConfig};
 
 /// The clock-sync governor: feed it `skew()` + `speculation_balance()`
