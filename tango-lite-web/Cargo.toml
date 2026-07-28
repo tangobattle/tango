@@ -151,6 +151,7 @@ tango-session = { path = "../tango-session" }
 # feature per game, `gamesupport-all` for the shipped build. Each one
 # also switches the game on in tango-library, which owns the registry.
 default = []
+gamesupport-bcc = ["tango-library/gamesupport-bcc"]
 gamesupport-bn1 = ["tango-library/gamesupport-bn1"]
 gamesupport-bn2 = ["tango-library/gamesupport-bn2"]
 gamesupport-bn3 = ["tango-library/gamesupport-bn3"]
@@ -159,6 +160,7 @@ gamesupport-bn5 = ["tango-library/gamesupport-bn5"]
 gamesupport-bn6 = ["tango-library/gamesupport-bn6"]
 gamesupport-exe45 = ["tango-library/gamesupport-exe45"]
 gamesupport-all = [
+    "gamesupport-bcc",
     "gamesupport-bn1",
     "gamesupport-bn2",
     "gamesupport-bn3",
