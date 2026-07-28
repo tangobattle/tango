@@ -216,3 +216,6 @@ pub use tango_match::battle;
 /// The shared telemetry types, re-exported so `crate::r#match::telemetry::…`
 /// paths that mean the data (not the observer) keep resolving.
 pub use tango_match::telemetry as shared_telemetry;
+
+/// The stats types and the telemetry fold, which moved to the seam.
+pub use tango_match::analysis as shared_analysis;

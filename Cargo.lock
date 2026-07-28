@@ -8089,8 +8089,10 @@ dependencies = [
 name = "tango-match"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "getgud",
  "serde",
+ "serde_repr",
  "thiserror 1.0.69",
 ]
 

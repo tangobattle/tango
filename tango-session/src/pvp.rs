@@ -22,8 +22,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
-use tango_backend_mgba::r#match::engine::{Match, MatchConfig};
-use tango_backend_mgba::r#match::telemetry;
+use tango_match::telemetry;
 
 /// GBA video framerate in frames per second.
 pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
@@ -163,7 +162,7 @@ pub struct PvpSession {
     /// thread holds a clone), so the post-match results snapshot and the
     /// sidecar write can read it during teardown regardless of how far the
     /// background tasks have already wound down.
-    stats: Arc<Mutex<tango_backend_mgba::r#match::analysis::StatsBuilder>>,
+    stats: Arc<Mutex<tango_match::analysis::StatsBuilder>>,
     /// Where this match's replay is being recorded, or `None` if the writer
     /// failed to open. The post-match results screen offers to play it back.
     pub replay_path: Option<std::path::PathBuf>,
@@ -418,7 +417,7 @@ impl PvpSession {
 
         // Usage semantics can depend on the applied patch (exe45's PvP
         // patch), so they're probed off the patched ROM.
-        let stats = Arc::new(Mutex::new(tango_backend_mgba::r#match::analysis::StatsBuilder::new(
+        let stats = Arc::new(Mutex::new(tango_match::analysis::StatsBuilder::new(
             local_sio.chip_semantics(local_rom.as_ref()),
             local_sio.counts_buster(local_rom.as_ref()),
         )));
@@ -657,7 +656,7 @@ impl PvpSession {
     /// for the post-match results screen; a round the match never
     /// finished (mid-round disconnect) is in it with its telemetry
     /// intact and no outcome — only the verdict is missing.
-    pub fn stats_snapshot(&self) -> tango_backend_mgba::r#match::analysis::MatchStats {
+    pub fn stats_snapshot(&self) -> tango_match::analysis::MatchStats {
         self.stats.lock().unwrap().snapshot()
     }
 
@@ -831,7 +830,7 @@ struct DriveContext {
     sender: crate::net::PvpSender,
     in_match: crate::net::InMatchTx,
     replay_writer: Option<tango_replay::Writer>,
-    stats: Arc<Mutex<tango_backend_mgba::r#match::analysis::StatsBuilder>>,
+    stats: Arc<Mutex<tango_match::analysis::StatsBuilder>>,
     /// Where this match's stats sidecar goes. Native-only: the cache is
     /// a file next to the replay, and a browser has no such place.
     #[cfg(not(target_arch = "wasm32"))]
@@ -904,7 +903,7 @@ impl DriveContext {
     }
 
     /// Fold a batch of confirmed telemetry into the stats builder (the
-    /// shared [`tango_backend_mgba::r#match::analysis::fold_confirmed`], so live stats
+    /// shared [`tango_match::analysis::fold_confirmed`], so live stats
     /// and offline re-analysis stay byte-equivalent) and drive the round
     /// lifecycle off the events.
     fn fold_confirmed_telemetry(
@@ -914,7 +913,7 @@ impl DriveContext {
         pending_buttons: &mut std::collections::VecDeque<(u32, [u32; 2])>,
     ) {
         let mut stats = self.stats.lock().unwrap();
-        tango_backend_mgba::r#match::analysis::fold_confirmed(&mut stats, self.local_player, samples, events, &mut |tick| {
+        tango_match::analysis::fold_confirmed(&mut stats, self.local_player, samples, events, &mut |tick| {
             // Discard input pairs older than this sample; the front pair
             // at the sample's tick carries its buttons. Samples arrive
             // tick-ascending, so this never skips a later sample's pair.

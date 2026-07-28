@@ -21,6 +21,7 @@
 pub mod audio;
 pub mod backend;
 pub mod engine;
+pub mod analysis;
 pub mod battle;
 pub mod input;
 pub mod telemetry;
