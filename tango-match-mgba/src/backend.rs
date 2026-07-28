@@ -55,3 +55,52 @@ impl Backend for Mgba {
 /// Re-exported so a game crate can name a link or a snapshot without
 /// depending on the emulator crates itself.
 pub use mgba_rollback::{Link, Snapshot};
+
+/// Starts GBA matches for one game registration.
+///
+/// A registration holds one of these as its `pvp`, so the app starts a
+/// match without knowing which emulator is underneath. `support`
+/// resolves a variant of this family to that variant's engine support:
+/// the game's own crate has every variant's statics in scope, which is
+/// how the peer's side gets resolved without the seam knowing anything
+/// about registries.
+pub struct GbaMatchFactory {
+    /// This registration's variant.
+    pub variant: u8,
+    /// Variant of this family -> its engine support.
+    pub support: fn(u8) -> &'static (dyn crate::GameSupport + Send + Sync),
+}
+
+impl tango_match::MatchFactory for GbaMatchFactory {
+    fn screen_layout(&self) -> tango_match::ScreenLayout {
+        <Mgba as tango_match::Backend>::screen_layout()
+    }
+
+    fn start(
+        &self,
+        config: tango_match::StartConfig,
+    ) -> Result<Box<dyn tango_match::RunningMatch>, tango_match::Error> {
+        // Engine support is indexed by seat, not by who is local.
+        let mut support: [&dyn crate::GameSupport; 2] =
+            [(self.support)(self.variant), (self.support)(config.peer_variant)];
+        if config.local_player == 1 {
+            support.swap(0, 1);
+        }
+        let match_ = crate::engine::Match::new(crate::engine::MatchConfig {
+            roms: [config.roms[0].to_vec(), config.roms[1].to_vec()],
+            saves: [
+                config.saves[0].unwrap_or_default().to_vec(),
+                config.saves[1].unwrap_or_default().to_vec(),
+            ],
+            support,
+            match_type: config.match_type,
+            rng_seed: config.rng_seed,
+            rtc: config.rtc,
+            local_player: config.local_player,
+            present_delay: config.present_delay,
+            disable_bgm: config.disable_bgm,
+        })
+        .map_err(tango_match::Error::from)?;
+        Ok(Box::new(match_))
+    }
+}

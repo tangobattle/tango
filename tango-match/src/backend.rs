@@ -135,6 +135,13 @@ pub struct StartConfig<'a> {
     pub rtc: std::time::SystemTime,
     /// The game's mode selection (type and subtype).
     pub match_type: (u8, u8),
+    /// Which variant of this family the *peer* is playing (e.g. Gregar
+    /// against Falzar). A match can span two variants, and an engine
+    /// may need per-variant support for each side — but a factory hangs
+    /// off the local game, so the peer arrives as a variant number the
+    /// game's own crate resolves against its siblings. That keeps the
+    /// seam free of registry types and needs no downcasting.
+    pub peer_variant: u8,
     /// Which console this peer drives.
     pub local_player: usize,
     /// How many ticks behind the frontier to present. Purely local.
