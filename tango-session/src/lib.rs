@@ -63,12 +63,20 @@ pub fn install_emulator_logger() {
     mgba::log::install_default_logger();
 }
 
+/// Placeholder marker: see [`Error::UnsupportedEngine`].
+///
 /// Why a session failed to construct or boot, any kind. One enum for
 /// all three session kinds — their failure sets overlap heavily (core
 /// boot, thread spawn, engine priming), and hosts route every variant
 /// the same way (log + stay on the menu).
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// This session kind only drives the mgba engine, and the game runs
+    /// on another one. Replay playback and the GBA match path are the
+    /// two that still speak mgba directly.
+    #[error("this session does not support the game's engine")]
+    UnsupportedEngine,
+
     #[error(transparent)]
     Mgba(#[from] mgba::Error),
     /// File IO (the single-player save open, the replay writer) or a

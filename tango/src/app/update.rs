@@ -927,7 +927,12 @@ impl App {
                 let config = tango_match_mgba::playback::BootConfig {
                     roms,
                     saves: replay.srams.clone(),
-                    support: [games[0].pvp, games[1].pvp],
+                    // Video export re-simulates on the mgba engine; the
+                    // export button is only offered for those replays.
+                    support: [
+                        games[0].pvp.gba().expect("export offered for an mgba game"),
+                        games[1].pvp.gba().expect("export offered for an mgba game"),
+                    ],
                     match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
                     rng_seed: replay.rng_seed,
                     rtc: replay.rtc_time(),

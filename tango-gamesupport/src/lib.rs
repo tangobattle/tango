@@ -154,9 +154,8 @@ pub struct Game {
     /// `None` when this game has no save/ROM model.
     pub load_rom_assets_fn: Option<fn(rom: &[u8], wram: &[u8], charset: Option<&[&str]>) -> BoxedAssets>,
 
-    /// SIO-engine support (menu priming + RAM-poll telemetry) for this
-    /// ROM. Live netplay and SIO-replay playback both run on it.
-    pub pvp: &'static (dyn tango_match_mgba::GameSupport + Send + Sync),
+    /// How this ROM plays netplay, and on which engine.
+    pub pvp: Pvp,
 
     /// Length-per-mode list. Entry `i` is how many subtypes mode `i` has —
     /// e.g. BN6 is `[1, 1]`. Drives the match-type pick_list in the lobby.
@@ -241,6 +240,37 @@ impl std::fmt::Debug for Game {
         f.debug_struct("Game")
             .field("family_and_variant", &self.family_and_variant())
             .finish()
+    }
+}
+
+/// A game's netplay support, tagged by the engine behind it.
+///
+/// The GBA games hand the mgba engine their priming traps and RAM
+/// pollers directly. A game on another engine — BN5 Double Team DS runs
+/// on melonDS — starts matches through the engine-neutral factory
+/// instead, which is where the GBA games are headed too.
+#[derive(Clone, Copy)]
+pub enum Pvp {
+    Gba(&'static (dyn tango_match_mgba::GameSupport + Send + Sync)),
+    Factory(&'static (dyn tango_match::MatchFactory + Send + Sync)),
+}
+
+impl Pvp {
+    /// The mgba engine's support, for the paths that still speak it.
+    pub fn gba(&self) -> Option<&'static (dyn tango_match_mgba::GameSupport + Send + Sync)> {
+        match self {
+            Pvp::Gba(support) => Some(*support),
+            Pvp::Factory(_) => None,
+        }
+    }
+
+    /// The engine-neutral factory, for hosts that start a match without
+    /// knowing which emulator runs it.
+    pub fn factory(&self) -> Option<&'static (dyn tango_match::MatchFactory + Send + Sync)> {
+        match self {
+            Pvp::Factory(factory) => Some(*factory),
+            Pvp::Gba(_) => None,
+        }
     }
 }
 

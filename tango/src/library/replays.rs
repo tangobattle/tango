@@ -82,18 +82,23 @@ fn analyze_replay(
 ) -> anyhow::Result<tango_match_mgba::analysis::MatchStats> {
     let local_player = replay.local_player_index as usize;
     let inputs: Vec<[u32; 2]> = replay.inputs.iter().map(|&[p1, p2]| [p1 as u32, p2 as u32]).collect();
+    // Offline re-analysis re-simulates on the mgba engine.
+    let support: [&dyn tango_match_mgba::GameSupport; 2] = [
+        games[0].pvp.gba().ok_or_else(|| anyhow::anyhow!("replay analysis supports mgba games only"))?,
+        games[1].pvp.gba().ok_or_else(|| anyhow::anyhow!("replay analysis supports mgba games only"))?,
+    ];
     tango_match_mgba::analysis::analyze(
         tango_match_mgba::analysis::AnalyzeConfig {
             roms: roms.clone(),
             saves: replay.srams.clone(),
-            support: [games[0].pvp, games[1].pvp],
+            support,
             match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
             rng_seed: replay.rng_seed,
             rtc: replay.rtc_time(),
             local_player,
             inputs: &inputs,
-            chip_semantics: games[local_player].pvp.chip_semantics(&roms[local_player]),
-            counts_buster: games[local_player].pvp.counts_buster(&roms[local_player]),
+            chip_semantics: support[local_player].chip_semantics(&roms[local_player]),
+            counts_buster: support[local_player].counts_buster(&roms[local_player]),
         },
         on_progress,
         cancel,

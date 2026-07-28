@@ -350,8 +350,10 @@ impl PvpSession {
                 source: e,
             })?;
 
-        let local_sio = local_game.pvp;
-        let remote_sio = remote_game.pvp;
+        // This path drives the mgba engine directly; a game on another
+        // engine starts through its factory instead.
+        let local_sio = local_game.pvp.gba().ok_or(crate::Error::UnsupportedEngine)?;
+        let remote_sio = remote_game.pvp.gba().ok_or(crate::Error::UnsupportedEngine)?;
 
         // Player index off the shared RNG seed, same negotiation as ever:
         // both peers derive the same assignment, mirrored.
@@ -417,8 +419,8 @@ impl PvpSession {
         // Usage semantics can depend on the applied patch (exe45's PvP
         // patch), so they're probed off the patched ROM.
         let stats = Arc::new(Mutex::new(tango_match_mgba::analysis::StatsBuilder::new(
-            local_game.pvp.chip_semantics(local_rom.as_ref()),
-            local_game.pvp.counts_buster(local_rom.as_ref()),
+            local_sio.chip_semantics(local_rom.as_ref()),
+            local_sio.counts_buster(local_rom.as_ref()),
         )));
 
         // Remote input events flow receive-task → drive thread over this

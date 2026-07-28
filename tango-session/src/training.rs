@@ -155,7 +155,12 @@ impl TrainingSession {
         let match_ = Match::new(MatchConfig {
             roms: [rom.as_ref().clone(), rom.as_ref().clone()],
             saves: [save_sram.clone(), save_sram],
-            support: [game.pvp, game.pvp],
+            support: {
+                // Training runs the mgba engine against a second copy
+                // of the same game.
+                let support = game.pvp.gba().ok_or(crate::Error::UnsupportedEngine)?;
+                [support, support]
+            },
             match_type: TRAINING_MATCH_TYPE,
             rng_seed,
             rtc,

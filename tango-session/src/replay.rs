@@ -149,6 +149,13 @@ impl ReplaySession {
         if total_ticks == 0 {
             return Err(crate::Error::EmptyReplay);
         }
+        // Replay playback drives the mgba engine, so resolve both sides'
+        // support before building the boot closure — a closure returning
+        // a config has nowhere to report a game on another engine.
+        let support = [
+            games[0].pvp.gba().ok_or(crate::Error::UnsupportedEngine)?,
+            games[1].pvp.gba().ok_or(crate::Error::UnsupportedEngine)?,
+        ];
         let boot = {
             let replay = replay.clone();
             let roms = roms.clone();
@@ -156,7 +163,7 @@ impl ReplaySession {
                 sio_playback::BootConfig {
                     roms: [roms[0].to_vec(), roms[1].to_vec()],
                     saves: replay.srams.clone(),
-                    support: [games[0].pvp, games[1].pvp],
+                    support,
                     match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
                     rng_seed: replay.rng_seed,
                     rtc: replay.rtc_time(),
@@ -259,8 +266,8 @@ impl ReplaySession {
                 cancel: cancel.clone(),
                 stats: stats_job.as_ref().map(|_| {
                     (
-                        games[local_player].pvp.chip_semantics(roms[local_player].as_ref()),
-                        games[local_player].pvp.counts_buster(roms[local_player].as_ref()),
+                        support[local_player].chip_semantics(roms[local_player].as_ref()),
+                        support[local_player].counts_buster(roms[local_player].as_ref()),
                     )
                 }),
                 stats_job,
