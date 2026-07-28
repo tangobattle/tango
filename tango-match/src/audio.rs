@@ -163,8 +163,13 @@ impl<D: AudioDrain> AudioPull for Resampled<D> {
             self.cursor += step;
         }
         // Drop what the cursor has passed, keeping the frame it still
-        // interpolates from.
-        let consumed = self.cursor as usize;
+        // interpolates from. The loop's last step can carry the cursor
+        // past the end of the queue (any step over 1 gets there — the
+        // fast-forward fold divides the destination rate, so a 65536 Hz
+        // cart at 4x steps ~5.5 frames at a time); the drain must not
+        // follow it out of bounds. The overshoot stays in the cursor as
+        // a debt the next batch of source pays off.
+        let consumed = (self.cursor as usize).min(frames);
         if consumed > 0 {
             self.source.drain(..consumed * 2);
             self.cursor -= consumed as f64;
@@ -241,6 +246,40 @@ mod tests {
             "resampled queue grew to {} frames",
             pull.available()
         );
+    }
+
+    /// A console with a fixed batch of audio and nothing more, at BN4+'s
+    /// doubled rate.
+    struct Burst(usize);
+
+    impl AudioDrain for Burst {
+        fn sample_rate(&self) -> f64 {
+            65536.0
+        }
+
+        fn drain(&mut self, out: &mut [i16]) -> usize {
+            let frames = self.0.min(out.len() / 2);
+            self.0 -= frames;
+            out[..frames * 2].fill(1);
+            frames
+        }
+    }
+
+    /// The resample loop's last step can carry the cursor past the end
+    /// of the source queue whenever the step exceeds 1 — under the
+    /// fast-forward fold a 65536 Hz cart against a 48 kHz device at 4x
+    /// steps ~5.5 source frames per output frame. The drain after the
+    /// loop must not follow the cursor out of bounds: with 8 frames
+    /// queued the cursor lands past 10, and draining to there panicked
+    /// in the sound callback (which aborts the process).
+    #[test]
+    fn cursor_overshoot_does_not_drain_past_the_source_end() {
+        let mut pull = Resampled::new(Burst(8));
+        pull.source_available();
+        // The first fill after speed-up engages the fold before the
+        // stretcher does: destination = 48000 × (59.7275 / 240).
+        pull.process(65536.0, 11945.5);
+        assert_eq!(pull.available(), 2);
     }
 
     /// A zero or negative step can never advance the cursor, so the
