@@ -222,3 +222,17 @@ pub use tango_match::telemetry as shared_telemetry;
 pub use tango_match::analysis as shared_analysis;
 
 pub use factory::{GbaFactory, Seat};
+
+/// Route mgba's own logging through the `log` crate.
+///
+/// Called wherever this backend brings a console up rather than once at
+/// startup: nothing outside this crate should have to know which
+/// emulator a game runs on, so there is no host-side hook left to call
+/// it from. Installing it repeatedly is fine, which is what makes that
+/// work.
+///
+/// Without it a core falls through to the emulator's printf stub and
+/// writes `GBA BIOS: SWI: …` straight to stdout.
+pub fn install_logger() {
+    mgba::log::install_default_logger();
+}

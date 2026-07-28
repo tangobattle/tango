@@ -376,7 +376,6 @@ fn run_app() -> iced::Result {
     // Route the emulator's global logger through `c_log` too — without
     // this, the prefetcher's bare core falls through to the emulator's
     // printf stub and spams `GBA BIOS: SWI: …` lines straight to stdout.
-    tango_session::install_emulator_logger();
 
     // Initialize SDL3 + warm the gamepad context now (main thread) so
     // the first emulator session's first redraw doesn't pay for

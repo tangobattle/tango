@@ -64,14 +64,6 @@ pub use tango_match::keys;
 const GBA_SCREEN: (u32, u32) = (240, 160);
 
 
-/// Route the emulator's global logger through the `log` crate. Hosts
-/// call this once at startup — without it, a core outside any session
-/// (the app's prefetcher) falls through to the emulator's printf stub
-/// and writes `GBA BIOS: SWI: …` lines straight to stdout.
-pub fn install_emulator_logger() {
-    // Backends install their own; nothing here to route.
-}
-
 /// Placeholder marker: see [`Error::UnsupportedEngine`].
 ///
 /// Why a session failed to construct or boot, any kind. One enum for

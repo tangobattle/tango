@@ -61,6 +61,7 @@ pub fn analyze(
     let [rom0, rom1] = roms;
     let [save0, save1] = saves;
 
+    crate::install_logger();
     let mut pair = mgba_rollback::Link::with_options(mgba_rollback::LinkOptions {
         sides: vec![
             mgba_rollback::SideOptions {

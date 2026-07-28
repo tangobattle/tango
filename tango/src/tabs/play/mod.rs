@@ -36,6 +36,9 @@ pub enum Message {
     Loadout(loadout::Message),
     SaveEditor(std::sync::Arc<dyn tango_gamesupport::SaveEditorMessage>),
 
+    /// Play pressed on the no-editor panel — the same effect the save
+    /// editor's own Play button has, for a game that has no editor.
+    PlayPressed,
     LinkCodeChanged(String),
     /// Copy plain text to the clipboard — the lobby's copy-link-code
     /// button. Carries the real code even when streamer mode masks it
@@ -300,6 +303,7 @@ impl State {
                 crate::ui::copy_feedback::flash(lobby::LINK_CODE_FLASH_KEY);
                 Some(Effect::CopyText(s))
             }
+            Message::PlayPressed => Some(Effect::StartSinglePlayer),
             Message::FightPressed => {
                 // An empty bar means "just get me a lobby": generate a
                 // fresh random adjective-word-noun code and connect with
@@ -580,6 +584,7 @@ impl State {
         self.save_editor(
             lang,
             loaded,
+            loadout,
             streamer_mode,
             netplay_phase,
             loadout::patch_ready(loadout, scanners),
@@ -616,11 +621,21 @@ impl State {
         &'a self,
         lang: &'a LanguageIdentifier,
         loaded: Option<&'a selection::LoadedSave>,
+        loadout: &'a Loadout,
         streamer_mode: bool,
         netplay_phase: &'a crate::netplay::Phase,
         patch_ready: bool,
     ) -> Element<'a, Message> {
+        let playable = matches!(netplay_phase, crate::netplay::Phase::Idle) && patch_ready;
         let Some(loaded) = loaded else {
+            // A game Tango supports for netplay only has no save editor
+            // to render, and until this panel existed that meant no Play
+            // button and nothing to say — the tab just read as though
+            // nothing were selected. The save *is* selected; it simply
+            // has no editor behind it.
+            if loadout.game.is_some() && loadout.save.is_some() {
+                return self.no_editor_panel(lang, playable);
+            }
             return container(text(t!(lang, "play-no-selection")).size(TEXT_BODY))
                 .center(Fill)
                 .into();
@@ -630,7 +645,7 @@ impl State {
         // can't fight with the lobby for the same save/emulator slot,
         // and while the selected patch is still downloading, since the
         // session would otherwise boot the game unpatched.
-        let play_button = Some(matches!(netplay_phase, crate::netplay::Phase::Idle) && patch_ready);
+        let play_button = Some(playable);
         loaded
             .editor
             .view(
@@ -732,6 +747,39 @@ impl State {
 /// usually the same path as the body's last line, so the user
 /// can click straight through instead of copy-pasting it into
 /// their file manager.
+impl State {
+    /// What the play pane shows in place of a save editor for a game
+    /// Tango supports for netplay only.
+    ///
+    /// Deliberately the same two affordances the editor's own action
+    /// strip carries — a Play button, and otherwise nothing — so a
+    /// netplay-only game reaches a session the same way every other one
+    /// does. Netplay itself needs nothing from here: the lobby works off
+    /// the loadout, which is set either way.
+    fn no_editor_panel<'a>(&'a self, lang: &'a LanguageIdentifier, playable: bool) -> Element<'a, Message> {
+        let label = row![Icon::Play.widget(), text(t!(lang, "play-play"))]
+            .spacing(6)
+            .align_y(Alignment::Center);
+        let mut play = button(label).padding([4, 10]);
+        play = if playable {
+            play.style(widgets::primary_button).on_press(Message::PlayPressed)
+        } else {
+            play.style(widgets::neutral)
+        };
+        container(
+            column![
+                text(t!(lang, "play-no-editor-title")).size(TEXT_TITLE),
+                text(t!(lang, "play-no-editor-body")).size(TEXT_CAPTION),
+                play,
+            ]
+            .spacing(12)
+            .align_x(Alignment::Center),
+        )
+        .center(Fill)
+        .into()
+    }
+}
+
 fn empty_state_card(
     title: String,
     body_lines: Vec<String>,

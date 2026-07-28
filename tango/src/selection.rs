@@ -51,6 +51,24 @@ pub fn build(
     from_patched_rom(game, rom, save_path, save, applied_patch)
 }
 
+/// Everything starting a session needs, and nothing else.
+///
+/// A [`LoadedSave`] is the *editor's* view of a selection, so a game
+/// with no save editor never produces one — and BN5 Double Team DS is
+/// supported for netplay only, so it has none. It still has a
+/// cartridge, a save file and a patch choice, which is all that
+/// booting one ever needed, so that much is kept apart from the editor
+/// and both paths can hand it over.
+#[derive(Clone)]
+pub struct Bootable {
+    pub game: crate::library::rom::GameRef,
+    /// Where the savedata lives. A session reads it at boot and writes
+    /// it back through the app's backup, so this is the file itself
+    /// rather than a parsed save.
+    pub save_path: std::path::PathBuf,
+    pub patch: Option<AppliedPatch>,
+}
+
 /// Build from a ROM that's *already* had its patch applied, plus the
 /// [`AppliedPatch`] that produced it (`None` for a raw ROM) — for
 /// callers that already hold the patched image (e.g. a live session

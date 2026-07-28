@@ -228,6 +228,7 @@ fn boot_and_prime(
     cancel: Option<&AtomicBool>,
     lifecycle: &crate::r#match::telemetry::LifecycleSink,
 ) -> Result<mgba_rollback::Link, crate::Error> {
+    crate::install_logger();
     let mut pair = mgba_rollback::Link::with_options(mgba_rollback::LinkOptions {
         sides: vec![
             mgba_rollback::SideOptions {

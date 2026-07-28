@@ -202,6 +202,7 @@ struct Solo {
 
 impl Solo {
     fn new(config: tango_match::SoloConfig) -> Result<Self, crate::Error> {
+        crate::install_logger();
         let mut link = mgba_rollback::Link::with_options(mgba_rollback::LinkOptions {
             sides: vec![mgba_rollback::SideOptions {
                 rom: config.rom.to_vec(),

@@ -148,9 +148,10 @@ impl App {
                 iced::Task::none()
             }
             E::StartSinglePlayer => {
-                let Some(loaded) = self.loaded.as_ref() else {
+                let Some(loaded) = self.bootable.clone() else {
                     return iced::Task::none();
                 };
+                let loaded = &loaded;
                 let save_path = loaded.save_path.clone();
                 match session::spawn_singleplayer(&self.scanners, &self.config, &self.audio_binder, loaded) {
                     Ok((s, audio, save, drive)) => {
@@ -171,6 +172,9 @@ impl App {
                 iced::Task::none()
             }
             E::StartTraining => {
+                // Training runs the *staged* save, so it needs the
+                // editor's copy rather than the file on disk — which is
+                // why it stays on the loaded save.
                 let Some(loaded) = self.loaded.as_ref() else {
                     return iced::Task::none();
                 };

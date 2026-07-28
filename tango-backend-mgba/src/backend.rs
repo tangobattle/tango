@@ -29,6 +29,7 @@ impl Backend for Mgba {
         saves: [Option<&[u8]>; 2],
         rtc: std::time::SystemTime,
     ) -> Result<Self::Link, mgba::Error> {
+        crate::install_logger();
         mgba_rollback::Link::with_options(mgba_rollback::LinkOptions {
             sides: (0..2)
                 .map(|i| mgba_rollback::SideOptions {

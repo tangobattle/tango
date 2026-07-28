@@ -1591,7 +1591,7 @@ pub fn spawn_singleplayer(
     scanners: &Scanners,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
-    loaded: &selection::LoadedSave,
+    loaded: &selection::Bootable,
 ) -> anyhow::Result<(
     singleplayer::SinglePlayerSession,
     Option<audio::Binding>,

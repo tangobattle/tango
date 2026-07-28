@@ -84,6 +84,7 @@ impl Match {
         let [rom0, rom1] = roms;
         let [save0, save1] = saves;
 
+        crate::install_logger();
         let mut pair = Link::with_options(LinkOptions {
             sides: vec![
                 SideOptions {
