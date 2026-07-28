@@ -87,6 +87,10 @@ pub enum Error {
     /// The match engine failed to boot or prime the pair.
     #[error(transparent)]
     Engine(#[from] tango_backend_mgba::Error),
+
+    /// Whatever the engine running a match reported, engine-neutral.
+    #[error(transparent)]
+    Match(#[from] tango_match::Error),
     /// The netplay handoff's transport bundle failed to assemble.
     #[error(transparent)]
     LinkBringUp(#[from] crate::net::link::BringUpError),

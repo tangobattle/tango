@@ -65,6 +65,36 @@ pub trait AudioPull: Send {
     fn discard_source(&mut self, frames: usize);
 }
 
+impl AudioPull for Box<dyn AudioPull> {
+    fn sample_rate(&self) -> f64 {
+        (**self).sample_rate()
+    }
+
+    fn source_available(&mut self) -> usize {
+        (**self).source_available()
+    }
+
+    fn process(&mut self, claimed_source_rate: f64, destination_rate: f64) {
+        (**self).process(claimed_source_rate, destination_rate)
+    }
+
+    fn available(&self) -> usize {
+        (**self).available()
+    }
+
+    fn read(&mut self, out: &mut [i16], frames: usize) -> usize {
+        (**self).read(out, frames)
+    }
+
+    fn framerate_ratio(&self, fps_target: f64) -> f64 {
+        (**self).framerate_ratio(fps_target)
+    }
+
+    fn discard_source(&mut self, frames: usize) {
+        (**self).discard_source(frames)
+    }
+}
+
 /// How much console audio to hold before resampling. A 60 Hz frame is
 /// under a thousand frames at any rate a handheld runs at; this is a few
 /// frames of slack so a late callback does not starve.

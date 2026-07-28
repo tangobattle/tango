@@ -438,13 +438,13 @@ impl PvpSession {
             (
                 [local_rom.as_ref().clone(), remote_rom.as_ref().clone()],
                 [local_sram, remote_sram],
-                [local_sio, remote_sio],
+                [local_game.pvp, remote_game.pvp],
             )
         } else {
             (
                 [remote_rom.as_ref().clone(), local_rom.as_ref().clone()],
                 [remote_sram, local_sram],
-                [remote_sio, local_sio],
+                [remote_game.pvp, local_game.pvp],
             )
         };
 
@@ -457,7 +457,8 @@ impl PvpSession {
             pieces: BootPieces {
                 roms,
                 saves,
-                supports,
+                pvp: supports,
+                peer_variant: remote_game.variant,
                 match_type: pre_match.match_type,
                 rng_seed: pre_match.rng_seed,
                 rtc: rtc_time,
@@ -802,7 +803,14 @@ impl Drop for PvpSession {
 struct BootPieces {
     roms: [Vec<u8>; 2],
     saves: [Vec<u8>; 2],
-    supports: [&'static (dyn tango_backend_mgba::GameSupport + Send + Sync); 2],
+    /// Both sides' netplay support, in seat order. Starting the match
+    /// goes through these rather than an engine, so a DS game boots the
+    /// same way a GBA one does.
+    pvp: [tango_gamesupport::Pvp; 2],
+    /// Which variant of the family the peer plays — a match can span
+    /// two (Gregar against Falzar) and the engine resolves each seat's
+    /// support from it.
+    peer_variant: u8,
     match_type: (u8, u8),
     rng_seed: [u8; 16],
     rtc: std::time::SystemTime,
@@ -845,19 +853,28 @@ struct DriveContext {
 impl DriveContext {
     /// Boot the match, then hand back the driver that runs it and a
     /// readout handle to its pair.
-    fn boot(mut self, pieces: BootPieces) -> Result<(PvpDriver, tango_backend_mgba::LinkHandle), tango_backend_mgba::Error> {
-        let match_ = Match::new(MatchConfig {
-            roms: pieces.roms,
-            saves: pieces.saves,
-            support: [pieces.supports[0], pieces.supports[1]],
-            match_type: pieces.match_type,
-            rng_seed: pieces.rng_seed,
-            rtc: pieces.rtc,
-            local_player: pieces.local_player,
-            present_delay: pieces.present_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
-            disable_bgm: pieces.disable_bgm,
-        })?;
-        let pair_handle = match_.pair_handle();
+    fn boot(mut self, pieces: BootPieces) -> Result<(PvpDriver, Box<dyn tango_match::AudioPull>), tango_match::Error> {
+        // The game's registration starts the match on whatever engine it
+        // runs; this session never learns which.
+        let local = pieces.pvp[pieces.local_player];
+        let peer = pieces.pvp[1 - pieces.local_player];
+        let match_ = local.start(
+            &peer,
+            tango_match::StartConfig {
+                roms: [&pieces.roms[0], &pieces.roms[1]],
+                saves: [Some(&pieces.saves[0]), Some(&pieces.saves[1])],
+                rng_seed: pieces.rng_seed,
+                rtc: pieces.rtc,
+                match_type: pieces.match_type,
+                peer_variant: pieces.peer_variant,
+                local_player: pieces.local_player,
+                present_delay: pieces.present_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
+                disable_bgm: pieces.disable_bgm,
+            },
+        )?;
+        let audio = match_
+            .audio()
+            .ok_or_else(|| tango_match::Error::Backend("this match produces no audio".into()))?;
 
         // Our half of the ready gate: the pair is at its link battle.
         // Release the announcer so the peer learns it — priming ran at
@@ -882,7 +899,7 @@ impl DriveContext {
                 pending_round_marks: std::collections::VecDeque::new(),
                 fired_end_of_match: false,
             },
-            pair_handle,
+            audio,
         ))
     }
 
@@ -1349,12 +1366,10 @@ impl PvpBoot {
         let local_player = self.local_player;
         let metrics = self.metrics;
         let sample_rate = self.sample_rate;
-        let (driver, pair) = self.drive.boot(self.pieces)?;
+        let _ = local_player;
+        let (driver, pull) = self.drive.boot(self.pieces)?;
         let audio = crate::audio::CoreStream::new(
-            tango_match::Resampled::new(crate::audio::PairDrain {
-                pair,
-                player: Box::new(move || local_player),
-            }),
+            pull,
             move || f32::from_bits(metrics.fps_target.load(Ordering::Relaxed)),
             sample_rate,
         );
@@ -1370,7 +1385,7 @@ impl PvpBoot {
 /// browser's signaling exists.
 pub struct PvpDriver {
     ctx: DriveContext,
-    match_: Match,
+    match_: Box<dyn tango_match::RunningMatch>,
     throttler: tango_match::Throttler,
     /// (tick, [p0, p1]) confirmed input pairs not yet folded into
     /// stats (the telemetry for those ticks may confirm later).
@@ -1477,7 +1492,7 @@ impl PvpDriver {
         self.ctx.metrics.skew.store(skew, Ordering::Relaxed);
 
         let keys = self.ctx.joyflags.load(Ordering::Relaxed) & tango_match::input::JOYFLAGS_MASK as u32;
-        let (outgoing, report) = match self.match_.advance(keys) {
+        let (_tick, outgoing_keys, tick_advantage) = match self.match_.advance(keys) {
             Ok(r) => r,
             Err(e) => {
                 log::error!("pvp: sio advance failed: {e}");
@@ -1485,7 +1500,7 @@ impl PvpDriver {
                 return false;
             }
         };
-        self.ctx.metrics.depth.store(report.rolled_back, Ordering::Relaxed);
+        self.ctx.metrics.depth.store(self.match_.last_rollback_depth(), Ordering::Relaxed);
 
         // Ship this tick's local input. Push-before-send semantics live
         // in the pump; a transport error is non-terminal (the heartbeat
@@ -1494,8 +1509,8 @@ impl PvpDriver {
             .ctx
             .sender
             .send(&crate::net::data::Input {
-                joyflags: outgoing.keys as u16,
-                tick_advantage: outgoing.tick_advantage,
+                joyflags: outgoing_keys as u16,
+                tick_advantage,
             })
             .is_err()
         {
@@ -1510,12 +1525,13 @@ impl PvpDriver {
         // batch's input records. Everything at or below the confirmed
         // boundary is final — no revocation bookkeeping needed on this
         // side of the engine.
-        let (samples, events) = self
-            .match_
-            .telemetry()
-            .lock()
-            .unwrap()
-            .drain_confirmed(report.confirmed);
+        // A game whose engine reads no telemetry simply has none to
+        // fold — the match still runs.
+        let confirmed = self.match_.confirmed();
+        let (samples, events) = match self.match_.telemetry() {
+            Some(handle) => handle.lock().unwrap().drain_confirmed(confirmed),
+            None => (Vec::new(), Vec::new()),
+        };
 
         // Round lifecycle, trap-driven off the games' own code paths:
         // a round start (after the first) stamps a marker into the
@@ -1600,7 +1616,7 @@ impl PvpDriver {
 
         // Present the local screen to the UI. (Audio needs no push —
         // the output stream pulls it straight off the pair.)
-        if let Some(buf) = self.match_.local_video_buffer() {
+        if let Some(buf) = self.match_.frame() {
             self.ctx.screen.write(&buf);
         }
         self.ctx.tps_counter.lock().unwrap().mark();

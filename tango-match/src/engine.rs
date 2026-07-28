@@ -161,6 +161,11 @@ impl<B: Backend> Match<B> {
         self.inner.add_remote_input(0, input, tick_advantage);
     }
 
+    /// This match's local console audio.
+    pub fn audio(&self) -> Box<dyn crate::AudioPull> {
+        B::audio(self.link.clone(), self.local_player)
+    }
+
     /// Run `f` against the live pair — video, audio and RAM readout.
     pub fn with_link<R>(&self, f: impl FnOnce(&mut B::Link) -> R) -> R {
         f(&mut self.link.lock().unwrap())
@@ -238,5 +243,9 @@ impl<B: Backend> crate::RunningMatch for Match<B> {
 
     fn local_player(&self) -> usize {
         Match::local_player(self)
+    }
+
+    fn audio(&self) -> Option<Box<dyn crate::AudioPull>> {
+        Some(Match::audio(self))
     }
 }

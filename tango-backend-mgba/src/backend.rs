@@ -76,6 +76,13 @@ impl Backend for Mgba {
         ScreenLayout::new([SCREEN])
     }
 
+    fn audio(
+        link: std::sync::Arc<std::sync::Mutex<Self::Link>>,
+        player: usize,
+    ) -> Box<dyn tango_match::AudioPull> {
+        Box::new(tango_match::Resampled::new(SharedPairAudio { link, player }))
+    }
+
 }
 
 /// Re-exported so a game crate can name a link or a snapshot without
@@ -180,4 +187,34 @@ pub fn start_match(
     })
     .map_err(tango_match::Error::from)?;
     Ok(Box::new(match_))
+}
+
+
+/// A pair behind the seam's shared handle, as something the shared
+/// resampler can drain. (`crate::audio::ConsoleAudio` is the same thing
+/// over mgba-rollback's own handle, which the legacy engine hands out.)
+struct SharedPairAudio {
+    link: std::sync::Arc<std::sync::Mutex<mgba_rollback::Link>>,
+    player: usize,
+}
+
+impl tango_match::AudioDrain for SharedPairAudio {
+    fn sample_rate(&self) -> f64 {
+        self.link.lock().unwrap().core_mut(self.player).audio_sample_rate() as f64
+    }
+
+    fn framerate_ratio(&self, fps_target: f64) -> f64 {
+        self.link
+            .lock()
+            .unwrap()
+            .core_mut(self.player)
+            .calculate_framerate_ratio(fps_target)
+    }
+
+    fn drain(&mut self, out: &mut [i16]) -> usize {
+        let mut link = self.link.lock().unwrap();
+        let buffer = link.core_mut(self.player).audio_buffer();
+        let frames = (out.len() / 2).min(buffer.available());
+        buffer.read(out, frames)
+    }
 }

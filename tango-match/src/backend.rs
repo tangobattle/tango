@@ -79,6 +79,12 @@ pub trait Backend: 'static {
     /// The screens this console presents.
     fn screen_layout() -> ScreenLayout;
 
+    /// One console's audio, ready for a host's sound callback.
+    ///
+    /// The backend supplies the drain and the seam's resampler does the
+    /// rest, so what comes back is the same shape whatever the console.
+    fn audio(link: std::sync::Arc<std::sync::Mutex<Self::Link>>, player: usize) -> Box<dyn crate::AudioPull>;
+
 }
 
 /// One screen a console presents.
@@ -208,6 +214,22 @@ pub trait RunningMatch: Send {
     /// replay sink. Empty when the engine keeps no such record.
     fn drain_confirmed(&mut self) -> Vec<(u32, [u32; 2])> {
         Vec::new()
+    }
+
+    /// Ticks below this can never be rolled back again — what
+    /// telemetry may safely be folded up to.
+    fn confirmed(&self) -> u32 {
+        0
+    }
+
+    /// How deep the last advance's rollback went, 0 if none.
+    fn last_rollback_depth(&self) -> u32 {
+        0
+    }
+
+    /// This match's local console audio, for the host's sound stream.
+    fn audio(&self) -> Option<Box<dyn crate::AudioPull>> {
+        None
     }
 
     /// The telemetry this match publishes, if it reads any.

@@ -314,8 +314,20 @@ impl tango_match::RunningMatch for Match {
         Match::drain_confirmed(self)
     }
 
+    fn confirmed(&self) -> u32 {
+        Match::confirmed(self)
+    }
+
     fn telemetry(&self) -> Option<&tango_match::telemetry::TelemetryHandle> {
         Some(Match::telemetry(self))
+    }
+
+    fn audio(&self) -> Option<Box<dyn tango_match::AudioPull>> {
+        let player = Match::local_player(self);
+        Some(Box::new(crate::audio::pull(
+            Match::pair_handle(self),
+            Box::new(move || player),
+        )))
     }
 
     fn matchable(&self) -> usize {

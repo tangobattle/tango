@@ -87,6 +87,13 @@ impl Backend for MelonDs {
         ScreenLayout::new(SCREENS)
     }
 
+    fn audio(
+        link: std::sync::Arc<std::sync::Mutex<Link>>,
+        player: usize,
+    ) -> Box<dyn tango_match::AudioPull> {
+        Box::new(crate::audio::pull(link, player))
+    }
+
 }
 
 /// Translate Tango's joyflag word into DS keys.
