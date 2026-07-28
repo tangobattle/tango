@@ -1006,11 +1006,14 @@ impl State {
                         // selected effect magnifies them on the GPU at
                         // draw time.
                         let pixels = session.frame();
+                        // Sized by the session: a DS stacks two screens
+                        // where a GBA has one.
+                        let (width, height) = session.frame_size();
                         self.frame_revision = self.frame_revision.wrapping_add(1);
                         self.current_frame = Some(crate::platform::video::framebuffer::Frame {
                             pixels: std::sync::Arc::new(pixels),
-                            width: replay::SCREEN_WIDTH,
-                            height: replay::SCREEN_HEIGHT,
+                            width,
+                            height,
                             revision: self.frame_revision,
                             // Neutral placeholder — the view picks the live
                             // effect from config at draw time (see

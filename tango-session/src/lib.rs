@@ -261,6 +261,15 @@ pub trait Session: std::any::Any {
     /// the emulator pane.
     fn local_game(&self) -> &'static tango_gamesupport::Game;
 
+    /// The pixel dimensions of [`frame`](Self::frame)'s buffer.
+    ///
+    /// Defaults to a single GBA screen. A console with more than one —
+    /// a DS stacks two — reports the whole buffer, so a host sizes its
+    /// texture from the session instead of assuming a shape.
+    fn frame_size(&self) -> (u32, u32) {
+        (mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT)
+    }
+
     /// This session's current display frame, as RGBA8 (4 bytes per
     /// pixel) — the host uploads it to a GPU texture every repaint, so
     /// it hands back a copy rather than the live surface the emu
