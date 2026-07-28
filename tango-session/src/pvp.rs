@@ -333,12 +333,16 @@ impl PvpSession {
         // Parse both sides' committed SRAM dumps. PvP runs entirely off
         // these in-memory images — writes don't persist back to anyone's
         // .sav file.
+        // A netplay-only game models no save, so there is nothing to
+        // parse — the engine still gets the raw SRAM either way.
         let remote_save = remote_game
             .parse_save(&pre_match.remote_save_data)
             .map_err(|e| crate::Error::ParseSave {
                 side: "remote",
                 source: e,
             })?;
+        // A netplay-only game models no save, so there is nothing to
+        // parse — the engine still gets the raw SRAM either way.
         let local_save = local_game
             .parse_save(&pre_match.local_save_data)
             .map_err(|e| crate::Error::ParseSave {
@@ -361,14 +365,19 @@ impl PvpSession {
 
         // Replay writer. Failing to open it shouldn't kill the
         // match — log and continue without recording.
+        // The engine takes SRAM images. A netplay-only game's save
+        // round-trips its bytes unchanged here.
+        let local_sram = local_save.to_sram_dump();
+        let remote_sram = remote_save.to_sram_dump();
+
         let (replay_writer, replay_path) = match replays {
             None => (None, None),
             Some(store) => match build_replay_writer(
                 store,
                 &pre_match,
                 local_player_index,
-                local_save.as_ref(),
-                remote_save.as_ref(),
+                &local_sram,
+                &remote_sram,
             ) {
                 Ok((writer, path)) => (Some(writer), Some(path)),
                 Err(e) => {
@@ -426,13 +435,13 @@ impl PvpSession {
         let (roms, saves, supports) = if local_player_index == 0 {
             (
                 [local_rom.as_ref().clone(), remote_rom.as_ref().clone()],
-                [local_save.to_sram_dump(), remote_save.to_sram_dump()],
+                [local_sram, remote_sram],
                 [local_sio, remote_sio],
             )
         } else {
             (
                 [remote_rom.as_ref().clone(), local_rom.as_ref().clone()],
-                [remote_save.to_sram_dump(), local_save.to_sram_dump()],
+                [remote_sram, local_sram],
                 [remote_sio, local_sio],
             )
         };
@@ -1210,8 +1219,8 @@ fn build_replay_writer(
     store: &dyn ReplayStore,
     pre_match: &crate::pvp::PreMatchData,
     local_player_index: u8,
-    local_save: &dyn tango_gamesupport::SaveData,
-    remote_save: &dyn tango_gamesupport::SaveData,
+    local_sram: &[u8],
+    remote_sram: &[u8],
 ) -> Result<(tango_replay::Writer, std::path::PathBuf), crate::Error> {
     let link_code = &pre_match.link_code;
     let local_settings = &pre_match.local_settings;
@@ -1241,8 +1250,7 @@ fn build_replay_writer(
     );
     let safe_name: String = raw_name.chars().filter(|c| !"/\\?%*:|\"<>. ".contains(*c)).collect();
     let Recording { sink, key } = store.create(&safe_name)?;
-    let local_sram = local_save.to_sram_dump();
-    let remote_sram = remote_save.to_sram_dump();
+
     let local_side = Some(tango_replay::metadata::Side {
         nickname: local_settings.nickname.clone(),
         game_info: Some(tango_replay::metadata::GameInfo {
@@ -1280,9 +1288,9 @@ fn build_replay_writer(
     // the file is absolute player order, so seat the two sides (and the
     // two saves) by our negotiated player index here and nowhere else.
     let (p1_side, p2_side, srams) = if local_player_index == 0 {
-        (local_side, remote_side, [&local_sram, &remote_sram])
+        (local_side, remote_side, [local_sram, remote_sram])
     } else {
-        (remote_side, local_side, [&remote_sram, &local_sram])
+        (remote_side, local_side, [remote_sram, local_sram])
     };
     let writer = tango_replay::Writer::new(
         // Buffered: write_input runs on the drive thread once per
@@ -1308,7 +1316,7 @@ fn build_replay_writer(
             match_subtype: pre_match.match_type.1 as u32,
         },
         pre_match.rng_seed,
-        [srams[0].as_slice(), srams[1].as_slice()],
+        [srams[0], srams[1]],
     )?;
     Ok((writer, key))
 }

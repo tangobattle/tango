@@ -18,7 +18,7 @@ pub fn build(
     save: tango_gamesupport::BoxedSave,
     patches_path: &std::path::Path,
     patch: Option<(String, semver::Version, Arc<crate::library::patch::Version>)>,
-) -> LoadedSave {
+) -> Option<LoadedSave> {
     let (rom, applied_patch) = match patch {
         Some((name, version, meta)) => {
             match crate::library::patch::apply_patch(
@@ -62,9 +62,12 @@ pub fn from_patched_rom(
     save_path: std::path::PathBuf,
     save: tango_gamesupport::BoxedSave,
     applied_patch: Option<AppliedPatch>,
-) -> LoadedSave {
-    game.save_editor
-        .load(game, rom, save_path.clone(), save, applied_patch)
+) -> Option<LoadedSave> {
+    // A netplay-only game has no editor to open the save in.
+    Some(
+        game.save_editor?
+            .load(game, rom, save_path.clone(), save, applied_patch),
+    )
 }
 
 /// Build a [`LoadedSave`] for the local side of a replay — used by the
@@ -106,12 +109,13 @@ pub fn for_replay_local(
         Some((p.name.clone(), v, vmeta))
     });
 
-    Ok(build(
+    build(
         game,
         rom,
         std::path::PathBuf::new(),
         save,
         &config.patches_path(),
         patch_meta,
-    ))
+    )
+    .ok_or_else(|| anyhow::anyhow!("this game has no save editor"))
 }

@@ -142,10 +142,17 @@ pub struct Game {
 
     /// Parse a cartridge SRAM dump into a save, validating that the dump
     /// matches this game (region/variant). Errors on a mismatch.
+    ///
+    /// Required even for a netplay-only game: this is how a dump is
+    /// recognized as belonging to this game, which is what makes it
+    /// selectable in the save picker before a match. A game with no
+    /// save *model* still validates the dump and hands back an opaque
+    /// save that only round-trips its bytes.
     pub parse_save_fn: fn(&[u8]) -> Result<BoxedSave, Error>,
     /// Build the ROM Assets for this game. `charset` overrides the
     /// per-game default character set; pass `None` for the default.
-    pub load_rom_assets_fn: fn(rom: &[u8], wram: &[u8], charset: Option<&[&str]>) -> BoxedAssets,
+    /// `None` when this game has no save/ROM model.
+    pub load_rom_assets_fn: Option<fn(rom: &[u8], wram: &[u8], charset: Option<&[&str]>) -> BoxedAssets>,
 
     /// SIO-engine support (menu priming + RAM-poll telemetry) for this
     /// ROM. Live netplay and SIO-replay playback both run on it.
@@ -160,12 +167,14 @@ pub struct Game {
     /// Battle Chip Challenge instead paints P1 red and P2 blue for both
     /// players, and its panels follow that fixed order.
     pub players_colored_by_seat: bool,
-    /// Bundled save templates, lazily parsed on first access.
-    pub save_templates: &'static SaveTemplates,
+    /// Bundled save templates, lazily parsed on first access. `None`
+    /// when this game has no save model to template.
+    pub save_templates: Option<&'static SaveTemplates>,
     /// Logo for the game, decoded on first access.
-    pub logo_image: &'static LazyImage,
-    /// Pointer to the BNLC-hosted background TGA.
-    pub background: BackgroundRef,
+    pub logo_image: Option<&'static LazyImage>,
+    /// Pointer to the BNLC-hosted background TGA — `None` for a game
+    /// with no BNLC release to borrow art from.
+    pub background: Option<BackgroundRef>,
 
     /// The game's save editor — a real, renderable [`save_editor::SaveEditor`]
     /// (load / render / update; every shape behind it is opaque). Exists
@@ -174,8 +183,10 @@ pub struct Game {
     /// alongside a `ui` consumer must have its own `ui` feature on to
     /// initialize it (tango's `gamesupport-*` features pair the two);
     /// mixing them is a missing-field error here, on purpose.
+    /// `None` for a netplay-only game: there is no editor because there
+    /// is no save model behind it.
     #[cfg(feature = "ui")]
-    pub save_editor: &'static dyn save_editor::SaveEditor,
+    pub save_editor: Option<&'static dyn save_editor::SaveEditor>,
 }
 
 impl Game {
@@ -200,8 +211,15 @@ impl Game {
         (self.parse_save_fn)(sram)
     }
 
-    pub fn load_rom_assets(&self, rom: &[u8], wram: &[u8], charset: Option<&[&str]>) -> BoxedAssets {
-        (self.load_rom_assets_fn)(rom, wram, charset)
+    pub fn load_rom_assets(&self, rom: &[u8], wram: &[u8], charset: Option<&[&str]>) -> Option<BoxedAssets> {
+        Some((self.load_rom_assets_fn?)(rom, wram, charset))
+    }
+
+    /// Whether this game models its save beyond identifying it — false
+    /// for netplay-only games, which have no editor, templates or ROM
+    /// assets behind the dump they accept.
+    pub fn has_save_model(&self) -> bool {
+        self.load_rom_assets_fn.is_some()
     }
 }
 

@@ -567,7 +567,8 @@ fn templates_for_game(
     // trait. Patch templates take precedence: if a patch ships a
     // "heat-guts" template, it overrides the built-in of the same name.
     if let Some(game_impl) = game::from_gamedb_entry(game) {
-        for (name, save) in game_impl.save_templates.iter() {
+        // A netplay-only game ships no templates.
+        for (name, save) in game_impl.save_templates.iter().flat_map(|t| t.iter()) {
             out.entry((*name).to_string()).or_insert_with(|| save.clone_box());
         }
     }

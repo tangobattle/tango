@@ -1134,7 +1134,9 @@ fn background_handle(game: &'static crate::library::game::Game) -> Option<iced::
     if let Some(cached) = CACHE.lock().unwrap().get(&key).cloned() {
         return cached;
     }
-    let bg = game.background;
+    // No BNLC release to borrow art from — the pane falls back to no
+    // background, which it already does when BNLC is not installed.
+    let bg = game.background?;
     let path = format!("exe/data/bg/{}", bg.tga);
     let handle = crate::library::bnlc::get(bg.volume)
         .and_then(|b| b.read_shared_file(&path))
@@ -1395,13 +1397,13 @@ pub async fn spawn_pvp(
                 rom_overrides: version_meta.rom_overrides.clone(),
             })
         });
-        Some(crate::selection::from_patched_rom(
+        crate::selection::from_patched_rom(
             remote_game,
             remote_rom_bytes.clone(),
             std::path::PathBuf::new(),
             remote_save,
             applied_patch,
-        ))
+        )
     } else {
         None
     };
@@ -1425,13 +1427,13 @@ pub async fn spawn_pvp(
                 rom_overrides: version_meta.rom_overrides.clone(),
             })
         });
-        Some(crate::selection::from_patched_rom(
+        crate::selection::from_patched_rom(
             local_game,
             local_rom_bytes.clone(),
             std::path::PathBuf::new(),
             local_save,
             applied_patch,
-        ))
+        )
     };
 
     let (session, boot) = pvp::PvpSession::new(pvp::PvpSessionArgs {
