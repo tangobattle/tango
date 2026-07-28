@@ -8131,7 +8131,6 @@ dependencies = [
 name = "tango-ui"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "iced",
  "lucide-icons",
  "sweeten",

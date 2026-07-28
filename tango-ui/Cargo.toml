@@ -15,7 +15,6 @@ publish = false
 iced.workspace = true
 sweeten.workspace = true
 lucide-icons.workspace = true
-chrono = "0.4"
 
 [lints]
 workspace = true

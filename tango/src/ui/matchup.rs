@@ -8,7 +8,7 @@
 //! than that public table. Re-exported into [`crate::ui::widgets`] so
 //! call sites read the same as the toolkit's own widgets.
 
-use tango_ui::widgets::*;
+use super::widgets::*;
 
 /// Cook one side's chip-use events (`(tick, chip id)` as the stats
 /// record them) into [`ChipUseMark`]s: x normalized via `x_of`, name and

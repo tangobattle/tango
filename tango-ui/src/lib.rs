@@ -1,14 +1,14 @@
-//! The app's look-and-feel toolkit: reusable [`widgets`], the [`style`]
-//! constants and [`theme`] decorations they render with, and the bits of
-//! transient visual state that don't belong to any one view ([`anim`]
-//! timelines, [`copy_feedback`]'s "Copied!" flash).
+//! The look-and-feel both frontends share: the [`widgets`] and [`style`]
+//! metrics drawn on both sides of the gamesupport boundary, the [`anim`]
+//! timelines they move on, and [`copy_feedback`]'s "Copied!" flash.
 //!
-//! Game-agnostic on purpose: the save-editor layer (in the private
-//! gamesupport repo) and the app both draw with this, so the main repo
+//! Strictly the overlap. The app (`tango::ui`) and the save-editor layer
+//! (in the private gamesupport repo) each own their own `widgets` /
+//! `style` / `anim` modules that re-export these and add whatever only
+//! they use, so nothing one-sided accumulates here — and the main repo
 //! carries no game-support knowledge beyond ROM/save detection.
 
 pub mod anim;
 pub mod copy_feedback;
 pub mod style;
-pub mod theme;
 pub mod widgets;
