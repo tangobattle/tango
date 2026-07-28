@@ -56,31 +56,51 @@ pub trait Backend: 'static {
     /// [`screen_layout`]: Backend::screen_layout
     fn frame(link: &mut Self::Link, player: usize) -> Option<Vec<u8>>;
 
-    /// How this console presents its display.
+    /// The screens this console presents.
     fn screen_layout() -> ScreenLayout;
 }
 
-/// What a console's [`frame`](Backend::frame) buffer contains. A GBA
-/// hands back one screen; a DS hands back two, stacked top then bottom,
-/// so a host can size a texture without knowing which emulator produced
-/// it.
+/// One screen a console presents.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct ScreenLayout {
+pub struct Screen {
     pub width: u32,
     pub height: u32,
-    /// Screens stacked vertically in the buffer.
-    pub screens: u32,
+}
+
+impl Screen {
+    /// Size of this screen in a frame buffer, in bytes (RGBA8).
+    pub fn len(&self) -> usize {
+        (self.width * self.height * 4) as usize
+    }
+}
+
+/// The screens a console presents, in the order a
+/// [`frame`](Backend::frame) buffer concatenates them.
+///
+/// A GBA has one; a DS has two. They are listed rather than described
+/// by a count and a shared size because nothing guarantees a console's
+/// screens match each other — and a host laying out a pane wants each
+/// one's dimensions anyway.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ScreenLayout {
+    pub screens: Vec<Screen>,
 }
 
 impl ScreenLayout {
-    /// Total pixel height of the buffer.
-    pub fn buffer_height(&self) -> u32 {
-        self.height * self.screens
+    pub fn new(screens: impl IntoIterator<Item = Screen>) -> Self {
+        ScreenLayout {
+            screens: screens.into_iter().collect(),
+        }
     }
 
-    /// Size of one frame in bytes (RGBA8).
+    /// A single-screen layout, the common case.
+    pub fn single(width: u32, height: u32) -> Self {
+        ScreenLayout::new([Screen { width, height }])
+    }
+
+    /// Size of a whole frame in bytes (RGBA8).
     pub fn buffer_len(&self) -> usize {
-        (self.width * self.buffer_height() * 4) as usize
+        self.screens.iter().map(Screen::len).sum()
     }
 }
 
