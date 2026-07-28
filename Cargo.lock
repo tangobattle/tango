@@ -8064,6 +8064,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tango-match-mgba"
+version = "0.1.0"
+dependencies = [
+ "mgba",
+ "mgba-rollback",
+ "tango-match",
+]
+
+[[package]]
 name = "tango-net-protocol"
 version = "0.1.0"
 dependencies = [

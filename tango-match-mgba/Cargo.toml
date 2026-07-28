@@ -1,0 +1,16 @@
+[package]
+name = "tango-match-mgba"
+version = "0.1.0"
+edition = "2021"
+
+# The mgba backend for tango-match: a pair of emulated GBAs on an
+# emulated link cable. Kept out of tango-match so the seam depends on no
+# emulator, and shared by every GBA game rather than copied into each.
+
+[dependencies]
+tango-match = { path = "../tango-match" }
+mgba.workspace = true
+mgba-rollback.workspace = true
+
+[lints]
+workspace = true
