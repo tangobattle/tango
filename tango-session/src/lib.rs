@@ -49,10 +49,11 @@ pub mod platform;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod stats;
 
-/// The GBA joypad bit vocabulary [`Session::set_joyflags`] speaks —
+/// The joypad bit vocabulary [`Session::set_joyflags`] speaks —
 /// re-exported so hosts get the bit names without their own emulator
-/// dependency.
-pub use mgba::input::keys;
+/// dependency. Engine-neutral: the GBA layout, which the DS extends
+/// with X and Y, so one set of names covers both consoles.
+pub use tango_match::keys;
 
 /// Route the emulator's global logger through the `log` crate. Hosts
 /// call this once at startup — without it, a core outside any session
