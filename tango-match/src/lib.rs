@@ -29,11 +29,16 @@
 //! - [`input`]: the joyflags input type that lands in replays.
 
 pub mod analysis;
+pub mod backend;
 pub mod battle;
 pub mod engine;
 pub mod input;
 pub mod playback;
 pub mod telemetry;
+
+/// The engine seam, re-exported: hosts and game crates name these
+/// rather than reaching into the module.
+pub use backend::{Backend, MatchFactory, RunningMatch, ScreenLayout, StartConfig};
 
 /// Simulation failure, shared by the live engine, replay playback, and
 /// offline analysis — all three boot and drive the same kind of pair.
