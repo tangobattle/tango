@@ -100,6 +100,11 @@ impl AudioPull for Box<dyn AudioPull> {
 /// frames of slack so a late callback does not starve.
 const DRAIN_CHUNK: usize = 4096;
 
+/// Cap on resampled audio held for the device, in frames — a third of a
+/// second at 48 kHz, far more than any callback asks for and far less
+/// than a fast-forward can pile up in a second.
+const DEST_CAP: usize = 0x4000;
+
 /// Any [`AudioDrain`], resampled — the shared half of the contract.
 ///
 /// Linear interpolation over a fractional cursor: deliberately the
@@ -140,10 +145,12 @@ impl<D: AudioDrain> AudioPull for Resampled<D> {
     }
 
     fn process(&mut self, claimed_source_rate: f64, destination_rate: f64) {
-        if destination_rate <= 0.0 {
+        let step = claimed_source_rate / destination_rate;
+        // A non-positive or non-finite step would never advance the
+        // cursor, so the loop below would push forever.
+        if !step.is_finite() || step <= 0.0 {
             return;
         }
-        let step = claimed_source_rate / destination_rate;
         let frames = self.source.len() / 2;
         while (self.cursor as usize) + 1 < frames {
             let i = self.cursor as usize;
@@ -161,6 +168,18 @@ impl<D: AudioDrain> AudioPull for Resampled<D> {
         if consumed > 0 {
             self.source.drain(..consumed * 2);
             self.cursor -= consumed as f64;
+        }
+        // Bound what is waiting for the device, dropping the oldest.
+        //
+        // Production and consumption are not always balanced: a
+        // fast-forwarded session claims a destination rate above the
+        // device's, so this produces several frames for every one the
+        // callback takes and the surplus is real. Discarding it keeps
+        // latency bounded, which is exactly what the fixed-size ring
+        // this replaced did by overwriting.
+        let over = self.dest.len().saturating_sub(DEST_CAP * 2);
+        if over > 0 {
+            self.dest.drain(..over);
         }
     }
 
@@ -182,5 +201,57 @@ impl<D: AudioDrain> AudioPull for Resampled<D> {
         out[..frames * 2].copy_from_slice(&self.dest[..frames * 2]);
         self.dest.drain(..frames * 2);
         frames
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A console that always has audio ready, at a GBA-ish rate.
+    struct Endless;
+
+    impl AudioDrain for Endless {
+        fn sample_rate(&self) -> f64 {
+            32768.0
+        }
+
+        fn drain(&mut self, out: &mut [i16]) -> usize {
+            out.fill(1);
+            out.len() / 2
+        }
+    }
+
+    /// Fast-forward claims a destination rate well above the device's,
+    /// so each fill resamples up. Without a bound the surplus is kept
+    /// forever and the process grows until it dies — which is what
+    /// holding fast-forward used to do.
+    #[test]
+    fn fast_forward_does_not_grow_the_queue_without_end() {
+        let mut pull = Resampled::new(Endless);
+        for _ in 0..200 {
+            pull.source_available();
+            // 4x fast-forward: 48 kHz device, 192 kHz claimed.
+            pull.process(32768.0, 192_000.0);
+            let mut out = [0i16; 1024];
+            pull.read(&mut out, 512);
+        }
+        assert!(
+            pull.available() <= DEST_CAP,
+            "resampled queue grew to {} frames",
+            pull.available()
+        );
+    }
+
+    /// A zero or negative step can never advance the cursor, so the
+    /// resample loop would push output forever.
+    #[test]
+    fn a_degenerate_rate_produces_nothing_rather_than_hanging() {
+        let mut pull = Resampled::new(Endless);
+        pull.source_available();
+        pull.process(0.0, 48_000.0);
+        assert_eq!(pull.available(), 0);
+        pull.process(32768.0, 0.0);
+        assert_eq!(pull.available(), 0);
     }
 }
