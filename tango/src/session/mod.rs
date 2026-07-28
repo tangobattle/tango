@@ -27,7 +27,6 @@ use crate::library::game;
 use crate::library::patch;
 use crate::platform::audio;
 use crate::platform::video::framebuffer::Effect;
-use crate::save_editor;
 use crate::selection;
 use crate::ui::anim;
 use crate::ui::style::{self, TEXT_BODY, TEXT_CAPTION};
@@ -82,10 +81,6 @@ pub struct PvpPanes {
     pub local_loaded: Option<selection::LoadedSave>,
     /// Opponent's loaded selection, unless they blinded their setup.
     pub opponent_loaded: Option<selection::LoadedSave>,
-    /// Active-tab / grouping state for the self save-view panel.
-    pub local_save_editor: save_editor::State,
-    /// Active-tab / grouping state for the opponent save-view panel.
-    pub opponent_save_editor: save_editor::State,
     /// Current width of each setup drawer (`[self, opponent]`), seeded
     /// from `config.pvp_setup_pane_widths` at match start and moved by
     /// dragging a drawer's inner edge. The App mirrors it back into
@@ -1470,8 +1465,6 @@ pub async fn spawn_pvp(
         PvpPanes {
             local_loaded,
             opponent_loaded,
-            local_save_editor: save_editor::State::new(),
-            opponent_save_editor: save_editor::State::new(),
             // Clamped on the way in: the persisted pair predates the
             // current bounds on an older config, or the window it was
             // sized against is gone.

@@ -11,13 +11,14 @@
 
 pub use tango_ui::{anim, copy_feedback, style};
 
-/// The widget toolkit, plus the gamesupport layer's match-analysis
-/// widgets (HP graph, outcome marks, stat cooking) — one namespace so
-/// call sites don't care which side of the submodule boundary a widget
-/// lives on.
+/// The widget toolkit, plus the app-side [`matchup`] cooking that feeds
+/// its match-analysis chart — one namespace, so call sites read
+/// `widgets::cook_hp_rounds` next to `widgets::hp_match_graph`.
 pub mod widgets {
-    pub use tango_gamesupport_common::matchup::*;
+    pub use super::matchup::*;
     pub use tango_ui::widgets::*;
 }
+
+mod matchup;
 
 pub mod theme;

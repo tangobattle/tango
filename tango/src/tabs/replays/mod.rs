@@ -3,7 +3,7 @@ use crate::i18n::t;
 use crate::library::replays;
 use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::ui::widgets;
-use crate::{config, save_editor};
+use crate::config;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, scrollable, text, Space};
 use iced::{Alignment, Element, Fill, Length};
@@ -73,7 +73,7 @@ pub enum Message {
     /// marker so a later re-focus can retry (e.g. after the user
     /// installs the ROM).
     HpStatsLoaded(std::path::PathBuf, Option<tango_match::analysis::MatchStats>),
-    SaveEditor(save_editor::Msg),
+    SaveEditor(std::sync::Arc<dyn tango_gamesupport::SaveEditorMessage>),
     /// Used by Tasks that need a Message to return but want no
     /// state mutation. Currently: the user dismissed the Save As
     /// file dialog without picking a path — the export form should
@@ -156,7 +156,6 @@ pub struct ReplaysState {
     /// the same decode that builds `loaded` — the planned segment widths
     /// a live analysis renders into (see [`widgets::cook_hp_rounds`]).
     pub loaded_round_ticks: Vec<u32>,
-    pub save_editor: save_editor::State,
     /// Per-replay UI state, keyed by replay path. Entries appear
     /// on first interaction (Selected, ExportPanelOpen, or
     /// ExportStart) and are pruned on navigation if they hold
@@ -385,11 +384,10 @@ impl ReplaysState {
                 // on a tab change). Edit/Play outcomes can't fire here:
                 // the replay save view renders read-only.
                 let data = self.loaded.as_mut()?;
-                let editor = data.editor;
-                let (sv_task, outcome) = editor.update(&mut *self.save_editor, Some(data), &*msg);
+                let (sv_task, outcome) = data.editor.update(data, &*msg);
                 match outcome {
-                    Some(save_editor::Event::CopyText(s)) => Some(Effect::CopyText(s)),
-                    Some(save_editor::Event::CopyImage(img)) => Some(Effect::CopyImage(img)),
+                    Some(tango_gamesupport::SaveEditorEvent::CopyText(s)) => Some(Effect::CopyText(s)),
+                    Some(tango_gamesupport::SaveEditorEvent::CopyImage(img)) => Some(Effect::CopyImage(img)),
                     Some(_) => None,
                     None => Some(Effect::SaveEditorTask(sv_task.map(Message::SaveEditor))),
                 }
@@ -1380,7 +1378,7 @@ fn replay_detail<'a>(
     let preview: Element<'_, Message> = if let Some(loaded) = state.loaded.as_ref() {
         loaded
             .editor
-            .view(lang, loaded, &*state.save_editor, false, None, true, false)
+            .view(lang, loaded, false, None, true, false)
             .map(Message::SaveEditor)
     } else {
         container(

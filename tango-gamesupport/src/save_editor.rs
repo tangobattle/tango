@@ -22,6 +22,14 @@ pub struct AppliedPatch {
     pub rom_overrides: tango_patch::Overrides,
 }
 
+/// One chip as [`LoadedSave::chips`] carries it: display name and
+/// pre-baked icon, each `None` when the game has none for that id.
+#[derive(Default, Clone)]
+pub struct ChipDisplay {
+    pub name: Option<String>,
+    pub icon: Option<iced::widget::image::Handle>,
+}
+
 /// A message minted inside the save-editor view. Implemented (and
 /// consumed) only by the private UI layer; the app routes
 /// `Arc<dyn SaveEditorMessage>` through its message enums without looking
@@ -29,11 +37,11 @@ pub struct AppliedPatch {
 /// be).
 pub trait SaveEditorMessage: std::any::Any + std::fmt::Debug + Send + Sync {}
 
-/// Opaque per-embed view state (active tab, edit session, scroll and
-/// animation bookkeeping). One `Box<dyn SaveEditorState>` per on-screen
-/// save view; outlives game and save switches. Created by
-/// [`SaveEditor::new_state`] — or, before any game is loaded, by the
-/// private layer's game-independent constructor.
+/// Opaque per-save view state (active tab, edit session, scroll and
+/// animation bookkeeping), held as [`LoadedSave::state`]. Minted by
+/// [`SaveEditor::load`] and dropped with the save it belongs to, so a
+/// save switch or a closed view takes its view state with it and a
+/// rebuilt save can never inherit a stale one.
 pub trait SaveEditorState: std::any::Any + Send + Sync {}
 
 /// The private UI layer's loaded bundle (model + baked art), as held
@@ -43,17 +51,30 @@ pub trait LoadedSavePayload: std::any::Any + Send + Sync {}
 
 /// A loaded save, ready to render: the game-agnostic facts the app
 /// needs for launching and committing (game, path, patch), the UI to
-/// drive it with, and the private layer's loaded bundle behind an
-/// opaque payload.
+/// drive it with, the view state that UI is currently in, and the
+/// private layer's loaded bundle behind an opaque payload.
 pub struct LoadedSave {
     /// The save editor driving this data — render with
     /// [`SaveEditor::view`], mutate with [`SaveEditor::update`].
     pub editor: &'static dyn SaveEditor,
     pub game: crate::GameRef,
+    /// The ROM's chip table as anything outside the save view draws it
+    /// (the match-analysis chart's chip lanes), indexed by chip id:
+    /// name and pre-baked icon, both `None` where the game has neither.
+    /// Baked with the rest of the art at load, since only the private
+    /// layer can read the assets behind [`payload`](Self::payload). The
+    /// icon handles are Arc-backed — cloning one per use is a refcount
+    /// bump.
+    pub chips: Vec<ChipDisplay>,
     /// Where a commit writes back to. Empty for saves without a backing
     /// file (a replay's embedded SRAM).
     pub save_path: std::path::PathBuf,
     pub patch: Option<AppliedPatch>,
+    /// Where the view for this save currently is (open tab, edit
+    /// session, scroll). Lives here so it is born and dropped with the
+    /// save it describes — there is nothing for the embedder to
+    /// reset or tear down.
+    pub state: Box<dyn SaveEditorState>,
     /// The private UI layer's loaded bundle (model + baked art).
     pub payload: Box<dyn LoadedSavePayload>,
 }
@@ -83,9 +104,7 @@ pub enum SaveEditorEvent {
 /// the editor is the private layer's business.
 pub trait SaveEditor: Send + Sync {
     /// Bundle a parsed save (+ its already-patched ROM) into renderable
-    /// data. `logo_games` is the cover art order — the loaded game
-    /// first, then family siblings — resolved by the caller against its
-    /// game registry.
+    /// data.
     fn load(
         &'static self,
         game: crate::GameRef,
@@ -93,11 +112,7 @@ pub trait SaveEditor: Send + Sync {
         save_path: std::path::PathBuf,
         save: crate::BoxedSave,
         patch: Option<AppliedPatch>,
-        logo_games: &[crate::GameRef],
     ) -> LoadedSave;
-
-    /// Fresh per-embed view state.
-    fn new_state(&self) -> Box<dyn SaveEditorState>;
 
     /// Render the save view. `play_button`: `None` hides the Play
     /// button, `Some(enabled)` renders it. `editable` gates the whole
@@ -106,20 +121,20 @@ pub trait SaveEditor: Send + Sync {
         &self,
         lang: &'a LanguageIdentifier,
         data: &'a LoadedSave,
-        state: &'a dyn SaveEditorState,
         streamer_mode: bool,
         play_button: Option<bool>,
         inline_actions: bool,
         editable: bool,
     ) -> iced::Element<'a, std::sync::Arc<dyn SaveEditorMessage>>;
 
-    /// Fold a message into the state (and the data, when given — staged
-    /// edits mutate it in place, including derived art). Returns a
-    /// follow-up task plus whatever the app must act on.
+    /// Fold a message into the data: its view state always, and the
+    /// save itself when the message is a staged edit (applied in place,
+    /// including derived art — an `editable: false` embed can't mint
+    /// one). Returns a follow-up task plus whatever the app must act
+    /// on.
     fn update(
         &self,
-        state: &mut dyn SaveEditorState,
-        data: Option<&mut LoadedSave>,
+        data: &mut LoadedSave,
         msg: &dyn SaveEditorMessage,
     ) -> (
         iced::Task<std::sync::Arc<dyn SaveEditorMessage>>,

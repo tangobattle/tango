@@ -941,13 +941,10 @@ impl App {
                 .unwrap_or_default(),
         );
         let patches_path = self.config.patches_path();
+        // The view state rides inside the LoadedSave, so swapping in a
+        // freshly-built one drops any in-progress edit with the save it
+        // was staged against — nothing to reset by hand.
         self.loaded = Some(selection::build(game, rom, save_path, save, &patches_path, patch_meta));
-        // We just swapped in a freshly-built save, so any in-progress
-        // edit (which lived in the previous in-memory save) is gone —
-        // leave the global edit mode so the UI doesn't show stale state.
-        // The commit path takes the early-return above and never
-        // reaches here, so this only fires on a real selection change.
-        self.play.reset_save_editing();
     }
 }
 
@@ -1102,7 +1099,6 @@ impl App {
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
         let screen_before = self.screen_key();
         let family_before = self.loadout.family;
-        let selection_before = (self.loadout.game, self.loadout.save.clone());
         // Candidate snapshot for the lobby's exit animation — taken
         // before dispatch (the handler about to run may reset the
         // phase/lobby), kept only if the lobby actually left.
@@ -1153,14 +1149,11 @@ impl App {
         self.lobby_swap.set(lobby_after, now);
         // A different family swaps the entire bottom of the tab —
         // rise the whole save-view pane in. A different game or save
-        // within the family only re-renders the save's content — rise
-        // just the panes under the save view's sub-tab strip, leaving
-        // the strip itself planted. (Sub-tab switches slide the inner
-        // panes horizontally instead; the save view folds those itself.)
+        // within the family only re-renders the save's content, and
+        // that entrance rides in with the reloaded save itself: its
+        // view state is minted by the load and starts its own rise.
         if family_before != self.loadout.family {
             self.play.animate_family_switch(now);
-        } else if selection_before != (self.loadout.game, self.loadout.save.clone()) {
-            self.play.animate_save_switch(now);
         }
         task
     }

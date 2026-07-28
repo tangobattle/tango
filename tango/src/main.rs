@@ -20,7 +20,6 @@ mod selection;
 // feature-gated `ui` layer (each game's editor is a feature-gated
 // module in its own crate, carried on `Game::save_editor`); `save_editor`
 // here is just the path shim.
-mod save_editor;
 mod session;
 mod tabs;
 

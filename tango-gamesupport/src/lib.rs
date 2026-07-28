@@ -115,7 +115,8 @@ pub type BoxedAssets = Box<dyn AssetsData>;
 pub mod save_editor;
 #[cfg(feature = "ui")]
 pub use save_editor::{
-    AppliedPatch, LoadedSave, LoadedSavePayload, SaveEditor, SaveEditorEvent, SaveEditorMessage, SaveEditorState,
+    AppliedPatch, ChipDisplay, LoadedSave, LoadedSavePayload, SaveEditor, SaveEditorEvent, SaveEditorMessage,
+    SaveEditorState,
 };
 
 /// One ROM revision Tango supports, with all of its per-game info.
@@ -123,9 +124,14 @@ pub use save_editor::{
 /// Built as a `&'static` in the owning `tango-gamesupport-<game>` crate.
 /// See the module docs for the identity contract.
 pub struct Game {
-    /// Family + variant, e.g. `("bn6", 0)`. The family string is
-    /// region-specific (`exe3` JP vs `bn3` US).
-    pub family: &'static str,
+    /// The [`Family`] this game is a variant of — the back half of the
+    /// families-own-their-games link, so anything holding a [`GameRef`]
+    /// can reach its siblings (the other color version) without a
+    /// registry to search. Its id is region-specific (`exe3` JP vs
+    /// `bn3` US).
+    pub family: &'static Family,
+    /// Which variant of [`family`](Self::family) this is, e.g. 0 for
+    /// Gregar and 1 for Falzar.
     pub variant: u8,
     /// 4-byte ROM code (e.g. `b"BR5E"`) and mask-ROM revision.
     pub rom_code: &'static [u8; 4],
@@ -174,8 +180,9 @@ pub struct Game {
 
 impl Game {
     pub fn family_and_variant(&self) -> (&'static str, u8) {
-        (self.family, self.variant)
+        (self.family.id, self.variant)
     }
+
 
     pub fn rom_code_and_revision(&self) -> (&'static [u8; 4], u8) {
         (self.rom_code, self.revision)

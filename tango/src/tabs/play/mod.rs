@@ -20,7 +20,7 @@ use crate::library::{game, rom};
 use crate::loadout::{self, Loadout};
 use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::ui::widgets;
-use crate::{config, save_editor, selection};
+use crate::{config, selection};
 use iced::widget::{button, container, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
@@ -34,7 +34,7 @@ pub enum Message {
     /// Loadout strip interaction. Routed by the App to the shared
     /// [`Loadout`] state — never reaches [`State::update`].
     Loadout(loadout::Message),
-    SaveEditor(save_editor::Msg),
+    SaveEditor(std::sync::Arc<dyn tango_gamesupport::SaveEditorMessage>),
 
     LinkCodeChanged(String),
     /// Copy plain text to the clipboard — the lobby's copy-link-code
@@ -104,18 +104,14 @@ pub struct State {
     /// moves it into the input when the lobby band leaves, so a retry
     /// re-hosts the same code.
     pending_generated_code: Option<String>,
-    /// Persistent state for the embedded save view (active tab,
-    /// folder grouping). Opaque to the app; incoming `SaveEditor`s
-    /// fold through the loaded data's `ui.update(..)`.
-    save_editor: save_editor::State,
     /// Inline state for the save-management actions (rename / delete).
     save_action: SaveAction,
     /// Entrance glide for the whole save-view pane under the selector
     /// strip, played by the App when the *family* changes — a family
     /// switch replaces the entire bottom of the tab. A save switch
-    /// within the family plays the smaller [`save_editor::State`]
-    /// entrance instead, which only moves the panes under the save
-    /// view's sub-tab strip.
+    /// within the family plays the smaller entrance the save view
+    /// itself owns instead, which only moves the panes under its
+    /// sub-tab strip.
     save_body_enter: crate::ui::anim::Enter,
     /// Fade-through swap for the save-action row: the picker row
     /// morphs into whichever rename / delete / create form opens
@@ -133,7 +129,6 @@ impl Default for State {
         Self {
             link_code: String::new(),
             pending_generated_code: None,
-            save_editor: save_editor::State::new(),
             save_action: SaveAction::None,
             save_body_enter: crate::ui::anim::Enter::default(),
             save_form: crate::ui::anim::Transition::swap(false),
@@ -262,30 +257,11 @@ impl State {
         self.link_code = code;
     }
 
-    /// Surface an after-the-fact action failure (session launch / PvP
-    /// build errored) as the tab's dismissable banner.
-    /// Leave any in-progress save-edit session. The App calls this when
-    /// the loaded save is rebuilt out from under the view, where staged
-    /// edits (which lived in the previous in-memory save) are already
-    /// gone — dropping the whole EditState clears every editor's
-    /// scratch at once.
-    pub fn reset_save_editing(&mut self) {
-        self.save_editor.clear_editing();
-    }
-
     /// Play the family-switch entrance: a family change replaces the
     /// entire bottom of the tab, so the whole save-view pane under the
     /// selector strip glides in.
     pub fn animate_family_switch(&mut self, now: iced::time::Instant) {
         self.save_body_enter.start(now);
-    }
-
-    /// Play the save-switch entrance: a game/save change within the
-    /// family only re-renders the save's content, so just the panes
-    /// under the save view's sub-tab strip rise, leaving the strip
-    /// planted.
-    pub fn animate_save_switch(&mut self, now: iced::time::Instant) {
-        self.save_editor.animate_save_switch(now);
     }
 
     fn update_inner(
@@ -370,15 +346,14 @@ impl State {
                 // launches, the committed SRAM. Everything else flows
                 // through as a generic save-view-internal task.
                 let data = loaded?;
-                let editor = data.editor;
-                let (sv_task, outcome) = editor.update(&mut *self.save_editor, Some(data), &*msg);
+                let (sv_task, outcome) = data.editor.update(data, &*msg);
                 match outcome {
-                    Some(save_editor::Event::CopyText(s)) => Some(Effect::CopyText(s)),
-                    Some(save_editor::Event::CopyImage(img)) => Some(Effect::CopyImage(img)),
-                    Some(save_editor::Event::Play) => Some(Effect::StartSinglePlayer),
-                    Some(save_editor::Event::Training) => Some(Effect::StartTraining),
-                    Some(save_editor::Event::Commit { sram }) => Some(Effect::SaveEditCommit { sram }),
-                    Some(save_editor::Event::Cancel) => Some(Effect::SaveEditCancel),
+                    Some(tango_gamesupport::SaveEditorEvent::CopyText(s)) => Some(Effect::CopyText(s)),
+                    Some(tango_gamesupport::SaveEditorEvent::CopyImage(img)) => Some(Effect::CopyImage(img)),
+                    Some(tango_gamesupport::SaveEditorEvent::Play) => Some(Effect::StartSinglePlayer),
+                    Some(tango_gamesupport::SaveEditorEvent::Training) => Some(Effect::StartTraining),
+                    Some(tango_gamesupport::SaveEditorEvent::Commit { sram }) => Some(Effect::SaveEditCommit { sram }),
+                    Some(tango_gamesupport::SaveEditorEvent::Cancel) => Some(Effect::SaveEditCancel),
                     None => Some(Effect::SaveEditorTask(sv_task.map(Message::SaveEditor))),
                 }
             }
@@ -661,7 +636,6 @@ impl State {
             .view(
                 lang,
                 loaded,
-                &*self.save_editor,
                 streamer_mode,
                 play_button,
                 true,

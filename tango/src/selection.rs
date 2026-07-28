@@ -1,27 +1,12 @@
 //! App-side constructors for [`LoadedSave`] — a loaded save bundled
 //! with the UI that renders it, produced through `Game::save_editor`'s
 //! opaque embedding API. Everything that needs app collaborators stays
-//! here: applying the selected patch (the scanner types and storage
-//! root are the app's) and resolving the Cover tab's logo order from
-//! the game registry.
+//! here: applying the selected patch, whose scanner types and storage
+//! root are the app's.
 
 use std::sync::Arc;
 
 pub use tango_gamesupport::{AppliedPatch, LoadedSave};
-
-/// The Cover tab's logo order: the loaded variant first, then its
-/// family siblings (the other color version, where one exists) so
-/// twin-version families fan both logos out.
-fn logo_games(game: crate::library::rom::GameRef) -> Vec<crate::library::rom::GameRef> {
-    let (family, variant) = game.family_and_variant();
-    let mut order = vec![game];
-    for g in crate::library::game::games_in_family(family) {
-        if g.family_and_variant().1 != variant {
-            order.push(g);
-        }
-    }
-    order
-}
 
 /// Build from a *raw* (unpatched) ROM, applying the selected patch
 /// first, then bake the frontend art for it. On apply failure we fall
@@ -79,7 +64,7 @@ pub fn from_patched_rom(
     applied_patch: Option<AppliedPatch>,
 ) -> LoadedSave {
     game.save_editor
-        .load(game, rom, save_path.clone(), save, applied_patch, &logo_games(game))
+        .load(game, rom, save_path.clone(), save, applied_patch)
 }
 
 /// Build a [`LoadedSave`] for the local side of a replay — used by the
