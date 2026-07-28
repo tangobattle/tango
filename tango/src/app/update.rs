@@ -128,13 +128,28 @@ impl App {
                 iced::Task::none()
             }
             E::ReadyWithSave => {
-                // View-time gating disables the Ready button when
-                // no save is loaded, so this is just defense in
-                // depth — fall through silently if reached.
-                let Some(loaded) = self.loaded.as_ref() else {
-                    return iced::Task::none();
+                // The editor's copy where there is one, so a staged
+                // edit is what gets committed rather than the file it
+                // was staged against. A game Tango supports for netplay
+                // only has no editor, and for those the file *is* the
+                // save.
+                let save_sram = match self.loaded.as_ref() {
+                    Some(loaded) => loaded.editor.sram(loaded),
+                    None => {
+                        // View-time gating disables Ready with no save
+                        // selected, so this is defense in depth.
+                        let Some(bootable) = self.bootable.as_ref() else {
+                            return iced::Task::none();
+                        };
+                        match std::fs::read(&bootable.save_path) {
+                            Ok(sram) => sram,
+                            Err(e) => {
+                                log::error!("ready: reading {} failed: {e}", bootable.save_path.display());
+                                return iced::Task::none();
+                            }
+                        }
+                    }
                 };
-                let save_sram = loaded.editor.sram(loaded);
                 match self.netplay.commit(save_sram) {
                     Some(netplay::Event::MatchReady) => self.start_pvp_handoff(),
                     None => iced::Task::none(),

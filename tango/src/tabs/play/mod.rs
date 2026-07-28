@@ -507,7 +507,11 @@ impl State {
                 phase: band_phase,
                 local_game: loadout.game,
                 scanners,
-                has_save: loaded.is_some(),
+                // Whether a save is *selected*, not whether it has an
+                // editor behind it: a game Tango supports for netplay
+                // only has no editor, and readying up needs the save,
+                // not a view of it.
+                has_save: loadout.game.is_some() && loadout.save.is_some(),
                 local_fallback,
                 streamer_mode,
                 handoff_pending: band.handoff_pending,
