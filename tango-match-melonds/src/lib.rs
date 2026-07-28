@@ -33,6 +33,17 @@ impl Backend for MelonDs {
     type Input = Input;
     type Error = melonds::Error;
 
+    fn boot(
+        roms: [&[u8]; 2],
+        saves: [Option<&[u8]>; 2],
+        rtc: std::time::SystemTime,
+    ) -> Result<Link, melonds::Error> {
+        // Both consoles run the same cart — a DS link is one game, two
+        // consoles — so the second ROM is ignored.
+        let _ = roms[1];
+        Link::new(roms[0], saves, rtc_parts(rtc))
+    }
+
     fn tick(link: &mut Link, inputs: [Input; 2]) {
         link.tick(inputs);
     }
@@ -76,3 +87,44 @@ pub fn input_from_joyflags(joyflags: u32) -> Input {
 /// Re-exported so a game crate can name a link, a snapshot, an input or
 /// a session without depending on the emulator crates itself.
 pub use melonds_rollback::{session::Session, Input, Link, Snapshot};
+
+/// Split an instant into the fields a cart RTC takes. Both peers pass
+/// the same one, so both consoles agree without a date library.
+fn rtc_parts(rtc: std::time::SystemTime) -> (i32, i32, i32, i32, i32, i32) {
+    let secs = rtc
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    (
+        year as i32,
+        month as i32,
+        day as i32,
+        (rem / 3_600) as i32,
+        (rem % 3_600 / 60) as i32,
+        (rem % 60) as i32,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    /// The shared rollback loop instantiates for this backend — the
+    /// point of the seam. A DS match is `Match<MelonDs>`, a GBA match is
+    /// `Match<Mgba>`, and neither engine reimplements the loop.
+    #[test]
+    fn the_shared_engine_accepts_this_backend() {
+        fn assert_usable<B: tango_match::Backend>() {}
+        assert_usable::<super::MelonDs>();
+        let _: fn(super::Link, usize, u32) -> Result<tango_match::engine::Match<super::MelonDs>, melonds::Error> =
+            tango_match::engine::Match::<super::MelonDs>::new;
+    }
+}

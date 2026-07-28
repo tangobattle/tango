@@ -24,6 +24,23 @@ impl Backend for Mgba {
     type Input = u32;
     type Error = mgba::Error;
 
+    fn boot(
+        roms: [&[u8]; 2],
+        saves: [Option<&[u8]>; 2],
+        rtc: std::time::SystemTime,
+    ) -> Result<Self::Link, mgba::Error> {
+        mgba_rollback::Link::with_options(mgba_rollback::LinkOptions {
+            sides: (0..2)
+                .map(|i| mgba_rollback::SideOptions {
+                    rom: roms[i].to_vec(),
+                    save: saves[i].map(|s| s.to_vec()),
+                })
+                .collect(),
+            rtc: Some(rtc),
+            peripheral: mgba_rollback::Peripheral::Cable,
+        })
+    }
+
     fn tick(link: &mut Self::Link, inputs: [u32; 2]) {
         link.tick(&inputs);
     }
@@ -102,5 +119,21 @@ impl tango_match::MatchFactory for GbaMatchFactory {
         })
         .map_err(tango_match::Error::from)?;
         Ok(Box::new(match_))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// The shared rollback loop instantiates for this backend too.
+    #[test]
+    fn the_shared_engine_accepts_this_backend() {
+        fn assert_usable<B: tango_match::Backend>() {}
+        assert_usable::<super::Mgba>();
+        let _: fn(
+            mgba_rollback::Link,
+            usize,
+            u32,
+        ) -> Result<tango_match::engine::Match<super::Mgba>, mgba::Error> =
+            tango_match::engine::Match::<super::Mgba>::new;
     }
 }

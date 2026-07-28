@@ -30,13 +30,22 @@
 /// much as the consoles do.
 pub trait Backend: 'static {
     /// The linked pair.
-    type Link;
+    type Link: Send + 'static;
     /// A whole-link capture — both consoles and anything in flight
     /// between them.
-    type Snapshot;
-    /// One console's input for one tick.
-    type Input: Copy + Eq + Send;
+    type Snapshot: Send + 'static;
+    /// One console's input for one tick. `Default` is "nothing held",
+    /// which is what a session assumes before a peer has spoken.
+    type Input: Copy + Eq + Send + Default + 'static;
     type Error: std::error::Error + Send + Sync + 'static;
+
+    /// Boot a pair: two consoles, linked, with their clocks pinned so
+    /// both peers reach the same state from the same inputs.
+    fn boot(
+        roms: [&[u8]; 2],
+        saves: [Option<&[u8]>; 2],
+        rtc: std::time::SystemTime,
+    ) -> Result<Self::Link, Self::Error>;
 
     /// Advance the pair one video frame.
     fn tick(link: &mut Self::Link, inputs: [Self::Input; 2]);

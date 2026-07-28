@@ -8054,6 +8054,7 @@ dependencies = [
 name = "tango-match"
 version = "0.1.0"
 dependencies = [
+ "getgud",
  "serde",
  "thiserror 1.0.69",
 ]
