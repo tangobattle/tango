@@ -178,8 +178,20 @@ fn usage_events(
                     }
                 }
                 ChipSemantics::ActingChip => {
-                    if chip != prev_chip {
-                        if chip != NO_CHIP {
+                    // The report is `id | (shot << 12)`, where `shot`
+                    // counts that side's firings. A zero shot means the
+                    // game is mid-update of its own counter — ignore
+                    // the sample entirely rather than let the flicker
+                    // read as a firing. Otherwise a use is a new chip
+                    // taking the cell, or the same chip's shot count
+                    // moving on.
+                    let shot = chip >> 12;
+                    if chip != prev_chip && (chip == NO_CHIP || shot != 0) {
+                        let fired = chip != NO_CHIP
+                            && (prev_chip == NO_CHIP
+                                || chip & CHIP_ID_MASK != prev_chip & CHIP_ID_MASK
+                                || shot > prev_chip >> 12);
+                        if fired {
                             chip_uses[side].push((s.tick, chip & CHIP_ID_MASK));
                         }
                         prev_chip = chip;

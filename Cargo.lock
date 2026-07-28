@@ -7602,6 +7602,7 @@ dependencies = [
  "tango-gamesupport-bcc-ui",
  "tango-gamesupport-common",
  "tango-match",
+ "tango-replay",
  "unic-langid",
 ]
 
