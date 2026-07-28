@@ -5,13 +5,22 @@
 //! control and RetroArch's DRC): the simulation is paced elsewhere —
 //! the match clock (PvP), the playback drive loop (replay), a
 //! wall-clock pacer (singleplayer) — and audio may never pause it, so
-//! all regulation lives on the consumption side. Three mechanisms:
+//! all regulation lives on the consumption side. The mechanisms:
 //!
 //! - The faux clock scales nominal consumption to the host's published
 //!   fps target (read through a closure, since the host drive loop
 //!   owns pacing): a throttled sim stretches playback by the same
 //!   ratio and a fast-forwarded one compresses into it, instead of
-//!   starving or flooding the device.
+//!   starving or flooding the device. Within a few percent of 1× —
+//!   PvP's clock-sync shaves, the GBA's 59.7275 Hz against a 60 fps
+//!   target — the scale folds into the resample ratio, where it reads
+//!   as inaudible pitch. Past the hysteresis band (real fast-forward
+//!   or slow-mo) that fold would read as chipmunk or drone, so the
+//!   resampler stays pitch-true and a WSOLA time stretcher
+//!   (`stretch.rs`) absorbs the tempo difference instead — at the cost
+//!   of a bounded prefetch's worth of extra latency while engaged, and
+//!   possibly one re-prime gap at the transition (the stretcher's
+//!   window fills out of the queue).
 //! - The occupancy servo. A bare rate match leaves the queue level
 //!   only neutrally stable — production minus consumption integrates
 //!   into the level, so any perturbation (a stall draining the queue,
@@ -63,6 +72,18 @@ const AUDIO_MAX_TRIM: f64 = 0.005;
 /// (the servo alone would need ~10 s per 50 ms of backlog).
 const AUDIO_DISCARD_FACTOR: f64 = 3.0;
 
+/// Speed-factor deviation from 1× past which `fill` switches from the
+/// rate-domain fold to the time stretcher, and the deviation below
+/// which it switches back. The gap between them is hysteresis: PvP's
+/// clock-sync shaves hover in the low percents and must not flap the
+/// stretcher in and out (every transition is a reset — an audible
+/// seam), while a real fast-forward or slow-mo jumps well past the
+/// ceiling in one hop. Below the floor the fold costs at most ~34
+/// cents of pitch — the cheaper artifact, with none of the stretcher's
+/// window latency.
+const STRETCH_ENGAGE_DEV: f64 = 0.05;
+const STRETCH_DISENGAGE_DEV: f64 = 0.02;
+
 /// Cross-thread access to a live core for the audio callback —
 /// implemented over whatever lock the host keeps its core(s) behind. A
 /// host mid-boot may simply not call `f`; the stream plays silence
@@ -111,6 +132,16 @@ pub struct CoreStream {
     dest_capacity: usize,
     /// Sink for samples dropped at the discard cap.
     discard: Vec<i16>,
+    /// Tempo absorber for real speed multiples (see the module doc's
+    /// faux-clock bullet); `engaged` is the hysteresis state and
+    /// `speed` the last fill's measured factor (`1 / faux_clock`) —
+    /// mode selection runs on it because the current factor isn't
+    /// known until the core lock is already held.
+    stretcher: super::stretch::TimeStretcher,
+    engaged: bool,
+    speed: f64,
+    /// Staging for resampled frames on their way into the stretcher.
+    scratch: Vec<i16>,
     /// Serve silence until the queue reaches target once. Latched at
     /// construction (the session starts with an empty queue) and again
     /// whenever the queue fully drains — the signature of a stalled sim.
@@ -133,6 +164,10 @@ impl CoreStream {
             dest_buffer: mgba::audio::OwnedAudioBuffer::new(dest_capacity, super::NUM_CHANNELS as u32),
             dest_capacity,
             discard: Vec::new(),
+            stretcher: super::stretch::TimeStretcher::new(if out_rate == 0 { 48000 } else { out_rate }),
+            engaged: false,
+            speed: 1.0,
+            scratch: Vec::new(),
             priming: true,
         }
     }
@@ -147,21 +182,48 @@ impl CoreStream {
 impl super::Stream for CoreStream {
     fn fill(&mut self, buf: &mut [[i16; super::NUM_CHANNELS]]) -> usize {
         let frame_count = buf.len();
-        let linear_buf: &mut [i16] = bytemuck::cast_slice_mut(buf);
-
-        let needed = frame_count.saturating_mul(2);
-        if needed > self.dest_capacity {
-            let new_capacity = needed.next_power_of_two().max(super::SAMPLES * 2);
-            self.dest_buffer = mgba::audio::OwnedAudioBuffer::new(new_capacity, super::NUM_CHANNELS as u32);
-            self.dest_capacity = new_capacity;
-        }
 
         let mut fps_target = (self.fps_target)();
         if fps_target <= 0.0 {
             fps_target = EXPECTED_FPS;
         }
 
+        // Stretcher hysteresis, on the previous fill's measured speed
+        // (one fill of lag on a transition is ~10 ms — inaudible next
+        // to the transition itself).
+        let deviation = (self.speed - 1.0).abs();
+        let engaged = if self.engaged {
+            deviation >= STRETCH_DISENGAGE_DEV
+        } else {
+            deviation > STRETCH_ENGAGE_DEV
+        };
+        if engaged != self.engaged {
+            // Both directions restart clean: leftover resampled frames
+            // were produced under the other mode's rate claim.
+            self.engaged = engaged;
+            self.stretcher.reset();
+            self.dest_buffer.clear();
+        }
+
+        // How many resampled device-rate frames this fill wants out of
+        // the ring: the fill itself in the rate-domain mode, the
+        // stretcher's appetite (≈ frame_count × speed, plus its window
+        // while it fills) when engaged.
+        let want = if engaged {
+            self.stretcher.input_deficit(frame_count, self.speed)
+        } else {
+            frame_count
+        };
+
+        let needed = want.max(frame_count).saturating_mul(2);
+        if needed > self.dest_capacity {
+            let new_capacity = needed.next_power_of_two().max(super::SAMPLES * 2);
+            self.dest_buffer = mgba::audio::OwnedAudioBuffer::new(new_capacity, super::NUM_CHANNELS as u32);
+            self.dest_capacity = new_capacity;
+        }
+
         let out_rate = self.out_rate;
+        let mut speed = self.speed;
         let (resampler, dest_buffer, discard, priming) = (
             &mut self.resampler,
             &mut self.dest_buffer,
@@ -177,6 +239,7 @@ impl super::Stream for CoreStream {
             // throttled sim stretches playback by the same ratio instead
             // of starving it (and a fast-forwarded one compresses).
             let faux_clock = core.calculate_framerate_ratio(fps_target as f64);
+            speed = 1.0 / faux_clock;
             let source = core.audio_buffer();
 
             let target = rate * AUDIO_TARGET_QUEUED_SECS;
@@ -210,21 +273,40 @@ impl super::Stream for CoreStream {
             let trim = AUDIO_MAX_TRIM * ((queued - target) / target).clamp(-1.0, 1.0);
 
             resampler.set_source(source, rate * (1.0 + trim), true);
-            resampler.set_destination(dest_buffer, out_rate as f64 * faux_clock);
+            // Engaged, the destination claim is honest — pitch-true —
+            // and the stretcher downstream absorbs the tempo
+            // difference; otherwise the faux clock folds in here.
+            let dest_rate = if engaged {
+                out_rate as f64
+            } else {
+                out_rate as f64 * faux_clock
+            };
+            resampler.set_destination(dest_buffer, dest_rate);
             resampler.process();
         });
+        self.speed = speed;
+
+        let delivered = if engaged {
+            let got = self.dest_buffer.available().min(want);
+            self.scratch.resize(got * super::NUM_CHANNELS, 0);
+            self.dest_buffer.read(&mut self.scratch, got);
+            self.stretcher.push(&self.scratch);
+            self.stretcher.pop(buf, self.speed)
+        } else {
+            let available = self.dest_buffer.available().min(frame_count);
+            let linear_buf: &mut [i16] = bytemuck::cast_slice_mut(buf);
+            self.dest_buffer
+                .read(&mut linear_buf[..available * super::NUM_CHANNELS], available);
+            available
+        };
 
         // A fill the queue couldn't cover in full is the stall
         // signature — and the moment an artifact was unavoidable
         // anyway. Latch priming so recovery is one clean gap instead
         // of seconds of jitter-trough crackle at a near-empty queue.
-        if self.dest_buffer.available() < frame_count {
+        if delivered < frame_count {
             self.priming = true;
         }
-
-        let available = self.dest_buffer.available().min(frame_count);
-        self.dest_buffer
-            .read(&mut linear_buf[..available * super::NUM_CHANNELS], available);
-        available
+        delivered
     }
 }

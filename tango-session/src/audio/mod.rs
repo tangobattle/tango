@@ -8,6 +8,7 @@
 //! design).
 
 pub mod core_stream;
+mod stretch;
 
 pub use core_stream::{CorePull, CoreStream, PairCorePull, PairPull};
 
