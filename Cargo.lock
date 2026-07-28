@@ -7580,6 +7580,7 @@ dependencies = [
  "tango-gamesupport-bn3",
  "tango-gamesupport-bn4",
  "tango-gamesupport-bn5",
+ "tango-gamesupport-bn5ds",
  "tango-gamesupport-bn6",
  "tango-gamesupport-exe45",
  "tango-library",
@@ -7878,6 +7879,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tango-gamesupport-bn5ds"
+version = "0.1.0"
+dependencies = [
+ "tango-backend-melonds",
+ "tango-gamesupport",
+ "tango-match",
+]
+
+[[package]]
 name = "tango-gamesupport-bn6"
 version = "0.1.0"
 dependencies = [
@@ -8006,6 +8016,7 @@ dependencies = [
  "tango-gamesupport-bn3",
  "tango-gamesupport-bn4",
  "tango-gamesupport-bn5",
+ "tango-gamesupport-bn5ds",
  "tango-gamesupport-bn6",
  "tango-gamesupport-exe45",
  "tango-patch",

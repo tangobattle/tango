@@ -45,6 +45,8 @@ pub static FAMILIES: LazyLock<Vec<&'static Family>> = LazyLock::new(|| {
     families.extend_from_slice(tango_gamesupport_bn4::FAMILIES);
     #[cfg(feature = "gamesupport-bn5")]
     families.extend_from_slice(tango_gamesupport_bn5::FAMILIES);
+    #[cfg(feature = "gamesupport-bn5ds")]
+    families.extend_from_slice(tango_gamesupport_bn5ds::FAMILIES);
     #[cfg(feature = "gamesupport-bn6")]
     families.extend_from_slice(tango_gamesupport_bn6::FAMILIES);
     #[cfg(feature = "gamesupport-exe45")]

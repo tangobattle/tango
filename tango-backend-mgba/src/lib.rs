@@ -16,7 +16,6 @@
 //! - [`analysis`]: match-stats types and the telemetry fold.
 //! - [`backend`]: the [`tango_match::Backend`] implementation.
 
-pub mod audio;
 pub mod backend;
 pub mod r#match;
 
