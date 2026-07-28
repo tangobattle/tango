@@ -7554,9 +7554,9 @@ dependencies = [
  "tango-gamesupport-common",
  "tango-gamesupport-exe45",
  "tango-library",
+ "tango-lobby",
  "tango-match",
  "tango-net-protocol",
- "tango-netplay",
  "tango-patch",
  "tango-replay",
  "tango-replay-renderer",
@@ -7975,9 +7975,9 @@ dependencies = [
  "semver",
  "tango-gamesupport",
  "tango-library",
+ "tango-lobby",
  "tango-match",
  "tango-net-protocol",
- "tango-netplay",
  "tango-patch",
  "tango-replay",
  "tango-replay-renderer",
@@ -7986,6 +7986,31 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "tango-lobby"
+version = "0.1.0"
+dependencies = [
+ "datachannel-wrapper",
+ "futures",
+ "log",
+ "rand 0.8.5",
+ "rand_pcg 0.3.1",
+ "semver",
+ "sha3",
+ "subtle",
+ "tango-library",
+ "tango-net-protocol",
+ "tango-patch",
+ "tango-session",
+ "tango-signaling",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "unic-langid",
+ "web-time",
+ "zstd",
 ]
 
 [[package]]
@@ -8014,31 +8039,6 @@ dependencies = [
  "semver",
  "serde",
  "sha3",
-]
-
-[[package]]
-name = "tango-netplay"
-version = "0.1.0"
-dependencies = [
- "datachannel-wrapper",
- "futures",
- "log",
- "rand 0.8.5",
- "rand_pcg 0.3.1",
- "semver",
- "sha3",
- "subtle",
- "tango-library",
- "tango-net-protocol",
- "tango-patch",
- "tango-session",
- "tango-signaling",
- "thiserror 1.0.69",
- "tokio",
- "tokio-util",
- "unic-langid",
- "web-time",
- "zstd",
 ]
 
 [[package]]

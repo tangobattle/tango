@@ -142,7 +142,7 @@ tango-replay = { path = "../tango-replay" }
 # its muxers are pure Rust, so the export pipeline is the desktop's.
 tango-replay-renderer = { path = "../tango-replay-renderer" }
 encoder-facade.workspace = true
-tango-netplay = { path = "../tango-netplay" }
+tango-lobby = { path = "../tango-lobby" }
 tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"] }
 tango-session = { path = "../tango-session" }
 

@@ -4,7 +4,7 @@
 //! emulator, the netplay choreography and the rollback engine are the
 //! workspace's own crates, unmodified: [`tango_session`] was written so
 //! that a session is *driven* by its host rather than running itself,
-//! and [`tango_netplay`] so that bringing a connection up is one linear
+//! and [`tango_lobby`] so that bringing a connection up is one linear
 //! future and the lobby is a plain state machine. What this crate adds
 //! is only the browser end of those contracts:
 //!

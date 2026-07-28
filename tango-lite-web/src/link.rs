@@ -2,7 +2,7 @@
 //!
 //! The choreography — connection bring-up, settings exchange, the
 //! commit/reveal ready handshake, the handoff into a live match — is all
-//! [`tango_netplay`], unmodified. That crate was written so a host
+//! [`tango_lobby`], unmodified. That crate was written so a host
 //! supplies a spawner and a pump rather than an architecture: bringing a
 //! connection up is one linear future, and the lobby is a synchronous
 //! state machine you call methods on. So what's here is the spawner
@@ -17,7 +17,7 @@ use futures::StreamExt as _;
 
 use tango_library::game;
 use tango_net_protocol::control as protocol;
-use tango_netplay::{compat, Event, LinkIdent, MatchmakingParams, Phase, State};
+use tango_lobby::{compat, Event, LinkIdent, MatchmakingParams, Phase, State};
 
 use crate::loadout::Loadout;
 
@@ -125,7 +125,7 @@ pub fn snapshot() -> Snapshot {
                 .net
                 .lobby
                 .connection_kind
-                .map(|k| k == tango_netplay::ConnectionKind::Relayed),
+                .map(|k| k == tango_lobby::ConnectionKind::Relayed),
             match_type: link.net.lobby.match_type,
             error,
         }
@@ -139,8 +139,8 @@ fn ident_code(ident: &LinkIdent) -> String {
     }
 }
 
-fn describe(error: &tango_netplay::Error) -> String {
-    use tango_netplay::Error as E;
+fn describe(error: &tango_lobby::Error) -> String {
+    use tango_lobby::Error as E;
     match error {
         E::PeerDisconnected => "Opponent disconnected.".into(),
         E::SignalingVersionTooOld => "This Tango is too old for the matchmaking server. Reload to update.".into(),
@@ -214,7 +214,7 @@ pub fn connect(link_code: String, nickname: String) {
         link.net.begin_matchmaking(&params)
     });
     let incoming = LINK.with(|l| l.borrow().net.take_incoming());
-    wasm_bindgen_futures::spawn_local(tango_netplay::connect(params, cancel, progress));
+    wasm_bindgen_futures::spawn_local(tango_lobby::connect(params, cancel, progress));
     if let Some(mut incoming) = incoming {
         wasm_bindgen_futures::spawn_local(async move {
             while let Some(report) = incoming.next().await {
@@ -389,13 +389,13 @@ async fn start_match() {
             Ok(()) => link.net.finish_handoff(),
             Err(e) => {
                 log::error!("netplay: building the match failed: {e}");
-                link.net.fail_session_build(tango_netplay::Error::Other(e));
+                link.net.fail_session_build(tango_lobby::Error::Other(e));
             }
         }
     });
 }
 
-async fn build(pre_match: tango_netplay::PreMatchData) -> Result<(), String> {
+async fn build(pre_match: tango_lobby::PreMatchData) -> Result<(), String> {
     let loadout = LINK.with(|l| l.borrow().loadout.clone());
     let local_game = loadout.game.ok_or_else(|| "no game selected".to_string())?;
     let local_rom = loadout.rom()?;
@@ -463,5 +463,5 @@ fn frame_delay() -> u32 {
 /// A fresh random link code, in the user's language, for the "make me
 /// one" button.
 pub fn random_code() -> String {
-    tango_netplay::randomcode::generate(&tango_library::lang::FALLBACK_LANG)
+    tango_lobby::randomcode::generate(&tango_library::lang::FALLBACK_LANG)
 }

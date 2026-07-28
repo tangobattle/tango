@@ -1,7 +1,7 @@
 //! Netplay, as this frontend drives it.
 //!
 //! The state machine — connection choreography, settings exchange, ready
-//! handshake, match handoff — lives in the [`tango_netplay`] crate, which
+//! handshake, match handoff — lives in the [`tango_lobby`] crate, which
 //! knows nothing about iced. This module re-exports its surface (so
 //! `crate::netplay::*` keeps resolving) and supplies the three pieces
 //! that are genuinely iced-shaped:
@@ -12,7 +12,7 @@
 //! * [`Delivery`]: iced routes messages by value and demands `Clone`;
 //!   what comes down that channel owns a live data channel and can't be.
 
-pub use tango_netplay::{
+pub use tango_lobby::{
     compat, randomcode, ConnectionKind, DirectRole, Error, Event, Incoming, LinkIdent, LobbyState, MatchmakingParams,
     Phase, PreMatchData, ReadyView, State,
 };
@@ -24,20 +24,20 @@ use std::sync::Arc;
 /// its own failure — down the channel [`subscription`] is draining.
 pub fn connect(state: &mut State, params: MatchmakingParams) -> iced::Task<crate::app::Message> {
     let (cancel, progress) = state.begin_matchmaking(&params);
-    iced::Task::future(tango_netplay::connect(params, cancel, progress)).discard()
+    iced::Task::future(tango_lobby::connect(params, cancel, progress)).discard()
 }
 
 /// Start a direct (signaling-free) attempt. See [`connect`].
 pub fn connect_direct(state: &mut State, role: DirectRole) -> iced::Task<crate::app::Message> {
     let (cancel, progress) = state.begin_direct(&role);
-    iced::Task::future(tango_netplay::connect_direct(role, cancel, progress)).discard()
+    iced::Task::future(tango_lobby::connect_direct(role, cancel, progress)).discard()
 }
 
 /// One item off the connection's progress channel, wrapped so it can ride
 /// an `iced::Message`. iced requires messages be `Clone`, and an
 /// [`Incoming`] can carry a live data channel — so it travels in a
 /// once-take cell and the app hands it straight to
-/// [`State::apply`](tango_netplay::State::apply). That tax belongs here,
+/// [`State::apply`](tango_lobby::State::apply). That tax belongs here,
 /// in the iced-shaped layer, rather than in the crate every frontend
 /// shares.
 #[derive(Clone)]

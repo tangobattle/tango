@@ -5,7 +5,7 @@ link code and play someone — patches included.
 
 Everything below the UI is the workspace's own crates.
 [`tango-session`] was written so a session is *driven* by its host
-rather than running itself, [`tango-netplay`] so that bringing a
+rather than running itself, [`tango-lobby`] so that bringing a
 connection up is one linear future and the lobby is a plain state
 machine, and [`tango-library`] so that all of its I/O goes through two
 traits a frontend supplies. This crate is the browser end of those three
@@ -148,5 +148,5 @@ through the inverse transform.
   real lossy mobile link hasn't been through it.
 
 [`tango-session`]: ../tango-session
-[`tango-netplay`]: ../tango-netplay
+[`tango-lobby`]: ../tango-lobby
 [`tango-library`]: ../tango-library

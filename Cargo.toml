@@ -8,9 +8,9 @@ members = [
     # plain root `cargo build`/`test` skips it rather than failing to
     # link a browser app for the host.
     "tango-lite-web",
+    "tango-lobby",
     "tango-net-protocol",
     "tango-match",
-    "tango-netplay",
     "tango-replay",
     "tango-replay-renderer",
     "tango-session",
@@ -27,9 +27,9 @@ default-members = [
     "tango",
     "tango-gamesupport",
     "tango-library",
+    "tango-lobby",
     "tango-net-protocol",
     "tango-match",
-    "tango-netplay",
     "tango-replay",
     "tango-replay-renderer",
     "tango-session",
