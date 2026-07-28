@@ -1,7 +1,7 @@
 //! Training-mode emulator session: a real link battle you fight
 //! locally, against a **dummy controller** on the opponent core.
 //!
-//! Mechanically this is the PvP engine ([`tango_match::engine::Match`])
+//! Mechanically this is the PvP engine ([`tango_match_mgba::engine::Match`])
 //! with the network cut out. Both cores run the player's own ROM + save
 //! (a mirror match), primed all the way into their link battle exactly
 //! as a netplay match would be — so training *starts in a battle*, not
@@ -26,8 +26,8 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use tango_match::engine::{Match, MatchConfig};
-use tango_match::telemetry::RoundEvent;
+use tango_match_mgba::engine::{Match, MatchConfig};
+use tango_match_mgba::telemetry::RoundEvent;
 
 /// GBA video framerate — the true link-battle rate (matches the PvP
 /// engine), so the wall-clock pacer runs the battle at the right speed.
@@ -47,7 +47,7 @@ pub struct ControllerContext<'a> {
     /// The live pair, parked at the newest simulated tick. Read the
     /// dummy's own core with `pair.core_mut(ctx.dummy_player)` or watch
     /// the human with `pair.core(ctx.human_player)`.
-    pub pair: &'a mut tango_match::Link,
+    pub pair: &'a mut tango_match_mgba::Link,
     /// The core the dummy drives (the non-human core).
     pub dummy_player: usize,
     /// The core the human drives.

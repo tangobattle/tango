@@ -135,6 +135,7 @@ tango-gamesupport = { path = "../tango-gamesupport" }
 # (see `storage` / `http`).
 tango-library = { path = "../tango-library", default-features = false }
 tango-match = { path = "../tango-match" }
+tango-match-mgba = { path = "../tango-match-mgba" }
 tango-net-protocol = { path = "../tango-net-protocol" }
 tango-replay = { path = "../tango-replay" }
 # Replay -> video. On wasm32 encoder-facade's backend is WebCodecs and

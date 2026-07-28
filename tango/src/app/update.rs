@@ -680,8 +680,8 @@ impl App {
                 let cache_path = self.config.cache_path();
                 let replays_path = self.config.replays_path();
                 let (progress_tx, progress_rx) =
-                    futures::channel::mpsc::unbounded::<tango_match::analysis::MatchStats>();
-                let done: std::sync::Arc<std::sync::Mutex<Option<tango_match::analysis::MatchStats>>> =
+                    futures::channel::mpsc::unbounded::<tango_match_mgba::analysis::MatchStats>();
+                let done: std::sync::Arc<std::sync::Mutex<Option<tango_match_mgba::analysis::MatchStats>>> =
                     std::sync::Arc::new(std::sync::Mutex::new(None));
                 let done_worker = done.clone();
                 let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -924,7 +924,7 @@ impl App {
                     let _ = cb_tx.unbounded_send((current, total));
                 };
                 let inputs: Vec<[u32; 2]> = replay.inputs.iter().map(|&[p1, p2]| [p1 as u32, p2 as u32]).collect();
-                let config = tango_match::playback::BootConfig {
+                let config = tango_match_mgba::playback::BootConfig {
                     roms,
                     saves: replay.srams.clone(),
                     support: [games[0].pvp, games[1].pvp],

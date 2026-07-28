@@ -8,6 +8,7 @@ license = "LGPL-3.0-or-later"
 crc32fast.workspace = true
 image.workspace = true
 tango-match = { path = "../tango-match" }
+tango-match-mgba = { path = "../tango-match-mgba" }
 thiserror.workspace = true
 
 # The save-editor embedding API (the `ui` feature): the SaveUi trait,

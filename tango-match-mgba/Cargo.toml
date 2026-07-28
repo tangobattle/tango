@@ -11,6 +11,12 @@ edition = "2021"
 tango-match = { path = "../tango-match" }
 mgba.workspace = true
 mgba-rollback.workspace = true
+getgud.workspace = true
+thiserror.workspace = true
+bytemuck.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_repr = "0.1"
 
 [lints]
 workspace = true

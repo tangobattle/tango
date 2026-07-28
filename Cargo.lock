@@ -7584,6 +7584,7 @@ dependencies = [
  "tango-library",
  "tango-lobby",
  "tango-match",
+ "tango-match-mgba",
  "tango-net-protocol",
  "tango-patch",
  "tango-replay",
@@ -7612,6 +7613,7 @@ dependencies = [
  "image",
  "semver",
  "tango-match",
+ "tango-match-mgba",
  "tango-patch",
  "thiserror 1.0.69",
  "unic-langid",
@@ -7630,6 +7632,7 @@ dependencies = [
  "tango-gamesupport-bcc-ui",
  "tango-gamesupport-common",
  "tango-match",
+ "tango-match-mgba",
  "tango-replay",
  "unic-langid",
 ]
@@ -7668,6 +7671,7 @@ dependencies = [
  "tango-gamesupport-bn1-ui",
  "tango-gamesupport-common",
  "tango-match",
+ "tango-match-mgba",
 ]
 
 [[package]]
@@ -7704,6 +7708,7 @@ dependencies = [
  "tango-gamesupport-bn2-ui",
  "tango-gamesupport-common",
  "tango-match",
+ "tango-match-mgba",
 ]
 
 [[package]]
@@ -7741,6 +7746,7 @@ dependencies = [
  "tango-gamesupport-bn3-ui",
  "tango-gamesupport-common",
  "tango-match",
+ "tango-match-mgba",
 ]
 
 [[package]]
@@ -7780,6 +7786,7 @@ dependencies = [
  "tango-gamesupport-bn4-ui",
  "tango-gamesupport-common",
  "tango-match",
+ "tango-match-mgba",
  "unic-langid",
 ]
 
@@ -7821,6 +7828,7 @@ dependencies = [
  "tango-gamesupport-bn5-ui",
  "tango-gamesupport-common",
  "tango-match",
+ "tango-match-mgba",
 ]
 
 [[package]]
@@ -7859,6 +7867,7 @@ dependencies = [
  "tango-gamesupport-bn6-ui",
  "tango-gamesupport-common",
  "tango-match",
+ "tango-match-mgba",
 ]
 
 [[package]]
@@ -7928,6 +7937,7 @@ dependencies = [
  "tango-gamesupport-exe45-dataview",
  "tango-gamesupport-exe45-ui",
  "tango-match",
+ "tango-match-mgba",
 ]
 
 [[package]]
@@ -8003,6 +8013,7 @@ dependencies = [
  "tango-library",
  "tango-lobby",
  "tango-match",
+ "tango-match-mgba",
  "tango-net-protocol",
  "tango-patch",
  "tango-replay",
@@ -8043,14 +8054,7 @@ dependencies = [
 name = "tango-match"
 version = "0.1.0"
 dependencies = [
- "bytemuck",
- "getgud",
- "log",
- "mgba",
- "mgba-rollback",
  "serde",
- "serde_repr",
- "tango-replay",
  "thiserror 1.0.69",
 ]
 
@@ -8067,9 +8071,15 @@ dependencies = [
 name = "tango-match-mgba"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
+ "getgud",
+ "log",
  "mgba",
  "mgba-rollback",
+ "serde",
+ "serde_repr",
  "tango-match",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -8118,6 +8128,7 @@ dependencies = [
  "encoder-facade",
  "mgba",
  "tango-match",
+ "tango-match-mgba",
  "tango-replay",
  "thiserror 1.0.69",
 ]
@@ -8139,6 +8150,7 @@ dependencies = [
  "rennet",
  "tango-gamesupport",
  "tango-match",
+ "tango-match-mgba",
  "tango-net-protocol",
  "tango-replay",
  "tango-signaling",

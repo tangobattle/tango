@@ -22,8 +22,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
-use tango_match::engine::{Match, MatchConfig};
-use tango_match::telemetry;
+use tango_match_mgba::engine::{Match, MatchConfig};
+use tango_match_mgba::telemetry;
 
 /// GBA video framerate in frames per second.
 pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
@@ -163,7 +163,7 @@ pub struct PvpSession {
     /// thread holds a clone), so the post-match results snapshot and the
     /// sidecar write can read it during teardown regardless of how far the
     /// background tasks have already wound down.
-    stats: Arc<Mutex<tango_match::analysis::StatsBuilder>>,
+    stats: Arc<Mutex<tango_match_mgba::analysis::StatsBuilder>>,
     /// Where this match's replay is being recorded, or `None` if the writer
     /// failed to open. The post-match results screen offers to play it back.
     pub replay_path: Option<std::path::PathBuf>,
@@ -407,7 +407,7 @@ impl PvpSession {
 
         // Usage semantics can depend on the applied patch (exe45's PvP
         // patch), so they're probed off the patched ROM.
-        let stats = Arc::new(Mutex::new(tango_match::analysis::StatsBuilder::new(
+        let stats = Arc::new(Mutex::new(tango_match_mgba::analysis::StatsBuilder::new(
             local_game.pvp.chip_semantics(local_rom.as_ref()),
             local_game.pvp.counts_buster(local_rom.as_ref()),
         )));
@@ -645,7 +645,7 @@ impl PvpSession {
     /// for the post-match results screen; a round the match never
     /// finished (mid-round disconnect) is in it with its telemetry
     /// intact and no outcome — only the verdict is missing.
-    pub fn stats_snapshot(&self) -> tango_match::analysis::MatchStats {
+    pub fn stats_snapshot(&self) -> tango_match_mgba::analysis::MatchStats {
         self.stats.lock().unwrap().snapshot()
     }
 
@@ -791,7 +791,7 @@ impl Drop for PvpSession {
 struct BootPieces {
     roms: [Vec<u8>; 2],
     saves: [Vec<u8>; 2],
-    supports: [&'static (dyn tango_match::GameSupport + Send + Sync); 2],
+    supports: [&'static (dyn tango_match_mgba::GameSupport + Send + Sync); 2],
     match_type: (u8, u8),
     rng_seed: [u8; 16],
     rtc: std::time::SystemTime,
@@ -812,7 +812,7 @@ struct DriveContext {
     sender: crate::net::PvpSender,
     in_match: crate::net::InMatchTx,
     replay_writer: Option<tango_replay::Writer>,
-    stats: Arc<Mutex<tango_match::analysis::StatsBuilder>>,
+    stats: Arc<Mutex<tango_match_mgba::analysis::StatsBuilder>>,
     /// Where this match's stats sidecar goes. Native-only: the cache is
     /// a file next to the replay, and a browser has no such place.
     #[cfg(not(target_arch = "wasm32"))]
@@ -834,7 +834,7 @@ struct DriveContext {
 impl DriveContext {
     /// Boot the match, then hand back the driver that runs it and a
     /// readout handle to its pair.
-    fn boot(mut self, pieces: BootPieces) -> Result<(PvpDriver, tango_match::LinkHandle), tango_match::Error> {
+    fn boot(mut self, pieces: BootPieces) -> Result<(PvpDriver, tango_match_mgba::LinkHandle), tango_match_mgba::Error> {
         let match_ = Match::new(MatchConfig {
             roms: pieces.roms,
             saves: pieces.saves,
@@ -876,7 +876,7 @@ impl DriveContext {
     }
 
     /// Fold a batch of confirmed telemetry into the stats builder (the
-    /// shared [`tango_match::analysis::fold_confirmed`], so live stats
+    /// shared [`tango_match_mgba::analysis::fold_confirmed`], so live stats
     /// and offline re-analysis stay byte-equivalent) and drive the round
     /// lifecycle off the events.
     fn fold_confirmed_telemetry(
@@ -886,7 +886,7 @@ impl DriveContext {
         pending_buttons: &mut std::collections::VecDeque<(u32, [u32; 2])>,
     ) {
         let mut stats = self.stats.lock().unwrap();
-        tango_match::analysis::fold_confirmed(&mut stats, self.local_player, samples, events, &mut |tick| {
+        tango_match_mgba::analysis::fold_confirmed(&mut stats, self.local_player, samples, events, &mut |tick| {
             // Discard input pairs older than this sample; the front pair
             // at the sample's tick carries its buttons. Samples arrive
             // tick-ascending, so this never skips a later sample's pair.

@@ -33,11 +33,11 @@ fn chip_use_marks(
 }
 
 /// The engine's verdict, restated for the engine-free chart.
-fn round_outcome(o: tango_match::analysis::BattleOutcome) -> RoundOutcome {
+fn round_outcome(o: tango_match_mgba::analysis::BattleOutcome) -> RoundOutcome {
     match o {
-        tango_match::analysis::BattleOutcome::Win => RoundOutcome::Win,
-        tango_match::analysis::BattleOutcome::Loss => RoundOutcome::Loss,
-        tango_match::analysis::BattleOutcome::Draw => RoundOutcome::Draw,
+        tango_match_mgba::analysis::BattleOutcome::Win => RoundOutcome::Win,
+        tango_match_mgba::analysis::BattleOutcome::Loss => RoundOutcome::Loss,
+        tango_match_mgba::analysis::BattleOutcome::Draw => RoundOutcome::Draw,
     }
 }
 
@@ -61,7 +61,7 @@ fn round_outcome(o: tango_match::analysis::BattleOutcome) -> RoundOutcome {
 /// of continually rescaling it. Without a plan, each round anchors at
 /// its own first sample.
 pub fn cook_hp_rounds(
-    stats: &tango_match::analysis::MatchStats,
+    stats: &tango_match_mgba::analysis::MatchStats,
     loadeds: [Option<&tango_gamesupport::LoadedSave>; 2],
     planned: Option<&[u32]>,
 ) -> (Vec<CookedHpRound>, f32) {
