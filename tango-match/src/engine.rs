@@ -194,3 +194,52 @@ impl<B: Backend> Match<B> {
         self.inner.set_present_delay(present_delay);
     }
 }
+
+
+impl<B: Backend> crate::RunningMatch for Match<B>
+where
+    B::Input: Into<u32> + From<u32>,
+{
+    fn advance(&mut self, local_keys: u32) -> Result<(u32, u32, i16), crate::Error> {
+        let (outgoing, _report) = Match::advance(self, B::Input::from(local_keys))
+            .map_err(|e| crate::Error::Backend(Box::new(e)))?;
+        Ok((outgoing.tick, outgoing.input.into(), outgoing.tick_advantage))
+    }
+
+    fn add_remote_input(&mut self, keys: u32, tick_advantage: i16) {
+        Match::add_remote_input(self, B::Input::from(keys), tick_advantage);
+    }
+
+    fn frame(&mut self) -> Option<Vec<u8>> {
+        let player = self.local_player();
+        self.with_link(|link| B::frame(link, player))
+    }
+
+    fn skew(&self) -> i32 {
+        Match::skew(self)
+    }
+
+    fn speculation_balance(&self) -> i32 {
+        Match::speculation_balance(self)
+    }
+
+    fn local_queue_length(&self) -> usize {
+        Match::local_queue_length(self)
+    }
+
+    fn present_delay(&self) -> u32 {
+        Match::present_delay(self)
+    }
+
+    fn set_present_delay(&mut self, present_delay: u32) {
+        Match::set_present_delay(self, present_delay);
+    }
+
+    fn matchable(&self) -> usize {
+        Match::matchable(self)
+    }
+
+    fn local_player(&self) -> usize {
+        Match::local_player(self)
+    }
+}

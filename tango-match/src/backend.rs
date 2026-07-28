@@ -192,6 +192,30 @@ pub trait RunningMatch: Send {
     /// Clock-sync skew for the host's throttler.
     fn skew(&self) -> i32;
 
+    /// How far speculation currently runs past what is settled, for the
+    /// same governor.
+    fn speculation_balance(&self) -> i32;
+
+    /// Local inputs waiting on the peer. A full queue is what stalls a
+    /// session when the peer goes quiet.
+    fn local_queue_length(&self) -> usize;
+
+    /// Ticks the host presents behind the simulation frontier.
+    fn present_delay(&self) -> u32;
+
+    fn set_present_delay(&mut self, present_delay: u32);
+
+    /// Confirmed `(tick, [p0 keys, p1 keys])` rows in order, for the
+    /// replay sink. Empty when the engine keeps no such record.
+    fn drain_confirmed(&mut self) -> Vec<(u32, [u32; 2])> {
+        Vec::new()
+    }
+
+    /// The telemetry this match publishes, if it reads any.
+    fn telemetry(&self) -> Option<&crate::telemetry::TelemetryHandle> {
+        None
+    }
+
     /// Ticks the next [`advance`](Self::advance) could settle from
     /// input already buffered — nonzero means advancing drains the
     /// queue rather than only growing it.

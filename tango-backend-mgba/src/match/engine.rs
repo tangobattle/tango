@@ -294,6 +294,30 @@ impl tango_match::RunningMatch for Match {
         Match::skew(self)
     }
 
+    fn speculation_balance(&self) -> i32 {
+        Match::speculation_balance(self)
+    }
+
+    fn local_queue_length(&self) -> usize {
+        Match::local_queue_length(self)
+    }
+
+    fn present_delay(&self) -> u32 {
+        Match::present_delay(self)
+    }
+
+    fn set_present_delay(&mut self, present_delay: u32) {
+        Match::set_present_delay(self, present_delay);
+    }
+
+    fn drain_confirmed(&mut self) -> Vec<(u32, [u32; 2])> {
+        Match::drain_confirmed(self)
+    }
+
+    fn telemetry(&self) -> Option<&tango_match::telemetry::TelemetryHandle> {
+        Some(Match::telemetry(self))
+    }
+
     fn matchable(&self) -> usize {
         Match::matchable(self)
     }
