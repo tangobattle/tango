@@ -12,11 +12,14 @@
 //! - [`backend`]: [`Backend`] (generic, per-engine) plus [`MatchFactory`]
 //!   and [`RunningMatch`] (object-safe, what a `Game` registration holds
 //!   and a host drives).
+//! - [`battle`]: the per-tick stats sample encoding, which is just a
+//!   layout — no engine has an opinion about it.
 //! - [`input`]: the joyflags input type that lands in replays.
 //! - [`throttler`]: the clock-sync governor both engines pace with.
 //! - [`keys`]: the joypad bit vocabulary.
 
 pub mod backend;
+pub mod battle;
 pub mod input;
 pub mod throttler;
 

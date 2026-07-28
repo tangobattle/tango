@@ -14,12 +14,10 @@
 //! - [`telemetry`]: per-tick RAM-poll telemetry with rollback
 //!   revocation.
 //! - [`analysis`]: match-stats types and the telemetry fold.
-//! - [`battle`]: the per-tick stats sample encoding.
 //! - [`backend`]: the [`tango_match::Backend`] implementation.
 
 pub mod analysis;
 pub mod backend;
-pub mod battle;
 pub mod engine;
 pub mod playback;
 pub mod telemetry;
@@ -211,3 +209,8 @@ pub trait GameSupport: Sync {
         true
     }
 }
+
+/// The per-tick stats sample encoding, which moved to the seam — it is
+/// a layout, not an engine concern. Re-exported so existing `crate::battle`
+/// paths keep resolving.
+pub use tango_match::battle;

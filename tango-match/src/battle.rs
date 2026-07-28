@@ -1,8 +1,8 @@
 //! The per-tick stats sample encoding: what the gamesupport pollers
-//! report each simulated tick and the [`crate::analysis`] fold consumes.
+//! report each simulated tick and the `analysis` fold consumes.
 //! The trap-driven netplay engine that used to live here (`Match`/`Round`,
 //! the shadow co-sim netcode) is gone — PvP runs on the SIO-lockstep
-//! engine (see [`crate::engine`]) — and the host-side netcode sizing
+//! engine (see the engine) — and the host-side netcode sizing
 //! that used to sit alongside it lives with the host's netcode now.
 
 /// One simulated tick's event sample, oriented to this side of the match —
