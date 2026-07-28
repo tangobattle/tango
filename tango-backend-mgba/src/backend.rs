@@ -41,6 +41,14 @@ impl Backend for Mgba {
         })
     }
 
+    fn input_from_keys(keys: u32) -> u32 {
+        keys
+    }
+
+    fn keys_of(input: u32) -> u32 {
+        input
+    }
+
     fn tick(link: &mut Self::Link, inputs: [u32; 2]) {
         link.tick(&inputs);
     }

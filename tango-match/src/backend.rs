@@ -50,6 +50,17 @@ pub trait Backend: 'static {
     /// Advance the pair one video frame.
     fn tick(link: &mut Self::Link, inputs: [Self::Input; 2]);
 
+    /// Build an input from the joyflag bits a host and the wire speak
+    /// (see [`keys`](crate::keys)), and read them back out.
+    ///
+    /// A backend's input type is its own — a DS carries a stylus a GBA
+    /// has no word for — but netplay exchanges joyflags, so the two
+    /// conversions live here rather than as orphan impls nobody is
+    /// allowed to write.
+    fn input_from_keys(keys: u32) -> Self::Input;
+
+    fn keys_of(input: Self::Input) -> u32;
+
     /// Capture the link. Reuses `recycled`'s allocations when one is
     /// offered — rollback retires a snapshot nearly every tick, and
     /// these run to megabytes.

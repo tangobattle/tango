@@ -48,6 +48,14 @@ impl Backend for MelonDs {
         Link::new(roms[0], saves, rtc_parts(rtc))
     }
 
+    fn input_from_keys(keys: u32) -> Input {
+        input_from_joyflags(keys)
+    }
+
+    fn keys_of(input: Input) -> u32 {
+        input.keys
+    }
+
     fn tick(link: &mut Link, inputs: [Input; 2]) {
         link.tick(inputs);
     }
