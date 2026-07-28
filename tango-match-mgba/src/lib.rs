@@ -185,7 +185,7 @@ pub trait GameSupport: Sync {
 
     /// The telemetry reader for one core running this game. `player` is
     /// which pair core (and player) this poller answers for.
-    fn core_poller(&self, player: usize) -> Box<dyn telemetry::CorePoller>;
+    fn core_poller(&self, player: usize) -> Box<telemetry::MgbaPoller>;
 
     /// How this game's per-tick chip reports are to be decoded into
     /// chip-use events — see [`ChipSemantics`]'s variants for the two
@@ -214,3 +214,7 @@ pub trait GameSupport: Sync {
 /// a layout, not an engine concern. Re-exported so existing `crate::battle`
 /// paths keep resolving.
 pub use tango_match::battle;
+
+/// The shared telemetry types, re-exported so `crate::telemetry::…`
+/// paths that mean the data (not the observer) keep resolving.
+pub use tango_match::telemetry as shared_telemetry;

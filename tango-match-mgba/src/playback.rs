@@ -669,7 +669,9 @@ impl Prefetch {
             let tick = self.cursor as u32 + 1;
             self.cursor += 1;
             self.pair.tick(&keys);
-            mgba_rollback::session::TickObserver::on_tick(&mut self.observer, &mut self.pair, tick);
+            let obs0 = self.observer.poll(0, self.pair.core_mut(0));
+            let obs1 = self.observer.poll(1, self.pair.core_mut(1));
+            self.observer.observe(obs0, obs1, tick);
 
             let (samples, events) = self.telemetry_store.lock().unwrap().drain_confirmed(tick);
             if let Some(round_marks) = &self.round_marks {

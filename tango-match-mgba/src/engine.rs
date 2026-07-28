@@ -150,7 +150,7 @@ impl Match {
         let (telemetry, telemetry_handle) =
             Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
         let mut session = mgba_rollback::session::Session::new(pair, local_player, present_delay)?;
-        session.set_observer(Some(Box::new(telemetry)));
+        session.set_observer(Some(Box::new(crate::telemetry::MgbaTelemetry(telemetry))));
 
         Ok(Match {
             session,

@@ -21,6 +21,7 @@
 pub mod backend;
 pub mod battle;
 pub mod input;
+pub mod telemetry;
 pub mod throttler;
 
 pub use backend::{Backend, MatchFactory, RunningMatch, Screen, ScreenLayout, StartConfig};

@@ -702,7 +702,7 @@ pub fn analyze(
         prime_ticks += 1;
     }
 
-    let (mut observer, store) = Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
+    let (mut observer, store) = crate::telemetry::Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
     let mut builder = StatsBuilder::new(chip_semantics, counts_buster);
     let total = inputs.len() as u32;
     for (i, &keys) in inputs.iter().enumerate() {
@@ -712,7 +712,9 @@ pub fn analyze(
         let tick = i as u32 + 1;
         pair.tick(&keys);
         // Everything is final on a linear re-sim — fold as we go.
-        observer.on_tick(&mut pair, tick);
+        let obs0 = observer.poll(0, pair.core_mut(0));
+        let obs1 = observer.poll(1, pair.core_mut(1));
+        observer.observe(obs0, obs1, tick);
         let (samples, events) = store.lock().unwrap().drain_confirmed(tick);
         fold_confirmed(&mut builder, local_player, samples, events, &mut |t| {
             (t == tick).then_some(keys)
