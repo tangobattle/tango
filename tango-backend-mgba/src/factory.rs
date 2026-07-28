@@ -12,7 +12,7 @@
 //! here, so `tango-session` drives a GBA game through exactly the same
 //! calls it drives a DS one through, and never learns which is which.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::r#match::playback;
@@ -243,10 +243,10 @@ impl tango_match::RunningSolo for Solo {
     }
 
     fn audio(&self) -> Option<Box<dyn tango_match::AudioPull>> {
-        Some(Box::new(tango_match::Resampled::new(PairAudio {
-            link: PairSource::Solo(self.link.clone()),
-            player: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-        })))
+        Some(Box::new(tango_match::Resampled::new(PairAudio::new(
+            PairSource::Solo(self.link.clone()),
+            Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        ))))
     }
 }
 
@@ -348,10 +348,10 @@ impl tango_match::RunningReplay for Replay {
     }
 
     fn audio(&self, seat: Arc<std::sync::atomic::AtomicUsize>) -> Option<Box<dyn tango_match::AudioPull>> {
-        Some(Box::new(tango_match::Resampled::new(PairAudio {
-            link: PairSource::Playback(self.playback.clone()),
-            player: seat,
-        })))
+        Some(Box::new(tango_match::Resampled::new(PairAudio::new(
+            PairSource::Playback(self.playback.clone()),
+            seat,
+        ))))
     }
 
     fn nearest_capture(&self, tick: u32, publish: &mut dyn FnMut(&dyn tango_match::ReplayFrames)) -> bool {
@@ -485,9 +485,30 @@ struct PairAudio {
     /// Read per fill, so a perspective swap moves the sound without the
     /// resampler above it being rebuilt.
     player: Arc<std::sync::atomic::AtomicUsize>,
+    /// Last successfully read sample rate and framerate ratio, as f64
+    /// bits — served whenever a read lands while the drive thread holds
+    /// the pair mid-tick. The stream re-reads both every fill and
+    /// mode-selects its time stretcher on the ratio, and a
+    /// fast-forwarded drive loop holds the pair for a large fraction of
+    /// wall time — a placeholder 1.0 there flaps the stretcher in and
+    /// out, dumping the resampled queue on every flap (audible as
+    /// constant crackle). A stale reading is only ever one fill old at
+    /// a speed transition, which the stream's hysteresis absorbs.
+    last_rate: AtomicU64,
+    last_ratio: AtomicU64,
 }
 
 impl PairAudio {
+    fn new(link: PairSource, player: Arc<std::sync::atomic::AtomicUsize>) -> Self {
+        PairAudio {
+            link,
+            player,
+            // The GBA's own defaults, until the pair is first free.
+            last_rate: AtomicU64::new(32768.0f64.to_bits()),
+            last_ratio: AtomicU64::new(1.0f64.to_bits()),
+        }
+    }
+
     fn player(&self) -> usize {
         self.player.load(Ordering::Relaxed)
     }
@@ -499,21 +520,27 @@ impl tango_match::AudioDrain for PairAudio {
         let mut rate = 0.0;
         self.link
             .try_with(&mut |link| rate = link.core_mut(self.player()).audio_sample_rate() as f64);
-        // A rate of zero would make the resampler divide by it. Falling
-        // back to the GBA's own default is right for every cart this
-        // engine runs, and only ever applies while the pair is busy.
+        // Zero also covers a core that reports no rate yet: either way
+        // the resampler must not divide by it.
         if rate > 0.0 {
+            self.last_rate.store(rate.to_bits(), Ordering::Relaxed);
             rate
         } else {
-            32768.0
+            f64::from_bits(self.last_rate.load(Ordering::Relaxed))
         }
     }
 
     fn framerate_ratio(&self, fps_target: f64) -> f64 {
         let mut ratio = 1.0;
-        self.link
-            .try_with(&mut |link| ratio = link.core_mut(self.player()).calculate_framerate_ratio(fps_target));
-        ratio
+        if self
+            .link
+            .try_with(&mut |link| ratio = link.core_mut(self.player()).calculate_framerate_ratio(fps_target))
+        {
+            self.last_ratio.store(ratio.to_bits(), Ordering::Relaxed);
+            ratio
+        } else {
+            f64::from_bits(self.last_ratio.load(Ordering::Relaxed))
+        }
     }
 
     fn drain(&mut self, out: &mut [i16]) -> usize {
