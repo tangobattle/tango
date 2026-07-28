@@ -490,14 +490,15 @@ impl PvpSession {
         };
 
         // Announce our own prime as soon as the boot finishes. It rides
-        // the reliable control channel, so one accepted send is
-        // delivered — but the boot can outlast a transport, so retry
-        // until one is accepted (and the supervisor re-announces after a
-        // reconnect, whose rebuild drops anything unacked).
+        // the reliable control channel, so an accepted send is a
+        // delivered one; a rejected send means that channel is gone and
+        // ends the match. (The supervisor re-announces after a
+        // reconnect, whose rebuild drops anything undelivered.)
         spawn_primed_announcer(
             link.clone(),
             local_primed.clone(),
             announce_primed,
+            end.clone(),
             cancellation_token.clone(),
         );
 
@@ -903,11 +904,6 @@ impl DriveContext {
 // ---------------------------------------------------------------------------
 // The ready gate's announcer.
 
-/// How long to wait before retrying a rejected `Primed` announcement.
-/// The peer's gate stays shut until one lands, so this is a retry
-/// cadence rather than a give-up timer — only cancellation stops it.
-const PRIMED_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
-
 /// Tell the peer our pair is primed, once the boot says so.
 ///
 /// A task of its own because the boot is synchronous and the host
@@ -917,6 +913,7 @@ fn spawn_primed_announcer(
     link: Arc<crate::net::link::Link>,
     local_primed: Arc<AtomicBool>,
     announce: Arc<tokio::sync::Notify>,
+    end: EndState,
     cancel: tokio_util::sync::CancellationToken,
 ) {
     crate::platform::spawn(async move {
@@ -929,17 +926,19 @@ fn spawn_primed_announcer(
                 _ = announce.notified() => {}
             }
         }
-        loop {
-            match link.send_primed().await {
-                Ok(()) => {
-                    log::info!("pvp: announced primed");
-                    return;
-                }
-                Err(e) => log::debug!("pvp: primed announce failed, retrying: {e}"),
-            }
-            tokio::select! {
-                _ = cancel.cancelled() => return,
-                _ = crate::platform::sleep(PRIMED_RETRY_INTERVAL) => {}
+        match link.send_primed().await {
+            Ok(()) => log::info!("pvp: announced primed"),
+            Err(e) => {
+                // The control channel is reliable and ordered, so this
+                // only fails when it is dead or dying — its status
+                // settled to Error/Closed, or libdatachannel refused the
+                // write. There is nothing to retry into: the peer's gate
+                // never opens without this packet, and a gate that never
+                // opens is a match that hangs with both sides idle. End
+                // it as the disconnect it is.
+                log::warn!("pvp: could not announce primed, ending match: {e}");
+                end.remote_disconnected.store(true, Ordering::Release);
+                cancel.cancel();
             }
         }
     });
@@ -1167,10 +1166,18 @@ fn spawn_supervisor(ctx: SupervisorContext) {
             // The swap rebuilds the control channel too, so an earlier
             // `Primed` may have died with the old transport. Say it again:
             // a peer still waiting on the ready gate has nothing else to
-            // wait for, and one it has already latched is a no-op.
+            // wait for, and one it has already latched is a no-op. A
+            // rejected send means the fresh channel is already gone —
+            // same as the first announcement, there is nothing to retry
+            // into, so end rather than leave the peer at a gate that
+            // never opens.
             if local_primed.load(Ordering::Acquire) {
                 if let Err(e) = link.send_primed().await {
-                    log::debug!("pvp: primed re-announce after reconnect failed: {e}");
+                    log::warn!("pvp: primed re-announce failed after reconnect, ending match: {e}");
+                    end.remote_disconnected.store(true, Ordering::Release);
+                    cancel.cancel();
+                    drive_paused.set(false);
+                    break;
                 }
             }
             // Hold the stall watch off until the resumed drive loop drains the
