@@ -149,3 +149,38 @@ mod tests {
             tango_match::engine::Match::<super::Mgba>::new;
     }
 }
+
+
+/// Start a GBA match from both sides' engine support.
+///
+/// A match can span two variants of a family (Gregar against Falzar),
+/// so the engine needs each seat's support — and only something holding
+/// both registrations can supply that, which is why this takes them
+/// rather than hanging off one game.
+pub fn start_match(
+    local: &'static (dyn crate::GameSupport + Send + Sync),
+    peer: &'static (dyn crate::GameSupport + Send + Sync),
+    config: tango_match::StartConfig,
+) -> Result<Box<dyn tango_match::RunningMatch>, tango_match::Error> {
+    // Support is indexed by seat, not by who is local.
+    let mut support: [&dyn crate::GameSupport; 2] = [local, peer];
+    if config.local_player == 1 {
+        support.swap(0, 1);
+    }
+    let match_ = crate::r#match::engine::Match::new(crate::r#match::engine::MatchConfig {
+        roms: [config.roms[0].to_vec(), config.roms[1].to_vec()],
+        saves: [
+            config.saves[0].unwrap_or_default().to_vec(),
+            config.saves[1].unwrap_or_default().to_vec(),
+        ],
+        support,
+        match_type: config.match_type,
+        rng_seed: config.rng_seed,
+        rtc: config.rtc,
+        local_player: config.local_player,
+        present_delay: config.present_delay,
+        disable_bgm: config.disable_bgm,
+    })
+    .map_err(tango_match::Error::from)?;
+    Ok(Box::new(match_))
+}

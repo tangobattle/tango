@@ -264,6 +264,29 @@ impl Pvp {
         }
     }
 
+    /// Start a match between this game and `peer`.
+    ///
+    /// The pairing happens here because this is the layer that holds
+    /// both registrations: a GBA match needs each seat's engine
+    /// support, and only something seeing both games can hand them
+    /// over. A game on another engine starts through its own factory,
+    /// which already knows what it needs.
+    pub fn start(
+        &self,
+        peer: &Pvp,
+        config: tango_match::StartConfig,
+    ) -> Result<Box<dyn tango_match::RunningMatch>, tango_match::Error> {
+        match (self, peer) {
+            (Pvp::Gba(local), Pvp::Gba(peer)) => tango_backend_mgba::backend::start_match(*local, *peer, config),
+            (Pvp::Factory(factory), _) => factory.start(config),
+            // Two games on different engines cannot link: they are not
+            // the same console, let alone the same cable.
+            (Pvp::Gba(_), Pvp::Factory(_)) => Err(tango_match::Error::Backend(
+                "the two sides run on different engines".into(),
+            )),
+        }
+    }
+
     /// The engine-neutral factory, for hosts that start a match without
     /// knowing which emulator runs it.
     pub fn factory(&self) -> Option<&'static (dyn tango_match::MatchFactory + Send + Sync)> {
