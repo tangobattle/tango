@@ -268,14 +268,25 @@ pub fn find_by_rom_info(games: &[GameRef], code: &[u8; 4], revision: u8) -> Opti
         .find(|g| g.rom_code_and_revision() == (code, revision))
 }
 
+/// Where each console keeps the game code and mask-ROM revision in its
+/// cartridge header. A dump is identified by trying every layout: a
+/// wrong guess reads bytes that match no registration, and the CRC32
+/// below is the real gate either way.
+const HEADER_LAYOUTS: &[(usize, usize)] = &[
+    // Game Boy Advance.
+    (0xac, 0xbc),
+    // Nintendo DS.
+    (0x0c, 0x1e),
+];
+
 /// Identify a clean ROM dump: match the `code`/`revision` header bytes,
 /// then confirm the CRC32. Returns `None` if unrecognized or corrupted.
 pub fn detect(games: &[GameRef], rom: &[u8]) -> Option<GameRef> {
-    let code: &[u8; 4] = rom.get(0xac..0xac + 4)?.try_into().ok()?;
-    let revision = *rom.get(0xbc)?;
-    let entry = find_by_rom_info(games, code, revision)?;
-    if crc32fast::hash(rom) != entry.crc32() {
-        return None;
-    }
-    Some(entry)
+    HEADER_LAYOUTS
+        .iter()
+        .filter_map(|&(code_at, revision_at)| {
+            let code: &[u8; 4] = rom.get(code_at..code_at + 4)?.try_into().ok()?;
+            find_by_rom_info(games, code, *rom.get(revision_at)?)
+        })
+        .find(|entry| crc32fast::hash(rom) == entry.crc32())
 }
