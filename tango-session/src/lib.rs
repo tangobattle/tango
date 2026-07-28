@@ -34,6 +34,7 @@
 /// browser host doesn't have. A browser has played a real match over
 /// it; the reconnect path is the one part still unexercised there.
 pub mod pvp;
+pub mod match_session;
 pub mod replay;
 pub mod singleplayer;
 pub mod training;
