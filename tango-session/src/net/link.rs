@@ -17,6 +17,7 @@
 //! the peer's EndOfMatch) and freezing/unfreezing the emulator around the
 //! attempt. The link owns the *mechanism*: everything from the recipe down.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use super::InMatchTx;
@@ -219,6 +220,10 @@ pub struct Link {
     /// reconnect (the rennet in-stream carries across, so the peer's resent
     /// window fills the gap contiguously).
     match_receiver: std::sync::Mutex<Option<super::data::Receiver>>,
+    /// Latched by [`watch_control`](Self::watch_control) when the peer's
+    /// `Primed` lands. The match's ready gate reads it from the drive
+    /// loop, so it's an atomic rather than a channel.
+    peer_primed: Arc<AtomicBool>,
     /// Rebuild recipe. Mutable so a successful matchmaking reconnect can
     /// refresh the rendezvous `session_id` for the next drop; `rng_seed` is
     /// the unchanging half of that derivation.
@@ -258,6 +263,7 @@ impl Link {
             control_sender: parts.control_sender,
             control_receiver: tokio::sync::Mutex::new(control_receiver),
             match_receiver: std::sync::Mutex::new(Some(parts.in_match_receiver)),
+            peer_primed: Arc::new(AtomicBool::new(false)),
             recipe: std::sync::Mutex::new(parts.recipe),
             rng_seed: parts.rng_seed,
             // 5 marks at roughly one ack-confirmed seq per frame ≈ a 5 s
@@ -335,6 +341,14 @@ impl Link {
             match receiver.receive().await {
                 // The peer announced a deliberate quit before tearing down.
                 Ok(tango_net_protocol::control::Packet::Goodbye(_)) => return ControlEnd::Goodbye,
+                // The peer's pair reached its link battle. Latch it and keep
+                // watching: this opens the match's ready gate rather than
+                // ending the watch. It can arrive before we've even started
+                // priming (the watch is up from match start), which is why
+                // it's a latch and not an event the gate has to be waiting on.
+                Ok(tango_net_protocol::control::Packet::Primed(_)) => {
+                    self.peer_primed.store(true, Ordering::Release);
+                }
                 // Any other packet — nothing else legitimately flows here
                 // mid-match, but ignore it and keep watching.
                 Ok(_) => {}
@@ -345,6 +359,24 @@ impl Link {
                 Err(_) => return ControlEnd::Eof,
             }
         }
+    }
+
+    /// The peer-primed latch, for the match's ready gate. Survives a
+    /// reconnect: it records that the peer *reached* its link battle,
+    /// which a transport swap doesn't undo.
+    pub fn peer_primed(&self) -> Arc<AtomicBool> {
+        self.peer_primed.clone()
+    }
+
+    /// Tell the peer our pair is primed (see
+    /// [`Packet::Primed`](tango_net_protocol::control::Packet::Primed)).
+    /// Unlike the goodbye this is not best-effort — the peer's gate will
+    /// not open without it — so a failure is surfaced to the caller,
+    /// which retries. It rides the reliable control channel, so a send
+    /// that reports success is delivered.
+    pub async fn send_primed(&self) -> std::io::Result<()> {
+        let mut sender = self.control_sender.lock().await;
+        sender.send_primed().await
     }
 
     /// Announce a deliberate local quit to the peer on the (otherwise idle)

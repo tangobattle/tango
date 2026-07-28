@@ -56,6 +56,13 @@ pub enum Packet {
     Chunk(Chunk),
     StartMatch(StartMatch),
 
+    /// Sent once the sender's pair has finished priming to its link
+    /// battle. Neither side advances a tick until it has both primed
+    /// itself and seen this, so the two start within a round trip of
+    /// each other however far apart their prime times land. See
+    /// [`Primed`].
+    Primed(Primed),
+
     // The live match's per-frame Input / EndOfRound / EndOfMatch traffic no
     // longer rides this reliable channel — it's the data plane's job, carried
     // as `data::wire` frames/markers over a separate unreliable channel (see
@@ -139,6 +146,18 @@ pub struct Settings {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct StartMatch {}
+
+/// "My pair is primed and I am ready to tick."
+///
+/// Priming is a pure function of ROM/save/rtc, so both peers walk to the
+/// same state — but they take as long as their own hardware takes, and
+/// nothing else on the wire marks the boundary. Without this the peer
+/// that finishes first starts advancing alone, piling its own inputs up
+/// with nothing to match them against, and trips the input-queue stall
+/// watchdog into a spurious mid-match reconnect while the other side is
+/// still walking menus.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct Primed {}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Goodbye {}

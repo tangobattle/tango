@@ -117,6 +117,12 @@ impl Sender {
             .await
     }
 
+    /// Announce that our pair has finished priming (see
+    /// [`protocol::Packet::Primed`]).
+    pub async fn send_primed(&mut self) -> std::io::Result<()> {
+        self.send_packet(&protocol::Packet::Primed(protocol::Primed {})).await
+    }
+
     /// Announce a deliberate mid-match quit, just before teardown (see
     /// [`protocol::Packet::Goodbye`]).
     pub async fn send_goodbye(&mut self) -> std::io::Result<()> {

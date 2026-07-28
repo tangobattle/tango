@@ -59,4 +59,10 @@ pub mod derive;
 // the empty-sentinel Chunk that used to terminate the stream. The new Packet
 // variant sits ahead of Chunk, shifting later discriminants, and a 0x4f peer
 // would wait forever for a sentinel that never comes.
-pub const PROTOCOL_VERSION: u32 = 0x50;
+// 0x51: a match starts on a two-sided ready gate — each peer announces
+// `Primed` once its pair reaches the link battle, and neither advances a
+// tick until both have. Incompatible twice over: a 0x50 peer never sends
+// it, so a 0x51 peer would sit at the gate for a packet that isn't
+// coming; and the new variant sits ahead of Goodbye, shifting that
+// discriminant, so the two would disagree about what a quit looks like.
+pub const PROTOCOL_VERSION: u32 = 0x51;

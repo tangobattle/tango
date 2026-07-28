@@ -398,6 +398,12 @@ impl PvpSession {
         let tps_counter = Arc::new(Mutex::new(TpsCounter::new(60)));
         let screen = crate::Framebuffer::new();
         let wake = Arc::new(tokio::sync::Notify::new());
+        // The two-sided ready gate. Priming takes as long as the machine
+        // running it takes, so each peer announces when its own pair
+        // reaches the link battle and neither ticks until both have.
+        let local_primed = Arc::new(AtomicBool::new(false));
+        let peer_primed = link.peer_primed();
+        let announce_primed = Arc::new(tokio::sync::Notify::new());
 
         // Usage semantics can depend on the applied patch (exe45's PvP
         // patch), so they're probed off the patched ROM.
@@ -473,12 +479,27 @@ impl PvpSession {
                 tps_counter: tps_counter.clone(),
                 screen: screen.clone(),
                 wake: wake.clone(),
+                local_primed: local_primed.clone(),
+                peer_primed: peer_primed.clone(),
+                announce_primed: announce_primed.clone(),
                 local_player: local_player_index as usize,
             },
             sample_rate,
             local_player: local_player_index as usize,
             metrics: metrics.clone(),
         };
+
+        // Announce our own prime as soon as the boot finishes. It rides
+        // the reliable control channel, so one accepted send is
+        // delivered — but the boot can outlast a transport, so retry
+        // until one is accepted (and the supervisor re-announces after a
+        // reconnect, whose rebuild drops anything unacked).
+        spawn_primed_announcer(
+            link.clone(),
+            local_primed.clone(),
+            announce_primed,
+            cancellation_token.clone(),
+        );
 
         // Receive pump + link supervisor: reads peer frames into the event
         // queue, watches for stalls, and runs the transparent reconnect.
@@ -492,6 +513,7 @@ impl PvpSession {
             metrics: metrics.clone(),
             drive_paused: drive_paused.clone(),
             wake: wake.clone(),
+            local_primed,
         });
 
         let session = Self {
@@ -797,6 +819,14 @@ struct DriveContext {
     tps_counter: Arc<Mutex<TpsCounter>>,
     screen: Arc<crate::Framebuffer>,
     wake: Arc<tokio::sync::Notify>,
+    /// The ready gate. `local_primed` is set (and `announce_primed`
+    /// notified) the moment our pair reaches its link battle;
+    /// `peer_primed` is latched by the link's control watch when the
+    /// peer says the same. [`PvpDriver::tick`] advances nothing until
+    /// both are set.
+    local_primed: Arc<AtomicBool>,
+    peer_primed: Arc<AtomicBool>,
+    announce_primed: Arc<tokio::sync::Notify>,
     local_player: usize,
 }
 
@@ -816,6 +846,13 @@ impl DriveContext {
             disable_bgm: pieces.disable_bgm,
         })?;
         let pair_handle = match_.pair_handle();
+
+        // Our half of the ready gate: the pair is at its link battle.
+        // Release the announcer so the peer learns it — priming ran at
+        // whatever speed this machine manages, and until both sides are
+        // here neither may advance a tick.
+        self.local_primed.store(true, Ordering::Release);
+        self.announce_primed.notify_one();
 
         if let Some(w) = self.replay_writer.as_mut() {
             // The SIO stream is one continuous run of pair ticks; the
@@ -864,6 +901,51 @@ impl DriveContext {
 }
 
 // ---------------------------------------------------------------------------
+// The ready gate's announcer.
+
+/// How long to wait before retrying a rejected `Primed` announcement.
+/// The peer's gate stays shut until one lands, so this is a retry
+/// cadence rather than a give-up timer — only cancellation stops it.
+const PRIMED_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Tell the peer our pair is primed, once the boot says so.
+///
+/// A task of its own because the boot is synchronous and the host
+/// chooses where it runs — a blocking thread on the desktop, the event
+/// loop in a browser — so it can't await a send itself.
+fn spawn_primed_announcer(
+    link: Arc<crate::net::link::Link>,
+    local_primed: Arc<AtomicBool>,
+    announce: Arc<tokio::sync::Notify>,
+    cancel: tokio_util::sync::CancellationToken,
+) {
+    crate::platform::spawn(async move {
+        while !local_primed.load(Ordering::Acquire) {
+            tokio::select! {
+                _ = cancel.cancelled() => return,
+                // `notify_one` before the first `notified()` still wakes
+                // it: Notify holds the permit. Re-checking the flag on
+                // each pass is what makes the ordering irrelevant.
+                _ = announce.notified() => {}
+            }
+        }
+        loop {
+            match link.send_primed().await {
+                Ok(()) => {
+                    log::info!("pvp: announced primed");
+                    return;
+                }
+                Err(e) => log::debug!("pvp: primed announce failed, retrying: {e}"),
+            }
+            tokio::select! {
+                _ = cancel.cancelled() => return,
+                _ = crate::platform::sleep(PRIMED_RETRY_INTERVAL) => {}
+            }
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------
 // The receive pump + link supervisor.
 
 struct SupervisorContext {
@@ -876,6 +958,9 @@ struct SupervisorContext {
     metrics: Arc<Metrics>,
     drive_paused: Arc<crate::PauseGate>,
     wake: Arc<tokio::sync::Notify>,
+    /// Whether our own pair is primed, so a reconnect can re-announce it
+    /// (the rebuild drops anything the old transport hadn't delivered).
+    local_primed: Arc<AtomicBool>,
 }
 
 /// Pump one receiver until error/EOF, forwarding events to the drive
@@ -920,6 +1005,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
         metrics,
         drive_paused,
         wake,
+        local_primed,
     } = ctx;
 
     let make_receiver = {
@@ -1078,6 +1164,15 @@ fn spawn_supervisor(ctx: SupervisorContext) {
             // drive loop resumes; its stall guard holds it below the
             // horizon until the resends drain the queue.
             receiver = make_receiver().expect("reconnect parks a fresh receiver");
+            // The swap rebuilds the control channel too, so an earlier
+            // `Primed` may have died with the old transport. Say it again:
+            // a peer still waiting on the ready gate has nothing else to
+            // wait for, and one it has already latched is a no-op.
+            if local_primed.load(Ordering::Acquire) {
+                if let Err(e) = link.send_primed().await {
+                    log::debug!("pvp: primed re-announce after reconnect failed: {e}");
+                }
+            }
             // Hold the stall watch off until the resumed drive loop drains the
             // still-full queue back below the threshold (or the grace lapses),
             // so the stale-high `queue_len` can't instantly re-trip the stall
@@ -1285,6 +1380,26 @@ impl PvpDriver {
             // exit path. Nothing to advance meanwhile, so the tick
             // goes back to the host — which is also what lets a
             // browser pause without a thread to park.
+            return true;
+        }
+
+        // The ready gate. Reaching `tick` means our own pair is primed;
+        // hold here until the peer says the same, so both sides start
+        // within a round trip of each other.
+        //
+        // Advancing alone is not merely early — `advance` buffers a
+        // local input per tick that the absent peer cannot match, and at
+        // `RECONNECT_QUEUE_LENGTH` (~3 s) the supervisor's stall watch
+        // reads that as a dead link and tears the transport down for a
+        // reconnect the peer never needed. Idling here keeps the
+        // published `queue_len` at zero, so the watch stays quiet however
+        // long the slower machine takes; the in-match heartbeat runs off
+        // its own task and keeps the link alive meanwhile.
+        //
+        // The wait is bounded without a timer: a peer that never primes
+        // fails its own boot (`MAX_PRIME_TICKS`) and tears down, which
+        // reaches us as the control channel's `Goodbye` or EOF.
+        if !self.ctx.peer_primed.load(Ordering::Acquire) {
             return true;
         }
 
