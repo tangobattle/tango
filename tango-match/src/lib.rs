@@ -26,7 +26,7 @@ pub mod input;
 pub mod telemetry;
 pub mod throttler;
 
-pub use audio::AudioPull;
+pub use audio::{AudioDrain, AudioPull, Resampled};
 pub use backend::{Backend, MatchFactory, RunningMatch, Screen, ScreenLayout, StartConfig};
 
 /// The clock-sync governor: feed it `skew()` + `speculation_balance()`

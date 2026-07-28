@@ -79,18 +79,6 @@ pub trait Backend: 'static {
     /// The screens this console presents.
     fn screen_layout() -> ScreenLayout;
 
-    /// Drain one console's buffered audio into `dest` as interleaved
-    /// stereo, returning the frames written.
-    ///
-    /// Consoles produce at their own rate ([`sample_rate`]), and the
-    /// resampling to a device rate is the host's business — this only
-    /// says how to get the samples out.
-    ///
-    /// [`sample_rate`]: Backend::sample_rate
-    fn drain_audio(link: &mut Self::Link, player: usize, dest: &mut [i16]) -> usize;
-
-    /// The rate this console produces audio at, in Hz.
-    fn sample_rate(link: &mut Self::Link) -> f64;
 }
 
 /// One screen a console presents.

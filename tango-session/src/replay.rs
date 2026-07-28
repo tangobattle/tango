@@ -278,7 +278,7 @@ impl ReplaySession {
         // pair, following the drive loop's pacing (see
         // [`crate::core_stream`]).
         let audio = crate::audio::CoreStream::new(
-            crate::audio::PairCorePull {
+            tango_match::Resampled::new(crate::audio::PairDrain {
                 pair: SioPlaybackPull(playback.clone()),
                 player: {
                     let swap_perspective = swap_perspective.clone();
@@ -290,7 +290,7 @@ impl ReplaySession {
                         }
                     })
                 },
-            },
+            }),
             crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
             sample_rate,
         );

@@ -76,17 +76,6 @@ impl Backend for Mgba {
         ScreenLayout::new([SCREEN])
     }
 
-    fn drain_audio(link: &mut Self::Link, player: usize, dest: &mut [i16]) -> usize {
-        let buffer = link.core_mut(player).audio_buffer();
-        // The buffer counts stereo frames; `dest` holds interleaved
-        // samples, so it fits half as many.
-        let frames = (dest.len() / 2).min(buffer.available());
-        buffer.read(dest, frames)
-    }
-
-    fn sample_rate(link: &mut Self::Link) -> f64 {
-        link.core_mut(0).audio_sample_rate() as f64
-    }
 }
 
 /// Re-exported so a game crate can name a link or a snapshot without

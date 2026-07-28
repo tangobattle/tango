@@ -10,7 +10,7 @@
 pub mod core_stream;
 mod stretch;
 
-pub use core_stream::{CorePull, CoreStream, PairCorePull, PairPull};
+pub use core_stream::{CoreStream, PairDrain, PairPull};
 
 pub const NUM_CHANNELS: usize = 2;
 pub const SAMPLES: usize = 512;

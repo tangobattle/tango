@@ -84,17 +84,10 @@ const AUDIO_DISCARD_FACTOR: f64 = 3.0;
 const STRETCH_ENGAGE_DEV: f64 = 0.05;
 const STRETCH_DISENGAGE_DEV: f64 = 0.02;
 
-/// Cross-thread access to a live core for the audio callback —
-/// implemented over whatever lock the host keeps its core(s) behind. A
-/// host mid-boot may simply not call `f`; the stream plays silence
-/// until the core exists.
-pub trait CorePull: Send {
-    fn with_core(&self, f: &mut dyn FnMut(&mut mgba::core::Core));
-}
-
-/// Cross-thread access to a live pair of cores ([`Link`](tango_backend_mgba::Link))
-/// — the pair-session flavor of core access, adapted to [`CorePull`] by
-/// [`PairCorePull`].
+/// Cross-thread access to a live pair, for the sessions that still
+/// drive an engine directly (replay playback, single-player, training).
+/// A host mid-boot may simply not call `f`; the stream plays silence
+/// until the pair exists.
 pub trait PairPull: Send {
     fn with_pair(&self, f: &mut dyn FnMut(&mut tango_backend_mgba::Link));
 }
@@ -105,31 +98,49 @@ impl PairPull for tango_backend_mgba::LinkHandle {
     }
 }
 
-/// [`CorePull`] over one player's core of a live pair. `player` is
-/// re-read every fill (a replay's perspective swap flips it; PvP pins
-/// it to the local player).
-pub struct PairCorePull<P> {
+/// One player's console of such a pair, as something the shared
+/// resampler can drain. `player` is re-read every fill: a replay's
+/// perspective swap flips it.
+pub struct PairDrain<P> {
     pub pair: P,
     pub player: Box<dyn Fn() -> usize + Send>,
 }
 
-impl<P: PairPull> CorePull for PairCorePull<P> {
-    fn with_core(&self, f: &mut dyn FnMut(&mut mgba::core::Core)) {
-        self.pair.with_pair(&mut |pair| f(pair.core_mut((self.player)())));
+impl<P: PairPull> tango_match::AudioDrain for PairDrain<P> {
+    fn sample_rate(&self) -> f64 {
+        let mut rate = 0.0;
+        self.pair
+            .with_pair(&mut |pair| rate = pair.core_mut((self.player)()).audio_sample_rate() as f64);
+        rate
+    }
+
+    fn framerate_ratio(&self, fps_target: f64) -> f64 {
+        let mut ratio = 1.0;
+        self.pair
+            .with_pair(&mut |pair| ratio = pair.core_mut((self.player)()).calculate_framerate_ratio(fps_target));
+        ratio
+    }
+
+    fn drain(&mut self, out: &mut [i16]) -> usize {
+        let mut frames = 0;
+        self.pair.with_pair(&mut |pair| {
+            let buffer = pair.core_mut((self.player)()).audio_buffer();
+            let want = (out.len() / 2).min(buffer.available());
+            frames = buffer.read(out, want);
+        });
+        frames
     }
 }
 
 pub struct CoreStream {
-    pull: Box<dyn CorePull>,
+    /// The console's audio, already resampled to the device rate by
+    /// whichever backend produced it. This stream never learns which
+    /// emulator that was.
+    pull: Box<dyn tango_match::AudioPull>,
     /// The host drive loop's current pacing target, f32. Zero or less is
     /// treated as unthrottled (60 fps).
     fps_target: Box<dyn Fn() -> f32 + Send>,
     out_rate: u32,
-    resampler: mgba::audio::AudioResampler,
-    dest_buffer: mgba::audio::OwnedAudioBuffer,
-    /// Tracked separately because `mAudioBuffer` doesn't expose
-    /// capacity through the Rust binding; grown lazily in `fill`.
-    dest_capacity: usize,
     /// Sink for samples dropped at the discard cap.
     discard: Vec<i16>,
     /// Tempo absorber for real speed multiples (see the module doc's
@@ -154,15 +165,15 @@ pub struct CoreStream {
 }
 
 impl CoreStream {
-    pub fn new(pull: impl CorePull + 'static, fps_target: impl Fn() -> f32 + Send + 'static, out_rate: u32) -> Self {
-        let dest_capacity = super::SAMPLES * 2;
+    pub fn new(
+        pull: impl tango_match::AudioPull + 'static,
+        fps_target: impl Fn() -> f32 + Send + 'static,
+        out_rate: u32,
+    ) -> Self {
         Self {
             pull: Box::new(pull),
             fps_target: Box::new(fps_target),
             out_rate: if out_rate == 0 { 48000 } else { out_rate },
-            resampler: mgba::audio::AudioResampler::new(),
-            dest_buffer: mgba::audio::OwnedAudioBuffer::new(dest_capacity, super::NUM_CHANNELS as u32),
-            dest_capacity,
             discard: Vec::new(),
             stretcher: super::stretch::TimeStretcher::new(if out_rate == 0 { 48000 } else { out_rate }),
             engaged: false,
@@ -202,7 +213,11 @@ impl super::Stream for CoreStream {
             // were produced under the other mode's rate claim.
             self.engaged = engaged;
             self.stretcher.reset();
-            self.dest_buffer.clear();
+            // Leftover resampled frames were produced under the other
+            // mode's rate claim.
+            let stale = self.pull.available();
+            let mut sink = vec![0i16; stale * super::NUM_CHANNELS];
+            self.pull.read(&mut sink, stale);
         }
 
         // How many resampled device-rate frames this fill wants out of
@@ -215,87 +230,65 @@ impl super::Stream for CoreStream {
             frame_count
         };
 
-        let needed = want.max(frame_count).saturating_mul(2);
-        if needed > self.dest_capacity {
-            let new_capacity = needed.next_power_of_two().max(super::SAMPLES * 2);
-            self.dest_buffer = mgba::audio::OwnedAudioBuffer::new(new_capacity, super::NUM_CHANNELS as u32);
-            self.dest_capacity = new_capacity;
+        // The console's production rate can change at runtime (BN4+
+        // flip from 32768 to 65536 Hz after boot), so it is re-read
+        // every fill.
+        let rate = self.pull.sample_rate();
+        // The faux clock: production scales with the sim's pace, so a
+        // throttled sim stretches playback by the same ratio instead of
+        // starving it (and a fast-forwarded one compresses).
+        let faux_clock = self.pull.framerate_ratio(fps_target as f64);
+        let speed = 1.0 / faux_clock;
+
+        let target = rate * AUDIO_TARGET_QUEUED_SECS;
+        let queued = self.pull.source_available() as f64;
+        if queued > target * AUDIO_DISCARD_FACTOR {
+            // Producer-burst backlog (seek chase, perspective swap,
+            // device-stall catch-up): skip the oldest samples in one go
+            // rather than carrying seconds of extra latency.
+            self.pull.discard_source((queued - target) as usize);
         }
 
-        let out_rate = self.out_rate;
-        let mut speed = self.speed;
-        let (resampler, dest_buffer, discard, priming) = (
-            &mut self.resampler,
-            &mut self.dest_buffer,
-            &mut self.discard,
-            &mut self.priming,
-        );
-        self.pull.with_core(&mut |core| {
-            // The core's production rate follows the game's SOUNDBIAS
-            // resolution and CHANGES at runtime (BN4+ flip from 32768 to
-            // 65536 Hz after boot), so it's re-read every fill.
-            let rate = core.audio_sample_rate() as f64;
-            // The faux clock: production scales with the sim's pace, so a
-            // throttled sim stretches playback by the same ratio instead
-            // of starving it (and a fast-forwarded one compresses).
-            let faux_clock = core.calculate_framerate_ratio(fps_target as f64);
-            speed = 1.0 / faux_clock;
-            let source = core.audio_buffer();
-
-            let target = rate * AUDIO_TARGET_QUEUED_SECS;
-            let queued = source.available() as f64;
-            if queued > target * AUDIO_DISCARD_FACTOR {
-                // Producer-burst backlog (seek chase, perspective swap,
-                // device-stall catch-up): skip the oldest samples in one
-                // go rather than carrying seconds of extra latency.
-                let n = (queued - target) as usize;
-                discard.resize(n * 2, 0);
-                source.read(discard, n);
+        // Re-prime across stalls: hold silence until the queue is back
+        // at target, instead of riding near-empty at the servo's slow
+        // refill.
+        let queued = self.pull.source_available() as f64;
+        if self.priming {
+            if queued < target {
+                self.speed = speed;
+                // Silence until the queue rebuilds.
+                return 0;
             }
+            self.priming = false;
+        }
 
-            // Re-prime across stalls: hold silence until the queue is
-            // back at target, instead of riding near-empty at the
-            // servo's slow refill. (The latch is set below, on short
-            // delivery — the queue never reads exactly zero here, the
-            // resampler leaves fractional residue when it runs dry.)
-            let queued = source.available() as f64;
-            if *priming {
-                if queued < target {
-                    return;
-                }
-                *priming = false;
-            }
+        // Servo: nudge the claimed source rate so the queue level
+        // converges on the target. Claiming the source faster than it
+        // is makes each output frame consume more of it (drains);
+        // slower, less (refills).
+        let trim = AUDIO_MAX_TRIM * ((queued - target) / target).clamp(-1.0, 1.0);
+        // Engaged, the destination claim is honest — pitch-true — and
+        // the stretcher downstream absorbs the tempo difference;
+        // otherwise the faux clock folds in here.
+        let dest_rate = if engaged {
+            self.out_rate as f64
+        } else {
+            self.out_rate as f64 * faux_clock
+        };
+        self.pull.process(rate * (1.0 + trim), dest_rate);
 
-            // Servo: nudge the claimed source rate so the queue level
-            // converges on the target. Claiming the source faster than
-            // it is makes each output frame consume more of it (drains);
-            // slower, less (refills).
-            let trim = AUDIO_MAX_TRIM * ((queued - target) / target).clamp(-1.0, 1.0);
-
-            resampler.set_source(source, rate * (1.0 + trim), true);
-            // Engaged, the destination claim is honest — pitch-true —
-            // and the stretcher downstream absorbs the tempo
-            // difference; otherwise the faux clock folds in here.
-            let dest_rate = if engaged {
-                out_rate as f64
-            } else {
-                out_rate as f64 * faux_clock
-            };
-            resampler.set_destination(dest_buffer, dest_rate);
-            resampler.process();
-        });
         self.speed = speed;
 
         let delivered = if engaged {
-            let got = self.dest_buffer.available().min(want);
+            let got = self.pull.available().min(want);
             self.scratch.resize(got * super::NUM_CHANNELS, 0);
-            self.dest_buffer.read(&mut self.scratch, got);
+            self.pull.read(&mut self.scratch, got);
             self.stretcher.push(&self.scratch);
             self.stretcher.pop(buf, self.speed)
         } else {
-            let available = self.dest_buffer.available().min(frame_count);
+            let available = self.pull.available().min(frame_count);
             let linear_buf: &mut [i16] = bytemuck::cast_slice_mut(buf);
-            self.dest_buffer
+            self.pull
                 .read(&mut linear_buf[..available * super::NUM_CHANNELS], available);
             available
         };

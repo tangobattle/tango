@@ -198,13 +198,13 @@ impl TrainingSession {
         // `player` closure is re-read every fill, so a swap moves the
         // sound to the side the player is now driving.
         let audio = crate::audio::CoreStream::new(
-            crate::audio::PairCorePull {
+            tango_match::Resampled::new(crate::audio::PairDrain {
                 pair: match_.pair_handle(),
                 player: {
                     let controlled = controlled.clone();
                     Box::new(move || controlled.load(Ordering::Relaxed))
                 },
-            },
+            }),
             crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
             sample_rate,
         );

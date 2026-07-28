@@ -110,10 +110,10 @@ impl SinglePlayerSession {
             wake: wake.clone(),
         };
         let audio = crate::audio::CoreStream::new(
-            crate::audio::PairCorePull {
+            tango_match::Resampled::new(crate::audio::PairDrain {
                 pair: SharedLinkPull(link.clone()),
                 player: Box::new(|| 0),
-            },
+            }),
             crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
             sample_rate,
         );

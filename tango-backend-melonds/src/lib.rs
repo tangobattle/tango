@@ -87,15 +87,6 @@ impl Backend for MelonDs {
         ScreenLayout::new(SCREENS)
     }
 
-    fn drain_audio(link: &mut Link, player: usize, dest: &mut [i16]) -> usize {
-        link.console(player).read_audio(dest)
-    }
-
-    fn sample_rate(_link: &mut Link) -> f64 {
-        // The DS SPU mixes at a fixed rate; nothing about a link changes
-        // it.
-        SAMPLE_RATE
-    }
 }
 
 /// Translate Tango's joyflag word into DS keys.

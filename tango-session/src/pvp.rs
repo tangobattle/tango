@@ -1351,10 +1351,10 @@ impl PvpBoot {
         let sample_rate = self.sample_rate;
         let (driver, pair) = self.drive.boot(self.pieces)?;
         let audio = crate::audio::CoreStream::new(
-            crate::audio::PairCorePull {
+            tango_match::Resampled::new(crate::audio::PairDrain {
                 pair,
                 player: Box::new(move || local_player),
-            },
+            }),
             move || f32::from_bits(metrics.fps_target.load(Ordering::Relaxed)),
             sample_rate,
         );
