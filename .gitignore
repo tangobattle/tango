@@ -9,3 +9,8 @@ target/
 
 # notes
 -*
+
+# ROMs are never committed.
+*.nds
+*.gba
+*.srl
