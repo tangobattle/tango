@@ -52,10 +52,10 @@ use iced::Rectangle;
 
 /// The native GBA framebuffer is 240×160; the uploaded texture is always
 /// native and the selected [`Effect`] magnifies it in the fragment shader.
-/// We upload mGBA's raw BGR555 — one little-endian `u16` per pixel — and the
-/// shader expands it to RGB on read (see `effects/common.wgsl`), so this is 2,
-/// not 4: half the per-frame upload of the old CPU-expanded RGBA8.
-const BYTES_PER_PIXEL: u32 = 2;
+/// The pixels arrive already CPU-expanded from mGBA's BGR555 to RGBA8 (the
+/// session host runs them through the shared `bgr555_to_rgba8` table), so
+/// the shaders never touch BGR555 — the texture hands them ready-made RGB.
+const BYTES_PER_PIXEL: u32 = 4;
 
 /// A selectable GPU upscaler, defined as a named constant in
 /// [`crate::platform::video::effects`] (e.g. `effects::hqx::HQ2X`). `id` is the
@@ -79,21 +79,12 @@ pub struct Effect {
 }
 
 impl Effect {
-    /// Assemble the full WGSL module source for this effect, prefixed with the
-    /// `SRGB_TARGET` const the shared `decode()` reads to decide whether to
-    /// linearize the BGR555 color (sRGB target) or pass it through (linear /
-    /// web-colors target). The target's gamma is fixed for the pipeline's
-    /// lifetime, so baking it in as a const lets the shader const-fold the
-    /// branch.
-    fn source(&self, srgb_target: bool) -> String {
-        let mut parts = Vec::with_capacity(self.parts.len() + 1);
-        parts.push(if srgb_target {
-            "const SRGB_TARGET: bool = true;"
-        } else {
-            "const SRGB_TARGET: bool = false;"
-        });
-        parts.extend_from_slice(self.parts);
-        parts.join("\n")
+    /// Assemble the full WGSL module source for this effect. The render
+    /// target's gamma needs no injected code: it's carried by the framebuffer
+    /// *texture* format instead (sRGB or not — see [`Pipeline::upload`]), so
+    /// `textureLoad` already returns the right working space.
+    fn source(&self) -> String {
+        self.parts.join("\n")
     }
 
     /// Compile this effect into a render pipeline. Every effect shares the
@@ -108,7 +99,7 @@ impl Effect {
     ) -> wgpu::RenderPipeline {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some(&format!("framebuffer shader: {}", self.id)),
-            source: wgpu::ShaderSource::Wgsl(self.source(target.is_srgb()).into()),
+            source: wgpu::ShaderSource::Wgsl(self.source().into()),
         });
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some(&format!("framebuffer pipeline: {}", self.id)),
@@ -159,13 +150,13 @@ pub struct Frame {
 
 impl Frame {
     /// A 1×1 opaque-black frame for "no frame yet" (between sessions and
-    /// before the first vblank). One BGR555 `u16` of 0 decodes to black, and
-    /// the shader forces alpha opaque; sampled over the whole widget it reads
-    /// as a solid black pane. The fixed sentinel revision keeps it from
-    /// re-uploading on every redraw; the pass-through effect draws it plainly.
+    /// before the first vblank). One opaque-black RGBA8 texel, sampled over
+    /// the whole widget, reads as a solid black pane. The fixed sentinel
+    /// revision keeps it from re-uploading on every redraw; the pass-through
+    /// effect draws it plainly.
     pub fn black() -> Self {
         Self {
-            pixels: Arc::new(vec![0, 0]),
+            pixels: Arc::new(vec![0, 0, 0, 0xff]),
             width: 1,
             height: 1,
             revision: u64::MAX,
@@ -328,8 +319,9 @@ impl shader::Pipeline for Pipeline {
                 binding: 0,
                 visibility: wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Texture {
-                    // Integer texture: not filterable, fetched via `textureLoad`.
-                    sample_type: wgpu::TextureSampleType::Uint,
+                    // Fetched via `textureLoad` only — no sampler — so the
+                    // (filterable) Rgba8Unorm* view binds as unfilterable.
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
                     view_dimension: wgpu::TextureViewDimension::D2,
                     multisampled: false,
                 },
@@ -376,7 +368,19 @@ impl Pipeline {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::R16Uint,
+                // The uploaded pixels are 8-bit sRGB-encoded (the GBA's
+                // native palette, CPU-expanded from BGR555). Matching the
+                // texture's gamma to the render target's replaces the old
+                // in-shader decode: an sRGB view makes `textureLoad` return
+                // linear, which the sRGB target re-encodes on write; a
+                // linear (web-colors) target reads the encoded value
+                // unchanged. Same values either way, now decoded in
+                // fixed-function hardware.
+                format: if self.target_format.is_srgb() {
+                    wgpu::TextureFormat::Rgba8UnormSrgb
+                } else {
+                    wgpu::TextureFormat::Rgba8Unorm
+                },
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
@@ -404,7 +408,7 @@ impl Pipeline {
         }
 
         // `write_texture` (unlike `copy_buffer_to_texture`) imposes no
-        // 256-byte row-alignment requirement, so a 240-wide (480 B/row at 2
+        // 256-byte row-alignment requirement, so a 240-wide (960 B/row at 4
         // bytes/pixel) GBA frame uploads directly.
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {

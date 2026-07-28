@@ -470,7 +470,7 @@ impl<W: Writer> Render<W> {
             if should_write {
                 self.session.write_audio(slot, &self.samples[..n * AUDIO_CHANNELS])?;
                 if let Some(fb) = pair.video_buffer(core_idx) {
-                    bgr555_to_rgba8(fb, &mut self.vbuf);
+                    mgba::gba::bgr555_to_rgba8(fb, &mut self.vbuf);
                     if self.twosided {
                         blit_screen(&mut self.composed_vbuf, slot, &self.vbuf);
                     }
@@ -570,40 +570,3 @@ mod tests {
     }
 }
 
-/// Canonical BGR555 → RGBA8 expansion, indexed by the 15-bit value
-/// (`r | g << 5 | b << 10`). Built at compile time so every consumer of
-/// mGBA framebuffers shares identical colors at one lookup per pixel.
-static BGR555_RGBA8_LUT: [u32; 0x8000] = {
-    let mut arr = [0u32; 0x8000];
-    let mut i = 0usize;
-    while i < 0x8000 {
-        let r = ((i & 0x1f) * 0xff / 0x1f) as u8;
-        let g = (((i >> 5) & 0x1f) * 0xff / 0x1f) as u8;
-        let b = (((i >> 10) & 0x1f) * 0xff / 0x1f) as u8;
-        arr[i] = u32::from_ne_bytes([r, g, b, 0xff]);
-        i += 1;
-    }
-    arr
-};
-
-/// Convert an mGBA `BGR5` framebuffer — what `COLOR_16_BIT` builds emit:
-/// one little-endian `u16` per pixel holding the GBA-native 15-bit
-/// color — into RGBA8.
-///
-/// `src` is 2 bytes per pixel and `dst` 4 bytes per pixel; conversion
-/// runs over whole pixels and stops when either buffer is exhausted.
-/// Alpha is forced opaque. Lives here (rather than in the private
-/// gamesupport layer, where the ROM-asset palette work is) because
-/// framebuffer presentation is a public, game-agnostic concern — the
-/// app's session view and tango-lite-web convert through this too.
-pub fn bgr555_to_rgba8(src: &[u8], dst: &mut [u8]) {
-    for (s, d) in bytemuck::cast_slice::<u8, u16>(src)
-        .iter()
-        .zip(bytemuck::cast_slice_mut::<_, u32>(dst).iter_mut())
-    {
-        // Mask to 15 bits: bit 15 is unused in GBA BGR555 (mGBA emits 0), so
-        // this is a no-op on the value, but it lets the compiler prove the
-        // index is < 0x8000 and elide the per-pixel bounds check.
-        *d = BGR555_RGBA8_LUT[(*s & 0x7fff) as usize];
-    }
-}

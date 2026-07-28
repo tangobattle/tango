@@ -14,7 +14,6 @@ publish = false
 # the one thing it does have in common with a session (that a host pumps
 # it rather than it running itself) is a shape, not a dependency.
 [dependencies]
-bytemuck.workspace = true
 encoder-facade.workspace = true
 mgba.workspace = true
 tango-match = { path = "../tango-match" }

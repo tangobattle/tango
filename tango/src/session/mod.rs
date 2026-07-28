@@ -1000,9 +1000,10 @@ impl State {
                         self.close_session();
                         self.results = results;
                     } else {
-                        // Upload the native frame as-is; the selected effect
-                        // magnifies it on the GPU at draw time.
-                        let pixels = session.frame();
+                        // Expand the native BGR555 frame to RGBA8 on the CPU
+                        // ([`expand_frame`]); the selected effect magnifies it
+                        // on the GPU at draw time.
+                        let pixels = expand_frame(&session.frame());
                         self.frame_revision = self.frame_revision.wrapping_add(1);
                         self.current_frame = Some(crate::platform::video::framebuffer::Frame {
                             pixels: std::sync::Arc::new(pixels),
@@ -1021,7 +1022,7 @@ impl State {
                         self.pip_frame = session.pip_frame().map(|pixels| {
                             self.pip_revision = self.pip_revision.wrapping_add(1);
                             crate::platform::video::framebuffer::Frame {
-                                pixels: std::sync::Arc::new(pixels),
+                                pixels: std::sync::Arc::new(expand_frame(&pixels)),
                                 width: replay::SCREEN_WIDTH,
                                 height: replay::SCREEN_HEIGHT,
                                 revision: self.pip_revision,
@@ -1163,16 +1164,22 @@ const CONTROLS_HIDE_AFTER: std::time::Duration = std::time::Duration::from_milli
 const ESC_QUIT_HOLD: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Expand an mgba-native BGR555 framebuffer (one little-endian `u16`
-/// per pixel — what [`Session::frame`] hands back) to an RGBA8 image handle for
-/// the hover thumbnail, via dataview's shared conversion — the same
-/// table that renders ROM sprites/palettes and replay video exports,
-/// and the CPU twin of the GPU decode in `video/effects/common.wgsl`.
-/// At 240×160 it's cheap, and it only runs when the hovered keyframe
-/// changes.
-fn thumbnail_handle(framebuffer: &[u8]) -> iced::widget::image::Handle {
+/// per pixel — what [`Session::frame`] hands back) to RGBA8, via the
+/// shared conversion table that also renders ROM sprites/palettes and
+/// replay video exports. This feeds the per-frame GPU upload (the
+/// effect shaders take ready-made RGBA8 and never touch BGR555 — see
+/// `video/framebuffer.rs`) as well as the scrub hover thumbnail. At
+/// 240×160 it's cheap.
+fn expand_frame(framebuffer: &[u8]) -> Vec<u8> {
     let mut rgba = vec![0u8; framebuffer.len() * 2];
-    tango_replay_renderer::bgr555_to_rgba8(framebuffer, &mut rgba);
-    iced::widget::image::Handle::from_rgba(replay::SCREEN_WIDTH, replay::SCREEN_HEIGHT, rgba)
+    mgba::gba::bgr555_to_rgba8(framebuffer, &mut rgba);
+    rgba
+}
+
+/// [`expand_frame`] into an image handle for the hover thumbnail; it
+/// only runs when the hovered keyframe changes.
+fn thumbnail_handle(framebuffer: &[u8]) -> iced::widget::image::Handle {
+    iced::widget::image::Handle::from_rgba(replay::SCREEN_WIDTH, replay::SCREEN_HEIGHT, expand_frame(framebuffer))
 }
 
 /// Route a freshly-built session's audio stream into the host output,

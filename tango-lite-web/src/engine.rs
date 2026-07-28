@@ -657,7 +657,7 @@ impl Engine {
         }
         // mgba hands out its native BGR555; the shared LUT conversion is
         // the same one the desktop's replay renderer uses.
-        tango_replay_renderer::bgr555_to_rgba8(&frame, &mut self.rgba);
+        mgba::gba::bgr555_to_rgba8(&frame, &mut self.rgba);
 
         // One JS-side buffer for the session's life, with an ImageData
         // view onto it. `new ImageData(array, …)` aliases the array it
