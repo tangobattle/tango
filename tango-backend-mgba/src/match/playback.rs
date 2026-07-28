@@ -299,7 +299,20 @@ impl Playback {
         inputs: Arc<Vec<[u32; 2]>>,
         lifecycle: &crate::r#match::telemetry::LifecycleSink,
     ) -> Result<Self, crate::Error> {
-        let pair = boot_and_prime(config, true, None, lifecycle)?;
+        Self::new_cancellable(config, inputs, None, lifecycle)
+    }
+
+    /// [`Playback::new`] with an abort handle: flipping `cancel`
+    /// mid-prime fails the boot with [`crate::Error::Cancelled`] instead
+    /// of finishing the walk — for hosts that join the booting thread on
+    /// teardown.
+    pub fn new_cancellable(
+        config: &BootConfig,
+        inputs: Arc<Vec<[u32; 2]>>,
+        cancel: Option<&AtomicBool>,
+        lifecycle: &crate::r#match::telemetry::LifecycleSink,
+    ) -> Result<Self, crate::Error> {
+        let pair = boot_and_prime(config, true, cancel, lifecycle)?;
         Ok(Self {
             pair,
             inputs,

@@ -95,6 +95,10 @@ type SharedPlayback = Arc<Mutex<Option<Box<dyn tango_match::RunningReplay>>>>;
 impl Drop for Engine {
     fn drop(&mut self) {
         self.cancel.store(true, Ordering::Relaxed);
+        // The engine's own flag, checked per tick deep inside the stats
+        // pass and both pairs' priming walks — without it a host joining
+        // its workers waits out whatever slice or boot is in flight.
+        self.set.cancel();
         // Release a gate-parked drive loop so the host's join is prompt.
         self.paused.set(false);
         self.seek.shutdown();
@@ -755,6 +759,9 @@ impl Playhead {
     fn boot(&self) -> bool {
         let mut pb = match self.set.playback() {
             Ok(pb) => pb,
+            // Torn down mid-prime — the host is waiting on this thread's
+            // join, not on a session that will never come up.
+            Err(tango_match::Error::Cancelled) => return false,
             Err(e) => {
                 log::error!("replay: boot failed: {e:?}");
                 return false;

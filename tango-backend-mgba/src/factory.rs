@@ -160,7 +160,8 @@ struct Set {
 impl tango_match::ReplaySet for Set {
     fn playback(&self) -> Result<Box<dyn tango_match::RunningReplay>, tango_match::Error> {
         Ok(Box::new(
-            Replay::new(&self.boot, self.inputs.clone(), self.store.clone()).map_err(tango_match::Error::from)?,
+            Replay::new(&self.boot, self.inputs.clone(), self.store.clone(), &self.cancel)
+                .map_err(tango_match::Error::from)?,
         ))
     }
 
@@ -266,11 +267,17 @@ impl Replay {
         boot: &playback::BootConfig,
         inputs: Arc<Vec<[u32; 2]>>,
         store: playback::SnapshotStore,
+        cancel: &AtomicBool,
     ) -> Result<Self, crate::Error> {
         let len = inputs.len() as u32;
         // The display pair runs no telemetry observer — its lifecycle
         // sink is a write-only stub.
-        let pb = playback::Playback::new(boot, inputs, &crate::r#match::telemetry::LifecycleSink::new())?;
+        let pb = playback::Playback::new_cancellable(
+            boot,
+            inputs,
+            Some(cancel),
+            &crate::r#match::telemetry::LifecycleSink::new(),
+        )?;
         Ok(Replay {
             playback: Arc::new(Mutex::new(pb)),
             store,
