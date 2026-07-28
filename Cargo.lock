@@ -4449,6 +4449,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 
 [[package]]
+name = "melonds"
+version = "0.1.0"
+source = "git+https://github.com/tangobattle/melonds-rs#226aad2c55330b023d56a602b3e1e484feb3d7e7"
+dependencies = [
+ "melonds-sys",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "melonds-rollback"
+version = "0.1.0"
+source = "git+https://github.com/tangobattle/melonds-rollback#4d3c3d8b396a3548a31df1765d9bcb49634b3aaf"
+dependencies = [
+ "getgud",
+ "log",
+ "melonds",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "melonds-sys"
+version = "0.1.0"
+source = "git+https://github.com/tangobattle/melonds-rs#226aad2c55330b023d56a602b3e1e484feb3d7e7"
+dependencies = [
+ "bindgen",
+ "cc",
+ "cmake",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8022,6 +8052,15 @@ dependencies = [
  "serde_repr",
  "tango-replay",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tango-match-melonds"
+version = "0.1.0"
+dependencies = [
+ "melonds",
+ "melonds-rollback",
+ "tango-match",
 ]
 
 [[package]]

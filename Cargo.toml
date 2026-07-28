@@ -11,6 +11,7 @@ members = [
     "tango-lobby",
     "tango-net-protocol",
     "tango-match",
+    "tango-match-melonds",
     "tango-replay",
     "tango-replay-renderer",
     "tango-session",

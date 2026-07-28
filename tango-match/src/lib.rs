@@ -55,6 +55,34 @@ pub enum Error {
     /// The caller's cancel flag flipped mid-simulation.
     #[error("cancelled")]
     Cancelled,
+
+    /// Whatever the engine underneath a match reported. Boxed because
+    /// every backend has its own error type and this crate refuses to
+    /// name any of them.
+    #[error(transparent)]
+    Backend(Box<dyn std::error::Error + Send + Sync>),
+}
+
+/// The joypad bits a match speaks, engine-neutral.
+///
+/// This is the GBA layout, which the DS extends with X and Y — so one
+/// vocabulary covers both consoles and hosts need no emulator
+/// dependency to name a button.
+pub mod keys {
+    pub const A: u32 = 1 << 0;
+    pub const B: u32 = 1 << 1;
+    pub const SELECT: u32 = 1 << 2;
+    pub const START: u32 = 1 << 3;
+    pub const RIGHT: u32 = 1 << 4;
+    pub const LEFT: u32 = 1 << 5;
+    pub const UP: u32 = 1 << 6;
+    pub const DOWN: u32 = 1 << 7;
+    pub const R: u32 = 1 << 8;
+    pub const L: u32 = 1 << 9;
+    /// DS only.
+    pub const X: u32 = 1 << 10;
+    /// DS only.
+    pub const Y: u32 = 1 << 11;
 }
 
 /// A PC-sited trap: fires the closure when emulation reaches the ROM

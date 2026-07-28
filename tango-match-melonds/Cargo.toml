@@ -1,0 +1,17 @@
+[package]
+name = "tango-match-melonds"
+version = "0.1.0"
+edition = "2021"
+
+# The melonDS backend for tango-match: a pair of emulated DSes on
+# emulated local wireless. Kept out of tango-match so the seam does not
+# depend on any emulator, and out of the game crates so more than one DS
+# game could share it.
+
+[dependencies]
+tango-match = { path = "../tango-match" }
+melonds = { git = "https://github.com/tangobattle/melonds-rs" }
+melonds-rollback = { git = "https://github.com/tangobattle/melonds-rollback" }
+
+[lints]
+workspace = true
