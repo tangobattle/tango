@@ -14,8 +14,19 @@ pub mod audio;
 
 use tango_match::{Backend, Screen, ScreenLayout};
 
-/// The DS SPU's output rate.
-pub const SAMPLE_RATE: f64 = 32_823.6328125;
+/// The rate the SPU hands samples out at.
+///
+/// Not the DS's own 32823.6328 Hz: melonDS resamples internally, and
+/// what it resamples *to* is `NDSArgs::OutputSampleRate`, which the shim
+/// leaves at its 48 kHz default. Claiming the console's native rate
+/// instead stretches playback by 48000/32823.6 — about six semitones
+/// flat — and drains the source queue half again as fast as it fills,
+/// which underruns into a crackle on top of the wrong pitch.
+pub const SAMPLE_RATE: f64 = 48_000.0;
+
+/// The DS's video framerate, which is also the rate audio production
+/// scales against when a host paces the simulation faster or slower.
+pub const FPS: f64 = 33_513_982.0 / 560_190.0;
 
 /// The DS presents two identically-sized screens, top then bottom.
 const SCREENS: [Screen; 2] = [

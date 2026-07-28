@@ -28,6 +28,18 @@ impl AudioDrain for ConsoleAudio {
         crate::SAMPLE_RATE
     }
 
+    /// Production scales with how fast the host is running the
+    /// simulation: at twice the DS's framerate the SPU emits twice the
+    /// audio per wall-clock second, and the stream has to consume it at
+    /// that rate rather than pile it up and discard the surplus.
+    fn framerate_ratio(&self, fps_target: f64) -> f64 {
+        if fps_target > 0.0 {
+            fps_target / crate::FPS
+        } else {
+            1.0
+        }
+    }
+
     fn drain(&mut self, out: &mut [i16]) -> usize {
         let player = self.player.load(Ordering::Relaxed);
         self.link.lock().unwrap().console(player).read_audio(out)
