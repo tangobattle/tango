@@ -1,8 +1,9 @@
 //! Training-mode emulator session: a real link battle you fight
 //! locally, against a **dummy controller** on the opponent core.
 //!
-//! Mechanically this is the PvP engine ([`tango_backend_mgba::r#match::engine::Match`])
-//! with the network cut out. Both cores run the player's own ROM + save
+//! Mechanically this is a netplay match with the network cut out: the
+//! game's own registration starts it, and both seats' input is supplied
+//! locally before the tick advances. Both cores run the player's own ROM + save
 //! (a mirror match), primed all the way into their link battle exactly
 //! as a netplay match would be — so training *starts in a battle*, not
 //! at the title screen. The player drives one core; the other core's
@@ -26,8 +27,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use tango_backend_mgba::r#match::engine::{Match, MatchConfig};
-use tango_backend_mgba::r#match::telemetry::RoundEvent;
+use tango_match::telemetry::RoundEvent;
 
 /// GBA video framerate — the true link-battle rate (matches the PvP
 /// engine), so the wall-clock pacer runs the battle at the right speed.
@@ -43,11 +43,7 @@ const TRAINING_MATCH_TYPE: (u8, u8) = (0, 0);
 /// which core is which. This is the whole integration surface — a
 /// controller inspects the pair, then returns the joyflags the dummy
 /// should hold for the tick about to advance.
-pub struct ControllerContext<'a> {
-    /// The live pair, parked at the newest simulated tick. Read the
-    /// dummy's own core with `pair.core_mut(ctx.dummy_player)` or watch
-    /// the human with `pair.core(ctx.human_player)`.
-    pub pair: &'a mut tango_backend_mgba::Link,
+pub struct ControllerContext {
     /// The core the dummy drives (the non-human core).
     pub dummy_player: usize,
     /// The core the human drives.
@@ -68,7 +64,7 @@ pub struct ControllerContext<'a> {
 /// [`poll`]: TrainingController::poll
 pub trait TrainingController: Send {
     /// Produce the dummy's input for the tick about to advance. Return an
-    /// mgba joyflag bitmap (the same word
+    /// Joyflag bitmap (the same word
     /// [`crate::Session::set_joyflags`] carries); return `0` to press
     /// nothing.
     fn poll(&mut self, ctx: &mut ControllerContext) -> u32;
@@ -152,33 +148,25 @@ impl TrainingSession {
         //
         // Present delay 0: the match is local and lockstep, so there's no
         // latency to hide and no speculation to roll back.
-        let match_ = Match::new(MatchConfig {
-            roms: [rom.as_ref().clone(), rom.as_ref().clone()],
-            saves: [save_sram.clone(), save_sram],
-            support: {
-                // Training runs the mgba engine against a second copy
-                // of the same game.
-                let support = game.pvp.gba().ok_or(crate::Error::UnsupportedEngine)?;
-                [support, support]
-            },
+        let mut match_ = game.pvp.start(tango_match::StartConfig {
+            roms: [rom.as_ref(), rom.as_ref()],
+            saves: [Some(&save_sram), Some(&save_sram)],
             match_type: TRAINING_MATCH_TYPE,
             rng_seed,
             rtc,
+            // A mirror match, so the peer's cartridge is this one.
+            peer_rom: tango_match::PeerRom {
+                code: *game.rom_code,
+                revision: game.revision,
+            },
             local_player: 0,
             present_delay: 0,
             disable_bgm: false,
         })?;
 
-        // The rollback session frameskips every non-local core to spare
-        // the software renderer (PvP only ever shows the local side).
-        // Training shows both — the PiP and the side-swap — so turn
-        // rendering back on for the whole pair. (Frameskip is unserialized
-        // and invisible to the simulation, so this is rollback-safe.)
-        match_.with_pair(|pair| {
-            for i in 0..2 {
-                pair.set_frameskip(i, 0);
-            }
-        });
+        // A netplay match renders only the local side. Training shows
+        // both — the PiP and the side-swap — so ask for the whole pair.
+        match_.render_seats();
 
         let controlled = Arc::new(AtomicUsize::new(0));
         let joyflags = Arc::new(AtomicU32::new(0));
@@ -186,11 +174,12 @@ impl TrainingSession {
         let fps_bits = Arc::new(AtomicU32::new(EXPECTED_FPS.to_bits()));
         let dummy_joyflags = Arc::new(AtomicU32::new(0));
         let show_pip = Arc::new(AtomicBool::new(false));
-        let pip = crate::Framebuffer::new();
+        let layout = game.pvp.screen_layout();
+        let pip = crate::Framebuffer::new(&layout);
         let pip_fresh = Arc::new(AtomicBool::new(false));
         let ended = Arc::new(AtomicBool::new(false));
         let stop = Arc::new(AtomicBool::new(false));
-        let screen = crate::Framebuffer::new();
+        let screen = crate::Framebuffer::new(&layout);
         let wake = Arc::new(tokio::sync::Notify::new());
 
         // Audio pulls the controlled core straight off the pair (same
@@ -198,13 +187,9 @@ impl TrainingSession {
         // `player` closure is re-read every fill, so a swap moves the
         // sound to the side the player is now driving.
         let audio = crate::audio::CoreStream::new(
-            tango_match::Resampled::new(crate::audio::PairDrain {
-                pair: match_.pair_handle(),
-                player: {
-                    let controlled = controlled.clone();
-                    Box::new(move || controlled.load(Ordering::Relaxed))
-                },
-            }),
+            match_
+                .seat_audio(controlled.clone())
+                .ok_or_else(|| tango_match::Error::Backend("this match produces no audio".into()))?,
             crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
             sample_rate,
         );
@@ -337,7 +322,7 @@ impl Drop for TrainingSession {
 
 /// Everything the driver owns for the session's life.
 pub struct Driver {
-    match_: Match,
+    match_: Box<dyn tango_match::RunningMatch>,
     controlled: Arc<AtomicUsize>,
     joyflags: Arc<AtomicU32>,
     controller: SharedController,
@@ -387,13 +372,10 @@ impl Driver {
             // output becomes the dummy core's input for this tick. The
             // stock NoopController returns 0.
             let controller = self.controller.clone();
-            let dummy = self.match_.with_pair(|pair| {
-                controller.lock().unwrap().poll(&mut ControllerContext {
-                    pair,
-                    dummy_player,
-                    human_player: controlled,
-                    frame,
-                })
+            let dummy = controller.lock().unwrap().poll(&mut ControllerContext {
+                dummy_player,
+                human_player: controlled,
+                frame,
             }) & mask;
             self.dummy_joyflags.store(dummy, Ordering::Relaxed);
 
@@ -407,7 +389,7 @@ impl Driver {
             let core0 = if controlled == 0 { player } else { dummy };
             let core1 = if controlled == 0 { dummy } else { player };
             self.match_.add_remote_input(core1, 0);
-            let (_outgoing, report) = match self.match_.advance(core0) {
+            let _outgoing = match self.match_.advance(core0) {
                 Ok(r) => r,
                 Err(e) => {
                     log::error!("training: advance failed: {e}");
@@ -421,12 +403,10 @@ impl Driver {
             // path so the session can tear down cleanly (with a
             // do-nothing dummy the player wins and the battle ends). We
             // don't fold stats — training records nothing.
-            let (_samples, events) = self
-                .match_
-                .telemetry()
-                .lock()
-                .unwrap()
-                .drain_confirmed(report.confirmed);
+            let (_samples, events) = match self.match_.telemetry() {
+                Some(store) => store.lock().unwrap().drain_confirmed(self.match_.confirmed()),
+                None => (Vec::new(), Vec::new()),
+            };
             if events.iter().any(|(_, e)| matches!(e, RoundEvent::MatchEnded)) {
                 self.ended.store(true, Ordering::Release);
                 self.wake.notify_one();
@@ -435,19 +415,17 @@ impl Driver {
 
             // Publish the controlled core to the main screen; the other
             // core feeds the PiP while it's on.
-            self.match_.with_pair(|pair| {
-                if let Some(buf) = pair.video_buffer(controlled) {
-                    self.screen.write(buf);
+            if let Some(buf) = self.match_.seat_frame(controlled) {
+                self.screen.write(&buf);
+            }
+            if self.show_pip.load(Ordering::Relaxed) {
+                if let Some(buf) = self.match_.seat_frame(dummy_player) {
+                    self.pip.write(&buf);
+                    self.pip_fresh.store(true, Ordering::Relaxed);
                 }
-                if self.show_pip.load(Ordering::Relaxed) {
-                    if let Some(buf) = pair.video_buffer(dummy_player) {
-                        self.pip.write(buf);
-                        self.pip_fresh.store(true, Ordering::Relaxed);
-                    }
-                } else {
-                    self.pip_fresh.store(false, Ordering::Relaxed);
-                }
-            });
+            } else {
+                self.pip_fresh.store(false, Ordering::Relaxed);
+            }
             self.frame = frame.wrapping_add(1);
             self.wake.notify_one();
         }

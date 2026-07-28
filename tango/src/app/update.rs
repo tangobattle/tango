@@ -930,8 +930,10 @@ impl App {
                     // Video export re-simulates on the mgba engine; the
                     // export button is only offered for those replays.
                     support: [
-                        games[0].pvp.gba().expect("export offered for an mgba game"),
-                        games[1].pvp.gba().expect("export offered for an mgba game"),
+                        tango_library::game::mgba_support(games[0].rom_code, games[0].revision)
+                            .expect("export offered for an mgba game"),
+                        tango_library::game::mgba_support(games[1].rom_code, games[1].revision)
+                            .expect("export offered for an mgba game"),
                     ],
                     match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
                     rng_seed: replay.rng_seed,

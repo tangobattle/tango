@@ -163,7 +163,17 @@ impl<B: Backend> Match<B> {
 
     /// This match's local console audio.
     pub fn audio(&self) -> Box<dyn crate::AudioPull> {
-        B::audio(self.link.clone(), self.local_player)
+        self.seat_audio(std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(
+            self.local_player,
+        )))
+    }
+
+    /// Audio for whichever seat `seat` currently names.
+    pub fn seat_audio(
+        &self,
+        seat: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) -> Box<dyn crate::AudioPull> {
+        B::audio(self.link.clone(), seat)
     }
 
     /// Run `f` against the live pair — video, audio and RAM readout.
@@ -247,5 +257,24 @@ impl<B: Backend> crate::RunningMatch for Match<B> {
 
     fn audio(&self) -> Option<Box<dyn crate::AudioPull>> {
         Some(Match::audio(self))
+    }
+
+    fn seat_audio(
+        &self,
+        seat: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) -> Option<Box<dyn crate::AudioPull>> {
+        Some(Match::seat_audio(self, seat))
+    }
+
+    fn seat_frame(&mut self, player: usize) -> Option<Vec<u8>> {
+        self.with_link(|link| B::frame(link, player))
+    }
+
+    fn render_seats(&mut self) {
+        self.with_link(|link| {
+            for player in 0..2 {
+                B::set_render(link, player, true);
+            }
+        });
     }
 }

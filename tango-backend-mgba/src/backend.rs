@@ -78,9 +78,13 @@ impl Backend for Mgba {
 
     fn audio(
         link: std::sync::Arc<std::sync::Mutex<Self::Link>>,
-        player: usize,
+        player: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     ) -> Box<dyn tango_match::AudioPull> {
         Box::new(tango_match::Resampled::new(SharedPairAudio { link, player }))
+    }
+
+    fn set_render(link: &mut Self::Link, player: usize, on: bool) {
+        link.set_frameskip(player, if on { 0 } else { i32::MAX });
     }
 
 }
@@ -89,54 +93,6 @@ impl Backend for Mgba {
 /// depending on the emulator crates itself.
 pub use mgba_rollback::{Link, Snapshot};
 
-/// Starts GBA matches for one game registration.
-///
-/// A registration holds one of these as its `pvp`, so the app starts a
-/// match without knowing which emulator is underneath. `support`
-/// resolves a variant of this family to that variant's engine support:
-/// the game's own crate has every variant's statics in scope, which is
-/// how the peer's side gets resolved without the seam knowing anything
-/// about registries.
-pub struct GbaMatchFactory {
-    /// This registration's variant.
-    pub variant: u8,
-    /// Variant of this family -> its engine support.
-    pub support: fn(u8) -> &'static (dyn crate::GameSupport + Send + Sync),
-}
-
-impl tango_match::MatchFactory for GbaMatchFactory {
-    fn screen_layout(&self) -> tango_match::ScreenLayout {
-        <Mgba as tango_match::Backend>::screen_layout()
-    }
-
-    fn start(
-        &self,
-        config: tango_match::StartConfig,
-    ) -> Result<Box<dyn tango_match::RunningMatch>, tango_match::Error> {
-        // Engine support is indexed by seat, not by who is local.
-        let mut support: [&dyn crate::GameSupport; 2] =
-            [(self.support)(self.variant), (self.support)(config.peer_variant)];
-        if config.local_player == 1 {
-            support.swap(0, 1);
-        }
-        let match_ = crate::r#match::engine::Match::new(crate::r#match::engine::MatchConfig {
-            roms: [config.roms[0].to_vec(), config.roms[1].to_vec()],
-            saves: [
-                config.saves[0].unwrap_or_default().to_vec(),
-                config.saves[1].unwrap_or_default().to_vec(),
-            ],
-            support,
-            match_type: config.match_type,
-            rng_seed: config.rng_seed,
-            rtc: config.rtc,
-            local_player: config.local_player,
-            present_delay: config.present_delay,
-            disable_bgm: config.disable_bgm,
-        })
-        .map_err(tango_match::Error::from)?;
-        Ok(Box::new(match_))
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -155,65 +111,39 @@ mod tests {
 }
 
 
-/// Start a GBA match from both sides' engine support.
-///
-/// A match can span two variants of a family (Gregar against Falzar),
-/// so the engine needs each seat's support — and only something holding
-/// both registrations can supply that, which is why this takes them
-/// rather than hanging off one game.
-pub fn start_match(
-    local: &'static (dyn crate::GameSupport + Send + Sync),
-    peer: &'static (dyn crate::GameSupport + Send + Sync),
-    config: tango_match::StartConfig,
-) -> Result<Box<dyn tango_match::RunningMatch>, tango_match::Error> {
-    // Support is indexed by seat, not by who is local.
-    let mut support: [&dyn crate::GameSupport; 2] = [local, peer];
-    if config.local_player == 1 {
-        support.swap(0, 1);
-    }
-    let match_ = crate::r#match::engine::Match::new(crate::r#match::engine::MatchConfig {
-        roms: [config.roms[0].to_vec(), config.roms[1].to_vec()],
-        saves: [
-            config.saves[0].unwrap_or_default().to_vec(),
-            config.saves[1].unwrap_or_default().to_vec(),
-        ],
-        support,
-        match_type: config.match_type,
-        rng_seed: config.rng_seed,
-        rtc: config.rtc,
-        local_player: config.local_player,
-        present_delay: config.present_delay,
-        disable_bgm: config.disable_bgm,
-    })
-    .map_err(tango_match::Error::from)?;
-    Ok(Box::new(match_))
-}
-
-
 /// A pair behind the seam's shared handle, as something the shared
 /// resampler can drain. (`crate::audio::ConsoleAudio` is the same thing
 /// over mgba-rollback's own handle, which the legacy engine hands out.)
 struct SharedPairAudio {
     link: std::sync::Arc<std::sync::Mutex<mgba_rollback::Link>>,
-    player: usize,
+    /// Read per fill, so a training swap moves the sound across without
+    /// the resampler being rebuilt under it.
+    player: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl SharedPairAudio {
+    fn player(&self) -> usize {
+        self.player.load(std::sync::atomic::Ordering::Relaxed)
+    }
 }
 
 impl tango_match::AudioDrain for SharedPairAudio {
     fn sample_rate(&self) -> f64 {
-        self.link.lock().unwrap().core_mut(self.player).audio_sample_rate() as f64
+        self.link.lock().unwrap().core_mut(self.player()).audio_sample_rate() as f64
     }
 
     fn framerate_ratio(&self, fps_target: f64) -> f64 {
         self.link
             .lock()
             .unwrap()
-            .core_mut(self.player)
+            .core_mut(self.player())
             .calculate_framerate_ratio(fps_target)
     }
 
     fn drain(&mut self, out: &mut [i16]) -> usize {
+        let player = self.player();
         let mut link = self.link.lock().unwrap();
-        let buffer = link.core_mut(self.player).audio_buffer();
+        let buffer = link.core_mut(player).audio_buffer();
         let frames = (out.len() / 2).min(buffer.available());
         buffer.read(out, frames)
     }

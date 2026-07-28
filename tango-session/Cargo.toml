@@ -16,13 +16,11 @@ chrono = "0.4"
 datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }
 futures.workspace = true
 log.workspace = true
-mgba.workspace = true
 rand.workspace = true
 rand_pcg.workspace = true
 rennet.workspace = true
 tango-gamesupport = { path = "../tango-gamesupport" }
 tango-match = { path = "../tango-match" }
-tango-backend-mgba = { path = "../tango-backend-mgba" }
 tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
 tango-net-protocol = { path = "../tango-net-protocol" }
 tango-replay = { path = "../tango-replay" }

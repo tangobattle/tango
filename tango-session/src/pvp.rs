@@ -349,11 +349,6 @@ impl PvpSession {
                 source: e,
             })?;
 
-        // This path drives the mgba engine directly; a game on another
-        // engine starts through its factory instead.
-        let local_sio = local_game.pvp.gba().ok_or(crate::Error::UnsupportedEngine)?;
-        let remote_sio = remote_game.pvp.gba().ok_or(crate::Error::UnsupportedEngine)?;
-
         // Player index off the shared RNG seed, same negotiation as ever:
         // both peers derive the same assignment, mirrored.
         use rand::SeedableRng;
@@ -406,7 +401,7 @@ impl PvpSession {
         let drive_paused = Arc::new(crate::PauseGate::new(false));
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
         let tps_counter = Arc::new(Mutex::new(TpsCounter::new(60)));
-        let screen = crate::Framebuffer::new();
+        let screen = crate::Framebuffer::new(&local_game.pvp.screen_layout());
         let wake = Arc::new(tokio::sync::Notify::new());
         // The two-sided ready gate. Priming takes as long as the machine
         // running it takes, so each peer announces when its own pair
@@ -416,10 +411,15 @@ impl PvpSession {
         let announce_primed = Arc::new(tokio::sync::Notify::new());
 
         // Usage semantics can depend on the applied patch (exe45's PvP
-        // patch), so they're probed off the patched ROM.
+        // patch), so they're probed off the patched ROM. A game whose
+        // engine reports no chip events folds the rest without them.
+        let semantics = local_game
+            .pvp
+            .chip_semantics(local_rom.as_ref())
+            .unwrap_or((tango_match::analysis::ChipSemantics::LoadedChip, false));
         let stats = Arc::new(Mutex::new(tango_match::analysis::StatsBuilder::new(
-            local_sio.chip_semantics(local_rom.as_ref()),
-            local_sio.counts_buster(local_rom.as_ref()),
+            semantics.0,
+            semantics.1,
         )));
 
         // Remote input events flow receive-task → drive thread over this
@@ -457,7 +457,10 @@ impl PvpSession {
                 roms,
                 saves,
                 pvp: supports,
-                peer_variant: remote_game.variant,
+                peer_rom: tango_match::PeerRom {
+                    code: *remote_game.rom_code,
+                    revision: remote_game.revision,
+                },
                 match_type: pre_match.match_type,
                 rng_seed: pre_match.rng_seed,
                 rtc: rtc_time,
@@ -805,11 +808,11 @@ struct BootPieces {
     /// Both sides' netplay support, in seat order. Starting the match
     /// goes through these rather than an engine, so a DS game boots the
     /// same way a GBA one does.
-    pvp: [tango_gamesupport::Pvp; 2],
-    /// Which variant of the family the peer plays — a match can span
-    /// two (Gregar against Falzar) and the engine resolves each seat's
+    pvp: [&'static (dyn tango_match::MatchFactory + Send + Sync); 2],
+    /// The peer's cartridge — a match can span two variants and two
+    /// regions, and the local game's crate resolves that seat's engine
     /// support from it.
-    peer_variant: u8,
+    peer_rom: tango_match::PeerRom,
     match_type: (u8, u8),
     rng_seed: [u8; 16],
     rtc: std::time::SystemTime,
@@ -856,16 +859,14 @@ impl DriveContext {
         // The game's registration starts the match on whatever engine it
         // runs; this session never learns which.
         let local = pieces.pvp[pieces.local_player];
-        let peer = pieces.pvp[1 - pieces.local_player];
         let match_ = local.start(
-            &peer,
             tango_match::StartConfig {
                 roms: [&pieces.roms[0], &pieces.roms[1]],
                 saves: [Some(&pieces.saves[0]), Some(&pieces.saves[1])],
                 rng_seed: pieces.rng_seed,
                 rtc: pieces.rtc,
                 match_type: pieces.match_type,
-                peer_variant: pieces.peer_variant,
+                peer_rom: pieces.peer_rom,
                 local_player: pieces.local_player,
                 present_delay: pieces.present_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
                 disable_bgm: pieces.disable_bgm,

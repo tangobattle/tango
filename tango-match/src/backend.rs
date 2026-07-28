@@ -83,7 +83,25 @@ pub trait Backend: 'static {
     ///
     /// The backend supplies the drain and the seam's resampler does the
     /// rest, so what comes back is the same shape whatever the console.
-    fn audio(link: std::sync::Arc<std::sync::Mutex<Self::Link>>, player: usize) -> Box<dyn crate::AudioPull>;
+    ///
+    /// `player` is read per fill rather than fixed here, because a
+    /// training session moves the sound to whichever side the user just
+    /// swapped to and a single resampler has to follow it across.
+    fn audio(
+        link: std::sync::Arc<std::sync::Mutex<Self::Link>>,
+        player: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) -> Box<dyn crate::AudioPull>;
+
+    /// Turn rasterization on or off for one console.
+    ///
+    /// A netplay match renders only the local side — skipping the
+    /// remote one is most of what makes a rollback tick cheap — but a
+    /// host showing both (training's picture-in-picture) turns the
+    /// other back on. Frameskip is unserialized and invisible to the
+    /// simulation, so this is rollback-safe.
+    fn set_render(link: &mut Self::Link, player: usize, on: bool) {
+        let _ = (link, player, on);
+    }
 
 }
 
@@ -144,6 +162,31 @@ pub trait MatchFactory: Sync {
     /// Boot a pair, prime it into a link battle, and start the rollback
     /// session over it.
     fn start(&self, config: StartConfig) -> Result<Box<dyn RunningMatch>, crate::Error>;
+
+    /// How this game's chip use reads, for a host folding a live
+    /// match's statistics as it plays. `None` from an engine that
+    /// reports no chip events, and the host keeps the rest of the
+    /// stats without them.
+    fn chip_semantics(&self, rom: &[u8]) -> Option<(crate::analysis::ChipSemantics, bool)> {
+        let _ = rom;
+        None
+    }
+
+    /// Boot one console on its own, for a host that just wants to play
+    /// the game. Not every engine offers this — a game supported for
+    /// netplay only says so by leaving it alone.
+    fn start_solo(&self, config: crate::SoloConfig) -> Result<Box<dyn crate::RunningSolo>, crate::Error> {
+        let _ = config;
+        Err(crate::Error::Unsupported("this game has no single-player support"))
+    }
+
+    /// Re-simulate a recorded match from its inputs. Cheap: the two
+    /// simulations a [`ReplaySet`](crate::ReplaySet) offers boot when
+    /// the host asks for them.
+    fn open_replay(&self, config: crate::ReplayConfig) -> Result<Box<dyn crate::ReplaySet>, crate::Error> {
+        let _ = config;
+        Err(crate::Error::Unsupported("this game has no replay support"))
+    }
 }
 
 /// Everything a match needs to come up, in terms every backend shares.
@@ -162,13 +205,10 @@ pub struct StartConfig<'a> {
     pub rtc: std::time::SystemTime,
     /// The game's mode selection (type and subtype).
     pub match_type: (u8, u8),
-    /// Which variant of this family the *peer* is playing (e.g. Gregar
-    /// against Falzar). A match can span two variants, and an engine
-    /// may need per-variant support for each side — but a factory hangs
-    /// off the local game, so the peer arrives as a variant number the
-    /// game's own crate resolves against its siblings. That keeps the
-    /// seam free of registry types and needs no downcasting.
-    pub peer_variant: u8,
+    /// The peer's cartridge (see [`PeerRom`](crate::PeerRom)), which
+    /// the local game's crate resolves against its siblings when the
+    /// engine needs per-cartridge support for that seat.
+    pub peer_rom: crate::PeerRom,
     /// Which console this peer drives.
     pub local_player: usize,
     /// How many ticks behind the frontier to present. Purely local.
@@ -231,6 +271,28 @@ pub trait RunningMatch: Send {
     fn audio(&self) -> Option<Box<dyn crate::AudioPull>> {
         None
     }
+
+    /// Audio for whichever seat `seat` currently names, for a host that
+    /// can move the sound between them (training's side swap). Read per
+    /// fill, so a swap takes effect without rebuilding the stream.
+    fn seat_audio(
+        &self,
+        seat: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) -> Option<Box<dyn crate::AudioPull>> {
+        let _ = seat;
+        None
+    }
+
+    /// One seat's display, RGBA8, for a host showing more than the
+    /// local side. `None` unless [`render_seats`](Self::render_seats)
+    /// asked for that seat to be drawn.
+    fn seat_frame(&mut self, player: usize) -> Option<Vec<u8>> {
+        let _ = player;
+        None
+    }
+
+    /// Draw every seat, not just the local one.
+    fn render_seats(&mut self) {}
 
     /// The telemetry this match publishes, if it reads any.
     fn telemetry(&self) -> Option<&crate::telemetry::TelemetryHandle> {

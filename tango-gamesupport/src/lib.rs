@@ -155,7 +155,10 @@ pub struct Game {
     pub load_rom_assets_fn: Option<fn(rom: &[u8], wram: &[u8], charset: Option<&[&str]>) -> BoxedAssets>,
 
     /// How this ROM plays netplay, and on which engine.
-    pub pvp: Pvp,
+    /// How this game starts a match, plays on its own, and replays a
+    /// recording — all on whatever emulator it runs, which nothing
+    /// outside the game's own crate ever learns.
+    pub pvp: &'static (dyn tango_match::MatchFactory + Send + Sync),
 
     /// Length-per-mode list. Entry `i` is how many subtypes mode `i` has —
     /// e.g. BN6 is `[1, 1]`. Drives the match-type pick_list in the lobby.
@@ -240,60 +243,6 @@ impl std::fmt::Debug for Game {
         f.debug_struct("Game")
             .field("family_and_variant", &self.family_and_variant())
             .finish()
-    }
-}
-
-/// A game's netplay support, tagged by the engine behind it.
-///
-/// The GBA games hand the mgba engine their priming traps and RAM
-/// pollers directly. A game on another engine — BN5 Double Team DS runs
-/// on melonDS — starts matches through the engine-neutral factory
-/// instead, which is where the GBA games are headed too.
-#[derive(Clone, Copy)]
-pub enum Pvp {
-    Gba(&'static (dyn tango_backend_mgba::GameSupport + Send + Sync)),
-    Factory(&'static (dyn tango_match::MatchFactory + Send + Sync)),
-}
-
-impl Pvp {
-    /// The mgba engine's support, for the paths that still speak it.
-    pub fn gba(&self) -> Option<&'static (dyn tango_backend_mgba::GameSupport + Send + Sync)> {
-        match self {
-            Pvp::Gba(support) => Some(*support),
-            Pvp::Factory(_) => None,
-        }
-    }
-
-    /// Start a match between this game and `peer`.
-    ///
-    /// The pairing happens here because this is the layer that holds
-    /// both registrations: a GBA match needs each seat's engine
-    /// support, and only something seeing both games can hand them
-    /// over. A game on another engine starts through its own factory,
-    /// which already knows what it needs.
-    pub fn start(
-        &self,
-        peer: &Pvp,
-        config: tango_match::StartConfig,
-    ) -> Result<Box<dyn tango_match::RunningMatch>, tango_match::Error> {
-        match (self, peer) {
-            (Pvp::Gba(local), Pvp::Gba(peer)) => tango_backend_mgba::backend::start_match(*local, *peer, config),
-            (Pvp::Factory(factory), _) => factory.start(config),
-            // Two games on different engines cannot link: they are not
-            // the same console, let alone the same cable.
-            (Pvp::Gba(_), Pvp::Factory(_)) => Err(tango_match::Error::Backend(
-                "the two sides run on different engines".into(),
-            )),
-        }
-    }
-
-    /// The engine-neutral factory, for hosts that start a match without
-    /// knowing which emulator runs it.
-    pub fn factory(&self) -> Option<&'static (dyn tango_match::MatchFactory + Send + Sync)> {
-        match self {
-            Pvp::Factory(factory) => Some(*factory),
-            Pvp::Gba(_) => None,
-        }
     }
 }
 

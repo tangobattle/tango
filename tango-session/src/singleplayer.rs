@@ -1,19 +1,17 @@
 //! Standalone (no-netplay) emulator session: one machine on a link
 //! with nobody on the other end. Boots a ROM with the user-selected
 //! save and accepts joyflag input from the host's tick loop. The video
-//! frame plumbing mirrors the other sessions — the driver writes mgba's
-//! raw BGR555 into the session's own [`Framebuffer`](crate::Framebuffer)
-//! (the framebuffer shader expands it to RGB on the GPU).
+//! frame plumbing mirrors the other sessions — the driver publishes the
+//! console's frame into the session's own
+//! [`Framebuffer`](crate::Framebuffer).
 //!
-//! It runs on a one-side [`Link`](tango_backend_mgba::Link) rather than a bare
-//! core, which is what every other session kind here runs on: the cart
-//! sees its link hardware from power-on, the savedata comes back out
-//! through [`Link::export_save`](tango_backend_mgba::Link::export_save)
-//! wherever the host wants to put it, and this is the machine a future
-//! netplay handoff can plug a cable into.
+//! The console comes from the game's own registration
+//! ([`start_solo`](tango_match::MatchFactory::start_solo)), so this
+//! session never learns which emulator is underneath and a game whose
+//! engine offers no single-player ride simply says so.
 //!
-//! The core runs wherever the host drives it from (mgba is built
-//! without its thread runner). [`Driver::tick`] is one emulated frame,
+//! The console runs wherever the host drives it from. [`Driver::tick`]
+//! is one emulated frame,
 //! and the host decides what turns it: a desktop runs it on a thread of
 //! its own, paced to [`Driver::fps_target`]; a browser calls it from the
 //! event loop. Neither the thread nor the pacing lives here. Audio
@@ -22,34 +20,22 @@
 //! [`CoreStream`](crate::audio::CoreStream) rate control, so a
 //! stalled or torn-down audio device costs sound, never the session.
 //!
-//! No hooks::Hooks traps are installed: this is a vanilla emulator
-//! ride for one player. (The PVP / replay traps require a partner /
-//! recorded packets, neither of which apply here.)
+//! No priming happens: this is a vanilla ride for one player, where
+//! netplay's traps would have nothing to prime towards.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 const EXPECTED_FPS: f32 = 60.0;
 
-/// The session's machine, shared between whatever drives it and the
-/// audio stream (which pulls samples off it between ticks).
-type SharedLink = Arc<Mutex<tango_backend_mgba::Link>>;
-
-/// Audio pull over the session's mutex — a driver holds it only while
-/// stepping a frame, so the readout interleaves between ticks.
-/// Uncontended on a single-threaded host; the lock still matters there,
-/// because re-entering it from inside a tick would deadlock.
-struct SharedLinkPull(SharedLink);
-
-impl crate::audio::PairPull for SharedLinkPull {
-    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_backend_mgba::Link)) {
-        f(&mut self.0.lock().unwrap());
-    }
-}
+/// The session's console, shared between whatever drives it and the
+/// session itself (which reads the save off it).
+type SharedConsole = Arc<Mutex<Box<dyn tango_match::RunningSolo>>>;
 
 pub struct SinglePlayerSession {
     game: &'static tango_gamesupport::Game,
-    link: SharedLink,
+    console: SharedConsole,
+    layout: tango_match::ScreenLayout,
     joyflags: Arc<AtomicU32>,
     /// Pacing target as f32 bits. 60.0 = realtime; fast-forward raises it
     /// and the audio stream's faux clock compresses to match.
@@ -79,30 +65,25 @@ impl SinglePlayerSession {
         rtc: Option<std::time::SystemTime>,
         sample_rate: u32,
     ) -> Result<(Self, Driver, crate::audio::CoreStream), crate::Error> {
-        let mut link = tango_backend_mgba::Link::with_options(tango_backend_mgba::LinkOptions {
-            sides: vec![tango_backend_mgba::SideOptions {
-                rom: rom.as_ref().clone(),
-                save,
-            }],
+        let console = game.pvp.start_solo(tango_match::SoloConfig {
+            rom: rom.as_ref(),
+            save: save.as_deref(),
             rtc,
-            peripheral: tango_backend_mgba::Peripheral::Cable,
         })?;
-        // Queue headroom for the stream's rate control — the discard cap
-        // sits at 3x its 50 ms target and fast-forward piles up several
-        // callbacks' worth between fills; mGBA's default buffer doesn't
-        // hold that at BN4+'s 65536 Hz. Same sizing as the pair engine.
-        link.core_mut(0).set_audio_buffer_size(16384);
-        link.core_mut(0).audio_buffer().clear();
+        let audio_pull = console
+            .audio()
+            .ok_or_else(|| tango_match::Error::Backend("this console produces no audio".into()))?;
 
-        let link: SharedLink = Arc::new(Mutex::new(link));
+        let layout = game.pvp.screen_layout();
+        let console: SharedConsole = Arc::new(Mutex::new(console));
         let joyflags = Arc::new(AtomicU32::new(0));
         let fps_bits = Arc::new(AtomicU32::new(EXPECTED_FPS.to_bits()));
         let stop = Arc::new(AtomicBool::new(false));
-        let screen = crate::Framebuffer::new();
+        let screen = crate::Framebuffer::new(&layout);
         let wake = Arc::new(tokio::sync::Notify::new());
 
         let driver = Driver {
-            link: link.clone(),
+            console: console.clone(),
             joyflags: joyflags.clone(),
             fps_bits: fps_bits.clone(),
             stop: stop.clone(),
@@ -110,10 +91,7 @@ impl SinglePlayerSession {
             wake: wake.clone(),
         };
         let audio = crate::audio::CoreStream::new(
-            tango_match::Resampled::new(crate::audio::PairDrain {
-                pair: SharedLinkPull(link.clone()),
-                player: Box::new(|| 0),
-            }),
+            audio_pull,
             crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
             sample_rate,
         );
@@ -121,7 +99,8 @@ impl SinglePlayerSession {
         Ok((
             Self {
                 game,
-                link,
+                console,
+                layout,
                 joyflags,
                 fps_bits,
                 stop,
@@ -138,7 +117,7 @@ impl SinglePlayerSession {
     /// nothing here writes files — so a desktop host should also take a
     /// copy periodically rather than only at teardown.
     pub fn export_save(&self) -> Option<Vec<u8>> {
-        self.link.lock().unwrap().export_save(0)
+        self.console.lock().unwrap().export_save()
     }
 }
 
@@ -149,6 +128,14 @@ impl crate::Session for SinglePlayerSession {
 
     fn frame(&self) -> Vec<u8> {
         self.screen.read()
+    }
+
+    fn screen_layout(&self) -> tango_match::ScreenLayout {
+        self.layout.clone()
+    }
+
+    fn frame_size(&self) -> (u32, u32) {
+        crate::stacked_size(&self.layout)
     }
 
     fn wake(&self) -> Arc<tokio::sync::Notify> {
@@ -178,7 +165,7 @@ impl Drop for SinglePlayerSession {
 /// machine, the audio pull). Whoever holds this turns the crank: a
 /// drive thread on the desktop, the event loop in a browser.
 pub struct Driver {
-    link: SharedLink,
+    console: SharedConsole,
     joyflags: Arc<AtomicU32>,
     fps_bits: Arc<AtomicU32>,
     stop: Arc<AtomicBool>,
@@ -205,19 +192,16 @@ impl Driver {
             return false;
         }
         {
-            // Scoped: the audio pull takes this same mutex, so it must be
-            // free between ticks (and, on a single-threaded host, before
-            // this call returns to the pump).
-            let mut link = self.link.lock().unwrap();
-            if let Err(e) = link.try_tick(&[self.joyflags.load(Ordering::Relaxed)]) {
+            // Scoped: on a single-threaded host this must be free before
+            // the call returns to the pump.
+            let mut console = self.console.lock().unwrap();
+            if let Err(e) = console.tick(self.joyflags.load(Ordering::Relaxed)) {
                 log::error!("single-player emulation failed: {e}");
                 self.stop.store(true, Ordering::Relaxed);
                 return false;
             }
-            if let Some(frame) = link.video_buffer(0) {
-                // mgba's native BGR555 goes up as-is; the framebuffer
-                // shader expands it to RGB on the GPU at draw time.
-                self.screen.write(frame);
+            if let Some(frame) = console.frame() {
+                self.screen.write(&frame);
             }
         }
         // Wake the host's frame subscription so the UI rebuilds the

@@ -18,6 +18,7 @@
 
 pub mod audio;
 pub mod backend;
+pub mod factory;
 pub mod r#match;
 
 pub use backend::Mgba;
@@ -219,3 +220,5 @@ pub use tango_match::telemetry as shared_telemetry;
 
 /// The stats types and the telemetry fold, which moved to the seam.
 pub use tango_match::analysis as shared_analysis;
+
+pub use factory::{GbaFactory, Seat};

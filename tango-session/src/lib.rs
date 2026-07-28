@@ -33,11 +33,14 @@
 /// the waiting goes through [`platform`] rather than a tokio runtime a
 /// browser host doesn't have. A browser has played a real match over
 /// it; the reconnect path is the one part still unexercised there.
-pub mod pvp;
-pub mod match_session;
-pub mod replay;
+/// One machine, no netplay: the game as a single player rides it.
 pub mod singleplayer;
+/// Watching a recorded match.
+pub mod replay;
+pub mod pvp;
+/// A real link battle fought locally against a dummy on the other seat.
 pub mod training;
+pub mod match_session;
 
 // What they're built out of.
 pub mod audio;
@@ -56,12 +59,17 @@ pub mod stats;
 /// with X and Y, so one set of names covers both consoles.
 pub use tango_match::keys;
 
+/// A GBA screen, the default a session reports when it does not say
+/// otherwise.
+const GBA_SCREEN: (u32, u32) = (240, 160);
+
+
 /// Route the emulator's global logger through the `log` crate. Hosts
 /// call this once at startup — without it, a core outside any session
 /// (the app's prefetcher) falls through to the emulator's printf stub
 /// and writes `GBA BIOS: SWI: …` lines straight to stdout.
 pub fn install_emulator_logger() {
-    mgba::log::install_default_logger();
+    // Backends install their own; nothing here to route.
 }
 
 /// Placeholder marker: see [`Error::UnsupportedEngine`].
@@ -72,25 +80,24 @@ pub fn install_emulator_logger() {
 /// the same way (log + stay on the menu).
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// This session kind only drives the mgba engine, and the game runs
-    /// on another one. Replay playback and the GBA match path are the
-    /// two that still speak mgba directly.
+    /// The game's engine does not offer this kind of session — a
+    /// netplay-only game asked to be played on its own, say.
     #[error("this session does not support the game's engine")]
     UnsupportedEngine,
 
-    #[error(transparent)]
-    Mgba(#[from] mgba::Error),
     /// File IO (the single-player save open, the replay writer) or a
     /// failed thread spawn.
     #[error(transparent)]
     Io(#[from] std::io::Error),
-    /// The match engine failed to boot or prime the pair.
-    #[error(transparent)]
-    Engine(#[from] tango_backend_mgba::Error),
 
     /// Whatever the engine running a match reported, engine-neutral.
     #[error(transparent)]
     Match(#[from] tango_match::Error),
+
+    /// Whatever an engine-bound session's emulator reported. Boxed
+    /// because this crate names no emulator to type it against.
+    #[error(transparent)]
+    Engine(Box<dyn std::error::Error + Send + Sync>),
     /// The netplay handoff's transport bundle failed to assemble.
     #[error(transparent)]
     LinkBringUp(#[from] crate::net::link::BringUpError),
@@ -174,28 +181,39 @@ pub fn clamp_speed(base_fps: f32, factor: f32) -> f32 {
     (base_fps * factor).clamp(1.0, base_fps * 4.0)
 }
 
-/// One shared GBA screen — stored mgba-native BGR555, 2 bytes/pixel,
-/// with a session's emu thread writing it and the session reading it
-/// back out for the host, expanded to RGBA8 on the way out so hosts
-/// never see the console-native format. Internal: sessions publish
-/// [`frame`](Session::frame) pixels, not surfaces. A session
-/// builds one per screen it shows: its main display, plus the replay
-/// PiP's opponent view. Each starts zeroed, so a fresh session never
-/// flashes the previous one's last frame.
+/// A layout's screens stacked vertically, as a host sizes one texture
+/// for them. Screens of unequal width take the widest, which is what
+/// leaves a DS's narrower screen letterboxed rather than skewed.
+pub fn stacked_size(layout: &tango_match::ScreenLayout) -> (u32, u32) {
+    (
+        layout.screens.iter().map(|s| s.width).max().unwrap_or(0),
+        layout.screens.iter().map(|s| s.height).sum(),
+    )
+}
+
+/// One shared console screen, RGBA8 — a session's emu side writing it
+/// and the session reading it back out for the host.
+///
+/// Sized from the console's own [`ScreenLayout`](tango_match::ScreenLayout)
+/// rather than assumed, because a DS shows two screens where a GBA
+/// shows one, and the engine is the only thing that knows which. Nothing
+/// here converts anything: engines hand the seam RGBA8, so a surface is
+/// a buffer and a read is a copy.
+///
+/// A session builds one per screen it shows: its main display, plus the
+/// replay PiP's opponent view. Each starts zeroed, so a fresh session
+/// never flashes the previous one's last frame.
 ///
 /// Waking the host is deliberately not part of this: a session can
 /// write several screens for one tick (the replay PiP), and it has
 /// state worth a repaint that isn't a frame at all, so the wake is the
 /// session's ([`Session::wake`]) rather than the surface's.
-pub(crate) struct Framebuffer(std::sync::Mutex<Vec<u8>>);
+pub struct Framebuffer(std::sync::Mutex<Vec<u8>>);
 
 impl Framebuffer {
-    pub fn new() -> std::sync::Arc<Self> {
-        std::sync::Arc::new(Self(std::sync::Mutex::new(vec![
-            0u8;
-            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2)
-                as usize
-        ])))
+    /// A surface for `layout`'s screens, black until the first frame.
+    pub fn new(layout: &tango_match::ScreenLayout) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self(std::sync::Mutex::new(vec![0u8; layout.buffer_len()])))
     }
 
     /// Emu side: put this frame up. A wrong-sized `pixels` is ignored
@@ -207,13 +225,10 @@ impl Framebuffer {
         }
     }
 
-    /// Host side: a copy of the frame currently up, expanded to RGBA8
-    /// — what [`Session::frame`] hands out.
+    /// Host side: a copy of the frame currently up — what
+    /// [`Session::frame`] hands out.
     pub fn read(&self) -> Vec<u8> {
-        let vbuf = self.0.lock().unwrap();
-        let mut rgba = vec![0u8; vbuf.len() * 2];
-        mgba::gba::bgr555_to_rgba8(&vbuf, &mut rgba);
-        rgba
+        self.0.lock().unwrap().clone()
     }
 }
 
@@ -271,7 +286,13 @@ pub trait Session: std::any::Any {
     /// a DS stacks two — reports the whole buffer, so a host sizes its
     /// texture from the session instead of assuming a shape.
     fn frame_size(&self) -> (u32, u32) {
-        (mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT)
+        GBA_SCREEN
+    }
+
+    /// The screens this session's console presents, which is what
+    /// [`frame_size`](Self::frame_size) is a summary of.
+    fn screen_layout(&self) -> tango_match::ScreenLayout {
+        tango_match::ScreenLayout::single(GBA_SCREEN.0, GBA_SCREEN.1)
     }
 
     /// This session's current display frame, as RGBA8 (4 bytes per
@@ -313,7 +334,7 @@ pub trait Session: std::any::Any {
     /// Pre-drop teardown. Default no-op — only PvP has any: it cancels
     /// its token so the receive loop announces the quit to the peer
     /// instead of leaving them hanging on a reconnect window. Replay
-    /// and single-player sessions close by being dropped (the mgba
+    /// and single-player sessions close by being dropped (the emulation
     /// thread joins in Drop).
     fn request_close(&self) {}
 

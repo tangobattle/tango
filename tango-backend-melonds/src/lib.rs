@@ -89,7 +89,7 @@ impl Backend for MelonDs {
 
     fn audio(
         link: std::sync::Arc<std::sync::Mutex<Link>>,
-        player: usize,
+        player: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     ) -> Box<dyn tango_match::AudioPull> {
         Box::new(crate::audio::pull(link, player))
     }

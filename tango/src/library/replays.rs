@@ -82,11 +82,13 @@ fn analyze_replay(
 ) -> anyhow::Result<tango_backend_mgba::r#match::analysis::MatchStats> {
     let local_player = replay.local_player_index as usize;
     let inputs: Vec<[u32; 2]> = replay.inputs.iter().map(|&[p1, p2]| [p1 as u32, p2 as u32]).collect();
-    // Offline re-analysis re-simulates on the mgba engine.
-    let support: [&dyn tango_backend_mgba::GameSupport; 2] = [
-        games[0].pvp.gba().ok_or_else(|| anyhow::anyhow!("replay analysis supports mgba games only"))?,
-        games[1].pvp.gba().ok_or_else(|| anyhow::anyhow!("replay analysis supports mgba games only"))?,
-    ];
+    // Offline re-analysis re-simulates on the mgba engine directly, so
+    // it needs both seats' support rather than a session.
+    let seat = |g: &'static tango_gamesupport::Game| {
+        tango_library::game::mgba_support(g.rom_code, g.revision)
+            .ok_or_else(|| anyhow::anyhow!("replay analysis supports mgba games only"))
+    };
+    let support: [&dyn tango_backend_mgba::GameSupport; 2] = [seat(games[0])?, seat(games[1])?];
     tango_backend_mgba::r#match::analysis::analyze(
         tango_backend_mgba::r#match::analysis::AnalyzeConfig {
             roms: roms.clone(),

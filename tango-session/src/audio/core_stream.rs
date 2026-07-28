@@ -84,54 +84,6 @@ const AUDIO_DISCARD_FACTOR: f64 = 3.0;
 const STRETCH_ENGAGE_DEV: f64 = 0.05;
 const STRETCH_DISENGAGE_DEV: f64 = 0.02;
 
-/// Cross-thread access to a live pair, for the sessions that still
-/// drive an engine directly (replay playback, single-player, training).
-/// A host mid-boot may simply not call `f`; the stream plays silence
-/// until the pair exists.
-pub trait PairPull: Send {
-    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_backend_mgba::Link));
-}
-
-impl PairPull for tango_backend_mgba::LinkHandle {
-    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_backend_mgba::Link)) {
-        tango_backend_mgba::LinkHandle::with_link(self, |pair| f(pair));
-    }
-}
-
-/// One player's console of such a pair, as something the shared
-/// resampler can drain. `player` is re-read every fill: a replay's
-/// perspective swap flips it.
-pub struct PairDrain<P> {
-    pub pair: P,
-    pub player: Box<dyn Fn() -> usize + Send>,
-}
-
-impl<P: PairPull> tango_match::AudioDrain for PairDrain<P> {
-    fn sample_rate(&self) -> f64 {
-        let mut rate = 0.0;
-        self.pair
-            .with_pair(&mut |pair| rate = pair.core_mut((self.player)()).audio_sample_rate() as f64);
-        rate
-    }
-
-    fn framerate_ratio(&self, fps_target: f64) -> f64 {
-        let mut ratio = 1.0;
-        self.pair
-            .with_pair(&mut |pair| ratio = pair.core_mut((self.player)()).calculate_framerate_ratio(fps_target));
-        ratio
-    }
-
-    fn drain(&mut self, out: &mut [i16]) -> usize {
-        let mut frames = 0;
-        self.pair.with_pair(&mut |pair| {
-            let buffer = pair.core_mut((self.player)()).audio_buffer();
-            let want = (out.len() / 2).min(buffer.available());
-            frames = buffer.read(out, want);
-        });
-        frames
-    }
-}
-
 pub struct CoreStream {
     /// The console's audio, already resampled to the device rate by
     /// whichever backend produced it. This stream never learns which

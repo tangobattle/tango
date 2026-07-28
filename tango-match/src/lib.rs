@@ -24,10 +24,16 @@ pub mod engine;
 pub mod analysis;
 pub mod battle;
 pub mod input;
+pub mod seek;
+pub mod solo;
 pub mod telemetry;
 pub mod throttler;
 
 pub use audio::{AudioDrain, AudioPull, Resampled};
+pub use solo::{
+    PeerRom, ReplayConfig, ReplayFrames, ReplaySet, RunningReplay, RunningSolo, SeekStep, SoloConfig,
+    StatsPass,
+};
 pub use backend::{Backend, MatchFactory, RunningMatch, Screen, ScreenLayout, StartConfig};
 
 /// The clock-sync governor: feed it `skew()` + `speculation_balance()`
@@ -52,6 +58,12 @@ pub enum Error {
     /// any of them.
     #[error(transparent)]
     Backend(Box<dyn std::error::Error + Send + Sync>),
+
+    /// A ride this game's engine doesn't offer — a netplay-only game
+    /// asked for single-player, say. Not a failure: the host reports
+    /// the option isn't available and carries on.
+    #[error("{0}")]
+    Unsupported(&'static str),
 }
 
 /// The joypad bits a match speaks, engine-neutral.

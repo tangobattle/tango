@@ -54,6 +54,48 @@ pub static FAMILIES: LazyLock<Vec<&'static Family>> = LazyLock::new(|| {
     families
 });
 
+/// Every mgba-engine cartridge this build knows.
+///
+/// Sessions never need this — a game starts a match, a solo ride or a
+/// replay through its own registration, which keeps its engine to
+/// itself. These two paths are the exception: offline replay
+/// re-analysis and video export re-simulate a recorded match
+/// *themselves* rather than through a session, so they need the engine
+/// support directly. Both are on the way to the seam; until they get
+/// there, this is where they look it up.
+pub static MGBA_SEATS: LazyLock<Vec<tango_backend_mgba::Seat>> = LazyLock::new(|| {
+    let mut seats: Vec<tango_backend_mgba::Seat> = Vec::new();
+    #[cfg(feature = "gamesupport-bcc")]
+    seats.extend_from_slice(tango_gamesupport_bcc::FAMILY);
+    #[cfg(feature = "gamesupport-bn1")]
+    seats.extend_from_slice(tango_gamesupport_bn1::FAMILY);
+    #[cfg(feature = "gamesupport-bn2")]
+    seats.extend_from_slice(tango_gamesupport_bn2::FAMILY);
+    #[cfg(feature = "gamesupport-bn3")]
+    seats.extend_from_slice(tango_gamesupport_bn3::FAMILY);
+    #[cfg(feature = "gamesupport-bn4")]
+    seats.extend_from_slice(tango_gamesupport_bn4::FAMILY);
+    #[cfg(feature = "gamesupport-bn5")]
+    seats.extend_from_slice(tango_gamesupport_bn5::FAMILY);
+    #[cfg(feature = "gamesupport-bn6")]
+    seats.extend_from_slice(tango_gamesupport_bn6::FAMILY);
+    #[cfg(feature = "gamesupport-exe45")]
+    seats.extend_from_slice(tango_gamesupport_exe45::FAMILY);
+    seats
+});
+
+/// The mgba engine support for a cartridge, or `None` for a game on
+/// another engine (BN5 Double Team DS runs on melonDS).
+pub fn mgba_support(
+    code: &[u8; 4],
+    revision: u8,
+) -> Option<&'static (dyn tango_backend_mgba::GameSupport + Send + Sync)> {
+    MGBA_SEATS
+        .iter()
+        .find(|(c, r, _)| *c == code && *r == revision)
+        .map(|(_, _, support)| *support)
+}
+
 /// The flat game registry, derived from [`FAMILIES`].
 pub static GAMES: LazyLock<Vec<GameRef>> = LazyLock::new(|| tango_gamesupport::games_of(&FAMILIES));
 
