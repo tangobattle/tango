@@ -49,8 +49,8 @@ use tango_session::replay::ReplaySession;
 use tango_session::singleplayer::SinglePlayerSession;
 use tango_session::Session;
 
-const SCREEN_W: usize = mgba::gba::SCREEN_WIDTH as usize;
-const SCREEN_H: usize = mgba::gba::SCREEN_HEIGHT as usize;
+const SCREEN_W: usize = tango_session::replay::SCREEN_WIDTH as usize;
+const SCREEN_H: usize = tango_session::replay::SCREEN_HEIGHT as usize;
 
 /// The canvas the frame goes to. Looked up by id rather than through a
 /// mounted-node handle, because the pump outlives any one render.
@@ -290,9 +290,7 @@ struct Engine {
     /// carried over from it.
     last_ms: f64,
     debt: f64,
-    /// Reused RGBA staging for the canvas blit.
-    rgba: Vec<u8>,
-    /// The JS-side twin of `rgba` and the `ImageData` aliasing it, built
+    /// The JS-side staging array and the `ImageData` aliasing it, built
     /// once per canvas. See [`Engine::paint`].
     surface: Option<(js_sys::Uint8ClampedArray, web_sys::ImageData)>,
     /// A tick has produced a frame that hasn't been drawn yet. Cleared
@@ -382,7 +380,6 @@ fn install(
             kind,
             last_ms: now,
             debt: 0.0,
-            rgba: vec![0u8; SCREEN_W * SCREEN_H * 4],
             surface: None,
             fresh: false,
             prefetch_cost_ms: PREFETCH_COST_GUESS_MS,
@@ -652,12 +649,9 @@ impl Engine {
         }
         let Some(ctx) = self.ctx.as_ref() else { return };
         let frame = self.session.frame();
-        if frame.len() != SCREEN_W * SCREEN_H * 2 {
+        if frame.len() != SCREEN_W * SCREEN_H * 4 {
             return;
         }
-        // mgba hands out its native BGR555; the shared LUT conversion is
-        // the same one the desktop's replay renderer uses.
-        mgba::gba::bgr555_to_rgba8(&frame, &mut self.rgba);
 
         // One JS-side buffer for the session's life, with an ImageData
         // view onto it. `new ImageData(array, …)` aliases the array it
@@ -677,7 +671,7 @@ impl Engine {
         let Some((array, image)) = self.surface.as_ref() else {
             return;
         };
-        array.copy_from(&self.rgba);
+        array.copy_from(&frame);
         let _ = ctx.put_image_data(image, 0.0, 0.0);
     }
 }

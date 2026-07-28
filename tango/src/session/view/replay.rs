@@ -716,7 +716,7 @@ fn replay_transport<'a>(
 ) -> sweeten::widget::Row<'a, Message> {
     let total = r.total_ticks().max(1);
     let cur = playhead_tick(r, state);
-    // The mgba thread is paused for the duration of a scrub drag and
+    // The emu thread is paused for the duration of a scrub drag and
     // the seek chase that follows it, but when playback resumes on
     // landing the session is logically still *playing* — flipping the
     // button to "Play" mid-scrub reads as a stuck pause.
@@ -897,7 +897,7 @@ const PAD_W: f32 = 160.0;
 /// the same lit chrome as the settings' live binding test — so the
 /// chip never changes size or layout as inputs flip.
 fn input_pad<'a>(joyflags: u16) -> Element<'a, Message> {
-    use mgba::input::keys;
+    use tango_session::keys;
     let cell = 24.0;
     let key = move |content: Element<'a, Message>, bit: u32, w: f32, h: f32, radius: iced::border::Radius| {
         let lit = joyflags as u32 & bit != 0;

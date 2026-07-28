@@ -4,12 +4,13 @@
 //!   key (iced's physical [`Code`], serialized as its Debug name,
 //!   e.g. `"KeyZ"` / `"ArrowLeft"` / `"ShiftLeft"`), gamepad
 //!   button, or gamepad axis past a threshold.
-//! - [`Mapping`] is the per-mgba-key list of `PhysicalInput`s the
-//!   user has assigned (so one mgba key can have multiple
+//! - [`Mapping`] is the per-GBA-key list of `PhysicalInput`s the
+//!   user has assigned (so one GBA key can have multiple
 //!   bindings — keyboard *and* controller).
 //! - [`HeldState`] tracks what's currently pressed from keyboard +
 //!   gamepad event streams. The session main loop combines
-//!   `Mapping` + `HeldState` into the joyflags it pushes to mgba.
+//!   `Mapping` + `HeldState` into the joyflags it pushes to the
+//!   session.
 //!
 //! Keyboard bindings are layout-independent: we match on the
 //! physical key's [`Code`] rather than the logical character it
@@ -365,9 +366,9 @@ impl GamepadAxis {
     }
 }
 
-/// Per-mgba-key list of `PhysicalInput`. Each key can have
+/// Per-GBA-key list of `PhysicalInput`. Each key can have
 /// multiple bindings (kbd + gamepad simultaneously); pressing
-/// any one of them counts as the mgba key being held.
+/// any one of them counts as the GBA key being held.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Mapping {
@@ -460,11 +461,11 @@ impl Mapping {
         }
     }
 
-    /// Compute the mgba joyflag bitmask for the supplied held
-    /// state. Speed-up isn't an mgba bit; check it separately via
+    /// Compute the GBA joyflag bitmask for the supplied held
+    /// state. Speed-up isn't a joypad bit; check it separately via
     /// [`Self::speed_up_held`].
-    pub fn to_mgba_keys(&self, state: &HeldState) -> u32 {
-        use mgba::input::keys;
+    pub fn to_joyflags(&self, state: &HeldState) -> u32 {
+        use tango_session::keys;
         let bit_if = |slot: &Vec<PhysicalInput>, bit: u32| -> u32 {
             if slot.iter().any(|p| state.is_active(p)) {
                 bit
@@ -489,7 +490,7 @@ impl Mapping {
     }
 }
 
-/// The mgba keys the user can rebind. Drives the settings UI
+/// The GBA keys the user can rebind. Drives the settings UI
 /// layout + the per-key add/remove flow.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MappedKey {

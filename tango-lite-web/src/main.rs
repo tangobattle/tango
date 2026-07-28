@@ -14,7 +14,7 @@
 //!   [`CoreStream`](tango_session::audio::CoreStream) cpal pulls on the
 //!   desktop.
 //! * [`input`] — touch buttons and a keyboard map, resolved into one
-//!   mgba joyflag word.
+//!   GBA joyflag word.
 //! * [`link`] — the netplay state machine, pumped from the microtask
 //!   queue and handed off into a live match.
 //! * [`storage`] — the ROM/save locker, in IndexedDB.

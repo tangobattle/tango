@@ -373,10 +373,10 @@ fn run_app() -> iced::Result {
         Command::Join { link_code } => link_code,
     });
     let _ = INIT_LINK_CODE.set(init_link_code);
-    // Route mgba's global default logger through `c_log` too — without
-    // this, the prefetcher's bare Core falls through to mgba's printf
-    // stub and spams `GBA BIOS: SWI: …` lines straight to stdout.
-    mgba::log::install_default_logger();
+    // Route the emulator's global logger through `c_log` too — without
+    // this, the prefetcher's bare core falls through to the emulator's
+    // printf stub and spams `GBA BIOS: SWI: …` lines straight to stdout.
+    tango_session::install_emulator_logger();
 
     // Initialize SDL3 + warm the gamepad context now (main thread) so
     // the first emulator session's first redraw doesn't pay for

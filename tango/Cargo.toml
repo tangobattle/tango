@@ -49,7 +49,6 @@ mailparse = "0.14"
 open = "5"
 bps = { git = "https://github.com/tangobattle/bps" }
 discord-ipc = { git = "https://github.com/tangobattle/discord-ipc" }
-mgba.workspace = true
 rennet.workspace = true
 tango-net-protocol = { path = "../tango-net-protocol" }
 tango-lobby = { path = "../tango-lobby" }

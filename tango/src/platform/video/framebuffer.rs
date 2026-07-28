@@ -52,9 +52,9 @@ use iced::Rectangle;
 
 /// The native GBA framebuffer is 240×160; the uploaded texture is always
 /// native and the selected [`Effect`] magnifies it in the fragment shader.
-/// The pixels arrive already CPU-expanded from mGBA's BGR555 to RGBA8 (the
-/// session host runs them through the shared `bgr555_to_rgba8` table), so
-/// the shaders never touch BGR555 — the texture hands them ready-made RGB.
+/// The pixels arrive already CPU-expanded to RGBA8 (sessions publish
+/// RGBA8 — see [`tango_session::Session::frame`]), so the shaders never
+/// touch the console-native format — the texture hands them ready-made RGB.
 const BYTES_PER_PIXEL: u32 = 4;
 
 /// A selectable GPU upscaler, defined as a named constant in

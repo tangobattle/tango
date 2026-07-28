@@ -17,7 +17,7 @@
 
 use dioxus::prelude::*;
 
-use mgba::input::keys;
+use tango_session::keys;
 
 use crate::input;
 

@@ -129,7 +129,6 @@ getrandom = { version = "0.2", features = ["js"] }
 # Gamepad API on wasm; `default-features = false` drops the SDL half,
 # which this target never links anyway.
 gamepad-facade = { git = "https://github.com/tangobattle/gamepad-facade", default-features = false }
-mgba.workspace = true
 tango-gamesupport = { path = "../tango-gamesupport" }
 # `native` off: that feature is the std-fs + reqwest + Steam half. This
 # crate supplies the browser implementations of the two seams instead

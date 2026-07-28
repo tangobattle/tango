@@ -49,6 +49,19 @@ pub mod platform;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod stats;
 
+/// The GBA joypad bit vocabulary [`Session::set_joyflags`] speaks —
+/// re-exported so hosts get the bit names without their own emulator
+/// dependency.
+pub use mgba::input::keys;
+
+/// Route the emulator's global logger through the `log` crate. Hosts
+/// call this once at startup — without it, a core outside any session
+/// (the app's prefetcher) falls through to the emulator's printf stub
+/// and writes `GBA BIOS: SWI: …` lines straight to stdout.
+pub fn install_emulator_logger() {
+    mgba::log::install_default_logger();
+}
+
 /// Why a session failed to construct or boot, any kind. One enum for
 /// all three session kinds — their failure sets overlap heavily (core
 /// boot, thread spawn, engine priming), and hosts route every variant
@@ -147,9 +160,10 @@ pub fn clamp_speed(base_fps: f32, factor: f32) -> f32 {
     (base_fps * factor).clamp(1.0, base_fps * 4.0)
 }
 
-/// One shared GBA screen — mgba-native BGR555, 2 bytes/pixel — with
-/// a session's emu thread writing it and the session reading it back
-/// out for the host. Internal: sessions publish
+/// One shared GBA screen — stored mgba-native BGR555, 2 bytes/pixel,
+/// with a session's emu thread writing it and the session reading it
+/// back out for the host, expanded to RGBA8 on the way out so hosts
+/// never see the console-native format. Internal: sessions publish
 /// [`frame`](Session::frame) pixels, not surfaces. A session
 /// builds one per screen it shows: its main display, plus the replay
 /// PiP's opponent view. Each starts zeroed, so a fresh session never
@@ -179,9 +193,13 @@ impl Framebuffer {
         }
     }
 
-    /// Host side: a copy of the frame currently up, as raw BGR555.
+    /// Host side: a copy of the frame currently up, expanded to RGBA8
+    /// — what [`Session::frame`] hands out.
     pub fn read(&self) -> Vec<u8> {
-        self.0.lock().unwrap().clone()
+        let vbuf = self.0.lock().unwrap();
+        let mut rgba = vec![0u8; vbuf.len() * 2];
+        mgba::gba::bgr555_to_rgba8(&vbuf, &mut rgba);
+        rgba
     }
 }
 
@@ -233,10 +251,10 @@ pub trait Session: std::any::Any {
     /// the emulator pane.
     fn local_game(&self) -> &'static tango_gamesupport::Game;
 
-    /// This session's current display frame, as raw BGR555 (2 bytes
-    /// per pixel, mgba-native) — the host uploads it to a GPU texture
-    /// every repaint, so it hands back a copy rather than the live
-    /// surface the emu thread is writing.
+    /// This session's current display frame, as RGBA8 (4 bytes per
+    /// pixel) — the host uploads it to a GPU texture every repaint, so
+    /// it hands back a copy rather than the live surface the emu
+    /// thread is writing.
     fn frame(&self) -> Vec<u8>;
 
     /// Signalled whenever the host should take another look: a new
@@ -258,10 +276,10 @@ pub trait Session: std::any::Any {
         None
     }
 
-    /// Overwrite the entire mgba joyflag bitmap — the configurable
-    /// input mapping resolves multiple held bindings into one flag
-    /// word and pushes the result here every event. Default no-op:
-    /// replay playback feeds recorded input instead.
+    /// Overwrite the entire GBA joyflag bitmap (bits from [`keys`]) —
+    /// the configurable input mapping resolves multiple held bindings
+    /// into one flag word and pushes the result here every event.
+    /// Default no-op: replay playback feeds recorded input instead.
     fn set_joyflags(&self, _joyflags: u32) {}
 
     /// Drive the session at `factor` × realtime (fast-forward /

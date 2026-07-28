@@ -142,9 +142,9 @@ pub struct Scrub {
     /// the bar — and during a drag, when the full-screen blit preview
     /// supersedes it.
     pub hover: Option<scrubber::HoverInfo>,
-    /// RGBA conversion of the snapshot behind the hover thumbnail,
+    /// Image handle for the snapshot behind the hover thumbnail,
     /// keyed by the snapshot's absolute tick so cursor moves within
-    /// the same keyframe reuse the handle instead of re-converting.
+    /// the same keyframe reuse the handle instead of rebuilding it.
     pub thumb: Option<(u32, iced::widget::image::Handle)>,
     /// Whether the transport bar's clip strip is expanded (the
     /// scissors toggle). The strip owns the mark/export controls so
@@ -202,9 +202,11 @@ impl Scrub {
         let Some(h) = self.hover else { return };
         if let Some(snap) = replay.nearest_snapshot(h.tick) {
             let snap_tick = snap.key_tick();
-            let fb = snap.local_framebuffer();
-            if !fb.is_empty() && self.thumb.as_ref().map(|(t, _)| *t) != Some(snap_tick) {
-                self.thumb = Some((snap_tick, thumbnail_handle(fb)));
+            if self.thumb.as_ref().map(|(t, _)| *t) != Some(snap_tick) {
+                let fb = snap.local_framebuffer();
+                if !fb.is_empty() {
+                    self.thumb = Some((snap_tick, thumbnail_handle(fb)));
+                }
             }
         }
     }
@@ -463,7 +465,7 @@ pub struct State {
     pub self_panel: anim::Overlay,
     /// Combined keyboard + gamepad held state. Updated from
     /// the input event stream; the user's Mapping resolves it
-    /// into mgba joyflags each event.
+    /// into GBA joyflags each event.
     pub input_held: crate::platform::input::HeldState,
     /// Last value of `mapping.speed_up_held(...)` so we can
     /// detect the falling/rising edge and only call set_speed
@@ -909,12 +911,12 @@ impl State {
                     }
                 }
                 self.input_held.apply(&ev);
-                let joyflags = mapping.to_mgba_keys(&self.input_held);
+                let joyflags = mapping.to_joyflags(&self.input_held);
                 if let Some(s) = self.active.as_ref() {
                     s.set_joyflags(joyflags);
                 }
                 // Speed-up: only fire set_speed on the rising or
-                // falling edge so we don't spam mgba's audio
+                // falling edge so we don't spam the session's audio
                 // sync target with no-op writes.
                 let now_engaged = mapping.speed_up_held(&self.input_held);
                 if now_engaged != self.speed_up_engaged {
@@ -1000,10 +1002,10 @@ impl State {
                         self.close_session();
                         self.results = results;
                     } else {
-                        // Expand the native BGR555 frame to RGBA8 on the CPU
-                        // ([`expand_frame`]); the selected effect magnifies it
-                        // on the GPU at draw time.
-                        let pixels = expand_frame(&session.frame());
+                        // Frames arrive already expanded to RGBA8; the
+                        // selected effect magnifies them on the GPU at
+                        // draw time.
+                        let pixels = session.frame();
                         self.frame_revision = self.frame_revision.wrapping_add(1);
                         self.current_frame = Some(crate::platform::video::framebuffer::Frame {
                             pixels: std::sync::Arc::new(pixels),
@@ -1022,7 +1024,7 @@ impl State {
                         self.pip_frame = session.pip_frame().map(|pixels| {
                             self.pip_revision = self.pip_revision.wrapping_add(1);
                             crate::platform::video::framebuffer::Frame {
-                                pixels: std::sync::Arc::new(expand_frame(&pixels)),
+                                pixels: std::sync::Arc::new(pixels),
                                 width: replay::SCREEN_WIDTH,
                                 height: replay::SCREEN_HEIGHT,
                                 revision: self.pip_revision,
@@ -1163,23 +1165,10 @@ const CONTROLS_HIDE_AFTER: std::time::Duration = std::time::Duration::from_milli
 /// flashes it as feedback that the key registered.
 const ESC_QUIT_HOLD: std::time::Duration = std::time::Duration::from_secs(3);
 
-/// Expand an mgba-native BGR555 framebuffer (one little-endian `u16`
-/// per pixel — what [`Session::frame`] hands back) to RGBA8, via the
-/// shared conversion table that also renders ROM sprites/palettes and
-/// replay video exports. This feeds the per-frame GPU upload (the
-/// effect shaders take ready-made RGBA8 and never touch BGR555 — see
-/// `video/framebuffer.rs`) as well as the scrub hover thumbnail. At
-/// 240×160 it's cheap.
-fn expand_frame(framebuffer: &[u8]) -> Vec<u8> {
-    let mut rgba = vec![0u8; framebuffer.len() * 2];
-    mgba::gba::bgr555_to_rgba8(framebuffer, &mut rgba);
-    rgba
-}
-
-/// [`expand_frame`] into an image handle for the hover thumbnail; it
-/// only runs when the hovered keyframe changes.
-fn thumbnail_handle(framebuffer: &[u8]) -> iced::widget::image::Handle {
-    iced::widget::image::Handle::from_rgba(replay::SCREEN_WIDTH, replay::SCREEN_HEIGHT, expand_frame(framebuffer))
+/// Wrap a snapshot's RGBA8 pixels into an image handle for the hover
+/// thumbnail; it only runs when the hovered keyframe changes.
+fn thumbnail_handle(pixels: Vec<u8>) -> iced::widget::image::Handle {
+    iced::widget::image::Handle::from_rgba(replay::SCREEN_WIDTH, replay::SCREEN_HEIGHT, pixels)
 }
 
 /// Route a freshly-built session's audio stream into the host output,
@@ -1646,7 +1635,8 @@ pub fn spawn_singleplayer(
         raw
     };
     // The session runs on a link, which holds its savedata in memory
-    // rather than memory-mapping the file mgba used to write through —
+    // rather than memory-mapping the file the emulator used to write
+    // through —
     // so the bytes go in here and come back out through
     // [`SaveBackup`], which is what actually keeps the file current.
     let save = std::fs::read(&loaded.save_path)?;

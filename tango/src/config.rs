@@ -26,7 +26,7 @@ pub struct Config {
 
     /// User-editable input bindings (keyboard + gamepad). See
     /// [`crate::platform::input::Mapping::default`] for the
-    /// out-of-the-box layout. Each mgba key can have multiple bindings.
+    /// out-of-the-box layout. Each GBA key can have multiple bindings.
     pub input_mapping: crate::platform::input::Mapping,
 }
 

@@ -1,4 +1,4 @@
-//! One mgba joyflag word, from touch, a keyboard, and a gamepad.
+//! One GBA joyflag word, from touch, a keyboard, and a gamepad.
 //!
 //! The session takes the whole bitmap at once ([`Session::set_joyflags`]),
 //! so every source folds into one held-buttons word that the pump reads
@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
-use mgba::input::keys;
+use tango_session::keys;
 
 thread_local! {
     static TOUCH: Cell<u32> = const { Cell::new(0) };

@@ -492,8 +492,7 @@ impl ReplaySession {
     /// The captured snapshot nearest `target`, if any — backs the hover
     /// thumbnail above the scrub bar and the drag preview blit. Near the
     /// playhead the rewind window supplies exact frames; elsewhere it's
-    /// the store's keyframes. Framebuffers are mgba-native BGR555, same
-    /// as the shared display buffer.
+    /// the store's keyframes.
     pub fn nearest_snapshot(&self, target: u32) -> Option<NearestSnapshot> {
         let s = &self.engine;
         [s.snapshots.nearest(target), s.rewind.nearest(target)]
@@ -606,10 +605,14 @@ impl NearestSnapshot {
         self.snap.tick
     }
 
-    /// The local perspective's pixels (mgba-native BGR555). May be
-    /// empty if the capture had no rendered frame.
-    pub fn local_framebuffer(&self) -> &[u8] {
-        &self.snap.framebuffers[self.local_player]
+    /// The local perspective's pixels, expanded to RGBA8 like
+    /// [`Session::frame`](crate::Session::frame). May be empty if the
+    /// capture had no rendered frame.
+    pub fn local_framebuffer(&self) -> Vec<u8> {
+        let fb = &self.snap.framebuffers[self.local_player];
+        let mut rgba = vec![0u8; fb.len() * 2];
+        mgba::gba::bgr555_to_rgba8(fb, &mut rgba);
+        rgba
     }
 }
 
