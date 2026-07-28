@@ -56,7 +56,7 @@ tango-lobby = { path = "../tango-lobby" }
 tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"] }
 tango-library = { path = "../tango-library" }
 tango-match = { path = "../tango-match" }
-tango-match-mgba = { path = "../tango-match-mgba" }
+tango-backend-mgba = { path = "../tango-backend-mgba" }
 tango-replay = { path = "../tango-replay" }
 tango-replay-renderer = { path = "../tango-replay-renderer" }
 tango-session = { path = "../tango-session" }

@@ -395,8 +395,8 @@ impl App {
         // duplicate worker; the prefetch stream's completion clears it.
         self.replays.hp_pending.insert(path.to_path_buf());
 
-        let (partial_tx, partial_rx) = futures::channel::mpsc::unbounded::<tango_match_mgba::analysis::MatchStats>();
-        let done: std::sync::Arc<std::sync::Mutex<Option<tango_match_mgba::analysis::MatchStats>>> = Default::default();
+        let (partial_tx, partial_rx) = futures::channel::mpsc::unbounded::<tango_backend_mgba::r#match::analysis::MatchStats>();
+        let done: std::sync::Arc<std::sync::Mutex<Option<tango_backend_mgba::r#match::analysis::MatchStats>>> = Default::default();
         let job = session::replay::PrefetchStatsJob {
             partial_tx,
             done: done.clone(),

@@ -8,7 +8,7 @@
 //! trap-driven netcode. The host drives it directly — [`advance`] once
 //! per frame with the local joypad — and reads video, telemetry, and
 //! clock-sync signals back. Round boundaries and outcomes come from the
-//! telemetry [`Store`](crate::telemetry::Store), not from traps.
+//! telemetry [`Store`](crate::r#match::telemetry::Store), not from traps.
 //!
 //! (mgba-rollback links go up to four players, but every game tango
 //! supports is a two-player link battle, so this engine is two-player
@@ -19,7 +19,7 @@
 
 use mgba_rollback::{Link, LinkOptions, Peripheral, SideOptions};
 
-use crate::telemetry::{Telemetry, TelemetryHandle};
+use crate::r#match::telemetry::{Telemetry, TelemetryHandle};
 use crate::{GameSupport, PrimeConfig};
 
 pub use mgba_rollback::session::{Outgoing, Report};
@@ -104,7 +104,7 @@ impl Match {
             rng_seed,
             disable_bgm,
         };
-        let lifecycle = crate::telemetry::LifecycleSink::new();
+        let lifecycle = crate::r#match::telemetry::LifecycleSink::new();
         let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
         // The cores own their primer traps (see [`Link::set_traps`]): the
         // pair outlives this Match whenever a host still holds a
@@ -150,7 +150,7 @@ impl Match {
         let (telemetry, telemetry_handle) =
             Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
         let mut session = mgba_rollback::session::Session::new(pair, local_player, present_delay)?;
-        session.set_observer(Some(Box::new(crate::telemetry::MgbaTelemetry(telemetry))));
+        session.set_observer(Some(Box::new(crate::r#match::telemetry::MgbaTelemetry(telemetry))));
 
         Ok(Match {
             session,

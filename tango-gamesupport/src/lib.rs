@@ -6,7 +6,7 @@
 //! - ROM identity (`family`/`variant`, `rom_code`/`revision`, `crc32`,
 //!   `region`) — formerly the `tango-gamedb` crate.
 //! - The save/ROM parsers (`parse_save_fn` / `load_rom_assets_fn`).
-//! - The PvP engine support ([`tango_match_mgba::GameSupport`]).
+//! - The PvP engine support ([`tango_backend_mgba::GameSupport`]).
 //! - The app-facing presentation bits (`match_types`, `save_templates`,
 //!   `logo_image`, `background`).
 //!
@@ -251,13 +251,13 @@ impl std::fmt::Debug for Game {
 /// instead, which is where the GBA games are headed too.
 #[derive(Clone, Copy)]
 pub enum Pvp {
-    Gba(&'static (dyn tango_match_mgba::GameSupport + Send + Sync)),
+    Gba(&'static (dyn tango_backend_mgba::GameSupport + Send + Sync)),
     Factory(&'static (dyn tango_match::MatchFactory + Send + Sync)),
 }
 
 impl Pvp {
     /// The mgba engine's support, for the paths that still speak it.
-    pub fn gba(&self) -> Option<&'static (dyn tango_match_mgba::GameSupport + Send + Sync)> {
+    pub fn gba(&self) -> Option<&'static (dyn tango_backend_mgba::GameSupport + Send + Sync)> {
         match self {
             Pvp::Gba(support) => Some(*support),
             Pvp::Factory(_) => None,

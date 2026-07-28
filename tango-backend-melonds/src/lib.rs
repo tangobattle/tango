@@ -9,7 +9,12 @@
 //! Re-exports the pieces a game crate needs so it can depend on this
 //! rather than on the emulator directly.
 
+pub mod audio;
+
 use tango_match::{Backend, Screen, ScreenLayout};
+
+/// The DS SPU's output rate.
+pub const SAMPLE_RATE: f64 = 32_823.6328125;
 
 /// The DS presents two identically-sized screens, top then bottom.
 const SCREENS: [Screen; 2] = [
@@ -72,6 +77,16 @@ impl Backend for MelonDs {
     fn screen_layout() -> ScreenLayout {
         ScreenLayout::new(SCREENS)
     }
+
+    fn drain_audio(link: &mut Link, player: usize, dest: &mut [i16]) -> usize {
+        link.console(player).read_audio(dest)
+    }
+
+    fn sample_rate(_link: &mut Link) -> f64 {
+        // The DS SPU mixes at a fixed rate; nothing about a link changes
+        // it.
+        SAMPLE_RATE
+    }
 }
 
 /// Translate Tango's joyflag word into DS keys.
@@ -86,7 +101,8 @@ pub fn input_from_joyflags(joyflags: u32) -> Input {
 
 /// Re-exported so a game crate can name a link, a snapshot, an input or
 /// a session without depending on the emulator crates itself.
-pub use melonds_rollback::{session::Session, Input, Link, Snapshot};
+
+use melonds_rollback::{session::Session, Input, Link, Snapshot};
 
 /// Split an instant into the fields a cart RTC takes. Both peers pass
 /// the same one, so both consoles agree without a date library.

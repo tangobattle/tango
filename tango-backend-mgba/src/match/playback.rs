@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
-use crate::telemetry::Telemetry;
+use crate::r#match::telemetry::Telemetry;
 use crate::{GameSupport, PrimeConfig};
 
 /// Cap on priming ticks, mirroring the live engine's bound.
@@ -204,7 +204,7 @@ impl RewindRingInner {
 
 /// Everything needed to boot a playback pair. All fields are in
 /// **absolute** player order (core 0 runs player 0's game) — see
-/// [`crate::analysis::AnalyzeConfig`] for the orientation contract.
+/// [`crate::r#match::analysis::AnalyzeConfig`] for the orientation contract.
 pub struct BootConfig {
     pub roms: [Vec<u8>; 2],
     pub saves: [Vec<u8>; 2],
@@ -226,7 +226,7 @@ fn boot_and_prime(
     config: &BootConfig,
     render: bool,
     cancel: Option<&AtomicBool>,
-    lifecycle: &crate::telemetry::LifecycleSink,
+    lifecycle: &crate::r#match::telemetry::LifecycleSink,
 ) -> Result<mgba_rollback::Link, crate::Error> {
     let mut pair = mgba_rollback::Link::with_options(mgba_rollback::LinkOptions {
         sides: vec![
@@ -296,7 +296,7 @@ impl Playback {
     pub fn new(
         config: &BootConfig,
         inputs: Arc<Vec<[u32; 2]>>,
-        lifecycle: &crate::telemetry::LifecycleSink,
+        lifecycle: &crate::r#match::telemetry::LifecycleSink,
     ) -> Result<Self, crate::Error> {
         let pair = boot_and_prime(config, true, None, lifecycle)?;
         Ok(Self {
@@ -358,7 +358,7 @@ impl Playback {
 }
 
 /// Body of the seek worker thread for SIO playback. Sleeps until a
-/// [`SeekController`](crate::playback::SeekController) request
+/// [`SeekController`](crate::r#match::playback::SeekController) request
 /// lands, then chases the newest target on the playback pair: load the
 /// best snapshot at or before it (rewind ring ∪ keyframe store), step
 /// forward feeding the recorded inputs, capturing every tick on the way
@@ -578,15 +578,15 @@ enum Plan {
 /// already carries its markers.
 ///
 /// With `stats` set, the pass doubles as the match-stats analysis: the
-/// same fold as [`crate::analysis::analyze`], reported through the
+/// same fold as [`crate::r#match::analysis::analyze`], reported through the
 /// hook once per tick; the finished stats are returned. One simulation,
 /// both products — mirroring the trap engine's `run_prefetch`.
 #[allow(clippy::too_many_arguments)]
 pub struct Prefetch {
     pair: mgba_rollback::Link,
     observer: Telemetry,
-    telemetry_store: crate::telemetry::TelemetryHandle,
-    builder: Option<crate::analysis::StatsBuilder>,
+    telemetry_store: crate::r#match::telemetry::TelemetryHandle,
+    builder: Option<crate::r#match::analysis::StatsBuilder>,
     inputs: Arc<Vec<[u32; 2]>>,
     local_player: usize,
     store: SnapshotStore,
@@ -614,9 +614,9 @@ impl Prefetch {
         progress: Arc<AtomicU32>,
         round_marks: Option<Arc<Mutex<Vec<u32>>>>,
         cancel: Arc<AtomicBool>,
-        stats: Option<(crate::analysis::ChipSemantics, bool)>,
+        stats: Option<(crate::r#match::analysis::ChipSemantics, bool)>,
     ) -> Result<Self, crate::Error> {
-        let lifecycle = crate::telemetry::LifecycleSink::new();
+        let lifecycle = crate::r#match::telemetry::LifecycleSink::new();
         let mut pair = boot_and_prime(config, true, Some(&cancel), &lifecycle)?;
 
         let (observer, telemetry_store) = Telemetry::new(
@@ -633,7 +633,7 @@ impl Prefetch {
             observer,
             telemetry_store,
             builder: stats.map(|(chip_semantics, counts_buster)| {
-                crate::analysis::StatsBuilder::new(chip_semantics, counts_buster)
+                crate::r#match::analysis::StatsBuilder::new(chip_semantics, counts_buster)
             }),
             inputs,
             local_player,
@@ -655,7 +655,7 @@ impl Prefetch {
     pub fn step(
         &mut self,
         budget: u32,
-        on_stats_progress: Option<&mut dyn FnMut(u32, u32, &crate::analysis::StatsBuilder)>,
+        on_stats_progress: Option<&mut dyn FnMut(u32, u32, &crate::r#match::analysis::StatsBuilder)>,
     ) -> Result<bool, crate::Error> {
         let total = self.inputs.len() as u32;
         let mut hook = on_stats_progress;
@@ -676,7 +676,7 @@ impl Prefetch {
             let (samples, events) = self.telemetry_store.lock().unwrap().drain_confirmed(tick);
             if let Some(round_marks) = &self.round_marks {
                 for (event_tick, event) in &events {
-                    if let crate::telemetry::RoundEvent::Started = event {
+                    if let crate::r#match::telemetry::RoundEvent::Started = event {
                         self.rounds_started += 1;
                         if self.rounds_started > 1 {
                             round_marks.lock().unwrap().push(*event_tick);
@@ -685,7 +685,7 @@ impl Prefetch {
                 }
             }
             if let Some(builder) = &mut self.builder {
-                crate::analysis::fold_confirmed(builder, self.local_player, samples, events, &mut |t| {
+                crate::r#match::analysis::fold_confirmed(builder, self.local_player, samples, events, &mut |t| {
                     (t == tick).then_some(keys)
                 });
                 if let Some(hook) = &mut hook {
@@ -704,7 +704,7 @@ impl Prefetch {
     /// The finished analysis, if this pass was asked for one. Meaningful
     /// once [`Prefetch::step`] has reported the pass done; a cancelled
     /// pass yields nothing.
-    pub fn finish(self) -> Option<crate::analysis::MatchStats> {
+    pub fn finish(self) -> Option<crate::r#match::analysis::MatchStats> {
         (self.cursor >= self.inputs.len()).then(|| self.builder.map(|b| b.finish()))?
     }
 }
@@ -818,7 +818,7 @@ impl SeekController {
     }
 
     // --- worker-side surface, for seek workers living outside this
-    // module (the SIO engine's — see `crate::playback`). The trap
+    // module (the SIO engine's — see `crate::r#match::playback`). The trap
     // worker below predates these and touches the fields directly.
 
     /// Block until a request lands ([`Self::request`]) or the controller

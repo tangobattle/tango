@@ -1,5 +1,5 @@
 //! Replay playback session: a linearly-driven
-//! [`tango_match_mgba::playback::Playback`] pair behind a mutex, paced by
+//! [`tango_backend_mgba::r#match::playback::Playback`] pair behind a mutex, paced by
 //! a drive thread; a prefetch pair races ahead of the playhead filling
 //! a keyframe [`SnapshotStore`] (and doubling as the match-stats
 //! analysis), and a [`RewindRing`] keeps every tick of the last ~1.5s
@@ -9,13 +9,13 @@
 //! emulation. Audio is pulled straight off the pair via
 //! [`crate::audio::CoreStream`].
 //!
-//! [`SnapshotStore`]: tango_match_mgba::playback::SnapshotStore
-//! [`RewindRing`]: tango_match_mgba::playback::RewindRing
+//! [`SnapshotStore`]: tango_backend_mgba::r#match::playback::SnapshotStore
+//! [`RewindRing`]: tango_backend_mgba::r#match::playback::RewindRing
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
-use tango_match_mgba::playback::SeekController;
+use tango_backend_mgba::r#match::playback::SeekController;
 
 pub const SCREEN_WIDTH: u32 = mgba::gba::SCREEN_WIDTH;
 pub const SCREEN_HEIGHT: u32 = mgba::gba::SCREEN_HEIGHT;
@@ -67,9 +67,9 @@ pub struct ReplaySession {
 /// mutex, paced by a host drive thread; the seek worker chases targets
 /// by loading the nearest pair snapshot and stepping forward, and the
 /// prefetch worker races its own pair ahead for keyframes + stats +
-/// round marks (see [`tango_match_mgba::playback`]).
+/// round marks (see [`tango_backend_mgba::r#match::playback`]).
 ///
-/// [`Playback`]: tango_match_mgba::playback::Playback
+/// [`Playback`]: tango_backend_mgba::r#match::playback::Playback
 struct Engine {
     /// Which pair core is the replay's local perspective.
     local_player: usize,
@@ -78,8 +78,8 @@ struct Engine {
     paused: Arc<crate::PauseGate>,
     /// Pacing target, f32 bits (60 × speed factor).
     fps_bits: Arc<AtomicU32>,
-    snapshots: tango_match_mgba::playback::SnapshotStore,
-    rewind: tango_match_mgba::playback::RewindRing,
+    snapshots: tango_backend_mgba::r#match::playback::SnapshotStore,
+    rewind: tango_backend_mgba::r#match::playback::RewindRing,
     prefetch_progress: Arc<AtomicU32>,
     seek: Arc<SeekController>,
     /// Cancels the loops the host is running, on Drop; whoever is
@@ -88,7 +88,7 @@ struct Engine {
     cancel: Arc<AtomicBool>,
 }
 
-type SharedSioPlayback = Arc<Mutex<Option<tango_match_mgba::playback::Playback>>>;
+type SharedSioPlayback = Arc<Mutex<Option<tango_backend_mgba::r#match::playback::Playback>>>;
 
 impl Drop for Engine {
     fn drop(&mut self) {
@@ -107,7 +107,7 @@ impl Drop for Engine {
 struct SioPlaybackPull(SharedSioPlayback);
 
 impl crate::audio::PairPull for SioPlaybackPull {
-    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_match_mgba::Link)) {
+    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_backend_mgba::Link)) {
         if let Ok(mut guard) = self.0.try_lock() {
             if let Some(pb) = guard.as_mut() {
                 f(pb.pair_mut());
@@ -120,7 +120,7 @@ impl ReplaySession {
     /// Build a playback session for an SIO-engine replay
     /// ([`tango_replay::VERSION`]): one continuous run of pair
     /// ticks, re-simulated on a linearly-driven pair. Both sides must
-    /// have [`GameSupport`](tango_match_mgba::GameSupport) support. Returns
+    /// have [`GameSupport`](tango_backend_mgba::GameSupport) support. Returns
     /// immediately — boot + priming (a second or two) happens on the
     /// drive thread, with a black frame and silence until it's up.
     /// Also returns the session's audio stream (the shown perspective's
@@ -135,7 +135,7 @@ impl ReplaySession {
         show_pip: bool,
         stats_job: Option<PrefetchStatsJob>,
     ) -> Result<(Self, Workers, crate::audio::CoreStream), crate::Error> {
-        use tango_match_mgba::playback as sio_playback;
+        use tango_backend_mgba::r#match::playback as sio_playback;
 
         let local_player = replay.local_player_index as usize;
         if local_player >= 2 {
@@ -484,7 +484,7 @@ impl ReplaySession {
     /// still produced by a stepped tick rather than promised from a
     /// framebuffer we can't re-emit. `None` means the export falls
     /// back to simulating from boot.
-    pub fn clip_start_snapshot(&self, start: u32) -> Option<Arc<tango_match_mgba::playback::Snapshot>> {
+    pub fn clip_start_snapshot(&self, start: u32) -> Option<Arc<tango_backend_mgba::r#match::playback::Snapshot>> {
         let before = start.checked_sub(1)?;
         let s = &self.engine;
         [
@@ -597,7 +597,7 @@ impl crate::Session for ReplaySession {
 /// A captured playback snapshot — what
 /// [`ReplaySession::nearest_snapshot`] hands the scrub/hover UI.
 pub struct NearestSnapshot {
-    snap: Arc<tango_match_mgba::playback::Snapshot>,
+    snap: Arc<tango_backend_mgba::r#match::playback::Snapshot>,
     local_player: usize,
 }
 
@@ -669,7 +669,7 @@ impl Surfaces {
     }
 
     /// Publish the pair's live framebuffers.
-    fn publish_pair(&self, pair: &mut tango_match_mgba::Link) {
+    fn publish_pair(&self, pair: &mut tango_backend_mgba::Link) {
         let shown = self.shown();
         let main = pair.video_buffer(shown).map(|b| b.to_vec());
         let other = pair.video_buffer(1 - shown).map(|b| b.to_vec());
@@ -677,7 +677,7 @@ impl Surfaces {
     }
 
     /// Publish a captured snapshot's framebuffers (emulation-free).
-    fn publish_snapshot(&self, snap: &tango_match_mgba::playback::Snapshot) {
+    fn publish_snapshot(&self, snap: &tango_backend_mgba::r#match::playback::Snapshot) {
         let shown = self.shown();
         let pick = |i: usize| -> Option<&[u8]> {
             let fb = snap.framebuffers[i].as_slice();
@@ -702,8 +702,8 @@ struct Playhead {
     playback: SharedSioPlayback,
     cursor: Arc<AtomicU32>,
     paused: Arc<crate::PauseGate>,
-    snapshots: tango_match_mgba::playback::SnapshotStore,
-    rewind: tango_match_mgba::playback::RewindRing,
+    snapshots: tango_backend_mgba::r#match::playback::SnapshotStore,
+    rewind: tango_backend_mgba::r#match::playback::RewindRing,
     cancel: Arc<AtomicBool>,
     surfaces: Surfaces,
 }
@@ -712,13 +712,13 @@ impl Playhead {
     /// Boot + prime the display pair and show its first frame. Blocks
     /// for the priming walk — the one part of a session that can't be
     /// sliced, since it runs until the games' own traps say it's there.
-    fn boot(&self, boot_config: &tango_match_mgba::playback::BootConfig, inputs: Arc<Vec<[u32; 2]>>) -> bool {
+    fn boot(&self, boot_config: &tango_backend_mgba::r#match::playback::BootConfig, inputs: Arc<Vec<[u32; 2]>>) -> bool {
         // The display pair runs no telemetry observer — its lifecycle
         // sink is a write-only stub.
-        let pb = match tango_match_mgba::playback::Playback::new(
+        let pb = match tango_backend_mgba::r#match::playback::Playback::new(
             boot_config,
             inputs,
-            &tango_match_mgba::telemetry::LifecycleSink::new(),
+            &tango_backend_mgba::r#match::telemetry::LifecycleSink::new(),
         ) {
             Ok(pb) => pb,
             Err(e) => {
@@ -772,7 +772,7 @@ impl Playhead {
 /// so a thread can sleep on the gate and an event loop can just come
 /// back later.
 pub struct DriveWorker {
-    boot_config: tango_match_mgba::playback::BootConfig,
+    boot_config: tango_backend_mgba::r#match::playback::BootConfig,
     inputs: Arc<Vec<[u32; 2]>>,
     playhead: Playhead,
     fps_bits: Arc<AtomicU32>,
@@ -826,12 +826,12 @@ impl crate::Drive for DriveWorker {
 
 /// The seek loop: chases the targets the transport bar requests.
 pub struct SeekWorker {
-    seek: Arc<tango_match_mgba::playback::SeekController>,
+    seek: Arc<tango_backend_mgba::r#match::playback::SeekController>,
     playback: SharedSioPlayback,
     cursor: Arc<AtomicU32>,
     paused: Arc<crate::PauseGate>,
-    snapshots: tango_match_mgba::playback::SnapshotStore,
-    rewind: tango_match_mgba::playback::RewindRing,
+    snapshots: tango_backend_mgba::r#match::playback::SnapshotStore,
+    rewind: tango_backend_mgba::r#match::playback::RewindRing,
     surfaces: Surfaces,
 }
 
@@ -840,7 +840,7 @@ impl SeekWorker {
     /// one if a request is pending. `true` while a chase is still
     /// walking — a pumped host should come straight back rather than
     /// advancing playback underneath it.
-    pub fn step(&self, chase: &mut tango_match_mgba::playback::SeekChase, budget: u32) -> bool {
+    pub fn step(&self, chase: &mut tango_backend_mgba::r#match::playback::SeekChase, budget: u32) -> bool {
         chase.step(
             &self.seek,
             &self.playback,
@@ -850,7 +850,7 @@ impl SeekWorker {
             &mut |tick| self.cursor.store(tick, Ordering::Relaxed),
             &mut |snap| self.surfaces.publish_snapshot(snap),
             &mut || self.paused.set(false),
-        ) == tango_match_mgba::playback::ChaseStep::Working
+        ) == tango_backend_mgba::r#match::playback::ChaseStep::Working
     }
 
     /// Park until a seek is requested, or the session shuts down
@@ -867,22 +867,22 @@ impl SeekWorker {
 /// keyframes, round marks and (when the host asked for them) the
 /// match-stats analysis.
 pub struct PrefetchWorker {
-    boot_config: tango_match_mgba::playback::BootConfig,
+    boot_config: tango_backend_mgba::r#match::playback::BootConfig,
     inputs: Arc<Vec<[u32; 2]>>,
     local_player: usize,
-    snapshots: tango_match_mgba::playback::SnapshotStore,
+    snapshots: tango_backend_mgba::r#match::playback::SnapshotStore,
     progress: Arc<AtomicU32>,
     round_marks: Option<Arc<Mutex<Vec<u32>>>>,
     cancel: Arc<AtomicBool>,
-    stats: Option<(tango_match_mgba::analysis::ChipSemantics, bool)>,
+    stats: Option<(tango_backend_mgba::r#match::analysis::ChipSemantics, bool)>,
     stats_job: Option<PrefetchStatsJob>,
 }
 
 impl PrefetchWorker {
     /// Open the prefetch pair. Blocks for its priming walk — the one
     /// part of a pass that can't be sliced.
-    pub fn open(&self) -> Result<tango_match_mgba::playback::Prefetch, tango_match_mgba::Error> {
-        tango_match_mgba::playback::Prefetch::open(
+    pub fn open(&self) -> Result<tango_backend_mgba::r#match::playback::Prefetch, tango_backend_mgba::Error> {
+        tango_backend_mgba::r#match::playback::Prefetch::open(
             &self.boot_config,
             self.inputs.clone(),
             self.local_player,
@@ -903,7 +903,7 @@ impl PrefetchWorker {
 
     /// Hand a finished pass's stats to that job. The cache write is the
     /// host's on a desktop; a browser has nowhere to put it.
-    fn deliver(&self, stats: Option<tango_match_mgba::analysis::MatchStats>) {
+    fn deliver(&self, stats: Option<tango_backend_mgba::r#match::analysis::MatchStats>) {
         let (Some(stats), Some(job)) = (stats, self.stats_job.as_ref()) else {
             return;
         };
@@ -930,7 +930,7 @@ impl Workers {
         Driver {
             drive: self.drive,
             seek: self.seek,
-            chase: tango_match_mgba::playback::SeekChase::default(),
+            chase: tango_backend_mgba::r#match::playback::SeekChase::default(),
             prefetch: self.prefetch,
             pass: None,
             done_prefetching: false,
@@ -948,9 +948,9 @@ impl Workers {
 pub struct Driver {
     drive: DriveWorker,
     seek: SeekWorker,
-    chase: tango_match_mgba::playback::SeekChase,
+    chase: tango_backend_mgba::r#match::playback::SeekChase,
     prefetch: PrefetchWorker,
-    pass: Option<tango_match_mgba::playback::Prefetch>,
+    pass: Option<tango_backend_mgba::r#match::playback::Prefetch>,
     /// The pass finished, failed, or was cancelled — don't reopen it.
     done_prefetching: bool,
 }
@@ -975,7 +975,7 @@ impl Driver {
             }
             match self.prefetch.open() {
                 Ok(pass) => self.pass = Some(pass),
-                Err(tango_match_mgba::Error::Cancelled) => {
+                Err(tango_backend_mgba::Error::Cancelled) => {
                     self.done_prefetching = true;
                     return false;
                 }
@@ -1022,7 +1022,7 @@ impl crate::Drive for Driver {
 }
 
 pub struct PrefetchStatsJob {
-    pub partial_tx: futures::channel::mpsc::UnboundedSender<tango_match_mgba::analysis::MatchStats>,
-    pub done: Arc<Mutex<Option<tango_match_mgba::analysis::MatchStats>>>,
+    pub partial_tx: futures::channel::mpsc::UnboundedSender<tango_backend_mgba::r#match::analysis::MatchStats>,
+    pub done: Arc<Mutex<Option<tango_backend_mgba::r#match::analysis::MatchStats>>>,
     pub stats_file: std::path::PathBuf,
 }

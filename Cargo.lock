@@ -7572,6 +7572,7 @@ dependencies = [
  "steamlocate",
  "subtle",
  "sweeten",
+ "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-bcc",
  "tango-gamesupport-bn1",
@@ -7584,7 +7585,6 @@ dependencies = [
  "tango-library",
  "tango-lobby",
  "tango-match",
- "tango-match-mgba",
  "tango-net-protocol",
  "tango-patch",
  "tango-replay",
@@ -7605,6 +7605,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "tango-backend-melonds"
+version = "0.1.0"
+dependencies = [
+ "melonds",
+ "melonds-rollback",
+ "tango-match",
+]
+
+[[package]]
+name = "tango-backend-mgba"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "getgud",
+ "log",
+ "mgba",
+ "mgba-rollback",
+ "serde",
+ "serde_repr",
+ "tango-match",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "tango-gamesupport"
 version = "0.1.0"
 dependencies = [
@@ -7612,8 +7636,8 @@ dependencies = [
  "iced",
  "image",
  "semver",
+ "tango-backend-mgba",
  "tango-match",
- "tango-match-mgba",
  "tango-patch",
  "thiserror 1.0.69",
  "unic-langid",
@@ -7627,12 +7651,12 @@ dependencies = [
  "image",
  "mgba",
  "mgba-rollback",
+ "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-bcc-dataview",
  "tango-gamesupport-bcc-ui",
  "tango-gamesupport-common",
  "tango-match",
- "tango-match-mgba",
  "tango-replay",
  "unic-langid",
 ]
@@ -7666,12 +7690,12 @@ dependencies = [
  "image",
  "mgba",
  "mgba-rollback",
+ "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-bn1-dataview",
  "tango-gamesupport-bn1-ui",
  "tango-gamesupport-common",
  "tango-match",
- "tango-match-mgba",
 ]
 
 [[package]]
@@ -7703,12 +7727,12 @@ dependencies = [
  "mgba",
  "mgba-rollback",
  "rand 0.8.5",
+ "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-bn2-dataview",
  "tango-gamesupport-bn2-ui",
  "tango-gamesupport-common",
  "tango-match",
- "tango-match-mgba",
 ]
 
 [[package]]
@@ -7741,12 +7765,12 @@ dependencies = [
  "mgba",
  "mgba-rollback",
  "rand 0.8.5",
+ "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-bn3-dataview",
  "tango-gamesupport-bn3-ui",
  "tango-gamesupport-common",
  "tango-match",
- "tango-match-mgba",
 ]
 
 [[package]]
@@ -7781,12 +7805,12 @@ dependencies = [
  "image",
  "mgba",
  "mgba-rollback",
+ "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-bn4-dataview",
  "tango-gamesupport-bn4-ui",
  "tango-gamesupport-common",
  "tango-match",
- "tango-match-mgba",
  "unic-langid",
 ]
 
@@ -7823,12 +7847,12 @@ dependencies = [
  "image",
  "mgba",
  "mgba-rollback",
+ "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-bn5-dataview",
  "tango-gamesupport-bn5-ui",
  "tango-gamesupport-common",
  "tango-match",
- "tango-match-mgba",
 ]
 
 [[package]]
@@ -7862,12 +7886,12 @@ dependencies = [
  "image",
  "mgba",
  "mgba-rollback",
+ "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-bn6-dataview",
  "tango-gamesupport-bn6-ui",
  "tango-gamesupport-common",
  "tango-match",
- "tango-match-mgba",
 ]
 
 [[package]]
@@ -7932,12 +7956,12 @@ dependencies = [
  "image",
  "mgba",
  "mgba-rollback",
+ "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-common",
  "tango-gamesupport-exe45-dataview",
  "tango-gamesupport-exe45-ui",
  "tango-match",
- "tango-match-mgba",
 ]
 
 [[package]]
@@ -8009,11 +8033,11 @@ dependencies = [
  "js-sys",
  "log",
  "semver",
+ "tango-backend-mgba",
  "tango-gamesupport",
  "tango-library",
  "tango-lobby",
  "tango-match",
- "tango-match-mgba",
  "tango-net-protocol",
  "tango-patch",
  "tango-replay",
@@ -8056,30 +8080,6 @@ version = "0.1.0"
 dependencies = [
  "getgud",
  "serde",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "tango-match-melonds"
-version = "0.1.0"
-dependencies = [
- "melonds",
- "melonds-rollback",
- "tango-match",
-]
-
-[[package]]
-name = "tango-match-mgba"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "getgud",
- "log",
- "mgba",
- "mgba-rollback",
- "serde",
- "serde_repr",
- "tango-match",
  "thiserror 1.0.69",
 ]
 
@@ -8128,8 +8128,8 @@ version = "0.1.0"
 dependencies = [
  "encoder-facade",
  "mgba",
+ "tango-backend-mgba",
  "tango-match",
- "tango-match-mgba",
  "tango-replay",
  "thiserror 1.0.69",
 ]
@@ -8149,9 +8149,9 @@ dependencies = [
  "rand 0.8.5",
  "rand_pcg 0.3.1",
  "rennet",
+ "tango-backend-mgba",
  "tango-gamesupport",
  "tango-match",
- "tango-match-mgba",
  "tango-net-protocol",
  "tango-replay",
  "tango-signaling",

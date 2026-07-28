@@ -67,6 +67,18 @@ impl Backend for Mgba {
     fn screen_layout() -> ScreenLayout {
         ScreenLayout::new([SCREEN])
     }
+
+    fn drain_audio(link: &mut Self::Link, player: usize, dest: &mut [i16]) -> usize {
+        let buffer = link.core_mut(player).audio_buffer();
+        // The buffer counts stereo frames; `dest` holds interleaved
+        // samples, so it fits half as many.
+        let frames = (dest.len() / 2).min(buffer.available());
+        buffer.read(dest, frames)
+    }
+
+    fn sample_rate(link: &mut Self::Link) -> f64 {
+        link.core_mut(0).audio_sample_rate() as f64
+    }
 }
 
 /// Re-exported so a game crate can name a link or a snapshot without
@@ -103,7 +115,7 @@ impl tango_match::MatchFactory for GbaMatchFactory {
         if config.local_player == 1 {
             support.swap(0, 1);
         }
-        let match_ = crate::engine::Match::new(crate::engine::MatchConfig {
+        let match_ = crate::r#match::engine::Match::new(crate::r#match::engine::MatchConfig {
             roms: [config.roms[0].to_vec(), config.roms[1].to_vec()],
             saves: [
                 config.saves[0].unwrap_or_default().to_vec(),

@@ -1,5 +1,5 @@
 //! The match-stats sidecar cache: where a replay's cooked
-//! [`tango_match_mgba::analysis::MatchStats`] live on disk. Written at match
+//! [`tango_backend_mgba::r#match::analysis::MatchStats`] live on disk. Written at match
 //! teardown by the live PvP session and by the replay prefetcher's
 //! analysis pass; read back by anything that wants a replay's stats
 //! without re-simulating it.
@@ -37,16 +37,16 @@ pub fn load_match_stats(
     cache_path: &std::path::Path,
     replays_path: &std::path::Path,
     replay_path: &std::path::Path,
-) -> Option<tango_match_mgba::analysis::MatchStats> {
+) -> Option<tango_backend_mgba::r#match::analysis::MatchStats> {
     let f = std::fs::File::open(stats_path(cache_path, replays_path, replay_path)).ok()?;
-    tango_match_mgba::analysis::MatchStats::read(std::io::BufReader::new(f)).ok()
+    tango_backend_mgba::r#match::analysis::MatchStats::read(std::io::BufReader::new(f)).ok()
 }
 
 /// Write `stats` to a replay's cache slot, creating the mirrored
 /// directory as needed.
 pub fn write_match_stats(
     stats_file: &std::path::Path,
-    stats: &tango_match_mgba::analysis::MatchStats,
+    stats: &tango_backend_mgba::r#match::analysis::MatchStats,
 ) -> std::io::Result<()> {
     if let Some(parent) = stats_file.parent() {
         std::fs::create_dir_all(parent)?;

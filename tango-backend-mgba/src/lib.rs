@@ -16,11 +16,9 @@
 //! - [`analysis`]: match-stats types and the telemetry fold.
 //! - [`backend`]: the [`tango_match::Backend`] implementation.
 
-pub mod analysis;
+pub mod audio;
 pub mod backend;
-pub mod engine;
-pub mod playback;
-pub mod telemetry;
+pub mod r#match;
 
 pub use backend::Mgba;
 
@@ -102,7 +100,7 @@ pub use mgba_rollback::session::LinkHandle;
 
 /// Per-tick observer hook, re-exported for hosts that step a
 /// [`playback::Playback`] themselves and feed each tick to a
-/// [`telemetry::Telemetry`] observer (e.g. tango's replay video export).
+/// [`r#match::telemetry::Telemetry`] observer (e.g. tango's replay video export).
 pub use mgba_rollback::session::TickObserver;
 
 /// Match parameters the primer needs before the games can negotiate the
@@ -167,9 +165,9 @@ pub trait GameSupport: Sync {
     /// core this is, 0 = lockstep primary) plus, for core 0, the round
     /// lifecycle anchors reporting into `lifecycle` — the game's
     /// battle-start-complete site firing
-    /// [`round_started`](telemetry::LifecycleSink::round_started) and
+    /// [`round_started`](r#match::telemetry::LifecycleSink::round_started) and
     /// its match-end site firing
-    /// [`match_ended`](telemetry::LifecycleSink::match_ended). The
+    /// [`match_ended`](r#match::telemetry::LifecycleSink::match_ended). The
     /// priming pokes must be pure functions of emulation state and
     /// `config`, so both peers' pairs prime bit-identically, and must go
     /// inert once the battle is live (the traps stay installed for the
@@ -179,13 +177,13 @@ pub trait GameSupport: Sync {
         &self,
         config: &PrimeConfig,
         player: usize,
-        lifecycle: &telemetry::LifecycleSink,
+        lifecycle: &r#match::telemetry::LifecycleSink,
         primed: &PrimedLatch,
     ) -> Vec<(u32, Box<dyn Fn(&mut mgba::core::Core)>)>;
 
     /// The telemetry reader for one core running this game. `player` is
     /// which pair core (and player) this poller answers for.
-    fn core_poller(&self, player: usize) -> Box<telemetry::MgbaPoller>;
+    fn core_poller(&self, player: usize) -> Box<r#match::telemetry::MgbaPoller>;
 
     /// How this game's per-tick chip reports are to be decoded into
     /// chip-use events — see [`ChipSemantics`]'s variants for the two
@@ -194,10 +192,10 @@ pub trait GameSupport: Sync {
     /// patch replaces the dealt-queue system with per-screen hands,
     /// flipping it from `QueueSum` to `LoadedChip`.
     ///
-    /// [`ChipSemantics`]: crate::analysis::ChipSemantics
-    fn chip_semantics(&self, rom: &[u8]) -> crate::analysis::ChipSemantics {
+    /// [`ChipSemantics`]: crate::r#match::analysis::ChipSemantics
+    fn chip_semantics(&self, rom: &[u8]) -> crate::r#match::analysis::ChipSemantics {
         let _ = rom;
-        crate::analysis::ChipSemantics::LoadedChip
+        crate::r#match::analysis::ChipSemantics::LoadedChip
     }
 
     /// Whether B presses are buster shots in this game on this (patched)
@@ -215,6 +213,6 @@ pub trait GameSupport: Sync {
 /// paths keep resolving.
 pub use tango_match::battle;
 
-/// The shared telemetry types, re-exported so `crate::telemetry::…`
+/// The shared telemetry types, re-exported so `crate::r#match::telemetry::…`
 /// paths that mean the data (not the observer) keep resolving.
 pub use tango_match::telemetry as shared_telemetry;

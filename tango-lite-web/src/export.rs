@@ -110,7 +110,7 @@ async fn render(path: &std::path::Path, name: &str, canceller: &Canceller) -> Re
 
     // The same boot the player uses, so the render reproduces the
     // recorded match rather than a similar one.
-    let config = tango_match_mgba::playback::BootConfig {
+    let config = tango_backend_mgba::r#match::playback::BootConfig {
         roms: [roms[0].to_vec(), roms[1].to_vec()],
         saves: replay.srams.clone(),
         support: [games[0].pvp, games[1].pvp],

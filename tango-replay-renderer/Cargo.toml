@@ -17,7 +17,7 @@ publish = false
 encoder-facade.workspace = true
 mgba.workspace = true
 tango-match = { path = "../tango-match" }
-tango-match-mgba = { path = "../tango-match-mgba" }
+tango-backend-mgba = { path = "../tango-backend-mgba" }
 tango-replay = { path = "../tango-replay" }
 thiserror.workspace = true
 

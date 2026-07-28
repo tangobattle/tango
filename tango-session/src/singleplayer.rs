@@ -5,10 +5,10 @@
 //! raw BGR555 into the session's own [`Framebuffer`](crate::Framebuffer)
 //! (the framebuffer shader expands it to RGB on the GPU).
 //!
-//! It runs on a one-side [`Link`](tango_match_mgba::Link) rather than a bare
+//! It runs on a one-side [`Link`](tango_backend_mgba::Link) rather than a bare
 //! core, which is what every other session kind here runs on: the cart
 //! sees its link hardware from power-on, the savedata comes back out
-//! through [`Link::export_save`](tango_match_mgba::Link::export_save)
+//! through [`Link::export_save`](tango_backend_mgba::Link::export_save)
 //! wherever the host wants to put it, and this is the machine a future
 //! netplay handoff can plug a cable into.
 //!
@@ -33,7 +33,7 @@ const EXPECTED_FPS: f32 = 60.0;
 
 /// The session's machine, shared between whatever drives it and the
 /// audio stream (which pulls samples off it between ticks).
-type SharedLink = Arc<Mutex<tango_match_mgba::Link>>;
+type SharedLink = Arc<Mutex<tango_backend_mgba::Link>>;
 
 /// Audio pull over the session's mutex — a driver holds it only while
 /// stepping a frame, so the readout interleaves between ticks.
@@ -42,7 +42,7 @@ type SharedLink = Arc<Mutex<tango_match_mgba::Link>>;
 struct SharedLinkPull(SharedLink);
 
 impl crate::audio::PairPull for SharedLinkPull {
-    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_match_mgba::Link)) {
+    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_backend_mgba::Link)) {
         f(&mut self.0.lock().unwrap());
     }
 }
@@ -79,13 +79,13 @@ impl SinglePlayerSession {
         rtc: Option<std::time::SystemTime>,
         sample_rate: u32,
     ) -> Result<(Self, Driver, crate::audio::CoreStream), crate::Error> {
-        let mut link = tango_match_mgba::Link::with_options(tango_match_mgba::LinkOptions {
-            sides: vec![tango_match_mgba::SideOptions {
+        let mut link = tango_backend_mgba::Link::with_options(tango_backend_mgba::LinkOptions {
+            sides: vec![tango_backend_mgba::SideOptions {
                 rom: rom.as_ref().clone(),
                 save,
             }],
             rtc,
-            peripheral: tango_match_mgba::Peripheral::Cable,
+            peripheral: tango_backend_mgba::Peripheral::Cable,
         })?;
         // Queue headroom for the stream's rate control — the discard cap
         // sits at 3x its 50 ms target and fast-forward piles up several

@@ -85,7 +85,7 @@ pub enum Error {
     Io(#[from] std::io::Error),
     /// The match engine failed to boot or prime the pair.
     #[error(transparent)]
-    Engine(#[from] tango_match_mgba::Error),
+    Engine(#[from] tango_backend_mgba::Error),
     /// The netplay handoff's transport bundle failed to assemble.
     #[error(transparent)]
     LinkBringUp(#[from] crate::net::link::BringUpError),

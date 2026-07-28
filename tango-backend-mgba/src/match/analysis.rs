@@ -1,6 +1,6 @@
 //! Match statistics and their cached on-disk form.
 //!
-//! [`crate::analysis::analyze`] re-simulates a recorded replay on
+//! [`crate::r#match::analysis::analyze`] re-simulates a recorded replay on
 //! a headless pair and extracts per-round [`MatchStats`]: the outcome
 //! and both players' HP over the round, from the same RAM-poll
 //! telemetry the live engine collects. That's a full replay simulation
@@ -607,7 +607,7 @@ fn compress(points: impl Iterator<Item = HpPoint>) -> Vec<HpPoint> {
 // shared with the live session (so live stats and offline re-analysis stay
 // byte-equivalent).
 
-use crate::telemetry::{self, Telemetry};
+use crate::r#match::telemetry::{self, Telemetry};
 use crate::{GameSupport, PrimeConfig};
 
 /// Cap on priming ticks, mirroring the live engine's bound.
@@ -630,7 +630,7 @@ pub struct AnalyzeConfig<'a> {
     pub inputs: &'a [[u32; 2]],
     /// Chip-report semantics + buster counting for the local game (see
     /// [`Hooks::chip_semantics`](crate::hooks::Hooks::chip_semantics)).
-    pub chip_semantics: crate::analysis::ChipSemantics,
+    pub chip_semantics: crate::r#match::analysis::ChipSemantics,
     pub counts_buster: bool,
 }
 
@@ -683,7 +683,7 @@ pub fn analyze(
         // either way — see `PrimeConfig::disable_bgm`.
         disable_bgm: false,
     };
-    let lifecycle = crate::telemetry::LifecycleSink::new();
+    let lifecycle = crate::r#match::telemetry::LifecycleSink::new();
     let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
     // Cores own their primer traps — see [`mgba_rollback::Link::set_traps`]
     // for why any other ownership dangles at core teardown.
@@ -702,7 +702,7 @@ pub fn analyze(
         prime_ticks += 1;
     }
 
-    let (mut observer, store) = crate::telemetry::Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
+    let (mut observer, store) = crate::r#match::telemetry::Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
     let mut builder = StatsBuilder::new(chip_semantics, counts_buster);
     let total = inputs.len() as u32;
     for (i, &keys) in inputs.iter().enumerate() {

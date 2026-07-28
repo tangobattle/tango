@@ -1288,7 +1288,7 @@ pub fn build_playback(
                 // Park until the transport asks for a seek, then walk the
                 // whole chase in one go — a thread has nothing better to
                 // do, and the pair is better held once than per tick.
-                let mut chase = tango_match_mgba::playback::SeekChase::default();
+                let mut chase = tango_backend_mgba::r#match::playback::SeekChase::default();
                 while seek.wait_for_request() {
                     while seek.step(&mut chase, u32::MAX) {}
                 }
@@ -1532,18 +1532,18 @@ fn run_prefetch_pass(worker: replay::PrefetchWorker) {
     /// display rather than to the simulation.
     const PREVIEW_EVERY: std::time::Duration = std::time::Duration::from_millis(33);
 
-    let mut prefetch: tango_match_mgba::playback::Prefetch = match worker.open() {
+    let mut prefetch: tango_backend_mgba::r#match::playback::Prefetch = match worker.open() {
         Ok(prefetch) => prefetch,
         // Session closed while the pair was still priming — a normal
         // teardown, not noise for the error log.
-        Err(tango_match_mgba::Error::Cancelled) => return,
+        Err(tango_backend_mgba::Error::Cancelled) => return,
         Err(e) => {
             log::error!("sio replay prefetch failed: {e:?}");
             return;
         }
     };
     let mut last_preview = std::time::Instant::now();
-    let mut on_progress = |_tick: u32, _total: u32, builder: &tango_match_mgba::analysis::StatsBuilder| {
+    let mut on_progress = |_tick: u32, _total: u32, builder: &tango_backend_mgba::r#match::analysis::StatsBuilder| {
         let Some(job) = worker.stats_job() else { return };
         let now = std::time::Instant::now();
         if now.duration_since(last_preview) < PREVIEW_EVERY {

@@ -92,16 +92,16 @@ pub trait CorePull: Send {
     fn with_core(&self, f: &mut dyn FnMut(&mut mgba::core::Core));
 }
 
-/// Cross-thread access to a live pair of cores ([`Link`](tango_match_mgba::Link))
+/// Cross-thread access to a live pair of cores ([`Link`](tango_backend_mgba::Link))
 /// — the pair-session flavor of core access, adapted to [`CorePull`] by
 /// [`PairCorePull`].
 pub trait PairPull: Send {
-    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_match_mgba::Link));
+    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_backend_mgba::Link));
 }
 
-impl PairPull for tango_match_mgba::LinkHandle {
-    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_match_mgba::Link)) {
-        tango_match_mgba::LinkHandle::with_link(self, |pair| f(pair));
+impl PairPull for tango_backend_mgba::LinkHandle {
+    fn with_pair(&self, f: &mut dyn FnMut(&mut tango_backend_mgba::Link)) {
+        tango_backend_mgba::LinkHandle::with_link(self, |pair| f(pair));
     }
 }
 
