@@ -35,6 +35,7 @@ pub mod engine;
 pub mod input;
 pub mod playback;
 pub mod telemetry;
+pub mod throttler;
 
 /// The engine seam, re-exported: hosts and game crates name these
 /// rather than reaching into the module.
@@ -113,11 +114,10 @@ impl PrimedLatch {
     }
 }
 
-/// The engine's clock-sync governor, re-exported so hosts driving a
-/// [`Match`](engine::Match) don't need their own mgba-rollback
-/// dependency: feed it `skew()` + `speculation_balance()` each frame and
-/// shave the returned fps off the tick rate.
-pub use mgba_rollback::throttler::Throttler;
+/// The clock-sync governor: feed it `skew()` + `speculation_balance()`
+/// each frame and shave the returned fps off the tick rate. Shared by
+/// every engine, so it lives here rather than in a backend.
+pub use throttler::Throttler;
 
 /// The linked core pair, re-exported for hosts that reach through
 /// [`Match::with_pair`](engine::Match::with_pair) for video/audio
