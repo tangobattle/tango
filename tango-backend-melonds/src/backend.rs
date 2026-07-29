@@ -16,13 +16,24 @@ use crate::link::Link;
 /// own crate: walking a freshly booted pair into its link battle.
 pub trait GameSupport: Sync {
     /// Walk a booted pair into the game's link battle. The walk must be
-    /// a pure function of ROM/save/rtc — both peers run it on their own
-    /// pairs and must reach identical state, because priming is
-    /// simulation state and a difference here is a desync. Flipping
-    /// `cancel` mid-walk fails it with
+    /// a pure function of ROM/save/rtc/`match_type` — both peers run it
+    /// on their own pairs and must reach identical state, because
+    /// priming is simulation state and a difference here is a desync.
+    /// Flipping `cancel` mid-walk fails it with
     /// [`Error::Cancelled`](tango_match::Error::Cancelled) — replay
     /// boots run on host worker threads whose teardown joins them.
-    fn prime(&self, link: &mut Link, cancel: Option<&AtomicBool>) -> Result<(), tango_match::Error>;
+    ///
+    /// `match_type` is the mode the two players agreed on, indexed as
+    /// the registration's `match_types` table lists it. Which console
+    /// takes the game's own host seat is the walk's business, not the
+    /// caller's: the pair is symmetric, and both peers walk both
+    /// consoles, so the walk simply assigns it.
+    fn prime(
+        &self,
+        link: &mut Link,
+        match_type: (u8, u8),
+        cancel: Option<&AtomicBool>,
+    ) -> Result<(), tango_match::Error>;
 }
 
 /// A DS cartridge's engine support, as the engine-neutral backend its
@@ -60,7 +71,7 @@ impl tango_match::Backend for DsBackend {
         let mut link = Link::new(config.roms[0], config.saves, config.rtc)
             .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
 
-        self.support.prime(&mut link, None)?;
+        self.support.prime(&mut link, config.match_type, None)?;
 
         // The rollback loop is the seam's — this engine contributes the
         // boot, not another copy of it.
@@ -84,6 +95,7 @@ impl tango_match::Backend for DsBackend {
             rom: config.roms[0].clone(),
             saves: config.saves.clone(),
             rtc: config.rtc,
+            match_type: config.match_type,
         };
         Ok(tango_match::ReplaySet::new(&config, None, boot))
     }
@@ -103,6 +115,9 @@ struct Boot {
     /// The negotiated match clock, so the re-sim lands where the
     /// original did.
     rtc: std::time::SystemTime,
+    /// The mode the recording was played in, so the walk picks the
+    /// same one out of the game's menus.
+    match_type: (u8, u8),
 }
 
 impl tango_match::ReplayBoot for Boot {
@@ -115,7 +130,7 @@ impl tango_match::ReplayBoot for Boot {
             self.rtc,
         )
         .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
-        self.support.prime(&mut link, Some(cancel))?;
+        self.support.prime(&mut link, self.match_type, Some(cancel))?;
         Ok(tango_match::BootedReplay {
             link: Box::new(link),
             telemetry: None,
