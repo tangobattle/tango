@@ -16,18 +16,10 @@
 pub struct Drained {
     /// Frames written into the caller's buffer.
     pub written: usize,
-    /// Frames still in the console's own buffer afterwards.
+    /// Frames still in the console's own buffer afterwards — what one
+    /// call could not hand over. Audio that exists and is coming, so a
+    /// caller counting its backlog has to count this too.
     pub queued: usize,
-    /// Frames that buffer holds in total.
-    ///
-    /// How much backlog may be left in it, which is not a matter of
-    /// taste: these are small rings that overwrite or drop when full, so
-    /// leaving more than one holds silently destroys audio. They differ
-    /// by an order of magnitude between consoles — a GBA core's buffer
-    /// is whatever the host asked for, while melonDS's SPU sizes itself
-    /// to about a 40 ms of output and no more — so a caller that wants
-    /// to leave a backlog behind has to ask rather than assume.
-    pub capacity: usize,
 }
 
 /// Raw audio out of one console.
@@ -47,11 +39,9 @@ pub trait AudioDrain: Send {
     /// stall behind a whole frame of emulation — and a sound callback
     /// that misses its deadline is a click.
     ///
-    /// What is left behind matters because that is where a session's
-    /// backlog should sit: a rollback revokes speculated audio out of
-    /// the console's own buffer, so anything drained early is beyond its
-    /// reach — the mispredicted span plays anyway, and its corrected
-    /// re-simulation has to be swallowed to avoid an echo.
+    /// What is left behind comes back because a caller cannot otherwise
+    /// tell "the console has nothing" from "the console had more than
+    /// this call could carry", and those want opposite responses.
     fn drain(&mut self, out: &mut [i16]) -> Drained;
 
     /// How production scales when the host paces the simulation at

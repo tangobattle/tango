@@ -141,14 +141,12 @@ impl tango_match::AudioDrain for SharedPairAudio {
         let player = self.player();
         let mut link = self.link.lock().unwrap();
         let core = link.core_mut(player);
-        let capacity = core.audio_buffer_size() as usize;
         let buffer = core.audio_buffer();
         let frames = (out.len() / 2).min(buffer.available());
         let written = buffer.read(out, frames);
         tango_match::Drained {
             written,
             queued: buffer.available(),
-            capacity,
         }
     }
 }

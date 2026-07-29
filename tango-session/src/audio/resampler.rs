@@ -6,30 +6,26 @@
 //! chosen speed is the host's job, and every console needs the same job
 //! done, so it is done once here rather than per emulator.
 //!
-//! Two decisions live in this file and nowhere else. How much of the
-//! backlog to take out of the console — as little as possible, because
-//! that buffer is what a rollback revokes speculated audio out of, but
-//! never so little that a fill goes hungry. And how much to resample —
-//! exactly what the caller is about to play, so the backlog stays on the
-//! unresampled side where [`CoreStream`](super::CoreStream) can see and
-//! steer it.
+//! One decision lives in this file and nowhere else: how much to
+//! resample. Exactly what the caller is about to play, and no more — the
+//! backlog then sits on the unresampled side, which is the side
+//! [`CoreStream`](super::CoreStream) measures and steers. Converting
+//! everything queued instead would put it downstream of the only thing
+//! regulating it, where it grows until something has to shed it.
+//!
+//! The backlog is held here rather than left in the console. Consoles
+//! keep small rings — melonDS's SPU holds about 43 ms, less than a
+//! session queues — so what a host can leave behind is neither
+//! knowable in advance nor reliably enough, and a level that saturates
+//! below the target the servo is steering toward is a servo that never
+//! arrives.
 
 use tango_match::AudioDrain;
 
-/// How much console audio to keep staged locally, in seconds.
-///
-/// The rest of the backlog stays in the console's buffer, where a
-/// rollback's revocation can still reach it — but not all of it can.
-/// Staging nothing would leave every fill depending on the console
-/// having samples ready at that instant, and a fill that comes up short
-/// is a gap in the sound. This is the insurance against that: it covers
-/// three or so fills, so a console that cannot be reached for a couple
-/// of them in a row costs nothing. It is still the minority of the
-/// backlog a host holds, so most of that stays revocable.
-const STAGED_RESERVE_SECS: f64 = 0.04;
-
 /// Ceiling on one drain, in frames — a bound on the scratch buffer and
-/// on how much a single call can move.
+/// on how much a single call can move. Comfortably more than a frame of
+/// any console's audio, so a fill never leaves a backlog behind for
+/// want of room.
 const DRAIN_CHUNK: usize = 4096;
 
 /// A console's audio on its way to a device: staged, resampled, and
@@ -46,10 +42,9 @@ const DRAIN_CHUNK: usize = 4096;
 /// therefore drifts exactly the way a servo intends.
 pub struct Resampler {
     drain: Box<dyn AudioDrain>,
-    /// Taken from the console, not yet resampled — a working reserve of
-    /// [`STAGED_RESERVE_SECS`], no more. The rest of the backlog stays in
-    /// the console's own buffer, where a rollback's revocation can still
-    /// reach it.
+    /// Taken from the console, not yet resampled. This is a session's
+    /// audio backlog: it is what [`source_available`](Self::source_available)
+    /// reports, so it is the queue a host's rate control steers.
     source: Vec<i16>,
     /// Fractional position into `source`, in frames.
     cursor: f64,
@@ -59,14 +54,6 @@ pub struct Resampler {
     /// Reusable landing buffer for [`AudioDrain::drain`]. A sound
     /// callback must not allocate.
     scratch: Vec<i16>,
-    /// Source frames the last [`process`](Resampler::process) got
-    /// through — what the local reserve is sized against, so it follows
-    /// a speed change instead of being set for 1x and starving.
-    appetite: usize,
-    /// The console's own buffer as of the last drain: how full, and how
-    /// big. Together they say how much backlog may safely be left there.
-    console_queued: usize,
-    console_capacity: usize,
 }
 
 impl Resampler {
@@ -77,9 +64,6 @@ impl Resampler {
             cursor: 0.0,
             dest: Vec::new(),
             scratch: Vec::new(),
-            appetite: 0,
-            console_queued: 0,
-            console_capacity: 0,
         }
     }
 
@@ -88,32 +72,14 @@ impl Resampler {
         (self.source.len() / 2).saturating_sub(self.cursor as usize)
     }
 
-    /// Top `source` up to the local reserve out of the console, and
-    /// report what the console still holds. One reach into the console,
-    /// because that is the expensive part.
-    fn top_up(&mut self) -> usize {
-        // Time alone doesn't size this: a fast-forwarded fill eats
-        // several times the source a 1x one does, so the reserve also
-        // tracks what the last fill actually got through.
-        let reserve = ((self.drain.sample_rate() * STAGED_RESERVE_SECS) as usize).max(self.appetite * 2);
-        // Whatever the console cannot safely keep comes here too. A ring
-        // allowed to fill overwrites or drops, so half of one is as much
-        // backlog as may be left in it — and some consoles hold barely
-        // more than that half to begin with, in which case essentially
-        // all of the backlog has to live on this side.
-        let overflowing = self.console_queued.saturating_sub(self.console_capacity / 2);
-        let short = reserve
-            .saturating_sub(self.staged())
-            .max(overflowing)
-            .min(DRAIN_CHUNK);
-        // Still asks even when the reserve is full: the level has to
-        // come back either way, and a zero-length take is the cheap way
-        // to get it in the same call.
-        self.scratch.resize(short * 2, 0);
+    /// Take what the console has, and report anything it could not hand
+    /// over in one go. One reach into the console per fill, because that
+    /// is the expensive part: a sound callback shares a lock with the
+    /// simulation, so every reach is a chance to stall behind a tick.
+    fn take(&mut self) -> usize {
+        self.scratch.resize(DRAIN_CHUNK * 2, 0);
         let drained = self.drain.drain(&mut self.scratch);
         self.source.extend_from_slice(&self.scratch[..drained.written * 2]);
-        self.console_queued = drained.queued;
-        self.console_capacity = drained.capacity;
         drained.queued
     }
 
@@ -123,12 +89,11 @@ impl Resampler {
     }
 
     pub fn source_available(&mut self) -> usize {
-        // The backlog is mostly counted rather than taken — it stays in
-        // the console's buffer, within reach of a rollback's revocation
-        // — but a few tens of ms are staged here so a fill is never at
-        // the mercy of what the console happens to have this instant.
-        let queued = self.top_up();
-        self.staged() + queued
+        // Counting what stayed behind as well: a drain capped by its own
+        // buffer has still produced that audio, and a level that ignored
+        // it would read low and be steered against.
+        let left = self.take();
+        self.staged() + left
     }
 
     pub fn process(&mut self, claimed_source_rate: f64, destination_rate: f64, frames: usize) {
@@ -138,22 +103,10 @@ impl Resampler {
         if !step.is_finite() || step <= 0.0 {
             return;
         }
-        // Resamples out of what is already staged — the console was
+        // Resamples out of what is already staged: the console was
         // reached once, in `source_available`, and reaching it again
-        // here is another chance to stall behind a tick. Worth it only
-        // when the alternative is a short fill, which is a gap in the
-        // sound: the reserve normally covers this, and doesn't only when
-        // the appetite it is sized against has just jumped.
+        // here is another chance to stall behind a tick.
         let want = frames.saturating_sub(self.dest.len() / 2);
-        let need = (self.cursor + want as f64 * step).ceil().max(0.0) as usize + 2;
-        if need > self.source.len() / 2 {
-            let short = (need - self.source.len() / 2).min(DRAIN_CHUNK);
-            self.scratch.resize(short * 2, 0);
-            let drained = self.drain.drain(&mut self.scratch);
-            self.source.extend_from_slice(&self.scratch[..drained.written * 2]);
-            self.console_queued = drained.queued;
-            self.console_capacity = drained.capacity;
-        }
         let available = self.source.len() / 2;
         // Stop at what the caller is about to play. Converting the whole
         // source queue instead would hand the backlog downstream of the
@@ -184,7 +137,6 @@ impl Resampler {
         // follow it out of bounds. The overshoot stays in the cursor as
         // a debt the next batch of source pays off.
         let consumed = (self.cursor as usize).min(available);
-        self.appetite = consumed;
         if consumed > 0 {
             self.source.drain(..consumed * 2);
             self.cursor -= consumed as f64;
@@ -244,7 +196,6 @@ mod tests {
             Drained {
                 written: out.len() / 2,
                 queued: DRAIN_CHUNK,
-                capacity: DRAIN_CHUNK * 8,
             }
         }
     }
@@ -291,20 +242,17 @@ mod tests {
             Drained {
                 written,
                 queued: *level,
-                capacity: 1 << 20,
             }
         }
     }
 
-    /// The backlog stays in the console, bar a small local reserve. That
-    /// buffer is what a rollback revokes speculated audio out of, and
-    /// every frame taken early is a frame the mispredict can no longer
-    /// take back — it plays anyway, and its corrected re-simulation gets
-    /// swallowed to avoid an echo. The reserve is the deliberate
-    /// exception: without something staged, a fill would depend on the
-    /// console being ready at that instant, and a short fill is a gap.
+    /// The backlog comes out of the console and is held here, where it
+    /// is exactly measurable and always reachable. What the console can
+    /// spare is not a host's to guess at, and a level that saturates
+    /// below the target a servo steers toward is a servo that never
+    /// arrives.
     #[test]
-    fn a_console_keeps_its_backlog_bar_the_reserve() {
+    fn the_backlog_comes_out_of_the_console() {
         let level = std::sync::Arc::new(std::sync::Mutex::new(20_000));
         let mut pull = Resampler::new(Box::new(Reporting(level.clone())));
 
@@ -314,13 +262,8 @@ mod tests {
         let mut out = [0i16; 1024];
         assert_eq!(pull.read(&mut out, 512), 512);
 
-        // Only the reserve came out, and the fill ate ~350 frames of it
-        // (512 device frames at 48 kHz against a 32768 Hz console).
-        let reserve = (32768.0 * STAGED_RESERVE_SECS) as usize;
-        assert_eq!(*level.lock().unwrap(), 20_000 - reserve);
-        assert!(pull.staged() < reserve, "staging never gave anything up");
-        // Nothing lost in the split: backlog is what was there minus
-        // what played.
+        // Nothing lost in the move: backlog is what was there minus what
+        // played.
         assert_eq!(pull.source_available(), 20_000 - 512 * 32768 / 48_000);
     }
 
@@ -346,7 +289,6 @@ mod tests {
                 return Drained {
                     written: 0,
                     queued: self.level,
-                    capacity: 1 << 20,
                 };
             }
             let written = self.level.min(out.len() / 2);
@@ -355,7 +297,6 @@ mod tests {
             Drained {
                 written,
                 queued: self.level,
-                capacity: 1 << 20,
             }
         }
     }
@@ -405,7 +346,6 @@ mod tests {
             Drained {
                 written,
                 queued: self.level,
-                capacity: self.capacity,
             }
         }
     }
@@ -442,11 +382,6 @@ mod tests {
             "backlog saturated at {} frames, below a target it must be able to reach",
             pull.source_available()
         );
-        assert!(
-            pull.console_queued <= 2048,
-            "console was left overflowing at {} frames",
-            pull.console_queued
-        );
     }
 
     /// A console with a fixed batch of audio and nothing more, at BN4+'s
@@ -465,7 +400,6 @@ mod tests {
             Drained {
                 written,
                 queued: self.0,
-                capacity: 1 << 20,
             }
         }
     }

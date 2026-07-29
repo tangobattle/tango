@@ -39,7 +39,6 @@ impl AudioDrain for ConsoleAudio {
         let player = (self.player)();
         self.pair.with_link(|pair| {
             let core = pair.core_mut(player);
-            let capacity = core.audio_buffer_size() as usize;
             let buffer = core.audio_buffer();
             // `out` holds interleaved samples, so it fits half as many
             // frames. Reading consumes, which is what stops a session
@@ -51,7 +50,6 @@ impl AudioDrain for ConsoleAudio {
             tango_match::Drained {
                 written,
                 queued: buffer.available(),
-                capacity,
             }
         })
     }

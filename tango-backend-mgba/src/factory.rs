@@ -515,7 +515,6 @@ struct PairAudio {
     /// Last readable buffer level and size — served when a reading
     /// lands mid-tick.
     last_queued: std::sync::atomic::AtomicUsize,
-    last_capacity: std::sync::atomic::AtomicUsize,
 }
 
 impl PairAudio {
@@ -527,7 +526,6 @@ impl PairAudio {
             last_rate: AtomicU64::new(32768.0f64.to_bits()),
             last_ratio: AtomicU64::new(1.0f64.to_bits()),
             last_queued: std::sync::atomic::AtomicUsize::new(0),
-            last_capacity: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 
@@ -570,14 +568,12 @@ impl tango_match::AudioDrain for PairAudio {
         let mut drained = tango_match::Drained::default();
         if self.link.try_with(&mut |link| {
             let core = link.core_mut(player);
-            drained.capacity = core.audio_buffer_size() as usize;
             let buffer = core.audio_buffer();
             let frames = (out.len() / 2).min(buffer.available());
             drained.written = buffer.read(out, frames);
             drained.queued = buffer.available();
         }) {
             self.last_queued.store(drained.queued, Ordering::Relaxed);
-            self.last_capacity.store(drained.capacity, Ordering::Relaxed);
             drained
         } else {
             // Mid-tick, so unreachable this fill. Nothing was taken, and
@@ -587,7 +583,6 @@ impl tango_match::AudioDrain for PairAudio {
             tango_match::Drained {
                 written: 0,
                 queued: self.last_queued.load(Ordering::Relaxed),
-                capacity: self.last_capacity.load(Ordering::Relaxed),
             }
         }
     }
