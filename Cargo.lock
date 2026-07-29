@@ -7886,9 +7886,28 @@ dependencies = [
  "log",
  "tango-backend-melonds",
  "tango-gamesupport",
+ "tango-gamesupport-bn5ds-dataview",
+ "tango-gamesupport-bn5ds-ui",
  "tango-gamesupport-common",
  "tango-match",
  "tango-replay",
+]
+
+[[package]]
+name = "tango-gamesupport-bn5ds-dataview"
+version = "0.1.0"
+dependencies = [
+ "num-traits",
+ "tango-gamesupport-common",
+]
+
+[[package]]
+name = "tango-gamesupport-bn5ds-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "tango-gamesupport-common",
+ "unic-langid",
 ]
 
 [[package]]
