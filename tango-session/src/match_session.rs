@@ -18,7 +18,7 @@ pub struct MatchSession {
     game: &'static tango_gamesupport::Game,
     /// Whatever the local player is holding, sampled once per frame.
     local_input: Arc<crate::InputCell>,
-    /// The frame the host uploads, RGBA8, both screens stacked.
+    /// The frame the host uploads, RGBA8, both screens side by side.
     frame: Arc<Mutex<Vec<u8>>>,
     wake: Arc<tokio::sync::Notify>,
     ended: Arc<AtomicBool>,

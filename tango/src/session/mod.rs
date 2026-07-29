@@ -1086,7 +1086,7 @@ impl State {
                         // selected effect magnifies them on the GPU at
                         // draw time.
                         let pixels = session.frame();
-                        // Sized by the session: a DS stacks two screens
+                        // Sized by the session: a DS lays out two screens
                         // where a GBA has one.
                         let (width, height) = session.frame_size();
                         self.frame_revision = self.frame_revision.wrapping_add(1);

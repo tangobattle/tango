@@ -229,9 +229,9 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
     // The widget is sized to native·scale — the same rectangle the old CPU
     // upscalers produced — and the effect's fragment shader magnifies the
     // native texture to fill it. Native size comes from the session,
-    // which knows its console's screens from boot — a DS stacks two
-    // 256-wide screens where a GBA has one — so the pane holds the right
-    // shape before the first frame lands.
+    // which knows its console's screens from boot — a DS puts two
+    // 256-wide screens side by side where a GBA has one — so the pane
+    // holds the right shape before the first frame lands.
     let scale = effect.scale;
     let (native_w, native_h) = state
         .active
@@ -245,15 +245,15 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
     let img_h = (native_h * scale) as f32;
 
     // A two-screen console is a DS, and a DS's second screen is its
-    // touch screen: (y where it starts in the stacked frame, its size),
-    // all in native pixels. `None` for everything else — the mouse
-    // area only goes up when there is a screen to touch.
+    // touch screen: (x where it starts in the composed frame, its
+    // size), all in native pixels. `None` for everything else — the
+    // mouse area only goes up when there is a screen to touch.
     let touch_screen = state
         .active
         .as_ref()
         .map(|s| s.screen_layout())
         .filter(|layout| layout.screens.len() == 2)
-        .map(|layout| (layout.screens[0].height, layout.screens[1]));
+        .map(|layout| (layout.screens[0].width, layout.screens[1]));
 
     iced::widget::responsive(move |size| {
         let raw = (size.width / img_w).min(size.height / img_h);
@@ -284,11 +284,11 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
         // edges); whether a *press* lands on the touch screen travels
         // with each move as `inside`.
         let mut fb: Element<'a, Message> = fb.into();
-        if let Some((top_h, screen)) = touch_screen {
+        if let Some((left_w, screen)) = touch_screen {
             fb = iced::widget::mouse_area(fb)
                 .on_move(move |p| {
-                    let nx = p.x / w * native_w as f32;
-                    let ny = p.y / h * native_h as f32 - top_h as f32;
+                    let nx = p.x / w * native_w as f32 - left_w as f32;
+                    let ny = p.y / h * native_h as f32;
                     let inside =
                         (0.0..screen.width as f32).contains(&nx) && (0.0..screen.height as f32).contains(&ny);
                     let pos = (

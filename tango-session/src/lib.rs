@@ -195,13 +195,19 @@ pub fn clamp_speed(base_fps: f32, factor: f32) -> f32 {
     (base_fps * factor).clamp(1.0, base_fps * 4.0)
 }
 
-/// A layout's screens stacked vertically, as a host sizes one texture
-/// for them. Screens of unequal width take the widest, which is what
-/// leaves a DS's narrower screen letterboxed rather than skewed.
-pub fn stacked_size(layout: &tango_match::ScreenLayout) -> (u32, u32) {
+/// A layout's screens side by side, as a host sizes one texture for
+/// them. Screens of unequal height take the tallest, which is what
+/// leaves a shorter one letterboxed rather than skewed.
+///
+/// Side by side because a DS's two screens stacked are twice as tall as
+/// they are wide, and every display a host draws into is wider than it
+/// is tall: stacked, the pane fits to height and wastes most of the
+/// width, leaving both screens small. Turned on their side the pair is
+/// 4:3 and fills what is actually there.
+pub fn composite_size(layout: &tango_match::ScreenLayout) -> (u32, u32) {
     (
-        layout.screens.iter().map(|s| s.width).max().unwrap_or(0),
-        layout.screens.iter().map(|s| s.height).sum(),
+        layout.screens.iter().map(|s| s.width).sum(),
+        layout.screens.iter().map(|s| s.height).max().unwrap_or(0),
     )
 }
 
@@ -295,10 +301,10 @@ pub trait Session: std::any::Any {
     fn local_game(&self) -> &'static tango_gamesupport::Game;
 
     /// The pixel dimensions of [`frame`](Self::frame)'s buffer — the
-    /// console's screens stacked ([`stacked_size`]), so a host sizes
+    /// console's screens laid out ([`composite_size`]), so a host sizes
     /// its texture from the session instead of assuming a shape.
     fn frame_size(&self) -> (u32, u32) {
-        stacked_size(&self.screen_layout())
+        composite_size(&self.screen_layout())
     }
 
     /// The screens this session's console presents, which is what
@@ -380,5 +386,30 @@ impl dyn Session {
     /// Mutable twin of [`downcast_ref`](Self::downcast_ref).
     pub fn downcast_mut<T: Session>(&mut self) -> Option<&mut T> {
         (self as &mut dyn std::any::Any).downcast_mut()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// The DS's two screens compose side by side, not stacked. Pinned
+    /// because the stacked shape is the one that falls out for free —
+    /// concatenating equal-width screens *is* a vertical stack — so a
+    /// frame builder that stops interleaving rows regresses to it
+    /// silently, and only the aspect ratio ever says so.
+    #[test]
+    fn two_screens_compose_side_by_side() {
+        let ds = tango_match::ScreenLayout::new([
+            tango_match::Screen {
+                width: 256,
+                height: 192,
+            },
+            tango_match::Screen {
+                width: 256,
+                height: 192,
+            },
+        ]);
+        assert_eq!(super::composite_size(&ds), (512, 192));
+        // One screen is unaffected either way.
+        assert_eq!(super::composite_size(&tango_match::ScreenLayout::single(240, 160)), (240, 160));
     }
 }

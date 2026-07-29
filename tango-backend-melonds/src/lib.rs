@@ -47,7 +47,10 @@ pub fn framerate_ratio(fps_target: f64) -> f64 {
     }
 }
 
-/// The DS presents two identically-sized screens, top then bottom.
+/// The DS presents two identically-sized screens. Listed in the order
+/// [`MelonDs::frame`] lays them out, which is the console's top screen
+/// then its bottom (touch) one — left to right in the composed frame
+/// rather than the console's own physical stack.
 const SCREENS: [Screen; 2] = [
     Screen {
         width: 256,
@@ -106,11 +109,19 @@ impl Backend for MelonDs {
     fn frame(link: &mut Link, player: usize) -> Option<Vec<u8>> {
         let (top, bottom) = link.console(player).framebuffers()?;
         let mut rgba = Vec::with_capacity(SCREENS.iter().map(Screen::len).sum());
-        for screen in [top, bottom] {
-            for &pixel in screen {
-                // The core hands out BGRA words; hosts want RGBA bytes.
-                let [b, g, r, _] = pixel.to_le_bytes();
-                rgba.extend_from_slice(&[r, g, b, 0xff]);
+        // Side by side, so a row of the composite is a row of the top
+        // screen followed by the same row of the bottom one. Stacked
+        // would be the cheaper `top` then `bottom` — concatenation is a
+        // vertical stack for free when the widths match — but a 256x384
+        // pane wastes most of the width of any display it is drawn into.
+        let (width, height) = (SCREENS[0].width as usize, SCREENS[0].height as usize);
+        for row in 0..height {
+            for screen in [top, bottom] {
+                for &pixel in &screen[row * width..(row + 1) * width] {
+                    // The core hands out BGRA words; hosts want RGBA bytes.
+                    let [b, g, r, _] = pixel.to_le_bytes();
+                    rgba.extend_from_slice(&[r, g, b, 0xff]);
+                }
             }
         }
         Some(rgba)

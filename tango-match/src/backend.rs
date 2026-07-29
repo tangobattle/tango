@@ -124,8 +124,8 @@ impl Screen {
     }
 }
 
-/// The screens a console presents, in the order a
-/// [`frame`](Backend::frame) buffer concatenates them.
+/// The screens a console presents, left to right in the order a
+/// [`frame`](Backend::frame) buffer lays them out.
 ///
 /// A GBA has one; a DS has two. They are listed rather than described
 /// by a count and a shared size because nothing guarantees a console's
