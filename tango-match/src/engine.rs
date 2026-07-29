@@ -11,6 +11,7 @@
 //! ticks, snapshots and restores — which is exactly [`Backend`] — so it
 //! lives here rather than being written once per emulator.
 
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::backend::Backend;
@@ -53,6 +54,14 @@ struct World<B: Backend> {
     /// a rollback session retires one nearly every tick and they run to
     /// megabytes.
     pool: Vec<B::Snapshot>,
+    /// Which seats the host displays — the local one, until something
+    /// like training turns the remote back on. Shared with the
+    /// [`Match`] so that can happen mid-session.
+    visible: Arc<[AtomicBool; 2]>,
+    /// First tick of the current advance whose frame could reach the
+    /// screen. Ticks below it are rollback re-simulation: nobody ever
+    /// sees their frames, so nobody draws them.
+    render_from: Arc<AtomicU32>,
 }
 
 impl<B: Backend> getgud::World for World<B> {
@@ -64,7 +73,12 @@ impl<B: Backend> getgud::World for World<B> {
         let mut inputs = [*local; 2];
         inputs[1 - self.local_player] = remotes[0];
         inputs[self.local_player] = *local;
-        B::tick(&mut self.link.lock().unwrap(), inputs);
+        let mut link = self.link.lock().unwrap();
+        let render = self.live_tick + 1 >= self.render_from.load(Ordering::Relaxed);
+        for player in 0..2 {
+            B::set_render(&mut link, player, render && self.visible[player].load(Ordering::Relaxed));
+        }
+        B::tick(&mut link, inputs);
         self.live_tick += 1;
         Ok(())
     }
@@ -107,6 +121,8 @@ pub struct Match<B: Backend> {
     inner: getgud::Session<World<B>>,
     link: Arc<Mutex<B::Link>>,
     local_player: usize,
+    visible: Arc<[AtomicBool; 2]>,
+    render_from: Arc<AtomicU32>,
 }
 
 impl<B: Backend> Match<B> {
@@ -114,11 +130,15 @@ impl<B: Backend> Match<B> {
     pub fn new(link: B::Link, local_player: usize, present_delay: u32) -> Result<Self, B::Error> {
         assert!(local_player < 2);
         let link = Arc::new(Mutex::new(link));
+        let visible = Arc::new([AtomicBool::new(local_player == 0), AtomicBool::new(local_player == 1)]);
+        let render_from = Arc::new(AtomicU32::new(0));
         let mut world = World::<B> {
             link: link.clone(),
             live_tick: 0,
             local_player,
             pool: Vec::new(),
+            visible: visible.clone(),
+            render_from: render_from.clone(),
         };
         let initial_state = {
             use getgud::World as _;
@@ -133,6 +153,8 @@ impl<B: Backend> Match<B> {
             }),
             link,
             local_player,
+            visible,
+            render_from,
         })
     }
 
@@ -141,6 +163,11 @@ impl<B: Backend> Match<B> {
     /// target.
     pub fn advance(&mut self, local: B::Input) -> Result<(Outgoing<B::Input>, Report), B::Error> {
         let before = self.inner.local_frontier();
+        // Everything this advance re-simulates below the old frontier
+        // is rollback replay whose frames nobody sees; rendering
+        // resumes at the frontier so the frame the host presents is
+        // drawn.
+        self.render_from.store(before, Ordering::Relaxed);
         let frame = self.inner.advance(local)?;
         let tick = frame.tick;
         Ok((
@@ -271,6 +298,9 @@ impl<B: Backend> crate::RunningMatch for Match<B> {
     }
 
     fn render_seats(&mut self) {
+        for seat in &*self.visible {
+            seat.store(true, Ordering::Relaxed);
+        }
         self.with_link(|link| {
             for player in 0..2 {
                 B::set_render(link, player, true);

@@ -117,6 +117,10 @@ impl Backend for MelonDs {
         ScreenLayout::new(SCREENS)
     }
 
+    fn set_render(link: &mut Link, player: usize, on: bool) {
+        link.console(player).set_render(on);
+    }
+
     fn audio(
         link: std::sync::Arc<std::sync::Mutex<Link>>,
         player: std::sync::Arc<std::sync::atomic::AtomicUsize>,
