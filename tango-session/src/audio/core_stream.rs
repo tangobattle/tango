@@ -33,7 +33,10 @@
 //!   at the servo's authority alone it would ride near-empty for ~10
 //!   seconds, where every jitter trough is an audible underrun. After a
 //!   drain the stream serves silence until the queue reaches target
-//!   once — one clean ~50 ms gap instead of seconds of crackle.
+//!   once — one clean ~50 ms gap instead of seconds of crackle. A sim
+//!   that can't hold its published pace (DS-class load) never fully
+//!   drains — it starves every fill a little instead — so a few starved
+//!   fills in a row concede the same way.
 //!
 //! The level the servo steers is the *unresampled* queue, which is why
 //! [`Resampler`](super::Resampler) converts only what each fill plays:
@@ -75,6 +78,15 @@ const AUDIO_MAX_TRIM: f64 = 0.005;
 /// alone would need ~10 s per 50 ms of backlog).
 const AUDIO_DISCARD_FACTOR: f64 = 3.0;
 
+/// Consecutive starved fills — short, with the queue genuinely low —
+/// that latch re-priming. Sustained starvation is the signature of a
+/// sim that can't hold its published pace (DS-class load): it starves
+/// every fill a little, which the total-stall latch below never sees.
+/// Three fills is ~30 ms of continuous artifact before conceding; a
+/// one-off delivery hiccup recovers on the next fill and resets the
+/// count instead.
+const STARVED_FILLS_TO_REPRIME: u32 = 3;
+
 pub struct CoreStream {
     /// The console's audio, already resampled to the device rate by
     /// whichever backend produced it. This stream never learns which
@@ -99,6 +111,10 @@ pub struct CoreStream {
     /// since the servo alone would take seconds to deepen the queue and
     /// ride thin the whole way there.
     last_target: f64,
+    /// Consecutive fills that came up short with the queue below target
+    /// — the sustained-starvation detector behind the partial-deficit
+    /// re-prime (see [`STARVED_FILLS_TO_REPRIME`]).
+    starved_fills: u32,
 }
 
 impl CoreStream {
@@ -115,6 +131,7 @@ impl CoreStream {
             out_rate: if out_rate == 0 { 48000 } else { out_rate },
             priming: true,
             last_target: f64::INFINITY,
+            starved_fills: 0,
         }
     }
 
@@ -219,6 +236,29 @@ impl super::Stream for CoreStream {
         if delivered == 0 && queued < target {
             self.priming = true;
         }
+        // Sustained partial starvation: a sim that can't hold its
+        // published pace (DS-class load) produces slightly less than
+        // every fill consumes, so fills come up a few frames short —
+        // never empty, so the stall latch above never fires — and the
+        // host splices a sliver of silence into every one, indefinitely.
+        // A few of those in a row with the queue genuinely low is that
+        // signature; concede and re-prime, trading continuous per-fill
+        // crackle for one clean gap per drain cycle. The queue guard is
+        // what keeps drive-thread lock contention out of this: a run of
+        // unreachable reaches also delivers short, but its backlog is
+        // sitting right there and the level (served stale across
+        // contention) still reads it.
+        if delivered < frame_count && queued < target {
+            self.starved_fills += 1;
+            if self.starved_fills >= STARVED_FILLS_TO_REPRIME {
+                self.priming = true;
+            }
+        } else {
+            self.starved_fills = 0;
+        }
+        if self.priming {
+            self.starved_fills = 0;
+        }
         delivered
     }
 }
@@ -265,11 +305,14 @@ mod tests {
     }
 
     /// One run's observations: the queue level the servo saw on each
-    /// fill (in source frames — the audio latency), and which fills the
-    /// queues could not cover.
+    /// fill (in source frames — the audio latency), which fills the
+    /// queues could not cover, and which of those were partial — some
+    /// frames delivered, the rest spliced silence, the ugliest artifact
+    /// a fill can produce.
     struct Run {
         queued: Vec<f64>,
         short: Vec<usize>,
+        partial: Vec<usize>,
     }
 
     /// GBA fps: what an unthrottled host publishes, and the pace a
@@ -292,6 +335,7 @@ mod tests {
         let mut run = Run {
             queued: Vec::new(),
             short: Vec::new(),
+            partial: Vec::new(),
         };
         for i in 0..fills {
             let fps = fps(i);
@@ -304,8 +348,12 @@ mod tests {
             // before this fill consumes — since after would read a
             // fill's worth low and make a settled queue look starved.
             run.queued.push(stream.pull.source_available() as f64);
-            if <CoreStream as Stream>::fill(&mut stream, &mut buf) < FILL {
+            let delivered = <CoreStream as Stream>::fill(&mut stream, &mut buf);
+            if delivered < FILL {
                 run.short.push(i);
+            }
+            if 0 < delivered && delivered < FILL {
+                run.partial.push(i);
             }
         }
         run
@@ -410,6 +458,44 @@ mod tests {
             peak < target * AUDIO_DISCARD_FACTOR,
             "queue piled up to {peak:.0} source frames, past a discard cap of {:.0}",
             target * AUDIO_DISCARD_FACTOR
+        );
+    }
+
+    /// A sim that can't hold its published pace — DS-class load — makes
+    /// every fill a little, never nothing, so the total-stall latch
+    /// can't see it: before the starvation latch, this scenario spliced
+    /// a sliver of silence into every single settled fill (5799 of
+    /// 5800), indefinitely. The deficit can't be conjured away; what
+    /// the latch buys is where it lands — whole clean gaps (re-prime
+    /// silences) between runs of full fills, with partial fills bounded
+    /// by the trigger window.
+    #[test]
+    fn sustained_overload_concedes_clean_gaps_not_per_fill_crackle() {
+        let run = run(6000, native, |_, produced, ring| {
+            // 8% short of the published pace, forever.
+            *ring.lock().unwrap() += produced * 0.92;
+        });
+        let settled: Vec<usize> = run.short.iter().copied().filter(|&i| i >= 200).collect();
+        assert!(!settled.is_empty(), "an 8% deficit must still cost something");
+        // Most fills play complete audio…
+        assert!(
+            settled.len() * 4 < 5800,
+            "starvation ate {} of 5800 settled fills",
+            settled.len()
+        );
+        // …and the incomplete ones are re-prime silence, not splices:
+        // partial fills appear only as the latch's trigger runs.
+        let mut longest = 0usize;
+        let mut current = 0usize;
+        let mut prev = None::<usize>;
+        for &i in run.partial.iter().filter(|&&i| i >= 200) {
+            current = if prev == Some(i - 1) { current + 1 } else { 1 };
+            longest = longest.max(current);
+            prev = Some(i);
+        }
+        assert!(
+            longest <= STARVED_FILLS_TO_REPRIME as usize,
+            "a run of {longest} partial fills — the starvation latch should have conceded"
         );
     }
 
