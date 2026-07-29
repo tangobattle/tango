@@ -167,7 +167,7 @@ impl std::fmt::Debug for Clip {
         f.debug_struct("Clip")
             .field("start", &self.start)
             .field("end", &self.end)
-            .field("snapshot_tick", &self.snapshot.as_ref().map(|s| s.tick))
+            .field("snapshot_tick", &self.snapshot.as_ref().map(|s| s.tick()))
             .field("round_marks", &self.round_marks)
             .finish()
     }
@@ -322,7 +322,7 @@ impl<W: Writer> Render<W> {
         // the capture tick and only the (≤ one keyframe interval) gap to
         // the span start simulates unwritten.
         if let Some(snap) = clip.snapshot.as_deref() {
-            if snap.tick < clip.start {
+            if snap.tick() < clip.start {
                 playback.load(snap)?;
                 for i in 0..2 {
                     playback.pair_mut().core_mut(i).audio_buffer().clear();

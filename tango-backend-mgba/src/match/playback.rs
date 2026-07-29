@@ -34,14 +34,22 @@ pub const REWIND_FRAMES: u32 = 90;
 /// `REWIND_BUFFER_MAX_ENTRIES` for the sizing rationale).
 const REWIND_MAX_ENTRIES: usize = 192;
 
-/// A whole-pair snapshot poised at `tick` (= input pairs consumed),
+/// A whole-pair snapshot poised at a tick (= input pairs consumed),
 /// carrying both cores' rendered frames so previews and PiP/swap blits
-/// never need emulation.
+/// never need emulation. The frames half is the seam's own capture
+/// type, so publishing a snapshot is publishing `&snap.frames` — no
+/// adapter, no second [`tango_match::ReplayFrames`] impl.
 pub struct Snapshot {
-    pub tick: u32,
     pub state: mgba_rollback::Snapshot,
-    /// Both cores' framebuffers (native BGR555), indexed by player.
-    pub framebuffers: [Vec<u8>; 2],
+    /// Both cores' rendered frames at this tick, seam-ready (RGBA8).
+    pub frames: tango_match::LiveFrames,
+}
+
+impl Snapshot {
+    /// The tick this snapshot is poised at.
+    pub fn tick(&self) -> u32 {
+        self.frames.tick
+    }
 }
 
 /// Sparse keyframe store covering the whole replay, shared between the
@@ -67,7 +75,7 @@ impl SnapshotStore {
     }
 
     pub fn push(&self, snap: Arc<Snapshot>) {
-        self.0.lock().unwrap().insert(snap.tick, snap);
+        self.0.lock().unwrap().insert(snap.tick(), snap);
     }
 
     /// Largest keyframe with `tick <= target`, if any.
@@ -136,10 +144,10 @@ impl RewindRing {
     pub fn insert(&self, snap: Arc<Snapshot>) {
         // Forward playback drags the anchor along; captures below it
         // (seek catch-up runs) leave it where the chase put it.
-        self.0.anchor.fetch_max(snap.tick, Ordering::AcqRel);
+        self.0.anchor.fetch_max(snap.tick(), Ordering::AcqRel);
         let anchor = self.0.anchor.load(Ordering::Acquire);
         let mut entries = self.0.entries.lock().unwrap();
-        entries.insert(snap.tick, snap);
+        entries.insert(snap.tick(), snap);
         let keep_from = anchor.saturating_sub(REWIND_FRAMES + KEYFRAME_INTERVAL + 1);
         while let Some((&lo, _)) = entries.first_key_value() {
             if lo < keep_from {
@@ -343,25 +351,16 @@ impl Playback {
         true
     }
 
-    /// Capture a whole-pair snapshot (with both framebuffers) at the
+    /// Capture a whole-pair snapshot (with both frames) at the
     /// current cursor.
     pub fn capture(&mut self) -> Result<Arc<Snapshot>, crate::Error> {
-        let state = self.pair.save()?;
-        let framebuffers = [
-            self.pair.video_buffer(0).map(|b| b.to_vec()).unwrap_or_default(),
-            self.pair.video_buffer(1).map(|b| b.to_vec()).unwrap_or_default(),
-        ];
-        Ok(Arc::new(Snapshot {
-            tick: self.cursor,
-            state,
-            framebuffers,
-        }))
+        capture_pair(&mut self.pair, self.cursor)
     }
 
     /// Restore the pair to `snap` and move the cursor there.
     pub fn load(&mut self, snap: &Snapshot) -> Result<(), crate::Error> {
         self.pair.load(&snap.state)?;
-        self.cursor = snap.tick;
+        self.cursor = snap.tick();
         Ok(())
     }
 
@@ -483,7 +482,7 @@ impl SeekChase {
             on_progress(pb.cursor());
             match pb.capture() {
                 Ok(snap) => {
-                    if store.snapshot_needed(snap.tick) {
+                    if store.snapshot_needed(snap.tick()) {
                         store.push(snap.clone());
                     }
                     rewind.insert(snap.clone());
@@ -529,7 +528,7 @@ impl SeekChase {
             let best = [rewind.best_at_or_before(target), store.best_at_or_before(target)]
                 .into_iter()
                 .flatten()
-                .max_by_key(|s| s.tick);
+                .max_by_key(|s| s.tick());
             match best {
                 Some(snap) => Some(snap),
                 None => return Plan::Done,
@@ -541,7 +540,7 @@ impl SeekChase {
             ]
             .into_iter()
             .flatten()
-            .max_by_key(|s| s.tick)
+            .max_by_key(|s| s.tick())
         };
 
         if let Some(snap) = &start {
@@ -551,7 +550,7 @@ impl SeekChase {
                 return Plan::Done;
             }
             on_progress(pb.cursor());
-            if snap.tick >= target {
+            if snap.tick() >= target {
                 publish_landing(snap);
                 return Plan::Done;
             }
@@ -723,17 +722,17 @@ impl Prefetch {
     }
 }
 
-/// A whole-pair snapshot at `tick`, framebuffers included.
+/// A whole-pair snapshot at `tick`, frames included — converted to the
+/// seam's RGBA8 here, so publishing a stored snapshot is a borrow.
 fn capture_pair(pair: &mut mgba_rollback::Link, tick: u32) -> Result<Arc<Snapshot>, crate::Error> {
     let state = pair.save()?;
-    let framebuffers = [
-        pair.video_buffer(0).map(|b| b.to_vec()).unwrap_or_default(),
-        pair.video_buffer(1).map(|b| b.to_vec()).unwrap_or_default(),
+    let frames = [
+        pair.video_buffer(0).map(crate::factory::to_rgba).unwrap_or_default(),
+        pair.video_buffer(1).map(crate::factory::to_rgba).unwrap_or_default(),
     ];
     Ok(Arc::new(Snapshot {
-        tick,
         state,
-        framebuffers,
+        frames: tango_match::LiveFrames { tick, frames },
     }))
 }
 

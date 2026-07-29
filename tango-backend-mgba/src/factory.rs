@@ -297,7 +297,7 @@ impl tango_match::RunningReplay for Replay {
         pb.step();
         match pb.capture() {
             Ok(snap) => {
-                if self.store.snapshot_needed(snap.tick) {
+                if self.store.snapshot_needed(snap.tick()) {
                     self.store.push(snap.clone());
                 }
                 self.rewind.insert(snap);
@@ -330,7 +330,7 @@ impl tango_match::RunningReplay for Replay {
             &self.rewind,
             budget,
             on_progress,
-            &mut |snap| publish(snap),
+            &mut |snap| publish(&snap.frames),
             on_resume,
         );
         match step {
@@ -344,11 +344,11 @@ impl tango_match::RunningReplay for Replay {
         let mut pb = self.playback.lock().unwrap();
         let tick = pb.cursor();
         let pair = pb.pair_mut();
-        let live = LiveFrames {
+        let live = tango_match::LiveFrames {
             tick,
-            framebuffers: [
-                pair.video_buffer(0).map(<[u8]>::to_vec).unwrap_or_default(),
-                pair.video_buffer(1).map(<[u8]>::to_vec).unwrap_or_default(),
+            frames: [
+                pair.video_buffer(0).map(to_rgba).unwrap_or_default(),
+                pair.video_buffer(1).map(to_rgba).unwrap_or_default(),
             ],
         };
         publish(&live);
@@ -364,7 +364,7 @@ impl tango_match::RunningReplay for Replay {
     fn nearest_capture(&self, tick: u32, publish: &mut dyn FnMut(&dyn tango_match::ReplayFrames)) -> bool {
         match self.best_at_or_before(tick) {
             Some(snap) => {
-                publish(&*snap);
+                publish(&snap.frames);
                 true
             }
             None => false,
@@ -372,7 +372,7 @@ impl tango_match::RunningReplay for Replay {
     }
 
     fn capture_before(&self, tick: u32) -> Option<u32> {
-        self.best_at_or_before(tick.checked_sub(1)?).map(|s| s.tick)
+        self.best_at_or_before(tick.checked_sub(1)?).map(|s| s.tick())
     }
 }
 
@@ -384,33 +384,7 @@ impl Replay {
         [self.store.best_at_or_before(tick), self.rewind.best_at_or_before(tick)]
             .into_iter()
             .flatten()
-            .max_by_key(|s| s.tick)
-    }
-}
-
-/// Both seats' displays right now, as the seam publishes them.
-struct LiveFrames {
-    tick: u32,
-    framebuffers: [Vec<u8>; 2],
-}
-
-impl tango_match::ReplayFrames for LiveFrames {
-    fn tick(&self) -> u32 {
-        self.tick
-    }
-
-    fn frame(&self, player: usize) -> Vec<u8> {
-        to_rgba(&self.framebuffers[player])
-    }
-}
-
-impl tango_match::ReplayFrames for playback::Snapshot {
-    fn tick(&self) -> u32 {
-        self.tick
-    }
-
-    fn frame(&self, player: usize) -> Vec<u8> {
-        to_rgba(&self.framebuffers[player])
+            .max_by_key(|s| s.tick())
     }
 }
 
@@ -526,7 +500,6 @@ impl PairAudio {
     }
 }
 
-
 impl tango_match::AudioDrain for PairAudio {
     fn sample_rate(&self) -> f64 {
         let mut rate = 0.0;
@@ -581,7 +554,7 @@ impl tango_match::AudioDrain for PairAudio {
 }
 
 /// Expand mgba's native BGR555 to the RGBA8 the seam promises hosts.
-fn to_rgba(src: &[u8]) -> Vec<u8> {
+pub(crate) fn to_rgba(src: &[u8]) -> Vec<u8> {
     let mut rgba = vec![0u8; src.len() * 2];
     mgba::gba::bgr555_to_rgba8(src, &mut rgba);
     rgba

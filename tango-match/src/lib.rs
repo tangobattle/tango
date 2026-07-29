@@ -33,11 +33,11 @@ pub mod throttler;
 
 pub use audio::{AudioDrain, Drained};
 pub use solo::{
-    PeerRom, ReplayConfig, ReplayFrames, ReplaySet, RunningReplay, RunningSolo, SeekStep, SoloConfig,
-    StatsPass,
+    LiveFrames, PeerRom, ReplayConfig, ReplayFrames, ReplaySet, RunningReplay, RunningSolo, SeekStep,
+    SoloConfig, StatsPass,
 };
 pub use engine::Match;
-pub use link::{Link, Backend, Screen, ScreenLayout, Snapshot, StartConfig};
+pub use link::{Backend, Link, Screen, ScreenLayout, Snapshot, StartConfig};
 pub use input::HostInput;
 
 /// The clock-sync governor: feed it `skew()` + `speculation_balance()`

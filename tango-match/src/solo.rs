@@ -65,6 +65,28 @@ pub trait ReplayFrames {
     fn frame(&self, player: usize) -> Vec<u8>;
 }
 
+/// The plain owned capture: both seats' RGBA8 frames at one tick. An
+/// engine publishes one directly when the pixels aren't already living
+/// inside richer storage — and embeds one where they are (a seek
+/// keyframe carrying a savestate alongside), so the [`ReplayFrames`]
+/// impl exists once, here.
+pub struct LiveFrames {
+    /// The tick this capture is poised at.
+    pub tick: u32,
+    /// Per-seat RGBA8 frames; empty for a seat that had not drawn yet.
+    pub frames: [Vec<u8>; 2],
+}
+
+impl ReplayFrames for LiveFrames {
+    fn tick(&self) -> u32 {
+        self.tick
+    }
+
+    fn frame(&self, player: usize) -> Vec<u8> {
+        self.frames[player].clone()
+    }
+}
+
 /// What one slice of a seek did.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SeekStep {
