@@ -216,11 +216,15 @@ impl Solo {
             rtc: config.rtc,
             peripheral: mgba_rollback::Peripheral::Cable,
         })?;
-        // Queue headroom for the stream's rate control — the discard cap
-        // sits at 3x its 50 ms target and fast-forward piles up several
-        // callbacks' worth between fills; mGBA's default buffer doesn't
-        // hold that at BN4+'s 65536 Hz. Same sizing as the pair engine.
-        link.core_mut(0).set_audio_buffer_size(16384);
+        // This buffer *is* the session's audio queue: the stream leaves
+        // its backlog here rather than pulling it out, so a rollback can
+        // still revoke what it speculated. It therefore has to hold the
+        // stream's discard cap — 3x a 120 ms target — plus what
+        // fast-forward piles up between fills, at BN4+'s 65536 Hz, and
+        // with room to spare: mGBA's ring drops new writes when full, so
+        // overflowing it loses audio silently. Same sizing as the pair
+        // engine.
+        link.core_mut(0).set_audio_buffer_size(32768);
         link.core_mut(0).audio_buffer().clear();
         Ok(Solo {
             link: Arc::new(Mutex::new(link)),
@@ -499,15 +503,17 @@ struct PairAudio {
     player: Arc<std::sync::atomic::AtomicUsize>,
     /// Last successfully read sample rate and framerate ratio, as f64
     /// bits — served whenever a read lands while the drive thread holds
-    /// the pair mid-tick. The stream re-reads both every fill and
-    /// mode-selects its time stretcher on the ratio, and a
-    /// fast-forwarded drive loop holds the pair for a large fraction of
-    /// wall time — a placeholder 1.0 there flaps the stretcher in and
-    /// out, dumping the resampled queue on every flap (audible as
-    /// constant crackle). A stale reading is only ever one fill old at
-    /// a speed transition, which the stream's hysteresis absorbs.
+    /// the pair mid-tick. The stream re-reads both every fill, and it
+    /// watches the ratio for the jump that means a deliberate speed
+    /// change; a fast-forwarded drive loop holds the pair for a large
+    /// fraction of wall time, so a placeholder 1.0 on those fills would
+    /// read as the user toggling speed off and on again, snapping
+    /// playback rate back and forth. A stale reading is only ever one
+    /// fill old at a real transition.
     last_rate: AtomicU64,
     last_ratio: AtomicU64,
+    /// Last readable buffer level — see [`PairAudio::queued`].
+    last_queued: std::sync::atomic::AtomicUsize,
 }
 
 impl PairAudio {
@@ -518,6 +524,7 @@ impl PairAudio {
             // The GBA's own defaults, until the pair is first free.
             last_rate: AtomicU64::new(32768.0f64.to_bits()),
             last_ratio: AtomicU64::new(1.0f64.to_bits()),
+            last_queued: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 
@@ -552,6 +559,24 @@ impl tango_match::AudioDrain for PairAudio {
             ratio
         } else {
             f64::from_bits(self.last_ratio.load(Ordering::Relaxed))
+        }
+    }
+
+    fn queued(&mut self) -> usize {
+        let player = self.player();
+        let mut queued = 0;
+        if self
+            .link
+            .try_with(&mut |link| queued = link.core_mut(player).audio_buffer().available())
+        {
+            self.last_queued.store(queued, Ordering::Relaxed);
+            queued
+        } else {
+            // Mid-tick, so unreadable. The last reading is the honest
+            // answer: this fill can't drain the core either, so nothing
+            // has left the buffer since — only the sim's own additions
+            // are missing, and they land in the next fill's measurement.
+            self.last_queued.load(Ordering::Relaxed)
         }
     }
 

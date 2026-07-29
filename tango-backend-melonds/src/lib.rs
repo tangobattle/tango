@@ -36,8 +36,8 @@ pub const FPS: f64 = 33_513_982.0 / 560_190.0;
 /// what it produced in a second now has to play in half of one and the
 /// ratio falls. Same shape as mgba's
 /// `clockRate / (desiredFrameRate * frameCycles)`, which is what the
-/// stream's faux clock and its stretcher are both written against —
-/// the stretcher runs at `1 / ratio`, so inverting this makes a
+/// stream's faux clock is written against — it scales the resampler's
+/// destination rate by this directly, so inverting it makes a
 /// fast-forward play *slower* rather than faster.
 pub fn framerate_ratio(fps_target: f64) -> f64 {
     if fps_target > 0.0 {

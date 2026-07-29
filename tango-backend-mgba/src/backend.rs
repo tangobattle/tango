@@ -137,6 +137,11 @@ impl tango_match::AudioDrain for SharedPairAudio {
             .calculate_framerate_ratio(fps_target)
     }
 
+    fn queued(&mut self) -> usize {
+        let player = self.player();
+        self.link.lock().unwrap().core_mut(player).audio_buffer().available()
+    }
+
     fn drain(&mut self, out: &mut [i16]) -> usize {
         let player = self.player();
         let mut link = self.link.lock().unwrap();

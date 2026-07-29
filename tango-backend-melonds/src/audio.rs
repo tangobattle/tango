@@ -32,6 +32,11 @@ impl AudioDrain for ConsoleAudio {
         crate::framerate_ratio(fps_target)
     }
 
+    fn queued(&mut self) -> usize {
+        let player = self.player.load(Ordering::Relaxed);
+        self.link.lock().unwrap().console(player).audio_queued()
+    }
+
     fn drain(&mut self, out: &mut [i16]) -> usize {
         let player = self.player.load(Ordering::Relaxed);
         self.link.lock().unwrap().console(player).read_audio(out)
@@ -48,8 +53,8 @@ mod tests {
     use super::*;
 
     /// The stream reads this as "how long a second of production
-    /// lasts" and runs its stretcher at `1 / ratio`, so a fast-forward
-    /// has to push it *below* 1.0. An inverted ratio still produces
+    /// lasts" and scales its resampler's destination rate by it, so a
+    /// fast-forward has to push it *below* 1.0. An inverted ratio still produces
     /// sound — just slowed-down sound where sped-up was wanted — which
     /// is exactly why the direction is worth pinning.
     #[test]

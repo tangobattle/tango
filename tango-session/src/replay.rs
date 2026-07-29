@@ -138,8 +138,8 @@ impl tango_match::AudioPull for DeferredPull {
         self.with(0, |p| p.source_available())
     }
 
-    fn process(&mut self, claimed_source_rate: f64, destination_rate: f64) {
-        self.with((), |p| p.process(claimed_source_rate, destination_rate));
+    fn process(&mut self, claimed_source_rate: f64, destination_rate: f64, frames: usize) {
+        self.with((), |p| p.process(claimed_source_rate, destination_rate, frames));
     }
 
     fn available(&self) -> usize {

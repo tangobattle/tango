@@ -33,6 +33,15 @@ impl AudioDrain for ConsoleAudio {
             .with_link(|pair| pair.core_mut(player).calculate_framerate_ratio(fps_target))
     }
 
+    /// The core's own sample buffer level. Worth answering: this is the
+    /// buffer the rollback engine revokes speculated audio out of, so
+    /// every frame a host leaves here instead of pulling early is a frame
+    /// a mispredict can still take back and re-simulate correctly.
+    fn queued(&mut self) -> usize {
+        let player = (self.player)();
+        self.pair.with_link(|pair| pair.core_mut(player).audio_buffer().available())
+    }
+
     fn drain(&mut self, out: &mut [i16]) -> usize {
         let player = (self.player)();
         self.pair.with_link(|pair| {
