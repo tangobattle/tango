@@ -17,9 +17,8 @@
 //!   along with the boot every simulation of a match starts with:
 //!   prime the pair and start the seam's rollback
 //!   [`Match`](tango_match::Match).
-//! - [`telemetry`]: per-tick RAM-poll telemetry with rollback
-//!   revocation.
-//! - [`analysis`]: match-stats types and the telemetry fold.
+//! - [`analysis`]: the per-tick RAM-poll telemetry as this engine
+//!   drives it, the match-stats types, and the fold between them.
 //!
 //! [`link`]: mod@link
 
@@ -27,7 +26,6 @@ pub mod analysis;
 pub mod backend;
 pub mod link;
 pub mod solo;
-pub mod telemetry;
 
 pub use link::{Link, JOYFLAGS_MASK};
 pub use solo::SoloConsole;
@@ -149,9 +147,9 @@ pub trait GameSupport: Sync {
     /// core this is, 0 = lockstep primary) plus, for core 0, the round
     /// lifecycle anchors reporting into `lifecycle` — the game's
     /// battle-start-complete site firing
-    /// [`round_started`](crate::telemetry::LifecycleSink::round_started) and
+    /// [`round_started`](tango_match::telemetry::LifecycleSink::round_started) and
     /// its match-end site firing
-    /// [`match_ended`](crate::telemetry::LifecycleSink::match_ended). The
+    /// [`match_ended`](tango_match::telemetry::LifecycleSink::match_ended). The
     /// priming pokes must be pure functions of emulation state and
     /// `config`, so both peers' pairs prime bit-identically, and must go
     /// inert once the battle is live (the traps stay installed for the
@@ -161,13 +159,13 @@ pub trait GameSupport: Sync {
         &self,
         config: &PrimeConfig,
         player: usize,
-        lifecycle: &crate::telemetry::LifecycleSink,
+        lifecycle: &tango_match::telemetry::LifecycleSink,
         primed: &PrimedLatch,
     ) -> Vec<(u32, Box<dyn Fn(&mut mgba::core::Core)>)>;
 
     /// The telemetry reader for one core running this game. `player` is
     /// which pair core (and player) this poller answers for.
-    fn core_poller(&self, player: usize) -> Box<crate::telemetry::MgbaPoller>;
+    fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<mgba::core::Core>>;
 
     /// How this game's telemetry folds into per-round usage events
     /// (chip uses + buster presses) — the whole derivation is the

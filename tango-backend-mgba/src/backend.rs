@@ -33,7 +33,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use mgba_rollback::{LinkOptions, Peripheral, SideOptions};
 
-use crate::telemetry::{LifecycleSink, Telemetry};
+use tango_match::telemetry::{LifecycleSink, Telemetry};
 use crate::{GameSupport, PrimeConfig};
 
 /// One cartridge in a family, keyed as its ROM header names it.

@@ -1,8 +1,27 @@
-//! Offline re-analysis: boot a pair, replay recorded input through it,
-//! and fold the telemetry with the same code the live session uses — so
-//! live stats and re-analysis stay byte-equivalent.
+//! Match telemetry and the statistics it folds into, as this engine
+//! drives them.
+//!
+//! Both halves are the seam's — the collector and the fold are the
+//! same arithmetic for any console. What is engine-specific is knowing
+//! where the two cores are: the live path drives the collector from
+//! inside [`crate::link::Link`]'s tick, and the offline paths
+//! ([`analyze`], the probe harnesses) drive it directly off the pair
+//! they step ([`observe_pair`]). Re-analysis folds with the same code
+//! the live session uses, so live stats and re-analysis stay
+//! byte-equivalent.
 
 pub use tango_match::analysis::*;
+
+use tango_match::telemetry::Telemetry;
+
+/// Drive the collector one tick off a bare pair — what the live link
+/// does internally, for the offline paths (replay re-analysis, the
+/// probe harnesses) that step a pair by hand.
+pub fn observe_pair(telemetry: &mut Telemetry<mgba::core::Core>, pair: &mut mgba_rollback::Link, tick: u32) {
+    let obs0 = telemetry.poll(0, pair.core_mut(0));
+    let obs1 = telemetry.poll(1, pair.core_mut(1));
+    telemetry.observe(obs0, obs1, tick);
+}
 
 // ---------------------------------------------------------------------------
 // The standard usage-event folds. The seam ([`UsageFold`]) lives with the
@@ -162,7 +181,7 @@ pub fn analyze(
         Some(cancel),
     )?;
 
-    let (mut observer, store) = crate::telemetry::Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
+    let (mut observer, store) = Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
     let mut builder = StatsBuilder::new(usage);
     let total = inputs.len() as u32;
     for (i, &keys) in inputs.iter().enumerate() {
@@ -172,7 +191,7 @@ pub fn analyze(
         let tick = i as u32 + 1;
         pair.tick(&keys);
         // Everything is final on a linear re-sim — fold as we go.
-        crate::telemetry::observe_pair(&mut observer, &mut pair, tick);
+        observe_pair(&mut observer, &mut pair, tick);
         let (samples, events) = store.lock().unwrap().drain_confirmed(tick);
         fold_confirmed(&mut builder, local_player, samples, events, &mut |t| {
             (t == tick).then_some(keys)
