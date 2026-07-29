@@ -7897,6 +7897,9 @@ dependencies = [
 name = "tango-gamesupport-bn5ds-dataview"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
+ "c2rust-bitfields",
+ "image",
  "num-traits",
  "tango-gamesupport-common",
 ]
