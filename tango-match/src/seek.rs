@@ -101,7 +101,7 @@ impl SeekController {
     }
 
     // --- worker-side surface, for seek workers living outside this
-    // module (the SIO engine's — see `crate::r#match::playback`). The trap
+    // module (the SIO engine's — see `tango_backend_mgba::playback`). The trap
     // worker below predates these and touches the fields directly.
 
     /// Block until a request lands ([`Self::request`]) or the controller

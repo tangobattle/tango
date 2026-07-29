@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::link::to_rgba;
-use crate::r#match::playback;
+use crate::playback;
 
 /// One cartridge in a family, keyed as its ROM header names it.
 pub type Seat = (&'static [u8; 4], u8, &'static (dyn crate::GameSupport + Send + Sync));
@@ -91,7 +91,7 @@ impl tango_match::Backend for GbaFactory {
     }
 
     fn start(&self, config: tango_match::StartConfig) -> Result<tango_match::Match, tango_match::Error> {
-        crate::r#match::engine::start(crate::r#match::engine::MatchConfig {
+        crate::engine::start(crate::engine::MatchConfig {
             roms: [config.roms[0].to_vec(), config.roms[1].to_vec()],
             saves: [
                 config.saves[0].unwrap_or_default().to_vec(),
@@ -113,7 +113,7 @@ impl tango_match::Backend for GbaFactory {
 
     fn start_solo(&self, config: tango_match::SoloConfig) -> Result<tango_match::Solo, tango_match::Error> {
         Ok(tango_match::Solo::new(
-            SoloConsole::new(config).map_err(tango_match::Error::from)?,
+            crate::solo::SoloConsole::new(config.rom, config.save, config.rtc).map_err(tango_match::Error::from)?,
         ))
     }
 
@@ -189,56 +189,6 @@ impl tango_match::ReplaySet for Set {
     }
 }
 
-/// One console on a one-side link — one GBA, not a pair with an idle
-/// seat — which is still a *link*, so the cart sees its link hardware
-/// from power-on and a future netplay handoff has a cable to plug
-/// into.
-struct SoloConsole {
-    link: mgba_rollback::Link,
-}
-
-impl SoloConsole {
-    fn new(config: tango_match::SoloConfig) -> Result<Self, crate::Error> {
-        crate::install_logger();
-        let mut link = mgba_rollback::Link::with_options(mgba_rollback::LinkOptions {
-            sides: vec![mgba_rollback::SideOptions {
-                rom: config.rom.to_vec(),
-                save: config.save.map(<[u8]>::to_vec),
-            }],
-            rtc: config.rtc,
-            peripheral: mgba_rollback::Peripheral::Cable,
-        })?;
-        // This buffer *is* the session's audio queue: the stream leaves
-        // its backlog here rather than pulling it out. It therefore has
-        // to hold the stream's discard cap — 3x a 120 ms target — plus
-        // what fast-forward piles up between fills, at BN4+'s 65536 Hz,
-        // and with room to spare: mGBA's ring drops new writes when
-        // full, so overflowing it loses audio silently. Same sizing as
-        // the pair engine.
-        link.core_mut(0).set_audio_buffer_size(32768);
-        link.core_mut(0).audio_buffer().clear();
-        Ok(SoloConsole { link })
-    }
-}
-
-impl tango_match::Console for SoloConsole {
-    fn tick(&mut self, input: tango_match::HostInput) -> Result<(), tango_match::Error> {
-        // A GBA has no touch screen, so only the pad half applies —
-        // masked to the pad exactly as a link sanitizes.
-        self.link
-            .try_tick(&[input.keys & crate::link::JOYFLAGS_MASK])
-            .map_err(|e| tango_match::Error::Backend(Box::new(crate::Error::from(e))))?;
-        Ok(())
-    }
-
-    fn side(&mut self) -> Box<dyn tango_match::Side + '_> {
-        Box::new(crate::link::GbaSide {
-            link: &mut self.link,
-            player: 0,
-        })
-    }
-}
-
 /// A recording being re-simulated, with the seek machinery that serves
 /// it: keyframes across the whole replay, a rewind ring around the
 /// playhead, and the chase that walks between them.
@@ -264,7 +214,7 @@ impl Replay {
             boot,
             inputs,
             Some(cancel),
-            &crate::r#match::telemetry::LifecycleSink::new(),
+            &crate::telemetry::LifecycleSink::new(),
         )?;
         Ok(Replay {
             playback: Arc::new(Mutex::new(pb)),

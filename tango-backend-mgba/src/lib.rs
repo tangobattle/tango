@@ -10,6 +10,10 @@
 //! - [`link`]: the [`tango_match::Link`] implementation — the pair as
 //!   the seam's rollback unit, with audio revocation and telemetry
 //!   riding inside.
+//! - [`solo`]: one GBA booted alone, as the seam's
+//!   [`Console`](tango_match::Console).
+//! - [`factory`]: the [`tango_match::Backend`] a game registration
+//!   holds — netplay, solo, and replay playback all come out of it.
 //! - [`engine`]: boots and primes the pair and starts the seam's
 //!   rollback [`Match`](tango_match::Match) for live netplay.
 //! - [`playback`]: linear re-simulation of recorded matches, with
@@ -19,16 +23,17 @@
 //! - [`analysis`]: match-stats types and the telemetry fold.
 //!
 //! [`link`]: mod@link
-//! [`engine`]: r#match::engine
-//! [`playback`]: r#match::playback
-//! [`telemetry`]: r#match::telemetry
-//! [`analysis`]: r#match::analysis
 
+pub mod analysis;
+pub mod engine;
 pub mod factory;
 pub mod link;
-pub mod r#match;
+pub mod playback;
+pub mod solo;
+pub mod telemetry;
 
 pub use link::{Link, JOYFLAGS_MASK};
+pub use solo::SoloConsole;
 
 /// Simulation failure, as this engine reports it. Converts into the
 /// seam's [`tango_match::Error`], which cannot name mgba's error type.
@@ -84,11 +89,6 @@ impl PrimedLatch {
         self.0.load(std::sync::atomic::Ordering::Acquire)
     }
 }
-
-/// The clock-sync governor: feed it `skew()` + `speculation_balance()`
-/// each frame and shave the returned fps off the tick rate. Shared by
-/// every engine, so it lives here rather than in a backend.
-pub use tango_match::Throttler;
 
 /// Match parameters the primer needs before the games can negotiate the
 /// rest themselves over the emulated cable.
@@ -152,9 +152,9 @@ pub trait GameSupport: Sync {
     /// core this is, 0 = lockstep primary) plus, for core 0, the round
     /// lifecycle anchors reporting into `lifecycle` — the game's
     /// battle-start-complete site firing
-    /// [`round_started`](r#match::telemetry::LifecycleSink::round_started) and
+    /// [`round_started`](crate::telemetry::LifecycleSink::round_started) and
     /// its match-end site firing
-    /// [`match_ended`](r#match::telemetry::LifecycleSink::match_ended). The
+    /// [`match_ended`](crate::telemetry::LifecycleSink::match_ended). The
     /// priming pokes must be pure functions of emulation state and
     /// `config`, so both peers' pairs prime bit-identically, and must go
     /// inert once the battle is live (the traps stay installed for the
@@ -164,13 +164,13 @@ pub trait GameSupport: Sync {
         &self,
         config: &PrimeConfig,
         player: usize,
-        lifecycle: &r#match::telemetry::LifecycleSink,
+        lifecycle: &crate::telemetry::LifecycleSink,
         primed: &PrimedLatch,
     ) -> Vec<(u32, Box<dyn Fn(&mut mgba::core::Core)>)>;
 
     /// The telemetry reader for one core running this game. `player` is
     /// which pair core (and player) this poller answers for.
-    fn core_poller(&self, player: usize) -> Box<r#match::telemetry::MgbaPoller>;
+    fn core_poller(&self, player: usize) -> Box<crate::telemetry::MgbaPoller>;
 
     /// How this game's telemetry folds into per-round usage events
     /// (chip uses + buster presses) — the whole derivation is the
@@ -184,24 +184,12 @@ pub trait GameSupport: Sync {
     /// patch: exe45's community PvP patch replaces the dealt-queue
     /// system with per-screen hands, flipping it to the standard fold.
     ///
-    /// [`standard_usage_fold`]: crate::r#match::analysis::standard_usage_fold
-    fn usage_fold(&self, rom: &[u8]) -> crate::r#match::analysis::UsageFold {
+    /// [`standard_usage_fold`]: crate::analysis::standard_usage_fold
+    fn usage_fold(&self, rom: &[u8]) -> crate::analysis::UsageFold {
         let _ = rom;
-        crate::r#match::analysis::standard_usage_fold()
+        crate::analysis::standard_usage_fold()
     }
 }
-
-/// The per-tick stats sample encoding, which moved to the seam — it is
-/// a layout, not an engine concern. Re-exported so existing `crate::battle`
-/// paths keep resolving.
-pub use tango_match::battle;
-
-/// The shared telemetry types, re-exported so `crate::r#match::telemetry::…`
-/// paths that mean the data (not the observer) keep resolving.
-pub use tango_match::telemetry as shared_telemetry;
-
-/// The stats types and the telemetry fold, which moved to the seam.
-pub use tango_match::analysis as shared_analysis;
 
 pub use factory::{GbaFactory, Seat};
 

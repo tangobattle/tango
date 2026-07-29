@@ -1,6 +1,6 @@
 //! Match statistics and their cached on-disk form.
 //!
-//! [`crate::r#match::analysis::analyze`] re-simulates a recorded replay on
+//! `tango_backend_mgba::analysis::analyze` re-simulates a recorded replay on
 //! a headless pair and extracts per-round [`MatchStats`]: the outcome
 //! and both players' HP over the round, from the same RAM-poll
 //! telemetry the live engine collects. That's a full replay simulation

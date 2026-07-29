@@ -30,12 +30,12 @@ pub fn compute_and_cache_match_stats(
     cache_path: std::path::PathBuf,
     replays_path: std::path::PathBuf,
     path: std::path::PathBuf,
-    on_progress: &mut dyn FnMut(u32, u32, &tango_backend_mgba::r#match::analysis::StatsBuilder),
+    on_progress: &mut dyn FnMut(u32, u32, &tango_backend_mgba::analysis::StatsBuilder),
     // Flipping this aborts the simulation mid-pass with a "cancelled"
     // error and nothing cached — used when a playback session's
     // prefetcher takes over the same analysis.
     cancel: &std::sync::atomic::AtomicBool,
-) -> anyhow::Result<tango_backend_mgba::r#match::analysis::MatchStats> {
+) -> anyhow::Result<tango_backend_mgba::analysis::MatchStats> {
     let storage = crate::library::storage();
     let replay = tango_replay::Replay::decode(storage.open(&path)?)?;
 
@@ -70,16 +70,16 @@ pub fn compute_and_cache_match_stats(
 }
 
 /// [`compute_and_cache_match_stats`]'s SIO-engine arm: linearly
-/// re-simulate through [`tango_backend_mgba::r#match::analysis::analyze`]. Everything in
+/// re-simulate through [`tango_backend_mgba::analysis::analyze`]. Everything in
 /// the replay is already absolute player order; `local_player` only
 /// picks whose cart's chip decode the stats speak.
 fn analyze_replay(
     replay: &tango_replay::Replay,
     games: [GameRef; 2],
     roms: [Vec<u8>; 2],
-    on_progress: &mut dyn FnMut(u32, u32, &tango_backend_mgba::r#match::analysis::StatsBuilder),
+    on_progress: &mut dyn FnMut(u32, u32, &tango_backend_mgba::analysis::StatsBuilder),
     cancel: &std::sync::atomic::AtomicBool,
-) -> anyhow::Result<tango_backend_mgba::r#match::analysis::MatchStats> {
+) -> anyhow::Result<tango_backend_mgba::analysis::MatchStats> {
     let local_player = replay.local_player_index as usize;
     let inputs: Vec<[u32; 2]> = replay.inputs.iter().map(|&row| row.map(|i| i.keys as u32)).collect();
     // Offline re-analysis re-simulates on the mgba engine directly, so
@@ -89,8 +89,8 @@ fn analyze_replay(
             .ok_or_else(|| anyhow::anyhow!("replay analysis supports mgba games only"))
     };
     let support: [&dyn tango_backend_mgba::GameSupport; 2] = [seat(games[0])?, seat(games[1])?];
-    tango_backend_mgba::r#match::analysis::analyze(
-        tango_backend_mgba::r#match::analysis::AnalyzeConfig {
+    tango_backend_mgba::analysis::analyze(
+        tango_backend_mgba::analysis::AnalyzeConfig {
             roms: roms.clone(),
             saves: replay.srams.clone(),
             support,

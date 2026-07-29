@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::r#match::telemetry::Telemetry;
+use crate::telemetry::Telemetry;
 use crate::{GameSupport, PrimeConfig};
 
 /// Cap on priming ticks, mirroring the live engine's bound.
@@ -212,7 +212,7 @@ impl RewindRingInner {
 
 /// Everything needed to boot a playback pair. All fields are in
 /// **absolute** player order (core 0 runs player 0's game) — see
-/// [`crate::r#match::analysis::AnalyzeConfig`] for the orientation contract.
+/// [`crate::analysis::AnalyzeConfig`] for the orientation contract.
 pub struct BootConfig {
     pub roms: [Vec<u8>; 2],
     pub saves: [Vec<u8>; 2],
@@ -234,7 +234,7 @@ fn boot_and_prime(
     config: &BootConfig,
     render: bool,
     cancel: Option<&AtomicBool>,
-    lifecycle: &crate::r#match::telemetry::LifecycleSink,
+    lifecycle: &crate::telemetry::LifecycleSink,
 ) -> Result<mgba_rollback::Link, crate::Error> {
     crate::install_logger();
     let mut pair = mgba_rollback::Link::with_options(mgba_rollback::LinkOptions {
@@ -305,7 +305,7 @@ impl Playback {
     pub fn new(
         config: &BootConfig,
         inputs: Arc<Vec<[u32; 2]>>,
-        lifecycle: &crate::r#match::telemetry::LifecycleSink,
+        lifecycle: &crate::telemetry::LifecycleSink,
     ) -> Result<Self, crate::Error> {
         Self::new_cancellable(config, inputs, None, lifecycle)
     }
@@ -318,7 +318,7 @@ impl Playback {
         config: &BootConfig,
         inputs: Arc<Vec<[u32; 2]>>,
         cancel: Option<&AtomicBool>,
-        lifecycle: &crate::r#match::telemetry::LifecycleSink,
+        lifecycle: &crate::telemetry::LifecycleSink,
     ) -> Result<Self, crate::Error> {
         let pair = boot_and_prime(config, true, cancel, lifecycle)?;
         Ok(Self {
@@ -371,7 +371,7 @@ impl Playback {
 }
 
 /// Body of the seek worker thread for SIO playback. Sleeps until a
-/// [`SeekController`](crate::r#match::playback::SeekController) request
+/// [`SeekController`](crate::playback::SeekController) request
 /// lands, then chases the newest target on the playback pair: load the
 /// best snapshot at or before it (rewind ring ∪ keyframe store), step
 /// forward feeding the recorded inputs, capturing every tick on the way
@@ -588,14 +588,14 @@ enum Plan {
 /// already carries its markers.
 ///
 /// With `stats` set, the pass doubles as the match-stats analysis: the
-/// same fold as [`crate::r#match::analysis::analyze`], reported through the
+/// same fold as [`crate::analysis::analyze`], reported through the
 /// hook once per tick; the finished stats are returned. One simulation,
 /// both products — mirroring the trap engine's `run_prefetch`.
 pub struct Prefetch {
     pair: mgba_rollback::Link,
     observer: Telemetry,
-    telemetry_store: crate::r#match::telemetry::TelemetryHandle,
-    builder: Option<crate::r#match::analysis::StatsBuilder>,
+    telemetry_store: crate::telemetry::TelemetryHandle,
+    builder: Option<crate::analysis::StatsBuilder>,
     inputs: Arc<Vec<[u32; 2]>>,
     local_player: usize,
     store: SnapshotStore,
@@ -621,9 +621,9 @@ impl Prefetch {
         store: SnapshotStore,
         round_marks: Option<Arc<Mutex<Vec<u32>>>>,
         cancel: Arc<AtomicBool>,
-        stats: Option<crate::r#match::analysis::UsageFold>,
+        stats: Option<crate::analysis::UsageFold>,
     ) -> Result<Self, crate::Error> {
-        let lifecycle = crate::r#match::telemetry::LifecycleSink::new();
+        let lifecycle = crate::telemetry::LifecycleSink::new();
         let mut pair = boot_and_prime(config, true, Some(&cancel), &lifecycle)?;
 
         let (observer, telemetry_store) = Telemetry::new(
@@ -639,7 +639,7 @@ impl Prefetch {
             pair,
             observer,
             telemetry_store,
-            builder: stats.map(crate::r#match::analysis::StatsBuilder::new),
+            builder: stats.map(crate::analysis::StatsBuilder::new),
             inputs,
             local_player,
             store,
@@ -659,7 +659,7 @@ impl Prefetch {
     pub fn step(
         &mut self,
         budget: u32,
-        on_stats_progress: Option<&mut dyn FnMut(u32, u32, &crate::r#match::analysis::StatsBuilder)>,
+        on_stats_progress: Option<&mut dyn FnMut(u32, u32, &crate::analysis::StatsBuilder)>,
     ) -> Result<bool, crate::Error> {
         let total = self.inputs.len() as u32;
         let mut hook = on_stats_progress;
@@ -673,12 +673,12 @@ impl Prefetch {
             let tick = self.cursor as u32 + 1;
             self.cursor += 1;
             self.pair.tick(&keys);
-            crate::r#match::telemetry::observe_pair(&mut self.observer, &mut self.pair, tick);
+            crate::telemetry::observe_pair(&mut self.observer, &mut self.pair, tick);
 
             let (samples, events) = self.telemetry_store.lock().unwrap().drain_confirmed(tick);
             if let Some(round_marks) = &self.round_marks {
                 for (event_tick, event) in &events {
-                    if let crate::r#match::telemetry::RoundEvent::Started = event {
+                    if let crate::telemetry::RoundEvent::Started = event {
                         self.rounds_started += 1;
                         if self.rounds_started > 1 {
                             round_marks.lock().unwrap().push(*event_tick);
@@ -687,7 +687,7 @@ impl Prefetch {
                 }
             }
             if let Some(builder) = &mut self.builder {
-                crate::r#match::analysis::fold_confirmed(builder, self.local_player, samples, events, &mut |t| {
+                crate::analysis::fold_confirmed(builder, self.local_player, samples, events, &mut |t| {
                     (t == tick).then_some(keys)
                 });
                 if let Some(hook) = &mut hook {
@@ -708,14 +708,14 @@ impl Prefetch {
     }
 
     /// The fold so far, for a live preview while the pass runs.
-    pub fn preview(&self) -> Option<crate::r#match::analysis::MatchStats> {
+    pub fn preview(&self) -> Option<crate::analysis::MatchStats> {
         self.builder.as_ref().map(|b| b.snapshot())
     }
 
     /// The finished analysis, if this pass was asked for one. Meaningful
     /// once [`Prefetch::step`] has reported the pass done; a cancelled
     /// pass yields nothing.
-    pub fn finish(self) -> Option<crate::r#match::analysis::MatchStats> {
+    pub fn finish(self) -> Option<crate::analysis::MatchStats> {
         (self.cursor >= self.inputs.len()).then(|| self.builder.map(|b| b.finish()))?
     }
 }

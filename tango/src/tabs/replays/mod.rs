@@ -67,12 +67,12 @@ pub enum Message {
     /// An [`Effect::AnalyzeReplay`] re-simulation reporting a throttled
     /// partial result, rendered as a live chart that draws itself in
     /// while the analysis runs.
-    HpStatsPartial(std::path::PathBuf, tango_backend_mgba::r#match::analysis::MatchStats),
+    HpStatsPartial(std::path::PathBuf, tango_backend_mgba::analysis::MatchStats),
     /// An [`Effect::AnalyzeReplay`] re-simulation finished. `None` =
     /// analysis failed (missing ROM, undecodable) — clears the pending
     /// marker so a later re-focus can retry (e.g. after the user
     /// installs the ROM).
-    HpStatsLoaded(std::path::PathBuf, Option<tango_backend_mgba::r#match::analysis::MatchStats>),
+    HpStatsLoaded(std::path::PathBuf, Option<tango_backend_mgba::analysis::MatchStats>),
     SaveEditor(std::sync::Arc<dyn tango_gamesupport::SaveEditorMessage>),
     /// Used by Tasks that need a Message to return but want no
     /// state mutation. Currently: the user dismissed the Save As
@@ -187,7 +187,7 @@ pub struct ReplaysState {
 
 /// A replay's match stats, cooked for drawing (see
 /// [`widgets::cook_hp_rounds`]). Built once per replay when its
-/// [`tango_backend_mgba::r#match::analysis::MatchStats`] arrive.
+/// [`tango_backend_mgba::analysis::MatchStats`] arrive.
 pub struct HpChart {
     pub rounds: Vec<widgets::CookedHpRound>,
     /// The match-wide HP scale the traces were normalized against — the
@@ -197,7 +197,7 @@ pub struct HpChart {
 
 impl HpChart {
     fn new(
-        stats: &tango_backend_mgba::r#match::analysis::MatchStats,
+        stats: &tango_backend_mgba::analysis::MatchStats,
         loaded: Option<&crate::selection::LoadedSave>,
         planned: Option<&[u32]>,
     ) -> Self {
@@ -362,7 +362,7 @@ impl ReplaysState {
                         self.hp_charts.insert(
                             p.clone(),
                             HpChart::new(
-                                &tango_backend_mgba::r#match::analysis::MatchStats { rounds: vec![] },
+                                &tango_backend_mgba::analysis::MatchStats { rounds: vec![] },
                                 self.loaded.as_ref(),
                                 Some(&self.loaded_round_ticks),
                             ),

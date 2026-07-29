@@ -1,5 +1,5 @@
 //! Turning a recorded replay back into video: re-simulates it through
-//! [`tango_backend_mgba::r#match::playback`] and feeds the frames and audio to
+//! [`tango_backend_mgba::playback`] and feeds the frames and audio to
 //! [`encoder_facade`], which encodes and muxes them into a video file.
 //!
 //! Nothing here picks an encoder or opens a file. [`encoder_facade`]
@@ -151,7 +151,7 @@ pub struct Clip {
     ///
     /// A savestate restore replaces the priming-time pokes, so callers
     /// wanting BGM muted must pass `None` and eat the full re-sim.
-    pub snapshot: Option<Arc<tango_backend_mgba::r#match::playback::Snapshot>>,
+    pub snapshot: Option<Arc<tango_backend_mgba::playback::Snapshot>>,
     /// Inter-round transition ticks ([`tango_replay::Replay`]'s
     /// `round_starts` minus the leading 0, or the player's discovered
     /// boundaries for recordings that predate the markers). The round
@@ -179,7 +179,7 @@ impl std::fmt::Debug for Clip {
 pub struct Request<'a> {
     /// Both sides' ROMs, saves and match settings — the same boot the
     /// player uses, so the re-sim reproduces the recorded match.
-    pub config: &'a tango_backend_mgba::r#match::playback::BootConfig,
+    pub config: &'a tango_backend_mgba::playback::BootConfig,
     /// The recorded input stream, one pair per tick.
     pub inputs: &'a [[u32; 2]],
     /// Which side the replay was recorded from. Its screen and audio
@@ -238,7 +238,7 @@ enum Phase {
 /// aren't written. Each written round becomes a chapter in the output
 /// container.
 pub struct Render<W: Writer> {
-    playback: tango_backend_mgba::r#match::playback::Playback,
+    playback: tango_backend_mgba::playback::Playback,
     session: encoder_facade::Session,
     /// The container bytes' destination, wrapped in the appender +
     /// fixup applier every render needs from it. Taken at the close,
@@ -311,8 +311,8 @@ impl<W: Writer> Render<W> {
         // ticks), and it's the one part of a render that can't be
         // sliced: the pair primes by running until its traps say it's
         // there.
-        let lifecycle = tango_backend_mgba::r#match::telemetry::LifecycleSink::new();
-        let mut playback = tango_backend_mgba::r#match::playback::Playback::new(config, Arc::new(inputs.to_vec()), &lifecycle)?;
+        let lifecycle = tango_backend_mgba::telemetry::LifecycleSink::new();
+        let mut playback = tango_backend_mgba::playback::Playback::new(config, Arc::new(inputs.to_vec()), &lifecycle)?;
         // Drop the audio priming piled up (nothing drained during boot).
         for i in 0..2 {
             playback.pair_mut().core_mut(i).audio_buffer().clear();

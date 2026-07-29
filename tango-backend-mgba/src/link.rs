@@ -62,7 +62,7 @@ pub struct Link {
     /// The RAM-poll collector, when this pair runs one. Polled after
     /// every tick, rewound on every restore; the store it feeds is the
     /// handle the factory installs on the match.
-    telemetry: Option<crate::r#match::telemetry::Telemetry>,
+    telemetry: Option<crate::telemetry::Telemetry>,
     /// Per-core cumulative sample frames appended to the mixed-output
     /// audio ring AND kept (net of revocation drops and re-sim drains) —
     /// the coordinate system rollback revocation math runs in. Only
@@ -85,7 +85,7 @@ impl Link {
     /// Wrap an already-booted, already-primed pair. `telemetry` is the
     /// collector whose pollers read this pair's games, if the session
     /// runs one.
-    pub fn new(pair: mgba_rollback::Link, telemetry: Option<crate::r#match::telemetry::Telemetry>) -> Self {
+    pub fn new(pair: mgba_rollback::Link, telemetry: Option<crate::telemetry::Telemetry>) -> Self {
         Link {
             inner: pair,
             live_tick: 0,

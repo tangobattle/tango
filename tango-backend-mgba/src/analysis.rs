@@ -177,7 +177,7 @@ pub fn analyze(
         // either way — see `PrimeConfig::disable_bgm`.
         disable_bgm: false,
     };
-    let lifecycle = crate::r#match::telemetry::LifecycleSink::new();
+    let lifecycle = crate::telemetry::LifecycleSink::new();
     let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
     // Cores own their primer traps — see [`mgba_rollback::Link::set_traps`]
     // for why any other ownership dangles at core teardown.
@@ -196,7 +196,7 @@ pub fn analyze(
         prime_ticks += 1;
     }
 
-    let (mut observer, store) = crate::r#match::telemetry::Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
+    let (mut observer, store) = crate::telemetry::Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
     let mut builder = StatsBuilder::new(usage);
     let total = inputs.len() as u32;
     for (i, &keys) in inputs.iter().enumerate() {
@@ -206,7 +206,7 @@ pub fn analyze(
         let tick = i as u32 + 1;
         pair.tick(&keys);
         // Everything is final on a linear re-sim — fold as we go.
-        crate::r#match::telemetry::observe_pair(&mut observer, &mut pair, tick);
+        crate::telemetry::observe_pair(&mut observer, &mut pair, tick);
         let (samples, events) = store.lock().unwrap().drain_confirmed(tick);
         fold_confirmed(&mut builder, local_player, samples, events, &mut |t| {
             (t == tick).then_some(keys)

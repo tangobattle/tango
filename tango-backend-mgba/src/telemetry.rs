@@ -4,7 +4,7 @@
 //! console. All that is engine-specific is knowing where its two cores
 //! are: the live path drives the collector from inside
 //! [`crate::link::Link`]'s tick, and the offline paths
-//! ([`analysis`](crate::r#match::analysis), replay prefetch) drive it
+//! ([`analysis`](crate::analysis), replay prefetch) drive it
 //! directly off the pair they step.
 
 pub use tango_match::telemetry::*;

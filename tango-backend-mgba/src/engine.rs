@@ -13,7 +13,7 @@
 
 use mgba_rollback::{LinkOptions, Peripheral, SideOptions};
 
-use crate::r#match::telemetry::Telemetry;
+use crate::telemetry::Telemetry;
 use crate::{GameSupport, PrimeConfig};
 
 /// Cap on priming ticks before we give up bringing the games to their
@@ -90,7 +90,7 @@ pub fn start(config: MatchConfig) -> Result<tango_match::Match, tango_match::Err
         rng_seed,
         disable_bgm,
     };
-    let lifecycle = crate::r#match::telemetry::LifecycleSink::new();
+    let lifecycle = crate::telemetry::LifecycleSink::new();
     let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
     // The cores own their primer traps (see [`mgba_rollback::Link::set_traps`]):
     // core teardown walks the trap component, so the traps must live
