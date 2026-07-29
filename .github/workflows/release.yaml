@@ -89,6 +89,19 @@ jobs:
         with:
           arch: x64
 
+      # melonDS's JIT is GCC/Clang-only code, so melonds-sys compiles
+      # the DS core with MSYS2 UCRT64 into melonds_shim.dll and hands
+      # the MSVC build an import library (see its build.rs). The runner
+      # image ships MSYS2 at C:\msys64 — which is where the build
+      # script looks — so this only adds the UCRT64 toolchain packages.
+      # Nothing else runs under MSYS2: the build script invokes these
+      # compilers by absolute path.
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          release: false
+          install: mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
