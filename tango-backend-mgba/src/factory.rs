@@ -12,9 +12,10 @@
 //! here, so `tango-session` drives a GBA game through exactly the same
 //! calls it drives a DS one through, and never learns which is which.
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::link::to_rgba;
 use crate::r#match::playback;
 
 /// One cartridge in a family, keyed as its ROM header names it.
@@ -110,11 +111,10 @@ impl tango_match::Backend for GbaFactory {
         tango_match::analysis::StatsBuilder::new(self.local.usage_fold(rom))
     }
 
-    fn start_solo(
-        &self,
-        config: tango_match::SoloConfig,
-    ) -> Result<Box<dyn tango_match::RunningSolo>, tango_match::Error> {
-        Ok(Box::new(Solo::new(config).map_err(tango_match::Error::from)?))
+    fn start_solo(&self, config: tango_match::SoloConfig) -> Result<tango_match::Solo, tango_match::Error> {
+        Ok(tango_match::Solo::new(
+            SoloConsole::new(config).map_err(tango_match::Error::from)?,
+        ))
     }
 
     fn open_replay(
@@ -189,14 +189,15 @@ impl tango_match::ReplaySet for Set {
     }
 }
 
-/// One console on a one-side link — which is what every session kind
-/// here runs on, so the cart sees its link hardware from power-on and a
-/// future netplay handoff has a cable to plug into.
-struct Solo {
-    link: Arc<Mutex<mgba_rollback::Link>>,
+/// One console on a one-side link — one GBA, not a pair with an idle
+/// seat — which is still a *link*, so the cart sees its link hardware
+/// from power-on and a future netplay handoff has a cable to plug
+/// into.
+struct SoloConsole {
+    link: mgba_rollback::Link,
 }
 
-impl Solo {
+impl SoloConsole {
     fn new(config: tango_match::SoloConfig) -> Result<Self, crate::Error> {
         crate::install_logger();
         let mut link = mgba_rollback::Link::with_options(mgba_rollback::LinkOptions {
@@ -208,46 +209,33 @@ impl Solo {
             peripheral: mgba_rollback::Peripheral::Cable,
         })?;
         // This buffer *is* the session's audio queue: the stream leaves
-        // its backlog here rather than pulling it out, so a rollback can
-        // still revoke what it speculated. It therefore has to hold the
-        // stream's discard cap — 3x a 120 ms target — plus what
-        // fast-forward piles up between fills, at BN4+'s 65536 Hz, and
-        // with room to spare: mGBA's ring drops new writes when full, so
-        // overflowing it loses audio silently. Same sizing as the pair
-        // engine.
+        // its backlog here rather than pulling it out. It therefore has
+        // to hold the stream's discard cap — 3x a 120 ms target — plus
+        // what fast-forward piles up between fills, at BN4+'s 65536 Hz,
+        // and with room to spare: mGBA's ring drops new writes when
+        // full, so overflowing it loses audio silently. Same sizing as
+        // the pair engine.
         link.core_mut(0).set_audio_buffer_size(32768);
         link.core_mut(0).audio_buffer().clear();
-        Ok(Solo {
-            link: Arc::new(Mutex::new(link)),
-        })
+        Ok(SoloConsole { link })
     }
 }
 
-impl tango_match::RunningSolo for Solo {
+impl tango_match::Console for SoloConsole {
     fn tick(&mut self, input: tango_match::HostInput) -> Result<(), tango_match::Error> {
-        // A GBA has no touch screen, so only the pad half applies.
+        // A GBA has no touch screen, so only the pad half applies —
+        // masked to the pad exactly as a link sanitizes.
         self.link
-            .lock()
-            .unwrap()
-            .try_tick(&[input.keys])
+            .try_tick(&[input.keys & crate::link::JOYFLAGS_MASK])
             .map_err(|e| tango_match::Error::Backend(Box::new(crate::Error::from(e))))?;
         Ok(())
     }
 
-    fn frame(&mut self) -> Option<Vec<u8>> {
-        let link = self.link.lock().unwrap();
-        link.video_buffer(0).map(to_rgba)
-    }
-
-    fn export_save(&self) -> Option<Vec<u8>> {
-        self.link.lock().unwrap().export_save(0)
-    }
-
-    fn audio(&self) -> Option<Box<dyn tango_match::AudioDrain>> {
-        Some(Box::new(PairAudio::new(
-            PairSource::Solo(self.link.clone()),
-            Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-        )))
+    fn side(&mut self) -> Box<dyn tango_match::Side + '_> {
+        Box::new(crate::link::GbaSide {
+            link: &mut self.link,
+            player: 0,
+        })
     }
 }
 
@@ -355,10 +343,10 @@ impl tango_match::RunningReplay for Replay {
     }
 
     fn audio(&self, seat: Arc<std::sync::atomic::AtomicUsize>) -> Option<Box<dyn tango_match::AudioDrain>> {
-        Some(Box::new(PairAudio::new(
-            PairSource::Playback(self.playback.clone()),
-            seat,
-        )))
+        Some(tango_match::audio::side_audio(PlaybackSeat {
+            playback: self.playback.clone(),
+            player: seat,
+        }))
     }
 
     fn nearest_capture(&self, tick: u32, publish: &mut dyn FnMut(&dyn tango_match::ReplayFrames)) -> bool {
@@ -431,131 +419,45 @@ impl tango_match::StatsPass for Stats {
     }
 }
 
-/// Where a pull reads its samples from — the two shapes this engine
-/// hands out, both behind the same mutex discipline.
-enum PairSource {
-    Solo(Arc<Mutex<mgba_rollback::Link>>),
-    Playback(Arc<Mutex<playback::Playback>>),
-}
-
-impl PairSource {
-    /// Run `f` on the pair if it is free. A pull never waits: a seek
-    /// chase holds the pair for its whole walk, and blocking the sound
-    /// callback on that stutters the device instead of the picture.
-    fn try_with(&self, f: &mut dyn FnMut(&mut mgba_rollback::Link)) -> bool {
-        match self {
-            PairSource::Solo(link) => match link.try_lock() {
-                Ok(mut link) => {
-                    f(&mut link);
-                    true
-                }
-                Err(_) => false,
-            },
-            PairSource::Playback(pb) => match pb.try_lock() {
-                Ok(mut pb) => {
-                    f(pb.pair_mut());
-                    true
-                }
-                Err(_) => false,
-            },
-        }
-    }
-}
-
-struct PairAudio {
-    link: PairSource,
-    /// Read per fill, so a perspective swap moves the sound without the
+/// One seat of a replay's display pair, as the seam drain's side
+/// source. The playback pair is not the seam's [`Link`](tango_match::Link)
+/// — it lives behind the seek machinery — so it implements the source
+/// itself and reuses the one drain.
+struct PlaybackSeat {
+    playback: Arc<Mutex<playback::Playback>>,
+    /// Read per call, so a perspective swap moves the sound without the
     /// resampler above it being rebuilt.
     player: Arc<std::sync::atomic::AtomicUsize>,
-    /// Last successfully read sample rate and framerate ratio, as f64
-    /// bits — served whenever a read lands while the drive thread holds
-    /// the pair mid-tick. The stream re-reads both every fill, and it
-    /// watches the ratio for the jump that means a deliberate speed
-    /// change; a fast-forwarded drive loop holds the pair for a large
-    /// fraction of wall time, so a placeholder 1.0 on those fills would
-    /// read as the user toggling speed off and on again, snapping
-    /// playback rate back and forth. A stale reading is only ever one
-    /// fill old at a real transition.
-    last_rate: AtomicU64,
-    last_ratio: AtomicU64,
-    /// Last readable buffer level and size — served when a reading
-    /// lands mid-tick.
-    last_queued: std::sync::atomic::AtomicUsize,
 }
 
-impl PairAudio {
-    fn new(link: PairSource, player: Arc<std::sync::atomic::AtomicUsize>) -> Self {
-        PairAudio {
-            link,
-            player,
-            // The GBA's own defaults, until the pair is first free.
-            last_rate: AtomicU64::new(32768.0f64.to_bits()),
-            last_ratio: AtomicU64::new(1.0f64.to_bits()),
-            last_queued: std::sync::atomic::AtomicUsize::new(0),
-        }
-    }
-
+impl PlaybackSeat {
     fn player(&self) -> usize {
         self.player.load(Ordering::Relaxed)
     }
 }
 
-impl tango_match::AudioDrain for PairAudio {
-    fn sample_rate(&self) -> f64 {
-        let mut rate = 0.0;
-        self.link
-            .try_with(&mut |link| rate = link.core_mut(self.player()).audio_sample_rate() as f64);
-        // Zero also covers a core that reports no rate yet: either way
-        // the resampler must not divide by it.
-        if rate > 0.0 {
-            self.last_rate.store(rate.to_bits(), Ordering::Relaxed);
-            rate
-        } else {
-            f64::from_bits(self.last_rate.load(Ordering::Relaxed))
-        }
+impl tango_match::SideSource for PlaybackSeat {
+    fn with_side(&self, f: &mut dyn FnMut(&mut dyn tango_match::Side)) {
+        let mut pb = self.playback.lock().unwrap();
+        f(&mut crate::link::GbaSide {
+            link: pb.pair_mut(),
+            player: self.player(),
+        });
     }
 
-    fn framerate_ratio(&self, fps_target: f64) -> f64 {
-        let mut ratio = 1.0;
-        if self
-            .link
-            .try_with(&mut |link| ratio = link.core_mut(self.player()).calculate_framerate_ratio(fps_target))
-        {
-            self.last_ratio.store(ratio.to_bits(), Ordering::Relaxed);
-            ratio
-        } else {
-            f64::from_bits(self.last_ratio.load(Ordering::Relaxed))
-        }
-    }
-
-    fn drain(&mut self, out: &mut [i16]) -> tango_match::Drained {
-        let player = self.player();
-        let mut drained = tango_match::Drained::default();
-        if self.link.try_with(&mut |link| {
-            let core = link.core_mut(player);
-            let buffer = core.audio_buffer();
-            let frames = (out.len() / 2).min(buffer.available());
-            drained.written = buffer.read(out, frames);
-            drained.queued = buffer.available();
-        }) {
-            self.last_queued.store(drained.queued, Ordering::Relaxed);
-            drained
-        } else {
-            // Mid-tick, so unreachable this fill. Nothing was taken, and
-            // the last level is the honest answer for what is sitting
-            // there: only the sim's own additions since are missing, and
-            // they land in the next fill's reading.
-            tango_match::Drained {
-                written: 0,
-                queued: self.last_queued.load(Ordering::Relaxed),
+    fn try_side(&self, f: &mut dyn FnMut(&mut dyn tango_match::Side)) -> bool {
+        // A pull never waits: a seek chase holds the pair for its whole
+        // walk, and blocking the sound callback on that stutters the
+        // device instead of the picture.
+        match self.playback.try_lock() {
+            Ok(mut pb) => {
+                f(&mut crate::link::GbaSide {
+                    link: pb.pair_mut(),
+                    player: self.player(),
+                });
+                true
             }
+            Err(_) => false,
         }
     }
-}
-
-/// Expand mgba's native BGR555 to the RGBA8 the seam promises hosts.
-pub(crate) fn to_rgba(src: &[u8]) -> Vec<u8> {
-    let mut rgba = vec![0u8; src.len() * 2];
-    mgba::gba::bgr555_to_rgba8(src, &mut rgba);
-    rgba
 }

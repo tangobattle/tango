@@ -136,51 +136,99 @@ impl tango_match::Link for Link {
         self.inner.revoke_audio_to(mark)
     }
 
-    fn frame(&mut self, player: usize) -> Option<Vec<u8>> {
-        let (top, bottom) = self.inner.console(player).framebuffers()?;
-        let mut rgba = Vec::with_capacity(SCREENS.iter().map(Screen::len).sum());
-        // Side by side, so a row of the composite is a row of the top
-        // screen followed by the same row of the bottom one. Stacked
-        // would be the cheaper `top` then `bottom` — concatenation is a
-        // vertical stack for free when the widths match — but a 256x384
-        // pane wastes most of the width of any display it is drawn into.
-        let (width, height) = (SCREENS[0].width as usize, SCREENS[0].height as usize);
-        for row in 0..height {
-            for screen in [top, bottom] {
-                for &pixel in &screen[row * width..(row + 1) * width] {
-                    // The core hands out BGRA words; hosts want RGBA bytes.
-                    let [b, g, r, _] = pixel.to_le_bytes();
-                    rgba.extend_from_slice(&[r, g, b, 0xff]);
-                }
-            }
-        }
-        Some(rgba)
+    fn side(&mut self, player: usize) -> Box<dyn tango_match::Side + '_> {
+        Box::new(DsSide(self.inner.side(player)))
+    }
+}
+
+/// One DS of a boot — the seam's [`Side`](tango_match::Side) over the
+/// per-console view `melonds_rollback` shares between its pair and its
+/// solo boot, so this exists once for both.
+struct DsSide<'a>(melonds_rollback::Side<'a>);
+
+impl tango_match::Side for DsSide<'_> {
+    fn frame(&mut self) -> Option<Vec<u8>> {
+        let (top, bottom) = self.0.console().framebuffers()?;
+        Some(compose_frame(top, bottom))
     }
 
-    fn set_render(&mut self, player: usize, on: bool) {
-        self.inner.console(player).set_render(on);
+    fn set_render(&mut self, on: bool) {
+        self.0.console().set_render(on);
     }
 
-    fn audio_sample_rate(&mut self, _player: usize) -> f64 {
+    fn export_save(&mut self) -> Option<Vec<u8>> {
+        Some(self.0.console().save_memory())
+    }
+
+    fn audio_sample_rate(&mut self) -> f64 {
         SAMPLE_RATE
     }
 
-
-    fn audio_framerate_ratio(&mut self, _player: usize, fps_target: f64) -> f64 {
+    fn audio_framerate_ratio(&mut self, fps_target: f64) -> f64 {
         framerate_ratio(fps_target)
     }
 
-    /// Taken from the link rather than straight off the SPU. The link
-    /// empties each console's SPU every tick into a buffer of its own,
+    /// Taken from the boot rather than straight off the SPU. The boot
+    /// empties the console's SPU every tick into a buffer of its own,
     /// because the SPU's ring cannot serve as one: a savestate does not
     /// cover it, so a rollback cannot take back what it speculated
     /// there, and at ~43 ms it overflows within a couple of frames of a
     /// re-simulation appending a span twice — destroying its own oldest
     /// audio to make room. What leaves here is already revocable and
     /// already deduplicated.
-    fn drain_audio(&mut self, player: usize, out: &mut [i16]) -> Drained {
-        let (written, queued) = self.inner.take_audio(player, out);
+    fn drain_audio(&mut self, out: &mut [i16]) -> Drained {
+        let (written, queued) = self.0.take_audio(out);
         Drained { written, queued }
+    }
+}
+
+/// Compose the two screens into one RGBA8 frame, in
+/// [`screen_layout`]'s order.
+///
+/// Side by side, so a row of the composite is a row of the top screen
+/// followed by the same row of the bottom one. Stacked would be the
+/// cheaper `top` then `bottom` — concatenation is a vertical stack for
+/// free when the widths match — but a 256x384 pane wastes most of the
+/// width of any display it is drawn into.
+fn compose_frame(top: &[u32], bottom: &[u32]) -> Vec<u8> {
+    let mut rgba = Vec::with_capacity(SCREENS.iter().map(Screen::len).sum());
+    let (width, height) = (SCREENS[0].width as usize, SCREENS[0].height as usize);
+    for row in 0..height {
+        for screen in [top, bottom] {
+            for &pixel in &screen[row * width..(row + 1) * width] {
+                // The core hands out BGRA words; hosts want RGBA bytes.
+                let [b, g, r, _] = pixel.to_le_bytes();
+                rgba.extend_from_slice(&[r, g, b, 0xff]);
+            }
+        }
+    }
+    rgba
+}
+
+/// One DS booted alone, as the seam's [`Console`](tango_match::Console):
+/// a single core, not a pair with an idle seat.
+pub struct SoloConsole {
+    inner: melonds_rollback::Solo,
+}
+
+impl SoloConsole {
+    /// Boot one console. `rtc` pins the cart clock, exactly as a
+    /// match's negotiated clock does.
+    pub fn new(rom: &[u8], save: Option<&[u8]>, rtc: std::time::SystemTime) -> Result<Self, melonds::Error> {
+        Ok(SoloConsole {
+            inner: melonds_rollback::Solo::new(rom, save, rtc_parts(rtc))?,
+        })
+    }
+}
+
+impl tango_match::Console for SoloConsole {
+    fn tick(&mut self, input: HostInput) -> Result<(), tango_match::Error> {
+        self.inner.tick(input_of(input));
+        Ok(())
+    }
+
+    fn side(&mut self) -> Box<dyn tango_match::Side + '_> {
+        Box::new(DsSide(self.inner.side()))
     }
 }
 

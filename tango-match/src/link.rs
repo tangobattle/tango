@@ -10,13 +10,17 @@
 //! rollback session over it, feed local input in and forward the
 //! peer's — and disagree on every detail below it.
 //!
-//! So the seam is one trait: [`Link`], the linked pair itself. An
-//! engine hands one over and the shared [`Match`](crate::Match) does
-//! the rest — the rollback loop, the confirmed-input record, the
-//! audio plumbing. The trait is object-safe on purpose: a `Game`
-//! registration cannot name an emulator, so the erasure happens here,
-//! at the link, where it costs a virtual call per tick instead of per
-//! instruction.
+//! So the seam is [`Link`], the linked pair itself, and [`Side`], one
+//! console of it. An engine hands a link over and the shared
+//! [`Match`](crate::Match) does the rest — the rollback loop, the
+//! confirmed-input record, the audio plumbing. Pair-level operations
+//! (ticking, snapshotting) live on the link; everything one console
+//! answers for itself (display, audio out, savedata) lives on its
+//! side, which is also how a console booted with no pair at all
+//! ([`Console`](crate::Console)) presents itself. The traits are
+//! object-safe on purpose: a `Game` registration cannot name an
+//! emulator, so the erasure happens here, at the link, where it costs
+//! a virtual call per tick instead of per instruction.
 
 /// A whole-link capture — both consoles and anything in flight between
 /// them — as the seam carries it. Opaque: only the link that produced
@@ -83,37 +87,62 @@ pub trait Link: Send + 'static {
         let _ = mark;
     }
 
-    /// One console's current display as RGBA8, in the layout order the
+    /// One console's per-side surface: display, audio out, savedata.
+    ///
+    /// Boxed because the trait must stay object-safe; the box lives
+    /// for one call chain, so the cost is a small allocation, not a
+    /// design constraint.
+    fn side(&mut self, player: usize) -> Box<dyn Side + '_>;
+}
+
+/// One console of a boot, as the seam reads it: everything a console
+/// answers for itself, with no player index in sight.
+///
+/// [`Link::side`] hands one out per seat and
+/// [`Console::side`](crate::Console) for a machine booted alone, so
+/// everything above — the shared audio drain, the solo ride, a host's
+/// frame pump — reads any console through this one surface.
+///
+/// Borrowed, not owned: a side is a view into wherever the engine
+/// keeps the console, alive for one call chain.
+pub trait Side {
+    /// The console's current display as RGBA8, in the layout order the
     /// engine's [`Backend::screen_layout`] declares. `None`
     /// before its first frame.
-    fn frame(&mut self, player: usize) -> Option<Vec<u8>>;
+    fn frame(&mut self) -> Option<Vec<u8>>;
 
-    /// Turn rasterization on or off for one console.
+    /// Turn rasterization on or off for this console.
     ///
     /// A netplay match renders only the local side — skipping the
     /// remote one is most of what makes a rollback tick cheap — but a
     /// host showing both (training's picture-in-picture) turns the
     /// other back on. Frameskip is unserialized and invisible to the
     /// simulation, so this is rollback-safe.
-    fn set_render(&mut self, player: usize, on: bool) {
-        let _ = (player, on);
+    fn set_render(&mut self, on: bool) {
+        let _ = on;
     }
 
-    /// The rate one console produces audio at, in Hz.
-    fn audio_sample_rate(&mut self, player: usize) -> f64;
+    /// The cartridge's savedata as it stands, or `None` for a game
+    /// that has never written any.
+    fn export_save(&mut self) -> Option<Vec<u8>> {
+        None
+    }
 
-    /// How one console's audio production scales when the host paces
+    /// The rate this console produces audio at, in Hz.
+    fn audio_sample_rate(&mut self) -> f64;
+
+    /// How this console's audio production scales when the host paces
     /// the simulation at `fps_target` (see
     /// [`AudioDrain::framerate_ratio`](crate::AudioDrain::framerate_ratio)).
-    fn audio_framerate_ratio(&mut self, player: usize, fps_target: f64) -> f64 {
-        let _ = (player, fps_target);
+    fn audio_framerate_ratio(&mut self, fps_target: f64) -> f64 {
+        let _ = fps_target;
         1.0
     }
 
-    /// Take up to `out`'s worth of one console's produced audio, as
+    /// Take up to `out`'s worth of this console's produced audio, as
     /// interleaved stereo, and report what is left behind. Taking it
     /// consumes it; what stays queued stays revocable.
-    fn drain_audio(&mut self, player: usize, out: &mut [i16]) -> crate::Drained;
+    fn drain_audio(&mut self, out: &mut [i16]) -> crate::Drained;
 }
 
 /// One screen a console presents.
@@ -199,7 +228,7 @@ pub trait Backend: Sync {
     /// Boot one console on its own, for a host that just wants to play
     /// the game. Not every engine offers this — a game supported for
     /// netplay only says so by leaving it alone.
-    fn start_solo(&self, config: crate::SoloConfig) -> Result<Box<dyn crate::RunningSolo>, crate::Error> {
+    fn start_solo(&self, config: crate::SoloConfig) -> Result<crate::Solo, crate::Error> {
         let _ = config;
         Err(crate::Error::Unsupported("this game has no single-player support"))
     }

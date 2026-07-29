@@ -199,30 +199,48 @@ impl tango_match::Link for Link {
         }
     }
 
-    fn frame(&mut self, player: usize) -> Option<Vec<u8>> {
+    fn side(&mut self, player: usize) -> Box<dyn tango_match::Side + '_> {
+        Box::new(GbaSide {
+            link: &mut self.inner,
+            player,
+        })
+    }
+}
+
+/// One GBA of a boot — the per-side surface over the raw
+/// `mgba_rollback` pair. The linked pair above, the solo console, and
+/// replay playback's audio all keep their consoles in that same inner
+/// type, so this exists once for all three.
+pub(crate) struct GbaSide<'a> {
+    pub(crate) link: &'a mut mgba_rollback::Link,
+    pub(crate) player: usize,
+}
+
+impl tango_match::Side for GbaSide<'_> {
+    fn frame(&mut self) -> Option<Vec<u8>> {
         // Cores render BGR555; expanding here is what keeps the console's
         // native pixel format from leaking out to hosts.
-        let native = self.inner.video_buffer(player)?;
-        let mut rgba = vec![0u8; native.len() * 2];
-        mgba::gba::bgr555_to_rgba8(native, &mut rgba);
-        Some(rgba)
+        self.link.video_buffer(self.player).map(to_rgba)
     }
 
-    fn set_render(&mut self, player: usize, on: bool) {
-        self.inner.set_frameskip(player, if on { 0 } else { i32::MAX });
+    fn set_render(&mut self, on: bool) {
+        self.link.set_frameskip(self.player, if on { 0 } else { i32::MAX });
     }
 
-
-    fn audio_sample_rate(&mut self, player: usize) -> f64 {
-        self.inner.core(player).audio_sample_rate() as f64
+    fn export_save(&mut self) -> Option<Vec<u8>> {
+        self.link.export_save(self.player)
     }
 
-    fn audio_framerate_ratio(&mut self, player: usize, fps_target: f64) -> f64 {
-        self.inner.core(player).calculate_framerate_ratio(fps_target)
+    fn audio_sample_rate(&mut self) -> f64 {
+        self.link.core(self.player).audio_sample_rate() as f64
     }
 
-    fn drain_audio(&mut self, player: usize, out: &mut [i16]) -> Drained {
-        let buf = self.inner.core_mut(player).audio_buffer();
+    fn audio_framerate_ratio(&mut self, fps_target: f64) -> f64 {
+        self.link.core(self.player).calculate_framerate_ratio(fps_target)
+    }
+
+    fn drain_audio(&mut self, out: &mut [i16]) -> Drained {
+        let buf = self.link.core_mut(self.player).audio_buffer();
         // `out` holds interleaved samples, so it fits half as many
         // frames. Reading consumes, which is what stops a session
         // replaying audio it already played after a rollback; what
@@ -234,6 +252,13 @@ impl tango_match::Link for Link {
             queued: buf.available(),
         }
     }
+}
+
+/// Expand mgba's native BGR555 to the RGBA8 the seam promises hosts.
+pub(crate) fn to_rgba(src: &[u8]) -> Vec<u8> {
+    let mut rgba = vec![0u8; src.len() * 2];
+    mgba::gba::bgr555_to_rgba8(src, &mut rgba);
+    rgba
 }
 
 /// Remove `frames` sample frames starting `start` frames from the OLDEST

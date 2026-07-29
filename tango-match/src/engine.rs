@@ -68,7 +68,8 @@ impl getgud::World for World {
         let mut link = self.link.lock().unwrap();
         let render = self.live_tick + 1 >= self.render_from.load(Ordering::Relaxed);
         for player in 0..2 {
-            link.set_render(player, render && self.visible[player].load(Ordering::Relaxed));
+            link.side(player)
+                .set_render(render && self.visible[player].load(Ordering::Relaxed));
         }
         link.tick(inputs);
         self.live_tick += 1;
@@ -234,14 +235,14 @@ impl Match {
     /// [`screen_layout`](crate::Backend::screen_layout) order.
     pub fn frame(&mut self) -> Option<Vec<u8>> {
         let player = self.local_player;
-        self.with_link(|link| link.frame(player))
+        self.with_link(|link| link.side(player).frame())
     }
 
     /// One seat's display, RGBA8, for a host showing more than the
     /// local side. `None` unless [`render_seats`](Self::render_seats)
     /// asked for that seat to be drawn.
     pub fn seat_frame(&mut self, player: usize) -> Option<Vec<u8>> {
-        self.with_link(|link| link.frame(player))
+        self.with_link(|link| link.side(player).frame())
     }
 
     /// Draw every seat, not just the local one.
@@ -251,7 +252,7 @@ impl Match {
         }
         self.with_link(|link| {
             for player in 0..2 {
-                link.set_render(player, true);
+                link.side(player).set_render(true);
             }
         });
     }

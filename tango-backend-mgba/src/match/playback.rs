@@ -725,8 +725,8 @@ impl Prefetch {
 fn capture_pair(pair: &mut mgba_rollback::Link, tick: u32) -> Result<Arc<Snapshot>, crate::Error> {
     let state = pair.save()?;
     let frames = [
-        pair.video_buffer(0).map(crate::factory::to_rgba).unwrap_or_default(),
-        pair.video_buffer(1).map(crate::factory::to_rgba).unwrap_or_default(),
+        pair.video_buffer(0).map(crate::link::to_rgba).unwrap_or_default(),
+        pair.video_buffer(1).map(crate::link::to_rgba).unwrap_or_default(),
     ];
     Ok(Arc::new(Snapshot {
         state,

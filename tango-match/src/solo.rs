@@ -3,40 +3,79 @@
 //! Netplay is not the only thing a host asks an engine for. It also
 //! wants a single machine for the save-editor's "just play it" ride, a
 //! second copy of the game to practise against, and playback of a
-//! recorded match. All three are the same shape as a match — boot a
-//! console, feed it input, take frames and audio off it — so they take
-//! the same shape here: an object-safe handle the host drives, built by
-//! the game's own registration, with the backend's generics resolved
-//! underneath.
+//! recorded match. All are the same shape as a match — boot a console,
+//! feed it input, take frames and audio off it — and the solo ride
+//! takes the same shape [`Match`](crate::Match) does: the engine
+//! contributes only a booted [`Console`], and [`Solo`] — one concrete
+//! type, here — is the whole ride over it.
 //!
-//! Everything here is optional. A game that only supports netplay (BN5
-//! Double Team DS today) implements none of it, and the host reports
-//! that the ride isn't available rather than failing to build.
+//! Everything here is optional. A game that only supports netplay
+//! implements none of it, and the host reports that the ride isn't
+//! available rather than failing to build.
 
-/// One console running by itself, as a host drives it.
+/// One console booted alone, as an engine hands it to the seam.
 ///
-/// The backend keeps the console behind whatever sharing its audio pull
-/// needs, so a host holds this and the pull side by side without
-/// knowing how they meet.
-pub trait RunningSolo: Send {
+/// The counterpart of [`Link`](crate::Link) for a machine with no
+/// pair: it ticks, and it has a [`side`](crate::Side). Rollback has no
+/// seat here — there is no peer to mispredict — so neither do
+/// snapshots, sanitizing, or a second input.
+pub trait Console: Send + 'static {
     /// Advance one video frame with the input held this tick — the
     /// joypad bits (see [`keys`](crate::keys)) plus the stylus, which
-    /// only a touch-screen console reads. An error ends the ride — a
-    /// corrupt core stops the session rather than panicking the host.
+    /// only a touch-screen console reads. The engine reduces it to
+    /// what the console can express, exactly as a link sanitizes. An
+    /// error ends the ride — a corrupt core stops the session rather
+    /// than panicking the host.
     fn tick(&mut self, input: crate::HostInput) -> Result<(), crate::Error>;
+
+    /// The console's per-side surface: display, audio out, savedata.
+    fn side(&mut self) -> Box<dyn crate::Side + '_>;
+}
+
+/// One console running by itself, as a host drives it — the solo
+/// counterpart of [`Match`](crate::Match), and like it the one
+/// concrete type: every engine's ride is this struct over that
+/// engine's [`Console`], so the ride's plumbing exists once, here.
+///
+/// Clone-shared: the handle a host's drive loop ticks and the handle
+/// its session reads the save from are the same console behind one
+/// lock.
+#[derive(Clone)]
+pub struct Solo {
+    console: std::sync::Arc<std::sync::Mutex<dyn Console>>,
+}
+
+impl Solo {
+    /// Take the ride over a booted console.
+    pub fn new(console: impl Console) -> Self {
+        Solo {
+            console: std::sync::Arc::new(std::sync::Mutex::new(console)),
+        }
+    }
+
+    /// Advance one video frame with the input held this tick. An error
+    /// ends the ride.
+    pub fn tick(&self, input: crate::HostInput) -> Result<(), crate::Error> {
+        self.console.lock().unwrap().tick(input)
+    }
 
     /// The console's display, RGBA8 in
     /// [`screen_layout`](crate::Backend::screen_layout) order.
     /// `None` before its first frame.
-    fn frame(&mut self) -> Option<Vec<u8>>;
+    pub fn frame(&self) -> Option<Vec<u8>> {
+        self.console.lock().unwrap().side().frame()
+    }
 
     /// The cartridge's savedata as it stands, or `None` for a game that
     /// has never written any. The host owns persisting it.
-    fn export_save(&self) -> Option<Vec<u8>>;
+    pub fn export_save(&self) -> Option<Vec<u8>> {
+        self.console.lock().unwrap().side().export_save()
+    }
 
-    /// This console's audio, for the host's sound stream. Available
-    /// once, right after the ride starts.
-    fn audio(&self) -> Option<Box<dyn crate::AudioDrain>>;
+    /// This console's audio, for the host's sound stream.
+    pub fn audio(&self) -> Box<dyn crate::AudioDrain> {
+        crate::audio::solo_audio(self.console.clone())
+    }
 }
 
 /// Everything a solo ride needs to come up.

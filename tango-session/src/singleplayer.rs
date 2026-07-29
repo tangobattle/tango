@@ -24,17 +24,15 @@
 //! netplay's traps would have nothing to prime towards.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::InputCell;
 
-/// The session's console, shared between whatever drives it and the
-/// session itself (which reads the save off it).
-type SharedConsole = Arc<Mutex<Box<dyn tango_match::RunningSolo>>>;
-
 pub struct SinglePlayerSession {
     game: &'static tango_gamesupport::Game,
-    console: SharedConsole,
+    /// The seam's solo ride, clone-shared with whatever drives it (the
+    /// session reads the save off its own handle).
+    console: tango_match::Solo,
     layout: tango_match::ScreenLayout,
     input: Arc<InputCell>,
     /// The engine's native frame rate — what the speed dial's 1.0× means.
@@ -73,12 +71,9 @@ impl SinglePlayerSession {
             save: save.as_deref(),
             rtc,
         })?;
-        let audio_pull = console
-            .audio()
-            .ok_or_else(|| tango_match::Error::Backend("this console produces no audio".into()))?;
+        let audio_pull = console.audio();
 
         let layout = game.pvp.screen_layout();
-        let console: SharedConsole = Arc::new(Mutex::new(console));
         let input = InputCell::new();
         let fps_bits = Arc::new(AtomicU32::new(expected_fps.to_bits()));
         let stop = Arc::new(AtomicBool::new(false));
@@ -122,7 +117,7 @@ impl SinglePlayerSession {
     /// nothing here writes files — so a desktop host should also take a
     /// copy periodically rather than only at teardown.
     pub fn export_save(&self) -> Option<Vec<u8>> {
-        self.console.lock().unwrap().export_save()
+        self.console.export_save()
     }
 }
 
@@ -168,7 +163,7 @@ impl Drop for SinglePlayerSession {
 /// machine, the audio pull). Whoever holds this turns the crank: a
 /// drive thread on the desktop, the event loop in a browser.
 pub struct Driver {
-    console: SharedConsole,
+    console: tango_match::Solo,
     input: Arc<InputCell>,
     fps_bits: Arc<AtomicU32>,
     stop: Arc<AtomicBool>,
@@ -194,18 +189,13 @@ impl Driver {
         if self.stop.load(Ordering::Relaxed) {
             return false;
         }
-        {
-            // Scoped: on a single-threaded host this must be free before
-            // the call returns to the pump.
-            let mut console = self.console.lock().unwrap();
-            if let Err(e) = console.tick(self.input.load()) {
-                log::error!("single-player emulation failed: {e}");
-                self.stop.store(true, Ordering::Relaxed);
-                return false;
-            }
-            if let Some(frame) = console.frame() {
-                self.screen.write(&frame);
-            }
+        if let Err(e) = self.console.tick(self.input.load()) {
+            log::error!("single-player emulation failed: {e}");
+            self.stop.store(true, Ordering::Relaxed);
+            return false;
+        }
+        if let Some(frame) = self.console.frame() {
+            self.screen.write(&frame);
         }
         // Wake the host's frame subscription so the UI rebuilds the
         // texture for this frame. Notify coalesces — a slow UI doesn't

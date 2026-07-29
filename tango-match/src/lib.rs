@@ -9,8 +9,8 @@
 //! Nothing here names an emulator, so a game pulls in exactly the engine
 //! it needs and no other.
 //!
-//! - [`link`]: [`Link`] — the linked pair, the one trait an engine
-//!   implements — plus [`Backend`], what a `Game` registration
+//! - [`link`]: [`Link`] — the linked pair — and [`Side`], one console
+//!   of any boot; plus [`Backend`], what a `Game` registration
 //!   holds.
 //! - [`engine`]: [`Match`], the rollback loop over any [`Link`] and the
 //!   unified session surface a host drives.
@@ -31,13 +31,13 @@ pub mod solo;
 pub mod telemetry;
 pub mod throttler;
 
-pub use audio::{AudioDrain, Drained};
+pub use audio::{AudioDrain, Drained, SideSource};
 pub use solo::{
-    LiveFrames, PeerRom, ReplayConfig, ReplayFrames, ReplaySet, RunningReplay, RunningSolo, SeekStep,
+    Console, LiveFrames, PeerRom, ReplayConfig, ReplayFrames, ReplaySet, RunningReplay, SeekStep, Solo,
     SoloConfig, StatsPass,
 };
 pub use engine::Match;
-pub use link::{Backend, Link, Screen, ScreenLayout, Snapshot, StartConfig};
+pub use link::{Backend, Link, Screen, ScreenLayout, Side, Snapshot, StartConfig};
 pub use input::HostInput;
 
 /// The clock-sync governor: feed it `skew()` + `speculation_balance()`

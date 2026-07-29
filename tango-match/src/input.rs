@@ -7,7 +7,7 @@
 /// its console has no word for (a GBA drops the stylus outright).
 /// The netplay wire is narrower still: it exchanges bare joyflag
 /// words, so a stylus only exists on the rides a host feeds directly
-/// ([`RunningSolo`](crate::RunningSolo) today).
+/// ([`Solo`](crate::Solo) today).
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
 pub struct HostInput {
     /// Held joypad bits (see [`keys`](crate::keys)).
