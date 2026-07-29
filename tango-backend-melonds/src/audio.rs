@@ -2,12 +2,27 @@
 //!
 //! The SPU mixes at a fixed rate and hands out interleaved stereo, so
 //! all this says is "here is what the console produced". Resampling is
-//! [`tango_match::Resampled`]'s job.
+//! [`tango_match::Resampler`]'s job.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tango_match::AudioDrain;
+
+/// Frames melonDS's SPU output ring holds.
+///
+/// Not a knob — the SPU sizes it itself, from the output rate: enough
+/// for one frame of audio (`ceil(rate / 60)`) rounded up to a power of
+/// two, then doubled. At the 48 kHz the shim fixes, that is 2048 frames,
+/// or about 43 ms.
+///
+/// Worth stating because it is small. A host that leaves its audio
+/// backlog in the console — a GBA core will happily hold a second of it
+/// — would here be asking for several times what the ring holds, and
+/// this ring answers an overflow by advancing its own read cursor: it
+/// destroys the oldest audio rather than refusing the newest. The
+/// backlog has to live on the host's side of this one.
+const SPU_BUFFER_FRAMES: usize = 2048;
 
 /// One player's console on a running pair.
 pub struct ConsoleAudio {
@@ -32,7 +47,7 @@ impl AudioDrain for ConsoleAudio {
         crate::framerate_ratio(fps_target)
     }
 
-    /// One lock for both — the SPU sits behind the same mutex the
+    /// One lock for all of it — the SPU sits behind the same mutex the
     /// simulation ticks under, and this runs on the sound callback.
     fn drain(&mut self, out: &mut [i16]) -> tango_match::Drained {
         let player = self.player.load(Ordering::Relaxed);
@@ -42,13 +57,14 @@ impl AudioDrain for ConsoleAudio {
         tango_match::Drained {
             written,
             queued: console.audio_queued(),
+            capacity: SPU_BUFFER_FRAMES,
         }
     }
 }
 
-/// This console's audio, resampled — what a host holds.
-pub fn pull(link: Arc<Mutex<crate::Link>>, player: Arc<AtomicUsize>) -> tango_match::Resampled<ConsoleAudio> {
-    tango_match::Resampled::new(ConsoleAudio::new(link, player))
+/// This console's audio, as the raw source a host resamples.
+pub fn pull(link: Arc<Mutex<crate::Link>>, player: Arc<AtomicUsize>) -> ConsoleAudio {
+    ConsoleAudio::new(link, player)
 }
 
 #[cfg(test)]

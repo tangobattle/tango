@@ -83,8 +83,8 @@ impl Backend for Mgba {
     fn audio(
         link: std::sync::Arc<std::sync::Mutex<Self::Link>>,
         player: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    ) -> Box<dyn tango_match::AudioPull> {
-        Box::new(tango_match::Resampled::new(SharedPairAudio { link, player }))
+    ) -> Box<dyn tango_match::AudioDrain> {
+        Box::new(SharedPairAudio { link, player })
     }
 
     fn set_render(link: &mut Self::Link, player: usize, on: bool) {
@@ -140,12 +140,15 @@ impl tango_match::AudioDrain for SharedPairAudio {
     fn drain(&mut self, out: &mut [i16]) -> tango_match::Drained {
         let player = self.player();
         let mut link = self.link.lock().unwrap();
-        let buffer = link.core_mut(player).audio_buffer();
+        let core = link.core_mut(player);
+        let capacity = core.audio_buffer_size() as usize;
+        let buffer = core.audio_buffer();
         let frames = (out.len() / 2).min(buffer.available());
         let written = buffer.read(out, frames);
         tango_match::Drained {
             written,
             queued: buffer.available(),
+            capacity,
         }
     }
 }

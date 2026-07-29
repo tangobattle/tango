@@ -95,7 +95,7 @@ pub trait Backend: 'static {
     fn audio(
         link: std::sync::Arc<std::sync::Mutex<Self::Link>>,
         player: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    ) -> Box<dyn crate::AudioPull>;
+    ) -> Box<dyn crate::AudioDrain>;
 
     /// Turn rasterization on or off for one console.
     ///
@@ -275,7 +275,7 @@ pub trait RunningMatch: Send {
     }
 
     /// This match's local console audio, for the host's sound stream.
-    fn audio(&self) -> Option<Box<dyn crate::AudioPull>> {
+    fn audio(&self) -> Option<Box<dyn crate::AudioDrain>> {
         None
     }
 
@@ -285,7 +285,7 @@ pub trait RunningMatch: Send {
     fn seat_audio(
         &self,
         seat: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    ) -> Option<Box<dyn crate::AudioPull>> {
+    ) -> Option<Box<dyn crate::AudioDrain>> {
         let _ = seat;
         None
     }

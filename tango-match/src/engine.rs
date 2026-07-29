@@ -192,7 +192,7 @@ impl<B: Backend> Match<B> {
     }
 
     /// This match's local console audio.
-    pub fn audio(&self) -> Box<dyn crate::AudioPull> {
+    pub fn audio(&self) -> Box<dyn crate::AudioDrain> {
         self.seat_audio(std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(
             self.local_player,
         )))
@@ -202,7 +202,7 @@ impl<B: Backend> Match<B> {
     pub fn seat_audio(
         &self,
         seat: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    ) -> Box<dyn crate::AudioPull> {
+    ) -> Box<dyn crate::AudioDrain> {
         B::audio(self.link.clone(), seat)
     }
 
@@ -285,14 +285,14 @@ impl<B: Backend> crate::RunningMatch for Match<B> {
         Match::local_player(self)
     }
 
-    fn audio(&self) -> Option<Box<dyn crate::AudioPull>> {
+    fn audio(&self) -> Option<Box<dyn crate::AudioDrain>> {
         Some(Match::audio(self))
     }
 
     fn seat_audio(
         &self,
         seat: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    ) -> Option<Box<dyn crate::AudioPull>> {
+    ) -> Option<Box<dyn crate::AudioDrain>> {
         Some(Match::seat_audio(self, seat))
     }
 

@@ -1,6 +1,6 @@
 //! GBA audio: a drain, and nothing else.
 //!
-//! Resampling is [`tango_match::Resampled`]'s job — one implementation
+//! Resampling is [`tango_match::Resampler`]'s job — one implementation
 //! for every console rather than mgba's for this one and something else
 //! for the next.
 
@@ -38,7 +38,9 @@ impl AudioDrain for ConsoleAudio {
     fn drain(&mut self, out: &mut [i16]) -> tango_match::Drained {
         let player = (self.player)();
         self.pair.with_link(|pair| {
-            let buffer = pair.core_mut(player).audio_buffer();
+            let core = pair.core_mut(player);
+            let capacity = core.audio_buffer_size() as usize;
+            let buffer = core.audio_buffer();
             // `out` holds interleaved samples, so it fits half as many
             // frames. Reading consumes, which is what stops a session
             // replaying audio it already played after a rollback.
@@ -49,15 +51,16 @@ impl AudioDrain for ConsoleAudio {
             tango_match::Drained {
                 written,
                 queued: buffer.available(),
+                capacity,
             }
         })
     }
 }
 
-/// This console's audio, resampled — what a host holds.
+/// This console's audio, as the raw source a host resamples.
 pub fn pull(
     pair: mgba_rollback::session::LinkHandle,
     player: Box<dyn Fn() -> usize + Send>,
-) -> tango_match::Resampled<ConsoleAudio> {
-    tango_match::Resampled::new(ConsoleAudio::new(pair, player))
+) -> ConsoleAudio {
+    ConsoleAudio::new(pair, player)
 }

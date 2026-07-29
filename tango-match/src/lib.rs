@@ -29,7 +29,7 @@ pub mod solo;
 pub mod telemetry;
 pub mod throttler;
 
-pub use audio::{AudioDrain, AudioPull, Drained, Resampled};
+pub use audio::{AudioDrain, Drained};
 pub use solo::{
     PeerRom, ReplayConfig, ReplayFrames, ReplaySet, RunningReplay, RunningSolo, SeekStep, SoloConfig,
     StatsPass,

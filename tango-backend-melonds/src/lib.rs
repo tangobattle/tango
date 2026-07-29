@@ -127,7 +127,7 @@ impl Backend for MelonDs {
     fn audio(
         link: std::sync::Arc<std::sync::Mutex<Link>>,
         player: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    ) -> Box<dyn tango_match::AudioPull> {
+    ) -> Box<dyn tango_match::AudioDrain> {
         Box::new(crate::audio::pull(link, player))
     }
 
@@ -201,3 +201,7 @@ mod tests {
 /// Re-exported so a game crate can name a link, a snapshot, an input
 /// or a session without depending on the emulator crates itself.
 pub use melonds_rollback::{session::Session, Input, Link, Snapshot};
+
+/// One console of a pair. A game crate needs this to reach past the link
+/// when priming: execution traps are installed per console.
+pub use melonds::Nds;

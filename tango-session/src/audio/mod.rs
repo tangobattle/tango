@@ -3,13 +3,16 @@
 //!
 //! [`Stream`] is the seam — a host binds one and asks it for frames —
 //! and [`CoreStream`] is the only implementation a session needs: it
-//! reads a live core's queue and resamples it to the device rate under
-//! dynamic rate control (see [`core_stream`] for why that's the whole
+//! takes a backend's raw [`AudioDrain`](tango_match::AudioDrain), owns
+//! the resampler over it, and runs the dynamic rate control that decides
+//! how fast to play (see [`core_stream`] for why that's the whole
 //! design).
 
 pub mod core_stream;
+mod resampler;
 
 pub use core_stream::CoreStream;
+pub use resampler::Resampler;
 
 pub const NUM_CHANNELS: usize = 2;
 pub const SAMPLES: usize = 512;

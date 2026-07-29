@@ -252,11 +252,11 @@ impl tango_match::RunningSolo for Solo {
         self.link.lock().unwrap().export_save(0)
     }
 
-    fn audio(&self) -> Option<Box<dyn tango_match::AudioPull>> {
-        Some(Box::new(tango_match::Resampled::new(PairAudio::new(
+    fn audio(&self) -> Option<Box<dyn tango_match::AudioDrain>> {
+        Some(Box::new(PairAudio::new(
             PairSource::Solo(self.link.clone()),
             Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-        ))))
+        )))
     }
 }
 
@@ -363,11 +363,11 @@ impl tango_match::RunningReplay for Replay {
         publish(&live);
     }
 
-    fn audio(&self, seat: Arc<std::sync::atomic::AtomicUsize>) -> Option<Box<dyn tango_match::AudioPull>> {
-        Some(Box::new(tango_match::Resampled::new(PairAudio::new(
+    fn audio(&self, seat: Arc<std::sync::atomic::AtomicUsize>) -> Option<Box<dyn tango_match::AudioDrain>> {
+        Some(Box::new(PairAudio::new(
             PairSource::Playback(self.playback.clone()),
             seat,
-        ))))
+        )))
     }
 
     fn nearest_capture(&self, tick: u32, publish: &mut dyn FnMut(&dyn tango_match::ReplayFrames)) -> bool {
@@ -512,8 +512,10 @@ struct PairAudio {
     /// fill old at a real transition.
     last_rate: AtomicU64,
     last_ratio: AtomicU64,
-    /// Last readable buffer level — see [`PairAudio::queued`].
+    /// Last readable buffer level and size — served when a reading
+    /// lands mid-tick.
     last_queued: std::sync::atomic::AtomicUsize,
+    last_capacity: std::sync::atomic::AtomicUsize,
 }
 
 impl PairAudio {
@@ -525,6 +527,7 @@ impl PairAudio {
             last_rate: AtomicU64::new(32768.0f64.to_bits()),
             last_ratio: AtomicU64::new(1.0f64.to_bits()),
             last_queued: std::sync::atomic::AtomicUsize::new(0),
+            last_capacity: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 
@@ -566,12 +569,15 @@ impl tango_match::AudioDrain for PairAudio {
         let player = self.player();
         let mut drained = tango_match::Drained::default();
         if self.link.try_with(&mut |link| {
-            let buffer = link.core_mut(player).audio_buffer();
+            let core = link.core_mut(player);
+            drained.capacity = core.audio_buffer_size() as usize;
+            let buffer = core.audio_buffer();
             let frames = (out.len() / 2).min(buffer.available());
             drained.written = buffer.read(out, frames);
             drained.queued = buffer.available();
         }) {
             self.last_queued.store(drained.queued, Ordering::Relaxed);
+            self.last_capacity.store(drained.capacity, Ordering::Relaxed);
             drained
         } else {
             // Mid-tick, so unreachable this fill. Nothing was taken, and
@@ -581,6 +587,7 @@ impl tango_match::AudioDrain for PairAudio {
             tango_match::Drained {
                 written: 0,
                 queued: self.last_queued.load(Ordering::Relaxed),
+                capacity: self.last_capacity.load(Ordering::Relaxed),
             }
         }
     }

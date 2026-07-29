@@ -112,14 +112,14 @@ impl Drop for Engine {
 /// priming later. This stands in until then, reporting silence, and
 /// starts delegating the moment the engine hands over a real pull.
 #[derive(Clone, Default)]
-struct DeferredPull(Arc<Mutex<Option<Box<dyn tango_match::AudioPull>>>>);
+struct DeferredPull(Arc<Mutex<Option<Box<dyn tango_match::AudioDrain>>>>);
 
 impl DeferredPull {
-    fn set(&self, pull: Box<dyn tango_match::AudioPull>) {
+    fn set(&self, pull: Box<dyn tango_match::AudioDrain>) {
         *self.0.lock().unwrap() = Some(pull);
     }
 
-    fn with<R>(&self, fallback: R, f: impl FnOnce(&mut Box<dyn tango_match::AudioPull>) -> R) -> R {
+    fn with<R>(&self, fallback: R, f: impl FnOnce(&mut Box<dyn tango_match::AudioDrain>) -> R) -> R {
         match self.0.lock().unwrap().as_mut() {
             Some(pull) => f(pull),
             None => fallback,
@@ -127,35 +127,19 @@ impl DeferredPull {
     }
 }
 
-impl tango_match::AudioPull for DeferredPull {
+impl tango_match::AudioDrain for DeferredPull {
     fn sample_rate(&self) -> f64 {
         // The GBA's own rate, which is what every replayable game
         // produces at and only stands in while the pair is booting.
         self.with(32768.0, |p| p.sample_rate())
     }
 
-    fn source_available(&mut self) -> usize {
-        self.with(0, |p| p.source_available())
-    }
-
-    fn process(&mut self, claimed_source_rate: f64, destination_rate: f64, frames: usize) {
-        self.with((), |p| p.process(claimed_source_rate, destination_rate, frames));
-    }
-
-    fn available(&self) -> usize {
-        self.with(0, |p| p.available())
-    }
-
-    fn read(&mut self, out: &mut [i16], frames: usize) -> usize {
-        self.with(0, |p| p.read(out, frames))
+    fn drain(&mut self, out: &mut [i16]) -> tango_match::Drained {
+        self.with(tango_match::Drained::default(), |p| p.drain(out))
     }
 
     fn framerate_ratio(&self, fps_target: f64) -> f64 {
         self.with(1.0, |p| p.framerate_ratio(fps_target))
-    }
-
-    fn discard_source(&mut self, frames: usize) {
-        self.with((), |p| p.discard_source(frames));
     }
 }
 
@@ -330,7 +314,7 @@ impl ReplaySession {
         // pair, following the drive loop's pacing (see
         // [`crate::core_stream`]).
         let audio = crate::audio::CoreStream::new(
-            Box::new(audio_pull) as Box<dyn tango_match::AudioPull>,
+            Box::new(audio_pull) as Box<dyn tango_match::AudioDrain>,
             crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
             sample_rate,
         );

@@ -347,7 +347,7 @@ impl tango_match::RunningMatch for Match {
         Some(Match::telemetry(self))
     }
 
-    fn audio(&self) -> Option<Box<dyn tango_match::AudioPull>> {
+    fn audio(&self) -> Option<Box<dyn tango_match::AudioDrain>> {
         let player = Match::local_player(self);
         Some(Box::new(crate::audio::pull(
             Match::pair_handle(self),

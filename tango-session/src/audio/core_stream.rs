@@ -153,7 +153,7 @@ pub struct CoreStream {
     /// The console's audio, already resampled to the device rate by
     /// whichever backend produced it. This stream never learns which
     /// emulator that was.
-    pull: Box<dyn tango_match::AudioPull>,
+    pull: super::Resampler,
     /// The host drive loop's current pacing target, f32. Zero or less is
     /// treated as unthrottled (60 fps).
     fps_target: Box<dyn Fn() -> f32 + Send>,
@@ -185,12 +185,12 @@ pub struct CoreStream {
 
 impl CoreStream {
     pub fn new(
-        pull: impl tango_match::AudioPull + 'static,
+        pull: Box<dyn tango_match::AudioDrain>,
         fps_target: impl Fn() -> f32 + Send + 'static,
         out_rate: u32,
     ) -> Self {
         Self {
-            pull: Box::new(pull),
+            pull: super::Resampler::new(pull),
             fps_target: Box::new(fps_target),
             out_rate: if out_rate == 0 { 48000 } else { out_rate },
             pace: 0.0,
@@ -377,6 +377,7 @@ mod tests {
             tango_match::Drained {
                 written,
                 queued: *level as usize,
+                capacity: 1 << 20,
             }
         }
     }
@@ -401,7 +402,7 @@ mod tests {
     /// production reaches the ring.
     fn run(fills: usize, fps: impl Fn(usize) -> f64, mut deliver: impl FnMut(usize, f64, &Mutex<f64>)) -> Run {
         let ring = Arc::new(Mutex::new(RATE * AUDIO_TARGET_QUEUED_SECS));
-        let pull = tango_match::Resampled::new(Ring(ring.clone()));
+        let pull = Box::new(Ring(ring.clone()));
         let published = Arc::new(std::sync::atomic::AtomicU32::new((NATIVE_FPS as f32).to_bits()));
         let mut stream = CoreStream::new(pull, CoreStream::fps_from_bits(published.clone()), OUT_RATE);
 

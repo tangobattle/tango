@@ -36,7 +36,7 @@ pub trait RunningSolo: Send {
 
     /// This console's audio, for the host's sound stream. Available
     /// once, right after the ride starts.
-    fn audio(&self) -> Option<Box<dyn crate::AudioPull>>;
+    fn audio(&self) -> Option<Box<dyn crate::AudioDrain>>;
 }
 
 /// Everything a solo ride needs to come up.
@@ -128,7 +128,7 @@ pub trait RunningReplay: Send {
     /// Audio for whichever seat `seat` currently names — a viewer can
     /// swap perspective mid-playback, so this is read per fill rather
     /// than fixed when the stream is bound.
-    fn audio(&self, seat: std::sync::Arc<std::sync::atomic::AtomicUsize>) -> Option<Box<dyn crate::AudioPull>>;
+    fn audio(&self, seat: std::sync::Arc<std::sync::atomic::AtomicUsize>) -> Option<Box<dyn crate::AudioDrain>>;
 
     /// The capture nearest `tick`, if the engine kept one — what backs
     /// a scrub bar's hover thumbnail. Emulation-free, so a miss is

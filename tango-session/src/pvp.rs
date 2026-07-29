@@ -865,7 +865,7 @@ struct DriveContext {
 impl DriveContext {
     /// Boot the match, then hand back the driver that runs it and a
     /// readout handle to its pair.
-    fn boot(mut self, pieces: BootPieces) -> Result<(PvpDriver, Box<dyn tango_match::AudioPull>), tango_match::Error> {
+    fn boot(mut self, pieces: BootPieces) -> Result<(PvpDriver, Box<dyn tango_match::AudioDrain>), tango_match::Error> {
         // The game's registration starts the match on whatever engine it
         // runs; this session never learns which.
         let local = pieces.pvp[pieces.local_player];
