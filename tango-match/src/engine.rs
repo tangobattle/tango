@@ -134,6 +134,10 @@ pub struct Match<B: Backend> {
     local_player: usize,
     visible: Arc<[AtomicBool; 2]>,
     render_from: Arc<AtomicU32>,
+    /// How deep the last [`advance`](Match::advance) rolled back, kept
+    /// because that is the only moment it is knowable and a host reads
+    /// it on its own schedule.
+    last_rollback_depth: u32,
 }
 
 impl<B: Backend> Match<B> {
@@ -166,6 +170,7 @@ impl<B: Backend> Match<B> {
             local_player,
             visible,
             render_from,
+            last_rollback_depth: 0,
         })
     }
 
@@ -184,6 +189,7 @@ impl<B: Backend> Match<B> {
             .store(before.saturating_sub(self.inner.present_delay()), Ordering::Relaxed);
         let frame = self.inner.advance(local)?;
         let tick = frame.tick;
+        self.last_rollback_depth = self.inner.last_misprediction_depth();
         Ok((
             Outgoing {
                 tick,
@@ -192,7 +198,7 @@ impl<B: Backend> Match<B> {
             },
             Report {
                 ticks: self.inner.local_frontier().saturating_sub(before),
-                rollback_depth: self.inner.last_misprediction_depth(),
+                rollback_depth: self.last_rollback_depth,
             },
         ))
     }
@@ -294,6 +300,10 @@ impl<B: Backend> crate::RunningMatch for Match<B> {
 
     fn local_player(&self) -> usize {
         Match::local_player(self)
+    }
+
+    fn last_rollback_depth(&self) -> u32 {
+        self.last_rollback_depth
     }
 
     fn audio(&self) -> Option<Box<dyn crate::AudioDrain>> {

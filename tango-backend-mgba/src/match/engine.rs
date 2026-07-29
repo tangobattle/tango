@@ -67,6 +67,10 @@ pub struct Match {
     session: mgba_rollback::session::Session,
     telemetry: TelemetryHandle,
     local_player: usize,
+    /// How deep the last [`advance`](Match::advance) rolled back, kept
+    /// because that is the only moment it is knowable and a host reads
+    /// it on its own schedule.
+    last_rollback_depth: u32,
 }
 
 impl Match {
@@ -163,6 +167,7 @@ impl Match {
             session,
             telemetry: telemetry_handle,
             local_player,
+            last_rollback_depth: 0,
         })
     }
 
@@ -175,7 +180,15 @@ impl Match {
     /// target. Returns the packet to forward to the peer plus a report.
     /// Telemetry for the ticks this advanced lands in the shared store.
     pub fn advance(&mut self, local_keys: u32) -> Result<(Outgoing, Report), crate::Error> {
-        Ok(self.session.advance(local_keys)?)
+        let (outgoing, report) = self.session.advance(local_keys)?;
+        self.last_rollback_depth = report.rolled_back;
+        Ok((outgoing, report))
+    }
+
+    /// How deep the last [`advance`](Match::advance) rolled back, 0 if
+    /// it didn't.
+    pub fn last_rollback_depth(&self) -> u32 {
+        self.last_rollback_depth
     }
 
     /// Feed one remote input packet, in tick order (see
@@ -296,6 +309,10 @@ impl tango_match::RunningMatch for Match {
 
     fn add_remote_input(&mut self, input: tango_match::HostInput, tick_advantage: i16) {
         Match::add_remote_input(self, input.keys & JOYFLAGS_MASK as u32, tick_advantage);
+    }
+
+    fn last_rollback_depth(&self) -> u32 {
+        Match::last_rollback_depth(self)
     }
 
     fn frame(&mut self) -> Option<Vec<u8>> {
