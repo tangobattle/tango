@@ -64,19 +64,6 @@ pub fn screen_layout() -> ScreenLayout {
     ScreenLayout::new(SCREENS)
 }
 
-/// How long a finished match keeps simulating before the engine calls
-/// it ended, in ticks (~10 s at the DS's ~59.83 fps).
-///
-/// A DS game exits its wireless session the moment the match is
-/// decided, before the result conversation — "Too bad, Lan! We lost!"
-/// plays out on consoles that have already left the air. Ending the
-/// session at the drop itself would cut those screens off mid-word, so
-/// the anchor fires this many ticks later instead. Sim ticks rather
-/// than wall clock: both peers count the same ticks, so both complete
-/// at the same pair tick, and a replay of the recording carries the
-/// same tail.
-const END_RUNOUT: u32 = 600;
-
 /// A whole-link capture stamped with the tick it was taken at, so a
 /// restore can rewind the wrapper's own clock (and its telemetry) to
 /// where the capture was made.
@@ -139,9 +126,13 @@ struct Monitor {
     /// periodic bursts — with both consoles parked on the Net Battle
     /// screen the pair reads attached again for most of every scan
     /// cycle. Re-attachment after the drop is that scanning, not a
-    /// resumed match, so it must not push the anchor back. Only a
-    /// restore below the drop clears it, for the re-simulation to
-    /// re-find.
+    /// resumed match, so it must not clear the anchor. Only a restore
+    /// below the drop clears it, for the re-simulation to re-find.
+    ///
+    /// The anchor fires the tick the drop is seen — the game has
+    /// already left its link session, and the result conversation it
+    /// plays afterwards ("Too bad, Lan! We lost!") happens on menus the
+    /// session is better off closing on rather than recording.
     dropped_at: Option<u32>,
 }
 
@@ -207,8 +198,8 @@ impl tango_match::Link for Link {
             if monitor.dropped_at.is_none() && !self.inner.connected() {
                 monitor.dropped_at = Some(self.live_tick);
             }
-            if monitor.dropped_at.is_some_and(|at| self.live_tick >= at + END_RUNOUT) {
-                // Latched every tick past the runout; the store keeps
+            if monitor.dropped_at.is_some() {
+                // Latched every tick from the drop on; the store keeps
                 // the first and rewind truncation re-derives it,
                 // exactly like the mgba anchors' re-firing.
                 monitor.lifecycle.match_ended();
