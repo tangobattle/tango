@@ -38,16 +38,28 @@ pub trait GameSupport: Sync {
     /// The telemetry reader for one console running this game. `player`
     /// is which console (and player) this poller answers for. Pure
     /// reads over that console's RAM, `None` while the game has no live
-    /// battle state — and that `None` is load-bearing beyond the data
-    /// side: the engine derives its round-start events from the poll
-    /// coming back (see the link's session watch), because a game whose
-    /// battle block is torn down between rounds answers `None` across
-    /// exactly the boundary. The default reads nothing, for a game
-    /// that hasn't wired telemetry up: no battle values, no round
-    /// marks; the engine's wireless-drop match end still fires.
+    /// battle state. The default reads nothing, for a game that hasn't
+    /// wired telemetry up.
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<crate::Nds>> {
         let _ = player;
         Box::new(|_: &mut crate::Nds| None)
+    }
+
+    /// The game's lifecycle, read from its RAM once per tick on console
+    /// 0: where the match stands, as a [`Phase`] level. This engine's
+    /// stand-in for the mgba families' trap anchors — a standing
+    /// melonDS trap holds the console to the interpreter, so round and
+    /// match boundaries are declared as instantaneous RAM facts instead
+    /// of PC sites, and the telemetry collector turns the levels into
+    /// events. Must be a pure function of console state: it runs on
+    /// speculative ticks and again on their re-simulation. The default
+    /// reads nothing: no round marks, and — because [`Phase::Over`] is
+    /// the engine's only match-end signal — no automatic session end.
+    ///
+    /// [`Phase`]: tango_match::telemetry::Phase
+    /// [`Phase::Over`]: tango_match::telemetry::Phase::Over
+    fn phase_poller(&self) -> Option<Box<dyn FnMut(&mut crate::Nds) -> tango_match::telemetry::Phase + Send>> {
+        None
     }
 }
 
@@ -158,25 +170,21 @@ impl tango_match::ReplayBoot for Boot {
     }
 }
 
-/// Arm a primed pair's telemetry: the game's battle pollers, round
-/// starts derived from their gate (a standing melonDS trap would hold
-/// the console to the interpreter, so this engine's games can't anchor
-/// rounds on their own code the way the mgba families do), and the
-/// match end wired to the pair's detach event — the game's own
-/// link-session exit reaching the shim (see
-/// [`Link::on_detach`](crate::Link::on_detach)). Armed only after
-/// priming, because priming is what brings the wireless up in the
-/// first place. Returns the handle the backend installs on the match
-/// for the host to read.
+/// Arm a primed pair's telemetry: the game's battle pollers plus its
+/// phase read, which carries the round and match lifecycle (see
+/// [`GameSupport::phase_poller`]). Armed only after priming, so the
+/// boot's screens predate the watch. Returns the handle the backend
+/// installs on the match for the host to read.
 fn observe(
     link: &mut Link,
     support: &'static (dyn GameSupport + Send + Sync),
 ) -> tango_match::telemetry::TelemetryHandle {
     let lifecycle = tango_match::telemetry::LifecycleSink::new();
     let (mut telemetry, handle) =
-        tango_match::telemetry::Telemetry::new([support.core_poller(0), support.core_poller(1)], lifecycle.clone());
-    telemetry.rounds_from_gate();
+        tango_match::telemetry::Telemetry::new([support.core_poller(0), support.core_poller(1)], lifecycle);
+    if let Some(phases) = support.phase_poller() {
+        telemetry.set_phase_poller(phases);
+    }
     link.set_telemetry(telemetry);
-    link.on_detach(move |_seat| lifecycle.match_ended());
     handle
 }

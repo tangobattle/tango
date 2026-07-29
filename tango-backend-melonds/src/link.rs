@@ -109,28 +109,10 @@ impl Link {
 
     /// Arm the telemetry collector and zero the tick clock. Called
     /// between priming and the session, so the boot's ticks aren't
-    /// counted and the boot's own wireless churn predates the watch.
+    /// counted and the boot's own screens predate the phase watch.
     pub fn set_telemetry(&mut self, telemetry: Telemetry<crate::Nds>) {
         self.live_tick = 0;
         self.telemetry = Some(telemetry);
-    }
-
-    /// Install `hook` on the pair's detach event: a console leaving the
-    /// air, which is always the game's own link-session exit (melonDS's
-    /// `MP_End`) — a restore reconciles attachment without it, and a
-    /// rollback re-simulation re-runs the exit and fires it again, so
-    /// it carries a trap's semantics without holding the console to the
-    /// interpreter the way a real melonDS trap would. The backend wires
-    /// it to [`LifecycleSink::match_ended`]: with both consoles in one
-    /// process the wireless has no network reasons to go down, so a
-    /// seat detaching means a game left the session for good — the mgba
-    /// engine's match-end anchor, one level below the games' code.
-    /// Fires on a console's tick thread; the sink is the latch that
-    /// makes that safe.
-    ///
-    /// [`LifecycleSink::match_ended`]: tango_match::telemetry::LifecycleSink::match_ended
-    pub fn on_detach(&mut self, hook: impl FnMut(usize) + Send + 'static) {
-        self.inner.on_detach(hook);
     }
 
     /// One console of the pair. A game crate needs this to reach past
@@ -158,7 +140,8 @@ impl tango_match::Link for Link {
         if let Some(telemetry) = self.telemetry.as_mut() {
             let obs0 = telemetry.poll(0, self.inner.console(0));
             let obs1 = telemetry.poll(1, self.inner.console(1));
-            telemetry.observe(obs0, obs1, self.live_tick);
+            let phase = telemetry.poll_phase(self.inner.console(0));
+            telemetry.observe(obs0, obs1, phase, self.live_tick);
         }
     }
 

@@ -245,14 +245,6 @@ pub struct Store {
     /// them, so pruning would race the rollback horizon. A handful of
     /// entries per match.
     outcome_reports: Vec<(u32, Outcome)>,
-    /// Ticks core 0's poll answered, as closed `(first, last)` spans —
-    /// only maintained under [`Telemetry::rounds_from_gate`], where a
-    /// span opening IS a round start. Kept here rather than as a plain
-    /// lookback bool so [`on_rewind`](Telemetry::on_rewind) can
-    /// truncate it to the restored tick exactly: spans are a pure fold
-    /// of per-tick poll liveness, so truncation plus deterministic
-    /// re-observation rebuilds them identically. One per round.
-    live_spans: Vec<(u32, u32)>,
 }
 
 impl Store {
@@ -306,6 +298,28 @@ impl Store {
 /// A host-side handle to the shared telemetry [`Store`].
 pub type TelemetryHandle = std::sync::Arc<std::sync::Mutex<Store>>;
 
+/// Where a game stands in its match, as one instantaneous read of its
+/// RAM — the poll-driven counterpart of the trap engine's lifecycle
+/// anchors, for an engine where a standing trap is unaffordable
+/// (melonDS holds a trapped console to the interpreter). A game
+/// declares its phase through
+/// [`Telemetry::set_phase_poller`]; the collector turns the levels
+/// into round/match events against the store's own open-round state,
+/// which the rewind machinery already keeps timeline-exact — so the
+/// read can be a pure function of simulation state, with no edge
+/// bookkeeping anywhere.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Phase {
+    /// A round's battle is live.
+    Round,
+    /// No battle stands, but the match isn't over: round intros, the
+    /// between-rounds interlude of a multi-round match.
+    Between,
+    /// The game left its link session for good — the players are back
+    /// on its menus.
+    Over,
+}
+
 /// The tick observer that turns
 /// a pair of [`CorePoller`]s plus the trap-fed [`LifecycleSink`] into
 /// revocable telemetry in a shared [`Store`]: dense per-tick samples
@@ -314,8 +328,11 @@ pub struct Telemetry<Core> {
     pollers: [Box<dyn CorePoller<Core>>; 2],
     lifecycle: LifecycleSink,
     store: TelemetryHandle,
-    /// See [`rounds_from_gate`](Telemetry::rounds_from_gate).
-    gate_rounds: bool,
+    /// The game's phase read, when its engine derives lifecycle from
+    /// polls instead of traps — see [`Phase`]. Read on core 0 only,
+    /// like the trap engines' round anchors: the phase is shared
+    /// simulation state, so one core answers for the pair.
+    phase_poller: Option<Box<dyn FnMut(&mut Core) -> Phase + Send>>,
 }
 
 impl<Core> Telemetry<Core> {
@@ -326,9 +343,18 @@ impl<Core> Telemetry<Core> {
         self.pollers[player].poll(core)
     }
 
+    /// Read the game's phase off core 0, if this collector derives
+    /// lifecycle from polls (see [`Phase`]). Engines call it alongside
+    /// [`poll`](Telemetry::poll) and hand the reading to
+    /// [`observe`](Telemetry::observe); a trap-driven engine just
+    /// passes `None` through.
+    pub fn poll_phase(&mut self, core: &mut Core) -> Option<Phase> {
+        self.phase_poller.as_mut().map(|poll| poll(core))
+    }
+
     /// Fold one tick's readings into the store. Everything from here on
     /// is the same arithmetic for any console.
-    pub fn observe(&mut self, obs0: Option<CoreObs>, obs1: Option<CoreObs>, tick: u32) {
+    pub fn observe(&mut self, obs0: Option<CoreObs>, obs1: Option<CoreObs>, phase: Option<Phase>, tick: u32) {
         let obs = match (obs0, obs1) {
             (Some(c0), Some(c1)) => Some(BattleObs {
                 // The sim's own readings come from player 0's core, but
@@ -346,24 +372,27 @@ impl<Core> Telemetry<Core> {
         };
 
         let mut store = self.store.lock().unwrap();
-        // Gate-derived round starts: the poll coming back after a gap
-        // opens a span, and a span opening is a round start (see
-        // [`rounds_from_gate`](Telemetry::rounds_from_gate)). Reported
-        // through the same sink the trap engines fire, so everything
-        // below is one flow.
-        if self.gate_rounds && obs0.is_some() {
-            match store.live_spans.last_mut() {
-                Some((_, last)) if *last + 1 == tick => *last = tick,
-                _ => {
-                    store.live_spans.push((tick, tick));
-                    self.lifecycle.round_started();
-                }
-            }
-        }
         // Order matters when several fire in one tick: the verdict lands
         // before the close that reads it, and the match end comes last.
         if let Some(outcome) = self.lifecycle.take_round_outcome() {
             store.outcome_reports.push((tick, outcome));
+        }
+        // A phase reading translates into lifecycle against the store's
+        // own open-round state — a level against a level, so there is
+        // no edge to remember: round_open is re-derived from the event
+        // history on every rewind, and the phase is an instantaneous
+        // read the re-simulation reproduces. Reported through the same
+        // sink the trap engines fire, so everything below is one flow.
+        match phase {
+            Some(Phase::Round) if !store.round_open => self.lifecycle.round_started(),
+            Some(Phase::Between) if store.round_open => store.close_round(tick),
+            Some(Phase::Over) => {
+                if store.round_open {
+                    store.close_round(tick);
+                }
+                self.lifecycle.match_ended();
+            }
+            _ => {}
         }
         if self.lifecycle.take_round_started() {
             store.close_round(tick);
@@ -423,14 +452,6 @@ impl<Core> Telemetry<Core> {
         store.events.truncate(e);
         let r = store.outcome_reports.partition_point(|(t, _)| *t <= tick);
         store.outcome_reports.truncate(r);
-        // Spans truncate like everything else: drop what opened past
-        // the rewind, clamp the one straddling it. The re-simulation's
-        // observations re-extend (or re-open) them identically.
-        let s = store.live_spans.partition_point(|(first, _)| *first <= tick);
-        store.live_spans.truncate(s);
-        if let Some((_, last)) = store.live_spans.last_mut() {
-            *last = (*last).min(tick);
-        }
         // Re-derive the open-round state at the rewind point from the
         // surviving event tail; the re-simulation re-fires whatever the
         // truncation dropped. (The sink's latches are always empty at a
@@ -468,23 +489,19 @@ impl<Core> Telemetry<Core> {
                 pollers,
                 lifecycle,
                 store: store.clone(),
-                gate_rounds: false,
+                phase_poller: None,
             },
             store,
         )
     }
 
-    /// Derive round starts from the poll gate: whenever core 0's
-    /// poller answers after a gap, a round started. For a game whose
-    /// battle block is torn down across every round boundary (the
-    /// poller answers `None` exactly between rounds) on an engine
-    /// where a standing trap is unaffordable — melonDS holds a trapped
-    /// console to the interpreter, so its games can't anchor round
-    /// starts on their own code the way the mgba families do. Games
-    /// with stale-live battle structs (the older GBA families) must
-    /// NOT use this; their boundaries only exist as trap anchors.
-    pub fn rounds_from_gate(&mut self) {
-        self.gate_rounds = true;
+    /// Install the game's phase read (see [`Phase`]) — used by engines
+    /// that derive round and match lifecycle from polls instead of
+    /// traps. Pure reads over core 0's RAM, and a pure function of
+    /// core state: the reading runs on speculative ticks and again on
+    /// their re-simulation, exactly like the battle pollers.
+    pub fn set_phase_poller(&mut self, poller: Box<dyn FnMut(&mut Core) -> Phase + Send>) {
+        self.phase_poller = Some(poller);
     }
 }
 

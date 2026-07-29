@@ -134,7 +134,9 @@ impl tango_match::Link for Link {
         if let Some(telemetry) = self.telemetry.as_mut() {
             let obs0 = telemetry.poll(0, self.inner.core_mut(0));
             let obs1 = telemetry.poll(1, self.inner.core_mut(1));
-            telemetry.observe(obs0, obs1, self.live_tick);
+            // No phase read: this engine's round and match lifecycle
+            // is trap-driven.
+            telemetry.observe(obs0, obs1, None, self.live_tick);
         }
     }
 

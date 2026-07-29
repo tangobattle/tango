@@ -20,7 +20,9 @@ use tango_match::telemetry::Telemetry;
 pub fn observe_pair(telemetry: &mut Telemetry<mgba::core::Core>, pair: &mut mgba_rollback::Link, tick: u32) {
     let obs0 = telemetry.poll(0, pair.core_mut(0));
     let obs1 = telemetry.poll(1, pair.core_mut(1));
-    telemetry.observe(obs0, obs1, tick);
+    // No phase read: this engine's round and match lifecycle is
+    // trap-driven.
+    telemetry.observe(obs0, obs1, None, tick);
 }
 
 // ---------------------------------------------------------------------------
