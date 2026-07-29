@@ -11,11 +11,29 @@
 //! Netplay, a single-player ride, and replay playback all come out of
 //! here, so `tango-session` drives a GBA game through exactly the same
 //! calls it drives a DS one through, and never learns which is which.
+//!
+//! The live-match boot lives in [`Backend::start`] itself: build the
+//! two-player pair, prime both games to their link battle, wire the
+//! RAM-poll telemetry, and start the seam's rollback
+//! [`Match`](tango_match::Match) over it. The rollback loop itself is
+//! `tango-match`'s — one engine for the cable and the DS's wireless
+//! alike. What is mgba-shaped here is everything before the session's
+//! first tick: the boot, the primer traps, and the audio bring-up.
+//!
+//! [`Backend::start`]: tango_match::Backend::start
+//!
+//! (mgba-rollback links go up to four players, but every game tango
+//! supports is a two-player link battle, so this engine is two-player
+//! throughout: the pair of cores IS the link.)
+
+use mgba_rollback::{LinkOptions, Peripheral, SideOptions};
 
 use crate::playback;
+use crate::telemetry::Telemetry;
+use crate::{GameSupport, PrimeConfig};
 
 /// One cartridge in a family, keyed as its ROM header names it.
-pub type Seat = (&'static [u8; 4], u8, &'static (dyn crate::GameSupport + Send + Sync));
+pub type Seat = (&'static [u8; 4], u8, &'static (dyn GameSupport + Send + Sync));
 
 /// A GBA cartridge's engine support, as the engine-neutral backend its
 /// registration holds.
@@ -28,12 +46,12 @@ pub type Seat = (&'static [u8; 4], u8, &'static (dyn crate::GameSupport + Send +
 /// an American one, and each seat needs the support for the ROM
 /// actually in it.
 pub struct GbaBackend {
-    local: &'static (dyn crate::GameSupport + Send + Sync),
+    local: &'static (dyn GameSupport + Send + Sync),
     family: &'static [Seat],
 }
 
 impl GbaBackend {
-    pub const fn new(local: &'static (dyn crate::GameSupport + Send + Sync), family: &'static [Seat]) -> Self {
+    pub const fn new(local: &'static (dyn GameSupport + Send + Sync), family: &'static [Seat]) -> Self {
         GbaBackend { local, family }
     }
 
@@ -42,7 +60,7 @@ impl GbaBackend {
     /// failing keeps a mismatched revision playable-if-desynced instead
     /// of unstartable, which is what the engine did before this lookup
     /// existed.
-    fn peer(&self, peer: tango_match::PeerRom) -> &'static (dyn crate::GameSupport + Send + Sync) {
+    fn peer(&self, peer: tango_match::PeerRom) -> &'static (dyn GameSupport + Send + Sync) {
         self.family
             .iter()
             .find(|(code, revision, _)| **code == peer.code && *revision == peer.revision)
@@ -52,7 +70,7 @@ impl GbaBackend {
 
     /// Both seats' support in seat order, which is not the same as
     /// local-and-peer: seat 0 is player 0 whoever that is.
-    fn seats(&self, config: &tango_match::StartConfig) -> [&'static (dyn crate::GameSupport + Send + Sync); 2] {
+    fn seats(&self, config: &tango_match::StartConfig) -> [&'static (dyn GameSupport + Send + Sync); 2] {
         let mut seats = [self.local, self.peer(config.peer_rom)];
         if config.local_player == 1 {
             seats.swap(0, 1);
@@ -86,21 +104,87 @@ impl tango_match::Backend for GbaBackend {
         crate::link::EXPECTED_FPS
     }
 
+    /// Boot the pair, prime both games to their link battle, and start
+    /// the rollback session. Priming runs identically on both peers (it
+    /// is a pure function of ROM/save/rtc), so both reach the same
+    /// state before the session — and therefore the same session
+    /// initial state.
     fn start(&self, config: tango_match::StartConfig) -> Result<tango_match::Match, tango_match::Error> {
-        crate::engine::start(crate::engine::MatchConfig {
-            roms: [config.roms[0].to_vec(), config.roms[1].to_vec()],
-            saves: [
-                config.saves[0].unwrap_or_default().to_vec(),
-                config.saves[1].unwrap_or_default().to_vec(),
+        assert!(config.local_player < 2);
+        let support = self.seats(&config);
+
+        crate::install_logger();
+        let mut pair = mgba_rollback::Link::with_options(LinkOptions {
+            sides: vec![
+                SideOptions {
+                    rom: config.roms[0].to_vec(),
+                    save: Some(config.saves[0].unwrap_or_default().to_vec()),
+                },
+                SideOptions {
+                    rom: config.roms[1].to_vec(),
+                    save: Some(config.saves[1].unwrap_or_default().to_vec()),
+                },
             ],
-            support: self.seats(&config).map(|s| s as &dyn crate::GameSupport),
+            rtc: Some(config.rtc),
+            peripheral: Peripheral::Cable,
+        })
+        .map_err(crate::Error::from)?;
+
+        let prime_config = PrimeConfig {
             match_type: config.match_type,
             rng_seed: config.rng_seed,
-            rtc: config.rtc,
-            local_player: config.local_player,
-            present_delay: config.present_delay,
             disable_bgm: config.disable_bgm,
-        })
+        };
+        let lifecycle = crate::telemetry::LifecycleSink::new();
+        let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
+        // The cores own their primer traps (see [`mgba_rollback::Link::set_traps`]):
+        // core teardown walks the trap component, so the traps must live
+        // exactly as long as their cores. They stay installed for the
+        // pair's life — inert once primed, since their boot/menu addresses
+        // never execute in battle.
+        pair.set_traps(0, support[0].primer_traps(&prime_config, 0, &lifecycle, &primed[0]));
+        pair.set_traps(1, support[1].primer_traps(&prime_config, 1, &lifecycle, &primed[1]));
+
+        // Prime both cores to their link battle. The traps do all the
+        // driving (each core's walk its own menu state machine); the
+        // pads stay idle throughout. Priming is done when both games'
+        // own battle-start code has fired.
+        let mut prime_ticks = 0;
+        while !(primed[0].is_set() && primed[1].is_set()) {
+            if prime_ticks >= MAX_PRIME_TICKS {
+                return Err(tango_match::Error::PrimeTimeout(MAX_PRIME_TICKS));
+            }
+            pair.tick(&[0, 0]);
+            prime_ticks += 1;
+        }
+        log::info!("pvp: primed to link battle in {prime_ticks} ticks");
+
+        // Audio bring-up, host-side only (sample buffers aren't in
+        // savestates, so the simulation is unaffected — but do it
+        // identically for both cores anyway, keeping the pairs
+        // configured bit-identically across the peers):
+        //   * deepen the buffers from mgba's 2048-sample default — the
+        //     host's queue-level rate control wants ~50 ms queued plus
+        //     headroom for rollback re-simulation bursts, and 2048
+        //     doesn't even hold the 50 ms at the 65536 Hz rate BN4+
+        //     run at;
+        //   * drop what priming piled up (it ran far faster than real
+        //     time with nothing draining), so the session doesn't open
+        //     on a stale burst of boot/menu sound.
+        for i in 0..2 {
+            let core = pair.core_mut(i);
+            core.set_audio_buffer_size(16384);
+            core.audio_buffer().clear();
+        }
+
+        let (telemetry, handle) = Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
+        let mut match_ = tango_match::Match::new(
+            crate::link::Link::new(pair, Some(telemetry)),
+            config.local_player,
+            config.present_delay,
+        )?;
+        match_.set_telemetry(handle);
+        Ok(match_)
     }
 
     fn stats_builder(&self, rom: &[u8]) -> tango_match::analysis::StatsBuilder {
@@ -123,3 +207,8 @@ impl tango_match::Backend for GbaBackend {
         Ok(tango_match::ReplaySet::new(&config, usage, playback::Boot(boot)))
     }
 }
+
+/// Cap on priming ticks before we give up bringing the games to their
+/// link battle. Real bring-up is ~470 ticks (BN6); this is generous
+/// headroom for slower families without hanging forever on a wedge.
+const MAX_PRIME_TICKS: u32 = 3600;

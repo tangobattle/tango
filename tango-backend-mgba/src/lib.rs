@@ -13,9 +13,9 @@
 //! - [`solo`]: one GBA booted alone, as the seam's
 //!   [`Console`](tango_match::Console).
 //! - [`backend`]: the [`tango_match::Backend`] a game registration
-//!   holds — netplay, solo, and replay playback all come out of it.
-//! - [`engine`]: boots and primes the pair and starts the seam's
-//!   rollback [`Match`](tango_match::Match) for live netplay.
+//!   holds — netplay, solo, and replay playback all come out of it,
+//!   along with the live-match boot: prime the pair and start the
+//!   seam's rollback [`Match`](tango_match::Match).
 //! - [`playback`]: linear re-simulation of recorded matches, with
 //!   snapshot seeking.
 //! - [`telemetry`]: per-tick RAM-poll telemetry with rollback
@@ -26,7 +26,6 @@
 
 pub mod analysis;
 pub mod backend;
-pub mod engine;
 pub mod link;
 pub mod playback;
 pub mod solo;
