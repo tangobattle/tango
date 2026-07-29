@@ -163,11 +163,14 @@ impl<B: Backend> Match<B> {
     /// target.
     pub fn advance(&mut self, local: B::Input) -> Result<(Outgoing<B::Input>, Report), B::Error> {
         let before = self.inner.local_frontier();
-        // Everything this advance re-simulates below the old frontier
-        // is rollback replay whose frames nobody sees; rendering
-        // resumes at the frontier so the frame the host presents is
-        // drawn.
-        self.render_from.store(before, Ordering::Relaxed);
+        // The simulation only ever reaches the present target — the
+        // frontier is the *input* frontier, `present_delay` ticks
+        // ahead of it. Everything this advance re-simulates below the
+        // target is rollback replay whose frames nobody sees;
+        // rendering resumes at the target so the frame the host
+        // presents is drawn.
+        self.render_from
+            .store(before.saturating_sub(self.inner.present_delay()), Ordering::Relaxed);
         let frame = self.inner.advance(local)?;
         let tick = frame.tick;
         Ok((
