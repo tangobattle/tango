@@ -7886,6 +7886,7 @@ dependencies = [
  "tango-backend-melonds",
  "tango-gamesupport",
  "tango-match",
+ "tango-replay",
 ]
 
 [[package]]
