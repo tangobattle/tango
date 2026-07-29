@@ -393,7 +393,7 @@ impl Driver {
             // gets the pad; the other gets the dummy. Both inputs for the
             // tick are present before it advances, so the pair confirms it
             // immediately — lockstep, no rollback.
-            let player = self.joyflags.load(Ordering::Relaxed) & mask;
+            let player = self.joyflags.load(Ordering::Relaxed);
             let core0 = if controlled == 0 { player } else { dummy };
             let core1 = if controlled == 0 { dummy } else { player };
             self.match_.add_remote_input(tango_match::HostInput::keys(core1), 0);
