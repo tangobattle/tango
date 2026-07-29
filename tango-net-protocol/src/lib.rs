@@ -65,4 +65,9 @@ pub mod derive;
 // it, so a 0x51 peer would sit at the gate for a packet that isn't
 // coming; and the new variant sits ahead of Goodbye, shifting that
 // discriminant, so the two would disagree about what a quit looks like.
-pub const PROTOCOL_VERSION: u32 = 0x51;
+// 0x52: the DS engine's emulated timeline changed (batched wifi timer,
+// timestamp-gated concurrent consoles). The wire format is untouched,
+// but a match is two peers simulating the SAME pair tick for tick — a
+// 0x51 peer's simulation diverges from a 0x52 peer's within seconds and
+// presents as in-game communication errors, so they must not pair.
+pub const PROTOCOL_VERSION: u32 = 0x52;
