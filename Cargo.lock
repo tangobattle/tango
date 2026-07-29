@@ -665,7 +665,7 @@ dependencies = [
  "bitflags 2.11.1",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -4185,7 +4185,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -4451,7 +4451,7 @@ checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 [[package]]
 name = "melonds"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rs#3b154ec1ab741f587f0e01c7f3b40b2aa63b5b91"
+source = "git+https://github.com/tangobattle/melonds-rs#e012a1c0f9e3404019d7382b6ea62408c234897a"
 dependencies = [
  "melonds-sys",
  "thiserror 1.0.69",
@@ -4460,7 +4460,7 @@ dependencies = [
 [[package]]
 name = "melonds-rollback"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rollback#1ce9ca0a2f79901b9376f888c36ba20b40283819"
+source = "git+https://github.com/tangobattle/melonds-rollback#75b035e732bc271e207d11d0b83d3ff16da03edb"
 dependencies = [
  "getgud",
  "log",
@@ -4471,7 +4471,7 @@ dependencies = [
 [[package]]
 name = "melonds-sys"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rs#3b154ec1ab741f587f0e01c7f3b40b2aa63b5b91"
+source = "git+https://github.com/tangobattle/melonds-rs#e012a1c0f9e3404019d7382b6ea62408c234897a"
 dependencies = [
  "bindgen",
  "cc",
@@ -5936,7 +5936,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6c3320f9abac597dcbc668774ef006702672474aad53c6d596b62e487b40b1"
 dependencies = [
  "heck",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "log",
  "multimap",
  "once_cell",
@@ -5956,7 +5956,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9120690fafc389a67ba3803df527d0ec9cbbc9cc45e4cc20b332996dfb672425"
 dependencies = [
  "anyhow",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
