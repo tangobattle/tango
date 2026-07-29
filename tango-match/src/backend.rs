@@ -75,6 +75,31 @@ pub trait Backend: 'static {
     /// *after* the one that had completed when it was taken.
     fn restore(link: &mut Self::Link, snapshot: &Self::Snapshot) -> Result<(), Self::Error>;
 
+    /// How much audio this link has produced and kept, per console.
+    ///
+    /// Audio is not machine state — no emulator's savestate carries the
+    /// buffer a frontend reads from — so a [`restore`](Backend::restore)
+    /// leaves whatever the speculation voiced sitting there, and the
+    /// re-simulation that follows produces the same span a second time.
+    /// A link that can take that back reports a mark here and honours
+    /// [`revoke_audio`](Backend::revoke_audio); the pair is what a
+    /// rollback needs to keep sound continuous across a mispredict.
+    ///
+    /// Defaulted to inert, for a link whose audio nobody plays.
+    fn audio_mark(link: &mut Self::Link) -> [u64; 2] {
+        let _ = link;
+        [0; 2]
+    }
+
+    /// Take back all audio produced since a snapshot recorded `mark`.
+    ///
+    /// What is still queued is dropped; what a host already took cannot
+    /// be unplayed, so its regeneration is swallowed on the way through
+    /// instead of queuing as an echo. See [`audio_mark`](Backend::audio_mark).
+    fn revoke_audio(link: &mut Self::Link, mark: [u64; 2]) {
+        let _ = (link, mark);
+    }
+
     /// One console's current display as RGBA8, in [`screen_layout`]
     /// order. `None` before its first frame.
     ///

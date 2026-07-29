@@ -41,6 +41,10 @@ pub struct Report {
 struct SnapshotAt<B: Backend> {
     snapshot: B::Snapshot,
     tick: u32,
+    /// The link's audio mark at save time, so a load knows how much its
+    /// speculation produced past this point. Not part of the snapshot
+    /// itself: audio is playback state, and no savestate carries it.
+    audio_mark: [u64; 2],
 }
 
 /// The [`getgud::World`] over a linked pair.
@@ -84,8 +88,10 @@ impl<B: Backend> getgud::World for World<B> {
     }
 
     fn save(&mut self) -> Result<SnapshotAt<B>, B::Error> {
+        let mut link = self.link.lock().unwrap();
         Ok(SnapshotAt {
-            snapshot: B::snapshot(&mut self.link.lock().unwrap(), self.pool.pop())?,
+            audio_mark: B::audio_mark(&mut link),
+            snapshot: B::snapshot(&mut link, self.pool.pop())?,
             tick: self.live_tick,
         })
     }
@@ -97,7 +103,12 @@ impl<B: Backend> getgud::World for World<B> {
         if self.live_tick == state.tick {
             return Ok(());
         }
-        B::restore(&mut self.link.lock().unwrap(), &state.snapshot)?;
+        let mut link = self.link.lock().unwrap();
+        B::restore(&mut link, &state.snapshot)?;
+        // The restore does not reach the audio the speculation voiced,
+        // so that comes back by hand — otherwise the re-simulation
+        // queues the same span a second time.
+        B::revoke_audio(&mut link, state.audio_mark);
         self.live_tick = state.tick;
         Ok(())
     }

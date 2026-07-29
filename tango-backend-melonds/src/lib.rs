@@ -106,6 +106,14 @@ impl Backend for MelonDs {
         link.restore(snapshot)
     }
 
+    fn audio_mark(link: &mut Link) -> [u64; 2] {
+        link.audio_produced()
+    }
+
+    fn revoke_audio(link: &mut Link, mark: [u64; 2]) {
+        link.revoke_audio_to(mark)
+    }
+
     fn frame(link: &mut Link, player: usize) -> Option<Vec<u8>> {
         let (top, bottom) = link.console(player).framebuffers()?;
         let mut rgba = Vec::with_capacity(SCREENS.iter().map(Screen::len).sum());

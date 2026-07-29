@@ -25,11 +25,18 @@ pub struct ConsoleAudio {
     /// Read per fill: a host that moves the sound between seats does so
     /// without the resampler above being rebuilt under it.
     player: Arc<AtomicUsize>,
+    /// What the link was holding when it was last reachable, served
+    /// while it isn't.
+    queued: usize,
 }
 
 impl ConsoleAudio {
     pub fn new(link: Arc<Mutex<crate::Link>>, player: Arc<AtomicUsize>) -> Self {
-        ConsoleAudio { link, player }
+        ConsoleAudio {
+            link,
+            player,
+            queued: 0,
+        }
     }
 }
 
@@ -42,11 +49,25 @@ impl AudioDrain for ConsoleAudio {
         crate::framerate_ratio(fps_target)
     }
 
-    /// One lock for both facts — the link sits behind the same mutex the
-    /// simulation ticks under, and this runs on the sound callback.
+    /// One reach for both facts, and never a blocking one.
+    ///
+    /// This runs on the sound callback, and the mutex it wants is the
+    /// one the simulation ticks under — where a DS tick is two consoles
+    /// each emulating a whole frame, and a rollback puts a ~37 MiB
+    /// restore in front of that. Waiting is how a callback misses its
+    /// deadline, and a callback that misses its deadline is a click. The
+    /// host holds the backlog, so skipping a take costs nothing but the
+    /// audio arriving one fill later.
     fn drain(&mut self, out: &mut [i16]) -> tango_match::Drained {
         let player = self.player.load(Ordering::Relaxed);
-        let (written, queued) = self.link.lock().unwrap().take_audio(player, out);
+        let Ok(mut link) = self.link.try_lock() else {
+            return tango_match::Drained {
+                written: 0,
+                queued: self.queued,
+            };
+        };
+        let (written, queued) = link.take_audio(player, out);
+        self.queued = queued;
         tango_match::Drained { written, queued }
     }
 }
