@@ -50,6 +50,7 @@ fn ds_screen_stacking_choice(
         match stacking {
             config::DsScreenStacking::Horizontal => t!(lang, "settings-ds-screen-stacking-horizontal"),
             config::DsScreenStacking::Vertical => t!(lang, "settings-ds-screen-stacking-vertical"),
+            config::DsScreenStacking::PrimaryOnly => t!(lang, "settings-ds-screen-stacking-primary-only"),
         },
     )
 }
@@ -800,8 +801,9 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
             vec![
                 option_row::<Message>(t!(lang, "settings-ds-screen-stacking"), {
                     let options = vec![
-                        ds_screen_stacking_choice(lang, config::DsScreenStacking::Horizontal),
                         ds_screen_stacking_choice(lang, config::DsScreenStacking::Vertical),
+                        ds_screen_stacking_choice(lang, config::DsScreenStacking::Horizontal),
+                        ds_screen_stacking_choice(lang, config::DsScreenStacking::PrimaryOnly),
                     ];
                     let selected = options.iter().find(|c| c.value == config.ds_screen_stacking).cloned();
                     widgets::picker(options, selected, |c: Choice<config::DsScreenStacking>| {

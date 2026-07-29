@@ -106,6 +106,7 @@ settings-group-ds = Nintendo DS
 settings-ds-screen-stacking = Disposición
 settings-ds-screen-stacking-horizontal = Horizontal
 settings-ds-screen-stacking-vertical = Vertical
+settings-ds-screen-stacking-primary-only = Solo pantalla principal
 settings-ds-primary-screen = Pantalla principal
 settings-ds-primary-screen-upper = Pantalla superior
 settings-ds-primary-screen-touch = Pantalla táctil

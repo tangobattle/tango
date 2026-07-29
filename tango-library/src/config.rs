@@ -86,12 +86,14 @@ pub enum AccentColor {
 /// what lets this switch take effect mid-session.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub enum DsScreenStacking {
-    /// Side by side. The default: two stacked 256-wide screens waste
-    /// most of a landscape display's width.
+    /// The console's own arrangement, one screen above the other. The
+    /// default: it's the shape players know the games by.
     #[default]
-    Horizontal,
-    /// The console's own arrangement, one screen above the other.
     Vertical,
+    /// Side by side.
+    Horizontal,
+    /// Only the primary screen (see [`DsPrimaryScreen`]), full pane.
+    PrimaryOnly,
 }
 
 /// Which DS screen leads the arrangement — sits on the left of a

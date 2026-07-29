@@ -362,6 +362,7 @@ settings-group-ds = ニンテンドーDS
 settings-ds-screen-stacking = 画面の配置
 settings-ds-screen-stacking-horizontal = 横並び
 settings-ds-screen-stacking-vertical = 縦並び
+settings-ds-screen-stacking-primary-only = メイン画面のみ
 settings-ds-primary-screen = メイン画面
 settings-ds-primary-screen-upper = 上画面
 settings-ds-primary-screen-touch = タッチ画面

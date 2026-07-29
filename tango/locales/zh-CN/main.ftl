@@ -369,6 +369,7 @@ settings-group-ds = 任天堂DS
 settings-ds-screen-stacking = 屏幕排列
 settings-ds-screen-stacking-horizontal = 水平
 settings-ds-screen-stacking-vertical = 垂直
+settings-ds-screen-stacking-primary-only = 仅主屏幕
 settings-ds-primary-screen = 主屏幕
 settings-ds-primary-screen-upper = 上屏
 settings-ds-primary-screen-touch = 触摸屏

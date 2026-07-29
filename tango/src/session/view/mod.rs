@@ -257,13 +257,18 @@ fn framebuffer_view<'a>(
     // like the effect so flipping either re-lays out an active session
     // immediately.
     let multi = layout.as_ref().is_some_and(|layout| layout.screens.len() > 1);
-    let stacked = multi && ctx.ds_screen_stacking == crate::config::DsScreenStacking::Vertical;
     let touch_first = multi && ctx.ds_primary_screen == crate::config::DsPrimaryScreen::Touch;
-    let (native_w, native_h) = match (&layout, stacked) {
-        (Some(layout), true) => (
+    let (native_w, native_h) = match &layout {
+        Some(layout) if multi && ctx.ds_screen_stacking == crate::config::DsScreenStacking::Vertical => (
             layout.screens.iter().map(|s| s.width).max().unwrap_or(1),
             layout.screens.iter().map(|s| s.height).sum(),
         ),
+        Some(layout) if multi && ctx.ds_screen_stacking == crate::config::DsScreenStacking::PrimaryOnly => {
+            let screen = layout.screens[touch_first as usize];
+            (screen.width, screen.height)
+        }
+        // Horizontal keeps the session's own composition, so its size
+        // is the frame's.
         _ => state
             .active
             .as_ref()
@@ -278,7 +283,7 @@ fn framebuffer_view<'a>(
 
     let touch_screen = layout
         .as_ref()
-        .and_then(|layout| touch_screen_placement(layout, stacked, touch_first));
+        .and_then(|layout| touch_screen_placement(layout, ctx.ds_screen_stacking, touch_first));
 
     let base_frame = state
         .current_frame
@@ -395,29 +400,33 @@ fn framebuffer_view<'a>(
 /// touch screen: (where it starts in the presented frame, its size),
 /// all in native pixels. `None` for everything else — neither the
 /// stylus area nor a touch spot goes up without a screen to touch.
+/// That includes a primary-only arrangement led by the upper screen,
+/// which leaves the touch screen off the pane entirely.
 fn touch_screen_placement(
     layout: &tango_match::ScreenLayout,
-    stacked: bool,
+    stacking: crate::config::DsScreenStacking,
     touch_first: bool,
 ) -> Option<((f32, f32), tango_match::Screen)> {
-    (layout.screens.len() == 2).then(|| {
-        // Leading position when it's the primary screen; after the
-        // upper one — along whichever axis the stacking runs — when
-        // it isn't.
-        let origin = match (touch_first, stacked) {
-            (true, _) => (0.0, 0.0),
-            (false, false) => (layout.screens[0].width as f32, 0.0),
-            (false, true) => (0.0, layout.screens[0].height as f32),
-        };
-        (origin, layout.screens[1])
-    })
+    let primary_only = stacking == crate::config::DsScreenStacking::PrimaryOnly;
+    if layout.screens.len() != 2 || (primary_only && !touch_first) {
+        return None;
+    }
+    // Leading position when it's the primary screen; after the
+    // upper one — along whichever axis the stacking runs — when
+    // it isn't.
+    let origin = match (touch_first, stacking == crate::config::DsScreenStacking::Vertical) {
+        (true, _) => (0.0, 0.0),
+        (false, false) => (layout.screens[0].width as f32, 0.0),
+        (false, true) => (0.0, layout.screens[0].height as f32),
+    };
+    Some((origin, layout.screens[1]))
 }
 
 /// A multi-screen frame as the arrangement settings present it:
 /// screens reordered so the primary one leads, then packed side by
-/// side or as a vertical stack. Pure presentation: the session's
-/// composition stays canonical, so replays, exports and the wire
-/// never see this.
+/// side, as a vertical stack, or cut down to the primary screen
+/// alone. Pure presentation: the session's composition stays
+/// canonical, so replays, exports and the wire never see this.
 ///
 /// The revision is always remapped into a per-arrangement space, even
 /// when the pixels pass through untouched: dimensions don't
@@ -432,29 +441,36 @@ fn present_frame(
     primary: crate::config::DsPrimaryScreen,
 ) -> crate::platform::video::framebuffer::Frame {
     let touch_first = primary == crate::config::DsPrimaryScreen::Touch;
-    let stacked = stacking == crate::config::DsScreenStacking::Vertical;
+    // Only a horizontal pair in canonical order passes through
+    // untouched.
+    let rearranges = stacking != crate::config::DsScreenStacking::Horizontal || touch_first;
     // Also guards the 1×1 black placeholder before the first frame,
     // which has no screens to rearrange.
     let canonical = (frame.width, frame.height) == tango_session::composite_size(layout);
-    let mut frame = if canonical && (stacked || touch_first) {
-        rearrange_screens(&frame, layout, stacked, touch_first)
+    let mut frame = if canonical && rearranges {
+        rearrange_screens(&frame, layout, stacking, touch_first)
     } else {
         frame
     };
+    let arrangement = match stacking {
+        crate::config::DsScreenStacking::Vertical => 0u64,
+        crate::config::DsScreenStacking::Horizontal => 1,
+        crate::config::DsScreenStacking::PrimaryOnly => 2,
+    };
     frame.revision = frame
         .revision
-        .wrapping_mul(4)
-        .wrapping_add((stacked as u64) << 1 | touch_first as u64);
+        .wrapping_mul(8)
+        .wrapping_add(arrangement << 1 | touch_first as u64);
     frame
 }
 
 /// The pixel re-pack behind [`present_frame`]: rows re-sliced from the
 /// canonical side-by-side composition into the presented order and
-/// axis.
+/// axis, or down to the primary screen alone.
 fn rearrange_screens(
     frame: &crate::platform::video::framebuffer::Frame,
     layout: &tango_match::ScreenLayout,
-    stacked: bool,
+    stacking: crate::config::DsScreenStacking,
     touch_first: bool,
 ) -> crate::platform::video::framebuffer::Frame {
     const BPP: usize = 4;
@@ -483,30 +499,42 @@ fn rearrange_screens(
             pixels.extend_from_slice(&[0, 0, 0, 0xff]);
         }
     };
-    let (out_w, out_h, pixels) = if stacked {
-        let out_w = layout.screens.iter().map(|s| s.width).max().unwrap_or(0) as usize;
-        let out_h = layout.screens.iter().map(|s| s.height).sum::<u32>() as usize;
-        let mut pixels = Vec::with_capacity(out_w * out_h * BPP);
-        for &i in &order {
-            for row in 0..layout.screens[i].height as usize {
-                pixels.extend_from_slice(row_of(i, row).unwrap());
-                pad(&mut pixels, out_w - layout.screens[i].width as usize);
-            }
-        }
-        (out_w, out_h, pixels)
-    } else {
-        // Same dimensions as the canonical frame, columns reordered
-        // within each row.
-        let mut pixels = Vec::with_capacity(frame.pixels.len());
-        for row in 0..frame.height as usize {
+    let (out_w, out_h, pixels) = match stacking {
+        crate::config::DsScreenStacking::Vertical => {
+            let out_w = layout.screens.iter().map(|s| s.width).max().unwrap_or(0) as usize;
+            let out_h = layout.screens.iter().map(|s| s.height).sum::<u32>() as usize;
+            let mut pixels = Vec::with_capacity(out_w * out_h * BPP);
             for &i in &order {
-                match row_of(i, row) {
-                    Some(slice) => pixels.extend_from_slice(slice),
-                    None => pad(&mut pixels, layout.screens[i].width as usize),
+                for row in 0..layout.screens[i].height as usize {
+                    pixels.extend_from_slice(row_of(i, row).unwrap());
+                    pad(&mut pixels, out_w - layout.screens[i].width as usize);
                 }
             }
+            (out_w, out_h, pixels)
         }
-        (frame.width as usize, frame.height as usize, pixels)
+        crate::config::DsScreenStacking::PrimaryOnly => {
+            let i = order[0];
+            let (out_w, out_h) = (layout.screens[i].width as usize, layout.screens[i].height as usize);
+            let mut pixels = Vec::with_capacity(out_w * out_h * BPP);
+            for row in 0..out_h {
+                pixels.extend_from_slice(row_of(i, row).unwrap());
+            }
+            (out_w, out_h, pixels)
+        }
+        crate::config::DsScreenStacking::Horizontal => {
+            // Same dimensions as the canonical frame, columns reordered
+            // within each row.
+            let mut pixels = Vec::with_capacity(frame.pixels.len());
+            for row in 0..frame.height as usize {
+                for &i in &order {
+                    match row_of(i, row) {
+                        Some(slice) => pixels.extend_from_slice(slice),
+                        None => pad(&mut pixels, layout.screens[i].width as usize),
+                    }
+                }
+            }
+            (frame.width as usize, frame.height as usize, pixels)
+        }
     };
     crate::platform::video::framebuffer::Frame {
         pixels: std::sync::Arc::new(pixels),
@@ -706,14 +734,13 @@ pub(crate) fn pip_overlay<'a>(
     let layout = state.active.as_ref().map(|s| s.screen_layout());
     let mut spot = None;
     if let Some(layout) = layout.as_ref().filter(|layout| layout.screens.len() > 1) {
-        let stacked = ctx.ds_screen_stacking == crate::config::DsScreenStacking::Vertical;
         let touch_first = ctx.ds_primary_screen == crate::config::DsPrimaryScreen::Touch;
         frame = present_frame(frame, layout, ctx.ds_screen_stacking, ctx.ds_primary_screen);
         // This side's touch as a fraction of the inset — the same
         // mapping the main pane runs in `framebuffer_view`, against
         // the presented frame's dimensions.
         spot = touch_spot.and_then(|(tx, ty)| {
-            touch_screen_placement(layout, stacked, touch_first).map(|((origin_x, origin_y), _)| {
+            touch_screen_placement(layout, ctx.ds_screen_stacking, touch_first).map(|((origin_x, origin_y), _)| {
                 (
                     (origin_x + tx as f32 + 0.5) / frame.width as f32,
                     (origin_y + ty as f32 + 0.5) / frame.height as f32,
