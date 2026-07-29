@@ -87,18 +87,7 @@ impl tango_match::Backend for DsBackend {
             .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
 
         self.support.prime(&mut link, config.match_type, None)?;
-
-        // The session watch: the game's battle pollers, plus the two
-        // lifecycle facts the engine derives itself (round starts off
-        // the poll gate's edge, match end off the wireless teardown).
-        // Armed only now, because priming is what brings the wireless
-        // up in the first place.
-        let lifecycle = tango_match::telemetry::LifecycleSink::new();
-        let (telemetry, handle) = tango_match::telemetry::Telemetry::new(
-            [self.support.core_poller(0), self.support.core_poller(1)],
-            lifecycle.clone(),
-        );
-        link.watch(telemetry, lifecycle);
+        let handle = observe(&mut link, self.support);
 
         // The rollback loop is the seam's — this engine contributes the
         // boot, not another copy of it.
@@ -151,7 +140,7 @@ struct Boot {
 }
 
 impl tango_match::ReplayBoot for Boot {
-    fn boot(&self, observe: bool, cancel: &AtomicBool) -> Result<tango_match::BootedReplay, tango_match::Error> {
+    fn boot(&self, want_stats: bool, cancel: &AtomicBool) -> Result<tango_match::BootedReplay, tango_match::Error> {
         let mut link = Link::new(
             &self.rom,
             [Some(self.saves[0].as_slice()), Some(self.saves[1].as_slice())],
@@ -159,23 +148,35 @@ impl tango_match::ReplayBoot for Boot {
         )
         .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
         self.support.prime(&mut link, self.match_type, Some(cancel))?;
-        let handle = if observe {
-            // The stats pass wants the game observed: the same session
-            // watch a live match arms.
-            let lifecycle = tango_match::telemetry::LifecycleSink::new();
-            let (telemetry, handle) = tango_match::telemetry::Telemetry::new(
-                [self.support.core_poller(0), self.support.core_poller(1)],
-                lifecycle.clone(),
-            );
-            link.watch(telemetry, lifecycle);
-            Some(handle)
-        } else {
-            // The display pair pays for no pollers.
-            None
-        };
+        // The stats pass wants the game observed, exactly as a live
+        // match is; the display pair pays for no pollers.
+        let handle = want_stats.then(|| observe(&mut link, self.support));
         Ok(tango_match::BootedReplay {
             link: Box::new(link),
             telemetry: handle,
         })
     }
+}
+
+/// Arm a primed pair's telemetry: the game's battle pollers, round
+/// starts derived from their gate (a standing melonDS trap would hold
+/// the console to the interpreter, so this engine's games can't anchor
+/// rounds on their own code the way the mgba families do), and the
+/// match end wired to the pair's detach event — the game's own
+/// link-session exit reaching the shim (see
+/// [`Link::on_detach`](crate::Link::on_detach)). Armed only after
+/// priming, because priming is what brings the wireless up in the
+/// first place. Returns the handle the backend installs on the match
+/// for the host to read.
+fn observe(
+    link: &mut Link,
+    support: &'static (dyn GameSupport + Send + Sync),
+) -> tango_match::telemetry::TelemetryHandle {
+    let lifecycle = tango_match::telemetry::LifecycleSink::new();
+    let (mut telemetry, handle) =
+        tango_match::telemetry::Telemetry::new([support.core_poller(0), support.core_poller(1)], lifecycle.clone());
+    telemetry.rounds_from_gate();
+    link.set_telemetry(telemetry);
+    link.on_detach(move |_seat| lifecycle.match_ended());
+    handle
 }

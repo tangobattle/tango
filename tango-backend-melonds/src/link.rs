@@ -6,7 +6,7 @@
 //! very different hardware, which is what lets one
 //! [`Match`](tango_match::Match) drive either.
 
-use tango_match::telemetry::{LifecycleSink, Telemetry};
+use tango_match::telemetry::Telemetry;
 use tango_match::{Drained, HostInput, Screen, ScreenLayout};
 
 /// The rate the SPU hands samples out at.
@@ -77,63 +77,20 @@ struct DsSnapshot {
 pub struct Link {
     inner: melonds_rollback::Link,
     /// Ticks simulated since the session started. Priming isn't
-    /// counted: [`watch`](Link::watch) zeroes the clock when it arms,
-    /// so tick 1 is the session's first simulated tick — the numbering
-    /// telemetry and the confirmed-input record agree on.
+    /// counted: [`set_telemetry`](Link::set_telemetry) zeroes the clock
+    /// when it arms, so tick 1 is the session's first simulated tick —
+    /// the numbering telemetry and the confirmed-input record agree on.
     live_tick: u32,
-    /// The session watch, once a session arms it. Consulted after
-    /// every tick, rewound on every restore.
-    monitor: Option<Monitor>,
-}
-
-/// The per-tick telemetry drive: the game's own battle values through
-/// its [`CorePoller`](tango_match::telemetry::CorePoller)s, plus the
-/// two lifecycle facts this engine derives itself.
-///
-/// **Round starts** are the poll gate's edge: a game's poller answers
-/// `None` until its battle-unit block is live, and the block is torn
-/// down between rounds, so "the poll came back" IS the game's own
-/// battle-start-complete moment — the mgba engine's round-start anchor
-/// without a standing trap (a melonDS trap holds both CPUs off the
-/// JIT, so anchors here must be polls). One tick of lookback
-/// ([`was_live`](Monitor::was_live)), recomputed from the restored
-/// state on every rewind.
-///
-/// **Match end** is the pair's emulated wireless tearing down. The two
-/// consoles live in one process, so their wireless can never drop for
-/// network reasons — the only thing that detaches a seat is the game's
-/// own link-session exit path running (the console powers its wifi
-/// down). That makes "the pair is no longer on the air" exactly the
-/// mgba engine's match-end anchor — the players left the battle loop
-/// for good — without this engine knowing a single RAM address.
-///
-/// Both readings are pure simulation state (seat attachment is carried
-/// by every snapshot), so they re-fire identically on rollback
-/// re-simulation, and [`Telemetry`]'s rewind truncation keeps the
-/// event history consistent with the current timeline.
-struct Monitor {
-    telemetry: Telemetry<crate::Nds>,
-    lifecycle: LifecycleSink,
-    /// Whether console 0's poller answered on the previous tick — the
-    /// lookback the round-start edge is against. Recomputed from the
-    /// restored state on rewind, so re-simulation re-fires the same
-    /// edges at the same ticks.
-    was_live: bool,
-    /// First tick of the current timeline the wireless read torn down;
-    /// `None` until then, and latching: a game never powers its wifi
-    /// down mid-session (the lockstep exchange needs it every frame),
-    /// while the menus a finished match returns to scan for hosts in
-    /// periodic bursts — with both consoles parked on the Net Battle
-    /// screen the pair reads attached again for most of every scan
-    /// cycle. Re-attachment after the drop is that scanning, not a
-    /// resumed match, so it must not clear the anchor. Only a restore
-    /// below the drop clears it, for the re-simulation to re-find.
-    ///
-    /// The anchor fires the tick the drop is seen — the game has
-    /// already left its link session, and the result conversation it
-    /// plays afterwards ("Too bad, Lan! We lost!") happens on menus the
-    /// session is better off closing on rather than recording.
-    dropped_at: Option<u32>,
+    /// The RAM-poll collector, when this pair runs one. Polled after
+    /// every tick, rewound on every restore; the store it feeds is the
+    /// handle the backend installs on the match. Lifecycle arrives
+    /// through its sink from outside the poll loop: round starts are
+    /// the collector's own gate derivation
+    /// ([`rounds_from_gate`](Telemetry::rounds_from_gate)), and the
+    /// match end is the pair's detach hook — the game's own
+    /// link-session exit reaching the shim (see
+    /// [`on_detach`](Link::on_detach)).
+    telemetry: Option<Telemetry<crate::Nds>>,
 }
 
 impl Link {
@@ -146,24 +103,34 @@ impl Link {
         Ok(Link {
             inner: melonds_rollback::Link::new(rom, saves, rtc_parts(rtc))?,
             live_tick: 0,
-            monitor: None,
+            telemetry: None,
         })
     }
 
-    /// Arm the session watch (see [`Monitor`]) and zero the tick clock.
-    /// Called between priming and the session — during priming the
-    /// wireless is legitimately down (the walk is what brings it up),
-    /// so arming any earlier would read the boot as a finished match.
-    /// `lifecycle` must be the sink `telemetry` drains, so the firings
-    /// land in the store the host reads.
-    pub fn watch(&mut self, telemetry: Telemetry<crate::Nds>, lifecycle: LifecycleSink) {
+    /// Arm the telemetry collector and zero the tick clock. Called
+    /// between priming and the session, so the boot's ticks aren't
+    /// counted and the boot's own wireless churn predates the watch.
+    pub fn set_telemetry(&mut self, telemetry: Telemetry<crate::Nds>) {
         self.live_tick = 0;
-        self.monitor = Some(Monitor {
-            telemetry,
-            lifecycle,
-            was_live: false,
-            dropped_at: None,
-        });
+        self.telemetry = Some(telemetry);
+    }
+
+    /// Install `hook` on the pair's detach event: a console leaving the
+    /// air, which is always the game's own link-session exit (melonDS's
+    /// `MP_End`) — a restore reconciles attachment without it, and a
+    /// rollback re-simulation re-runs the exit and fires it again, so
+    /// it carries a trap's semantics without holding the console to the
+    /// interpreter the way a real melonDS trap would. The backend wires
+    /// it to [`LifecycleSink::match_ended`]: with both consoles in one
+    /// process the wireless has no network reasons to go down, so a
+    /// seat detaching means a game left the session for good — the mgba
+    /// engine's match-end anchor, one level below the games' code.
+    /// Fires on a console's tick thread; the sink is the latch that
+    /// makes that safe.
+    ///
+    /// [`LifecycleSink::match_ended`]: tango_match::telemetry::LifecycleSink::match_ended
+    pub fn on_detach(&mut self, hook: impl FnMut(usize) + Send + 'static) {
+        self.inner.on_detach(hook);
     }
 
     /// One console of the pair. A game crate needs this to reach past
@@ -188,23 +155,10 @@ impl tango_match::Link for Link {
     fn tick(&mut self, inputs: [HostInput; 2]) {
         self.inner.tick(inputs.map(input_of));
         self.live_tick += 1;
-        if let Some(monitor) = self.monitor.as_mut() {
-            let obs0 = monitor.telemetry.poll(0, self.inner.console(0));
-            let obs1 = monitor.telemetry.poll(1, self.inner.console(1));
-            if obs0.is_some() && !monitor.was_live {
-                monitor.lifecycle.round_started();
-            }
-            monitor.was_live = obs0.is_some();
-            if monitor.dropped_at.is_none() && !self.inner.connected() {
-                monitor.dropped_at = Some(self.live_tick);
-            }
-            if monitor.dropped_at.is_some() {
-                // Latched every tick from the drop on; the store keeps
-                // the first and rewind truncation re-derives it,
-                // exactly like the mgba anchors' re-firing.
-                monitor.lifecycle.match_ended();
-            }
-            monitor.telemetry.observe(obs0, obs1, self.live_tick);
+        if let Some(telemetry) = self.telemetry.as_mut() {
+            let obs0 = telemetry.poll(0, self.inner.console(0));
+            let obs1 = telemetry.poll(1, self.inner.console(1));
+            telemetry.observe(obs0, obs1, self.live_tick);
         }
     }
 
@@ -231,18 +185,10 @@ impl tango_match::Link for Link {
             .restore(&snapshot.snap)
             .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
         self.live_tick = snapshot.tick;
-        if let Some(monitor) = self.monitor.as_mut() {
-            // A drop the restore rewound past hasn't happened on the
-            // resumed timeline; the re-simulation re-finds it at the
-            // same tick it found it the first time.
-            if monitor.dropped_at.is_some_and(|t| t > snapshot.tick) {
-                monitor.dropped_at = None;
-            }
-            // The round-start lookback, recomputed at the restored
-            // state — by determinism, exactly the value it held when
-            // this tick was first simulated.
-            monitor.was_live = monitor.telemetry.poll(0, self.inner.console(0)).is_some();
-            monitor.telemetry.on_rewind(snapshot.tick);
+        if let Some(telemetry) = self.telemetry.as_mut() {
+            // Everything observed past the restored tick is revoked;
+            // the re-simulation re-reports it.
+            telemetry.on_rewind(snapshot.tick);
         }
         Ok(())
     }

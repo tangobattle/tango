@@ -245,6 +245,14 @@ pub struct Store {
     /// them, so pruning would race the rollback horizon. A handful of
     /// entries per match.
     outcome_reports: Vec<(u32, Outcome)>,
+    /// Ticks core 0's poll answered, as closed `(first, last)` spans —
+    /// only maintained under [`Telemetry::rounds_from_gate`], where a
+    /// span opening IS a round start. Kept here rather than as a plain
+    /// lookback bool so [`on_rewind`](Telemetry::on_rewind) can
+    /// truncate it to the restored tick exactly: spans are a pure fold
+    /// of per-tick poll liveness, so truncation plus deterministic
+    /// re-observation rebuilds them identically. One per round.
+    live_spans: Vec<(u32, u32)>,
 }
 
 impl Store {
@@ -306,6 +314,8 @@ pub struct Telemetry<Core> {
     pollers: [Box<dyn CorePoller<Core>>; 2],
     lifecycle: LifecycleSink,
     store: TelemetryHandle,
+    /// See [`rounds_from_gate`](Telemetry::rounds_from_gate).
+    gate_rounds: bool,
 }
 
 impl<Core> Telemetry<Core> {
@@ -336,6 +346,20 @@ impl<Core> Telemetry<Core> {
         };
 
         let mut store = self.store.lock().unwrap();
+        // Gate-derived round starts: the poll coming back after a gap
+        // opens a span, and a span opening is a round start (see
+        // [`rounds_from_gate`](Telemetry::rounds_from_gate)). Reported
+        // through the same sink the trap engines fire, so everything
+        // below is one flow.
+        if self.gate_rounds && obs0.is_some() {
+            match store.live_spans.last_mut() {
+                Some((_, last)) if *last + 1 == tick => *last = tick,
+                _ => {
+                    store.live_spans.push((tick, tick));
+                    self.lifecycle.round_started();
+                }
+            }
+        }
         // Order matters when several fire in one tick: the verdict lands
         // before the close that reads it, and the match end comes last.
         if let Some(outcome) = self.lifecycle.take_round_outcome() {
@@ -399,6 +423,14 @@ impl<Core> Telemetry<Core> {
         store.events.truncate(e);
         let r = store.outcome_reports.partition_point(|(t, _)| *t <= tick);
         store.outcome_reports.truncate(r);
+        // Spans truncate like everything else: drop what opened past
+        // the rewind, clamp the one straddling it. The re-simulation's
+        // observations re-extend (or re-open) them identically.
+        let s = store.live_spans.partition_point(|(first, _)| *first <= tick);
+        store.live_spans.truncate(s);
+        if let Some((_, last)) = store.live_spans.last_mut() {
+            *last = (*last).min(tick);
+        }
         // Re-derive the open-round state at the rewind point from the
         // surviving event tail; the re-simulation re-fires whatever the
         // truncation dropped. (The sink's latches are always empty at a
@@ -436,9 +468,23 @@ impl<Core> Telemetry<Core> {
                 pollers,
                 lifecycle,
                 store: store.clone(),
+                gate_rounds: false,
             },
             store,
         )
+    }
+
+    /// Derive round starts from the poll gate: whenever core 0's
+    /// poller answers after a gap, a round started. For a game whose
+    /// battle block is torn down across every round boundary (the
+    /// poller answers `None` exactly between rounds) on an engine
+    /// where a standing trap is unaffordable — melonDS holds a trapped
+    /// console to the interpreter, so its games can't anchor round
+    /// starts on their own code the way the mgba families do. Games
+    /// with stale-live battle structs (the older GBA families) must
+    /// NOT use this; their boundaries only exist as trap anchors.
+    pub fn rounds_from_gate(&mut self) {
+        self.gate_rounds = true;
     }
 }
 

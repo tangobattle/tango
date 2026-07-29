@@ -665,7 +665,7 @@ dependencies = [
  "bitflags 2.11.1",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -4185,7 +4185,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -4460,7 +4460,7 @@ dependencies = [
 [[package]]
 name = "melonds-rollback"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rollback#b38b114f4fe72eb45d51dba2f8eb0992caf517d4"
+source = "git+https://github.com/tangobattle/melonds-rollback#ffe4dedd906f5eba86d592e7c79d7e4fead327cc"
 dependencies = [
  "getgud",
  "melonds",
@@ -5935,7 +5935,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6c3320f9abac597dcbc668774ef006702672474aad53c6d596b62e487b40b1"
 dependencies = [
  "heck",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "multimap",
  "once_cell",
@@ -5955,7 +5955,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9120690fafc389a67ba3803df527d0ec9cbbc9cc45e4cc20b332996dfb672425"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
@@ -7881,6 +7881,7 @@ dependencies = [
 name = "tango-gamesupport-bn5ds"
 version = "0.1.0"
 dependencies = [
+ "env_logger",
  "image",
  "log",
  "tango-backend-melonds",
