@@ -307,21 +307,33 @@ impl super::Stream for CoreStream {
         // and therefore the only queue the servo can steer.
         self.pull
             .process(source_rate * rate, self.out_rate as f64, frame_count);
-        // Where the next fill starts counting production from. Read
-        // back, not predicted: the console can be asked what it is
-        // holding, so there is no reason to model what this fill took.
-        self.expected = Some(self.pull.source_available() as f64);
+        // Where the next fill starts counting production from: this
+        // fill's own reading, less what it just consumed. Derived rather
+        // than read back — reading it again would be a second reach into
+        // the console, and the sound callback shares a lock with the
+        // simulation, so every reach is a chance to stall behind a tick.
+        // It would also be a second sample point, taken at a different
+        // moment than the one the level error came from, which puts
+        // noise straight into the pace the ear hears.
+        let consumed = frame_count as f64 * source_rate * rate / self.out_rate as f64;
+        self.expected = Some((queued - consumed).max(0.0));
 
         let delivered = self.pull.available().min(frame_count);
         let linear_buf: &mut [i16] = bytemuck::cast_slice_mut(buf);
         self.pull
             .read(&mut linear_buf[..delivered * super::NUM_CHANNELS], delivered);
 
-        // A fill the queue couldn't cover in full is the stall
-        // signature — and the moment an artifact was unavoidable
-        // anyway. Latch priming so recovery is one clean gap instead
-        // of seconds of jitter-trough crackle at a near-empty queue.
-        if delivered < frame_count {
+        // A fill with nothing at all to give is the stall signature —
+        // and the moment an artifact was unavoidable anyway. Latch
+        // priming so recovery is one clean gap instead of seconds of
+        // jitter-trough crackle at a near-empty queue.
+        //
+        // Nothing at all, not merely short. Re-priming answers a
+        // shortfall with a queue-target's worth of silence, which is a
+        // fine trade against a stalled sim and a terrible one against a
+        // fill that came up a few frames light — that turns a click into
+        // a gap a hundred times its length.
+        if delivered == 0 {
             self.priming = true;
         }
         delivered
@@ -347,12 +359,6 @@ mod tests {
             RATE
         }
 
-        /// Reported, the way mgba's core can, so the stream leaves its
-        /// backlog here rather than pulling it out.
-        fn queued(&mut self) -> usize {
-            *self.0.lock().unwrap() as usize
-        }
-
         /// How long a second of this console's production lasts once the
         /// host paces it at `fps_target` — mgba's convention.
         fn framerate_ratio(&self, fps_target: f64) -> f64 {
@@ -363,12 +369,15 @@ mod tests {
             }
         }
 
-        fn drain(&mut self, out: &mut [i16]) -> usize {
-            let mut queued = self.0.lock().unwrap();
-            let frames = (*queued as usize).min(out.len() / 2);
-            *queued -= frames as f64;
-            out[..frames * 2].fill(1);
-            frames
+        fn drain(&mut self, out: &mut [i16]) -> tango_match::Drained {
+            let mut level = self.0.lock().unwrap();
+            let written = (*level as usize).min(out.len() / 2);
+            *level -= written as f64;
+            out[..written * 2].fill(1);
+            tango_match::Drained {
+                written,
+                queued: *level as usize,
+            }
         }
     }
 

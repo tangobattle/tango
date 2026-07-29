@@ -562,33 +562,27 @@ impl tango_match::AudioDrain for PairAudio {
         }
     }
 
-    fn queued(&mut self) -> usize {
+    fn drain(&mut self, out: &mut [i16]) -> tango_match::Drained {
         let player = self.player();
-        let mut queued = 0;
-        if self
-            .link
-            .try_with(&mut |link| queued = link.core_mut(player).audio_buffer().available())
-        {
-            self.last_queued.store(queued, Ordering::Relaxed);
-            queued
-        } else {
-            // Mid-tick, so unreadable. The last reading is the honest
-            // answer: this fill can't drain the core either, so nothing
-            // has left the buffer since — only the sim's own additions
-            // are missing, and they land in the next fill's measurement.
-            self.last_queued.load(Ordering::Relaxed)
-        }
-    }
-
-    fn drain(&mut self, out: &mut [i16]) -> usize {
-        let player = self.player();
-        let mut written = 0;
-        self.link.try_with(&mut |link| {
+        let mut drained = tango_match::Drained::default();
+        if self.link.try_with(&mut |link| {
             let buffer = link.core_mut(player).audio_buffer();
             let frames = (out.len() / 2).min(buffer.available());
-            written = buffer.read(out, frames);
-        });
-        written
+            drained.written = buffer.read(out, frames);
+            drained.queued = buffer.available();
+        }) {
+            self.last_queued.store(drained.queued, Ordering::Relaxed);
+            drained
+        } else {
+            // Mid-tick, so unreachable this fill. Nothing was taken, and
+            // the last level is the honest answer for what is sitting
+            // there: only the sim's own additions since are missing, and
+            // they land in the next fill's reading.
+            tango_match::Drained {
+                written: 0,
+                queued: self.last_queued.load(Ordering::Relaxed),
+            }
+        }
     }
 }
 

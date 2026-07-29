@@ -32,14 +32,17 @@ impl AudioDrain for ConsoleAudio {
         crate::framerate_ratio(fps_target)
     }
 
-    fn queued(&mut self) -> usize {
+    /// One lock for both — the SPU sits behind the same mutex the
+    /// simulation ticks under, and this runs on the sound callback.
+    fn drain(&mut self, out: &mut [i16]) -> tango_match::Drained {
         let player = self.player.load(Ordering::Relaxed);
-        self.link.lock().unwrap().console(player).audio_queued()
-    }
-
-    fn drain(&mut self, out: &mut [i16]) -> usize {
-        let player = self.player.load(Ordering::Relaxed);
-        self.link.lock().unwrap().console(player).read_audio(out)
+        let mut link = self.link.lock().unwrap();
+        let console = link.console(player);
+        let written = console.read_audio(out);
+        tango_match::Drained {
+            written,
+            queued: console.audio_queued(),
+        }
     }
 }
 
