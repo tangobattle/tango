@@ -172,26 +172,22 @@ pub trait GameSupport: Sync {
     /// which pair core (and player) this poller answers for.
     fn core_poller(&self, player: usize) -> Box<r#match::telemetry::MgbaPoller>;
 
-    /// How this game's per-tick chip reports are to be decoded into
-    /// chip-use events — see [`ChipSemantics`]'s variants for the two
-    /// reporting contracts. Takes the (patched) ROM because the
-    /// contract can depend on the applied patch: exe45's community PvP
-    /// patch replaces the dealt-queue system with per-screen hands,
-    /// flipping it from `QueueSum` to `LoadedChip`.
+    /// How this game's telemetry folds into per-round usage events
+    /// (chip uses + buster presses) — the whole derivation is the
+    /// game's business: what a per-tick chip report means and whether B
+    /// edges are buster shots. The default is the standard pair
+    /// ([`standard_usage_fold`]): the loaded-chip decode every mainline
+    /// family reports, plus B-edge buster counting. A game whose battle
+    /// system fits neither (BCC's acting-chip turns; vanilla exe45's
+    /// dealt-queue sums and menu-key B) brings its own fold. Takes the
+    /// (patched) ROM because the contract can depend on the applied
+    /// patch: exe45's community PvP patch replaces the dealt-queue
+    /// system with per-screen hands, flipping it to the standard fold.
     ///
-    /// [`ChipSemantics`]: crate::r#match::analysis::ChipSemantics
-    fn chip_semantics(&self, rom: &[u8]) -> crate::r#match::analysis::ChipSemantics {
+    /// [`standard_usage_fold`]: crate::r#match::analysis::standard_usage_fold
+    fn usage_fold(&self, rom: &[u8]) -> crate::r#match::analysis::UsageFold {
         let _ = rom;
-        crate::r#match::analysis::ChipSemantics::LoadedChip
-    }
-
-    /// Whether B presses are buster shots in this game on this (patched)
-    /// ROM. Vanilla exe45's navi fights autonomously — B is a menu key
-    /// there, so its edges aren't buster events; the PvP patch's manual
-    /// control makes them real again.
-    fn counts_buster(&self, rom: &[u8]) -> bool {
-        let _ = rom;
-        true
+        crate::r#match::analysis::standard_usage_fold()
     }
 }
 

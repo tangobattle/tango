@@ -621,7 +621,7 @@ impl Prefetch {
         store: SnapshotStore,
         round_marks: Option<Arc<Mutex<Vec<u32>>>>,
         cancel: Arc<AtomicBool>,
-        stats: Option<(crate::r#match::analysis::ChipSemantics, bool)>,
+        stats: Option<crate::r#match::analysis::UsageFold>,
     ) -> Result<Self, crate::Error> {
         let lifecycle = crate::r#match::telemetry::LifecycleSink::new();
         let mut pair = boot_and_prime(config, true, Some(&cancel), &lifecycle)?;
@@ -639,9 +639,7 @@ impl Prefetch {
             pair,
             observer,
             telemetry_store,
-            builder: stats.map(|(chip_semantics, counts_buster)| {
-                crate::r#match::analysis::StatsBuilder::new(chip_semantics, counts_buster)
-            }),
+            builder: stats.map(crate::r#match::analysis::StatsBuilder::new),
             inputs,
             local_player,
             store,

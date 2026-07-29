@@ -107,7 +107,7 @@ impl tango_match::Backend for GbaFactory {
     }
 
     fn stats_builder(&self, rom: &[u8]) -> tango_match::analysis::StatsBuilder {
-        tango_match::analysis::StatsBuilder::new(self.local.chip_semantics(rom), self.local.counts_buster(rom))
+        tango_match::analysis::StatsBuilder::new(self.local.usage_fold(rom))
     }
 
     fn start_solo(
@@ -122,15 +122,6 @@ impl tango_match::Backend for GbaFactory {
         config: tango_match::ReplayConfig,
     ) -> Result<Box<dyn tango_match::ReplaySet>, tango_match::Error> {
         let boot = self.boot_config(&config);
-        // The pass reads chip use off the *local* seat's cart, which is
-        // the one whose statistics a viewer is being shown.
-        let semantics = config.want_stats.then(|| {
-            let rom = &config.roms[config.local_player];
-            (
-                boot.support[config.local_player].chip_semantics(rom),
-                boot.support[config.local_player].counts_buster(rom),
-            )
-        });
         // The recorded rows arrive in the seam's vocabulary; the GBA's
         // cores speak bare joypad words, so the conversion happens once
         // here rather than on every tick of both simulations.
@@ -139,7 +130,7 @@ impl tango_match::Backend for GbaFactory {
             boot,
             inputs,
             local_player: config.local_player,
-            semantics,
+            want_stats: config.want_stats,
             // Shared: the pass racing ahead lays the keyframes a seek
             // behind the playhead lands on.
             store: playback::SnapshotStore::new(),
@@ -155,7 +146,7 @@ struct Set {
     boot: playback::BootConfig,
     inputs: Arc<Vec<[u32; 2]>>,
     local_player: usize,
-    semantics: Option<(tango_match::analysis::ChipSemantics, bool)>,
+    want_stats: bool,
     store: playback::SnapshotStore,
     round_marks: Option<Arc<Mutex<Vec<u32>>>>,
     cancel: Arc<AtomicBool>,
@@ -170,6 +161,11 @@ impl tango_match::ReplaySet for Set {
     }
 
     fn stats(&self) -> Result<Box<dyn tango_match::StatsPass>, tango_match::Error> {
+        // The pass reads chip use off the *local* seat's cart, which is
+        // the one whose statistics a viewer is being shown.
+        let stats = self
+            .want_stats
+            .then(|| self.boot.support[self.local_player].usage_fold(&self.boot.roms[self.local_player]));
         Ok(Box::new(
             Stats::new(
                 &self.boot,
@@ -178,7 +174,7 @@ impl tango_match::ReplaySet for Set {
                 self.store.clone(),
                 self.round_marks.clone(),
                 self.cancel.clone(),
-                self.semantics,
+                stats,
             )
             .map_err(tango_match::Error::from)?,
         ))
@@ -403,7 +399,7 @@ impl Stats {
         store: playback::SnapshotStore,
         round_marks: Option<Arc<Mutex<Vec<u32>>>>,
         cancel: Arc<AtomicBool>,
-        semantics: Option<(tango_match::analysis::ChipSemantics, bool)>,
+        stats: Option<tango_match::analysis::UsageFold>,
     ) -> Result<Self, crate::Error> {
         Ok(Stats(playback::Prefetch::open(
             boot,
@@ -412,7 +408,7 @@ impl Stats {
             store,
             round_marks,
             cancel,
-            semantics,
+            stats,
         )?))
     }
 }

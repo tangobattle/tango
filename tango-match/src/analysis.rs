@@ -72,149 +72,39 @@ pub struct RoundStats {
     /// flag.
     pub custom: Vec<(u32, u32)>,
     /// Chip-use events per side (`[local, remote]`): `(tick, chip id)`
-    /// at the moment the unit's loaded chip departed by being used.
-    /// Empty on games whose traps don't report loaded chips.
+    /// as the game's own fold scores them (see [`UsageFold`]). Empty on
+    /// games whose traps report no chips.
     pub chip_uses: [Vec<(u32, u16)>; 2],
     /// Buster-press ticks per side (`[local, remote]`): B press edges
-    /// outside the custom screen.
+    /// outside the custom screen, on games whose fold counts them.
     pub buster: [Vec<u32>; 2],
 }
 
 pub use crate::battle::{RoundSample, NO_CHIP};
 
-/// Low bits of a `LoadedChip` report that carry the chip id; the rest is
-/// the fire-sequence tag (see [`ChipSemantics::LoadedChip`]).
-pub const CHIP_ID_MASK: u16 = 0x0fff;
-
-/// The decoding contract for per-tick chip reports, declared per game by
-/// [`GameSupport::chip_semantics`](crate::GameSupport::chip_semantics).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ChipSemantics {
-    /// Each report is the player's loaded chip as `id | (seq << 12)`,
-    /// [`NO_CHIP`] when none: the id the player will use next, tagged
-    /// with a fire-sequence counter so back-to-back duplicate picks
-    /// still produce a visible transition per use (bn5/bn6 report a
-    /// raw cell with seq 0 — no counter is known for them). A value
-    /// departing = that chip being used, EXCEPT the first departure
-    /// after each custom close (the new selection landing).
-    LoadedChip,
-    /// Each report is the chip the player is acting with right now,
-    /// [`NO_CHIP`] between actions (BCC): its ARRIVAL is the use. The
-    /// loaded-chip games report a pick that sits in the cell until it
-    /// fires, so a departure is the use there; BCC has no pick to sit —
-    /// its turns resolve straight out of the deck — and the cell is set
-    /// for as long as the action plays out, so waiting for the
-    /// departure would mark the animation's end rather than the hit.
-    ActingChip,
-    /// Each report is the sum of the ids remaining in the player's
-    /// dealt queue (exe45). The queue only ever gains chips (deals) or
-    /// loses exactly the fired chip, so a drop in the sum IS a use
-    /// event and the delta IS the chip id; increases are deals and are
-    /// ignored. Chosen over reporting the queue head because exe45
-    /// players fire from a hand in an order the head doesn't determine.
-    QueueSum,
+/// One round's usage events, as a game's own fold derives them from the
+/// round's samples (see [`UsageFold`]). Field shapes match their
+/// [`RoundStats`] homes.
+#[derive(Default)]
+pub struct UsageEvents {
+    /// Chip-use events per side (`[local, remote]`): `(tick, chip id)`.
+    pub chip_uses: [Vec<(u32, u16)>; 2],
+    /// Buster-press ticks per side (`[local, remote]`).
+    pub buster: [Vec<u32>; 2],
 }
 
-/// Fold a round's per-tick samples into chip-use and buster events.
-///
-/// [`ChipSemantics::LoadedChip`]: a loaded chip departing = that chip
-/// being used — EXCEPT the first departure after each custom close,
-/// which is the new selection landing on top of whatever was left (see
-/// the per-game chip-block docs). [`ChipSemantics::ActingChip`]: a chip
-/// arriving in the cell is the use. [`ChipSemantics::QueueSum`]: a drop
-/// in the reported sum is a use of the delta.
-fn usage_events(
-    samples: &[RoundSample],
-    custom: &[(u32, u32)],
-    semantics: ChipSemantics,
-    counts_buster: bool,
-) -> ([Vec<(u32, u16)>; 2], [Vec<u32>; 2]) {
-    /// Sanity bound on a chip id: `QueueSum` drops above this are queue
-    /// clears (KO, round end), not uses.
-    const MAX_CHIP_ID: u16 = 0x1ff;
-
-    let mut chip_uses: [Vec<(u32, u16)>; 2] = [vec![], vec![]];
-    let mut buster: [Vec<u32>; 2] = [vec![], vec![]];
-    for side in 0..2 {
-        let mut prev_chip = NO_CHIP;
-        let mut prev_buttons = 0u8;
-        // Index of the next custom span whose close hasn't had its
-        // selection-load transition yet.
-        let mut next_load_span = 0usize;
-        let b_bit = if side == 0 { 1u8 << 1 } else { 1u8 << 3 };
-        for s in samples {
-            let chip = s.chips[side];
-            match semantics {
-                ChipSemantics::LoadedChip => {
-                    if chip != prev_chip {
-                        // Skip spans whose load window has fully passed
-                        // (a side that picked nothing produces no load
-                        // transition).
-                        while next_load_span < custom.len()
-                            && custom.get(next_load_span + 1).is_some_and(|&(s2, _)| s.tick >= s2)
-                        {
-                            next_load_span += 1;
-                        }
-                        // A load consumes the pending span: the selection
-                        // can land while the span is still open (bn6
-                        // writes the block mid-pick; bn1-3's local-only
-                        // spans outlast the other side's commit) or right
-                        // after its close. Anything else departing a real
-                        // chip is a use.
-                        let is_load = custom.get(next_load_span).is_some_and(|&(s0, _)| s.tick >= s0);
-                        if is_load {
-                            next_load_span += 1;
-                        } else if next_load_span > 0 && prev_chip != NO_CHIP {
-                            // next_load_span == 0 means no selection has
-                            // landed yet — the cell still holds round-init
-                            // garbage (bn5 inits it to 0 before first
-                            // flipping to the sentinel), which can't be a
-                            // real use.
-                            chip_uses[side].push((s.tick, prev_chip & CHIP_ID_MASK));
-                        }
-                        prev_chip = chip;
-                    }
-                }
-                ChipSemantics::ActingChip => {
-                    // The report is `id | (shot << 12)`, where `shot`
-                    // counts that side's firings. A zero shot means the
-                    // game is mid-update of its own counter — ignore
-                    // the sample entirely rather than let the flicker
-                    // read as a firing. Otherwise a use is a new chip
-                    // taking the cell, or the same chip's shot count
-                    // moving on.
-                    let shot = chip >> 12;
-                    if chip != prev_chip && (chip == NO_CHIP || shot != 0) {
-                        let fired = chip != NO_CHIP
-                            && (prev_chip == NO_CHIP
-                                || chip & CHIP_ID_MASK != prev_chip & CHIP_ID_MASK
-                                || shot > prev_chip >> 12);
-                        if fired {
-                            chip_uses[side].push((s.tick, chip & CHIP_ID_MASK));
-                        }
-                        prev_chip = chip;
-                    }
-                }
-                ChipSemantics::QueueSum => {
-                    if chip != NO_CHIP {
-                        if prev_chip != NO_CHIP && chip < prev_chip {
-                            let delta = prev_chip - chip;
-                            if delta <= MAX_CHIP_ID {
-                                chip_uses[side].push((s.tick, delta));
-                            }
-                        }
-                        prev_chip = chip;
-                    }
-                }
-            }
-            if counts_buster && !s.custom && s.buttons & b_bit != 0 && prev_buttons & b_bit == 0 {
-                buster[side].push(s.tick);
-            }
-            prev_buttons = s.buttons;
-        }
-    }
-    (chip_uses, buster)
-}
+/// A game's usage-event fold: one round's per-tick samples (and its
+/// custom spans) → that round's [`UsageEvents`]. This is the seam that
+/// keeps game knowledge out of the stats fold: what a chip report MEANS
+/// (a loaded pick departing? an acting chip arriving? a queue sum
+/// dropping?) and whether B edges are buster shots are the game's
+/// business, so the game's support hands the whole derivation over as
+/// one opaque function (the mgba backend's `GameSupport::usage_fold`)
+/// and this crate only runs it once per round, downstream of rollback
+/// settlement and the stale-intro trim — the transition detection needs
+/// the round's settled sample window, which is why it can't happen at
+/// the per-tick pollers (pure reads, re-run under rollback).
+pub type UsageFold = Box<dyn Fn(&[RoundSample], &[(u32, u32)]) -> UsageEvents + Send + Sync>;
 
 /// One HP reading.
 #[derive(Clone, Copy, Debug)]
@@ -234,10 +124,8 @@ pub struct HpPoint {
 /// playback loop. Rounds fold in play order: the stale-intro trim
 /// threads each round's final HP pair into the next round's fold.
 pub struct StatsBuilder {
-    semantics: ChipSemantics,
-    /// Whether B-press edges are buster shots on this game/ROM (see
-    /// [`GameSupport::counts_buster`](crate::GameSupport::counts_buster)).
-    counts_buster: bool,
+    /// This game's usage-event fold (see [`UsageFold`]).
+    usage: UsageFold,
     prev_final: Option<(u16, u16)>,
     rounds: Vec<RoundStats>,
     /// Samples of the round in progress, in tick order. Ticks are
@@ -249,10 +137,9 @@ pub struct StatsBuilder {
 }
 
 impl StatsBuilder {
-    pub fn new(semantics: ChipSemantics, counts_buster: bool) -> Self {
+    pub fn new(usage: UsageFold) -> Self {
         Self {
-            semantics,
-            counts_buster,
+            usage,
             prev_final: None,
             rounds: vec![],
             current: vec![],
@@ -296,13 +183,8 @@ impl StatsBuilder {
     /// mid-round, or a live round was torn down without reaching a KO).
     pub fn end_round(&mut self, outcome: Option<BattleOutcome>) {
         let samples = std::mem::take(&mut self.current);
-        self.rounds.push(fold_round(
-            outcome,
-            &samples,
-            &mut self.prev_final,
-            self.semantics,
-            self.counts_buster,
-        ));
+        self.rounds
+            .push(fold_round(outcome, &samples, &mut self.prev_final, &self.usage));
     }
 
     /// The stats as they stand: the rounds folded so far, plus the round
@@ -323,13 +205,7 @@ impl StatsBuilder {
         let mut rounds = self.rounds.clone();
         if !self.current.is_empty() {
             let mut prev_final = self.prev_final;
-            rounds.push(fold_round(
-                None,
-                &self.current,
-                &mut prev_final,
-                self.semantics,
-                self.counts_buster,
-            ));
+            rounds.push(fold_round(None, &self.current, &mut prev_final, &self.usage));
         }
         MatchStats { rounds }
     }
@@ -344,13 +220,12 @@ impl StatsBuilder {
     }
 }
 
-/// The inert aggregator, for a game whose engine reports no chip
-/// telemetry: loaded-chip decoding (fed no chip reports, it folds no
-/// chip events) and no buster counting — HP, custom spans and outcomes
-/// still fold as usual.
+/// The inert aggregator, for a game whose engine derives no usage
+/// events: no chip uses, no buster counting — HP, custom spans and
+/// outcomes still fold as usual.
 impl Default for StatsBuilder {
     fn default() -> Self {
-        StatsBuilder::new(ChipSemantics::LoadedChip, false)
+        StatsBuilder::new(Box::new(|_, _| UsageEvents::default()))
     }
 }
 
@@ -363,15 +238,14 @@ fn fold_round(
     outcome: Option<BattleOutcome>,
     samples: &[RoundSample],
     prev_final: &mut Option<(u16, u16)>,
-    semantics: ChipSemantics,
-    counts_buster: bool,
+    usage: &UsageFold,
 ) -> RoundStats {
     let raw: Vec<(u32, u16, u16)> = samples.iter().map(|s| (s.tick, s.local, s.remote)).collect();
     let start = stale_prefix_len(*prev_final, &raw);
     *prev_final = samples.last().map(|s| (s.local, s.remote)).or(*prev_final);
     let samples = &samples[start..];
     let custom = custom_spans(samples.iter().map(|s| (s.tick, s.custom)));
-    let (chip_uses, buster) = usage_events(samples, &custom, semantics, counts_buster);
+    let events = usage(samples, &custom);
     RoundStats {
         outcome,
         hp: compress(samples.iter().map(|s| HpPoint {
@@ -380,8 +254,8 @@ fn fold_round(
             remote: s.remote,
         })),
         custom,
-        chip_uses,
-        buster,
+        chip_uses: events.chip_uses,
+        buster: events.buster,
     }
 }
 

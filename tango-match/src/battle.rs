@@ -23,8 +23,10 @@ pub struct RoundSample {
     /// constants) — the raw held bits from the tick's confirmed input
     /// pair, from which buster usage events are derived downstream.
     pub buttons: u8,
-    /// `[local, remote]` loaded chip ids this tick ([`NO_CHIP`] = none or
-    /// not reported) — chip-use events are their departures downstream.
+    /// `[local, remote]` chip reports this tick ([`NO_CHIP`] = none or
+    /// not reported) — decoded into chip-use events downstream by the
+    /// game's own fold (`analysis::UsageFold`); what a report means is
+    /// the game's business.
     pub chips: [u16; 2],
 }
 

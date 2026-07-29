@@ -72,7 +72,7 @@ pub fn compute_and_cache_match_stats(
 /// [`compute_and_cache_match_stats`]'s SIO-engine arm: linearly
 /// re-simulate through [`tango_backend_mgba::r#match::analysis::analyze`]. Everything in
 /// the replay is already absolute player order; `local_player` only
-/// picks whose chip semantics the stats speak.
+/// picks whose cart's chip decode the stats speak.
 fn analyze_replay(
     replay: &tango_replay::Replay,
     games: [GameRef; 2],
@@ -99,8 +99,7 @@ fn analyze_replay(
             rtc: replay.rtc_time(),
             local_player,
             inputs: &inputs,
-            chip_semantics: support[local_player].chip_semantics(&roms[local_player]),
-            counts_buster: support[local_player].counts_buster(&roms[local_player]),
+            usage: support[local_player].usage_fold(&roms[local_player]),
         },
         on_progress,
         cancel,

@@ -5,6 +5,100 @@
 pub use tango_match::analysis::*;
 
 // ---------------------------------------------------------------------------
+// The standard usage-event folds. The seam ([`UsageFold`]) lives with the
+// stats machinery in `tango_match`; the building blocks live here, next to
+// [`GameSupport::usage_fold`], because what a chip report means is game
+// knowledge — most games share these two, and the ones that don't (BCC,
+// vanilla exe45) bring their own from their gamesupport.
+
+/// Low bits of a chip report that carry the chip id; the rest is a
+/// per-game tag (the loaded-chip contract's fire-sequence counter — see
+/// [`loaded_chip_uses`]).
+pub const CHIP_ID_MASK: u16 = 0x0fff;
+
+/// The loaded-chip decode — the contract the mainline BN families
+/// report: each report is the player's loaded chip as `id | (seq << 12)`,
+/// [`NO_CHIP`] when none — the id the player will use next, tagged with
+/// a fire-sequence counter so back-to-back duplicate picks still produce
+/// a visible transition per use (bn5/bn6 report a raw cell with seq 0 —
+/// no counter is known for them). A value departing = that chip being
+/// used, EXCEPT the first departure after each custom close, which is
+/// the new selection landing on top of whatever was left (see the
+/// per-game chip-block docs).
+pub fn loaded_chip_uses(samples: &[RoundSample], custom: &[(u32, u32)]) -> [Vec<(u32, u16)>; 2] {
+    let mut chip_uses: [Vec<(u32, u16)>; 2] = [vec![], vec![]];
+    for side in 0..2 {
+        let mut prev_chip = NO_CHIP;
+        // Index of the next custom span whose close hasn't had its
+        // selection-load transition yet.
+        let mut next_load_span = 0usize;
+        for s in samples {
+            let chip = s.chips[side];
+            if chip != prev_chip {
+                // Skip spans whose load window has fully passed
+                // (a side that picked nothing produces no load
+                // transition).
+                while next_load_span < custom.len()
+                    && custom.get(next_load_span + 1).is_some_and(|&(s2, _)| s.tick >= s2)
+                {
+                    next_load_span += 1;
+                }
+                // A load consumes the pending span: the selection
+                // can land while the span is still open (bn6
+                // writes the block mid-pick; bn1-3's local-only
+                // spans outlast the other side's commit) or right
+                // after its close. Anything else departing a real
+                // chip is a use.
+                let is_load = custom.get(next_load_span).is_some_and(|&(s0, _)| s.tick >= s0);
+                if is_load {
+                    next_load_span += 1;
+                } else if next_load_span > 0 && prev_chip != NO_CHIP {
+                    // next_load_span == 0 means no selection has
+                    // landed yet — the cell still holds round-init
+                    // garbage (bn5 inits it to 0 before first
+                    // flipping to the sentinel), which can't be a
+                    // real use.
+                    chip_uses[side].push((s.tick, prev_chip & CHIP_ID_MASK));
+                }
+                prev_chip = chip;
+            }
+        }
+    }
+    chip_uses
+}
+
+/// The standard buster fold: B-press edges outside the custom screen,
+/// per side. A game whose B is not a buster (vanilla exe45 — B is a
+/// menu key there) simply leaves it out of its fold.
+pub fn buster_presses(samples: &[RoundSample]) -> [Vec<u32>; 2] {
+    let mut buster: [Vec<u32>; 2] = [vec![], vec![]];
+    for side in 0..2 {
+        let b_bit = if side == 0 {
+            tango_match::battle::BUTTON_LOCAL_B
+        } else {
+            tango_match::battle::BUTTON_REMOTE_B
+        };
+        let mut prev_buttons = 0u8;
+        for s in samples {
+            if !s.custom && s.buttons & b_bit != 0 && prev_buttons & b_bit == 0 {
+                buster[side].push(s.tick);
+            }
+            prev_buttons = s.buttons;
+        }
+    }
+    buster
+}
+
+/// Both standard folds together — the [`GameSupport::usage_fold`]
+/// default: loaded-chip uses plus buster presses.
+pub fn standard_usage_fold() -> UsageFold {
+    Box::new(|samples, custom| UsageEvents {
+        chip_uses: loaded_chip_uses(samples, custom),
+        buster: buster_presses(samples),
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Replay re-analysis: linear re-simulation + the telemetry -> stats fold
 // shared with the live session (so live stats and offline re-analysis stay
 // byte-equivalent).
@@ -29,10 +123,9 @@ pub struct AnalyzeConfig<'a> {
     pub local_player: usize,
     /// `[p0, p1]` joypad pairs, one per pair tick from session start.
     pub inputs: &'a [[u32; 2]],
-    /// Chip-report semantics + buster counting for the local game (see
-    /// [`Hooks::chip_semantics`](crate::hooks::Hooks::chip_semantics)).
-    pub chip_semantics: crate::r#match::analysis::ChipSemantics,
-    pub counts_buster: bool,
+    /// The local game's usage-event fold (see
+    /// [`GameSupport::usage_fold`]).
+    pub usage: UsageFold,
 }
 
 /// Re-simulate an SIO replay and fold its telemetry into [`MatchStats`].
@@ -53,8 +146,7 @@ pub fn analyze(
         rtc,
         local_player,
         inputs,
-        chip_semantics,
-        counts_buster,
+        usage,
     } = config;
     let [rom0, rom1] = roms;
     let [save0, save1] = saves;
@@ -105,7 +197,7 @@ pub fn analyze(
     }
 
     let (mut observer, store) = crate::r#match::telemetry::Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
-    let mut builder = StatsBuilder::new(chip_semantics, counts_buster);
+    let mut builder = StatsBuilder::new(usage);
     let total = inputs.len() as u32;
     for (i, &keys) in inputs.iter().enumerate() {
         if cancel.load(std::sync::atomic::Ordering::Relaxed) {
