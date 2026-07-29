@@ -2,7 +2,6 @@
 //! and fold the telemetry with the same code the live session uses — so
 //! live stats and re-analysis stay byte-equivalent.
 
-use mgba_rollback::session::TickObserver;
 pub use tango_match::analysis::*;
 
 // ---------------------------------------------------------------------------
@@ -10,7 +9,6 @@ pub use tango_match::analysis::*;
 // shared with the live session (so live stats and offline re-analysis stay
 // byte-equivalent).
 
-use crate::r#match::telemetry::{self, Telemetry};
 use crate::{GameSupport, PrimeConfig};
 
 /// Cap on priming ticks, mirroring the live engine's bound.
@@ -116,9 +114,7 @@ pub fn analyze(
         let tick = i as u32 + 1;
         pair.tick(&keys);
         // Everything is final on a linear re-sim — fold as we go.
-        let obs0 = observer.poll(0, pair.core_mut(0));
-        let obs1 = observer.poll(1, pair.core_mut(1));
-        observer.observe(obs0, obs1, tick);
+        crate::r#match::telemetry::observe_pair(&mut observer, &mut pair, tick);
         let (samples, events) = store.lock().unwrap().drain_confirmed(tick);
         fold_confirmed(&mut builder, local_player, samples, events, &mut |t| {
             (t == tick).then_some(keys)

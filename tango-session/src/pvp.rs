@@ -882,9 +882,7 @@ impl DriveContext {
                 disable_bgm: pieces.disable_bgm,
             },
         )?;
-        let audio = match_
-            .audio()
-            .ok_or_else(|| tango_match::Error::Backend("this match produces no audio".into()))?;
+        let audio = match_.audio();
 
         // Our half of the ready gate: the pair is at its link battle.
         // Release the announcer so the peer learns it — priming ran at
@@ -1425,7 +1423,7 @@ fn replay_input_of(input: tango_match::HostInput) -> tango_replay::stream::Input
 /// browser's signaling exists.
 pub struct PvpDriver {
     ctx: DriveContext,
-    match_: Box<dyn tango_match::RunningMatch>,
+    match_: tango_match::Match,
     throttler: tango_match::Throttler,
     /// (tick, [p0, p1]) confirmed input pairs not yet folded into
     /// stats (the telemetry for those ticks may confirm later).

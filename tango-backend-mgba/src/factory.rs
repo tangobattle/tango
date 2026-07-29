@@ -82,11 +82,11 @@ impl GbaFactory {
 
 impl tango_match::MatchFactory for GbaFactory {
     fn screen_layout(&self) -> tango_match::ScreenLayout {
-        <crate::backend::Mgba as tango_match::Backend>::screen_layout()
+        crate::link::screen_layout()
     }
 
-    fn start(&self, config: tango_match::StartConfig) -> Result<Box<dyn tango_match::RunningMatch>, tango_match::Error> {
-        let match_ = crate::r#match::engine::Match::new(crate::r#match::engine::MatchConfig {
+    fn start(&self, config: tango_match::StartConfig) -> Result<tango_match::Match, tango_match::Error> {
+        crate::r#match::engine::start(crate::r#match::engine::MatchConfig {
             roms: [config.roms[0].to_vec(), config.roms[1].to_vec()],
             saves: [
                 config.saves[0].unwrap_or_default().to_vec(),
@@ -100,8 +100,6 @@ impl tango_match::MatchFactory for GbaFactory {
             present_delay: config.present_delay,
             disable_bgm: config.disable_bgm,
         })
-        .map_err(tango_match::Error::from)?;
-        Ok(Box::new(match_))
     }
 
     fn chip_semantics(&self, rom: &[u8]) -> Option<(tango_match::analysis::ChipSemantics, bool)> {
@@ -244,7 +242,7 @@ impl tango_match::RunningSolo for Solo {
     }
 
     fn frame(&mut self) -> Option<Vec<u8>> {
-        let mut link = self.link.lock().unwrap();
+        let link = self.link.lock().unwrap();
         link.video_buffer(0).map(to_rgba)
     }
 

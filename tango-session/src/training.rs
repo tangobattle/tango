@@ -190,9 +190,7 @@ impl TrainingSession {
         // `player` closure is re-read every fill, so a swap moves the
         // sound to the side the player is now driving.
         let audio = crate::audio::CoreStream::new(
-            match_
-                .seat_audio(controlled.clone())
-                .ok_or_else(|| tango_match::Error::Backend("this match produces no audio".into()))?,
+            match_.seat_audio(controlled.clone()),
             crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
             sample_rate,
         );
@@ -331,7 +329,7 @@ impl Drop for TrainingSession {
 
 /// Everything the driver owns for the session's life.
 pub struct Driver {
-    match_: Box<dyn tango_match::RunningMatch>,
+    match_: tango_match::Match,
     controlled: Arc<AtomicUsize>,
     joyflags: Arc<AtomicU32>,
     controller: SharedController,

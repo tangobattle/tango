@@ -3,15 +3,17 @@
 //! A match is two consoles linked together, simulated locally, with the
 //! pair as the rollback unit — but *which* consoles, and what links
 //! them, is the engine's business. The GBA games run on mgba over an
-//! emulated link cable (`tango-match-mgba`); BN5 Double Team DS runs on
-//! melonDS over emulated local wireless (`tango-match-melonds`).
+//! emulated link cable (`tango-backend-mgba`); BN5 Double Team DS runs
+//! on melonDS over emulated local wireless (`tango-backend-melonds`).
 //!
 //! Nothing here names an emulator, so a game pulls in exactly the engine
 //! it needs and no other.
 //!
-//! - [`backend`]: [`Backend`] (generic, per-engine) plus [`MatchFactory`]
-//!   and [`RunningMatch`] (object-safe, what a `Game` registration holds
-//!   and a host drives).
+//! - [`link`]: [`Link`] — the linked pair, the one trait an engine
+//!   implements — plus [`MatchFactory`], what a `Game` registration
+//!   holds.
+//! - [`engine`]: [`Match`], the rollback loop over any [`Link`] and the
+//!   unified session surface a host drives.
 //! - [`battle`]: the per-tick stats sample encoding, which is just a
 //!   layout — no engine has an opinion about it.
 //! - [`input`]: the joyflags input type that lands in replays.
@@ -19,8 +21,8 @@
 //! - [`keys`]: the joypad bit vocabulary.
 
 pub mod audio;
-pub mod backend;
 pub mod engine;
+pub mod link;
 pub mod analysis;
 pub mod battle;
 pub mod input;
@@ -34,7 +36,8 @@ pub use solo::{
     PeerRom, ReplayConfig, ReplayFrames, ReplaySet, RunningReplay, RunningSolo, SeekStep, SoloConfig,
     StatsPass,
 };
-pub use backend::{Backend, MatchFactory, RunningMatch, Screen, ScreenLayout, StartConfig};
+pub use engine::Match;
+pub use link::{Link, MatchFactory, Screen, ScreenLayout, Snapshot, StartConfig};
 pub use input::HostInput;
 
 /// The clock-sync governor: feed it `skew()` + `speculation_balance()`
@@ -55,7 +58,7 @@ pub enum Error {
     Cancelled,
 
     /// Whatever the engine underneath reported. Boxed because every
-    /// backend has its own error type and this crate refuses to name
+    /// engine has its own error type and this crate refuses to name
     /// any of them.
     #[error(transparent)]
     Backend(Box<dyn std::error::Error + Send + Sync>),

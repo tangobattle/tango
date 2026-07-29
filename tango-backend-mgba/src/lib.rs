@@ -7,21 +7,28 @@
 //!
 //! The pieces:
 //!
-//! - [`engine`]: boots and primes the pair and runs the rollback session
-//!   for live netplay.
+//! - [`link`]: the [`tango_match::Link`] implementation — the pair as
+//!   the seam's rollback unit, with audio revocation and telemetry
+//!   riding inside.
+//! - [`engine`]: boots and primes the pair and starts the seam's
+//!   rollback [`Match`](tango_match::Match) for live netplay.
 //! - [`playback`]: linear re-simulation of recorded matches, with
 //!   snapshot seeking.
 //! - [`telemetry`]: per-tick RAM-poll telemetry with rollback
 //!   revocation.
 //! - [`analysis`]: match-stats types and the telemetry fold.
-//! - [`backend`]: the [`tango_match::Backend`] implementation.
+//!
+//! [`link`]: mod@link
+//! [`engine`]: r#match::engine
+//! [`playback`]: r#match::playback
+//! [`telemetry`]: r#match::telemetry
+//! [`analysis`]: r#match::analysis
 
-pub mod audio;
-pub mod backend;
 pub mod factory;
+pub mod link;
 pub mod r#match;
 
-pub use backend::Mgba;
+pub use link::{Link, JOYFLAGS_MASK};
 
 /// Simulation failure, as this engine reports it. Converts into the
 /// seam's [`tango_match::Error`], which cannot name mgba's error type.
@@ -82,27 +89,6 @@ impl PrimedLatch {
 /// each frame and shave the returned fps off the tick rate. Shared by
 /// every engine, so it lives here rather than in a backend.
 pub use tango_match::Throttler;
-
-/// The linked core pair, re-exported for hosts that reach through
-/// [`Match::with_pair`](engine::Match::with_pair) for video/audio
-/// readout.
-pub use mgba_rollback::Link;
-
-/// Booting a link of one's own — what a host does for a session this
-/// crate doesn't run itself (tango's single-player machine, which is a
-/// link with nobody on the other end). Re-exported for the same reason
-/// as [`Link`]: hosts shouldn't need their own mgba-rollback
-/// dependency to name its constructor's arguments.
-pub use mgba_rollback::{LinkOptions, Peripheral, SideOptions};
-
-/// Cross-thread readout handle to a running match's pair (see
-/// [`Match::pair_handle`](engine::Match::pair_handle)).
-pub use mgba_rollback::session::LinkHandle;
-
-/// Per-tick observer hook, re-exported for hosts that step a
-/// [`playback::Playback`] themselves and feed each tick to a
-/// [`r#match::telemetry::Telemetry`] observer (e.g. tango's replay video export).
-pub use mgba_rollback::session::TickObserver;
 
 /// Match parameters the primer needs before the games can negotiate the
 /// rest themselves over the emulated cable.

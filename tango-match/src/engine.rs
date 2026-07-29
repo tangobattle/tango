@@ -8,38 +8,22 @@
 //! re-simulates.
 //!
 //! None of that reasoning is about a console. It needs a pair that
-//! ticks, snapshots and restores — which is exactly [`Backend`] — so it
-//! lives here rather than being written once per emulator.
+//! ticks, snapshots and restores — which is exactly [`Link`] — so it
+//! lives here rather than being written once per emulator. [`Match`] is
+//! the whole host-facing surface: a `Game` registration's factory hands
+//! one back, and the host drives it without ever learning which
+//! emulator is underneath.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::backend::Backend;
-
-/// What the caller forwards to the peer after an
-/// [`advance`](Match::advance).
-#[derive(Clone, Copy, Debug)]
-pub struct Outgoing<Input> {
-    pub tick: u32,
-    pub input: Input,
-    /// How far ahead of the peer this side is running, for the clock
-    /// governor on the other end.
-    pub tick_advantage: i16,
-}
-
-/// What one [`advance`](Match::advance) did.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Report {
-    /// Ticks simulated (settles plus speculation).
-    pub ticks: u32,
-    /// Depth of the rollback this advance performed, 0 if none.
-    pub rollback_depth: u32,
-}
+use crate::link::{Link, Snapshot};
+use crate::HostInput;
 
 /// A snapshot tagged with the tick it was taken at, so a load that
 /// targets where the pair already sits can skip the restore.
-struct SnapshotAt<B: Backend> {
-    snapshot: B::Snapshot,
+struct SnapshotAt {
+    snapshot: Snapshot,
     tick: u32,
     /// The link's audio mark at save time, so a load knows how much its
     /// speculation produced past this point. Not part of the snapshot
@@ -48,16 +32,16 @@ struct SnapshotAt<B: Backend> {
 }
 
 /// The [`getgud::World`] over a linked pair.
-struct World<B: Backend> {
+struct World {
     /// Shared with the [`Match`], which hands it out for video, audio
     /// and RAM readout while the session simulates.
-    link: Arc<Mutex<B::Link>>,
+    link: Arc<Mutex<dyn Link>>,
     live_tick: u32,
     local_player: usize,
     /// Snapshots the engine has retired, kept for their allocations —
     /// a rollback session retires one nearly every tick and they run to
     /// megabytes.
-    pool: Vec<B::Snapshot>,
+    pool: Vec<Snapshot>,
     /// Which seats the host displays — the local one, until something
     /// like training turns the remote back on. Shared with the
     /// [`Match`] so that can happen mid-session.
@@ -66,37 +50,41 @@ struct World<B: Backend> {
     /// screen. Ticks below it are rollback re-simulation: nobody ever
     /// sees their frames, so nobody draws them.
     render_from: Arc<AtomicU32>,
+    /// Confirmed input rows in player order, tick order, not yet handed
+    /// out by [`Match::drain_confirmed`]. Shared because the engine
+    /// owns its world outright.
+    confirmed: Arc<Mutex<Vec<[HostInput; 2]>>>,
 }
 
-impl<B: Backend> getgud::World for World<B> {
-    type Input = B::Input;
-    type State = SnapshotAt<B>;
-    type Error = B::Error;
+impl getgud::World for World {
+    type Input = HostInput;
+    type State = SnapshotAt;
+    type Error = crate::Error;
 
-    fn step(&mut self, local: &B::Input, remotes: &[B::Input]) -> Result<(), B::Error> {
+    fn step(&mut self, local: &HostInput, remotes: &[HostInput]) -> Result<(), crate::Error> {
         let mut inputs = [*local; 2];
         inputs[1 - self.local_player] = remotes[0];
         inputs[self.local_player] = *local;
         let mut link = self.link.lock().unwrap();
         let render = self.live_tick + 1 >= self.render_from.load(Ordering::Relaxed);
         for player in 0..2 {
-            B::set_render(&mut link, player, render && self.visible[player].load(Ordering::Relaxed));
+            link.set_render(player, render && self.visible[player].load(Ordering::Relaxed));
         }
-        B::tick(&mut link, inputs);
+        link.tick(inputs);
         self.live_tick += 1;
         Ok(())
     }
 
-    fn save(&mut self) -> Result<SnapshotAt<B>, B::Error> {
+    fn save(&mut self) -> Result<SnapshotAt, crate::Error> {
         let mut link = self.link.lock().unwrap();
         Ok(SnapshotAt {
-            audio_mark: B::audio_mark(&mut link),
-            snapshot: B::snapshot(&mut link, self.pool.pop())?,
+            audio_mark: link.audio_mark(),
+            snapshot: link.snapshot(self.pool.pop())?,
             tick: self.live_tick,
         })
     }
 
-    fn load(&mut self, state: &SnapshotAt<B>) -> Result<(), B::Error> {
+    fn load(&mut self, state: &SnapshotAt) -> Result<(), crate::Error> {
         // The engine loads the settled state before every re-simulation;
         // when nothing speculated past it the pair is already parked
         // there and — by determinism — holds exactly this state.
@@ -104,16 +92,16 @@ impl<B: Backend> getgud::World for World<B> {
             return Ok(());
         }
         let mut link = self.link.lock().unwrap();
-        B::restore(&mut link, &state.snapshot)?;
+        link.restore(&state.snapshot)?;
         // The restore does not reach the audio the speculation voiced,
         // so that comes back by hand — otherwise the re-simulation
         // queues the same span a second time.
-        B::revoke_audio(&mut link, state.audio_mark);
+        link.revoke_audio(state.audio_mark);
         self.live_tick = state.tick;
         Ok(())
     }
 
-    fn recycle(&mut self, state: SnapshotAt<B>) {
+    fn recycle(&mut self, state: SnapshotAt) {
         // Two deep covers the settled state plus the one replacing it.
         if self.pool.len() < 2 {
             self.pool.push(state.snapshot);
@@ -122,38 +110,57 @@ impl<B: Backend> getgud::World for World<B> {
 
     /// Repeat-last: a held button is far likelier to persist than to
     /// change on any given frame.
-    fn predict(&self, last_remote: &B::Input) -> B::Input {
+    fn predict(&self, last_remote: &HostInput) -> HostInput {
         *last_remote
+    }
+
+    fn log(&mut self, local: &HostInput, remotes: &[HostInput]) {
+        let mut row = [*local; 2];
+        row[1 - self.local_player] = remotes[0];
+        row[self.local_player] = *local;
+        self.confirmed.lock().unwrap().push(row);
     }
 }
 
-/// A running two-player rollback match on any engine.
-pub struct Match<B: Backend> {
-    inner: getgud::Session<World<B>>,
-    link: Arc<Mutex<B::Link>>,
+/// A running two-player rollback match on any engine — the unified
+/// session surface a host drives, one virtual call per tick into the
+/// [`Link`] underneath.
+pub struct Match {
+    inner: getgud::Session<World>,
+    link: Arc<Mutex<dyn Link>>,
     local_player: usize,
     visible: Arc<[AtomicBool; 2]>,
     render_from: Arc<AtomicU32>,
+    /// Confirmed rows the world's `log` callback has recorded, shared
+    /// with it (the engine owns its world outright).
+    confirmed: Arc<Mutex<Vec<[HostInput; 2]>>>,
+    /// Ticks handed out by [`drain_confirmed`](Match::drain_confirmed).
+    drained: u32,
     /// How deep the last [`advance`](Match::advance) rolled back, kept
     /// because that is the only moment it is knowable and a host reads
     /// it on its own schedule.
     last_rollback_depth: u32,
+    /// The telemetry this match publishes, when its engine reads any —
+    /// installed by the factory that wired the link's pollers up.
+    telemetry: Option<crate::telemetry::TelemetryHandle>,
 }
 
-impl<B: Backend> Match<B> {
-    /// Start a match over an already-booted pair.
-    pub fn new(link: B::Link, local_player: usize, present_delay: u32) -> Result<Self, B::Error> {
+impl Match {
+    /// Start a match over an already-booted, already-primed pair.
+    pub fn new<L: Link>(link: L, local_player: usize, present_delay: u32) -> Result<Self, crate::Error> {
         assert!(local_player < 2);
-        let link = Arc::new(Mutex::new(link));
+        let link: Arc<Mutex<dyn Link>> = Arc::new(Mutex::new(link));
         let visible = Arc::new([AtomicBool::new(local_player == 0), AtomicBool::new(local_player == 1)]);
         let render_from = Arc::new(AtomicU32::new(0));
-        let mut world = World::<B> {
+        let confirmed = Arc::new(Mutex::new(Vec::new()));
+        let mut world = World {
             link: link.clone(),
             live_tick: 0,
             local_player,
             pool: Vec::new(),
             visible: visible.clone(),
             render_from: render_from.clone(),
+            confirmed: confirmed.clone(),
         };
         let initial_state = {
             use getgud::World as _;
@@ -170,15 +177,37 @@ impl<B: Backend> Match<B> {
             local_player,
             visible,
             render_from,
+            confirmed,
+            drained: 0,
             last_rollback_depth: 0,
+            telemetry: None,
         })
     }
 
-    /// Advance one frame: settle what the peer's arrivals confirm,
-    /// rolling back on a misprediction, then speculate to the present
-    /// target.
-    pub fn advance(&mut self, local: B::Input) -> Result<(Outgoing<B::Input>, Report), B::Error> {
-        let before = self.inner.local_frontier();
+    /// Install the telemetry handle this match publishes. Factory-side:
+    /// the pollers themselves live inside the engine's link, wired up
+    /// before the match started; this is just where a host finds the
+    /// shared store.
+    pub fn set_telemetry(&mut self, telemetry: crate::telemetry::TelemetryHandle) {
+        self.telemetry = Some(telemetry);
+    }
+
+    /// Advance one frame with the local console's input: settle what
+    /// the peer's arrivals confirm, rolling back on a misprediction,
+    /// then speculate to the present target. Returns the tick this
+    /// input belongs to (a sequence number for the transport), the
+    /// input as the engine actually applied it — sanitized through the
+    /// link, so both peers feed their consoles identical values — and
+    /// this side's tick advantage for the peer's clock sync.
+    pub fn advance(&mut self, local: HostInput) -> Result<(u32, HostInput, i16), crate::Error> {
+        let local = self.link.lock().unwrap().sanitize(local);
+        // Both halves of the outgoing packet are read before the
+        // advance enqueues this tick's local input: the tick is this
+        // input's own index, and the advantage must match the skew the
+        // peer will read against it (afterward the just-enqueued input
+        // biases it up by one).
+        let tick = self.inner.local_frontier();
+        let tick_advantage = self.inner.local_tick_advantage();
         // The simulation only ever reaches the present target — the
         // frontier is the *input* frontier, `present_delay` ticks
         // ahead of it. Everything this advance re-simulates below the
@@ -186,68 +215,122 @@ impl<B: Backend> Match<B> {
         // rendering resumes at the target so the frame the host
         // presents is drawn.
         self.render_from
-            .store(before.saturating_sub(self.inner.present_delay()), Ordering::Relaxed);
-        let frame = self.inner.advance(local)?;
-        let tick = frame.tick;
+            .store(tick.saturating_sub(self.inner.present_delay()), Ordering::Relaxed);
+        self.inner.advance(local)?;
         self.last_rollback_depth = self.inner.last_misprediction_depth();
-        Ok((
-            Outgoing {
-                tick,
-                input: local,
-                tick_advantage: self.inner.local_tick_advantage(),
-            },
-            Report {
-                ticks: self.inner.local_frontier().saturating_sub(before),
-                rollback_depth: self.last_rollback_depth,
-            },
-        ))
+        Ok((tick, local, tick_advantage))
     }
 
-    /// Feed one remote input packet, in tick order.
-    pub fn add_remote_input(&mut self, input: B::Input, tick_advantage: i16) {
+    /// Feed one remote input packet, in tick order. Sanitized on the
+    /// way in exactly as local input is, so a peer whose packet says
+    /// more than the console can express still lands both simulations
+    /// on the same value.
+    pub fn add_remote_input(&mut self, input: HostInput, tick_advantage: i16) {
+        let input = self.link.lock().unwrap().sanitize(input);
         self.inner.add_remote_input(0, input, tick_advantage);
     }
 
-    /// This match's local console audio.
-    pub fn audio(&self) -> Box<dyn crate::AudioDrain> {
-        self.seat_audio(std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(
-            self.local_player,
-        )))
+    /// The local console's display, RGBA8 in the factory's
+    /// [`screen_layout`](crate::MatchFactory::screen_layout) order.
+    pub fn frame(&mut self) -> Option<Vec<u8>> {
+        let player = self.local_player;
+        self.with_link(|link| link.frame(player))
     }
 
-    /// Audio for whichever seat `seat` currently names.
-    pub fn seat_audio(
-        &self,
-        seat: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    ) -> Box<dyn crate::AudioDrain> {
-        B::audio(self.link.clone(), seat)
+    /// One seat's display, RGBA8, for a host showing more than the
+    /// local side. `None` unless [`render_seats`](Self::render_seats)
+    /// asked for that seat to be drawn.
+    pub fn seat_frame(&mut self, player: usize) -> Option<Vec<u8>> {
+        self.with_link(|link| link.frame(player))
+    }
+
+    /// Draw every seat, not just the local one.
+    pub fn render_seats(&mut self) {
+        for seat in &*self.visible {
+            seat.store(true, Ordering::Relaxed);
+        }
+        self.with_link(|link| {
+            for player in 0..2 {
+                link.set_render(player, true);
+            }
+        });
+    }
+
+    /// This match's local console audio, for the host's sound stream.
+    pub fn audio(&self) -> Box<dyn crate::AudioDrain> {
+        self.seat_audio(Arc::new(std::sync::atomic::AtomicUsize::new(self.local_player)))
+    }
+
+    /// Audio for whichever seat `seat` currently names, for a host that
+    /// can move the sound between them (training's side swap). Read per
+    /// fill, so a swap takes effect without rebuilding the stream.
+    pub fn seat_audio(&self, seat: Arc<std::sync::atomic::AtomicUsize>) -> Box<dyn crate::AudioDrain> {
+        crate::audio::console_audio(self.link.clone(), seat)
+    }
+
+    /// The telemetry this match publishes, if its engine reads any.
+    pub fn telemetry(&self) -> Option<&crate::telemetry::TelemetryHandle> {
+        self.telemetry.as_ref()
+    }
+
+    /// Confirmed `(tick, [p0, p1])` input rows in order, for the
+    /// replay sink. Ticks are 1-based: the row that produced simulated
+    /// tick `t` is stamped `t`, so a tick's confirmed inputs and its
+    /// telemetry line up exactly.
+    pub fn drain_confirmed(&mut self) -> Vec<(u32, [HostInput; 2])> {
+        let mut confirmed = self.confirmed.lock().unwrap();
+        let out = confirmed
+            .drain(..)
+            .enumerate()
+            .map(|(i, row)| (self.drained + i as u32 + 1, row))
+            .collect::<Vec<_>>();
+        self.drained += out.len() as u32;
+        out
+    }
+
+    /// Ticks below this can never be rolled back again — what
+    /// telemetry may safely be folded up to.
+    pub fn confirmed(&self) -> u32 {
+        self.inner.local_frontier() - self.inner.local_queue_length() as u32
     }
 
     /// Run `f` against the live pair — video, audio and RAM readout.
-    pub fn with_link<R>(&self, f: impl FnOnce(&mut B::Link) -> R) -> R {
-        f(&mut self.link.lock().unwrap())
+    /// The pair is parked at the newest simulated tick. Do not tick or
+    /// restore it behind the session's back.
+    pub fn with_link<R>(&self, f: impl FnOnce(&mut dyn Link) -> R) -> R {
+        f(&mut *self.link.lock().unwrap())
     }
 
     pub fn local_player(&self) -> usize {
         self.local_player
     }
 
+    /// Clock-sync skew for the host's throttler; read before
+    /// [`advance`](Self::advance).
     pub fn skew(&self) -> i32 {
         self.inner.skew()
     }
 
+    /// How far speculation currently runs past what is settled, for the
+    /// same governor.
     pub fn speculation_balance(&self) -> i32 {
         self.inner.speculation_balance()
     }
 
+    /// Local inputs waiting on the peer. A full queue is what stalls a
+    /// session when the peer goes quiet.
     pub fn local_queue_length(&self) -> usize {
         self.inner.local_queue_length()
     }
 
+    /// Ticks the next [`advance`](Self::advance) could settle from
+    /// input already buffered — nonzero means advancing drains the
+    /// queue rather than only growing it.
     pub fn matchable(&self) -> usize {
         self.inner.matchable()
     }
 
+    /// Ticks the host presents behind the simulation frontier.
     pub fn present_delay(&self) -> u32 {
         self.inner.present_delay()
     }
@@ -255,80 +338,9 @@ impl<B: Backend> Match<B> {
     pub fn set_present_delay(&mut self, present_delay: u32) {
         self.inner.set_present_delay(present_delay);
     }
-}
 
-
-impl<B: Backend> crate::RunningMatch for Match<B> {
-    fn advance(&mut self, local: crate::HostInput) -> Result<(u32, crate::HostInput, i16), crate::Error> {
-        let (outgoing, _report) = Match::advance(self, B::input_of(local))
-            .map_err(|e| crate::Error::Backend(Box::new(e)))?;
-        Ok((outgoing.tick, B::host_of(outgoing.input), outgoing.tick_advantage))
-    }
-
-    fn add_remote_input(&mut self, input: crate::HostInput, tick_advantage: i16) {
-        Match::add_remote_input(self, B::input_of(input), tick_advantage);
-    }
-
-    fn frame(&mut self) -> Option<Vec<u8>> {
-        let player = self.local_player();
-        self.with_link(|link| B::frame(link, player))
-    }
-
-    fn skew(&self) -> i32 {
-        Match::skew(self)
-    }
-
-    fn speculation_balance(&self) -> i32 {
-        Match::speculation_balance(self)
-    }
-
-    fn local_queue_length(&self) -> usize {
-        Match::local_queue_length(self)
-    }
-
-    fn present_delay(&self) -> u32 {
-        Match::present_delay(self)
-    }
-
-    fn set_present_delay(&mut self, present_delay: u32) {
-        Match::set_present_delay(self, present_delay);
-    }
-
-    fn matchable(&self) -> usize {
-        Match::matchable(self)
-    }
-
-    fn local_player(&self) -> usize {
-        Match::local_player(self)
-    }
-
-    fn last_rollback_depth(&self) -> u32 {
+    /// How deep the last advance's rollback went, 0 if none.
+    pub fn last_rollback_depth(&self) -> u32 {
         self.last_rollback_depth
-    }
-
-    fn audio(&self) -> Option<Box<dyn crate::AudioDrain>> {
-        Some(Match::audio(self))
-    }
-
-    fn seat_audio(
-        &self,
-        seat: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    ) -> Option<Box<dyn crate::AudioDrain>> {
-        Some(Match::seat_audio(self, seat))
-    }
-
-    fn seat_frame(&mut self, player: usize) -> Option<Vec<u8>> {
-        self.with_link(|link| B::frame(link, player))
-    }
-
-    fn render_seats(&mut self) {
-        for seat in &*self.visible {
-            seat.store(true, Ordering::Relaxed);
-        }
-        self.with_link(|link| {
-            for player in 0..2 {
-                B::set_render(link, player, true);
-            }
-        });
     }
 }

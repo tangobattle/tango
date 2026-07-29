@@ -1,6 +1,6 @@
 //! A netplay session on any engine.
 //!
-//! It drives a [`RunningMatch`] — whatever a game's registration handed
+//! It drives a [`Match`] — whatever a game's registration handed
 //! back — so nothing here knows which emulator is underneath, or how
 //! many screens the console has. A GBA cable match and a DS wireless
 //! match are the same object to this code.
@@ -11,7 +11,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use tango_match::{HostInput, RunningMatch, ScreenLayout};
+use tango_match::{HostInput, Match, ScreenLayout};
 
 /// A running netplay session.
 pub struct MatchSession {
@@ -36,7 +36,7 @@ impl MatchSession {
     /// `frame_duration` is one frame at the console's refresh rate.
     pub fn new(
         game: &'static tango_gamesupport::Game,
-        mut match_: Box<dyn RunningMatch>,
+        mut match_: Match,
         layout: ScreenLayout,
         frame_duration: std::time::Duration,
         outgoing: std::sync::mpsc::Sender<(u32, HostInput)>,
