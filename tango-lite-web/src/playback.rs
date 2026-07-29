@@ -33,9 +33,11 @@ pub fn resolve(replay: &tango_replay::Replay) -> Result<([GameRef; 2], [Arc<Vec<
         let info = side
             .and_then(|s| s.game_info.as_ref())
             .ok_or_else(|| format!("the recording doesn't say what player {} was playing", index + 1))?;
-        let variant = info.rom_variant as u8;
-        let game = game::find_by_family_and_variant(&info.rom_family, variant)
-            .ok_or_else(|| format!("unsupported game {} v{variant}", info.rom_family))?;
+        // Also rejects a replay whose family has bumped its replay
+        // version since the recording — a different ROM isn't the only
+        // thing that re-simulates to a different match; changed engine
+        // support does too.
+        let game = game::find_for_replay_side(info).map_err(|e| e.to_string())?;
         // The patch has to be the one that was played, not the newest:
         // a patch changes the ROM, and a different ROM re-simulates to
         // a different match.

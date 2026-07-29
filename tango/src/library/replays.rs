@@ -43,10 +43,9 @@ pub fn compute_and_cache_match_stats(
         let gi = side
             .and_then(|s| s.game_info.as_ref())
             .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
-        let variant =
-            u8::try_from(gi.rom_variant).map_err(|_| anyhow::anyhow!("variant {} out of range", gi.rom_variant))?;
-        let entry = crate::library::game::find_by_family_and_variant(&gi.rom_family, variant)
-            .ok_or_else(|| anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, gi.rom_variant))?;
+        // The stats re-simulation is as version-sensitive as playback,
+        // so this resolve also enforces the family's replay version.
+        let entry = crate::library::game::find_for_replay_side(gi)?;
         let rom = scanners
             .roms
             .read()

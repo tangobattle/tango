@@ -826,11 +826,10 @@ impl App {
                 let gi = side
                     .and_then(|s| s.game_info.as_ref())
                     .ok_or_else(|| anyhow::anyhow!("replay side missing game info"))?;
-                let variant = u8::try_from(gi.rom_variant)?;
-                let entry = crate::library::game::find_by_family_and_variant(&gi.rom_family, variant)
-                    .ok_or_else(|| {
-                        anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, variant)
-                    })?;
+                // The export re-sim is as version-sensitive as playback,
+                // so this resolve also enforces the family's replay
+                // version.
+                let entry = crate::library::game::find_for_replay_side(gi)?;
                 let rom = self
                     .scanners
                     .roms

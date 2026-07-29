@@ -312,6 +312,11 @@ mod tests {
     fn side(nickname: &str) -> Option<metadata::Side> {
         Some(metadata::Side {
             nickname: nickname.to_owned(),
+            game_info: Some(metadata::GameInfo {
+                rom_family: "bn6".to_owned(),
+                replay_version: 7,
+                ..Default::default()
+            }),
             ..Default::default()
         })
     }
@@ -390,6 +395,7 @@ mod tests {
         );
         assert_eq!(replay.local_side().unwrap().nickname, "bob");
         assert_eq!(replay.remote_side().unwrap().nickname, "alice");
+        assert_eq!(replay.local_side().unwrap().game_info.as_ref().unwrap().replay_version, 7);
     }
 
     /// A 0x1D container — the touchless predecessor — still decodes:

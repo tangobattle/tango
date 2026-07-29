@@ -42,16 +42,15 @@ pub struct ReplayStats {
 
 pub type Scanner = scanner::Scanner<Vec<ScannedReplay>>;
 
-/// Whether the replay's local-side game is registered with the app. A
-/// replay with no recorded local game info can't be filtered on, so it's
-/// kept; one that names a game we don't have compiled in is hidden.
-fn local_game_registered(side: Option<&tango_replay::metadata::Side>) -> bool {
+/// Whether the replay's local-side game resolves for re-simulation
+/// ([`crate::game::find_for_replay_side`]). A replay with no recorded
+/// local game info can't be filtered on, so it's kept; one that names a
+/// game we don't have compiled in — or whose family has bumped its
+/// replay version since it was recorded — is hidden.
+fn local_game_playable(side: Option<&tango_replay::metadata::Side>) -> bool {
     match side.and_then(|s| s.game_info.as_ref()) {
         None => true,
-        Some(gi) => u8::try_from(gi.rom_variant)
-            .ok()
-            .and_then(|variant| crate::game::find_by_family_and_variant(&gi.rom_family, variant))
-            .is_some(),
+        Some(gi) => crate::game::find_for_replay_side(gi).is_ok(),
     }
 }
 
@@ -85,8 +84,9 @@ pub fn scan_replays(storage: &dyn Storage, listing: &Listing) -> Vec<ScannedRepl
         };
         // Hide replays whose game isn't registered (its
         // `gamesupport-<game>` feature is disabled / its crate isn't
-        // compiled in) — there's no way to view or export them.
-        if !local_game_registered(metadata.side(local_player_index)) {
+        // compiled in) or whose family has bumped its replay version
+        // past the recording's — there's no way to view or export them.
+        if !local_game_playable(metadata.side(local_player_index)) {
             continue;
         }
         out.push(ScannedReplay {

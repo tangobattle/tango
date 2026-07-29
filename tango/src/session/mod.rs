@@ -1304,10 +1304,10 @@ pub fn build_playback(
         let gi = side
             .and_then(|s| s.game_info.as_ref())
             .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
-        let variant = u8::try_from(gi.rom_variant)
-            .map_err(|_| anyhow::anyhow!("variant {} out of range", gi.rom_variant))?;
-        let entry = crate::library::game::find_by_family_and_variant(&gi.rom_family, variant)
-            .ok_or_else(|| anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, gi.rom_variant))?;
+        // Also rejects a replay whose family has bumped its replay
+        // version since the recording — re-simulating it on changed
+        // engine support would play back a different match.
+        let entry = crate::library::game::find_for_replay_side(gi)?;
         let g = game::from_gamedb_entry(entry).ok_or_else(|| {
             anyhow::anyhow!("no impl for {}/{}", gi.rom_family, gi.rom_variant)
         })?;

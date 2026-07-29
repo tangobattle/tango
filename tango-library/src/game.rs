@@ -114,6 +114,55 @@ pub fn find_by_rom_info(code: &[u8; 4], revision: u8) -> Option<GameRef> {
     tango_gamesupport::find_by_rom_info(&GAMES, code, revision)
 }
 
+/// Why a replay side's recorded game can't be resolved for re-simulation.
+#[derive(thiserror::Error, Debug)]
+pub enum ReplaySideError {
+    /// No registration for the recorded family/variant — the game's
+    /// crate isn't compiled in, or the recording is from a build that
+    /// knew games this one doesn't.
+    #[error("unsupported game {family} v{variant}")]
+    UnknownGame { family: String, variant: u32 },
+    /// The family's replay compatibility version has moved since the
+    /// recording (or the recording is from a newer build). Either way
+    /// the engine support isn't the one the match ran on.
+    #[error("this recording's {family} replay version ({recorded}) doesn't match this build's ({current})")]
+    ReplayVersionMismatch {
+        family: String,
+        recorded: u32,
+        current: u32,
+    },
+}
+
+/// Resolve a replay side's recorded game info to its registration, for
+/// re-simulating the recording.
+///
+/// A replay is re-simulated, not decoded, so playing one back on engine
+/// support that has changed since it was recorded produces a different
+/// match. [`Family::replay_version`] is the per-family lever for that:
+/// bumping it invalidates the family's existing recordings without
+/// touching any other family's. This is the one place the recorded and
+/// current versions are compared — every path that re-simulates a
+/// replay (playback, stats, export, the library scan's filter) resolves
+/// its sides through here.
+pub fn find_for_replay_side(gi: &tango_replay::metadata::GameInfo) -> Result<GameRef, ReplaySideError> {
+    let unknown = || ReplaySideError::UnknownGame {
+        family: gi.rom_family.clone(),
+        variant: gi.rom_variant,
+    };
+    let game = u8::try_from(gi.rom_variant)
+        .ok()
+        .and_then(|variant| find_by_family_and_variant(&gi.rom_family, variant))
+        .ok_or_else(unknown)?;
+    if gi.replay_version != game.family.replay_version {
+        return Err(ReplaySideError::ReplayVersionMismatch {
+            family: gi.rom_family.clone(),
+            recorded: gi.replay_version,
+            current: game.family.replay_version,
+        });
+    }
+    Ok(game)
+}
+
 /// Identity now that a [`GameRef`] *is* the full registration. Kept so
 /// the call sites that previously mapped a bare gamedb entry to its
 /// app-level game read unchanged; every registered game is supported.

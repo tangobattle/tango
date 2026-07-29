@@ -261,6 +261,15 @@ pub struct Family {
     /// Family id, e.g. `"bn6"` / `"exe6"`. Equal to the `family` field of
     /// every game in [`games`](Self::games).
     pub id: &'static str,
+    /// This family's replay compatibility version. Recorders stamp it
+    /// into each side's replay metadata, and playback requires the
+    /// recorded value to equal the current one — so bumping it
+    /// invalidates this family's existing recordings and nobody
+    /// else's. Bump it when the family's engine support changes in a
+    /// way that makes old recordings re-simulate to a different match
+    /// (input mapping, priming, trap layout); container-wide layout
+    /// changes still belong to `tango_replay::VERSION`.
+    pub replay_version: u32,
     /// The variants in this family (its `Game` registrations).
     pub games: &'static [GameRef],
     /// Per-locale Fluent fragments for this family, one `(lang, source)`
