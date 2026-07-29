@@ -326,13 +326,13 @@ pub struct Render<W: Writer> {
     /// write, so the re-sim stops rather than simulating the tail.
     last_selected: Option<usize>,
 
-    /// One seat's canvas — the seam's canonical composition (screens
-    /// left to right) — and where each seat's lands in the output
-    /// frame.
+    /// One seat's canvas — its screens stacked vertically (a single
+    /// screen is the one-screen case) — and where each seat's lands in
+    /// the output frame. Seats compose side by side.
     side_size: (u32, u32),
-    /// Two-sided seats stack vertically rather than side by side (the
-    /// multi-screen console).
-    vertical: bool,
+    /// The console's screens, for restacking each seat's canonical
+    /// (side-by-side) frame into the vertical arrangement above.
+    screens: Vec<tango_match::Screen>,
     /// The composed output frame, at its native (unscaled) size.
     frame: Vec<u8>,
 
@@ -379,18 +379,19 @@ impl<W: Writer> Render<W> {
             return Err(Error::BadLocalPlayer(local_player));
         }
 
-        // One seat's canvas is its screens side by side; the output
-        // frame is one canvas, or two composed per the seat layout.
+        // One seat's canvas is its screens stacked vertically — for a
+        // single-screen console that's the screen itself — so each side
+        // reads as one console; the output frame is one canvas, or the
+        // two seats side by side.
         let layout = backend.screen_layout();
         let side_size = (
-            layout.screens.iter().map(|s| s.width).sum::<u32>(),
-            layout.screens.iter().map(|s| s.height).max().unwrap_or(0),
+            layout.screens.iter().map(|s| s.width).max().unwrap_or(0),
+            layout.screens.iter().map(|s| s.height).sum::<u32>(),
         );
-        let vertical = layout.screens.len() > 1;
-        let (width, height) = match (twosided, vertical) {
-            (false, _) => side_size,
-            (true, false) => (side_size.0 * 2, side_size.1),
-            (true, true) => (side_size.0, side_size.1 * 2),
+        let (width, height) = if twosided {
+            (side_size.0 * 2, side_size.1)
+        } else {
+            side_size
         };
 
         let audio_tracks = if twosided { 2 } else { 1 };
@@ -436,7 +437,7 @@ impl<W: Writer> Render<W> {
             round_titles: round_titles.to_vec(),
             last_selected: rounds_mask.iter().rposition(|&s| s),
             side_size,
-            vertical,
+            screens: layout.screens.clone(),
             frame: vec![0u8; (width * height * 4) as usize],
             scratch: vec![0i16; 16384 * AUDIO_CHANNELS],
             samples: Vec::new(),
@@ -554,17 +555,12 @@ impl<W: Writer> Render<W> {
             if should_write {
                 self.session.write_audio(slot, &self.samples[..n * AUDIO_CHANNELS])?;
                 if let Some(fb) = side.frame() {
-                    let origin = match (slot, self.vertical) {
-                        (0, _) => (0, 0),
-                        (_, false) => (self.side_size.0 as usize, 0),
-                        (_, true) => (0, self.side_size.1 as usize),
-                    };
-                    let width = if self.twosided && !self.vertical {
+                    let width = if self.twosided {
                         self.side_size.0 as usize * 2
                     } else {
                         self.side_size.0 as usize
                     };
-                    blit_side(&mut self.frame, width, origin, self.side_size, &fb);
+                    blit_seat(&mut self.frame, width, slot * self.side_size.0 as usize, &self.screens, &fb);
                 }
             }
         }
@@ -616,18 +612,30 @@ pub fn render<W: Writer>(
     }
 }
 
-/// Copy one seat's frame onto the output frame at `origin`. The seam's
-/// frame buffer is already the canonical composition — one row-major
-/// RGBA8 bitmap, the console's screens left to right
-/// ([`tango_match::Side::frame`]) — so a seat blits as a single image
-/// of `side` dimensions. A short buffer (a seat that hasn't drawn yet)
-/// blits the rows it has and leaves the rest.
-fn blit_side(dst: &mut [u8], dst_width: usize, origin: (usize, usize), side: (u32, u32), src: &[u8]) {
-    let (x, y) = origin;
-    let stride = side.0 as usize * 4;
-    for (row, line) in src.chunks_exact(stride).take(side.1 as usize).enumerate() {
-        let at = ((y + row) * dst_width + x) * 4;
-        dst[at..at + stride].copy_from_slice(line);
+/// Copy one seat's frame onto the output frame in its column at `x`,
+/// restacking the screens vertically. The seam's frame buffer is the
+/// canonical composition — one row-major RGBA8 bitmap, the console's
+/// screens left to right ([`tango_match::Side::frame`]) — and the
+/// output lays those same screens top to bottom instead; a
+/// single-screen console is the one-screen case of the same walk. A
+/// short buffer (a seat that hasn't drawn yet) blits the rows it has
+/// and leaves the rest.
+fn blit_seat(dst: &mut [u8], dst_width: usize, x: usize, screens: &[tango_match::Screen], src: &[u8]) {
+    let src_stride = screens.iter().map(|s| s.width as usize).sum::<usize>() * 4;
+    let mut src_x = 0usize;
+    let mut y = 0usize;
+    for screen in screens {
+        let stride = screen.width as usize * 4;
+        for row in 0..screen.height as usize {
+            let from = row * src_stride + src_x * 4;
+            let Some(line) = src.get(from..from + stride) else {
+                continue;
+            };
+            let at = ((y + row) * dst_width + x) * 4;
+            dst[at..at + stride].copy_from_slice(line);
+        }
+        src_x += screen.width as usize;
+        y += screen.height as usize;
     }
 }
 
@@ -647,10 +655,14 @@ mod tests {
     #[test]
     fn single_screen_seats_compose_side_by_side() {
         let (w, h) = (240usize, 160usize);
+        let screens = [tango_match::Screen {
+            width: w as u32,
+            height: h as u32,
+        }];
         let (left, right) = (seat_frame(1, w, h), seat_frame(2, w, h));
         let mut composed = vec![0u8; w * 2 * h * 4];
-        blit_side(&mut composed, w * 2, (0, 0), (w as u32, h as u32), &left);
-        blit_side(&mut composed, w * 2, (w, 0), (w as u32, h as u32), &right);
+        blit_seat(&mut composed, w * 2, 0, &screens, &left);
+        blit_seat(&mut composed, w * 2, w, &screens, &right);
 
         for row in 0..h {
             let line = &composed[row * w * 2 * 4..(row + 1) * w * 2 * 4];
@@ -659,29 +671,63 @@ mod tests {
         }
     }
 
-    /// A multi-screen console's seats stack vertically, and each seat's
-    /// frame passes through as the one row-major bitmap the seam
-    /// composed it as ([`tango_match::Side::frame`]) — a blit that
-    /// re-read it as per-screen blocks wove the two screens into
-    /// stripes.
+    /// A multi-screen console's seat restacks its screens vertically:
+    /// the seam hands one row-major bitmap with the screens left to
+    /// right ([`tango_match::Side::frame`]), and the seat's column in
+    /// the output carries screen 0's rows, then screen 1's.
     #[test]
-    fn multi_screen_seats_stack_vertically() {
-        // A DS-shaped seat: two 8-wide screens already composed into a
-        // 16-wide row-major frame by the engine.
-        let (w, h) = (16usize, 4usize);
-        let (top, bottom) = (seat_frame(1, w, h), seat_frame(2, w, h));
-        let mut composed = vec![0u8; w * h * 2 * 4];
-        blit_side(&mut composed, w, (0, 0), (w as u32, h as u32), &top);
-        blit_side(&mut composed, w, (0, h), (w as u32, h as u32), &bottom);
+    fn multi_screen_seat_restacks_screens_vertically() {
+        // A DS-shaped seat: two 8-wide screens composed into a 16-wide
+        // row-major frame by the engine.
+        let (sw, sh) = (8usize, 4usize);
+        let screens = [
+            tango_match::Screen {
+                width: sw as u32,
+                height: sh as u32,
+            },
+            tango_match::Screen {
+                width: sw as u32,
+                height: sh as u32,
+            },
+        ];
+        let canonical = seat_frame(1, sw * 2, sh);
+        let mut composed = vec![0u8; sw * sh * 2 * 4];
+        blit_seat(&mut composed, sw, 0, &screens, &canonical);
 
-        for row in 0..h {
-            let line = |y: usize| &composed[y * w * 4..(y + 1) * w * 4];
-            assert_eq!(line(row), &top[row * w * 4..(row + 1) * w * 4], "top seat row {row}");
-            assert_eq!(
-                line(row + h),
-                &bottom[row * w * 4..(row + 1) * w * 4],
-                "bottom seat row {row}"
-            );
+        let canonical_line = |y: usize, x: usize| &canonical[(y * sw * 2 + x) * 4..(y * sw * 2 + x + sw) * 4];
+        let line = |y: usize| &composed[y * sw * 4..(y + 1) * sw * 4];
+        for row in 0..sh {
+            assert_eq!(line(row), canonical_line(row, 0), "upper screen row {row}");
+            assert_eq!(line(row + sh), canonical_line(row, sw), "lower screen row {row}");
+        }
+    }
+
+    /// Two multi-screen seats land side by side, each restacked into
+    /// its own column.
+    #[test]
+    fn multi_screen_seats_compose_side_by_side() {
+        let (sw, sh) = (8usize, 4usize);
+        let screens = [
+            tango_match::Screen {
+                width: sw as u32,
+                height: sh as u32,
+            },
+            tango_match::Screen {
+                width: sw as u32,
+                height: sh as u32,
+            },
+        ];
+        let (left, right) = (seat_frame(1, sw * 2, sh), seat_frame(2, sw * 2, sh));
+        let out_w = sw * 2;
+        let mut composed = vec![0u8; out_w * sh * 2 * 4];
+        blit_seat(&mut composed, out_w, 0, &screens, &left);
+        blit_seat(&mut composed, out_w, sw, &screens, &right);
+
+        for row in 0..sh * 2 {
+            let line = &composed[row * out_w * 4..(row + 1) * out_w * 4];
+            // Each column is its seat's tag throughout.
+            assert!(line[..sw * 4].chunks_exact(4).all(|px| px[0] == 1), "row {row} left");
+            assert!(line[sw * 4..].chunks_exact(4).all(|px| px[0] == 2), "row {row} right");
         }
     }
 
@@ -690,7 +736,8 @@ mod tests {
     #[test]
     fn an_undrawn_seat_blits_nothing() {
         let mut composed = vec![7u8; 240 * 160 * 4];
-        blit_side(&mut composed, 240, (0, 0), (240, 160), &[]);
+        let screens = [tango_match::Screen { width: 240, height: 160 }];
+        blit_seat(&mut composed, 240, 0, &screens, &[]);
         assert!(composed.iter().all(|&b| b == 7));
     }
 
