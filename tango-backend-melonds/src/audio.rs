@@ -1,12 +1,13 @@
 //! DS audio: a drain, and nothing else.
 //!
-//! Worth knowing about the buffer behind it: melonDS's SPU sizes its
-//! output ring from the output rate, which at the 48 kHz the shim fixes
-//! is 2048 frames — about 43 ms, less than a session queues. It also
-//! answers an overflow by advancing its own read cursor, destroying the
-//! oldest audio rather than refusing the newest. So a host must drain
-//! this promptly and hold its backlog itself; there is no leaving one
-//! here.
+//! Taken from the link rather than straight off the SPU. The link
+//! empties each console's SPU every tick into a buffer of its own,
+//! because the SPU's ring cannot serve as one: a savestate does not
+//! cover it, so a rollback cannot take back what it speculated there,
+//! and at ~43 ms it overflows within a couple of frames of a
+//! re-simulation appending a span twice — destroying its own oldest
+//! audio to make room. What arrives here is already revocable and
+//! already deduplicated.
 //!
 //! The SPU mixes at a fixed rate and hands out interleaved stereo, so
 //! all this says is "here is what the console produced". Resampling is
@@ -41,17 +42,12 @@ impl AudioDrain for ConsoleAudio {
         crate::framerate_ratio(fps_target)
     }
 
-    /// One lock for all of it — the SPU sits behind the same mutex the
+    /// One lock for both facts — the link sits behind the same mutex the
     /// simulation ticks under, and this runs on the sound callback.
     fn drain(&mut self, out: &mut [i16]) -> tango_match::Drained {
         let player = self.player.load(Ordering::Relaxed);
-        let mut link = self.link.lock().unwrap();
-        let console = link.console(player);
-        let written = console.read_audio(out);
-        tango_match::Drained {
-            written,
-            queued: console.audio_queued(),
-        }
+        let (written, queued) = self.link.lock().unwrap().take_audio(player, out);
+        tango_match::Drained { written, queued }
     }
 }
 
