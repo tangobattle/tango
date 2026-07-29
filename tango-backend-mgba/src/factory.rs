@@ -102,8 +102,8 @@ impl tango_match::MatchFactory for GbaFactory {
         })
     }
 
-    fn chip_semantics(&self, rom: &[u8]) -> Option<(tango_match::analysis::ChipSemantics, bool)> {
-        Some((self.local.chip_semantics(rom), self.local.counts_buster(rom)))
+    fn stats_builder(&self, rom: &[u8]) -> tango_match::analysis::StatsBuilder {
+        tango_match::analysis::StatsBuilder::new(self.local.chip_semantics(rom), self.local.counts_buster(rom))
     }
 
     fn start_solo(

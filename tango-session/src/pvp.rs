@@ -415,17 +415,11 @@ impl PvpSession {
         let peer_primed = link.peer_primed();
         let announce_primed = Arc::new(tokio::sync::Notify::new());
 
-        // Usage semantics can depend on the applied patch (exe45's PvP
-        // patch), so they're probed off the patched ROM. A game whose
-        // engine reports no chip events folds the rest without them.
-        let semantics = local_game
-            .pvp
-            .chip_semantics(local_rom.as_ref())
-            .unwrap_or((tango_match::analysis::ChipSemantics::LoadedChip, false));
-        let stats = Arc::new(Mutex::new(tango_match::analysis::StatsBuilder::new(
-            semantics.0,
-            semantics.1,
-        )));
+        // The engine builds the aggregator (chip-use decoding can depend
+        // on the applied patch — exe45's PvP patch — so it probes the
+        // patched ROM); a game whose engine reports no chip events folds
+        // the rest of the stats without them.
+        let stats = Arc::new(Mutex::new(local_game.pvp.stats_builder(local_rom.as_ref())));
 
         // Remote input events flow receive-task → drive thread over this
         // queue; the rennet reassembly in PvpReceiver already ordered and

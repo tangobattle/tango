@@ -177,13 +177,16 @@ pub trait MatchFactory: Sync {
     /// session over it.
     fn start(&self, config: StartConfig) -> Result<crate::Match, crate::Error>;
 
-    /// How this game's chip use reads, for a host folding a live
-    /// match's statistics as it plays. `None` from an engine that
-    /// reports no chip events, and the host keeps the rest of the
-    /// stats without them.
-    fn chip_semantics(&self, rom: &[u8]) -> Option<(crate::analysis::ChipSemantics, bool)> {
+    /// The stats aggregator for a live match on this game — the host
+    /// folds confirmed telemetry into it as the match plays, and how
+    /// chip use decodes stays the engine's business. Probed off the
+    /// patched ROM, because the decoding can depend on the patch
+    /// (exe45's community PvP patch). An engine that reports no chip
+    /// events leaves the inert default, and the host keeps the rest of
+    /// the stats without them.
+    fn stats_builder(&self, rom: &[u8]) -> crate::analysis::StatsBuilder {
         let _ = rom;
-        None
+        crate::analysis::StatsBuilder::default()
     }
 
     /// Boot one console on its own, for a host that just wants to play

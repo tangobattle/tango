@@ -344,6 +344,16 @@ impl StatsBuilder {
     }
 }
 
+/// The inert aggregator, for a game whose engine reports no chip
+/// telemetry: loaded-chip decoding (fed no chip reports, it folds no
+/// chip events) and no buster counting — HP, custom spans and outcomes
+/// still fold as usual.
+impl Default for StatsBuilder {
+    fn default() -> Self {
+        StatsBuilder::new(ChipSemantics::LoadedChip, false)
+    }
+}
+
 /// One round's fold: stale-intro trim (`prev_final` threads the previous
 /// round's final HP pair into the next fold), custom spans, chip/buster
 /// usage events, and the lossless change-point HP curve. Shared by
