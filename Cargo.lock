@@ -7885,6 +7885,7 @@ dependencies = [
  "log",
  "tango-backend-melonds",
  "tango-gamesupport",
+ "tango-gamesupport-common",
  "tango-match",
  "tango-replay",
 ]
