@@ -10,7 +10,7 @@
 //! it needs and no other.
 //!
 //! - [`link`]: [`Link`] — the linked pair, the one trait an engine
-//!   implements — plus [`MatchFactory`], what a `Game` registration
+//!   implements — plus [`Backend`], what a `Game` registration
 //!   holds.
 //! - [`engine`]: [`Match`], the rollback loop over any [`Link`] and the
 //!   unified session surface a host drives.
@@ -37,7 +37,7 @@ pub use solo::{
     StatsPass,
 };
 pub use engine::Match;
-pub use link::{Link, MatchFactory, Screen, ScreenLayout, Snapshot, StartConfig};
+pub use link::{Link, Backend, Screen, ScreenLayout, Snapshot, StartConfig};
 pub use input::HostInput;
 
 /// The clock-sync governor: feed it `skew()` + `speculation_balance()`

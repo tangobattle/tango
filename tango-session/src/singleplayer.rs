@@ -6,7 +6,7 @@
 //! [`Framebuffer`](crate::Framebuffer).
 //!
 //! The console comes from the game's own registration
-//! ([`start_solo`](tango_match::MatchFactory::start_solo)), so this
+//! ([`start_solo`](tango_match::Backend::start_solo)), so this
 //! session never learns which emulator is underneath and a game whose
 //! engine offers no single-player ride simply says so.
 //!

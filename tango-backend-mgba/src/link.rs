@@ -35,7 +35,7 @@ const SCREEN: Screen = Screen {
 };
 
 /// The screens this console presents, for a factory's
-/// [`screen_layout`](tango_match::MatchFactory::screen_layout).
+/// [`screen_layout`](tango_match::Backend::screen_layout).
 pub fn screen_layout() -> ScreenLayout {
     ScreenLayout::new([SCREEN])
 }

@@ -812,7 +812,7 @@ struct BootPieces {
     /// Both sides' netplay support, in seat order. Starting the match
     /// goes through these rather than an engine, so a DS game boots the
     /// same way a GBA one does.
-    pvp: [&'static (dyn tango_match::MatchFactory + Send + Sync); 2],
+    pvp: [&'static (dyn tango_match::Backend + Send + Sync); 2],
     /// The peer's cartridge — a match can span two variants and two
     /// regions, and the local game's crate resolves that seat's engine
     /// support from it.

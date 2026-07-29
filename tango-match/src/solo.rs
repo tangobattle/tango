@@ -26,7 +26,7 @@ pub trait RunningSolo: Send {
     fn tick(&mut self, input: crate::HostInput) -> Result<(), crate::Error>;
 
     /// The console's display, RGBA8 in
-    /// [`screen_layout`](crate::MatchFactory::screen_layout) order.
+    /// [`screen_layout`](crate::Backend::screen_layout) order.
     /// `None` before its first frame.
     fn frame(&mut self) -> Option<Vec<u8>>;
 

@@ -84,7 +84,7 @@ pub trait Link: Send + 'static {
     }
 
     /// One console's current display as RGBA8, in the layout order the
-    /// engine's [`MatchFactory::screen_layout`] declares. `None`
+    /// engine's [`Backend::screen_layout`] declares. `None`
     /// before its first frame.
     fn frame(&mut self, player: usize) -> Option<Vec<u8>>;
 
@@ -165,10 +165,10 @@ impl ScreenLayout {
 /// This is the registration seam: a `Game` registration holds one of
 /// these, so the registry never names a backend and the app never
 /// learns which emulator a game runs on. What comes back from
-/// [`start`](MatchFactory::start) is the one concrete
+/// [`start`](Backend::start) is the one concrete
 /// [`Match`](crate::Match) — the engine underneath it is erased at the
 /// [`Link`].
-pub trait MatchFactory: Sync {
+pub trait Backend: Sync {
     /// How this game's console presents its display, known before a
     /// match exists so a host can lay out its pane.
     fn screen_layout(&self) -> ScreenLayout;

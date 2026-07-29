@@ -158,7 +158,7 @@ pub struct Game {
     /// How this game starts a match, plays on its own, and replays a
     /// recording — all on whatever emulator it runs, which nothing
     /// outside the game's own crate ever learns.
-    pub pvp: &'static (dyn tango_match::MatchFactory + Send + Sync),
+    pub pvp: &'static (dyn tango_match::Backend + Send + Sync),
 
     /// Length-per-mode list. Entry `i` is how many subtypes mode `i` has —
     /// e.g. BN6 is `[1, 1]`. Drives the match-type pick_list in the lobby.

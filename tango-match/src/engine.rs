@@ -231,7 +231,7 @@ impl Match {
     }
 
     /// The local console's display, RGBA8 in the factory's
-    /// [`screen_layout`](crate::MatchFactory::screen_layout) order.
+    /// [`screen_layout`](crate::Backend::screen_layout) order.
     pub fn frame(&mut self) -> Option<Vec<u8>> {
         let player = self.local_player;
         self.with_link(|link| link.frame(player))

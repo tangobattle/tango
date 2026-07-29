@@ -1,7 +1,7 @@
 //! This engine as a game registration holds it.
 //!
 //! A `Game` registration cannot name an emulator — that is the whole
-//! point of [`tango_match::MatchFactory`] — so everything a host asks
+//! point of [`tango_match::Backend`] — so everything a host asks
 //! of the mgba engine arrives through one object per registered
 //! cartridge. [`GbaFactory`] is that object: it closes over the
 //! cartridge's own [`GameSupport`](crate::GameSupport) and, for the
@@ -80,7 +80,7 @@ impl GbaFactory {
     }
 }
 
-impl tango_match::MatchFactory for GbaFactory {
+impl tango_match::Backend for GbaFactory {
     fn screen_layout(&self) -> tango_match::ScreenLayout {
         crate::link::screen_layout()
     }
