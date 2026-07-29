@@ -528,8 +528,10 @@ impl ReplaySession {
         let mut found = None;
         pb.nearest_capture(target, &mut |frames| {
             found = Some(NearestSnapshot {
-                tick: frames.tick(),
-                frames: [frames.frame(0), frames.frame(1)],
+                frames: tango_match::LiveFrames {
+                    tick: frames.tick(),
+                    frames: [frames.frame(0), frames.frame(1)],
+                },
                 local_player: self.engine.local_player,
             });
         });
@@ -587,7 +589,7 @@ impl ReplaySession {
             wake: self.wake.clone(),
             local_player: snap.local_player,
         }
-        .publish_frames(snap);
+        .publish_frames(&snap.frames);
         true
     }
 }
@@ -626,38 +628,28 @@ impl crate::Session for ReplaySession {
 /// A captured playback snapshot — what
 /// [`ReplaySession::nearest_snapshot`] hands the scrub/hover UI.
 pub struct NearestSnapshot {
-    tick: u32,
-    /// Both seats' frames as they were captured, RGBA8.
-    frames: [Vec<u8>; 2],
+    /// Both seats' frames as they were captured, owned as the seam's
+    /// own capture type.
+    frames: tango_match::LiveFrames,
     local_player: usize,
 }
 
 impl NearestSnapshot {
     /// The captured frame's position on the playhead scale.
     pub fn frame_index(&self) -> u32 {
-        self.tick
+        self.frames.tick
     }
 
     /// Stable cache key for the hover thumbnail.
     pub fn key_tick(&self) -> u32 {
-        self.tick
+        self.frames.tick
     }
 
     /// The local perspective's pixels, same RGBA8 as
     /// [`Session::frame`](crate::Session::frame). May be empty if the
     /// capture had no rendered frame.
     pub fn local_framebuffer(&self) -> Vec<u8> {
-        self.frames[self.local_player].clone()
-    }
-}
-
-impl tango_match::ReplayFrames for NearestSnapshot {
-    fn tick(&self) -> u32 {
-        self.tick
-    }
-
-    fn frame(&self, player: usize) -> Vec<u8> {
-        self.frames[player].clone()
+        self.frames.frames[self.local_player].clone()
     }
 }
 
