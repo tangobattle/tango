@@ -120,7 +120,7 @@ async fn render(path: &std::path::Path, name: &str, canceller: &Canceller) -> Re
         // The games' own audio is the point of a video.
         disable_bgm: false,
     };
-    let inputs: Vec<[u32; 2]> = replay.inputs.iter().map(|&[p1, p2]| [p1 as u32, p2 as u32]).collect();
+    let inputs: Vec<[u32; 2]> = replay.inputs.iter().map(|&row| row.map(|i| i.keys as u32)).collect();
     if inputs.is_empty() {
         return Err("this recording has no frames".into());
     }

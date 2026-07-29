@@ -42,12 +42,14 @@ impl Backend for Mgba {
         })
     }
 
-    fn input_from_keys(keys: u32) -> u32 {
-        keys
+    fn input_of(host: tango_match::HostInput) -> u32 {
+        // The GBA has no touch screen and no X/Y, so only the 10
+        // hardware bits survive.
+        host.keys & tango_match::input::JOYFLAGS_MASK as u32
     }
 
-    fn keys_of(input: u32) -> u32 {
-        input
+    fn host_of(input: u32) -> tango_match::HostInput {
+        tango_match::HostInput::keys(input)
     }
 
     fn tick(link: &mut Self::Link, inputs: [u32; 2]) {

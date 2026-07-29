@@ -242,14 +242,14 @@ impl<B: Backend> Match<B> {
 
 
 impl<B: Backend> crate::RunningMatch for Match<B> {
-    fn advance(&mut self, local_keys: u32) -> Result<(u32, u32, i16), crate::Error> {
-        let (outgoing, _report) = Match::advance(self, B::input_from_keys(local_keys))
+    fn advance(&mut self, local: crate::HostInput) -> Result<(u32, crate::HostInput, i16), crate::Error> {
+        let (outgoing, _report) = Match::advance(self, B::input_of(local))
             .map_err(|e| crate::Error::Backend(Box::new(e)))?;
-        Ok((outgoing.tick, B::keys_of(outgoing.input), outgoing.tick_advantage))
+        Ok((outgoing.tick, B::host_of(outgoing.input), outgoing.tick_advantage))
     }
 
-    fn add_remote_input(&mut self, keys: u32, tick_advantage: i16) {
-        Match::add_remote_input(self, B::input_from_keys(keys), tick_advantage);
+    fn add_remote_input(&mut self, input: crate::HostInput, tick_advantage: i16) {
+        Match::add_remote_input(self, B::input_of(input), tick_advantage);
     }
 
     fn frame(&mut self) -> Option<Vec<u8>> {

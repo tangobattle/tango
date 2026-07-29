@@ -183,9 +183,20 @@ impl ReplaySession {
             return Err(crate::Error::BadLocalPlayerIndex);
         }
         // The replay's input stream is already absolute pair order
-        // (core 0 runs player 0's game) — just widen.
-        let inputs: Arc<Vec<[u32; 2]>> =
-            Arc::new(replay.inputs.iter().map(|&[p1, p2]| [p1 as u32, p2 as u32]).collect());
+        // (core 0 runs player 0's game) — just widen into the seam's
+        // vocabulary.
+        let inputs: Arc<Vec<[tango_match::HostInput; 2]>> = Arc::new(
+            replay
+                .inputs
+                .iter()
+                .map(|&row| {
+                    row.map(|input| tango_match::HostInput {
+                        keys: input.keys as u32,
+                        touch: input.touch.map(|(x, y)| (x as u16, y as u16)),
+                    })
+                })
+                .collect(),
+        );
         let total_ticks = inputs.len() as u32;
         if total_ticks == 0 {
             return Err(crate::Error::EmptyReplay);
@@ -197,10 +208,10 @@ impl ReplaySession {
             pairs: replay
                 .inputs
                 .iter()
-                .map(|&keys| {
+                .map(|&row| {
                     (
-                        keys[local_player] & tango_match::input::JOYFLAGS_MASK,
-                        keys[1 - local_player] & tango_match::input::JOYFLAGS_MASK,
+                        row[local_player].keys & tango_match::keys::MASK as u16,
+                        row[1 - local_player].keys & tango_match::keys::MASK as u16,
                     )
                 })
                 .collect(),

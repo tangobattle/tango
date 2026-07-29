@@ -129,9 +129,13 @@ impl tango_match::MatchFactory for GbaFactory {
                 boot.support[config.local_player].counts_buster(rom),
             )
         });
+        // The recorded rows arrive in the seam's vocabulary; the GBA's
+        // cores speak bare joypad words, so the conversion happens once
+        // here rather than on every tick of both simulations.
+        let inputs = Arc::new(config.inputs.iter().map(|row| row.map(|input| input.keys)).collect());
         Ok(Box::new(Set {
             boot,
-            inputs: config.inputs,
+            inputs,
             local_player: config.local_player,
             semantics,
             // Shared: the pass racing ahead lays the keyframes a seek
@@ -225,11 +229,12 @@ impl Solo {
 }
 
 impl tango_match::RunningSolo for Solo {
-    fn tick(&mut self, keys: u32) -> Result<(), tango_match::Error> {
+    fn tick(&mut self, input: tango_match::HostInput) -> Result<(), tango_match::Error> {
+        // A GBA has no touch screen, so only the pad half applies.
         self.link
             .lock()
             .unwrap()
-            .try_tick(&[keys])
+            .try_tick(&[input.keys])
             .map_err(|e| tango_match::Error::Backend(Box::new(crate::Error::from(e))))?;
         Ok(())
     }

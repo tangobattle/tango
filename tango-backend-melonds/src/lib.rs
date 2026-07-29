@@ -80,12 +80,15 @@ impl Backend for MelonDs {
         Link::new(roms[0], saves, rtc_parts(rtc))
     }
 
-    fn input_from_keys(keys: u32) -> Input {
-        input_from_joyflags(keys)
+    fn input_of(host: tango_match::HostInput) -> Input {
+        input_from_host(host)
     }
 
-    fn keys_of(input: Input) -> u32 {
-        input.keys
+    fn host_of(input: Input) -> tango_match::HostInput {
+        tango_match::HostInput {
+            keys: input.keys,
+            touch: input.touch,
+        }
     }
 
     fn tick(link: &mut Link, inputs: [Input; 2]) {
@@ -130,14 +133,24 @@ impl Backend for MelonDs {
 
 }
 
-/// Translate Tango's joyflag word into DS keys.
+/// Translate the seam's input word into the console's.
 ///
 /// The DS pad is the GBA's plus X and Y, and Tango's own bit order
-/// already matches the console's for the buttons both share, so this is
-/// a mask rather than a remap. The stylus has no binding yet: nothing
-/// in a NetBattle needs it once the match is running.
-pub fn input_from_joyflags(joyflags: u32) -> Input {
-    Input::keys(joyflags & 0xfff)
+/// already matches the console's for the buttons both share, so the pad
+/// half is a mask rather than a remap. The touch position clamps into
+/// the bottom screen rather than trusting the host's mapping
+/// arithmetic: an out-of-range sample is simulation state here, and
+/// both peers must derive the same one.
+pub fn input_from_host(input: tango_match::HostInput) -> Input {
+    Input {
+        keys: input.keys & 0xfff,
+        touch: input.touch.map(|(x, y)| {
+            (
+                x.min(SCREENS[1].width as u16 - 1),
+                y.min(SCREENS[1].height as u16 - 1),
+            )
+        }),
+    }
 }
 
 /// Re-exported so a game crate can name a link, a snapshot, an input or

@@ -1,12 +1,12 @@
 //! One GBA joyflag word, from touch, a keyboard, and a gamepad.
 //!
-//! The session takes the whole bitmap at once ([`Session::set_joyflags`]),
+//! The session takes the whole input at once ([`Session::set_input`]),
 //! so every source folds into one held-buttons word that the pump reads
 //! each frame. Three rather than one because the same page is a phone, a
 //! laptop, and a phone with a controller clipped to it; they simply OR
 //! together, and none of them has to know about the others.
 //!
-//! [`Session::set_joyflags`]: tango_session::Session::set_joyflags
+//! [`Session::set_input`]: tango_session::Session::set_input
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;

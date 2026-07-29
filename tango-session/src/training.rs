@@ -63,9 +63,9 @@ pub struct ControllerContext {
 ///
 /// [`poll`]: TrainingController::poll
 pub trait TrainingController: Send {
-    /// Produce the dummy's input for the tick about to advance. Return an
-    /// Joyflag bitmap (the same word
-    /// [`crate::Session::set_joyflags`] carries); return `0` to press
+    /// Produce the dummy's input for the tick about to advance. Return a
+    /// joyflag bitmap (the pad half of what
+    /// [`crate::Session::set_input`] carries); return `0` to press
     /// nothing.
     fn poll(&mut self, ctx: &mut ControllerContext) -> u32;
 }
@@ -304,8 +304,9 @@ impl crate::Session for TrainingSession {
         (self.show_pip.load(Ordering::Relaxed) && self.pip_fresh.load(Ordering::Relaxed)).then(|| self.pip.read())
     }
 
-    fn set_joyflags(&self, joyflags: u32) {
-        self.joyflags.store(joyflags, Ordering::Relaxed);
+    fn set_input(&self, input: crate::HostInput) {
+        // A training pair is GBA-only, so the stylus has nowhere to go.
+        self.joyflags.store(input.keys, Ordering::Relaxed);
     }
 
     fn set_speed(&self, factor: f32) {
@@ -396,8 +397,8 @@ impl Driver {
             let player = self.joyflags.load(Ordering::Relaxed) & mask;
             let core0 = if controlled == 0 { player } else { dummy };
             let core1 = if controlled == 0 { dummy } else { player };
-            self.match_.add_remote_input(core1, 0);
-            let _outgoing = match self.match_.advance(core0) {
+            self.match_.add_remote_input(tango_match::HostInput::keys(core1), 0);
+            let _outgoing = match self.match_.advance(tango_match::HostInput::keys(core0)) {
                 Ok(r) => r,
                 Err(e) => {
                     log::error!("training: advance failed: {e}");

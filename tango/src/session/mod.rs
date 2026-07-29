@@ -116,6 +116,41 @@ impl std::fmt::Debug for PvpPanes {
     }
 }
 
+/// What the framebuffer widget's mouse area reports for a console with
+/// a touch screen. Positions arrive already mapped into the touch
+/// screen's own pixels (clamped to its edges), plus whether the raw
+/// cursor was actually over that screen — a press only counts there,
+/// but a drag in progress follows the clamped position off the edge the
+/// way a real stylus scrapes along the bezel.
+#[derive(Debug, Clone, Copy)]
+pub enum StylusEvent {
+    Moved { pos: (u16, u16), inside: bool },
+    Pressed,
+    Released,
+}
+
+/// Stylus interaction state: where the cursor last was over the
+/// emulator surface, and whether a touch is in progress. Inert unless
+/// the running console has a touch screen.
+#[derive(Default)]
+pub struct Stylus {
+    /// Last reported position (clamped into the touch screen) and
+    /// whether the cursor was truly inside it.
+    hover: Option<((u16, u16), bool)>,
+    /// A press landed inside the touch screen and hasn't lifted.
+    down: bool,
+}
+
+impl Stylus {
+    /// The touch the session should see right now.
+    fn touch(&self) -> Option<(u16, u16)> {
+        match (self.down, self.hover) {
+            (true, Some((pos, _))) => Some(pos),
+            _ => None,
+        }
+    }
+}
+
 /// Scrub-bar interaction state for a replay session. Splits the
 /// drag/hover bookkeeping out of the game-mode-agnostic parts of
 /// [`State`]; the owning state holds one of these and the transport
@@ -471,6 +506,10 @@ pub struct State {
     /// the input event stream; the user's Mapping resolves it
     /// into GBA joyflags each event.
     pub input_held: crate::platform::input::HeldState,
+    /// Pointer-as-stylus state over the emulator surface, for the DS's
+    /// touch screen. Fed by the framebuffer widget's mouse area; folded
+    /// into the session input alongside the joyflags.
+    pub stylus: Stylus,
     /// Last value of `mapping.speed_up_held(...)` so we can
     /// detect the falling/rising edge and only call set_speed
     /// when it actually flips.
@@ -561,6 +600,7 @@ impl Default for State {
             opponent_panel: anim::Overlay::new(false),
             self_panel: anim::Overlay::new(false),
             input_held: crate::platform::input::HeldState::default(),
+            stylus: Stylus::default(),
             speed_up_engaged: false,
             settings: anim::Overlay::new(false),
             disconnect: anim::Overlay::new(false),
@@ -615,6 +655,11 @@ pub enum Message {
     /// session. Speed-up uses the same mechanism (edge-
     /// detected).
     Input(InputEvent),
+    /// Pointer event over the emulator surface of a console with a
+    /// touch screen, already mapped into that screen's pixels by the
+    /// framebuffer widget. Folded into the same session input push as
+    /// [`Input`](Self::Input).
+    Stylus(StylusEvent),
     /// Replay-view messages (transport, scrubber, display toggles) —
     /// defined + handled in [`view::replay`].
     Replay(view::replay::Message),
@@ -766,6 +811,8 @@ impl State {
         // (its release swallowed with the session view) must not
         // count against the new one.
         self.esc_hold = None;
+        // A touch, likewise: its release went with the old widgets.
+        self.stylus = Stylus::default();
     }
 
     /// Tear down the active session: PvP pre-drop close request, then
@@ -801,6 +848,7 @@ impl State {
         self.match_settings.close();
         self.scrub.clear();
         self.esc_hold = None;
+        self.stylus = Stylus::default();
     }
 
     /// Start keeping `path` current with the newly installed
@@ -844,6 +892,19 @@ impl State {
             .and_then(|s| s.export_save());
         if let Some(backup) = self.singleplayer_save.as_mut() {
             backup.store(image);
+        }
+    }
+
+    /// Push the local player's whole current input — the mapping's
+    /// resolution of everything held, plus the stylus — to the active
+    /// session. Every input-shaped event ends here, so the session
+    /// always holds the latest complete picture.
+    fn push_input(&self, mapping: &crate::platform::input::Mapping) {
+        if let Some(s) = self.active.as_ref() {
+            s.set_input(tango_session::HostInput {
+                keys: mapping.to_joyflags(&self.input_held),
+                touch: self.stylus.touch(),
+            });
         }
     }
 
@@ -915,10 +976,7 @@ impl State {
                     }
                 }
                 self.input_held.apply(&ev);
-                let joyflags = mapping.to_joyflags(&self.input_held);
-                if let Some(s) = self.active.as_ref() {
-                    s.set_joyflags(joyflags);
-                }
+                self.push_input(mapping);
                 // Speed-up: only fire set_speed on the rising or
                 // falling edge so we don't spam the session's audio
                 // sync target with no-op writes.
@@ -930,6 +988,24 @@ impl State {
                         s.set_speed(factor);
                     }
                 }
+            }
+            Message::Stylus(ev) => {
+                match ev {
+                    StylusEvent::Moved { pos, inside } => {
+                        self.stylus.hover = Some((pos, inside));
+                    }
+                    StylusEvent::Pressed => {
+                        // A touch starts only on the touch screen itself;
+                        // a press over the top screen is just a click.
+                        if let Some((_, true)) = self.stylus.hover {
+                            self.stylus.down = true;
+                        }
+                    }
+                    StylusEvent::Released => {
+                        self.stylus.down = false;
+                    }
+                }
+                self.push_input(mapping);
             }
             // Kind-specific view messages — defined + handled beside
             // the views that emit them.

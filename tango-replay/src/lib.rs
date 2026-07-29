@@ -28,11 +28,11 @@ pub const HEADER: &[u8] = b"TOOT";
 /// rather than spelled out at each site so a recorder and a scanner
 /// can't disagree about it.
 pub const EXTENSION: &str = "tangoreplay";
-/// SIO-engine replays — the only readable schema. The input stream is
-/// one continuous run of pair ticks from session start, replayed by
-/// rebooting and re-priming an `mgba_rollback::Link` and feeding it
-/// the (p1, p2) stream verbatim. Trap-engine recordings (schema 0x1B
-/// and older) and the perspective-ordered 0x1C are not supported.
+/// SIO-engine replays. The input stream is one continuous run of pair
+/// ticks from session start, replayed by rebooting and re-priming a
+/// link and feeding it the (p1, p2) stream verbatim. Trap-engine
+/// recordings (schema 0x1B and older) and the perspective-ordered 0x1C
+/// are not supported.
 ///
 /// Layout: magic, version, local_player_index, metadata (u32 length +
 /// proto), rng seed, two zstd SRAM frames, then a [`stream`]-encoded
@@ -41,7 +41,16 @@ pub const EXTENSION: &str = "tangoreplay";
 /// order — sides, SRAM frames, input columns — so the recorder's seat
 /// is the file's ONE perspective-dependent byte: overwriting byte 5
 /// yields the other player's recording of the same match.
-pub const VERSION: u8 = 0x1D;
+///
+/// 0x1E widened the stream's rows to the DS's inputs (12-bit pad plus
+/// the stylus); the container around them is unchanged, so its 0x1D
+/// predecessor stays readable ([`stream::Stream::read_v1`]) and only
+/// the current schema is written.
+pub const VERSION: u8 = 0x1E;
+
+/// The touchless predecessor, still accepted by [`read_metadata`] and
+/// [`Replay::decode`].
+const VERSION_V1: u8 = 0x1D;
 
 pub struct Writer {
     /// Everything after the header framing is the shared stream
@@ -62,9 +71,9 @@ pub struct Replay {
     /// to hand to `mgba::core::Core::load_save` without further
     /// conversion.
     pub srams: [Vec<u8>; 2],
-    /// One continuous run of (p1, p2) joyflag pair ticks from session
+    /// One continuous run of (p1, p2) input pair ticks from session
     /// start — the stream as recorded, not segmented.
-    pub inputs: Vec<[u16; 2]>,
+    pub inputs: Vec<[stream::Input; 2]>,
     /// Indices into `inputs` where a round starts (records carrying a
     /// stream mark). The first entry is always 0 when `inputs` is
     /// non-empty — recordings that predate the markers decode as one
@@ -98,7 +107,7 @@ fn unsupported_version(version: u8) -> std::io::Error {
 
 pub fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Error> {
     Ok(match version {
-        VERSION => protos::replay11::Metadata::decode(raw)?,
+        VERSION | VERSION_V1 => protos::replay11::Metadata::decode(raw)?,
         _ => return Err(unsupported_version(version)),
     })
 }
@@ -113,14 +122,14 @@ pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(u8, u8, Metadata), s
     }
 
     let version = r.read_u8()?;
-    // Everything past this byte is laid out per VERSION, so the schema
-    // has to be settled before any of it is read — not after, on the
-    // decoded metadata. Older files carry no perspective byte, which
+    // Everything past this byte is laid out per the schema, so it has
+    // to be settled before any of it is read — not after, on the
+    // decoded metadata. Pre-0x1D files carry no perspective byte, which
     // slides the length field by one: read anyway, it picks up the
     // proto's leading field tag as its high byte and asks for ~128 MiB
     // per file, which is what made scanning a library carried across
     // the 0x1D bump take minutes.
-    if version != VERSION {
+    if version != VERSION && version != VERSION_V1 {
         return Err(unsupported_version(version));
     }
     let local_player_index = r.read_u8()?;
@@ -195,8 +204,8 @@ impl Replay {
 
     pub fn decode(r: impl std::io::Read) -> std::io::Result<Self> {
         let mut r = std::io::BufReader::new(r);
-        // Rejects anything but VERSION.
-        let (_version, local_player_index, metadata) = read_metadata(&mut r)?;
+        // Rejects anything but the readable schemas.
+        let (version, local_player_index, metadata) = read_metadata(&mut r)?;
 
         let mut rng_seed = [0u8; 16];
         r.read_exact(&mut rng_seed)?;
@@ -206,7 +215,11 @@ impl Replay {
         // The rest of the file is the shared stream encoding; a
         // truncated tail comes back as is_complete = false with the
         // partial record dropped.
-        let stream = stream::Stream::read(&mut r)?;
+        let stream = if version == VERSION_V1 {
+            stream::Stream::read_v1(&mut r)?
+        } else {
+            stream::Stream::read(&mut r)?
+        };
         let inputs = stream.inputs;
 
         // A leading unmarked run — recordings that predate the markers,
@@ -267,10 +280,10 @@ impl Writer {
         Ok(())
     }
 
-    /// Append one confirmed tick's (p1, p2) joyflag pair — absolute
+    /// Append one confirmed tick's (p1, p2) input pair — absolute
     /// player order, same as [`Replay::inputs`] comes back.
-    pub fn write_input(&mut self, keys: [u16; 2]) -> std::io::Result<()> {
-        self.stream.push(keys)
+    pub fn write_input(&mut self, inputs: [stream::Input; 2]) -> std::io::Result<()> {
+        self.stream.push(inputs)
     }
 
     pub fn finish(self) -> std::io::Result<()> {
@@ -304,9 +317,23 @@ mod tests {
     }
 
     fn write_replay(local_player_index: u8) -> Vec<u8> {
-        // joyflags with high bits set exercise the explicit tag form;
-        // the repeated pair the previous-tick default.
-        let ticks: Vec<[u16; 2]> = vec![[0, 0], [0x041, 0x082], [0x041, 0x082], [0x3ff, 0x155], [0, 0x300]];
+        // Keys with high bits set exercise the explicit form, a stylus
+        // sample the touch bytes, the repeated pair the previous-tick
+        // default.
+        let keys = stream::Input::keys;
+        let ticks: Vec<[stream::Input; 2]> = vec![
+            [keys(0), keys(0)],
+            [keys(0x041), keys(0x082)],
+            [keys(0x041), keys(0x082)],
+            [
+                keys(0xfff),
+                stream::Input {
+                    keys: 0x155,
+                    touch: Some((128, 96)),
+                },
+            ],
+            [keys(0), keys(0x300)],
+        ];
         let round_starts = [0usize, 3];
 
         let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -344,12 +371,64 @@ mod tests {
         assert_eq!(replay.srams, [vec![1, 2, 3], vec![4, 5]]);
         assert_eq!(replay.metadata.ts, 1_752_000_000_000);
         assert_eq!(replay.round_starts, [0, 3]);
+        let keys = stream::Input::keys;
         assert_eq!(
             replay.inputs,
-            vec![[0, 0], [0x041, 0x082], [0x041, 0x082], [0x3ff, 0x155], [0, 0x300]]
+            vec![
+                [keys(0), keys(0)],
+                [keys(0x041), keys(0x082)],
+                [keys(0x041), keys(0x082)],
+                [
+                    keys(0xfff),
+                    stream::Input {
+                        keys: 0x155,
+                        touch: Some((128, 96)),
+                    },
+                ],
+                [keys(0), keys(0x300)],
+            ]
         );
         assert_eq!(replay.local_side().unwrap().nickname, "bob");
         assert_eq!(replay.remote_side().unwrap().nickname, "alice");
+    }
+
+    /// A 0x1D container — the touchless predecessor — still decodes:
+    /// same framing, v1 stream body.
+    #[test]
+    fn v1_replay_still_decodes() {
+        // Reuse the current writer for the framing (it is byte-identical
+        // through the SRAM frames), then splice in the old version byte
+        // and a hand-laid v1 stream.
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let w = Writer::new(
+            SharedVec(buf.clone()),
+            VERSION,
+            0,
+            Metadata {
+                ts: 1_752_000_000_000,
+                p1_side: side("alice"),
+                p2_side: side("bob"),
+                ..Default::default()
+            },
+            [7u8; 16],
+            [&[1, 2, 3], &[4, 5]],
+        )
+        .unwrap();
+        // Framing only — no v2 records; drop the writer without its
+        // sentinel by taking the bytes as they stand.
+        drop(w);
+        let mut bytes = buf.lock().unwrap().clone();
+        bytes[4] = 0x1D;
+        // v1 records: an idle tick, then explicit both sides (marked)
+        // with the high bits in the tag's low nibble, then the sentinel.
+        bytes.extend_from_slice(&[0x40 | 0x20, 0x80 | 0x10 | 0b01 | (0b10 << 2), 0x55, 0xaa, 0x00]);
+
+        let replay = Replay::decode(&bytes[..]).unwrap();
+        assert!(replay.is_complete);
+        let keys = stream::Input::keys;
+        assert_eq!(replay.inputs, vec![[keys(0), keys(0)], [keys(0x155), keys(0x2aa)]]);
+        assert_eq!(replay.round_starts, [0, 1]);
+        assert_eq!(replay.srams, [vec![1, 2, 3], vec![4, 5]]);
     }
 
     #[test]

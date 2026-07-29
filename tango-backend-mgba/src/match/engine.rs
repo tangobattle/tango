@@ -273,13 +273,20 @@ impl Match {
 /// the orphan rule keeps an impl with one of its types — and the seam
 /// must not name an emulator.
 impl tango_match::RunningMatch for Match {
-    fn advance(&mut self, local_keys: u32) -> Result<(u32, u32, i16), tango_match::Error> {
-        let (outgoing, _report) = Match::advance(self, local_keys).map_err(tango_match::Error::from)?;
-        Ok((outgoing.tick, outgoing.keys, outgoing.tick_advantage))
+    fn advance(&mut self, local: tango_match::HostInput) -> Result<(u32, tango_match::HostInput, i16), tango_match::Error> {
+        // The GBA half of the seam: no touch screen, so only the joypad
+        // word crosses into (and back out of) the trap engine.
+        let keys = local.keys & tango_match::input::JOYFLAGS_MASK as u32;
+        let (outgoing, _report) = Match::advance(self, keys).map_err(tango_match::Error::from)?;
+        Ok((
+            outgoing.tick,
+            tango_match::HostInput::keys(outgoing.keys),
+            outgoing.tick_advantage,
+        ))
     }
 
-    fn add_remote_input(&mut self, keys: u32, tick_advantage: i16) {
-        Match::add_remote_input(self, keys, tick_advantage);
+    fn add_remote_input(&mut self, input: tango_match::HostInput, tick_advantage: i16) {
+        Match::add_remote_input(self, input.keys & tango_match::input::JOYFLAGS_MASK as u32, tick_advantage);
     }
 
     fn frame(&mut self) -> Option<Vec<u8>> {
@@ -311,8 +318,11 @@ impl tango_match::RunningMatch for Match {
         Match::set_present_delay(self, present_delay);
     }
 
-    fn drain_confirmed(&mut self) -> Vec<(u32, [u32; 2])> {
+    fn drain_confirmed(&mut self) -> Vec<(u32, [tango_match::HostInput; 2])> {
         Match::drain_confirmed(self)
+            .into_iter()
+            .map(|(tick, [p0, p1])| (tick, [tango_match::HostInput::keys(p0), tango_match::HostInput::keys(p1)]))
+            .collect()
     }
 
     fn confirmed(&self) -> u32 {

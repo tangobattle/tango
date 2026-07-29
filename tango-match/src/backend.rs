@@ -50,16 +50,21 @@ pub trait Backend: 'static {
     /// Advance the pair one video frame.
     fn tick(link: &mut Self::Link, inputs: [Self::Input; 2]);
 
-    /// Build an input from the joyflag bits a host and the wire speak
-    /// (see [`keys`](crate::keys)), and read them back out.
+    /// Build an input from the engine-neutral word hosts, the wire and
+    /// replays all speak ([`HostInput`](crate::HostInput)), and read it
+    /// back out.
     ///
-    /// A backend's input type is its own — a DS carries a stylus a GBA
-    /// has no word for — but netplay exchanges joyflags, so the two
-    /// conversions live here rather than as orphan impls nobody is
-    /// allowed to write.
-    fn input_from_keys(keys: u32) -> Self::Input;
+    /// A backend's input type is its own, and this conversion is also
+    /// where it sanitizes: whatever a host or the wire hands over,
+    /// what comes out is a value the console could really produce (keys
+    /// masked to the pad, a touch clamped to the screen). That matters
+    /// because inputs are simulation state — both peers must derive the
+    /// same input from the same word. A console ignores what it has no
+    /// hardware for (a GBA drops the stylus outright), and `host_of`
+    /// must round-trip anything `input_of` produced.
+    fn input_of(host: crate::HostInput) -> Self::Input;
 
-    fn keys_of(input: Self::Input) -> u32;
+    fn host_of(input: Self::Input) -> crate::HostInput;
 
     /// Capture the link. Reuses `recycled`'s allocations when one is
     /// offered — rollback retires a snapshot nearly every tick, and
@@ -222,12 +227,14 @@ pub struct StartConfig<'a> {
 pub trait RunningMatch: Send {
     /// Advance one frame with the local console's input: settle what
     /// the peer's arrivals confirm, rolling back on a misprediction,
-    /// then speculate to the present target. Returns the tick and input
-    /// to forward to the peer.
-    fn advance(&mut self, local_keys: u32) -> Result<(u32, u32, i16), crate::Error>;
+    /// then speculate to the present target. Returns the tick and the
+    /// input to forward to the peer — the input as the engine actually
+    /// applied it (sanitized through the backend's conversions), so
+    /// both peers feed their consoles identical values.
+    fn advance(&mut self, local: crate::HostInput) -> Result<(u32, crate::HostInput, i16), crate::Error>;
 
     /// Feed one remote input packet, in tick order.
-    fn add_remote_input(&mut self, keys: u32, tick_advantage: i16);
+    fn add_remote_input(&mut self, input: crate::HostInput, tick_advantage: i16);
 
     /// The local console's display, RGBA8 in [`screen_layout`] order.
     ///
@@ -250,9 +257,9 @@ pub trait RunningMatch: Send {
 
     fn set_present_delay(&mut self, present_delay: u32);
 
-    /// Confirmed `(tick, [p0 keys, p1 keys])` rows in order, for the
+    /// Confirmed `(tick, [p0, p1])` input rows in order, for the
     /// replay sink. Empty when the engine keeps no such record.
-    fn drain_confirmed(&mut self) -> Vec<(u32, [u32; 2])> {
+    fn drain_confirmed(&mut self) -> Vec<(u32, [crate::HostInput; 2])> {
         Vec::new()
     }
 

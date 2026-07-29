@@ -17,21 +17,25 @@
 //! prefix — rennet reads elements until the bytes run out. Elements are
 //! **variable-length**, tagged by the top bit of their first byte:
 //!
-//! * an **input** is two bytes — the 10-bit joyflags, high byte first (so its
-//!   top bit is clear, since joyflags never exceed `0x3ff`);
+//! * an **input** is two bytes — first the tag-and-high byte (top bit clear;
+//!   bit 6 flags a stylus sample; bits 3..0 are joyflags bits 11..8), then the
+//!   joyflags low byte — plus, when the stylus flag is set, two more bytes for
+//!   the touch x and y;
 //! * a **marker** (round/match boundary) is a single byte with the top bit set
 //!   and the kind in the low bits.
 //!
-//! So inputs (the common case) stay two bytes while markers cost just one, and
-//! the decoder tells them apart from that first byte alone.
+//! So inputs (the common case) stay two bytes — the stylus costs two more only
+//! on the console that has one, and only while it is down — while markers cost
+//! just one, and the decoder tells them apart from that first byte alone.
 
 use std::io;
 
-/// The 10-bit GBA joypad mask inputs are packed under. Kept as this
-/// crate's own constant so the pure codec crate doesn't drag in the
-/// emulator stack; the tango bin crate const-asserts it equal to
-/// `tango_match::input::JOYFLAGS_MASK` (it sees both crates).
-pub const JOYFLAGS_MASK: u16 = 0x03ff;
+/// The 12-bit joypad mask inputs are packed under: the GBA's 10 bits
+/// plus the DS's X and Y. Kept as this crate's own constant so the pure
+/// codec crate doesn't drag in the emulator stack; `tango-session`
+/// const-asserts it equal to `tango_match::keys::MASK` (it sees both
+/// crates).
+pub const KEYS_MASK: u16 = 0x0fff;
 
 /// The reconnect watchdog's trip depth: local inputs buffered with
 /// nothing from the peer to match them before the session pauses for a
@@ -52,9 +56,14 @@ const STALL_HEADROOM: usize = 90;
 /// window and reorder buffer via [`HORIZON`]).
 pub const MAX_QUEUE_LENGTH: usize = RECONNECT_QUEUE_LENGTH + STALL_HEADROOM;
 
-/// Top bit of an element's first byte: set => a 1-byte marker, clear => the high
-/// byte of a 2-byte input (always clear there, as joyflags fit in 10 bits).
+/// Top bit of an element's first byte: set => a 1-byte marker, clear => an
+/// input's tag-and-high byte (always clear there — joyflags fit in 12 bits and
+/// the flag bits stop at bit 6).
 const MARKER_FLAG: u8 = 0x80;
+
+/// Bit 6 of an input's first byte: a stylus sample (two coordinate bytes)
+/// follows the joyflags low byte. Bits 5..4 are reserved and written zero.
+const TOUCH_FLAG: u8 = 0x40;
 
 /// Marker kind, carried in the low bits of a marker byte.
 const KIND_END_OF_MATCH: u8 = 1;
@@ -121,8 +130,16 @@ impl rennet::Codec for Meta {
 /// module header for its wire packing).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Element {
-    /// Joyflags for this tick (10-bit GBA keypad; the top 6 bits must be 0).
-    Input(u16),
+    /// One tick's input.
+    Input {
+        /// The 12-bit joypad word (the GBA layout, which the DS extends
+        /// with X and Y; higher bits must be 0).
+        joyflags: u16,
+        /// The stylus, for the console that has one: its position on
+        /// the touch screen in that screen's own pixels (the DS's fits
+        /// a byte per axis), or `None` for a lifted stylus.
+        touch: Option<(u8, u8)>,
+    },
     /// End-of-match boundary.
     EndOfMatch,
 }
@@ -131,22 +148,30 @@ impl rennet::Codec for Element {
     /// Write this element's wire bytes (see the module header).
     fn encode<W: io::Write>(&self, w: &mut W) -> io::Result<()> {
         match *self {
-            Element::Input(joyflags) => {
+            Element::Input { joyflags, touch } => {
                 assert!(
-                    joyflags & !JOYFLAGS_MASK == 0,
+                    joyflags & !KEYS_MASK == 0,
                     "joyflags use reserved high bits: {joyflags:#06x}"
                 );
-                // High byte first; its top bit is clear (joyflags <= 0x3ff),
-                // which is what tells an input from a marker on the way back in.
-                w.write_all(&[(joyflags >> 8) as u8, joyflags as u8])
+                // Tag-and-high byte first; its top bit is clear, which is what
+                // tells an input from a marker on the way back in.
+                let mut b0 = (joyflags >> 8) as u8;
+                if touch.is_some() {
+                    b0 |= TOUCH_FLAG;
+                }
+                w.write_all(&[b0, joyflags as u8])?;
+                if let Some((x, y)) = touch {
+                    w.write_all(&[x, y])?;
+                }
+                Ok(())
             }
             Element::EndOfMatch => w.write_all(&[MARKER_FLAG | KIND_END_OF_MATCH]),
         }
     }
 
     /// Read one element off `r` — the top bit of the first byte tells an input
-    /// (two bytes) from a marker (one). `None` at a clean EOF (the run's end); a
-    /// lone input high byte with no low byte is a truncation error.
+    /// from a marker. `None` at a clean EOF (the run's end); an input cut off
+    /// mid-element is a truncation error.
     fn decode<R: io::Read>(r: &mut R) -> io::Result<Option<Self>> {
         let mut b0 = [0u8; 1];
         // 0 bytes read = clean EOF at the run boundary.
@@ -160,11 +185,20 @@ impl rennet::Codec for Element {
                 other => return Err(invalid(format!("unknown marker kind: {other}"))),
             }
         } else {
-            // Input: this byte's the high half, the next its low half (EOF here
-            // is a truncated element, not a clean end).
+            // Input: the joyflags low byte, then the stylus coordinates if the
+            // tag flagged them (EOF inside either is a truncated element, not a
+            // clean end).
             let mut b1 = [0u8; 1];
             r.read_exact(&mut b1)?;
-            Element::Input(((b0 as u16) << 8 | b1[0] as u16) & JOYFLAGS_MASK)
+            let joyflags = ((b0 as u16) << 8 | b1[0] as u16) & KEYS_MASK;
+            let touch = if b0 & TOUCH_FLAG != 0 {
+                let mut xy = [0u8; 2];
+                r.read_exact(&mut xy)?;
+                Some((xy[0], xy[1]))
+            } else {
+                None
+            };
+            Element::Input { joyflags, touch }
         };
         Ok(Some(element))
     }
@@ -185,19 +219,39 @@ pub fn data_frame(base: u32, ack: Ack, meta: Meta, entries: Vec<Element>) -> Fra
 mod tests {
     use super::*;
 
+    fn keys(joyflags: u16) -> Element {
+        Element::Input { joyflags, touch: None }
+    }
+
     #[test]
     fn tango_entries_exact_bytes() {
         // base=12345, ack=12345 (delta 0), meta tick_advantage=+2, [Right(0x010),
-        // A(0x001)]. Inputs are two bytes (high, low). The meta is a single
-        // svarint byte, just as the old inlined tick_advantage was — so the wire
-        // form is byte-for-byte unchanged.
+        // A(0x001)]. Untouched inputs are two bytes (tag-and-high, low) — the
+        // exact bytes the 10-bit era produced, so a touchless stream's wire form
+        // is byte-for-byte unchanged.
         let f = data_frame(
             12345,
             12345,
             Meta { tick_advantage: 2 },
-            vec![Element::Input(0x010), Element::Input(0x001)],
+            vec![keys(0x010), keys(0x001)],
         );
         assert_eq!(f.to_vec(), vec![0xB9, 0x60, 0x00, 0x04, 0x00, 0x10, 0x00, 0x01]);
+    }
+
+    #[test]
+    fn touched_input_exact_bytes() {
+        // A stylus sample sets bit 6 of the tag byte and appends (x, y); the
+        // 12-bit joyflags' high nibble shares the tag byte below it.
+        let f = data_frame(
+            9,
+            9,
+            Meta::default(),
+            vec![Element::Input {
+                joyflags: 0xf01,
+                touch: Some((128, 96)),
+            }],
+        );
+        assert_eq!(f.to_vec(), vec![0x09, 0x00, 0x00, 0x4f, 0x01, 128, 96]);
     }
 
     #[test]
@@ -206,9 +260,29 @@ mod tests {
             7,
             6,
             Meta { tick_advantage: -3 },
-            vec![Element::Input(0x3ff), Element::Input(0), Element::EndOfMatch],
+            vec![
+                keys(0xfff),
+                keys(0),
+                Element::Input {
+                    joyflags: 0x3,
+                    touch: Some((255, 191)),
+                },
+                Element::Input {
+                    joyflags: 0,
+                    touch: Some((0, 0)),
+                },
+                Element::EndOfMatch,
+            ],
         );
         assert_eq!(Frame::decode(&mut &f.to_vec()[..]).unwrap(), f);
+    }
+
+    #[test]
+    fn truncated_touch_errors() {
+        // base=1, ack=1, meta=0, then a touch-flagged input whose coordinate
+        // bytes are missing.
+        let bytes = vec![0x01, 0x00, 0x00, 0x43, 0x01];
+        assert!(Frame::decode(&mut &bytes[..]).is_err());
     }
 
     #[test]

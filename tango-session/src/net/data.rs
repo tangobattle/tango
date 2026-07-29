@@ -87,12 +87,12 @@ type InStream = rennet::InStream<protocol::InMatch>;
 /// horizon is protocol-visible — every implementation must agree).
 pub use tango_net_protocol::data::{MAX_QUEUE_LENGTH, RECONNECT_QUEUE_LENGTH};
 
-// The pure codec crate carries its own copy of the joyflags mask so it
+// The pure codec crate carries its own copy of the key mask so it
 // doesn't drag in the emulator stack; this crate sees both, so a drift
 // becomes a build failure here.
 const _: () = assert!(
-    tango_net_protocol::data::JOYFLAGS_MASK == tango_match::input::JOYFLAGS_MASK,
-    "tango-net-protocol's JOYFLAGS_MASK drifted from tango-match's"
+    tango_net_protocol::data::KEYS_MASK as u32 == tango_match::keys::MASK,
+    "tango-net-protocol's KEYS_MASK drifted from tango-match's"
 );
 
 /// Send-pump queue depth. Deeper than the unacked-local-input cap so that
@@ -109,7 +109,8 @@ const SEND_PUMP_DEPTH: usize = MAX_QUEUE_LENGTH + 8;
 const MAX_RTT_SAMPLES: usize = MAX_QUEUE_LENGTH;
 
 /// One tick's input as it crosses the wire, oriented to its sender: the
-/// committed local joyflags for that tick, plus the sender's local tick
+/// committed local joyflags (and, on a console with one, the stylus) for
+/// that tick, plus the sender's local tick
 /// advantage at send time — how far its local input leads the remote input
 /// it has received (the input queue's signed lead). The receiver subtracts
 /// the advantage from its own to get the raw skew that drives the time-sync
@@ -118,6 +119,7 @@ const MAX_RTT_SAMPLES: usize = MAX_QUEUE_LENGTH;
 #[derive(Clone, Debug)]
 pub struct Input {
     pub joyflags: u16,
+    pub touch: Option<(u8, u8)>,
     pub tick_advantage: i16,
 }
 
@@ -221,11 +223,16 @@ impl InMatchTx {
         self.sink.lock().await.send(&frame.to_vec()).await
     }
 
-    pub async fn send_input(&self, joyflags: u16, tick_advantage: i16) -> std::io::Result<()> {
+    pub async fn send_input(&self, input: Input) -> std::io::Result<()> {
         self.send_frame_with(move |out| {
             out.push_with_meta(
-                protocol::Element::Input(joyflags & tango_match::input::JOYFLAGS_MASK),
-                protocol::Meta { tick_advantage },
+                protocol::Element::Input {
+                    joyflags: input.joyflags & tango_net_protocol::data::KEYS_MASK,
+                    touch: input.touch,
+                },
+                protocol::Meta {
+                    tick_advantage: input.tick_advantage,
+                },
             );
         })
         .await
@@ -337,7 +344,7 @@ impl PvpSender {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Input>(SEND_PUMP_DEPTH);
         crate::platform::spawn(async move {
             while let Some(input) = rx.recv().await {
-                if let Err(e) = im.send_input(input.joyflags, input.tick_advantage).await {
+                if let Err(e) = im.send_input(input).await {
                     // Non-terminal: the element was pushed into the out-stream's
                     // window *before* the send await (see `send_frame_with`), so a
                     // failed send loses nothing — the heartbeat/next frame
@@ -429,9 +436,10 @@ impl PvpReceiver {
             }
             for element in delivery.elements {
                 match element {
-                    protocol::Element::Input(joyflags) => {
+                    protocol::Element::Input { joyflags, touch } => {
                         self.pending.push_back(Input {
                             joyflags,
+                            touch,
                             tick_advantage: delivery.meta.tick_advantage,
                         });
                     }

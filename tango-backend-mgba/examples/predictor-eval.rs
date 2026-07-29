@@ -301,8 +301,8 @@ fn load_corpus(paths: &[std::path::PathBuf]) -> Corpus {
                 continue;
             }
             corpus.rounds.push(Round {
-                p1: round.iter().map(|&[p1, _]| p1).collect(),
-                p2: round.iter().map(|&[_, p2]| p2).collect(),
+                p1: round.iter().map(|&[p1, _]| p1.keys).collect(),
+                p2: round.iter().map(|&[_, p2]| p2.keys).collect(),
             });
         }
     }

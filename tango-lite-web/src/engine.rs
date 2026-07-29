@@ -581,7 +581,9 @@ impl Engine {
         // you diff — so a controller is read here, on the same beat the
         // joyflags are handed over, rather than from a listener.
         crate::input::poll_gamepads();
-        self.session.set_joyflags(crate::input::joyflags());
+        // GBA-only frontend: the joypad word is the whole input.
+        self.session
+            .set_input(tango_session::HostInput::keys(crate::input::joyflags()));
 
         let mut budget = MAX_TICKS_PER_PUMP;
         while self.debt >= 1.0 && budget > 0 {

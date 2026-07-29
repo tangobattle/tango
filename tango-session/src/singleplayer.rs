@@ -26,6 +26,8 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::InputCell;
+
 const EXPECTED_FPS: f32 = 60.0;
 
 /// The session's console, shared between whatever drives it and the
@@ -36,7 +38,7 @@ pub struct SinglePlayerSession {
     game: &'static tango_gamesupport::Game,
     console: SharedConsole,
     layout: tango_match::ScreenLayout,
-    joyflags: Arc<AtomicU32>,
+    input: Arc<InputCell>,
     /// Pacing target as f32 bits. 60.0 = realtime; fast-forward raises it
     /// and the audio stream's faux clock compresses to match.
     fps_bits: Arc<AtomicU32>,
@@ -76,7 +78,7 @@ impl SinglePlayerSession {
 
         let layout = game.pvp.screen_layout();
         let console: SharedConsole = Arc::new(Mutex::new(console));
-        let joyflags = Arc::new(AtomicU32::new(0));
+        let input = InputCell::new();
         let fps_bits = Arc::new(AtomicU32::new(EXPECTED_FPS.to_bits()));
         let stop = Arc::new(AtomicBool::new(false));
         let screen = crate::Framebuffer::new(&layout);
@@ -84,7 +86,7 @@ impl SinglePlayerSession {
 
         let driver = Driver {
             console: console.clone(),
-            joyflags: joyflags.clone(),
+            input: input.clone(),
             fps_bits: fps_bits.clone(),
             stop: stop.clone(),
             screen: screen.clone(),
@@ -101,7 +103,7 @@ impl SinglePlayerSession {
                 game,
                 console,
                 layout,
-                joyflags,
+                input,
                 fps_bits,
                 stop,
                 screen,
@@ -138,8 +140,8 @@ impl crate::Session for SinglePlayerSession {
         self.wake.clone()
     }
 
-    fn set_joyflags(&self, joyflags: u32) {
-        self.joyflags.store(joyflags, Ordering::Relaxed);
+    fn set_input(&self, input: crate::HostInput) {
+        self.input.store(input);
     }
 
     fn set_speed(&self, factor: f32) {
@@ -162,7 +164,7 @@ impl Drop for SinglePlayerSession {
 /// drive thread on the desktop, the event loop in a browser.
 pub struct Driver {
     console: SharedConsole,
-    joyflags: Arc<AtomicU32>,
+    input: Arc<InputCell>,
     fps_bits: Arc<AtomicU32>,
     stop: Arc<AtomicBool>,
     screen: Arc<crate::Framebuffer>,
@@ -191,7 +193,7 @@ impl Driver {
             // Scoped: on a single-threaded host this must be free before
             // the call returns to the pump.
             let mut console = self.console.lock().unwrap();
-            if let Err(e) = console.tick(self.joyflags.load(Ordering::Relaxed)) {
+            if let Err(e) = console.tick(self.input.load()) {
                 log::error!("single-player emulation failed: {e}");
                 self.stop.store(true, Ordering::Relaxed);
                 return false;

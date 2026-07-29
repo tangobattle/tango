@@ -244,6 +244,17 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
     let img_w = (native_w * scale) as f32;
     let img_h = (native_h * scale) as f32;
 
+    // A two-screen console is a DS, and a DS's second screen is its
+    // touch screen: (y where it starts in the stacked frame, its size),
+    // all in native pixels. `None` for everything else — the mouse
+    // area only goes up when there is a screen to touch.
+    let touch_screen = state
+        .active
+        .as_ref()
+        .map(|s| s.screen_layout())
+        .filter(|layout| layout.screens.len() == 2)
+        .map(|layout| (layout.screens[0].height, layout.screens[1]));
+
     iced::widget::responsive(move |size| {
         let raw = (size.width / img_w).min(size.height / img_h);
         let scale = if fractional_scaling {
@@ -267,6 +278,31 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
             .width(Length::Fixed(w))
             .height(Length::Fixed(h));
 
+        // The stylus: pointer events over the widget, handed to the
+        // session mapped into the touch screen's own pixels. The whole
+        // surface reports (so a drag can scrape along the screen's
+        // edges); whether a *press* lands on the touch screen travels
+        // with each move as `inside`.
+        let mut fb: Element<'a, Message> = fb.into();
+        if let Some((top_h, screen)) = touch_screen {
+            fb = iced::widget::mouse_area(fb)
+                .on_move(move |p| {
+                    let nx = p.x / w * native_w as f32;
+                    let ny = p.y / h * native_h as f32 - top_h as f32;
+                    let inside =
+                        (0.0..screen.width as f32).contains(&nx) && (0.0..screen.height as f32).contains(&ny);
+                    let pos = (
+                        nx.clamp(0.0, (screen.width - 1) as f32) as u16,
+                        ny.clamp(0.0, (screen.height - 1) as f32) as u16,
+                    );
+                    Message::Stylus(StylusEvent::Moved { pos, inside })
+                })
+                .on_press(Message::Stylus(StylusEvent::Pressed))
+                .on_release(Message::Stylus(StylusEvent::Released))
+                .on_exit(Message::Stylus(StylusEvent::Released))
+                .into();
+        }
+
         let centered = |content: Element<'a, Message>| -> Element<'a, Message> {
             iced::widget::container(content)
                 .width(Fill)
@@ -278,7 +314,7 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
 
         if fractional_scaling {
             // Smooth aspect-fit, centered, no drop shadow.
-            centered(fb.into())
+            centered(fb)
         } else {
             // Tight container around the Fixed-size framebuffer so the
             // shadow style traces its edges, not the surrounding pane.

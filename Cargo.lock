@@ -7882,6 +7882,7 @@ dependencies = [
 name = "tango-gamesupport-bn5ds"
 version = "0.1.0"
 dependencies = [
+ "image",
  "log",
  "tango-backend-melonds",
  "tango-gamesupport",

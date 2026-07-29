@@ -8,16 +8,16 @@
 //! What a caller supplies is the match, the transport's two ends, and
 //! the screen layout the frames carry.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use tango_match::{RunningMatch, ScreenLayout};
+use tango_match::{HostInput, RunningMatch, ScreenLayout};
 
 /// A running netplay session.
 pub struct MatchSession {
     game: &'static tango_gamesupport::Game,
     /// Whatever the local player is holding, sampled once per frame.
-    joyflags: Arc<AtomicU32>,
+    local_input: Arc<crate::InputCell>,
     /// The frame the host uploads, RGBA8, both screens stacked.
     frame: Arc<Mutex<Vec<u8>>>,
     wake: Arc<tokio::sync::Notify>,
@@ -39,10 +39,10 @@ impl MatchSession {
         mut match_: Box<dyn RunningMatch>,
         layout: ScreenLayout,
         frame_duration: std::time::Duration,
-        outgoing: std::sync::mpsc::Sender<(u32, u32)>,
-        incoming: std::sync::mpsc::Receiver<(u32, i16)>,
+        outgoing: std::sync::mpsc::Sender<(u32, HostInput)>,
+        incoming: std::sync::mpsc::Receiver<(HostInput, i16)>,
     ) -> Self {
-        let joyflags = Arc::new(AtomicU32::new(0));
+        let local_input = crate::InputCell::new();
         let frame = Arc::new(Mutex::new(Vec::new()));
         let wake = Arc::new(tokio::sync::Notify::new());
         let ended = Arc::new(AtomicBool::new(false));
@@ -50,7 +50,7 @@ impl MatchSession {
 
         let session = MatchSession {
             game,
-            joyflags: joyflags.clone(),
+            local_input: local_input.clone(),
             frame: frame.clone(),
             wake: wake.clone(),
             ended: ended.clone(),
@@ -66,12 +66,12 @@ impl MatchSession {
 
                     // Everything the peer has sent settles before this
                     // tick speculates past it.
-                    while let Ok((keys, tick_advantage)) = incoming.try_recv() {
-                        match_.add_remote_input(keys, tick_advantage);
+                    while let Ok((input, tick_advantage)) = incoming.try_recv() {
+                        match_.add_remote_input(input, tick_advantage);
                     }
 
-                    let local = joyflags.load(Ordering::Relaxed);
-                    let (tick, keys, _tick_advantage) = match match_.advance(local) {
+                    let local = local_input.load();
+                    let (tick, input, _tick_advantage) = match match_.advance(local) {
                         Ok(advanced) => advanced,
                         Err(e) => {
                             log::error!("ds session: {e}");
@@ -80,7 +80,7 @@ impl MatchSession {
                             return;
                         }
                     };
-                    if outgoing.send((tick, keys)).is_err() {
+                    if outgoing.send((tick, input)).is_err() {
                         // The peer's transport is gone.
                         ended.store(true, Ordering::Release);
                         wake.notify_one();
@@ -134,8 +134,8 @@ impl crate::Session for MatchSession {
         self.wake.clone()
     }
 
-    fn set_joyflags(&self, joyflags: u32) {
-        self.joyflags.store(joyflags, Ordering::Relaxed);
+    fn set_input(&self, input: HostInput) {
+        self.local_input.store(input);
     }
 
     fn request_close(&self) {

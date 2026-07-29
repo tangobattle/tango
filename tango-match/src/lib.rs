@@ -35,6 +35,7 @@ pub use solo::{
     StatsPass,
 };
 pub use backend::{Backend, MatchFactory, RunningMatch, Screen, ScreenLayout, StartConfig};
+pub use input::HostInput;
 
 /// The clock-sync governor: feed it `skew()` + `speculation_balance()`
 /// each frame and shave the returned fps off the tick rate. Shared by
@@ -86,4 +87,8 @@ pub mod keys {
     pub const X: u32 = 1 << 10;
     /// DS only.
     pub const Y: u32 = 1 << 11;
+
+    /// Every named bit — the widest pad this vocabulary can express,
+    /// which is also what the netplay wire's input element carries.
+    pub const MASK: u32 = 0xfff;
 }

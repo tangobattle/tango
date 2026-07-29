@@ -942,7 +942,7 @@ impl App {
                 let cb = move |current: usize, total: usize| {
                     let _ = cb_tx.unbounded_send((current, total));
                 };
-                let inputs: Vec<[u32; 2]> = replay.inputs.iter().map(|&[p1, p2]| [p1 as u32, p2 as u32]).collect();
+                let inputs: Vec<[u32; 2]> = replay.inputs.iter().map(|&row| row.map(|i| i.keys as u32)).collect();
                 let config = tango_backend_mgba::r#match::playback::BootConfig {
                     roms,
                     saves: replay.srams.clone(),

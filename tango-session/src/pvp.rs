@@ -126,7 +126,7 @@ pub struct PvpSession {
     /// stable for the whole match. The pair is symmetric — core 0 always runs
     /// player 0's game on both peers — so this is also which core is "ours".
     local_player_index: u8,
-    joyflags: Arc<AtomicU32>,
+    local_input: Arc<crate::InputCell>,
     /// Flipped once the games' own match-end path is confirmed — the
     /// direct successor of the trap engine's per-game completion hook.
     completed: Arc<AtomicBool>,
@@ -398,7 +398,7 @@ impl PvpSession {
         let in_match = link.in_match().clone();
 
         let end = EndState::default();
-        let joyflags = Arc::new(AtomicU32::new(0));
+        let local_input = crate::InputCell::new();
         let completed = Arc::new(AtomicBool::new(false));
         let frame_delay = Arc::new(AtomicU32::new(frame_delay));
         let metrics = Arc::new(Metrics::default());
@@ -474,7 +474,7 @@ impl PvpSession {
                 disable_bgm,
             },
             drive: DriveContext {
-                joyflags: joyflags.clone(),
+                local_input: local_input.clone(),
                 frame_delay: frame_delay.clone(),
                 metrics: metrics.clone(),
                 drive_paused: drive_paused.clone(),
@@ -539,7 +539,7 @@ impl PvpSession {
         let session = Self {
             local_game,
             local_player_index,
-            joyflags,
+            local_input,
             completed,
             end,
             tps_counter,
@@ -709,8 +709,8 @@ impl crate::Session for PvpSession {
         self.wake.clone()
     }
 
-    fn set_joyflags(&self, joyflags: u32) {
-        self.joyflags.store(joyflags, Ordering::Relaxed);
+    fn set_input(&self, input: crate::HostInput) {
+        self.local_input.store(input);
     }
 
     fn request_close(&self) {
@@ -832,7 +832,7 @@ struct BootPieces {
 }
 
 struct DriveContext {
-    joyflags: Arc<AtomicU32>,
+    local_input: Arc<crate::InputCell>,
     frame_delay: Arc<AtomicU32>,
     metrics: Arc<Metrics>,
     drive_paused: Arc<crate::PauseGate>,
@@ -1387,6 +1387,36 @@ impl PvpBoot {
     }
 }
 
+/// A received wire input in the seam's vocabulary. The wire's touch is
+/// a byte per axis — every touch screen a backend has fits one — so
+/// widening here is lossless.
+fn host_input_of_wire(input: &crate::net::data::Input) -> tango_match::HostInput {
+    tango_match::HostInput {
+        keys: input.joyflags as u32,
+        touch: input.touch.map(|(x, y)| (x as u16, y as u16)),
+    }
+}
+
+/// A committed input as the wire ships it. The engine sanitized it
+/// through the backend's conversions, so the narrowing casts cannot
+/// truncate.
+fn wire_input_of(input: tango_match::HostInput, tick_advantage: i16) -> crate::net::data::Input {
+    crate::net::data::Input {
+        joyflags: input.keys as u16,
+        touch: input.touch.map(|(x, y)| (x.min(0xff) as u8, y.min(0xff) as u8)),
+        tick_advantage,
+    }
+}
+
+/// A confirmed input as the replay records it — same narrowing story as
+/// [`wire_input_of`].
+fn replay_input_of(input: tango_match::HostInput) -> tango_replay::stream::Input {
+    tango_replay::stream::Input {
+        keys: input.keys as u16,
+        touch: input.touch.map(|(x, y)| (x.min(0xff) as u8, y.min(0xff) as u8)),
+    }
+}
+
 /// A live match, one tick at a time.
 ///
 /// The state below used to be locals of a `loop` on a thread of its
@@ -1455,7 +1485,7 @@ impl PvpDriver {
         // ingest now is a rollback we don't take deeper.
         for input in self.ctx.event_rx.try_iter() {
             self.match_
-                .add_remote_input(input.joyflags as u32, input.tick_advantage);
+                .add_remote_input(host_input_of_wire(&input), input.tick_advantage);
         }
 
         // Stall guard: the peer is too far behind (or gone) — advancing
@@ -1491,7 +1521,7 @@ impl PvpDriver {
             // and spinning on it would burn the host's loop.
             if let Ok(input) = self.ctx.event_rx.try_recv() {
                 self.match_
-                    .add_remote_input(input.joyflags as u32, input.tick_advantage);
+                    .add_remote_input(host_input_of_wire(&input), input.tick_advantage);
             }
             return true;
         }
@@ -1501,8 +1531,9 @@ impl PvpDriver {
         let skew = self.match_.skew();
         self.ctx.metrics.skew.store(skew, Ordering::Relaxed);
 
-        let keys = self.ctx.joyflags.load(Ordering::Relaxed) & tango_match::input::JOYFLAGS_MASK as u32;
-        let (_tick, outgoing_keys, tick_advantage) = match self.match_.advance(keys) {
+        let mut local = self.ctx.local_input.load();
+        local.keys &= tango_match::keys::MASK;
+        let (_tick, outgoing, tick_advantage) = match self.match_.advance(local) {
             Ok(r) => r,
             Err(e) => {
                 log::error!("pvp: sio advance failed: {e}");
@@ -1518,10 +1549,7 @@ impl PvpDriver {
         if self
             .ctx
             .sender
-            .send(&crate::net::data::Input {
-                joyflags: outgoing_keys as u16,
-                tick_advantage,
-            })
+            .send(&wire_input_of(outgoing, tick_advantage))
             .is_err()
         {
             log::warn!("pvp: send pump terminated; ending match");
@@ -1568,19 +1596,22 @@ impl PvpDriver {
         // stats merge below.
         let confirmed_inputs = self.match_.drain_confirmed();
         if let Some(w) = self.ctx.replay_writer.as_mut() {
-            for (tick, keys) in &confirmed_inputs {
+            for (tick, inputs) in &confirmed_inputs {
                 if self.pending_round_marks.front().is_some_and(|t| t <= tick) {
                     self.pending_round_marks.pop_front();
                     let _ = w.start_round();
                 }
-                if let Err(e) = w.write_input([keys[0] as u16, keys[1] as u16]) {
+                if let Err(e) = w.write_input(inputs.map(replay_input_of)) {
                     log::warn!("pvp: replay write failed (recording stops): {e}");
                     self.ctx.replay_writer = None;
                     break;
                 }
             }
         }
-        self.pending_buttons.extend(confirmed_inputs);
+        // The stats fold reads button presses alone, so only the pad
+        // half of each row rides along.
+        self.pending_buttons
+            .extend(confirmed_inputs.iter().map(|(tick, inputs)| (*tick, inputs.map(|i| i.keys))));
 
         if !samples.is_empty() || !events.is_empty() {
             self.ctx
@@ -1652,8 +1683,8 @@ impl PvpDriver {
         // engine, so an aborted match leaves a truncated-but-parseable
         // recording.
         if let Some(mut w) = self.ctx.replay_writer.take() {
-            for (_, keys) in self.match_.drain_confirmed() {
-                let _ = w.write_input([keys[0] as u16, keys[1] as u16]);
+            for (_, inputs) in self.match_.drain_confirmed() {
+                let _ = w.write_input(inputs.map(replay_input_of));
             }
             if self.ctx.completed.load(Ordering::Acquire) {
                 if let Err(e) = w.finish() {

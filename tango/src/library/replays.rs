@@ -81,7 +81,7 @@ fn analyze_replay(
     cancel: &std::sync::atomic::AtomicBool,
 ) -> anyhow::Result<tango_backend_mgba::r#match::analysis::MatchStats> {
     let local_player = replay.local_player_index as usize;
-    let inputs: Vec<[u32; 2]> = replay.inputs.iter().map(|&[p1, p2]| [p1 as u32, p2 as u32]).collect();
+    let inputs: Vec<[u32; 2]> = replay.inputs.iter().map(|&row| row.map(|i| i.keys as u32)).collect();
     // Offline re-analysis re-simulates on the mgba engine directly, so
     // it needs both seats' support rather than a session.
     let seat = |g: &'static tango_gamesupport::Game| {

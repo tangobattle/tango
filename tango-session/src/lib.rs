@@ -53,11 +53,16 @@ pub mod platform;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod stats;
 
-/// The joypad bit vocabulary [`Session::set_joyflags`] speaks —
+/// The joypad bit vocabulary [`Session::set_input`] speaks —
 /// re-exported so hosts get the bit names without their own emulator
 /// dependency. Engine-neutral: the GBA layout, which the DS extends
 /// with X and Y, so one set of names covers both consoles.
 pub use tango_match::keys;
+
+/// The input word itself — the joypad bits plus the stylus only a
+/// touch-screen console reads — re-exported for the same reason as
+/// [`keys`].
+pub use tango_match::HostInput;
 
 
 /// Placeholder marker: see [`Error::UnsupportedEngine`].
@@ -106,6 +111,27 @@ pub enum Error {
     /// The PvP drive thread died before reporting boot success.
     #[error("sio drive thread died during boot")]
     DriveThreadDied,
+}
+
+/// The local player's latest input, shared between a host's event
+/// handlers (which overwrite it) and a session's drive loop (which
+/// samples it once per tick). A mutex rather than an atomic because a
+/// [`HostInput`] no longer fits one word once the stylus is in it, and
+/// both sides only ever hold it for a copy.
+pub(crate) struct InputCell(std::sync::Mutex<HostInput>);
+
+impl InputCell {
+    pub(crate) fn new() -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self(std::sync::Mutex::new(HostInput::default())))
+    }
+
+    pub(crate) fn store(&self, input: HostInput) {
+        *self.0.lock().unwrap() = input;
+    }
+
+    pub(crate) fn load(&self) -> HostInput {
+        *self.0.lock().unwrap()
+    }
 }
 
 /// A pause flag a drive thread can block on — flag + condvar instead of
@@ -307,11 +333,15 @@ pub trait Session: std::any::Any {
         None
     }
 
-    /// Overwrite the entire GBA joyflag bitmap (bits from [`keys`]) —
-    /// the configurable input mapping resolves multiple held bindings
-    /// into one flag word and pushes the result here every event.
-    /// Default no-op: replay playback feeds recorded input instead.
-    fn set_joyflags(&self, _joyflags: u32) {}
+    /// Overwrite the local player's whole input — the joyflag bitmap
+    /// (bits from [`keys`]) the configurable input mapping resolved
+    /// from every held binding, plus the stylus for a console with a
+    /// touch screen. Pushed here on every input event; the session
+    /// holds the latest until the next one. Sessions that can only
+    /// forward joyflags (netplay's wire speaks nothing else) take the
+    /// pad half and drop the stylus. Default no-op: replay playback
+    /// feeds recorded input instead.
+    fn set_input(&self, _input: HostInput) {}
 
     /// Drive the session at `factor` × realtime (fast-forward /
     /// slow-mo). Default no-op: PvP runs at fixed EXPECTED_FPS so

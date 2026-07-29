@@ -70,4 +70,9 @@ pub mod derive;
 // but a match is two peers simulating the SAME pair tick for tick — a
 // 0x51 peer's simulation diverges from a 0x52 peer's within seconds and
 // presents as in-game communication errors, so they must not pair.
+// (Also 0x52 — the two landed together, unreleased: the in-match input
+// element grew the DS's inputs. The joypad word widened to 12 bits (X
+// and Y) and a stylus sample rides behind a flag bit in the element's
+// first byte; a 0x51 peer would read a touched element's coordinate
+// bytes as the next element and the stream would shear.)
 pub const PROTOCOL_VERSION: u32 = 0x52;

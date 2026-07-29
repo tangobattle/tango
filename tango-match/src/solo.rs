@@ -19,10 +19,11 @@
 /// needs, so a host holds this and the pull side by side without
 /// knowing how they meet.
 pub trait RunningSolo: Send {
-    /// Advance one video frame with the joypad bits held this tick (see
-    /// [`keys`](crate::keys)). An error ends the ride — a corrupt core
-    /// stops the session rather than panicking the host.
-    fn tick(&mut self, keys: u32) -> Result<(), crate::Error>;
+    /// Advance one video frame with the input held this tick — the
+    /// joypad bits (see [`keys`](crate::keys)) plus the stylus, which
+    /// only a touch-screen console reads. An error ends the ride — a
+    /// corrupt core stops the session rather than panicking the host.
+    fn tick(&mut self, input: crate::HostInput) -> Result<(), crate::Error>;
 
     /// The console's display, RGBA8 in
     /// [`screen_layout`](crate::MatchFactory::screen_layout) order.
@@ -210,8 +211,8 @@ pub struct ReplayConfig {
     pub roms: [Vec<u8>; 2],
     /// Per-seat save memory as it stood when the match started.
     pub saves: [Vec<u8>; 2],
-    /// The recorded input rows, `(p0 keys, p1 keys)` per tick.
-    pub inputs: std::sync::Arc<Vec<[u32; 2]>>,
+    /// The recorded input rows, `(p0, p1)` per tick.
+    pub inputs: std::sync::Arc<Vec<[crate::HostInput; 2]>>,
     /// The match's negotiated seed and clock, so re-simulation lands
     /// where the original did.
     pub rng_seed: [u8; 16],
