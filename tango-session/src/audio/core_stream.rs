@@ -50,10 +50,16 @@ use std::sync::Arc;
 
 const EXPECTED_FPS: f32 = 60.0;
 
-/// How much source audio to keep queued in the played core's sample
-/// buffer, in seconds — the level the servo holds, and the floor on
-/// audio latency. Big enough to ride out drive-thread/callback phase
-/// jitter and a couple of ticks of rollback burst.
+/// How much audio to keep queued in the played core's sample buffer,
+/// in seconds of *playback* — the level the servo holds, and the floor
+/// on audio latency. Big enough to ride out drive-thread/callback
+/// phase jitter and a couple of ticks of rollback burst.
+///
+/// Playback seconds, not source seconds: at 4x the device consumes
+/// source four times as fast, so holding the same playback margin
+/// takes four times the source frames. Sized in source seconds alone
+/// the queue thins from ~4.7 fills deep to ~1.2 at 4x — every jitter
+/// trough a short fill, fast-forward audibly dropping audio.
 const AUDIO_TARGET_QUEUED_SECS: f64 = 0.05;
 
 /// The occupancy servo's authority: the largest fractional trim it may
@@ -89,6 +95,11 @@ pub struct CoreStream {
     /// (The wall-clock-era reservoir learned this; the mechanism was lost
     /// in the revert.)
     priming: bool,
+    /// The previous fill's queue target, in source frames — a jump in it
+    /// (fast-forward engaging, a console's rate flip) re-latches priming,
+    /// since the servo alone would take seconds to deepen the queue and
+    /// ride thin the whole way there.
+    last_target: f64,
 }
 
 impl CoreStream {
@@ -102,6 +113,7 @@ impl CoreStream {
             fps_target: Box::new(fps_target),
             out_rate: if out_rate == 0 { 48000 } else { out_rate },
             priming: true,
+            last_target: f64::INFINITY,
         }
     }
 
@@ -129,9 +141,28 @@ impl super::Stream for CoreStream {
         // The faux clock: production scales with the sim's pace, so a
         // throttled sim stretches playback by the same ratio instead of
         // starving it (and a fast-forwarded one compresses).
-        let faux_clock = self.pull.framerate_ratio(fps_target as f64);
+        let mut faux_clock = self.pull.framerate_ratio(fps_target as f64);
+        if !faux_clock.is_finite() || faux_clock <= 0.0 {
+            faux_clock = 1.0;
+        }
 
-        let target = source_rate * AUDIO_TARGET_QUEUED_SECS;
+        // The faux clock folds into the target too: consumption scales
+        // by 1/faux_clock, so this is what keeps the queue's depth *in
+        // fills* — the margin that actually rides out jitter — constant
+        // at every speed (~4.7 fills at 512-frame fills), instead of
+        // fast-forward thinning it toward a short fill per trough.
+        let target = source_rate * AUDIO_TARGET_QUEUED_SECS / faux_clock;
+        // A speed-up moves the target out from under the queue in one
+        // step, and the servo's authority would take seconds to deepen
+        // it — riding thin (short fills, dropped audio) the whole way.
+        // Re-prime instead: one clean gap on the edge the user just
+        // caused, then a queue at full depth. A slow-down needs nothing;
+        // the discard cap sheds the surplus in one skip.
+        if target > self.last_target * 1.5 {
+            self.priming = true;
+        }
+        self.last_target = target;
+
         let mut queued = self.pull.source_available() as f64;
         if queued > target * AUDIO_DISCARD_FACTOR {
             // Producer-burst backlog (seek chase, perspective swap,
@@ -171,15 +202,20 @@ impl super::Stream for CoreStream {
         self.pull
             .read(&mut linear_buf[..delivered * super::NUM_CHANNELS], delivered);
 
-        // A fill with nothing at all to give is the stall signature —
-        // and the moment an artifact was unavoidable anyway. Latch
-        // priming so recovery is one clean gap instead of seconds of
-        // jitter-trough crackle at a near-empty queue. (Nothing at all,
-        // not merely short: re-priming answers with a whole target's
-        // worth of silence, which is a fine trade against a stalled sim
-        // and a terrible one against a fill that came up a few frames
-        // light.)
-        if delivered == 0 {
+        // A fill with nothing at all to give AND nothing queued is the
+        // stall signature — and the moment an artifact was unavoidable
+        // anyway. Latch priming so recovery is one clean gap instead of
+        // seconds of jitter-trough crackle at a near-empty queue.
+        // (Nothing at all, not merely short: re-priming answers with a
+        // whole target's worth of silence, which is a fine trade
+        // against a stalled sim and a terrible one against a fill that
+        // came up a few frames light. And only with the queue empty
+        // too: a run of unreachable reaches under drive-thread lock
+        // contention also delivers nothing, but its backlog is sitting
+        // right there — the next successful reach refills in one go,
+        // so re-priming would stretch a one-fill blip into a whole
+        // target of silence.)
+        if delivered == 0 && queued < target {
             self.priming = true;
         }
         delivered
@@ -228,11 +264,11 @@ mod tests {
     }
 
     /// One run's observations: the queue level the servo saw on each
-    /// fill (in source frames — the audio latency), and how many fills
-    /// the queues could not cover.
+    /// fill (in source frames — the audio latency), and which fills the
+    /// queues could not cover.
     struct Run {
         queued: Vec<f64>,
-        short: usize,
+        short: Vec<usize>,
     }
 
     /// GBA fps: what an unthrottled host publishes, and the pace a
@@ -254,7 +290,7 @@ mod tests {
         let mut buf = vec![[0i16; NUM_CHANNELS]; FILL];
         let mut run = Run {
             queued: Vec::new(),
-            short: 0,
+            short: Vec::new(),
         };
         for i in 0..fills {
             let fps = fps(i);
@@ -268,7 +304,7 @@ mod tests {
             // fill's worth low and make a settled queue look starved.
             run.queued.push(stream.pull.source_available() as f64);
             if <CoreStream as Stream>::fill(&mut stream, &mut buf) < FILL {
-                run.short += 1;
+                run.short.push(i);
             }
         }
         run
@@ -294,7 +330,7 @@ mod tests {
     #[test]
     fn the_queue_settles_at_the_target_instead_of_creeping() {
         let run = run(6000, native, promptly);
-        assert_eq!(run.short, 0, "a fill went short at steady state");
+        assert!(run.short.is_empty(), "fills went short at steady state: {:?}", run.short);
         assert_settled(&run, 0.8, 1.25);
     }
 
@@ -331,26 +367,41 @@ mod tests {
             let speculated = if phase == 19 { 4.0 * produced } else { 0.0 };
             *ring.lock().unwrap() += produced + speculated;
         });
-        assert_eq!(run.short, 0, "a rollback burst starved a fill");
+        assert!(run.short.is_empty(), "a rollback burst starved fills: {:?}", run.short);
         // Absorbed, not shed: the queue swings with the burst but never
         // reaches the cap, which would be an audible skip.
         assert_settled(&run, 0.4, AUDIO_DISCARD_FACTOR);
     }
 
 
-    /// Fast-forward is a step change in how fast the console produces,
-    /// and the faux clock carries it straight through: the queue must
-    /// not pile up on the way, which past the discard cap would be a
-    /// skip.
+    /// Fast-forward is a step change in how fast the console produces
+    /// AND how fast the device consumes source. The faux clock carries
+    /// both through: the queue deepens to the scaled target (one
+    /// re-prime gap on the edge — the moment the user pressed the
+    /// button), then rides there without piling into the discard cap.
     #[test]
     fn fast_forward_lands_without_a_flood() {
         // 4x from fill 1000 on, production following.
         let speed = |i: usize| if i < 1000 { NATIVE_FPS } else { NATIVE_FPS * 4.0 };
         let run = run(3000, speed, promptly);
-        let target = RATE * AUDIO_TARGET_QUEUED_SECS;
+        // The target scales with speed, holding the queue's depth in
+        // fills constant.
+        let target = RATE * AUDIO_TARGET_QUEUED_SECS * 4.0;
 
-        assert_eq!(run.short, 0, "fast-forward starved a fill");
-        let peak = run.queued[1000..].iter().copied().fold(0.0, f64::max);
+        // The only silence is the re-prime right at the edge, while the
+        // deeper queue builds.
+        assert!(
+            run.short.iter().all(|&i| (1000..1040).contains(&i)),
+            "fills went short outside the flip's re-prime: {:?}",
+            run.short
+        );
+        let settled = &run.queued[1100..];
+        let low = settled.iter().copied().fold(f64::MAX, f64::min);
+        let peak = settled.iter().copied().fold(0.0, f64::max);
+        assert!(
+            low > target * 0.6 && peak < target * 1.5,
+            "queue ranged {low:.0}..{peak:.0} source frames at 4x, target {target:.0}"
+        );
         assert!(
             peak < target * AUDIO_DISCARD_FACTOR,
             "queue piled up to {peak:.0} source frames, past a discard cap of {:.0}",
@@ -358,4 +409,29 @@ mod tests {
         );
     }
 
+    /// The regression that motivated the playback-seconds target: sized
+    /// in source seconds, the queue at 4x held barely more than one
+    /// fill's consumption, so production arriving even a couple of
+    /// fills late — a drive thread losing the race with the callback,
+    /// an unreachable console under lock contention, both far likelier
+    /// at 4x — went short on every trough, and fast-forward audibly
+    /// dropped audio. With the depth in fills held constant, delivery
+    /// lag rides out of the queue.
+    #[test]
+    fn fast_forward_survives_lumpy_delivery() {
+        // Steady 4x; three fills' production lands at once, at the END
+        // of each three-fill cycle — two dry fills lead every lump.
+        let run = run(4000, |_| NATIVE_FPS * 4.0, |i, produced, ring| {
+            if i % 3 == 2 {
+                *ring.lock().unwrap() += 3.0 * produced;
+            }
+        });
+        // Construction primes across the first lumps; after that, no
+        // fill goes short.
+        assert!(
+            run.short.iter().all(|&i| i < 100),
+            "lumpy 4x delivery starved fills: {:?}",
+            &run.short.iter().filter(|&&i| i >= 100).collect::<Vec<_>>()
+        );
+    }
 }

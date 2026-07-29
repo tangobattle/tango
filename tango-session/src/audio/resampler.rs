@@ -23,10 +23,14 @@
 use tango_match::AudioDrain;
 
 /// Ceiling on one drain, in frames — a bound on the scratch buffer and
-/// on how much a single call can move. Comfortably more than a frame of
-/// any console's audio, so a fill never leaves a backlog behind for
-/// want of room.
-const DRAIN_CHUNK: usize = 4096;
+/// on how much a single call can move. Sized so one successful reach
+/// can carry several *fast-forward* fills' worth of a 65536 Hz cart
+/// (~2800 source frames per fill at 4x), not merely one: reaches fail
+/// whenever the drive thread holds the console's lock, and at 4x that
+/// is a large fraction of wall time — the successful reaches between
+/// misses have to catch the intake up, or the staged queue starves at
+/// full speed no matter how deep the servo holds it.
+const DRAIN_CHUNK: usize = 16384;
 
 /// A console's audio on its way to a device: staged, resampled, and
 /// accounted for.
