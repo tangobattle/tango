@@ -4451,7 +4451,6 @@ checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 [[package]]
 name = "melonds"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rs#83858e5081654f0a7f61ef88f120d8e71888a2cf"
 dependencies = [
  "melonds-sys",
  "thiserror 1.0.69",
@@ -4460,7 +4459,6 @@ dependencies = [
 [[package]]
 name = "melonds-rollback"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rollback#4ca995f86ae12a319de897aa90750488e905693e"
 dependencies = [
  "getgud",
  "melonds",
@@ -4470,7 +4468,6 @@ dependencies = [
 [[package]]
 name = "melonds-sys"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rs#83858e5081654f0a7f61ef88f120d8e71888a2cf"
 dependencies = [
  "bindgen",
  "cc",
