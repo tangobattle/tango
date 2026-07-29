@@ -85,6 +85,10 @@ impl tango_match::Backend for GbaFactory {
         crate::link::screen_layout()
     }
 
+    fn expected_fps(&self) -> f64 {
+        crate::link::EXPECTED_FPS
+    }
+
     fn start(&self, config: tango_match::StartConfig) -> Result<tango_match::Match, tango_match::Error> {
         crate::r#match::engine::start(crate::r#match::engine::MatchConfig {
             roms: [config.roms[0].to_vec(), config.roms[1].to_vec()],

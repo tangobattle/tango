@@ -29,10 +29,6 @@ use std::sync::{Arc, Mutex};
 
 use tango_match::telemetry::RoundEvent;
 
-/// GBA video framerate — the true link-battle rate (matches the PvP
-/// engine), so the wall-clock pacer runs the battle at the right speed.
-pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
-
 /// Single battle. Training always fights one round against the dummy;
 /// there's no lobby to pick a mode, and the default do-nothing opponent
 /// makes best-of-N pointless.
@@ -95,6 +91,8 @@ pub struct TrainingSession {
     controlled: Arc<AtomicUsize>,
     joyflags: Arc<AtomicU32>,
     controller: SharedController,
+    /// The engine's native frame rate — what the speed dial's 1.0× means.
+    expected_fps: f32,
     /// Pacing target as f32 bits — realtime by default; `set_speed`
     /// raises it for fast-forward and the audio stream compresses to
     /// match.
@@ -139,6 +137,7 @@ impl TrainingSession {
         save_sram: Vec<u8>,
         rtc: std::time::SystemTime,
         rng_seed: [u8; 16],
+        expected_fps: f32,
         sample_rate: u32,
         controller: Box<dyn TrainingController>,
     ) -> Result<(Self, Driver, crate::audio::CoreStream), crate::Error> {
@@ -174,7 +173,7 @@ impl TrainingSession {
         let controlled = Arc::new(AtomicUsize::new(0));
         let joyflags = Arc::new(AtomicU32::new(0));
         let controller: SharedController = Arc::new(Mutex::new(controller));
-        let fps_bits = Arc::new(AtomicU32::new(EXPECTED_FPS.to_bits()));
+        let fps_bits = Arc::new(AtomicU32::new(expected_fps.to_bits()));
         let dummy_joyflags = Arc::new(AtomicU32::new(0));
         let show_pip = Arc::new(AtomicBool::new(false));
         let layout = game.pvp.screen_layout();
@@ -191,6 +190,7 @@ impl TrainingSession {
         // sound to the side the player is now driving.
         let audio = crate::audio::CoreStream::new(
             match_.seat_audio(controlled.clone()),
+            expected_fps,
             crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
             sample_rate,
         );
@@ -218,6 +218,7 @@ impl TrainingSession {
                 controlled,
                 joyflags,
                 controller,
+                expected_fps,
                 fps_bits,
                 dummy_joyflags,
                 show_pip,
@@ -308,8 +309,10 @@ impl crate::Session for TrainingSession {
     }
 
     fn set_speed(&self, factor: f32) {
-        self.fps_bits
-            .store(crate::clamp_speed(EXPECTED_FPS, factor).to_bits(), Ordering::Relaxed);
+        self.fps_bits.store(
+            crate::clamp_speed(self.expected_fps, factor).to_bits(),
+            Ordering::Relaxed,
+        );
     }
 
     /// True once the battle's own match-end path fired, so the host

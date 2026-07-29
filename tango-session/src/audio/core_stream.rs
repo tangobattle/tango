@@ -48,8 +48,6 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-const EXPECTED_FPS: f32 = 60.0;
-
 /// How much audio to keep queued in the played core's sample buffer,
 /// in seconds of *playback* — the level the servo holds, and the floor
 /// on audio latency. Big enough to ride out drive-thread/callback
@@ -82,6 +80,7 @@ pub struct CoreStream {
     /// whichever backend produced it. This stream never learns which
     /// emulator that was.
     pull: super::Resampler,
+    expected_fps: f32,
     /// The host drive loop's current pacing target, f32. Zero or less is
     /// treated as unthrottled (60 fps).
     fps_target: Box<dyn Fn() -> f32 + Send>,
@@ -105,11 +104,13 @@ pub struct CoreStream {
 impl CoreStream {
     pub fn new(
         pull: Box<dyn tango_match::AudioDrain>,
+        expected_fps: f32,
         fps_target: impl Fn() -> f32 + Send + 'static,
         out_rate: u32,
     ) -> Self {
         Self {
             pull: super::Resampler::new(pull),
+            expected_fps,
             fps_target: Box::new(fps_target),
             out_rate: if out_rate == 0 { 48000 } else { out_rate },
             priming: true,
@@ -130,7 +131,7 @@ impl super::Stream for CoreStream {
 
         let mut fps_target = (self.fps_target)();
         if fps_target <= 0.0 {
-            fps_target = EXPECTED_FPS;
+            fps_target = self.expected_fps;
         }
 
         // The console's production rate can change at runtime (BN4+
@@ -284,7 +285,7 @@ mod tests {
         let ring = Arc::new(Mutex::new(RATE * AUDIO_TARGET_QUEUED_SECS));
         let pull = Box::new(Ring(ring.clone()));
         let published = Arc::new(std::sync::atomic::AtomicU32::new((NATIVE_FPS as f32).to_bits()));
-        let mut stream = CoreStream::new(pull, CoreStream::fps_from_bits(published.clone()), OUT_RATE);
+        let mut stream = CoreStream::new(pull, 60.0, CoreStream::fps_from_bits(published.clone()), OUT_RATE);
 
         let secs_per_fill = FILL as f64 / OUT_RATE as f64;
         let mut buf = vec![[0i16; NUM_CHANNELS]; FILL];
@@ -330,7 +331,11 @@ mod tests {
     #[test]
     fn the_queue_settles_at_the_target_instead_of_creeping() {
         let run = run(6000, native, promptly);
-        assert!(run.short.is_empty(), "fills went short at steady state: {:?}", run.short);
+        assert!(
+            run.short.is_empty(),
+            "fills went short at steady state: {:?}",
+            run.short
+        );
         assert_settled(&run, 0.8, 1.25);
     }
 
@@ -372,7 +377,6 @@ mod tests {
         // reaches the cap, which would be an audible skip.
         assert_settled(&run, 0.4, AUDIO_DISCARD_FACTOR);
     }
-
 
     /// Fast-forward is a step change in how fast the console produces
     /// AND how fast the device consumes source. The faux clock carries
@@ -421,11 +425,15 @@ mod tests {
     fn fast_forward_survives_lumpy_delivery() {
         // Steady 4x; three fills' production lands at once, at the END
         // of each three-fill cycle — two dry fills lead every lump.
-        let run = run(4000, |_| NATIVE_FPS * 4.0, |i, produced, ring| {
-            if i % 3 == 2 {
-                *ring.lock().unwrap() += 3.0 * produced;
-            }
-        });
+        let run = run(
+            4000,
+            |_| NATIVE_FPS * 4.0,
+            |i, produced, ring| {
+                if i % 3 == 2 {
+                    *ring.lock().unwrap() += 3.0 * produced;
+                }
+            },
+        );
         // Construction primes across the first lumps; after that, no
         // fill goes short.
         assert!(

@@ -427,6 +427,7 @@ async fn build(pre_match: tango_lobby::PreMatchData) -> Result<(), String> {
         // `crate::recording`. The stats sidecar has no browser
         // counterpart and is compiled out on wasm entirely.
         replays: Some(&crate::recording::BrowserReplayStore),
+        expected_fps: local_game.pvp.expected_fps() as f32,
         sample_rate: crate::audio::sample_rate(),
     })
     .await

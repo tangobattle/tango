@@ -170,7 +170,9 @@ fn Transport(playhead: u32, total: u32, prefetched: u32, paused: bool) -> Elemen
 /// Ticks as mm:ss. A tick is one GBA frame, and the pair runs at the
 /// hardware's real rate, not a round 60.
 fn seconds(ticks: u32) -> String {
-    let total = (ticks as f32 / tango_session::pvp::EXPECTED_FPS) as u32;
+    /// The GBA's real frame rate — the only console this frontend plays.
+    const GBA_FPS: f32 = 16777216.0 / 280896.0;
+    let total = (ticks as f32 / GBA_FPS) as u32;
     format!("{}:{:02}", total / 60, total % 60)
 }
 

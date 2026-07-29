@@ -24,9 +24,6 @@ use std::sync::{Arc, Mutex};
 
 use tango_match::telemetry;
 
-/// GBA video framerate in frames per second.
-pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
-
 /// Inclusive bounds for a side's `frame_delay`, which is realized purely as
 /// local frame delay (how far the display trails the netcode frontier).
 /// Each side picks its own; there's no negotiation. The lobby slider and config
@@ -52,12 +49,13 @@ use tango_net_protocol::derive::pick_local_player_index;
 /// enough that a crashed peer doesn't pin the UI for long.
 const PEER_END_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// Retransmit-heartbeat cadence for the in-match channel — one emulator frame
-/// at [`EXPECTED_FPS`]. Keeps the unacked redundancy window flowing while the
-/// local sim is throttled or stalled, so loss recovery isn't coupled to the
-/// frame rate (see [`crate::net::InMatchTx`]).
-const IN_MATCH_HEARTBEAT: std::time::Duration =
-    std::time::Duration::from_nanos((1_000_000_000.0 / EXPECTED_FPS as f64) as u64);
+/// Retransmit-heartbeat cadence for the in-match channel — one nominal
+/// 60 Hz frame. A wire cadence, not a sim rate — the engines' real
+/// rates differ from it by well under a percent, which loss recovery
+/// doesn't care about. Keeps the unacked redundancy window flowing
+/// while the local sim is throttled or stalled, so recovery isn't
+/// coupled to the frame rate (see [`crate::net::InMatchTx`]).
+const IN_MATCH_HEARTBEAT: std::time::Duration = std::time::Duration::from_nanos((1_000_000_000.0 / 60.0) as u64);
 
 /// Session-redraw cadence while reconnecting (~30 fps), so the give-up progress
 /// bar drains smoothly even though the paused drive loop emits no frames. Purely
@@ -302,6 +300,7 @@ pub struct PvpSessionArgs<'a> {
     /// to put one and nothing to key it by.
     #[cfg(not(target_arch = "wasm32"))]
     pub cache_path: &'a Path,
+    pub expected_fps: f32,
     /// The host output rate the session's audio stream resamples to.
     pub sample_rate: u32,
 }
@@ -329,6 +328,7 @@ impl PvpSession {
             replays,
             #[cfg(not(target_arch = "wasm32"))]
             cache_path,
+            expected_fps,
             sample_rate,
         } = args;
         let cancellation_token = tokio_util::sync::CancellationToken::new();
@@ -372,19 +372,15 @@ impl PvpSession {
 
         let (replay_writer, replay_path) = match replays {
             None => (None, None),
-            Some(store) => match build_replay_writer(
-                store,
-                &pre_match,
-                local_player_index,
-                &local_sram,
-                &remote_sram,
-            ) {
-                Ok((writer, path)) => (Some(writer), Some(path)),
-                Err(e) => {
-                    log::warn!("pvp: replay writer open failed: {e}");
-                    (None, None)
+            Some(store) => {
+                match build_replay_writer(store, &pre_match, local_player_index, &local_sram, &remote_sram) {
+                    Ok((writer, path)) => (Some(writer), Some(path)),
+                    Err(e) => {
+                        log::warn!("pvp: replay writer open failed: {e}");
+                        (None, None)
+                    }
                 }
-            },
+            }
         };
 
         // Assemble the peer link from the lobby handoff — this awaits the
@@ -497,6 +493,7 @@ impl PvpSession {
                 announce_primed: announce_primed.clone(),
                 local_player: local_player_index as usize,
             },
+            expected_fps,
             sample_rate,
             local_player: local_player_index as usize,
             metrics: metrics.clone(),
@@ -859,23 +856,25 @@ struct DriveContext {
 impl DriveContext {
     /// Boot the match, then hand back the driver that runs it and a
     /// readout handle to its pair.
-    fn boot(mut self, pieces: BootPieces) -> Result<(PvpDriver, Box<dyn tango_match::AudioDrain>), tango_match::Error> {
+    fn boot(
+        mut self,
+        pieces: BootPieces,
+        expected_fps: f32,
+    ) -> Result<(PvpDriver, Box<dyn tango_match::AudioDrain>), tango_match::Error> {
         // The game's registration starts the match on whatever engine it
         // runs; this session never learns which.
         let local = pieces.pvp[pieces.local_player];
-        let match_ = local.start(
-            tango_match::StartConfig {
-                roms: [&pieces.roms[0], &pieces.roms[1]],
-                saves: [Some(&pieces.saves[0]), Some(&pieces.saves[1])],
-                rng_seed: pieces.rng_seed,
-                rtc: pieces.rtc,
-                match_type: pieces.match_type,
-                peer_rom: pieces.peer_rom,
-                local_player: pieces.local_player,
-                present_delay: pieces.present_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
-                disable_bgm: pieces.disable_bgm,
-            },
-        )?;
+        let match_ = local.start(tango_match::StartConfig {
+            roms: [&pieces.roms[0], &pieces.roms[1]],
+            saves: [Some(&pieces.saves[0]), Some(&pieces.saves[1])],
+            rng_seed: pieces.rng_seed,
+            rtc: pieces.rtc,
+            match_type: pieces.match_type,
+            peer_rom: pieces.peer_rom,
+            local_player: pieces.local_player,
+            present_delay: pieces.present_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
+            disable_bgm: pieces.disable_bgm,
+        })?;
         let audio = match_.audio();
 
         // Our half of the ready gate: the pair is at its link battle.
@@ -894,6 +893,7 @@ impl DriveContext {
         Ok((
             PvpDriver {
                 ctx: self,
+                expected_fps,
                 match_,
                 throttler: tango_match::Throttler::new(),
                 pending_buttons: std::collections::VecDeque::new(),
@@ -1351,6 +1351,7 @@ fn build_replay_writer(
 pub struct PvpBoot {
     pieces: BootPieces,
     drive: DriveContext,
+    expected_fps: f32,
     sample_rate: u32,
     local_player: usize,
     metrics: Arc<Metrics>,
@@ -1369,9 +1370,10 @@ impl PvpBoot {
         let metrics = self.metrics;
         let sample_rate = self.sample_rate;
         let _ = local_player;
-        let (driver, pull) = self.drive.boot(self.pieces)?;
+        let (driver, pull) = self.drive.boot(self.pieces, self.expected_fps)?;
         let audio = crate::audio::CoreStream::new(
             pull,
+            self.expected_fps,
             move || f32::from_bits(metrics.fps_target.load(Ordering::Relaxed)),
             sample_rate,
         );
@@ -1417,6 +1419,7 @@ fn replay_input_of(input: tango_match::HostInput) -> tango_replay::stream::Input
 /// browser's signaling exists.
 pub struct PvpDriver {
     ctx: DriveContext,
+    expected_fps: f32,
     match_: tango_match::Match,
     throttler: tango_match::Throttler,
     /// (tick, [p0, p1]) confirmed input pairs not yet folded into
@@ -1533,17 +1536,15 @@ impl PvpDriver {
                 return false;
             }
         };
-        self.ctx.metrics.depth.store(self.match_.last_rollback_depth(), Ordering::Relaxed);
+        self.ctx
+            .metrics
+            .depth
+            .store(self.match_.last_rollback_depth(), Ordering::Relaxed);
 
         // Ship this tick's local input. Push-before-send semantics live
         // in the pump; a transport error is non-terminal (the heartbeat
         // retransmits once the reconnect swaps a live channel back in).
-        if self
-            .ctx
-            .sender
-            .send(&wire_input_of(outgoing, tick_advantage))
-            .is_err()
-        {
+        if self.ctx.sender.send(&wire_input_of(outgoing, tick_advantage)).is_err() {
             log::warn!("pvp: send pump terminated; ending match");
             self.ctx.end.remote_disconnected.store(true, Ordering::Release);
             self.ctx.cancel.cancel();
@@ -1602,8 +1603,11 @@ impl PvpDriver {
         }
         // The stats fold reads button presses alone, so only the pad
         // half of each row rides along.
-        self.pending_buttons
-            .extend(confirmed_inputs.iter().map(|(tick, inputs)| (*tick, inputs.map(|i| i.keys))));
+        self.pending_buttons.extend(
+            confirmed_inputs
+                .iter()
+                .map(|(tick, inputs)| (*tick, inputs.map(|i| i.keys))),
+        );
 
         if !samples.is_empty() || !events.is_empty() {
             self.ctx
@@ -1659,7 +1663,7 @@ impl PvpDriver {
         // once the presented frame actually speculates past the present
         // delay.
         let slowdown = self.throttler.step(skew, self.match_.speculation_balance());
-        let target = EXPECTED_FPS - slowdown;
+        let target = self.expected_fps - slowdown;
         self.ctx.metrics.fps_target.store(target.to_bits(), Ordering::Relaxed);
 
         true

@@ -23,7 +23,7 @@ pub const SAMPLE_RATE: f64 = 48_000.0;
 
 /// The DS's video framerate, which is also the rate audio production
 /// scales against when a host paces the simulation faster or slower.
-pub const FPS: f64 = 33_513_982.0 / 560_190.0;
+pub const EXPECTED_FPS: f64 = 16756991.0 / 280095.0;
 
 /// How long a second of this console's production lasts once the host
 /// paces the simulation at `fps_target`.
@@ -38,7 +38,7 @@ pub const FPS: f64 = 33_513_982.0 / 560_190.0;
 /// fast-forward play *slower* rather than faster.
 pub fn framerate_ratio(fps_target: f64) -> f64 {
     if fps_target > 0.0 {
-        FPS / fps_target
+        EXPECTED_FPS / fps_target
     } else {
         1.0
     }
@@ -107,7 +107,10 @@ impl tango_match::Link for Link {
         self.inner.tick(inputs.map(input_of));
     }
 
-    fn snapshot(&mut self, recycled: Option<tango_match::Snapshot>) -> Result<tango_match::Snapshot, tango_match::Error> {
+    fn snapshot(
+        &mut self,
+        recycled: Option<tango_match::Snapshot>,
+    ) -> Result<tango_match::Snapshot, tango_match::Error> {
         let recycled = recycled.and_then(|s| s.downcast::<melonds_rollback::Snapshot>().ok().map(|s| *s));
         let snap = self
             .inner
@@ -120,7 +123,9 @@ impl tango_match::Link for Link {
         let snap = snapshot
             .downcast_ref::<melonds_rollback::Snapshot>()
             .expect("a melonDS link can only restore its own snapshots");
-        self.inner.restore(snap).map_err(|e| tango_match::Error::Backend(Box::new(e)))
+        self.inner
+            .restore(snap)
+            .map_err(|e| tango_match::Error::Backend(Box::new(e)))
     }
 
     fn audio_mark(&mut self) -> [u64; 2] {
@@ -160,6 +165,7 @@ impl tango_match::Link for Link {
         SAMPLE_RATE
     }
 
+
     fn audio_framerate_ratio(&mut self, _player: usize, fps_target: f64) -> f64 {
         framerate_ratio(fps_target)
     }
@@ -189,12 +195,9 @@ impl tango_match::Link for Link {
 fn sanitize(input: HostInput) -> HostInput {
     HostInput {
         keys: input.keys & 0xfff,
-        touch: input.touch.map(|(x, y)| {
-            (
-                x.min(SCREENS[1].width as u16 - 1),
-                y.min(SCREENS[1].height as u16 - 1),
-            )
-        }),
+        touch: input
+            .touch
+            .map(|(x, y)| (x.min(SCREENS[1].width as u16 - 1), y.min(SCREENS[1].height as u16 - 1))),
     }
 }
 
@@ -210,10 +213,7 @@ fn input_of(input: HostInput) -> Input {
 /// Split an instant into the fields a cart RTC takes. Both peers pass
 /// the same one, so both consoles agree without a date library.
 fn rtc_parts(rtc: std::time::SystemTime) -> (i32, i32, i32, i32, i32, i32) {
-    let secs = rtc
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    let secs = rtc.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
     // Civil-from-days, so this needs no date library and stays
     // identical on every platform.
     let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
@@ -257,9 +257,9 @@ mod tests {
     #[test]
     fn the_ratio_matches_mgbas_convention() {
         let ratio = crate::framerate_ratio;
-        assert!(ratio(crate::FPS * 3.0) < 1.0, "fast-forward must compress");
-        assert!(ratio(crate::FPS / 2.0) > 1.0, "throttling must stretch");
-        assert!((ratio(crate::FPS) - 1.0).abs() < 1e-9, "native speed is 1.0");
+        assert!(ratio(crate::EXPECTED_FPS * 3.0) < 1.0, "fast-forward must compress");
+        assert!(ratio(crate::EXPECTED_FPS / 2.0) > 1.0, "throttling must stretch");
+        assert!((ratio(crate::EXPECTED_FPS) - 1.0).abs() < 1e-9, "native speed is 1.0");
     }
 }
 

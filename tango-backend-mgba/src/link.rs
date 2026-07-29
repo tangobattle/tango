@@ -28,6 +28,8 @@ use tango_match::{Drained, HostInput, Screen, ScreenLayout};
 /// high bits, or the netplay wire's CONT/MARK entry tags.
 pub const JOYFLAGS_MASK: u32 = 0x03ff;
 
+pub const EXPECTED_FPS: f64 = 16777216.0 / 280896.0;
+
 /// The GBA's single screen.
 const SCREEN: Screen = Screen {
     width: 240,
@@ -135,7 +137,10 @@ impl tango_match::Link for Link {
         }
     }
 
-    fn snapshot(&mut self, _recycled: Option<tango_match::Snapshot>) -> Result<tango_match::Snapshot, tango_match::Error> {
+    fn snapshot(
+        &mut self,
+        _recycled: Option<tango_match::Snapshot>,
+    ) -> Result<tango_match::Snapshot, tango_match::Error> {
         // GBA states are small enough (~0.5 MB against the DS's ~6 MB)
         // that recycling buffers has never been worth the plumbing.
         let snap = self.inner.save().map_err(|e| crate::Error::from(e))?;
@@ -206,6 +211,7 @@ impl tango_match::Link for Link {
     fn set_render(&mut self, player: usize, on: bool) {
         self.inner.set_frameskip(player, if on { 0 } else { i32::MAX });
     }
+
 
     fn audio_sample_rate(&mut self, player: usize) -> f64 {
         self.inner.core(player).audio_sample_rate() as f64

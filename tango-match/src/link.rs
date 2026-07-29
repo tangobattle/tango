@@ -173,6 +173,13 @@ pub trait Backend: Sync {
     /// match exists so a host can lay out its pane.
     fn screen_layout(&self) -> ScreenLayout;
 
+    /// The console's native video frame rate, in frames per second —
+    /// known, like the layout, before a match exists: hosts pace their
+    /// drive loops and size their audio streams around it. The GBA's
+    /// rate is not a round 60, and the DS's differs again, so nothing
+    /// above an engine may hardcode one.
+    fn expected_fps(&self) -> f64;
+
     /// Boot a pair, prime it into a link battle, and start the rollback
     /// session over it.
     fn start(&self, config: StartConfig) -> Result<crate::Match, crate::Error>;

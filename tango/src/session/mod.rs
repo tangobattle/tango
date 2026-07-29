@@ -1332,6 +1332,9 @@ pub fn build_playback(
         [p1_game, p2_game],
         [p1_rom, p2_rom],
         replay,
+        // Both seats always share one engine, so either seat's rate is
+        // the session's.
+        p1_game.pvp.expected_fps() as f32,
         audio_binder.sample_rate(),
         config.show_opponent_pip,
         stats_job,
@@ -1532,6 +1535,7 @@ pub async fn spawn_pvp(
         disable_bgm: config.disable_bgm_in_pvp,
         replays: Some(&pvp::DirReplayStore(config.replays_path())),
         cache_path: &config.cache_path(),
+        expected_fps: local_game_impl.pvp.expected_fps() as f32,
         sample_rate: audio_binder.sample_rate(),
     })
     .await?;
@@ -1717,6 +1721,7 @@ pub fn spawn_singleplayer(
         Some(save.clone()),
         // Leave the cart clock on the real one, as it has always been.
         None,
+        game.pvp.expected_fps() as f32,
         audio_binder.sample_rate(),
     )?;
     let drive = spawn_drive_thread("singleplayer", driver)?;
@@ -1769,6 +1774,7 @@ pub fn spawn_training(
         loaded.editor.sram(loaded),
         std::time::SystemTime::now(),
         rand::random(),
+        game.pvp.expected_fps() as f32,
         audio_binder.sample_rate(),
         Box::new(training::NoopController),
     )?;

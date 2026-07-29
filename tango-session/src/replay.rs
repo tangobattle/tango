@@ -19,7 +19,6 @@ use tango_match::seek::SeekController;
 /// A GBA screen, which is what every game with replays is on today.
 pub const SCREEN_WIDTH: u32 = 240;
 pub const SCREEN_HEIGHT: u32 = 160;
-const EXPECTED_FPS: f32 = 60.0;
 
 /// What the input display overlay reads off a replay: every recorded
 /// (local, remote) joyflags pair, flattened across rounds in playhead
@@ -32,6 +31,8 @@ struct InputDisplay {
 
 pub struct ReplaySession {
     game: &'static tango_gamesupport::Game,
+    /// The engine's native frame rate — what the speed dial's 1.0× means.
+    expected_fps: f32,
     /// Inter-round seek-bar marks (see [`Self::round_boundaries`]),
     /// discovered from telemetry by the prefetch pass as it runs.
     round_boundaries: Arc<Mutex<Vec<u32>>>,
@@ -160,6 +161,7 @@ impl ReplaySession {
         games: [&'static tango_gamesupport::Game; 2],
         roms: [Arc<Vec<u8>>; 2],
         replay: Arc<tango_replay::Replay>,
+        expected_fps: f32,
         sample_rate: u32,
         show_pip: bool,
         stats_job: Option<PrefetchStatsJob>,
@@ -210,7 +212,7 @@ impl ReplaySession {
         let playback: SharedPlayback = Arc::new(Mutex::new(None));
         let cursor = Arc::new(AtomicU32::new(0));
         let paused = Arc::new(crate::PauseGate::new(false));
-        let fps_bits = Arc::new(AtomicU32::new(EXPECTED_FPS.to_bits()));
+        let fps_bits = Arc::new(AtomicU32::new(expected_fps.to_bits()));
         let prefetch_progress = Arc::new(AtomicU32::new(0));
         // Inter-round marks: the recorder stamps round-start markers into
         // the stream and decode surfaces them as `round_starts`. The
@@ -236,8 +238,8 @@ impl ReplaySession {
         // is simulated yet: each of the two passes boots on whichever
         // worker the host runs it on, which is what keeps those boots
         // concurrent.
-        let set: Arc<dyn tango_match::ReplaySet> = Arc::from(games[local_player].pvp.open_replay(
-            tango_match::ReplayConfig {
+        let set: Arc<dyn tango_match::ReplaySet> =
+            Arc::from(games[local_player].pvp.open_replay(tango_match::ReplayConfig {
                 roms: [roms[0].to_vec(), roms[1].to_vec()],
                 saves: replay.srams.clone(),
                 inputs: inputs.clone(),
@@ -251,8 +253,7 @@ impl ReplaySession {
                 },
                 want_stats: stats_job.is_some(),
                 want_round_marks: discover_marks,
-            },
-        )?);
+            })?);
         if let Some(discovered) = set.round_marks() {
             // The pass writes into its own list; hand the session that
             // one so the scrub bar sees marks as they are found.
@@ -317,12 +318,14 @@ impl ReplaySession {
         // [`crate::core_stream`]).
         let audio = crate::audio::CoreStream::new(
             Box::new(audio_pull) as Box<dyn tango_match::AudioDrain>,
+            expected_fps,
             crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
             sample_rate,
         );
 
         let session = Self {
             game: games[local_player],
+            expected_fps,
             round_boundaries: round_marks,
             total_ticks,
             input_display,
@@ -410,7 +413,7 @@ impl ReplaySession {
 
     /// Current factor (current fps / 60).
     pub fn speed(&self) -> f32 {
-        f32::from_bits(self.engine.fps_bits.load(Ordering::Relaxed)) / EXPECTED_FPS
+        f32::from_bits(self.engine.fps_bits.load(Ordering::Relaxed)) / self.expected_fps
     }
 
     /// Toggle playback between paused and running.
@@ -512,12 +515,7 @@ impl ReplaySession {
     /// framebuffer we can't re-emit. `None` means the export falls
     /// back to simulating from boot.
     pub fn clip_start_tick(&self, start: u32) -> Option<u32> {
-        self.engine
-            .playback
-            .lock()
-            .unwrap()
-            .as_ref()?
-            .capture_before(start)
+        self.engine.playback.lock().unwrap().as_ref()?.capture_before(start)
     }
 
     /// The captured snapshot nearest `target`, if any — backs the hover
@@ -620,7 +618,7 @@ impl crate::Session for ReplaySession {
     /// 0.5 = slow-mo. The SIO drive loop paces itself and publishes
     /// the target for its audio stream.
     fn set_speed(&self, factor: f32) {
-        let fps = (EXPECTED_FPS * factor).max(1.0);
+        let fps = (self.expected_fps * factor).max(1.0);
         self.engine.fps_bits.store(fps.to_bits(), Ordering::Relaxed);
     }
 }

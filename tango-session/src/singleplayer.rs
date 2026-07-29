@@ -28,8 +28,6 @@ use std::sync::{Arc, Mutex};
 
 use crate::InputCell;
 
-const EXPECTED_FPS: f32 = 60.0;
-
 /// The session's console, shared between whatever drives it and the
 /// session itself (which reads the save off it).
 type SharedConsole = Arc<Mutex<Box<dyn tango_match::RunningSolo>>>;
@@ -39,6 +37,8 @@ pub struct SinglePlayerSession {
     console: SharedConsole,
     layout: tango_match::ScreenLayout,
     input: Arc<InputCell>,
+    /// The engine's native frame rate — what the speed dial's 1.0× means.
+    expected_fps: f32,
     /// Pacing target as f32 bits. 60.0 = realtime; fast-forward raises it
     /// and the audio stream's faux clock compresses to match.
     fps_bits: Arc<AtomicU32>,
@@ -65,6 +65,7 @@ impl SinglePlayerSession {
         rom: Arc<Vec<u8>>,
         save: Option<Vec<u8>>,
         rtc: Option<std::time::SystemTime>,
+        expected_fps: f32,
         sample_rate: u32,
     ) -> Result<(Self, Driver, crate::audio::CoreStream), crate::Error> {
         let console = game.pvp.start_solo(tango_match::SoloConfig {
@@ -79,7 +80,7 @@ impl SinglePlayerSession {
         let layout = game.pvp.screen_layout();
         let console: SharedConsole = Arc::new(Mutex::new(console));
         let input = InputCell::new();
-        let fps_bits = Arc::new(AtomicU32::new(EXPECTED_FPS.to_bits()));
+        let fps_bits = Arc::new(AtomicU32::new(expected_fps.to_bits()));
         let stop = Arc::new(AtomicBool::new(false));
         let screen = crate::Framebuffer::new(&layout);
         let wake = Arc::new(tokio::sync::Notify::new());
@@ -94,6 +95,7 @@ impl SinglePlayerSession {
         };
         let audio = crate::audio::CoreStream::new(
             audio_pull,
+            expected_fps,
             crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
             sample_rate,
         );
@@ -104,6 +106,7 @@ impl SinglePlayerSession {
                 console,
                 layout,
                 input,
+                expected_fps,
                 fps_bits,
                 stop,
                 screen,
@@ -145,8 +148,10 @@ impl crate::Session for SinglePlayerSession {
     }
 
     fn set_speed(&self, factor: f32) {
-        self.fps_bits
-            .store(crate::clamp_speed(EXPECTED_FPS, factor).to_bits(), Ordering::Relaxed);
+        self.fps_bits.store(
+            crate::clamp_speed(self.expected_fps, factor).to_bits(),
+            Ordering::Relaxed,
+        );
     }
 }
 

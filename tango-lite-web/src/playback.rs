@@ -67,6 +67,9 @@ pub async fn open(path: std::path::PathBuf) -> Result<(), String> {
         games,
         roms,
         replay,
+        // Both seats always share one engine, so either seat's rate is
+        // the session's.
+        games[0].pvp.expected_fps() as f32,
         crate::audio::sample_rate(),
         // No picture-in-picture: the inset is a second screen's worth
         // of pixels on a display that hasn't room for the first.

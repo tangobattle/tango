@@ -350,8 +350,8 @@ pub trait Session: std::any::Any {
     fn set_input(&self, _input: HostInput) {}
 
     /// Drive the session at `factor` × realtime (fast-forward /
-    /// slow-mo). Default no-op: PvP runs at fixed EXPECTED_FPS so
-    /// both sides stay in sync — no speed control.
+    /// slow-mo). Default no-op: PvP runs at its engine's native rate
+    /// so both sides stay in sync — no speed control.
     fn set_speed(&self, _factor: f32) {}
 
     /// Pre-drop teardown. Default no-op — only PvP has any: it cancels
