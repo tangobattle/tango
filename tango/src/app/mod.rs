@@ -153,13 +153,10 @@ pub struct App {
     _audio_backend: Option<audio::cpal::Backend>,
 
     /// Owned game+save+assets for the current selection. Rebuilt only
-    /// when game or save changes; per-frame view() borrows it.
+    /// when game or save changes; per-frame view() borrows it. This is
+    /// also what booting and readying up run on — a netplay-only game
+    /// loads through the shared empty editor like everyone else.
     loaded: Option<selection::LoadedSave>,
-    /// The same selection reduced to what booting needs. Set whenever a
-    /// game + save are chosen, including for a game whose engine offers
-    /// no save editor — which is what keeps Play and netplay available
-    /// for one.
-    bootable: Option<selection::Bootable>,
 
     /// The local loadout (family / game / save + patch overlay) —
     /// App-level so the lobby settings-resend sees every change the
@@ -515,7 +512,6 @@ impl App {
             audio_binder,
             _audio_backend: audio_backend,
             loaded: None,
-            bootable: None,
             loadout: restored,
             play,
             replays: ReplaysState::default(),
@@ -898,7 +894,6 @@ impl App {
     fn refresh_loaded(&mut self) {
         let Some((game, save_path, patch)) = self.loaded_key() else {
             self.loaded = None;
-            self.bootable = None;
             return;
         };
 
@@ -951,14 +946,7 @@ impl App {
         // The view state rides inside the LoadedSave, so swapping in a
         // freshly-built one drops any in-progress edit with the save it
         // was staged against — nothing to reset by hand.
-        self.loaded = selection::build(game, rom, save_path.clone(), save, &patches_path, patch_meta);
-        // Independent of the editor: a netplay-only game gets no
-        // LoadedSave, and it still has to be playable.
-        self.bootable = Some(selection::Bootable {
-            game,
-            save_path,
-            patch: self.loaded.as_ref().and_then(|l| l.patch.clone()),
-        });
+        self.loaded = Some(selection::build(game, rom, save_path, save, &patches_path, patch_meta));
     }
 }
 

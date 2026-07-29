@@ -185,10 +185,11 @@ pub struct Game {
     /// alongside a `ui` consumer must have its own `ui` feature on to
     /// initialize it (tango's `gamesupport-*` features pair the two);
     /// mixing them is a missing-field error here, on purpose.
-    /// `None` for a netplay-only game: there is no editor because there
-    /// is no save model behind it.
+    /// Every game has one — a netplay-only game points at the shared
+    /// empty editor, which renders the shell with no section tabs — so
+    /// embedders never need an editor-less path.
     #[cfg(feature = "ui")]
-    pub save_editor: Option<&'static dyn save_editor::SaveEditor>,
+    pub save_editor: &'static dyn save_editor::SaveEditor,
 }
 
 impl Game {
@@ -218,8 +219,9 @@ impl Game {
     }
 
     /// Whether this game models its save beyond identifying it — false
-    /// for netplay-only games, which have no editor, templates or ROM
-    /// assets behind the dump they accept.
+    /// for netplay-only games, which have no templates or ROM assets
+    /// behind the dump they accept (their save editor is the shared
+    /// empty one).
     pub fn has_save_model(&self) -> bool {
         self.load_rom_assets_fn.is_some()
     }

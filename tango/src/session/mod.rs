@@ -1484,13 +1484,13 @@ pub async fn spawn_pvp(
                 rom_overrides: version_meta.rom_overrides.clone(),
             })
         });
-        crate::selection::from_patched_rom(
+        Some(crate::selection::from_patched_rom(
             remote_game,
             remote_rom_bytes.clone(),
             std::path::PathBuf::new(),
             remote_save,
             applied_patch,
-        )
+        ))
     } else {
         None
     };
@@ -1514,13 +1514,13 @@ pub async fn spawn_pvp(
                 rom_overrides: version_meta.rom_overrides.clone(),
             })
         });
-        crate::selection::from_patched_rom(
+        Some(crate::selection::from_patched_rom(
             local_game,
             local_rom_bytes.clone(),
             std::path::PathBuf::new(),
             local_save,
             applied_patch,
-        )
+        ))
     };
 
     let (session, boot) = pvp::PvpSession::new(pvp::PvpSessionArgs {
@@ -1679,7 +1679,7 @@ pub fn spawn_singleplayer(
     scanners: &Scanners,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
-    loaded: &selection::Bootable,
+    loaded: &selection::LoadedSave,
 ) -> anyhow::Result<(
     singleplayer::SinglePlayerSession,
     Option<audio::Binding>,

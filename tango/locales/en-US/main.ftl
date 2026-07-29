@@ -67,10 +67,6 @@ play-link-code = Link code (leave empty for a random one)
 play-link-code-random = Random link code
 play-play = Play
 play-training = Training
-# Shown in place of the save editor for a game Tango supports for
-# netplay only, so it has no editor to open the save in.
-play-no-editor-title = Ready to play
-play-no-editor-body = Tango supports this game for netplay only, so there is no save editor. The save is loaded and ready.
 training-pip = Opponent screen
 training-swap = Switch sides
 play-fight = Fight
