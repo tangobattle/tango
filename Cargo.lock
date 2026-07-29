@@ -8047,7 +8047,6 @@ dependencies = [
  "js-sys",
  "log",
  "semver",
- "tango-backend-mgba",
  "tango-gamesupport",
  "tango-library",
  "tango-lobby",

@@ -58,11 +58,11 @@ pub static FAMILIES: LazyLock<Vec<&'static Family>> = LazyLock::new(|| {
 ///
 /// Sessions never need this — a game starts a match, a solo ride or a
 /// replay through its own registration, which keeps its engine to
-/// itself. These two paths are the exception: offline replay
-/// re-analysis and video export re-simulate a recorded match
-/// *themselves* rather than through a session, so they need the engine
-/// support directly. Both are on the way to the seam; until they get
-/// there, this is where they look it up.
+/// itself. One path is the exception: offline replay re-analysis
+/// re-simulates a recorded match *itself* rather than through a
+/// session, so it needs the engine support directly. It is on the way
+/// to the seam (video export already made the trip); until it gets
+/// there, this is where it looks the support up.
 pub static MGBA_SEATS: LazyLock<Vec<tango_backend_mgba::Seat>> = LazyLock::new(|| {
     let mut seats: Vec<tango_backend_mgba::Seat> = Vec::new();
     #[cfg(feature = "gamesupport-bcc")]

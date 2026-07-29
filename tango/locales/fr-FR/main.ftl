@@ -102,6 +102,13 @@ settings-window-size = Taille de la fenêtre
 settings-fullscreen = Plein écran
 settings-ui-scale = Échelle de l'interface
 settings-fractional-scaling = Mise à l'échelle fractionnaire
+settings-group-ds = Nintendo DS
+settings-ds-screen-stacking = Disposition
+settings-ds-screen-stacking-horizontal = Horizontale
+settings-ds-screen-stacking-vertical = Verticale
+settings-ds-primary-screen = Écran principal
+settings-ds-primary-screen-upper = Écran supérieur
+settings-ds-primary-screen-touch = Écran tactile
 settings-hide-emulator-border = Masquer la bordure de l'émulateur
 
 # Auto Battle Data editor
@@ -311,6 +318,8 @@ input-key-left = Gauche
 input-key-right = Droite
 input-key-a = A
 input-key-b = B
+input-key-x = X
+input-key-y = Y
 input-key-l = L
 input-key-r = R
 input-key-start = Start

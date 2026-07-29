@@ -179,7 +179,7 @@ fn setup_grip_plate(theme: &iced::Theme) -> iced::widget::container::Style {
 pub(crate) fn view<'a>(p: &'a PvpSession, ctx: Ctx<'a>) -> Element<'a, SessionMessage> {
     let Ctx { lang, state, .. } = ctx;
     let now = iced::time::Instant::now();
-    let frame = framebuffer_view(state, ctx.fractional_scaling, ctx.effect);
+    let frame = framebuffer_view(ctx, None);
     let panes = state.pvp_panes.as_ref();
     // A claimed slot reserves its drawer's current width, so a resize
     // drag walks the emulator's edge along with the pane's.

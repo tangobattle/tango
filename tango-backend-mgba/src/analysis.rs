@@ -105,9 +105,6 @@ pub fn standard_usage_fold() -> UsageFold {
 
 use crate::{GameSupport, PrimeConfig};
 
-/// Cap on priming ticks, mirroring the live engine's bound.
-const MAX_PRIME_TICKS: u32 = 3600;
-
 /// Everything [`analyze`] needs. All fields are in **absolute** player
 /// order (core 0 runs player 0's game), which is how the caller should
 /// orient the replay's local/remote pairs using
@@ -148,53 +145,22 @@ pub fn analyze(
         inputs,
         usage,
     } = config;
-    let [rom0, rom1] = roms;
-    let [save0, save1] = saves;
-
-    crate::install_logger();
-    let mut pair = mgba_rollback::Link::with_options(mgba_rollback::LinkOptions {
-        sides: vec![
-            mgba_rollback::SideOptions {
-                rom: rom0,
-                save: Some(save0),
-            },
-            mgba_rollback::SideOptions {
-                rom: rom1,
-                save: Some(save1),
-            },
-        ],
-        rtc: Some(rtc),
-        peripheral: mgba_rollback::Peripheral::Cable,
-    })?;
-    // Nothing reads the pixels — skip rasterization on both cores.
-    pair.set_frameskip(0, i32::MAX);
-    pair.set_frameskip(1, i32::MAX);
-
-    let prime_config = PrimeConfig {
-        match_type,
-        rng_seed,
-        // Presentation-only (audio is never read here), and gameplay-neutral
-        // either way — see `PrimeConfig::disable_bgm`.
-        disable_bgm: false,
-    };
-    let lifecycle = crate::telemetry::LifecycleSink::new();
-    let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
-    // Cores own their primer traps — see [`mgba_rollback::Link::set_traps`]
-    // for why any other ownership dangles at core teardown.
-    pair.set_traps(0, support[0].primer_traps(&prime_config, 0, &lifecycle, &primed[0]));
-    pair.set_traps(1, support[1].primer_traps(&prime_config, 1, &lifecycle, &primed[1]));
-
-    let mut prime_ticks = 0;
-    while !(primed[0].is_set() && primed[1].is_set()) {
-        if prime_ticks >= MAX_PRIME_TICKS {
-            return Err(crate::Error::PrimeTimeout(MAX_PRIME_TICKS));
-        }
-        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-            return Err(crate::Error::Cancelled);
-        }
-        pair.tick(&[0, 0]);
-        prime_ticks += 1;
-    }
+    let (mut pair, lifecycle) = crate::backend::boot_pair(
+        roms,
+        saves,
+        support,
+        &PrimeConfig {
+            match_type,
+            rng_seed,
+            // Presentation-only (audio is never read here), and gameplay-neutral
+            // either way — see `PrimeConfig::disable_bgm`.
+            disable_bgm: false,
+        },
+        rtc,
+        // Nothing reads the pixels — skip rasterization on both cores.
+        false,
+        Some(cancel),
+    )?;
 
     let (mut observer, store) = crate::telemetry::Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
     let mut builder = StatsBuilder::new(usage);

@@ -38,9 +38,9 @@ pub mod throttler;
 pub use audio::{AudioDrain, Drained, SideSource};
 pub use solo::{Console, Solo, SoloConfig};
 pub use engine::Match;
-pub use link::{Backend, Link, PeerRom, Screen, ScreenLayout, Side, Snapshot, StartConfig};
+pub use link::{Backend, FrameTiming, Link, PeerRom, Screen, ScreenLayout, Side, Snapshot, StartConfig};
 pub use replay::{
-    BootedReplay, Capture, LiveFrames, Replay, ReplayBoot, ReplayConfig, ReplaySet, SeekStep, StatsPass,
+    BootedReplay, Capture, LiveFrames, Playback, Replay, ReplayBoot, ReplayConfig, ReplaySet, SeekStep, StatsPass,
 };
 pub use input::HostInput;
 

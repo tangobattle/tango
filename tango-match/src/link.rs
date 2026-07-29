@@ -204,12 +204,13 @@ pub trait Backend: Sync {
     /// match exists so a host can lay out its pane.
     fn screen_layout(&self) -> ScreenLayout;
 
-    /// The console's native video frame rate, in frames per second —
-    /// known, like the layout, before a match exists: hosts pace their
-    /// drive loops and size their audio streams around it. The GBA's
+    /// The console's native frame clock — known, like the layout,
+    /// before a match exists: hosts pace their drive loops and size
+    /// their audio streams around its [`fps`](FrameTiming::fps), and a
+    /// video encoder timestamps frames by the exact rational. The GBA's
     /// rate is not a round 60, and the DS's differs again, so nothing
     /// above an engine may hardcode one.
-    fn expected_fps(&self) -> f64;
+    fn frame_timing(&self) -> FrameTiming;
 
     /// Boot a pair, prime it into a link battle, and start the rollback
     /// session over it.
@@ -244,6 +245,30 @@ pub trait Backend: Sync {
     fn open_replay(&self, config: crate::ReplayConfig) -> Result<crate::ReplaySet, crate::Error> {
         let _ = config;
         Err(crate::Error::Unsupported("this game has no replay support"))
+    }
+}
+
+/// One video frame's length on the console's own clock, as an exact
+/// rational: a frame lasts `frame_duration / timescale` seconds.
+///
+/// A rational rather than a rate, because a video encoder timestamps
+/// frames in integer clock ticks — a rate rounded through a float
+/// accumulates drift over a long recording, where the console's own
+/// cycle counts don't. Everything that wants the rate takes
+/// [`fps`](FrameTiming::fps) of it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct FrameTiming {
+    /// Ticks of the console's clock per second.
+    pub timescale: u32,
+    /// Clock ticks one video frame lasts.
+    pub frame_duration: u64,
+}
+
+impl FrameTiming {
+    /// The frame rate the rational reduces to — what hosts pace their
+    /// drive loops and size their audio streams around.
+    pub fn fps(&self) -> f64 {
+        self.timescale as f64 / self.frame_duration as f64
     }
 }
 

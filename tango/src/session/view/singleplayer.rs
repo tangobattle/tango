@@ -9,7 +9,7 @@ use crate::session::Message as SessionMessage;
 pub(crate) fn view<'a>(s: &'a SinglePlayerSession, ctx: Ctx<'a>) -> Element<'a, SessionMessage> {
     let Ctx { lang, state, .. } = ctx;
     let now = iced::time::Instant::now();
-    let frame = framebuffer_view(state, ctx.fractional_scaling, ctx.effect);
+    let frame = framebuffer_view(ctx, None);
     let body = emulator_body(s.local_game(), frame, ctx.hide_emulator_border, [None, None]);
     let mut stacked = stack![body];
     if state.controls_anim.visible(now) {

@@ -41,6 +41,32 @@ fn accent_choice(lang: &LanguageIdentifier, accent: config::AccentColor) -> Choi
 
 /// A [`config::RelayMode`] as a pick_list [`Choice`], labeled in the
 /// UI language.
+fn ds_screen_stacking_choice(
+    lang: &LanguageIdentifier,
+    stacking: config::DsScreenStacking,
+) -> Choice<config::DsScreenStacking> {
+    Choice::new(
+        stacking,
+        match stacking {
+            config::DsScreenStacking::Horizontal => t!(lang, "settings-ds-screen-stacking-horizontal"),
+            config::DsScreenStacking::Vertical => t!(lang, "settings-ds-screen-stacking-vertical"),
+        },
+    )
+}
+
+fn ds_primary_screen_choice(
+    lang: &LanguageIdentifier,
+    primary: config::DsPrimaryScreen,
+) -> Choice<config::DsPrimaryScreen> {
+    Choice::new(
+        primary,
+        match primary {
+            config::DsPrimaryScreen::Upper => t!(lang, "settings-ds-primary-screen-upper"),
+            config::DsPrimaryScreen::Touch => t!(lang, "settings-ds-primary-screen-touch"),
+        },
+    )
+}
+
 fn relay_mode_choice(lang: &LanguageIdentifier, mode: config::RelayMode) -> Choice<config::RelayMode> {
     Choice::new(
         mode,
@@ -184,6 +210,11 @@ pub enum Message {
     TogglePatchAutoupdate(bool),
     VideoFilterChanged(String),
     ToggleFractionalScaling(bool),
+    /// New DS screen arrangement picked. Applied at draw time, so an
+    /// active session re-lays out immediately.
+    DsScreenStackingChanged(config::DsScreenStacking),
+    /// New DS primary screen picked — same draw-time application.
+    DsPrimaryScreenChanged(config::DsPrimaryScreen),
     ToggleHideEmulatorBorder(bool),
     ToggleFullscreen(bool),
     /// New windowed size picked, as `(width, height)`.
@@ -248,6 +279,8 @@ pub enum ConfigChange {
     PatchAutoupdate(bool),
     VideoFilter(String),
     FractionalScaling(bool),
+    DsScreenStacking(config::DsScreenStacking),
+    DsPrimaryScreen(config::DsPrimaryScreen),
     HideEmulatorBorder(bool),
     Fullscreen(bool),
     Resolution(f32, f32),
@@ -305,6 +338,8 @@ impl State {
             Message::TogglePatchAutoupdate(b) => Some(ConfigChange::PatchAutoupdate(b)),
             Message::VideoFilterChanged(s) => Some(ConfigChange::VideoFilter(s)),
             Message::ToggleFractionalScaling(b) => Some(ConfigChange::FractionalScaling(b)),
+            Message::DsScreenStackingChanged(s) => Some(ConfigChange::DsScreenStacking(s)),
+            Message::DsPrimaryScreenChanged(s) => Some(ConfigChange::DsPrimaryScreen(s)),
             Message::ToggleHideEmulatorBorder(b) => Some(ConfigChange::HideEmulatorBorder(b)),
             Message::ToggleFullscreen(b) => Some(ConfigChange::Fullscreen(b)),
             Message::ResolutionChanged((w, h)) => Some(ConfigChange::Resolution(w, h)),
@@ -760,6 +795,31 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
                 ),
             ],
         ),
+        settings_group(
+            t!(lang, "settings-group-ds"),
+            vec![
+                option_row::<Message>(t!(lang, "settings-ds-screen-stacking"), {
+                    let options = vec![
+                        ds_screen_stacking_choice(lang, config::DsScreenStacking::Horizontal),
+                        ds_screen_stacking_choice(lang, config::DsScreenStacking::Vertical),
+                    ];
+                    let selected = options.iter().find(|c| c.value == config.ds_screen_stacking).cloned();
+                    widgets::picker(options, selected, |c: Choice<config::DsScreenStacking>| {
+                        Message::DsScreenStackingChanged(c.value)
+                    })
+                }),
+                option_row::<Message>(t!(lang, "settings-ds-primary-screen"), {
+                    let options = vec![
+                        ds_primary_screen_choice(lang, config::DsPrimaryScreen::Upper),
+                        ds_primary_screen_choice(lang, config::DsPrimaryScreen::Touch),
+                    ];
+                    let selected = options.iter().find(|c| c.value == config.ds_primary_screen).cloned();
+                    widgets::picker(options, selected, |c: Choice<config::DsPrimaryScreen>| {
+                        Message::DsPrimaryScreenChanged(c.value)
+                    })
+                }),
+            ],
+        ),
     ]
     .spacing(24)
     .padding(style::PANE_PADDING)
@@ -882,47 +942,50 @@ fn settings_input<'a>(
     ]
     .spacing(2);
 
-    // Start/Select: small pills below the D-pad, Start on top and
-    // nudged right — flattening the real console's slanted pair.
-    // Face labels stay literal like the silkscreen (localized names
-    // appear on the bezel caption when selected).
+    let left_col = column![dpad];
+
+    // Face buttons: the DS diamond — X top, Y left, A right, B bottom —
+    // which keeps the GBA's pair where it always was (A on the right, B
+    // low) and adds the DS-only two in the spots the console puts them.
+    use iced::alignment::{Horizontal as Ax, Vertical as Ay};
+    let ab_d = 40.0;
+    let face_key = |label: &'static str, k: input::MappedKey| {
+        key_btn(text(label).size(style::TEXT_HEADING).into(), k, ab_d, ab_d, 999.0.into())
+    };
+    // A square housing with one key pinned to the midpoint of each
+    // edge. Stacked full-size layers rather than rows so X and B tuck
+    // into the vertical space beside Y and A — adjacent keys sit
+    // ~51px apart center-to-center on the diagonal (an ~11px gap)
+    // instead of three full button-rows of height.
+    let diamond_box = 112.0;
+    let place = |el, ax, ay| {
+        container(el)
+            .width(Length::Fixed(diamond_box))
+            .height(Length::Fixed(diamond_box))
+            .align_x(ax)
+            .align_y(ay)
+    };
+    let diamond = iced::widget::stack![
+        place(face_key("X", input::MappedKey::X), Ax::Center, Ay::Top),
+        place(face_key("Y", input::MappedKey::Y), Ax::Left, Ay::Center),
+        place(face_key("A", input::MappedKey::A), Ax::Right, Ay::Center),
+        place(face_key("B", input::MappedKey::B), Ax::Center, Ay::Bottom),
+    ];
+    // Start/Select: small pills below the face diamond, plainly
+    // stacked — the DS face layout. Face labels stay literal like the
+    // silkscreen (localized names appear on the bezel caption when
+    // selected).
     let pill = |label: &'static str, k: input::MappedKey| {
         key_btn(text(label).size(TEXT_CAPTION).into(), k, 64.0, 20.0, 999.0.into())
     };
     let start_select = column![
-        row![Space::new().width(12.0), pill("START", input::MappedKey::Start)],
+        pill("START", input::MappedKey::Start),
         pill("SELECT", input::MappedKey::Select),
     ]
     .spacing(5);
-    let left_col = column![dpad, start_select].spacing(16);
-
-    // A/B: round keys on a diagonal, A raised on the right. The
-    // little always-on dot above them is the power LED.
-    let ab_d = 46.0;
-    let ab = row![
-        column![
-            Space::new().height(20.0),
-            key_btn(
-                text("B").size(style::TEXT_HEADING).into(),
-                input::MappedKey::B,
-                ab_d,
-                ab_d,
-                999.0.into()
-            ),
-        ],
-        column![
-            key_btn(
-                text("A").size(style::TEXT_HEADING).into(),
-                input::MappedKey::A,
-                ab_d,
-                ab_d,
-                999.0.into()
-            ),
-            Space::new().height(20.0),
-        ],
-    ]
-    .spacing(8);
-    let right_col = column![ab].spacing(18).align_x(iced::Alignment::End);
+    let right_col = column![diamond, start_select]
+        .spacing(18)
+        .align_x(iced::Alignment::Center);
 
     // The screen shows the selected key's bindings — chips + the
     // add/capture flow the old table rows carried — or a hint when
@@ -1078,6 +1141,8 @@ fn mapped_key_label(lang: &LanguageIdentifier, k: input::MappedKey) -> String {
         input::MappedKey::Right => t!(lang, "input-key-right"),
         input::MappedKey::A => t!(lang, "input-key-a"),
         input::MappedKey::B => t!(lang, "input-key-b"),
+        input::MappedKey::X => t!(lang, "input-key-x"),
+        input::MappedKey::Y => t!(lang, "input-key-y"),
         input::MappedKey::L => t!(lang, "input-key-l"),
         input::MappedKey::R => t!(lang, "input-key-r"),
         input::MappedKey::Start => t!(lang, "input-key-start"),

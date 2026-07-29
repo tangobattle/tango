@@ -637,11 +637,6 @@ impl Replay {
             .max_by_key(|s| s.tick())
     }
 
-    /// The tick of the latest capture strictly before `tick`, which is
-    /// where a clip export can pick up instead of simulating from boot.
-    pub fn capture_before(&self, tick: u32) -> Option<u32> {
-        self.nearest_capture(tick.checked_sub(1)?).map(|s| s.tick())
-    }
 }
 
 /// One seat of the playback pair, as the source the shared audio drain
@@ -830,6 +825,15 @@ impl ReplaySet {
         ))
     }
 
+    /// Boot a bare linear pass over the recording: the pair alone, no
+    /// seek machinery, no telemetry, and no capture per tick — for a
+    /// host re-simulating front to back, which is what a video export
+    /// is. Blocks for the priming walk.
+    pub fn linear(&self) -> Result<Playback, crate::Error> {
+        let booted = self.boot.boot(false, &self.cancel)?;
+        Ok(Playback::new(booted.link, self.inputs.clone()))
+    }
+
     /// Boot the statistics pass. Blocks for the priming walk.
     pub fn stats(&self) -> Result<StatsPass, crate::Error> {
         let booted = self.boot.boot(true, &self.cancel)?;
@@ -898,6 +902,12 @@ pub struct ReplayConfig {
     /// Record where each round after the first begins, for the scrub
     /// bar's round marks.
     pub want_round_marks: bool,
+    /// Silence the games' battle BGM, for a render whose viewer wants
+    /// the sound effects without the music. Purely presentation: the
+    /// sound driver's state never feeds battle logic, so the input
+    /// stream re-simulates identically either way, and an engine with
+    /// no such lever ignores it.
+    pub disable_bgm: bool,
 }
 
 #[cfg(test)]

@@ -26,6 +26,11 @@ pub const SCREEN_HEIGHT: u32 = 160;
 /// hardware bits, plus the two sides' nicknames for the chip captions.
 struct InputDisplay {
     pairs: Vec<(u16, u16)>,
+    /// Recorded (local, remote) touch positions per tick, in the touch
+    /// screen's own pixels. Empty — not all-`None` — for a stream with
+    /// no touches anywhere (every GBA replay), so the common case
+    /// costs nothing.
+    touches: Vec<(Option<(u16, u16)>, Option<(u16, u16)>)>,
     nicknames: (String, String),
 }
 
@@ -192,6 +197,7 @@ impl ReplaySession {
 
         let nickname_of =
             |side: Option<&tango_replay::metadata::Side>| side.map(|s| s.nickname.clone()).unwrap_or_default();
+        let widen_touch = |touch: Option<(u8, u8)>| touch.map(|(x, y)| (x as u16, y as u16));
         let input_display = Box::new(InputDisplay {
             pairs: replay
                 .inputs
@@ -203,6 +209,15 @@ impl ReplaySession {
                     )
                 })
                 .collect(),
+            touches: if replay.inputs.iter().any(|row| row.iter().any(|i| i.touch.is_some())) {
+                replay
+                    .inputs
+                    .iter()
+                    .map(|&row| (widen_touch(row[local_player].touch), widen_touch(row[1 - local_player].touch)))
+                    .collect()
+            } else {
+                Vec::new()
+            },
             nicknames: (nickname_of(replay.local_side()), nickname_of(replay.remote_side())),
         });
 
@@ -253,6 +268,8 @@ impl ReplaySession {
                 },
                 want_stats: stats_job.is_some(),
                 want_round_marks: discover_marks,
+                // The games' own audio is the point of watching one.
+                disable_bgm: false,
             })?);
         if let Some(discovered) = set.round_marks() {
             // The pass writes into its own list; hand the session that
@@ -448,6 +465,17 @@ impl ReplaySession {
             .unwrap_or((0, 0))
     }
 
+    /// The recorded (local, remote) touch positions behind the frame
+    /// at `tick`, in the touch screen's own pixels — same playhead
+    /// coordinate as [`Self::input_at`]. `None` for a side that wasn't
+    /// touching, and always for a console with no touch screen.
+    pub fn touch_at(&self, tick: u32) -> (Option<(u16, u16)>, Option<(u16, u16)>) {
+        tick.checked_sub(1)
+            .and_then(|i| self.input_display.touches.get(i as usize))
+            .copied()
+            .unwrap_or((None, None))
+    }
+
     /// (local, remote) nicknames from the replay metadata — the
     /// input display chips' captions. Either may be empty.
     pub fn nicknames(&self) -> (&str, &str) {
@@ -508,14 +536,19 @@ impl ReplaySession {
         &self.engine.seek
     }
 
-    /// The whole-pair snapshot best suited to jump-start a clip export
-    /// at playhead tick `start`: the latest capture strictly *before*
-    /// it (keyframe store ∪ rewind ring), so the clip's first frame is
+    /// The whole-pair capture best suited to jump-start a clip export
+    /// at playhead tick `start`: the latest one strictly *before* it
+    /// (keyframe store ∪ rewind ring), so the clip's first frame is
     /// still produced by a stepped tick rather than promised from a
     /// framebuffer we can't re-emit. `None` means the export falls
     /// back to simulating from boot.
-    pub fn clip_start_tick(&self, start: u32) -> Option<u32> {
-        self.engine.playback.lock().unwrap().as_ref()?.capture_before(start)
+    pub fn clip_start_capture(&self, start: u32) -> Option<Arc<tango_match::Capture>> {
+        self.engine
+            .playback
+            .lock()
+            .unwrap()
+            .as_ref()?
+            .nearest_capture(start.checked_sub(1)?)
     }
 
     /// The captured snapshot nearest `target`, if any — backs the hover

@@ -12,7 +12,9 @@
 
 use serde::{Deserialize, Serialize};
 
-pub use tango_library::config::{AccentColor, RelayMode, ThemeMode, DATA_DIR_NAME, FILE_NAME};
+pub use tango_library::config::{
+    AccentColor, DsPrimaryScreen, DsScreenStacking, RelayMode, ThemeMode, DATA_DIR_NAME, FILE_NAME,
+};
 
 const QUALIFIER: &str = "net";
 const ORGANIZATION: &str = "n1gp";

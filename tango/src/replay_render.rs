@@ -20,7 +20,7 @@ pub use tango_replay_renderer::{container, Canceller, Clip, Error, Request};
 /// ([`crate::tabs::replays`]) owns the [`Canceller`] and renders the
 /// progress.
 pub fn render(
-    request: &Request<'_>,
+    request: Request<'_>,
     output_path: &std::path::Path,
     canceller: &Canceller,
     progress_callback: impl Fn(usize, usize),

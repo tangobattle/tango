@@ -1,6 +1,13 @@
 //! Turning a recorded replay back into video: re-simulates it through
-//! [`tango_backend_mgba::playback`] and feeds the frames and audio to
-//! [`encoder_facade`], which encodes and muxes them into a video file.
+//! the seam's replay path ([`tango_match::ReplaySet`]) and feeds the
+//! frames and audio to [`encoder_facade`], which encodes and muxes them
+//! into a video file.
+//!
+//! Engine-neutral on purpose: the boot comes from the game's own
+//! [`tango_match::Backend`] — the same registration the player watches
+//! replays through — and everything read back (RGBA8 frames, interleaved
+//! audio, the console's screen layout and frame clock) is the seam's,
+//! so a GBA replay and a DS replay render through the same pipeline.
 //!
 //! Nothing here picks an encoder or opens a file. [`encoder_facade`]
 //! starts whichever encoder the target has (ffmpeg subprocesses
@@ -34,8 +41,8 @@ pub enum Error {
     Encoder(#[from] encoder_facade::Error),
     /// Booting, priming, or restoring the re-simulation pair.
     #[error(transparent)]
-    Engine(#[from] tango_backend_mgba::Error),
-    /// A replay naming a side the two-core pair doesn't have.
+    Engine(#[from] tango_match::Error),
+    /// A replay naming a side the two-seat pair doesn't have.
     #[error("bad local player index {0}")]
     BadLocalPlayer(usize),
     /// [`Render::pump`] called after it reported [`Progress::Done`].
@@ -65,10 +72,17 @@ pub fn container(lossless: bool) -> encoder_facade::Container {
     }
 }
 
-/// Translate a render's scale choice into encoder settings.
-/// `width_screens` is the output width in GBA screens (1 one-sided, 2
-/// side-by-side), with one audio track per screen.
-fn encoder_settings(scale: Option<usize>, width_screens: u32, audio_tracks: usize) -> encoder_facade::Settings {
+/// Translate a render's choices into encoder settings. `width` and
+/// `height` are the composed frame's native size; `timing` is the
+/// console's exact frame clock
+/// ([`tango_match::Backend::frame_timing`]).
+fn encoder_settings(
+    scale: Option<usize>,
+    width: u32,
+    height: u32,
+    timing: tango_match::FrameTiming,
+    audio_tracks: usize,
+) -> encoder_facade::Settings {
     let lossless = scale.is_none();
     encoder_facade::Settings {
         video: encoder_facade::VideoSettings {
@@ -82,12 +96,12 @@ fn encoder_settings(scale: Option<usize>, width_screens: u32, audio_tracks: usiz
                     encoder_facade::H264Quality::Crf(18)
                 },
             },
-            width: mgba::gba::SCREEN_WIDTH * width_screens,
-            height: mgba::gba::SCREEN_HEIGHT,
+            width,
+            height,
             scale: scale.unwrap_or(1) as u32,
             keyframe_interval: KEYFRAME_INTERVAL,
-            timescale: TIMESCALE,
-            frame_duration: FRAME_DURATION,
+            timescale: timing.timescale,
+            frame_duration: timing.frame_duration,
             // An RGB H.264 stream can't carry these at all.
             color: (!lossless).then_some(encoder_facade::ColorInfo::SRGB_FULL),
         },
@@ -114,12 +128,6 @@ const SAMPLE_RATE: f64 = 48000.0;
 
 const AUDIO_CHANNELS: usize = 2;
 
-/// The GBA frame clock: 280896 cycles at 2^24 Hz, stated as a timebase
-/// so the encoder can time frames exactly rather than in rounded
-/// milliseconds.
-const TIMESCALE: u32 = 16_777_216;
-const FRAME_DURATION: u64 = 280_896;
-
 /// Frames between keyframes — about half a second, which is what the
 /// old flag string forced and fine granularity for scrubbing a replay.
 const KEYFRAME_INTERVAL: u32 = 30;
@@ -144,21 +152,20 @@ pub struct Clip {
     /// (the same coordinates as the player's readout).
     pub start: u32,
     pub end: u32,
-    /// A whole-pair savestate at a tick strictly before `start` (from
+    /// A whole-pair capture at a tick strictly before `start` (from
     /// the player's keyframe store) to jump-start the re-sim at
     /// instead of simulating from boot. Without one the prefix
     /// simulates unwritten, same as a deselected round.
     ///
-    /// A savestate restore replaces the priming-time pokes, so callers
+    /// A capture restore replaces the priming-time pokes, so callers
     /// wanting BGM muted must pass `None` and eat the full re-sim.
-    pub snapshot: Option<Arc<tango_backend_mgba::playback::Snapshot>>,
-    /// Inter-round transition ticks ([`tango_replay::Replay`]'s
-    /// `round_starts` minus the leading 0, or the player's discovered
-    /// boundaries for recordings that predate the markers). The round
-    /// ordinal at any tick — for `rounds_mask` indexing and chapter
-    /// titles — is the count of marks at or before it; a jump-started
-    /// pair couldn't answer that from live telemetry, so no render
-    /// runs any.
+    pub snapshot: Option<Arc<tango_match::Capture>>,
+    /// Inter-round transition ticks (the recording's own round marks,
+    /// or the player's discovered boundaries for recordings that
+    /// predate the markers). The round ordinal at any tick — for
+    /// `rounds_mask` indexing and chapter titles — is the count of
+    /// marks at or before it; a jump-started pair couldn't answer that
+    /// from live telemetry, so no render runs any.
     pub round_marks: Vec<u32>,
 }
 
@@ -177,14 +184,15 @@ impl std::fmt::Debug for Clip {
 /// look. Everything a render needs that isn't an encoder, an output, or
 /// a way to report back.
 pub struct Request<'a> {
-    /// Both sides' ROMs, saves and match settings — the same boot the
-    /// player uses, so the re-sim reproduces the recorded match.
-    pub config: &'a tango_backend_mgba::playback::BootConfig,
-    /// The recorded input stream, one pair per tick.
-    pub inputs: &'a [[u32; 2]],
-    /// Which side the replay was recorded from. Its screen and audio
-    /// track come first.
-    pub local_player: usize,
+    /// The game's engine door — the recording's local seat, the same
+    /// registration the player watches it through. The boot, the
+    /// screen layout, and the frame clock all come from here, which is
+    /// what keeps this crate ignorant of emulators.
+    pub backend: &'a dyn tango_match::Backend,
+    /// The recording's own header — the same boot the player uses, so
+    /// the re-sim reproduces the recorded match. Its `local_player`
+    /// names the side whose screen and audio track come first.
+    pub config: tango_match::ReplayConfig,
     /// Which rounds to write, indexed by [`Clip::round_marks`]
     /// interval. Unselected rounds still simulate; they just aren't
     /// written.
@@ -199,11 +207,13 @@ pub struct Request<'a> {
     /// presents it: one slider whose leftmost stop is lossless.
     /// `None` renders losslessly at native size; `Some(n)` renders an
     /// `n`-times nearest-neighbor upscale.
-    pub scale: Option<usize>,
-    /// Render both screens side by side, local perspective on the
-    /// left, with an audio track each — instead of the local screen
-    /// alone.
     pub twosided: bool,
+    /// Render both seats — local perspective first — with an audio
+    /// track each, instead of the local screen alone. A single-screen
+    /// console's seats sit side by side; a multi-screen console (the
+    /// DS) already fills its row with its own screens, so its seats
+    /// stack vertically.
+    pub scale: Option<usize>,
 }
 
 /// Where a [`Render::pump`] left the render.
@@ -227,10 +237,68 @@ enum Phase {
     Finished,
 }
 
-/// A running render of an SIO replay ([`tango_replay::VERSION`]).
+/// One audio track's offline rate conversion: samples staged at the
+/// console's own rate, read out at the output's. The same linear
+/// interpolation the live session plays through, minus the servo — an
+/// export isn't paced, so the ratio is fixed and the whole stage
+/// converts every take.
+#[derive(Default)]
+struct Resampler {
+    /// Interleaved stereo at the console's rate.
+    source: Vec<i16>,
+    /// Fractional read position into `source`, in frames.
+    cursor: f64,
+}
+
+impl Resampler {
+    fn feed(&mut self, samples: &[i16]) {
+        self.source.extend_from_slice(samples);
+    }
+
+    /// Convert everything staged into `out` at `step` source frames per
+    /// output frame, keeping the tail frame the cursor still
+    /// interpolates from. Returns output frames written.
+    fn take(&mut self, step: f64, out: &mut Vec<i16>) -> usize {
+        out.clear();
+        if !step.is_finite() || step <= 0.0 {
+            return 0;
+        }
+        let available = self.source.len() / 2;
+        let mut written = 0;
+        loop {
+            let i = self.cursor as usize;
+            if i + 1 >= available {
+                break;
+            }
+            let frac = self.cursor - i as f64;
+            for channel in 0..2 {
+                let a = self.source[i * 2 + channel] as f64;
+                let b = self.source[(i + 1) * 2 + channel] as f64;
+                out.push((a + (b - a) * frac) as i16);
+            }
+            written += 1;
+            self.cursor += step;
+        }
+        let consumed = (self.cursor as usize).min(available);
+        if consumed > 0 {
+            self.source.drain(..consumed * 2);
+            self.cursor -= consumed as f64;
+        }
+        written
+    }
+
+    /// Forget everything staged — for a write gap's restart, so a new
+    /// span doesn't open on the tail of a span the viewer never saw.
+    fn reset(&mut self) {
+        self.source.clear();
+        self.cursor = 0.0;
+    }
+}
+
+/// A running render of a recorded match.
 ///
 /// One linear pair re-sim produces both perspectives at once, so the
-/// two-sided layout is a compose of the two framebuffers rather than a
+/// two-sided layout is a compose of the two seats' frames rather than a
 /// second simulation. A tick reaches the encoders when it's inside the
 /// clip's span AND its round is selected in [`Request::rounds_mask`] —
 /// the same ordering as a render form's round checkboxes, which come
@@ -238,7 +306,7 @@ enum Phase {
 /// aren't written. Each written round becomes a chapter in the output
 /// container.
 pub struct Render<W: Writer> {
-    playback: tango_backend_mgba::playback::Playback,
+    playback: tango_match::Playback,
     session: encoder_facade::Session,
     /// The container bytes' destination, wrapped in the appender +
     /// fixup applier every render needs from it. Taken at the close,
@@ -258,11 +326,19 @@ pub struct Render<W: Writer> {
     /// write, so the re-sim stops rather than simulating the tail.
     last_selected: Option<usize>,
 
-    vbuf: Vec<u8>,
-    composed_vbuf: Vec<u8>,
+    /// One seat's canvas — the seam's canonical composition (screens
+    /// left to right) — and where each seat's lands in the output
+    /// frame.
+    side_size: (u32, u32),
+    /// Two-sided seats stack vertically rather than side by side (the
+    /// multi-screen console).
+    vertical: bool,
+    /// The composed output frame, at its native (unscaled) size.
+    frame: Vec<u8>,
+
+    scratch: Vec<i16>,
     samples: Vec<i16>,
-    resamplers: [mgba::audio::AudioResampler; 2],
-    dest_buffers: [mgba::audio::OwnedAudioBuffer; 2],
+    resamplers: [Resampler; 2],
     prev_should_write: bool,
 
     /// Chapter bookkeeping, in output frames: the open chapter's
@@ -284,14 +360,13 @@ impl<W: Writer> Render<W> {
     /// the output opens last, so a broken encoder can't truncate a file
     /// it will never fill.
     pub fn new(
-        request: &Request<'_>,
+        request: Request<'_>,
         open_output: impl FnOnce() -> encoder_facade::Result<W>,
         canceller: &Canceller,
     ) -> Result<Self> {
-        let &Request {
+        let Request {
+            backend,
             config,
-            inputs,
-            local_player,
             rounds_mask,
             round_titles,
             clip,
@@ -299,38 +374,50 @@ impl<W: Writer> Render<W> {
             twosided,
         } = request;
         canceller.check()?;
+        let local_player = config.local_player;
         if local_player >= 2 {
             return Err(Error::BadLocalPlayer(local_player));
         }
 
-        let (width_screens, audio_tracks) = if twosided { (2, 2) } else { (1, 1) };
-        let session = encoder_facade::Session::new(encoder_settings(scale, width_screens, audio_tracks), canceller)?;
+        // One seat's canvas is its screens side by side; the output
+        // frame is one canvas, or two composed per the seat layout.
+        let layout = backend.screen_layout();
+        let side_size = (
+            layout.screens.iter().map(|s| s.width).sum::<u32>(),
+            layout.screens.iter().map(|s| s.height).max().unwrap_or(0),
+        );
+        let vertical = layout.screens.len() > 1;
+        let (width, height) = match (twosided, vertical) {
+            (false, _) => side_size,
+            (true, false) => (side_size.0 * 2, side_size.1),
+            (true, true) => (side_size.0, side_size.1 * 2),
+        };
+
+        let audio_tracks = if twosided { 2 } else { 1 };
+        let session = encoder_facade::Session::new(
+            encoder_settings(scale, width, height, backend.frame_timing(), audio_tracks),
+            canceller,
+        )?;
         let output = encoder_facade::Output::new(open_output()?);
 
         // Boot + prime. This is encoder-free but bounded (~a few hundred
         // ticks), and it's the one part of a render that can't be
         // sliced: the pair primes by running until its traps say it's
         // there.
-        let lifecycle = tango_backend_mgba::telemetry::LifecycleSink::new();
-        let mut playback = tango_backend_mgba::playback::Playback::new(config, Arc::new(inputs.to_vec()), &lifecycle)?;
+        let mut playback = backend.open_replay(config)?.linear()?;
         // Drop the audio priming piled up (nothing drained during boot).
-        for i in 0..2 {
-            playback.pair_mut().core_mut(i).audio_buffer().clear();
-        }
+        playback.discard_audio();
 
-        // Jump-start a clip from its snapshot: the pair skips straight to
+        // Jump-start a clip from its capture: the pair skips straight to
         // the capture tick and only the (≤ one keyframe interval) gap to
         // the span start simulates unwritten.
-        if let Some(snap) = clip.snapshot.as_deref() {
-            if snap.tick() < clip.start {
-                playback.load(snap)?;
-                for i in 0..2 {
-                    playback.pair_mut().core_mut(i).audio_buffer().clear();
-                }
+        if let Some(capture) = clip.snapshot.as_deref() {
+            if capture.tick() < clip.start {
+                playback.load(capture)?;
+                playback.discard_audio();
             }
         }
 
-        let (w, h) = (mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT);
         let progress_base = playback.cursor() as usize;
         let progress_total = (clip.end as usize)
             .min(playback.total() as usize)
@@ -348,14 +435,12 @@ impl<W: Writer> Render<W> {
             rounds_mask: rounds_mask.to_vec(),
             round_titles: round_titles.to_vec(),
             last_selected: rounds_mask.iter().rposition(|&s| s),
-            vbuf: vec![0u8; (w * h * 4) as usize],
-            composed_vbuf: vec![0u8; (w * 2 * h * 4) as usize],
-            samples: vec![0i16; SAMPLE_RATE as usize],
-            resamplers: [mgba::audio::AudioResampler::new(), mgba::audio::AudioResampler::new()],
-            dest_buffers: [
-                mgba::audio::OwnedAudioBuffer::new(0x4000, AUDIO_CHANNELS as u32),
-                mgba::audio::OwnedAudioBuffer::new(0x4000, AUDIO_CHANNELS as u32),
-            ],
+            side_size,
+            vertical,
+            frame: vec![0u8; (width * height * 4) as usize],
+            scratch: vec![0i16; 16384 * AUDIO_CHANNELS],
+            samples: Vec::new(),
+            resamplers: [Resampler::default(), Resampler::default()],
             prev_should_write: false,
             frames_written: 0,
             chapters: vec![],
@@ -440,46 +525,51 @@ impl<W: Writer> Render<W> {
             self.open_chapter = Some((cur_round, self.frames_written));
         }
         if should_write && !self.prev_should_write {
-            for (r, d) in self.resamplers.iter_mut().zip(self.dest_buffers.iter_mut()) {
-                *r = mgba::audio::AudioResampler::new();
-                d.clear();
+            for r in &mut self.resamplers {
+                r.reset();
             }
         }
         self.prev_should_write = should_write;
 
-        // Drain + resample each core's tick of audio; blit its frame.
-        // Track/screen order: local perspective first.
+        // Drain + resample each seat's tick of audio; blit its frame.
+        // Track/screen order: local perspective first. An unwritten
+        // tick still drains — the consoles' own rings are small, and
+        // sound left there would open the next span as a stale burst —
+        // it just goes nowhere.
         let order: [usize; 2] = [self.local_player, 1 - self.local_player];
-        for (slot, &core_idx) in order.iter().enumerate() {
+        for (slot, &seat) in order.iter().enumerate() {
             if !self.twosided && slot > 0 {
                 break;
             }
-            let pair = self.playback.pair_mut();
-            let n = {
-                let core = pair.core_mut(core_idx);
-                let core_rate = core.audio_sample_rate() as f64;
-                let core_buffer = core.audio_buffer();
-                self.resamplers[slot].set_source(core_buffer, core_rate, true);
-                self.resamplers[slot].set_destination(&mut self.dest_buffers[slot], SAMPLE_RATE);
-                self.resamplers[slot].process();
-                let cap = self.samples.len() / AUDIO_CHANNELS;
-                let frames = self.dest_buffers[slot].available().min(cap);
-                self.dest_buffers[slot].read(&mut self.samples[..frames * AUDIO_CHANNELS], frames);
-                frames
-            };
+            let mut side = self.playback.side(seat);
+            let rate = side.audio_sample_rate();
+            loop {
+                let drained = side.drain_audio(&mut self.scratch);
+                self.resamplers[slot].feed(&self.scratch[..drained.written * AUDIO_CHANNELS]);
+                if drained.written == 0 {
+                    break;
+                }
+            }
+            let n = self.resamplers[slot].take(rate / SAMPLE_RATE, &mut self.samples);
             if should_write {
                 self.session.write_audio(slot, &self.samples[..n * AUDIO_CHANNELS])?;
-                if let Some(fb) = pair.video_buffer(core_idx) {
-                    mgba::gba::bgr555_to_rgba8(fb, &mut self.vbuf);
-                    if self.twosided {
-                        blit_screen(&mut self.composed_vbuf, slot, &self.vbuf);
-                    }
+                if let Some(fb) = side.frame() {
+                    let origin = match (slot, self.vertical) {
+                        (0, _) => (0, 0),
+                        (_, false) => (self.side_size.0 as usize, 0),
+                        (_, true) => (0, self.side_size.1 as usize),
+                    };
+                    let width = if self.twosided && !self.vertical {
+                        self.side_size.0 as usize * 2
+                    } else {
+                        self.side_size.0 as usize
+                    };
+                    blit_side(&mut self.frame, width, origin, self.side_size, &fb);
                 }
             }
         }
         if should_write {
-            let frame = if self.twosided { &self.composed_vbuf } else { &self.vbuf };
-            self.session.write_video(frame)?;
+            self.session.write_video(&self.frame)?;
             self.frames_written += 1;
         }
         // Whatever the encoders have finished goes to the output as
@@ -511,7 +601,7 @@ impl<W: Writer> Render<W> {
 /// spare wants. A browser host drives [`Render`] from its event loop
 /// instead; see the module docs.
 pub fn render<W: Writer>(
-    request: &Request<'_>,
+    request: Request<'_>,
     open_output: impl FnOnce() -> encoder_facade::Result<W>,
     canceller: &Canceller,
     progress_callback: impl Fn(usize, usize),
@@ -526,13 +616,17 @@ pub fn render<W: Writer>(
     }
 }
 
-/// Copy one screen's RGBA pixels into the `slot`-th half of a
-/// side-by-side frame — both tightly packed, the destination two
-/// screens wide.
-fn blit_screen(dst: &mut [u8], slot: usize, src: &[u8]) {
-    let stride = mgba::gba::SCREEN_WIDTH as usize * 4;
-    for (row, line) in src.chunks_exact(stride).enumerate() {
-        let at = row * stride * 2 + slot * stride;
+/// Copy one seat's frame onto the output frame at `origin`. The seam's
+/// frame buffer is already the canonical composition — one row-major
+/// RGBA8 bitmap, the console's screens left to right
+/// ([`tango_match::Side::frame`]) — so a seat blits as a single image
+/// of `side` dimensions. A short buffer (a seat that hasn't drawn yet)
+/// blits the rows it has and leaves the rest.
+fn blit_side(dst: &mut [u8], dst_width: usize, origin: (usize, usize), side: (u32, u32), src: &[u8]) {
+    let (x, y) = origin;
+    let stride = side.0 as usize * 4;
+    for (row, line) in src.chunks_exact(stride).take(side.1 as usize).enumerate() {
+        let at = ((y + row) * dst_width + x) * 4;
         dst[at..at + stride].copy_from_slice(line);
     }
 }
@@ -541,32 +635,78 @@ fn blit_screen(dst: &mut [u8], slot: usize, src: &[u8]) {
 mod tests {
     use super::*;
 
-    /// Each screen lands in its own half, row for row — a compose that
-    /// slipped by a row or a slot would still fill the frame, so the
-    /// check is per-pixel rather than "something got written".
+    /// Every pixel says which seat and row it came from, so a blit that
+    /// slipped by a row or a slot still fills the frame but fails the
+    /// per-pixel check. Row-major, like the seam's composed frame.
+    fn seat_frame(tag: u8, w: usize, h: usize) -> Vec<u8> {
+        (0..w * h).flat_map(|i| [tag, (i / w) as u8, (i % w) as u8, 0xff]).collect()
+    }
+
+    /// A single-screen console's two seats land side by side, row for
+    /// row.
     #[test]
-    fn a_composed_frame_keeps_each_screen_on_its_own_side() {
-        let (w, h) = (mgba::gba::SCREEN_WIDTH as usize, mgba::gba::SCREEN_HEIGHT as usize);
-        // Every pixel says which row it came from, so a shift shows up.
-        let screen = |tag: u8| -> Vec<u8> {
-            (0..w * h)
-                .flat_map(|i| [tag, (i / w) as u8, (i % w) as u8, 0xff])
-                .collect()
-        };
-        let (left, right) = (screen(1), screen(2));
+    fn single_screen_seats_compose_side_by_side() {
+        let (w, h) = (240usize, 160usize);
+        let (left, right) = (seat_frame(1, w, h), seat_frame(2, w, h));
         let mut composed = vec![0u8; w * 2 * h * 4];
-        blit_screen(&mut composed, 0, &left);
-        blit_screen(&mut composed, 1, &right);
+        blit_side(&mut composed, w * 2, (0, 0), (w as u32, h as u32), &left);
+        blit_side(&mut composed, w * 2, (w, 0), (w as u32, h as u32), &right);
 
         for row in 0..h {
             let line = &composed[row * w * 2 * 4..(row + 1) * w * 2 * 4];
             assert_eq!(&line[..w * 4], &left[row * w * 4..(row + 1) * w * 4], "row {row} left");
+            assert_eq!(&line[w * 4..], &right[row * w * 4..(row + 1) * w * 4], "row {row} right");
+        }
+    }
+
+    /// A multi-screen console's seats stack vertically, and each seat's
+    /// frame passes through as the one row-major bitmap the seam
+    /// composed it as ([`tango_match::Side::frame`]) — a blit that
+    /// re-read it as per-screen blocks wove the two screens into
+    /// stripes.
+    #[test]
+    fn multi_screen_seats_stack_vertically() {
+        // A DS-shaped seat: two 8-wide screens already composed into a
+        // 16-wide row-major frame by the engine.
+        let (w, h) = (16usize, 4usize);
+        let (top, bottom) = (seat_frame(1, w, h), seat_frame(2, w, h));
+        let mut composed = vec![0u8; w * h * 2 * 4];
+        blit_side(&mut composed, w, (0, 0), (w as u32, h as u32), &top);
+        blit_side(&mut composed, w, (0, h), (w as u32, h as u32), &bottom);
+
+        for row in 0..h {
+            let line = |y: usize| &composed[y * w * 4..(y + 1) * w * 4];
+            assert_eq!(line(row), &top[row * w * 4..(row + 1) * w * 4], "top seat row {row}");
             assert_eq!(
-                &line[w * 4..],
-                &right[row * w * 4..(row + 1) * w * 4],
-                "row {row} right"
+                line(row + h),
+                &bottom[row * w * 4..(row + 1) * w * 4],
+                "bottom seat row {row}"
             );
         }
     }
-}
 
+    /// A seat that hasn't drawn yet hands back an empty buffer; the
+    /// blit leaves the frame alone rather than panicking or smearing.
+    #[test]
+    fn an_undrawn_seat_blits_nothing() {
+        let mut composed = vec![7u8; 240 * 160 * 4];
+        blit_side(&mut composed, 240, (0, 0), (240, 160), &[]);
+        assert!(composed.iter().all(|&b| b == 7));
+    }
+
+    /// The offline resampler holds the ratio: 32768 Hz in, 48 kHz out,
+    /// and the output length tracks input × ratio with only the
+    /// interpolation tail withheld.
+    #[test]
+    fn the_resampler_holds_its_ratio() {
+        let mut resampler = Resampler::default();
+        let mut out = Vec::new();
+        let mut total = 0usize;
+        for _ in 0..100 {
+            resampler.feed(&vec![100i16; 548 * 2]);
+            total += resampler.take(32768.0 / 48000.0, &mut out);
+        }
+        let want = (548.0 * 100.0 * 48000.0 / 32768.0) as usize;
+        assert!(total.abs_diff(want) < 4, "{total} output frames for {want} expected");
+    }
+}

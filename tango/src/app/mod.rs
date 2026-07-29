@@ -1318,15 +1318,7 @@ impl App {
                     let (snapshot, round_marks) = self
                         .session
                         .active_as::<session::replay::ReplaySession>()
-                        .map(|s| {
-                            // The renderer still wants an engine
-                            // snapshot to skip ahead to, which a
-                            // session no longer holds. Until the
-                            // renderer moves to the seam, a clip
-                            // re-simulates from boot.
-                            let _ = s.clip_start_tick(start);
-                            (None, s.round_boundaries())
-                        })
+                        .map(|s| (s.clip_start_capture(start), s.round_boundaries()))
                         .unwrap_or_default();
                     let clip = crate::replay_render::Clip {
                         start,
@@ -1776,6 +1768,8 @@ impl App {
                 self.config.fractional_scaling,
                 self.config.hide_emulator_border,
                 self.config.show_replay_inputs,
+                self.config.ds_screen_stacking,
+                self.config.ds_primary_screen,
                 clip_job,
                 self.replays.queue.len(),
                 crate::platform::video::effects::effect_for(&self.config.video_filter),

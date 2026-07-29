@@ -38,12 +38,12 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
 pub(crate) fn view<'a>(s: &'a TrainingSession, ctx: Ctx<'a>) -> Element<'a, SessionMessage> {
     let Ctx { lang, state, .. } = ctx;
     let now = iced::time::Instant::now();
-    let frame = framebuffer_view(state, ctx.fractional_scaling, ctx.effect);
+    let frame = framebuffer_view(ctx, None);
     let body = emulator_body(s.local_game(), frame, ctx.hide_emulator_border, [None, None]);
     let mut stacked = stack![body];
     // Opponent-screen PiP — outside the controls gate, so it doesn't tuck
     // away with the idle cursor (same treatment as replay).
-    if let Some(o) = pip_overlay(state) {
+    if let Some(o) = pip_overlay(ctx, None) {
         stacked = stacked.push(o);
     }
     if state.controls_anim.visible(now) {

@@ -107,30 +107,53 @@ pub async fn run(path: std::path::PathBuf, name: String) {
 async fn render(path: &std::path::Path, name: &str, canceller: &Canceller) -> Result<(), String> {
     let replay = crate::library::read_replay(path)?;
     let (games, roms) = crate::playback::resolve(&replay)?;
+    let local_player = replay.local_player_index as usize;
 
-    // The same boot the player uses, so the render reproduces the
-    // recorded match rather than a similar one.
-    let config = tango_backend_mgba::r#match::playback::BootConfig {
-        roms: [roms[0].to_vec(), roms[1].to_vec()],
-        saves: replay.srams.clone(),
-        support: [games[0].pvp, games[1].pvp],
-        match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
-        rng_seed: replay.rng_seed,
-        rtc: replay.rtc_time(),
-        // The games' own audio is the point of a video.
-        disable_bgm: false,
-    };
-    let inputs: Vec<[u32; 2]> = replay.inputs.iter().map(|&row| row.map(|i| i.keys as u32)).collect();
+    // The replay's input stream is already absolute pair order — just
+    // widen into the seam's vocabulary.
+    let inputs: Vec<[tango_match::HostInput; 2]> = replay
+        .inputs
+        .iter()
+        .map(|&row| {
+            row.map(|input| tango_match::HostInput {
+                keys: input.keys as u32,
+                touch: input.touch.map(|(x, y)| (x as u16, y as u16)),
+            })
+        })
+        .collect();
     if inputs.is_empty() {
         return Err("this recording has no frames".into());
     }
+    let total_ticks = inputs.len() as u32;
+
+    // The same boot the player uses, so the render reproduces the
+    // recorded match rather than a similar one — through the local
+    // seat's own engine door.
+    let backend = games[local_player].pvp;
+    let config = tango_match::ReplayConfig {
+        roms: [roms[0].to_vec(), roms[1].to_vec()],
+        saves: replay.srams.clone(),
+        inputs: std::sync::Arc::new(inputs),
+        rng_seed: replay.rng_seed,
+        rtc: replay.rtc_time(),
+        match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
+        local_player,
+        peer_rom: tango_match::PeerRom {
+            code: *games[1 - local_player].rom_code,
+            revision: games[1 - local_player].revision,
+        },
+        want_stats: false,
+        want_round_marks: false,
+        // The games' own audio is the point of a video.
+        disable_bgm: false,
+    };
 
     // Whole replay, every round. The desktop's export form lets you
     // pick a clip and deselect rounds; on a phone the useful answer is
     // "the match".
     let clip = Clip {
         start: 0,
-        end: inputs.len() as u32 - 1,
+        end: total_ticks - 1,
         snapshot: None,
         // `round_starts` includes the leading 0; the marks are the
         // *transitions*, so it goes.
@@ -147,9 +170,8 @@ async fn render(path: &std::path::Path, name: &str, canceller: &Canceller) -> Re
     let round_titles: Vec<String> = (1..=rounds).map(|n| format!("Round {n}")).collect();
 
     let request = Request {
-        config: &config,
-        inputs: &inputs,
-        local_player: replay.local_player_index as usize,
+        backend,
+        config,
         rounds_mask: &rounds_mask,
         round_titles: &round_titles,
         clip: &clip,
@@ -160,8 +182,8 @@ async fn render(path: &std::path::Path, name: &str, canceller: &Canceller) -> Re
     // Booting the re-sim pair blocks; let the screen show the progress
     // bar before it does.
     yield_to_page().await;
-    log::info!("export: booting the re-simulation for {} ticks", inputs.len());
-    let mut render = Render::new(&request, || Ok(Cursor::new(Vec::new())), canceller).map_err(|e| e.to_string())?;
+    log::info!("export: booting the re-simulation for {total_ticks} ticks");
+    let mut render = Render::new(request, || Ok(Cursor::new(Vec::new())), canceller).map_err(|e| e.to_string())?;
 
     loop {
         match render.pump(SLICE_TICKS).map_err(|e| e.to_string())? {

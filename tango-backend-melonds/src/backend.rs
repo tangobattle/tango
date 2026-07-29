@@ -44,8 +44,14 @@ impl tango_match::Backend for DsBackend {
         crate::link::screen_layout()
     }
 
-    fn expected_fps(&self) -> f64 {
-        crate::link::EXPECTED_FPS
+    fn frame_timing(&self) -> tango_match::FrameTiming {
+        // The DS frame clock: 280095 scanline-pair cycles against its
+        // 16.756991 MHz half-rate tick — the exact rational behind
+        // [`EXPECTED_FPS`](crate::link::EXPECTED_FPS).
+        tango_match::FrameTiming {
+            timescale: 16_756_991,
+            frame_duration: 280_095,
+        }
     }
 
     fn start(&self, config: tango_match::StartConfig) -> Result<tango_match::Match, tango_match::Error> {

@@ -942,21 +942,38 @@ impl App {
                 let cb = move |current: usize, total: usize| {
                     let _ = cb_tx.unbounded_send((current, total));
                 };
-                let inputs: Vec<[u32; 2]> = replay.inputs.iter().map(|&row| row.map(|i| i.keys as u32)).collect();
-                let config = tango_backend_mgba::playback::BootConfig {
+                let local_player = replay.local_player_index as usize;
+                // The replay's input stream is already absolute pair
+                // order — just widen into the seam's vocabulary.
+                let inputs: Vec<[tango_match::HostInput; 2]> = replay
+                    .inputs
+                    .iter()
+                    .map(|&row| {
+                        row.map(|input| tango_match::HostInput {
+                            keys: input.keys as u32,
+                            touch: input.touch.map(|(x, y)| (x as u16, y as u16)),
+                        })
+                    })
+                    .collect();
+                let total_ticks = inputs.len() as u32;
+                // The same boot the player uses, through the local
+                // seat's own engine door — which engine that is stays
+                // the game's business.
+                let backend = games[local_player].pvp;
+                let config = tango_match::ReplayConfig {
                     roms,
                     saves: replay.srams.clone(),
-                    // Video export re-simulates on the mgba engine; the
-                    // export button is only offered for those replays.
-                    support: [
-                        tango_library::game::mgba_support(games[0].rom_code, games[0].revision)
-                            .expect("export offered for an mgba game"),
-                        tango_library::game::mgba_support(games[1].rom_code, games[1].revision)
-                            .expect("export offered for an mgba game"),
-                    ],
-                    match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
+                    inputs: std::sync::Arc::new(inputs),
                     rng_seed: replay.rng_seed,
                     rtc: replay.rtc_time(),
+                    match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
+                    local_player,
+                    peer_rom: tango_match::PeerRom {
+                        code: *games[1 - local_player].rom_code,
+                        revision: games[1 - local_player].revision,
+                    },
+                    want_stats: false,
+                    want_round_marks: false,
                     disable_bgm: user_settings.disable_bgm,
                 };
                 // A whole-replay export is the degenerate clip covering
@@ -974,7 +991,7 @@ impl App {
                     None => (
                         crate::replay_render::Clip {
                             start: 0,
-                            end: inputs.len() as u32,
+                            end: total_ticks,
                             snapshot: None,
                             round_marks: replay.round_starts.iter().skip(1).map(|&i| i as u32).collect(),
                         },
@@ -985,16 +1002,15 @@ impl App {
                     clip.snapshot = None;
                 }
                 let request = crate::replay_render::Request {
-                    config: &config,
-                    inputs: &inputs,
-                    local_player: replay.local_player_index as usize,
+                    backend,
+                    config,
                     rounds_mask: &rounds_mask,
                     round_titles: &round_titles,
                     clip: &clip,
                     scale: scale_arg,
                     twosided: user_settings.twosided,
                 };
-                let result = crate::replay_render::render(&request, &output_for_thread, &canceller_thread, cb)
+                let result = crate::replay_render::render(request, &output_for_thread, &canceller_thread, cb)
                     .map(|()| output_for_thread)
                     .map_err(|e| format!("{e}"));
                 *done_arc_thread.lock().unwrap() = Some(result);
@@ -1121,6 +1137,8 @@ impl App {
             }
             C::VideoFilter(s) => self.config.video_filter = s,
             C::FractionalScaling(b) => self.config.fractional_scaling = b,
+            C::DsScreenStacking(s) => self.config.ds_screen_stacking = s,
+            C::DsPrimaryScreen(s) => self.config.ds_primary_screen = s,
             C::HideEmulatorBorder(b) => self.config.hide_emulator_border = b,
             C::Fullscreen(b) => {
                 self.config.fullscreen = b;

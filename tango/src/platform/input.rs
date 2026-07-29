@@ -378,6 +378,10 @@ pub struct Mapping {
     pub right: Vec<PhysicalInput>,
     pub a: Vec<PhysicalInput>,
     pub b: Vec<PhysicalInput>,
+    /// DS only — GBA engines mask the bit off.
+    pub x: Vec<PhysicalInput>,
+    /// DS only — GBA engines mask the bit off.
+    pub y: Vec<PhysicalInput>,
     pub l: Vec<PhysicalInput>,
     pub r: Vec<PhysicalInput>,
     pub start: Vec<PhysicalInput>,
@@ -417,6 +421,10 @@ impl Default for Mapping {
             ],
             a: vec![key(Code::KeyZ), btn(GamepadButton::South)],
             b: vec![key(Code::KeyX), btn(GamepadButton::East)],
+            // DS face pair; pad positions complete the diamond (DS X
+            // on top, Y on the left).
+            x: vec![key(Code::KeyQ), btn(GamepadButton::North)],
+            y: vec![key(Code::KeyW), btn(GamepadButton::West)],
             l: vec![key(Code::KeyA), btn(GamepadButton::LeftShoulder)],
             r: vec![key(Code::KeyS), btn(GamepadButton::RightShoulder)],
             start: vec![key(Code::Enter), btn(GamepadButton::Start)],
@@ -437,6 +445,8 @@ impl Mapping {
             MappedKey::Right => &self.right,
             MappedKey::A => &self.a,
             MappedKey::B => &self.b,
+            MappedKey::X => &self.x,
+            MappedKey::Y => &self.y,
             MappedKey::L => &self.l,
             MappedKey::R => &self.r,
             MappedKey::Start => &self.start,
@@ -453,6 +463,8 @@ impl Mapping {
             MappedKey::Right => &mut self.right,
             MappedKey::A => &mut self.a,
             MappedKey::B => &mut self.b,
+            MappedKey::X => &mut self.x,
+            MappedKey::Y => &mut self.y,
             MappedKey::L => &mut self.l,
             MappedKey::R => &mut self.r,
             MappedKey::Start => &mut self.start,
@@ -479,6 +491,8 @@ impl Mapping {
             | bit_if(&self.right, keys::RIGHT)
             | bit_if(&self.a, keys::A)
             | bit_if(&self.b, keys::B)
+            | bit_if(&self.x, keys::X)
+            | bit_if(&self.y, keys::Y)
             | bit_if(&self.l, keys::L)
             | bit_if(&self.r, keys::R)
             | bit_if(&self.start, keys::START)
@@ -500,6 +514,8 @@ pub enum MappedKey {
     Right,
     A,
     B,
+    X,
+    Y,
     L,
     R,
     Start,

@@ -19,6 +19,9 @@
 //! `tango-match`'s — one engine for the cable and the DS's wireless
 //! alike. What is mgba-shaped here is everything before the session's
 //! first tick: the boot, the primer traps, and the audio bring-up.
+//! Replay playback and offline re-analysis re-run the same walk
+//! ([`boot_pair`]) — priming is a pure function of ROM/save/rtc, so a
+//! re-simulation reaches the state the live match started from.
 //!
 //! [`Backend::start`]: tango_match::Backend::start
 //!
@@ -26,10 +29,11 @@
 //! supports is a two-player link battle, so this engine is two-player
 //! throughout: the pair of cores IS the link.)
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use mgba_rollback::{LinkOptions, Peripheral, SideOptions};
 
-use crate::playback;
-use crate::telemetry::Telemetry;
+use crate::telemetry::{LifecycleSink, Telemetry};
 use crate::{GameSupport, PrimeConfig};
 
 /// One cartridge in a family, keyed as its ROM header names it.
@@ -70,28 +74,16 @@ impl GbaBackend {
 
     /// Both seats' support in seat order, which is not the same as
     /// local-and-peer: seat 0 is player 0 whoever that is.
-    fn seats(&self, config: &tango_match::StartConfig) -> [&'static (dyn GameSupport + Send + Sync); 2] {
-        let mut seats = [self.local, self.peer(config.peer_rom)];
-        if config.local_player == 1 {
+    fn seats(
+        &self,
+        peer_rom: tango_match::PeerRom,
+        local_player: usize,
+    ) -> [&'static (dyn GameSupport + Send + Sync); 2] {
+        let mut seats = [self.local, self.peer(peer_rom)];
+        if local_player == 1 {
             seats.swap(0, 1);
         }
         seats
-    }
-
-    fn boot_config(&self, config: &tango_match::ReplayConfig) -> playback::BootConfig {
-        let mut support = [self.local, self.peer(config.peer_rom)];
-        if config.local_player == 1 {
-            support.swap(0, 1);
-        }
-        playback::BootConfig {
-            roms: config.roms.clone(),
-            saves: config.saves.clone(),
-            support,
-            match_type: config.match_type,
-            rng_seed: config.rng_seed,
-            rtc: config.rtc,
-            disable_bgm: false,
-        }
     }
 }
 
@@ -100,8 +92,13 @@ impl tango_match::Backend for GbaBackend {
         crate::link::screen_layout()
     }
 
-    fn expected_fps(&self) -> f64 {
-        crate::link::EXPECTED_FPS
+    fn frame_timing(&self) -> tango_match::FrameTiming {
+        // The GBA frame clock: 280896 cycles at 2^24 Hz — the exact
+        // rational behind [`EXPECTED_FPS`](crate::link::EXPECTED_FPS).
+        tango_match::FrameTiming {
+            timescale: 16_777_216,
+            frame_duration: 280_896,
+        }
     }
 
     /// Boot the pair, prime both games to their link battle, and start
@@ -111,53 +108,24 @@ impl tango_match::Backend for GbaBackend {
     /// initial state.
     fn start(&self, config: tango_match::StartConfig) -> Result<tango_match::Match, tango_match::Error> {
         assert!(config.local_player < 2);
-        let support = self.seats(&config);
+        let support = self.seats(config.peer_rom, config.local_player);
 
-        crate::install_logger();
-        let mut pair = mgba_rollback::Link::with_options(LinkOptions {
-            sides: vec![
-                SideOptions {
-                    rom: config.roms[0].to_vec(),
-                    save: Some(config.saves[0].unwrap_or_default().to_vec()),
-                },
-                SideOptions {
-                    rom: config.roms[1].to_vec(),
-                    save: Some(config.saves[1].unwrap_or_default().to_vec()),
-                },
+        let (mut pair, lifecycle) = boot_pair(
+            [config.roms[0].to_vec(), config.roms[1].to_vec()],
+            [
+                config.saves[0].unwrap_or_default().to_vec(),
+                config.saves[1].unwrap_or_default().to_vec(),
             ],
-            rtc: Some(config.rtc),
-            peripheral: Peripheral::Cable,
-        })
-        .map_err(crate::Error::from)?;
-
-        let prime_config = PrimeConfig {
-            match_type: config.match_type,
-            rng_seed: config.rng_seed,
-            disable_bgm: config.disable_bgm,
-        };
-        let lifecycle = crate::telemetry::LifecycleSink::new();
-        let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
-        // The cores own their primer traps (see [`mgba_rollback::Link::set_traps`]):
-        // core teardown walks the trap component, so the traps must live
-        // exactly as long as their cores. They stay installed for the
-        // pair's life — inert once primed, since their boot/menu addresses
-        // never execute in battle.
-        pair.set_traps(0, support[0].primer_traps(&prime_config, 0, &lifecycle, &primed[0]));
-        pair.set_traps(1, support[1].primer_traps(&prime_config, 1, &lifecycle, &primed[1]));
-
-        // Prime both cores to their link battle. The traps do all the
-        // driving (each core's walk its own menu state machine); the
-        // pads stay idle throughout. Priming is done when both games'
-        // own battle-start code has fired.
-        let mut prime_ticks = 0;
-        while !(primed[0].is_set() && primed[1].is_set()) {
-            if prime_ticks >= MAX_PRIME_TICKS {
-                return Err(tango_match::Error::PrimeTimeout(MAX_PRIME_TICKS));
-            }
-            pair.tick(&[0, 0]);
-            prime_ticks += 1;
-        }
-        log::info!("pvp: primed to link battle in {prime_ticks} ticks");
+            support.map(|s| s as &dyn GameSupport),
+            &PrimeConfig {
+                match_type: config.match_type,
+                rng_seed: config.rng_seed,
+                disable_bgm: config.disable_bgm,
+            },
+            config.rtc,
+            true,
+            None,
+        )?;
 
         // Audio bring-up, host-side only (sample buffers aren't in
         // savestates, so the simulation is unaffected — but do it
@@ -198,13 +166,24 @@ impl tango_match::Backend for GbaBackend {
     }
 
     fn open_replay(&self, config: tango_match::ReplayConfig) -> Result<tango_match::ReplaySet, tango_match::Error> {
-        let boot = self.boot_config(&config);
+        let support = self.seats(config.peer_rom, config.local_player);
         // The pass reads chip use off the *local* seat's cart, which is
         // the one whose statistics a viewer is being shown.
         let usage = config
             .want_stats
-            .then(|| boot.support[config.local_player].usage_fold(&boot.roms[config.local_player]));
-        Ok(tango_match::ReplaySet::new(&config, usage, playback::Boot(boot)))
+            .then(|| support[config.local_player].usage_fold(&config.roms[config.local_player]));
+        let boot = Boot {
+            roms: config.roms.clone(),
+            saves: config.saves.clone(),
+            support,
+            prime: PrimeConfig {
+                match_type: config.match_type,
+                rng_seed: config.rng_seed,
+                disable_bgm: config.disable_bgm,
+            },
+            rtc: config.rtc,
+        };
+        Ok(tango_match::ReplaySet::new(&config, usage, boot))
     }
 }
 
@@ -212,3 +191,119 @@ impl tango_match::Backend for GbaBackend {
 /// link battle. Real bring-up is ~470 ticks (BN6); this is generous
 /// headroom for slower families without hanging forever on a wedge.
 const MAX_PRIME_TICKS: u32 = 3600;
+
+/// Build a pair and prime both games to their link battle — the walk
+/// every simulation of a match starts with: live netplay, replay
+/// playback, and offline re-analysis ([`crate::analysis::analyze`]).
+///
+/// The traps do all the driving (each core's walk its own menu state
+/// machine); the pads stay idle throughout. Priming is done when both
+/// games' own battle-start code has fired. With `render` unset both
+/// cores skip rasterization, for a pass nothing watches. Flipping
+/// `cancel` mid-walk fails it with [`Error::Cancelled`](crate::Error).
+///
+/// The returned [`LifecycleSink`] is the one the primer traps report
+/// round lifecycle into — hand it to [`Telemetry::new`] to observe the
+/// simulation, or drop it to leave it a write-only stub.
+pub(crate) fn boot_pair(
+    roms: [Vec<u8>; 2],
+    saves: [Vec<u8>; 2],
+    support: [&dyn GameSupport; 2],
+    prime: &PrimeConfig,
+    rtc: std::time::SystemTime,
+    render: bool,
+    cancel: Option<&AtomicBool>,
+) -> Result<(mgba_rollback::Link, LifecycleSink), crate::Error> {
+    crate::install_logger();
+    let [rom0, rom1] = roms;
+    let [save0, save1] = saves;
+    let mut pair = mgba_rollback::Link::with_options(LinkOptions {
+        sides: vec![
+            SideOptions {
+                rom: rom0,
+                save: Some(save0),
+            },
+            SideOptions {
+                rom: rom1,
+                save: Some(save1),
+            },
+        ],
+        rtc: Some(rtc),
+        peripheral: Peripheral::Cable,
+    })?;
+    if !render {
+        pair.set_frameskip(0, i32::MAX);
+        pair.set_frameskip(1, i32::MAX);
+    }
+
+    let lifecycle = LifecycleSink::new();
+    let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
+    // The cores own their primer traps (see [`mgba_rollback::Link::set_traps`]):
+    // core teardown walks the trap component, so the traps must live
+    // exactly as long as their cores. They stay installed for the
+    // pair's life — inert once primed, since their boot/menu addresses
+    // never execute in battle.
+    pair.set_traps(0, support[0].primer_traps(prime, 0, &lifecycle, &primed[0]));
+    pair.set_traps(1, support[1].primer_traps(prime, 1, &lifecycle, &primed[1]));
+
+    // Prime both cores to their link battle.
+    let mut prime_ticks = 0;
+    while !(primed[0].is_set() && primed[1].is_set()) {
+        if prime_ticks >= MAX_PRIME_TICKS {
+            return Err(crate::Error::PrimeTimeout(MAX_PRIME_TICKS));
+        }
+        if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
+            return Err(crate::Error::Cancelled);
+        }
+        pair.tick(&[0, 0]);
+        prime_ticks += 1;
+    }
+    log::info!("pvp: primed to link battle in {prime_ticks} ticks");
+    Ok((pair, lifecycle))
+}
+
+/// The engine's replay boot ([`tango_match::ReplayBoot`]): prime a
+/// pair per the recording's own header, exactly as the live match did,
+/// and hand it over as the seam's link — with the game's telemetry
+/// wired when the stats pass asks for it. This is all the engine
+/// contributes to replays; the machinery above the boot is
+/// [`tango_match::ReplaySet`]'s.
+struct Boot {
+    /// Per-seat images as the recording stood, in absolute player
+    /// order (core 0 runs player 0's game).
+    roms: [Vec<u8>; 2],
+    saves: [Vec<u8>; 2],
+    support: [&'static (dyn GameSupport + Send + Sync); 2],
+    prime: PrimeConfig,
+    rtc: std::time::SystemTime,
+}
+
+impl tango_match::ReplayBoot for Boot {
+    fn boot(&self, observe: bool, cancel: &AtomicBool) -> Result<tango_match::BootedReplay, tango_match::Error> {
+        let (pair, lifecycle) = boot_pair(
+            self.roms.clone(),
+            self.saves.clone(),
+            self.support.map(|s| s as &dyn GameSupport),
+            &self.prime,
+            self.rtc,
+            true,
+            Some(cancel),
+        )
+        .map_err(tango_match::Error::from)?;
+        let (telemetry, handle) = if observe {
+            let (telemetry, handle) = Telemetry::new(
+                [self.support[0].core_poller(0), self.support[1].core_poller(1)],
+                lifecycle,
+            );
+            (Some(telemetry), Some(handle))
+        } else {
+            // The display pair pays for no pollers; its lifecycle sink
+            // is a write-only stub.
+            (None, None)
+        };
+        Ok(tango_match::BootedReplay {
+            link: Box::new(crate::Link::new(pair, telemetry)),
+            telemetry: handle,
+        })
+    }
+}

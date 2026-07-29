@@ -14,10 +14,9 @@
 //!   [`Console`](tango_match::Console).
 //! - [`backend`]: the [`tango_match::Backend`] a game registration
 //!   holds — netplay, solo, and replay playback all come out of it,
-//!   along with the live-match boot: prime the pair and start the
-//!   seam's rollback [`Match`](tango_match::Match).
-//! - [`playback`]: linear re-simulation of recorded matches, with
-//!   snapshot seeking.
+//!   along with the boot every simulation of a match starts with:
+//!   prime the pair and start the seam's rollback
+//!   [`Match`](tango_match::Match).
 //! - [`telemetry`]: per-tick RAM-poll telemetry with rollback
 //!   revocation.
 //! - [`analysis`]: match-stats types and the telemetry fold.
@@ -27,7 +26,6 @@
 pub mod analysis;
 pub mod backend;
 pub mod link;
-pub mod playback;
 pub mod solo;
 pub mod telemetry;
 

@@ -182,7 +182,20 @@ const POPOVER_LIFT: f32 = 12.0 + 16.0 + 32.0 + 4.0 + 4.0 + 26.0 + 2.0 + 6.0;
 pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, SessionMessage> {
     let Ctx { lang, state, .. } = ctx;
     let now = iced::time::Instant::now();
-    let frame = framebuffer_view(state, ctx.fractional_scaling, ctx.effect);
+    // While the input display is on, a recorded touch draws at its
+    // spot on the touch screen — the displayed perspective's touch on
+    // the main pane, the other side's on the PiP inset — following
+    // the swap toggle like the pad chips do.
+    let (touch_spot, pip_touch_spot) = if ctx.show_replay_inputs {
+        let (mut local, mut remote) = r.touch_at(playhead_tick(r, state));
+        if r.swap_perspective() {
+            std::mem::swap(&mut local, &mut remote);
+        }
+        (local, remote)
+    } else {
+        (None, None)
+    };
+    let frame = framebuffer_view(ctx, touch_spot);
     let body = emulator_body(r.local_game(), frame, ctx.hide_emulator_border, [None, None]);
     // Clicking the screen itself plays/pauses, like any video player.
     // This is the stack's bottom layer, and iced dispatches presses
@@ -219,7 +232,7 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
     // PiP: the opponent's screen while the bar toggle is on. Also
     // outside the controls gate — it's for watching, so it must not
     // tuck away with the idle cursor.
-    if let Some(o) = pip_overlay(state) {
+    if let Some(o) = pip_overlay(ctx, pip_touch_spot) {
         stacked = stacked.push(o);
     }
     if let Some(o) = scrub_thumbnail_overlay(state) {
@@ -896,7 +909,7 @@ const PAD_W: f32 = 160.0;
 /// molded plate, and a pressed key mixes toward palette primary —
 /// the same lit chrome as the settings' live binding test — so the
 /// chip never changes size or layout as inputs flip.
-fn input_pad<'a>(joyflags: u16) -> Element<'a, Message> {
+fn input_pad<'a>(joyflags: u16, ds: bool) -> Element<'a, Message> {
     use tango_session::keys;
     let cell = 24.0;
     let key = move |content: Element<'a, Message>, bit: u32, w: f32, h: f32, radius: iced::border::Radius| {
@@ -955,30 +968,49 @@ fn input_pad<'a>(joyflags: u16) -> Element<'a, Message> {
     .spacing(2);
 
     let pill = |label: &'static str, bit: u32| key(text(label).size(8.0).into(), bit, 44.0, 14.0, 999.0.into());
-    let start_select = column![
-        row![iced::widget::Space::new().width(8.0), pill("START", keys::START)],
-        pill("SELECT", keys::SELECT),
-    ]
-    .spacing(4);
-    let left_col = column![dpad, start_select].spacing(10);
+    // Start/Select below the face cluster, plainly stacked — the DS
+    // face arrangement, same as the settings shell draws.
+    let start_select = column![pill("START", keys::START), pill("SELECT", keys::SELECT)].spacing(4);
 
     let ab_d = 32.0;
-    let ab = row![
-        column![
-            iced::widget::Space::new().height(14.0),
-            key(text("B").size(TEXT_BODY).into(), keys::B, ab_d, ab_d, 999.0.into()),
-        ],
-        column![
-            key(text("A").size(TEXT_BODY).into(), keys::A, ab_d, ab_d, 999.0.into()),
-            iced::widget::Space::new().height(14.0),
-        ],
-    ]
-    .spacing(6);
+    let face_key =
+        |label: &'static str, bit: u32| key(text(label).size(TEXT_BODY).into(), bit, ab_d, ab_d, 999.0.into());
+    // The face cluster shows the recorded console's keys: a DS pad
+    // gets the full diamond (the settings shell's, at chip scale), a
+    // GBA pad keeps its two-key diagonal.
+    let cluster: Element<'a, Message> = if ds {
+        use iced::alignment::{Horizontal as Ax, Vertical as Ay};
+        let diamond_box = 90.0;
+        let place = |el, ax, ay| {
+            container(el)
+                .width(Length::Fixed(diamond_box))
+                .height(Length::Fixed(diamond_box))
+                .align_x(ax)
+                .align_y(ay)
+        };
+        iced::widget::stack![
+            place(face_key("X", keys::X), Ax::Center, Ay::Top),
+            place(face_key("Y", keys::Y), Ax::Left, Ay::Center),
+            place(face_key("A", keys::A), Ax::Right, Ay::Center),
+            place(face_key("B", keys::B), Ax::Center, Ay::Bottom),
+        ]
+        .into()
+    } else {
+        row![
+            column![iced::widget::Space::new().height(14.0), face_key("B", keys::B)],
+            column![face_key("A", keys::A), iced::widget::Space::new().height(14.0)],
+        ]
+        .spacing(6)
+        .into()
+    };
+    let right_col = column![cluster, start_select].spacing(10).align_x(Alignment::Center);
 
     let shoulder = |label: &'static str, bit: u32| key(text(label).size(9.0).into(), bit, 56.0, 15.0, 999.0.into());
     let shoulders = row![shoulder("L", keys::L), horizontal_space(), shoulder("R", keys::R)];
-    let face = row![left_col, horizontal_space(), ab].align_y(Alignment::Center);
-    column![shoulders, face].spacing(8).width(Length::Fixed(PAD_W)).into()
+    let face = row![dpad, horizontal_space(), right_col].align_y(Alignment::Center);
+    // The diamond needs more shell than the GBA diagonal.
+    let pad_w = if ds { 176.0 } else { PAD_W };
+    column![shoulders, face].spacing(8).width(Length::Fixed(pad_w)).into()
 }
 
 /// Replay-only: the input display overlay — one pad chip per side,
@@ -1007,13 +1039,15 @@ fn input_display_overlay<'a>(
         std::mem::swap(&mut local, &mut remote);
         std::mem::swap(&mut local_nick, &mut remote_nick);
     }
+    // Two screens = a DS = the pads draw the full face diamond.
+    let ds = r.screen_layout().screens.len() == 2;
     let chip = |joyflags: u16, nick: &str| -> Element<'a, Message> {
         // The caption renders even when the nickname is empty so the
         // two chips always match heights.
         let name = text(nick.to_string())
             .size(TEXT_CAPTION)
             .style(widgets::muted_text_style);
-        container(column![input_pad(joyflags), name].spacing(4).align_x(Alignment::Center))
+        container(column![input_pad(joyflags, ds), name].spacing(4).align_x(Alignment::Center))
             .padding([8, 10])
             .style(hud_chip_plate)
             .into()

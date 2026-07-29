@@ -80,6 +80,32 @@ pub enum AccentColor {
     BassPurple,
 }
 
+/// How a two-screen console's screens are arranged in the emulator
+/// pane. Pure presentation: the session always composes its frame the
+/// same way, and the frontend re-lays it out at draw time — which is
+/// what lets this switch take effect mid-session.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub enum DsScreenStacking {
+    /// Side by side. The default: two stacked 256-wide screens waste
+    /// most of a landscape display's width.
+    #[default]
+    Horizontal,
+    /// The console's own arrangement, one screen above the other.
+    Vertical,
+}
+
+/// Which DS screen leads the arrangement — sits on the left of a
+/// horizontal pair, or on top of a vertical stack. Presentation only,
+/// like [`DsScreenStacking`].
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub enum DsPrimaryScreen {
+    /// The console's upper screen — where these games put the battle.
+    #[default]
+    Upper,
+    /// The touch screen.
+    Touch,
+}
+
 /// Whether matchmaking connections may/must go through the TURN
 /// relay. `Auto` lets ICE pick the best route (direct when possible,
 /// relay as fallback); `Always` forces every candidate through the
@@ -147,6 +173,16 @@ pub struct Config {
     /// no bilinear shimmer at non-integer scales.
     #[serde(default)]
     pub fractional_scaling: bool,
+    /// How a DS game's two screens stack in the emulator pane.
+    /// Applied at draw time, so switching it mid-session re-lays the
+    /// pane out immediately. Ignored for single-screen consoles.
+    #[serde(default)]
+    pub ds_screen_stacking: DsScreenStacking,
+    /// Which DS screen leads the arrangement (left of a horizontal
+    /// pair, top of a vertical stack). Applied at draw time like
+    /// [`ds_screen_stacking`](Self::ds_screen_stacking).
+    #[serde(default)]
+    pub ds_primary_screen: DsPrimaryScreen,
     /// When true, hide the BNLC per-game background art that
     /// sits behind the framebuffer — fall back to a plain black
     /// backdrop instead. Default (false) shows the BNLC border
@@ -303,6 +339,8 @@ impl Default for Config {
             enable_patch_autoupdate: true,
             video_filter: String::new(),
             fractional_scaling: false,
+            ds_screen_stacking: DsScreenStacking::default(),
+            ds_primary_screen: DsPrimaryScreen::default(),
             hide_emulator_border: false,
             show_replay_inputs: false,
             show_opponent_pip: false,

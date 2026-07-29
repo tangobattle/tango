@@ -143,6 +143,12 @@ pub struct Ctx<'a> {
     pub fractional_scaling: bool,
     pub hide_emulator_border: bool,
     pub show_replay_inputs: bool,
+    /// How a DS session's two screens stack in the pane. Read live
+    /// from config, so the switch re-lays out an active session.
+    pub ds_screen_stacking: crate::config::DsScreenStacking,
+    /// Which DS screen leads the arrangement — live from config, like
+    /// the stacking.
+    pub ds_primary_screen: crate::config::DsPrimaryScreen,
     pub clip_job: Option<ClipJob<'a>>,
     /// How many replays are waiting behind this one. The queue itself lives
     /// in the replays tab; the transport bar only needs the count, to say so
@@ -158,6 +164,8 @@ pub fn view<'a>(
     fractional_scaling: bool,
     hide_emulator_border: bool,
     show_replay_inputs: bool,
+    ds_screen_stacking: crate::config::DsScreenStacking,
+    ds_primary_screen: crate::config::DsPrimaryScreen,
     clip_job: Option<ClipJob<'a>>,
     queued: usize,
     effect: &'static Effect,
@@ -171,6 +179,8 @@ pub fn view<'a>(
         fractional_scaling,
         hide_emulator_border,
         show_replay_inputs,
+        ds_screen_stacking,
+        ds_primary_screen,
         clip_job,
         queued,
         effect,
@@ -222,7 +232,14 @@ fn finish_session_stack<'a>(
 /// integer multiple (crisp, the default) or a smooth aspect-fit —
 /// using `responsive` for the pane size both need. Before the first
 /// frame, a 1×1 black placeholder keeps the pane opaque.
-fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'static Effect) -> Element<'a, Message> {
+fn framebuffer_view<'a>(
+    ctx: Ctx<'a>,
+    // A recorded touch to draw at its spot on the touch screen (the
+    // replay input display); `None` everywhere else.
+    touch_spot: Option<(u16, u16)>,
+) -> Element<'a, Message> {
+    let state = ctx.state;
+    let (fractional_scaling, effect) = (ctx.fractional_scaling, ctx.effect);
     // Post-filter framebuffer dimensions. Drive the scale math below;
     // match the (w, h) `build_frame_pixels` stamps into the frame the
     // `framebuffer` shader uploads.
@@ -230,30 +247,59 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
     // upscalers produced — and the effect's fragment shader magnifies the
     // native texture to fill it. Native size comes from the session,
     // which knows its console's screens from boot — a DS puts two
-    // 256-wide screens side by side where a GBA has one — so the pane
-    // holds the right shape before the first frame lands.
+    // 256-wide screens where a GBA has one — so the pane holds the
+    // right shape before the first frame lands.
     let scale = effect.scale;
-    let (native_w, native_h) = state
-        .active
-        .as_ref()
-        .map(|s| s.frame_size())
-        // Unreachable in practice — the app only renders this view over
-        // an active session — and an absent one draws only the black
-        // placeholder, where shape doesn't matter.
-        .unwrap_or((1, 1));
+    let layout = state.active.as_ref().map(|s| s.screen_layout());
+    // The session always composes multiple screens side by side, upper
+    // screen first; the arrangement settings are this view's re-layout
+    // of that frame (see `rearrange_screens`), taken live from config
+    // like the effect so flipping either re-lays out an active session
+    // immediately.
+    let multi = layout.as_ref().is_some_and(|layout| layout.screens.len() > 1);
+    let stacked = multi && ctx.ds_screen_stacking == crate::config::DsScreenStacking::Vertical;
+    let touch_first = multi && ctx.ds_primary_screen == crate::config::DsPrimaryScreen::Touch;
+    let (native_w, native_h) = match (&layout, stacked) {
+        (Some(layout), true) => (
+            layout.screens.iter().map(|s| s.width).max().unwrap_or(1),
+            layout.screens.iter().map(|s| s.height).sum(),
+        ),
+        _ => state
+            .active
+            .as_ref()
+            .map(|s| s.frame_size())
+            // Unreachable in practice — the app only renders this view over
+            // an active session — and an absent one draws only the black
+            // placeholder, where shape doesn't matter.
+            .unwrap_or((1, 1)),
+    };
     let img_w = (native_w * scale) as f32;
     let img_h = (native_h * scale) as f32;
 
-    // A two-screen console is a DS, and a DS's second screen is its
-    // touch screen: (x where it starts in the composed frame, its
-    // size), all in native pixels. `None` for everything else — the
-    // mouse area only goes up when there is a screen to touch.
-    let touch_screen = state
-        .active
+    let touch_screen = layout
         .as_ref()
-        .map(|s| s.screen_layout())
-        .filter(|layout| layout.screens.len() == 2)
-        .map(|layout| (layout.screens[0].width, layout.screens[1]));
+        .and_then(|layout| touch_screen_placement(layout, stacked, touch_first));
+
+    let base_frame = state
+        .current_frame
+        .clone()
+        .unwrap_or_else(crate::platform::video::framebuffer::Frame::black);
+    let base_frame = match (&layout, multi) {
+        (Some(layout), true) => present_frame(base_frame, layout, ctx.ds_screen_stacking, ctx.ds_primary_screen),
+        _ => base_frame,
+    };
+
+    // The recorded touch as a fraction of the pane: through the same
+    // origin as the stylus mapping above, so the spot lands on the
+    // touch screen wherever the arrangement puts it.
+    let spot = touch_spot.and_then(|(tx, ty)| {
+        touch_screen.map(|((origin_x, origin_y), _)| {
+            (
+                (origin_x + tx as f32 + 0.5) / native_w as f32,
+                (origin_y + ty as f32 + 0.5) / native_h as f32,
+            )
+        })
+    });
 
     iced::widget::responsive(move |size| {
         let raw = (size.width / img_w).min(size.height / img_h);
@@ -264,10 +310,7 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
         };
         let (w, h) = (img_w * scale, img_h * scale);
 
-        let mut frame = state
-            .current_frame
-            .clone()
-            .unwrap_or_else(crate::platform::video::framebuffer::Frame::black);
+        let mut frame = base_frame.clone();
         // The uploaded texture is always the native frame; the effect is just
         // the draw-time pipeline pick. Take it live from config here (not from
         // whatever was current when the frame was produced) so switching the
@@ -278,17 +321,30 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
             .width(Length::Fixed(w))
             .height(Length::Fixed(h));
 
+        let mut fb: Element<'a, Message> = fb.into();
+        // The recorded touch, over the frame and under the stylus
+        // area. A canvas with no event handling, so the pointer passes
+        // straight through it.
+        if let Some((fx, fy)) = spot {
+            let overlay = Canvas::new(TouchSpot {
+                fx,
+                fy,
+                rf: TOUCH_SPOT_R / native_w as f32,
+            })
+            .width(Length::Fixed(w))
+            .height(Length::Fixed(h));
+            fb = stack![fb, overlay].into();
+        }
         // The stylus: pointer events over the widget, handed to the
         // session mapped into the touch screen's own pixels. The whole
         // surface reports (so a drag can scrape along the screen's
         // edges); whether a *press* lands on the touch screen travels
         // with each move as `inside`.
-        let mut fb: Element<'a, Message> = fb.into();
-        if let Some((left_w, screen)) = touch_screen {
+        if let Some(((origin_x, origin_y), screen)) = touch_screen {
             fb = iced::widget::mouse_area(fb)
                 .on_move(move |p| {
-                    let nx = p.x / w * native_w as f32 - left_w as f32;
-                    let ny = p.y / h * native_h as f32;
+                    let nx = p.x / w * native_w as f32 - origin_x;
+                    let ny = p.y / h * native_h as f32 - origin_y;
                     let inside =
                         (0.0..screen.width as f32).contains(&nx) && (0.0..screen.height as f32).contains(&ny);
                     let pos = (
@@ -333,6 +389,173 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
         }
     })
     .into()
+}
+
+/// A two-screen console is a DS, and a DS's second screen is its
+/// touch screen: (where it starts in the presented frame, its size),
+/// all in native pixels. `None` for everything else — neither the
+/// stylus area nor a touch spot goes up without a screen to touch.
+fn touch_screen_placement(
+    layout: &tango_match::ScreenLayout,
+    stacked: bool,
+    touch_first: bool,
+) -> Option<((f32, f32), tango_match::Screen)> {
+    (layout.screens.len() == 2).then(|| {
+        // Leading position when it's the primary screen; after the
+        // upper one — along whichever axis the stacking runs — when
+        // it isn't.
+        let origin = match (touch_first, stacked) {
+            (true, _) => (0.0, 0.0),
+            (false, false) => (layout.screens[0].width as f32, 0.0),
+            (false, true) => (0.0, layout.screens[0].height as f32),
+        };
+        (origin, layout.screens[1])
+    })
+}
+
+/// A multi-screen frame as the arrangement settings present it:
+/// screens reordered so the primary one leads, then packed side by
+/// side or as a vertical stack. Pure presentation: the session's
+/// composition stays canonical, so replays, exports and the wire
+/// never see this.
+///
+/// The revision is always remapped into a per-arrangement space, even
+/// when the pixels pass through untouched: dimensions don't
+/// distinguish every pair of arrangements (a horizontal swap keeps
+/// them), and the GPU pipeline skips uploads on revision equality
+/// alone — so two arrangements of one source revision must never
+/// share a presented revision.
+fn present_frame(
+    frame: crate::platform::video::framebuffer::Frame,
+    layout: &tango_match::ScreenLayout,
+    stacking: crate::config::DsScreenStacking,
+    primary: crate::config::DsPrimaryScreen,
+) -> crate::platform::video::framebuffer::Frame {
+    let touch_first = primary == crate::config::DsPrimaryScreen::Touch;
+    let stacked = stacking == crate::config::DsScreenStacking::Vertical;
+    // Also guards the 1×1 black placeholder before the first frame,
+    // which has no screens to rearrange.
+    let canonical = (frame.width, frame.height) == tango_session::composite_size(layout);
+    let mut frame = if canonical && (stacked || touch_first) {
+        rearrange_screens(&frame, layout, stacked, touch_first)
+    } else {
+        frame
+    };
+    frame.revision = frame
+        .revision
+        .wrapping_mul(4)
+        .wrapping_add((stacked as u64) << 1 | touch_first as u64);
+    frame
+}
+
+/// The pixel re-pack behind [`present_frame`]: rows re-sliced from the
+/// canonical side-by-side composition into the presented order and
+/// axis.
+fn rearrange_screens(
+    frame: &crate::platform::video::framebuffer::Frame,
+    layout: &tango_match::ScreenLayout,
+    stacked: bool,
+    touch_first: bool,
+) -> crate::platform::video::framebuffer::Frame {
+    const BPP: usize = 4;
+    // Each screen's column offset in the canonical composition.
+    let mut x0 = vec![0usize; layout.screens.len()];
+    for i in 1..x0.len() {
+        x0[i] = x0[i - 1] + layout.screens[i - 1].width as usize;
+    }
+    let mut order: Vec<usize> = (0..layout.screens.len()).collect();
+    if touch_first {
+        order.reverse();
+    }
+    let src_stride = frame.width as usize * BPP;
+    // A screen's row slice in the canonical frame, or `None` past its
+    // height (screens shorter than the composite pad with opaque
+    // black — never hit on a DS, whose screens match).
+    let row_of = |i: usize, row: usize| -> Option<&[u8]> {
+        let screen = &layout.screens[i];
+        (row < screen.height as usize).then(|| {
+            let start = row * src_stride + x0[i] * BPP;
+            &frame.pixels[start..start + screen.width as usize * BPP]
+        })
+    };
+    let pad = |pixels: &mut Vec<u8>, px: usize| {
+        for _ in 0..px {
+            pixels.extend_from_slice(&[0, 0, 0, 0xff]);
+        }
+    };
+    let (out_w, out_h, pixels) = if stacked {
+        let out_w = layout.screens.iter().map(|s| s.width).max().unwrap_or(0) as usize;
+        let out_h = layout.screens.iter().map(|s| s.height).sum::<u32>() as usize;
+        let mut pixels = Vec::with_capacity(out_w * out_h * BPP);
+        for &i in &order {
+            for row in 0..layout.screens[i].height as usize {
+                pixels.extend_from_slice(row_of(i, row).unwrap());
+                pad(&mut pixels, out_w - layout.screens[i].width as usize);
+            }
+        }
+        (out_w, out_h, pixels)
+    } else {
+        // Same dimensions as the canonical frame, columns reordered
+        // within each row.
+        let mut pixels = Vec::with_capacity(frame.pixels.len());
+        for row in 0..frame.height as usize {
+            for &i in &order {
+                match row_of(i, row) {
+                    Some(slice) => pixels.extend_from_slice(slice),
+                    None => pad(&mut pixels, layout.screens[i].width as usize),
+                }
+            }
+        }
+        (frame.width as usize, frame.height as usize, pixels)
+    };
+    crate::platform::video::framebuffer::Frame {
+        pixels: std::sync::Arc::new(pixels),
+        width: out_w as u32,
+        height: out_h as u32,
+        revision: frame.revision,
+        effect: frame.effect,
+    }
+}
+
+/// Radius of a displayed touch, in native touch-screen pixels — about
+/// a stylus tip. Scales with the pane like everything else drawn in it.
+const TOUCH_SPOT_R: f32 = 6.0;
+
+/// A recorded stylus touch, drawn over the framebuffer at the spot the
+/// touch landed: a translucent accent fill under a solid ring, so it
+/// reads over any game art without hiding what it points at. Position
+/// and radius are fractions of the pane so the canvas needs no resize
+/// handling of its own.
+struct TouchSpot {
+    fx: f32,
+    fy: f32,
+    rf: f32,
+}
+
+impl<M> canvas::Program<M> for TouchSpot {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &Renderer,
+        theme: &Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        let mut frame = Frame::new(renderer, bounds.size());
+        let center = Point::new(self.fx * bounds.width, self.fy * bounds.height);
+        // Floor of 4px so the spot stays visible however small the
+        // pane gets.
+        let radius = (self.rf * bounds.width).max(4.0);
+        let accent = theme.palette().primary;
+        frame.fill(&Path::circle(center, radius), iced::Color { a: 0.35, ..accent });
+        frame.stroke(
+            &Path::circle(center, radius),
+            Stroke::default().with_width(2.0).with_color(accent),
+        );
+        vec![frame.into_geometry()]
+    }
 }
 
 /// Body: framebuffer + optional setup panes layered over the game's
@@ -470,13 +693,53 @@ fn corner_commands_overlay<'a>(
 /// message of its own — every session kind can push it directly.
 ///
 /// [`PipProgram`]: crate::platform::video::framebuffer::PipProgram
-pub(crate) fn pip_overlay(state: &State) -> Option<Element<'_, Message>> {
-    let frame = state.pip_frame.clone()?;
+pub(crate) fn pip_overlay<'a>(
+    ctx: Ctx<'a>,
+    // The PiP side's recorded touch to draw on its touch screen (the
+    // replay input display); `None` everywhere else.
+    touch_spot: Option<(u16, u16)>,
+) -> Option<Element<'a, Message>> {
+    let state = ctx.state;
+    let mut frame = state.pip_frame.clone()?;
+    // The PiP mirrors the main pane's arrangement — it's the same
+    // console shape, just the other side's screens.
+    let layout = state.active.as_ref().map(|s| s.screen_layout());
+    let mut spot = None;
+    if let Some(layout) = layout.as_ref().filter(|layout| layout.screens.len() > 1) {
+        let stacked = ctx.ds_screen_stacking == crate::config::DsScreenStacking::Vertical;
+        let touch_first = ctx.ds_primary_screen == crate::config::DsPrimaryScreen::Touch;
+        frame = present_frame(frame, layout, ctx.ds_screen_stacking, ctx.ds_primary_screen);
+        // This side's touch as a fraction of the inset — the same
+        // mapping the main pane runs in `framebuffer_view`, against
+        // the presented frame's dimensions.
+        spot = touch_spot.and_then(|(tx, ty)| {
+            touch_screen_placement(layout, stacked, touch_first).map(|((origin_x, origin_y), _)| {
+                (
+                    (origin_x + tx as f32 + 0.5) / frame.width as f32,
+                    (origin_y + ty as f32 + 0.5) / frame.height as f32,
+                )
+            })
+        });
+    }
     // 1.5x native: readable without dominating the main view.
     let (w, h) = (frame.width as f32 * 1.5, frame.height as f32 * 1.5);
+    let native_w = frame.width;
     let fb = iced::widget::shader::Shader::new(crate::platform::video::framebuffer::PipProgram::new(frame))
         .width(Length::Fixed(w))
         .height(Length::Fixed(h));
+    let mut fb: Element<'a, Message> = fb.into();
+    // The touch over the inset, same treatment as the main pane's:
+    // an event-less canvas the pointer passes straight through.
+    if let Some((fx, fy)) = spot {
+        let overlay = Canvas::new(TouchSpot {
+            fx,
+            fy,
+            rf: TOUCH_SPOT_R / native_w as f32,
+        })
+        .width(Length::Fixed(w))
+        .height(Length::Fixed(h));
+        fb = stack![fb, overlay].into();
+    }
     let plate = container(fb).padding(3).style(hud_chip_plate);
     Some(
         container(plate)

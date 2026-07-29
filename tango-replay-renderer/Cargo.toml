@@ -15,10 +15,7 @@ publish = false
 # it rather than it running itself) is a shape, not a dependency.
 [dependencies]
 encoder-facade.workspace = true
-mgba.workspace = true
 tango-match = { path = "../tango-match" }
-tango-backend-mgba = { path = "../tango-backend-mgba" }
-tango-replay = { path = "../tango-replay" }
 thiserror.workspace = true
 
 [lints]
