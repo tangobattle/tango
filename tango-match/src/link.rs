@@ -251,7 +251,7 @@ pub trait Backend: Sync {
 ///
 /// A match can span two variants and two regions — Gregar against
 /// Falzar, a Japanese cart against an American one — and an engine may
-/// need per-cartridge support for each seat. But a factory hangs off
+/// need per-cartridge support for each seat. But a backend hangs off
 /// the *local* game, so the peer arrives as an identity the game's own
 /// crate resolves against its siblings, which is the only place that
 /// knows what they are. That keeps the seam free of registry types and

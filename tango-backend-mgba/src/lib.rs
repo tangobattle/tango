@@ -12,7 +12,7 @@
 //!   riding inside.
 //! - [`solo`]: one GBA booted alone, as the seam's
 //!   [`Console`](tango_match::Console).
-//! - [`factory`]: the [`tango_match::Backend`] a game registration
+//! - [`backend`]: the [`tango_match::Backend`] a game registration
 //!   holds — netplay, solo, and replay playback all come out of it.
 //! - [`engine`]: boots and primes the pair and starts the seam's
 //!   rollback [`Match`](tango_match::Match) for live netplay.
@@ -25,8 +25,8 @@
 //! [`link`]: mod@link
 
 pub mod analysis;
+pub mod backend;
 pub mod engine;
-pub mod factory;
 pub mod link;
 pub mod playback;
 pub mod solo;
@@ -191,7 +191,7 @@ pub trait GameSupport: Sync {
     }
 }
 
-pub use factory::{GbaFactory, Seat};
+pub use backend::{GbaBackend, Seat};
 
 /// Route mgba's own logging through the `log` crate.
 ///

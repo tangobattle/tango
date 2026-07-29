@@ -10,7 +10,7 @@
 //! None of that reasoning is about a console. It needs a pair that
 //! ticks, snapshots and restores — which is exactly [`Link`] — so it
 //! lives here rather than being written once per emulator. [`Match`] is
-//! the whole host-facing surface: a `Game` registration's factory hands
+//! the whole host-facing surface: a `Game` registration's backend hands
 //! one back, and the host drives it without ever learning which
 //! emulator is underneath.
 
@@ -142,7 +142,7 @@ pub struct Match {
     /// it on its own schedule.
     last_rollback_depth: u32,
     /// The telemetry this match publishes, when its engine reads any —
-    /// installed by the factory that wired the link's pollers up.
+    /// installed by the backend that wired the link's pollers up.
     telemetry: Option<crate::telemetry::TelemetryHandle>,
 }
 
@@ -231,7 +231,7 @@ impl Match {
         self.inner.add_remote_input(0, input, tick_advantage);
     }
 
-    /// The local console's display, RGBA8 in the factory's
+    /// The local console's display, RGBA8 in the backend's
     /// [`screen_layout`](crate::Backend::screen_layout) order.
     pub fn frame(&mut self) -> Option<Vec<u8>> {
         let player = self.local_player;

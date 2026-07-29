@@ -36,7 +36,7 @@ const SCREEN: Screen = Screen {
     height: 160,
 };
 
-/// The screens this console presents, for a factory's
+/// The screens this console presents, for a backend's
 /// [`screen_layout`](tango_match::Backend::screen_layout).
 pub fn screen_layout() -> ScreenLayout {
     ScreenLayout::new([SCREEN])
@@ -61,7 +61,7 @@ pub struct Link {
     live_tick: u32,
     /// The RAM-poll collector, when this pair runs one. Polled after
     /// every tick, rewound on every restore; the store it feeds is the
-    /// handle the factory installs on the match.
+    /// handle the backend installs on the match.
     telemetry: Option<crate::telemetry::Telemetry>,
     /// Per-core cumulative sample frames appended to the mixed-output
     /// audio ring AND kept (net of revocation drops and re-sim drains) —

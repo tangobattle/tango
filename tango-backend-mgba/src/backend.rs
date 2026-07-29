@@ -3,7 +3,7 @@
 //! A `Game` registration cannot name an emulator — that is the whole
 //! point of [`tango_match::Backend`] — so everything a host asks
 //! of the mgba engine arrives through one object per registered
-//! cartridge. [`GbaFactory`] is that object: it closes over the
+//! cartridge. [`GbaBackend`] is that object: it closes over the
 //! cartridge's own [`GameSupport`](crate::GameSupport) and, for the
 //! seat it does not own, resolves the peer's out of the family table
 //! its crate hands it.
@@ -17,24 +17,24 @@ use crate::playback;
 /// One cartridge in a family, keyed as its ROM header names it.
 pub type Seat = (&'static [u8; 4], u8, &'static (dyn crate::GameSupport + Send + Sync));
 
-/// A GBA cartridge's engine support, as the engine-neutral factory its
+/// A GBA cartridge's engine support, as the engine-neutral backend its
 /// registration holds.
 ///
-/// A match needs *both* seats' support and a factory hangs off one
+/// A match needs *both* seats' support and a backend hangs off one
 /// game, so the peer arrives as a [`PeerRom`](tango_match::PeerRom)
 /// looked up in `family` — the table its own crate declares, which is
 /// the only place that knows what its siblings are. Crossplay is why
 /// this is a lookup rather than a constant: a Japanese cart links with
 /// an American one, and each seat needs the support for the ROM
 /// actually in it.
-pub struct GbaFactory {
+pub struct GbaBackend {
     local: &'static (dyn crate::GameSupport + Send + Sync),
     family: &'static [Seat],
 }
 
-impl GbaFactory {
+impl GbaBackend {
     pub const fn new(local: &'static (dyn crate::GameSupport + Send + Sync), family: &'static [Seat]) -> Self {
-        GbaFactory { local, family }
+        GbaBackend { local, family }
     }
 
     /// The peer's support, or the local cart's if the family doesn't
@@ -77,7 +77,7 @@ impl GbaFactory {
     }
 }
 
-impl tango_match::Backend for GbaFactory {
+impl tango_match::Backend for GbaBackend {
     fn screen_layout(&self) -> tango_match::ScreenLayout {
         crate::link::screen_layout()
     }

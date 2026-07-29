@@ -3,9 +3,9 @@
 //!
 //! This is one half of what a DS game needs. The engine-specific half
 //! is here — how a pair ticks, snapshots, restores and draws — while
-//! the game-specific half (priming a link into that game's link battle,
-//! and the [`tango_match::Backend`] built over both) stays in the
-//! game's own crate.
+//! the game-specific half (priming a link into that game's link battle)
+//! stays in the game's own crate and arrives through
+//! [`GameSupport`](backend::GameSupport).
 //!
 //! The pieces:
 //!
@@ -14,15 +14,19 @@
 //!   framerate, sample rate).
 //! - [`solo`]: one DS booted alone, as the seam's
 //!   [`Console`](tango_match::Console).
+//! - [`backend`]: the [`tango_match::Backend`] a game registration
+//!   holds — netplay, solo, and replay playback all come out of it.
 //!
 //! Re-exports the pieces a game crate needs so it can depend on this
 //! rather than on the emulator directly.
 //!
 //! [`link`]: mod@link
 
+pub mod backend;
 pub mod link;
 pub mod solo;
 
+pub use backend::{DsBackend, GameSupport};
 pub use link::{framerate_ratio, screen_layout, Link, EXPECTED_FPS, SAMPLE_RATE};
 pub use solo::SoloConsole;
 

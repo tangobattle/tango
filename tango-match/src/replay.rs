@@ -890,7 +890,7 @@ pub struct ReplayConfig {
     pub match_type: (u8, u8),
     /// Which seat the recording was taken from.
     pub local_player: usize,
-    /// The peer's cartridge, for the seat this factory does not own.
+    /// The peer's cartridge, for the seat this backend does not own.
     pub peer_rom: crate::PeerRom,
     /// Collect per-round statistics as the pass runs. A host that only
     /// wants to watch leaves this off and the pass just lays keyframes.

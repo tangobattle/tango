@@ -57,7 +57,7 @@ const SCREENS: [Screen; 2] = [
     },
 ];
 
-/// The screens this console presents, for a factory's
+/// The screens this console presents, for a backend's
 /// [`screen_layout`](tango_match::Backend::screen_layout).
 pub fn screen_layout() -> ScreenLayout {
     ScreenLayout::new(SCREENS)
