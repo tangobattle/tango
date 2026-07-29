@@ -139,7 +139,6 @@ impl tango_match::MatchFactory for GbaFactory {
             // Shared: the pass racing ahead lays the keyframes a seek
             // behind the playhead lands on.
             store: playback::SnapshotStore::new(),
-            progress: Arc::new(std::sync::atomic::AtomicU32::new(0)),
             round_marks: config.want_round_marks.then(|| Arc::new(Mutex::new(Vec::new()))),
             cancel: Arc::new(AtomicBool::new(false)),
         }))
@@ -154,7 +153,6 @@ struct Set {
     local_player: usize,
     semantics: Option<(tango_match::analysis::ChipSemantics, bool)>,
     store: playback::SnapshotStore,
-    progress: Arc<std::sync::atomic::AtomicU32>,
     round_marks: Option<Arc<Mutex<Vec<u32>>>>,
     cancel: Arc<AtomicBool>,
 }
@@ -174,17 +172,12 @@ impl tango_match::ReplaySet for Set {
                 self.inputs.clone(),
                 self.local_player,
                 self.store.clone(),
-                self.progress.clone(),
                 self.round_marks.clone(),
                 self.cancel.clone(),
                 self.semantics,
             )
             .map_err(tango_match::Error::from)?,
         ))
-    }
-
-    fn stats_progress(&self) -> Arc<std::sync::atomic::AtomicU32> {
-        self.progress.clone()
     }
 
     fn round_marks(&self) -> Option<Arc<Mutex<Vec<u32>>>> {
@@ -425,13 +418,11 @@ impl tango_match::ReplayFrames for playback::Snapshot {
 struct Stats(playback::Prefetch);
 
 impl Stats {
-    #[allow(clippy::too_many_arguments)]
     fn new(
         boot: &playback::BootConfig,
         inputs: Arc<Vec<[u32; 2]>>,
         local_player: usize,
         store: playback::SnapshotStore,
-        progress: Arc<std::sync::atomic::AtomicU32>,
         round_marks: Option<Arc<Mutex<Vec<u32>>>>,
         cancel: Arc<AtomicBool>,
         semantics: Option<(tango_match::analysis::ChipSemantics, bool)>,
@@ -441,7 +432,6 @@ impl Stats {
             inputs,
             local_player,
             store,
-            progress,
             round_marks,
             cancel,
             semantics,
@@ -452,6 +442,10 @@ impl Stats {
 impl tango_match::StatsPass for Stats {
     fn step(&mut self, budget: u32) -> Result<bool, tango_match::Error> {
         self.0.step(budget, None).map_err(tango_match::Error::from)
+    }
+
+    fn progress(&self) -> u32 {
+        self.0.progress()
     }
 
     fn preview(&self) -> Option<tango_match::analysis::MatchStats> {

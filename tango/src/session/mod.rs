@@ -1618,7 +1618,9 @@ fn run_prefetch_pass(worker: replay::PrefetchWorker) {
 
     let mut worker = worker;
     let mut last_preview = std::time::Instant::now();
-    while worker.step(1024) {
+    // Progress and round marks publish once per slice, so the slice
+    // size is also the scrub-bar overlay's refresh granularity.
+    while worker.step(256) {
         let now = std::time::Instant::now();
         if now.duration_since(last_preview) < PREVIEW_EVERY {
             continue;

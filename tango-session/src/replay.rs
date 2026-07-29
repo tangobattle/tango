@@ -82,6 +82,8 @@ struct Engine {
     /// the statistics pass share the captures they lay down.
     set: Arc<dyn tango_match::ReplaySet>,
     playback: SharedPlayback,
+    /// How far the stats pass has run, mirrored per slice by the
+    /// prefetch worker for UI reads.
     prefetch_progress: Arc<AtomicU32>,
     seek: Arc<SeekController>,
     /// Cancels the loops the host is running, on Drop; whoever is
@@ -209,7 +211,7 @@ impl ReplaySession {
         let cursor = Arc::new(AtomicU32::new(0));
         let paused = Arc::new(crate::PauseGate::new(false));
         let fps_bits = Arc::new(AtomicU32::new(EXPECTED_FPS.to_bits()));
-        let prefetch_progress;
+        let prefetch_progress = Arc::new(AtomicU32::new(0));
         // Inter-round marks: the recorder stamps round-start markers into
         // the stream and decode surfaces them as `round_starts`. The
         // first round's start (tick 0) isn't an inter-round boundary, so
@@ -251,7 +253,6 @@ impl ReplaySession {
                 want_round_marks: discover_marks,
             },
         )?);
-        prefetch_progress = set.stats_progress();
         if let Some(discovered) = set.round_marks() {
             // The pass writes into its own list; hand the session that
             // one so the scrub bar sees marks as they are found.
@@ -302,6 +303,7 @@ impl ReplaySession {
                 set: set.clone(),
                 round_marks: discover_marks.then(|| round_marks.clone()),
                 discovered: set.round_marks(),
+                progress: prefetch_progress.clone(),
                 cancel: cancel.clone(),
                 stats_job,
                 pass: None,
@@ -898,6 +900,9 @@ pub struct PrefetchWorker {
     round_marks: Option<Arc<Mutex<Vec<u32>>>>,
     /// Where the pass writes the marks it finds.
     discovered: Option<Arc<Mutex<Vec<u32>>>>,
+    /// The session's progress mirror ([`Engine::prefetch_progress`]),
+    /// refreshed from the pass once per slice — like the marks.
+    progress: Arc<AtomicU32>,
     cancel: Arc<AtomicBool>,
     stats_job: Option<PrefetchStatsJob>,
     pass: Option<Box<dyn tango_match::StatsPass>>,
@@ -941,7 +946,9 @@ impl PrefetchWorker {
         let Some(pass) = self.pass.as_mut() else {
             return false;
         };
-        match pass.step(budget) {
+        let step = pass.step(budget);
+        self.progress.store(pass.progress(), Ordering::Relaxed);
+        match step {
             Ok(true) => {
                 self.mirror_marks();
                 true

@@ -581,8 +581,8 @@ enum Plan {
 
 /// Body of the background prefetch worker: boots its own pair and runs
 /// the whole recorded stream as fast as the host allows, capturing a
-/// keyframe every [`KEYFRAME_INTERVAL`] into `store` and publishing the
-/// playhead-scale progress. With `round_marks` set, each round
+/// keyframe every [`KEYFRAME_INTERVAL`] into `store`. With
+/// `round_marks` set, each round
 /// boundary's tick (the second and later rounds' telemetry `Started`
 /// events — the same boundaries the recorder stamps into the stream) is
 /// appended as it's discovered; hosts pass `None` when the replay file
@@ -592,7 +592,6 @@ enum Plan {
 /// same fold as [`crate::r#match::analysis::analyze`], reported through the
 /// hook once per tick; the finished stats are returned. One simulation,
 /// both products — mirroring the trap engine's `run_prefetch`.
-#[allow(clippy::too_many_arguments)]
 pub struct Prefetch {
     pair: mgba_rollback::Link,
     observer: Telemetry,
@@ -601,7 +600,6 @@ pub struct Prefetch {
     inputs: Arc<Vec<[u32; 2]>>,
     local_player: usize,
     store: SnapshotStore,
-    progress: Arc<AtomicU32>,
     round_marks: Option<Arc<Mutex<Vec<u32>>>>,
     cancel: Arc<AtomicBool>,
     /// Ticks consumed so far; the pass is done when it reaches the
@@ -622,7 +620,6 @@ impl Prefetch {
         inputs: Arc<Vec<[u32; 2]>>,
         local_player: usize,
         store: SnapshotStore,
-        progress: Arc<AtomicU32>,
         round_marks: Option<Arc<Mutex<Vec<u32>>>>,
         cancel: Arc<AtomicBool>,
         stats: Option<(crate::r#match::analysis::ChipSemantics, bool)>,
@@ -649,7 +646,6 @@ impl Prefetch {
             inputs,
             local_player,
             store,
-            progress,
             round_marks,
             cancel,
             cursor: 0,
@@ -705,9 +701,13 @@ impl Prefetch {
             if self.store.snapshot_needed(tick) {
                 self.store.push(capture_pair(&mut self.pair, tick)?);
             }
-            self.progress.store(tick, Ordering::Relaxed);
         }
         Ok(self.cursor < self.inputs.len())
+    }
+
+    /// Ticks consumed so far — the playhead-scale progress a host draws.
+    pub fn progress(&self) -> u32 {
+        self.cursor as u32
     }
 
     /// The fold so far, for a live preview while the pass runs.

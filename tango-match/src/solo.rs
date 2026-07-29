@@ -162,6 +162,10 @@ pub trait StatsPass: Send {
     /// cancelled.
     fn step(&mut self, budget: u32) -> Result<bool, crate::Error>;
 
+    /// Ticks the pass has covered so far, for a host drawing its
+    /// progress.
+    fn progress(&self) -> u32;
+
     /// The fold so far, for a host drawing the chart while the pass is
     /// still running. `None` if this pass collects no statistics.
     fn preview(&self) -> Option<crate::analysis::MatchStats> {
@@ -187,10 +191,6 @@ pub trait ReplaySet: Send + Sync {
 
     /// Boot the statistics pass. Blocks for the priming walk.
     fn stats(&self) -> Result<Box<dyn StatsPass>, crate::Error>;
-
-    /// Ticks the statistics pass has covered, for a host drawing its
-    /// progress. Lock-free.
-    fn stats_progress(&self) -> std::sync::Arc<std::sync::atomic::AtomicU32>;
 
     /// Where the pass reports each round boundary it crosses, if the
     /// host asked for round marks when it opened the set.
