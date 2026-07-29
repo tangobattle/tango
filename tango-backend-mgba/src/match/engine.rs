@@ -29,6 +29,12 @@ pub use mgba_rollback::session::{Outgoing, Report};
 /// headroom for slower families without hanging forever on a wedge.
 const MAX_PRIME_TICKS: u32 = 3600;
 
+/// Bit mask of a joyflags value: the GBA keypad is 10 bits (A, B, Select,
+/// Start, →, ←, ↑, ↓, R, L), occupying bits 0..=9. The top 6 bits are unused by
+/// the hardware, so callers are free to repurpose them — e.g. the live core's r4
+/// high bits, or the netplay wire's CONT/MARK entry tags.
+pub const JOYFLAGS_MASK: u32 = 0x03ff;
+
 /// Everything [`Match::new`] needs. Both peers pass identical values
 /// except [`local_player`](Self::local_player): the pair is symmetric, so
 /// core 0 always runs `player0`'s game and core 1 `player1`'s, on both
@@ -273,10 +279,13 @@ impl Match {
 /// the orphan rule keeps an impl with one of its types — and the seam
 /// must not name an emulator.
 impl tango_match::RunningMatch for Match {
-    fn advance(&mut self, local: tango_match::HostInput) -> Result<(u32, tango_match::HostInput, i16), tango_match::Error> {
+    fn advance(
+        &mut self,
+        local: tango_match::HostInput,
+    ) -> Result<(u32, tango_match::HostInput, i16), tango_match::Error> {
         // The GBA half of the seam: no touch screen, so only the joypad
         // word crosses into (and back out of) the trap engine.
-        let keys = local.keys & tango_match::input::JOYFLAGS_MASK as u32;
+        let keys = local.keys & JOYFLAGS_MASK as u32;
         let (outgoing, _report) = Match::advance(self, keys).map_err(tango_match::Error::from)?;
         Ok((
             outgoing.tick,
@@ -286,7 +295,7 @@ impl tango_match::RunningMatch for Match {
     }
 
     fn add_remote_input(&mut self, input: tango_match::HostInput, tick_advantage: i16) {
-        Match::add_remote_input(self, input.keys & tango_match::input::JOYFLAGS_MASK as u32, tick_advantage);
+        Match::add_remote_input(self, input.keys & JOYFLAGS_MASK as u32, tick_advantage);
     }
 
     fn frame(&mut self) -> Option<Vec<u8>> {
@@ -321,7 +330,12 @@ impl tango_match::RunningMatch for Match {
     fn drain_confirmed(&mut self) -> Vec<(u32, [tango_match::HostInput; 2])> {
         Match::drain_confirmed(self)
             .into_iter()
-            .map(|(tick, [p0, p1])| (tick, [tango_match::HostInput::keys(p0), tango_match::HostInput::keys(p1)]))
+            .map(|(tick, [p0, p1])| {
+                (
+                    tick,
+                    [tango_match::HostInput::keys(p0), tango_match::HostInput::keys(p1)],
+                )
+            })
             .collect()
     }
 

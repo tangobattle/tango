@@ -365,7 +365,6 @@ impl Driver {
     /// ended — the battle's own match-end path, a failed advance, or the
     /// session being dropped.
     pub fn tick(&mut self) -> bool {
-        let mask = tango_match::input::JOYFLAGS_MASK as u32;
         let frame = self.frame;
         if self.stop.load(Ordering::Relaxed) {
             return false;
@@ -385,7 +384,7 @@ impl Driver {
                 dummy_player,
                 human_player: controlled,
                 frame,
-            }) & mask;
+            });
             self.dummy_joyflags.store(dummy, Ordering::Relaxed);
 
             // Route each input to its core, then feed the engine: core 0

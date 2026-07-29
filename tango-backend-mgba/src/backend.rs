@@ -5,6 +5,7 @@
 //! questions — how does a pair tick, snapshot, restore and draw — for
 //! very different hardware, which is what lets one host drive either.
 
+use crate::r#match::engine::JOYFLAGS_MASK;
 use tango_match::{Backend, Screen, ScreenLayout};
 
 /// The GBA's single screen.
@@ -45,7 +46,7 @@ impl Backend for Mgba {
     fn input_of(host: tango_match::HostInput) -> u32 {
         // The GBA has no touch screen and no X/Y, so only the 10
         // hardware bits survive.
-        host.keys & tango_match::input::JOYFLAGS_MASK as u32
+        host.keys & JOYFLAGS_MASK
     }
 
     fn host_of(input: u32) -> tango_match::HostInput {
@@ -89,13 +90,11 @@ impl Backend for Mgba {
     fn set_render(link: &mut Self::Link, player: usize, on: bool) {
         link.set_frameskip(player, if on { 0 } else { i32::MAX });
     }
-
 }
 
 /// Re-exported so a game crate can name a link or a snapshot without
 /// depending on the emulator crates itself.
 pub use mgba_rollback::{Link, Snapshot};
-
 
 #[cfg(test)]
 mod tests {
@@ -104,15 +103,10 @@ mod tests {
     fn the_shared_engine_accepts_this_backend() {
         fn assert_usable<B: tango_match::Backend>() {}
         assert_usable::<super::Mgba>();
-        let _: fn(
-            mgba_rollback::Link,
-            usize,
-            u32,
-        ) -> Result<tango_match::engine::Match<super::Mgba>, mgba::Error> =
+        let _: fn(mgba_rollback::Link, usize, u32) -> Result<tango_match::engine::Match<super::Mgba>, mgba::Error> =
             tango_match::engine::Match::<super::Mgba>::new;
     }
 }
-
 
 /// A pair behind the seam's shared handle, as something the shared
 /// resampler can drain. (`crate::audio::ConsoleAudio` is the same thing
