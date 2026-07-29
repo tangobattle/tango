@@ -24,8 +24,10 @@
 
 /// A whole-link capture — both consoles and anything in flight between
 /// them — as the seam carries it. Opaque: only the link that produced
-/// it can read it back, and it downcasts to find out.
-pub type Snapshot = Box<dyn std::any::Any + Send>;
+/// it can read it back, and it downcasts to find out. `Sync` because a
+/// capture is inert data — threads only ever read one — and the replay
+/// machinery shares its keyframes across the host's workers.
+pub type Snapshot = Box<dyn std::any::Any + Send + Sync>;
 
 /// An emulator's linked pair: two consoles plus whatever connects
 /// them, snapshotted and restored as one unit. That is the rollback
@@ -235,11 +237,31 @@ pub trait Backend: Sync {
 
     /// Re-simulate a recorded match from its inputs. Cheap: the two
     /// simulations a [`ReplaySet`](crate::ReplaySet) offers boot when
-    /// the host asks for them.
-    fn open_replay(&self, config: crate::ReplayConfig) -> Result<Box<dyn crate::ReplaySet>, crate::Error> {
+    /// the host asks for them. An engine implements this by handing
+    /// [`ReplaySet::new`](crate::ReplaySet::new) its
+    /// [`ReplayBoot`](crate::ReplayBoot) — the machinery above the boot
+    /// is the seam's.
+    fn open_replay(&self, config: crate::ReplayConfig) -> Result<crate::ReplaySet, crate::Error> {
         let _ = config;
         Err(crate::Error::Unsupported("this game has no replay support"))
     }
+}
+
+/// A cartridge as its own ROM header names it.
+///
+/// A match can span two variants and two regions — Gregar against
+/// Falzar, a Japanese cart against an American one — and an engine may
+/// need per-cartridge support for each seat. But a factory hangs off
+/// the *local* game, so the peer arrives as an identity the game's own
+/// crate resolves against its siblings, which is the only place that
+/// knows what they are. That keeps the seam free of registry types and
+/// needs no downcasting.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PeerRom {
+    /// 4-byte ROM code, e.g. `b"BR5E"`.
+    pub code: [u8; 4],
+    /// Mask-ROM revision.
+    pub revision: u8,
 }
 
 /// Everything a match needs to come up, in terms every engine shares.

@@ -8093,6 +8093,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "getgud",
+ "log",
  "serde",
  "serde_repr",
  "thiserror 1.0.69",

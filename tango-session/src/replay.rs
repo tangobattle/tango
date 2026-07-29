@@ -1,13 +1,13 @@
 //! Replay playback session: a recording re-simulated on the game's own
-//! engine ([`tango_match::RunningReplay`]) behind a mutex, paced by a
-//! drive thread, with a second pass racing ahead of the playhead for
-//! the match statistics and the keyframes that make seeking cheap.
+//! engine ([`tango_match::Replay`]) behind a mutex, paced by a drive
+//! thread, with a second pass racing ahead of the playhead for the
+//! match statistics and the keyframes that make seeking cheap.
 //!
 //! Seeks are asynchronous: requests land on a
 //! [`SeekController`](tango_match::seek::SeekController) and a
 //! dedicated worker chases the newest target a slice at a time, so the
-//! UI never blocks on catch-up emulation. What the engine keeps to
-//! serve those chases — keyframes, a rewind ring — is the engine's
+//! UI never blocks on catch-up emulation. What the player keeps to
+//! serve those chases — keyframes, a rewind ring — is the player's
 //! business; this session only says where to go and how much time it
 //! may take getting there.
 
@@ -81,7 +81,7 @@ struct Engine {
     fps_bits: Arc<AtomicU32>,
     /// The recording as the game's engine offers it: the pair below and
     /// the statistics pass share the captures they lay down.
-    set: Arc<dyn tango_match::ReplaySet>,
+    set: Arc<tango_match::ReplaySet>,
     playback: SharedPlayback,
     /// How far the stats pass has run, mirrored per slice by the
     /// prefetch worker for UI reads.
@@ -93,7 +93,7 @@ struct Engine {
     cancel: Arc<AtomicBool>,
 }
 
-type SharedPlayback = Arc<Mutex<Option<Box<dyn tango_match::RunningReplay>>>>;
+type SharedPlayback = Arc<Mutex<Option<tango_match::Replay>>>;
 
 impl Drop for Engine {
     fn drop(&mut self) {
@@ -238,8 +238,8 @@ impl ReplaySession {
         // is simulated yet: each of the two passes boots on whichever
         // worker the host runs it on, which is what keeps those boots
         // concurrent.
-        let set: Arc<dyn tango_match::ReplaySet> =
-            Arc::from(games[local_player].pvp.open_replay(tango_match::ReplayConfig {
+        let set: Arc<tango_match::ReplaySet> =
+            Arc::new(games[local_player].pvp.open_replay(tango_match::ReplayConfig {
                 roms: [roms[0].to_vec(), roms[1].to_vec()],
                 saves: replay.srams.clone(),
                 inputs: inputs.clone(),
@@ -524,18 +524,11 @@ impl ReplaySession {
     /// the store's keyframes.
     pub fn nearest_snapshot(&self, target: u32) -> Option<NearestSnapshot> {
         let guard = self.engine.playback.lock().unwrap();
-        let pb = guard.as_ref()?;
-        let mut found = None;
-        pb.nearest_capture(target, &mut |frames| {
-            found = Some(NearestSnapshot {
-                frames: tango_match::LiveFrames {
-                    tick: frames.tick(),
-                    frames: [frames.frame(0), frames.frame(1)],
-                },
-                local_player: self.engine.local_player,
-            });
-        });
-        found
+        let capture = guard.as_ref()?.nearest_capture(target)?;
+        Some(NearestSnapshot {
+            frames: capture.frames.clone(),
+            local_player: self.engine.local_player,
+        })
     }
 
     /// Blit the captured framebuffer of the snapshot nearest `target`
@@ -704,14 +697,14 @@ impl Surfaces {
         self.wake.notify_one();
     }
 
-    /// Publish a capture's frames — live or landed, the engine draws no
+    /// Publish a capture's frames — live or landed, the player draws no
     /// distinction and neither does this.
-    fn publish_frames(&self, frames: &dyn tango_match::ReplayFrames) {
+    fn publish_frames(&self, frames: &tango_match::LiveFrames) {
         let shown = self.shown();
-        let main = frames.frame(shown);
-        let other = frames.frame(1 - shown);
-        let pick = |fb: &[u8]| -> Option<Vec<u8>> { (!fb.is_empty()).then(|| fb.to_vec()) };
-        self.publish(pick(&main).as_deref(), pick(&other).as_deref());
+        fn pick(fb: &[u8]) -> Option<&[u8]> {
+            (!fb.is_empty()).then_some(fb)
+        }
+        self.publish(pick(&frames.frames[shown]), pick(&frames.frames[1 - shown]));
     }
 }
 
@@ -727,7 +720,7 @@ impl Surfaces {
 /// thread of its own (see [`Workers::split`]); a browser has one event
 /// loop, so [`Driver`] interleaves them.
 struct Playhead {
-    set: Arc<dyn tango_match::ReplaySet>,
+    set: Arc<tango_match::ReplaySet>,
     playback: SharedPlayback,
     cursor: Arc<AtomicU32>,
     paused: Arc<crate::PauseGate>,
@@ -756,12 +749,10 @@ impl Playhead {
         };
         // Bind the host's stream to the real pair; it has been pulling
         // silence since the session was built.
-        if let Some(pull) = pb.audio(self.seat.clone()) {
-            self.audio.set(pull);
-        }
+        self.audio.set(pb.audio(self.seat.clone()));
         // Show the primed first frame while paused-at-start or still
         // spinning up.
-        pb.frames(&mut |frames| self.surfaces.publish_frames(frames));
+        self.surfaces.publish_frames(&pb.frames());
         *self.playback.lock().unwrap() = Some(pb);
         true
     }
@@ -781,7 +772,7 @@ impl Playhead {
         }
         pb.step();
         self.cursor.store(pb.cursor(), Ordering::Relaxed);
-        pb.frames(&mut |frames| self.surfaces.publish_frames(frames));
+        self.surfaces.publish_frames(&pb.frames());
         true
     }
 }
@@ -884,7 +875,7 @@ impl SeekWorker {
 /// keyframes, round marks and (when the host asked for them) the
 /// match-stats analysis.
 pub struct PrefetchWorker {
-    set: Arc<dyn tango_match::ReplaySet>,
+    set: Arc<tango_match::ReplaySet>,
     /// The session's mark list, when the recording predates the
     /// recorder's own markers and the pass has to find them.
     round_marks: Option<Arc<Mutex<Vec<u32>>>>,
@@ -895,7 +886,7 @@ pub struct PrefetchWorker {
     progress: Arc<AtomicU32>,
     cancel: Arc<AtomicBool>,
     stats_job: Option<PrefetchStatsJob>,
-    pass: Option<Box<dyn tango_match::StatsPass>>,
+    pass: Option<tango_match::StatsPass>,
     /// What the pass produced, kept so a host can cache it after the
     /// loop rather than racing the deliver.
     finished: Option<tango_match::analysis::MatchStats>,

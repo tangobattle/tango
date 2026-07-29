@@ -14,6 +14,9 @@
 //!   holds.
 //! - [`engine`]: [`Match`], the rollback loop over any [`Link`] and the
 //!   unified session surface a host drives.
+//! - [`solo`]: [`Solo`], the single-console ride over any [`Console`].
+//! - [`replay`]: [`ReplaySet`], playback + seeking + the statistics
+//!   pass over any [`Link`] — an engine contributes only the boot.
 //! - [`battle`]: the per-tick stats sample encoding, which is just a
 //!   layout — no engine has an opinion about it.
 //! - [`input`]: the joyflags input type that lands in replays.
@@ -26,18 +29,19 @@ pub mod link;
 pub mod analysis;
 pub mod battle;
 pub mod input;
+pub mod replay;
 pub mod seek;
 pub mod solo;
 pub mod telemetry;
 pub mod throttler;
 
 pub use audio::{AudioDrain, Drained, SideSource};
-pub use solo::{
-    Console, LiveFrames, PeerRom, ReplayConfig, ReplayFrames, ReplaySet, RunningReplay, SeekStep, Solo,
-    SoloConfig, StatsPass,
-};
+pub use solo::{Console, Solo, SoloConfig};
 pub use engine::Match;
-pub use link::{Backend, Link, Screen, ScreenLayout, Side, Snapshot, StartConfig};
+pub use link::{Backend, Link, PeerRom, Screen, ScreenLayout, Side, Snapshot, StartConfig};
+pub use replay::{
+    BootedReplay, Capture, LiveFrames, Replay, ReplayBoot, ReplayConfig, ReplaySet, SeekStep, StatsPass,
+};
 pub use input::HostInput;
 
 /// The clock-sync governor: feed it `skew()` + `speculation_balance()`
