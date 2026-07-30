@@ -120,12 +120,3 @@ blocks_in_conditions = "allow"
 redundant_closure = "allow"
 too_many_arguments = "allow"
 needless_lifetimes = "allow"
-
-# TEMP: local air-determinism fix under test (frame delivery gated on the
-# receiver's attach epoch + tick-boundary attach reads). Drop once the
-# fix is pushed to tangobattle/melonds-rollback and the lock re-pinned.
-[patch."https://github.com/tangobattle/melonds-rs"]
-melonds = { path = "../melonds-rs" }
-
-[patch."https://github.com/tangobattle/melonds-rollback"]
-melonds-rollback = { path = "../melonds-rollback" }
