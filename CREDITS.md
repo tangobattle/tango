@@ -2,7 +2,7 @@
 
 ## Development
 
-- Emulation: [endrift](https://twitter.com/endrift) (mGBA)
+- Emulation: [endrift](https://twitter.com/endrift) (mGBA), [Arisotura](https://github.com/Arisotura) (melonDS)
 - Reverse engineering: [pnw_ssbmars](https://twitter.com/pnw_ssbmars) (BN3), [XKirby](https://github.com/XKirby) (BN3), [luckytyphlosion](https://github.com/luckytyphlosion) (BN6), [LanHikari22](https://github.com/LanHikari22) (BN6), [GreigaMaster](https://twitter.com/GreigaMaster) (BN), [Prof. 9](https://twitter.com/Prof9) (BN), [National Security Agency](https://www.nsa.gov) (Ghidra), [aldelaro5](https://twitter.com/aldelaro5) (Ghidra)
 - 100% saves: [ore4545](https://github.com/ore4545)
 - Porting: [ubergeek77](https://github.com/ubergeek77) (Linux), [Akatsuki](https://github.com/Akatsuki) (macOS)
