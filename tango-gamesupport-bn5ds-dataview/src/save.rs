@@ -55,6 +55,16 @@ pub const GENERATION_OFFSET: usize = 0x9f1c;
 /// game loads and checksums; from there to the footer is fill.
 pub const SAVE_IMAGE_SIZE: usize = 0x8440;
 
+/// The save image's interior checksum: a u32 byte-sum of the whole
+/// image with these four bytes excluded. Verified at load, separately
+/// from the footer pairs — a save whose data changed without it is
+/// rejected and the file select boots the new-game path (probed live,
+/// July 2026). A byte-sum is permutation-invariant, which is how chip
+/// *reorders* shipped without rebuilding it: rearranged bytes keep
+/// their sum. Sits inside the image, so cs2 covers it and it must be
+/// rebuilt first.
+pub const INTERIOR_CHECKSUM_OFFSET: usize = 0x9c;
+
 /// The checksum pairs at each block's tail, as four u16 LE:
 /// `[cs1, !cs1, cs2, !cs2]`, each value paired with `0x10000 - value`.
 /// `cs2` covers the save image; `cs1` covers the footer from +0x9f04
@@ -142,10 +152,21 @@ fn formatted(data: &[u8], block: usize) -> bool {
     &data[block * BLOCK_SIZE + MAGIC_OFFSET..][..MAGIC.len()] == MAGIC
 }
 
-/// Recompute `block`'s checksum pairs the way the game does: cs2 over
-/// the save image, then cs1 over the footer that now contains cs2.
+/// Recompute `block`'s checksums the way the game does: the interior
+/// byte-sum first (it lives inside the image), then cs2 over the save
+/// image that now contains it, then cs1 over the footer that now
+/// contains cs2.
 fn rebuild_block(data: &mut [u8], block: usize) {
     let base = block * BLOCK_SIZE;
+
+    let image = &data[base..][..SAVE_IMAGE_SIZE];
+    let interior = image.iter().map(|&v| v as u32).sum::<u32>().wrapping_sub(
+        image[INTERIOR_CHECKSUM_OFFSET..][..4]
+            .iter()
+            .map(|&v| v as u32)
+            .sum::<u32>(),
+    );
+    data[base + INTERIOR_CHECKSUM_OFFSET..][..4].copy_from_slice(&interior.to_le_bytes());
 
     let cs2 = checksum(&data[base..][..SAVE_IMAGE_SIZE]);
     data[base + CHECKSUM_OFFSET + 4..][..2].copy_from_slice(&cs2.to_le_bytes());
@@ -730,6 +751,20 @@ mod tests {
         assert_eq!(
             word(CHECKSUM_OFFSET),
             checksum(&block[FOOTER_SUM_START..FOOTER_SUM_END])
+        );
+        // ...including the interior byte-sum the game verifies at load.
+        // These edits change byte VALUES (a reorder wouldn't — byte
+        // sums are permutation-invariant, which is how a stale interior
+        // once hid), so a stale one would boot the new-game path.
+        let image = &block[..SAVE_IMAGE_SIZE];
+        assert_eq!(
+            u32::from_le_bytes(image[INTERIOR_CHECKSUM_OFFSET..][..4].try_into().unwrap()),
+            image.iter().map(|&v| v as u32).sum::<u32>().wrapping_sub(
+                image[INTERIOR_CHECKSUM_OFFSET..][..4]
+                    .iter()
+                    .map(|&v| v as u32)
+                    .sum::<u32>()
+            ),
         );
         // ...and a re-parse sees the edits.
         let reparsed = SaveSet::parse(&dump).unwrap().current();

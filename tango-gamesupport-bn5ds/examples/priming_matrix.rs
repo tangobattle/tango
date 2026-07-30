@@ -36,7 +36,8 @@
 //!   --erase LO:HI                   fill joiner flash with 0xff
 
 use tango_gamesupport_bn5ds::dataview::save::{
-    PlayedFile, SaveSet, BLOCK_SIZE, CHECKSUM_OFFSET, GENERATION_OFFSET, MAGIC, MAGIC_OFFSET, SAVE_IMAGE_SIZE, SIZE,
+    PlayedFile, SaveSet, BLOCK_SIZE, CHECKSUM_OFFSET, GENERATION_OFFSET, INTERIOR_CHECKSUM_OFFSET, MAGIC,
+    MAGIC_OFFSET, SAVE_IMAGE_SIZE, SIZE,
 };
 use tango_gamesupport_common::dataview::save::Save as _;
 
@@ -53,6 +54,18 @@ fn checksum(buf: &[u8]) -> u16 {
 
 fn rebuild_block(data: &mut [u8], block: usize) {
     let base = block * BLOCK_SIZE;
+    // The interior byte-sum first — it lives inside the image cs2
+    // covers, and the game rejects a save whose data changed without
+    // it (which is what quietly invalidated grafted carts before the
+    // interior checksum was known).
+    let image = &data[base..][..SAVE_IMAGE_SIZE];
+    let interior = image.iter().map(|&v| v as u32).sum::<u32>().wrapping_sub(
+        image[INTERIOR_CHECKSUM_OFFSET..][..4]
+            .iter()
+            .map(|&v| v as u32)
+            .sum::<u32>(),
+    );
+    data[base + INTERIOR_CHECKSUM_OFFSET..][..4].copy_from_slice(&interior.to_le_bytes());
     let cs2 = checksum(&data[base..][..SAVE_IMAGE_SIZE]);
     data[base + CHECKSUM_OFFSET + 4..][..2].copy_from_slice(&cs2.to_le_bytes());
     data[base + CHECKSUM_OFFSET + 6..][..2].copy_from_slice(&0u16.wrapping_sub(cs2).to_le_bytes());
