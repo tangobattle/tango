@@ -665,7 +665,7 @@ dependencies = [
  "bitflags 2.11.1",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -1668,7 +1668,7 @@ checksum = "2a2330da5de22e8a3cb63252ce2abb30116bf5265e89c0e01bc17015ce30a476"
 [[package]]
 name = "datachannel-facade"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/datachannel-facade#379c7587cf7ce5e93de028352cd76bf84e72936e"
+source = "git+https://github.com/tangobattle/datachannel-facade#a4e1761c1bd326bcefd351eaadda4a99d876dbbf"
 dependencies = [
  "libdatachannel",
  "log",
@@ -1678,7 +1678,7 @@ dependencies = [
 [[package]]
 name = "datachannel-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/datachannel-wrapper#c43778f22dc7e24ac741bbc615e556c32c0bcae9"
+source = "git+https://github.com/tangobattle/datachannel-wrapper#7d63d1f19b3487314daadd1caff0ddd4270f6942"
 dependencies = [
  "datachannel-facade",
  "futures",
@@ -4148,7 +4148,7 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 [[package]]
 name = "libdatachannel"
 version = "0.2.0+0.24.3"
-source = "git+https://github.com/tangobattle/datachannel-facade#379c7587cf7ce5e93de028352cd76bf84e72936e"
+source = "git+https://github.com/tangobattle/datachannel-facade#a4e1761c1bd326bcefd351eaadda4a99d876dbbf"
 dependencies = [
  "libdatachannel-sys",
  "log",
@@ -4160,12 +4160,11 @@ dependencies = [
 [[package]]
 name = "libdatachannel-sys"
 version = "0.24.3"
-source = "git+https://github.com/tangobattle/datachannel-facade#379c7587cf7ce5e93de028352cd76bf84e72936e"
+source = "git+https://github.com/tangobattle/datachannel-facade#a4e1761c1bd326bcefd351eaadda4a99d876dbbf"
 dependencies = [
  "bindgen",
  "cmake",
  "cpp_build",
- "openssl-src",
 ]
 
 [[package]]
@@ -4185,7 +4184,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -5514,15 +5513,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d05e27ee213611ffe7d6348b942e8f942b37114c00cc03cec254295a4a17852e"
 
 [[package]]
-name = "openssl-src"
-version = "300.6.1+3.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46eb8fb9fb3b61ce1c0f8a026c4c1a0714d3a9e138e7fbde78753ce2babc3846"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "openssl-sys"
 version = "0.9.109"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5935,7 +5925,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6c3320f9abac597dcbc668774ef006702672474aad53c6d596b62e487b40b1"
 dependencies = [
  "heck",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "multimap",
  "once_cell",
@@ -5955,7 +5945,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9120690fafc389a67ba3803df527d0ec9cbbc9cc45e4cc20b332996dfb672425"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
@@ -9260,7 +9250,7 @@ dependencies = [
 [[package]]
 name = "web-datachannel"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/datachannel-facade#379c7587cf7ce5e93de028352cd76bf84e72936e"
+source = "git+https://github.com/tangobattle/datachannel-facade#a4e1761c1bd326bcefd351eaadda4a99d876dbbf"
 dependencies = [
  "js-sys",
  "log",
