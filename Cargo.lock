@@ -7571,7 +7571,6 @@ dependencies = [
  "steamlocate",
  "subtle",
  "sweeten",
- "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-bcc",
  "tango-gamesupport-bn1",
@@ -7909,6 +7908,8 @@ name = "tango-gamesupport-bn5ds-ui"
 version = "0.1.0"
 dependencies = [
  "iced",
+ "lucide-icons",
+ "tango-gamesupport-bn5ds-dataview",
  "tango-gamesupport-common",
  "unic-langid",
 ]
@@ -8035,7 +8036,6 @@ dependencies = [
  "serde",
  "serde_json",
  "steamlocate",
- "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-bcc",
  "tango-gamesupport-bn1",

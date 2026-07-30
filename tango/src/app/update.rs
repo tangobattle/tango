@@ -684,8 +684,8 @@ impl App {
                 let cache_path = self.config.cache_path();
                 let replays_path = self.config.replays_path();
                 let (progress_tx, progress_rx) =
-                    futures::channel::mpsc::unbounded::<tango_backend_mgba::analysis::MatchStats>();
-                let done: std::sync::Arc<std::sync::Mutex<Option<tango_backend_mgba::analysis::MatchStats>>> =
+                    futures::channel::mpsc::unbounded::<tango_match::analysis::MatchStats>();
+                let done: std::sync::Arc<std::sync::Mutex<Option<tango_match::analysis::MatchStats>>> =
                     std::sync::Arc::new(std::sync::Mutex::new(None));
                 let done_worker = done.clone();
                 let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));

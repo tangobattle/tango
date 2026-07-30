@@ -154,8 +154,21 @@ struct Boot {
 
 impl tango_match::ReplayBoot for Boot {
     fn boot(&self, want_stats: bool, cancel: &AtomicBool) -> Result<tango_match::BootedReplay, tango_match::Error> {
+        let t_boot = std::time::Instant::now();
         let mut link = self.pair()?;
+        eprintln!("TEMP pair boot: {:.1?}", t_boot.elapsed());
+        for player in 0..2 {
+            link.console(player).set_render(false); // TEMP measure
+        }
         self.support.prime(&mut link, self.match_type, Some(cancel))?;
+        {
+            let t = std::time::Instant::now();
+            let snap = tango_match::Link::snapshot(&mut link, None)?;
+            let t_snap = t.elapsed();
+            let t = std::time::Instant::now();
+            tango_match::Link::restore(&mut link, &snap)?;
+            eprintln!("TEMP snapshot {:.1?}, restore {:.1?}", t_snap, t.elapsed());
+        }
         // Session tick numbering starts after the walk, observed or
         // not (the walk drives the pair through the seam's tick, so it
         // counts otherwise). Captures then carry session ticks, which

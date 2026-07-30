@@ -30,12 +30,12 @@ pub fn compute_and_cache_match_stats(
     cache_path: std::path::PathBuf,
     replays_path: std::path::PathBuf,
     path: std::path::PathBuf,
-    on_progress: &mut dyn FnMut(u32, u32, &tango_backend_mgba::analysis::StatsBuilder),
+    on_progress: &mut dyn FnMut(u32, u32, &tango_match::analysis::StatsBuilder),
     // Flipping this aborts the simulation mid-pass with a "cancelled"
     // error and nothing cached — used when a playback session's
     // prefetcher takes over the same analysis.
     cancel: &std::sync::atomic::AtomicBool,
-) -> anyhow::Result<tango_backend_mgba::analysis::MatchStats> {
+) -> anyhow::Result<tango_match::analysis::MatchStats> {
     let storage = crate::library::storage();
     let replay = tango_replay::Replay::decode(storage.open(&path)?)?;
 
@@ -68,40 +68,55 @@ pub fn compute_and_cache_match_stats(
     Ok(stats)
 }
 
-/// [`compute_and_cache_match_stats`]'s SIO-engine arm: linearly
-/// re-simulate through [`tango_backend_mgba::analysis::analyze`]. Everything in
-/// the replay is already absolute player order; `local_player` only
-/// picks whose cart's chip decode the stats speak.
+/// [`compute_and_cache_match_stats`]'s re-simulation: open the replay
+/// on the local game's own engine ([`tango_match::Backend::open_replay`])
+/// and run the seam's linear analysis pass
+/// ([`tango_match::ReplaySet::analyze`]) over it — the engine
+/// underneath never surfaces here. Everything in the replay is already
+/// absolute player order; `local_player` only picks whose cart's chip
+/// decode the stats speak.
 fn analyze_replay(
     replay: &tango_replay::Replay,
     games: [GameRef; 2],
     roms: [Vec<u8>; 2],
-    on_progress: &mut dyn FnMut(u32, u32, &tango_backend_mgba::analysis::StatsBuilder),
+    on_progress: &mut dyn FnMut(u32, u32, &tango_match::analysis::StatsBuilder),
     cancel: &std::sync::atomic::AtomicBool,
-) -> anyhow::Result<tango_backend_mgba::analysis::MatchStats> {
+) -> anyhow::Result<tango_match::analysis::MatchStats> {
     let local_player = replay.local_player_index as usize;
-    let inputs: Vec<[u32; 2]> = replay.inputs.iter().map(|&row| row.map(|i| i.keys as u32)).collect();
-    // Offline re-analysis re-simulates on the mgba engine directly, so
-    // it needs both seats' support rather than a session.
-    let seat = |g: &'static tango_gamesupport::Game| {
-        tango_library::game::mgba_support(g.rom_code, g.revision)
-            .ok_or_else(|| anyhow::anyhow!("replay analysis supports mgba games only"))
-    };
-    let support: [&dyn tango_backend_mgba::GameSupport; 2] = [seat(games[0])?, seat(games[1])?];
-    tango_backend_mgba::analysis::analyze(
-        tango_backend_mgba::analysis::AnalyzeConfig {
-            roms: roms.clone(),
-            saves: replay.srams.clone(),
-            support,
-            match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
-            rng_seed: replay.rng_seed,
-            rtc: replay.rtc_time(),
-            local_player,
-            inputs: &inputs,
-            usage: support[local_player].usage_fold(&roms[local_player]),
+    if local_player >= 2 {
+        anyhow::bail!("replay has bad local player index {local_player}");
+    }
+    // The replay's input stream is already absolute pair order — just
+    // widen into the seam's vocabulary, touches included (the DS games).
+    let inputs: std::sync::Arc<Vec<[tango_match::HostInput; 2]>> = std::sync::Arc::new(
+        replay
+            .inputs
+            .iter()
+            .map(|&row| {
+                row.map(|input| tango_match::HostInput {
+                    keys: input.keys as u32,
+                    touch: input.touch.map(|(x, y)| (x as u16, y as u16)),
+                })
+            })
+            .collect(),
+    );
+    let set = games[local_player].pvp.open_replay(tango_match::ReplayConfig {
+        roms,
+        saves: replay.srams.clone(),
+        inputs,
+        rng_seed: replay.rng_seed,
+        rtc: replay.rtc_time(),
+        match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
+        local_player,
+        peer_rom: tango_match::PeerRom {
+            code: *games[1 - local_player].rom_code,
+            revision: games[1 - local_player].revision,
         },
-        on_progress,
-        cancel,
-    )
-    .map_err(Into::into)
+        want_stats: true,
+        want_round_marks: false,
+        // Nothing listens; gameplay-neutral either way (see
+        // `ReplayConfig::disable_bgm`).
+        disable_bgm: false,
+    })?;
+    set.analyze(on_progress, cancel).map_err(Into::into)
 }

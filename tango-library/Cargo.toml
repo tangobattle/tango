@@ -24,7 +24,6 @@ thiserror.workspace = true
 unic-langid.workspace = true
 
 bps = { git = "https://github.com/tangobattle/bps" }
-tango-backend-mgba = { path = "../tango-backend-mgba" }
 tango-gamesupport = { path = "../tango-gamesupport" }
 tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"] }
 tango-replay = { path = "../tango-replay" }
