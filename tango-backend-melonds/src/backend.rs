@@ -165,13 +165,25 @@ impl tango_match::ReplayBoot for Boot {
 
     /// A bare pair for the stats pass to land on the display pair's
     /// primed capture ([`tango_match::ReplaySet::stats_reusing_playback`]),
-    /// skipping the second priming walk. Sound on this engine because
-    /// the walk leaves nothing a snapshot doesn't carry: its traps are
-    /// all off again before `prime` returns (both processors handed
-    /// back to the JIT), and everything else it changed is console
-    /// state.
+    /// skipping the second priming walk.
+    ///
+    /// The pair runs **one throwaway frame** before it is handed over,
+    /// because a console that has never run a frame is not equivalent
+    /// to one that has: the first frame settles host-side state that no
+    /// savestate carries, and a pair landed without it diverges from
+    /// the pair that took the capture. Measured on bn5ds's
+    /// `landing_probe` against a full recording — landing straight out
+    /// of construction differs by thousands of bytes of the game's own
+    /// RAM on the very first tick and parts ways on screen a minute in,
+    /// while landing after a single bare frame is byte-identical for as
+    /// long as the drill runs. The frame costs ~2 ms against the
+    /// seconds of priming this skips, and the restore overwrites
+    /// everything it simulated.
     fn boot_unprimed(&self, want_stats: bool) -> Result<tango_match::BootedReplay, tango_match::Error> {
+        use tango_match::Link as _;
+
         let mut link = self.pair()?;
+        link.tick([tango_match::HostInput::default(); 2]);
         let handle = want_stats.then(|| observe(&mut link, self.support));
         Ok(tango_match::BootedReplay {
             link: Box::new(link),

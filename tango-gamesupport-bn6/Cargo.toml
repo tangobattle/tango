@@ -33,3 +33,5 @@ workspace = true
 # For the sio_probe example (headless lockstep-pair handshake probe).
 mgba-rollback.workspace = true
 env_logger = "0.9"
+# The landing drill re-simulates recorded matches.
+tango-replay = { path = "../tango-replay" }

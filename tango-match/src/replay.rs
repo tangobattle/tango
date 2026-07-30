@@ -772,12 +772,19 @@ pub trait ReplayBoot: Send + Sync {
 
     /// Boot one pair *without* the priming walk, for a caller about to
     /// restore an already-primed capture into it
-    /// ([`ReplaySet::stats_reusing_playback`]). Construction only — no
-    /// walk, nothing to cancel. The contract an engine signs by
-    /// implementing this: its walk leaves nothing behind that a
-    /// snapshot doesn't carry — no standing traps, no host-side config
-    /// flipped mid-walk — so a fresh pair landed on a primed capture IS
-    /// the primed pair.
+    /// ([`ReplaySet::stats_reusing_playback`]). No priming walk and
+    /// nothing to cancel — bounded setup at most, so a caller can treat
+    /// this as construction.
+    ///
+    /// The contract an engine signs by implementing this: the pair it
+    /// returns, landed on a primed capture, plays on as the pair that
+    /// took the capture. That is a claim about everything a restore
+    /// *doesn't* carry — no standing traps, no host-side config
+    /// flipped mid-walk, and no unserialized state the simulation can
+    /// observe. Both engines needed work to be able to say it: melonDS
+    /// rebuilds the raster state display capture turns into VRAM, and
+    /// runs one throwaway frame here, because a console that has never
+    /// run one is not equivalent to a console that has.
     fn boot_unprimed(&self, observe: bool) -> Result<BootedReplay, crate::Error>;
 }
 
@@ -866,6 +873,29 @@ impl ReplaySet {
                 self.publish_first_capture(FirstCapture::Unavailable);
             }
         }
+        Ok(Replay::new(playback, self.store.clone()))
+    }
+
+    /// A display pair landed on [`Self::playback`]'s primed capture
+    /// instead of walking a prime of its own — the same bare-pair
+    /// landing [`Self::stats_reusing_playback`] performs, but handed
+    /// back as a [`Replay`] whose frames a caller can read.
+    ///
+    /// Only the determinism drills want this: a landed pair must play
+    /// the recording exactly as the pair that took the capture did, and
+    /// comparing the two front to back is how an engine's
+    /// [`ReplayBoot::boot_unprimed`] contract is actually held to
+    /// account (see bn5ds's and bn6's `landing_probe`). Blocks until
+    /// the display boot lands, exactly as the statistics flavor does.
+    #[doc(hidden)]
+    pub fn playback_landed(&self) -> Result<Replay, crate::Error> {
+        let bare = self.boot.boot_unprimed(false)?;
+        let capture = match self.wait_first_capture() {
+            FirstCapture::Available(capture) => capture,
+            _ => return Err(crate::Error::Unsupported("no primed capture to land on")),
+        };
+        let mut playback = Playback::new(bare.link, self.inputs.clone());
+        playback.load(&capture)?;
         Ok(Replay::new(playback, self.store.clone()))
     }
 

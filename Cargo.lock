@@ -4451,7 +4451,7 @@ checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 [[package]]
 name = "melonds"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rs#ae600cc78438d5a12da56c3087acd7f27a904077"
+source = "git+https://github.com/tangobattle/melonds-rs#b2da7036b5ec68b98983dcb68c88223f27ff7738"
 dependencies = [
  "melonds-sys",
  "thiserror 1.0.69",
@@ -4470,7 +4470,7 @@ dependencies = [
 [[package]]
 name = "melonds-sys"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rs#ae600cc78438d5a12da56c3087acd7f27a904077"
+source = "git+https://github.com/tangobattle/melonds-rs#b2da7036b5ec68b98983dcb68c88223f27ff7738"
 dependencies = [
  "bindgen",
  "cc",
@@ -7930,6 +7930,7 @@ dependencies = [
  "tango-gamesupport-bn6-ui",
  "tango-gamesupport-common",
  "tango-match",
+ "tango-replay",
 ]
 
 [[package]]

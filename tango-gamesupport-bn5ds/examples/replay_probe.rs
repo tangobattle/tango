@@ -138,8 +138,10 @@ fn main() {
     while pb.cursor() < check / 4 && pb.step() {}
 
     // Second pair on the air — this is the boot that used to cut the
-    // display pair's wireless dead.
-    let mut stats = set.stats().expect("stats boot");
+    // display pair's wireless dead. Through the app's own entry point:
+    // a bare pair landed on the display pair's primed capture, the
+    // landing whose raster reconstruction landing_probe drills.
+    let mut stats = set.stats_reusing_playback().expect("stats boot");
     println!("both pairs up at display tick {}", pb.cursor());
 
     // Race the stats pass ahead (like the prefetch worker), then finish

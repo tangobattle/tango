@@ -72,6 +72,15 @@ struct DsSnapshot {
     tick: u32,
 }
 
+/// The raw whole-link bytes inside a seam snapshot this engine
+/// produced — consoles, in-flight air frames, clock bounds. For the
+/// determinism drills (bn5ds's `landing_probe`), which attribute a
+/// divergence by diffing them; not part of the engine's surface.
+#[doc(hidden)]
+pub fn snapshot_bytes(snap: &tango_match::Snapshot) -> Option<Vec<u8>> {
+    snap.downcast_ref::<DsSnapshot>().map(|s| s.snap.to_bytes())
+}
+
 /// The linked pair: two DSes on emulated local wireless, as the seam's
 /// [`Link`](tango_match::Link).
 pub struct Link {
