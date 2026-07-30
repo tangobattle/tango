@@ -83,6 +83,22 @@ fn live_block(data: &[u8]) -> usize {
         .expect("no formatted block")
 }
 
+/// Both screens of one console as a PNG, for eyeballing what the
+/// post-walk pair is actually showing.
+fn save_shot(link: &mut tango_backend_melonds::Link, seat: usize, path: &str) {
+    let Some((top, bottom)) = link.console(seat).framebuffers() else {
+        return;
+    };
+    let mut img = image::RgbImage::new(256, 384);
+    for (half, screen) in [top, bottom].into_iter().enumerate() {
+        for (i, &pixel) in screen.iter().enumerate() {
+            let [b, g, r, _] = pixel.to_le_bytes();
+            img.put_pixel((i % 256) as u32, (half * 192 + i / 256) as u32, image::Rgb([r, g, b]));
+        }
+    }
+    img.save(path).unwrap();
+}
+
 struct Identity {
     label: String,
     sram: Vec<u8>,
@@ -99,6 +115,7 @@ fn main() {
     let rom = std::fs::read(&args[0]).expect("rom unreadable");
 
     let mut layout = &tango_gamesupport_bn5ds::pvp::priming::US;
+    let mut jp = false;
     let mut match_type = 0u8;
     let mut rtcs: Vec<u64> = vec![1_770_000_000];
     let mut emit: Option<String> = None;
@@ -116,6 +133,7 @@ fn main() {
     while let Some(a) = it.next() {
         if a == "--jp" {
             layout = &tango_gamesupport_bn5ds::pvp::priming::JP;
+            jp = true;
         } else if a == "--type" {
             match_type = it.next().expect("--type needs a value").parse().expect("type");
         } else if a == "--emit" {
@@ -276,9 +294,48 @@ fn main() {
                     [0; 16],
                     None,
                 ) {
-                    Ok(()) => println!("    OK"),
+                    Ok(()) => {
+                        // The walk's finish line is leaving the board
+                        // with the link up — run on and report where the
+                        // pair actually is, so a flow whose tail is
+                        // still negotiating past that line (and would
+                        // crawl under the session's rollback) shows up
+                        // here instead of in a live match.
+                        use tango_match::Link as _;
+                        // The builds' module words (`RAMOffsets::module`
+                        // in the game crate, which examples can't see).
+                        let module_word = if jp { 0x0216_84bc } else { 0x0216_f71c };
+                        let module = |link: &mut tango_backend_melonds::Link, seat: usize| {
+                            link.console(seat).read32(module_word)
+                        };
+                        let mut trace = String::new();
+                        for step in 0..=30 {
+                            if step > 0 {
+                                for _ in 0..30 {
+                                    link.tick([tango_match::HostInput::default(); 2]);
+                                }
+                            }
+                            if step % 5 == 0 || step == 1 {
+                                let m = [module(&mut link, 0), module(&mut link, 1)];
+                                trace += &format!(" +{}:{:#x}/{:#x}", step * 30, m[0], m[1]);
+                            }
+                        }
+                        println!("    OK (modules{trace}, connected={})", link.connected());
+                    }
                     Err(e) => {
                         println!("    FAILED: {e:?}");
+                        // Leave the stuck pair's screens on disk — a
+                        // parked screen names the stall faster than any
+                        // amount of substate reading.
+                        for seat in 0..2 {
+                            let path = format!(
+                                "wedge-{}-vs-{}-s{seat}.png",
+                                host.label.replace('/', "-"),
+                                joiner.label.replace('/', "-")
+                            );
+                            save_shot(&mut link, seat, &path);
+                            println!("    wrote {path}");
+                        }
                         failures.push(format!("host {} vs joiner {} rtc {rtc_secs}", host.label, joiner.label));
                     }
                 }

@@ -752,23 +752,27 @@ pub mod priming {
     /// host's single prompt reads the first of them, which costs
     /// nothing to share because the two consoles get their own traps.
     const CHOOSING: [u32; 3] = [0x0102_0303, 0x0104_0303, 0x0106_0303];
-    /// The part of a chooser's substate word that says which screen is
-    /// asking. The top byte flags which *flow* the chooser serves —
-    /// 1 in the ordinary Net Battle flow, 0 in the friend flow the
-    /// game runs when it recognizes the peer as its own cartridge's
-    /// other file (the header carries a comm identity: cart id plus a
-    /// file-slot byte, and same id + different slot means the two
-    /// saves came off one cart — which netplay produces whenever both
-    /// players bring the same dump). Same screens, same buttons, so
-    /// the walk answers by the low bytes: the host's "Connect to
-    /// friend?" and the friend-flow choosers get answered like
-    /// everyone else's, where matching the whole word left them
-    /// unanswered until the game's own comm timeout tore the
-    /// association down and the sibling pairing "bounced" back to the
-    /// list. The friend flow's own registration exchange still runs —
+    /// What the host's screen reads while it asks whether to accept an
+    /// incoming *recognized* challenger — the friend flow the game runs
+    /// when the peer is its own cartridge's other file (the save header
+    /// carries a comm identity: cart id plus a file-slot byte, and same
+    /// id + different slot means both saves came off one cart, which
+    /// netplay produces whenever both players bring the same dump).
+    /// The accept is one more prompt on the same chooser widget —
+    /// CHOOSING[0]'s low bytes under the friend flow's 0 top byte — and
+    /// its Yes is the first button, so the host's answer list simply
+    /// carries this word too. Left unanswered, the association sat
+    /// until the game's own comm timeout tore it down and the sibling
+    /// pairing "bounced" back to the list.
+    ///
+    /// Exactly this word and no broader: the joiner's screens read the
+    /// same low bytes with the 0 top byte while it *waits* on this
+    /// accept — non-interactive mirrors of the choosers — and answering
+    /// those desyncs the negotiation into a battle the game itself
+    /// interrupts. The friend flow's registration exchange still runs —
     /// a sibling pairing's board half is a few hundred frames longer,
     /// all of it the game's real work.
-    const CHOOSER_FLOW_MASK: u32 = 0x00ff_ffff;
+    const FRIEND_ACCEPT: u32 = 0x0002_0303;
 
     /// The ARM7 side of the save: its backup server's flash wait, at
     /// the function's entry. r0 arrives holding the mandatory pre-poll
@@ -1102,15 +1106,16 @@ pub mod priming {
                     // The rest are Practice and Yes, both the first —
                     // Practice deliberately, since Real Thing spends the
                     // players' own records on the result.
-                    let waits: &'static [u32] = if host { &CHOOSING[..1] } else { &CHOOSING };
+                    let waits: &'static [u32] = if host {
+                        &[CHOOSING[0], FRIEND_ACCEPT]
+                    } else {
+                        &CHOOSING
+                    };
                     let mut spent = [false; CHOOSING.len()];
                     (
                         code.chooser_touch_gate,
                         Box::new(move |nds: &mut Nds| {
-                            // Which screen is asking, either flow's form
-                            // of it — see [`CHOOSER_FLOW_MASK`].
-                            let sub = nds.read32(ram.substate) & CHOOSER_FLOW_MASK;
-                            let Some(i) = waits.iter().position(|&w| w & CHOOSER_FLOW_MASK == sub) else {
+                            let Some(i) = waits.iter().position(|&w| w == nds.read32(ram.substate)) else {
                                 return;
                             };
                             if std::mem::replace(&mut spent[i], true) {
