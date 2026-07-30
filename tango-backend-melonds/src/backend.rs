@@ -61,6 +61,15 @@ pub trait GameSupport: Sync {
     fn phase_poller(&self) -> Option<Box<dyn FnMut(&mut crate::Nds) -> tango_match::telemetry::Phase + Send>> {
         None
     }
+
+    /// This game's usage-event fold: how its per-tick chip reports and
+    /// button edges decode into chip-use and buster events (see
+    /// [`UsageFold`](tango_match::analysis::UsageFold)). The default is
+    /// the inert fold, for a game whose poller reports no chips — HP,
+    /// custom spans and outcomes still fold as usual.
+    fn usage_fold(&self) -> tango_match::analysis::UsageFold {
+        tango_match::analysis::inert_usage_fold()
+    }
 }
 
 /// A DS cartridge's engine support, as the engine-neutral backend its
@@ -117,11 +126,12 @@ impl tango_match::Backend for DsBackend {
         Ok(tango_match::Solo::new(console))
     }
 
+    fn stats_builder(&self, _rom: &[u8]) -> tango_match::analysis::StatsBuilder {
+        tango_match::analysis::StatsBuilder::new(self.support.usage_fold())
+    }
+
     fn open_replay(&self, config: tango_match::ReplayConfig) -> Result<tango_match::ReplaySet, tango_match::Error> {
-        // No game on this engine derives usage events (chip uses,
-        // buster counts) yet, so a stats pass gets the inert fold —
-        // HP, custom spans and outcomes still fold as usual.
-        let usage = config.want_stats.then(tango_match::analysis::inert_usage_fold);
+        let usage = config.want_stats.then(|| self.support.usage_fold());
         let boot = Boot {
             support: self.support,
             rom: config.roms[0].clone(),
