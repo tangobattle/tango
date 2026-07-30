@@ -1,0 +1,137 @@
+name: ci
+
+# This workflow exists to fill a cache, not to gate anything.
+#
+# release.yaml runs on tag pushes, and a GitHub cache written under
+# refs/tags/vX.Y.Z can be read by nothing except a re-run of that exact
+# tag. A run *can* also read the default branch's scope — so a check
+# built here on main leaves behind a cache the release jobs restore.
+#
+# For that to work the rust-cache keys have to line up, which is what
+# `shared-key` below pins: without it the key includes the job id and
+# `check-linux-x86_64` would never hand anything to `release-linux-x86_64`.
+# The rest of the alignment is by construction — same runner image, same
+# toolchain, same CMAKE_POLICY_VERSION_MINIMUM (rust-cache hashes CMAKE_*
+# and CARGO_* into the key), same target triples, same features.
+#
+# `cargo check` doesn't emit the rlibs a release `cargo build` links, so
+# what carries over is ~/.cargo and the build-script half of target/ —
+# the vendored C and C++ (melonDS, mgba, libdatachannel, openssl) that
+# dominates a cold build. The dependency crates still compile at release
+# time.
+on:
+  push:
+    branches:
+      - main
+  # Caches are evicted after 7 days unused, and the tail end of a quiet
+  # week would otherwise hit a tag build cold. This refills on demand.
+  workflow_dispatch:
+
+jobs:
+  check-win32-x64:
+    runs-on: windows-2022
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: 3.5
+
+    steps:
+      # See release.yaml: libdatachannel's vendored nlohmann/json fixtures
+      # run past Windows' 260-character path cap under ~/.cargo/git, and
+      # the checkout fails outright without this.
+      - name: Allow long paths
+        shell: bash
+        run: |
+          git config --global core.longpaths true
+          git config --system core.longpaths true || true
+
+      - uses: actions/checkout@v4
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Ninja (CMake generator for the melonDS core)
+        run: choco install ninja -y
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-dist
+          cache-on-failure: true
+
+      # Triple, profile and features all feed the hash that names a build
+      # script's OUT_DIR, so they have to match win/build.sh exactly or the
+      # release build looks for its C++ artifacts somewhere else.
+      - name: Check
+        run: cargo check --bin tango --features gamesupport-all --profile release-dist --target x86_64-pc-windows-msvc
+
+  check-mac-universal:
+    runs-on: macos-14
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: 3.5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-apple-darwin, aarch64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-dist
+          cache-on-failure: true
+
+      # Both halves of the lipo'd universal build, since each triple gets
+      # its own target subdirectory and its own vendored C++.
+      - name: Check
+        run: |
+          cargo check --bin tango --features gamesupport-all --profile release-dist --target aarch64-apple-darwin
+          cargo check --bin tango --features gamesupport-all --profile release-dist --target x86_64-apple-darwin
+
+  check-linux-x86_64:
+    runs-on: ubuntu-22.04
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: 3.5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-unknown-linux-gnu
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-dist
+          cache-on-failure: true
+
+      # Same list release.yaml installs: the build scripts pkg-config for
+      # SDL2 and friends whether or not anything gets linked afterwards.
+      - name: Install system packages
+        run: |
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y alsa build-essential clang cmake curl fuse git libnss3 librust-atk-dev librust-gdk-pixbuf-dev librust-gdk-sys-dev librust-pango-dev libsdl2-dev pkgconf sudo wget
+
+      - name: Check
+        run: cargo check --bin tango --features gamesupport-all --profile release-dist --target x86_64-unknown-linux-gnu

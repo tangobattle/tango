@@ -99,11 +99,16 @@ jobs:
       # the toolchain step. It caches ~/.cargo plus the dependency half
       # of target/, dropping this workspace's own crates — which a
       # tagged release build recompiles anyway.
+      #
+      # Restore-only, and off ci.yaml's key. A cache written from a tag
+      # is readable by nothing but a re-run of that same tag, so saving
+      # one here would only spend the repository's 10 GB on entries no
+      # later release can reach; ci.yaml fills the default branch's
+      # scope instead, which is the one a tag run can read.
       - uses: Swatinem/rust-cache@v2
         with:
-          # Matches what always-upload-cache did here: a run that dies
-          # partway still leaves its dependency artifacts behind.
-          cache-on-failure: true
+          shared-key: release-dist
+          save-if: false
 
       - name: Install Python build deps
         run: pip install semver==3.0.0-dev3 toml mako
@@ -147,11 +152,12 @@ jobs:
           targets: x86_64-apple-darwin, aarch64-apple-darwin
 
       # See the note in release-win32-x64: after the toolchain, and it
-      # caches both target/aarch64-apple-darwin and
+      # restores both target/aarch64-apple-darwin and
       # target/x86_64-apple-darwin for the lipo'd universal build.
       - uses: Swatinem/rust-cache@v2
         with:
-          cache-on-failure: true
+          shared-key: release-dist
+          save-if: false
 
       # using venv to avoid: "The directory '/Users/runner/Library/Caches/pip' or its parent directory is not owned or is not writable by the current user"
       - name: Build
@@ -199,7 +205,8 @@ jobs:
       # See the note in release-win32-x64.
       - uses: Swatinem/rust-cache@v2
         with:
-          cache-on-failure: true
+          shared-key: release-dist
+          save-if: false
 
       - name: Install Python build deps
         run: sudo pip3 install semver==3.0.0-dev3 toml mako
