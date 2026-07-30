@@ -80,6 +80,12 @@ impl SinglePlayerSession {
         let screen = crate::Framebuffer::new(&layout);
         let wake = Arc::new(tokio::sync::Notify::new());
 
+        let audio = crate::audio::CoreStream::new(
+            audio_pull,
+            expected_fps,
+            crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
+            sample_rate,
+        );
         let driver = Driver {
             console: console.clone(),
             input: input.clone(),
@@ -87,13 +93,8 @@ impl SinglePlayerSession {
             stop: stop.clone(),
             screen: screen.clone(),
             wake: wake.clone(),
+            intake: audio.intake(),
         };
-        let audio = crate::audio::CoreStream::new(
-            audio_pull,
-            expected_fps,
-            crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
-            sample_rate,
-        );
 
         Ok((
             Self {
@@ -169,6 +170,13 @@ pub struct Driver {
     stop: Arc<AtomicBool>,
     screen: Arc<crate::Framebuffer>,
     wake: Arc<tokio::sync::Notify>,
+    /// The session's audio stream intake, pumped once per tick — right
+    /// after the tick releases the console lock, the one moment it is
+    /// reliably free. A fast-forwarded drive loop holds that lock for
+    /// most of every period, so the sound callback's own reaches cannot
+    /// be what carries the audio out (see
+    /// [`Intake`](crate::audio::Intake)).
+    intake: crate::audio::Intake,
 }
 
 impl crate::Drive for Driver {
@@ -197,6 +205,7 @@ impl Driver {
         if let Some(frame) = self.console.frame() {
             self.screen.write(&frame);
         }
+        self.intake.pump();
         // Wake the host's frame subscription so the UI rebuilds the
         // texture for this frame. Notify coalesces — a slow UI doesn't
         // queue up wakes.

@@ -11,7 +11,7 @@
 pub mod core_stream;
 mod resampler;
 
-pub use core_stream::CoreStream;
+pub use core_stream::{CoreStream, Intake};
 pub use resampler::Resampler;
 
 pub const NUM_CHANNELS: usize = 2;

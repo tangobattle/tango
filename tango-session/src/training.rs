@@ -210,6 +210,7 @@ impl TrainingSession {
             screen: screen.clone(),
             wake: wake.clone(),
             frame: 0,
+            intake: audio.intake(),
         };
 
         Ok((
@@ -348,6 +349,12 @@ pub struct Driver {
     /// Ticks run, handed to the dummy controller so it can time its
     /// takes.
     frame: u64,
+    /// The session's audio stream intake, pumped once per tick — right
+    /// after the advance releases the pair's lock, the one moment it is
+    /// reliably free (see [`Intake`](crate::audio::Intake)). Safe here
+    /// where PvP must not: training is lockstep, so there is no
+    /// speculative audio for a rollback to want back.
+    intake: crate::audio::Intake,
 }
 
 impl crate::Drive for Driver {
@@ -436,6 +443,7 @@ impl Driver {
                 self.pip_fresh.store(false, Ordering::Relaxed);
             }
             self.frame = frame.wrapping_add(1);
+            self.intake.pump();
             self.wake.notify_one();
         }
         true

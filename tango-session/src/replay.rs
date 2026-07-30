@@ -291,12 +291,23 @@ impl ReplaySession {
             local_player,
         };
 
+        // Audio: play the shown perspective's core straight off the
+        // pair, following the drive loop's pacing (see
+        // [`crate::core_stream`]).
+        let audio = crate::audio::CoreStream::new(
+            Box::new(audio_pull.clone()) as Box<dyn tango_match::AudioDrain>,
+            expected_fps,
+            crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
+            sample_rate,
+        );
+
         // The three loops this session needs run. Which of them get
         // threads is the host's call: a desktop gives each one
         // ([`Workers::split`]), a browser ticks them in turn
         // ([`Workers::into_driver`]).
         let workers = Workers {
             drive: DriveWorker {
+                intake: audio.intake(),
                 playhead: Playhead {
                     set: set.clone(),
                     playback: playback.clone(),
@@ -331,16 +342,6 @@ impl ReplaySession {
                 done: false,
             },
         };
-
-        // Audio: play the shown perspective's core straight off the
-        // pair, following the drive loop's pacing (see
-        // [`crate::core_stream`]).
-        let audio = crate::audio::CoreStream::new(
-            Box::new(audio_pull) as Box<dyn tango_match::AudioDrain>,
-            expected_fps,
-            crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
-            sample_rate,
-        );
 
         let session = Self {
             game: games[local_player],
@@ -825,6 +826,13 @@ pub struct DriveWorker {
     paused: Arc<crate::PauseGate>,
     cancel: Arc<AtomicBool>,
     booted: bool,
+    /// The session's audio stream intake, pumped once per played tick —
+    /// right after the step releases the playback lock, the one moment
+    /// it is reliably free. A 4x drive loop on DS-class ticks holds
+    /// that lock essentially always, so the sound callback's own
+    /// reaches cannot be what carries the audio out (see
+    /// [`Intake`](crate::audio::Intake)).
+    intake: crate::audio::Intake,
 }
 
 impl DriveWorker {
@@ -862,7 +870,9 @@ impl crate::Drive for DriveWorker {
         if self.paused.paused() {
             return true;
         }
-        self.playhead.step()
+        let alive = self.playhead.step();
+        self.intake.pump();
+        alive
     }
 
     fn fps_target(&self) -> f32 {

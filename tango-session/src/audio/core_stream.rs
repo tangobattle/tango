@@ -44,9 +44,22 @@
 //! only thing regulating it.
 //!
 //! The core access locks the same mutex the host's per-tick step takes,
-//! so readout interleaves between ticks. A stalled sim (reconnect
-//! pause, replay pause, a parked drive loop) still drains the queue and
-//! goes silent — there's genuinely nothing to play.
+//! so readout interleaves between ticks. That interleaving is enough
+//! only while the lock is mostly free: a drive loop running at its
+//! wall-clock budget — 4x fast-forward, DS-class tick costs — holds it
+//! for essentially all of every period, and the fill's own try-lock
+//! then lands essentially never, starving the stream with whole
+//! seconds of production sitting unreachable behind the lock. The
+//! [`Intake`] handle closes that: the drive loop pumps it once per
+//! tick, right after its own step returns — the one moment the lock is
+//! known to be free — so the reach lands there no matter how saturated
+//! the loop is, and the fill only ever reads what is already staged.
+//! Sessions with rollback don't pump (revocation depends on
+//! speculative samples staying in the console's ring as long as
+//! possible); they run at 1x, where the fill's own reach suffices. A
+//! stalled sim (reconnect pause, replay pause, a parked drive loop)
+//! still drains the queue and goes silent — there's genuinely nothing
+//! to play.
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -90,8 +103,11 @@ const STARVED_FILLS_TO_REPRIME: u32 = 3;
 pub struct CoreStream {
     /// The console's audio, already resampled to the device rate by
     /// whichever backend produced it. This stream never learns which
-    /// emulator that was.
-    pull: super::Resampler,
+    /// emulator that was. Shared with the [`Intake`] the drive loop
+    /// pumps; both holds are bounded (a fill's worth of resampling, a
+    /// take's worth of memcpy), so neither side can stall the other
+    /// past that.
+    pull: Arc<std::sync::Mutex<super::Resampler>>,
     expected_fps: f32,
     /// The host drive loop's current pacing target, f32. Zero or less is
     /// treated as unthrottled (60 fps).
@@ -125,7 +141,7 @@ impl CoreStream {
         out_rate: u32,
     ) -> Self {
         Self {
-            pull: super::Resampler::new(pull),
+            pull: Arc::new(std::sync::Mutex::new(super::Resampler::new(pull))),
             expected_fps,
             fps_target: Box::new(fps_target),
             out_rate: if out_rate == 0 { 48000 } else { out_rate },
@@ -140,11 +156,51 @@ impl CoreStream {
     pub fn fps_from_bits(bits: Arc<std::sync::atomic::AtomicU32>) -> impl Fn() -> f32 + Send + 'static {
         move || f32::from_bits(bits.load(Ordering::Relaxed))
     }
+
+    /// The stream's intake, for the thread that drives the simulation
+    /// (see [`Intake`]).
+    pub fn intake(&self) -> Intake {
+        Intake(self.pull.clone())
+    }
+}
+
+/// The stream's intake, held by whoever turns the simulation's crank.
+///
+/// The fill reaches into the console with a try-lock, which lands only
+/// while the console's lock is mostly free. A drive loop running at
+/// its wall-clock budget — 4x fast-forward, DS-class tick costs —
+/// holds that lock for essentially all of every period, so the fill's
+/// reach starves against exactly the sessions that produce the most
+/// audio. The drive loop itself has what no other thread has: a moment
+/// per tick, right after its own step returns, where the console's
+/// lock is known to be free. [`pump`](Intake::pump) called there moves
+/// the console's ring into the stream's staging through the same drain
+/// the fill uses, and never contends with anything for longer than a
+/// take's worth of memcpy.
+///
+/// Optional: a session whose drive loop never saturates (PvP's match
+/// clock at 1x) plays fine without pumping — and a rollback session
+/// must not pump, since revoking mispredicted audio depends on
+/// speculative samples staying in the console's own ring for as long
+/// as possible.
+#[derive(Clone)]
+pub struct Intake(Arc<std::sync::Mutex<super::Resampler>>);
+
+impl Intake {
+    /// Move what the console has produced into the stream's staging —
+    /// call once per tick, after stepping the simulation.
+    pub fn pump(&self) {
+        self.0.lock().unwrap().source_available();
+    }
 }
 
 impl super::Stream for CoreStream {
     fn fill(&mut self, buf: &mut [[i16; super::NUM_CHANNELS]]) -> usize {
         let frame_count = buf.len();
+        // Shared only with the intake's bounded memcpy-sized holds, so
+        // this is not the unbounded simulation-lock wait the fill must
+        // never take.
+        let mut pull = self.pull.lock().unwrap();
 
         let mut fps_target = (self.fps_target)();
         if fps_target <= 0.0 {
@@ -154,12 +210,12 @@ impl super::Stream for CoreStream {
         // The console's production rate can change at runtime (BN4+
         // flip from 32768 to 65536 Hz after boot), so it is re-read
         // every fill.
-        let source_rate = self.pull.sample_rate();
+        let source_rate = pull.sample_rate();
 
         // The faux clock: production scales with the sim's pace, so a
         // throttled sim stretches playback by the same ratio instead of
         // starving it (and a fast-forwarded one compresses).
-        let mut faux_clock = self.pull.framerate_ratio(fps_target as f64);
+        let mut faux_clock = pull.framerate_ratio(fps_target as f64);
         if !faux_clock.is_finite() || faux_clock <= 0.0 {
             faux_clock = 1.0;
         }
@@ -181,12 +237,13 @@ impl super::Stream for CoreStream {
         }
         self.last_target = target;
 
-        let mut queued = self.pull.source_available() as f64;
+        let mut queued = pull.source_available() as f64;
+
         if queued > target * AUDIO_DISCARD_FACTOR {
             // Producer-burst backlog (seek chase, perspective swap,
             // device-stall catch-up): skip the oldest samples in one go
             // rather than carrying seconds of extra latency.
-            self.pull.discard_source((queued - target) as usize);
+            pull.discard_source((queued - target) as usize);
             queued = target;
         }
 
@@ -209,16 +266,15 @@ impl super::Stream for CoreStream {
         // fast-forwarded sim asks for fewer device frames per second of
         // production, which plays it back faster (and higher). Pitch is
         // the artifact; continuity is what it buys.
-        self.pull.process(
+        pull.process(
             source_rate * (1.0 + trim),
             self.out_rate as f64 * faux_clock,
             frame_count,
         );
 
-        let delivered = self.pull.available().min(frame_count);
+        let delivered = pull.available().min(frame_count);
         let linear_buf: &mut [i16] = bytemuck::cast_slice_mut(buf);
-        self.pull
-            .read(&mut linear_buf[..delivered * super::NUM_CHANNELS], delivered);
+        pull.read(&mut linear_buf[..delivered * super::NUM_CHANNELS], delivered);
 
         // A fill with nothing at all to give AND nothing queued is the
         // stall signature — and the moment an artifact was unavoidable
@@ -347,7 +403,7 @@ mod tests {
             // the servo steers. Sampled where the servo itself sees it —
             // before this fill consumes — since after would read a
             // fill's worth low and make a settled queue look starved.
-            run.queued.push(stream.pull.source_available() as f64);
+            run.queued.push(stream.pull.lock().unwrap().source_available() as f64);
             let delivered = <CoreStream as Stream>::fill(&mut stream, &mut buf);
             if delivered < FILL {
                 run.short.push(i);
@@ -496,6 +552,70 @@ mod tests {
         assert!(
             longest <= STARVED_FILLS_TO_REPRIME as usize,
             "a run of {longest} partial fills — the starvation latch should have conceded"
+        );
+    }
+
+    /// A console reachable only at the drive loop's own moment — the
+    /// saturated-loop case, where the fill's try-lock never lands and
+    /// everything the stream plays has to have crossed through the
+    /// intake's pump. `armed` is the between-ticks window: the pump
+    /// consumes it; every other reach finds the console held.
+    struct PumpOnly {
+        ring: Ring,
+        armed: Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl tango_match::AudioDrain for PumpOnly {
+        fn sample_rate(&self) -> f64 {
+            self.ring.sample_rate()
+        }
+
+        fn framerate_ratio(&self, fps_target: f64) -> f64 {
+            self.ring.framerate_ratio(fps_target)
+        }
+
+        fn drain(&mut self, out: &mut [i16]) -> tango_match::Drained {
+            if !self.armed.swap(false, Ordering::Relaxed) {
+                return tango_match::Drained { written: 0, queued: 0 };
+            }
+            self.ring.drain(out)
+        }
+    }
+
+    /// The saturated-drive-loop case (a DS pair at 4x holds its lock
+    /// ~100% of wall time): the fill's own reaches never land, so
+    /// without the intake this played wall-to-wall silence. Pumped once
+    /// per "tick" at the one reachable moment, every fill plays full.
+    #[test]
+    fn a_fill_lives_off_the_intake_when_its_own_reach_never_lands() {
+        let ring = Arc::new(Mutex::new(RATE * AUDIO_TARGET_QUEUED_SECS));
+        let armed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let pull = Box::new(PumpOnly {
+            ring: Ring(ring.clone()),
+            armed: armed.clone(),
+        });
+        let published = Arc::new(std::sync::atomic::AtomicU32::new((NATIVE_FPS as f32).to_bits()));
+        let mut stream = CoreStream::new(pull, 60.0, CoreStream::fps_from_bits(published.clone()), OUT_RATE);
+        let intake = stream.intake();
+
+        let secs_per_fill = FILL as f64 / OUT_RATE as f64;
+        let mut buf = vec![[0i16; NUM_CHANNELS]; FILL];
+        let mut short = Vec::new();
+        for i in 0..600 {
+            // The drive loop's tick: produce, then pump at the moment
+            // the lock is free.
+            *ring.lock().unwrap() += RATE * secs_per_fill;
+            armed.store(true, Ordering::Relaxed);
+            intake.pump();
+            // The fill's own reach finds the console held again.
+            if <CoreStream as Stream>::fill(&mut stream, &mut buf) < FILL {
+                short.push(i);
+            }
+        }
+        assert!(
+            short.iter().all(|&i| i < 100),
+            "fills starved despite a pumped intake: {:?}",
+            &short.iter().filter(|&&i| i >= 100).collect::<Vec<_>>()
         );
     }
 
