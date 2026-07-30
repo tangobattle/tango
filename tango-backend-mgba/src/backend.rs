@@ -214,6 +214,35 @@ pub(crate) fn boot_pair(
     render: bool,
     cancel: Option<&AtomicBool>,
 ) -> Result<(mgba_rollback::Link, LifecycleSink), crate::Error> {
+    let (mut pair, lifecycle, primed) = assemble_pair(roms, saves, support, prime, rtc, render)?;
+
+    // Prime both cores to their link battle.
+    let mut prime_ticks = 0;
+    while !(primed[0].is_set() && primed[1].is_set()) {
+        if prime_ticks >= MAX_PRIME_TICKS {
+            return Err(crate::Error::PrimeTimeout(MAX_PRIME_TICKS));
+        }
+        if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
+            return Err(crate::Error::Cancelled);
+        }
+        pair.tick(&[0, 0]);
+        prime_ticks += 1;
+    }
+    log::info!("pvp: primed to link battle in {prime_ticks} ticks");
+    Ok((pair, lifecycle))
+}
+
+/// Build the pair with its primer traps installed but the walk not yet
+/// run — where [`boot_pair`]'s priming loop starts from, and what a
+/// caller about to restore an already-primed capture takes as is.
+fn assemble_pair(
+    roms: [Vec<u8>; 2],
+    saves: [Vec<u8>; 2],
+    support: [&dyn GameSupport; 2],
+    prime: &PrimeConfig,
+    rtc: std::time::SystemTime,
+    render: bool,
+) -> Result<(mgba_rollback::Link, LifecycleSink, [crate::PrimedLatch; 2]), crate::Error> {
     crate::install_logger();
     let [rom0, rom1] = roms;
     let [save0, save1] = saves;
@@ -245,21 +274,7 @@ pub(crate) fn boot_pair(
     // never execute in battle.
     pair.set_traps(0, support[0].primer_traps(prime, 0, &lifecycle, &primed[0]));
     pair.set_traps(1, support[1].primer_traps(prime, 1, &lifecycle, &primed[1]));
-
-    // Prime both cores to their link battle.
-    let mut prime_ticks = 0;
-    while !(primed[0].is_set() && primed[1].is_set()) {
-        if prime_ticks >= MAX_PRIME_TICKS {
-            return Err(crate::Error::PrimeTimeout(MAX_PRIME_TICKS));
-        }
-        if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
-            return Err(crate::Error::Cancelled);
-        }
-        pair.tick(&[0, 0]);
-        prime_ticks += 1;
-    }
-    log::info!("pvp: primed to link battle in {prime_ticks} ticks");
-    Ok((pair, lifecycle))
+    Ok((pair, lifecycle, primed))
 }
 
 /// The engine's replay boot ([`tango_match::ReplayBoot`]): prime a
@@ -290,6 +305,48 @@ impl tango_match::ReplayBoot for Boot {
             Some(cancel),
         )
         .map_err(tango_match::Error::from)?;
+        Ok(self.wrap(observe, pair, lifecycle))
+    }
+
+    /// A bare pair for the stats pass to land on the display pair's
+    /// primed capture ([`tango_match::ReplaySet::stats_reusing_playback`]),
+    /// skipping the second priming walk. Sound on this engine because
+    /// the walk leaves nothing a snapshot doesn't carry: the primer
+    /// traps stay installed either way (installed here too, since they
+    /// double as the round-lifecycle anchors), the walk's pokes are
+    /// core state, and the lockstep blobs ride in the snapshot.
+    fn boot_unprimed(
+        &self,
+        observe: bool,
+        _cancel: &AtomicBool,
+    ) -> Result<Option<tango_match::BootedReplay>, tango_match::Error> {
+        let (pair, lifecycle, _primed) = assemble_pair(
+            self.roms.clone(),
+            self.saves.clone(),
+            self.support.map(|s| s as &dyn GameSupport),
+            &self.prime,
+            self.rtc,
+            true,
+        )
+        .map_err(tango_match::Error::from)?;
+        // The capture this pair is about to land on is round 1 already
+        // started — the walk's handoff fired on the pair that took it,
+        // leaving the sink latched for `Telemetry::new`'s baseline
+        // `Started` at tick 0. Reproduce the latch, since no walk runs
+        // here to fire it. The primed latches stay unset: only the
+        // priming loop reads them, and the walk traps gate on game
+        // state a battle capture leaves inert.
+        lifecycle.round_started();
+        Ok(Some(self.wrap(observe, pair, lifecycle)))
+    }
+}
+
+impl Boot {
+    /// The booted pair as the seam takes it, with the game observed
+    /// (pollers + the trap-fed lifecycle) when the stats pass asks —
+    /// the display pair pays for no pollers, and its lifecycle sink is
+    /// a write-only stub.
+    fn wrap(&self, observe: bool, pair: mgba_rollback::Link, lifecycle: LifecycleSink) -> tango_match::BootedReplay {
         let (telemetry, handle) = if observe {
             let (telemetry, handle) = Telemetry::new(
                 [self.support[0].core_poller(0), self.support[1].core_poller(1)],
@@ -297,13 +354,11 @@ impl tango_match::ReplayBoot for Boot {
             );
             (Some(telemetry), Some(handle))
         } else {
-            // The display pair pays for no pollers; its lifecycle sink
-            // is a write-only stub.
             (None, None)
         };
-        Ok(tango_match::BootedReplay {
+        tango_match::BootedReplay {
             link: Box::new(crate::Link::new(pair, telemetry)),
             telemetry: handle,
-        })
+        }
     }
 }
