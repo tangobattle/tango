@@ -1,6 +1,8 @@
-//! BN5DS's save-editor UI: the chip folder, editable now that the
-//! flash checksums are reversed, plus a switcher for the cart's two
-//! in-game files in the editor's top bar. The tabs probe the views the
+//! BN5DS's save-editor UI: the chip folder, plus a switcher for the
+//! cart's two in-game files in the editor's top bar. Editing is off
+//! for this game for now — the save hands out no writable chips view
+//! (see its `view_chips_mut`), so the shell offers no Edit button and
+//! the folder editor below never runs. The tabs probe the views the
 //! same way BN5's do, so everything under that bar is the ordinary
 //! save viewer; the switcher is this game's own affordance — a dump is
 //! two saves (see the dataview's `SaveSet`), and picking one hands the

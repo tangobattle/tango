@@ -10,11 +10,13 @@
 //!
 //! Recognition is settled: the game stamps its own format tag into
 //! every block it formats, and finding that tag intact is what puts a
-//! dump in the save picker. The interior mapping now reaches far
-//! enough to edit: the chip folders and pack (the GBA game's own
-//! shapes), the equipped-folder cluster, and — read out of the ARM9's
-//! own save code — the flash checksums, so an edited block can be made
-//! acceptable to the game again.
+//! dump in the save picker. The interior mapping reaches far enough to
+//! edit: the chip folders and pack (the GBA game's own shapes), the
+//! equipped-folder cluster, and — read out of the ARM9's own save code
+//! — the flash checksums, so an edited block can be made acceptable to
+//! the game again. Editing is nonetheless turned off for now: the
+//! write path is all here, but `Save::view_chips_mut` hands out
+//! nothing, so the editor is the plain viewer.
 
 use tango_gamesupport_common::dataview::save::Error;
 
@@ -315,8 +317,13 @@ impl tango_gamesupport_common::dataview::save::Save for Save {
         Some(Box::new(ChipsView { save: self }))
     }
 
+    /// Editing is off for this game for now: no writable view, so the
+    /// editor is the plain viewer (an unwritable section is the ordinary
+    /// answer here — see `Editability`). The write path below is intact
+    /// and covered by the tests, which build the view directly; turning
+    /// editing back on is handing out `Some` from this method again.
     fn view_chips_mut(&mut self) -> Option<Box<dyn tango_gamesupport_common::dataview::save::ChipsViewMut + '_>> {
-        Some(Box::new(ChipsView { save: self }))
+        None
     }
 
     fn to_sram_dump(&self) -> Vec<u8> {
@@ -494,10 +501,17 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::s
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tango_gamesupport_common::dataview::save::{ChipCode, Save as _};
+    use tango_gamesupport_common::dataview::save::{ChipCode, ChipsView as _, ChipsViewMut as _, Save as _};
 
     fn chip_bytes(id: u16, code: u16) -> [u8; 2] {
         (id | (code << 9)).to_le_bytes()
+    }
+
+    /// The writable chips view. [`Save::view_chips_mut`] hands out
+    /// `None` while editing is off, so the tests reach the write path
+    /// the way that method would once it is back on.
+    fn chips_mut(save: &mut Save) -> ChipsView<&mut Save> {
+        ChipsView { save }
     }
 
     fn plausible() -> Vec<u8> {
@@ -694,7 +708,7 @@ mod tests {
 
         let mut file1 = set.save(1).unwrap();
         {
-            let mut chips = file1.view_chips_mut().unwrap();
+            let mut chips = chips_mut(&mut file1);
             assert!(chips.set_chip(
                 0,
                 0,
@@ -724,7 +738,7 @@ mod tests {
 
         let mut save = SaveSet::parse(&data).unwrap().current();
         {
-            let mut chips = save.view_chips_mut().unwrap();
+            let mut chips = chips_mut(&mut save);
             assert!(chips.set_chip(
                 0,
                 0,
@@ -786,27 +800,27 @@ mod tests {
 
         // The first grant on an empty pack takes the first key, and the
         // next one takes the key below it.
-        let mut chips = save.view_chips_mut().unwrap();
+        let mut chips = chips_mut(&mut save);
         assert!(chips.set_pack_count(7, 2, 4));
         drop(chips);
         assert_eq!(key_at(&save, 7, 2), PACK_KEY_FIRST);
-        let mut chips = save.view_chips_mut().unwrap();
+        let mut chips = chips_mut(&mut save);
         assert!(chips.set_pack_count(9, 0, 1));
         drop(chips);
         assert_eq!(key_at(&save, 9, 0), PACK_KEY_FIRST - 1);
 
         // A key sticks across count changes and clears with the count.
-        let mut chips = save.view_chips_mut().unwrap();
+        let mut chips = chips_mut(&mut save);
         assert!(chips.set_pack_count(7, 2, 1));
         drop(chips);
         assert_eq!(key_at(&save, 7, 2), PACK_KEY_FIRST);
-        let mut chips = save.view_chips_mut().unwrap();
+        let mut chips = chips_mut(&mut save);
         assert!(chips.set_pack_count(7, 2, 0));
         drop(chips);
         assert_eq!(key_at(&save, 7, 2), 0);
 
         // Ids without a pack slot stay unpokeable.
-        let mut chips = save.view_chips_mut().unwrap();
+        let mut chips = chips_mut(&mut save);
         assert!(!chips.set_pack_count(NUM_PACK_CHIPS, 0, 1));
         assert_eq!(chips.pack_count(NUM_PACK_CHIPS, 0), None);
     }
