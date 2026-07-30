@@ -69,14 +69,6 @@ jobs:
 
       - run: git fetch --tags --force
 
-      - uses: pat-s/always-upload-cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: win32-x64-msvc-cargo-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
         with:
@@ -102,6 +94,16 @@ jobs:
         with:
           toolchain: stable
           targets: x86_64-pc-windows-msvc
+
+      # rust-cache keys on the installed rustc, so it has to come after
+      # the toolchain step. It caches ~/.cargo plus the dependency half
+      # of target/, dropping this workspace's own crates — which a
+      # tagged release build recompiles anyway.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Matches what always-upload-cache did here: a run that dies
+          # partway still leaves its dependency artifacts behind.
+          cache-on-failure: true
 
       - name: Install Python build deps
         run: pip install semver==3.0.0-dev3 toml mako
@@ -134,14 +136,6 @@ jobs:
 
       - run: git fetch --tags --force
 
-      - uses: pat-s/always-upload-cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            core/target
-          key: darwin-universal-cargo-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
         with:
@@ -151,6 +145,13 @@ jobs:
         with:
           toolchain: stable
           targets: x86_64-apple-darwin, aarch64-apple-darwin
+
+      # See the note in release-win32-x64: after the toolchain, and it
+      # caches both target/aarch64-apple-darwin and
+      # target/x86_64-apple-darwin for the lipo'd universal build.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       # using venv to avoid: "The directory '/Users/runner/Library/Caches/pip' or its parent directory is not owned or is not writable by the current user"
       - name: Build
@@ -185,14 +186,6 @@ jobs:
 
       - run: git fetch --tags --force
 
-      - uses: pat-s/always-upload-cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            core/target
-          key: linux-x86_64-cargo-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
         with:
@@ -202,6 +195,11 @@ jobs:
         with:
           toolchain: stable
           targets: x86_64-unknown-linux-gnu
+
+      # See the note in release-win32-x64.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - name: Install Python build deps
         run: sudo pip3 install semver==3.0.0-dev3 toml mako
