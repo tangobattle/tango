@@ -293,14 +293,8 @@ impl tango_backend_melonds::GameSupport for Pvp {
                     .then(|| read16(self.chip_block + 2 + 2 * fired as u32))
                     .filter(|&id| id != 0 && id <= 0x0fff)
                     .map(|id| LoadedChip { id, fires: fired });
-                self.chips.tick(
-                    round,
-                    reading,
-                    custom_self,
-                    units[self.player].hp,
-                    self.player,
-                    events,
-                );
+                self.chips
+                    .tick(round, reading, custom_self, units[self.player].hp, self.player, events);
                 Some(CoreObs { units, custom_self })
             }
             fn save(&self) -> tango_match::telemetry::Scratch {
@@ -694,11 +688,22 @@ pub mod priming {
     /// [`BATTLE_BUDGET`]. A clean run never waits this out — its pick
     /// lands on the first scan's report.
     const RETRY_COOLDOWN: u32 = 300;
-    /// What `RAMOffsets::list_count` reads once the list holds the
-    /// host. The count is the low byte; the rest of the word has
-    /// settled by the time the screen is up, so the whole word is the
-    /// cheaper test.
-    const LIST_HAS_HOST: u32 = 0x0001_0101;
+    /// What the count byte at `RAMOffsets::list_count` reads once the
+    /// list holds the host — one entry, because the joiner only ever
+    /// sees the one console advertising. The count byte ALONE: the
+    /// word around it once served as a cheaper whole-word test
+    /// (`0x0001_0101`), but its top byte turned out to be a real
+    /// neighboring field that reads 1 for some host×joiner save
+    /// pairings (records/registration-adjacent — the row draws a
+    /// Results panel and an extra glyph by the host's name exactly
+    /// when it is set), and it holds that value for as long as the
+    /// screen does. Comparing the whole word wedged those pairings:
+    /// the list held the host, the game sat healthy on the screen, and
+    /// the pick never fired — the "file 1 vs file 2 white screen until
+    /// the connection times out" stall, long misattributed to flash
+    /// wear geometry because rewriting the cart happened to change
+    /// what the two saves knew about each other.
+    const LIST_HAS_HOST: u8 = 1;
     /// What `RAMOffsets::substate` reads while a chooser waits for
     /// its answer. The joiner meets all three in this order — the mode,
     /// then Practice, then "connect using these options?" — and the
@@ -1006,7 +1011,7 @@ pub mod priming {
                         Box::new(move |nds: &mut Nds| {
                             pick_cd = pick_cd.saturating_sub(1);
                             refresh_cd = refresh_cd.saturating_sub(1);
-                            if pick_cd == 0 && nds.read32(ram.list_count) == LIST_HAS_HOST {
+                            if pick_cd == 0 && nds.read8(ram.list_count) == LIST_HAS_HOST {
                                 pick_cd = RETRY_COOLDOWN;
                                 nds.set_reg(ROW_REG, FIRST_ROW);
                                 nds.set_reg(LIST_REG, ram.list_object);

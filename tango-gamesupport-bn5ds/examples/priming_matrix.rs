@@ -2,18 +2,18 @@
 //! file) combination the given cartridge dumps can produce.
 //!
 //! This is the harness that cornered the "no battle 2400 frames past
-//! the board" stall: the game's Net Battle handshake wedges for some
-//! flash block layouts, and which layout a cartridge is in rotates as
-//! it saves — so the wild flake was deterministic here, as a specific
-//! host×joiner cell. Each dump's file-select slots each become an
-//! identity exactly as a live session now carries one: the dump
-//! untouched, plus a `PlayedFile` session payload — so this also
-//! regression-tests the payload-steered save select. With the cart
-//! travelling unmasked, wedge-prone wear layouts are live again: a
-//! failed cell is the game's own handshake stalling against that
-//! flash geometry (host file 1 vs joiner file 2 on the probe cart),
-//! not the steering missing its row — the walk's log lines tell the
-//! two apart when a cell stalls.
+//! the board" stall — long blamed on flash wear layouts, actually the
+//! walk's own row-pick gate: the joiner's list word carries a
+//! neighboring byte that reads 1 for some host×joiner save pairings,
+//! and the old whole-word compare never fired on them (the walk now
+//! gates on the count byte alone — see `LIST_HAS_HOST` in the game
+//! crate). Which saves meet is the pairing, so the wild "sometimes"
+//! flake was deterministic here, as a specific host×joiner cell. Each
+//! dump's file-select slots each become an identity exactly as a live
+//! session carries one: the dump untouched, plus a `PlayedFile`
+//! session payload — so this also regression-tests the
+//! payload-steered save select. Every cell must be OK; the walk's own
+//! log lines carry the diagnostics when a cell stalls.
 //!
 //! Usage: priming_matrix <rom.nds> <flash.sav>... [--jp] [--type T]
 //!        [--rtc SECS[,SECS...]] [--emit DIR]
