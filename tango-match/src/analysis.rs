@@ -1,16 +1,16 @@
 //! Match statistics and their cached on-disk form.
 //!
-//! `tango_backend_mgba::analysis::analyze` re-simulates a recorded replay on
-//! a headless pair and extracts per-round [`MatchStats`]: the outcome
-//! and both players' HP over the round, from the same RAM-poll
-//! telemetry the live engine collects. That's a full replay simulation
-//! — seconds of CPU — so stats are meant to be computed once and
-//! cached in a small versioned binary sidecar (`<replay>.stats`, see
-//! [`MatchStats::read`]/[`MatchStats::write`]). Live matches skip the
-//! re-simulation entirely: the session folds each confirmed telemetry
-//! batch into the same [`StatsBuilder`] as it plays — one
-//! aggregation path, whichever side of the replay boundary the samples
-//! come from.
+//! [`ReplaySet::analyze`](crate::ReplaySet::analyze) re-simulates a
+//! recorded replay on a headless pair and extracts per-round
+//! [`MatchStats`]: the outcome and both players' HP over the round,
+//! from the same RAM-poll telemetry the live engine collects. That's a
+//! full replay simulation — seconds of CPU — so stats are meant to be
+//! computed once and cached in a small versioned binary sidecar
+//! (`<replay>.stats`, see [`MatchStats::read`]/[`MatchStats::write`]).
+//! Live matches skip the re-simulation entirely: the session folds
+//! each confirmed telemetry batch into the same [`StatsBuilder`] as it
+//! plays — one aggregation path, whichever side of the replay boundary
+//! the samples come from.
 
 /// Outcome of a single round, from this side's perspective.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde_repr::Serialize_repr, serde_repr::Deserialize_repr)]
@@ -220,12 +220,19 @@ impl StatsBuilder {
     }
 }
 
+/// The fold that derives no usage events — for a game (or a whole
+/// engine) that reports no chips and counts no buster shots. HP,
+/// custom spans and outcomes still fold as usual.
+pub fn inert_usage_fold() -> UsageFold {
+    Box::new(|_, _| UsageEvents::default())
+}
+
 /// The inert aggregator, for a game whose engine derives no usage
 /// events: no chip uses, no buster counting — HP, custom spans and
 /// outcomes still fold as usual.
 impl Default for StatsBuilder {
     fn default() -> Self {
-        StatsBuilder::new(Box::new(|_, _| UsageEvents::default()))
+        StatsBuilder::new(inert_usage_fold())
     }
 }
 

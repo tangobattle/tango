@@ -115,6 +115,18 @@ impl Link {
         self.telemetry = Some(telemetry);
     }
 
+    /// Zero the tick clock without arming telemetry — what
+    /// [`set_telemetry`](Link::set_telemetry) does for an observed
+    /// pair, for one that runs without a collector. The walk drives
+    /// this pair through the seam's own tick, so without this an
+    /// unobserved pair's captures would carry boot-inflated ticks — and
+    /// a telemetry-armed pair landing on one (the stats pass reusing
+    /// the display pair's primed state) would stamp its observations
+    /// off the session's numbering.
+    pub(crate) fn zero_clock(&mut self) {
+        self.live_tick = 0;
+    }
+
     /// One console of the pair. A game crate needs this to reach past
     /// the link when priming: execution traps are installed per
     /// console.

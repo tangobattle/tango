@@ -104,8 +104,9 @@ impl Drop for Engine {
     fn drop(&mut self) {
         self.cancel.store(true, Ordering::Relaxed);
         // The engine's own flag, checked per tick deep inside the stats
-        // pass and both pairs' priming walks — without it a host joining
-        // its workers waits out whatever slice or boot is in flight.
+        // pass and the priming walks (and it wakes a stats pass parked
+        // on the display boot) — without it a host joining its workers
+        // waits out whatever slice or boot is in flight.
         self.set.cancel();
         // Release a gate-parked drive loop so the host's join is prompt.
         self.paused.set(false);
@@ -250,9 +251,10 @@ impl ReplaySession {
         let pip_fresh = Arc::new(AtomicBool::new(false));
 
         // The recording as the local game's engine offers it. Nothing
-        // is simulated yet: each of the two passes boots on whichever
-        // worker the host runs it on, which is what keeps those boots
-        // concurrent.
+        // is simulated yet: the display pair boots on the drive worker,
+        // and the prefetch worker's pass either reuses its primed first
+        // state (parking until it lands) or — on an engine that can't
+        // hand over a bare pair — walks its own prime concurrently.
         let set: Arc<tango_match::ReplaySet> =
             Arc::new(games[local_player].pvp.open_replay(tango_match::ReplayConfig {
                 roms: [roms[0].to_vec(), roms[1].to_vec()],
@@ -906,7 +908,9 @@ impl SeekWorker {
 
 /// The prefetch loop: races its own pair through the whole stream for
 /// keyframes, round marks and (when the host asked for them) the
-/// match-stats analysis.
+/// match-stats analysis. Where the engine allows, that pair opens by
+/// landing on the display pair's primed first state rather than
+/// walking a prime of its own.
 pub struct PrefetchWorker {
     set: Arc<tango_match::ReplaySet>,
     /// The session's mark list, when the recording predates the
@@ -944,7 +948,11 @@ impl PrefetchWorker {
             return false;
         }
         if self.pass.is_none() {
-            match self.set.stats() {
+            // Reuses the display pair's primed state where the engine
+            // allows, so the open blocks until the drive worker's boot
+            // lands — the same second or two a walk of its own costs,
+            // minus the walk.
+            match self.set.stats_reusing_playback() {
                 Ok(pass) => self.pass = Some(pass),
                 Err(tango_match::Error::Cancelled) => {
                     self.done = true;

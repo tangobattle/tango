@@ -69,8 +69,10 @@ mgba (emulator)
   on exact snapshots), the `SeekController` + `run_seek_worker` chase
   (newest target supersedes mid-flight), and `run_prefetch` (a second
   pair racing ahead for keyframes, round marks, and optionally the
-  stats analysis). The host owns all the threads; this module provides
-  the work they do.
+  stats analysis — landing on the display pair's primed tick-0 capture
+  instead of walking a prime of its own, where the engine's boot can
+  hand over a bare pair). The host owns all the threads; this module
+  provides the work they do.
 
 - **`telemetry`** — the observation layer over the pair. Battle values
   are polled from EWRAM after every simulated tick (each core answers

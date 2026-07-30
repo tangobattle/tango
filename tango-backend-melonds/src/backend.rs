@@ -118,9 +118,10 @@ impl tango_match::Backend for DsBackend {
     }
 
     fn open_replay(&self, config: tango_match::ReplayConfig) -> Result<tango_match::ReplaySet, tango_match::Error> {
-        // `usage` stays `None`: no game on this engine derives usage
-        // events (chip uses, buster counts) yet, so the stats pass
-        // folds HP/rounds and lays the seek keyframes.
+        // No game on this engine derives usage events (chip uses,
+        // buster counts) yet, so a stats pass gets the inert fold —
+        // HP, custom spans and outcomes still fold as usual.
+        let usage = config.want_stats.then(tango_match::analysis::inert_usage_fold);
         let boot = Boot {
             support: self.support,
             rom: config.roms[0].clone(),
@@ -128,7 +129,7 @@ impl tango_match::Backend for DsBackend {
             rtc: config.rtc,
             match_type: config.match_type,
         };
-        Ok(tango_match::ReplaySet::new(&config, None, boot))
+        Ok(tango_match::ReplaySet::new(&config, usage, boot))
     }
 }
 
@@ -153,13 +154,14 @@ struct Boot {
 
 impl tango_match::ReplayBoot for Boot {
     fn boot(&self, want_stats: bool, cancel: &AtomicBool) -> Result<tango_match::BootedReplay, tango_match::Error> {
-        let mut link = Link::new(
-            &self.rom,
-            [Some(self.saves[0].as_slice()), Some(self.saves[1].as_slice())],
-            self.rtc,
-        )
-        .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
+        let mut link = self.pair()?;
         self.support.prime(&mut link, self.match_type, Some(cancel))?;
+        // Session tick numbering starts after the walk, observed or
+        // not (the walk drives the pair through the seam's tick, so it
+        // counts otherwise). Captures then carry session ticks, which
+        // is what lets the stats pass land its own pair on the display
+        // pair's first one.
+        link.zero_clock();
         // The stats pass wants the game observed, exactly as a live
         // match is; the display pair pays for no pollers.
         let handle = want_stats.then(|| observe(&mut link, self.support));
@@ -167,6 +169,38 @@ impl tango_match::ReplayBoot for Boot {
             link: Box::new(link),
             telemetry: handle,
         })
+    }
+
+    /// A bare pair for the stats pass to land on the display pair's
+    /// primed capture ([`tango_match::ReplaySet::stats_reusing_playback`]),
+    /// skipping the second priming walk. Sound on this engine because
+    /// the walk leaves nothing a snapshot doesn't carry: its traps are
+    /// all off again before `prime` returns (both processors handed
+    /// back to the JIT), and everything else it changed is console
+    /// state.
+    fn boot_unprimed(
+        &self,
+        want_stats: bool,
+        _cancel: &AtomicBool,
+    ) -> Result<Option<tango_match::BootedReplay>, tango_match::Error> {
+        let mut link = self.pair()?;
+        let handle = want_stats.then(|| observe(&mut link, self.support));
+        Ok(Some(tango_match::BootedReplay {
+            link: Box::new(link),
+            telemetry: handle,
+        }))
+    }
+}
+
+impl Boot {
+    /// The pair at power-on, from the recording's own header.
+    fn pair(&self) -> Result<Link, tango_match::Error> {
+        Link::new(
+            &self.rom,
+            [Some(self.saves[0].as_slice()), Some(self.saves[1].as_slice())],
+            self.rtc,
+        )
+        .map_err(|e| tango_match::Error::Backend(Box::new(e)))
     }
 }
 

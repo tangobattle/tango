@@ -769,13 +769,28 @@ pub struct BootedReplay {
 pub trait ReplayBoot: Send + Sync {
     /// Boot + prime one pair. Called up to twice — the display pair and
     /// the stats pass each boot on whichever host thread pays for it,
-    /// which is what keeps those boots concurrent. With `observe`, wire
-    /// the game's telemetry and hand back its store — the stats pass
-    /// asks for it, the display pair doesn't pay for it. Flipping
-    /// `cancel` mid-prime fails the boot with
+    /// which is what keeps those boots concurrent (unless the stats
+    /// pass reuses the display pair's primed state — see
+    /// [`Self::boot_unprimed`]). With `observe`, wire the game's
+    /// telemetry and hand back its store — the stats pass asks for it,
+    /// the display pair doesn't pay for it. Flipping `cancel` mid-prime
+    /// fails the boot with
     /// [`Error::Cancelled`](crate::Error::Cancelled) instead of
     /// finishing the walk.
     fn boot(&self, observe: bool, cancel: &AtomicBool) -> Result<BootedReplay, crate::Error>;
+
+    /// Boot one pair *without* the priming walk, for a caller about to
+    /// restore an already-primed capture into it
+    /// ([`ReplaySet::stats_reusing_playback`]). Only sound where the
+    /// walk leaves nothing behind that a snapshot doesn't carry — no
+    /// standing traps, no host-side config the walk flipped — so a
+    /// fresh pair landed on a primed capture IS the primed pair. The
+    /// default says an engine can't promise that (`None`), and the
+    /// caller primes as usual.
+    fn boot_unprimed(&self, observe: bool, cancel: &AtomicBool) -> Result<Option<BootedReplay>, crate::Error> {
+        let _ = (observe, cancel);
+        Ok(None)
+    }
 }
 
 /// One recording, ready to simulate: the pair a viewer watches and the
@@ -784,8 +799,11 @@ pub trait ReplayBoot: Send + Sync {
 /// Both are booted on demand rather than up front, because booting one
 /// is seconds of priming and a host runs the two on separate threads —
 /// asking for them separately is what keeps those boots concurrent.
-/// What they share is the keyframes they lay down, so the pass racing
-/// ahead is also what makes seeking behind the playhead cheap.
+/// Where the engine allows it, the stats pass skips its walk entirely
+/// and lands on the display pair's primed first state instead
+/// ([`Self::stats_reusing_playback`]). What the two share is the
+/// keyframes they lay down, so the pass racing ahead is also what
+/// makes seeking behind the playhead cheap.
 pub struct ReplaySet {
     boot: Box<dyn ReplayBoot>,
     inputs: Arc<Vec<[crate::HostInput; 2]>>,
@@ -796,7 +814,25 @@ pub struct ReplaySet {
     /// the playhead lands on.
     store: SnapshotStore,
     round_marks: Option<Arc<Mutex<Vec<u32>>>>,
+    /// The display boot's capture at tick 0, for the stats pass to land
+    /// on instead of priming a second pair. Condvar-signalled: the pass
+    /// opens on another thread and parks here while the display pair is
+    /// still walking its prime.
+    first_capture: Mutex<FirstCapture>,
+    first_capture_cv: std::sync::Condvar,
     cancel: Arc<AtomicBool>,
+}
+
+/// Where the display pair's primed first state stands — see
+/// [`ReplaySet::stats_reusing_playback`].
+#[derive(Clone)]
+enum FirstCapture {
+    /// No display boot has landed yet.
+    Pending,
+    /// The display pair, captured primed and poised at tick 0.
+    Available(Arc<Capture>),
+    /// The display boot failed (or couldn't capture) — nothing to reuse.
+    Unavailable,
 }
 
 impl ReplaySet {
@@ -812,17 +848,38 @@ impl ReplaySet {
             usage: Mutex::new(usage),
             store: SnapshotStore::new(),
             round_marks: config.want_round_marks.then(Default::default),
+            first_capture: Mutex::new(FirstCapture::Pending),
+            first_capture_cv: std::sync::Condvar::new(),
             cancel: Arc::new(AtomicBool::new(false)),
         }
     }
 
     /// Boot the display pair. Blocks for the priming walk.
     pub fn playback(&self) -> Result<Replay, crate::Error> {
-        let booted = self.boot.boot(false, &self.cancel)?;
-        Ok(Replay::new(
-            Playback::new(booted.link, self.inputs.clone()),
-            self.store.clone(),
-        ))
+        let booted = match self.boot.boot(false, &self.cancel) {
+            Ok(booted) => booted,
+            Err(e) => {
+                // A stats pass parked on this boot reprimes for itself.
+                self.publish_first_capture(FirstCapture::Unavailable);
+                return Err(e);
+            }
+        };
+        let mut playback = Playback::new(booted.link, self.inputs.clone());
+        // The primed pre-battle state, captured before the first input:
+        // the keyframe every backward seek bottoms out on, and the
+        // state the stats pass lands its own pair on instead of walking
+        // the prime again ([`Self::stats_reusing_playback`]).
+        match playback.capture() {
+            Ok(capture) => {
+                self.store.push(0, capture.clone());
+                self.publish_first_capture(FirstCapture::Available(capture));
+            }
+            Err(e) => {
+                log::warn!("replay: primed-state capture failed: {e:?}");
+                self.publish_first_capture(FirstCapture::Unavailable);
+            }
+        }
+        Ok(Replay::new(playback, self.store.clone()))
     }
 
     /// Boot a bare linear pass over the recording: the pair alone, no
@@ -834,6 +891,56 @@ impl ReplaySet {
         Ok(Playback::new(booted.link, self.inputs.clone()))
     }
 
+    /// Re-simulate the whole recording front to back and fold its
+    /// telemetry into [`MatchStats`](crate::analysis::MatchStats) — the
+    /// batch flavor of [`Self::stats`], for a host computing statistics
+    /// with no viewer attached: no keyframes are laid, and both sides
+    /// skip rasterization once primed. Blocks for the priming walk and
+    /// then the full linear pass — seconds of CPU, so run it on a
+    /// worker.
+    ///
+    /// `on_progress` is called once per simulated tick with
+    /// `(done, total)` and the in-flight builder for live partial
+    /// previews. Flipping `cancel` (checked mid-prime and per tick)
+    /// aborts with [`Error::Cancelled`](crate::Error::Cancelled) and
+    /// nothing partial.
+    pub fn analyze(
+        &self,
+        on_progress: &mut dyn FnMut(u32, u32, &crate::analysis::StatsBuilder),
+        cancel: &AtomicBool,
+    ) -> Result<crate::analysis::MatchStats, crate::Error> {
+        let booted = self.boot.boot(true, cancel)?;
+        // No telemetry, no analysis: without pollers the fold would
+        // produce an empty result that reads as a real (statless)
+        // match, so fail out instead and let the caller cache nothing.
+        let Some(telemetry) = booted.telemetry else {
+            return Err(crate::Error::Unsupported("this game reports no telemetry"));
+        };
+        let mut playback = Playback::new(booted.link, self.inputs.clone());
+        for player in 0..2 {
+            playback.side(player).set_render(false);
+        }
+        let usage = self.usage.lock().unwrap().take();
+        let mut builder = usage.map(crate::analysis::StatsBuilder::new).unwrap_or_default();
+        let total = playback.total();
+        loop {
+            if cancel.load(Ordering::Relaxed) || self.cancel.load(Ordering::Relaxed) {
+                return Err(crate::Error::Cancelled);
+            }
+            if !playback.step() {
+                break;
+            }
+            let tick = playback.cursor();
+            // Everything is final on a linear re-sim — fold as we go.
+            let (samples, events) = telemetry.lock().unwrap().drain_confirmed(tick);
+            crate::analysis::fold_confirmed(&mut builder, self.local_player, samples, events, &mut |t| {
+                (t == tick).then(|| playback.keys_at(tick)).flatten()
+            });
+            on_progress(tick, total, &builder);
+        }
+        Ok(builder.finish())
+    }
+
     /// Boot the statistics pass. Blocks for the priming walk.
     pub fn stats(&self) -> Result<StatsPass, crate::Error> {
         let booted = self.boot.boot(true, &self.cancel)?;
@@ -841,24 +948,97 @@ impl ReplaySet {
         // Keyframe at tick 0: the primed pre-battle state every backward
         // seek bottoms out on.
         self.store.push(0, playback.capture()?);
+        Ok(self.assemble_stats(booted.telemetry, playback))
+    }
+
+    /// The statistics pass off the display pair's primed first state,
+    /// for a host that boots both: park until [`Self::playback`]'s
+    /// tick-0 capture lands, then land a bare pair on it
+    /// ([`ReplayBoot::boot_unprimed`]) instead of walking the prime a
+    /// second time — the walk is seconds of simulation, and both walks
+    /// reach identical state by construction. Falls back to
+    /// [`Self::stats`]'s own walk when the engine can't take a bare
+    /// pair there, or when the display boot came up empty-handed.
+    ///
+    /// Blocks until the display boot lands one way or the other, so
+    /// only a host that is actually booting the display pair should
+    /// call this — anyone else wants [`Self::stats`].
+    pub fn stats_reusing_playback(&self) -> Result<StatsPass, crate::Error> {
+        let bare = match self.boot.boot_unprimed(true, &self.cancel)? {
+            Some(bare) => bare,
+            // The engine can't skip the walk; prime concurrently with
+            // the display boot, as ever.
+            None => return self.stats(),
+        };
+        match self.wait_first_capture() {
+            FirstCapture::Available(capture) => {
+                let mut playback = Playback::new(bare.link, self.inputs.clone());
+                match playback.load(&capture) {
+                    // The capture is already in the store — the display
+                    // boot pushed it — so no tick-0 push here.
+                    Ok(()) => return Ok(self.assemble_stats(bare.telemetry, playback)),
+                    // The pair is fresh and the state is foreign; an
+                    // engine that can't land it reprimes rather than
+                    // dying.
+                    Err(e) => log::warn!("stats pass: primed-state reuse failed, repriming: {e:?}"),
+                }
+            }
+            // Only cancellation leaves the wait pending (or a host
+            // without threads asking before its display boot — it
+            // can't park, so it primes).
+            FirstCapture::Pending if self.cancel.load(Ordering::Relaxed) => {
+                return Err(crate::Error::Cancelled);
+            }
+            FirstCapture::Pending | FirstCapture::Unavailable => {}
+        }
+        self.stats()
+    }
+
+    /// Everything above the pair: the shared keyframe store, the fold
+    /// (when this boot observes and the host asked), the mark list.
+    fn assemble_stats(&self, telemetry: Option<TelemetryHandle>, playback: Playback) -> StatsPass {
         // No telemetry, no fold — a game without pollers still lays
         // keyframes, and the host keeps the rest of the ride.
-        let builder = booted
-            .telemetry
+        let builder = telemetry
             .is_some()
             .then(|| self.usage.lock().unwrap().take())
             .flatten()
             .map(crate::analysis::StatsBuilder::new);
-        Ok(StatsPass {
+        StatsPass {
             playback,
-            telemetry: booted.telemetry,
+            telemetry,
             builder,
             local_player: self.local_player,
             store: self.store.clone(),
             round_marks: self.round_marks.clone(),
             cancel: self.cancel.clone(),
             rounds_started: 0,
-        })
+        }
+    }
+
+    /// Park until the display boot has published its first capture (or
+    /// its failure), or the set is cancelled. A wasm host has no thread
+    /// to park, so there it's a single look — its one event loop boots
+    /// the display pair before it first pumps the stats pass anyway.
+    fn wait_first_capture(&self) -> FirstCapture {
+        let mut state = self.first_capture.lock().unwrap();
+        #[cfg(not(target_arch = "wasm32"))]
+        while matches!(&*state, FirstCapture::Pending) && !self.cancel.load(Ordering::Relaxed) {
+            // Timeout as a backstop so a notify racing the park can
+            // never strand this thread; cancel() also notifies for
+            // promptness.
+            let (guard, _) = self
+                .first_capture_cv
+                .wait_timeout(state, std::time::Duration::from_millis(100))
+                .unwrap();
+            state = guard;
+        }
+        state.clone()
+    }
+
+    fn publish_first_capture(&self, state: FirstCapture) {
+        *self.first_capture.lock().unwrap() = state;
+        self.first_capture_cv.notify_all();
     }
 
     /// Where the pass reports each round boundary it crosses, if the
@@ -868,9 +1048,11 @@ impl ReplaySet {
     }
 
     /// Abandon both simulations. A pass mid-slice sees this and stops,
-    /// and a boot mid-prime fails out.
+    /// a boot mid-prime fails out, and a stats pass parked on the
+    /// display boot wakes empty-handed.
     pub fn cancel(&self) {
         self.cancel.store(true, Ordering::Relaxed);
+        self.first_capture_cv.notify_all();
     }
 }
 
