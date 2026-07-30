@@ -247,7 +247,7 @@ fn navi_cell(loaded: &OpenSave, id: usize, name: String, selected: bool) -> Elem
                 .content_fit(ContentFit::Contain)
                 // The equipped navi stays full-color; the rest dim back so
                 // it's the only vivid emblem in the grid.
-                .opacity(if selected { 1.0 } else { 0.45 })
+                .opacity(if selected { 1.0_f32 } else { 0.45_f32 })
                 .into()
         })
         .unwrap_or_else(|| {

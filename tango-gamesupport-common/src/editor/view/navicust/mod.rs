@@ -24,7 +24,7 @@ fn part_thumb<'a>(
                 .height(Length::Fixed(*h as f32))
                 .filter_method(iced_image::FilterMethod::Nearest)
                 .content_fit(ContentFit::None)
-                .opacity(if dim { 0.35 } else { 1.0 })
+                .opacity(if dim { 0.35_f32 } else { 1.0_f32 })
                 .into(),
         );
     }
