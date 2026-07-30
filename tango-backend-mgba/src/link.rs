@@ -136,7 +136,7 @@ impl tango_match::Link for Link {
             let obs1 = telemetry.poll(1, self.inner.core_mut(1));
             // No phase read: this engine's round and match lifecycle
             // is trap-driven.
-            telemetry.observe(obs0, obs1, None, self.live_tick);
+            telemetry.observe(obs0, obs1, None, None, self.live_tick);
         }
     }
 

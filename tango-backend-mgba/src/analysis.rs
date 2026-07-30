@@ -22,7 +22,7 @@ pub fn observe_pair(telemetry: &mut Telemetry<mgba::core::Core>, pair: &mut mgba
     let obs1 = telemetry.poll(1, pair.core_mut(1));
     // No phase read: this engine's round and match lifecycle is
     // trap-driven.
-    telemetry.observe(obs0, obs1, None, tick);
+    telemetry.observe(obs0, obs1, None, None, tick);
 }
 
 // ---------------------------------------------------------------------------

@@ -153,7 +153,8 @@ impl tango_match::Link for Link {
             let obs0 = telemetry.poll(0, self.inner.console(0));
             let obs1 = telemetry.poll(1, self.inner.console(1));
             let phase = telemetry.poll_phase(self.inner.console(0));
-            telemetry.observe(obs0, obs1, phase, self.live_tick);
+            let verdict = telemetry.poll_verdict(self.inner.console(0));
+            telemetry.observe(obs0, obs1, phase, verdict, self.live_tick);
         }
     }
 

@@ -65,6 +65,22 @@ pub struct Pvp {
     /// two players commit ~90 ticks apart — on both builds, across
     /// every custom episode in the July 2026 recordings.
     custom: u32,
+    /// The game's comm-result globals: a small struct the battle loop's
+    /// own result-deciding code reports into through a suite of tiny
+    /// accessors (US `0x2097ca4..=0x2097d54`, found by elimination scan
+    /// over forced KOs and confirmed in the disassembly — the setter's
+    /// one caller also mirrors the value into a battle object).
+    ///
+    /// Byte `+0` is the battle loop's end sub-state: 0 until the round's
+    /// result is decided, nonzero from the KO through the round's
+    /// teardown, cleared by the next round's setup — the value varies
+    /// with mode (0x0a/0x0b Single, 0x05 Triple), so only its liveness
+    /// speaks. Byte `+1` is the verdict, in the console's OWN
+    /// perspective (each console mirrors the other's): 1 = this side
+    /// won, 2 = lost, 3 = the judge's draw, 4/5/7 = the comm-abnormal
+    /// exits. It is NOT cleared between the rounds of a Triple match,
+    /// which is why the `+0` gate is the read's precondition.
+    result: u32,
 }
 
 /// What the US registration's
@@ -73,6 +89,7 @@ pub static US: Pvp = Pvp {
     layout: &priming::US,
     unit: 0x022d_6498,
     custom: 0x0216_0992,
+    result: 0x0216_f738,
 };
 
 /// What the JP registration's
@@ -81,6 +98,7 @@ pub static JP: Pvp = Pvp {
     layout: &priming::JP,
     unit: 0x022c_ee18,
     custom: 0x0215_9732,
+    result: 0x0216_84d8,
 };
 
 /// The unit record's size, which is also the second slot's offset.
@@ -191,6 +209,30 @@ impl tango_backend_melonds::GameSupport for Pvp {
                 tango_match::telemetry::Phase::Over
             } else {
                 tango_match::telemetry::Phase::Between
+            }
+        }))
+    }
+
+    /// The round result, from the comm-result globals the battle loop's
+    /// own KO and judge paths report into (see [`Pvp::result`]): no
+    /// verdict until the end sub-state at `+0` stands, then `+1` read
+    /// through console 0's perspective — its local player is player 0,
+    /// the game's host seat, exactly the mgba families' core-0
+    /// convention. The comm-abnormal values (a peer vanishing mid-round)
+    /// deliberately read as no verdict: the round genuinely never got
+    /// one. Both consoles hold mirrored copies and agree at every
+    /// settled tick — KO-forge verified on both builds, both outcomes.
+    fn verdict_poller(&self) -> Option<Box<dyn FnMut(&mut Nds) -> Option<tango_match::telemetry::Outcome> + Send>> {
+        let result = self.result;
+        Some(Box::new(move |nds: &mut Nds| {
+            if nds.read8(result) == 0 {
+                return None;
+            }
+            match nds.read8(result + 1) {
+                1 => Some(tango_match::telemetry::Outcome::P0Win),
+                2 => Some(tango_match::telemetry::Outcome::P1Win),
+                3 => Some(tango_match::telemetry::Outcome::Draw),
+                _ => None,
             }
         }))
     }

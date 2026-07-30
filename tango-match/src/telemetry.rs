@@ -333,6 +333,12 @@ pub struct Telemetry<Core> {
     /// like the trap engines' round anchors: the phase is shared
     /// simulation state, so one core answers for the pair.
     phase_poller: Option<Box<dyn FnMut(&mut Core) -> Phase + Send>>,
+    /// The game's verdict read, the poll-driven counterpart of the trap
+    /// engines' [`LifecycleSink::round_outcome`] anchors: the round
+    /// result the game's own battle loop has announced, as an
+    /// instantaneous RAM level, `None` while none stands. Read on core
+    /// 0 only, in absolute player terms, like the phase.
+    verdict_poller: Option<Box<dyn FnMut(&mut Core) -> Option<Outcome> + Send>>,
 }
 
 impl<Core> Telemetry<Core> {
@@ -352,9 +358,24 @@ impl<Core> Telemetry<Core> {
         self.phase_poller.as_mut().map(|poll| poll(core))
     }
 
+    /// Read the game's standing round verdict off core 0, if this
+    /// collector derives it from polls. Same calling convention as
+    /// [`poll_phase`](Telemetry::poll_phase); a trap-driven engine
+    /// passes `None` through.
+    pub fn poll_verdict(&mut self, core: &mut Core) -> Option<Outcome> {
+        self.verdict_poller.as_mut().and_then(|poll| poll(core))
+    }
+
     /// Fold one tick's readings into the store. Everything from here on
     /// is the same arithmetic for any console.
-    pub fn observe(&mut self, obs0: Option<CoreObs>, obs1: Option<CoreObs>, phase: Option<Phase>, tick: u32) {
+    pub fn observe(
+        &mut self,
+        obs0: Option<CoreObs>,
+        obs1: Option<CoreObs>,
+        phase: Option<Phase>,
+        verdict: Option<Outcome>,
+        tick: u32,
+    ) {
         let obs = match (obs0, obs1) {
             (Some(c0), Some(c1)) => Some(BattleObs {
                 // The sim's own readings come from player 0's core, but
@@ -376,6 +397,27 @@ impl<Core> Telemetry<Core> {
         // before the close that reads it, and the match end comes last.
         if let Some(outcome) = self.lifecycle.take_round_outcome() {
             store.outcome_reports.push((tick, outcome));
+        }
+        // A polled verdict is a LEVEL, not an edge, so it reports
+        // against the store's own state, like the phase below: once per
+        // open round unless the standing value changes (the last report
+        // inside the round wins at close, exactly as trap re-fires do).
+        // Reading it only while a round is open is what keeps the games
+        // that never clear the value from smearing one round's verdict
+        // onto the next: the level must drop and stand again inside the
+        // next round to report again, and a report while no round is
+        // open would date to before the next round's start anyway.
+        // Derived entirely from store state, so rewind truncation plus
+        // re-simulation reproduce it exactly.
+        if let Some(outcome) = verdict {
+            if store.round_open
+                && store
+                    .outcome_reports
+                    .last()
+                    .is_none_or(|&(t, o)| t < store.round_started_at || o != outcome)
+            {
+                store.outcome_reports.push((tick, outcome));
+            }
         }
         // A phase reading translates into lifecycle against the store's
         // own open-round state — a level against a level, so there is
@@ -490,6 +532,7 @@ impl<Core> Telemetry<Core> {
                 lifecycle,
                 store: store.clone(),
                 phase_poller: None,
+                verdict_poller: None,
             },
             store,
         )
@@ -502,6 +545,13 @@ impl<Core> Telemetry<Core> {
     /// their re-simulation, exactly like the battle pollers.
     pub fn set_phase_poller(&mut self, poller: Box<dyn FnMut(&mut Core) -> Phase + Send>) {
         self.phase_poller = Some(poller);
+    }
+
+    /// Install the game's verdict read — used by engines that derive
+    /// the round result from polls instead of traps. Same purity
+    /// contract as [`set_phase_poller`](Telemetry::set_phase_poller).
+    pub fn set_verdict_poller(&mut self, poller: Box<dyn FnMut(&mut Core) -> Option<Outcome> + Send>) {
+        self.verdict_poller = Some(poller);
     }
 }
 

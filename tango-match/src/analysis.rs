@@ -46,7 +46,10 @@ pub enum BattleOutcome {
 // v12: bn5ds's custom flag becomes per-player (v11's read was one
 // side's byte mistaken for a shared gate, so spans could end at the
 // wrong player's commit).
-pub const FORMAT_VERSION: u32 = 12;
+// v13: bn5ds reports round outcomes now (its rounds all folded
+// verdictless), which also ends each round's samples at the verdict
+// like every other game's.
+pub const FORMAT_VERSION: u32 = 13;
 
 /// Sidecar file magic.
 const MAGIC: &[u8; 4] = b"TGST";

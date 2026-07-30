@@ -62,6 +62,18 @@ pub trait GameSupport: Sync {
         None
     }
 
+    /// The game's standing round verdict, read from its RAM once per
+    /// tick on console 0 — the poll-driven counterpart of the mgba
+    /// families' result-store traps, under the same contract as
+    /// [`phase_poller`](GameSupport::phase_poller): a pure function of
+    /// console state, `None` while the game has announced no result
+    /// for the round in progress. Absolute player terms; the collector
+    /// stamps at most one report per round unless the level changes.
+    /// The default reads nothing: rounds fold with no outcome.
+    fn verdict_poller(&self) -> Option<Box<dyn FnMut(&mut crate::Nds) -> Option<tango_match::telemetry::Outcome> + Send>> {
+        None
+    }
+
     /// This game's usage-event fold: how its per-tick chip reports and
     /// button edges decode into chip-use and buster events (see
     /// [`UsageFold`](tango_match::analysis::UsageFold)). The default is
@@ -248,6 +260,9 @@ fn observe(
         tango_match::telemetry::Telemetry::new([support.core_poller(0), support.core_poller(1)], lifecycle);
     if let Some(phases) = support.phase_poller() {
         telemetry.set_phase_poller(phases);
+    }
+    if let Some(verdicts) = support.verdict_poller() {
+        telemetry.set_verdict_poller(verdicts);
     }
     link.set_telemetry(telemetry);
     handle
