@@ -89,18 +89,14 @@ jobs:
         with:
           arch: x64
 
-      # melonDS's JIT is GCC/Clang-only code, so melonds-sys compiles
-      # the DS core with MSYS2 UCRT64 into melonds_shim.dll and hands
-      # the MSVC build an import library (see its build.rs). The runner
-      # image ships MSYS2 at C:\msys64 — which is where the build
-      # script looks — so this only adds the UCRT64 toolchain packages.
-      # Nothing else runs under MSYS2: the build script invokes these
-      # compilers by absolute path.
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          release: false
-          install: mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
+      # melonDS's JIT is GCC/Clang-only code — a GAS-syntax linkage stub,
+      # inline asm, VLAs — that cl.exe rejects, so melonds-sys builds the
+      # DS core with clang targeting the MSVC ABI and links it statically
+      # into tango.exe (see its build.rs). The runner image already ships
+      # LLVM at C:\Program Files\LLVM, which is where the build script
+      # looks; only the CMake generator has to be added.
+      - name: Install Ninja (CMake generator for the melonDS core)
+        run: choco install ninja -y
 
       - uses: dtolnay/rust-toolchain@stable
         with:

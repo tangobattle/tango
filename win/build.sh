@@ -49,9 +49,6 @@ pushd tango_win_workdir
 
 cp ../tango/icon.ico .
 cp ../target/x86_64-pc-windows-msvc/release-dist/tango.exe .
-# The melonDS core rides in a UCRT64-built DLL (melonds-sys's build.rs
-# drops it in the profile directory); it has to sit beside tango.exe.
-cp ../target/x86_64-pc-windows-msvc/release-dist/melonds_shim.dll .
 
 angle_zip_url="https://github.com/google/gfbuild-angle/releases/download/github%2Fgoogle%2Fgfbuild-angle%2Ff810e998993290f049bbdad4fae975e4867100ad/gfbuild-angle-f810e998993290f049bbdad4fae975e4867100ad-Windows_x64_Release.zip"
 curl -L -o angle.zip "${angle_zip_url}"

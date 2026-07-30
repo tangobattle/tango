@@ -94,7 +94,6 @@ Section
     SetOutPath $INSTDIR
     File "libEGL.dll"
     File "libGLESv2.dll"
-    File "melonds_shim.dll"
     File "ffmpeg.exe"
     File "tango.exe"
     WriteUninstaller "$INSTDIR\\uninstall.exe"
@@ -129,6 +128,9 @@ Section "uninstall"
     Delete "$SMPROGRAMS\\Tango.lnk"
     Delete "$INSTDIR\\libEGL.dll"
     Delete "$INSTDIR\\libGLESv2.dll"
+    ; The melonDS core is linked into tango.exe now, but earlier versions
+    ; installed it alongside; deleting a file that isn't there is a no-op,
+    ; so this stays behind to clean up after them.
     Delete "$INSTDIR\\melonds_shim.dll"
     Delete "$INSTDIR\\ffmpeg.exe"
     Delete "$INSTDIR\\tango.exe"
