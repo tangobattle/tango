@@ -116,26 +116,29 @@ pub static JP: Pvp = Pvp {
 /// The unit record's size, which is also the second slot's offset.
 const UNIT_STRIDE: u32 = 0xdc;
 
-/// The modules the game runs once it has left the link session: the
-/// Network board (the id the priming walk itself pivots on, on both
-/// builds) and the Net Battle screen the exit passes through one tick
-/// ahead of it. Which module a BATTLE runs as varies with the save's
-/// provenance (see `BOARD` in [`priming`]), but the phase read never
-/// asks: a live unit block means a round regardless of module, and
-/// these two ids only count with the block dead — a state the
-/// between-rounds interlude spends on its transition modules, never
-/// here, across every recorded end and interlude on both builds.
-const MENUS: [u32; 2] = [0x17, 0x18];
-
-/// Whether the unit block holds two live player units — one owner byte
-/// per slot, reading exactly `{0, 1}`. The game zeroes the block
-/// outside a live battle (round intros, the interlude, the post-match
-/// menus), which makes this the battle-liveness gate.
-fn units_live(ram: &[u8], unit: u32) -> bool {
-    let mask = ram.len() - 1;
-    let owner = |slot: u32| ram[((unit + slot * UNIT_STRIDE + 0x16) as usize - 0x0200_0000) & mask];
-    matches!((owner(0), owner(1)), (0, 1) | (1, 0))
-}
+/// What `RAMOffsets::substate` reads for the whole link battle: the
+/// last step of the connect exchange, which the game then holds
+/// through every round and every interlude between them. Reaching it
+/// on both consoles is the walk's finish line, and leaving it with the
+/// unit block dead is the end of the match — the game is back on its
+/// comm screens (`0x0001_0202` as they come up, `0x0001_0602` on the
+/// result message) with the wireless still up.
+///
+/// Neither test may be written against `RAMOffsets::scene`, which is
+/// what both used to be. That word reads the **overworld area the save
+/// is standing in** whenever the game is on the field or the comm
+/// screens drawn over it, so its value is a property of the cartridge
+/// rather than of the game state: two saves of one cart negotiate and
+/// then park under `0x17` and `0x1b` at the identical moments (a
+/// bedroom and the street outside — and two different bedrooms both
+/// read `0x17`, so it is not even one id per room), and a save parked
+/// anywhere else reads something else again. A whitelist of ids can
+/// never be complete, and the one that used to gate the match end
+/// silently never fired for the second save on the cart. This substate
+/// is one value for every save: measured on saves of both kinds and in
+/// both match modes, it stands from the pre-battle exchange to the
+/// moment the scene word returns to the field.
+const BATTLE_SESSION: u32 = 0x0003_0102;
 
 impl tango_backend_melonds::GameSupport for Pvp {
     fn prime(
@@ -171,9 +174,12 @@ impl tango_backend_melonds::GameSupport for Pvp {
     /// RAM facts (this engine's stand-in for the mgba families' trap
     /// anchors): a battle is live while the unit block holds two owned
     /// units — chip cut-ins, effect sub-modules and the pause screen
-    /// all keep it — and the match is over once the block is dead with
-    /// the module word on the post-link menus. Everything else is the
-    /// space between rounds. Verified against a recorded match played
+    /// all keep it — and the match is over once the block is dead and
+    /// the comm substate has left [`BATTLE_SESSION`]. Everything else
+    /// is the space between rounds, which the substate cannot tell
+    /// apart on its own: it holds one value from the pre-battle
+    /// exchange through every round and interlude, so the block is what
+    /// marks the rounds. Verified against a recorded match played
     /// to its natural end: the game reaches its menus ~80 ticks before
     /// it powers the wireless down, so the match-end report lands right
     /// as the battle screens leave.
@@ -196,8 +202,7 @@ impl tango_backend_melonds::GameSupport for Pvp {
         /// copies and agree at every settled tick — KO-forge verified
         /// on both builds, both outcomes.
         struct LifecycleWatch {
-            unit: u32,
-            module: u32,
+            substate: u32,
             result: u32,
             /// Last tick's phase: 0 = nothing seen yet, 1 = a round is
             /// live, 2 = between rounds, 3 = the post-link menus.
@@ -208,10 +213,15 @@ impl tango_backend_melonds::GameSupport for Pvp {
             prev_verdict: u8,
         }
         impl LifecycleWatch {
-            fn tick(&mut self, nds: &mut Nds, events: &EventSink) {
-                let phase: u8 = if units_live(nds.main_ram(), self.unit) {
+            /// `round_live` is the sample read below: the unit block
+            /// holding both players is the game's own statement that a
+            /// round is running, and it is the only thing that says so
+            /// — the substate holds one value from the pre-battle
+            /// exchange through every round and interlude alike.
+            fn tick(&mut self, nds: &mut Nds, round_live: bool, events: &EventSink) {
+                let phase: u8 = if round_live {
                     1
-                } else if MENUS.contains(&nds.read32(self.module)) {
+                } else if nds.read32(self.substate) != BATTLE_SESSION {
                     3
                 } else {
                     2
@@ -261,27 +271,46 @@ impl tango_backend_melonds::GameSupport for Pvp {
         }
         impl tango_match::telemetry::CorePoller<Nds> for Poller {
             fn poll(&mut self, nds: &mut Nds, events: &EventSink, round: u32) -> Option<CoreObs> {
-                // The lifecycle reads first: the phases it watches are
-                // exactly the ones where the unit block is dead and the
+                // The unit block, read once: both slots owned by
+                // distinct players is the sample this poller reports
+                // AND the game's own statement that a round is running,
+                // so the lifecycle below takes its liveness from this
+                // rather than reading the block a second time. The game
+                // zeroes the block outside a live battle — round
+                // intros, the interlude, the post-match screens.
+                let mut slots = [None, None];
+                {
+                    let ram = nds.main_ram();
+                    let mask = ram.len() - 1;
+                    let read8 = |addr: u32| ram[(addr as usize - 0x0200_0000) & mask];
+                    let read16 = |addr: u32| u16::from_le_bytes([read8(addr), read8(addr + 1)]);
+                    for slot in 0..2 {
+                        let base = self.unit + slot * UNIT_STRIDE;
+                        let owner = read8(base + 0x16) as usize;
+                        if let Some(cell) = slots.get_mut(owner) {
+                            *cell = Some(UnitObs {
+                                hp: read16(base + 0x24),
+                                tile: (read8(base + 0x12), read8(base + 0x13)),
+                            });
+                        }
+                    }
+                }
+                let live = match slots {
+                    [Some(p0), Some(p1)] => Some([p0, p1]),
+                    _ => None,
+                };
+                // Every tick, live or not: the phases it watches are
+                // exactly the ones where the block is dead and the
                 // battle read below bails out.
                 if let Some(lc) = &mut self.lifecycle {
-                    lc.tick(nds, events);
+                    lc.tick(nds, live.is_some(), events);
                 }
+                let units = live?;
+
                 let ram = nds.main_ram();
                 let mask = ram.len() - 1;
                 let read8 = |addr: u32| ram[(addr as usize - 0x0200_0000) & mask];
                 let read16 = |addr: u32| u16::from_le_bytes([read8(addr), read8(addr + 1)]);
-
-                let mut units = [None, None];
-                for slot in 0..2 {
-                    let base = self.unit + slot * UNIT_STRIDE;
-                    let owner = read8(base + 0x16) as usize;
-                    *units.get_mut(owner)? = Some(UnitObs {
-                        hp: read16(base + 0x24),
-                        tile: (read8(base + 0x12), read8(base + 0x13)),
-                    });
-                }
-                let units = [units[0]?, units[1]?];
                 // This player's own flag (see [`Pvp::custom`]) — the
                 // span ends at their own commit, exactly as on GBA
                 // bn5; 5 is the screen's brief just-opened sub-state.
@@ -323,8 +352,7 @@ impl tango_backend_melonds::GameSupport for Pvp {
             player,
             chips: Default::default(),
             lifecycle: (player == 0).then(|| LifecycleWatch {
-                unit: self.unit,
-                module: self.layout.module_word(),
+                substate: self.layout.substate_word(),
                 result: self.result,
                 prev_phase: 0,
                 prev_verdict: 0,
@@ -454,12 +482,16 @@ pub mod priming {
     /// The game's own variables, in main RAM: what the walk reads to
     /// know where it is, and the few bytes it writes.
     struct RAMOffsets {
-        /// Which module is running. Zero is the attract movie, which
+        /// Which scene is running. Zero is the attract movie, which
         /// ignores everything except a request to stop — and none of
         /// the sites above are reachable until it does, so left alone
-        /// it loops forever. Its battle value is the walk's finish
-        /// line.
-        module: u32,
+        /// it loops forever. That is the only thing anything here reads
+        /// it for: it is **not** a screen id, because over the field
+        /// and the comm screens drawn on it the value is the overworld
+        /// area the save is standing in, which is a property of the
+        /// cartridge (see [`BATTLE_SESSION`]). Nothing may compare it
+        /// against a constant.
+        scene: u32,
         /// The game's own newly-pressed halfword.
         ///
         /// The save the game insists on before it will open the board
@@ -618,7 +650,7 @@ pub mod priming {
             chooser_second:           0x021d_de30,
         },
         ram: RAMOffsets {
-            module:                   0x0216_f71c,
+            scene:                    0x0216_f71c,
             pressed:                  0x0215_f3d6,
             fade_steps:              [0x0216_fbc8, 0x0216_fbe8],
             text_delay:               0x0217_1594,
@@ -682,7 +714,7 @@ pub mod priming {
             chooser_second:           0x021d_6b70,
         },
         ram: RAMOffsets {
-            module:                   0x0216_84bc,
+            scene:                    0x0216_84bc,
             pressed:                  0x0215_8176,
             fade_steps:              [0x0216_8968, 0x0216_8988],
             text_delay:               0x0216_a334,
@@ -695,20 +727,9 @@ pub mod priming {
         },
     };
 
-    /// The module id the attract movie runs under, which is what
-    /// `RAMOffsets::module` reads until the save is loaded.
+    /// The scene the attract movie runs under, which is what
+    /// `RAMOffsets::scene` reads until the save is loaded.
     const INTRO: u32 = 0;
-    /// The module id the Network board and every comm screen over it
-    /// run under. The walk's finish line is *leaving* it: which module
-    /// a battle boots as is not one id — the identical Single/Practice
-    /// pick loads module 0x1f from a save this build wrote, but 0x3b
-    /// from a save the other build wrote (both real, linked battles;
-    /// the whole route is pixel-identical up to the fade) — so arrival
-    /// is untestable and departure is not. A stalled flow never leaves
-    /// the board module, and the game's own comm-error exits tear the
-    /// association down first, so "left it with the link still up" is
-    /// exactly "the battle transition has started".
-    const BOARD: u32 = 0x17;
 
     /// A within the game's newly-pressed halfword.
     const CONFIRM: u8 = 0x01;
@@ -834,11 +855,11 @@ pub mod priming {
     const BATTLE_BUDGET: u32 = 2400;
 
     impl Layout {
-        /// The game's module word, for the phase read above — which
-        /// screen the game is running is the walk's business to know
-        /// and the telemetry's business to watch.
-        pub(super) fn module_word(&self) -> u32 {
-            self.ram.module
+        /// The game's comm substate word, for the phase read above —
+        /// how far the link session has got is the walk's business to
+        /// know and the telemetry's business to watch.
+        pub(super) fn substate_word(&self) -> u32 {
+            self.ram.substate
         }
 
         /// One console's priming traps, in lifecycle order: boot, the
@@ -988,7 +1009,7 @@ pub mod priming {
                             // reach reads it again — the battle talks
                             // through its own machinery.
                             nds.write8(ram.text_delay, 0);
-                            if nds.read32(ram.module) == INTRO {
+                            if nds.read32(ram.scene) == INTRO {
                                 nds.write8(ram.pressed, SKIP);
                                 // Any fade the boot has started finishes
                                 // now. The step is rewritten by each fade's
@@ -1181,8 +1202,13 @@ pub mod priming {
                 let host = seat == 0;
                 let save_row = save_row(session_payloads[seat], &link.console(seat).save_memory());
                 let rng_seeds = console_rng_seeds(&rng_seed, seat);
-                link.console(seat)
-                    .set_traps(self.traps(host, second, save_row, rng_seeds, host.then(|| confirms.clone())));
+                link.console(seat).set_traps(self.traps(
+                    host,
+                    second,
+                    save_row,
+                    rng_seeds,
+                    host.then(|| confirms.clone()),
+                ));
                 link.console(seat).set_traps7(Self::traps7());
             }
             confirms
@@ -1255,27 +1281,27 @@ pub mod priming {
                 return Err(tango_match::Error::PrimeTimeout(BUDGET));
             }
 
-            // The board half, which is over when the battle transition
-            // starts: both consoles leave the board module with the
-            // wireless association still up — see [`BOARD`] for why
-            // the battle module itself is not testable. Most of the
-            // wait is the two consoles' wireless associating, so it
-            // waits on the game rather than on a count. Requiring the
-            // board to have *stood* first keeps a slow boot from
-            // reading its last menu module as a departure.
+            // The board half, which is over when both consoles have
+            // reached the link battle's own session state — the last
+            // step of the connect exchange, which the game holds from
+            // there through the whole battle (see [`BATTLE_SESSION`],
+            // and why no screen id may be compared against a constant
+            // here). The wireless has to still be up with it: the
+            // game's own comm-error exits tear the association down, so
+            // a torn-down link is a stall however far the substate got.
+            // Most of the wait is the two consoles associating, so this
+            // waits on the game rather than on a count.
             let mut frames = 0;
-            let mut stood = false;
             let battled = loop {
                 if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
                     self.uninstall(link);
                     return Err(tango_match::Error::Cancelled);
                 }
-                let modules = [
-                    link.console(0).read32(self.ram.module),
-                    link.console(1).read32(self.ram.module),
+                let substates = [
+                    link.console(0).read32(self.ram.substate),
+                    link.console(1).read32(self.ram.substate),
                 ];
-                stood = stood || modules == [BOARD; 2];
-                if stood && modules.iter().all(|&m| m != BOARD) && link.connected() {
+                if substates == [super::BATTLE_SESSION; 2] && link.connected() {
                     break true;
                 }
                 if frames >= BATTLE_BUDGET {
@@ -1293,12 +1319,12 @@ pub mod priming {
                 // the host advertise.
                 log::warn!(
                     "{} priming: no battle {frames} frames past the board \
-                     (stood={stood}, connected={}, modules {:#x}/{:#x}, \
+                     (connected={}, scenes {:#x}/{:#x}, \
                      substates {:#010x}/{:#010x}, list {:#010x}/{:#010x})",
                     self.tag,
                     link.connected(),
-                    link.console(0).read32(self.ram.module),
-                    link.console(1).read32(self.ram.module),
+                    link.console(0).read32(self.ram.scene),
+                    link.console(1).read32(self.ram.scene),
                     link.console(0).read32(self.ram.substate),
                     link.console(1).read32(self.ram.substate),
                     link.console(0).read32(self.ram.list_count),
