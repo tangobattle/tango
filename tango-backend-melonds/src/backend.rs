@@ -98,7 +98,7 @@ impl tango_match::Backend for DsBackend {
         let mut link = Link::new(config.roms[0], config.saves, config.rtc)
             .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
 
-        self.support.prime(&mut link, config.match_type, None)?;
+        prime_dark(self.support, &mut link, config.match_type, None)?;
         let handle = observe(&mut link, self.support);
 
         // The rollback loop is the seam's — this engine contributes the
@@ -154,21 +154,8 @@ struct Boot {
 
 impl tango_match::ReplayBoot for Boot {
     fn boot(&self, want_stats: bool, cancel: &AtomicBool) -> Result<tango_match::BootedReplay, tango_match::Error> {
-        let t_boot = std::time::Instant::now();
         let mut link = self.pair()?;
-        eprintln!("TEMP pair boot: {:.1?}", t_boot.elapsed());
-        for player in 0..2 {
-            link.console(player).set_render(false); // TEMP measure
-        }
-        self.support.prime(&mut link, self.match_type, Some(cancel))?;
-        {
-            let t = std::time::Instant::now();
-            let snap = tango_match::Link::snapshot(&mut link, None)?;
-            let t_snap = t.elapsed();
-            let t = std::time::Instant::now();
-            tango_match::Link::restore(&mut link, &snap)?;
-            eprintln!("TEMP snapshot {:.1?}, restore {:.1?}", t_snap, t.elapsed());
-        }
+        prime_dark(self.support, &mut link, self.match_type, Some(cancel))?;
         // Session tick numbering starts after the walk, observed or
         // not (the walk drives the pair through the seam's tick, so it
         // counts otherwise). Captures then carry session ticks, which
@@ -215,6 +202,30 @@ impl Boot {
         )
         .map_err(|e| tango_match::Error::Backend(Box::new(e)))
     }
+}
+
+/// Run the walk with both framebuffers dark. Nothing displays a priming
+/// pair, and compositing frames for it anyway is about a sixth of the
+/// walk's wall clock. Emulated state is bit-identical either way — the
+/// toggle skips only the framebuffer nobody reads — so peers and
+/// recordings can't tell, whichever side of this change they're on.
+/// Render comes back on before the pair is handed over: the boot leaves
+/// the consoles as it found them, and per-seat visibility stays the
+/// session's business.
+fn prime_dark(
+    support: &'static (dyn GameSupport + Send + Sync),
+    link: &mut Link,
+    match_type: (u8, u8),
+    cancel: Option<&AtomicBool>,
+) -> Result<(), tango_match::Error> {
+    for player in 0..2 {
+        link.console(player).set_render(false);
+    }
+    let walked = support.prime(link, match_type, cancel);
+    for player in 0..2 {
+        link.console(player).set_render(true);
+    }
+    walked
 }
 
 /// Arm a primed pair's telemetry: the game's battle pollers plus its
