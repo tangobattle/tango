@@ -746,6 +746,11 @@ impl App {
         let Some(pre_match) = self.netplay.take_pre_match() else {
             return iced::Task::none();
         };
+        // Stamp the attempt this build belongs to. Leaving the lobby
+        // mid-build (always allowed) bumps the id via
+        // `netplay.disconnect()`, so the PvpSessionBuilt handler can
+        // tell an abandoned build from a live one.
+        let attempt = self.netplay.session_id();
         let scanners = self.scanners.clone();
         let config = self.config.clone();
         let audio_binder = self.audio_binder.clone();
@@ -758,7 +763,7 @@ impl App {
                 };
                 session::spawn_pvp(scanners, config, audio_binder, local_game, local_patch, pre_match).await
             },
-            |result| Message::PvpSessionBuilt(std::sync::Arc::new(std::sync::Mutex::new(Some(result)))),
+            move |result| Message::PvpSessionBuilt(attempt, std::sync::Arc::new(std::sync::Mutex::new(Some(result)))),
         )
     }
 
@@ -984,9 +989,14 @@ pub enum Message {
     /// Carries the freshly-constructed PvP session (plus its setup-pane
     /// presentation state and audio binding) back into the App after the
     /// async build task in `spawn_pvp` resolves. Ferried in a once-take
-    /// cell because PvpSession isn't Clone.
+    /// cell because PvpSession isn't Clone. The leading `u64` is the
+    /// netplay attempt id captured at handoff: leaving the lobby stays
+    /// possible while the build runs (it bumps the id), and a stale id
+    /// here means the session has no lobby behind it and gets wound
+    /// down instead of installed.
     #[allow(clippy::type_complexity)]
     PvpSessionBuilt(
+        u64,
         std::sync::Arc<
             std::sync::Mutex<
                 Option<
@@ -1466,12 +1476,43 @@ impl App {
                 let fetch = self.fetch_missing_patch();
                 iced::Task::batch([task, resend, fetch, attention])
             }
-            Message::PvpSessionBuilt(slot) => {
+            Message::PvpSessionBuilt(attempt, slot) => {
                 let Some(result) = slot.lock().unwrap().take() else {
                     return iced::Task::none();
                 };
+                // Leave stays enabled all the way through the handoff,
+                // so the lobby this build belonged to may already be
+                // gone — the user's disconnect bumped the attempt id on
+                // its way out. A build with no lobby behind it gets
+                // wound down close_session-style: request_close first
+                // (the supervisor's best-effort Goodbye reaches the
+                // peer), audio unbound, then wait for the drive thread.
+                // Netplay state is deliberately untouched — it's Idle,
+                // or already carrying a brand-new attempt this stale
+                // build has no business installing over or failing.
+                if attempt != self.netplay.session_id() {
+                    match result {
+                        Ok((session, _panes, audio, drive)) => {
+                            session::Session::request_close(&session);
+                            drop(audio);
+                            drop(session);
+                            let _ = drive.join();
+                        }
+                        Err(e) => log::info!("pvp session build failed after the lobby was left: {e:#}"),
+                    }
+                    return iced::Task::none();
+                }
                 match result {
                     Ok((session, panes, audio, drive)) => {
+                        // The frame-delay slider stays live during the
+                        // build (purely local), but spawn_pvp sampled
+                        // the config at handoff — re-apply so a drag
+                        // made while the match spun up isn't lost.
+                        session.set_frame_delay(
+                            self.config
+                                .frame_delay
+                                .clamp(session::pvp::MIN_FRAME_DELAY, session::pvp::MAX_FRAME_DELAY),
+                        );
                         // Both setup drawers start closed — the edge
                         // handles are the invitation; a pane that
                         // barges in over the match start isn't.

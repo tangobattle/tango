@@ -62,11 +62,12 @@ pub enum Message {
     /// already committed). Sends an Uncommit packet.
     Unready,
     /// Soft-disable sentinel for widgets that don't accept a
-    /// `None` handler in iced 0.14 (pick_list, slider). The
-    /// lobby reroutes match-type / frame-delay changes here in
-    /// Phase::Failed (and the selector strip during handoff) so
-    /// the controls render inert without touching layout. The
-    /// update handler drops it.
+    /// `None` handler in iced 0.14 (pick_list). The lobby
+    /// reroutes match-type changes here while the committed
+    /// terms are locked (failure / handoff), and the selector
+    /// strip does the same during handoff, so the controls
+    /// render inert without touching layout. The update handler
+    /// drops it.
     Noop,
 
     SaveOpenFolder,

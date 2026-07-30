@@ -94,10 +94,13 @@ impl<'a> Lobby<'a> {
         matches!(self.phase, Phase::Failed { .. })
     }
 
-    /// Whether the controls should refuse input without changing
-    /// layout: the connection is dead ([`Self::failed`]), or the match
-    /// is spinning up and the connection has been handed to the PvP
-    /// session (`handoff_pending`).
+    /// Whether the *committed* match terms (match type, blind setup)
+    /// should refuse input without changing layout: the connection is
+    /// dead ([`Self::failed`]), or the match is spinning up off the
+    /// committed state (`handoff_pending`) — changing terms then would
+    /// contradict what both sides already agreed to fight with. Local
+    /// presentation knobs (the frame-delay slider) and Leave stay live
+    /// throughout: neither is part of the commitment.
     fn inert(&self) -> bool {
         self.failed() || self.handoff_pending
     }
@@ -389,13 +392,14 @@ impl<'a> Lobby<'a> {
     /// bar's far-left end so the escape hatch sits as far as possible
     /// from the Ready CTA. Icon-only keeps it quiet next to the
     /// labeled CTA while its content matches Ready's text size, so
-    /// the two still land at the same height. Disabled during the
-    /// handoff window so the user can't tear down a lobby whose PvP
-    /// session is already being built — clicking Disconnect there
-    /// wouldn't actually cancel spawn_pvp, just leave the user
-    /// confused when the match view pops up anyway.
+    /// the two still land at the same height. Never disabled — not
+    /// even during the handoff window while the PvP session is being
+    /// built and primed: leaving is the one move the user always
+    /// keeps. Disconnecting mid-handoff bumps the netplay attempt id,
+    /// which is how the App's PvpSessionBuilt handler knows to wind
+    /// the finished build down instead of installing it.
     fn leave_button(&self) -> Element<'a, Message> {
-        let msg = (!self.handoff_pending).then_some(Message::Disconnect);
+        let msg = Some(Message::Disconnect);
         widgets::icon_button_styled(
             Icon::LogOut,
             t!(self.lang, "play-cancel"),
@@ -470,21 +474,26 @@ impl<'a> Lobby<'a> {
         // match; it's this side's local frame delay (how far the
         // display trails the netcode frontier), purely local with no
         // negotiation. Each increment is one GBA frame (~16.7 ms) of
-        // added display latency.
+        // added display latency. Deliberately NOT gated on `inert`:
+        // it's no part of the commitment, so it stays adjustable
+        // through the handoff — the App re-applies the config value
+        // to the built session at install, so a drag while the match
+        // spins up still lands.
         let slider = iced::widget::slider(
             crate::session::pvp::MIN_FRAME_DELAY..=crate::session::pvp::MAX_FRAME_DELAY,
             self.frame_delay,
-            gated(inert, Message::SetFrameDelay),
+            Message::SetFrameDelay,
         )
         .style(widgets::chunky_slider)
         .width(Length::Fixed(160.0));
         // "Suggest" button: one-way frames + 1, clamped to the slider
         // range. Reads the median window rather than the raw `latest()`
         // shown on the connection line, so the recommendation doesn't
-        // jump with a single spiky Pong. Disabled when the controls are
-        // inert, and until the first Pong lands (`latest()` is `Some`)
-        // so the counter has a real reading to take the median of.
-        let suggest_msg = if inert || self.state.latency_counter.latest().is_none() {
+        // jump with a single spiky Pong. Live whenever the slider is
+        // (local, like the slider), but waits for the first Pong
+        // (`latest()` is `Some`) so the counter has a real reading to
+        // take the median of.
+        let suggest_msg = if self.state.latency_counter.latest().is_none() {
             None
         } else {
             let rtt = self.state.latency_counter.median();
@@ -517,9 +526,11 @@ impl<'a> Lobby<'a> {
         // as the crossed-out eye on their matchup card (yours appears
         // when you check this, which is what teaches the opponent's),
         // so the cluster carries no peer state to reflow or decode.
-        // Unlike the picker and slider, the checkbox does accept a
-        // `None` handler, so inert gets the real disabled rendering
-        // instead of the `gated` reroute.
+        // Part of the committed terms (it crosses the wire and voids
+        // commits), so it locks with the picker while `inert`. Unlike
+        // the picker, the checkbox does accept a `None` handler, so
+        // inert gets the real disabled rendering instead of the
+        // `gated` reroute.
         let toggle = if inert {
             None
         } else {
@@ -710,8 +721,8 @@ impl Status<'_> {
 
 /// Soft-disable helper: when the lobby is inert, reroute a control's
 /// message constructor to [`Message::Noop`] so the control renders
-/// unchanged but drops input — pick_list and slider don't accept a
-/// `None` handler in iced 0.14, so swapping the handler is how they go
+/// unchanged but drops input — pick_list doesn't accept a `None`
+/// handler in iced 0.14, so swapping the handler is how it goes
 /// inert without touching layout.
 fn gated<T>(inert: bool, live: fn(T) -> Message) -> fn(T) -> Message {
     if inert {

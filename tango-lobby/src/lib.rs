@@ -934,9 +934,11 @@ impl State {
     /// True once both sides have exchanged StartMatch and the
     /// connection handles have been drained into a PreMatchData,
     /// but before [`finish_handoff`](State::finish_handoff) fires.
-    /// The lobby UI uses this to disable the ready / cancel chrome
-    /// and show a "Starting match…" placeholder while the session
-    /// is built.
+    /// The lobby UI uses this to lock the committed controls (save /
+    /// game selection, match type, blind setup) and show a "Starting
+    /// match…" placeholder while the session is built — leaving the
+    /// lobby stays possible throughout (the host detects the
+    /// mid-build disconnect and winds the finished build down).
     pub fn handoff_pending(&self) -> bool {
         matches!(self.handshake.local, LocalReady::HandedOff) && self.handshake.remote.start_match()
     }
