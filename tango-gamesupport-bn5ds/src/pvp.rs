@@ -752,6 +752,23 @@ pub mod priming {
     /// host's single prompt reads the first of them, which costs
     /// nothing to share because the two consoles get their own traps.
     const CHOOSING: [u32; 3] = [0x0102_0303, 0x0104_0303, 0x0106_0303];
+    /// The part of a chooser's substate word that says which screen is
+    /// asking. The top byte flags which *flow* the chooser serves —
+    /// 1 in the ordinary Net Battle flow, 0 in the friend flow the
+    /// game runs when it recognizes the peer as its own cartridge's
+    /// other file (the header carries a comm identity: cart id plus a
+    /// file-slot byte, and same id + different slot means the two
+    /// saves came off one cart — which netplay produces whenever both
+    /// players bring the same dump). Same screens, same buttons, so
+    /// the walk answers by the low bytes: the host's "Connect to
+    /// friend?" and the friend-flow choosers get answered like
+    /// everyone else's, where matching the whole word left them
+    /// unanswered until the game's own comm timeout tore the
+    /// association down and the sibling pairing "bounced" back to the
+    /// list. The friend flow's own registration exchange still runs —
+    /// a sibling pairing's board half is a few hundred frames longer,
+    /// all of it the game's real work.
+    const CHOOSER_FLOW_MASK: u32 = 0x00ff_ffff;
 
     /// The ARM7 side of the save: its backup server's flash wait, at
     /// the function's entry. r0 arrives holding the mandatory pre-poll
@@ -1090,7 +1107,10 @@ pub mod priming {
                     (
                         code.chooser_touch_gate,
                         Box::new(move |nds: &mut Nds| {
-                            let Some(i) = waits.iter().position(|&w| w == nds.read32(ram.substate)) else {
+                            // Which screen is asking, either flow's form
+                            // of it — see [`CHOOSER_FLOW_MASK`].
+                            let sub = nds.read32(ram.substate) & CHOOSER_FLOW_MASK;
+                            let Some(i) = waits.iter().position(|&w| w & CHOOSER_FLOW_MASK == sub) else {
                                 return;
                             };
                             if std::mem::replace(&mut spent[i], true) {
