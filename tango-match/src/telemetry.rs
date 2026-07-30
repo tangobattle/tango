@@ -96,7 +96,6 @@ pub struct CoreObs {
 #[derive(Clone, Copy, Debug)]
 enum Report {
     RoundStarted,
-    RoundEnded,
     RoundOutcome(Outcome),
     MatchEnded,
     ChipUsed { player: usize, chip: u16 },
@@ -130,16 +129,6 @@ impl EventSink {
     /// The game's battle-start routine completed: a round is live.
     pub fn round_started(&self) {
         self.queue.lock().unwrap().push(Report::RoundStarted);
-    }
-
-    /// The game left its battle for the between-rounds interlude — only
-    /// engines that can see the teardown as it happens report this (the
-    /// DS engine's poll-derived lifecycle). The mgba families have no
-    /// teardown anchor; their open round closes at the next
-    /// [`round_started`](EventSink::round_started) or
-    /// [`match_ended`](EventSink::match_ended) instead.
-    pub fn round_ended(&self) {
-        self.queue.lock().unwrap().push(Report::RoundEnded);
     }
 
     /// The game's own result-deciding code path ran (the win/loss/judge
@@ -256,11 +245,13 @@ pub struct BattleObs {
 pub enum Event {
     /// The game's battle-start routine completed for a round.
     RoundStarted,
-    /// A round closed — at the game's own teardown report where the
-    /// engine has one, else at the next round start or the match end.
-    /// Carries the verdict the game's own result code path announced
-    /// during the round ([`EventSink::round_outcome`]), `None` if none
-    /// fired.
+    /// A round closed, at the next round's start or at the match end —
+    /// there is no separate teardown report, because nothing reads a
+    /// round's contents between its last sample and whichever of those
+    /// arrives (the games stop producing samples and chip fires the
+    /// moment their battle struct dies). Carries the verdict the game's
+    /// own result code path announced during the round
+    /// ([`EventSink::round_outcome`]), `None` if none fired.
     RoundEnded { outcome: Option<Outcome> },
     /// The game's own match-end path ran: the match is over. Always
     /// preceded by the final round's `RoundEnded`.
@@ -439,9 +430,6 @@ impl<Core> Telemetry<Core> {
                     }));
                 }
             }
-        }
-        if reports.iter().any(|r| matches!(r, Report::RoundEnded)) {
-            store.close_round(tick);
         }
         if reports.iter().any(|r| matches!(r, Report::RoundStarted)) {
             store.close_round(tick);

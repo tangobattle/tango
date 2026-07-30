@@ -245,13 +245,8 @@ impl tango_backend_melonds::GameSupport for Pvp {
                             _ => Outcome::Draw,
                         });
                     }
-                } else {
-                    if self.prev_phase == 1 {
-                        events.round_ended();
-                    }
-                    if phase == 3 && self.prev_phase != 3 {
-                        events.match_ended();
-                    }
+                } else if phase == 3 && self.prev_phase != 3 {
+                    events.match_ended();
                 }
                 self.prev_phase = phase;
                 self.prev_verdict = verdict;
