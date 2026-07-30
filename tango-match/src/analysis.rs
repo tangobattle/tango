@@ -43,7 +43,10 @@ pub enum BattleOutcome {
 // v11: bn5ds reports the custom flag and chip/buster events now (its
 // sidecars had empty lanes), and the loaded-chip decode stops scoring
 // the KO frame's loser-cell clear as a use.
-pub const FORMAT_VERSION: u32 = 11;
+// v12: bn5ds's custom flag becomes per-player (v11's read was one
+// side's byte mistaken for a shared gate, so spans could end at the
+// wrong player's commit).
+pub const FORMAT_VERSION: u32 = 12;
 
 /// Sidecar file magic.
 const MAGIC: &[u8; 4] = b"TGST";
