@@ -19,6 +19,7 @@
 //! over the emulated cable.
 
 use tango_backend_mgba::Trap;
+use tango_gamesupport_common::telemetry::LoadedChip;
 
 pub struct Pvp {
     offsets: &'static Offsets,
@@ -97,7 +98,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
         &self,
         config: &tango_backend_mgba::PrimeConfig,
         player: usize,
-        lifecycle: &tango_match::telemetry::LifecycleSink,
+        events: &tango_match::telemetry::EventSink,
         primed: &tango_backend_mgba::PrimedLatch,
     ) -> Vec<Trap> {
         use tango_match::telemetry::Outcome;
@@ -118,7 +119,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
         // (whose local player is player 0); core 1's lifecycle traps stay
         // silent. Match end is the exception, reported from both cores —
         // see its trap below.
-        let sink = (player == 0).then(|| lifecycle.clone());
+        let sink = (player == 0).then(|| events.clone());
         let primed = primed.clone();
         // The game's own round verdict, announced from the sites
         // where the battle loop decides it (the KO path and the
@@ -377,7 +378,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 // second core's firing (and the state's per-tick re-entry).
                 rom.comm_menu_end_battle_entry,
                 {
-                    let sink = lifecycle.clone();
+                    let sink = events.clone();
                     Box::new(move |_core: &mut mgba::core::Core| sink.match_ended())
                 },
             ),
@@ -385,25 +386,58 @@ impl tango_backend_mgba::GameSupport for Pvp {
     }
 
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<mgba::core::Core>> {
-        let ewram = &self.offsets.ewram;
-        let player = player as u32;
-        Box::new(move |core: &mut mgba::core::Core| {
-            let units = battle_units(ewram, core)?;
-            let chips = loaded_chips(units);
-            Some(tango_match::telemetry::CoreObs {
-                units: std::array::from_fn(|p| tango_match::telemetry::UnitObs {
-                    hp: units[p].hp,
-                    tile: (units[p].tile[0], units[p].tile[1]),
-                    chip: chips[p],
-                }),
+        struct Poller {
+            ewram: &'static EWRAMOffsets,
+            player: usize,
+            chips: tango_gamesupport_common::telemetry::LoadedCellTracker,
+        }
+        impl tango_match::telemetry::CorePoller<mgba::core::Core> for Poller {
+            fn poll(
+                &mut self,
+                core: &mut mgba::core::Core,
+                events: &tango_match::telemetry::EventSink,
+                round: u32,
+            ) -> Option<tango_match::telemetry::CoreObs> {
+                let units = battle_units(self.ewram, core)?;
                 // Whether this player is currently picking in the custom
                 // screen. Same battle_state layout as bn6: one flag byte
                 // per player at +0x14/+0x15, 4 while that player's
                 // chip-select is open, 0 once they confirm (or outside
                 // the custom screen entirely). Verified against the
                 // golden replays -- identical episode pattern to bn6's.
-                custom_self: core.raw_read_8(ewram.battle_state + 0x14 + player, -1) == 4,
-            })
+                let custom_self =
+                    core.raw_read_8(self.ewram.battle_state + 0x14 + self.player as u32, -1) == 4;
+                // This core's own player's chip fires, as departures of
+                // its unit's loaded cell (see `RawUnit::chip` -- no fire
+                // counter is known for bn5, so back-to-back duplicate
+                // picks can't transition and stay invisible).
+                self.chips.tick(
+                    round,
+                    loaded_chips(units)[self.player],
+                    custom_self,
+                    units[self.player].hp,
+                    self.player,
+                    events,
+                );
+                Some(tango_match::telemetry::CoreObs {
+                    units: units.map(|u| tango_match::telemetry::UnitObs {
+                        hp: u.hp,
+                        tile: (u.tile[0], u.tile[1]),
+                    }),
+                    custom_self,
+                })
+            }
+            fn save(&self) -> tango_match::telemetry::Scratch {
+                tango_match::telemetry::Scratch::new(self.chips.clone())
+            }
+            fn restore(&mut self, scratch: &tango_match::telemetry::Scratch) {
+                self.chips = scratch.get().cloned().unwrap_or_default();
+            }
+        }
+        Box::new(Poller {
+            ewram: &self.offsets.ewram,
+            player,
+            chips: Default::default(),
         })
     }
 }
@@ -477,11 +511,13 @@ fn battle_units(ewram: &EWRAMOffsets, core: &mut mgba::core::Core) -> Option<[Ra
     }
     Some([units[0]?, units[1]?])
 }
-/// Both players' loaded chip ids, indexed by absolute player index --
-/// which the unit records already are.
-fn loaded_chips(units: [RawUnit; 2]) -> [Option<u16>; 2] {
+/// Both players' loaded-chip readings, indexed by absolute player index
+/// -- which the unit records already are. No fire counter is known for
+/// bn5's cell, so `fires` stays 0 and back-to-back duplicate picks
+/// can't transition (a known blindness).
+fn loaded_chips(units: [RawUnit; 2]) -> [Option<LoadedChip>; 2] {
     // The cell's own empty spelling (see `RawUnit::chip`).
-    units.map(|u| (u.chip != 0xffff).then_some(u.chip))
+    units.map(|u| (u.chip != 0xffff).then_some(LoadedChip { id: u.chip, fires: 0 }))
 }
 
 // ---------------------------------------------------------------------------

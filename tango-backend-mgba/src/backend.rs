@@ -33,7 +33,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use mgba_rollback::{LinkOptions, Peripheral, SideOptions};
 
-use tango_match::telemetry::{LifecycleSink, Telemetry};
+use tango_match::telemetry::{EventSink, Telemetry};
 use crate::{GameSupport, PrimeConfig};
 
 /// One cartridge in a family, keyed as its ROM header names it.
@@ -110,7 +110,7 @@ impl tango_match::Backend for GbaBackend {
         assert!(config.local_player < 2);
         let support = self.seats(config.peer_rom, config.local_player);
 
-        let (mut pair, lifecycle) = boot_pair(
+        let (mut pair, events) = boot_pair(
             [config.roms[0].to_vec(), config.roms[1].to_vec()],
             [
                 config.saves[0].unwrap_or_default().to_vec(),
@@ -145,7 +145,7 @@ impl tango_match::Backend for GbaBackend {
             core.audio_buffer().clear();
         }
 
-        let (telemetry, handle) = Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
+        let (telemetry, handle) = Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], events);
         let mut match_ = tango_match::Match::new(
             crate::link::Link::new(pair, Some(telemetry)),
             config.local_player,
@@ -153,10 +153,6 @@ impl tango_match::Backend for GbaBackend {
         )?;
         match_.set_telemetry(handle);
         Ok(match_)
-    }
-
-    fn stats_builder(&self, rom: &[u8]) -> tango_match::analysis::StatsBuilder {
-        tango_match::analysis::StatsBuilder::new(self.local.usage_fold(rom))
     }
 
     fn start_solo(&self, config: tango_match::SoloConfig) -> Result<tango_match::Solo, tango_match::Error> {
@@ -167,11 +163,6 @@ impl tango_match::Backend for GbaBackend {
 
     fn open_replay(&self, config: tango_match::ReplayConfig) -> Result<tango_match::ReplaySet, tango_match::Error> {
         let support = self.seats(config.peer_rom, config.local_player);
-        // The pass reads chip use off the *local* seat's cart, which is
-        // the one whose statistics a viewer is being shown.
-        let usage = config
-            .want_stats
-            .then(|| support[config.local_player].usage_fold(&config.roms[config.local_player]));
         let boot = Boot {
             roms: config.roms.clone(),
             saves: config.saves.clone(),
@@ -183,7 +174,7 @@ impl tango_match::Backend for GbaBackend {
             },
             rtc: config.rtc,
         };
-        Ok(tango_match::ReplaySet::new(&config, usage, boot))
+        Ok(tango_match::ReplaySet::new(&config, boot))
     }
 }
 
@@ -202,7 +193,7 @@ const MAX_PRIME_TICKS: u32 = 3600;
 /// cores skip rasterization, for a pass nothing watches. Flipping
 /// `cancel` mid-walk fails it with [`Error::Cancelled`](crate::Error).
 ///
-/// The returned [`LifecycleSink`] is the one the primer traps report
+/// The returned [`EventSink`] is the one the primer traps report
 /// round lifecycle into — hand it to [`Telemetry::new`] to observe the
 /// simulation, or drop it to leave it a write-only stub.
 pub(crate) fn boot_pair(
@@ -213,8 +204,8 @@ pub(crate) fn boot_pair(
     rtc: std::time::SystemTime,
     render: bool,
     cancel: Option<&AtomicBool>,
-) -> Result<(mgba_rollback::Link, LifecycleSink), crate::Error> {
-    let (mut pair, lifecycle, primed) = assemble_pair(roms, saves, support, prime, rtc, render)?;
+) -> Result<(mgba_rollback::Link, EventSink), crate::Error> {
+    let (mut pair, events, primed) = assemble_pair(roms, saves, support, prime, rtc, render)?;
 
     // Prime both cores to their link battle.
     let mut prime_ticks = 0;
@@ -229,7 +220,7 @@ pub(crate) fn boot_pair(
         prime_ticks += 1;
     }
     log::info!("pvp: primed to link battle in {prime_ticks} ticks");
-    Ok((pair, lifecycle))
+    Ok((pair, events))
 }
 
 /// Build the pair with its primer traps installed but the walk not yet
@@ -242,7 +233,7 @@ fn assemble_pair(
     prime: &PrimeConfig,
     rtc: std::time::SystemTime,
     render: bool,
-) -> Result<(mgba_rollback::Link, LifecycleSink, [crate::PrimedLatch; 2]), crate::Error> {
+) -> Result<(mgba_rollback::Link, EventSink, [crate::PrimedLatch; 2]), crate::Error> {
     crate::install_logger();
     let [rom0, rom1] = roms;
     let [save0, save1] = saves;
@@ -265,16 +256,16 @@ fn assemble_pair(
         pair.set_frameskip(1, i32::MAX);
     }
 
-    let lifecycle = LifecycleSink::new();
+    let events = EventSink::new();
     let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
     // The cores own their primer traps (see [`mgba_rollback::Link::set_traps`]):
     // core teardown walks the trap component, so the traps must live
     // exactly as long as their cores. They stay installed for the
     // pair's life — inert once primed, since their boot/menu addresses
     // never execute in battle.
-    pair.set_traps(0, support[0].primer_traps(prime, 0, &lifecycle, &primed[0]));
-    pair.set_traps(1, support[1].primer_traps(prime, 1, &lifecycle, &primed[1]));
-    Ok((pair, lifecycle, primed))
+    pair.set_traps(0, support[0].primer_traps(prime, 0, &events, &primed[0]));
+    pair.set_traps(1, support[1].primer_traps(prime, 1, &events, &primed[1]));
+    Ok((pair, events, primed))
 }
 
 /// The engine's replay boot ([`tango_match::ReplayBoot`]): prime a
@@ -295,7 +286,7 @@ struct Boot {
 
 impl tango_match::ReplayBoot for Boot {
     fn boot(&self, observe: bool, cancel: &AtomicBool) -> Result<tango_match::BootedReplay, tango_match::Error> {
-        let (pair, lifecycle) = boot_pair(
+        let (pair, events) = boot_pair(
             self.roms.clone(),
             self.saves.clone(),
             self.support.map(|s| s as &dyn GameSupport),
@@ -305,7 +296,7 @@ impl tango_match::ReplayBoot for Boot {
             Some(cancel),
         )
         .map_err(tango_match::Error::from)?;
-        Ok(self.wrap(pair, observe.then_some(lifecycle)))
+        Ok(self.wrap(pair, observe.then_some(events)))
     }
 
     /// A bare pair for the stats pass to land on the display pair's
@@ -316,7 +307,7 @@ impl tango_match::ReplayBoot for Boot {
     /// double as the round-lifecycle anchors), the walk's pokes are
     /// core state, and the lockstep blobs ride in the snapshot.
     fn boot_unprimed(&self, observe: bool) -> Result<tango_match::BootedReplay, tango_match::Error> {
-        let (pair, lifecycle, _primed) = assemble_pair(
+        let (pair, events, _primed) = assemble_pair(
             self.roms.clone(),
             self.saves.clone(),
             self.support.map(|s| s as &dyn GameSupport),
@@ -332,8 +323,8 @@ impl tango_match::ReplayBoot for Boot {
         // here to fire it. The primed latches stay unset: only the
         // priming loop reads them, and the walk traps gate on game
         // state a battle capture leaves inert.
-        lifecycle.round_started();
-        Ok(self.wrap(pair, observe.then_some(lifecycle)))
+        events.round_started();
+        Ok(self.wrap(pair, observe.then_some(events)))
     }
 }
 
@@ -342,12 +333,12 @@ impl Boot {
     /// trap-fed lifecycle sink) when the stats pass asked for it; the
     /// display pair passes `None`, paying for no pollers and leaving
     /// its sink a write-only stub.
-    fn wrap(&self, pair: mgba_rollback::Link, lifecycle: Option<LifecycleSink>) -> tango_match::BootedReplay {
-        let (telemetry, handle) = match lifecycle {
-            Some(lifecycle) => {
+    fn wrap(&self, pair: mgba_rollback::Link, events: Option<EventSink>) -> tango_match::BootedReplay {
+        let (telemetry, handle) = match events {
+            Some(events) => {
                 let (telemetry, handle) = Telemetry::new(
                     [self.support[0].core_poller(0), self.support[1].core_poller(1)],
-                    lifecycle,
+                    events,
                 );
                 (Some(telemetry), Some(handle))
             }

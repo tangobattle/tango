@@ -78,7 +78,7 @@ fn main() {
         rng_seed: *b"bcc-probe-seed!!",
         disable_bgm: false,
     };
-    let lifecycle = tango_match::telemetry::LifecycleSink::new();
+    let events_sink = tango_match::telemetry::EventSink::new();
     let primed = [tango_backend_mgba::PrimedLatch::new(), tango_backend_mgba::PrimedLatch::new()];
     // PVP_PROBE_TRAP=<hex>[,<hex>]: extra printing traps, for checking
     // that a hook site is reached and when.
@@ -90,7 +90,7 @@ fn main() {
         })
         .unwrap_or_default();
     for (i, pvp) in [pvp0, pvp1].into_iter().enumerate() {
-        let mut traps = pvp.primer_traps(&config, i, &lifecycle, &primed[i]);
+        let mut traps = pvp.primer_traps(&config, i, &events_sink, &primed[i]);
         for &addr in &extra {
             traps.push((
                 addr,
@@ -103,7 +103,7 @@ fn main() {
     // Drive the engine's own telemetry observer, so the round and match
     // events this reports are the ones a session would see.
     let (mut telemetry, store) =
-        tango_match::telemetry::Telemetry::new([pvp0.core_poller(0), pvp1.core_poller(1)], lifecycle.clone());
+        tango_match::telemetry::Telemetry::new([pvp0.core_poller(0), pvp1.core_poller(1)], events_sink.clone());
     let mut seen_events = 0usize;
 
     // PVP_PROBE_EWRAM_AT=<tick>:<core>:<file>[,...]: dump a core's EWRAM at
@@ -194,17 +194,16 @@ fn main() {
     // does and print each round's shape, so the analysis side can be
     // checked against what the poller reported.
     if std::env::var("PVP_PROBE_STATS").is_ok() {
-        let mut builder = tango_backend_mgba::analysis::StatsBuilder::new(pvp0.usage_fold(&[]));
+        let mut builder = tango_backend_mgba::analysis::StatsBuilder::new();
         let (samples, events) = store.lock().unwrap().drain_confirmed(max_ticks);
-        tango_backend_mgba::analysis::fold_confirmed(&mut builder, 0, samples, events, &mut |_| Some([0, 0]));
+        tango_backend_mgba::analysis::fold_confirmed(&mut builder, 0, samples, events);
         for (i, r) in builder.finish().rounds.iter().enumerate() {
             println!(
-                "round {i}: outcome={:?} hp_points={} custom_spans={} chip_uses={:?} buster={:?}",
+                "round {i}: outcome={:?} hp_points={} custom_spans={} chip_uses={:?}",
                 r.outcome,
                 r.hp.len(),
                 r.custom.len(),
                 r.chip_uses.iter().map(|v| v.len()).collect::<Vec<_>>(),
-                r.buster.iter().map(|v| v.len()).collect::<Vec<_>>(),
             );
             for side in 0..2 {
                 let head: Vec<_> = r.chip_uses[side].iter().take(6).collect();

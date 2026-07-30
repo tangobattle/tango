@@ -68,101 +68,124 @@ impl Pvp {
 }
 
 impl tango_backend_mgba::GameSupport for Pvp {
-    // BCC's chip report is the chip on screen ACTING — `id | (shot <<
-    // 12)`, `NO_CHIP` between actions — not a pick waiting to fire, so
-    // the use is when it arrives. The loaded-chip games report a pick
-    // that sits in the cell until it fires, so a departure is the use
-    // there; BCC has no pick to sit — its turns resolve straight out of
-    // the deck — and the cell is set for as long as the action plays
-    // out, so waiting for the departure would mark the animation's end
-    // rather than the hit. Buster counting is the standard B-edge fold.
-    fn usage_fold(&self, _rom: &[u8]) -> tango_backend_mgba::analysis::UsageFold {
-        use tango_backend_mgba::analysis::{buster_presses, RoundSample, UsageEvents, CHIP_ID_MASK, NO_CHIP};
-        Box::new(|samples: &[RoundSample], _custom: &[(u32, u32)]| {
-            let mut chip_uses: [Vec<(u32, u16)>; 2] = [vec![], vec![]];
-            for side in 0..2 {
-                let mut prev_chip = NO_CHIP;
-                for s in samples {
-                    // `shot` counts that side's firings. A zero shot
-                    // means the game is mid-update of its own counter —
-                    // ignore the sample entirely rather than let the
-                    // flicker read as a firing. Otherwise a use is a new
-                    // chip taking the cell, or the same chip's shot
-                    // count moving on.
-                    let chip = s.chips[side];
-                    let shot = chip >> 12;
-                    if chip != prev_chip && (chip == NO_CHIP || shot != 0) {
-                        let fired = chip != NO_CHIP
-                            && (prev_chip == NO_CHIP
-                                || chip & CHIP_ID_MASK != prev_chip & CHIP_ID_MASK
-                                || shot > prev_chip >> 12);
-                        if fired {
-                            chip_uses[side].push((s.tick, chip & CHIP_ID_MASK));
-                        }
-                        prev_chip = chip;
+    fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<mgba::core::Core>> {
+        /// One tick's reading of the chip on screen acting.
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        struct Acting {
+            id: u16,
+            /// The actor's fire count — what makes a volley of one chip
+            /// read as one use per shot.
+            shot: u16,
+        }
+
+        /// Chip-use detection for BCC's acting-chip contract: the
+        /// reading is the chip on screen ACTING, `None` between actions
+        /// — not a pick waiting to fire, so the use is when it ARRIVES.
+        /// The loaded-chip games report a pick that sits in a cell
+        /// until it fires, so a departure is the use there; BCC has no
+        /// pick to sit — its turns resolve straight out of the deck —
+        /// and the cell is set for as long as the action plays out, so
+        /// waiting for the departure would mark the animation's end
+        /// rather than the hit. A zero shot means the game is
+        /// mid-update of its own counter, so the whole reading is
+        /// ignored rather than let the flicker score.
+        #[derive(Clone, Default)]
+        struct ActingChipTracker {
+            round: u32,
+            prev: Option<Acting>,
+        }
+        impl ActingChipTracker {
+            fn tick(&mut self, round: u32, reading: Option<Acting>, player: usize, events: &tango_match::telemetry::EventSink) {
+                if self.round != round {
+                    *self = Self { round, prev: None };
+                }
+                if reading == self.prev || reading.is_some_and(|c| c.shot == 0) {
+                    return;
+                }
+                if let Some(c) = reading {
+                    let fired = match self.prev {
+                        None => true,
+                        Some(p) => c.id != p.id || c.shot > p.shot,
+                    };
+                    if fired {
+                        events.chip_used(player, c.id);
                     }
                 }
+                self.prev = reading;
             }
-            UsageEvents {
-                chip_uses,
-                buster: buster_presses(samples),
-            }
-        })
-    }
+        }
 
-    fn core_poller(&self, _player: usize) -> Box<dyn tango_match::telemetry::CorePoller<mgba::core::Core>> {
-        let ewram = &self.offsets.ewram;
-        Box::new(move |core: &mut mgba::core::Core| {
-            // No battle to read until the round's HP is initialized —
-            // the block is zeroed between battles.
-            let hp = [
-                core.raw_read_16(ewram.battle_hp, -1) as u16,
-                core.raw_read_16(ewram.battle_hp + 2, -1) as u16,
-            ];
-            if hp == [0, 0] {
-                return None;
-            }
-            // The chip in play belongs to whoever is acting; the other
-            // navi is idle this beat and reports none. Both cores see
-            // the same pair, and the observer takes each player's chip
-            // from that player's own core, so this lands on the right
-            // unit either way.
-            let actor = core.raw_read_8(ewram.battle_actor, -1) as usize;
-            let acting_id = core.raw_read_8(ewram.battle_actor_chip, -1) as u16;
-            // The acting player's fire count rides in the high bits, the
-            // way the loaded-chip games carry a fire counter: the fold
-            // masks it back off, and it is what makes a volley of the
-            // same chip read as one use per shot instead of one long
-            // one.
-            let fires = core.raw_read_8(
-                ewram.battle_fire_count + (actor.min(1) as u32) * BATTLE_PLAYER_STRIDE,
-                -1,
-            ) as u16;
-            // The shot count rides in the high bits so a volley of one
-            // chip reads as one use per shot; the fold masks it back
-            // off. The counter dips through zero while the game rewrites
-            // it, and the fold treats a zero as "no reading" rather than
-            // a new shot. A navi's own attack is not a deck program and
-            // never moves the counter, so it takes a fixed non-zero
-            // marker and is scored when it takes the cell.
-            const NAVI_ATTACK_SHOT: u16 = 0xf;
-            let acting_chip = match acting_id {
-                0 => None,
-                id if crate::dataview::save::NAVI_CHIP_IDS.contains(&(id as usize)) => {
-                    Some((id & tango_backend_mgba::analysis::CHIP_ID_MASK) | (NAVI_ATTACK_SHOT << 12))
+        struct Poller {
+            ewram: &'static EWRAMOffsets,
+            player: usize,
+            chips: ActingChipTracker,
+        }
+        impl tango_match::telemetry::CorePoller<mgba::core::Core> for Poller {
+            fn poll(
+                &mut self,
+                core: &mut mgba::core::Core,
+                events: &tango_match::telemetry::EventSink,
+                round: u32,
+            ) -> Option<tango_match::telemetry::CoreObs> {
+                let ewram = self.ewram;
+                // No battle to read until the round's HP is initialized —
+                // the block is zeroed between battles.
+                let hp = [
+                    core.raw_read_16(ewram.battle_hp, -1) as u16,
+                    core.raw_read_16(ewram.battle_hp + 2, -1) as u16,
+                ];
+                if hp == [0, 0] {
+                    return None;
                 }
-                id => Some((id & tango_backend_mgba::analysis::CHIP_ID_MASK) | ((fires & 0xf) << 12)),
-            };
-            Some(tango_match::telemetry::CoreObs {
-                // BCC's navis have no field to stand on: its battles are
-                // turn-based, not tiled.
-                units: std::array::from_fn(|p| tango_match::telemetry::UnitObs {
-                    hp: hp[p],
-                    tile: (0, 0),
-                    chip: acting_chip.filter(|_| p == actor),
-                }),
-                custom_self: core.raw_read_8(ewram.deck_confirm_wait, -1) != 0,
-            })
+                // The chip in play belongs to whoever is acting; both
+                // cores see the same shared pair, so this core reports
+                // only its OWN player's turns and the peer core answers
+                // for the other's.
+                let actor = core.raw_read_8(ewram.battle_actor, -1) as usize;
+                let acting_id = core.raw_read_8(ewram.battle_actor_chip, -1) as u16;
+                let fires = core.raw_read_8(
+                    ewram.battle_fire_count + (actor.min(1) as u32) * BATTLE_PLAYER_STRIDE,
+                    -1,
+                ) as u16;
+                // A navi's own attack is not a deck program and never
+                // moves the fire counter, so it takes a fixed non-zero
+                // shot marker and is scored when it takes the cell.
+                const NAVI_ATTACK_SHOT: u16 = 0xf;
+                let acting_chip = match acting_id {
+                    0 => None,
+                    id if crate::dataview::save::NAVI_CHIP_IDS.contains(&(id as usize)) => Some(Acting {
+                        id,
+                        shot: NAVI_ATTACK_SHOT,
+                    }),
+                    id => Some(Acting { id, shot: fires }),
+                };
+                self.chips.tick(
+                    round,
+                    acting_chip.filter(|_| actor == self.player),
+                    self.player,
+                    events,
+                );
+                Some(tango_match::telemetry::CoreObs {
+                    // BCC's navis have no field to stand on: its battles
+                    // are turn-based, not tiled.
+                    units: std::array::from_fn(|p| tango_match::telemetry::UnitObs {
+                        hp: hp[p],
+                        tile: (0, 0),
+                    }),
+                    custom_self: core.raw_read_8(ewram.deck_confirm_wait, -1) != 0,
+                })
+            }
+            fn save(&self) -> tango_match::telemetry::Scratch {
+                tango_match::telemetry::Scratch::new(self.chips.clone())
+            }
+            fn restore(&mut self, scratch: &tango_match::telemetry::Scratch) {
+                self.chips = scratch.get().cloned().unwrap_or_default();
+            }
+        }
+        Box::new(Poller {
+            ewram: &self.offsets.ewram,
+            player,
+            chips: Default::default(),
         })
     }
 
@@ -170,7 +193,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
         &self,
         config: &tango_backend_mgba::PrimeConfig,
         player: usize,
-        lifecycle: &tango_match::telemetry::LifecycleSink,
+        events: &tango_match::telemetry::EventSink,
         primed: &tango_backend_mgba::PrimedLatch,
     ) -> Vec<Trap> {
         use tango_match::telemetry::Outcome;
@@ -184,7 +207,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
 
         // The game's own result bookkeeping, reported from core 0 only
         // (core 1's would be the same match seen from the other side).
-        let sink = (player == 0).then(|| lifecycle.clone());
+        let sink = (player == 0).then(|| events.clone());
         let verdict = |addr: u32, outcome: Outcome| -> Trap {
             let sink = sink.clone();
             (
@@ -341,7 +364,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 // dedups the second firing when both exit together.
                 rom.battle_exit,
                 {
-                    let sink = lifecycle.clone();
+                    let sink = events.clone();
                     Box::new(move |core: &mut mgba::core::Core| {
                         if core.raw_read_8(ctx + 0x46a8, -1) == BATTLE_FINISHED {
                             sink.match_ended();

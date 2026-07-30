@@ -52,6 +52,7 @@
 //! (The walker itself lives in [`Pvp::primer_traps`].)
 
 use tango_backend_mgba::Trap;
+use tango_gamesupport_common::telemetry::LoadedChip;
 
 pub struct Pvp {
     offsets: &'static Offsets,
@@ -126,7 +127,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
         &self,
         config: &tango_backend_mgba::PrimeConfig,
         player: usize,
-        lifecycle: &tango_match::telemetry::LifecycleSink,
+        events: &tango_match::telemetry::EventSink,
         primed: &tango_backend_mgba::PrimedLatch,
     ) -> Vec<Trap> {
         use tango_match::telemetry::Outcome;
@@ -180,7 +181,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
         // (whose local player is player 0); core 1's lifecycle traps stay
         // silent. Match end is the exception, reported from both cores —
         // see its trap below.
-        let sink = (player == 0).then(|| lifecycle.clone());
+        let sink = (player == 0).then(|| events.clone());
         let primed = primed.clone();
         // The game's own round verdict, announced from the sites
         // where the battle loop decides it (the KO path and the
@@ -387,7 +388,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 // second core's firing.
                 rom.comm_menu_end_battle_entry,
                 {
-                    let sink = lifecycle.clone();
+                    let sink = events.clone();
                     Box::new(move |_core: &mut mgba::core::Core| sink.match_ended())
                 },
             ),
@@ -395,17 +396,19 @@ impl tango_backend_mgba::GameSupport for Pvp {
     }
 
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<mgba::core::Core>> {
-        let ewram = &self.offsets.ewram;
-        let player = player as u32;
-        Box::new(move |core: &mut mgba::core::Core| {
-            let units = battle_units(ewram, core)?;
-            let chips = loaded_chips(ewram, core);
-            Some(tango_match::telemetry::CoreObs {
-                units: std::array::from_fn(|p| tango_match::telemetry::UnitObs {
-                    hp: units[p].hp,
-                    tile: (units[p].tile[0], units[p].tile[1]),
-                    chip: chips[p],
-                }),
+        struct Poller {
+            ewram: &'static EWRAMOffsets,
+            player: usize,
+            chips: tango_gamesupport_common::telemetry::HandChipTracker,
+        }
+        impl tango_match::telemetry::CorePoller<mgba::core::Core> for Poller {
+            fn poll(
+                &mut self,
+                core: &mut mgba::core::Core,
+                events: &tango_match::telemetry::EventSink,
+                round: u32,
+            ) -> Option<tango_match::telemetry::CoreObs> {
+                let units = battle_units(self.ewram, core)?;
                 // Whether this player is currently picking in the custom
                 // screen. battle_state holds one flag byte per player at
                 // +0x14/+0x15: 4 while that player's chip-select is open,
@@ -415,8 +418,37 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 // (first opening right after the battle intro, one
                 // turn-counter increment at +0x07 per opening),
                 // identically across US/JP and both perspectives.
-                custom_self: core.raw_read_8(ewram.battle_state + 0x14 + player, -1) == 4,
-            })
+                let custom_self =
+                    core.raw_read_8(self.ewram.battle_state + 0x14 + self.player as u32, -1) == 4;
+                // This core's own player's chip fires, off its hand
+                // block's fired counter (see `loaded_chips`).
+                self.chips.tick(
+                    round,
+                    loaded_chips(self.ewram, core)[self.player],
+                    custom_self,
+                    units[self.player].hp,
+                    self.player,
+                    events,
+                );
+                Some(tango_match::telemetry::CoreObs {
+                    units: units.map(|u| tango_match::telemetry::UnitObs {
+                        hp: u.hp,
+                        tile: (u.tile[0], u.tile[1]),
+                    }),
+                    custom_self,
+                })
+            }
+            fn save(&self) -> tango_match::telemetry::Scratch {
+                tango_match::telemetry::Scratch::new(self.chips.clone())
+            }
+            fn restore(&mut self, scratch: &tango_match::telemetry::Scratch) {
+                self.chips = scratch.get().cloned().unwrap_or_default();
+            }
+        }
+        Box::new(Poller {
+            ewram: &self.offsets.ewram,
+            player,
+            chips: Default::default(),
         })
     }
 }
@@ -484,11 +516,11 @@ fn battle_units(ewram: &EWRAMOffsets, core: &mut mgba::core::Core) -> Option<[Ra
     }
     Some([units[0]?, units[1]?])
 }
-/// Both players' loaded-chip tokens (`id | fired << 12`,
-/// `NO_CHIP` = none), indexed by absolute player -- the id the player
-/// will use next, tagged with the block's fired counter so duplicate
-/// picks still transition per use. See `EWRAMOffsets::chip_blocks`.
-fn loaded_chips(ewram: &EWRAMOffsets, core: &mut mgba::core::Core) -> [Option<u16>; 2] {
+/// Both players' loaded-chip readings (`None` when the hand is spent),
+/// indexed by absolute player -- the id the player will use next, with
+/// the block's fired counter: the hand-cursor contract
+/// `HandChipTracker` detects fires on. See `EWRAMOffsets::chip_blocks`.
+fn loaded_chips(ewram: &EWRAMOffsets, core: &mut mgba::core::Core) -> [Option<LoadedChip>; 2] {
     let mut chips = [None; 2];
     for player in 0..2u32 {
         let base = ewram.chip_blocks + player * 0x50;
@@ -498,7 +530,10 @@ fn loaded_chips(ewram: &EWRAMOffsets, core: &mut mgba::core::Core) -> [Option<u1
         }
         let id = core.raw_read_16(base + 2 + fired * 2, -1);
         if id != 0 && id <= 0x0fff {
-            chips[player as usize] = Some(id | (((fired as u16) & 7) << 12));
+            chips[player as usize] = Some(LoadedChip {
+                id,
+                fires: fired as u16,
+            });
         }
     }
     chips

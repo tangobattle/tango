@@ -83,13 +83,9 @@ pub struct Link {
     live_tick: u32,
     /// The RAM-poll collector, when this pair runs one. Polled after
     /// every tick, rewound on every restore; the store it feeds is the
-    /// handle the backend installs on the match. Lifecycle arrives
-    /// through its sink from outside the poll loop: round starts are
-    /// the collector's own gate derivation
-    /// ([`rounds_from_gate`](Telemetry::rounds_from_gate)), and the
-    /// match end is the pair's detach hook — the game's own
-    /// link-session exit reaching the shim (see
-    /// [`on_detach`](Link::on_detach)).
+    /// handle the backend installs on the match. Lifecycle rides the
+    /// polls on this engine: console 0's poller reads where the match
+    /// stands and reports the transitions into the collector's sink.
     telemetry: Option<Telemetry<crate::Nds>>,
 }
 
@@ -152,9 +148,7 @@ impl tango_match::Link for Link {
         if let Some(telemetry) = self.telemetry.as_mut() {
             let obs0 = telemetry.poll(0, self.inner.console(0));
             let obs1 = telemetry.poll(1, self.inner.console(1));
-            let phase = telemetry.poll_phase(self.inner.console(0));
-            let verdict = telemetry.poll_verdict(self.inner.console(0));
-            telemetry.observe(obs0, obs1, phase, verdict, self.live_tick);
+            telemetry.observe(obs0, obs1, self.live_tick);
         }
     }
 

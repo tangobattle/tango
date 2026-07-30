@@ -135,117 +135,191 @@ impl tango_backend_melonds::GameSupport for Pvp {
         self.layout.walk(link, match_type, cancel)
     }
 
-    /// Battle telemetry for one console: both units' HP, tile and
-    /// loaded chip, absolute player order. The battle sim is
-    /// both-sided — each console simulates both units under the
-    /// wireless lockstep — so the two consoles read identical values,
-    /// and `player` only picks which side's custom flag answers
-    /// [`custom_self`]. `None` until the slots hold two live player
-    /// units, which the engine's session watch also reads as the round
-    /// boundary.
+    /// Battle telemetry for one console: both units' HP and tile,
+    /// absolute player order, plus this console's own player's chip
+    /// fires into the sink. The battle sim is both-sided — each console
+    /// simulates both units under the wireless lockstep — so the two
+    /// consoles read identical values, and `player` picks which side's
+    /// custom flag answers [`custom_self`] and whose fires this console
+    /// reports. `None` until the slots hold two live player units.
+    ///
+    /// Console 0's poller additionally carries the game's lifecycle as
+    /// RAM facts (this engine's stand-in for the mgba families' trap
+    /// anchors): a battle is live while the unit block holds two owned
+    /// units — chip cut-ins, effect sub-modules and the pause screen
+    /// all keep it — and the match is over once the block is dead with
+    /// the module word on the post-link menus. Everything else is the
+    /// space between rounds. Verified against a recorded match played
+    /// to its natural end: the game reaches its menus ~80 ticks before
+    /// it powers the wireless down, so the match-end report lands right
+    /// as the battle screens leave.
     ///
     /// [`custom_self`]: tango_match::telemetry::CoreObs::custom_self
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<Nds>> {
-        let unit = self.unit;
-        let custom = self.custom + 0x20 * player as u32;
-        Box::new(move |nds: &mut Nds| {
-            let ram = nds.main_ram();
-            let mask = ram.len() - 1;
-            let read8 = |addr: u32| ram[(addr as usize - 0x0200_0000) & mask];
-            let read16 = |addr: u32| u16::from_le_bytes([read8(addr), read8(addr + 1)]);
+        use tango_gamesupport_common::telemetry::{LoadedCellTracker, LoadedChip};
+        use tango_match::telemetry::{CoreObs, EventSink, Outcome, UnitObs};
 
-            let mut units = [None, None];
-            for slot in 0..2 {
-                let base = unit + slot * UNIT_STRIDE;
-                let chip = read16(base + 0x2a);
-                // The unit's remaining-hand count (`+0x1a`), reported as
-                // the loaded-chip contract's fire-sequence tag: it drops
-                // by one per chip fired — including a fire that leaves
-                // the cell unchanged because the next queued chip is a
-                // duplicate — and jumps arbitrarily when a custom close
-                // rebuilds the hand, so every use is a visible report
-                // transition and the selection-load lands as one too.
-                // Found by elimination scan (rises at the known load
-                // ticks, falls at the known use ticks) and verified
-                // against full recordings on both builds.
-                let count = read8(base + 0x1a) as u16;
-                *units.get_mut(read8(base + 0x16) as usize)? = Some(tango_match::telemetry::UnitObs {
-                    hp: read16(base + 0x24),
-                    tile: (read8(base + 0x12), read8(base + 0x13)),
+        /// Console 0's lifecycle watch: the phase and verdict LEVELS,
+        /// reported as edges against last tick's readings. The verdict
+        /// comes from the comm-result globals the battle loop's own KO
+        /// and judge paths report into (see [`Pvp::result`]): no
+        /// verdict until the end sub-state at `+0` stands, then `+1`
+        /// read through console 0's perspective — its local player is
+        /// player 0, the game's host seat, exactly the mgba families'
+        /// core-0 convention. The comm-abnormal values (a peer
+        /// vanishing mid-round) deliberately read as no verdict: the
+        /// round genuinely never got one. Both consoles hold mirrored
+        /// copies and agree at every settled tick — KO-forge verified
+        /// on both builds, both outcomes.
+        struct LifecycleWatch {
+            unit: u32,
+            module: u32,
+            result: u32,
+            /// Last tick's phase: 0 = nothing seen yet, 1 = a round is
+            /// live, 2 = between rounds, 3 = the post-link menus.
+            prev_phase: u8,
+            /// Last tick's standing verdict (0 = none): reporting on
+            /// its edges is what stamps one outcome per round unless
+            /// the level drops and stands again.
+            prev_verdict: u8,
+        }
+        impl LifecycleWatch {
+            fn tick(&mut self, nds: &mut Nds, events: &EventSink) {
+                let phase: u8 = if units_live(nds.main_ram(), self.unit) {
+                    1
+                } else if MENUS.contains(&nds.read32(self.module)) {
+                    3
+                } else {
+                    2
+                };
+                let verdict = if nds.read8(self.result) == 0 {
+                    0
+                } else {
+                    match nds.read8(self.result + 1) {
+                        v @ 1..=3 => v,
+                        _ => 0,
+                    }
+                };
+                if phase == 1 {
+                    if self.prev_phase != 1 {
+                        events.round_started();
+                    }
+                    if verdict != 0 && verdict != self.prev_verdict {
+                        events.round_outcome(match verdict {
+                            1 => Outcome::P0Win,
+                            2 => Outcome::P1Win,
+                            _ => Outcome::Draw,
+                        });
+                    }
+                } else {
+                    if self.prev_phase == 1 {
+                        events.round_ended();
+                    }
+                    if phase == 3 && self.prev_phase != 3 {
+                        events.match_ended();
+                    }
+                }
+                self.prev_phase = phase;
+                self.prev_verdict = verdict;
+            }
+        }
+
+        struct Poller {
+            unit: u32,
+            /// This player's own custom flag address (see [`Pvp::custom`]).
+            custom: u32,
+            player: usize,
+            chips: LoadedCellTracker,
+            /// Console 0 only, like the mgba families' round anchors.
+            lifecycle: Option<LifecycleWatch>,
+        }
+        impl tango_match::telemetry::CorePoller<Nds> for Poller {
+            fn poll(&mut self, nds: &mut Nds, events: &EventSink, round: u32) -> Option<CoreObs> {
+                // The lifecycle reads first: the phases it watches are
+                // exactly the ones where the unit block is dead and the
+                // battle read below bails out.
+                if let Some(lc) = &mut self.lifecycle {
+                    lc.tick(nds, events);
+                }
+                let ram = nds.main_ram();
+                let mask = ram.len() - 1;
+                let read8 = |addr: u32| ram[(addr as usize - 0x0200_0000) & mask];
+                let read16 = |addr: u32| u16::from_le_bytes([read8(addr), read8(addr + 1)]);
+
+                let mut units = [None, None];
+                let mut tokens = [None, None];
+                for slot in 0..2 {
+                    let base = self.unit + slot * UNIT_STRIDE;
+                    let owner = read8(base + 0x16) as usize;
+                    let chip = read16(base + 0x2a);
+                    // The unit's remaining-hand count (`+0x1a`), read
+                    // as the cell reading's fire counter: it drops by
+                    // one per chip fired — including a fire that leaves
+                    // the cell unchanged because the next queued chip is
+                    // a duplicate — and jumps arbitrarily when a custom
+                    // close rebuilds the hand, so every use is a visible
+                    // reading transition and the selection-load lands as
+                    // one too (unlike GBA bn5, whose bare cell has no
+                    // counter). Found by elimination scan (rises at the
+                    // known load ticks, falls at the known use ticks)
+                    // and verified against full recordings on both
+                    // builds. The reading never leaves this poller — the
+                    // tracker turns it into use events.
+                    let count = read8(base + 0x1a) as u16;
                     // The record's own empty spelling, same as the GBA
                     // family's.
-                    chip: (chip != 0xffff).then_some((count & 0xf) << 12 | chip),
-                });
-            }
-            Some(tango_match::telemetry::CoreObs {
-                units: [units[0]?, units[1]?],
+                    *tokens.get_mut(owner)? = (chip != 0xffff).then_some(LoadedChip { id: chip, fires: count });
+                    *units.get_mut(owner)? = Some(UnitObs {
+                        hp: read16(base + 0x24),
+                        tile: (read8(base + 0x12), read8(base + 0x13)),
+                    });
+                }
+                let units = [units[0]?, units[1]?];
                 // This player's own flag (see [`Pvp::custom`]) — the
                 // span ends at their own commit, exactly as on GBA
                 // bn5; 5 is the screen's brief just-opened sub-state.
-                custom_self: matches!(read8(custom), 4 | 5),
-            })
+                let custom_self = matches!(read8(self.custom), 4 | 5);
+                self.chips.tick(
+                    round,
+                    tokens[self.player],
+                    custom_self,
+                    units[self.player].hp,
+                    self.player,
+                    events,
+                );
+                Some(CoreObs { units, custom_self })
+            }
+            fn save(&self) -> tango_match::telemetry::Scratch {
+                tango_match::telemetry::Scratch::new((
+                    self.chips.clone(),
+                    self.lifecycle.as_ref().map(|lc| (lc.prev_phase, lc.prev_verdict)),
+                ))
+            }
+            fn restore(&mut self, scratch: &tango_match::telemetry::Scratch) {
+                let (chips, watch) = scratch
+                    .get::<(LoadedCellTracker, Option<(u8, u8)>)>()
+                    .cloned()
+                    .unwrap_or_default();
+                self.chips = chips;
+                if let Some(lc) = &mut self.lifecycle {
+                    (lc.prev_phase, lc.prev_verdict) = watch.unwrap_or_default();
+                }
+            }
+        }
+
+        Box::new(Poller {
+            unit: self.unit,
+            custom: self.custom + 0x20 * player as u32,
+            player,
+            chips: Default::default(),
+            lifecycle: (player == 0).then(|| LifecycleWatch {
+                unit: self.unit,
+                module: self.layout.module_word(),
+                result: self.result,
+                prev_phase: 0,
+                prev_verdict: 0,
+            }),
         })
-    }
-
-    /// The game's lifecycle as RAM facts (the engine can't afford
-    /// standing traps, so these are this game's anchors): a battle is
-    /// live while the unit block holds two owned units — chip cut-ins,
-    /// effect sub-modules and the pause screen all keep it — and the
-    /// match is over once the block is dead with the module word on
-    /// the post-link menus. Everything else is the space between
-    /// rounds. Verified against a recorded match played to its natural
-    /// end: the game reaches its menus ~80 ticks before it powers the
-    /// wireless down, so [`Phase::Over`] lands right as the battle
-    /// screens leave.
-    ///
-    /// [`Phase::Over`]: tango_match::telemetry::Phase::Over
-    fn phase_poller(&self) -> Option<Box<dyn FnMut(&mut Nds) -> tango_match::telemetry::Phase + Send>> {
-        let unit = self.unit;
-        let module = self.layout.module_word();
-        Some(Box::new(move |nds: &mut Nds| {
-            if units_live(nds.main_ram(), unit) {
-                tango_match::telemetry::Phase::Round
-            } else if MENUS.contains(&nds.read32(module)) {
-                tango_match::telemetry::Phase::Over
-            } else {
-                tango_match::telemetry::Phase::Between
-            }
-        }))
-    }
-
-    /// The round result, from the comm-result globals the battle loop's
-    /// own KO and judge paths report into (see [`Pvp::result`]): no
-    /// verdict until the end sub-state at `+0` stands, then `+1` read
-    /// through console 0's perspective — its local player is player 0,
-    /// the game's host seat, exactly the mgba families' core-0
-    /// convention. The comm-abnormal values (a peer vanishing mid-round)
-    /// deliberately read as no verdict: the round genuinely never got
-    /// one. Both consoles hold mirrored copies and agree at every
-    /// settled tick — KO-forge verified on both builds, both outcomes.
-    fn verdict_poller(&self) -> Option<Box<dyn FnMut(&mut Nds) -> Option<tango_match::telemetry::Outcome> + Send>> {
-        let result = self.result;
-        Some(Box::new(move |nds: &mut Nds| {
-            if nds.read8(result) == 0 {
-                return None;
-            }
-            match nds.read8(result + 1) {
-                1 => Some(tango_match::telemetry::Outcome::P0Win),
-                2 => Some(tango_match::telemetry::Outcome::P1Win),
-                3 => Some(tango_match::telemetry::Outcome::Draw),
-                _ => None,
-            }
-        }))
-    }
-
-    /// The port kept the GBA family's loaded-chip contract (the unit
-    /// record's `+0x2a` cell), and — unlike GBA bn5 — a fire-sequence
-    /// tag is known for it (the `+0x1a` hand count the poller packs
-    /// into the report), so the standard decode applies at full
-    /// fidelity: every departure is a use, even a duplicate pick the
-    /// cell can't show, except the selection landing after each custom
-    /// close.
-    fn usage_fold(&self) -> tango_match::analysis::UsageFold {
-        tango_match::analysis::standard_usage_fold()
     }
 }
 

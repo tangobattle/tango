@@ -145,45 +145,32 @@ pub trait GameSupport: Sync {
     /// PC-sited traps for one core running this game: the priming walk
     /// (boot → the comm menu → the link battle; `player` is which pair
     /// core this is, 0 = lockstep primary) plus, for core 0, the round
-    /// lifecycle anchors reporting into `lifecycle` — the game's
+    /// lifecycle anchors reporting into `events` — the game's
     /// battle-start-complete site firing
-    /// [`round_started`](tango_match::telemetry::LifecycleSink::round_started) and
-    /// its match-end site firing
-    /// [`match_ended`](tango_match::telemetry::LifecycleSink::match_ended). The
+    /// [`round_started`](tango_match::telemetry::EventSink::round_started),
+    /// its result-deciding sites firing
+    /// [`round_outcome`](tango_match::telemetry::EventSink::round_outcome),
+    /// and its match-end site firing
+    /// [`match_ended`](tango_match::telemetry::EventSink::match_ended). The
     /// priming pokes must be pure functions of emulation state and
     /// `config`, so both peers' pairs prime bit-identically, and must go
     /// inert once the battle is live (the traps stay installed for the
-    /// pair's life). Lifecycle firings are host-side signals only — they
+    /// pair's life). Sink firings are host-side signals only — they
     /// never touch core state, so they can't perturb the simulation.
     fn primer_traps(
         &self,
         config: &PrimeConfig,
         player: usize,
-        lifecycle: &tango_match::telemetry::LifecycleSink,
+        events: &tango_match::telemetry::EventSink,
         primed: &PrimedLatch,
     ) -> Vec<(u32, Box<dyn Fn(&mut mgba::core::Core)>)>;
 
     /// The telemetry reader for one core running this game. `player` is
-    /// which pair core (and player) this poller answers for.
+    /// which pair core (and player) this poller answers for — it polls
+    /// the tick's levels and reports its own player's chip uses into
+    /// the sink as it catches them firing (see
+    /// [`CorePoller`](tango_match::telemetry::CorePoller)).
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<mgba::core::Core>>;
-
-    /// How this game's telemetry folds into per-round usage events
-    /// (chip uses + buster presses) — the whole derivation is the
-    /// game's business: what a per-tick chip report means and whether B
-    /// edges are buster shots. The default is the standard pair
-    /// ([`standard_usage_fold`]): the loaded-chip decode every mainline
-    /// family reports, plus B-edge buster counting. A game whose battle
-    /// system fits neither (BCC's acting-chip turns; vanilla exe45's
-    /// dealt-queue sums and menu-key B) brings its own fold. Takes the
-    /// (patched) ROM because the contract can depend on the applied
-    /// patch: exe45's community PvP patch replaces the dealt-queue
-    /// system with per-screen hands, flipping it to the standard fold.
-    ///
-    /// [`standard_usage_fold`]: crate::analysis::standard_usage_fold
-    fn usage_fold(&self, rom: &[u8]) -> crate::analysis::UsageFold {
-        let _ = rom;
-        crate::analysis::standard_usage_fold()
-    }
 }
 
 pub use backend::{GbaBackend, Seat};

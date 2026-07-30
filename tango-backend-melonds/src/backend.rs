@@ -38,49 +38,24 @@ pub trait GameSupport: Sync {
     /// The telemetry reader for one console running this game. `player`
     /// is which console (and player) this poller answers for. Pure
     /// reads over that console's RAM, `None` while the game has no live
-    /// battle state. The default reads nothing, for a game that hasn't
-    /// wired telemetry up.
+    /// battle state.
+    ///
+    /// Everything this game reports goes through the poller: the tick's
+    /// levels come back as the observation, and the edges — chip uses,
+    /// and this engine's round/match lifecycle — go into the sink as
+    /// the poller catches them. A standing melonDS trap is what the
+    /// mgba families use for lifecycle; this engine's anchors are RAM
+    /// facts instead, so console 0's poller reads where the match
+    /// stands and reports the transitions (see
+    /// [`CorePoller`](tango_match::telemetry::CorePoller) for the
+    /// rollback contract, including the scratch that keeps edge
+    /// detection re-simulation-exact). The default reads nothing, for a
+    /// game that hasn't wired telemetry up — which also means no
+    /// automatic session end, the match-end report being the engine's
+    /// only end signal.
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<crate::Nds>> {
         let _ = player;
         Box::new(|_: &mut crate::Nds| None)
-    }
-
-    /// The game's lifecycle, read from its RAM once per tick on console
-    /// 0: where the match stands, as a [`Phase`] level. This engine's
-    /// stand-in for the mgba families' trap anchors — a standing
-    /// melonDS trap holds the console to the interpreter, so round and
-    /// match boundaries are declared as instantaneous RAM facts instead
-    /// of PC sites, and the telemetry collector turns the levels into
-    /// events. Must be a pure function of console state: it runs on
-    /// speculative ticks and again on their re-simulation. The default
-    /// reads nothing: no round marks, and — because [`Phase::Over`] is
-    /// the engine's only match-end signal — no automatic session end.
-    ///
-    /// [`Phase`]: tango_match::telemetry::Phase
-    /// [`Phase::Over`]: tango_match::telemetry::Phase::Over
-    fn phase_poller(&self) -> Option<Box<dyn FnMut(&mut crate::Nds) -> tango_match::telemetry::Phase + Send>> {
-        None
-    }
-
-    /// The game's standing round verdict, read from its RAM once per
-    /// tick on console 0 — the poll-driven counterpart of the mgba
-    /// families' result-store traps, under the same contract as
-    /// [`phase_poller`](GameSupport::phase_poller): a pure function of
-    /// console state, `None` while the game has announced no result
-    /// for the round in progress. Absolute player terms; the collector
-    /// stamps at most one report per round unless the level changes.
-    /// The default reads nothing: rounds fold with no outcome.
-    fn verdict_poller(&self) -> Option<Box<dyn FnMut(&mut crate::Nds) -> Option<tango_match::telemetry::Outcome> + Send>> {
-        None
-    }
-
-    /// This game's usage-event fold: how its per-tick chip reports and
-    /// button edges decode into chip-use and buster events (see
-    /// [`UsageFold`](tango_match::analysis::UsageFold)). The default is
-    /// the inert fold, for a game whose poller reports no chips — HP,
-    /// custom spans and outcomes still fold as usual.
-    fn usage_fold(&self) -> tango_match::analysis::UsageFold {
-        tango_match::analysis::inert_usage_fold()
     }
 }
 
@@ -138,12 +113,7 @@ impl tango_match::Backend for DsBackend {
         Ok(tango_match::Solo::new(console))
     }
 
-    fn stats_builder(&self, _rom: &[u8]) -> tango_match::analysis::StatsBuilder {
-        tango_match::analysis::StatsBuilder::new(self.support.usage_fold())
-    }
-
     fn open_replay(&self, config: tango_match::ReplayConfig) -> Result<tango_match::ReplaySet, tango_match::Error> {
-        let usage = config.want_stats.then(|| self.support.usage_fold());
         let boot = Boot {
             support: self.support,
             rom: config.roms[0].clone(),
@@ -151,7 +121,7 @@ impl tango_match::Backend for DsBackend {
             rtc: config.rtc,
             match_type: config.match_type,
         };
-        Ok(tango_match::ReplaySet::new(&config, usage, boot))
+        Ok(tango_match::ReplaySet::new(&config, boot))
     }
 }
 
@@ -246,24 +216,18 @@ fn prime_dark(
     walked
 }
 
-/// Arm a primed pair's telemetry: the game's battle pollers plus its
-/// phase read, which carries the round and match lifecycle (see
-/// [`GameSupport::phase_poller`]). Armed only after priming, so the
-/// boot's screens predate the watch. Returns the handle the backend
-/// installs on the match for the host to read.
+/// Arm a primed pair's telemetry: the game's pollers, which carry both
+/// the battle levels and — on console 0 — the poll-derived round and
+/// match lifecycle (see [`GameSupport::core_poller`]). Armed only after
+/// priming, so the boot's screens predate the watch. Returns the handle
+/// the backend installs on the match for the host to read.
 fn observe(
     link: &mut Link,
     support: &'static (dyn GameSupport + Send + Sync),
 ) -> tango_match::telemetry::TelemetryHandle {
-    let lifecycle = tango_match::telemetry::LifecycleSink::new();
-    let (mut telemetry, handle) =
-        tango_match::telemetry::Telemetry::new([support.core_poller(0), support.core_poller(1)], lifecycle);
-    if let Some(phases) = support.phase_poller() {
-        telemetry.set_phase_poller(phases);
-    }
-    if let Some(verdicts) = support.verdict_poller() {
-        telemetry.set_verdict_poller(verdicts);
-    }
+    let events = tango_match::telemetry::EventSink::new();
+    let (telemetry, handle) =
+        tango_match::telemetry::Telemetry::new([support.core_poller(0), support.core_poller(1)], events);
     link.set_telemetry(telemetry);
     handle
 }

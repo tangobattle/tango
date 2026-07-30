@@ -28,7 +28,7 @@
 use std::collections::VecDeque;
 
 use tango_gamesupport_bn6::pvp;
-use tango_match::telemetry::{CorePoller, RoundEvent, Telemetry};
+use tango_match::telemetry::{CorePoller, Event, Telemetry};
 use tango_backend_mgba::GameSupport as _;
 
 fn pvp_for(rom: &[u8]) -> &'static pvp::Pvp {
@@ -56,7 +56,11 @@ struct KoPoker {
 impl mgba_rollback::session::TickObserver for KoPoker {
     fn on_tick(&mut self, pair: &mut mgba_rollback::Link, tick: u32) {
         if tick >= self.from_tick {
-            let hp = self.hp_poller.poll(pair.core_mut(0)).map(|o| o.units.map(|u| u.hp));
+            // The HP read is levels-only; its edge reports go nowhere.
+            let hp = self
+                .hp_poller
+                .poll(pair.core_mut(0), &tango_match::telemetry::EventSink::new(), 0)
+                .map(|o| o.units.map(|u| u.hp));
             if hp.is_some_and(|hp| hp[1] > 1) {
                 self.support[0].debug_set_hp(pair.core_mut(0), 1, 1);
                 self.support[1].debug_set_hp(pair.core_mut(1), 1, 1);
@@ -115,10 +119,10 @@ fn build_peer(
         rng_seed: *b"sio-probe-seed!!",
         disable_bgm: false,
     };
-    let lifecycle = tango_match::telemetry::LifecycleSink::new();
+    let events_sink = tango_match::telemetry::EventSink::new();
     let primed = [tango_backend_mgba::PrimedLatch::new(), tango_backend_mgba::PrimedLatch::new()];
-    pair.set_traps(0, support[0].primer_traps(&config, 0, &lifecycle, &primed[0]));
-    pair.set_traps(1, support[1].primer_traps(&config, 1, &lifecycle, &primed[1]));
+    pair.set_traps(0, support[0].primer_traps(&config, 0, &events_sink, &primed[0]));
+    pair.set_traps(1, support[1].primer_traps(&config, 1, &events_sink, &primed[1]));
     let mut t = 0u32;
     while !(primed[0].is_set() && primed[1].is_set()) {
         assert!(t < 3600, "priming timed out");
@@ -126,7 +130,7 @@ fn build_peer(
         t += 1;
     }
 
-    let (telemetry, store) = Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
+    let (telemetry, store) = Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], events_sink);
     let mut session = mgba_rollback::session::Session::new(pair, local_player, 2).unwrap();
     session.set_observer(Some(Box::new(KoPoker {
         telemetry,
@@ -191,15 +195,14 @@ fn main() {
         Post { round: u32 },
     }
     let mut phase = [Phase::Fight { round: 1 }; 2];
-    // Per-peer confirmed lifecycle observations.
+    // Per-peer confirmed telemetry observations.
     let mut verdicts: [Vec<Option<tango_match::telemetry::Outcome>>; 2] = [Vec::new(), Vec::new()];
     let mut round_starts = [1u32, 1u32];
     let mut saw_match_end = [false; 2];
     // Peer 0 also folds its confirmed telemetry into match stats, the
     // way the app's drive loop does — validating the fold path (round
     // boundaries, rebased ticks, verdicts) end to end under rollback.
-    let mut stats = tango_backend_mgba::analysis::StatsBuilder::new(pvps[0].usage_fold(&[]));
-    let mut pending_buttons: VecDeque<(u32, [u32; 2])> = VecDeque::new();
+    let mut stats = tango_backend_mgba::analysis::StatsBuilder::new();
 
     let wiggle = |t: u32, i: usize| ((t / 5).wrapping_mul(2654435761u32) >> i) & 0x3f3;
 
@@ -225,29 +228,15 @@ fn main() {
             // Drain confirmed telemetry exactly like the app's drive loop.
             let (samples, events) = peers[p].store.lock().unwrap().drain_confirmed(report.confirmed);
             if p == 0 {
-                pending_buttons.extend(
-                    peers[p]
-                        .session
-                        .drain_confirmed()
-                        .into_iter()
-                        .map(|(t, keys)| (t, [keys[0], keys[1]])),
-                );
-                tango_backend_mgba::analysis::fold_confirmed(&mut stats, 0, samples.clone(), events.clone(), &mut |tick| {
-                    while pending_buttons.front().is_some_and(|(t, _)| *t < tick) {
-                        pending_buttons.pop_front();
-                    }
-                    match pending_buttons.front() {
-                        Some(&(t, keys)) if t == tick => Some(keys),
-                        _ => None,
-                    }
-                });
+                peers[p].session.drain_confirmed();
+                tango_backend_mgba::analysis::fold_confirmed(&mut stats, 0, samples.clone(), events.clone());
             }
             for (tick, ev) in events {
                 println!("[peer{p}][{tick:5}] confirmed EVENT {ev:?}");
                 match ev {
-                    RoundEvent::Ended { outcome } => verdicts[p].push(outcome),
-                    RoundEvent::MatchEnded => saw_match_end[p] = true,
-                    RoundEvent::Started => {
+                    Event::RoundEnded { outcome } => verdicts[p].push(outcome),
+                    Event::MatchEnded => saw_match_end[p] = true,
+                    Event::RoundStarted => {
                         if tick > 0 {
                             round_starts[p] += 1;
                             // A confirmed later round start is what the
@@ -256,6 +245,7 @@ fn main() {
                             phase[p] = Phase::Fight { round: round_starts[p] };
                         }
                     }
+                    Event::ChipUsed { .. } => {}
                 }
             }
         }
@@ -287,8 +277,9 @@ fn main() {
                 let ko = {
                     let mut poller = pvps[0].core_poller(0);
                     peers[p].session.with_link(|pair| {
+                        // Levels-only read; edge reports go nowhere.
                         poller
-                            .poll(pair.core_mut(0))
+                            .poll(pair.core_mut(0), &tango_match::telemetry::EventSink::new(), 0)
                             .is_some_and(|o| o.units.iter().any(|u| u.hp == 0))
                     })
                 };

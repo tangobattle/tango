@@ -260,13 +260,6 @@ impl Playback {
         self.cursor >= self.total()
     }
 
-    /// The recorded row that produced `tick` (the row consumed to reach
-    /// it), as raw key words.
-    pub fn keys_at(&self, tick: u32) -> Option<[u32; 2]> {
-        let row = self.inputs.get(tick.checked_sub(1)? as usize)?;
-        Some(row.map(|input| input.keys))
-    }
-
     /// Feed the next recorded input pair. Returns false at end-of-stream.
     pub fn step(&mut self) -> bool {
         let Some(&row) = self.inputs.get(self.cursor as usize) else {
@@ -711,7 +704,7 @@ impl StatsPass {
                 let (samples, events) = telemetry.lock().unwrap().drain_confirmed(tick);
                 if let Some(round_marks) = &self.round_marks {
                     for (event_tick, event) in &events {
-                        if let crate::telemetry::RoundEvent::Started = event {
+                        if let crate::telemetry::Event::RoundStarted = event {
                             self.rounds_started += 1;
                             if self.rounds_started > 1 {
                                 round_marks.lock().unwrap().push(*event_tick);
@@ -720,9 +713,7 @@ impl StatsPass {
                     }
                 }
                 if let Some(builder) = &mut self.builder {
-                    crate::analysis::fold_confirmed(builder, self.local_player, samples, events, &mut |t| {
-                        (t == tick).then(|| self.playback.keys_at(tick)).flatten()
-                    });
+                    crate::analysis::fold_confirmed(builder, self.local_player, samples, events);
                 }
             }
 
@@ -805,8 +796,10 @@ pub struct ReplaySet {
     boot: Box<dyn ReplayBoot>,
     inputs: Arc<Vec<[crate::HostInput; 2]>>,
     local_player: usize,
-    /// The local game's usage-event fold, taken by the stats boot.
-    usage: Mutex<Option<crate::analysis::UsageFold>>,
+    /// Whether the host wants statistics folded. The stats pass boots
+    /// observed either way — round marks come out of the same telemetry
+    /// events — so this gates only the aggregation.
+    want_stats: bool,
     /// Shared: the pass racing ahead lays the keyframes a seek behind
     /// the playhead lands on.
     store: SnapshotStore,
@@ -833,16 +826,13 @@ enum FirstCapture {
 }
 
 impl ReplaySet {
-    /// The set over an engine's boot. `usage` is the local game's
-    /// usage-event fold when the host wants statistics computed — the
-    /// engine resolves it off the local seat's (patched) ROM, which is
-    /// the cart whose statistics a viewer is shown.
-    pub fn new(config: &ReplayConfig, usage: Option<crate::analysis::UsageFold>, boot: impl ReplayBoot + 'static) -> Self {
+    /// The set over an engine's boot.
+    pub fn new(config: &ReplayConfig, boot: impl ReplayBoot + 'static) -> Self {
         ReplaySet {
             boot: Box::new(boot),
             inputs: config.inputs.clone(),
             local_player: config.local_player,
-            usage: Mutex::new(usage),
+            want_stats: config.want_stats,
             store: SnapshotStore::new(),
             round_marks: config.want_round_marks.then(Default::default),
             first_capture: Mutex::new(FirstCapture::Pending),
@@ -917,8 +907,7 @@ impl ReplaySet {
         for player in 0..2 {
             playback.side(player).set_render(false);
         }
-        let usage = self.usage.lock().unwrap().take();
-        let mut builder = usage.map(crate::analysis::StatsBuilder::new).unwrap_or_default();
+        let mut builder = crate::analysis::StatsBuilder::new();
         let total = playback.total();
         loop {
             if cancel.load(Ordering::Relaxed) || self.cancel.load(Ordering::Relaxed) {
@@ -930,9 +919,7 @@ impl ReplaySet {
             let tick = playback.cursor();
             // Everything is final on a linear re-sim — fold as we go.
             let (samples, events) = telemetry.lock().unwrap().drain_confirmed(tick);
-            crate::analysis::fold_confirmed(&mut builder, self.local_player, samples, events, &mut |t| {
-                (t == tick).then(|| playback.keys_at(tick)).flatten()
-            });
+            crate::analysis::fold_confirmed(&mut builder, self.local_player, samples, events);
             on_progress(tick, total, &builder);
         }
         Ok(builder.finish())
@@ -991,11 +978,7 @@ impl ReplaySet {
     fn assemble_stats(&self, telemetry: Option<TelemetryHandle>, playback: Playback) -> StatsPass {
         // No telemetry, no fold — a game without pollers still lays
         // keyframes, and the host keeps the rest of the ride.
-        let builder = telemetry
-            .is_some()
-            .then(|| self.usage.lock().unwrap().take())
-            .flatten()
-            .map(crate::analysis::StatsBuilder::new);
+        let builder = (telemetry.is_some() && self.want_stats).then(crate::analysis::StatsBuilder::new);
         StatsPass {
             playback,
             telemetry,

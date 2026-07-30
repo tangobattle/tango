@@ -7978,6 +7978,7 @@ dependencies = [
  "semver",
  "sweeten",
  "tango-gamesupport",
+ "tango-match",
  "tango-patch",
  "tango-ui",
  "thiserror 1.0.69",

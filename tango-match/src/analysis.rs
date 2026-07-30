@@ -3,7 +3,7 @@
 //! [`ReplaySet::analyze`](crate::ReplaySet::analyze) re-simulates a
 //! recorded replay on a headless pair and extracts per-round
 //! [`MatchStats`]: the outcome and both players' HP over the round,
-//! from the same RAM-poll telemetry the live engine collects. That's a
+//! from the same telemetry the live engine collects. That's a
 //! full replay simulation — seconds of CPU — so stats are meant to be
 //! computed once and cached in a small versioned binary sidecar
 //! (`<replay>.stats`, see [`MatchStats::read`]/[`MatchStats::write`]).
@@ -21,35 +21,14 @@ pub enum BattleOutcome {
     Win = 1,
 }
 
-/// Bumped whenever the sidecar format changes shape — or meaning: v7
-/// adds chip events for exe45's community PvP patch (per-screen hands)
-/// and drops vanilla exe45's buster events (B is a menu key there); v6
-/// fixed exe45's custom spans to track the battle-pausing tactics/chip
-/// screens (the old source was the non-pausing operation-gauge cycle);
-/// v5 extends chip-use events to bn2/bn3/bn4/exe45 (v4 introduced them
-/// for bn5/bn6; v3's HP series became lossless change-point curves
-/// where v2's were decimated; bumps make older files recompute).
-/// Readers reject other versions (and anything without the magic, e.g.
-/// the short-lived JSON v1 sidecars) and recompute.
-// v8: fold fixes — samples/events now interleave by tick (a batch
-// spanning a round boundary no longer folds the next round's first
-// samples into the closing one) and samples stop at the round's
-// announced verdict. Older sidecars recompute.
-// v9: bn1 reports chip identity now (it was buster-only), so its
-// cached stats are missing every chip event they should have.
-// v10: bn1's first cut read the chip-select block and capped ids at
-// 0xB0 — it dropped every higher-id chip and invented one use per
-// custom cycle, so v9's bn1 sidecars are wrong on both counts.
-// v11: bn5ds reports the custom flag and chip/buster events now (its
-// sidecars had empty lanes), and the loaded-chip decode stops scoring
-// the KO frame's loser-cell clear as a use.
-// v12: bn5ds's custom flag becomes per-player (v11's read was one
-// side's byte mistaken for a shared gate, so spans could end at the
-// wrong player's commit).
-// v13: bn5ds reports round outcomes now (its rounds all folded
-// verdictless), which also ends each round's samples at the verdict
-// like every other game's.
-pub const FORMAT_VERSION: u32 = 13;
+/// Bumped whenever the sidecar format changes shape — or meaning.
+/// Readers reject other versions (and anything without the magic) and
+/// recompute. History up to v13 lives in the log; the running note
+/// stops carrying it.
+// v14: chip uses are captured as telemetry events by the game pollers
+// (no more sample-fold derivation), and buster events are gone — B
+// presses were never worth a lane. Older sidecars recompute.
+pub const FORMAT_VERSION: u32 = 14;
 
 /// Sidecar file magic.
 const MAGIC: &[u8; 4] = b"TGST";
@@ -77,43 +56,16 @@ pub struct RoundStats {
     /// Empty on rounds that never got past the battle intro.
     pub hp: Vec<HpPoint>,
     /// `[start, end)` tick spans during which the custom screen (chip
-    /// select) was open. Empty on games whose traps don't report the
+    /// select) was open. Empty on games whose pollers don't report the
     /// flag.
     pub custom: Vec<(u32, u32)>,
     /// Chip-use events per side (`[local, remote]`): `(tick, chip id)`
-    /// as the game's own fold scores them (see [`UsageFold`]). Empty on
-    /// games whose traps report no chips.
+    /// as the game's poller reported them. Empty on games that report
+    /// no chips.
     pub chip_uses: [Vec<(u32, u16)>; 2],
-    /// Buster-press ticks per side (`[local, remote]`): B press edges
-    /// outside the custom screen, on games whose fold counts them.
-    pub buster: [Vec<u32>; 2],
 }
 
-pub use crate::battle::{RoundSample, NO_CHIP};
-
-/// One round's usage events, as a game's own fold derives them from the
-/// round's samples (see [`UsageFold`]). Field shapes match their
-/// [`RoundStats`] homes.
-#[derive(Default)]
-pub struct UsageEvents {
-    /// Chip-use events per side (`[local, remote]`): `(tick, chip id)`.
-    pub chip_uses: [Vec<(u32, u16)>; 2],
-    /// Buster-press ticks per side (`[local, remote]`).
-    pub buster: [Vec<u32>; 2],
-}
-
-/// A game's usage-event fold: one round's per-tick samples (and its
-/// custom spans) → that round's [`UsageEvents`]. This is the seam that
-/// keeps game knowledge out of the stats fold: what a chip report MEANS
-/// (a loaded pick departing? an acting chip arriving? a queue sum
-/// dropping?) and whether B edges are buster shots are the game's
-/// business, so the game's support hands the whole derivation over as
-/// one opaque function (the mgba backend's `GameSupport::usage_fold`)
-/// and this crate only runs it once per round, downstream of rollback
-/// settlement and the stale-intro trim — the transition detection needs
-/// the round's settled sample window, which is why it can't happen at
-/// the per-tick pollers (pure reads, re-run under rollback).
-pub type UsageFold = Box<dyn Fn(&[RoundSample], &[(u32, u32)]) -> UsageEvents + Send + Sync>;
+pub use crate::battle::RoundSample;
 
 /// One HP reading.
 #[derive(Clone, Copy, Debug)]
@@ -124,17 +76,18 @@ pub struct HpPoint {
 }
 
 /// Incremental [`MatchStats`] aggregator — THE stats construction path,
-/// live or offline. Feed it every simulated tick's [`RoundSample`] as it
-/// happens and close each round with [`end_round`](Self::end_round). The
-/// live engine pushes from its rollback world — speculative ticks
-/// included, revoked again via
-/// [`revoke_samples_at`](Self::revoke_samples_at) when a rollback
-/// rewinds — and the replay re-simulation ([`analyze`]) pushes from its
-/// playback loop. Rounds fold in play order: the stale-intro trim
-/// threads each round's final HP pair into the next round's fold.
+/// live or offline. Feed it every confirmed tick's [`RoundSample`] and
+/// chip-use event as they arrive and close each round with
+/// [`end_round`](Self::end_round). Everything it takes is already
+/// settled — the live engine's speculative side is revoked inside the
+/// telemetry store, upstream of the confirmed batches this consumes —
+/// and the replay re-simulation ([`analyze`]) pushes from its playback
+/// loop through the same calls, which is what keeps live stats and
+/// offline re-analysis byte-equivalent. Rounds fold in play order: the
+/// stale-intro trim threads each round's final HP pair into the next
+/// round's fold.
+#[derive(Default)]
 pub struct StatsBuilder {
-    /// This game's usage-event fold (see [`UsageFold`]).
-    usage: UsageFold,
     prev_final: Option<(u16, u16)>,
     rounds: Vec<RoundStats>,
     /// Samples of the round in progress, in tick order. Ticks are
@@ -143,16 +96,13 @@ pub struct StatsBuilder {
     /// that same timebase come from the replay's round markers, not
     /// from the stats.
     current: Vec<RoundSample>,
+    /// Chip uses of the round in progress, per side.
+    current_chips: [Vec<(u32, u16)>; 2],
 }
 
 impl StatsBuilder {
-    pub fn new(usage: UsageFold) -> Self {
-        Self {
-            usage,
-            prev_final: None,
-            rounds: vec![],
-            current: vec![],
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Append one simulated tick's sample to the round in progress. A
@@ -164,36 +114,23 @@ impl StatsBuilder {
         }
     }
 
-    /// Revoke in-progress samples at or after `tick` — rollback support
-    /// for the live engine, whose steps push speculatively: a rewind to
-    /// `tick` discards exactly what the re-sim is about to redo.
-    ///
-    /// Speculative-then-revoke is unavoidable, not an optimization: a
-    /// step can't tell a predicted remote input from a confirmed one,
-    /// and a correctly-predicted tick is *promoted* to settled without
-    /// ever being re-simulated — there is no committed re-execution to
-    /// sample instead. Buffering until settlement elsewhere would just
-    /// move this same revocation out of sight, and flushing on the
-    /// engine's confirmed-input stream would shave the round's
-    /// end-animation tail (settlement trails the live core by the
-    /// speculation depth, and input logging stops at the round-ending
-    /// tick), breaking the byte-equivalence between live stats and
-    /// offline re-analysis.
-    pub fn revoke_samples_at(&mut self, tick: u32) {
-        while self.current.last().is_some_and(|s| s.tick >= tick) {
-            self.current.pop();
-        }
+    /// Record a chip use in the round in progress. `side` is 0 for
+    /// local, 1 for remote — already oriented by the caller.
+    pub fn push_chip_use(&mut self, side: usize, tick: u32, chip: u16) {
+        self.current_chips[side].push((tick, chip));
     }
 
     /// Close the round in progress, folding its samples into a
-    /// [`RoundStats`]: stale-intro trim, custom spans, chip/buster usage
-    /// events, and the lossless change-point HP curve. `outcome` is
-    /// `None` when the round was never decided (the recording ended
-    /// mid-round, or a live round was torn down without reaching a KO).
+    /// [`RoundStats`]: stale-intro trim, custom spans, and the lossless
+    /// change-point HP curve; the round's chip uses ride along as
+    /// recorded. `outcome` is `None` when the round was never decided
+    /// (the recording ended mid-round, or a live round was torn down
+    /// without reaching a KO).
     pub fn end_round(&mut self, outcome: Option<BattleOutcome>) {
         let samples = std::mem::take(&mut self.current);
+        let chips = std::mem::take(&mut self.current_chips);
         self.rounds
-            .push(fold_round(outcome, &samples, &mut self.prev_final, &self.usage));
+            .push(fold_round(outcome, &samples, chips, &mut self.prev_final));
     }
 
     /// The stats as they stand: the rounds folded so far, plus the round
@@ -212,9 +149,14 @@ impl StatsBuilder {
     /// produces the identical final round.
     pub fn snapshot(&self) -> MatchStats {
         let mut rounds = self.rounds.clone();
-        if !self.current.is_empty() {
+        if !self.current.is_empty() || self.current_chips.iter().any(|c| !c.is_empty()) {
             let mut prev_final = self.prev_final;
-            rounds.push(fold_round(None, &self.current, &mut prev_final, &self.usage));
+            rounds.push(fold_round(
+                None,
+                &self.current,
+                self.current_chips.clone(),
+                &mut prev_final,
+            ));
         }
         MatchStats { rounds }
     }
@@ -222,146 +164,28 @@ impl StatsBuilder {
     /// Finish, folding any round still in progress as an undecided round
     /// — the consuming twin of [`snapshot`](Self::snapshot).
     pub fn finish(mut self) -> MatchStats {
-        if !self.current.is_empty() {
+        if !self.current.is_empty() || self.current_chips.iter().any(|c| !c.is_empty()) {
             self.end_round(None);
         }
         MatchStats { rounds: self.rounds }
     }
 }
 
-/// The fold that derives no usage events — for a game (or a whole
-/// engine) that reports no chips and counts no buster shots. HP,
-/// custom spans and outcomes still fold as usual.
-pub fn inert_usage_fold() -> UsageFold {
-    Box::new(|_, _| UsageEvents::default())
-}
-
-// ---------------------------------------------------------------------------
-// The standard usage-event folds. What a chip report means is game
-// knowledge, but the loaded-chip contract below is shared across engines —
-// the mainline GBA families and the DS port all report it — so its decode
-// lives with the seam, and the games that follow a different contract (BCC,
-// vanilla exe45) bring their own fold from their gamesupport.
-
-/// Low bits of a chip report that carry the chip id; the rest is a
-/// per-game tag (the loaded-chip contract's fire-sequence counter — see
-/// [`loaded_chip_uses`]).
-pub const CHIP_ID_MASK: u16 = 0x0fff;
-
-/// The loaded-chip decode — the contract the mainline BN families
-/// report: each report is the player's loaded chip as `id | (seq << 12)`,
-/// [`NO_CHIP`] when none — the id the player will use next, tagged with
-/// a fire-sequence counter so back-to-back duplicate picks still produce
-/// a visible transition per use (bn5/bn6 report a raw cell with seq 0 —
-/// no counter is known for them). A value departing = that chip being
-/// used, EXCEPT the first departure after each custom close, which is
-/// the new selection landing on top of whatever was left (see the
-/// per-game chip-block docs).
-pub fn loaded_chip_uses(samples: &[RoundSample], custom: &[(u32, u32)]) -> [Vec<(u32, u16)>; 2] {
-    let mut chip_uses: [Vec<(u32, u16)>; 2] = [vec![], vec![]];
-    for side in 0..2 {
-        let mut prev_chip = NO_CHIP;
-        // Index of the next custom span whose close hasn't had its
-        // selection-load transition yet.
-        let mut next_load_span = 0usize;
-        for s in samples {
-            let chip = s.chips[side];
-            if chip != prev_chip {
-                // Skip spans whose load window has fully passed
-                // (a side that picked nothing produces no load
-                // transition).
-                while next_load_span < custom.len()
-                    && custom.get(next_load_span + 1).is_some_and(|&(s2, _)| s.tick >= s2)
-                {
-                    next_load_span += 1;
-                }
-                // A load consumes the pending span: the selection
-                // can land while the span is still open (bn6
-                // writes the block mid-pick; bn1-3's local-only
-                // spans outlast the other side's commit) or right
-                // after its close. Anything else departing a real
-                // chip is a use.
-                let is_load = custom.get(next_load_span).is_some_and(|&(s0, _)| s.tick >= s0);
-                // A departure from a KO'd player is round teardown (the
-                // game clearing the loser's cell on the KO frame), not a
-                // use — reachable when a round's samples run past its
-                // decision, e.g. on the DS engine, which announces no
-                // verdicts to stop sampling at.
-                let side_hp = if side == 0 { s.local } else { s.remote };
-                if is_load {
-                    next_load_span += 1;
-                } else if next_load_span > 0 && prev_chip != NO_CHIP && side_hp != 0 {
-                    // next_load_span == 0 means no selection has
-                    // landed yet — the cell still holds round-init
-                    // garbage (bn5 inits it to 0 before first
-                    // flipping to the sentinel), which can't be a
-                    // real use.
-                    chip_uses[side].push((s.tick, prev_chip & CHIP_ID_MASK));
-                }
-                prev_chip = chip;
-            }
-        }
-    }
-    chip_uses
-}
-
-/// The standard buster fold: B-press edges outside the custom screen,
-/// per side. A game whose B is not a buster (vanilla exe45 — B is a
-/// menu key there) simply leaves it out of its fold.
-pub fn buster_presses(samples: &[RoundSample]) -> [Vec<u32>; 2] {
-    let mut buster: [Vec<u32>; 2] = [vec![], vec![]];
-    for side in 0..2 {
-        let b_bit = if side == 0 {
-            crate::battle::BUTTON_LOCAL_B
-        } else {
-            crate::battle::BUTTON_REMOTE_B
-        };
-        let mut prev_buttons = 0u8;
-        for s in samples {
-            if !s.custom && s.buttons & b_bit != 0 && prev_buttons & b_bit == 0 {
-                buster[side].push(s.tick);
-            }
-            prev_buttons = s.buttons;
-        }
-    }
-    buster
-}
-
-/// Both standard folds together — most games' `usage_fold`: loaded-chip
-/// uses plus buster presses.
-pub fn standard_usage_fold() -> UsageFold {
-    Box::new(|samples, custom| UsageEvents {
-        chip_uses: loaded_chip_uses(samples, custom),
-        buster: buster_presses(samples),
-    })
-}
-
-/// The inert aggregator, for a game whose engine derives no usage
-/// events: no chip uses, no buster counting — HP, custom spans and
-/// outcomes still fold as usual.
-impl Default for StatsBuilder {
-    fn default() -> Self {
-        StatsBuilder::new(inert_usage_fold())
-    }
-}
-
 /// One round's fold: stale-intro trim (`prev_final` threads the previous
-/// round's final HP pair into the next fold), custom spans, chip/buster
-/// usage events, and the lossless change-point HP curve. Shared by
+/// round's final HP pair into the next fold), custom spans, and the
+/// lossless change-point HP curve. Shared by
 /// [`StatsBuilder::end_round`] and the non-mutating
-/// [`StatsBuilder::preview`].
+/// [`StatsBuilder::snapshot`].
 fn fold_round(
     outcome: Option<BattleOutcome>,
     samples: &[RoundSample],
+    chip_uses: [Vec<(u32, u16)>; 2],
     prev_final: &mut Option<(u16, u16)>,
-    usage: &UsageFold,
 ) -> RoundStats {
     let raw: Vec<(u32, u16, u16)> = samples.iter().map(|s| (s.tick, s.local, s.remote)).collect();
     let start = stale_prefix_len(*prev_final, &raw);
     *prev_final = samples.last().map(|s| (s.local, s.remote)).or(*prev_final);
     let samples = &samples[start..];
-    let custom = custom_spans(samples.iter().map(|s| (s.tick, s.custom)));
-    let events = usage(samples, &custom);
     RoundStats {
         outcome,
         hp: compress(samples.iter().map(|s| HpPoint {
@@ -369,9 +193,8 @@ fn fold_round(
             local: s.local,
             remote: s.remote,
         })),
-        custom,
-        chip_uses: events.chip_uses,
-        buster: events.buster,
+        custom: custom_spans(samples.iter().map(|s| (s.tick, s.custom))),
+        chip_uses,
     }
 }
 
@@ -473,22 +296,11 @@ impl MatchStats {
                     side.push((u32_of(&mut r)?, u16_of(&mut r)?));
                 }
             }
-            let mut buster: [Vec<u32>; 2] = [vec![], vec![]];
-            for side in &mut buster {
-                let n = u32_of(&mut r)?;
-                if n > 65536 {
-                    return Err(ReadError::ImplausibleCount { what: "buster", n });
-                }
-                for _ in 0..n {
-                    side.push(u32_of(&mut r)?);
-                }
-            }
             rounds.push(RoundStats {
                 outcome,
                 hp,
                 custom,
                 chip_uses,
-                buster,
             });
         }
         Ok(MatchStats { rounds })
@@ -522,19 +334,13 @@ impl MatchStats {
                     w.write_all(&id.to_le_bytes())?;
                 }
             }
-            for side in &round.buster {
-                w.write_all(&(side.len() as u32).to_le_bytes())?;
-                for &t in side {
-                    w.write_all(&t.to_le_bytes())?;
-                }
-            }
         }
         Ok(())
     }
 }
 
 /// Length of a round's stale sample prefix. The unit slots re-initialize
-/// partway into the battle intro, so until then the traps relay whatever
+/// partway into the battle intro, so until then the pollers relay whatever
 /// the slots still hold: the PREVIOUS round's final values (or, for the
 /// first round on games whose slots map immediately, the zeroed fresh
 /// memory). That prefix is exactly the samples equal to the previous
@@ -601,52 +407,28 @@ fn compress(points: impl Iterator<Item = HpPoint>) -> Vec<HpPoint> {
 }
 
 /// Fold a batch of **confirmed** telemetry into a [`StatsBuilder`]:
-/// per-tick samples become [`RoundSample`]s (with the A/B button bits
-/// merged back in from the confirmed input pairs via `keys_at`), and
-/// `Ended` events close rounds with their outcome oriented to
-/// `local_player`. Shared by the live drive loop and [`analyze`], so the
-/// two produce identical stats for the same match.
+/// per-tick samples become [`RoundSample`]s, `RoundEnded` events close
+/// rounds with their outcome oriented to `local_player`, and `ChipUsed`
+/// events land on their side's lane. Shared by the live drive loop and
+/// [`analyze`], so the two produce identical stats for the same match.
 ///
 /// Samples and events merge in tick order, events first at a shared
-/// tick: the `Ended` that closes a round at tick T must fold before T's
-/// own sample — which belongs to the NEW round — is pushed, or a batch
-/// spanning a round boundary would fold the next round's first samples
-/// into the closing one.
+/// tick: the `RoundEnded` that closes a round at tick T must fold before
+/// T's own sample — which belongs to the NEW round — is pushed, or a
+/// batch spanning a round boundary would fold the next round's first
+/// samples into the closing one.
 pub fn fold_confirmed(
     builder: &mut StatsBuilder,
     local_player: usize,
     samples: Vec<(u32, crate::telemetry::BattleObs)>,
-    events: Vec<(u32, crate::telemetry::RoundEvent)>,
-    keys_at: &mut dyn FnMut(u32) -> Option<[u32; 2]>,
+    events: Vec<(u32, crate::telemetry::Event)>,
 ) {
-    let mut push = |builder: &mut StatsBuilder, tick: u32, obs: crate::telemetry::BattleObs| {
-        let mut buttons = 0u8;
-        if let Some(keys) = keys_at(tick) {
-            let (lk, rk) = (keys[local_player] as u16, keys[1 - local_player] as u16);
-            // KEYINPUT bit 0 = A, bit 1 = B, mirrored into the sample's
-            // packed button bits.
-            if lk & 0x1 != 0 {
-                buttons |= crate::battle::BUTTON_LOCAL_A;
-            }
-            if lk & 0x2 != 0 {
-                buttons |= crate::battle::BUTTON_LOCAL_B;
-            }
-            if rk & 0x1 != 0 {
-                buttons |= crate::battle::BUTTON_REMOTE_A;
-            }
-            if rk & 0x2 != 0 {
-                buttons |= crate::battle::BUTTON_REMOTE_B;
-            }
-        }
+    let push = |builder: &mut StatsBuilder, tick: u32, obs: crate::telemetry::BattleObs| {
         builder.push_sample(RoundSample {
             tick,
             local: obs.units[local_player].hp,
             remote: obs.units[1 - local_player].hp,
             custom: obs.custom[local_player],
-            buttons,
-            // The stats format keeps the sentinel spelling; telemetry
-            // carries the absence as `None`.
-            chips: [obs.units[local_player].chip, obs.units[1 - local_player].chip].map(|c| c.unwrap_or(NO_CHIP)),
         });
     };
 
@@ -660,14 +442,17 @@ pub fn fold_confirmed(
             push(builder, tick, obs);
         }
         match event {
-            // Rounds are delimited by `Ended`; the `Started` event only
+            // Rounds are delimited by `RoundEnded`; the start only
             // matters here for the merge ordering above (its tick is
             // the boundary samples must not cross).
-            crate::telemetry::RoundEvent::Started => {}
-            crate::telemetry::RoundEvent::Ended { outcome } => {
+            crate::telemetry::Event::RoundStarted => {}
+            crate::telemetry::Event::RoundEnded { outcome } => {
                 builder.end_round(outcome.map(|o| orient_outcome(o, local_player)));
             }
-            crate::telemetry::RoundEvent::MatchEnded => {}
+            crate::telemetry::Event::MatchEnded => {}
+            crate::telemetry::Event::ChipUsed { player, chip } => {
+                builder.push_chip_use(if player == local_player { 0 } else { 1 }, etick, chip);
+            }
         }
     }
     for (tick, obs) in samples {

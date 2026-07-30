@@ -45,7 +45,6 @@ fn main() {
             rtc: replay.rtc_time(),
             local_player,
             inputs: &inputs,
-            usage: pvp0.usage_fold(&rom0),
         },
         &mut |_, _, _| {},
         &std::sync::atomic::AtomicBool::new(false),
@@ -72,10 +71,10 @@ fn main() {
             rng_seed: replay.rng_seed,
             disable_bgm: false,
         };
-        let lifecycle = tango_match::telemetry::LifecycleSink::new();
+        let events_sink = tango_match::telemetry::EventSink::new();
         let primed = [tango_backend_mgba::PrimedLatch::new(), tango_backend_mgba::PrimedLatch::new()];
-        pair.set_traps(0, pvp0.primer_traps(&config, 0, &lifecycle, &primed[0]));
-        pair.set_traps(1, pvp1.primer_traps(&config, 1, &lifecycle, &primed[1]));
+        pair.set_traps(0, pvp0.primer_traps(&config, 0, &events_sink, &primed[0]));
+        pair.set_traps(1, pvp1.primer_traps(&config, 1, &events_sink, &primed[1]));
         while !(primed[0].is_set() && primed[1].is_set()) {
             pair.tick(&[0, 0]);
         }

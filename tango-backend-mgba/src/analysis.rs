@@ -20,9 +20,7 @@ use tango_match::telemetry::Telemetry;
 pub fn observe_pair(telemetry: &mut Telemetry<mgba::core::Core>, pair: &mut mgba_rollback::Link, tick: u32) {
     let obs0 = telemetry.poll(0, pair.core_mut(0));
     let obs1 = telemetry.poll(1, pair.core_mut(1));
-    // No phase read: this engine's round and match lifecycle is
-    // trap-driven.
-    telemetry.observe(obs0, obs1, None, None, tick);
+    telemetry.observe(obs0, obs1, tick);
 }
 
 // ---------------------------------------------------------------------------
@@ -47,9 +45,6 @@ pub struct AnalyzeConfig<'a> {
     pub local_player: usize,
     /// `[p0, p1]` joypad pairs, one per pair tick from session start.
     pub inputs: &'a [[u32; 2]],
-    /// The local game's usage-event fold (see
-    /// [`GameSupport::usage_fold`]).
-    pub usage: UsageFold,
 }
 
 /// Re-simulate an SIO replay and fold its telemetry into [`MatchStats`].
@@ -70,9 +65,8 @@ pub fn analyze(
         rtc,
         local_player,
         inputs,
-        usage,
     } = config;
-    let (mut pair, lifecycle) = crate::backend::boot_pair(
+    let (mut pair, events) = crate::backend::boot_pair(
         roms,
         saves,
         support,
@@ -89,8 +83,8 @@ pub fn analyze(
         Some(cancel),
     )?;
 
-    let (mut observer, store) = Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], lifecycle);
-    let mut builder = StatsBuilder::new(usage);
+    let (mut observer, store) = Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], events);
+    let mut builder = StatsBuilder::new();
     let total = inputs.len() as u32;
     for (i, &keys) in inputs.iter().enumerate() {
         if cancel.load(std::sync::atomic::Ordering::Relaxed) {
@@ -101,9 +95,7 @@ pub fn analyze(
         // Everything is final on a linear re-sim — fold as we go.
         observe_pair(&mut observer, &mut pair, tick);
         let (samples, events) = store.lock().unwrap().drain_confirmed(tick);
-        fold_confirmed(&mut builder, local_player, samples, events, &mut |t| {
-            (t == tick).then_some(keys)
-        });
+        fold_confirmed(&mut builder, local_player, samples, events);
         on_progress(tick, total, &builder);
     }
 

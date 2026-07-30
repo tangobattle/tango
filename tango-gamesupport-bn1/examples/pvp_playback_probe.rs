@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use tango_match::telemetry::LifecycleSink;
+use tango_match::telemetry::EventSink;
 use tango_backend_mgba::{GameSupport, PrimeConfig, PrimedLatch};
 use tango_gamesupport_bn1::pvp;
 use tango_match::replay::{RewindRing, SnapshotStore};
@@ -62,10 +62,10 @@ impl Playback {
             rng_seed: *b"sio-probe-seed!!",
             disable_bgm: false,
         };
-        let lifecycle = LifecycleSink::new();
+        let events_sink = EventSink::new();
         let primed = [PrimedLatch::new(), PrimedLatch::new()];
-        pair.set_traps(0, support.primer_traps(&config, 0, &lifecycle, &primed[0]));
-        pair.set_traps(1, support.primer_traps(&config, 1, &lifecycle, &primed[1]));
+        pair.set_traps(0, support.primer_traps(&config, 0, &events_sink, &primed[0]));
+        pair.set_traps(1, support.primer_traps(&config, 1, &events_sink, &primed[1]));
         let mut prime_ticks = 0;
         while !(primed[0].is_set() && primed[1].is_set()) {
             assert!(prime_ticks < 3600, "priming wedged");

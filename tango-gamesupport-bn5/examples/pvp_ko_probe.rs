@@ -1,7 +1,7 @@
-//! Headless round/match lifecycle probe: prime a lockstep pair, force
+//! Headless round/match events_sink probe: prime a lockstep pair, force
 //! KOs, and drive the games' REAL battle-set flow — battles chained by
 //! the game itself under triple battle, then the set teardown — tracing
-//! every telemetry lifecycle event and every primer trap firing along
+//! every telemetry events_sink event and every primer trap firing along
 //! the way.
 //!
 //! bn5's comm battle is one battle for mode 0 (single) and a
@@ -42,7 +42,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tango_gamesupport_bn5::pvp;
-use tango_match::telemetry::RoundEvent;
+use tango_match::telemetry::Event;
 use tango_backend_mgba::GameSupport as _;
 
 fn pvp_for(rom: &[u8]) -> &'static pvp::Pvp {
@@ -186,7 +186,7 @@ fn main() {
         disable_bgm: false,
     };
     println!("match_type: {:?}", config.match_type);
-    let lifecycle = tango_match::telemetry::LifecycleSink::new();
+    let events_sink = tango_match::telemetry::EventSink::new();
     let primed = [tango_backend_mgba::PrimedLatch::new(), tango_backend_mgba::PrimedLatch::new()];
 
     // Wrap every primer trap with a fire log (tick, core, address).
@@ -210,13 +210,13 @@ fn main() {
             })
             .collect()
     };
-    pair.set_traps(0, instrument(pvp0.primer_traps(&config, 0, &lifecycle, &primed[0]), 0));
-    pair.set_traps(1, instrument(pvp1.primer_traps(&config, 1, &lifecycle, &primed[1]), 1));
+    pair.set_traps(0, instrument(pvp0.primer_traps(&config, 0, &events_sink, &primed[0]), 0));
+    pair.set_traps(1, instrument(pvp1.primer_traps(&config, 1, &events_sink, &primed[1]), 1));
 
-    // The real engine telemetry observer: pollers + the lifecycle sink,
+    // The real engine telemetry observer: pollers + the events_sink sink,
     // recording into the shared store the probe prints from.
     let (mut telemetry, store) =
-        tango_match::telemetry::Telemetry::new([pvp0.core_poller(0), pvp1.core_poller(1)], lifecycle.clone());
+        tango_match::telemetry::Telemetry::new([pvp0.core_poller(0), pvp1.core_poller(1)], events_sink.clone());
 
     let mut phase = Phase::Priming;
     let mut events_printed = 0usize;
@@ -337,8 +337,8 @@ fn main() {
                     let s = store.lock().unwrap();
                     let events = s.events();
                     (
-                        events.iter().filter(|(_, e)| matches!(e, RoundEvent::Started)).count() as u32,
-                        events.iter().any(|(_, e)| matches!(e, RoundEvent::MatchEnded)),
+                        events.iter().filter(|(_, e)| matches!(e, Event::RoundStarted)).count() as u32,
+                        events.iter().any(|(_, e)| matches!(e, Event::MatchEnded)),
                     )
                 };
                 if match_ended {
@@ -372,12 +372,12 @@ fn main() {
                     // parked back in the comm applet with no input since
                     // the match end (NOT walked out to the overworld).
                     let events = s.events();
-                    let started = events.iter().filter(|(_, e)| matches!(e, RoundEvent::Started)).count();
+                    let started = events.iter().filter(|(_, e)| matches!(e, Event::RoundStarted)).count();
                     let ended_with_outcome = events
                         .iter()
-                        .filter(|(_, e)| matches!(e, RoundEvent::Ended { outcome: Some(_) }))
+                        .filter(|(_, e)| matches!(e, Event::RoundEnded { outcome: Some(_) }))
                         .count();
-                    let match_ended_last = matches!(events.last(), Some((_, RoundEvent::MatchEnded)));
+                    let match_ended_last = matches!(events.last(), Some((_, Event::MatchEnded)));
                     if started == 0 || ended_with_outcome != started || !match_ended_last {
                         println!(
                             "FAIL: unbalanced trace (started={started} ended-with-outcome={ended_with_outcome} match-ended-last={match_ended_last})"

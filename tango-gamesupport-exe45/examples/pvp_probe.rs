@@ -90,10 +90,10 @@ fn main() {
         // PVP_PROBE_DISABLE_BGM: exercise the primer's battle-BGM skip.
         disable_bgm: std::env::var("PVP_PROBE_DISABLE_BGM").is_ok(),
     };
-    let lifecycle = tango_match::telemetry::LifecycleSink::new();
+    let events_sink = tango_match::telemetry::EventSink::new();
     let primed = [tango_backend_mgba::PrimedLatch::new(), tango_backend_mgba::PrimedLatch::new()];
-    pair.set_traps(0, pvp0.primer_traps(&config, 0, &lifecycle, &primed[0]));
-    pair.set_traps(1, pvp1.primer_traps(&config, 1, &lifecycle, &primed[1]));
+    pair.set_traps(0, pvp0.primer_traps(&config, 0, &events_sink, &primed[0]));
+    pair.set_traps(1, pvp1.primer_traps(&config, 1, &events_sink, &primed[1]));
     let mut pollers = [pvp0.core_poller(0), pvp1.core_poller(1)];
 
     println!("player ids: core0={} core1={}", pair.player_id(0), pair.player_id(1));
@@ -130,11 +130,11 @@ fn main() {
             prev_menu = menu;
         }
 
-        if primed_at.is_none() && pollers[0].poll(pair.core_mut(0)).is_some() {
+        if primed_at.is_none() && pollers[0].poll(pair.core_mut(0), &events_sink, 0).is_some() {
             primed_at = Some(t);
         }
-        let obs0 = pollers[0].poll(pair.core_mut(0));
-        let obs1 = pollers[1].poll(pair.core_mut(1));
+        let obs0 = pollers[0].poll(pair.core_mut(0), &events_sink, 0);
+        let obs1 = pollers[1].poll(pair.core_mut(1), &events_sink, 0);
         // exe45 has no in-RAM battle tick; "live" = both games report
         // battle telemetry.
         let advancing = obs0.is_some() && obs1.is_some();
@@ -159,10 +159,10 @@ fn main() {
             }
             let a = obs0.unwrap();
             println!(
-                "SUCCESS at pair tick {t}: battle live for 120 ticks, hp={:?} custom={} chips={:04x?} digest={:08x}",
+                "SUCCESS at pair tick {t}: battle live for 120 ticks, hp={:?} custom={} tiles={:?} digest={:08x}",
                 a.units.map(|u| u.hp),
                 a.custom_self,
-                a.units.map(|u| u.chip),
+                a.units.map(|u| u.tile),
                 pair.save().unwrap().digest()
             );
             std::process::exit(0);

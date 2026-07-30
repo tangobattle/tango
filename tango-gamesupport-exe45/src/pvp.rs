@@ -17,6 +17,7 @@
 //! over the wire.
 
 use tango_backend_mgba::Trap;
+use tango_gamesupport_common::telemetry::LoadedChip;
 
 pub struct Pvp {
     offsets: &'static Offsets,
@@ -83,7 +84,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
         &self,
         config: &tango_backend_mgba::PrimeConfig,
         player: usize,
-        lifecycle: &tango_match::telemetry::LifecycleSink,
+        events: &tango_match::telemetry::EventSink,
         primed: &tango_backend_mgba::PrimedLatch,
     ) -> Vec<Trap> {
         use tango_match::telemetry::Outcome;
@@ -106,7 +107,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
         // (whose local player is player 0); core 1's lifecycle traps stay
         // silent. Match end is the exception, reported from both cores —
         // see its trap below.
-        let sink = (player == 0).then(|| lifecycle.clone());
+        let sink = (player == 0).then(|| events.clone());
         let primed = primed.clone();
         // The game's own round verdict, announced from the sites
         // where the battle loop decides it (the KO path and the
@@ -282,7 +283,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 // second core's firing.
                 rom.match_end_ret,
                 {
-                    let sink = lifecycle.clone();
+                    let sink = events.clone();
                     Box::new(move |_core: &mut mgba::core::Core| sink.match_ended())
                 },
             ),
@@ -290,71 +291,98 @@ impl tango_backend_mgba::GameSupport for Pvp {
     }
 
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<mgba::core::Core>> {
-        let ewram = &self.offsets.ewram;
-        let player = player as u32;
-        Box::new(move |core: &mut mgba::core::Core| {
-            let units = battle_units(ewram, core)?;
-            let chips = loaded_chips(ewram, core);
-            Some(tango_match::telemetry::CoreObs {
-                units: std::array::from_fn(|p| tango_match::telemetry::UnitObs {
-                    hp: units[p].hp,
-                    tile: (units[p].tile[0], units[p].tile[1]),
-                    chip: chips[p],
-                }),
+        // Chip-use detection for the vanilla dealt-queue contract: the
+        // per-tick reading is the queue's id SUM (see
+        // `EWRAMOffsets::chip_queues`). The queue only ever gains chips
+        // (deals) or loses exactly the fired chip, so a drop in the sum
+        // IS a use event and the delta IS the chip id; increases are
+        // deals and are ignored. Chosen over watching the queue head
+        // because exe45 players fire from a hand in an order the head
+        // doesn't determine.
+        #[derive(Clone, Default)]
+        struct QueueSumTracker {
+            round: u32,
+            /// Last tick's sum, `None` on a fresh round (the first
+            /// reading only establishes the baseline).
+            prev: Option<u16>,
+        }
+        impl QueueSumTracker {
+            fn tick(&mut self, round: u32, sum: u16, player: usize, events: &tango_match::telemetry::EventSink) {
+                // Sanity bound on a chip id: drops above this are queue
+                // clears (KO, round end), not uses.
+                const MAX_CHIP_ID: u16 = 0x1ff;
+                if self.round != round {
+                    *self = Self { round, prev: None };
+                }
+                if let Some(p) = self.prev {
+                    if sum < p && p - sum <= MAX_CHIP_ID {
+                        events.chip_used(player, p - sum);
+                    }
+                }
+                self.prev = Some(sum);
+            }
+        }
+
+        struct Poller {
+            ewram: &'static EWRAMOffsets,
+            player: usize,
+            /// Under the bn45_us_pvp patch (probed per tick off the
+            /// core, like the reads themselves): the per-screen hand's
+            /// fired counter (see `EWRAMOffsets::pvp_hand_blocks`).
+            hand: tango_gamesupport_common::telemetry::HandChipTracker,
+            /// Vanilla: the dealt-queue sums. Only one of the two ever
+            /// advances — the cart doesn't change mid-session.
+            queue: QueueSumTracker,
+        }
+        impl tango_match::telemetry::CorePoller<mgba::core::Core> for Poller {
+            fn poll(
+                &mut self,
+                core: &mut mgba::core::Core,
+                events: &tango_match::telemetry::EventSink,
+                round: u32,
+            ) -> Option<tango_match::telemetry::CoreObs> {
+                let units = battle_units(self.ewram, core)?;
                 // Whether this player currently has the battle-pausing
                 // tactics/chip screen open (see
                 // `EWRAMOffsets::custom_flags`) — nonzero across the
                 // screen's sub-modes, 0 during action.
-                custom_self: core.raw_read_8(ewram.custom_flags + player, -1) != 0,
-            })
-        })
-    }
-
-    fn usage_fold(&self, rom: &[u8]) -> tango_backend_mgba::analysis::UsageFold {
-        use tango_backend_mgba::analysis::{RoundSample, UsageEvents, NO_CHIP};
-        if is_pvp_patch(rom) {
-            // The PvP patch replaces the dealt-queue system with a
-            // per-screen hand consumed in order; the report is the
-            // next-to-fire entry tagged with the fire count -- the
-            // standard loaded-chip contract (see
-            // `EWRAMOffsets::pvp_hand_blocks`) -- and its manual
-            // control makes B a real buster.
-            return tango_backend_mgba::analysis::standard_usage_fold();
-        }
-        // Vanilla: the per-tick chip report is the dealt queue's id SUM,
-        // not a loaded-chip cell (see `EWRAMOffsets::chip_queues`). The
-        // queue only ever gains chips (deals) or loses exactly the fired
-        // chip, so a drop in the sum IS a use event and the delta IS the
-        // chip id; increases are deals and are ignored. Chosen over
-        // reporting the queue head because exe45 players fire from a
-        // hand in an order the head doesn't determine. No buster events:
-        // the vanilla navi fights autonomously -- B is a menu key, so
-        // its edges aren't buster shots.
-        Box::new(|samples: &[RoundSample], _custom: &[(u32, u32)]| {
-            // Sanity bound on a chip id: drops above this are queue
-            // clears (KO, round end), not uses.
-            const MAX_CHIP_ID: u16 = 0x1ff;
-
-            let mut chip_uses: [Vec<(u32, u16)>; 2] = [vec![], vec![]];
-            for side in 0..2 {
-                let mut prev_sum = NO_CHIP;
-                for s in samples {
-                    let sum = s.chips[side];
-                    if sum != NO_CHIP {
-                        if prev_sum != NO_CHIP && sum < prev_sum {
-                            let delta = prev_sum - sum;
-                            if delta <= MAX_CHIP_ID {
-                                chip_uses[side].push((s.tick, delta));
-                            }
-                        }
-                        prev_sum = sum;
-                    }
+                let custom_self = core.raw_read_8(self.ewram.custom_flags + self.player as u32, -1) != 0;
+                match own_chip_reading(self.ewram, core, self.player) {
+                    ChipReading::Hand(token) => self.hand.tick(
+                        round,
+                        token,
+                        custom_self,
+                        units[self.player].hp,
+                        self.player,
+                        events,
+                    ),
+                    ChipReading::QueueSum(sum) => self.queue.tick(round, sum, self.player, events),
                 }
+                Some(tango_match::telemetry::CoreObs {
+                    units: units.map(|u| tango_match::telemetry::UnitObs {
+                        hp: u.hp,
+                        tile: (u.tile[0], u.tile[1]),
+                    }),
+                    custom_self,
+                })
             }
-            UsageEvents {
-                chip_uses,
-                buster: Default::default(),
+            fn save(&self) -> tango_match::telemetry::Scratch {
+                tango_match::telemetry::Scratch::new((self.hand.clone(), self.queue.clone()))
             }
+            fn restore(&mut self, scratch: &tango_match::telemetry::Scratch) {
+                let (hand, queue) = scratch
+                    .get::<(tango_gamesupport_common::telemetry::HandChipTracker, QueueSumTracker)>()
+                    .cloned()
+                    .unwrap_or_default();
+                self.hand = hand;
+                self.queue = queue;
+            }
+        }
+        Box::new(Poller {
+            ewram: &self.offsets.ewram,
+            player,
+            hand: Default::default(),
+            queue: Default::default(),
         })
     }
 }
@@ -422,46 +450,47 @@ fn battle_units(ewram: &EWRAMOffsets, core: &mut mgba::core::Core) -> Option<[Ra
     }
     Some([units[0]?, units[1]?])
 }
-/// Both players' per-tick chip reports, indexed by absolute player.
-/// Vanilla: the dealt-queue id sums (see `EWRAMOffsets::chip_queues`;
-/// the fold in `Pvp::usage_fold` scores a drop as a use of exactly the
-/// delta, rises are deals). Under the bn45_us_pvp patch
-/// (probed per call — 8 ROM byte reads, cheap next to the vanilla
-/// path's 60 queue reads): the next-to-fire hand entry tagged with the
-/// fire count (see `EWRAMOffsets::pvp_hand_blocks`; the loaded-chip
-/// contract — the tag makes back-to-back duplicate picks transition per
-/// fire, and the hand reload at each screen close is consumed as the
-/// load).
-fn loaded_chips(ewram: &EWRAMOffsets, mut core: &mut mgba::core::Core) -> [Option<u16>; 2] {
+/// One tick's chip reading for `player`, in whichever contract the
+/// cart follows.
+enum ChipReading {
+    /// bn45_us_pvp patch: the next-to-fire hand entry with the fire
+    /// count (see `EWRAMOffsets::pvp_hand_blocks`) — the hand-cursor
+    /// contract `HandChipTracker` detects fires on.
+    Hand(Option<LoadedChip>),
+    /// Vanilla: the dealt queue's id sum (see
+    /// `EWRAMOffsets::chip_queues`). Always a reading, never an
+    /// absence — an empty queue sums to 0, which is what the sum
+    /// deltas are measured against.
+    QueueSum(u16),
+}
+
+/// Read `player`'s chip state. The patch is probed per call — 8 ROM
+/// byte reads, cheap next to the vanilla path's 30 queue reads.
+fn own_chip_reading(ewram: &EWRAMOffsets, mut core: &mut mgba::core::Core, player: usize) -> ChipReading {
     if is_pvp_patch_core(&mut core) {
-        let mut tokens = [None; 2];
-        for player in 0..2u32 {
-            let base = ewram.pvp_hand_blocks + player * 0x50;
-            let fired = core.raw_read_16(base, -1) as u32;
-            if fired < 6 {
-                let id = core.raw_read_16(base + 2 + fired * 2, -1);
-                if id != 0xffff {
-                    tokens[player as usize] = Some(id | (((fired as u16) & 7) << 12));
-                }
-            }
-        }
-        return tokens;
-    }
-    let mut sums = [0u16; 2];
-    for player in 0..2u32 {
-        let base = ewram.chip_queues + player * 0x42;
-        let mut sum = 0u16;
-        for i in 0..30u32 {
-            let id = core.raw_read_16(base + i * 2, -1);
+        let base = ewram.pvp_hand_blocks + player as u32 * 0x50;
+        let fired = core.raw_read_16(base, -1) as u32;
+        let mut reading = None;
+        if fired < 6 {
+            let id = core.raw_read_16(base + 2 + fired * 2, -1);
             if id != 0xffff {
-                sum = sum.wrapping_add(id);
+                reading = Some(LoadedChip {
+                    id,
+                    fires: fired as u16,
+                });
             }
         }
-        sums[player as usize] = sum;
+        return ChipReading::Hand(reading);
     }
-    // A queue sum is always a reading, never an absence — an empty queue
-    // sums to 0, which is what the `QueueSum` deltas are measured against.
-    sums.map(Some)
+    let base = ewram.chip_queues + player as u32 * 0x42;
+    let mut sum = 0u16;
+    for i in 0..30u32 {
+        let id = core.raw_read_16(base + i * 2, -1);
+        if id != 0xffff {
+            sum = sum.wrapping_add(id);
+        }
+    }
+    ChipReading::QueueSum(sum)
 }
 
 // ---------------------------------------------------------------------------
@@ -474,14 +503,9 @@ fn loaded_chips(ewram: &EWRAMOffsets, mut core: &mut mgba::core::Core) -> [Optio
 const PVP_PATCH_MARKER_OFFSET: u32 = 0x7ed2f5;
 const PVP_PATCH_MARKER: [u8; 8] = [0xfb, 0xee, 0xe3, 0x19, 0x35, 0x31, 0xf4, 0xfb];
 
-/// Whether `rom` is the bn45_us_pvp patch (any version) — flips the
-/// chip-report contract (per-screen hands instead of the dealt queue)
-/// and makes B a real buster.
-fn is_pvp_patch(rom: &[u8]) -> bool {
-    rom.get(PVP_PATCH_MARKER_OFFSET as usize..PVP_PATCH_MARKER_OFFSET as usize + 8) == Some(&PVP_PATCH_MARKER[..])
-}
-
-/// Core-side variant of [`is_pvp_patch`], for the per-tick polls.
+/// Whether the loaded cart is the bn45_us_pvp patch (any version) —
+/// flips the chip-report contract (per-screen hands instead of the
+/// dealt queue). Read off the core, for the per-tick polls.
 fn is_pvp_patch_core(core: &mut &mut mgba::core::Core) -> bool {
     PVP_PATCH_MARKER
         .iter()
@@ -515,10 +539,10 @@ struct EWRAMOffsets {
     /// Player 0's dealt-chip queue (30 u16 ids, 0xFFFF = empty); player
     /// 1's is 0x42 beyond. Chips are dealt into the tail over the auto-
     /// custom cycle and fired from a small hand at the front in an order
-    /// the player chooses, so the queue's SUM (reported per tick, see
-    /// `Pvp::usage_fold`) is what encodes uses: it drops by
-    /// exactly the fired id. Indexed by absolute player. Derived
-    /// empirically from the golden replays.
+    /// the player chooses, so the queue's SUM (see `QueueSumTracker` in
+    /// the poller) is what encodes uses: it drops by exactly the fired
+    /// id. Indexed by absolute player. Derived empirically from the
+    /// golden replays.
     chip_queues: u32,
 
     /// Screen-state byte pair (+0/+1) in the battle struct: nonzero while

@@ -14,6 +14,7 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 tango-gamesupport = { path = "../tango-gamesupport" }
+tango-match = { path = "../tango-match" }
 
 # The dataview substrate (always on; headless-safe).
 bitvec = "1"

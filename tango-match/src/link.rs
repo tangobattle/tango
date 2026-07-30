@@ -216,18 +216,6 @@ pub trait Backend: Sync {
     /// session over it.
     fn start(&self, config: StartConfig) -> Result<crate::Match, crate::Error>;
 
-    /// The stats aggregator for a live match on this game — the host
-    /// folds confirmed telemetry into it as the match plays, and how
-    /// chip use decodes stays the engine's business. Probed off the
-    /// patched ROM, because the decoding can depend on the patch
-    /// (exe45's community PvP patch). An engine that reports no chip
-    /// events leaves the inert default, and the host keeps the rest of
-    /// the stats without them.
-    fn stats_builder(&self, rom: &[u8]) -> crate::analysis::StatsBuilder {
-        let _ = rom;
-        crate::analysis::StatsBuilder::default()
-    }
-
     /// Boot one console on its own, for a host that just wants to play
     /// the game. Not every engine offers this — a game supported for
     /// netplay only says so by leaving it alone.

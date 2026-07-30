@@ -1,7 +1,7 @@
-//! Headless round/match lifecycle probe: prime a lockstep pair, force
+//! Headless round/match events_sink probe: prime a lockstep pair, force
 //! KOs, and drive the games' REAL battle-set flow — battles chained by
 //! the game itself under tri-battle, then the set teardown — tracing
-//! every telemetry lifecycle event and every primer/diagnostic trap
+//! every telemetry events_sink event and every primer/diagnostic trap
 //! firing along the way.
 //!
 //! bn3's comm battle is one battle for kinds 0-2 (light/mid/heavyweight)
@@ -45,7 +45,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tango_gamesupport_bn3::pvp;
-use tango_match::telemetry::RoundEvent;
+use tango_match::telemetry::Event;
 use tango_backend_mgba::GameSupport as _;
 
 fn pvp_for(rom: &[u8]) -> &'static pvp::Pvp {
@@ -58,7 +58,7 @@ fn pvp_for(rom: &[u8]) -> &'static pvp::Pvp {
     }
 }
 
-/// Trap-era lifecycle anchors (disasm-verified for these ROMs), installed
+/// Trap-era events_sink anchors (disasm-verified for these ROMs), installed
 /// as print-only diagnostics so the probe shows WHICH of them the real
 /// protocol route actually executes. Anchors the primer already traps are
 /// skipped (the primer wrapper logs those).
@@ -230,7 +230,7 @@ fn main() {
         rng_seed: *b"sio-probe-seed!!",
         disable_bgm: false,
     };
-    let lifecycle = tango_match::telemetry::LifecycleSink::new();
+    let events_sink = tango_match::telemetry::EventSink::new();
     let primed = [tango_backend_mgba::PrimedLatch::new(), tango_backend_mgba::PrimedLatch::new()];
 
     // Wrap every primer trap with a fire log (tick, core, address), and
@@ -273,13 +273,13 @@ fn main() {
         }
         out
     };
-    pair.set_traps(0, instrument(0, pvp0.primer_traps(&config, 0, &lifecycle, &primed[0])));
-    pair.set_traps(1, instrument(1, pvp1.primer_traps(&config, 1, &lifecycle, &primed[1])));
+    pair.set_traps(0, instrument(0, pvp0.primer_traps(&config, 0, &events_sink, &primed[0])));
+    pair.set_traps(1, instrument(1, pvp1.primer_traps(&config, 1, &events_sink, &primed[1])));
 
-    // The real engine telemetry observer: pollers + the lifecycle sink,
+    // The real engine telemetry observer: pollers + the events_sink sink,
     // recording into the shared store the probe prints from.
     let (mut telemetry, store) =
-        tango_match::telemetry::Telemetry::new([pvp0.core_poller(0), pvp1.core_poller(1)], lifecycle.clone());
+        tango_match::telemetry::Telemetry::new([pvp0.core_poller(0), pvp1.core_poller(1)], events_sink.clone());
 
     println!("player ids: core0={} core1={}", pair.player_id(0), pair.player_id(1));
 
@@ -402,8 +402,8 @@ fn main() {
                     let s = store.lock().unwrap();
                     let events = s.events();
                     (
-                        events.iter().filter(|(_, e)| matches!(e, RoundEvent::Started)).count() as u32,
-                        events.iter().any(|(_, e)| matches!(e, RoundEvent::MatchEnded)),
+                        events.iter().filter(|(_, e)| matches!(e, Event::RoundStarted)).count() as u32,
+                        events.iter().any(|(_, e)| matches!(e, Event::MatchEnded)),
                     )
                 };
                 if match_ended {
@@ -435,12 +435,12 @@ fn main() {
                     // The full expected trace: one Ended with an announced
                     // outcome per Started, MatchEnded last.
                     let events = s.events();
-                    let started = events.iter().filter(|(_, e)| matches!(e, RoundEvent::Started)).count();
+                    let started = events.iter().filter(|(_, e)| matches!(e, Event::RoundStarted)).count();
                     let ended_with_outcome = events
                         .iter()
-                        .filter(|(_, e)| matches!(e, RoundEvent::Ended { outcome: Some(_) }))
+                        .filter(|(_, e)| matches!(e, Event::RoundEnded { outcome: Some(_) }))
                         .count();
-                    let match_ended_last = matches!(events.last(), Some((_, RoundEvent::MatchEnded)));
+                    let match_ended_last = matches!(events.last(), Some((_, Event::MatchEnded)));
                     if poke_refire {
                         println!("FAIL: a state-poking primer trap re-fired post-battle");
                         std::process::exit(2);

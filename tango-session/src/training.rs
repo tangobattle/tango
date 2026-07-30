@@ -27,7 +27,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use tango_match::telemetry::RoundEvent;
+use tango_match::telemetry::Event;
 
 /// Single battle. Training always fights one round against the dummy;
 /// there's no lobby to pick a mode, and the default do-nothing opponent
@@ -423,7 +423,7 @@ impl Driver {
                 Some(store) => store.lock().unwrap().drain_confirmed(self.match_.confirmed()),
                 None => (Vec::new(), Vec::new()),
             };
-            if events.iter().any(|(_, e)| matches!(e, RoundEvent::MatchEnded)) {
+            if events.iter().any(|(_, e)| matches!(e, Event::MatchEnded)) {
                 self.ended.store(true, Ordering::Release);
                 self.wake.notify_one();
                 return false;

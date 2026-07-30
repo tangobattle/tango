@@ -1,28 +1,35 @@
-//! Per-tick RAM-poll telemetry over the pair, with rollback revocation.
+//! Per-tick telemetry over the pair, with rollback revocation.
 //!
-//! Battle VALUES (HP, custom flags, chips) are pure observations:
-//! per-core [`CorePoller`]s read the same EWRAM addresses after every
-//! simulated tick, driven through
-//! [`mgba_rollback::session::TickObserver`]. Round LIFECYCLE (round
-//! start, match end) is trap-driven instead: the games' own
-//! battle-start and match-end code paths are ROM anchors the per-game
-//! support traps ([`GameSupport::primer_traps`] wires them for core 0),
-//! and each firing latches into a [`LifecycleSink`] the observer
-//! drains and stamps with the tick it fired in. Polling can't see
-//! those boundaries reliably — the battle structs the pollers read
-//! stay stale-live across round teardown on the older families.
+//! A game reports two kinds of things, and the pipeline keeps them
+//! distinct end to end:
+//!
+//! * **Levels** — instantaneous facts polled out of RAM after every
+//!   simulated tick: HP, tile, whether the custom screen stands open.
+//!   They arrive as [`CoreObs`] from the per-core [`CorePoller`]s and
+//!   land in the store as dense per-tick samples.
+//! * **Edges** — things that HAPPEN: a round starting, a round's
+//!   verdict being announced, the match ending, a chip being used.
+//!   Several can fire in one tick. They all go through one
+//!   [`EventSink`], whoever detects them: a PC-sited trap firing at the
+//!   game's own code path (the mgba families' lifecycle anchors), or
+//!   the poller itself catching a RAM transition as it reads the tick's
+//!   levels (chip fires everywhere; round/match lifecycle on the DS
+//!   engine, whose anchors are RAM facts rather than PC sites). The
+//!   collector drains the sink once per tick, stamps each report with
+//!   the tick, and lands them in the store as [`Event`]s.
 //!
 //! The revocation model covers both: traps re-fire on rollback
 //! re-simulation exactly as they fired the first time (the pair is
-//! deterministic), so samples AND events from speculative ticks are
-//! recorded eagerly and truncated again when a rollback rewinds past
-//! them — what stands at any moment is exactly what the current
-//! timeline has simulated, and everything at or below the session's
-//! confirmed boundary is final.
+//! deterministic), and a poller's edge detection is a pure function of
+//! (previous state, this tick's RAM) whose previous state the store
+//! carries per tick (see [`CorePoller::save`]) — so samples AND
+//! events from speculative ticks are recorded eagerly and truncated
+//! again when a rollback rewinds past them, and everything at or below
+//! the session's confirmed boundary is final.
 //!
 //! Each core gets its own poller (its own game variant's offsets — the
 //! two sides of a crossplay pair are different ROMs), and a poll splits
-//! in two along what the game's RAM actually holds. The battle SIM is
+//! along what the game's RAM actually holds. The battle SIM is
 //! both-sided on every core — under lockstep each game simulates both
 //! units, and `unit_owner` resolves slot to absolute player — so
 //! [`CoreObs::units`] carries both players and the merge takes them from
@@ -32,21 +39,20 @@
 //! has no second copy to read: bn1–3 keep the custom screen as this
 //! side's battle-mode handler value, so [`CoreObs::custom_self`] answers
 //! for the polling core's own player only and the merge pairs the two
-//! cores' answers. [`UnitObs::chip`] straddles the two — bn2–6 and
-//! exe45 hold both players' chips, but bn1 records its picks per
-//! console and a peer's are nowhere in the other's RAM, so the merge
-//! takes each player's chip from that player's own core (identical
-//! values for the games that report both). Round-start and verdict traps live on core 0 only, for the
-//! same reason — but MATCH-END anchors live on both cores: each game
-//! exits the link session through its own path, and on a one-sided
-//! decline only the decliner's game exits (the other waits at its menu
-//! forever — a link cable has no detach signal), so whichever core
-//! leaves first is the match end.
+//! cores' answers. Chip-use events follow the same rule from the other
+//! direction: core `p` reports player `p`'s uses only — bn1 records its
+//! picks per console and a peer's are nowhere in the other's RAM, and
+//! on the games whose sim carries both, each core answering for its own
+//! player is what keeps a use from being reported twice.
 //!
-//! [`GameSupport::primer_traps`]: crate::GameSupport::primer_traps
+//! Round-start and verdict traps live on core 0 only, for the same
+//! reason — but MATCH-END anchors live on both cores: each game exits
+//! the link session through its own path, and on a one-sided decline
+//! only the decliner's game exits (the other waits at its menu forever —
+//! a link cable has no detach signal), so whichever core leaves first is
+//! the match end.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// How a finished round came out, in **absolute** player terms; hosts
 /// reorient by local player index.
@@ -70,22 +76,10 @@ pub struct UnitObs {
     /// side), y 1..=3 top to bottom. Where the unit IS — a move in
     /// flight reads as its origin until it lands.
     pub tile: (u8, u8),
-    /// Loaded-chip token, `None` when the game reports no chip loaded.
-    /// Answered for **this core's own player** — bn1 records chips per
-    /// console, so [`Telemetry`] takes each player's from that player's
-    /// core; the games that report both sides agree either way.
-    ///
-    /// The games spell absence as `0xFFFF` in RAM; that sentinel stops
-    /// at the poller, and the serialized stats format's own
-    /// [`battle::NO_CHIP`] is re-applied at the fold (see
-    /// [`analysis::fold_confirmed`]).
-    ///
-    /// [`battle::NO_CHIP`]: crate::battle::NO_CHIP
-    /// [`analysis::fold_confirmed`]: crate::analysis::fold_confirmed
-    pub chip: Option<u16>,
 }
 
-/// One core's view of one simulated tick.
+/// One core's view of one simulated tick — the LEVELS half of a game's
+/// reporting. Edges go through the [`EventSink`] instead.
 #[derive(Clone, Copy, Debug)]
 pub struct CoreObs {
     /// Both players' units, absolute player order.
@@ -96,99 +90,152 @@ pub struct CoreObs {
     pub custom_self: bool,
 }
 
-/// The per-game data-side reader for one core of the pair: polls one
-/// tick's worth of battle state out of that game's RAM. Implementations
-/// live in the gamesupport crates and are pure reads — a poller must
-/// never write game memory, and must return the same result for the same
-/// core state (it runs on speculative ticks and again on their
-/// re-simulation).
-///
-/// Returns `None` when this game has no live battle state to read
-/// (menus, the round intro before unit init). Round BOUNDARIES do not
-/// come from this — see [`LifecycleSink`].
-pub trait CorePoller<Core>: Send {
-    fn poll(&mut self, core: &mut Core) -> Option<CoreObs>;
+/// One edge report, as a game hands it to the [`EventSink`]. Private:
+/// the sink's methods are the reporting surface, and the store's
+/// [`Event`]s are the reading one.
+#[derive(Clone, Copy, Debug)]
+enum Report {
+    RoundStarted,
+    RoundEnded,
+    RoundOutcome(Outcome),
+    MatchEnded,
+    ChipUsed { player: usize, chip: u16 },
 }
 
-/// Any `FnMut` over a core is a poller — game support hands back a
-/// plain closure reading its RAM offsets instead of defining a struct.
-impl<Core, F: FnMut(&mut Core) -> Option<CoreObs> + Send> CorePoller<Core> for F {
-    fn poll(&mut self, core: &mut Core) -> Option<CoreObs> {
-        self(core)
-    }
-}
-
-/// Where the per-game lifecycle traps report: `round_started` at the
-/// game's battle-start-complete anchor (core 0 only), `match_ended` at
-/// its match-end anchor (both cores — either game leaving the link
-/// session ends the match). Firings latch until the tick's
-/// [`Telemetry::on_tick`] drains them (a trap fires mid-tick; the
-/// observer runs right after), which stamps the event with the tick —
-/// and rollback truncation + deterministic re-firing keep the record
-/// consistent with the current timeline.
+/// Where every edge-triggered report lands, whoever detects it: the
+/// primer traps (the mgba families' round/verdict/match-end anchors)
+/// and the pollers (chip fires; the DS engine's poll-derived lifecycle)
+/// share one sink per pair. Reports queue — several may fire in one
+/// tick — until the tick's [`Telemetry::observe`] drains them, stamping
+/// each with the tick; rollback truncation plus deterministic re-firing
+/// keep the record consistent with the current timeline.
 ///
-/// A latch set during PRIMING (round 1 starts before the session on
+/// A report queued during PRIMING (round 1 starts before the session on
 /// most families — priming runs until the battle is live) is drained by
 /// [`Telemetry::new`] into a baseline event at tick 0, which no rewind
 /// can truncate.
+///
+/// Firings are host-side signals only — they never touch core state, so
+/// they can't perturb the simulation.
 #[derive(Clone, Default)]
-pub struct LifecycleSink {
-    round_started: Arc<AtomicBool>,
-    /// 0 = no report; otherwise `OUTCOME_*`.
-    round_outcome: Arc<std::sync::atomic::AtomicU8>,
-    match_ended: Arc<AtomicBool>,
+pub struct EventSink {
+    queue: Arc<Mutex<Vec<Report>>>,
 }
 
-const OUTCOME_P0_WIN: u8 = 1;
-const OUTCOME_P1_WIN: u8 = 2;
-const OUTCOME_DRAW: u8 = 3;
-
-impl LifecycleSink {
+impl EventSink {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Trap-side: the game's battle-start routine completed.
+    /// The game's battle-start routine completed: a round is live.
     pub fn round_started(&self) {
-        self.round_started.store(true, Ordering::Release);
+        self.queue.lock().unwrap().push(Report::RoundStarted);
     }
 
-    /// Trap-side: the game's own result-deciding code path ran (the
-    /// win/loss/judge sites) — the standing verdict for the round in
-    /// progress. Rounds have no end event; the verdict is stamped onto
-    /// the round when it closes at the next round start or the match
-    /// end. There is deliberately no HP-based fallback: a round with no
-    /// announced verdict reports `None`.
+    /// The game left its battle for the between-rounds interlude — only
+    /// engines that can see the teardown as it happens report this (the
+    /// DS engine's poll-derived lifecycle). The mgba families have no
+    /// teardown anchor; their open round closes at the next
+    /// [`round_started`](EventSink::round_started) or
+    /// [`match_ended`](EventSink::match_ended) instead.
+    pub fn round_ended(&self) {
+        self.queue.lock().unwrap().push(Report::RoundEnded);
+    }
+
+    /// The game's own result-deciding code path ran (the win/loss/judge
+    /// sites) — the standing verdict for the round in progress. The
+    /// verdict is stamped onto the round when it closes; there is
+    /// deliberately no HP-based fallback, so a round with no announced
+    /// verdict reports `None`.
     pub fn round_outcome(&self, outcome: Outcome) {
-        let v = match outcome {
-            Outcome::P0Win => OUTCOME_P0_WIN,
-            Outcome::P1Win => OUTCOME_P1_WIN,
-            Outcome::Draw => OUTCOME_DRAW,
-        };
-        self.round_outcome.store(v, Ordering::Release);
+        self.queue.lock().unwrap().push(Report::RoundOutcome(outcome));
     }
 
-    /// Trap-side: the game's own match-end path ran — the players left
-    /// the battle loop for good.
+    /// The game's own match-end path ran — the players left the battle
+    /// loop for good.
     pub fn match_ended(&self) {
-        self.match_ended.store(true, Ordering::Release);
+        self.queue.lock().unwrap().push(Report::MatchEnded);
     }
 
-    fn take_round_started(&self) -> bool {
-        self.round_started.swap(false, Ordering::AcqRel)
+    /// `player` used chip `chip` this tick. Report only for the
+    /// reporting core's OWN player — on the games whose sim carries both
+    /// players' chips, each core answering for its own player is what
+    /// keeps a use from landing twice.
+    pub fn chip_used(&self, player: usize, chip: u16) {
+        self.queue.lock().unwrap().push(Report::ChipUsed { player, chip });
     }
 
-    fn take_round_outcome(&self) -> Option<Outcome> {
-        match self.round_outcome.swap(0, Ordering::AcqRel) {
-            OUTCOME_P0_WIN => Some(Outcome::P0Win),
-            OUTCOME_P1_WIN => Some(Outcome::P1Win),
-            OUTCOME_DRAW => Some(Outcome::Draw),
-            _ => None,
-        }
+    fn take(&self) -> Vec<Report> {
+        std::mem::take(&mut self.queue.lock().unwrap())
+    }
+}
+
+/// The per-game reader for one core of the pair: polls one tick's worth
+/// of battle LEVELS out of that game's RAM, and pushes any EDGES it
+/// detects while reading into `events`. Implementations live in the
+/// gamesupport crates and must never write game memory.
+///
+/// A poller runs on speculative ticks and again on their re-simulation,
+/// so everything it does must be a pure function of (its cross-tick
+/// state, the core's state) — and that state must rewind when the
+/// engine does, or re-simulated ticks would re-detect edges from
+/// speculated history. [`save`](CorePoller::save)/[`restore`](CorePoller::restore)
+/// are that contract: the collector snapshots every tick and hands the
+/// right snapshot back after a rewind. What's inside is entirely the
+/// poller's — the collector never looks into a [`Scratch`]. A poller
+/// with cross-tick state MUST cover ALL of it in `save`; anything left
+/// out sails through rollbacks.
+///
+/// `round` is how many rounds the collector has seen start (its store's
+/// own count, itself rollback-consistent) — trackers use it to scope
+/// their per-round state without any reset call reaching into them.
+///
+/// Returns `None` when this game has no live battle state to read
+/// (menus, the round intro before unit init).
+pub trait CorePoller<Core>: Send {
+    fn poll(&mut self, core: &mut Core, events: &EventSink, round: u32) -> Option<CoreObs>;
+
+    /// Snapshot the poller's cross-tick state. Stateless pollers keep
+    /// the default.
+    fn save(&self) -> Scratch {
+        Scratch::none()
     }
 
-    fn take_match_ended(&self) -> bool {
-        self.match_ended.swap(false, Ordering::AcqRel)
+    /// Restore a snapshot from [`save`](CorePoller::save) —
+    /// [`Scratch::none`] means the fresh pre-first-tick state (a rewind
+    /// to before the first observation).
+    fn restore(&mut self, scratch: &Scratch) {
+        let _ = scratch;
+    }
+}
+
+/// One poller's cross-tick state, opaque to the collector: it only ever
+/// records these and hands them back.
+pub struct Scratch(Option<Box<dyn std::any::Any + Send>>);
+
+impl Scratch {
+    pub fn new<T: std::any::Any + Send>(state: T) -> Self {
+        Scratch(Some(Box::new(state)))
+    }
+
+    /// The no-state snapshot — what stateless pollers save, and what a
+    /// rewind to before the first observation restores.
+    pub fn none() -> Self {
+        Scratch(None)
+    }
+
+    /// The snapshot back at its real type, `None` if this is
+    /// [`Scratch::none`] (restore the fresh state) or a foreign type.
+    pub fn get<T: std::any::Any>(&self) -> Option<&T> {
+        self.0.as_deref().and_then(|s| s.downcast_ref())
+    }
+}
+
+/// Any stateless `FnMut` over a core is a poller — game support without
+/// edges to report hands back a plain closure reading its RAM offsets.
+impl<Core, F: FnMut(&mut Core) -> Option<CoreObs> + Send> CorePoller<Core> for F {
+    fn poll(&mut self, core: &mut Core, _events: &EventSink, _round: u32) -> Option<CoreObs> {
+        self(core)
     }
 }
 
@@ -201,19 +248,28 @@ pub struct BattleObs {
     pub custom: [bool; 2],
 }
 
-/// A lifecycle event, stamped from the games' own trapped code paths.
+/// A tick-stamped event, as the store records it. Lifecycle events are
+/// synthesized from the games' reports (an `Ended` closes the open
+/// round, carrying the last verdict announced inside it); chip uses are
+/// recorded as reported.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum RoundEvent {
+pub enum Event {
     /// The game's battle-start routine completed for a round.
-    Started,
-    /// A round closed — stamped when the next round starts or the match
-    /// ends. Carries the verdict the game's own result code path
-    /// announced during the round ([`LifecycleSink::round_outcome`]),
-    /// `None` if none fired.
-    Ended { outcome: Option<Outcome> },
+    RoundStarted,
+    /// A round closed — at the game's own teardown report where the
+    /// engine has one, else at the next round start or the match end.
+    /// Carries the verdict the game's own result code path announced
+    /// during the round ([`EventSink::round_outcome`]), `None` if none
+    /// fired.
+    RoundEnded { outcome: Option<Outcome> },
     /// The game's own match-end path ran: the match is over. Always
-    /// preceded by the final round's `Ended`.
+    /// preceded by the final round's `RoundEnded`.
     MatchEnded,
+    /// `player` (absolute) used chip `chip`. Only within an open,
+    /// undecided round — chip motion on the result screens and the
+    /// between-rounds interlude (where the older families' battle
+    /// structs stay stale-live) is teardown, not play.
+    ChipUsed { player: usize, chip: u16 },
 }
 
 /// The revocable telemetry buffers, shared between the engine-owned
@@ -224,18 +280,18 @@ pub enum RoundEvent {
 pub struct Store {
     /// In-battle samples, tick ascending, dense within a round.
     samples: Vec<(u32, BattleObs)>,
-    /// Lifecycle events, tick ascending. Never drained — a match only
-    /// has a handful, and [`on_rewind`](Telemetry::on_rewind)
-    /// re-derives the open-round state from this history, so consuming
-    /// it would corrupt that derivation (the first rollback after the
-    /// baseline `Started` was handed out would silently close the
-    /// round). [`drain_confirmed`](Store::drain_confirmed) hands out
+    /// Events, tick ascending. Never drained — a match only has a
+    /// handful of lifecycle entries plus its chip uses, and
+    /// [`on_rewind`](Telemetry::on_rewind) re-derives the open-round
+    /// state from this history, so consuming it would corrupt that
+    /// derivation. [`drain_confirmed`](Store::drain_confirmed) hands out
     /// clones past a cursor instead.
-    events: Vec<(u32, RoundEvent)>,
+    events: Vec<(u32, Event)>,
     /// How many leading `events` entries [`drain_confirmed`] has already
     /// handed out.
     events_drained: usize,
-    /// Whether a round is open (a `Started` without a closing `Ended`).
+    /// Whether a round is open (a `RoundStarted` without a closing
+    /// `RoundEnded`).
     round_open: bool,
     /// Tick the open round started at (0 for the priming baseline).
     round_started_at: u32,
@@ -245,6 +301,14 @@ pub struct Store {
     /// them, so pruning would race the rollback horizon. A handful of
     /// entries per match.
     outcome_reports: Vec<(u32, Outcome)>,
+    /// The pollers' cross-tick state after each tick, opaque to this
+    /// store — the ring that makes stateful edge detection
+    /// rollback-transparent: a rewind to tick T hands the pollers back
+    /// exactly the state they held after T, so the re-simulation
+    /// re-detects exactly what the first pass did. Truncated with
+    /// everything else on rewind; pruned below the confirmed boundary
+    /// on drain (a rewind can never reach below it).
+    scratch: Vec<(u32, [Scratch; 2])>,
 }
 
 impl Store {
@@ -254,9 +318,9 @@ impl Store {
         &self.samples
     }
 
-    /// All standing lifecycle events, tick ascending. Same speculation
-    /// caveat as [`samples`](Store::samples).
-    pub fn events(&self) -> &[(u32, RoundEvent)] {
+    /// All standing events, tick ascending. Same speculation caveat as
+    /// [`samples`](Store::samples).
+    pub fn events(&self) -> &[(u32, Event)] {
         &self.events
     }
 
@@ -266,7 +330,7 @@ impl Store {
     /// from them); events are cloned past a cursor — the event history
     /// must survive for [`on_rewind`](Telemetry::on_rewind)'s
     /// open-round re-derivation.
-    pub fn drain_confirmed(&mut self, tick: u32) -> (Vec<(u32, BattleObs)>, Vec<(u32, RoundEvent)>) {
+    pub fn drain_confirmed(&mut self, tick: u32) -> (Vec<(u32, BattleObs)>, Vec<(u32, Event)>) {
         let s = self.samples.partition_point(|(t, _)| *t <= tick);
         let e = self
             .events
@@ -274,6 +338,11 @@ impl Store {
             .max(self.events_drained);
         let events = self.events[self.events_drained..e].to_vec();
         self.events_drained = e;
+        // Scratch below the confirmed boundary can never be restored
+        // again (a rewind can't reach below it) — keep the boundary
+        // entry itself, a rewind can land exactly there.
+        let p = self.scratch.partition_point(|(t, _)| *t < tick);
+        self.scratch.drain(..p);
         (self.samples.drain(..s).collect(), events)
     }
 
@@ -289,56 +358,41 @@ impl Store {
                 .rev()
                 .find(|(t, _)| *t >= started_at)
                 .map(|(_, o)| *o);
-            self.events.push((tick, RoundEvent::Ended { outcome }));
+            self.events.push((tick, Event::RoundEnded { outcome }));
             self.round_open = false;
         }
+    }
+
+    /// Whether the open round's verdict was announced BEFORE `tick` —
+    /// the gate that stops samples and chip events once the battle is
+    /// decided: what follows is result screens and the rematch
+    /// conversation, whose battle structs linger stale-live on the older
+    /// families. The verdict tick's own readings still record (the KO
+    /// frame's HP drop). Derived from `outcome_reports`, so rewind
+    /// truncation + re-fire keep it rollback-deterministic.
+    fn decided(&self, tick: u32) -> bool {
+        self.outcome_reports
+            .iter()
+            .rev()
+            .any(|&(t, _)| t >= self.round_started_at && t < tick)
     }
 }
 
 /// A host-side handle to the shared telemetry [`Store`].
 pub type TelemetryHandle = std::sync::Arc<std::sync::Mutex<Store>>;
 
-/// Where a game stands in its match, as one instantaneous read of its
-/// RAM — the poll-driven counterpart of the trap engine's lifecycle
-/// anchors, for an engine where a standing trap is unaffordable
-/// (melonDS holds a trapped console to the interpreter). A game
-/// declares its phase through
-/// [`Telemetry::set_phase_poller`]; the collector turns the levels
-/// into round/match events against the store's own open-round state,
-/// which the rewind machinery already keeps timeline-exact — so the
-/// read can be a pure function of simulation state, with no edge
-/// bookkeeping anywhere.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Phase {
-    /// A round's battle is live.
-    Round,
-    /// No battle stands, but the match isn't over: round intros, the
-    /// between-rounds interlude of a multi-round match.
-    Between,
-    /// The game left its link session for good — the players are back
-    /// on its menus.
-    Over,
-}
-
-/// The tick observer that turns
-/// a pair of [`CorePoller`]s plus the trap-fed [`LifecycleSink`] into
-/// revocable telemetry in a shared [`Store`]: dense per-tick samples
-/// plus lifecycle events, both truncated on rewind.
+/// The tick observer that turns a pair of [`CorePoller`]s plus the
+/// shared [`EventSink`] into revocable telemetry in a shared [`Store`]:
+/// dense per-tick samples plus tick-stamped events, both truncated on
+/// rewind.
 pub struct Telemetry<Core> {
     pollers: [Box<dyn CorePoller<Core>>; 2],
-    lifecycle: LifecycleSink,
+    events: EventSink,
     store: TelemetryHandle,
-    /// The game's phase read, when its engine derives lifecycle from
-    /// polls instead of traps — see [`Phase`]. Read on core 0 only,
-    /// like the trap engines' round anchors: the phase is shared
-    /// simulation state, so one core answers for the pair.
-    phase_poller: Option<Box<dyn FnMut(&mut Core) -> Phase + Send>>,
-    /// The game's verdict read, the poll-driven counterpart of the trap
-    /// engines' [`LifecycleSink::round_outcome`] anchors: the round
-    /// result the game's own battle loop has announced, as an
-    /// instantaneous RAM level, `None` while none stands. Read on core
-    /// 0 only, in absolute player terms, like the phase.
-    verdict_poller: Option<Box<dyn FnMut(&mut Core) -> Option<Outcome> + Send>>,
+    /// Rounds seen start so far (the baseline included) — handed to the
+    /// pollers so their trackers can scope per-round state. Recomputed
+    /// from the event history on rewind, like everything else.
+    rounds: u32,
 }
 
 impl<Core> Telemetry<Core> {
@@ -346,103 +400,57 @@ impl<Core> Telemetry<Core> {
     /// a link hands out one core at a time, so the two reads cannot
     /// share a borrow.
     pub fn poll(&mut self, player: usize, core: &mut Core) -> Option<CoreObs> {
-        self.pollers[player].poll(core)
+        self.pollers[player].poll(core, &self.events, self.rounds)
     }
 
-    /// Read the game's phase off core 0, if this collector derives
-    /// lifecycle from polls (see [`Phase`]). Engines call it alongside
-    /// [`poll`](Telemetry::poll) and hand the reading to
-    /// [`observe`](Telemetry::observe); a trap-driven engine just
-    /// passes `None` through.
-    pub fn poll_phase(&mut self, core: &mut Core) -> Option<Phase> {
-        self.phase_poller.as_mut().map(|poll| poll(core))
-    }
-
-    /// Read the game's standing round verdict off core 0, if this
-    /// collector derives it from polls. Same calling convention as
-    /// [`poll_phase`](Telemetry::poll_phase); a trap-driven engine
-    /// passes `None` through.
-    pub fn poll_verdict(&mut self, core: &mut Core) -> Option<Outcome> {
-        self.verdict_poller.as_mut().and_then(|poll| poll(core))
-    }
-
-    /// Fold one tick's readings into the store. Everything from here on
-    /// is the same arithmetic for any console.
-    pub fn observe(
-        &mut self,
-        obs0: Option<CoreObs>,
-        obs1: Option<CoreObs>,
-        phase: Option<Phase>,
-        verdict: Option<Outcome>,
-        tick: u32,
-    ) {
+    /// Fold one tick's readings into the store: merge the levels,
+    /// drain the sink's edge reports and stamp them with the tick.
+    /// Everything from here on is the same arithmetic for any console.
+    pub fn observe(&mut self, obs0: Option<CoreObs>, obs1: Option<CoreObs>, tick: u32) {
         let obs = match (obs0, obs1) {
             (Some(c0), Some(c1)) => Some(BattleObs {
-                // The sim's own readings come from player 0's core, but
-                // the chip comes from each player's OWN core: bn1 keeps
-                // its chip record per console and a peer's picks appear
-                // nowhere in the other's RAM. The games that do report
-                // both agree between cores, so this costs them nothing.
-                units: std::array::from_fn(|p| UnitObs {
-                    chip: if p == 0 { c0.units[0].chip } else { c1.units[1].chip },
-                    ..c0.units[p]
-                }),
+                // The sim's own readings come from player 0's core; the
+                // per-core custom answers pair up.
+                units: c0.units,
                 custom: [c0.custom_self, c1.custom_self],
             }),
             _ => None,
         };
 
+        let reports = self.events.take();
         let mut store = self.store.lock().unwrap();
-        // Order matters when several fire in one tick: the verdict lands
-        // before the close that reads it, and the match end comes last.
-        if let Some(outcome) = self.lifecycle.take_round_outcome() {
-            store.outcome_reports.push((tick, outcome));
-        }
-        // A polled verdict is a LEVEL, not an edge, so it reports
-        // against the store's own state, like the phase below: once per
-        // open round unless the standing value changes (the last report
-        // inside the round wins at close, exactly as trap re-fires do).
-        // Reading it only while a round is open is what keeps the games
-        // that never clear the value from smearing one round's verdict
-        // onto the next: the level must drop and stand again inside the
-        // next round to report again, and a report while no round is
-        // open would date to before the next round's start anyway.
-        // Derived entirely from store state, so rewind truncation plus
-        // re-simulation reproduce it exactly.
-        if let Some(outcome) = verdict {
-            if store.round_open
-                && store
-                    .outcome_reports
-                    .last()
-                    .is_none_or(|&(t, o)| t < store.round_started_at || o != outcome)
-            {
-                store.outcome_reports.push((tick, outcome));
+        // Reports process by kind, not arrival order — the one order
+        // that composes when several fire in one tick: the verdict
+        // lands before the close that reads it, chip uses belong to the
+        // round that was live when they fired (so they precede any
+        // close), a start closes the previous round, and the match end
+        // comes last.
+        for r in &reports {
+            if let Report::RoundOutcome(outcome) = r {
+                store.outcome_reports.push((tick, *outcome));
             }
         }
-        // A phase reading translates into lifecycle against the store's
-        // own open-round state — a level against a level, so there is
-        // no edge to remember: round_open is re-derived from the event
-        // history on every rewind, and the phase is an instantaneous
-        // read the re-simulation reproduces. Reported through the same
-        // sink the trap engines fire, so everything below is one flow.
-        match phase {
-            Some(Phase::Round) if !store.round_open => self.lifecycle.round_started(),
-            Some(Phase::Between) if store.round_open => store.close_round(tick),
-            Some(Phase::Over) => {
-                if store.round_open {
-                    store.close_round(tick);
+        for r in &reports {
+            if let Report::ChipUsed { player, chip } = r {
+                if store.round_open && !store.decided(tick) {
+                    store.events.push((tick, Event::ChipUsed {
+                        player: *player,
+                        chip: *chip,
+                    }));
                 }
-                self.lifecycle.match_ended();
             }
-            _ => {}
         }
-        if self.lifecycle.take_round_started() {
+        if reports.iter().any(|r| matches!(r, Report::RoundEnded)) {
             store.close_round(tick);
-            store.events.push((tick, RoundEvent::Started));
+        }
+        if reports.iter().any(|r| matches!(r, Report::RoundStarted)) {
+            store.close_round(tick);
+            store.events.push((tick, Event::RoundStarted));
             store.round_open = true;
             store.round_started_at = tick;
+            self.rounds += 1;
         }
-        if self.lifecycle.take_match_ended() {
+        if reports.iter().any(|r| matches!(r, Report::MatchEnded)) {
             // Match-end anchors live on BOTH cores (either game leaving
             // the link session ends the match - on a one-sided decline
             // only the decliner's game exits; the other waits at its
@@ -451,31 +459,18 @@ impl<Core> Telemetry<Core> {
             // few ticks after the first - the event history (never
             // drained) dedups it, and rewind truncation keeps the check
             // timeline-consistent.
-            if !store.events.iter().any(|(_, e)| matches!(e, RoundEvent::MatchEnded)) {
+            if !store.events.iter().any(|(_, e)| matches!(e, Event::MatchEnded)) {
                 store.close_round(tick);
-                store.events.push((tick, RoundEvent::MatchEnded));
+                store.events.push((tick, Event::MatchEnded));
             }
         }
-        if store.round_open {
-            // No samples past the round's announced verdict: the battle
-            // is decided, and what follows is result screens and the
-            // rematch conversation - whose battle structs linger
-            // stale-live on the older families, which would smear a
-            // long flat tail onto every round. The verdict tick's own
-            // sample still records (the KO frame's HP drop). Derived
-            // from `outcome_reports`, so rewind truncation + re-fire
-            // keep it rollback-deterministic.
-            let decided = store
-                .outcome_reports
-                .iter()
-                .rev()
-                .any(|&(t, _)| t >= store.round_started_at && t < tick);
-            if !decided {
-                if let Some(obs) = obs {
-                    store.samples.push((tick, obs));
-                }
+        if store.round_open && !store.decided(tick) {
+            if let Some(obs) = obs {
+                store.samples.push((tick, obs));
             }
         }
+        let scratch = [self.pollers[0].save(), self.pollers[1].save()];
+        store.scratch.push((tick, scratch));
     }
 
     /// Revoke everything an engine speculated past `tick`. Called when
@@ -494,12 +489,18 @@ impl<Core> Telemetry<Core> {
         store.events.truncate(e);
         let r = store.outcome_reports.partition_point(|(t, _)| *t <= tick);
         store.outcome_reports.truncate(r);
-        // Re-derive the open-round state at the rewind point from the
-        // surviving event tail; the re-simulation re-fires whatever the
-        // truncation dropped. (The sink's latches are always empty at a
-        // rewind - every tick's firings are drained by its own on_tick.)
-        match store.events.last() {
-            Some(&(t, RoundEvent::Started)) => {
+        // Re-derive the open-round state and the round count at the
+        // rewind point from the surviving event tail; the re-simulation
+        // re-fires whatever the truncation dropped. (The sink's queue is
+        // always empty at a rewind - every tick's reports are drained by
+        // its own observe.)
+        match store
+            .events
+            .iter()
+            .rev()
+            .find(|(_, e)| !matches!(e, Event::ChipUsed { .. }))
+        {
+            Some(&(t, Event::RoundStarted)) => {
                 store.round_open = true;
                 store.round_started_at = t;
             }
@@ -507,51 +508,52 @@ impl<Core> Telemetry<Core> {
                 store.round_open = false;
             }
         }
+        self.rounds = store
+            .events
+            .iter()
+            .filter(|(_, e)| matches!(e, Event::RoundStarted))
+            .count() as u32;
+        // Hand the pollers back the edge-detection state they held
+        // after the restored tick, so re-simulated ticks re-detect
+        // exactly what the first pass did.
+        let p = store.scratch.partition_point(|(t, _)| *t <= tick);
+        store.scratch.truncate(p);
+        let fresh = [Scratch::none(), Scratch::none()];
+        let scratch = store.scratch.last().map(|(_, s)| s).unwrap_or(&fresh);
+        for (poller, s) in self.pollers.iter_mut().zip(scratch) {
+            poller.restore(s);
+        }
     }
 
-    /// `pollers[i]` reads core `i` (player `i`'s game); `lifecycle` is
-    /// the sink the pair's core-0 traps report into. Returns the
-    /// observer (hand to `Session::set_observer`) and a handle onto the
+    /// `pollers[i]` reads core `i` (player `i`'s game); `events` is the
+    /// sink the pair's traps and pollers report into. Returns the
+    /// observer (hand to the engine's link) and a handle onto the
     /// shared store for the host to read.
     ///
-    /// A round start latched during priming (round 1 begins before the
-    /// session on most families) becomes a baseline `Started` at tick 0
-    /// here — rewinds can't reach below tick 0, so it can never be
-    /// truncated (nor would its trap re-fire if it were).
-    pub fn new(pollers: [Box<dyn CorePoller<Core>>; 2], lifecycle: LifecycleSink) -> (Self, TelemetryHandle) {
+    /// A round start queued during priming (round 1 begins before the
+    /// session on most families) becomes a baseline `RoundStarted` at
+    /// tick 0 here — rewinds can't reach below tick 0, so it can never
+    /// be truncated (nor would its trap re-fire if it were). Any other
+    /// report queued by the walk is boot noise and is dropped with the
+    /// drain.
+    pub fn new(pollers: [Box<dyn CorePoller<Core>>; 2], events: EventSink) -> (Self, TelemetryHandle) {
         let store: TelemetryHandle = Default::default();
-        if lifecycle.take_round_started() {
+        let mut rounds = 0;
+        if events.take().iter().any(|r| matches!(r, Report::RoundStarted)) {
             let mut s = store.lock().unwrap();
-            s.events.push((0, RoundEvent::Started));
+            s.events.push((0, Event::RoundStarted));
             s.round_open = true;
             s.round_started_at = 0;
+            rounds = 1;
         }
         (
             Telemetry {
                 pollers,
-                lifecycle,
+                events,
                 store: store.clone(),
-                phase_poller: None,
-                verdict_poller: None,
+                rounds,
             },
             store,
         )
     }
-
-    /// Install the game's phase read (see [`Phase`]) — used by engines
-    /// that derive round and match lifecycle from polls instead of
-    /// traps. Pure reads over core 0's RAM, and a pure function of
-    /// core state: the reading runs on speculative ticks and again on
-    /// their re-simulation, exactly like the battle pollers.
-    pub fn set_phase_poller(&mut self, poller: Box<dyn FnMut(&mut Core) -> Phase + Send>) {
-        self.phase_poller = Some(poller);
-    }
-
-    /// Install the game's verdict read — used by engines that derive
-    /// the round result from polls instead of traps. Same purity
-    /// contract as [`set_phase_poller`](Telemetry::set_phase_poller).
-    pub fn set_verdict_poller(&mut self, poller: Box<dyn FnMut(&mut Core) -> Option<Outcome> + Send>) {
-        self.verdict_poller = Some(poller);
-    }
 }
-

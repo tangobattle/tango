@@ -419,11 +419,9 @@ impl PvpSession {
         let peer_primed = link.peer_primed();
         let announce_primed = Arc::new(tokio::sync::Notify::new());
 
-        // The engine builds the aggregator (chip-use decoding can depend
-        // on the applied patch — exe45's PvP patch — so it probes the
-        // patched ROM); a game whose engine reports no chip events folds
-        // the rest of the stats without them.
-        let stats = Arc::new(Mutex::new(local_game.pvp.stats_builder(local_rom.as_ref())));
+        // A game whose engine reports no chip events folds the rest of
+        // the stats without them — the aggregator is the same for all.
+        let stats = Arc::new(Mutex::new(tango_match::analysis::StatsBuilder::new()));
 
         // Remote input events flow receive-task → drive thread over this
         // queue; the rennet reassembly in PvpReceiver already ordered and
@@ -904,7 +902,6 @@ impl DriveContext {
                 expected_fps,
                 match_,
                 throttler: tango_match::Throttler::new(),
-                pending_buttons: std::collections::VecDeque::new(),
                 first_round_started: false,
                 pending_round_marks: std::collections::VecDeque::new(),
                 fired_end_of_match: false,
@@ -915,27 +912,14 @@ impl DriveContext {
 
     /// Fold a batch of confirmed telemetry into the stats builder (the
     /// shared [`tango_match::analysis::fold_confirmed`], so live stats
-    /// and offline re-analysis stay byte-equivalent) and drive the round
-    /// lifecycle off the events.
+    /// and offline re-analysis stay byte-equivalent).
     fn fold_confirmed_telemetry(
         &mut self,
         samples: Vec<(u32, telemetry::BattleObs)>,
-        events: Vec<(u32, telemetry::RoundEvent)>,
-        pending_buttons: &mut std::collections::VecDeque<(u32, [u32; 2])>,
+        events: Vec<(u32, telemetry::Event)>,
     ) {
         let mut stats = self.stats.lock().unwrap();
-        tango_match::analysis::fold_confirmed(&mut stats, self.local_player, samples, events, &mut |tick| {
-            // Discard input pairs older than this sample; the front pair
-            // at the sample's tick carries its buttons. Samples arrive
-            // tick-ascending, so this never skips a later sample's pair.
-            while pending_buttons.front().is_some_and(|(t, _)| *t < tick) {
-                pending_buttons.pop_front();
-            }
-            match pending_buttons.front() {
-                Some(&(t, keys)) if t == tick => Some(keys),
-                _ => None,
-            }
-        });
+        tango_match::analysis::fold_confirmed(&mut stats, self.local_player, samples, events);
     }
 }
 
@@ -1436,9 +1420,6 @@ pub struct PvpDriver {
     expected_fps: f32,
     match_: tango_match::Match,
     throttler: tango_match::Throttler,
-    /// (tick, [p0, p1]) confirmed input pairs not yet folded into
-    /// stats (the telemetry for those ticks may confirm later).
-    pending_buttons: std::collections::VecDeque<(u32, [u32; 2])>,
     /// Whether the first round's Started has been seen. Later Started
     /// events stamp round markers into the replay stream.
     first_round_started: bool,
@@ -1586,14 +1567,14 @@ impl PvpDriver {
         let mut match_ended = false;
         for (tick, event) in &events {
             match event {
-                telemetry::RoundEvent::Started => {
+                telemetry::Event::RoundStarted => {
                     if self.first_round_started {
                         self.pending_round_marks.push_back(*tick);
                     }
                     self.first_round_started = true;
                 }
-                telemetry::RoundEvent::Ended { .. } => {}
-                telemetry::RoundEvent::MatchEnded => {
+                telemetry::Event::RoundEnded { .. } | telemetry::Event::ChipUsed { .. } => {}
+                telemetry::Event::MatchEnded => {
                     match_ended = true;
                 }
             }
@@ -1615,17 +1596,8 @@ impl PvpDriver {
                 }
             }
         }
-        // The stats fold reads button presses alone, so only the pad
-        // half of each row rides along.
-        self.pending_buttons.extend(
-            confirmed_inputs
-                .iter()
-                .map(|(tick, inputs)| (*tick, inputs.map(|i| i.keys))),
-        );
-
         if !samples.is_empty() || !events.is_empty() {
-            self.ctx
-                .fold_confirmed_telemetry(samples, events, &mut self.pending_buttons);
+            self.ctx.fold_confirmed_telemetry(samples, events);
         }
 
         // Completion: the games' own match-end path ran (confirmed —

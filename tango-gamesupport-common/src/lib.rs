@@ -16,6 +16,7 @@
 //! `crate::style` / etc. either way.
 
 pub mod dataview;
+pub mod telemetry;
 
 #[cfg(feature = "ui")]
 pub use tango_ui::{anim, copy_feedback};

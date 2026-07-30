@@ -11,7 +11,7 @@
 use std::collections::{HashMap, VecDeque};
 
 use tango_gamesupport_exe45::{pvp, FAMILY};
-use tango_match::telemetry::RoundEvent;
+use tango_match::telemetry::Event;
 use tango_match::{Backend as _, HostInput};
 
 fn pvp_for(rom: &[u8]) -> &'static pvp::Pvp {
@@ -132,7 +132,7 @@ fn main() {
                 }
             }
             for (tick, event) in events {
-                if !round_started[p] && matches!(event, RoundEvent::Started) {
+                if !round_started[p] && matches!(event, Event::RoundStarted) {
                     println!("peer{p}: round started at tick {tick}");
                     round_started[p] = true;
                 }
