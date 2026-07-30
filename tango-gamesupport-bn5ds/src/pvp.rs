@@ -81,6 +81,16 @@ pub struct Pvp {
     /// exits. It is NOT cleared between the rounds of a Triple match,
     /// which is why the `+0` gate is the read's precondition.
     result: u32,
+    /// Player 0's selected-chip block; player 1's is 0x50 beyond. The
+    /// GBA family's hand block, carried over by the port at the same
+    /// shape as bn4/bn5/bn6's: +0 u16 chips fired since the last
+    /// selection landed, +2 u16 ids[6] (0xFFFF = empty slot); the
+    /// loaded chip is ids[fired], agreeing with the unit record's
+    /// `+0x2a` cell at every live tick. Indexed by absolute player, NOT
+    /// by unit slot. Found July 2026 by whole-RAM elimination scan
+    /// against the cell over replayed matches (hand_probe recipe), zero
+    /// mismatches on both builds, the fired cursor sweeping 0..=3.
+    chips: u32,
 }
 
 /// What the US registration's
@@ -90,6 +100,7 @@ pub static US: Pvp = Pvp {
     unit: 0x022d_6498,
     custom: 0x0216_0992,
     result: 0x0216_f738,
+    chips: 0x021b_8af8,
 };
 
 /// What the JP registration's
@@ -99,6 +110,7 @@ pub static JP: Pvp = Pvp {
     unit: 0x022c_ee18,
     custom: 0x0215_9732,
     result: 0x0216_84d8,
+    chips: 0x021b_1848,
 };
 
 /// The unit record's size, which is also the second slot's offset.
@@ -156,7 +168,7 @@ impl tango_backend_melonds::GameSupport for Pvp {
     ///
     /// [`custom_self`]: tango_match::telemetry::CoreObs::custom_self
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<Nds>> {
-        use tango_gamesupport_common::telemetry::{LoadedCellTracker, LoadedChip};
+        use tango_gamesupport_common::telemetry::{HandChipTracker, LoadedChip};
         use tango_match::telemetry::{CoreObs, EventSink, Outcome, UnitObs};
 
         /// Console 0's lifecycle watch: the phase and verdict LEVELS,
@@ -228,8 +240,10 @@ impl tango_backend_melonds::GameSupport for Pvp {
             unit: u32,
             /// This player's own custom flag address (see [`Pvp::custom`]).
             custom: u32,
+            /// This player's own hand block (see [`Pvp::chips`]).
+            chip_block: u32,
             player: usize,
-            chips: LoadedCellTracker,
+            chips: HandChipTracker,
             /// Console 0 only, like the mgba families' round anchors.
             lifecycle: Option<LifecycleWatch>,
         }
@@ -247,28 +261,9 @@ impl tango_backend_melonds::GameSupport for Pvp {
                 let read16 = |addr: u32| u16::from_le_bytes([read8(addr), read8(addr + 1)]);
 
                 let mut units = [None, None];
-                let mut tokens = [None, None];
                 for slot in 0..2 {
                     let base = self.unit + slot * UNIT_STRIDE;
                     let owner = read8(base + 0x16) as usize;
-                    let chip = read16(base + 0x2a);
-                    // The unit's remaining-hand count (`+0x1a`), read
-                    // as the cell reading's fire counter: it drops by
-                    // one per chip fired — including a fire that leaves
-                    // the cell unchanged because the next queued chip is
-                    // a duplicate — and jumps arbitrarily when a custom
-                    // close rebuilds the hand, so every use is a visible
-                    // reading transition and the selection-load lands as
-                    // one too (unlike GBA bn5, whose bare cell has no
-                    // counter). Found by elimination scan (rises at the
-                    // known load ticks, falls at the known use ticks)
-                    // and verified against full recordings on both
-                    // builds. The reading never leaves this poller — the
-                    // tracker turns it into use events.
-                    let count = read8(base + 0x1a) as u16;
-                    // The record's own empty spelling, same as the GBA
-                    // family's.
-                    *tokens.get_mut(owner)? = (chip != 0xffff).then_some(LoadedChip { id: chip, fires: count });
                     *units.get_mut(owner)? = Some(UnitObs {
                         hp: read16(base + 0x24),
                         tile: (read8(base + 0x12), read8(base + 0x13)),
@@ -279,9 +274,17 @@ impl tango_backend_melonds::GameSupport for Pvp {
                 // span ends at their own commit, exactly as on GBA
                 // bn5; 5 is the screen's brief just-opened sub-state.
                 let custom_self = matches!(read8(self.custom), 4 | 5);
+                // This console's own player's chip fires, off its hand
+                // block's fired counter (see [`Pvp::chips`]) — the same
+                // cursor contract as the GBA family's.
+                let fired = read16(self.chip_block);
+                let reading = (fired < 6)
+                    .then(|| read16(self.chip_block + 2 + 2 * fired as u32))
+                    .filter(|&id| id != 0 && id <= 0x0fff)
+                    .map(|id| LoadedChip { id, fires: fired });
                 self.chips.tick(
                     round,
-                    tokens[self.player],
+                    reading,
                     custom_self,
                     units[self.player].hp,
                     self.player,
@@ -297,7 +300,7 @@ impl tango_backend_melonds::GameSupport for Pvp {
             }
             fn restore(&mut self, scratch: &tango_match::telemetry::Scratch) {
                 let (chips, watch) = scratch
-                    .get::<(LoadedCellTracker, Option<(u8, u8)>)>()
+                    .get::<(HandChipTracker, Option<(u8, u8)>)>()
                     .cloned()
                     .unwrap_or_default();
                 self.chips = chips;
@@ -310,6 +313,7 @@ impl tango_backend_melonds::GameSupport for Pvp {
         Box::new(Poller {
             unit: self.unit,
             custom: self.custom + 0x20 * player as u32,
+            chip_block: self.chips + 0x50 * player as u32,
             player,
             chips: Default::default(),
             lifecycle: (player == 0).then(|| LifecycleWatch {

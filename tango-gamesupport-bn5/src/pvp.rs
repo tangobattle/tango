@@ -389,7 +389,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
         struct Poller {
             ewram: &'static EWRAMOffsets,
             player: usize,
-            chips: tango_gamesupport_common::telemetry::LoadedCellTracker,
+            chips: tango_gamesupport_common::telemetry::HandChipTracker,
         }
         impl tango_match::telemetry::CorePoller<mgba::core::Core> for Poller {
             fn poll(
@@ -407,13 +407,11 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 // golden replays -- identical episode pattern to bn6's.
                 let custom_self =
                     core.raw_read_8(self.ewram.battle_state + 0x14 + self.player as u32, -1) == 4;
-                // This core's own player's chip fires, as departures of
-                // its unit's loaded cell (see `RawUnit::chip` -- no fire
-                // counter is known for bn5, so back-to-back duplicate
-                // picks can't transition and stay invisible).
+                // This core's own player's chip fires, off its hand
+                // block's fired counter (see `loaded_chips`).
                 self.chips.tick(
                     round,
-                    loaded_chips(units)[self.player],
+                    loaded_chips(self.ewram, core)[self.player],
                     custom_self,
                     units[self.player].hp,
                     self.player,
@@ -477,10 +475,10 @@ struct RawUnit {
     hp: u16,
     max_hp: u16,
     _reserved_28: [u8; 0x2],
-    /// The loaded chip's id, 0xFFFF when none. Selection loads land
-    /// here right after each custom close; every other departure is
-    /// that chip being used. Derived empirically from the golden
-    /// replays against the saves' folder ids and A-press edges.
+    /// The loaded chip's id, 0xFFFF when none -- the same per-slot cell
+    /// bn6 keeps at this offset. Superseded for chip telemetry by the
+    /// hand block (`EWRAMOffsets::chip_blocks`), whose fired counter
+    /// shows the duplicate picks this bare id can't.
     chip: u16,
     _reserved_2c: [u8; 0xac],
 }
@@ -511,13 +509,28 @@ fn battle_units(ewram: &EWRAMOffsets, core: &mut mgba::core::Core) -> Option<[Ra
     }
     Some([units[0]?, units[1]?])
 }
-/// Both players' loaded-chip readings, indexed by absolute player index
-/// -- which the unit records already are. No fire counter is known for
-/// bn5's cell, so `fires` stays 0 and back-to-back duplicate picks
-/// can't transition (a known blindness).
-fn loaded_chips(units: [RawUnit; 2]) -> [Option<LoadedChip>; 2] {
-    // The cell's own empty spelling (see `RawUnit::chip`).
-    units.map(|u| (u.chip != 0xffff).then_some(LoadedChip { id: u.chip, fires: 0 }))
+/// Both players' loaded-chip readings (`None` when the hand is spent),
+/// indexed by absolute player -- the id the player will use next, with
+/// the block's fired counter: the hand-cursor contract
+/// `HandChipTracker` detects fires on. Same shape as bn4/bn6's blocks.
+/// See `EWRAMOffsets::chip_blocks`.
+fn loaded_chips(ewram: &EWRAMOffsets, core: &mut mgba::core::Core) -> [Option<LoadedChip>; 2] {
+    let mut chips = [None; 2];
+    for player in 0..2u32 {
+        let base = ewram.chip_blocks + player * 0x50;
+        let fired = core.raw_read_16(base, -1) as u32;
+        if fired > 5 {
+            continue;
+        }
+        let id = core.raw_read_16(base + 2 + fired * 2, -1);
+        if id != 0 && id <= 0x0fff {
+            chips[player as usize] = Some(LoadedChip {
+                id,
+                fires: fired as u16,
+            });
+        }
+    }
+    chips
 }
 
 // ---------------------------------------------------------------------------
@@ -545,6 +558,17 @@ struct EWRAMOffsets {
 
     /// Shared RNG state. Must be synced.
     rng2_state: u32,
+
+    /// Player 0's selected-chip block; player 1's is 0x50 beyond. Same
+    /// shape as bn4/bn6's: +0 u16 chips fired since the last selection
+    /// landed, +2 u16 ids[6] (0xFFFF = empty slot); the loaded chip is
+    /// ids[fired], agreeing with the per-slot cell (`RawUnit::chip`) at
+    /// every live tick. Indexed by absolute player, NOT by unit slot.
+    /// Found July 2026 by whole-EWRAM elimination scan against the cell
+    /// over wiggle-driven battles (hand_probe recipe), zero mismatches
+    /// across two builds (BRBJ, BRKE) including multi-chip hands with
+    /// the cell advancing through ids[] as fired stepped.
+    chip_blocks: u32,
 
     /// The first in-battle unit's [`RawUnit`] record; the second
     /// follows immediately. This is the record the game itself hands
@@ -690,6 +714,7 @@ static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     rng1_state:             0x02001c94,
     rng2_state:             0x02001d40,
     unit:                   0x0203b200,
+    chip_blocks:            0x02034e20,
 };
 
 #[derive(Clone, Copy)]

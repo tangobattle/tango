@@ -28,7 +28,11 @@ pub enum BattleOutcome {
 // v14: chip uses are captured as telemetry events by the game pollers
 // (no more sample-fold derivation), and buster events are gone — B
 // presses were never worth a lane. Older sidecars recompute.
-pub const FORMAT_VERSION: u32 = 14;
+// v15: bn5 and bn5ds read their newly-found hand blocks' fire cursors
+// (the same contract as every other mainline family) instead of the
+// loaded-cell departure heuristic — bn5's back-to-back duplicate picks
+// were invisible to v14.
+pub const FORMAT_VERSION: u32 = 15;
 
 /// Sidecar file magic.
 const MAGIC: &[u8; 4] = b"TGST";
