@@ -16,7 +16,7 @@ name: ci
 #
 # `cargo check` doesn't emit the rlibs a release `cargo build` links, so
 # what carries over is ~/.cargo and the build-script half of target/ —
-# the vendored C and C++ (melonDS, mgba, libdatachannel, openssl) that
+# the vendored C and C++ (melonDS, mgba, libdatachannel, Mbed TLS) that
 # dominates a cold build. The dependency crates still compile at release
 # time.
 on:
