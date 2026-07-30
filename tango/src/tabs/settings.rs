@@ -669,7 +669,7 @@ fn settings_audio<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) 
                 // across the pane, which looks silly for a volume bar.
                 container(
                     iced::widget::slider(0.0..=1.0, config.volume, Message::VolumeChanged)
-                        .step(0.01)
+                        .step(0.01_f32)
                         .style(widgets::chunky_slider)
                 )
                 .width(Length::Fixed(220.0)),
