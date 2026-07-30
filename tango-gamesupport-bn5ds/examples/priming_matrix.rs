@@ -208,7 +208,7 @@ fn main() {
         // No payloads: the emitted identity images and the geometry
         // surgery are hand-built carts whose current file is the one
         // under test.
-        match layout.walk(&mut link, (match_type, 0), [None, None], None) {
+        match layout.walk(&mut link, (match_type, 0), [None, None], [0; 16], None) {
             Ok(()) => println!("RESULT: OK"),
             Err(e) => println!("RESULT: FAILED {e:?}"),
         }
@@ -260,6 +260,7 @@ fn main() {
                     &mut link,
                     (match_type, 0),
                     [Some(&host.played), Some(&joiner.played)],
+                    [0; 16],
                     None,
                 ) {
                     Ok(()) => println!("    OK"),

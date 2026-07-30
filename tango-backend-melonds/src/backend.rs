@@ -16,10 +16,10 @@ use crate::link::Link;
 /// own crate: walking a freshly booted pair into its link battle.
 pub trait GameSupport: Sync {
     /// Walk a booted pair into the game's link battle. The walk must be
-    /// a pure function of ROM/save/rtc/`match_type` — both peers run it
-    /// on their own pairs and must reach identical state, because
-    /// priming is simulation state and a difference here is a desync.
-    /// Flipping `cancel` mid-walk fails it with
+    /// a pure function of ROM/save/rtc/`match_type`/`rng_seed` — both
+    /// peers run it on their own pairs and must reach identical state,
+    /// because priming is simulation state and a difference here is a
+    /// desync. Flipping `cancel` mid-walk fails it with
     /// [`Error::Cancelled`](tango_match::Error::Cancelled) — replay
     /// boots run on host worker threads whose teardown joins them.
     ///
@@ -37,11 +37,20 @@ pub trait GameSupport: Sync {
     /// file select by it). Part of the pure-function contract: both
     /// peers pass identical pairs, and a replay boot passes the
     /// recorded ones.
+    ///
+    /// `rng_seed` is the negotiated match seed
+    /// ([`StartConfig::rng_seed`](tango_match::StartConfig::rng_seed);
+    /// a replay boot passes the recording's). The pair boots
+    /// bit-identically every match, so a game whose randomness free-runs
+    /// from power-on would deal the same draws match after match — the
+    /// walk reseeds the game's own RNG state from values derived here,
+    /// exactly as the mgba families' primers do.
     fn prime(
         &self,
         link: &mut Link,
         match_type: (u8, u8),
         session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
+        rng_seed: [u8; 16],
         cancel: Option<&AtomicBool>,
     ) -> Result<(), tango_match::Error>;
 
@@ -114,7 +123,14 @@ impl tango_match::Backend for DsBackend {
         let mut link = Link::new(config.roms[0], config.saves, config.rtc)
             .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
 
-        prime_dark(self.support, &mut link, config.match_type, config.session_payloads, None)?;
+        prime_dark(
+            self.support,
+            &mut link,
+            config.match_type,
+            config.session_payloads,
+            config.rng_seed,
+            None,
+        )?;
         let handle = observe(&mut link, self.support);
 
         // The rollback loop is the seam's — this engine contributes the
@@ -141,6 +157,7 @@ impl tango_match::Backend for DsBackend {
             session_payloads: config.session_payloads.each_ref().map(|p| p.as_ref().map(|p| p.clone_box())),
             rtc: config.rtc,
             match_type: config.match_type,
+            rng_seed: config.rng_seed,
         };
         Ok(tango_match::ReplaySet::new(&config, boot))
     }
@@ -170,6 +187,9 @@ struct Boot {
     /// The mode the recording was played in, so the walk picks the
     /// same one out of the game's menus.
     match_type: (u8, u8),
+    /// The recording's match seed, so the re-primed walk seeds the
+    /// game's rngs exactly as the live one did.
+    rng_seed: [u8; 16],
 }
 
 impl tango_match::ReplayBoot for Boot {
@@ -180,6 +200,7 @@ impl tango_match::ReplayBoot for Boot {
             &mut link,
             self.match_type,
             self.session_payloads.each_ref().map(|p| p.as_deref()),
+            self.rng_seed,
             Some(cancel),
         )?;
         // Session tick numbering starts after the walk, observed or
@@ -251,12 +272,13 @@ fn prime_dark(
     link: &mut Link,
     match_type: (u8, u8),
     session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
+    rng_seed: [u8; 16],
     cancel: Option<&AtomicBool>,
 ) -> Result<(), tango_match::Error> {
     for player in 0..2 {
         link.console(player).set_render(false);
     }
-    let walked = support.prime(link, match_type, session_payloads, cancel);
+    let walked = support.prime(link, match_type, session_payloads, rng_seed, cancel);
     for player in 0..2 {
         link.console(player).set_render(true);
     }

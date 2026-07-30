@@ -13,6 +13,8 @@
 //!   --prime              run the crate's real priming and report its cost
 //!   --match-type N       which mode priming walks into: 0 Single
 //!                        Battle, 1 Triple Battle (default 0)
+//!   --rng-seed HEX       first word of the match seed priming reseeds
+//!                        the game's rngs from (default 0)
 //!   --script FILE        input script: lines "<frame> <seat> <input>";
 //!                        seat 0/1/b; input is keys "A+ST" (A B SEL ST RI
 //!                        LE UP DO RB LB X Y), a stylus tap "T:x,y", or
@@ -302,10 +304,14 @@ fn main() {
             _ => &tango_gamesupport_bn5ds::pvp::priming::US,
         };
         let match_type = (one("match-type").map(|v| v.parse().unwrap()).unwrap_or(0), 0);
+        let mut rng_seed = [0u8; 16];
+        if let Some(v) = one("rng-seed") {
+            rng_seed[..4].copy_from_slice(&parse_hex(&v).to_le_bytes());
+        }
         // No payloads: a probe fed raw dumps walks each cart's own
         // current file, exactly like a session without one.
         let started = std::time::Instant::now();
-        match layout.walk(&mut link, match_type, [None, None], None) {
+        match layout.walk(&mut link, match_type, [None, None], rng_seed, None) {
             Ok(()) => println!(
                 "primed in {:.1}s wall, connected={}",
                 started.elapsed().as_secs_f64(),

@@ -143,9 +143,10 @@ impl tango_backend_melonds::GameSupport for Pvp {
         link: &mut Link,
         match_type: (u8, u8),
         session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
+        rng_seed: [u8; 16],
         cancel: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<(), tango_match::Error> {
-        self.layout.walk(link, match_type, session_payloads, cancel)
+        self.layout.walk(link, match_type, session_payloads, rng_seed, cancel)
     }
 
     /// This game's payload type is
@@ -490,6 +491,26 @@ pub mod priming {
         /// loaded.
         list_object: u32,
         list_count: u32,
+        /// The game's three RNG state words — the GBA family's pair
+        /// with one more, running the identical recurrence
+        /// `x' = (rol1(x) + 1) ^ 0x873ca9e5` (the accessors sit at
+        /// `0x02001118..0x020011d4` in the US ARM9, byte-identical in
+        /// JP; found by searching the ARM9 for the GBA constant).
+        /// `[0]` is GBA bn5's rng1, the draw stream, stepped once per
+        /// unpaused frame by the main loop's master tick; `[1]` is
+        /// rng2, the on-demand battle stream, which the game-init call
+        /// at power-on resets to `0xa338244f` (its one reset — a
+        /// single caller in the whole binary, run long before the save
+        /// select); `[2]` is the port's own addition, on-demand with
+        /// two callers. The walk writes all three at the field's START
+        /// dispatch: the CONTINUE load re-derives every word as it
+        /// runs (measured — a seed written at the load's own confirm
+        /// is gone six ticks later), and the overworld standing is the
+        /// proof the load is done. From there nothing but the
+        /// accessors touches them, so the seeds stand — and the comm
+        /// bring-up's own settings generation draws from them, which
+        /// the wireless exchange then agrees on for real.
+        rngs: [u32; 3],
     }
 
     /// The save-select screen object's chosen row, as a byte offset into
@@ -522,6 +543,25 @@ pub mod priming {
             .map(|file| file.0)
             .filter(|slot| set.slots().contains(slot))
             .unwrap_or_else(|| set.current().slot())
+    }
+
+    /// One console's three RNG seeds off the negotiated match seed —
+    /// the mgba backend's `core_rng_seed` derivation carried over:
+    /// identical on both peers (both walk both consoles), distinct
+    /// between the consoles and the streams, exactly the situation the
+    /// vanilla wireless protocol is built for (two real consoles never
+    /// share RNG state — the games' own link exchange synchronizes
+    /// whatever the battle needs agreed on). The recurrence has no
+    /// stuck state, so no lane needs a zero guard.
+    fn console_rng_seeds(rng_seed: &[u8; 16], console: usize) -> [u32; 3] {
+        std::array::from_fn(|stream| {
+            let lane = (console * 3 + stream) as u32;
+            let i = lane as usize * 4 % rng_seed.len();
+            let v = u32::from_le_bytes(rng_seed[i..i + 4].try_into().unwrap());
+            // Perturb by lane so identical seed words still land
+            // distinct streams.
+            v ^ 0x9e37_79b9u32.wrapping_mul(lane + 1)
+        })
     }
 
     /// The US build (`A5TE`), where all of this was found.
@@ -568,6 +608,7 @@ pub mod priming {
             substate:                 0x021f_66ec,
             list_object:              0x021c_6260,
             list_count:               0x021c_688c,
+            rngs:                    [0x0216_bb1c, 0x0216_f230, 0x0216_bb20],
         },
     };
 
@@ -630,6 +671,7 @@ pub mod priming {
             substate:                 0x021e_f06c,
             list_object:              0x021b_efa0,
             list_count:               0x021b_f5cc,
+            rngs:                    [0x0216_48bc, 0x0216_7fd0, 0x0216_48c0],
         },
     };
 
@@ -795,6 +837,7 @@ pub mod priming {
             host: bool,
             second: bool,
             save_row: u8,
+            rng_seeds: [u32; 3],
             confirms: Option<std::sync::Arc<std::sync::atomic::AtomicU32>>,
         ) -> Vec<(u32, Box<dyn FnMut(&mut Nds)>)> {
             let code = &self.code;
@@ -851,9 +894,20 @@ pub mod priming {
                 (
                     // The overworld field dispatcher, which compares the
                     // pressed word against START, into the branch that
-                    // opens the START menu.
+                    // opens the START menu. The rng seeds ride this
+                    // confirm (see [`RAMOffsets::rngs`]): the overworld
+                    // standing means the CONTINUE load's own reseeds are
+                    // done — seeded any earlier they'd be re-derived away
+                    // — and from here nothing but the accessors touches
+                    // the words, so what's written here is what the comm
+                    // screens' own settings generation draws from.
                     code.field_start_gate,
-                    Box::new(move |nds: &mut Nds| nds.jump_here(code.field_start_menu_open)),
+                    Box::new(move |nds: &mut Nds| {
+                        for (&addr, &seed) in ram.rngs.iter().zip(&rng_seeds) {
+                            nds.write32(addr, seed);
+                        }
+                        nds.jump_here(code.field_start_menu_open)
+                    }),
                 ),
                 (
                     // The START menu's read of the pad, into the accepted
@@ -1079,13 +1133,15 @@ pub mod priming {
             link: &mut Link,
             second: bool,
             session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
+            rng_seed: [u8; 16],
         ) -> std::sync::Arc<std::sync::atomic::AtomicU32> {
             let confirms = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
             for seat in 0..2 {
                 let host = seat == 0;
                 let save_row = save_row(session_payloads[seat], &link.console(seat).save_memory());
+                let rng_seeds = console_rng_seeds(&rng_seed, seat);
                 link.console(seat)
-                    .set_traps(self.traps(host, second, save_row, host.then(|| confirms.clone())));
+                    .set_traps(self.traps(host, second, save_row, rng_seeds, host.then(|| confirms.clone())));
                 link.console(seat).set_traps7(Self::traps7());
             }
             confirms
@@ -1102,7 +1158,9 @@ pub mod priming {
         /// Run both consoles from power-on into the agreed mode's link
         /// battle. `session_payloads` are the consoles' session
         /// payloads in seat order — each console's save-select row (see
-        /// [`save_row`]). Flipping `cancel` fails the walk with
+        /// [`save_row`]); `rng_seed` is the negotiated match seed the
+        /// walk reseeds the game's rngs from (see [`console_rng_seeds`]).
+        /// Flipping `cancel` fails the walk with
         /// [`Cancelled`](tango_match::Error::Cancelled) instead of
         /// finishing it — replay boots run on host worker threads whose
         /// teardown joins them.
@@ -1111,6 +1169,7 @@ pub mod priming {
             link: &mut Link,
             match_type: (u8, u8),
             session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
+            rng_seed: [u8; 16],
             cancel: Option<&std::sync::atomic::AtomicBool>,
         ) -> Result<(), tango_match::Error> {
             let started = std::time::Instant::now();
@@ -1118,7 +1177,7 @@ pub mod priming {
             // The registration lists Single first and Triple second, so
             // the mode is only which of the chooser's two buttons the
             // joiner takes.
-            let counter = self.install(link, match_type.0 != 0, session_payloads);
+            let counter = self.install(link, match_type.0 != 0, session_payloads, rng_seed);
 
             // The boot half, which is over when the board stands: it
             // answers nothing that depends on the other console, so it
