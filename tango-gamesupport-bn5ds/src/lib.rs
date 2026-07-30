@@ -119,7 +119,7 @@ pub static EXE5DS: Game = Game {
 /// module's departure) instead of when the battle module arrives, a
 /// few frames earlier — recordings made against the old finish line
 /// carry inputs offset by that gap.
-const REPLAY_VERSION: u32 = 1;
+const REPLAY_VERSION: u32 = 2;
 
 pub static BN5DS_FAMILY: Family = Family {
     id: "bn5ds",

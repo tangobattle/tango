@@ -222,23 +222,23 @@ impl tango_match::ReplayBoot for Boot {
     /// primed capture ([`tango_match::ReplaySet::stats_reusing_playback`]),
     /// skipping the second priming walk.
     ///
-    /// The pair runs **one throwaway frame** before it is handed over,
-    /// because a console that has never run a frame is not equivalent
-    /// to one that has: the first frame settles host-side state that no
-    /// savestate carries, and a pair landed without it diverges from
-    /// the pair that took the capture. Measured on bn5ds's
-    /// `landing_probe` against a full recording — landing straight out
-    /// of construction differs by thousands of bytes of the game's own
-    /// RAM on the very first tick and parts ways on screen a minute in,
-    /// while landing after a single bare frame is byte-identical for as
-    /// long as the drill runs. The frame costs ~2 ms against the
-    /// seconds of priming this skips, and the restore overwrites
-    /// everything it simulated.
+    /// Pure construction: the pair comes back at power-on, having run
+    /// nothing, and the caller's restore is what puts it where it
+    /// belongs.
+    ///
+    /// It used to run one throwaway frame first, on the theory that a
+    /// console which has never run one is not equivalent to a console
+    /// that has. What was really being papered over was melonDS keeping
+    /// state a savestate did not carry — the CPUs' fetch-timing scratch,
+    /// and the derived timing tables a load only rebuilt when the
+    /// registers it could see had changed — which the JIT then baked
+    /// into compiled blocks. The frame moved the symptom around without
+    /// fixing it, and a landed pair still parted ways on screen about a
+    /// minute into a recording. With that carried properly, landing
+    /// straight out of construction is exact for as long as bn5ds's
+    /// `landing_probe` runs a recording (`fresh` mode).
     fn boot_unprimed(&self, want_stats: bool) -> Result<tango_match::BootedReplay, tango_match::Error> {
-        use tango_match::Link as _;
-
         let mut link = self.pair()?;
-        link.tick([tango_match::HostInput::default(); 2]);
         let handle = want_stats.then(|| observe(&mut link, self.support));
         Ok(tango_match::BootedReplay {
             link: Box::new(link),

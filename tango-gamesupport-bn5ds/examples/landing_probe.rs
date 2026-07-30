@@ -24,15 +24,17 @@
 //! Modes:
 //!
 //! * `fresh` — B lands straight out of construction, having never run a
-//!   frame. **This is expected to fail**, and it is what caught THE
-//!   seek desync: thousands of bytes of the game's own RAM differ on
-//!   the first tick and the screens part ways about a minute in. A
-//!   console's first frame settles host state no savestate carries, so
-//!   the engine's `boot_unprimed` runs one throwaway frame before
-//!   handing a pair over — this mode is what measures why.
-//! * `warm:K` — B runs K bare frames before landing, which is what the
-//!   engine now does with K=1. The passing configuration: byte-identical
-//!   whole-link state for as long as the drill runs.
+//!   frame. This is what `boot_unprimed` does, and it is the mode that
+//!   caught THE seek desync: it used to part ways on screen about a
+//!   minute into a recording, because melonDS kept state a savestate
+//!   did not carry (the CPUs' fetch-timing scratch, and derived timing
+//!   tables a load rebuilt only when the registers it could see had
+//!   changed) and the JIT baked it into compiled blocks. Fixed engine
+//!   side; this mode is what holds that fix to account.
+//! * `warm:K` — B runs K bare frames before landing. The engine ran one
+//!   such frame for a while, on the theory that a console which has
+//!   never run one is not equivalent to a console that has; it only
+//!   moved the symptom around, and K makes no difference now.
 //! * `walked` — B walks its own prime first, then lands on A's capture:
 //!   the shape every shared-store seek rests on (playback and stats
 //!   pairs exchanging keyframes).
