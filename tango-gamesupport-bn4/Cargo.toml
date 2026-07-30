@@ -34,7 +34,3 @@ unic-langid.workspace = true
 # For the sio_probe example (headless lockstep-pair handshake probe).
 mgba-rollback.workspace = true
 env_logger = "0.9"
-
-[[test]]
-name = "mod_cards"
-required-features = ["ui"]

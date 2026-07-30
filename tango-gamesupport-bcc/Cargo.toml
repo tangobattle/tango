@@ -34,7 +34,3 @@ unic-langid.workspace = true
 mgba-rollback.workspace = true
 tango-replay = { path = "../tango-replay" }
 env_logger = "0.9"
-
-[[test]]
-name = "deck_render"
-required-features = ["ui"]
