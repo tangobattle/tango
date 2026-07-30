@@ -178,17 +178,13 @@ impl tango_match::ReplayBoot for Boot {
     /// all off again before `prime` returns (both processors handed
     /// back to the JIT), and everything else it changed is console
     /// state.
-    fn boot_unprimed(
-        &self,
-        want_stats: bool,
-        _cancel: &AtomicBool,
-    ) -> Result<Option<tango_match::BootedReplay>, tango_match::Error> {
+    fn boot_unprimed(&self, want_stats: bool) -> Result<tango_match::BootedReplay, tango_match::Error> {
         let mut link = self.pair()?;
         let handle = want_stats.then(|| observe(&mut link, self.support));
-        Ok(Some(tango_match::BootedReplay {
+        Ok(tango_match::BootedReplay {
             link: Box::new(link),
             telemetry: handle,
-        }))
+        })
     }
 }
 

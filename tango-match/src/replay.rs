@@ -781,16 +781,13 @@ pub trait ReplayBoot: Send + Sync {
 
     /// Boot one pair *without* the priming walk, for a caller about to
     /// restore an already-primed capture into it
-    /// ([`ReplaySet::stats_reusing_playback`]). Only sound where the
-    /// walk leaves nothing behind that a snapshot doesn't carry — no
-    /// standing traps, no host-side config the walk flipped — so a
-    /// fresh pair landed on a primed capture IS the primed pair. The
-    /// default says an engine can't promise that (`None`), and the
-    /// caller primes as usual.
-    fn boot_unprimed(&self, observe: bool, cancel: &AtomicBool) -> Result<Option<BootedReplay>, crate::Error> {
-        let _ = (observe, cancel);
-        Ok(None)
-    }
+    /// ([`ReplaySet::stats_reusing_playback`]). Construction only — no
+    /// walk, nothing to cancel. The contract an engine signs by
+    /// implementing this: its walk leaves nothing behind that a
+    /// snapshot doesn't carry — no standing traps, no host-side config
+    /// flipped mid-walk — so a fresh pair landed on a primed capture IS
+    /// the primed pair.
+    fn boot_unprimed(&self, observe: bool) -> Result<BootedReplay, crate::Error>;
 }
 
 /// One recording, ready to simulate: the pair a viewer watches and the
@@ -957,19 +954,14 @@ impl ReplaySet {
     /// ([`ReplayBoot::boot_unprimed`]) instead of walking the prime a
     /// second time — the walk is seconds of simulation, and both walks
     /// reach identical state by construction. Falls back to
-    /// [`Self::stats`]'s own walk when the engine can't take a bare
-    /// pair there, or when the display boot came up empty-handed.
+    /// [`Self::stats`]'s own walk when the display boot came up
+    /// empty-handed.
     ///
     /// Blocks until the display boot lands one way or the other, so
     /// only a host that is actually booting the display pair should
     /// call this — anyone else wants [`Self::stats`].
     pub fn stats_reusing_playback(&self) -> Result<StatsPass, crate::Error> {
-        let bare = match self.boot.boot_unprimed(true, &self.cancel)? {
-            Some(bare) => bare,
-            // The engine can't skip the walk; prime concurrently with
-            // the display boot, as ever.
-            None => return self.stats(),
-        };
+        let bare = self.boot.boot_unprimed(true)?;
         match self.wait_first_capture() {
             FirstCapture::Available(capture) => {
                 let mut playback = Playback::new(bare.link, self.inputs.clone());

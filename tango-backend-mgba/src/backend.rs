@@ -305,7 +305,7 @@ impl tango_match::ReplayBoot for Boot {
             Some(cancel),
         )
         .map_err(tango_match::Error::from)?;
-        Ok(self.wrap(observe, pair, lifecycle))
+        Ok(self.wrap(pair, observe.then_some(lifecycle)))
     }
 
     /// A bare pair for the stats pass to land on the display pair's
@@ -315,11 +315,7 @@ impl tango_match::ReplayBoot for Boot {
     /// traps stay installed either way (installed here too, since they
     /// double as the round-lifecycle anchors), the walk's pokes are
     /// core state, and the lockstep blobs ride in the snapshot.
-    fn boot_unprimed(
-        &self,
-        observe: bool,
-        _cancel: &AtomicBool,
-    ) -> Result<Option<tango_match::BootedReplay>, tango_match::Error> {
+    fn boot_unprimed(&self, observe: bool) -> Result<tango_match::BootedReplay, tango_match::Error> {
         let (pair, lifecycle, _primed) = assemble_pair(
             self.roms.clone(),
             self.saves.clone(),
@@ -337,24 +333,25 @@ impl tango_match::ReplayBoot for Boot {
         // priming loop reads them, and the walk traps gate on game
         // state a battle capture leaves inert.
         lifecycle.round_started();
-        Ok(Some(self.wrap(observe, pair, lifecycle)))
+        Ok(self.wrap(pair, observe.then_some(lifecycle)))
     }
 }
 
 impl Boot {
-    /// The booted pair as the seam takes it, with the game observed
-    /// (pollers + the trap-fed lifecycle) when the stats pass asks —
-    /// the display pair pays for no pollers, and its lifecycle sink is
-    /// a write-only stub.
-    fn wrap(&self, observe: bool, pair: mgba_rollback::Link, lifecycle: LifecycleSink) -> tango_match::BootedReplay {
-        let (telemetry, handle) = if observe {
-            let (telemetry, handle) = Telemetry::new(
-                [self.support[0].core_poller(0), self.support[1].core_poller(1)],
-                lifecycle,
-            );
-            (Some(telemetry), Some(handle))
-        } else {
-            (None, None)
+    /// The booted pair as the seam takes it — observed (pollers + the
+    /// trap-fed lifecycle sink) when the stats pass asked for it; the
+    /// display pair passes `None`, paying for no pollers and leaving
+    /// its sink a write-only stub.
+    fn wrap(&self, pair: mgba_rollback::Link, lifecycle: Option<LifecycleSink>) -> tango_match::BootedReplay {
+        let (telemetry, handle) = match lifecycle {
+            Some(lifecycle) => {
+                let (telemetry, handle) = Telemetry::new(
+                    [self.support[0].core_poller(0), self.support[1].core_poller(1)],
+                    lifecycle,
+                );
+                (Some(telemetry), Some(handle))
+            }
+            None => (None, None),
         };
         tango_match::BootedReplay {
             link: Box::new(crate::Link::new(pair, telemetry)),
