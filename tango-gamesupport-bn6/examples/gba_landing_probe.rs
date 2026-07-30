@@ -63,6 +63,8 @@ fn main() {
         .open_replay(tango_match::ReplayConfig {
             roms: [rom.clone(), rom.clone()],
             saves: replay.srams.clone(),
+            session_payloads: tango_match::parse_session_payloads([game.pvp, game.pvp], &replay.session_payloads())
+                .expect("session payloads"),
             inputs: inputs.clone(),
             rng_seed: replay.rng_seed,
             rtc: replay.rtc_time(),

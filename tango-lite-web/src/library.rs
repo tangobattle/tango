@@ -178,11 +178,13 @@ pub async fn import_save(file_name: &str, bytes: &[u8]) -> bool {
 /// one starter from another, and a file called `bn3-0-new` tells you
 /// nothing about which style is in it.
 pub async fn create_starter_save(game: GameRef, template_name: &str) -> bool {
-    let Some((template_name, template)) = game
-        .save_templates
+    let Some(templates) = game.save_templates else {
+        return false;
+    };
+    let Some((template_name, template)) = templates
         .iter()
         .find(|(name, _)| *name == template_name)
-        .or_else(|| game.save_templates.first())
+        .or_else(|| templates.first())
     else {
         return false;
     };
@@ -205,7 +207,8 @@ pub async fn create_starter_save(game: GameRef, template_name: &str) -> bool {
 /// alone has eight, and they are only distinguishable by name.
 pub fn save_templates(game: GameRef) -> Vec<(String, String)> {
     game.save_templates
-        .iter()
+        .into_iter()
+        .flat_map(|t| t.iter())
         .map(|(name, _)| (name.to_string(), crate::lang::save_template_name(game, name)))
         .collect()
 }

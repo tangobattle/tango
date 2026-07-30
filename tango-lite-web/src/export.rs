@@ -133,6 +133,8 @@ async fn render(path: &std::path::Path, name: &str, canceller: &Canceller) -> Re
     let config = tango_match::ReplayConfig {
         roms: [roms[0].to_vec(), roms[1].to_vec()],
         saves: replay.srams.clone(),
+        session_payloads: tango_match::parse_session_payloads([games[0].pvp, games[1].pvp], &replay.session_payloads())
+            .map_err(|e| format!("parse session payloads: {e}"))?,
         inputs: std::sync::Arc::new(inputs),
         rng_seed: replay.rng_seed,
         rtc: replay.rtc_time(),

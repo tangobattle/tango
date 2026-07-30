@@ -236,6 +236,25 @@ impl SaveSet {
     }
 }
 
+/// Which of the cartridge's files a session plays — this game's
+/// [`tango_match::SessionPayload`]. Minted by the save view's file
+/// picker, revealed with the netplay commit, recorded per replay side,
+/// and downcast back by the priming walk, which steers the game's own
+/// file select to this slot. One serialized byte: the file-select slot
+/// ([`Save::slot`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PlayedFile(pub u8);
+
+impl tango_match::SessionPayload for PlayedFile {
+    fn serialize(&self) -> Vec<u8> {
+        vec![self.0]
+    }
+
+    fn clone_box(&self) -> tango_match::BoxedSessionPayload {
+        Box::new(*self)
+    }
+}
+
 /// One in-game file, handed out by [`SaveSet`]. The whole dump rides
 /// along because that is what gets written back to the cartridge, but
 /// every read and write goes through this file's own block.
@@ -302,36 +321,6 @@ impl tango_gamesupport_common::dataview::save::Save for Save {
         self.data.copy_within(base..base + BLOCK_SIZE, twin);
     }
 
-    /// The cartridge a session boots from: erased flash except *this*
-    /// file's live pair of blocks. The one file on the cart is by
-    /// definition the current one — so the game's file select opens on
-    /// it with no counter stamping at all — and, more than that, the
-    /// only cartridge state in the session is the file being played.
-    ///
-    /// The blank slate is not just tidiness. A primed boot *saves*, and
-    /// the game spreads its saves across the flash's three block pairs
-    /// by generation counter, wherever the cartridge's wear history
-    /// points; for many of the resulting layouts, a Net Battle between
-    /// file 1 hosting and file 2 joining stalls forever in the
-    /// pre-battle exchange — the game's own ten-second comm timeout
-    /// tears the association down and priming reports no battle past
-    /// the board. A real cartridge drifts through those layouts as it
-    /// saves, which is what made priming flake *sometimes* between the
-    /// same two saves (mapped cell by cell with the `priming_matrix`
-    /// example in the game crate). Handing the session a cart that
-    /// holds nothing but the played file takes the whole rotation out
-    /// of the picture.
-    ///
-    /// Nothing here reaches disk — the real dump keeps its other file
-    /// and all its counters.
-    fn to_session_sram(&self) -> Vec<u8> {
-        let mut data = self.data.clone();
-        let keep = [self.block, self.block ^ 1];
-        for block in (0..SIZE / BLOCK_SIZE).filter(|block| !keep.contains(block)) {
-            data[block * BLOCK_SIZE..][..BLOCK_SIZE].fill(0xff);
-        }
-        data
-    }
 }
 
 pub struct ChipsView<S> {
@@ -667,48 +656,14 @@ mod tests {
     }
 
     #[test]
-    fn a_session_runs_on_the_file_it_was_started_from() {
+    fn a_session_boots_the_dump_untouched() {
         let data = two_files();
         let set = SaveSet::parse(&data).unwrap();
-        // File 0 is the newer one, so it is what a fresh parse calls
-        // current — and what the game's file select would open on.
-        assert_eq!(set.current().slot(), 0);
-
-        // Starting a session from file 1 hands over a cartridge that
-        // holds file 1 alone, untouched — one file is current by
-        // definition, and no other cartridge state rides along.
-        let file1 = set.save(1).unwrap();
-        let session = SaveSet::parse(&file1.to_session_sram()).unwrap();
-        assert_eq!(session.slots(), vec![1]);
-        assert_eq!(session.current().slot(), 1);
-        assert_eq!(session.save(1).unwrap().view_chips().unwrap().chip(0, 0).unwrap().id, 2);
-        assert!(session.save(0).is_none());
-        // The file on disk keeps both files and its own counters.
-        assert_eq!(file1.to_sram_dump(), data);
-
-        // The already-current file gets the same one-file cart — the
-        // erasure is not a question of who was current.
-        let session = SaveSet::parse(&set.save(0).unwrap().to_session_sram()).unwrap();
-        assert_eq!(session.current().slot(), 0);
-        assert_eq!(session.save(0).unwrap().view_chips().unwrap().chip(0, 0).unwrap().id, 1);
-        assert!(session.save(1).is_none());
-    }
-
-    #[test]
-    fn a_session_cartridge_is_erased_but_for_the_played_pair() {
-        let data = two_files();
-        // File 0's live pair is blocks 0/1, file 1's blocks 4/5.
-        for (file, live) in [(0u8, 0usize), (1, 4)] {
-            let session = SaveSet::parse(&data).unwrap().save(file).unwrap().to_session_sram();
-            for block in 0..SIZE / BLOCK_SIZE {
-                let bytes = &session[block * BLOCK_SIZE..][..BLOCK_SIZE];
-                if block == live || block == live + 1 {
-                    assert_eq!(bytes, &data[block * BLOCK_SIZE..][..BLOCK_SIZE], "block {block}");
-                } else {
-                    assert!(bytes.iter().all(|&b| b == 0xff), "block {block}");
-                }
-            }
-        }
+        // Whichever file is being played, the cartridge a session gets
+        // is the dump as it stands — the choice travels beside the
+        // bytes (a [`PlayedFile`] session payload), never in them.
+        assert_eq!(set.save(0).unwrap().to_sram_dump(), data);
+        assert_eq!(set.save(1).unwrap().to_sram_dump(), data);
     }
 
     #[test]

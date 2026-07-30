@@ -11,6 +11,10 @@ pub use tango_gamesupport::{AppliedPatch, LoadedSave};
 /// Build from a *raw* (unpatched) ROM, applying the selected patch
 /// first, then bake the frontend art for it. On apply failure we fall
 /// back to the unpatched ROM (and log) so the save view still renders.
+///
+/// `session_payload` opens the view on what a session recorded playing
+/// — the payload committed beside a setup pane's bytes, or a replay
+/// side's; `None` for a disk load.
 pub fn build(
     game: crate::library::rom::GameRef,
     rom: Vec<u8>,
@@ -18,6 +22,7 @@ pub fn build(
     save: tango_gamesupport::BoxedSave,
     patches_path: &std::path::Path,
     patch: Option<(String, semver::Version, Arc<crate::library::patch::Version>)>,
+    session_payload: Option<&dyn tango_match::SessionPayload>,
 ) -> LoadedSave {
     let (rom, applied_patch) = match patch {
         Some((name, version, meta)) => {
@@ -48,7 +53,7 @@ pub fn build(
         }
         None => (rom, None),
     };
-    from_patched_rom(game, rom, save_path, save, applied_patch)
+    from_patched_rom(game, rom, save_path, save, applied_patch, session_payload)
 }
 
 /// Build from a ROM that's *already* had its patch applied, plus the
@@ -62,8 +67,10 @@ pub fn from_patched_rom(
     save_path: std::path::PathBuf,
     save: tango_gamesupport::BoxedSave,
     applied_patch: Option<AppliedPatch>,
+    session_payload: Option<&dyn tango_match::SessionPayload>,
 ) -> LoadedSave {
-    game.save_editor.load(game, rom, save_path, save, applied_patch)
+    game.save_editor
+        .load(game, rom, save_path, save, applied_patch, session_payload)
 }
 
 /// Build a [`LoadedSave`] for the local side of a replay — used by the
@@ -95,6 +102,12 @@ pub fn for_replay_local(
 
     let save = game.parse_save(&replay.srams[replay.local_player_index as usize])?;
 
+    // The side's recorded session payload, typed by its own game, so
+    // the view opens on the save this recording actually played.
+    let session_payload = (!side.session_payload.is_empty())
+        .then(|| game.pvp.parse_session_payload(&side.session_payload))
+        .transpose()?;
+
     // Optional patch info — pull the Arc<Version> from the patch
     // scanner so we get the same rom_overrides (charset etc.) as
     // the play tab.
@@ -112,5 +125,6 @@ pub fn for_replay_local(
         save,
         &config.patches_path(),
         patch_meta,
+        session_payload.as_deref(),
     ))
 }

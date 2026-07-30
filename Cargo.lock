@@ -7902,6 +7902,7 @@ dependencies = [
  "image",
  "num-traits",
  "tango-gamesupport-common",
+ "tango-match",
 ]
 
 [[package]]
@@ -7912,6 +7913,7 @@ dependencies = [
  "sweeten",
  "tango-gamesupport-bn5ds-dataview",
  "tango-gamesupport-common",
+ "tango-match",
  "unic-langid",
 ]
 
@@ -8102,6 +8104,7 @@ dependencies = [
  "sha3",
  "subtle",
  "tango-library",
+ "tango-match",
  "tango-net-protocol",
  "tango-patch",
  "tango-session",

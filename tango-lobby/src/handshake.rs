@@ -175,12 +175,14 @@ impl State {
     }
 
     /// The user pressed Ready. Builds a NegotiatedState from a fresh
-    /// nonce + the local save's SRAM, zstd-compresses it, hashes it for
+    /// nonce + the local save's SRAM and the save view's session
+    /// payload (serialized here — this is the packet boundary),
+    /// zstd-compresses it, hashes it for
     /// the commitment and sends the Commit packet — then kicks the reveal
     /// if the peer has already committed, and re-verifies their reveal if
     /// it's already complete (a re-commit after our Uncommit: the peer
     /// won't re-send what we already hold).
-    pub fn commit(&mut self, save_sram: Vec<u8>) -> Option<Event> {
+    pub fn commit(&mut self, save_sram: Vec<u8>, session_payload: Option<&dyn tango_match::SessionPayload>) -> Option<Event> {
         if !matches!(self.phase, Phase::Lobby { .. }) {
             return None;
         }
@@ -193,6 +195,7 @@ impl State {
                 .unwrap_or_default()
                 .as_millis() as u64,
             save_data: save_sram,
+            session_payload: session_payload.map(|p| p.serialize()).unwrap_or_default(),
         };
         let bin = match state.serialize() {
             Ok(b) => b,

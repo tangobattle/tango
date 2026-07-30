@@ -24,7 +24,7 @@ fn main() {
             .side(replay.local_player_index)
             .and_then(|s| s.game_info.as_ref());
         println!(
-            "{path}\n  ts={} ({:?})\n  match_type=({}, {}) local_player={} ticks={} complete={}\n  family={:?} replay_version={:?}\n  sram sizes=[{}, {}] sram crc32=[{:08x}, {:08x}]",
+            "{path}\n  ts={} ({:?})\n  match_type=({}, {}) local_player={} ticks={} complete={}\n  family={:?} replay_version={:?}\n  sram sizes=[{}, {}] sram crc32=[{:08x}, {:08x}] session_payloads={:?}",
             m.ts,
             replay.rtc_time(),
             m.match_type,
@@ -38,6 +38,7 @@ fn main() {
             replay.srams[1].len(),
             crc32(&replay.srams[0]),
             crc32(&replay.srams[1]),
+            replay.session_payloads(),
         );
         for (tick, row) in replay
             .inputs

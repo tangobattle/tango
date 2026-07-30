@@ -3,20 +3,26 @@
 //!
 //! This is the harness that cornered the "no battle 2400 frames past
 //! the board" stall: the game's Net Battle handshake wedges for some
-//! flash block layouts (see `to_session_sram` in the dataview crate),
-//! and which layout a cartridge is in rotates as it saves — so the
-//! wild flake was deterministic here, as a specific host×joiner cell.
-//! Each dump's file-select slots each become an identity via
-//! `to_session_sram()` — the image a real session boots — so this
-//! also regression-tests that transform's answer, the one-file
-//! session cart: every cell must be OK. The walk's own log lines
-//! carry the diagnostics when a cell stalls.
+//! flash block layouts, and which layout a cartridge is in rotates as
+//! it saves — so the wild flake was deterministic here, as a specific
+//! host×joiner cell. Each dump's file-select slots each become an
+//! identity exactly as a live session now carries one: the dump
+//! untouched, plus a `PlayedFile` session payload — so this also
+//! regression-tests the payload-steered save select. With the cart
+//! travelling unmasked, wedge-prone wear layouts are live again: a
+//! failed cell is the game's own handshake stalling against that
+//! flash geometry (host file 1 vs joiner file 2 on the probe cart),
+//! not the steering missing its row — the walk's log lines tell the
+//! two apart when a cell stalls.
 //!
 //! Usage: priming_matrix <rom.nds> <flash.sav>... [--jp] [--type T]
 //!        [--rtc SECS[,SECS...]] [--emit DIR]
 //!
-//! `--emit DIR` writes each identity's session sram to
-//! DIR/<label>.sav (for menu_probe) instead of running the matrix.
+//! `--emit DIR` writes each identity's sram to DIR/<label>.sav (for
+//! menu_probe) instead of running the matrix. Sessions no longer
+//! rewrite the cart, so a two-file dump emits the same bytes under
+//! both labels — the identities differ only in the row the matrix
+//! steers, which a bare .sav cannot carry.
 //!
 //! The flags below run one walk instead, with the joiner's flash
 //! hand-built from the emitted identities — the geometry surgery the
@@ -30,7 +36,7 @@
 //!   --erase LO:HI                   fill joiner flash with 0xff
 
 use tango_gamesupport_bn5ds::dataview::save::{
-    SaveSet, BLOCK_SIZE, CHECKSUM_OFFSET, GENERATION_OFFSET, MAGIC, MAGIC_OFFSET, SAVE_IMAGE_SIZE, SIZE,
+    PlayedFile, SaveSet, BLOCK_SIZE, CHECKSUM_OFFSET, GENERATION_OFFSET, MAGIC, MAGIC_OFFSET, SAVE_IMAGE_SIZE, SIZE,
 };
 use tango_gamesupport_common::dataview::save::Save as _;
 
@@ -67,6 +73,9 @@ fn live_block(data: &[u8]) -> usize {
 struct Identity {
     label: String,
     sram: Vec<u8>,
+    /// The session payload a live commit of this file would send — the
+    /// file-select row the walk steers this console into.
+    played: PlayedFile,
 }
 
 fn main() {
@@ -196,7 +205,10 @@ fn main() {
         let mut link =
             tango_backend_melonds::Link::new(&rom, [Some(host_sram.as_slice()), Some(joiner_sram.as_slice())], rtc)
                 .expect("link boot");
-        match layout.walk(&mut link, (match_type, 0), None) {
+        // No payloads: the emitted identity images and the geometry
+        // surgery are hand-built carts whose current file is the one
+        // under test.
+        match layout.walk(&mut link, (match_type, 0), [None, None], None) {
             Ok(()) => println!("RESULT: OK"),
             Err(e) => println!("RESULT: FAILED {e:?}"),
         }
@@ -217,7 +229,8 @@ fn main() {
         for slot in set.slots() {
             identities.push(Identity {
                 label: format!("{}/file{}", (b'A' + d as u8) as char, slot + 1),
-                sram: set.save(slot).unwrap().to_session_sram(),
+                sram: set.save(slot).unwrap().to_sram_dump(),
+                played: PlayedFile(slot),
             });
         }
     }
@@ -243,7 +256,12 @@ fn main() {
                     rtc,
                 )
                 .expect("link boot");
-                match layout.walk(&mut link, (match_type, 0), None) {
+                match layout.walk(
+                    &mut link,
+                    (match_type, 0),
+                    [Some(&host.played), Some(&joiner.played)],
+                    None,
+                ) {
                     Ok(()) => println!("    OK"),
                     Err(e) => {
                         println!("    FAILED: {e:?}");

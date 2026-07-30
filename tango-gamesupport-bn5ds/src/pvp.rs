@@ -142,9 +142,20 @@ impl tango_backend_melonds::GameSupport for Pvp {
         &self,
         link: &mut Link,
         match_type: (u8, u8),
+        session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
         cancel: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<(), tango_match::Error> {
-        self.layout.walk(link, match_type, cancel)
+        self.layout.walk(link, match_type, session_payloads, cancel)
+    }
+
+    /// This game's payload type is
+    /// [`PlayedFile`](crate::dataview::save::PlayedFile): one byte,
+    /// the file-select slot the committing save view was on.
+    fn parse_session_payload(&self, bytes: &[u8]) -> Result<tango_match::BoxedSessionPayload, tango_match::Error> {
+        match *bytes {
+            [slot] => Ok(Box::new(crate::dataview::save::PlayedFile(slot))),
+            _ => Err(tango_match::Error::MalformedSessionPayload),
+        }
     }
 
     /// Battle telemetry for one console: both units' HP and tile,
@@ -496,18 +507,27 @@ pub mod priming {
     /// Which save-select row a console's cartridge should be walked
     /// into. The screen keeps a fixed row per save file rather than
     /// listing whatever exists, so a save is only reachable at its own
-    /// row — which makes this a question about the save, and the crate's
-    /// own [`SaveSet`](crate::dataview::save::SaveSet) is what answers
-    /// it: the file it calls current, which is the one the save editor
-    /// opens on too. Falls back to row 0 for save memory the dataview
-    /// cannot read, which is the row the game's cursor starts on anyway.
+    /// row — and the [`PlayedFile`](crate::dataview::save::PlayedFile)
+    /// session payload *is* that row: the file-select slot the
+    /// committing save view was on, carried through the netplay commit
+    /// and the replay metadata so both peers and every future playback
+    /// resolve the identical row.
     ///
-    /// Both peers walk both consoles off the same save memory, so both
-    /// resolve the same row without anything crossing the wire.
-    fn save_row(save: &[u8]) -> u8 {
-        crate::dataview::save::SaveSet::parse(save)
-            .map(|set| set.current().slot())
-            .unwrap_or(0)
+    /// A console without one — a recording from before payloads
+    /// existed (whose rewritten session cart holds only the played
+    /// file), a probe fed raw dumps — lands on the file the cartridge
+    /// itself calls current; a payload naming a file the cartridge
+    /// doesn't hold reads the same as none. Row 0, the row the game's
+    /// cursor starts on, for save memory the dataview cannot read.
+    fn save_row(payload: Option<&dyn tango_match::SessionPayload>, save: &[u8]) -> u8 {
+        let Ok(set) = crate::dataview::save::SaveSet::parse(save) else {
+            return 0;
+        };
+        payload
+            .and_then(|p| (p as &dyn std::any::Any).downcast_ref::<crate::dataview::save::PlayedFile>())
+            .map(|file| file.0)
+            .filter(|slot| set.slots().contains(slot))
+            .unwrap_or_else(|| set.current().slot())
     }
 
     /// The US build (`A5TE`), where all of this was found.
@@ -1049,11 +1069,16 @@ pub mod priming {
         /// Traps run the console interpreted — both processors, since
         /// either side having any holds the JIT off — so they come off
         /// again the moment priming is done and the match runs compiled.
-        fn install(&'static self, link: &mut Link, second: bool) -> std::sync::Arc<std::sync::atomic::AtomicU32> {
+        fn install(
+            &'static self,
+            link: &mut Link,
+            second: bool,
+            session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
+        ) -> std::sync::Arc<std::sync::atomic::AtomicU32> {
             let confirms = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
             for seat in 0..2 {
                 let host = seat == 0;
-                let save_row = save_row(&link.console(seat).save_memory());
+                let save_row = save_row(session_payloads[seat], &link.console(seat).save_memory());
                 link.console(seat)
                     .set_traps(self.traps(host, second, save_row, host.then(|| confirms.clone())));
                 link.console(seat).set_traps7(Self::traps7());
@@ -1070,7 +1095,9 @@ pub mod priming {
         }
 
         /// Run both consoles from power-on into the agreed mode's link
-        /// battle. Flipping `cancel` fails the walk with
+        /// battle. `session_payloads` are the consoles' session
+        /// payloads in seat order — each console's save-select row (see
+        /// [`save_row`]). Flipping `cancel` fails the walk with
         /// [`Cancelled`](tango_match::Error::Cancelled) instead of
         /// finishing it — replay boots run on host worker threads whose
         /// teardown joins them.
@@ -1078,6 +1105,7 @@ pub mod priming {
             &'static self,
             link: &mut Link,
             match_type: (u8, u8),
+            session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
             cancel: Option<&std::sync::atomic::AtomicBool>,
         ) -> Result<(), tango_match::Error> {
             let started = std::time::Instant::now();
@@ -1085,7 +1113,7 @@ pub mod priming {
             // The registration lists Single first and Triple second, so
             // the mode is only which of the chooser's two buttons the
             // joiner takes.
-            let counter = self.install(link, match_type.0 != 0);
+            let counter = self.install(link, match_type.0 != 0, session_payloads);
 
             // The boot half, which is over when the board stands: it
             // answers nothing that depends on the other console, so it

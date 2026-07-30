@@ -105,6 +105,13 @@ pub enum SaveEditorEvent {
 pub trait SaveEditor: Send + Sync {
     /// Bundle a parsed save (+ its already-patched ROM) into renderable
     /// data.
+    ///
+    /// `session_payload` initializes the view with a session's recorded
+    /// choice — the payload committed beside a setup pane's bytes, or a
+    /// replay side's — so the view opens showing the save actually
+    /// being played (BN5DS's names which of the cartridge's two files
+    /// that is). `None` — a plain disk load — opens on the game's own
+    /// default.
     fn load(
         &'static self,
         game: crate::GameRef,
@@ -112,6 +119,7 @@ pub trait SaveEditor: Send + Sync {
         save_path: std::path::PathBuf,
         save: crate::BoxedSave,
         patch: Option<AppliedPatch>,
+        session_payload: Option<&dyn tango_match::SessionPayload>,
     ) -> LoadedSave;
 
     /// Render the save view. `play_button`: `None` hides the Play
@@ -144,4 +152,12 @@ pub trait SaveEditor: Send + Sync {
     /// Serialize the current in-memory save (staged edits included) —
     /// what a netplay commitment or session launch runs on.
     fn sram(&self, data: &LoadedSave) -> Vec<u8>;
+
+    /// The session payload describing what the view is on right now —
+    /// committed beside [`sram`](SaveEditor::sram)'s bytes, so the
+    /// peer's engine and the recording know what those bytes are
+    /// playing (BN5DS: which of the cartridge's two files the file
+    /// picker is showing). `None` for the (usual) game whose save view
+    /// has nothing to say.
+    fn session_payload(&self, data: &LoadedSave) -> Option<tango_match::BoxedSessionPayload>;
 }

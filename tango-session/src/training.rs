@@ -153,6 +153,8 @@ impl TrainingSession {
         let mut match_ = game.pvp.start(tango_match::StartConfig {
             roms: [rom.as_ref(), rom.as_ref()],
             saves: [Some(&save_sram), Some(&save_sram)],
+            // Training is bn6/exe6-only, which mints no payloads.
+            session_payloads: [None, None],
             match_type: TRAINING_MATCH_TYPE,
             rng_seed,
             rtc,

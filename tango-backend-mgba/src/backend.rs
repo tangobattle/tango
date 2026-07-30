@@ -92,6 +92,12 @@ impl tango_match::Backend for GbaBackend {
         crate::link::screen_layout()
     }
 
+    fn parse_session_payload(&self, bytes: &[u8]) -> Result<tango_match::BoxedSessionPayload, tango_match::Error> {
+        // The local game's: a backend answers for its own game, and a
+        // payload is parsed by the side that committed or recorded it.
+        self.local.parse_session_payload(bytes)
+    }
+
     fn frame_timing(&self) -> tango_match::FrameTiming {
         // The GBA frame clock: 280896 cycles at 2^24 Hz — the exact
         // rational behind [`EXPECTED_FPS`](crate::link::EXPECTED_FPS).

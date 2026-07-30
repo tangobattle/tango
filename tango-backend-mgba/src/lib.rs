@@ -171,6 +171,17 @@ pub trait GameSupport: Sync {
     /// the sink as it catches them firing (see
     /// [`CorePoller`](tango_match::telemetry::CorePoller)).
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<mgba::core::Core>>;
+
+    /// The game's half of [`tango_match::Backend::parse_session_payload`],
+    /// so a payload's type and its bytes stay one crate's knowledge.
+    /// Same contract: only called when there are bytes; the default is
+    /// for a game that mints no payloads, whose bytes have no type to
+    /// parse into. (No GBA game mints one today — the seam is here so
+    /// one that does needs no backend work.)
+    fn parse_session_payload(&self, bytes: &[u8]) -> Result<tango_match::BoxedSessionPayload, tango_match::Error> {
+        let _ = bytes;
+        Err(tango_match::Error::MalformedSessionPayload)
+    }
 }
 
 pub use backend::{GbaBackend, Seat};

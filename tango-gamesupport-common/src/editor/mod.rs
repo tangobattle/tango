@@ -38,11 +38,34 @@ pub trait GameSaveEditor: Send + Sync {
     /// whichever file is picked.
     ///
     /// The shell hides it while an edit session is open — changing what
-    /// is being edited midway would splice staged edits across saves.
+    /// is being edited midway would splice staged edits across saves —
+    /// and in read-only embeds (a pvp setup pane, the replay viewer),
+    /// where the view shows the save a session is playing, which is
+    /// nothing to switch: the session payload already picked it.
     /// Called per frame; `None` (the default) leaves the bar as it was.
     fn top_bar_control<'a>(&self, lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Option<Element<'a, Action>> {
         let _ = (lang, loaded);
         None
+    }
+
+    /// The [`tango_match::SessionPayload`] describing what the editor
+    /// is showing right now — what a netplay commit sends beside the
+    /// save's bytes. BN5DS answers which of the cartridge's two files
+    /// the picker is on; the default is for the (usual) game whose
+    /// save view has nothing to say.
+    fn session_payload(&self, loaded: &OpenSave) -> Option<tango_match::BoxedSessionPayload> {
+        let _ = loaded;
+        None
+    }
+
+    /// Aim a freshly loaded model at what `payload` says a session is
+    /// playing, before any art is baked — the load-time inverse of
+    /// [`session_payload`](GameSaveEditor::session_payload) (BN5DS
+    /// swaps the model's save to the payload's file). The default
+    /// ignores it: a game that mints no payloads is never handed one
+    /// of its own.
+    fn apply_session_payload(&self, model: &mut crate::model::SaveModel, payload: &dyn tango_match::SessionPayload) {
+        let _ = (model, payload);
     }
 
     /// Read-only body for `tab`. May borrow from `loaded` (most

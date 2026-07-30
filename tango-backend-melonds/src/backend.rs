@@ -28,12 +28,32 @@ pub trait GameSupport: Sync {
     /// takes the game's own host seat is the walk's business, not the
     /// caller's: the pair is symmetric, and both peers walk both
     /// consoles, so the walk simply assigns it.
+    ///
+    /// `session_payloads` are the consoles' session payloads in seat
+    /// order ([`StartConfig::session_payloads`](tango_match::StartConfig::session_payloads))
+    /// — each the typed value this game's own
+    /// [`parse_session_payload`](GameSupport::parse_session_payload)
+    /// minted, downcast back by the walk (BN5DS steers the game's own
+    /// file select by it). Part of the pure-function contract: both
+    /// peers pass identical pairs, and a replay boot passes the
+    /// recorded ones.
     fn prime(
         &self,
         link: &mut Link,
         match_type: (u8, u8),
+        session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
         cancel: Option<&AtomicBool>,
     ) -> Result<(), tango_match::Error>;
+
+    /// The game's half of [`tango_match::Backend::parse_session_payload`],
+    /// so the payload's type and its bytes stay one crate's knowledge.
+    /// Same contract: only called when there are bytes; the default is
+    /// for a game that mints no payloads, whose bytes have no type to
+    /// parse into.
+    fn parse_session_payload(&self, bytes: &[u8]) -> Result<tango_match::BoxedSessionPayload, tango_match::Error> {
+        let _ = bytes;
+        Err(tango_match::Error::MalformedSessionPayload)
+    }
 
     /// The telemetry reader for one console running this game. `player`
     /// is which console (and player) this poller answers for. Pure
@@ -94,7 +114,7 @@ impl tango_match::Backend for DsBackend {
         let mut link = Link::new(config.roms[0], config.saves, config.rtc)
             .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
 
-        prime_dark(self.support, &mut link, config.match_type, None)?;
+        prime_dark(self.support, &mut link, config.match_type, config.session_payloads, None)?;
         let handle = observe(&mut link, self.support);
 
         // The rollback loop is the seam's — this engine contributes the
@@ -118,10 +138,15 @@ impl tango_match::Backend for DsBackend {
             support: self.support,
             rom: config.roms[0].clone(),
             saves: config.saves.clone(),
+            session_payloads: config.session_payloads.each_ref().map(|p| p.as_ref().map(|p| p.clone_box())),
             rtc: config.rtc,
             match_type: config.match_type,
         };
         Ok(tango_match::ReplaySet::new(&config, boot))
+    }
+
+    fn parse_session_payload(&self, bytes: &[u8]) -> Result<tango_match::BoxedSessionPayload, tango_match::Error> {
+        self.support.parse_session_payload(bytes)
     }
 }
 
@@ -136,6 +161,9 @@ struct Boot {
     rom: Vec<u8>,
     /// Per-seat saves as they stood when the match started.
     saves: [Vec<u8>; 2],
+    /// Per-seat session payloads as recorded beside the saves, so the
+    /// re-primed walk makes the choices the live one did.
+    session_payloads: [Option<tango_match::BoxedSessionPayload>; 2],
     /// The negotiated match clock, so the re-sim lands where the
     /// original did.
     rtc: std::time::SystemTime,
@@ -147,7 +175,13 @@ struct Boot {
 impl tango_match::ReplayBoot for Boot {
     fn boot(&self, want_stats: bool, cancel: &AtomicBool) -> Result<tango_match::BootedReplay, tango_match::Error> {
         let mut link = self.pair()?;
-        prime_dark(self.support, &mut link, self.match_type, Some(cancel))?;
+        prime_dark(
+            self.support,
+            &mut link,
+            self.match_type,
+            self.session_payloads.each_ref().map(|p| p.as_deref()),
+            Some(cancel),
+        )?;
         // Session tick numbering starts after the walk, observed or
         // not (the walk drives the pair through the seam's tick, so it
         // counts otherwise). Captures then carry session ticks, which
@@ -216,12 +250,13 @@ fn prime_dark(
     support: &'static (dyn GameSupport + Send + Sync),
     link: &mut Link,
     match_type: (u8, u8),
+    session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
     cancel: Option<&AtomicBool>,
 ) -> Result<(), tango_match::Error> {
     for player in 0..2 {
         link.console(player).set_render(false);
     }
-    let walked = support.prime(link, match_type, cancel);
+    let walked = support.prime(link, match_type, session_payloads, cancel);
     for player in 0..2 {
         link.console(player).set_render(true);
     }

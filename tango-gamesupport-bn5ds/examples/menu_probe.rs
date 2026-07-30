@@ -302,8 +302,10 @@ fn main() {
             _ => &tango_gamesupport_bn5ds::pvp::priming::US,
         };
         let match_type = (one("match-type").map(|v| v.parse().unwrap()).unwrap_or(0), 0);
+        // No payloads: a probe fed raw dumps walks each cart's own
+        // current file, exactly like a session without one.
         let started = std::time::Instant::now();
-        match layout.walk(&mut link, match_type, None) {
+        match layout.walk(&mut link, match_type, [None, None], None) {
             Ok(()) => println!(
                 "primed in {:.1}s wall, connected={}",
                 started.elapsed().as_secs_f64(),

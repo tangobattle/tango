@@ -172,6 +172,17 @@ pub struct NegotiatedState {
     /// and on playback.
     pub ts: u64,
     pub save_data: Vec<u8>,
+    /// The sender's serialized session payload
+    /// (`tango_match::SessionPayload` — this crate sits below the type,
+    /// so the wire carries its bytes), riding beside `save_data`:
+    /// minted by the sender's save view, read only by the game's own
+    /// engine support. BN5DS sends which of its cartridge's two
+    /// file-select slots is being played; every other game sends
+    /// nothing (empty). Revealed with the save bytes because it
+    /// qualifies them: both peers prime both consoles, each steered by
+    /// its side's payload, and the pair lands in the replay metadata
+    /// the same way.
+    pub session_payload: Vec<u8>,
 }
 
 impl NegotiatedState {

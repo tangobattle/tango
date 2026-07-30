@@ -75,4 +75,12 @@ pub mod derive;
 // and Y) and a stylus sample rides behind a flag bit in the element's
 // first byte; a 0x51 peer would read a touched element's coordinate
 // bytes as the next element and the stream would shear.)
-pub const PROTOCOL_VERSION: u32 = 0x52;
+// 0x53: the commit reveal carries an opaque session payload beside the
+// save bytes (NegotiatedState grew `session_payload` — a 0x52 peer's
+// reveal fails to decode against ours), minted by the sender's save
+// view and read only by the game's pvp engine. BN5DS uses it to say
+// which of the committed cartridge's two files is being played instead
+// of rewriting the committed bytes to carry the choice. Priming steers
+// the game's own file select by it on both peers, so even if the
+// reveal decoded, the walks — and the simulations — would disagree.
+pub const PROTOCOL_VERSION: u32 = 0x53;

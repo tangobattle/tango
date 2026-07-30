@@ -951,7 +951,10 @@ impl App {
         // The view state rides inside the LoadedSave, so swapping in a
         // freshly-built one drops any in-progress edit with the save it
         // was staged against — nothing to reset by hand.
-        self.loaded = Some(selection::build(game, rom, save_path, save, &patches_path, patch_meta));
+        // A disk load carries no session payload — the editor opens on
+        // the game's own default and the file picker takes it from
+        // there.
+        self.loaded = Some(selection::build(game, rom, save_path, save, &patches_path, patch_meta, None));
     }
 }
 

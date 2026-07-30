@@ -900,6 +900,8 @@ impl State {
             match_ts,
             local_save_data: local_commit.state.save_data,
             remote_save_data: peer_state.save_data,
+            local_session_payload: local_commit.state.session_payload,
+            remote_session_payload: peer_state.session_payload,
             local_settings,
             remote_settings,
             link_code,

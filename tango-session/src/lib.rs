@@ -105,6 +105,14 @@ pub enum Error {
         #[source]
         source: tango_gamesupport::Error,
     },
+    /// A side's committed session-payload bytes didn't parse as its
+    /// game's payload type.
+    #[error("parse {side} session payload: {source}")]
+    ParseSessionPayload {
+        side: &'static str,
+        #[source]
+        source: tango_match::Error,
+    },
     /// A side's negotiated settings arrived without game info.
     #[error("{side} settings missing game info")]
     MissingGameInfo { side: &'static str },

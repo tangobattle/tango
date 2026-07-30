@@ -42,6 +42,8 @@ zstd.workspace = true
 
 datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }
 tango-library = { path = "../tango-library", default-features = false }
+# For the typed session payload a commit serializes onto the wire.
+tango-match = { path = "../tango-match" }
 tango-net-protocol = { path = "../tango-net-protocol" }
 tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"] }
 tango-session = { path = "../tango-session" }

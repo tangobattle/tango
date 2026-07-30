@@ -12,6 +12,8 @@ license = "GPL-3.0-or-later"
 [dependencies]
 tango-gamesupport-common = { path = "../tango-gamesupport-common", features = ["ui"] }
 tango-gamesupport-bn5ds-dataview = { path = "../tango-gamesupport-bn5ds-dataview" }
+# For the session-payload surface (`GameSaveEditor::session_payload`).
+tango-match = { path = "../tango-match" }
 iced = { workspace = true }
 # The editor layer's dropdowns are sweeten's, which is what
 # `chunky_pick_list` is typed for.

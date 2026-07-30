@@ -70,21 +70,6 @@ where
     fn to_sram_dump(&self) -> Vec<u8>;
     fn as_raw_wram(&self) -> std::borrow::Cow<'_, [u8]>;
 
-    /// The save memory a *session* runs on, as against
-    /// [`to_sram_dump`](Save::to_sram_dump)'s bytes of the save file
-    /// itself. The two differ only for a file that holds several of the
-    /// game's saves while a session plays one of them: BN5DS's
-    /// cartridge carries two, and a primed match walks the game's own
-    /// file select, so the save being played has to be the one that
-    /// screen opens on.
-    ///
-    /// Never written to disk — a session's writes stay in its own
-    /// memory — so the file keeps whatever it had. Games with one save
-    /// per file leave this alone.
-    fn to_session_sram(&self) -> Vec<u8> {
-        self.to_sram_dump()
-    }
-
     fn rebuild_checksum(&mut self);
 
     fn view_chips(&self) -> Option<Box<dyn ChipsView + '_>> {

@@ -812,8 +812,11 @@ pub fn view<'a>(
     // the left of the cluster, so Edit / Play keep the right edge. It
     // sits outside the edit-mode swap above: what it selects isn't an
     // action, and it must not fade with Edit turning into Save/Cancel.
-    // Hidden during an edit session — see `GameSaveEditor`.
-    if !editing_session {
+    // Hidden during an edit session, and in read-only embeds (a pvp
+    // setup pane, the replay viewer): there the view shows the save a
+    // session is playing — picked by its session payload — which is
+    // nothing to switch. See `GameSaveEditor`.
+    if editable && !editing_session {
         if let Some(control) = loaded.save_editor.top_bar_control(lang, loaded) {
             actions_tail = row![control, actions_tail]
                 .spacing(6)

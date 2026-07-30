@@ -31,6 +31,20 @@ message Metadata {
     // while it existed still have it on the wire, hence reserved rather than
     // reused.
     reserved 4;
+    // Field 5 was an interim `selected_save` uint32 — varint on the wire —
+    // from the unreleased number-steered save-select design, replaced the
+    // same day by the opaque payload below. Recordings from that build
+    // exist, and a length-delimited field at the same number would fail
+    // to decode them, hence reserved rather than reused.
+    reserved 5;
+    // Opaque bytes recorded beside this side's SRAM frame: the session
+    // payload its save view committed, handed back to the game's pvp
+    // engine on playback so it makes the choices the live match made.
+    // Only the game's own code reads it — BN5DS stores which of its
+    // cartridge's two file-select slots the session plays. Empty for
+    // every other game, and for every recording that predates the
+    // field.
+    bytes session_payload = 6;
   }
 
   uint64 ts = 1;

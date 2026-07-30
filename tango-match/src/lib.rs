@@ -38,7 +38,10 @@ pub mod throttler;
 pub use audio::{AudioDrain, Drained, SideSource};
 pub use solo::{Console, Solo, SoloConfig};
 pub use engine::Match;
-pub use link::{Backend, FrameTiming, Link, PeerRom, Screen, ScreenLayout, Side, Snapshot, StartConfig};
+pub use link::{
+    parse_session_payloads, Backend, BoxedSessionPayload, FrameTiming, Link, PeerRom, Screen, ScreenLayout,
+    SessionPayload, Side, Snapshot, StartConfig,
+};
 pub use replay::{
     BootedReplay, Capture, LiveFrames, Playback, Replay, ReplayBoot, ReplayConfig, ReplaySet, SeekStep, StatsPass,
 };
@@ -72,6 +75,12 @@ pub enum Error {
     /// the option isn't available and carries on.
     #[error("{0}")]
     Unsupported(&'static str),
+
+    /// A side's session-payload bytes didn't parse as this game's
+    /// payload type ([`Backend::parse_session_payload`]) — a corrupt
+    /// or foreign recording, or a peer speaking garbage.
+    #[error("malformed session payload")]
+    MalformedSessionPayload,
 }
 
 /// The joypad bits a match speaks, engine-neutral.

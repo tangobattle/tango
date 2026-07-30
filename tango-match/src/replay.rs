@@ -1072,6 +1072,11 @@ pub struct ReplayConfig {
     pub roms: [Vec<u8>; 2],
     /// Per-seat save memory as it stood when the match started.
     pub saves: [Vec<u8>; 2],
+    /// Per-seat session payloads as recorded beside the saves — see
+    /// [`StartConfig::session_payloads`](crate::StartConfig::session_payloads);
+    /// the replay boot re-primes with the same pair the live match
+    /// used. `None` for recordings from before payloads existed.
+    pub session_payloads: [Option<crate::BoxedSessionPayload>; 2],
     /// The recorded input rows, `(p0, p1)` per tick.
     pub inputs: Arc<Vec<[crate::HostInput; 2]>>,
     /// The match's negotiated seed and clock, so re-simulation lands

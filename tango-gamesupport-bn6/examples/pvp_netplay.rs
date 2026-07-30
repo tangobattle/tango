@@ -39,6 +39,7 @@ fn build(
         .start(tango_match::StartConfig {
             roms: [&roms[0], &roms[1]],
             saves: [Some(&saves[0]), Some(&saves[1])],
+            session_payloads: [None, None],
             rng_seed: *b"sio-probe-seed!!",
             rtc: std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_752_000_000),
             match_type: (0, 0),

@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use tango_gamesupport_bn5ds_dataview::save::{Save, SaveSet};
+use tango_gamesupport_bn5ds_dataview::save::{PlayedFile, Save, SaveSet};
 use tango_gamesupport_common::dataview::save::Save as _;
 use tango_gamesupport_common::editor::loaded::OpenSave;
 use tango_gamesupport_common::editor::view as sv;
@@ -116,6 +116,31 @@ impl GameSaveEditor for Ui {
         loaded: &'a OpenSave,
     ) -> Option<iced::Element<'a, Action>> {
         file_switcher(lang, loaded)
+    }
+
+    /// Which file the switcher is on — [`PlayedFile`], the slot a
+    /// netplay commit reveals beside the dump so the peers' priming
+    /// and the recording play the file on screen here.
+    fn session_payload(&self, loaded: &OpenSave) -> Option<tango_match::BoxedSessionPayload> {
+        Some(Box::new(PlayedFile(file_of(loaded)?.slot())))
+    }
+
+    /// Open on the payload's file — the setup panes and the replay
+    /// viewer land here with the file a session actually plays, which
+    /// the parse alone can't know (it opens on the cart's most recent).
+    fn apply_session_payload(
+        &self,
+        model: &mut tango_gamesupport_common::model::SaveModel,
+        payload: &dyn tango_match::SessionPayload,
+    ) {
+        if let Some(&PlayedFile(slot)) = (payload as &dyn std::any::Any).downcast_ref::<PlayedFile>() {
+            // A slot this cart doesn't hold (a damaged dump) is a
+            // no-op: the view stays on the parse's own default, which
+            // is what a session falls back to as well. The invalidation
+            // can be dropped — the shell applies payloads before any
+            // art is baked.
+            let _ = ShowFile(slot).apply(model);
+        }
     }
 
     fn render<'a>(
