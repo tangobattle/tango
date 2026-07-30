@@ -1,0 +1,260 @@
+//! Priming matrix: run the priming walk over every (host file, joiner
+//! file) combination the given cartridge dumps can produce.
+//!
+//! This is the harness that cornered the "no battle 2400 frames past
+//! the board" stall: the game's Net Battle handshake wedges for some
+//! flash block layouts (see `to_session_sram` in the dataview crate),
+//! and which layout a cartridge is in rotates as it saves — so the
+//! wild flake was deterministic here, as a specific host×joiner cell.
+//! Each dump's file-select slots each become an identity via
+//! `to_session_sram()` — the image a real session boots — so this
+//! also regression-tests that transform's answer, the one-file
+//! session cart: every cell must be OK. The walk's own log lines
+//! carry the diagnostics when a cell stalls.
+//!
+//! Usage: priming_matrix <rom.nds> <flash.sav>... [--jp] [--type T]
+//!        [--rtc SECS[,SECS...]] [--emit DIR]
+//!
+//! `--emit DIR` writes each identity's session sram to
+//! DIR/<label>.sav (for menu_probe) instead of running the matrix.
+//!
+//! The flags below run one walk instead, with the joiner's flash
+//! hand-built from the emitted identities — the geometry surgery the
+//! stall was isolated with:
+//!   --host FILE --joiner FILE   the two consoles' srams
+//!   --graft FILE --range LO:HI      donor's live save image bytes
+//!   --graft FILE --flashrange LO:HI donor's raw flash bytes
+//!   --copywithin SRC:DST:LEN        move joiner flash bytes (repeatable)
+//!   --setgen BLOCK:HEX              restamp a joiner pair's counter
+//!   --host-setgen BLOCK:HEX         the same on the host
+//!   --erase LO:HI                   fill joiner flash with 0xff
+
+use tango_gamesupport_bn5ds::dataview::save::{
+    SaveSet, BLOCK_SIZE, CHECKSUM_OFFSET, GENERATION_OFFSET, MAGIC, MAGIC_OFFSET, SAVE_IMAGE_SIZE, SIZE,
+};
+use tango_gamesupport_common::dataview::save::Save as _;
+
+/// The game's own checksum (see dataview save.rs).
+fn checksum(buf: &[u8]) -> u16 {
+    let mut remaining = buf.len() as u16;
+    let mut sum = 0u16;
+    for pair in buf.chunks_exact(2) {
+        sum = sum.wrapping_add(u16::from_le_bytes([pair[0], pair[1]]) ^ remaining);
+        remaining = remaining.wrapping_sub(2);
+    }
+    sum
+}
+
+fn rebuild_block(data: &mut [u8], block: usize) {
+    let base = block * BLOCK_SIZE;
+    let cs2 = checksum(&data[base..][..SAVE_IMAGE_SIZE]);
+    data[base + CHECKSUM_OFFSET + 4..][..2].copy_from_slice(&cs2.to_le_bytes());
+    data[base + CHECKSUM_OFFSET + 6..][..2].copy_from_slice(&0u16.wrapping_sub(cs2).to_le_bytes());
+    let cs1 = checksum(&data[base + CHECKSUM_OFFSET + 4..base + GENERATION_OFFSET + 4]);
+    data[base + CHECKSUM_OFFSET..][..2].copy_from_slice(&cs1.to_le_bytes());
+    data[base + CHECKSUM_OFFSET + 2..][..2].copy_from_slice(&0u16.wrapping_sub(cs1).to_le_bytes());
+}
+
+/// The live (highest-generation formatted) block of a stamped session
+/// sram — the file the game will mount as current.
+fn live_block(data: &[u8]) -> usize {
+    (0..SIZE / BLOCK_SIZE)
+        .filter(|&b| &data[b * BLOCK_SIZE + MAGIC_OFFSET..][..MAGIC.len()] == MAGIC)
+        .max_by_key(|&b| u32::from_le_bytes(data[b * BLOCK_SIZE + GENERATION_OFFSET..][..4].try_into().unwrap()))
+        .expect("no formatted block")
+}
+
+struct Identity {
+    label: String,
+    sram: Vec<u8>,
+}
+
+fn main() {
+    env_logger::Builder::from_default_env()
+        .filter(Some("tango_gamesupport_bn5ds"), log::LevelFilter::Info)
+        .init();
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let rom = std::fs::read(&args[0]).expect("rom unreadable");
+
+    let mut layout = &tango_gamesupport_bn5ds::pvp::priming::US;
+    let mut match_type = 0u8;
+    let mut rtcs: Vec<u64> = vec![1_770_000_000];
+    let mut emit: Option<String> = None;
+    let mut graft_host: Option<String> = None;
+    let mut graft_joiner: Option<String> = None;
+    let mut graft_from: Option<String> = None;
+    let mut graft_range: Option<(usize, usize)> = None;
+    let mut flash_range: Option<(usize, usize)> = None;
+    let mut erase_range: Option<(usize, usize)> = None;
+    let mut copy_within: Vec<(usize, usize, usize)> = Vec::new();
+    let mut set_gen: Vec<(usize, u32)> = Vec::new();
+    let mut host_set_gen: Vec<(usize, u32)> = Vec::new();
+    let mut dumps: Vec<&str> = Vec::new();
+    let mut it = args[1..].iter();
+    while let Some(a) = it.next() {
+        if a == "--jp" {
+            layout = &tango_gamesupport_bn5ds::pvp::priming::JP;
+        } else if a == "--type" {
+            match_type = it.next().expect("--type needs a value").parse().expect("type");
+        } else if a == "--emit" {
+            emit = Some(it.next().expect("--emit needs a directory").clone());
+        } else if a == "--host" {
+            graft_host = Some(it.next().expect("--host needs a file").clone());
+        } else if a == "--joiner" {
+            graft_joiner = Some(it.next().expect("--joiner needs a file").clone());
+        } else if a == "--graft" {
+            graft_from = Some(it.next().expect("--graft needs a file").clone());
+        } else if a == "--copywithin" {
+            let r = it.next().expect("--copywithin needs SRC:DST:LEN");
+            let mut parts = r.split(':').map(|s| usize::from_str_radix(s.trim_start_matches("0x"), 16).expect("hex"));
+            copy_within.push((parts.next().unwrap(), parts.next().unwrap(), parts.next().unwrap()));
+        } else if a == "--setgen" {
+            let r = it.next().expect("--setgen needs BLOCK:HEX");
+            let (b, g) = r.split_once(':').expect("BLOCK:HEX");
+            set_gen.push((b.parse().expect("block"), u32::from_str_radix(g.trim_start_matches("0x"), 16).expect("hex")));
+        } else if a == "--host-setgen" {
+            let r = it.next().expect("--host-setgen needs BLOCK:HEX");
+            let (b, g) = r.split_once(':').expect("BLOCK:HEX");
+            host_set_gen.push((b.parse().expect("block"), u32::from_str_radix(g.trim_start_matches("0x"), 16).expect("hex")));
+        } else if a == "--erase" {
+            let r = it.next().expect("--erase needs LO:HI");
+            let (lo, hi) = r.split_once(':').expect("LO:HI");
+            erase_range = Some((
+                usize::from_str_radix(lo.trim_start_matches("0x"), 16).expect("hex"),
+                usize::from_str_radix(hi.trim_start_matches("0x"), 16).expect("hex"),
+            ));
+        } else if a == "--flashrange" {
+            let r = it.next().expect("--flashrange needs LO:HI");
+            let (lo, hi) = r.split_once(':').expect("LO:HI");
+            flash_range = Some((
+                usize::from_str_radix(lo.trim_start_matches("0x"), 16).expect("hex"),
+                usize::from_str_radix(hi.trim_start_matches("0x"), 16).expect("hex"),
+            ));
+        } else if a == "--range" {
+            let r = it.next().expect("--range needs LO:HI");
+            let (lo, hi) = r.split_once(':').expect("LO:HI");
+            graft_range = Some((
+                usize::from_str_radix(lo.trim_start_matches("0x"), 16).expect("hex"),
+                usize::from_str_radix(hi.trim_start_matches("0x"), 16).expect("hex"),
+            ));
+        } else if a == "--rtc" {
+            rtcs = it
+                .next()
+                .expect("--rtc needs seconds")
+                .split(',')
+                .map(|s| s.parse().expect("seconds"))
+                .collect();
+        } else {
+            dumps.push(a);
+        }
+    }
+
+    // Graft mode: one walk, with a byte range of the joiner's live save
+    // image replaced by the graft donor's — both srams pre-stamped
+    // identity images (from --emit).
+    if let (Some(host), Some(joiner)) = (&graft_host, &graft_joiner) {
+        let mut host_sram = std::fs::read(host).expect("host sram");
+        let mut joiner_sram = std::fs::read(joiner).expect("joiner sram");
+        for (block, gen) in host_set_gen {
+            for b in [block, block ^ 1] {
+                host_sram[b * BLOCK_SIZE + GENERATION_OFFSET..][..4].copy_from_slice(&gen.to_le_bytes());
+                rebuild_block(&mut host_sram, b);
+            }
+            println!("host blocks {block}/{} gen set to {gen:#x}", block ^ 1);
+        }
+        if let (Some(from), Some((lo, hi))) = (&graft_from, flash_range) {
+            let donor = std::fs::read(from).expect("graft sram");
+            joiner_sram[lo..hi].copy_from_slice(&donor[lo..hi]);
+            println!("flash graft [{lo:#x}..{hi:#x}) into joiner");
+        } else if let (Some(from), Some((lo, hi))) = (&graft_from, graft_range) {
+            let donor = std::fs::read(from).expect("graft sram");
+            let src = live_block(&donor) * BLOCK_SIZE;
+            let dst = live_block(&joiner_sram);
+            let patch = donor[src + lo..src + hi].to_vec();
+            for block in [dst, dst ^ 1] {
+                joiner_sram[block * BLOCK_SIZE + lo..block * BLOCK_SIZE + hi].copy_from_slice(&patch);
+                rebuild_block(&mut joiner_sram, block);
+            }
+            println!("graft [{lo:#x}..{hi:#x}) into joiner block {dst}");
+        }
+        for (src, dst, len) in copy_within {
+            joiner_sram.copy_within(src..src + len, dst);
+            println!("copied joiner flash [{src:#x}..{:#x}) to {dst:#x}", src + len);
+        }
+        for (block, gen) in set_gen {
+            for b in [block, block ^ 1] {
+                joiner_sram[b * BLOCK_SIZE + GENERATION_OFFSET..][..4].copy_from_slice(&gen.to_le_bytes());
+                rebuild_block(&mut joiner_sram, b);
+            }
+            println!("blocks {block}/{} gen set to {gen:#x}", block ^ 1);
+        }
+        if let Some((lo, hi)) = erase_range {
+            joiner_sram[lo..hi].fill(0xff);
+            println!("erased joiner flash [{lo:#x}..{hi:#x})");
+        }
+        let rtc = std::time::UNIX_EPOCH + std::time::Duration::from_secs(rtcs[0]);
+        let mut link =
+            tango_backend_melonds::Link::new(&rom, [Some(host_sram.as_slice()), Some(joiner_sram.as_slice())], rtc)
+                .expect("link boot");
+        match layout.walk(&mut link, (match_type, 0), None) {
+            Ok(()) => println!("RESULT: OK"),
+            Err(e) => println!("RESULT: FAILED {e:?}"),
+        }
+        return;
+    }
+
+    let mut identities: Vec<Identity> = Vec::new();
+    for (d, path) in dumps.iter().enumerate() {
+        let data = std::fs::read(path).expect("flash dump unreadable");
+        let set = SaveSet::parse(&data).expect("not this game's flash");
+        let current = set.current().slot();
+        println!(
+            "dump {}: {path} (slots {:?}, current file {})",
+            (b'A' + d as u8) as char,
+            set.slots(),
+            current + 1,
+        );
+        for slot in set.slots() {
+            identities.push(Identity {
+                label: format!("{}/file{}", (b'A' + d as u8) as char, slot + 1),
+                sram: set.save(slot).unwrap().to_session_sram(),
+            });
+        }
+    }
+
+    if let Some(dir) = emit {
+        for id in &identities {
+            let path = format!("{dir}/{}.sav", id.label.replace('/', "-"));
+            std::fs::write(&path, &id.sram).expect("emit");
+            println!("wrote {path}");
+        }
+        return;
+    }
+
+    let mut failures = Vec::new();
+    for rtc_secs in &rtcs {
+        let rtc = std::time::UNIX_EPOCH + std::time::Duration::from_secs(*rtc_secs);
+        for host in &identities {
+            for joiner in &identities {
+                println!("--- host {} vs joiner {} (rtc {rtc_secs}, type {match_type})", host.label, joiner.label);
+                let mut link = tango_backend_melonds::Link::new(
+                    &rom,
+                    [Some(host.sram.as_slice()), Some(joiner.sram.as_slice())],
+                    rtc,
+                )
+                .expect("link boot");
+                match layout.walk(&mut link, (match_type, 0), None) {
+                    Ok(()) => println!("    OK"),
+                    Err(e) => {
+                        println!("    FAILED: {e:?}");
+                        failures.push(format!("host {} vs joiner {} rtc {rtc_secs}", host.label, joiner.label));
+                    }
+                }
+            }
+        }
+    }
+    println!("=== {} failures", failures.len());
+    for f in &failures {
+        println!("    {f}");
+    }
+}

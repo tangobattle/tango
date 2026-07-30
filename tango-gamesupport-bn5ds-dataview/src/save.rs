@@ -188,9 +188,7 @@ impl SaveSet {
         // are identical on an intact cart, so the tie between them is
         // broken toward the first block just to be deterministic.
         let mut files: Vec<(u8, usize)> = Vec::new();
-        for block in (0..SIZE / BLOCK_SIZE)
-            .filter(|block| &data[block * BLOCK_SIZE + MAGIC_OFFSET..][..MAGIC.len()] == MAGIC)
-        {
+        for block in (0..SIZE / BLOCK_SIZE).filter(|&block| formatted(data, block)) {
             let slot = data[block * BLOCK_SIZE + FILE_SLOT_OFFSET];
             match files.iter_mut().find(|(s, _)| *s == slot) {
                 Some(file) if generation(data, block) > generation(data, file.1) => file.1 = block,
@@ -304,35 +302,33 @@ impl tango_gamesupport_common::dataview::save::Save for Save {
         self.data.copy_within(base..base + BLOCK_SIZE, twin);
     }
 
-    /// The cartridge with *this* file made the current one, so the
-    /// game's own file select opens on it — which is what a primed match
-    /// walks through, and the only way a session plays this save rather
-    /// than the cartridge's other one.
+    /// The cartridge a session boots from: erased flash except *this*
+    /// file's live pair of blocks. The one file on the cart is by
+    /// definition the current one — so the game's file select opens on
+    /// it with no counter stamping at all — and, more than that, the
+    /// only cartridge state in the session is the file being played.
     ///
-    /// Being current is what the generation counter says, so this stamps
-    /// this file's pair past every other block's count and re-checksums
-    /// them: the same shape the game leaves behind when it saves, and
-    /// the save image itself is untouched. Already-current files come
-    /// back byte for byte. Nothing here reaches disk — the file keeps
-    /// its own counters.
+    /// The blank slate is not just tidiness. A primed boot *saves*, and
+    /// the game spreads its saves across the flash's three block pairs
+    /// by generation counter, wherever the cartridge's wear history
+    /// points; for many of the resulting layouts, a Net Battle between
+    /// file 1 hosting and file 2 joining stalls forever in the
+    /// pre-battle exchange — the game's own ten-second comm timeout
+    /// tears the association down and priming reports no battle past
+    /// the board. A real cartridge drifts through those layouts as it
+    /// saves, which is what made priming flake *sometimes* between the
+    /// same two saves (mapped cell by cell with the `priming_matrix`
+    /// example in the game crate). Handing the session a cart that
+    /// holds nothing but the played file takes the whole rotation out
+    /// of the picture.
+    ///
+    /// Nothing here reaches disk — the real dump keeps its other file
+    /// and all its counters.
     fn to_session_sram(&self) -> Vec<u8> {
         let mut data = self.data.clone();
-        let mine = generation(&data, self.block);
-        let others = (0..SIZE / BLOCK_SIZE)
-            .filter(|&block| formatted(&data, block) && data[block * BLOCK_SIZE + FILE_SLOT_OFFSET] != self.slot)
-            .map(|block| generation(&data, block))
-            .max();
-        // Already current when nothing else counts as high — the game's
-        // own mount would pick this file as it stands.
-        let Some(others) = others.filter(|&others| others >= mine) else {
-            return data;
-        };
-        for block in [self.block, self.block ^ 1] {
-            if !formatted(&data, block) {
-                continue;
-            }
-            data[block * BLOCK_SIZE + GENERATION_OFFSET..][..4].copy_from_slice(&(others + 1).to_le_bytes());
-            rebuild_block(&mut data, block);
+        let keep = [self.block, self.block ^ 1];
+        for block in (0..SIZE / BLOCK_SIZE).filter(|block| !keep.contains(block)) {
+            data[block * BLOCK_SIZE..][..BLOCK_SIZE].fill(0xff);
         }
         data
     }
@@ -678,19 +674,41 @@ mod tests {
         // current — and what the game's file select would open on.
         assert_eq!(set.current().slot(), 0);
 
-        // Starting a session from file 1 hands over a cartridge whose
-        // current file is file 1, without touching its save image.
+        // Starting a session from file 1 hands over a cartridge that
+        // holds file 1 alone, untouched — one file is current by
+        // definition, and no other cartridge state rides along.
         let file1 = set.save(1).unwrap();
         let session = SaveSet::parse(&file1.to_session_sram()).unwrap();
+        assert_eq!(session.slots(), vec![1]);
         assert_eq!(session.current().slot(), 1);
         assert_eq!(session.save(1).unwrap().view_chips().unwrap().chip(0, 0).unwrap().id, 2);
-        // The other file is still there, unchanged and still readable.
-        assert_eq!(session.save(0).unwrap().view_chips().unwrap().chip(0, 0).unwrap().id, 1);
-        // The file on disk keeps its own counters.
+        assert!(session.save(0).is_none());
+        // The file on disk keeps both files and its own counters.
         assert_eq!(file1.to_sram_dump(), data);
 
-        // The already-current file needs no rewrite at all.
-        assert_eq!(set.save(0).unwrap().to_session_sram(), data);
+        // The already-current file gets the same one-file cart — the
+        // erasure is not a question of who was current.
+        let session = SaveSet::parse(&set.save(0).unwrap().to_session_sram()).unwrap();
+        assert_eq!(session.current().slot(), 0);
+        assert_eq!(session.save(0).unwrap().view_chips().unwrap().chip(0, 0).unwrap().id, 1);
+        assert!(session.save(1).is_none());
+    }
+
+    #[test]
+    fn a_session_cartridge_is_erased_but_for_the_played_pair() {
+        let data = two_files();
+        // File 0's live pair is blocks 0/1, file 1's blocks 4/5.
+        for (file, live) in [(0u8, 0usize), (1, 4)] {
+            let session = SaveSet::parse(&data).unwrap().save(file).unwrap().to_session_sram();
+            for block in 0..SIZE / BLOCK_SIZE {
+                let bytes = &session[block * BLOCK_SIZE..][..BLOCK_SIZE];
+                if block == live || block == live + 1 {
+                    assert_eq!(bytes, &data[block * BLOCK_SIZE..][..BLOCK_SIZE], "block {block}");
+                } else {
+                    assert!(bytes.iter().all(|&b| b == 0xff), "block {block}");
+                }
+            }
+        }
     }
 
     #[test]
