@@ -65,7 +65,6 @@ fn main() {
                     revision: game.revision,
                 },
                 want_stats: false,
-                want_round_marks: false,
                 disable_bgm: false,
             })
             .expect("open_replay"),

@@ -28,14 +28,18 @@ impl ScannedReplay {
 /// Output of [`compute_stats`]. Cheap to copy.
 #[derive(Clone, Copy, Debug)]
 pub struct ReplayStats {
-    /// Sum of `rounds[i].len()` from the decoded replay — one
-    /// tick per recorded input pair. Convert at 60 FPS for
+    /// One tick per recorded input pair. Convert at 60 FPS for
     /// wall-clock duration.
     pub tick_count: u32,
-    /// Number of rounds the recorded match got through. 2-3 for
-    /// a finished best-of-3; whatever made it to disk for
-    /// incompletes.
-    pub round_count: u32,
+    /// Number of rounds the recorded match got through — 2-3 for a
+    /// finished best-of-3, whatever made it to disk for incompletes.
+    ///
+    /// `None` until somebody has re-simulated the recording: a replay is
+    /// inputs, and only the games' telemetry knows what those inputs
+    /// added up to. [`compute_stats`] never fills this in — a host that
+    /// caches match analyses (tango does, as `.stats` sidecars) can,
+    /// from the analysis it already has.
+    pub round_count: Option<u32>,
     /// Whether the recorded stream ended with `END_OF_REPLAY`.
     pub is_complete: bool,
 }
@@ -106,7 +110,8 @@ pub fn compute_stats(storage: &dyn Storage, path: &std::path::Path) -> std::io::
     let replay = tango_replay::Replay::decode(storage.open(path)?)?;
     Ok(ReplayStats {
         tick_count: replay.inputs.len() as u32,
-        round_count: replay.round_starts.len() as u32,
+        // Not a header fact — see [`ReplayStats::round_count`].
+        round_count: None,
         is_complete: replay.is_complete,
     })
 }

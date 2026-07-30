@@ -49,106 +49,82 @@ fn round_outcome(o: tango_match::analysis::BattleOutcome) -> RoundOutcome {
 /// per side (`[you, opponent]`); pass the local side's twice when only
 /// it is available.
 ///
-/// `planned` fixes the layout upfront: per-round tick counts from the
-/// recording's round markers (the recorded input pairs per round).
-/// Stats ticks are session-absolute — the recording is one contiguous
-/// stream — so the markers' cumulative boundaries are the rounds'
-/// positions on that same timebase: round `i` spans
-/// `[Σ planned[..i], Σ planned[..=i])`, and every chart cooked with the
-/// same plan shares the scrubber's tick scale by construction. Rounds
-/// the stats don't cover yet are padded in as empty segments at their
-/// planned width, so a live analysis draws into a stable frame instead
-/// of continually rescaling it. Without a plan, each round anchors at
-/// its own first sample.
+/// The stats are one flat series per kind on the recording's timebase
+/// with the rounds marking it up, so cooking is a matter of cutting each
+/// series at those marks and normalizing x within the round. A round's
+/// segment runs its full tick span, which means the input-less round
+/// intro reads as trace-free space before the first sample — the same
+/// convention the playback transport draws, so the chart starts
+/// identically everywhere.
+///
+/// `total_ticks` is the recording's length, and giving it fixes the
+/// chart's timeline: the segments' weights then sum to the whole
+/// recording no matter how much of it has been analyzed, and since a
+/// segment's width is its span while x inside it is the offset over that
+/// same span, every tick sits at the same place throughout. A fold
+/// finding its next round splits the last segment in two and moves
+/// nothing already drawn. Without it, the last round stops at its final
+/// reading and the chart covers only what was analyzed.
 pub fn cook_hp_rounds(
     stats: &tango_match::analysis::MatchStats,
     loadeds: [Option<&tango_gamesupport::LoadedSave>; 2],
-    planned: Option<&[u32]>,
+    total_ticks: Option<u32>,
 ) -> (Vec<CookedHpRound>, f32) {
     let max_hp = stats
-        .rounds
+        .hp
         .iter()
-        .flat_map(|r| r.hp.iter())
         .map(|p| p.local.max(p.remote))
         .max()
         .unwrap_or(0)
         .max(1) as f32;
-    let n = stats.rounds.len().max(planned.map(|p| p.len()).unwrap_or(0));
-    // Cumulative round boundaries on the recording's timebase.
-    let starts: Vec<u32> = planned
-        .map(|p| {
-            p.iter()
-                .scan(0u32, |acc, &len| {
-                    let start = *acc;
-                    *acc += len;
-                    Some(start)
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    let rounds = (0..n)
+    let rounds = (0..stats.rounds.len())
         .map(|i| {
-            let full = planned.and_then(|p| p.get(i)).map(|&t| t as f32);
-            let Some(r) = stats.rounds.get(i) else {
-                // Not simulated yet: an empty segment at its final width.
+            let outcome = stats.rounds[i].outcome.map(|(_, o)| round_outcome(o));
+            let Some((start, end)) = stats.round_span(i, total_ticks) else {
                 return CookedHpRound {
-                    outcome: None,
+                    outcome,
                     trace: vec![],
                     custom: vec![],
                     chip_uses: [vec![], vec![]],
-                    weight: full.unwrap_or(0.0),
+                    weight: 0.0,
                 };
             };
-            let last = match r.hp.last() {
-                Some(last) if r.hp.len() >= 2 => last,
-                _ => {
-                    return CookedHpRound {
-                        outcome: r.outcome.map(round_outcome),
-                        trace: vec![],
-                        custom: vec![],
-                        chip_uses: [vec![], vec![]],
-                        weight: full.unwrap_or(0.0),
-                    };
-                }
-            };
-            // With a planned layout the span is exactly the planned tick
-            // count, so the frame is identical across empty -> partial ->
-            // final states of the same round. x runs from the round's
-            // real start: the input-less round intro reads as trace-free
-            // space before the first sample — the same convention the
-            // playback transport draws (its strip shares the scrubber's
-            // linear tick timeline), so the chart starts identically
-            // everywhere. The simulation runs PAST the recorded input
-            // count (the round-end animation isn't recorded, and its
-            // length is only known by simulating), so the plan is always
-            // overshot: those tail ticks clamp onto the segment's right
-            // edge instead of widening it. The tail is inert (post-KO:
-            // HP frozen, no chips, no customs), so nothing visible
-            // distorts. Without a plan, normalize to the sampled extent.
-            // The round's position on the recording's timebase: its
-            // marker boundary when the plan carries one, else its own
-            // first sample.
-            let base = starts
-                .get(i)
-                .copied()
-                .unwrap_or_else(|| r.hp.first().map(|p| p.tick).unwrap_or(0));
-            let span = match full {
-                Some(f) => f.max(1.0),
-                None => (last.tick.saturating_sub(base) as f32).max(1.0),
-            };
-            let x_of = |tick: u32| (tick.saturating_sub(base) as f32 / span).clamp(0.0, 1.0);
+            let span = (end - start).max(1) as f32;
+            let x_of = |tick: u32| (tick.saturating_sub(start) as f32 / span).clamp(0.0, 1.0);
+            // The simulation runs PAST the last round's span — the
+            // round-end animation isn't in the recording, and its length
+            // is only known by simulating — so that round keeps
+            // everything from its start on and `x_of` clamps the
+            // overshoot onto the segment's right edge instead of
+            // widening it. The tail is inert (post-KO the HP is frozen
+            // and nothing else fires), so nothing visible distorts.
+            let last = i + 1 == stats.rounds.len();
+            let within = |tick: u32| tick >= start && (tick < end || last);
+            let trace: Vec<_> = stats
+                .hp
+                .iter()
+                .filter(|p| within(p.tick))
+                .map(|p| (x_of(p.tick), p.local as f32 / max_hp, p.remote as f32 / max_hp))
+                .collect();
             CookedHpRound {
-                outcome: r.outcome.map(round_outcome),
-                trace: r
-                    .hp
+                outcome,
+                // One point draws nothing but implies a shape; leave the
+                // segment bare rather than plotting a lone dot.
+                trace: if trace.len() >= 2 { trace } else { vec![] },
+                custom: stats
+                    .custom
                     .iter()
-                    .map(|p| (x_of(p.tick), p.local as f32 / max_hp, p.remote as f32 / max_hp))
+                    .filter(|&&(a, _)| within(a))
+                    .map(|&(a, b)| (x_of(a), x_of(b)))
                     .collect(),
-                custom: r.custom.iter().map(|&(a, b)| (x_of(a), x_of(b))).collect(),
-                chip_uses: [
-                    chip_use_marks(&r.chip_uses[0], loadeds[0], x_of),
-                    chip_use_marks(&r.chip_uses[1], loadeds[1], x_of),
-                ],
+                chip_uses: [0, 1].map(|side| {
+                    let uses: Vec<_> = stats.chip_uses[side]
+                        .iter()
+                        .filter(|&&(t, _)| within(t))
+                        .copied()
+                        .collect();
+                    chip_use_marks(&uses, loadeds[side], x_of)
+                }),
                 weight: span,
             }
         })

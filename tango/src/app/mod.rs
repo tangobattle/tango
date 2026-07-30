@@ -380,14 +380,17 @@ impl App {
     /// cancelled (its simulation stops, its progress stream aborts
     /// mid-air so the tab's pending marker survives the handover), and
     /// the returned job + progress-stream task plug the prefetcher into
-    /// the tab's usual `HpStatsPartial`/`HpStatsLoaded` pipeline. With
-    /// a sidecar on disk there is nothing to compute — `(None, none)`.
-    fn replay_stats_takeover(
-        &mut self,
-        path: &std::path::Path,
-    ) -> (Option<session::replay::PrefetchStatsJob>, iced::Task<Message>) {
-        if replays::load_match_stats(&self.config.cache_path(), &self.config.replays_path(), path).is_some() {
-            return (None, iced::Task::none());
+    /// the tab's usual `HpStatsPartial`/`HpStatsLoaded` pipeline. With a
+    /// sidecar on disk there is nothing to compute — just the round
+    /// boundaries out of it, so the scrub bar has its marks from the
+    /// first frame rather than waiting out a pass to rediscover them.
+    fn replay_stats_takeover(&mut self, path: &std::path::Path) -> ReplayStatsDuty {
+        if let Some(stats) = replays::load_match_stats(&self.config.cache_path(), &self.config.replays_path(), path) {
+            return ReplayStatsDuty {
+                job: None,
+                round_boundaries: stats.round_marks(),
+                task: iced::Task::none(),
+            };
         }
         if let Some((cancel, handle)) = self.replay_analysis_jobs.remove(path) {
             cancel.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -412,8 +415,24 @@ impl App {
             .chain(futures::stream::once(async move {
                 tabs::replays::Message::HpStatsLoaded(path, done.lock().unwrap().take())
             }));
-        (Some(job), iced::Task::stream(stream).map(Message::Replays))
+        ReplayStatsDuty {
+            job: Some(job),
+            // Nothing analyzed yet, so nothing to hand the scrub bar;
+            // the prefetcher publishes each boundary as it reaches it.
+            round_boundaries: vec![],
+            task: iced::Task::stream(stream).map(Message::Replays),
+        }
     }
+}
+
+/// What [`App::replay_stats_takeover`] settled for a playback session:
+/// whether its prefetcher owes anyone an analysis, what it can be told
+/// up front about where the rounds are, and the task wiring its progress
+/// back into the replays tab.
+struct ReplayStatsDuty {
+    job: Option<session::replay::PrefetchStatsJob>,
+    round_boundaries: Vec<u32>,
+    task: iced::Task<Message>,
 }
 
 /// Reveal a file in the OS file manager with the file itself selected,
@@ -654,15 +673,27 @@ impl App {
             return iced::Task::none();
         }
         use futures::StreamExt;
+        // The round count isn't in the recording — only a telemetry
+        // analysis knows it — so it comes from this replay's cached one
+        // where there is one, and the caption goes without until then.
+        let cache_path = self.config.cache_path();
+        let replays_path = self.config.replays_path();
         let stream = futures::stream::iter(paths)
-            .then(|path| async move {
-                let p = path.clone();
-                let stats =
-                    tokio::task::spawn_blocking(move || replays::compute_stats(crate::library::storage(), &p).ok())
-                        .await
-                        .ok()
-                        .flatten();
-                (path, stats)
+            .then(move |path| {
+                let (cache_path, replays_path) = (cache_path.clone(), replays_path.clone());
+                async move {
+                    let p = path.clone();
+                    let stats = tokio::task::spawn_blocking(move || {
+                        let mut stats = replays::compute_stats(crate::library::storage(), &p).ok()?;
+                        stats.round_count = replays::load_match_stats(&cache_path, &replays_path, &p)
+                            .map(|s| s.rounds.len() as u32);
+                        Some(stats)
+                    })
+                    .await
+                    .ok()
+                    .flatten();
+                    (path, stats)
+                }
             })
             .filter_map(|(path, stats)| async move { stats.map(|s| tabs::replays::Message::StatsLoaded(path, s)) });
         iced::Task::stream(stream)
@@ -1372,13 +1403,14 @@ impl App {
                 // log and leave the results screen up.
                 if let session::Message::Results(session::view::results::Message::WatchReplay) = &m {
                     if let Some(path) = self.session.results.as_ref().and_then(|r| r.replay_path.clone()) {
-                        let (stats_job, stats_task) = self.replay_stats_takeover(&path);
+                        let duty = self.replay_stats_takeover(&path);
                         match session::build_playback(
                             &self.scanners,
                             &self.config,
                             &self.audio_binder,
                             &path,
-                            stats_job,
+                            duty.job,
+                            duty.round_boundaries,
                         ) {
                             Ok((s, audio, threads)) => {
                                 self.session.replay_path = Some(path.clone());
@@ -1392,7 +1424,7 @@ impl App {
                             // marker — a later focus retries the analysis.
                             Err(e) => log::warn!("failed to play replay {}: {e}", path.display()),
                         }
-                        return stats_task;
+                        return duty.task;
                     }
                     return iced::Task::none();
                 }

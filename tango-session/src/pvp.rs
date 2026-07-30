@@ -895,7 +895,7 @@ impl DriveContext {
     /// Boot the match, then hand back the driver that runs it and a
     /// readout handle to its pair.
     fn boot(
-        mut self,
+        self,
         pieces: BootPieces,
         expected_fps: f32,
     ) -> Result<(PvpDriver, Box<dyn tango_match::AudioDrain>), tango_match::Error> {
@@ -923,20 +923,12 @@ impl DriveContext {
         self.local_primed.store(true, Ordering::Release);
         self.announce_primed.notify_one();
 
-        if let Some(w) = self.replay_writer.as_mut() {
-            // The SIO stream is one continuous run of pair ticks; the
-            // container wants at least one open round.
-            let _ = w.start_round();
-        }
-
         Ok((
             PvpDriver {
                 ctx: self,
                 expected_fps,
                 match_,
                 throttler: tango_match::Throttler::new(),
-                first_round_started: false,
-                pending_round_marks: std::collections::VecDeque::new(),
                 fired_end_of_match: false,
             },
             audio,
@@ -1457,12 +1449,6 @@ pub struct PvpDriver {
     expected_fps: f32,
     match_: tango_match::Match,
     throttler: tango_match::Throttler,
-    /// Whether the first round's Started has been seen. Later Started
-    /// events stamp round markers into the replay stream.
-    first_round_started: bool,
-    /// Confirmed ticks whose replay input record must carry a
-    /// round-start marker.
-    pending_round_marks: std::collections::VecDeque<u32>,
     fired_end_of_match: bool,
 }
 
@@ -1583,49 +1569,30 @@ impl PvpDriver {
             return false;
         }
 
-        // Confirmed telemetry, drained before the replay write so this
-        // batch's round-start events can stamp markers onto this
-        // batch's input records. Everything at or below the confirmed
+        // Confirmed telemetry. Everything at or below the confirmed
         // boundary is final — no revocation bookkeeping needed on this
-        // side of the engine.
-        // A game whose engine reads no telemetry simply has none to
-        // fold — the match still runs.
+        // side of the engine. A game whose engine reads no telemetry
+        // simply has none to fold — the match still runs.
         let confirmed = self.match_.confirmed();
         let (samples, events) = match self.match_.telemetry() {
             Some(handle) => handle.lock().unwrap().drain_confirmed(confirmed),
             None => (Vec::new(), Vec::new()),
         };
 
-        // Round lifecycle, trap-driven off the games' own code paths:
-        // a round start (after the first) stamps a marker into the
-        // replay; the match-end anchor firing means the players left
-        // the battle loop for good — the direct successor of the trap
-        // engine's match-end hook.
-        let mut match_ended = false;
-        for (tick, event) in &events {
-            match event {
-                telemetry::Event::RoundStarted => {
-                    if self.first_round_started {
-                        self.pending_round_marks.push_back(*tick);
-                    }
-                    self.first_round_started = true;
-                }
-                telemetry::Event::RoundEnded { .. } | telemetry::Event::ChipUsed { .. } => {}
-                telemetry::Event::MatchEnded => {
-                    match_ended = true;
-                }
-            }
-        }
+        // The match-end anchor firing means the players left the battle
+        // loop for good — the direct successor of the trap engine's
+        // match-end hook. The round lifecycle needs nothing from this
+        // loop: rounds are the stats fold's business, and the recording
+        // has no opinion about them.
+        let match_ended = events
+            .iter()
+            .any(|(_, e)| matches!(e, telemetry::Event::MatchEnded));
 
         // Confirmed inputs: replay sink + the buttons half of the
         // stats merge below.
         let confirmed_inputs = self.match_.drain_confirmed();
         if let Some(w) = self.ctx.replay_writer.as_mut() {
-            for (tick, inputs) in &confirmed_inputs {
-                if self.pending_round_marks.front().is_some_and(|t| t <= tick) {
-                    self.pending_round_marks.pop_front();
-                    let _ = w.start_round();
-                }
+            for (_tick, inputs) in &confirmed_inputs {
                 if let Err(e) = w.write_input(inputs.map(replay_input_of)) {
                     log::warn!("pvp: replay write failed (recording stops): {e}");
                     self.ctx.replay_writer = None;

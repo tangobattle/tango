@@ -574,8 +574,15 @@ impl App {
             return self.install_patch(key);
         }
 
-        let (stats_job, stats_task) = self.replay_stats_takeover(&p);
-        match session::build_playback(&self.scanners, &self.config, &self.audio_binder, &p, stats_job) {
+        let duty = self.replay_stats_takeover(&p);
+        match session::build_playback(
+            &self.scanners,
+            &self.config,
+            &self.audio_binder,
+            &p,
+            duty.job,
+            duty.round_boundaries,
+        ) {
             Ok((s, audio, threads)) => {
                 self.session.replay_path = Some(p.clone());
                 self.session.active = Some(Box::new(s));
@@ -596,7 +603,7 @@ impl App {
             // focus retries the analysis.
             Err(e) => log::warn!("failed to play replay {}: {e}", p.display()),
         }
-        stats_task
+        duty.task
     }
 
     /// The first patch a replay needs that isn't installed but is
@@ -675,9 +682,10 @@ impl App {
                 output,
                 settings,
                 rounds,
+                round_marks,
                 clip,
             } => self
-                .spawn_replay_render(replay, output, settings, rounds, clip)
+                .spawn_replay_render(replay, output, settings, rounds, round_marks, clip)
                 .map(Message::Replays),
             E::AnalyzeReplay(path) => {
                 // Full re-simulation of the replay — seconds of CPU on a
@@ -812,6 +820,10 @@ impl App {
         output_path: std::path::PathBuf,
         user_settings: tabs::replays::ExportSettings,
         rounds_mask: Vec<bool>,
+        // Where the whole-replay render cuts its chapters, from this
+        // replay's finished telemetry analysis. Empty when there isn't
+        // one yet, and the render is a single chapter.
+        round_marks: Vec<u32>,
         clip: Option<crate::replay_render::Clip>,
     ) -> iced::Task<tabs::replays::Message> {
         // Decode just enough of the replay to get both sides' game
@@ -977,13 +989,11 @@ impl App {
                         revision: games[1 - local_player].revision,
                     },
                     want_stats: false,
-                    want_round_marks: false,
                     disable_bgm: user_settings.disable_bgm,
                 };
                 // A whole-replay export is the degenerate clip covering
-                // the full stream, with the file's own round marks; the
-                // player's clip brings its marks (the session's
-                // boundaries, which cover marker-less recordings too)
+                // the full stream, cut at the analysis's round marks;
+                // the player's clip brings the live session's boundaries
                 // and a mask selecting every round — its gate is the
                 // span. A snapshot restore would erase the priming-time
                 // BGM-disable poke, so muted renders re-sim from boot.
@@ -997,7 +1007,7 @@ impl App {
                             start: 0,
                             end: total_ticks,
                             snapshot: None,
-                            round_marks: replay.round_starts.iter().skip(1).map(|&i| i as u32).collect(),
+                            round_marks,
                         },
                         rounds_mask,
                     ),

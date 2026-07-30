@@ -339,8 +339,9 @@ impl MatchResults {
             local_loaded,
             panes.and_then(|p| p.opponent_loaded.as_ref()).or(local_loaded),
         ];
-        // No plan: the results cards are per-round, so each round's
-        // trace anchors at its own first sample.
+        // No recording length to pin the timeline to — the match just
+        // ended and its replay is still flushing — so the cards run to
+        // the last reading.
         let (cooked, max_hp) = crate::ui::widgets::cook_hp_rounds(&stats, loadeds, None);
         let rounds = cooked
             .into_iter()
@@ -1289,6 +1290,9 @@ pub fn build_playback(
     // Have the prefetch pass double as the match-stats analysis — see
     // [`replay::PrefetchStatsJob`] and `App::replay_stats_takeover`.
     stats_job: Option<replay::PrefetchStatsJob>,
+    // The recording's round boundaries when its analysis is already
+    // cached, so the scrub bar draws them from the first frame.
+    round_boundaries: Vec<u32>,
 ) -> anyhow::Result<(
     replay::ReplaySession,
     Option<audio::Binding>,
@@ -1338,6 +1342,7 @@ pub fn build_playback(
         audio_binder.sample_rate(),
         config.show_opponent_pip,
         stats_job,
+        round_boundaries,
     )?;
     // Three loops, three threads — ours to spawn, and ours to pace: the
     // playhead runs at the transport's speed, while the seek chase and

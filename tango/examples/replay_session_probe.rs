@@ -64,6 +64,9 @@ fn open_session(arg: &str, tag: &str) -> Opened {
         48_000,
         true,
         stats_job,
+        // Nothing analyzed up front: the probe wants the prefetch pass to
+        // find the round boundaries itself.
+        vec![],
     )
     .expect("session open");
     Opened {

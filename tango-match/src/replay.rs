@@ -663,8 +663,9 @@ impl crate::audio::SideSource for PlaybackSeat {
 /// The statistics pass: a second pair racing ahead of the viewer
 /// through the whole stream, laying a keyframe every
 /// [`KEYFRAME_INTERVAL`] into the shared store and — when the pair was
-/// booted with telemetry — folding what it observes into round marks
-/// and [`MatchStats`](crate::analysis::MatchStats).
+/// booted with telemetry — folding what it observes into
+/// [`MatchStats`](crate::analysis::MatchStats), round boundaries
+/// included.
 ///
 /// Separate from playback because it is a separate simulation: it runs
 /// ahead of what the viewer is watching, on its own pair, so a user
@@ -680,9 +681,7 @@ pub struct StatsPass {
     builder: Option<crate::analysis::StatsBuilder>,
     local_player: usize,
     store: SnapshotStore,
-    round_marks: Option<Arc<Mutex<Vec<u32>>>>,
     cancel: Arc<AtomicBool>,
-    rounds_started: u32,
 }
 
 impl StatsPass {
@@ -700,19 +699,14 @@ impl StatsPass {
             let tick = self.playback.cursor();
 
             if let Some(telemetry) = &self.telemetry {
-                // Everything is final on a linear re-sim — fold as we go.
+                // Drained whether or not anything is folding it: the
+                // drain is also what prunes the store, and a pass that
+                // never drains grows one entry per tick for the length
+                // of the recording.
                 let (samples, events) = telemetry.lock().unwrap().drain_confirmed(tick);
-                if let Some(round_marks) = &self.round_marks {
-                    for (event_tick, event) in &events {
-                        if let crate::telemetry::Event::RoundStarted = event {
-                            self.rounds_started += 1;
-                            if self.rounds_started > 1 {
-                                round_marks.lock().unwrap().push(*event_tick);
-                            }
-                        }
-                    }
-                }
                 if let Some(builder) = &mut self.builder {
+                    // Everything is final on a linear re-sim — fold as
+                    // we go.
                     crate::analysis::fold_confirmed(builder, self.local_player, samples, events);
                 }
             }
@@ -804,13 +798,13 @@ pub struct ReplaySet {
     inputs: Arc<Vec<[crate::HostInput; 2]>>,
     local_player: usize,
     /// Whether the host wants statistics folded. The stats pass boots
-    /// observed either way — round marks come out of the same telemetry
-    /// events — so this gates only the aggregation.
+    /// observed either way, so this gates only the aggregation — but
+    /// round boundaries come out of that same fold, so a host that wants
+    /// to know where the rounds are wants this on.
     want_stats: bool,
     /// Shared: the pass racing ahead lays the keyframes a seek behind
     /// the playhead lands on.
     store: SnapshotStore,
-    round_marks: Option<Arc<Mutex<Vec<u32>>>>,
     /// The display boot's capture at tick 0, for the stats pass to land
     /// on instead of priming a second pair. Condvar-signalled: the pass
     /// opens on another thread and parks here while the display pair is
@@ -841,7 +835,6 @@ impl ReplaySet {
             local_player: config.local_player,
             want_stats: config.want_stats,
             store: SnapshotStore::new(),
-            round_marks: config.want_round_marks.then(Default::default),
             first_capture: Mutex::new(FirstCapture::Pending),
             first_capture_cv: std::sync::Condvar::new(),
             cancel: Arc::new(AtomicBool::new(false)),
@@ -1003,8 +996,8 @@ impl ReplaySet {
         self.stats()
     }
 
-    /// Everything above the pair: the shared keyframe store, the fold
-    /// (when this boot observes and the host asked), the mark list.
+    /// Everything above the pair: the shared keyframe store and the
+    /// fold (when this boot observes and the host asked).
     fn assemble_stats(&self, telemetry: Option<TelemetryHandle>, playback: Playback) -> StatsPass {
         // No telemetry, no fold — a game without pollers still lays
         // keyframes, and the host keeps the rest of the ride.
@@ -1015,9 +1008,7 @@ impl ReplaySet {
             builder,
             local_player: self.local_player,
             store: self.store.clone(),
-            round_marks: self.round_marks.clone(),
             cancel: self.cancel.clone(),
-            rounds_started: 0,
         }
     }
 
@@ -1044,12 +1035,6 @@ impl ReplaySet {
     fn publish_first_capture(&self, state: FirstCapture) {
         *self.first_capture.lock().unwrap() = state;
         self.first_capture_cv.notify_all();
-    }
-
-    /// Where the pass reports each round boundary it crosses, if the
-    /// host asked for round marks when it opened the set.
-    pub fn round_marks(&self) -> Option<Arc<Mutex<Vec<u32>>>> {
-        self.round_marks.clone()
     }
 
     /// Abandon both simulations. A pass mid-slice sees this and stops,
@@ -1091,9 +1076,6 @@ pub struct ReplayConfig {
     /// Collect per-round statistics as the pass runs. A host that only
     /// wants to watch leaves this off and the pass just lays keyframes.
     pub want_stats: bool,
-    /// Record where each round after the first begins, for the scrub
-    /// bar's round marks.
-    pub want_round_marks: bool,
     /// Silence the games' battle BGM, for a render whose viewer wants
     /// the sound effects without the music. Purely presentation: the
     /// sound driver's state never feeds battle logic, so the input

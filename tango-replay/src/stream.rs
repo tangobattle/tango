@@ -19,7 +19,7 @@
 //!   bit 4  P1_KEY_REPEAT    ⎫
 //!   bit 3  P1_TOUCH_DOWN    ⎬ likewise for p1
 //!   bit 2  P1_TOUCH_REPEAT  ⎭
-//!   bit 1  MARK             overlay annotation; no effect on decoding
+//!   bit 1  (reserved)       never written; ignored on read — see below
 //!   bit 0  SENTINEL         set on every record — see below
 //!
 //! A record's bytes after the tag come per side, p0's before p1's:
@@ -39,19 +39,23 @@
 //! keeps it unmistakable: every record sets it, so no tag can encode as
 //! `0x00`. This also means a zero-filled tail (a crash on some
 //! filesystems) reads as a clean end rather than as fabricated all-zero
-//! input records. The cost is that the tag has no reserved bits left —
-//! anything more is a schema bump.
+//! input records.
 //!
-//! Marks are the embedder's tick-boundary annotations: a mark flags the
-//! tick it is stamped on as the start of a new span, with no meaning of
-//! its own beyond that — tango stamps one on each round's first tick.
+//! Bit 1 used to be a MARK flag — a tick-boundary annotation the
+//! container read as a round start. Rounds are a fact about the match
+//! the games' telemetry reports, not a fact about the input stream, so
+//! nothing stamps them into recordings any more: a replay is inputs and
+//! nothing else. The bit is never written and always ignored, which is
+//! what keeps recordings made while it was live decoding byte-for-byte
+//! identically (a mark carried no bytes of its own) — it is a free
+//! reserved bit now, not a schema break in either direction.
 //!
 //! The previous revision of this encoding (schema 0x1D containers)
 //! carried bare 10-bit joyflags: per-side default flags, an op bit
 //! choosing zero or previous as the default source, an explicit side's
 //! high two bits packed into the tag's low nibble, and never a stylus;
 //! [`Stream::read_v1`] still decodes it so older recordings keep
-//! playing back.
+//! playing back (its own mark bit is ignored the same way).
 
 const P0_KEY_REPEAT: u8 = 1 << 7;
 const P0_TOUCH_DOWN: u8 = 1 << 6;
@@ -59,7 +63,6 @@ const P0_TOUCH_REPEAT: u8 = 1 << 5;
 const P1_KEY_REPEAT: u8 = 1 << 4;
 const P1_TOUCH_DOWN: u8 = 1 << 3;
 const P1_TOUCH_REPEAT: u8 = 1 << 2;
-const MARK: u8 = 1 << 1;
 /// Set on every record tag so none collides with [`END_OF_STREAM`].
 const SENTINEL: u8 = 1 << 0;
 const END_OF_STREAM: u8 = 0x00;
@@ -68,12 +71,12 @@ const END_OF_STREAM: u8 = 0x00;
 /// reserved and written zero.
 const KEYS_HI: u8 = 0b0000_1111;
 
-/// The 0x1D-era tag: default source (zero vs previous), per-side
-/// default flags, and its own MARK position.
+/// The 0x1D-era tag: default source (zero vs previous) and the per-side
+/// default flags. Its bit 4 was that revision's mark, and is ignored
+/// like this one's.
 const V1_OP_PREV: u8 = 0b1000_0000;
 const V1_P0_DEFAULT: u8 = 0b0100_0000;
 const V1_P1_DEFAULT: u8 = 0b0010_0000;
-const V1_MARK: u8 = 0b0001_0000;
 
 /// One side's input for one tick, as a replay records it.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash, Debug)]
@@ -135,10 +138,6 @@ fn read_u8_opt(r: &mut (impl std::io::Read + ?Sized)) -> std::io::Result<Option<
 /// still parses up to its last flushed tick.
 pub struct Writer<W: std::io::Write> {
     w: W,
-    /// True once [`mark`](Writer::mark) was called; the next
-    /// [`push`](Writer::push) sets the MARK bit on its tag byte and
-    /// clears this.
-    next_is_marked: bool,
     /// What the repeat flags may refer to, per side.
     state: [SideState; 2],
 }
@@ -149,16 +148,8 @@ impl<W: std::io::Write> Writer<W> {
     pub fn new(w: W) -> Self {
         Writer {
             w,
-            next_is_marked: false,
             state: [SideState::default(); 2],
         }
-    }
-
-    /// Stamp the MARK flag on the next pushed tick. Nothing is emitted
-    /// here — a mark with no tick after it (e.g. a crash right at a
-    /// boundary) simply never reaches the stream.
-    pub fn mark(&mut self) {
-        self.next_is_marked = true;
     }
 
     /// Append one confirmed tick's input pair.
@@ -169,10 +160,6 @@ impl<W: std::io::Write> Writer<W> {
         });
 
         let mut tag = SENTINEL;
-        if self.next_is_marked {
-            tag |= MARK;
-            self.next_is_marked = false;
-        }
         // Tag + two sides of up to 4 bytes each.
         let mut record = [0u8; 9];
         let mut len = 1;
@@ -215,11 +202,6 @@ impl<W: std::io::Write> Writer<W> {
 /// A decoded input stream.
 pub struct Stream {
     pub inputs: Vec<[Input; 2]>,
-    /// Indices into `inputs` of the ticks whose MARK flag was set, in
-    /// stream order — exactly as recorded, no normalization. A record
-    /// that was marked but then truncated mid-parse leaves its mark
-    /// dangling at `inputs.len()`.
-    pub marks: Vec<usize>,
     /// Whether the stream ended on the sentinel (vs. a truncated tail).
     pub is_complete: bool,
 }
@@ -232,7 +214,7 @@ impl Stream {
     /// everything that was flushed); any other I/O error propagates.
     pub fn read(r: impl std::io::Read) -> std::io::Result<Self> {
         let mut state = [SideState::default(); 2];
-        Self::read_with(r, MARK, move |r, tag| {
+        Self::read_with(r, move |r, tag| {
             let mut pair = [Input::default(); 2];
             for (which, (input, state)) in pair.iter_mut().zip(state.iter_mut()).enumerate() {
                 let (key_repeat, touch_down, touch_repeat) = [
@@ -266,7 +248,7 @@ impl Stream {
     /// the tag's low nibble, never a stylus.
     pub fn read_v1(r: impl std::io::Read) -> std::io::Result<Self> {
         let mut prev = [0u16; 2];
-        Self::read_with(r, V1_MARK, move |r, tag| {
+        Self::read_with(r, move |r, tag| {
             for (which, side) in prev.iter_mut().enumerate() {
                 let default_bit = [V1_P0_DEFAULT, V1_P1_DEFAULT][which];
                 *side = if tag & default_bit != 0 {
@@ -281,17 +263,15 @@ impl Stream {
         })
     }
 
-    /// The shared record loop: the revisions differ in their MARK bit's
-    /// position and in how a tag and its bytes come back as a pair,
-    /// which is what `record` decodes (carrying its own repeat state).
-    /// Both use the `0x00` sentinel.
+    /// The shared record loop: the revisions differ only in how a tag
+    /// and its bytes come back as a pair, which is what `record` decodes
+    /// (carrying its own repeat state). Both use the `0x00` sentinel,
+    /// and both leave their retired mark bit to `record` to ignore.
     fn read_with(
         mut r: impl std::io::Read,
-        mark_bit: u8,
         mut record: impl FnMut(&mut dyn std::io::Read, u8) -> std::io::Result<Option<[Input; 2]>>,
     ) -> std::io::Result<Self> {
         let mut inputs: Vec<[Input; 2]> = Vec::new();
-        let mut marks: Vec<usize> = Vec::new();
         let mut is_complete = false;
 
         loop {
@@ -305,21 +285,13 @@ impl Stream {
                 break;
             }
 
-            if tag & mark_bit != 0 {
-                marks.push(inputs.len());
-            }
-
             let Some(pair) = record(&mut r, tag)? else {
                 break;
             };
             inputs.push(pair);
         }
 
-        Ok(Stream {
-            inputs,
-            marks,
-            is_complete,
-        })
+        Ok(Stream { inputs, is_complete })
     }
 }
 
@@ -338,71 +310,41 @@ mod tests {
         }
     }
 
-    fn roundtrip(ticks: &[(bool, [Input; 2])]) -> Vec<u8> {
+    fn roundtrip(ticks: &[[Input; 2]]) -> Vec<u8> {
         let mut w = Writer::new(Vec::new());
-        for &(marked, inputs) in ticks {
-            if marked {
-                w.mark();
-            }
+        for &inputs in ticks {
             w.push(inputs).unwrap();
         }
         let bytes = w.finish().unwrap();
         let s = Stream::read(&bytes[..]).unwrap();
         assert!(s.is_complete);
-        assert_eq!(s.inputs, ticks.iter().map(|&(_, inputs)| inputs).collect::<Vec<_>>());
-        assert_eq!(
-            s.marks,
-            ticks
-                .iter()
-                .enumerate()
-                .filter(|(_, &(marked, _))| marked)
-                .map(|(i, _)| i)
-                .collect::<Vec<_>>()
-        );
+        assert_eq!(s.inputs, ticks);
         bytes
     }
 
     #[test]
     fn roundtrips_representative_streams() {
         roundtrip(&[]);
-        roundtrip(&vec![(false, [keys(0), keys(0)]); 500]); // idle: 1 byte/tick
+        roundtrip(&vec![[keys(0), keys(0)]; 500]); // idle: 1 byte/tick
+        roundtrip(&[[keys(1), keys(2)], [keys(1), keys(2)], [keys(1), keys(2)]]); // held
         roundtrip(&[
-            (false, [keys(1), keys(2)]),
-            (false, [keys(1), keys(2)]),
-            (false, [keys(1), keys(2)]),
-        ]); // held
-        roundtrip(&[
-            (false, [keys(0xfff), keys(0x155)]),
-            (false, [keys(0), keys(0xaaa)]),
-            (false, [keys(0x100), keys(0)]),
+            [keys(0xfff), keys(0x155)],
+            [keys(0), keys(0xaaa)],
+            [keys(0x100), keys(0)],
         ]); // 12-bit
     }
 
     #[test]
     fn roundtrips_touch() {
         roundtrip(&[
-            (false, [touched(0, 128, 96), keys(0)]),
-            (false, [touched(0, 128, 96), keys(0)]), // resting stylus
-            (false, [touched(0, 129, 97), keys(0)]), // dragging
-            (false, [touched(0x41, 130, 98), keys(0x82)]), // dragging while pressing
-            (false, [keys(0), touched(0xfff, 255, 191)]),
-            (false, [keys(0), keys(0)]), // both lifted
+            [touched(0, 128, 96), keys(0)],
+            [touched(0, 128, 96), keys(0)],           // resting stylus
+            [touched(0, 129, 97), keys(0)],           // dragging
+            [touched(0x41, 130, 98), keys(0x82)],     // dragging while pressing
+            [keys(0), touched(0xfff, 255, 191)],
+            [keys(0), keys(0)], // both lifted
             // Touch at the origin is still a touch, distinct from none.
-            (false, [touched(0, 0, 0), keys(0)]),
-        ]);
-    }
-
-    #[test]
-    fn roundtrips_marks() {
-        // Marks on the first tick, mid-stream, and across a held run —
-        // the held keys straddling a mark lean on KEY_REPEAT across the
-        // boundary.
-        roundtrip(&[
-            (true, [keys(0x041), keys(0x082)]),
-            (false, [keys(0x041), keys(0x082)]),
-            (true, [keys(0x041), keys(0x082)]),
-            (false, [keys(0), keys(0)]),
-            (true, [keys(0x3ff), keys(0)]),
+            [touched(0, 0, 0), keys(0)],
         ]);
     }
 
@@ -411,8 +353,8 @@ mod tests {
         // A stylus resting in place repeats its coordinates through the
         // tag, so holding it costs what holding a button does.
         let bytes = roundtrip(&{
-            let mut ticks = vec![(false, [touched(0, 100, 50), keys(0)])];
-            ticks.extend(vec![(false, [touched(0, 100, 50), keys(0)]); 99]);
+            let mut ticks = vec![[touched(0, 100, 50), keys(0)]];
+            ticks.extend(vec![[touched(0, 100, 50), keys(0)]; 99]);
             ticks
         });
         // Explicit first touch (tag + x + y), 99 repeats, sentinel.
@@ -423,7 +365,7 @@ mod tests {
     fn dragging_restates_coordinates() {
         // A moving stylus spells its coordinates out each tick: tag +
         // (x, y), with the pad still riding its repeat.
-        let bytes = roundtrip(&(0..100u8).map(|i| (false, [touched(0, 100 + (i % 2), 50), keys(0)])).collect::<Vec<_>>());
+        let bytes = roundtrip(&(0..100u8).map(|i| [touched(0, 100 + (i % 2), 50), keys(0)]).collect::<Vec<_>>());
         assert_eq!(bytes.len(), 100 * 3 + 1);
     }
 
@@ -433,9 +375,9 @@ mod tests {
         // which survive a lift — the second tap of a double-tap costs
         // nothing to place.
         let bytes = roundtrip(&[
-            (false, [touched(0, 50, 60), keys(0)]), // tap: tag + coords
-            (false, [keys(0), keys(0)]),            // lift: tag
-            (false, [touched(0, 50, 60), keys(0)]), // same spot: tag
+            [touched(0, 50, 60), keys(0)], // tap: tag + coords
+            [keys(0), keys(0)],            // lift: tag
+            [touched(0, 50, 60), keys(0)], // same spot: tag
         ]);
         assert_eq!(bytes.len(), 3 + 1 + 1 + 1);
     }
@@ -453,10 +395,10 @@ mod tests {
     #[test]
     fn keys_edge_costs_only_its_side() {
         let bytes = roundtrip(&[
-            (false, [keys(0), keys(0)]),     // repeat of the initial zeros: 1
-            (false, [keys(1), keys(0)]),     // p0 edges: 3
-            (false, [keys(1), keys(0)]),     // held: 1
-            (false, [keys(1), keys(0x200)]), // p1 edges: 3
+            [keys(0), keys(0)],     // repeat of the initial zeros: 1
+            [keys(1), keys(0)],     // p0 edges: 3
+            [keys(1), keys(0)],     // held: 1
+            [keys(1), keys(0x200)], // p1 edges: 3
         ]);
         assert_eq!(bytes.len(), 1 + 3 + 1 + 3 + 1);
     }
@@ -491,11 +433,12 @@ mod tests {
     #[test]
     fn v1_streams_still_decode() {
         // A hand-laid 0x1D-era stream: an idle tick, an explicit pair
-        // with high bits in the tag's low nibble, a previous-tick
-        // repeat, then the sentinel.
+        // with high bits in the tag's low nibble (and the retired mark
+        // bit set, which decode must ignore rather than misread as a
+        // flag of its own), a previous-tick repeat, then the sentinel.
         let bytes = [
-            V1_P0_DEFAULT | V1_P1_DEFAULT,             // [0, 0]
-            V1_OP_PREV | 0b01 | (0b10 << 2) | V1_MARK, // explicit both, marked: p0 = 0x155, p1 = 0x2aa
+            V1_P0_DEFAULT | V1_P1_DEFAULT,               // [0, 0]
+            V1_OP_PREV | 0b01 | (0b10 << 2) | 0b0001_0000, // explicit both, marked: p0 = 0x155, p1 = 0x2aa
             0x55,
             0xaa,
             V1_OP_PREV | V1_P0_DEFAULT | V1_P1_DEFAULT, // repeat
@@ -511,6 +454,5 @@ mod tests {
                 [keys(0x155), keys(0x2aa)],
             ]
         );
-        assert_eq!(s.marks, vec![1]);
     }
 }

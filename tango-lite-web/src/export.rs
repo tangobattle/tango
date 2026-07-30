@@ -145,31 +145,23 @@ async fn render(path: &std::path::Path, name: &str, canceller: &Canceller) -> Re
             revision: games[1 - local_player].revision,
         },
         want_stats: false,
-        want_round_marks: false,
         // The games' own audio is the point of a video.
         disable_bgm: false,
     };
 
-    // Whole replay, every round. The desktop's export form lets you
-    // pick a clip and deselect rounds; on a phone the useful answer is
-    // "the match".
+    // Whole replay, one chapter. The desktop's export form lets you pick
+    // a clip and deselect rounds; on a phone the useful answer is "the
+    // match" — and chaptering it would mean re-simulating the recording
+    // first just to find out where the rounds are, since a recording
+    // doesn't say.
     let clip = Clip {
         start: 0,
         end: total_ticks - 1,
         snapshot: None,
-        // `round_starts` includes the leading 0; the marks are the
-        // *transitions*, so it goes.
-        round_marks: replay
-            .round_starts
-            .iter()
-            .copied()
-            .filter(|&tick| tick != 0)
-            .map(|tick| tick as u32)
-            .collect(),
+        round_marks: vec![],
     };
-    let rounds = clip.round_marks.len() + 1;
-    let rounds_mask = vec![true; rounds];
-    let round_titles: Vec<String> = (1..=rounds).map(|n| format!("Round {n}")).collect();
+    let rounds_mask = vec![true];
+    let round_titles = vec!["Round 1".to_string()];
 
     let request = Request {
         backend,

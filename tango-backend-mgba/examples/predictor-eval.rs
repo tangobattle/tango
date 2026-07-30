@@ -33,8 +33,8 @@ use std::rc::Rc;
 /// well-tuned link, 8 is a badly undertuned one.
 const DEPTHS: &[u32] = &[1, 2, 3, 4, 6, 8];
 
-/// Ignore rounds shorter than this (menu blips, aborted rounds).
-const MIN_ROUND_TICKS: usize = 64;
+/// Ignore recordings shorter than this (menu blips, aborted matches).
+const MIN_MATCH_TICKS: usize = 64;
 
 /// GBA keypad bits, in KEYINPUT order.
 const BUTTONS: [(&str, u16); 10] = [
@@ -234,15 +234,18 @@ fn selftest() {
     assert_eq!(on_idle.wrong_tip, 0);
 }
 
-/// One round's two input streams, as stored in the replay (which side is
-/// "local" doesn't matter here — the sweep runs both directions).
-struct Round {
+/// One recording's two input streams, as stored in the replay (which
+/// side is "local" doesn't matter here — the sweep runs both
+/// directions). One entry per match, unsegmented: a recording is a
+/// continuous run of pair ticks, which is also exactly what a live
+/// predictor sees.
+struct Pair {
     p1: Vec<u16>,
     p2: Vec<u16>,
 }
 
 struct Corpus {
-    rounds: Vec<Round>,
+    pairs: Vec<Pair>,
     files: usize,
     matches: usize,
     undecodable: usize,
@@ -273,7 +276,7 @@ fn load_corpus(paths: &[std::path::PathBuf]) -> Corpus {
     }
 
     let mut corpus = Corpus {
-        rounds: Vec::new(),
+        pairs: Vec::new(),
         files: files.len(),
         matches: 0,
         undecodable: 0,
@@ -295,16 +298,13 @@ fn load_corpus(paths: &[std::path::PathBuf]) -> Corpus {
             continue;
         }
         corpus.matches += 1;
-        for range in replay.round_ranges() {
-            let round = &replay.inputs[range];
-            if round.len() < MIN_ROUND_TICKS {
-                continue;
-            }
-            corpus.rounds.push(Round {
-                p1: round.iter().map(|&[p1, _]| p1.keys).collect(),
-                p2: round.iter().map(|&[_, p2]| p2.keys).collect(),
-            });
+        if replay.inputs.len() < MIN_MATCH_TICKS {
+            continue;
         }
+        corpus.pairs.push(Pair {
+            p1: replay.inputs.iter().map(|&[p1, _]| p1.keys).collect(),
+            p2: replay.inputs.iter().map(|&[_, p2]| p2.keys).collect(),
+        });
     }
     corpus
 }
@@ -320,10 +320,10 @@ struct BitStat {
     samples: u64,
 }
 
-fn bit_stats(rounds: &[Round]) -> Vec<[BitStat; 10]> {
+fn bit_stats(pairs: &[Pair]) -> Vec<[BitStat; 10]> {
     let mut stats = vec![[BitStat::default(); 10]; DEPTHS.len()];
-    for round in rounds {
-        for stream in [&round.p1, &round.p2] {
+    for pair in pairs {
+        for stream in [&pair.p1, &pair.p2] {
             for (di, &d) in DEPTHS.iter().enumerate() {
                 let d = d as usize;
                 if stream.len() <= d {
@@ -375,23 +375,23 @@ fn main() {
     }
 
     let corpus = load_corpus(&paths);
-    let total_ticks: usize = corpus.rounds.iter().map(|r| r.p1.len()).sum();
+    let total_ticks: usize = corpus.pairs.iter().map(|r| r.p1.len()).sum();
     let fps = 16777216.0 / 280896.0; // GBA frames per second
     println!(
-        "corpus: {} files → {} matches ({} undecodable), {} rounds, {:.1}M ticks (~{:.1} h of play)",
+        "corpus: {} files → {} matches ({} undecodable), {} streams, {:.1}M ticks (~{:.1} h of play)",
         corpus.files,
         corpus.matches,
         corpus.undecodable,
-        corpus.rounds.len(),
+        corpus.pairs.len(),
         total_ticks as f64 / 1e6,
         total_ticks as f64 / fps / 3600.0,
     );
-    if corpus.rounds.is_empty() {
+    if corpus.pairs.is_empty() {
         return;
     }
 
     // Pass 1: per-button flip-vs-held rates per horizon, and the oracle masks.
-    let stats = bit_stats(&corpus.rounds);
+    let stats = bit_stats(&corpus.pairs);
     println!("\nper-button behavior (flip% over horizon d vs held% at target tick; repeat wins when flip < held):");
     print!("{:<8}{:>8}", "button", "held%");
     for &d in DEPTHS {
@@ -411,8 +411,8 @@ fn main() {
         println!("oracle@{}: {}", d, mask_label(oracles[di]));
     }
 
-    // Pass 2: sweep every (depth, candidate) over every round, both directions,
-    // through the real session. Work-steal rounds across threads.
+    // Pass 2: sweep every (depth, candidate) over every recording, both
+    // directions, through the real session. Work-steal them across threads.
     let n_cands = BASE_CANDIDATES.len() + 1;
     let results = std::sync::Mutex::new(vec![vec![RunAgg::default(); n_cands]; DEPTHS.len()]);
     let next = std::sync::atomic::AtomicUsize::new(0);
@@ -423,8 +423,8 @@ fn main() {
                 let mut mine = vec![vec![RunAgg::default(); n_cands]; DEPTHS.len()];
                 loop {
                     let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    let Some(round) = corpus.rounds.get(i) else { break };
-                    for (local, remote) in [(&round.p1, &round.p2), (&round.p2, &round.p1)] {
+                    let Some(pair) = corpus.pairs.get(i) else { break };
+                    for (local, remote) in [(&pair.p1, &pair.p2), (&pair.p2, &pair.p1)] {
                         for (di, &d) in DEPTHS.iter().enumerate() {
                             for ci in 0..n_cands {
                                 let mask = if ci < BASE_CANDIDATES.len() {

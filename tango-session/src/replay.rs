@@ -38,8 +38,10 @@ pub struct ReplaySession {
     game: &'static tango_gamesupport::Game,
     /// The engine's native frame rate — what the speed dial's 1.0× means.
     expected_fps: f32,
-    /// Inter-round seek-bar marks (see [`Self::round_boundaries`]),
-    /// discovered from telemetry by the prefetch pass as it runs.
+    /// Inter-round seek-bar marks (see [`Self::round_boundaries`]):
+    /// either handed in by a host that already had the recording's
+    /// analysis, or discovered from telemetry by the prefetch pass as it
+    /// runs.
     round_boundaries: Arc<Mutex<Vec<u32>>>,
     total_ticks: u32,
     /// Input display lookup data ([`Self::input_at`] /
@@ -171,6 +173,11 @@ impl ReplaySession {
         sample_rate: u32,
         show_pip: bool,
         stats_job: Option<PrefetchStatsJob>,
+        // The recording's round boundaries, when the host already had
+        // its analysis (a stats sidecar) — the scrub bar draws them from
+        // the first frame instead of waiting out a pass that would only
+        // rediscover them. Empty otherwise, and the pass fills them in.
+        round_boundaries: Vec<u32>,
     ) -> Result<(Self, Workers, crate::audio::CoreStream), crate::Error> {
         let local_player = replay.local_player_index as usize;
         if local_player >= 2 {
@@ -230,15 +237,12 @@ impl ReplaySession {
         let paused = Arc::new(crate::PauseGate::new(false));
         let fps_bits = Arc::new(AtomicU32::new(expected_fps.to_bits()));
         let prefetch_progress = Arc::new(AtomicU32::new(0));
-        // Inter-round marks: the recorder stamps round-start markers into
-        // the stream and decode surfaces them as `round_starts`. The
-        // first round's start (tick 0) isn't an inter-round boundary, so
-        // the marks are the rest. Single-round results also cover
-        // recordings that predate the markers; for those the prefetch
-        // pass re-derives the marks from telemetry as it runs.
-        let file_marks: Vec<u32> = replay.round_starts.iter().skip(1).map(|&i| i as u32).collect();
-        let discover_marks = file_marks.is_empty();
-        let round_marks = Arc::new(Mutex::new(file_marks));
+        // Inter-round marks. The recording holds none — where the rounds
+        // fall is what the games' telemetry says on re-simulation — so
+        // either the host handed in a finished analysis' boundaries or
+        // the prefetch pass publishes them as it reaches them.
+        let discover_marks = round_boundaries.is_empty();
+        let round_marks = Arc::new(Mutex::new(round_boundaries));
         let seek = Arc::new(SeekController::new());
         let cancel = Arc::new(AtomicBool::new(false));
         let show_pip = Arc::new(AtomicBool::new(show_pip));
@@ -272,16 +276,13 @@ impl ReplaySession {
                     code: *games[1 - local_player].rom_code,
                     revision: games[1 - local_player].revision,
                 },
-                want_stats: stats_job.is_some(),
-                want_round_marks: discover_marks,
+                // The fold is also where round boundaries come from, so
+                // a session that doesn't know them yet wants it even
+                // with no stats job asking for the rest.
+                want_stats: stats_job.is_some() || discover_marks,
                 // The games' own audio is the point of watching one.
                 disable_bgm: false,
             })?);
-        if let Some(discovered) = set.round_marks() {
-            // The pass writes into its own list; hand the session that
-            // one so the scrub bar sees marks as they are found.
-            *round_marks.lock().unwrap() = discovered.lock().unwrap().clone();
-        }
         let audio_pull = DeferredPull::default();
 
         let surfaces = Surfaces {
@@ -337,7 +338,6 @@ impl ReplaySession {
             prefetch: PrefetchWorker {
                 set: set.clone(),
                 round_marks: discover_marks.then(|| round_marks.clone()),
-                discovered: set.round_marks(),
                 progress: prefetch_progress.clone(),
                 cancel: cancel.clone(),
                 stats_job,
@@ -499,10 +499,14 @@ impl ReplaySession {
     /// Recorded-frame index of each inter-round transition — the marks the
     /// scrubber draws. These sit on the same scale as the playhead
     /// ([`Self::current_tick`]), so a mark coincides exactly with the
-    /// playhead as it crosses. Trap replays know them up front (the
-    /// running sum of round lengths); SIO replays discover them from
-    /// telemetry as the prefetch pass runs. Empty for a single-round
-    /// replay.
+    /// playhead as it crosses.
+    ///
+    /// A recording says nothing about its own rounds, so these come from
+    /// the games' telemetry: complete from the first frame when the host
+    /// had the recording's analysis to hand in, and otherwise arriving
+    /// one at a time as the prefetch pass reaches them. Empty until the
+    /// pass finds the second round — a single-round replay stays that
+    /// way.
     pub fn round_boundaries(&self) -> Vec<u32> {
         self.round_boundaries.lock().unwrap().clone()
     }
@@ -927,11 +931,9 @@ impl SeekWorker {
 /// walking a prime of its own.
 pub struct PrefetchWorker {
     set: Arc<tango_match::ReplaySet>,
-    /// The session's mark list, when the recording predates the
-    /// recorder's own markers and the pass has to find them.
+    /// The session's mark list, when the host didn't already know where
+    /// the rounds fall and the pass has to find them.
     round_marks: Option<Arc<Mutex<Vec<u32>>>>,
-    /// Where the pass writes the marks it finds.
-    discovered: Option<Arc<Mutex<Vec<u32>>>>,
     /// The session's progress mirror ([`Engine::prefetch_progress`]),
     /// refreshed from the pass once per slice — like the marks.
     progress: Arc<AtomicU32>,
@@ -1006,13 +1008,18 @@ impl PrefetchWorker {
         }
     }
 
-    /// Copy whatever marks the pass has found into the session's list,
-    /// so the scrub bar picks them up while the pass is still running.
+    /// Copy whatever round boundaries the pass has found so far into the
+    /// session's list, so the scrub bar picks each one up as the pass
+    /// crosses it rather than all at once at the end. A fold in progress
+    /// is a truthful prefix — the boundaries it has are real, and the
+    /// ones it hasn't reached simply aren't drawn yet.
     fn mirror_marks(&self) {
-        let (Some(into), Some(from)) = (self.round_marks.as_ref(), self.discovered.as_ref()) else {
+        let (Some(into), Some(pass)) = (self.round_marks.as_ref(), self.pass.as_ref()) else {
             return;
         };
-        let found = from.lock().unwrap().clone();
+        let Some(found) = pass.preview().map(|s| s.round_marks()) else {
+            return;
+        };
         *into.lock().unwrap() = found;
     }
 

@@ -7,9 +7,13 @@
 //!   recorded match.
 //!
 //! - the *stream* ([`stream`]): the per-tick input-pair codec that
-//!   makes up the rest of the file. It knows nothing about the framing;
-//!   its marks are generic tick annotations the container interprets as
-//!   round starts.
+//!   makes up the rest of the file. It knows nothing about the framing.
+//!
+//! A recording is the inputs and the state they act on, and nothing
+//! else. It used to also carry round boundaries, stamped in as the
+//! match played; rounds are a fact about what the games did with those
+//! inputs, which the games' own telemetry reports on re-simulation, so
+//! the file no longer has an opinion about them.
 
 mod protos;
 pub mod stream;
@@ -36,16 +40,22 @@ pub const EXTENSION: &str = "tangoreplay";
 ///
 /// Layout: magic, version, local_player_index, metadata (u32 length +
 /// proto), rng seed, two zstd SRAM frames, then a [`stream`]-encoded
-/// input stream (round boundaries are its
-/// marks). Everything but `local_player_index` is in absolute player
-/// order — sides, SRAM frames, input columns — so the recorder's seat
-/// is the file's ONE perspective-dependent byte: overwriting byte 5
+/// input stream. Everything but `local_player_index` is in absolute
+/// player order — sides, SRAM frames, input columns — so the recorder's
+/// seat is the file's ONE perspective-dependent byte: overwriting byte 5
 /// yields the other player's recording of the same match.
 ///
 /// 0x1E widened the stream's rows to the DS's inputs (12-bit pad plus
 /// the stylus); the container around them is unchanged, so its 0x1D
 /// predecessor stays readable ([`stream::Stream::read_v1`]) and only
 /// the current schema is written.
+///
+/// Dropping the round marks did NOT bump this. A mark was a tag bit
+/// with no bytes of its own, so a recording made while they were live
+/// decodes byte-for-byte identically now that the bit is ignored, and a
+/// recording made since reads on an older build as a match with one
+/// round. A bump would instead have [`read_metadata`] reject every
+/// replay already on disk.
 pub const VERSION: u8 = 0x1E;
 
 /// The touchless predecessor, still accepted by [`read_metadata`] and
@@ -54,7 +64,7 @@ const VERSION_V1: u8 = 0x1D;
 
 pub struct Writer {
     /// Everything after the header framing is the shared stream
-    /// encoding; rounds are its marks.
+    /// encoding.
     stream: stream::Writer<Box<dyn Write + Send>>,
 }
 
@@ -72,14 +82,10 @@ pub struct Replay {
     /// conversion.
     pub srams: [Vec<u8>; 2],
     /// One continuous run of (p1, p2) input pair ticks from session
-    /// start — the stream as recorded, not segmented.
+    /// start — the stream as recorded, and the whole of what a
+    /// recording says happened. Where the rounds fall in it is the
+    /// telemetry's answer, arrived at by re-simulating these inputs.
     pub inputs: Vec<[stream::Input; 2]>,
-    /// Indices into `inputs` where a round starts (records carrying a
-    /// stream mark). The first entry is always 0 when `inputs` is
-    /// non-empty — recordings that predate the markers decode as one
-    /// round — so consecutive entries (and the stream end) delimit the
-    /// rounds.
-    pub round_starts: Vec<usize>,
 }
 
 impl Metadata {
@@ -194,22 +200,6 @@ impl Replay {
         self.metadata.side(1 - self.local_player_index)
     }
 
-    /// The rounds as spans of `inputs`: each round runs from its
-    /// round-start mark to the next (the last to the end of the stream).
-    pub fn round_ranges(&self) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
-        let ends = self
-            .round_starts
-            .iter()
-            .skip(1)
-            .copied()
-            .chain(std::iter::once(self.inputs.len()));
-        self.round_starts
-            .iter()
-            .copied()
-            .zip(ends)
-            .map(|(start, end)| start..end)
-    }
-
     pub fn decode(r: impl std::io::Read) -> std::io::Result<Self> {
         let mut r = std::io::BufReader::new(r);
         // Rejects anything but the readable schemas.
@@ -228,23 +218,13 @@ impl Replay {
         } else {
             stream::Stream::read(&mut r)?
         };
-        let inputs = stream.inputs;
-
-        // A leading unmarked run — recordings that predate the markers,
-        // or a crash-recovered partial round — still counts as a round.
-        let mut round_starts = stream.marks;
-        if !inputs.is_empty() && round_starts.first() != Some(&0) {
-            round_starts.insert(0, 0);
-        }
-
         Ok(Self {
             is_complete: stream.is_complete,
             metadata,
             local_player_index,
             rng_seed,
             srams,
-            inputs,
-            round_starts,
+            inputs: stream.inputs,
         })
     }
 }
@@ -277,15 +257,6 @@ impl Writer {
         Ok(Writer {
             stream: stream::Writer::new(writer),
         })
-    }
-
-    pub fn start_round(&mut self) -> std::io::Result<()> {
-        // The mark is stamped on the next [`write_input`]'s tag byte; we
-        // don't emit anything here, so a crash mid-round just leaves the
-        // partial inputs on disk and the recovery path will treat the next
-        // mark as starting a fresh round.
-        self.stream.mark();
-        Ok(())
     }
 
     /// Append one confirmed tick's (p1, p2) input pair — absolute
@@ -347,8 +318,6 @@ mod tests {
             ],
             [keys(0), keys(0x300)],
         ];
-        let round_starts = [0usize, 3];
-
         let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut w = Writer::new(
             SharedVec(buf.clone()),
@@ -364,10 +333,7 @@ mod tests {
             [&[1, 2, 3], &[4, 5]],
         )
         .unwrap();
-        for (i, &keys) in ticks.iter().enumerate() {
-            if round_starts.contains(&i) {
-                w.start_round().unwrap();
-            }
+        for &keys in ticks.iter() {
             w.write_input(keys).unwrap();
         }
         w.finish().unwrap();
@@ -376,14 +342,13 @@ mod tests {
     }
 
     #[test]
-    fn roundtrips_rounds_and_header() {
+    fn roundtrips_inputs_and_header() {
         let replay = Replay::decode(&write_replay(1)[..]).unwrap();
         assert!(replay.is_complete);
         assert_eq!(replay.local_player_index, 1);
         assert_eq!(replay.rng_seed, [7u8; 16]);
         assert_eq!(replay.srams, [vec![1, 2, 3], vec![4, 5]]);
         assert_eq!(replay.metadata.ts, 1_752_000_000_000);
-        assert_eq!(replay.round_starts, [0, 3]);
         let keys = stream::Input::keys;
         assert_eq!(
             replay.inputs,
@@ -433,15 +398,15 @@ mod tests {
         drop(w);
         let mut bytes = buf.lock().unwrap().clone();
         bytes[4] = 0x1D;
-        // v1 records: an idle tick, then explicit both sides (marked)
-        // with the high bits in the tag's low nibble, then the sentinel.
+        // v1 records: an idle tick, then explicit both sides with the
+        // high bits in the tag's low nibble (and the retired mark bit
+        // set, which decode ignores), then the sentinel.
         bytes.extend_from_slice(&[0x40 | 0x20, 0x80 | 0x10 | 0b01 | (0b10 << 2), 0x55, 0xaa, 0x00]);
 
         let replay = Replay::decode(&bytes[..]).unwrap();
         assert!(replay.is_complete);
         let keys = stream::Input::keys;
         assert_eq!(replay.inputs, vec![[keys(0), keys(0)], [keys(0x155), keys(0x2aa)]]);
-        assert_eq!(replay.round_starts, [0, 1]);
         assert_eq!(replay.srams, [vec![1, 2, 3], vec![4, 5]]);
     }
 
@@ -460,7 +425,6 @@ mod tests {
         assert_eq!(a.metadata, b.metadata);
         assert_eq!(a.srams, b.srams);
         assert_eq!(a.inputs, b.inputs);
-        assert_eq!(a.round_starts, b.round_starts);
         assert_eq!(a.local_side(), b.remote_side());
         assert_eq!(a.remote_side(), b.local_side());
     }

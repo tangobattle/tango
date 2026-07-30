@@ -197,16 +197,26 @@ fn main() {
         let mut builder = tango_backend_mgba::analysis::StatsBuilder::new();
         let (samples, events) = store.lock().unwrap().drain_confirmed(max_ticks);
         tango_backend_mgba::analysis::fold_confirmed(&mut builder, 0, samples, events);
-        for (i, r) in builder.finish().rounds.iter().enumerate() {
+        // The stats are flat series over the whole match with the
+        // rounds marking them up, so each round's share is whatever
+        // falls inside its span.
+        let stats = builder.finish();
+        for i in 0..stats.rounds.len() {
+            let Some((start, end)) = stats.round_span(i, None) else { continue };
+            let within = |t: u32| t >= start && t < end;
             println!(
-                "round {i}: outcome={:?} hp_points={} custom_spans={} chip_uses={:?}",
-                r.outcome,
-                r.hp.len(),
-                r.custom.len(),
-                r.chip_uses.iter().map(|v| v.len()).collect::<Vec<_>>(),
+                "round {i}: {start}..{end} outcome={:?} hp_points={} custom_spans={} chip_uses={:?}",
+                stats.rounds[i].outcome,
+                stats.hp.iter().filter(|p| within(p.tick)).count(),
+                stats.custom.iter().filter(|&&(a, _)| within(a)).count(),
+                stats
+                    .chip_uses
+                    .iter()
+                    .map(|v| v.iter().filter(|&&(t, _)| within(t)).count())
+                    .collect::<Vec<_>>(),
             );
             for side in 0..2 {
-                let head: Vec<_> = r.chip_uses[side].iter().take(6).collect();
+                let head: Vec<_> = stats.chip_uses[side].iter().filter(|&&(t, _)| within(t)).take(6).collect();
                 println!("   side{side} first uses: {head:?}");
             }
         }

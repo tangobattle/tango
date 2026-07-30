@@ -114,7 +114,6 @@ fn analyze_replay(
             revision: games[1 - local_player].revision,
         },
         want_stats: true,
-        want_round_marks: false,
         // Nothing listens; gameplay-neutral either way (see
         // `ReplayConfig::disable_bgm`).
         disable_bgm: false,

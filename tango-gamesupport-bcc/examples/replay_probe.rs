@@ -23,11 +23,10 @@ fn main() {
     let replay = tango_replay::Replay::decode(std::fs::File::open(&args[1]).expect("replay unreadable"))
         .expect("replay did not decode");
     println!(
-        "replay: complete={} local_player={} inputs={} rounds={} match_type={}.{}",
+        "replay: complete={} local_player={} inputs={} match_type={}.{}",
         replay.is_complete,
         replay.local_player_index,
         replay.inputs.len(),
-        replay.round_starts.len(),
         replay.metadata.match_type,
         replay.metadata.match_subtype,
     );
@@ -131,18 +130,29 @@ fn main() {
         }
     }
 
-    for (i, r) in stats.rounds.iter().enumerate() {
+    // The stats are flat series over the whole match with the rounds
+    // marking them up, so each round's share is whatever falls inside
+    // its span.
+    for i in 0..stats.rounds.len() {
+        let Some((start, end)) = stats.round_span(i, None) else { continue };
+        let within = |t: u32| t >= start && t < end;
+        let hp: Vec<_> = stats.hp.iter().filter(|p| within(p.tick)).collect();
         println!(
-            "round {i}: outcome={:?} hp_points={} custom={} uses={:?}",
-            r.outcome,
-            r.hp.len(),
-            r.custom.len(),
-            r.chip_uses.iter().map(|v| v.len()).collect::<Vec<_>>()
+            "round {i}: {start}..{end} outcome={:?} hp_points={} custom={} uses={:?}",
+            stats.rounds[i].outcome,
+            hp.len(),
+            stats.custom.iter().filter(|&&(a, _)| within(a)).count(),
+            stats
+                .chip_uses
+                .iter()
+                .map(|v| v.iter().filter(|&&(t, _)| within(t)).count())
+                .collect::<Vec<_>>()
         );
         for side in 0..2 {
-            println!("   side{side}: {:?}", r.chip_uses[side]);
+            let uses: Vec<_> = stats.chip_uses[side].iter().filter(|&&(t, _)| within(t)).collect();
+            println!("   side{side}: {uses:?}");
         }
-        for p in r.hp.iter().take(30) {
+        for p in hp.iter().take(30) {
             println!("      hp @{} = {}/{}", p.tick, p.local, p.remote);
         }
     }

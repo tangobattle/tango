@@ -240,8 +240,8 @@ fn main() {
                         if tick > 0 {
                             round_starts[p] += 1;
                             // A confirmed later round start is what the
-                            // app stamps a replay round marker from.
-                            println!("[peer{p}][{tick:5}] -> round {} (replay marker)", round_starts[p]);
+                            // stats fold marks a round boundary from.
+                            println!("[peer{p}][{tick:5}] -> round {} (round mark)", round_starts[p]);
                             phase[p] = Phase::Fight { round: round_starts[p] };
                         }
                     }
@@ -315,22 +315,32 @@ fn main() {
             // 2's samples sit after round 1's, where the match actually
             // put them — the recording is one contiguous input stream).
             let folded = stats.snapshot();
-            let shape: Vec<_> = folded
-                .rounds
-                .iter()
-                .map(|r| {
+            // The stats are flat series marked up by the rounds, so a
+            // round's points are the ones inside its span.
+            let points = |i: usize| -> Vec<u32> {
+                let Some((start, end)) = folded.round_span(i, None) else { return vec![] };
+                folded
+                    .hp
+                    .iter()
+                    .map(|p| p.tick)
+                    .filter(|&t| t >= start && t < end)
+                    .collect()
+            };
+            let shape: Vec<_> = (0..folded.rounds.len())
+                .map(|i| {
+                    let ticks = points(i);
                     (
-                        r.outcome,
-                        r.hp.first().map(|p| p.tick),
-                        r.hp.last().map(|p| p.tick),
-                        r.hp.len(),
+                        folded.rounds[i].outcome,
+                        ticks.first().copied(),
+                        ticks.last().copied(),
+                        ticks.len(),
                     )
                 })
                 .collect();
             println!("stats rounds (outcome, first tick, last tick, points): {shape:?}");
             let stats_ok = folded.rounds.len() == 2
-                && folded.rounds.iter().all(|r| r.outcome.is_some() && r.hp.len() >= 2)
-                && folded.rounds[0].hp.last().map(|p| p.tick) < folded.rounds[1].hp.first().map(|p| p.tick);
+                && (0..2).all(|i| folded.rounds[i].outcome.is_some() && points(i).len() >= 2)
+                && points(0).last() < points(1).first();
             if ok && stats_ok {
                 println!("SESSION KO PROBE SUCCESS at frame {frame}");
                 std::process::exit(0);

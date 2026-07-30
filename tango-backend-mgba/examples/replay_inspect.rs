@@ -48,11 +48,8 @@ fn main() {
             "  ts={} match_type=({}, {}) local_player={} complete={}",
             m.ts, m.match_type, m.match_subtype, replay.local_player_index, replay.is_complete
         );
-        println!(
-            "  rounds={} lens={:?} total_inputs={}",
-            replay.round_starts.len(),
-            replay.round_ranges().map(|r| r.len()).collect::<Vec<_>>(),
-            replay.inputs.len(),
-        );
+        // No round breakdown: a recording is inputs, and only a
+        // telemetry re-simulation knows where the rounds fall.
+        println!("  total_inputs={}", replay.inputs.len());
     }
 }

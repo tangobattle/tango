@@ -57,7 +57,6 @@ fn open(rom: &[u8], path: &str) -> tango_match::ReplaySet {
                 revision: game.revision,
             },
             want_stats: true,
-            want_round_marks: true,
             disable_bgm: false,
         })
         .expect("open_replay")

@@ -56,7 +56,6 @@ fn open_set(
                 revision: game.revision,
             },
             want_stats: true,
-            want_round_marks: true,
             disable_bgm: false,
         })
         .expect("open_replay")

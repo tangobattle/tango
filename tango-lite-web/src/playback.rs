@@ -77,8 +77,12 @@ pub async fn open(path: std::path::PathBuf) -> Result<(), String> {
         // of pixels on a display that hasn't room for the first.
         false,
         // No stats prefetch — there is no results screen here to feed,
-        // and the pass is a whole second simulation of the match.
+        // and the pass is a whole second simulation of the match. That
+        // also means no round boundaries: this frontend caches no
+        // analyses, so there is nothing to hand in and no pass to
+        // discover them.
         None,
+        vec![],
     )
     .map_err(|e| e.to_string())?;
 

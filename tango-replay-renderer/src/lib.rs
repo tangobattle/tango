@@ -160,12 +160,14 @@ pub struct Clip {
     /// A capture restore replaces the priming-time pokes, so callers
     /// wanting BGM muted must pass `None` and eat the full re-sim.
     pub snapshot: Option<Arc<tango_match::Capture>>,
-    /// Inter-round transition ticks (the recording's own round marks,
-    /// or the player's discovered boundaries for recordings that
-    /// predate the markers). The round ordinal at any tick — for
-    /// `rounds_mask` indexing and chapter titles — is the count of
-    /// marks at or before it; a jump-started pair couldn't answer that
-    /// from live telemetry, so no render runs any.
+    /// Inter-round transition ticks, as the recording's telemetry
+    /// analysis found them (a recording holds no round marks of its
+    /// own). The round ordinal at any tick — for `rounds_mask` indexing
+    /// and chapter titles — is the count of marks at or before it; a
+    /// jump-started pair couldn't answer that from live telemetry, so no
+    /// render runs any. Empty is a legitimate answer, and means one
+    /// chapter covering the clip: a caller with no analysis to hand
+    /// renders the whole thing rather than guessing where to cut.
     pub round_marks: Vec<u32>,
 }
 

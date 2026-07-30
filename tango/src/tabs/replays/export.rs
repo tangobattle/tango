@@ -93,13 +93,17 @@ impl ReplaysState {
                 // open mid-render, the form widgets are out of
                 // reach until the render finishes anyway.
                 let settings = self.export_settings;
+                // Where the chapters get cut. Empty until this replay's
+                // analysis has finished, in which case the render is one
+                // chapter covering the match — the same answer the mask
+                // below gives.
+                let round_marks = self.hp_charts.get(&replay).map(|c| c.marks.clone()).unwrap_or_default();
                 let entry = self.per.entry(replay.clone()).or_default();
                 let mut rounds = entry.rounds.clone();
                 if rounds.is_empty() {
-                    // Single-round replays don't show the rounds
-                    // selector at all, so this guards the "user
-                    // hit Save As before any rounds were
-                    // computed" race.
+                    // No analysis yet (or a single-round match, which
+                    // shows no selector): the whole recording is the one
+                    // round on offer.
                     rounds = vec![true];
                 }
                 entry.job = Some(ExportJob::new(output.clone()));
@@ -113,6 +117,7 @@ impl ReplaysState {
                     output,
                     settings,
                     rounds,
+                    round_marks,
                     clip: None,
                 })
             }
@@ -133,6 +138,9 @@ impl ReplaysState {
                     output,
                     settings,
                     rounds: vec![],
+                    // The clip carries its own marks, captured from the
+                    // live session when the scissors chip was pressed.
+                    round_marks: vec![],
                     clip: Some(clip),
                 })
             }
@@ -275,8 +283,9 @@ pub struct PerReplay {
     pub panel_open: bool,
     /// Active or finished export job for this replay.
     pub job: Option<ExportJob>,
-    /// Per-round include mask. Rebuilt from the decoded replay
-    /// in [`ReplaysState::refresh_loaded`].
+    /// Per-round include mask. Empty until this replay's telemetry
+    /// analysis finishes and [`ReplaysState::adopt_stats`] sizes it —
+    /// nothing else knows how many rounds the recording has.
     pub rounds: Vec<bool>,
 }
 
@@ -371,6 +380,9 @@ pub(super) fn export_panel<'a>(
     open: bool,
     settings: &'a ExportSettings,
     selected_rounds: &'a [bool],
+    // This replay's match analysis is still running, so how many rounds
+    // it has is not known yet — see `ReplaysState::adopt_stats`.
+    rounds_pending: bool,
     job: Option<&'a ExportJob>,
     replay_path: &std::path::Path,
 ) -> Element<'a, Message> {
@@ -557,7 +569,17 @@ pub(super) fn export_panel<'a>(
         .spacing(16)
         .align_y(Alignment::Center);
     let mut left_col = column![controls_row].spacing(6);
-    if selected_rounds.len() > 1 {
+    if rounds_pending {
+        // Where the rounds fall is the match analysis's answer, and it
+        // hasn't finished. Say so rather than leaving a gap the user
+        // reads as "this replay has one round": exporting right now
+        // renders the whole match as a single chapter.
+        left_col = left_col.push(
+            text(t!(lang, "replays-export-rounds-analyzing"))
+                .size(TEXT_CAPTION)
+                .style(widgets::muted_text_style),
+        );
+    } else if selected_rounds.len() > 1 {
         let label = text(t!(lang, "replays-export-rounds"))
             .size(TEXT_CAPTION)
             .style(widgets::muted_text_style);

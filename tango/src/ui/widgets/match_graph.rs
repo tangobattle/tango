@@ -316,17 +316,25 @@ pub fn hp_match_graph<'a, M: 'a>(
             state.offset.set(offset);
             let vw = w * zoom;
 
+            // Segments tile the whole timeline, each taking its share of it
+            // by tick span — the dividers are carved out of the panels
+            // below rather than taking width of their own. That is what
+            // makes a tick's position depend only on the tick: a segment's
+            // offset is the ticks before it and its width is the ticks in
+            // it, so `seg_x + xf * seg_w` reduces to the tick itself and a
+            // round arriving mid-analysis (which splits the last segment
+            // in two) moves nothing already drawn. Reserving width for the
+            // dividers instead would have every panel shrink each time
+            // another round was found.
             let total: f32 = self.rounds.iter().map(|r| r.weight.max(1.0)).sum::<f32>().max(1.0);
-            let gaps = GAP * (self.rounds.len().saturating_sub(1)) as f32;
-            let usable = (vw - gaps).max(1.0);
 
             let mut segments: Vec<(f32, f32)> = Vec::with_capacity(self.rounds.len());
             let mut seg_x = 0.0f32;
             // The sweep runs over the whole (virtual) timeline; convert to
             // a px cursor so segment boundaries don't distort its pace.
             let sweep_px = self.sweep.clamp(0.0, 1.0) * vw;
-            for round in &self.rounds {
-                let seg_w = round.weight.max(1.0) / total * usable;
+            for (i, round) in self.rounds.iter().enumerate() {
+                let seg_w = round.weight.max(1.0) / total * vw;
                 segments.push((seg_x, seg_w));
                 let x_at = |xf: f32| seg_x + xf.clamp(0.0, 1.0) * seg_w - offset;
                 // Local reveal fraction of this segment under the global
@@ -342,12 +350,21 @@ pub fn hp_match_graph<'a, M: 'a>(
                 };
 
                 // Recessed background so each round reads as its own inset
-                // panel; the gaps between them are the round dividers. Once
-                // the sweep has fully crossed a round, its outcome tints the
-                // whole panel — win reads green, loss red; draws and rounds
-                // the recording never resolved stay neutral.
-                let bg =
-                    Path::rounded_rectangle(Point::new(seg_x - offset, 0.0), iced::Size::new(seg_w, h), 3.0.into());
+                // panel; the gaps between them are the round dividers,
+                // each taken off the END of the round it follows so the
+                // next panel still opens exactly on its own first tick.
+                // The panel is chrome over the segment, not the segment
+                // itself, so a round arriving mid-analysis only shortens
+                // the panel that now precedes it — nothing plotted moves.
+                // Once the sweep has fully crossed a round, its outcome
+                // tints the whole panel — win reads green, loss red; draws
+                // and rounds the recording never resolved stay neutral.
+                let trail = if i + 1 == self.rounds.len() { 0.0 } else { GAP };
+                let bg = Path::rounded_rectangle(
+                    Point::new(seg_x - offset, 0.0),
+                    iced::Size::new((seg_w - trail).max(1.0), h),
+                    3.0.into(),
+                );
                 frame.fill(
                     &bg,
                     iced::Color {
@@ -386,12 +403,13 @@ pub fn hp_match_graph<'a, M: 'a>(
                     }
                 }
 
-                // Zero baseline — where a KO'd navi's trace lands.
+                // Zero baseline — where a KO'd navi's trace lands. Runs the
+                // panel, not the segment, so it stops at the divider.
                 let base_y = y_at(0.0);
                 frame.stroke(
                     &Path::line(
                         Point::new(seg_x - offset, base_y),
-                        Point::new(seg_x + seg_w - offset, base_y),
+                        Point::new(seg_x + seg_w - trail - offset, base_y),
                     ),
                     Stroke::default()
                         .with_color(iced::Color { a: 0.22, ..text_color })
@@ -465,7 +483,7 @@ pub fn hp_match_graph<'a, M: 'a>(
                     }
                 }
 
-                seg_x += seg_w + GAP;
+                seg_x += seg_w;
             }
 
             // Viewport indicator: while zoomed in, a thin bar along the top
