@@ -1,0 +1,210 @@
+use super::RawNaviStats;
+
+const BASE: RawNaviStats = RawNaviStats {
+    unk_00: 0x08,
+    reg_memory: 50,
+    giga_limit: 1,
+    mood: 0x99,
+    unk_12: 0xff,
+    beast_out_counter: 3,
+    unk_27: 0x1f,
+    regular_chip_indexes: [0xff; 3],
+    unk_46: 1,
+    unk_4a: 0x0a,
+    tag_chip_indexes: [[0xff; 2]; 3],
+    ..bytemuck::zeroed::<RawNaviStats>()
+};
+
+pub const NAVI_STATS: &[RawNaviStats] = &[
+    BASE,
+    // HeatMan
+    RawNaviStats {
+        navi_id: 1,
+        attack: 3,
+        speed: 2,
+        charge: 2,
+        b_pwr_atk: 0x40,
+        b_left_ability: 0xff,
+        custom_level: 6,
+        mega_limit: 6,
+        float_shoes: 1,
+        a_pwr_atk: 0xff,
+        base_max_hp: 800,
+        current_hp: 2000,
+        effective_max_hp: 2000,
+        ..BASE
+    },
+    // ElecMan
+    RawNaviStats {
+        navi_id: 2,
+        attack: 3,
+        speed: 2,
+        charge: 2,
+        b_pwr_atk: 0x44,
+        b_left_ability: 0xff,
+        custom_level: 6,
+        mega_limit: 7,
+        float_shoes: 1,
+        a_pwr_atk: 0xff,
+        base_max_hp: 800,
+        current_hp: 1900,
+        effective_max_hp: 1900,
+        ..BASE
+    },
+    // SlashMan
+    RawNaviStats {
+        navi_id: 3,
+        attack: 2,
+        speed: 4,
+        charge: 1,
+        b_pwr_atk: 0x43,
+        b_left_ability: 0xff,
+        custom_level: 7,
+        mega_limit: 6,
+        a_pwr_atk: 0xff,
+        base_max_hp: 800,
+        current_hp: 1800,
+        effective_max_hp: 1800,
+        ..BASE
+    },
+    // EraseMan
+    RawNaviStats {
+        navi_id: 4,
+        attack: 3,
+        speed: 2,
+        charge: 3,
+        b_pwr_atk: 0x47,
+        b_left_ability: 0xff,
+        custom_level: 6,
+        mega_limit: 7,
+        a_pwr_atk: 0xff,
+        base_max_hp: 700,
+        current_hp: 1500,
+        effective_max_hp: 1500,
+        ..BASE
+    },
+    // ChargeMan
+    RawNaviStats {
+        navi_id: 5,
+        attack: 3,
+        speed: 2,
+        charge: 4,
+        b_pwr_atk: 0x48,
+        b_left_ability: 0xff,
+        custom_level: 8,
+        mega_limit: 6,
+        super_armor: 1,
+        a_pwr_atk: 0x29,
+        base_max_hp: 800,
+        current_hp: 1800,
+        effective_max_hp: 1800,
+        ..BASE
+    },
+    // SpoutMan
+    RawNaviStats {
+        navi_id: 6,
+        attack: 3,
+        speed: 2,
+        charge: 2,
+        b_pwr_atk: 0x41,
+        b_left_ability: 0xff,
+        custom_level: 6,
+        mega_limit: 6,
+        unk_20: 1,
+        a_pwr_atk: 0x20,
+        base_max_hp: 800,
+        current_hp: 1900,
+        effective_max_hp: 1900,
+        ..BASE
+    },
+    // TomahawkMan
+    RawNaviStats {
+        navi_id: 7,
+        attack: 4,
+        speed: 2,
+        charge: 2,
+        b_pwr_atk: 0x45,
+        b_left_ability: 0xff,
+        custom_level: 6,
+        mega_limit: 7,
+        unk_20: 1,
+        super_armor: 1,
+        a_pwr_atk: 0x1f,
+        base_max_hp: 800,
+        current_hp: 1800,
+        effective_max_hp: 1800,
+        ..BASE
+    },
+    // TenguMan
+    RawNaviStats {
+        navi_id: 8,
+        attack: 3,
+        speed: 4,
+        charge: 1,
+        b_pwr_atk: 0x42,
+        b_left_ability: 0x10,
+        custom_level: 7,
+        mega_limit: 6,
+        float_shoes: 1,
+        air_shoes: 1,
+        unk_20: 1,
+        a_pwr_atk: 0xff,
+        base_max_hp: 800,
+        current_hp: 1800,
+        effective_max_hp: 1800,
+        ..BASE
+    },
+    // GroundMan
+    RawNaviStats {
+        navi_id: 9,
+        attack: 4,
+        speed: 2,
+        charge: 2,
+        b_pwr_atk: 0x4a,
+        b_left_ability: 0xff,
+        custom_level: 6,
+        mega_limit: 7,
+        unk_20: 1,
+        super_armor: 1,
+        a_pwr_atk: 0xff,
+        base_max_hp: 800,
+        current_hp: 2000,
+        effective_max_hp: 2000,
+        ..BASE
+    },
+    // DustMan
+    RawNaviStats {
+        navi_id: 10,
+        attack: 2,
+        speed: 3,
+        charge: 2,
+        b_pwr_atk: 0x49,
+        b_left_ability: 0xff,
+        custom_level: 8,
+        mega_limit: 6,
+        unk_20: 1,
+        super_armor: 1,
+        a_pwr_atk: 0xff,
+        base_max_hp: 800,
+        current_hp: 2000,
+        effective_max_hp: 2000,
+        ..BASE
+    },
+    // ProtoMan
+    RawNaviStats {
+        navi_id: 11,
+        attack: 4,
+        speed: 3,
+        charge: 3,
+        b_pwr_atk: 0x32,
+        b_left_ability: 0x30,
+        custom_level: 7,
+        mega_limit: 6,
+        a_pwr_atk: 0x2d,
+        unk_48: 0x32,
+        base_max_hp: 800,
+        current_hp: 1400,
+        effective_max_hp: 1400,
+        ..BASE
+    },
+];

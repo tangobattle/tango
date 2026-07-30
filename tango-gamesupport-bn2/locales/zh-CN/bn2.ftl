@@ -1,0 +1,9 @@
+name = ROCKMAN EXE 2（英文版）
+short = BN2
+variant-0 = ROCKMAN EXE 2（英文版）
+match-type-0-0 = 一局
+save-hub = 彩斗/一般
+save-guts = 气力
+save-custom = 改装
+save-team = 兄弟
+save-shield = 盾

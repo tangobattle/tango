@@ -1,0 +1,13 @@
+name = Rockman EXE 4
+short = EXE4
+variant-0 = Rockman EXE 4: Tournament Red Sun
+variant-1 = Rockman EXE 4: Tournament Blue Moon
+variant-0-short = Red Sun
+variant-1-short = Blue Moon
+match-type-0-0 = Single
+match-type-0-1 = Single (efectos de torneo)
+match-type-1-0 = Triple
+match-type-1-1 = Triple (efectos de torneo)
+save-dark-hp-997 = Dark (997 HP)
+save-light-hp-999 = Light (999 HP)
+save-light-hp-1000 = Light (1000 HP)

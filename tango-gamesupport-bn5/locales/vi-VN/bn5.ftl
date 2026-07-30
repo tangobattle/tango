@@ -1,0 +1,10 @@
+name = Mega Man Battle Network 5
+short = BN5
+variant-0 = Mega Man Battle Network 5: Team Protoman
+variant-1 = Mega Man Battle Network 5: Team Colonel
+variant-0-short = Protoman
+variant-1-short = Colonel
+match-type-0-0 = BO1
+match-type-1-0 = BO3
+save-dark = Dark
+save-light = Light

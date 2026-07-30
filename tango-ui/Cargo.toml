@@ -2,14 +2,14 @@
 name = "tango-ui"
 version = "0.1.0"
 edition = "2021"
-license = "MPL-2.0"
+license = "GPL-3.0-or-later"
 publish = false
 
 # The app's look-and-feel toolkit: reusable widgets, the style constants
 # and theme decorations they render with, animation timelines, and the
-# "Copied!" flash. Deliberately game-agnostic — the gamesupport UI layer
-# (in the private gamesupport repo) builds on this, and so does every
-# screen in the app.
+# "Copied!" flash. Deliberately game-agnostic — the per-game
+# save-editor UI layer builds on this, and so does every screen in the
+# app.
 
 [dependencies]
 iced.workspace = true

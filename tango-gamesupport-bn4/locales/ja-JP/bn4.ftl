@@ -1,0 +1,13 @@
+name = ロックマンエグゼ4（英語版）
+short = BN4
+variant-0 = ロックマンエグゼ4 トーナメント レッドサン（英語版）
+variant-1 = ロックマンエグゼ4 トーナメント ブルームーン（英語版）
+variant-0-short = レッドサン
+variant-1-short = ブルームーン
+match-type-0-0 = シングル
+match-type-0-1 = シングル（トーナメントビジュアル）
+match-type-1-0 = トリプル
+match-type-1-1 = トリプル（トーナメントビジュアル）
+save-dark-hp-997 = 完全な悪（997 HP）
+save-light-hp-999 = 善（999 HP）
+save-light-hp-1000 = 善（1000 HP）

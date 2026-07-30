@@ -1,0 +1,8 @@
+name = Рок мен ЕХЕ 6
+short = EXE6
+variant-0 = Рок мен ЕХЕ 6: КиберЗверь Грегар
+variant-1 = Рок мен ЕХЕ 6: КиберЗверь Фалзар
+variant-0-short = Грегар
+variant-1-short = Фалзар
+match-type-0-0 = Одиночная
+match-type-1-0 = Тройная

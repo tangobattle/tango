@@ -1,0 +1,19 @@
+[package]
+name = "tango-gamesupport-bn5-ui"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+# The game's save-editor UI: its `GameSaveUi` implementation and the
+# `SAVE_UI` shell static `tango-gamesupport-bn5` re-exports behind its
+# `ui` feature. A crate of its own so the feature flagging lives at the
+# aggregator — nothing in here is cfg'd.
+
+[dependencies]
+tango-gamesupport-common = { path = "../tango-gamesupport-common", features = ["ui"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+iced = { workspace = true}
+unic-langid = { workspace = true}
+
+[lints]
+workspace = true

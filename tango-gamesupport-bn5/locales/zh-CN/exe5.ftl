@@ -1,0 +1,10 @@
+name = ROCKMAN EXE 5
+short = EXE5
+variant-0 = ROCKMAN EXE 5 TEAM BLUES
+variant-1 = ROCKMAN EXE 5 TEAM COLONEL
+variant-0-short = BLUES
+variant-1-short = COLONEL
+match-type-0-0 = 一局
+match-type-1-0 = 三局
+save-dark = 完全恶
+save-light = 善

@@ -1,0 +1,9 @@
+name = Rockman EXE 2
+short = EXE2
+variant-0 = Rockman EXE 2
+match-type-0-0 = Enkelvoudig
+save-hub = Saito/Normal
+save-guts = Guts
+save-custom = Custom
+save-team = Brother
+save-shield = Shield

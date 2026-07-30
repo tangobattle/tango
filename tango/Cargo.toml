@@ -2,7 +2,7 @@
 name = "tango"
 version = "5.1.8"
 edition = "2021"
-license = "MPL-2.0"
+license = "GPL-3.0-or-later"
 publish = false
 build = "build.rs"
 
@@ -107,15 +107,15 @@ unic-langid = { version = "0.9", features = ["likelysubtags"] }
 # and the app never names it.
 tango-gamesupport = { path = "../tango-gamesupport", features = ["ui"] }
 tango-ui = { path = "../tango-ui" }
-tango-gamesupport-bcc = { path = "../gamesupport/tango-gamesupport-bcc", optional = true }
-tango-gamesupport-bn1 = { path = "../gamesupport/tango-gamesupport-bn1", optional = true }
-tango-gamesupport-bn2 = { path = "../gamesupport/tango-gamesupport-bn2", optional = true }
-tango-gamesupport-bn3 = { path = "../gamesupport/tango-gamesupport-bn3", optional = true }
-tango-gamesupport-bn4 = { path = "../gamesupport/tango-gamesupport-bn4", optional = true }
-tango-gamesupport-bn5 = { path = "../gamesupport/tango-gamesupport-bn5", optional = true }
-tango-gamesupport-bn5ds = { path = "../gamesupport/tango-gamesupport-bn5ds", optional = true }
-tango-gamesupport-bn6 = { path = "../gamesupport/tango-gamesupport-bn6", optional = true }
-tango-gamesupport-exe45 = { path = "../gamesupport/tango-gamesupport-exe45", optional = true }
+tango-gamesupport-bcc = { path = "../tango-gamesupport-bcc", optional = true }
+tango-gamesupport-bn1 = { path = "../tango-gamesupport-bn1", optional = true }
+tango-gamesupport-bn2 = { path = "../tango-gamesupport-bn2", optional = true }
+tango-gamesupport-bn3 = { path = "../tango-gamesupport-bn3", optional = true }
+tango-gamesupport-bn4 = { path = "../tango-gamesupport-bn4", optional = true }
+tango-gamesupport-bn5 = { path = "../tango-gamesupport-bn5", optional = true }
+tango-gamesupport-bn5ds = { path = "../tango-gamesupport-bn5ds", optional = true }
+tango-gamesupport-bn6 = { path = "../tango-gamesupport-bn6", optional = true }
+tango-gamesupport-exe45 = { path = "../tango-gamesupport-exe45", optional = true }
 # Named directly only for `Container` and `Settings`, which the export
 # dialog builds; the rendering itself is tango-replay-renderer's.
 encoder-facade.workspace = true
@@ -153,13 +153,7 @@ clap = { version = "4", features = ["derive"] }
 tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index", "bundle"] }
 
 [features]
-# Each game is gated behind its own feature: it turns on the game's
-# registry entry in tango-library (ROM/save detection + PvP hooks +
-# saves + logos) and its save-editor UI crate for the `save_ui_for`
-# registry in src/save_view.rs. No games are compiled in by default;
-# `gamesupport-all` enables every game. Shipped builds pass
-# `--features gamesupport-all`.
-default = []
+default = ["gamesupport-all"]
 gamesupport-bcc = ["dep:tango-gamesupport-bcc", "tango-gamesupport-bcc/ui", "tango-library/gamesupport-bcc"]
 gamesupport-bn1 = ["dep:tango-gamesupport-bn1", "tango-gamesupport-bn1/ui", "tango-library/gamesupport-bn1"]
 gamesupport-bn2 = ["dep:tango-gamesupport-bn2", "tango-gamesupport-bn2/ui", "tango-library/gamesupport-bn2"]

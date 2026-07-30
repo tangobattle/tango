@@ -2,6 +2,7 @@
 name = "tango-backend-melonds"
 version = "0.1.0"
 edition = "2021"
+license = "GPL-3.0-or-later"
 
 # The melonDS backend for tango-match: a pair of emulated DSes on
 # emulated local wireless. Kept out of tango-match so the seam does not

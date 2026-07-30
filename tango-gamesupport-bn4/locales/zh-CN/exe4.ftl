@@ -1,0 +1,13 @@
+name = ROCKMAN EXE 4
+short = EXE4
+variant-0 = ROCKMAN EXE 4 RED SUN
+variant-1 = ROCKMAN EXE 4 BLUE MOON
+variant-0-short = RED SUN
+variant-1-short = BLUE MOON
+match-type-0-0 = 一局
+match-type-0-1 = 一局（锦标赛视觉效果）
+match-type-1-0 = 三局
+match-type-1-1 = 三局（锦标赛视觉效果）
+save-dark-hp-997 = 完全恶（997 HP）
+save-light-hp-999 = 善（999 HP）
+save-light-hp-1000 = 善（1000 HP）

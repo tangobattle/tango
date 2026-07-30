@@ -2,7 +2,7 @@
 name = "tango-library"
 version = "0.1.0"
 edition = "2021"
-license = "MPL-2.0"
+license = "GPL-3.0-or-later"
 publish = false
 
 # The user's game library and its persistence, extracted from the tango
@@ -30,15 +30,15 @@ tango-replay = { path = "../tango-replay" }
 
 fluent-templates = "0.14"
 
-tango-gamesupport-bcc = { path = "../gamesupport/tango-gamesupport-bcc", optional = true }
-tango-gamesupport-bn1 = { path = "../gamesupport/tango-gamesupport-bn1", optional = true }
-tango-gamesupport-bn2 = { path = "../gamesupport/tango-gamesupport-bn2", optional = true }
-tango-gamesupport-bn3 = { path = "../gamesupport/tango-gamesupport-bn3", optional = true }
-tango-gamesupport-bn4 = { path = "../gamesupport/tango-gamesupport-bn4", optional = true }
-tango-gamesupport-bn5 = { path = "../gamesupport/tango-gamesupport-bn5", optional = true }
-tango-gamesupport-bn5ds = { path = "../gamesupport/tango-gamesupport-bn5ds", optional = true }
-tango-gamesupport-bn6 = { path = "../gamesupport/tango-gamesupport-bn6", optional = true }
-tango-gamesupport-exe45 = { path = "../gamesupport/tango-gamesupport-exe45", optional = true }
+tango-gamesupport-bcc = { path = "../tango-gamesupport-bcc", optional = true }
+tango-gamesupport-bn1 = { path = "../tango-gamesupport-bn1", optional = true }
+tango-gamesupport-bn2 = { path = "../tango-gamesupport-bn2", optional = true }
+tango-gamesupport-bn3 = { path = "../tango-gamesupport-bn3", optional = true }
+tango-gamesupport-bn4 = { path = "../tango-gamesupport-bn4", optional = true }
+tango-gamesupport-bn5 = { path = "../tango-gamesupport-bn5", optional = true }
+tango-gamesupport-bn5ds = { path = "../tango-gamesupport-bn5ds", optional = true }
+tango-gamesupport-bn6 = { path = "../tango-gamesupport-bn6", optional = true }
+tango-gamesupport-exe45 = { path = "../tango-gamesupport-exe45", optional = true }
 
 # The `native` feature's std implementations only. Nothing outside
 # `storage::std_impl` / `http::reqwest_impl` / `bnlc` may reference these,

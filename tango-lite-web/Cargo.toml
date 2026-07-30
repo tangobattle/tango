@@ -2,7 +2,7 @@
 name = "tango-lite-web"
 version = "0.1.0"
 edition = "2021"
-license = "MPL-2.0"
+license = "GPL-3.0-or-later"
 publish = false
 
 # A phone-sized Tango: pick a ROM, play it, or dial a link code and play

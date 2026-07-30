@@ -1,0 +1,35 @@
+[package]
+name = "tango-gamesupport-bn5"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+# The game's aggregator: the `Game` registrations (ROM identity,
+# parsers, templates, presentation bits) plus the pvp engine support,
+# re-exporting `tango-gamesupport-bn5-dataview` as `dataview` and —
+# behind the `ui` feature, the one cfg point — the save-editor UI crate
+# as `ui`. Headless builds (probes, engine hosts) never link a UI
+# toolkit.
+
+[dependencies]
+tango-gamesupport = { path = "../tango-gamesupport" }
+tango-gamesupport-bn5-dataview = { path = "../tango-gamesupport-bn5-dataview" }
+tango-gamesupport-common = { path = "../tango-gamesupport-common", default-features = false }
+tango-match = { path = "../tango-match" }
+tango-backend-mgba = { path = "../tango-backend-mgba" }
+mgba.workspace = true
+image = { version = "0.25", default-features = false, features = ["png"] }
+bytemuck = { version = "1", features = ["derive", "const_zeroed", "min_const_generics"] }
+
+tango-gamesupport-bn5-ui = { path = "../tango-gamesupport-bn5-ui", optional = true }
+
+[features]
+ui = ["tango-gamesupport/ui", "dep:tango-gamesupport-bn5-ui"]
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+# For the sio_probe example (headless lockstep-pair handshake probe).
+mgba-rollback.workspace = true
+env_logger = "0.9"

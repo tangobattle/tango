@@ -1,0 +1,40 @@
+[package]
+name = "tango-gamesupport-bn5ds"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+# MegaMan Battle Network 5: Double Team DS.
+#
+# The first game whose engine is not mgba. The GBA crates build their
+# netplay on `tango-match` (a pair of mgba cores on an emulated link
+# cable); this one builds it on `melonds-rollback` (a pair of emulated
+# DSes on emulated local wireless). Both are the same shape — boot a
+# pair, prime it into a battle, run a rollback session over it — which
+# is why the engine belongs to the game crate rather than to a single
+# shared type.
+
+[features]
+# Pairs with the app's UI build, switching the save editor on: the
+# read-only folder viewer from `tango-gamesupport-bn5ds-ui`.
+ui = ["tango-gamesupport/ui", "dep:tango-gamesupport-bn5ds-ui"]
+
+[dependencies]
+tango-gamesupport = { path = "../tango-gamesupport" }
+tango-gamesupport-bn5ds-dataview = { path = "../tango-gamesupport-bn5ds-dataview" }
+tango-gamesupport-common = { path = "../tango-gamesupport-common", default-features = false }
+tango-match = { path = "../tango-match" }
+tango-backend-melonds = { path = "../tango-backend-melonds" }
+log = "0.4"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+tango-gamesupport-bn5ds-ui = { path = "../tango-gamesupport-bn5ds-ui", optional = true }
+
+[dev-dependencies]
+# The replay-playback probe re-simulates recorded matches.
+tango-replay = { path = "../tango-replay" }
+# The probes' view of priming's own log lines.
+env_logger = "0.9"
+
+[lints]
+workspace = true

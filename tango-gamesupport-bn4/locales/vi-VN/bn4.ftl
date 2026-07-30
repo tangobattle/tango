@@ -1,0 +1,13 @@
+name = Mega Man Battle Network 4
+short = BN4
+variant-0 = Mega Man Battle Network 4: Red Sun
+variant-1 = Mega Man Battle Network 4: Blue Moon
+variant-0-short = Red Sun
+variant-1-short = Blue Moon
+match-type-0-0 = BO1
+match-type-0-1 = BO1 (hiệu ứng giải đấu)
+match-type-1-0 = BO3
+match-type-1-1 = BO3 (hiệu ứng giải đấu)
+save-dark-hp-997 = Dark (997 HP)
+save-light-hp-999 = Light (999 HP)
+save-light-hp-1000 = Light (1000 HP)

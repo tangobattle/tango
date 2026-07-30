@@ -1,0 +1,9 @@
+name = Мега Мен Батл Нетворк 2
+short = БН2
+variant-0 = Мега Мен Батл Нетворк 2
+match-type-0-0 = Одиночная
+save-hub = Hub/Normal
+save-guts = Guts
+save-custom = Custom
+save-team = Team
+save-shield = Shield

@@ -1,0 +1,13 @@
+name = Рок мен ЕХЕ 4
+short = EXE4
+variant-0 = Рок мен EXE 4: Чемпионат Красного Солнца
+variant-1 = Рок мен EXE 4: Чемпионат Синей Луны
+variant-0-short = Красного Солнца
+variant-1-short = Синей Луны
+match-type-0-0 = Одиночная
+match-type-0-1 = Единый (визуализация турнира)
+match-type-1-0 = Тройная
+match-type-1-1 = Тройная (визуализация турнира)
+save-dark-hp-997 = Dark (997 HP)
+save-light-hp-999 = Light (999 HP)
+save-light-hp-1000 = Light (1000 HP)

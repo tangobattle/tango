@@ -1,0 +1,8 @@
+name = Rockman EXE 6
+short = EXE6
+variant-0 = Rockman EXE 6: Dennoujuu Glaga
+variant-1 = Rockman EXE 6: Dennoujuu Falzer
+variant-0-short = Glaga
+variant-1-short = Falzer
+match-type-0-0 = Une
+match-type-1-0 = Trois

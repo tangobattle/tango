@@ -1,0 +1,10 @@
+name = Rockman EXE 5
+short = EXE5
+variant-0 = Rockman EXE 5: Team of Blues
+variant-1 = Rockman EXE 5: Team of Colonel
+variant-0-short = Blues
+variant-1-short = Colonel
+match-type-0-0 = BO1
+match-type-1-0 = BO3
+save-dark = Dark
+save-light = Light

@@ -1,0 +1,9 @@
+name = ロックマンエグゼ2（英語版）
+short = BN2
+variant-0 = ロックマンエグゼ2（英語版）
+match-type-0-0 = シングル
+save-hub = サイト・ノーマル
+save-guts = ガッツ
+save-custom = カスタム
+save-team = ブラザー
+save-shield = シールド

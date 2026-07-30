@@ -1,0 +1,9 @@
+name = ロックマンエグゼ2
+short = EXE2
+variant-0 = ロックマンエグゼ2
+match-type-0-0 = シングル
+save-hub = サイト・ノーマル
+save-guts = ガッツ
+save-custom = カスタム
+save-team = ブラザー
+save-shield = シールド

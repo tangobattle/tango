@@ -1,0 +1,10 @@
+name = ロックマンエグゼ5
+short = EXE5
+variant-0 = ロックマンエグゼ5 チーム オブ ブルース
+variant-1 = ロックマンエグゼ5 チーム オブ カーネル
+variant-0-short = ブルース
+variant-1-short = カーネル
+match-type-0-0 = シングル
+match-type-1-0 = トリプル
+save-dark = 完全な悪
+save-light = 善

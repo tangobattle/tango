@@ -1,0 +1,13 @@
+name = Мега Мен Батл Нетворк 4
+short = БН4
+variant-0 = Мега Мен Батл Нетворк 4: Красное Солнце
+variant-1 = Мега Мен Батл Нетворк 4: Синяя Луна
+variant-0-short = Красное Солнце
+variant-1-short = Синяя Луна
+match-type-0-0 = Одиночная
+match-type-0-1 = Единый (визуализация турнира)
+match-type-1-0 = Тройная
+match-type-1-1 = Тройная (визуализация турнира)
+save-dark-hp-997 = Dark (997 HP)
+save-light-hp-999 = Light (999 HP)
+save-light-hp-1000 = Light (1000 HP)

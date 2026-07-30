@@ -1,0 +1,17 @@
+[package]
+name = "tango-gamesupport-bcc-dataview"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+# The game's save/ROM dataview: the parsers and asset decoders behind
+# `tango-gamesupport-bcc`'s Game registrations. Headless-safe — no UI
+# toolkit anywhere below this crate.
+
+[dependencies]
+tango-gamesupport-common = { path = "../tango-gamesupport-common", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png"] }
+byteorder = "1"
+
+[lints]
+workspace = true

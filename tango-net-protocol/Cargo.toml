@@ -2,7 +2,7 @@
 name = "tango-net-protocol"
 version = "0.1.0"
 edition = "2021"
-license = "MPL-2.0"
+license = "GPL-3.0-or-later"
 publish = false
 
 # The netplay wire protocol, extracted from the tango bin crate so a

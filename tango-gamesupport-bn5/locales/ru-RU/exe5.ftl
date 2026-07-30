@@ -1,0 +1,10 @@
+name = Рок мен ЕХЕ 5
+short = EXE5
+variant-0 = Рок мен EXE 5: Команда Блюза
+variant-1 = Рок мен EXE 5: Команда Кернела
+variant-0-short = Блюза
+variant-1-short = Кернела
+match-type-0-0 = Одиночная
+match-type-1-0 = Тройная
+save-dark = Dark
+save-light = Light

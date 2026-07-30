@@ -2,6 +2,7 @@
 name = "tango-backend-mgba"
 version = "0.1.0"
 edition = "2021"
+license = "GPL-3.0-or-later"
 
 # The mgba backend for tango-match: a pair of emulated GBAs on an
 # emulated link cable. Kept out of tango-match so the seam depends on no
@@ -24,3 +25,4 @@ workspace = true
 # The examples re-simulate recorded matches, so they read replay files.
 [dev-dependencies]
 tango-replay = { path = "../tango-replay" }
+tango-session = { path = "../tango-session" }

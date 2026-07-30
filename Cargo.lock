@@ -7625,6 +7625,7 @@ dependencies = [
  "serde_repr",
  "tango-match",
  "tango-replay",
+ "tango-session",
  "thiserror 1.0.69",
 ]
 

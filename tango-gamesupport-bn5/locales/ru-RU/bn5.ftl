@@ -1,0 +1,10 @@
+name = Мега Мен Батл Нетворк 5
+short = БН5
+variant-0 = Мега Мен Батл Нетворк 5: Команда Протомена
+variant-1 = Мега Мен Батл Нетворк 5: Команда Кернела
+variant-0-short = Протомена
+variant-1-short = Кернела
+match-type-0-0 = Одиночная
+match-type-1-0 = Тройная
+save-dark = Dark
+save-light = Light
