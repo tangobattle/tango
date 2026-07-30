@@ -83,4 +83,13 @@ pub mod derive;
 // of rewriting the committed bytes to carry the choice. Priming steers
 // the game's own file select by it on both peers, so even if the
 // reveal decoded, the walks — and the simulations — would disagree.
-pub const PROTOCOL_VERSION: u32 = 0x53;
+// 0x54: the DS engine's emulated timeline changed again, for the same
+// reason 0x52 did and with the same consequence. melonDS was keeping
+// state its savestates did not carry, and its JIT baked that state into
+// compiled blocks — so what a block cost depended on the path execution
+// first took to reach it. Fixing that moved the cycle counts of ordinary
+// execution, not just of a restore: a 0x53 peer and a 0x54 peer simulate
+// the same pair tick for tick and drift apart within seconds, surfacing
+// as the game's own communication errors. The wire format is untouched;
+// they simply must not pair.
+pub const PROTOCOL_VERSION: u32 = 0x54;
