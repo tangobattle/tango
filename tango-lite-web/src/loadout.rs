@@ -46,13 +46,15 @@ impl Loadout {
     /// `(name, version)` rather than anything derived: both sides must
     /// arrive at the same [`tango_patch::Tag`] independently.
     pub fn game_info(&self) -> Option<protocol::GameInfo> {
-        let (family, variant) = self.game?.family_and_variant();
+        let game = self.game?;
+        let (family, variant) = game.family_and_variant();
         Some(protocol::GameInfo {
             family_and_variant: (family.to_string(), variant),
             patch: self.patch.as_ref().map(|(name, version)| protocol::PatchInfo {
                 name: name.clone(),
                 version: version.clone(),
             }),
+            sim_version: game.family.sim_version,
         })
     }
 

@@ -1298,7 +1298,7 @@ fn build_replay_writer(
         game_info: Some(tango_replay::metadata::GameInfo {
             rom_family: local_gi.family_and_variant.0.clone(),
             rom_variant: local_gi.family_and_variant.1 as u32,
-            replay_version: local_game.family.replay_version,
+            sim_version: local_game.family.sim_version,
             patch: local_gi
                 .patch
                 .as_ref()
@@ -1320,7 +1320,7 @@ fn build_replay_writer(
         game_info: Some(tango_replay::metadata::GameInfo {
             rom_family: remote_gi.family_and_variant.0.clone(),
             rom_variant: remote_gi.family_and_variant.1 as u32,
-            replay_version: remote_game.family.replay_version,
+            sim_version: remote_game.family.sim_version,
             patch: remote_gi
                 .patch
                 .as_ref()

@@ -11,14 +11,15 @@ message Metadata {
     string rom_family = 1;
     uint32 rom_variant = 2;
     Patch patch = 3;
-    // rom_family's replay compatibility version at recording time
-    // (`Family::replay_version` in gamesupport). Playback requires it
-    // to equal the family's current one, so a family whose engine
-    // support changes incompatibly bumps this instead of the container
-    // version — invalidating its own recordings and nobody else's.
-    // Recordings that predate the field read back as 0, the version
-    // every family started at, so they stay valid.
-    uint32 replay_version = 4;
+    // How rom_family was simulated at recording time
+    // (`Family::sim_version` in gamesupport — the same number the
+    // netplay handshake pairs on). Playback requires it to equal the
+    // family's current one, so a family whose engine support changes
+    // incompatibly bumps this instead of the container version —
+    // invalidating its own recordings and nobody else's. Recordings
+    // that predate the field read back as 0, the version every family
+    // started at, so they stay valid.
+    uint32 sim_version = 4;
   }
 
   message Side {

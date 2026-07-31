@@ -148,22 +148,22 @@ macro_rules! family_translations {
     };
 }
 
-/// This crate's families' replay compatibility version — one engine
-/// serves them all, so a change that invalidates one family's
-/// recordings invalidates its siblings' too. See
-/// [`Family::replay_version`] for what warrants a bump.
-const REPLAY_VERSION: u32 = 0;
+/// This crate's families' simulation version — one engine serves
+/// them all, so a change that re-cuts one family's matches re-cuts
+/// its siblings' too. See [`Family::sim_version`] for what it gates
+/// and what warrants a bump.
+const SIM_VERSION: u32 = 0;
 
 pub static EXE2_FAMILY: Family = Family {
     id: "exe2",
-    replay_version: REPLAY_VERSION,
+    sim_version: SIM_VERSION,
     games: &[&EXE2],
     translations: family_translations!("exe2"),
 };
 
 pub static BN2_FAMILY: Family = Family {
     id: "bn2",
-    replay_version: REPLAY_VERSION,
+    sim_version: SIM_VERSION,
     games: &[&BN2],
     translations: family_translations!("bn2"),
 };

@@ -242,6 +242,14 @@ fn VerdictLine(verdict: Verdict) -> Element {
             "error",
             "Different game or patch versions — you can't play across them.".to_string(),
         ),
+        Verdict::SimVersionTooOld => (
+            "error",
+            "This game's netplay changed since your opponent's version of Tango — they need to update.".to_string(),
+        ),
+        Verdict::SimVersionTooNew => (
+            "error",
+            "This game's netplay changed since your version of Tango — you need to update.".to_string(),
+        ),
         Verdict::DifferentMatchTypes => ("error", "You've picked different match types.".to_string()),
     };
     rsx! { div { class: "{class}", "{text}" } }

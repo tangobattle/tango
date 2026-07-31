@@ -6,6 +6,7 @@
 //!   the shadow core re-simulates their side from their rom + save),
 //! - resolve to the same [`tango_patch::Tag`],
 //! - have both sides' patch packages installed,
+//! - be builds that simulate the game the same way (`sim_version`),
 //! - agree on `match_type`.
 //!
 //! Possession is checked from our side only — the legacy app exchanged
@@ -54,6 +55,15 @@ pub enum Verdict {
     /// Games + patches resolve but to different tags. Cross-version play
     /// not allowed.
     DifferentVersions,
+    /// The same game, but the peer's build simulates it the way an
+    /// older one of ours did — its engine support for this family
+    /// predates a change here. Not fixable from this end: they have to
+    /// update. See `tango_gamesupport::Family::sim_version`.
+    SimVersionTooOld,
+    /// The same game, simulated the way a build newer than ours does —
+    /// this family's engine support has changed since our release, so
+    /// we're the ones who have to update.
+    SimVersionTooNew,
     /// Tags agree but the picked match types diverge.
     DifferentMatchTypes,
 }
@@ -89,6 +99,17 @@ pub fn check(
     let remote_tag = tag_from_game_info(remote_gi, catalog);
     if local_tag.is_none() || remote_tag.is_none() || local_tag != remote_tag {
         return Verdict::DifferentVersions;
+    }
+
+    // Same game, different simulations of it: one build's engine
+    // support for this family has moved since the other's. The peer's
+    // number is theirs to report — we can't derive it, because what it
+    // describes is their build, not their game. Which side is behind is
+    // worth saying: only one of the two can act on it.
+    match remote_gi.sim_version.cmp(&local_gi.sim_version) {
+        std::cmp::Ordering::Less => return Verdict::SimVersionTooOld,
+        std::cmp::Ordering::Greater => return Verdict::SimVersionTooNew,
+        std::cmp::Ordering::Equal => {}
     }
 
     if let Some(missing) = missing_patch(local, remote, catalog) {

@@ -83,6 +83,8 @@ pub enum Verdict {
     MissingRom,
     Fetching { name: String },
     DifferentVersions,
+    SimVersionTooOld,
+    SimVersionTooNew,
     DifferentMatchTypes,
 }
 
@@ -187,6 +189,8 @@ fn verdict(link: &Link) -> Option<Verdict> {
             // Fetchable, and we do fetch it — see `fetch_missing_patch`.
             compat::Verdict::MissingPatch { name, .. } => Verdict::Fetching { name },
             compat::Verdict::DifferentVersions => Verdict::DifferentVersions,
+            compat::Verdict::SimVersionTooOld => Verdict::SimVersionTooOld,
+            compat::Verdict::SimVersionTooNew => Verdict::SimVersionTooNew,
             compat::Verdict::DifferentMatchTypes => Verdict::DifferentMatchTypes,
         }
     })

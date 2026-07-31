@@ -375,6 +375,8 @@ impl<'a> Lobby<'a> {
                     // verdict, because it is one.
                     Verdict::MissingPatch { .. } => t!(lang, "lobby-compat-fetching-patch"),
                     Verdict::DifferentVersions => t!(lang, "lobby-compat-version-mismatch"),
+                    Verdict::SimVersionTooOld => t!(lang, "lobby-compat-sim-too-old"),
+                    Verdict::SimVersionTooNew => t!(lang, "lobby-compat-sim-too-new"),
                     Verdict::DifferentMatchTypes => t!(lang, "lobby-compat-match-mismatch"),
                 };
                 let style: fn(&iced::Theme) -> iced::widget::text::Style = if status.compat_ok() {

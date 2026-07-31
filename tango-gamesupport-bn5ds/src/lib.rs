@@ -116,27 +116,27 @@ pub static EXE5DS: Game = Game {
     save_editor: &ui::SAVE_EDITOR,
 };
 
-/// This crate's families' replay compatibility version — one engine
-/// serves them all, so a change that invalidates one family's
-/// recordings invalidates its siblings' too. See
-/// [`Family::replay_version`] for what warrants a bump.
+/// This crate's families' simulation version — one engine serves
+/// them all, so a change that re-cuts one family's matches re-cuts
+/// its siblings' too. See [`Family::sim_version`] for what it gates
+/// and what warrants a bump.
 ///
 /// 1: priming hands off when the battle transition starts (the board
 /// module's departure) instead of when the battle module arrives, a
 /// few frames earlier — recordings made against the old finish line
 /// carry inputs offset by that gap.
-const REPLAY_VERSION: u32 = 2;
+const SIM_VERSION: u32 = 2;
 
 pub static BN5DS_FAMILY: Family = Family {
     id: "bn5ds",
-    replay_version: REPLAY_VERSION,
+    sim_version: SIM_VERSION,
     games: &[&BN5DS],
     translations: &[("en-US", include_str!("../locales/en-US/bn5ds.ftl"))],
 };
 
 pub static EXE5DS_FAMILY: Family = Family {
     id: "exe5ds",
-    replay_version: REPLAY_VERSION,
+    sim_version: SIM_VERSION,
     games: &[&EXE5DS],
     translations: &[("en-US", include_str!("../locales/en-US/exe5ds.ftl"))],
 };

@@ -85,13 +85,13 @@ macro_rules! family_translations {
     };
 }
 
-/// The family's replay compatibility version. See
-/// [`Family::replay_version`] for what warrants a bump.
-const REPLAY_VERSION: u32 = 0;
+/// The family's simulation version. See [`Family::sim_version`] for
+/// what it gates and what warrants a bump.
+const SIM_VERSION: u32 = 0;
 
 pub static EXE45_FAMILY: Family = Family {
     id: "exe45",
-    replay_version: REPLAY_VERSION,
+    sim_version: SIM_VERSION,
     games: &[&EXE45],
     translations: family_translations!("exe45"),
 };

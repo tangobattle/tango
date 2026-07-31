@@ -134,6 +134,17 @@ pub struct PatchInfo {
 pub struct GameInfo {
     pub family_and_variant: (String, u8),
     pub patch: Option<PatchInfo>,
+    /// How the sender's build simulates this family
+    /// (`tango_gamesupport::Family::sim_version`, the same number its
+    /// replays are stamped with). Two builds that disagree here would
+    /// simulate the same inputs into different matches, so the lobby
+    /// refuses the pairing before either side commits.
+    ///
+    /// This is what keeps a change to one game's netplay from costing
+    /// every game a [`crate::PROTOCOL_VERSION`] bump: the protocol
+    /// version gates the wire, this gates the simulation, and only the
+    /// games that actually changed are turned away.
+    pub sim_version: u32,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq, Eq)]

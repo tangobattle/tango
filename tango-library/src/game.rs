@@ -80,11 +80,11 @@ pub enum ReplaySideError {
     /// knew games this one doesn't.
     #[error("unsupported game {family} v{variant}")]
     UnknownGame { family: String, variant: u32 },
-    /// The family's replay compatibility version has moved since the
-    /// recording (or the recording is from a newer build). Either way
-    /// the engine support isn't the one the match ran on.
-    #[error("this recording's {family} replay version ({recorded}) doesn't match this build's ({current})")]
-    ReplayVersionMismatch {
+    /// The family's simulation version has moved since the recording
+    /// (or the recording is from a newer build). Either way the engine
+    /// support isn't the one the match ran on.
+    #[error("this recording's {family} simulation version ({recorded}) doesn't match this build's ({current})")]
+    SimVersionMismatch {
         family: String,
         recorded: u32,
         current: u32,
@@ -96,7 +96,7 @@ pub enum ReplaySideError {
 ///
 /// A replay is re-simulated, not decoded, so playing one back on engine
 /// support that has changed since it was recorded produces a different
-/// match. [`Family::replay_version`] is the per-family lever for that:
+/// match. [`Family::sim_version`] is the per-family lever for that:
 /// bumping it invalidates the family's existing recordings without
 /// touching any other family's. This is the one place the recorded and
 /// current versions are compared — every path that re-simulates a
@@ -111,11 +111,11 @@ pub fn find_for_replay_side(gi: &tango_replay::metadata::GameInfo) -> Result<Gam
         .ok()
         .and_then(|variant| find_by_family_and_variant(&gi.rom_family, variant))
         .ok_or_else(unknown)?;
-    if gi.replay_version != game.family.replay_version {
-        return Err(ReplaySideError::ReplayVersionMismatch {
+    if gi.sim_version != game.family.sim_version {
+        return Err(ReplaySideError::SimVersionMismatch {
             family: gi.rom_family.clone(),
-            recorded: gi.replay_version,
-            current: game.family.replay_version,
+            recorded: gi.sim_version,
+            current: game.family.sim_version,
         });
     }
     Ok(game)
