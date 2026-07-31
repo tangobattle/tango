@@ -79,7 +79,14 @@ pub static EXEOSS: Game = Game {
 /// what it gates and what warrants a bump.
 ///
 /// 0: the first shipped walk.
-const SIM_VERSION: u32 = 0;
+///
+/// 1: a match ends when the comm screen comes back, not when the battle
+/// scene goes. The DELETED banner, its jingle and the fade out all play
+/// in between — about 157 frames of match that used to be cut off the
+/// session and out of the recording. Peers have to agree about where a
+/// match stops, and a recording made against the old anchor is 157
+/// frames short of one made against this.
+const SIM_VERSION: u32 = 1;
 
 pub static EXEOSS_FAMILY: Family = Family {
     id: "exeoss",

@@ -73,11 +73,12 @@ impl tango_backend_melonds::GameSupport for Pvp {
     /// as BN5DS's does.
     ///
     /// What it watches is the game's own scene byte, the same one
-    /// priming's finish line reads: it holds the battle's id for as
-    /// long as the battle has the screen and goes back to the Network
-    /// module's when the players are returned to the comm screens, so
-    /// entering it is the battle starting and leaving it is the match
-    /// over.
+    /// priming's finish line reads: entering the battle's id is the
+    /// battle starting, and coming back to the Network module's is the
+    /// match over. Deliberately not *leaving* the battle's — see
+    /// [`SCENE_NETWORK`](priming::SCENE_NETWORK): the DELETED banner,
+    /// its jingle and the fade out all play after the battle scene has
+    /// gone, and they are the end of the match a player watches.
     ///
     /// **No battle levels yet.** The observation is always `None`: the
     /// unit HP pair is mapped (two `0x84`-spaced records at
@@ -91,31 +92,35 @@ impl tango_backend_melonds::GameSupport for Pvp {
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<Nds>> {
         use tango_match::telemetry::{CoreObs, EventSink};
 
-        /// Console 0's watch: the battle's presence, reported on its
-        /// edges against last tick's reading.
+        /// Console 0's watch: which scene has the screen, reported on
+        /// its edges against last tick's reading.
         #[derive(Clone)]
         struct Lifecycle {
-            /// Whether the battle had the screen last tick. `None`
-            /// before the first, so the tick priming hands over on is
-            /// the battle starting rather than a level with no edge.
-            was_live: Option<bool>,
+            /// Last tick's scene byte. `None` before the first, so the
+            /// tick priming hands over on is the battle starting rather
+            /// than a level with no edge.
+            was: Option<u8>,
         }
 
         impl tango_match::telemetry::CorePoller<Nds> for Lifecycle {
             fn poll(&mut self, nds: &mut Nds, events: &EventSink, _round: u32) -> Option<CoreObs> {
-                let live = nds.read8(priming::SCENE_BYTE) == priming::SCENE_BATTLE;
-                match self.was_live {
-                    None if live => events.round_started(),
-                    Some(true) if !live => events.match_ended(),
+                let scene = nds.read8(priming::SCENE_BYTE);
+                match self.was {
+                    None if scene == priming::SCENE_BATTLE => events.round_started(),
+                    // The comm screen coming back, with everything the
+                    // battle had left to play already played.
+                    Some(was) if was != priming::SCENE_NETWORK && scene == priming::SCENE_NETWORK => {
+                        events.match_ended()
+                    }
                     _ => {}
                 }
-                self.was_live = Some(live);
+                self.was = Some(scene);
                 None
             }
         }
 
         if player == 0 {
-            Box::new(Lifecycle { was_live: None })
+            Box::new(Lifecycle { was: None })
         } else {
             // Console 1 reads nothing: the lifecycle is one console's
             // to report, and there are no per-player levels yet.
@@ -350,8 +355,7 @@ pub mod priming {
     const PLACEHOLDER_NAME: [u8; 4] = [0x1a, 0x38, 0x3f, NAME_EMPTY];
 
     /// What [`ram::SCENE`] reads once the battle has taken the screen
-    /// over. Reaching it on both consoles is the walk's finish line,
-    /// and leaving it is the match's end.
+    /// over. Reaching it on both consoles is the walk's finish line.
     ///
     /// **This is deliberately later than the connect exchange
     /// finishing.** The comm screens hand off to the battle across a
@@ -362,6 +366,35 @@ pub mod priming {
     /// long up by then; what those frames cost is emulation, not
     /// waiting.
     pub(super) const SCENE_BATTLE: u8 = 0x0f;
+
+    /// What [`ram::SCENE`] reads back on the Network menu — the comm
+    /// screen the players came from, and the one the game returns them
+    /// to when the battle is finally done with them. **This, not
+    /// leaving [`SCENE_BATTLE`], is the match's end.**
+    ///
+    /// Leaving the battle scene is far too early, because what follows
+    /// it is the part a player came to see. A KO runs: the DELETED
+    /// banner and its jingle, then the field fading out, then the load
+    /// back to the menu. Measured against a forced KO, that is the
+    /// scene going `0x0f` → [`SCENE_RESULT`] at the banner → `0xff`
+    /// (loading) about 105 frames later at the fade → `0x09` about 50
+    /// frames after that. Ending on the first of those cuts the banner,
+    /// the jingle and the whole fade out of the session and out of the
+    /// recording.
+    ///
+    /// It also has to be this rather than the result scene, because the
+    /// result scene is **one-sided**: only the console that won flips
+    /// to it. The loser's stays on the battle until the fade. The two
+    /// consoles reach `0xff` and `0x09` on the same tick, so anchoring
+    /// here is the same instant for both players however the match went
+    /// — which a per-seat anchor could not be.
+    pub(super) const SCENE_NETWORK: u8 = 0x09;
+
+    /// The winner's post-KO scene: the DELETED banner and the jingle
+    /// over the frozen field. Named for the record rather than read —
+    /// see [`SCENE_NETWORK`] for why the anchor is not here.
+    #[allow(dead_code)]
+    pub(super) const SCENE_RESULT: u8 = 0x12;
 
     /// [`ram::SCENE`], for the telemetry watch — what has the screen is
     /// the walk's business to know and the telemetry's business to
@@ -534,10 +567,7 @@ pub mod priming {
     /// emulated flash never needs. See
     /// [`ARM7_FLASH_WAIT`](code::ARM7_FLASH_WAIT).
     fn traps7() -> Vec<(u32, Box<dyn FnMut(&mut Nds)>)> {
-        vec![(
-            code::ARM7_FLASH_WAIT,
-            Box::new(|nds: &mut Nds| nds.arm7_set_reg(0, 0)),
-        )]
+        vec![(code::ARM7_FLASH_WAIT, Box::new(|nds: &mut Nds| nds.arm7_set_reg(0, 0)))]
     }
 
     /// Install the walk on both consoles.
@@ -617,10 +647,7 @@ pub mod priming {
             if cancelled(link) {
                 return Err(tango_match::Error::Cancelled);
             }
-            let scenes = [
-                link.console(0).read8(ram::SCENE),
-                link.console(1).read8(ram::SCENE),
-            ];
+            let scenes = [link.console(0).read8(ram::SCENE), link.console(1).read8(ram::SCENE)];
             if scenes == [SCENE_BATTLE; 2] && link.connected() {
                 break true;
             }
