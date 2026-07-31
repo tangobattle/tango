@@ -682,6 +682,11 @@ pub struct StatsPass {
     local_player: usize,
     store: SnapshotStore,
     cancel: Arc<AtomicBool>,
+    /// Where the pass reports the tick it has reached, every tick (see
+    /// [`report_progress_into`](Self::report_progress_into)). `None`
+    /// for a pass nobody is watching, which is every pass but the one
+    /// behind a scrub bar.
+    progress: Option<Arc<AtomicU32>>,
 }
 
 impl StatsPass {
@@ -697,6 +702,9 @@ impl StatsPass {
                 return Ok(false);
             }
             let tick = self.playback.cursor();
+            if let Some(progress) = &self.progress {
+                progress.store(tick, Ordering::Relaxed);
+            }
 
             if let Some(telemetry) = &self.telemetry {
                 // Drained whether or not anything is folding it: the
@@ -722,6 +730,22 @@ impl StatsPass {
     /// progress.
     pub fn progress(&self) -> u32 {
         self.playback.cursor()
+    }
+
+    /// Report [`progress`](Self::progress) into `cell` as the pass
+    /// covers each tick, rather than leaving a host to read it between
+    /// slices.
+    ///
+    /// A slice is background work sized for how often the *host* wants
+    /// control back — hundreds of ticks, which on a DS-class pair is a
+    /// visible slab of wall clock — so a bar sampled once per slice
+    /// advances in slabs too, and worst exactly when the pass is
+    /// slowest: while playback is rendering beside it. One relaxed
+    /// store per tick decouples the two, leaving the budget to mean
+    /// only what it says.
+    pub fn report_progress_into(&mut self, cell: Arc<AtomicU32>) {
+        cell.store(self.playback.cursor(), Ordering::Relaxed);
+        self.progress = Some(cell);
     }
 
     /// The fold so far, for a host drawing the chart while the pass is
@@ -1009,6 +1033,9 @@ impl ReplaySet {
             local_player: self.local_player,
             store: self.store.clone(),
             cancel: self.cancel.clone(),
+            // Wired up only by a host that draws the pass; see
+            // [`StatsPass::report_progress_into`].
+            progress: None,
         }
     }
 

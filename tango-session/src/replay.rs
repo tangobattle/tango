@@ -985,7 +985,15 @@ impl PrefetchWorker {
             // lands — the same second or two a walk of its own costs,
             // minus the walk.
             match self.set.stats_reusing_playback() {
-                Ok(pass) => self.pass = Some(pass),
+                Ok(mut pass) => {
+                    // The pass reports every tick into the session's
+                    // cell from here on, so the scrub bar's shading
+                    // tracks it continuously — a slice is sized for how
+                    // often this loop wants control back, which is far
+                    // coarser than what a bar should move in.
+                    pass.report_progress_into(self.progress.clone());
+                    self.pass = Some(pass);
+                }
                 Err(tango_match::Error::Cancelled) => {
                     self.done = true;
                     return false;
@@ -1000,9 +1008,8 @@ impl PrefetchWorker {
         let Some(pass) = self.pass.as_mut() else {
             return false;
         };
-        let step = pass.step(budget);
-        self.progress.store(pass.progress(), Ordering::Relaxed);
-        match step {
+        // No progress store here: the pass publishes its own, per tick.
+        match pass.step(budget) {
             Ok(true) => {
                 self.mirror_marks();
                 true
