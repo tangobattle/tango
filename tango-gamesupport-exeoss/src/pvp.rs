@@ -80,17 +80,22 @@ impl tango_backend_melonds::GameSupport for Pvp {
     /// its jingle and the fade out all play after the battle scene has
     /// gone, and they are the end of the match a player watches.
     ///
-    /// **No battle levels yet.** The observation is always `None`: the
-    /// unit HP pair is mapped (two `0x84`-spaced records at
-    /// `0x020b7a80`, HP at `+0x0c` and max HP at `+0x0e`, both reading
-    /// 1000 at a fresh battle) but the tile each unit stands on is not,
-    /// and [`UnitObs`](tango_match::telemetry::UnitObs) wants both — so
-    /// rather than report a made-up tile beside a real HP this reports
-    /// nothing, and the post-match HP graph stays empty until the field
-    /// coordinates are found. The custom screen, the verdict and the
-    /// chip fires are unmapped for the same reason.
+    /// The LEVELS are both players' HP and where they stand, off the
+    /// battle's own unit records ([`UNITS`](priming::UNITS)).
+    /// Read on every console, since the record a console calls its own
+    /// is the one it can be sure of; the two agree at every settled
+    /// tick, which is what a rollback pair requires of anything it
+    /// records.
+    ///
+    /// The chip select comes off this console's own battle phase (see
+    /// [`BATTLE_PHASE`](priming::BATTLE_PHASE)), which is the
+    /// one it can answer for: the two players commit independently and
+    /// the field waits for the later of them.
+    ///
+    /// The verdict and the chip fires are still unmapped — a round that
+    /// announced no verdict correctly reports none.
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<Nds>> {
-        use tango_match::telemetry::{CoreObs, EventSink};
+        use tango_match::telemetry::{CoreObs, EventSink, UnitObs};
 
         /// Console 0's watch: which scene has the screen, reported on
         /// its edges against last tick's reading.
@@ -102,9 +107,8 @@ impl tango_backend_melonds::GameSupport for Pvp {
             was: Option<u8>,
         }
 
-        impl tango_match::telemetry::CorePoller<Nds> for Lifecycle {
-            fn poll(&mut self, nds: &mut Nds, events: &EventSink, _round: u32) -> Option<CoreObs> {
-                let scene = nds.read8(priming::SCENE_BYTE);
+        impl Lifecycle {
+            fn tick(&mut self, scene: u8, events: &EventSink) {
                 match self.was {
                     None if scene == priming::SCENE_BATTLE => events.round_started(),
                     // The comm screen coming back, with everything the
@@ -115,17 +119,75 @@ impl tango_backend_melonds::GameSupport for Pvp {
                     _ => {}
                 }
                 self.was = Some(scene);
-                None
             }
         }
 
-        if player == 0 {
-            Box::new(Lifecycle { was: None })
-        } else {
-            // Console 1 reads nothing: the lifecycle is one console's
-            // to report, and there are no per-player levels yet.
-            Box::new(|_: &mut Nds| None)
+        #[derive(Clone)]
+        struct Poller {
+            /// Which player this console's own navi is.
+            player: usize,
+            /// Console 0's alone (see [`Lifecycle`]).
+            lifecycle: Option<Lifecycle>,
         }
+
+        impl tango_match::telemetry::CorePoller<Nds> for Poller {
+            fn poll(&mut self, nds: &mut Nds, events: &EventSink, _round: u32) -> Option<CoreObs> {
+                let scene = nds.read8(priming::SCENE_BYTE);
+                // Every tick, live or not: the lifecycle's whole job is
+                // the scenes the read below bails out of.
+                if let Some(lifecycle) = &mut self.lifecycle {
+                    lifecycle.tick(scene, events);
+                }
+                if scene != priming::SCENE_BATTLE {
+                    return None;
+                }
+
+                use priming::unit;
+                let mut slots = [None, None];
+                for slot in 0..2 {
+                    let base = priming::UNITS + slot * unit::STRIDE;
+                    // The block is still whatever the last battle left
+                    // in it for the first frames the battle scene has
+                    // the screen — the fade in runs ahead of the units
+                    // being built. A max HP of zero is the block saying
+                    // it isn't one yet.
+                    if nds.read16(base + unit::MAX_HP) == 0 {
+                        continue;
+                    }
+                    // The records sit in a fixed order, but which of
+                    // them a console drives is the console's own
+                    // business, so each says so rather than being told.
+                    let owner = if nds.read8(base + unit::IS_REMOTE) == 0 {
+                        self.player
+                    } else {
+                        1 - self.player
+                    };
+                    slots[owner] = Some(UnitObs {
+                        hp: nds.read16(base + unit::HP),
+                        tile: (nds.read8(base + unit::TILE_X), nds.read8(base + unit::TILE_Y)),
+                    });
+                }
+                let [Some(p0), Some(p1)] = slots else {
+                    // Half a reading is no reading: an uninitialised
+                    // block has both records claiming to be this
+                    // console's, which lands them both in one slot.
+                    return None;
+                };
+
+                Some(CoreObs {
+                    units: [p0, p1],
+                    // This console's own player's chip select, which is
+                    // the one it can answer for — the two commit
+                    // independently and the field waits for the later.
+                    custom_self: nds.read8(priming::BATTLE_PHASE) == priming::PHASE_CUSTOM,
+                })
+            }
+        }
+
+        Box::new(Poller {
+            player,
+            lifecycle: (player == 0).then(|| Lifecycle { was: None }),
+        })
     }
 }
 
@@ -273,9 +335,69 @@ pub mod priming {
 
         /// Which scene is running: `0xff` while one is loading, `0x02`
         /// the movie and the field, `0x32` the title, `0x09` the
-        /// Network module, **`0x0f` a battle**. One byte, and it is the
-        /// game's own statement of what has taken the screen over.
+        /// Network module, **`0x0f` a battle**, `0x12` the winner's
+        /// post-KO banner. One byte, and it is the game's own statement
+        /// of what has taken the screen over.
         pub const SCENE: u32 = 0x0202_4b39;
+
+        /// The battle's phase, on **this console** — `0x04` while its
+        /// own chip select is up, `0x08` once its player has committed
+        /// and the field is theirs again. (`0x00` for the few frames
+        /// either side of a KO, which the scene byte has already taken
+        /// the telemetry out of.)
+        ///
+        /// One console's answer about one player, which is exactly what
+        /// [`CoreObs::custom_self`](tango_match::telemetry::CoreObs) is
+        /// for: with the two players' commits staggered, this flips on
+        /// each console at its *own* player's commit — f142 and f358
+        /// for confirms at f84 and f300 — where every shared phase byte
+        /// nearby flips on both at once.
+        ///
+        /// Found by running two battles, one with the commits together
+        /// and one staggered, and keeping the bytes that hold one value
+        /// across every chip select (including the one reopened
+        /// mid-battle) and another across every stretch of fighting,
+        /// on both consoles, *and* move at the staggered commits.
+        pub const BATTLE_PHASE: u32 = 0x020b_42bd;
+
+        /// The battle's two unit records, back to back — the levels the
+        /// telemetry reports. There is a second pair at `0x020b7a80`
+        /// (`+0x84` apart, HP at `+0x0c`) that mirrors the HP and was
+        /// mapped first; it is **not** what the damage path writes, and
+        /// zeroing it does nothing at all. These are the live ones:
+        /// zeroing [`unit::HP`] here deletes a navi, banner and all.
+        ///
+        /// Found by dumping main RAM mid-battle and keeping every
+        /// `u16 == 1000` beside a second `u16 == 1000` — seven pairs
+        /// cart-wide, of which one kills.
+        pub const UNITS: u32 = 0x020b_44f0;
+
+        /// Fields within a unit record, from the head of the mapped
+        /// part (the record's true start is somewhere before it, and
+        /// nothing needs to know where).
+        pub mod unit {
+            /// One record to the next. The pair is in a fixed order,
+            /// but [`IS_REMOTE`] is what says whose is whose.
+            pub const STRIDE: u32 = 0xcc;
+            /// Zero on the record this console drives, one on the
+            /// peer's — so it reads the *opposite* way on the two
+            /// consoles of a pair, which is exactly what makes it the
+            /// thing to read: each console is certain about its own.
+            pub const IS_REMOTE: u32 = 0x06;
+            /// Where the unit stands, 1-based over the whole field:
+            /// x 1..=6 left to right, y 1..=3 top to bottom — already
+            /// the convention [`UnitObs`](tango_match::telemetry::UnitObs)
+            /// wants. Verified by stepping one console's navi right,
+            /// then up, and watching only that record move on *both*
+            /// consoles.
+            pub const TILE_X: u32 = 0x08;
+            pub const TILE_Y: u32 = 0x09;
+            /// In-battle HP, and the maximum it started at — the
+            /// second doubling as the record's own "I am a battle"
+            /// flag, since it is zero until the units are built.
+            pub const HP: u32 = 0x10;
+            pub const MAX_HP: u32 = 0x12;
+        }
 
         /// The handle name the host advertises and the child's list
         /// shows: bytes in the game's own charset, terminated by
@@ -400,6 +522,14 @@ pub mod priming {
     /// the walk's business to know and the telemetry's business to
     /// watch.
     pub(super) const SCENE_BYTE: u32 = ram::SCENE;
+
+    /// The battle's unit records and its phase, for the same reason:
+    /// the walk found where they are, the telemetry is what reads them.
+    pub(super) use ram::{unit, BATTLE_PHASE, UNITS};
+
+    /// What [`ram::BATTLE_PHASE`] reads while this console's own chip
+    /// select is up.
+    pub(super) const PHASE_CUSTOM: u8 = 0x04;
 
     /// What [`ram::NET_STATE`] reads once the connect exchange is done,
     /// per seat: the module (`0x14`), its sub-screen (parent `4`, child
