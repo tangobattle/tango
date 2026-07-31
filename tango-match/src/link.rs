@@ -215,19 +215,27 @@ impl ScreenLayout {
     }
 }
 
-/// Which kind of session a console's shape is being asked for.
+/// Which session a console's shape is being asked for, described
+/// enough to answer.
 ///
 /// A cart can use fewer of its console's screens in a link battle than
 /// it does played alone — EXE OSS runs its whole netbattle on the
-/// upper screen — so the layout is a question about the session, not
-/// about the hardware.
+/// upper screen — and fewer in one match mode than another: BN5DS
+/// carries its touch screen for Team Battle and not for the plain
+/// subtypes. So the layout is a question about the session, and the
+/// match type is part of what a session is; carrying it here is what
+/// makes the question unaskable without the answer's input.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SessionMode {
     /// A primed pair: live netplay, its replay, and training against
     /// it — everything [`Backend::start`] and
-    /// [`Backend::open_replay`] produce.
-    PvP,
+    /// [`Backend::open_replay`] produce. `match_type` is the mode the
+    /// pair was primed into, indexed as the registration's
+    /// `match_types` table lists it (the same pair
+    /// [`StartConfig::match_type`] carries).
+    PvP { match_type: (u8, u8) },
     /// One console on its own, as [`Backend::start_solo`] boots it.
+    /// No match type: a cart played alone is in no mode.
     Solo,
 }
 
@@ -295,10 +303,11 @@ pub trait Backend: Sync {
     /// before a session exists so a host can lay out its pane.
     ///
     /// Per-mode because a cart may compose fewer screens in a link
-    /// battle than it does played alone: a DS game whose netbattle
-    /// lives entirely on the upper screen presents that one, and a
-    /// pane, an export and a stylus area all follow from the layout
-    /// rather than each re-deriving the rule. Whatever comes back must
+    /// battle than it does played alone, or in one match mode than
+    /// another: a DS game whose netbattle lives entirely on the upper
+    /// screen presents that one, and a pane, an export and a stylus
+    /// area all follow from the layout rather than each re-deriving
+    /// the rule. Whatever comes back must
     /// match what that mode's frames actually carry — a session sizes
     /// its framebuffer from this, and a frame of the wrong size is
     /// dropped rather than drawn.

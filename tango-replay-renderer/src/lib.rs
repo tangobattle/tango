@@ -388,7 +388,9 @@ impl<W: Writer> Render<W> {
         // A recording is a link battle, so the canvas is whatever that
         // mode composes — an export never carries a screen the match
         // itself didn't show.
-        let layout = backend.screen_layout(tango_match::SessionMode::PvP);
+        let layout = backend.screen_layout(tango_match::SessionMode::PvP {
+            match_type: config.match_type,
+        });
         let side_size = (
             layout.screens.iter().map(|s| s.width).max().unwrap_or(0),
             layout.screens.iter().map(|s| s.height).sum::<u32>(),

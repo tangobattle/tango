@@ -173,6 +173,23 @@ impl tango_backend_melonds::GameSupport for Pvp {
         self.layout.walk(link, match_type, session_payloads, rng_seed, cancel)
     }
 
+    /// The touch screen rides along for Team Battle and not for the
+    /// plain subtypes. Same reading of `match_type.1` the walk makes
+    /// (`!= 0` is the team route off the Network board), so the pane
+    /// and the priming route can't disagree about which mode this is.
+    ///
+    /// A plain battle leaves it dead once priming is past the comm
+    /// screens — those are this cart's touch widgets, which is why the
+    /// walk fabricates hit codes — so carrying it there spends half
+    /// the pane on nothing.
+    fn pvp_screens(&self, match_type: (u8, u8)) -> tango_backend_melonds::Screens {
+        if match_type.1 != 0 {
+            tango_backend_melonds::Screens::BOTH
+        } else {
+            tango_backend_melonds::Screens::UPPER
+        }
+    }
+
     /// This game's payload type is
     /// [`PlayedFile`](crate::dataview::save::PlayedFile): one byte,
     /// the file-select slot the committing save view was on.
@@ -1528,5 +1545,42 @@ pub mod priming {
             );
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tango_backend_melonds::{GameSupport, Screens};
+
+    /// The subtype decides the pane, not the mode. Both registrations
+    /// list Single first and Triple second with a plain and a Team
+    /// subtype each, so Triple Team has to reach the touch screen for
+    /// the same reason Single Team does — reading `match_type.0` here
+    /// would give Triple Team a half-blind pane and leave the walk
+    /// priming a team battle the player couldn't see.
+    #[test]
+    fn the_touch_screen_follows_the_team_subtype_in_either_mode() {
+        for support in [&super::US, &super::JP] {
+            assert_eq!(support.pvp_screens((0, 0)), Screens::UPPER, "single");
+            assert_eq!(support.pvp_screens((1, 0)), Screens::UPPER, "triple");
+            assert_eq!(support.pvp_screens((0, 1)), Screens::BOTH, "single team");
+            assert_eq!(support.pvp_screens((1, 1)), Screens::BOTH, "triple team");
+        }
+    }
+
+    /// A plain battle's pane is the upper screen alone, and a team
+    /// battle's is the pair with the stylus target named. Pinned on
+    /// the layouts rather than the selections because that is what a
+    /// session sizes its framebuffer from and what the host places its
+    /// stylus area by.
+    #[test]
+    fn the_plain_subtypes_present_one_screen_and_team_presents_two() {
+        let plain = super::US.pvp_screens((0, 0)).layout();
+        assert_eq!(plain.screens.len(), 1);
+        assert_eq!(plain.touch, None);
+
+        let team = super::US.pvp_screens((0, 1)).layout();
+        assert_eq!(team.screens.len(), 2);
+        assert_eq!(team.touch, Some(1));
     }
 }

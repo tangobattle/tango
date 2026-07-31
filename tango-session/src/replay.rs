@@ -229,7 +229,12 @@ impl ReplaySession {
             nicknames: (nickname_of(replay.local_side()), nickname_of(replay.remote_side())),
         });
 
-        let layout = games[local_player].pvp.screen_layout(tango_match::SessionMode::PvP);
+        // The mode the recording was played in, which the re-primed
+        // pair below walks back into and the pane is shaped by.
+        let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
+        let layout = games[local_player]
+            .pvp
+            .screen_layout(tango_match::SessionMode::PvP { match_type });
         let screen = crate::Framebuffer::new(&layout);
         let wake = Arc::new(tokio::sync::Notify::new());
         let playback: SharedPlayback = Arc::new(Mutex::new(None));
@@ -270,7 +275,7 @@ impl ReplaySession {
                 inputs: inputs.clone(),
                 rng_seed: replay.rng_seed,
                 rtc: replay.rtc_time(),
-                match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
+                match_type,
                 local_player,
                 peer_rom: tango_match::PeerRom {
                     code: *games[1 - local_player].rom_code,

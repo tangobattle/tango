@@ -87,17 +87,23 @@ pub trait GameSupport: Sync {
         Box::new(|_: &mut crate::Nds| None)
     }
 
-    /// Which of the console's screens this cart's *link battle* uses.
+    /// Which of the console's screens this cart's *link battle* uses,
+    /// in the mode the pair was primed into.
     ///
-    /// A game that spends its whole netbattle on one screen names just
-    /// that one and the rest follows — the pane, the video exports and
-    /// the host's stylus area all come off the
+    /// A game that spends a netbattle on one screen names just that one
+    /// and the rest follows — the pane, the video exports and the
+    /// host's stylus area all come off the
     /// [`ScreenLayout`](tango_match::ScreenLayout) it produces, and a
     /// single-screen layout leaves the DS arrangement settings nothing
-    /// to arrange. Played alone the cart always gets its whole console,
-    /// so this is the link answer only. The default is the whole
-    /// console, for a game whose battle uses the stylus.
-    fn pvp_screens(&self) -> crate::link::Screens {
+    /// to arrange. Per mode because a cart can differ between its own:
+    /// BN5DS's Team Battle uses the touch screen where its plain
+    /// subtypes don't.
+    ///
+    /// Played alone the cart always gets its whole console, so this is
+    /// the link answer only. The default is the whole console, for a
+    /// game whose battle uses the stylus throughout.
+    fn pvp_screens(&self, match_type: (u8, u8)) -> crate::link::Screens {
+        let _ = match_type;
         crate::link::Screens::BOTH
     }
 }
@@ -120,7 +126,7 @@ impl tango_match::Backend for DsBackend {
     fn screen_layout(&self, mode: tango_match::SessionMode) -> tango_match::ScreenLayout {
         match mode {
             // What `start`/`open_replay` set on the pair below.
-            tango_match::SessionMode::PvP => self.support.pvp_screens(),
+            tango_match::SessionMode::PvP { match_type } => self.support.pvp_screens(match_type),
             // A cart played alone gets the console it shipped for.
             tango_match::SessionMode::Solo => crate::link::Screens::BOTH,
         }
@@ -146,7 +152,7 @@ impl tango_match::Backend for DsBackend {
         // the saves still differ, since each player brings their own.
         let mut link = Link::new(config.roms[0], config.saves, config.rtc)
             .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
-        link.set_screens(self.support.pvp_screens());
+        link.set_screens(self.support.pvp_screens(config.match_type));
 
         prime_dark(
             self.support,
@@ -283,7 +289,7 @@ impl Boot {
             self.rtc,
         )
         .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
-        link.set_screens(self.support.pvp_screens());
+        link.set_screens(self.support.pvp_screens(self.match_type));
         Ok(link)
     }
 }

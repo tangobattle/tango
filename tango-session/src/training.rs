@@ -180,7 +180,9 @@ impl TrainingSession {
         let show_pip = Arc::new(AtomicBool::new(false));
         // A primed pair, same as netplay — the dummy seat is the pair's
         // other console, not a solo boot.
-        let layout = game.pvp.screen_layout(tango_match::SessionMode::PvP);
+        let layout = game.pvp.screen_layout(tango_match::SessionMode::PvP {
+            match_type: TRAINING_MATCH_TYPE,
+        });
         let pip = crate::Framebuffer::new(&layout);
         let pip_fresh = Arc::new(AtomicBool::new(false));
         let ended = Arc::new(AtomicBool::new(false));

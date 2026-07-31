@@ -436,7 +436,9 @@ impl PvpSession {
         let drive_paused = Arc::new(crate::PauseGate::new(false));
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
         let tps_counter = Arc::new(Mutex::new(TpsCounter::new(60)));
-        let layout = local_game.pvp.screen_layout(tango_match::SessionMode::PvP);
+        let layout = local_game.pvp.screen_layout(tango_match::SessionMode::PvP {
+            match_type: pre_match.match_type,
+        });
         let screen = crate::Framebuffer::new(&layout);
         let wake = Arc::new(tokio::sync::Notify::new());
         // The two-sided ready gate. Priming takes as long as the machine
