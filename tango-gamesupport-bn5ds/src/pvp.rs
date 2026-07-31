@@ -494,14 +494,16 @@ pub mod priming {
         /// Answering it "no" is what lets the team subtypes reuse the
         /// whole plain route: the kind byte is already written by the
         /// time the split is reached, so the comm screen still comes up
-        /// as a Team Battle — the walk only declines the detour, and
-        /// declining it is exactly what a player who exits Navi Select
-        /// without downloading a team ends up with.
+        /// as a Team Battle — the walk only declines the detour, having
+        /// first written the team the detour would have collected (see
+        /// [`RAMOffsets::team`]).
         ///
-        /// The screen the walk is thereby skipping is where a team gets
-        /// chosen, by paging each of the two slots through the roster
-        /// with the arrows beside it and committing with DOWNLOAD. That
-        /// is the screen to drive when the team stops being empty.
+        /// The screen it declines is where a player chooses that team,
+        /// by paging each of the two slots through the roster with the
+        /// arrows beside it and committing with DOWNLOAD. Driving it is
+        /// what a real pick needs, and it is the one screen on the route
+        /// a redirect cannot answer; writing the block it fills is the
+        /// way past that, not a way around the screen's own job.
         board_team_screen_test: u32,
         /// The comparison that decides whether the Net Battle screens
         /// have to collect a name and comment first. The screens are
@@ -594,6 +596,25 @@ pub mod priming {
         /// hit. **Every** screen past the board reads this one, so the
         /// board's load site is the only one the walk has to write at.
         hit_code: u32,
+        /// The team a Team Battle brings: four navi ids as words. The
+        /// first two are the save's own and are already standing by the
+        /// time the board dispatches; the last two are the pair Navi
+        /// Select fills in, and are what the walk writes (see
+        /// [`TEAM_PICKS`]).
+        ///
+        /// Writing them *is* choosing them, the same way writing the
+        /// save-select row is choosing a file: the game reads this block
+        /// when it builds the battle and asks nothing about how it got
+        /// filled. Nothing else has to be set — the screen touches a
+        /// neighbouring flag on its way out, and leaving that alone
+        /// changes nothing about the battle that follows.
+        ///
+        /// It does not survive the session. A cartridge dumped after a
+        /// team is downloaded is byte-identical to one dumped after the
+        /// screen is left empty, so a team cannot be brought along in a
+        /// save and there is nothing here for the walk to read back — it
+        /// has to be written every time.
+        team: u32,
         /// The screen object's sub-state word. Gating on it is what
         /// keeps each answer to its own screen, and what makes the walk
         /// a set of standing answers rather than a schedule.
@@ -721,6 +742,7 @@ pub mod priming {
             text_delay:               0x0217_1594,
             wait_flags:               0x0216_f6e8,
             hit_code:                 0x021c_5db8,
+            team:                     0x0216_f290,
             substate:                 0x021f_66ec,
             list_object:              0x021c_6260,
             list_count:               0x021c_688c,
@@ -787,6 +809,7 @@ pub mod priming {
             text_delay:               0x0216_a334,
             wait_flags:               0x0216_8488,
             hit_code:                 0x021b_eb04,
+            team:                     0x0216_8030,
             substate:                 0x021e_f06c,
             list_object:              0x021b_efa0,
             list_count:               0x021b_f5cc,
@@ -812,6 +835,29 @@ pub mod priming {
     /// codes `0x60..=0x66` onto its six buttons and its bottom bar, and
     /// this is the first of them.
     const NET_BATTLE: u16 = 0x0060;
+    /// The team the walk brings to a Team Battle: ProtoMan and GyroMan,
+    /// which are the first two of the game's navi ids and the first two
+    /// Navi Select's arrows offer.
+    ///
+    /// A fixed pair, because the walk has nothing better to go on. The
+    /// ids are game data rather than save data — one table, shared by
+    /// both builds — but which navis a *save* has raised is the save's
+    /// business, and it is not written anywhere the walk can reach:
+    /// there is no roster in memory by the time the board dispatches,
+    /// only the game's own full id table, which says what exists rather
+    /// than what this player owns. Learning the roster means either
+    /// reading it out of the save or letting Navi Select build it, and
+    /// the second is the screen this route declines.
+    ///
+    /// Picking one a save has never raised is safe rather than wrong:
+    /// the battle takes each navi's stats from the save that fields it,
+    /// so the same pair comes up differently on different files (750 HP
+    /// and 700 HP for ProtoMan across the two on one cart), and a save
+    /// that has done nothing with them simply fields them as it has
+    /// them. That is what makes a fixed pair defensible until the
+    /// players get to choose, which is Navi Select's job to hand over.
+    const TEAM_PICKS: [u32; 2] = [0x277, 0x278];
+
     /// The hit code for the board's Team Battle entry, which is the
     /// next one. The board numbers its buttons down each column rather
     /// than across each row — its code load dispatches through a jump
@@ -1162,21 +1208,29 @@ pub mod priming {
                     }),
                 ),
                 (
-                    // Decline the Navi Select detour, so a Team Battle
-                    // reaches the comm screen the way Net Battle does.
-                    // The selection index arrives in r0 as "distance
-                    // past the first team button"; anything above 1 is
-                    // a selection that needs no team screen, which is
-                    // the answer every non-team button gives for
-                    // itself. Installed only on the team route — the
-                    // plain route's buttons answer this correctly
-                    // without help. See
+                    // Fill the team in, then decline the screen that
+                    // would have filled it. The board's tail has already
+                    // written the battle kind by the time it asks, so
+                    // both halves of a Team Battle are settled here:
+                    // the pair that comes along (see [`TEAM_PICKS`]),
+                    // and the answer that sends the route to the comm
+                    // screen the way Net Battle goes. The selection
+                    // index arrives in r0 as "distance past the first
+                    // team button"; anything above 1 is a selection
+                    // that needs no team screen, which is the answer
+                    // every non-team button gives for itself. Installed
+                    // only on the team route — the plain route's
+                    // buttons answer this correctly without help. See
                     // [`CodeOffsets::board_team_screen_test`].
                     code.board_team_screen_test,
                     Box::new(move |nds: &mut Nds| {
-                        if team {
-                            nds.set_reg(0, 2)
+                        if !team {
+                            return;
                         }
+                        for (slot, &navi) in TEAM_PICKS.iter().enumerate() {
+                            nds.write32(ram.team + 8 + 4 * slot as u32, navi);
+                        }
+                        nds.set_reg(0, 2)
                     }),
                 ),
                 (
