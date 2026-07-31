@@ -545,10 +545,16 @@ pub mod priming {
         ///   moves every counter and every timer at once.
         ///
         /// The four tiles are not a plain `(x, y)` table in any code
-        /// overlay either. What every one of those runs held constant
-        /// is the **save**: both consoles were handed the same file,
-        /// which is the one thing a real netbattle never does. That is
-        /// where to look next, and it wants a second cartridge dump.
+        /// overlay either.
+        ///
+        /// **It is the save.** What every one of those runs held
+        /// constant was the file, both consoles being handed the same
+        /// one — which is the thing a real netbattle never does. A
+        /// second dump deals a different battle outright: another set
+        /// of objects on other tiles, and the navis at 100 HP rather
+        /// than 1000. So the field travels with the cartridge, the way
+        /// the folder does, and there is nothing here for a match seed
+        /// to pin.
         pub const RNG: u32 = 0x020b_99c4;
     }
 
@@ -688,11 +694,27 @@ pub mod priming {
     /// before).
     const BOOT_BUDGET: u32 = 560;
 
-    /// How long the link half is given. It takes about 200 frames from
-    /// the save — roughly seventy of the parent standing itself up and
-    /// the child scanning for it, and the screens around them. The
-    /// budget carries several times that.
-    const LINK_BUDGET: u32 = 2400;
+    /// How long the link half is given. A played save takes about 200
+    /// frames from the save — roughly seventy of the parent standing
+    /// itself up and the child scanning for it, and the screens around
+    /// them.
+    ///
+    /// **A fresh save takes 1531**, which is what this is really
+    /// sized for. The comm route is the same and nothing extra is on
+    /// screen; it simply dwells, in two places — 593 frames to reach
+    /// the connected step where a played save takes 112, and 938 more
+    /// from there to the battle where a played save takes the 85 of
+    /// its fade. Why is not understood. It is not the save's size (a
+    /// dump padded to the cart's full flash times the same) and not a
+    /// prompt (the sub-screen flag stays down throughout).
+    ///
+    /// So the budget is sized off the slow case with room over it,
+    /// rather than off the fast one: at 2400 a fresh save was already
+    /// spending two thirds of it, which is a timeout waiting for a
+    /// player whose cart is newer than the one this was measured on.
+    /// Raising it costs a successful walk nothing — it only bounds how
+    /// long a stuck one waits before saying so.
+    const LINK_BUDGET: u32 = 4800;
 
     /// One console's seeds off the negotiated match seed — the mgba
     /// backend's `core_rng_seed` derivation carried over: identical on
