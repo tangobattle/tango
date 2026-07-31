@@ -836,39 +836,30 @@ pub mod priming {
     /// codes `0x60..=0x66` onto its six buttons and its bottom bar, and
     /// this is the first of them.
     const NET_BATTLE: u16 = 0x0060;
-    /// The two id spaces a navi is named by, and the step between them.
+    /// What separates the two ways a navi is named.
     ///
-    /// The save's own team — the pair it has been carrying since the
-    /// overworld, standing in the first two words of
-    /// [`RAMOffsets::team`] — is written in a space that counts three
-    /// ids to a navi, so its members land 3 apart (`0x255` and `0x258`
-    /// on one file, `0x25b` and `0x25e` on the other, the two files
-    /// six apart because their teams are two navis apart). Navi Select
-    /// fills the other two words from a flat space that counts one id
-    /// to a navi, the same consecutive run the game's own table holds.
+    /// Both halves of [`RAMOffsets::team`] name navis chosen on the same
+    /// screen, but not from the same origin: the save's own team — the
+    /// pair it has carried since the overworld, in the first two words —
+    /// sits a fixed distance below the ids Navi Select writes into the
+    /// other two. Adding it back is the whole conversion.
     ///
-    /// So the team cannot simply be copied across — the spaces are not
-    /// the same one, and copying reads as a different navi or as none
-    /// at all. Dividing the step turns one into the other, which is
-    /// what lets a Team Battle bring the team the save already has
-    /// instead of a pair chosen for it.
+    /// Measured rather than guessed: on a file whose team is GyroMan and
+    /// SearchMan, the own words read `0x256` and `0x257`, and picking
+    /// those same two navis on the screen and committing with DOWNLOAD
+    /// writes `0x278` and `0x279`. Both gaps are this, and the screen's
+    /// roster runs consecutively from ProtoMan at `0x277`, so the two
+    /// orders agree once the origin does.
     ///
-    /// Checked on both files of a cart: the first maps to ProtoMan and
-    /// GyroMan, which is what its Navi Select offers first, and the
-    /// second to a different pair entirely, each fielded with the stats
-    /// that save has raised them to. Every id seen sits exactly on the
-    /// step, which is what the divisibility test below insists on — an
-    /// id that does not is a team member this arithmetic cannot name,
-    /// and is left out rather than guessed at.
-    const OWN_TEAM_BASE: u32 = 0x255;
-    const OWN_TEAM_STRIDE: u32 = 3;
-    const ROSTER_BASE: u32 = 0x277;
+    /// Nothing about the roster's *length* is known here, so a word that
+    /// is not a navi at all — an empty slot, most obviously — must not
+    /// be converted into one, which is what the zero check below is for.
+    const NAVI_ID_OFFSET: u32 = 0x22;
 
     /// One of the save's own team navis as Navi Select would have named
-    /// it, or `None` if it is not a navi this can name.
+    /// it, or `None` for a slot the save is not carrying anyone in.
     fn roster_id(own: u32) -> Option<u32> {
-        let step = own.checked_sub(OWN_TEAM_BASE)?;
-        (step % OWN_TEAM_STRIDE == 0).then(|| ROSTER_BASE + step / OWN_TEAM_STRIDE)
+        (own != 0).then(|| own + NAVI_ID_OFFSET)
     }
 
     /// The hit code for the board's Team Battle entry, which is the
