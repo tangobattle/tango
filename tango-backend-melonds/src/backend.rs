@@ -86,6 +86,20 @@ pub trait GameSupport: Sync {
         let _ = player;
         Box::new(|_: &mut crate::Nds| None)
     }
+
+    /// Which of the console's screens this cart's *link battle* uses.
+    ///
+    /// A game that spends its whole netbattle on one screen names just
+    /// that one and the rest follows — the pane, the video exports and
+    /// the host's stylus area all come off the
+    /// [`ScreenLayout`](tango_match::ScreenLayout) it produces, and a
+    /// single-screen layout leaves the DS arrangement settings nothing
+    /// to arrange. Played alone the cart always gets its whole console,
+    /// so this is the link answer only. The default is the whole
+    /// console, for a game whose battle uses the stylus.
+    fn pvp_screens(&self) -> crate::link::Screens {
+        crate::link::Screens::BOTH
+    }
 }
 
 /// A DS cartridge's engine support, as the engine-neutral backend its
@@ -103,8 +117,18 @@ impl DsBackend {
 }
 
 impl tango_match::Backend for DsBackend {
-    fn screen_layout(&self) -> tango_match::ScreenLayout {
-        crate::link::screen_layout()
+    fn screen_layout(&self, mode: tango_match::SessionMode) -> tango_match::ScreenLayout {
+        match mode {
+            // What `start`/`open_replay` set on the pair below.
+            tango_match::SessionMode::PvP => self.support.pvp_screens(),
+            // A cart played alone gets the console it shipped for.
+            tango_match::SessionMode::Solo => crate::link::Screens::BOTH,
+        }
+        .layout()
+    }
+
+    fn keys_mask(&self) -> u32 {
+        crate::link::KEYS_MASK
     }
 
     fn frame_timing(&self) -> tango_match::FrameTiming {
@@ -122,6 +146,7 @@ impl tango_match::Backend for DsBackend {
         // the saves still differ, since each player brings their own.
         let mut link = Link::new(config.roms[0], config.saves, config.rtc)
             .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
+        link.set_screens(self.support.pvp_screens());
 
         prime_dark(
             self.support,
@@ -248,14 +273,18 @@ impl tango_match::ReplayBoot for Boot {
 }
 
 impl Boot {
-    /// The pair at power-on, from the recording's own header.
+    /// The pair at power-on, from the recording's own header. Composes
+    /// the screens the live match did, so a replay of it fills the same
+    /// pane and exports at the same size.
     fn pair(&self) -> Result<Link, tango_match::Error> {
-        Link::new(
+        let mut link = Link::new(
             &self.rom,
             [Some(self.saves[0].as_slice()), Some(self.saves[1].as_slice())],
             self.rtc,
         )
-        .map_err(|e| tango_match::Error::Backend(Box::new(e)))
+        .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
+        link.set_screens(self.support.pvp_screens());
+        Ok(link)
     }
 }
 

@@ -168,16 +168,40 @@ impl Screen {
 /// by a count and a shared size because nothing guarantees a console's
 /// screens match each other — and a host laying out a pane wants each
 /// one's dimensions anyway.
+///
+/// A session may compose fewer screens than its console has — see
+/// [`Backend::screen_layout`] — so this describes what the frames
+/// actually carry, not what the hardware owns.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ScreenLayout {
     pub screens: Vec<Screen>,
+    /// Index into [`screens`](Self::screens) of the one a stylus points
+    /// at. `None` both for a console with no touch screen and for a
+    /// session that composes without it — a host has nothing to point
+    /// at either way, which is the only question it asks. Positional
+    /// guessing is not an option: a selection can put the touch screen
+    /// anywhere in the layout, or leave it out.
+    pub touch: Option<usize>,
 }
 
 impl ScreenLayout {
+    /// A layout with no touch screen in it. Composers that present one
+    /// say so with [`with_touch`](Self::with_touch).
     pub fn new(screens: impl IntoIterator<Item = Screen>) -> Self {
         ScreenLayout {
             screens: screens.into_iter().collect(),
+            touch: None,
         }
+    }
+
+    /// Mark the screen at `index` as the stylus target. Panics on an
+    /// index this layout has no screen for: a console that composes a
+    /// touch screen it isn't presenting is a bug in the composer, and
+    /// one that reaches a host silently misplaces every stylus press.
+    pub fn with_touch(mut self, index: usize) -> Self {
+        assert!(index < self.screens.len(), "touch screen is not in this layout");
+        self.touch = Some(index);
+        self
     }
 
     /// A single-screen layout, the common case.
@@ -189,6 +213,22 @@ impl ScreenLayout {
     pub fn buffer_len(&self) -> usize {
         self.screens.iter().map(Screen::len).sum()
     }
+}
+
+/// Which kind of session a console's shape is being asked for.
+///
+/// A cart can use fewer of its console's screens in a link battle than
+/// it does played alone — EXE OSS runs its whole netbattle on the
+/// upper screen — so the layout is a question about the session, not
+/// about the hardware.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SessionMode {
+    /// A primed pair: live netplay, its replay, and training against
+    /// it — everything [`Backend::start`] and
+    /// [`Backend::open_replay`] produce.
+    PvP,
+    /// One console on its own, as [`Backend::start_solo`] boots it.
+    Solo,
 }
 
 /// Opaque per-side session data riding beside a save: minted by the
@@ -251,9 +291,29 @@ pub trait Backend: Sync {
         Err(crate::Error::MalformedSessionPayload)
     }
 
-    /// How this game's console presents its display, known before a
-    /// match exists so a host can lay out its pane.
-    fn screen_layout(&self) -> ScreenLayout;
+    /// How this game's console presents its display in `mode`, known
+    /// before a session exists so a host can lay out its pane.
+    ///
+    /// Per-mode because a cart may compose fewer screens in a link
+    /// battle than it does played alone: a DS game whose netbattle
+    /// lives entirely on the upper screen presents that one, and a
+    /// pane, an export and a stylus area all follow from the layout
+    /// rather than each re-deriving the rule. Whatever comes back must
+    /// match what that mode's frames actually carry — a session sizes
+    /// its framebuffer from this, and a frame of the wrong size is
+    /// dropped rather than drawn.
+    fn screen_layout(&self, mode: SessionMode) -> ScreenLayout;
+
+    /// The buttons this game's console has, as a mask over the
+    /// [`keys`](crate::keys) bits a host sets in
+    /// [`HostInput::keys`](crate::HostInput). A GBA's pad is ten; the
+    /// DS adds X and Y.
+    ///
+    /// A host draws its input displays from this. The screen count used
+    /// to stand in for the question — two screens meant a DS — and
+    /// can't any more, now that a session composes whichever screens
+    /// its mode uses.
+    fn keys_mask(&self) -> u32;
 
     /// The console's native frame clock — known, like the layout,
     /// before a match exists: hosts pace their drive loops and size

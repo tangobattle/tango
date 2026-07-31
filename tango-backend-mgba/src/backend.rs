@@ -88,8 +88,14 @@ impl GbaBackend {
 }
 
 impl tango_match::Backend for GbaBackend {
-    fn screen_layout(&self) -> tango_match::ScreenLayout {
+    fn screen_layout(&self, _mode: tango_match::SessionMode) -> tango_match::ScreenLayout {
+        // One screen, and no stylus to point at it — the GBA presents
+        // the same display in every mode.
         crate::link::screen_layout()
+    }
+
+    fn keys_mask(&self) -> u32 {
+        crate::link::JOYFLAGS_MASK
     }
 
     fn parse_session_payload(&self, bytes: &[u8]) -> Result<tango_match::BoxedSessionPayload, tango_match::Error> {

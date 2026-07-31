@@ -73,7 +73,7 @@ impl SinglePlayerSession {
         })?;
         let audio_pull = console.audio();
 
-        let layout = game.pvp.screen_layout();
+        let layout = game.pvp.screen_layout(tango_match::SessionMode::Solo);
         let input = InputCell::new();
         let fps_bits = Arc::new(AtomicU32::new(expected_fps.to_bits()));
         let stop = Arc::new(AtomicBool::new(false));

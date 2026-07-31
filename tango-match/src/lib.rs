@@ -40,7 +40,7 @@ pub use solo::{Console, Solo, SoloConfig};
 pub use engine::Match;
 pub use link::{
     parse_session_payloads, Backend, BoxedSessionPayload, FrameTiming, Link, PeerRom, Screen, ScreenLayout,
-    SessionPayload, Side, Snapshot, StartConfig,
+    SessionMode, SessionPayload, Side, Snapshot, StartConfig,
 };
 pub use replay::{
     BootedReplay, Capture, LiveFrames, Playback, Replay, ReplayBoot, ReplayConfig, ReplaySet, SeekStep, StatsPass,

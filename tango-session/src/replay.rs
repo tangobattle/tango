@@ -229,7 +229,7 @@ impl ReplaySession {
             nicknames: (nickname_of(replay.local_side()), nickname_of(replay.remote_side())),
         });
 
-        let layout = games[local_player].pvp.screen_layout();
+        let layout = games[local_player].pvp.screen_layout(tango_match::SessionMode::PvP);
         let screen = crate::Framebuffer::new(&layout);
         let wake = Arc::new(tokio::sync::Notify::new());
         let playback: SharedPlayback = Arc::new(Mutex::new(None));

@@ -27,7 +27,7 @@ pub mod link;
 pub mod solo;
 
 pub use backend::{DsBackend, GameSupport};
-pub use link::{framerate_ratio, screen_layout, Link, EXPECTED_FPS, SAMPLE_RATE};
+pub use link::{framerate_ratio, DsScreen, Link, Screens, EXPECTED_FPS, SAMPLE_RATE};
 pub use solo::SoloConsole;
 
 /// Re-exported so a game crate can name a console's own input word

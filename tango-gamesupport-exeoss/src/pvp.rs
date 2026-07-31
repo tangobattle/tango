@@ -58,6 +58,17 @@ impl tango_backend_melonds::GameSupport for Pvp {
         priming::walk(link, rng_seed, cancel)
     }
 
+    /// The upper screen alone. Unlike BN5DS — whose comm screens and
+    /// chip select are touch widgets — this cart plays its whole
+    /// netbattle above: once priming has walked past the Network
+    /// menus, nothing the player does reaches the touch screen, and
+    /// carrying it would spend half the pane on a dead one. Regular
+    /// play still gets both, since the same cart is a stylus game
+    /// everywhere outside a link battle.
+    fn pvp_screens(&self) -> tango_backend_melonds::Screens {
+        tango_backend_melonds::Screens::UPPER
+    }
+
     /// The match lifecycle, as RAM facts — this engine's stand-in for
     /// the mgba families' trap anchors. Console 0 carries it, exactly
     /// as BN5DS's does.

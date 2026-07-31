@@ -396,30 +396,67 @@ fn framebuffer_view<'a>(
     .into()
 }
 
-/// A two-screen console is a DS, and a DS's second screen is its
-/// touch screen: (where it starts in the presented frame, its size),
-/// all in native pixels. `None` for everything else — neither the
-/// stylus area nor a touch spot goes up without a screen to touch.
-/// That includes a primary-only arrangement led by the upper screen,
-/// which leaves the touch screen off the pane entirely.
+/// The layout's screens in the order this arrangement lays them out,
+/// as indices into it: canonical, or with the touch screen pulled to
+/// the front when it leads. Shared by the placement below and the
+/// re-pack in [`rearrange_screens`] so the two can't disagree about
+/// where a screen ended up.
+fn presented_order(layout: &tango_match::ScreenLayout, touch_first: bool) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..layout.screens.len()).collect();
+    if touch_first {
+        if let Some(touch) = layout.touch {
+            // `order` starts as the identity, so the touch screen sits
+            // at its own index; the rest keep their relative order.
+            order.remove(touch);
+            order.insert(0, touch);
+        }
+    }
+    order
+}
+
+/// Where the stylus target sits in the presented frame: (where it
+/// starts, its size), all in native pixels. `None` when this
+/// arrangement puts no touch screen on the pane — neither the stylus
+/// area nor a touch spot goes up without a screen to touch.
+///
+/// The layout names which of its screens the stylus points at rather
+/// than the pane inferring it from a count: a session composes
+/// whichever screens its mode uses, so the touch screen may lead the
+/// frame, trail it, or not be in it at all — as in a primary-only
+/// arrangement led by the upper screen, or a game whose link battle
+/// never leaves that screen.
 fn touch_screen_placement(
     layout: &tango_match::ScreenLayout,
     stacking: crate::config::DsScreenStacking,
     touch_first: bool,
 ) -> Option<((f32, f32), tango_match::Screen)> {
-    let primary_only = stacking == crate::config::DsScreenStacking::PrimaryOnly;
-    if layout.screens.len() != 2 || (primary_only && !touch_first) {
-        return None;
-    }
-    // Leading position when it's the primary screen; after the
-    // upper one — along whichever axis the stacking runs — when
-    // it isn't.
-    let origin = match (touch_first, stacking == crate::config::DsScreenStacking::Vertical) {
-        (true, _) => (0.0, 0.0),
-        (false, false) => (layout.screens[0].width as f32, 0.0),
-        (false, true) => (0.0, layout.screens[0].height as f32),
+    let touch = layout.touch?;
+    let order = presented_order(layout, touch_first);
+    // Primary-only shows the leading screen and drops the rest.
+    let shown = match stacking {
+        crate::config::DsScreenStacking::PrimaryOnly => &order[..1],
+        _ => &order[..],
     };
-    Some((origin, layout.screens[1]))
+    let at = shown.iter().position(|&i| i == touch)?;
+    // Everything ahead of it along the axis the stacking runs; the
+    // other axis stays at the frame's edge.
+    let vertical = stacking == crate::config::DsScreenStacking::Vertical;
+    let ahead: u32 = shown[..at]
+        .iter()
+        .map(|&i| {
+            if vertical {
+                layout.screens[i].height
+            } else {
+                layout.screens[i].width
+            }
+        })
+        .sum();
+    let origin = if vertical {
+        (0.0, ahead as f32)
+    } else {
+        (ahead as f32, 0.0)
+    };
+    Some((origin, layout.screens[touch]))
 }
 
 /// A multi-screen frame as the arrangement settings present it:
@@ -479,10 +516,7 @@ fn rearrange_screens(
     for i in 1..x0.len() {
         x0[i] = x0[i - 1] + layout.screens[i - 1].width as usize;
     }
-    let mut order: Vec<usize> = (0..layout.screens.len()).collect();
-    if touch_first {
-        order.reverse();
-    }
+    let order = presented_order(layout, touch_first);
     let src_stride = frame.width as usize * BPP;
     // A screen's row slice in the canonical frame, or `None` past its
     // height (screens shorter than the composite pad with opaque
@@ -894,4 +928,67 @@ fn exit_hold_overlay<'a>(lang: &'a LanguageIdentifier, state: &'a State) -> Opti
             .padding(12)
             .into(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::config::DsScreenStacking::{Horizontal, PrimaryOnly, Vertical};
+
+    fn screen() -> tango_match::Screen {
+        tango_match::Screen {
+            width: 256,
+            height: 192,
+        }
+    }
+
+    /// A DS composing its whole console: upper screen, then the touch
+    /// screen it points at.
+    fn both() -> tango_match::ScreenLayout {
+        tango_match::ScreenLayout::new([screen(), screen()]).with_touch(1)
+    }
+
+    /// The stylus area follows the touch screen through every
+    /// arrangement. Pinned because a wrong origin doesn't look wrong —
+    /// the pane draws fine and every press just lands somewhere else.
+    #[test]
+    fn the_stylus_area_follows_the_touch_screen() {
+        let place = |stacking, touch_first| super::touch_screen_placement(&both(), stacking, touch_first);
+        // Trailing the upper screen, along whichever axis stacks.
+        assert_eq!(place(Horizontal, false).unwrap().0, (256.0, 0.0));
+        assert_eq!(place(Vertical, false).unwrap().0, (0.0, 192.0));
+        // Leading, when it's the primary screen.
+        assert_eq!(place(Horizontal, true).unwrap().0, (0.0, 0.0));
+        assert_eq!(place(Vertical, true).unwrap().0, (0.0, 0.0));
+        assert_eq!(place(PrimaryOnly, true).unwrap().0, (0.0, 0.0));
+        // Primary-only led by the upper screen leaves it off the pane.
+        assert!(place(PrimaryOnly, false).is_none());
+    }
+
+    /// A session composing without its touch screen — a game whose
+    /// netbattle never leaves the upper one — has nothing to point at,
+    /// so no arrangement produces a stylus area.
+    #[test]
+    fn a_composition_without_the_touch_screen_has_no_stylus_area() {
+        let upper = tango_match::ScreenLayout::new([screen()]);
+        for stacking in [Horizontal, Vertical, PrimaryOnly] {
+            for touch_first in [false, true] {
+                assert!(super::touch_screen_placement(&upper, stacking, touch_first).is_none());
+            }
+        }
+    }
+
+    /// The mirror case, which is the whole reason the layout names its
+    /// touch screen rather than the pane assuming the second of two:
+    /// a composition of the touch screen alone is all stylus.
+    #[test]
+    fn a_touch_only_composition_is_all_stylus() {
+        let touch = tango_match::ScreenLayout::new([screen()]).with_touch(0);
+        for stacking in [Horizontal, Vertical, PrimaryOnly] {
+            for touch_first in [false, true] {
+                let (origin, size) = super::touch_screen_placement(&touch, stacking, touch_first).unwrap();
+                assert_eq!(origin, (0.0, 0.0));
+                assert_eq!(size, screen());
+            }
+        }
+    }
 }

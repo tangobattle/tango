@@ -1039,8 +1039,14 @@ fn input_display_overlay<'a>(
         std::mem::swap(&mut local, &mut remote);
         std::mem::swap(&mut local_nick, &mut remote_nick);
     }
-    // Two screens = a DS = the pads draw the full face diamond.
-    let ds = r.screen_layout().screens.len() == 2;
+    // X and Y mean a DS, and the pads draw the full face diamond for
+    // one. Asked of the console rather than counted off the screens:
+    // a session composes only the screens its mode uses, so a DS can
+    // present one.
+    let ds = {
+        use tango_session::keys;
+        r.local_game().pvp.keys_mask() & (keys::X | keys::Y) != 0
+    };
     let chip = |joyflags: u16, nick: &str| -> Element<'a, Message> {
         // The caption renders even when the nickname is empty so the
         // two chips always match heights.

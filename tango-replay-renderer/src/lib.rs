@@ -385,7 +385,10 @@ impl<W: Writer> Render<W> {
         // single-screen console that's the screen itself — so each side
         // reads as one console; the output frame is one canvas, or the
         // two seats side by side.
-        let layout = backend.screen_layout();
+        // A recording is a link battle, so the canvas is whatever that
+        // mode composes — an export never carries a screen the match
+        // itself didn't show.
+        let layout = backend.screen_layout(tango_match::SessionMode::PvP);
         let side_size = (
             layout.screens.iter().map(|s| s.width).max().unwrap_or(0),
             layout.screens.iter().map(|s| s.height).sum::<u32>(),

@@ -42,6 +42,10 @@ pub fn framerate_ratio(fps_target: f64) -> f64 {
     }
 }
 
+/// The DS's pad: the GBA's ten buttons plus X and Y, which is every
+/// bit [`keys`](tango_match::keys) names.
+pub const KEYS_MASK: u32 = tango_match::keys::MASK;
+
 /// The DS presents two identically-sized screens. Listed in the order
 /// [`Link::frame`](tango_match::Link::frame) lays them out, which is
 /// the console's top screen then its bottom (touch) one — left to
@@ -58,10 +62,48 @@ const SCREENS: [Screen; 2] = [
     },
 ];
 
-/// The screens this console presents, for a backend's
-/// [`screen_layout`](tango_match::Backend::screen_layout).
-pub fn screen_layout() -> ScreenLayout {
-    ScreenLayout::new(SCREENS)
+/// One of the console's physical screens, so a [`Screens`] selection
+/// names what it picks instead of indexing it. Discriminants are
+/// [`SCREENS`]' order, which is what makes the mapping a cast.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DsScreen {
+    Upper = 0,
+    Touch = 1,
+}
+
+/// The screens a session composes, in the order its frames lay them
+/// out: the console's whole display, or whatever subset of it the
+/// game actually uses.
+///
+/// A subset because a cart can spend a whole mode on one screen —
+/// EXE OSS's netbattle never leaves the upper one — and a pane
+/// carrying the other is half dead menu. Deciding it here rather than
+/// cropping downstream keeps one answer: the composed frame, the
+/// [`ScreenLayout`] a session sizes its framebuffer from, and the
+/// exports all come off the same selection.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Screens(pub &'static [DsScreen]);
+
+impl Screens {
+    /// The whole console, upper screen first — what a DS shows when
+    /// nothing says otherwise.
+    pub const BOTH: Screens = Screens(&[DsScreen::Upper, DsScreen::Touch]);
+    /// The upper screen alone, for a mode that never uses the stylus.
+    pub const UPPER: Screens = Screens(&[DsScreen::Upper]);
+    /// The touch screen alone.
+    pub const TOUCH: Screens = Screens(&[DsScreen::Touch]);
+
+    /// This selection as a backend's
+    /// [`screen_layout`](tango_match::Backend::screen_layout) — sizes
+    /// in composed order, with the stylus target marked wherever the
+    /// selection put it.
+    pub fn layout(self) -> ScreenLayout {
+        let layout = ScreenLayout::new(self.0.iter().map(|&s| SCREENS[s as usize]));
+        match self.0.iter().position(|&s| s == DsScreen::Touch) {
+            Some(i) => layout.with_touch(i),
+            None => layout,
+        }
+    }
 }
 
 /// A whole-link capture stamped with the tick it was taken at, so a
@@ -96,6 +138,10 @@ pub struct Link {
     /// polls on this engine: console 0's poller reads where the match
     /// stands and reports the transitions into the collector's sink.
     telemetry: Option<Telemetry<crate::Nds>>,
+    /// The screens this pair's frames carry. Both until the backend
+    /// says otherwise ([`set_screens`](Link::set_screens)), which is
+    /// what a probe harness booting a pair of its own wants.
+    screens: Screens,
 }
 
 impl Link {
@@ -109,7 +155,18 @@ impl Link {
             inner: melonds_rollback::Link::new(rom, saves, rtc_parts(rtc))?,
             live_tick: 0,
             telemetry: None,
+            screens: Screens::BOTH,
         })
+    }
+
+    /// Compose only these screens from here on. The backend sets it
+    /// from the game's own selection before the session starts, so
+    /// every frame this pair publishes matches the
+    /// [`ScreenLayout`](tango_match::ScreenLayout) the host sized its
+    /// framebuffer from. Priming runs dark, so a walk never sees the
+    /// difference.
+    pub fn set_screens(&mut self, screens: Screens) {
+        self.screens = screens;
     }
 
     /// Arm the telemetry collector and zero the tick clock. Called
@@ -201,19 +258,20 @@ impl tango_match::Link for Link {
     }
 
     fn side(&mut self, player: usize) -> Box<dyn tango_match::Side + '_> {
-        Box::new(DsSide(self.inner.side(player)))
+        Box::new(DsSide(self.inner.side(player), self.screens))
     }
 }
 
 /// One DS of a boot — the seam's [`Side`](tango_match::Side) over the
 /// per-console view `melonds_rollback` shares between its pair and its
-/// solo boot, so this exists once for both.
-pub(crate) struct DsSide<'a>(pub(crate) melonds_rollback::Side<'a>);
+/// solo boot, so this exists once for both. Carries the screens its
+/// boot composes, since that differs by mode and not by console.
+pub(crate) struct DsSide<'a>(pub(crate) melonds_rollback::Side<'a>, pub(crate) Screens);
 
 impl tango_match::Side for DsSide<'_> {
     fn frame(&mut self) -> Option<Vec<u8>> {
         let (top, bottom) = self.0.console().framebuffers()?;
-        Some(compose_frame(top, bottom))
+        Some(compose_frame(top, bottom, self.1))
     }
 
     fn set_render(&mut self, on: bool) {
@@ -246,20 +304,21 @@ impl tango_match::Side for DsSide<'_> {
     }
 }
 
-/// Compose the two screens into one RGBA8 frame, in
-/// [`screen_layout`]'s order.
+/// Compose `screens` into one RGBA8 frame, in the selection's own
+/// order — which is [`Screens::layout`]'s, so the frame and the layout
+/// describing it never disagree.
 ///
-/// Side by side, so a row of the composite is a row of the top screen
-/// followed by the same row of the bottom one. Stacked would be the
-/// cheaper `top` then `bottom` — concatenation is a vertical stack for
-/// free when the widths match — but a 256x384 pane wastes most of the
-/// width of any display it is drawn into.
-fn compose_frame(top: &[u32], bottom: &[u32]) -> Vec<u8> {
-    let mut rgba = Vec::with_capacity(SCREENS.iter().map(Screen::len).sum());
+/// Side by side, so a row of the composite is a row of each selected
+/// screen in turn. Stacked would be the cheaper concatenation — a
+/// vertical stack is free when the widths match — but a 256x384 pane
+/// wastes most of the width of any display it is drawn into.
+fn compose_frame(top: &[u32], bottom: &[u32], screens: Screens) -> Vec<u8> {
+    let sources = [top, bottom];
+    let mut rgba = Vec::with_capacity(screens.layout().buffer_len());
     let (width, height) = (SCREENS[0].width as usize, SCREENS[0].height as usize);
     for row in 0..height {
-        for screen in [top, bottom] {
-            for &pixel in &screen[row * width..(row + 1) * width] {
+        for &screen in screens.0 {
+            for &pixel in &sources[screen as usize][row * width..(row + 1) * width] {
                 // The core hands out BGRA words; hosts want RGBA bytes.
                 let [b, g, r, _] = pixel.to_le_bytes();
                 rgba.extend_from_slice(&[r, g, b, 0xff]);
@@ -279,7 +338,7 @@ fn compose_frame(top: &[u32], bottom: &[u32]) -> Vec<u8> {
 /// both peers must derive the same one.
 fn sanitize(input: HostInput) -> HostInput {
     HostInput {
-        keys: input.keys & 0xfff,
+        keys: input.keys & KEYS_MASK,
         touch: input
             .touch
             .map(|(x, y)| (x.min(SCREENS[1].width as u16 - 1), y.min(SCREENS[1].height as u16 - 1))),
@@ -345,5 +404,60 @@ mod tests {
         assert!(ratio(super::EXPECTED_FPS * 3.0) < 1.0, "fast-forward must compress");
         assert!(ratio(super::EXPECTED_FPS / 2.0) > 1.0, "throttling must stretch");
         assert!((ratio(super::EXPECTED_FPS) - 1.0).abs() < 1e-9, "native speed is 1.0");
+    }
+
+    /// A red top screen and a blue bottom one, as the core hands them
+    /// out: BGRA words, so red is `0x00ff0000`.
+    fn framebuffers() -> (Vec<u32>, Vec<u32>) {
+        let px = (super::SCREENS[0].width * super::SCREENS[0].height) as usize;
+        (vec![0x00ff_0000; px], vec![0x0000_00ff; px])
+    }
+
+    /// A selection's composed frame is exactly the size its layout
+    /// claims. The session sizes its framebuffer from the layout and
+    /// *silently drops* a frame of any other size, so a disagreement
+    /// here is a permanently black pane rather than a crash.
+    #[test]
+    fn a_composed_frame_is_the_size_its_layout_claims() {
+        let (top, bottom) = framebuffers();
+        for screens in [super::Screens::BOTH, super::Screens::UPPER, super::Screens::TOUCH] {
+            assert_eq!(
+                super::compose_frame(&top, &bottom, screens).len(),
+                screens.layout().buffer_len(),
+                "{screens:?}"
+            );
+        }
+    }
+
+    /// A selection composes the screens it named, in the order it named
+    /// them — including one that leaves the upper screen out, which is
+    /// the case no two-variant "both or the top one" knob could state.
+    #[test]
+    fn a_selection_composes_the_screens_it_named() {
+        let (top, bottom) = framebuffers();
+        const RED: [u8; 4] = [0xff, 0, 0, 0xff];
+        const BLUE: [u8; 4] = [0, 0, 0xff, 0xff];
+        let first_pixel = |screens| super::compose_frame(&top, &bottom, screens)[..4].to_vec();
+
+        assert_eq!(first_pixel(super::Screens::UPPER), RED);
+        assert_eq!(first_pixel(super::Screens::TOUCH), BLUE);
+        // Both starts on the upper screen and crosses to the touch one
+        // partway along the first row, since the pair composes side by
+        // side rather than stacked.
+        let both = super::compose_frame(&top, &bottom, super::Screens::BOTH);
+        let seam = super::SCREENS[0].width as usize * 4;
+        assert_eq!(both[..4], RED);
+        assert_eq!(both[seam..seam + 4], BLUE);
+    }
+
+    /// The stylus target travels with the selection: named wherever the
+    /// composition put it, and absent when the composition left it out.
+    /// A host places its stylus area from this, having no other way to
+    /// find the screen.
+    #[test]
+    fn a_layout_names_where_its_touch_screen_landed() {
+        assert_eq!(super::Screens::BOTH.layout().touch, Some(1));
+        assert_eq!(super::Screens::TOUCH.layout().touch, Some(0));
+        assert_eq!(super::Screens::UPPER.layout().touch, None);
     }
 }
