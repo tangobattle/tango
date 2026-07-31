@@ -92,8 +92,12 @@ impl tango_backend_melonds::GameSupport for Pvp {
     /// one it can answer for: the two players commit independently and
     /// the field waits for the later of them.
     ///
-    /// The verdict and the chip fires are still unmapped — a round that
-    /// announced no verdict correctly reports none.
+    /// Chip fires come off the record the battle keeps of the use in
+    /// flight (see [`CHIP_USE`](priming::CHIP_USE)), and each console
+    /// reports only its own player's, so a use lands exactly once.
+    ///
+    /// The verdict is still unmapped — a round that announced no
+    /// verdict correctly reports none.
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<Nds>> {
         use tango_match::telemetry::{CoreObs, EventSink, UnitObs};
 
@@ -128,6 +132,10 @@ impl tango_backend_melonds::GameSupport for Pvp {
             player: usize,
             /// Console 0's alone (see [`Lifecycle`]).
             lifecycle: Option<Lifecycle>,
+            /// The chip use standing last tick, as `(id, is this
+            /// console's own player's)` — the edge against it is one
+            /// chip fired.
+            chip: Option<(u16, bool)>,
         }
 
         impl tango_match::telemetry::CorePoller<Nds> for Poller {
@@ -142,7 +150,7 @@ impl tango_backend_melonds::GameSupport for Pvp {
                     return None;
                 }
 
-                use priming::unit;
+                use priming::{chip_use, unit};
                 let mut slots = [None, None];
                 for slot in 0..2 {
                     let base = priming::UNITS + slot * unit::STRIDE;
@@ -174,6 +182,22 @@ impl tango_backend_melonds::GameSupport for Pvp {
                     return None;
                 };
 
+                // A chip fire, off the record the battle keeps of the
+                // use in flight: an id standing where none stood is one
+                // chip used. Only this console's own player's, since
+                // the peer's console reports the peer's and a use
+                // landing twice would double it.
+                let chip = (nds.read8(priming::CHIP_USE + chip_use::LIVE) != 0)
+                    .then(|| nds.read16(priming::CHIP_USE + chip_use::ID))
+                    .filter(|&id| id != 0)
+                    .map(|id| (id, nds.read8(priming::CHIP_USE + chip_use::IS_REMOTE) == 0));
+                if chip != self.chip {
+                    if let Some((id, true)) = chip {
+                        events.chip_used(self.player, id);
+                    }
+                }
+                self.chip = chip;
+
                 Some(CoreObs {
                     units: [p0, p1],
                     // This console's own player's chip select, which is
@@ -187,6 +211,7 @@ impl tango_backend_melonds::GameSupport for Pvp {
         Box::new(Poller {
             player,
             lifecycle: (player == 0).then(|| Lifecycle { was: None }),
+            chip: None,
         })
     }
 }
@@ -360,6 +385,34 @@ pub mod priming {
         /// on both consoles, *and* move at the staggered commits.
         pub const BATTLE_PHASE: u32 = 0x020b_42bd;
 
+        /// The chip a navi is using right now — one record, shared by
+        /// both of them, holding the most recent use for as long as it
+        /// plays out.
+        ///
+        /// Found by pressing A once mid-battle and diffing the frames
+        /// around it: the id lands here two frames after the flag, and
+        /// the byte before both says whose use it is.
+        pub const CHIP_USE: u32 = 0x020b_4356;
+
+        /// Fields within [`CHIP_USE`].
+        pub mod chip_use {
+            /// Zero when the console reading it is the one whose player
+            /// used the chip — the same local/remote convention as
+            /// [`unit::IS_REMOTE`](super::unit::IS_REMOTE), and the
+            /// reason each console reports only its own player's fires:
+            /// the peer's console reports the peer's, so a use lands
+            /// exactly once.
+            pub const IS_REMOTE: u32 = 0x00;
+            /// Set while a use is playing out, cleared between — which
+            /// is what makes a rising edge here one chip fired.
+            pub const LIVE: u32 = 0x01;
+            /// The chip's library id (u16), the same numbering the ROM
+            /// assets' table uses, so the folder's name applies. Still
+            /// zero for the first frames of a use, so a fire is only
+            /// counted once this reads.
+            pub const ID: u32 = 0x02;
+        }
+
         /// The battle's two unit records, back to back — the levels the
         /// telemetry reports. There is a second pair at `0x020b7a80`
         /// (`+0x84` apart, HP at `+0x0c`) that mirrors the HP and was
@@ -523,9 +576,10 @@ pub mod priming {
     /// watch.
     pub(super) const SCENE_BYTE: u32 = ram::SCENE;
 
-    /// The battle's unit records and its phase, for the same reason:
-    /// the walk found where they are, the telemetry is what reads them.
-    pub(super) use ram::{unit, BATTLE_PHASE, UNITS};
+    /// The battle's unit records, its phase and its chip uses, for the
+    /// same reason: the walk found where they are, the telemetry is
+    /// what reads them.
+    pub(super) use ram::{chip_use, unit, BATTLE_PHASE, CHIP_USE, UNITS};
 
     /// What [`ram::BATTLE_PHASE`] reads while this console's own chip
     /// select is up.
