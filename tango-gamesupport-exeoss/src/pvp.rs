@@ -524,8 +524,19 @@ pub mod priming {
         /// Forcing a different value there (and watching it stick)
         /// changes neither the field nor the draw, and the word does
         /// not advance once at any point in a battle — nothing reads
-        /// it. Whatever picks the field is elsewhere, and is not the
-        /// frame counter two doors down from [`SCENE`] either.
+        /// it.
+        ///
+        /// Nor is the field frame-derived, which was the other guess.
+        /// It is four objects on tiles `(3,1) (3,2) (4,2) (4,3)`, in a
+        /// second object array at `0x020b4b54` (stride `0xbc`), built
+        /// on the same frame the reset runs. Main RAM holds twelve
+        /// words that count once per frame; forcing each in turn
+        /// leaves the field byte-identical in the nine cases the
+        /// console survives, and the other three hang or fault rather
+        /// than deal a different battle. The four tiles are not a
+        /// plain `(x, y)` table in any of the code overlays either.
+        /// So nothing found so far selects it, and a netbattle field
+        /// that is simply constant fits every measurement.
         pub const RNG: u32 = 0x020b_99c4;
     }
 
