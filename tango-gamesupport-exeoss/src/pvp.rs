@@ -96,23 +96,30 @@ impl tango_backend_melonds::GameSupport for Pvp {
     /// flight (see [`CHIP_USE`](priming::CHIP_USE)), and each console
     /// reports only its own player's, so a use lands exactly once.
     ///
-    /// The verdict is still unmapped — a round that announced no
-    /// verdict correctly reports none.
+    /// The verdict is console 0's too, off the byte the game writes
+    /// when it decides (see [`RESULT`](priming::RESULT)) — read through
+    /// console 0's own player being player 0, the game's host seat.
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<Nds>> {
         use tango_match::telemetry::{CoreObs, EventSink, UnitObs};
 
-        /// Console 0's watch: which scene has the screen, reported on
-        /// its edges against last tick's reading.
+        /// Console 0's watch: which scene has the screen and how the
+        /// battle came out, both reported on their edges against last
+        /// tick's readings.
         #[derive(Clone)]
         struct Lifecycle {
             /// Last tick's scene byte. `None` before the first, so the
             /// tick priming hands over on is the battle starting rather
             /// than a level with no edge.
             was: Option<u8>,
+            /// Last tick's result byte, for the same reason — and here
+            /// the edge is load-bearing rather than tidy, since the
+            /// byte stops meaning the verdict a hundred frames later
+            /// (see [`RESULT`](priming::RESULT)).
+            result: Option<u8>,
         }
 
         impl Lifecycle {
-            fn tick(&mut self, scene: u8, events: &EventSink) {
+            fn tick(&mut self, nds: &mut Nds, scene: u8, events: &EventSink) {
                 match self.was {
                     None if scene == priming::SCENE_BATTLE => events.round_started(),
                     // The comm screen coming back, with everything the
@@ -123,6 +130,23 @@ impl tango_backend_melonds::GameSupport for Pvp {
                     _ => {}
                 }
                 self.was = Some(scene);
+
+                // The verdict, as console 0 reads it — and console 0's
+                // own player is player 0, the game's host seat, which
+                // is what turns "I won" into an absolute outcome. Only
+                // out of `0`, and only the two values the game is known
+                // to write: anything else is a round with no announced
+                // verdict, which the telemetry reports as none rather
+                // than guessing from HP.
+                let result = nds.read8(priming::RESULT);
+                if self.result == Some(0) {
+                    match result {
+                        1 => events.round_outcome(tango_match::telemetry::Outcome::P0Win),
+                        2 => events.round_outcome(tango_match::telemetry::Outcome::P1Win),
+                        _ => {}
+                    }
+                }
+                self.result = Some(result);
             }
         }
 
@@ -144,7 +168,7 @@ impl tango_backend_melonds::GameSupport for Pvp {
                 // Every tick, live or not: the lifecycle's whole job is
                 // the scenes the read below bails out of.
                 if let Some(lifecycle) = &mut self.lifecycle {
-                    lifecycle.tick(scene, events);
+                    lifecycle.tick(nds, scene, events);
                 }
                 if scene != priming::SCENE_BATTLE {
                     return None;
@@ -210,7 +234,10 @@ impl tango_backend_melonds::GameSupport for Pvp {
 
         Box::new(Poller {
             player,
-            lifecycle: (player == 0).then(|| Lifecycle { was: None }),
+            lifecycle: (player == 0).then(|| Lifecycle {
+                was: None,
+                result: None,
+            }),
             chip: None,
         })
     }
@@ -384,6 +411,22 @@ pub mod priming {
         /// mid-battle) and another across every stretch of fighting,
         /// on both consoles, *and* move at the staggered commits.
         pub const BATTLE_PHASE: u32 = 0x020b_42bd;
+
+        /// How the battle came out, **from this console's point of
+        /// view**: `1` its own player won, `2` its own player lost, `0`
+        /// undecided. Set the frame the game decides, which is the same
+        /// frame the winner's [`SCENE`] flips to its banner.
+        ///
+        /// **It does not stay the verdict.** About a hundred frames on,
+        /// as the field fades, the game reuses the byte for the next
+        /// screen's business — the winner's drops to `0` and the
+        /// loser's to `1`. So it is read on its edge out of `0` and
+        /// nowhere else; a report is standing until the round closes,
+        /// which is exactly what the telemetry wants of it.
+        ///
+        /// Found by forcing a KO each way round and keeping the bytes
+        /// whose two consoles' readings *swap* between the two runs.
+        pub const RESULT: u32 = 0x0202_4b30;
 
         /// The chip a navi is using right now — one record, shared by
         /// both of them, holding the most recent use for as long as it
@@ -579,7 +622,7 @@ pub mod priming {
     /// The battle's unit records, its phase and its chip uses, for the
     /// same reason: the walk found where they are, the telemetry is
     /// what reads them.
-    pub(super) use ram::{chip_use, unit, BATTLE_PHASE, CHIP_USE, UNITS};
+    pub(super) use ram::{chip_use, unit, BATTLE_PHASE, CHIP_USE, RESULT, UNITS};
 
     /// What [`ram::BATTLE_PHASE`] reads while this console's own chip
     /// select is up.
