@@ -134,10 +134,11 @@ impl tango_backend_melonds::GameSupport for Pvp {
                 // The verdict, as console 0 reads it — and console 0's
                 // own player is player 0, the game's host seat, which
                 // is what turns "I won" into an absolute outcome. Only
-                // out of `0`, and only the two values the game is known
-                // to write: anything else is a round with no announced
-                // verdict, which the telemetry reports as none rather
-                // than guessing from HP.
+                // out of `0`, and only the two values there are: this
+                // game's netbattle has no draw, so `Outcome::Draw` is
+                // never reported and anything but a win or a loss is a
+                // round that announced no verdict — which stays none
+                // rather than being guessed at from HP.
                 let result = nds.read8(priming::RESULT);
                 if self.result == Some(0) {
                     match result {
@@ -414,8 +415,10 @@ pub mod priming {
 
         /// How the battle came out, **from this console's point of
         /// view**: `1` its own player won, `2` its own player lost, `0`
-        /// undecided. Set the frame the game decides, which is the same
-        /// frame the winner's [`SCENE`] flips to its banner.
+        /// undecided. Those are all the values there are — a netbattle
+        /// here cannot be drawn. Set the frame the game decides, which
+        /// is the same frame the winner's [`SCENE`] flips to its
+        /// banner.
         ///
         /// **It does not stay the verdict.** About a hundred frames on,
         /// as the field fades, the game reuses the byte for the next
