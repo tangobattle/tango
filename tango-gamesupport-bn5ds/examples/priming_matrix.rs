@@ -302,11 +302,20 @@ fn main() {
                         // crawl under the session's rollback) shows up
                         // here instead of in a live match.
                         use tango_match::Link as _;
-                        // The builds' module words (`RAMOffsets::module`
-                        // in the game crate, which examples can't see).
-                        let module_word = if jp { 0x0216_84bc } else { 0x0216_f71c };
-                        let module = |link: &mut tango_backend_melonds::Link, seat: usize| {
-                            link.console(seat).read32(module_word)
+                        // The builds' comm substate words
+                        // (`RAMOffsets::substate` in the game crate,
+                        // which examples can't see). NOT the scene word:
+                        // that one reads the overworld area the save is
+                        // standing in, so it is a property of the
+                        // cartridge rather than of the session, and two
+                        // saves park under different values at the
+                        // identical moment. The substate is one value
+                        // for every save — `0x0003_0102` is the link
+                        // battle, and anything else here is a pair that
+                        // left it.
+                        let substate_word = if jp { 0x021e_f06c } else { 0x021f_66ec };
+                        let substate = |link: &mut tango_backend_melonds::Link, seat: usize| {
+                            link.console(seat).read32(substate_word)
                         };
                         let mut trace = String::new();
                         for step in 0..=30 {
@@ -316,11 +325,11 @@ fn main() {
                                 }
                             }
                             if step % 5 == 0 || step == 1 {
-                                let m = [module(&mut link, 0), module(&mut link, 1)];
-                                trace += &format!(" +{}:{:#x}/{:#x}", step * 30, m[0], m[1]);
+                                let m = [substate(&mut link, 0), substate(&mut link, 1)];
+                                trace += &format!(" +{}:{:#010x}/{:#010x}", step * 30, m[0], m[1]);
                             }
                         }
-                        println!("    OK (modules{trace}, connected={})", link.connected());
+                        println!("    OK (substates{trace}, connected={})", link.connected());
                     }
                     Err(e) => {
                         println!("    FAILED: {e:?}");

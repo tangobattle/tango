@@ -440,25 +440,17 @@ pub mod priming {
         /// clear, which parks the walk on a touch keyboard it cannot
         /// answer; the registration is the *player's* to make, and it
         /// is not something a match needs.
+        ///
+        /// This one site is the whole answer. There was a second trap
+        /// beside it that answered the flag's accessor at the source,
+        /// for every asker, because an unregistered challenger seemed
+        /// to make the game serve the whole comm at a crawl. That was
+        /// never the game: it was the emulator reading uninitialised
+        /// memory (melonds-rs `3a0c6c9`), and with a fresh console
+        /// finally a function of its inputs the extra trap changes
+        /// nothing — every host×joiner pairing primes and battles at
+        /// the same speed without it, registered or not.
         name_registered_test: u32,
-        /// The needs-registration accessor's return — a tiny getter
-        /// (`ldrb` of save image `+0xb` through the context's image
-        /// pointer) that every asker of "has this save registered its
-        /// Net Battle name?" calls, from the CONTINUE load through the
-        /// comm profile. The walk answers 0 ("registered") here, at
-        /// the source, for the whole boot: answering only the entry
-        /// screen's own test left an unregistered save carrying the
-        /// flag into the wireless — a state real hardware can't
-        /// produce, which the game tolerates but serves at a crawl
-        /// (a registered host against an unregistered challenger runs
-        /// the whole comm ~2.4x slow, board half and battle alike,
-        /// emulator at full speed throughout). Poking the flag byte
-        /// itself is no good twice over: cleared mid-boot it desyncs
-        /// whatever already snapshotted it, and cleared in the image
-        /// it stales the interior checksum. The getter is the one
-        /// door all readers use. JP found by masked-byte match of the
-        /// getter+setter pair (BLs wildcarded), unique hit.
-        name_flag_read: u32,
         /// The Net Battle screen's touch gate, and the three branches
         /// the two consoles need from it.
         net_touch_gate: u32,
@@ -636,7 +628,6 @@ pub mod priming {
             board_code_load:          0x021e_0ca4,
             net_touch_gate:           0x021e_30c0,
             name_registered_test:     0x021d_f020,
-            name_flag_read:           0x0200_1d84,
             net_designate:            0x021e_3398,
             net_list_update:          0x021e_33f4,
             net_pick_row:             0x021e_3334,
@@ -700,7 +691,6 @@ pub mod priming {
             board_code_load:          0x021d_9918,
             net_touch_gate:           0x021d_bd3c,
             name_registered_test:     0x021d_7d60,
-            name_flag_read:           0x0200_1d4c,
             net_designate:            0x021d_c014,
             net_list_update:          0x021d_c070,
             net_pick_row:             0x021d_bfb0,
@@ -789,14 +779,13 @@ pub mod priming {
     /// nothing to share because the two consoles get their own traps.
     const CHOOSING: [u32; 3] = [0x0102_0303, 0x0104_0303, 0x0106_0303];
     // These words are matched EXACTLY, top byte included. An
-    // unregistered-challenger pairing once ran the comm screens in a
-    // variant reading these low bytes under a 0 top byte — the host's
-    // accept as a real prompt, the joiner's as non-interactive mirrors
-    // whose "answers" desync the negotiation into a battle the game
-    // itself interrupts. The name-flag trap (see
-    // `CodeOffsets::name_flag_read`) suppresses that whole variant at
-    // its source, so no chooser answer for it exists anymore; if a new
-    // variant ever shows up, learn its exact word — don't mask.
+    // unregistered-challenger pairing once appeared to run the comm
+    // screens in a variant reading these low bytes under a 0 top byte,
+    // and a second name-flag trap was added to suppress it. The variant
+    // was the emulator, not the game — a fresh console was reading
+    // uninitialised memory (melonds-rs `3a0c6c9`) — and neither the
+    // variant nor the trap outlived that fix. If a new one ever does
+    // show up, learn its exact word; don't mask.
 
     /// The ARM7 side of the save: its backup server's flash wait, at
     /// the function's entry. r0 arrives holding the mandatory pre-poll
@@ -1058,18 +1047,6 @@ pub mod priming {
                     // [`CodeOffsets::name_registered_test`].
                     code.name_registered_test,
                     Box::new(move |nds: &mut Nds| nds.set_reg(0, 1)),
-                ),
-                (
-                    // Every OTHER asker of the same question — the
-                    // CONTINUE load, the file rows, the comm profile —
-                    // asks through one tiny getter, and this answers it
-                    // at its return: registered. The trap sits on the
-                    // getter's `pop {pc}`, firing before it executes,
-                    // so r0 carries the answer home. See
-                    // [`CodeOffsets::name_flag_read`] for why the flag
-                    // byte itself can't just be cleared.
-                    code.name_flag_read,
-                    Box::new(move |nds: &mut Nds| nds.set_reg(0, 0)),
                 ),
                 // ----- the Net Battle screen -----
                 if host {
