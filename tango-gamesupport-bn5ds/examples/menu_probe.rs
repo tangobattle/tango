@@ -13,6 +13,14 @@
 //!   --prime              run the crate's real priming and report its cost
 //!   --match-type N       which mode priming walks into: 0 Single
 //!                        Battle, 1 Triple Battle (default 0)
+//!   --match-subtype N    which route into it: 0 plain, 1 Team Battle
+//!                        (default 0)
+//!   --file N             both consoles' session payload: the
+//!                        file-select slot to walk into, as a live
+//!                        session carries one. Without it each cart
+//!                        walks whichever file it calls current, which
+//!                        on a two-file dump may be one with no
+//!                        NetBattle unlocked.
 //!   --rng-seed HEX       first word of the match seed priming reseeds
 //!                        the game's rngs from (default 0)
 //!   --script FILE        input script: lines "<frame> <seat> <input>";
@@ -303,15 +311,20 @@ fn main() {
             b"A5TJ" => &tango_gamesupport_bn5ds::pvp::priming::JP,
             _ => &tango_gamesupport_bn5ds::pvp::priming::US,
         };
-        let match_type = (one("match-type").map(|v| v.parse().unwrap()).unwrap_or(0), 0);
+        let match_type = (
+            one("match-type").map(|v| v.parse().unwrap()).unwrap_or(0),
+            one("match-subtype").map(|v| v.parse().unwrap()).unwrap_or(0),
+        );
         let mut rng_seed = [0u8; 16];
         if let Some(v) = one("rng-seed") {
             rng_seed[..4].copy_from_slice(&parse_hex(&v).to_le_bytes());
         }
-        // No payloads: a probe fed raw dumps walks each cart's own
-        // current file, exactly like a session without one.
+        // Without --file, a probe fed raw dumps walks each cart's own
+        // current file, exactly like a session without a payload.
+        let played = one("file").map(|v| tango_gamesupport_bn5ds::dataview::save::PlayedFile(v.parse().expect("file")));
+        let payloads = std::array::from_fn(|_| played.as_ref().map(|p| p as &dyn tango_match::SessionPayload));
         let started = std::time::Instant::now();
-        match layout.walk(&mut link, match_type, [None, None], rng_seed, None) {
+        match layout.walk(&mut link, match_type, payloads, rng_seed, None) {
             Ok(()) => println!(
                 "primed in {:.1}s wall, connected={}",
                 started.elapsed().as_secs_f64(),

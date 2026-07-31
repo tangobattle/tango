@@ -26,6 +26,27 @@
 //! is only which button, on which screen, and each answer is gated on
 //! the screen object's own sub-state rather than scheduled.
 //!
+//! **The team route** is the same walk, entered by a different button.
+//! Team Battle is its own entry on the Network board, so the subtype
+//! only picks which hit code the board's answer carries — and then one
+//! more answer, because that button routes through Navi Select (where
+//! a player builds the team they bring) on its way to the comm screen.
+//! The board's own tail is what decides that, having already written
+//! the battle kind, so answering *its* comparison sends a Team Battle
+//! to the comm screen directly: a team match with the team left empty,
+//! which is what exiting Navi Select without downloading one gives
+//! anyway. Nothing on that screen has to be worked, which matters
+//! because it is the one screen on the route a redirect could not
+//! answer — its buttons come off the shared widget framework rather
+//! than a jump table of its own, so there is no branch a hit would
+//! have taken. Driving it is the work a real team pick would need.
+//!
+//! What lies past the board is the same screen either way, with the
+//! same handler and the same designation, list and row pick. Only the
+//! joiner's three choosers move: the comm module numbers its
+//! sub-screens one higher on this route, so they are gated on their own
+//! words (see `CHOOSING_TEAM`). The host's accept does not move.
+//!
 //! The pair is symmetric, so the seats are assigned rather than
 //! negotiated: **console 0 takes the game's host seat and console 1
 //! joins it**. Both peers walk both consoles, so both agree without
@@ -427,6 +448,30 @@ pub mod priming {
         /// Where the board's handler loads the hit code, which is where
         /// the walk has to have written it.
         board_code_load: u32,
+        /// The comparison deciding whether the button just taken needs
+        /// the Navi Select screen before its comm screen. The board's
+        /// tail turns the hit code into a selection index, writes the
+        /// battle kind that index carries into the screen object's `+8`
+        /// unconditionally, and then splits: the two team selections go
+        /// to screen 7 (Navi Select, where a player builds their team),
+        /// everything else straight to screen 3 (the comm screen). The
+        /// site is that `cmp`, so the index's own value is already in
+        /// the register the answer replaces — the same shape as
+        /// [`name_registered_test`](CodeOffsets::name_registered_test),
+        /// and answered the same way.
+        ///
+        /// Answering it "no" is what lets the team subtypes reuse the
+        /// whole plain route: the kind byte is already written by the
+        /// time the split is reached, so the comm screen still comes up
+        /// as a Team Battle — the walk only declines the detour, and
+        /// declining it is exactly what a player who exits Navi Select
+        /// without downloading a team ends up with.
+        ///
+        /// The screen the walk is thereby skipping is where a team gets
+        /// chosen, by paging each of the two slots through the roster
+        /// with the arrows beside it and committing with DOWNLOAD. That
+        /// is the screen to drive when the team stops being empty.
+        board_team_screen_test: u32,
         /// The comparison that decides whether the Net Battle screens
         /// have to collect a name and comment first. The screens are
         /// selected by an index the module keeps, and the first thing it
@@ -626,6 +671,7 @@ pub mod priming {
             board_touch_gate:         0x021e_0c88,
             board_touch_taken:        0x021e_0c98,
             board_code_load:          0x021e_0ca4,
+            board_team_screen_test:   0x021e_1050,
             net_touch_gate:           0x021e_30c0,
             name_registered_test:     0x021d_f020,
             net_designate:            0x021e_3398,
@@ -689,6 +735,7 @@ pub mod priming {
             board_touch_gate:         0x021d_98fc,
             board_touch_taken:        0x021d_990c,
             board_code_load:          0x021d_9918,
+            board_team_screen_test:   0x021d_9cc4,
             net_touch_gate:           0x021d_bd3c,
             name_registered_test:     0x021d_7d60,
             net_designate:            0x021d_c014,
@@ -730,6 +777,12 @@ pub mod priming {
     /// codes `0x60..=0x66` onto its six buttons and its bottom bar, and
     /// this is the first of them.
     const NET_BATTLE: u16 = 0x0060;
+    /// The hit code for the board's Team Battle entry, which is the
+    /// next one. The board numbers its buttons down each column rather
+    /// than across each row — its code load dispatches through a jump
+    /// table, and the entry after Net Battle's is the button drawn
+    /// underneath it, not the one beside it.
+    const TEAM_BATTLE: u16 = 0x0061;
     /// The code the chooser's second button compares against, and the
     /// register it has to arrive in — `CodeOffsets::chooser_second`
     /// lands on the comparison rather than before it.
@@ -778,6 +831,24 @@ pub mod priming {
     /// host's single prompt reads the first of them, which costs
     /// nothing to share because the two consoles get their own traps.
     const CHOOSING: [u32; 3] = [0x0102_0303, 0x0104_0303, 0x0106_0303];
+    /// The same three on the team route, which numbers the comm
+    /// module's sub-screens one higher: every one of the joiner's
+    /// prompts reads `0x04` where the plain route reads `0x03`, with
+    /// the rest of the word — and the order they arrive in — identical.
+    ///
+    /// The **host's** prompt is deliberately not in here. Its accept is
+    /// the one screen the two routes share outright, reading
+    /// `CHOOSING[0]` whichever button opened the session, so the host
+    /// keeps the plain list on both.
+    ///
+    /// Getting this wrong is quiet rather than loud: with the plain
+    /// words on the team route the joiner's three prompts simply go
+    /// unanswered, the host's own flow carries the session into a
+    /// battle anyway, and the mode falls back to Single — a Triple Team
+    /// match that plays one round and looks like a working walk. The
+    /// regression test is that Single Team and Triple Team must not
+    /// prime to identical RAM.
+    const CHOOSING_TEAM: [u32; 3] = [0x0102_0403, 0x0104_0403, 0x0106_0403];
     // These words are matched EXACTLY, top byte included. An
     // unregistered-challenger pairing once appeared to run the comm
     // screens in a variant reading these low bytes under a 0 top byte,
@@ -850,10 +921,13 @@ pub mod priming {
         /// Network board, the Net Battle screen, then the choosers.
         ///
         /// `host` picks which half of the Net Battle screen this console
-        /// drives, and `second` whether its chooser takes the mode
-        /// screen's second button. `confirms` counts the save prompts
-        /// the run answers, and is only handed to one console — the two
-        /// run the same route, so counting both would just double it.
+        /// drives, `second` whether its chooser takes the mode screen's
+        /// second button, and `team` which board button opens the route
+        /// — the one screen that differs between them stands between the
+        /// board and a comm screen both share. `confirms` counts the
+        /// save prompts the run answers, and is only handed to one
+        /// console — the two run the same route, so counting both would
+        /// just double it.
         ///
         /// One set carries the whole route: nothing has to be swapped
         /// over part-way, because each answer's site is unreachable
@@ -870,6 +944,7 @@ pub mod priming {
             &'static self,
             host: bool,
             second: bool,
+            team: bool,
             save_row: u8,
             rng_seeds: [u32; 3],
             confirms: Option<std::sync::Arc<std::sync::atomic::AtomicU32>>,
@@ -1031,12 +1106,33 @@ pub mod priming {
                 ),
                 (
                     // The hit code the gate above is about to read: Net
-                    // Battle. Writing the selection and letting the game's
-                    // own handler act on it is the same idiom as the save
-                    // confirm. It stops mattering by itself once the screen
-                    // changes.
+                    // Battle, or Team Battle for the team subtype — the
+                    // one place the two routes part. Writing the
+                    // selection and letting the game's own handler act
+                    // on it is the same idiom as the save confirm. It
+                    // stops mattering by itself once the screen changes.
                     code.board_code_load,
-                    Box::new(move |nds: &mut Nds| nds.write16(ram.hit_code, NET_BATTLE)),
+                    Box::new(move |nds: &mut Nds| {
+                        nds.write16(ram.hit_code, if team { TEAM_BATTLE } else { NET_BATTLE })
+                    }),
+                ),
+                (
+                    // Decline the Navi Select detour, so a Team Battle
+                    // reaches the comm screen the way Net Battle does.
+                    // The selection index arrives in r0 as "distance
+                    // past the first team button"; anything above 1 is
+                    // a selection that needs no team screen, which is
+                    // the answer every non-team button gives for
+                    // itself. Installed only on the team route — the
+                    // plain route's buttons answer this correctly
+                    // without help. See
+                    // [`CodeOffsets::board_team_screen_test`].
+                    code.board_team_screen_test,
+                    Box::new(move |nds: &mut Nds| {
+                        if team {
+                            nds.set_reg(0, 2)
+                        }
+                    }),
                 ),
                 (
                     // Report the name and comment as already registered,
@@ -1119,7 +1215,15 @@ pub mod priming {
                     // The rest are Practice and Yes, both the first —
                     // Practice deliberately, since Real Thing spends the
                     // players' own records on the result.
-                    let waits: &'static [u32] = if host { &CHOOSING[..1] } else { &CHOOSING };
+                    //
+                    // The team route renumbers the joiner's three (see
+                    // [`CHOOSING_TEAM`]); the host's accept is the same
+                    // screen on both, so it keeps the plain list.
+                    let waits: &'static [u32] = match (host, team) {
+                        (true, _) => &CHOOSING[..1],
+                        (false, true) => &CHOOSING_TEAM,
+                        (false, false) => &CHOOSING,
+                    };
                     let mut spent = [false; CHOOSING.len()];
                     (
                         code.chooser_touch_gate,
@@ -1166,6 +1270,7 @@ pub mod priming {
             &'static self,
             link: &mut Link,
             second: bool,
+            team: bool,
             session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
             rng_seed: [u8; 16],
         ) -> std::sync::Arc<std::sync::atomic::AtomicU32> {
@@ -1177,6 +1282,7 @@ pub mod priming {
                 link.console(seat).set_traps(self.traps(
                     host,
                     second,
+                    team,
                     save_row,
                     rng_seeds,
                     host.then(|| confirms.clone()),
@@ -1215,8 +1321,11 @@ pub mod priming {
             let before = link.console(0).save_memory();
             // The registration lists Single first and Triple second, so
             // the mode is only which of the chooser's two buttons the
-            // joiner takes.
-            let counter = self.install(link, match_type.0 != 0, session_payloads, rng_seed);
+            // joiner takes — and the subtype, plain first and Team
+            // second, only which board button opened the route. The
+            // chooser is the same two buttons either way, which is what
+            // makes the two independent.
+            let counter = self.install(link, match_type.0 != 0, match_type.1 != 0, session_payloads, rng_seed);
 
             // The boot half, which is over when the board stands: it
             // answers nothing that depends on the other console, so it

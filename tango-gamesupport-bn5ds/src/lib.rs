@@ -19,10 +19,16 @@ pub mod pvp;
 use std::sync::LazyLock;
 use tango_gamesupport::{BackgroundRef, Family, Game, LazyImage, Region, Volume};
 
-/// Single Battle and Triple Battle, each with no subtypes. Both run as
-/// Practice: Real Thing spends the players' own records on the result,
-/// which is not netplay's to spend.
-const MATCH_TYPES: &[usize] = &[1, 1];
+/// Single Battle and Triple Battle, each in a plain and a Team subtype.
+/// The two kinds are separate routes off the Network board rather than
+/// separate modes on one screen — Team Battle is its own board button,
+/// and the mode chooser past it offers the same two buttons the plain
+/// route's does, which is what makes team a subtype of each rather than
+/// a third and fourth mode.
+///
+/// All four run as Practice: Real Thing spends the players' own records
+/// on the result, which is not netplay's to spend.
+const MATCH_TYPES: &[usize] = &[2, 2];
 
 const BACKGROUND: BackgroundRef = BackgroundRef {
     volume: Volume::Vol2,

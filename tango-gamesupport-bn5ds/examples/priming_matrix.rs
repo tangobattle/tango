@@ -16,6 +16,7 @@
 //! log lines carry the diagnostics when a cell stalls.
 //!
 //! Usage: priming_matrix <rom.nds> <flash.sav>... [--jp] [--type T]
+//!        [--subtype S]
 //!        [--rtc SECS[,SECS...]] [--emit DIR]
 //!
 //! `--emit DIR` writes each identity's sram to DIR/<label>.sav (for
@@ -117,6 +118,7 @@ fn main() {
     let mut layout = &tango_gamesupport_bn5ds::pvp::priming::US;
     let mut jp = false;
     let mut match_type = 0u8;
+    let mut match_subtype = 0u8;
     let mut rtcs: Vec<u64> = vec![1_770_000_000];
     let mut emit: Option<String> = None;
     let mut graft_host: Option<String> = None;
@@ -136,6 +138,8 @@ fn main() {
             jp = true;
         } else if a == "--type" {
             match_type = it.next().expect("--type needs a value").parse().expect("type");
+        } else if a == "--subtype" {
+            match_subtype = it.next().expect("--subtype needs a value").parse().expect("subtype");
         } else if a == "--emit" {
             emit = Some(it.next().expect("--emit needs a directory").clone());
         } else if a == "--host" {
@@ -239,7 +243,7 @@ fn main() {
         // No payloads: the emitted identity images and the geometry
         // surgery are hand-built carts whose current file is the one
         // under test.
-        match layout.walk(&mut link, (match_type, 0), [None, None], [0; 16], None) {
+        match layout.walk(&mut link, (match_type, match_subtype), [None, None], [0; 16], None) {
             Ok(()) => println!("RESULT: OK"),
             Err(e) => println!("RESULT: FAILED {e:?}"),
         }
@@ -280,7 +284,10 @@ fn main() {
         let rtc = std::time::UNIX_EPOCH + std::time::Duration::from_secs(*rtc_secs);
         for host in &identities {
             for joiner in &identities {
-                println!("--- host {} vs joiner {} (rtc {rtc_secs}, type {match_type})", host.label, joiner.label);
+                println!(
+                    "--- host {} vs joiner {} (rtc {rtc_secs}, type {match_type}/{match_subtype})",
+                    host.label, joiner.label
+                );
                 let mut link = tango_backend_melonds::Link::new(
                     &rom,
                     [Some(host.sram.as_slice()), Some(joiner.sram.as_slice())],
@@ -289,7 +296,7 @@ fn main() {
                 .expect("link boot");
                 match layout.walk(
                     &mut link,
-                    (match_type, 0),
+                    (match_type, match_subtype),
                     [Some(&host.played), Some(&joiner.played)],
                     [0; 16],
                     None,
