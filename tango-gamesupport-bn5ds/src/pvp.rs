@@ -599,8 +599,9 @@ pub mod priming {
         /// The team a Team Battle brings: four navi ids as words. The
         /// first two are the save's own and are already standing by the
         /// time the board dispatches; the last two are the pair Navi
-        /// Select fills in, and are what the walk writes (see
-        /// [`TEAM_PICKS`]).
+        /// Select fills in, and are what the walk writes — the first
+        /// two renamed into the space the second two use (see
+        /// [`roster_id`]).
         ///
         /// Writing them *is* choosing them, the same way writing the
         /// save-select row is choosing a file: the game reads this block
@@ -835,28 +836,40 @@ pub mod priming {
     /// codes `0x60..=0x66` onto its six buttons and its bottom bar, and
     /// this is the first of them.
     const NET_BATTLE: u16 = 0x0060;
-    /// The team the walk brings to a Team Battle: ProtoMan and GyroMan,
-    /// which are the first two of the game's navi ids and the first two
-    /// Navi Select's arrows offer.
+    /// The two id spaces a navi is named by, and the step between them.
     ///
-    /// A fixed pair, because the walk has nothing better to go on. The
-    /// ids are game data rather than save data — one table, shared by
-    /// both builds — but which navis a *save* has raised is the save's
-    /// business, and it is not written anywhere the walk can reach:
-    /// there is no roster in memory by the time the board dispatches,
-    /// only the game's own full id table, which says what exists rather
-    /// than what this player owns. Learning the roster means either
-    /// reading it out of the save or letting Navi Select build it, and
-    /// the second is the screen this route declines.
+    /// The save's own team — the pair it has been carrying since the
+    /// overworld, standing in the first two words of
+    /// [`RAMOffsets::team`] — is written in a space that counts three
+    /// ids to a navi, so its members land 3 apart (`0x255` and `0x258`
+    /// on one file, `0x25b` and `0x25e` on the other, the two files
+    /// six apart because their teams are two navis apart). Navi Select
+    /// fills the other two words from a flat space that counts one id
+    /// to a navi, the same consecutive run the game's own table holds.
     ///
-    /// Picking one a save has never raised is safe rather than wrong:
-    /// the battle takes each navi's stats from the save that fields it,
-    /// so the same pair comes up differently on different files (750 HP
-    /// and 700 HP for ProtoMan across the two on one cart), and a save
-    /// that has done nothing with them simply fields them as it has
-    /// them. That is what makes a fixed pair defensible until the
-    /// players get to choose, which is Navi Select's job to hand over.
-    const TEAM_PICKS: [u32; 2] = [0x277, 0x278];
+    /// So the team cannot simply be copied across — the spaces are not
+    /// the same one, and copying reads as a different navi or as none
+    /// at all. Dividing the step turns one into the other, which is
+    /// what lets a Team Battle bring the team the save already has
+    /// instead of a pair chosen for it.
+    ///
+    /// Checked on both files of a cart: the first maps to ProtoMan and
+    /// GyroMan, which is what its Navi Select offers first, and the
+    /// second to a different pair entirely, each fielded with the stats
+    /// that save has raised them to. Every id seen sits exactly on the
+    /// step, which is what the divisibility test below insists on — an
+    /// id that does not is a team member this arithmetic cannot name,
+    /// and is left out rather than guessed at.
+    const OWN_TEAM_BASE: u32 = 0x255;
+    const OWN_TEAM_STRIDE: u32 = 3;
+    const ROSTER_BASE: u32 = 0x277;
+
+    /// One of the save's own team navis as Navi Select would have named
+    /// it, or `None` if it is not a navi this can name.
+    fn roster_id(own: u32) -> Option<u32> {
+        let step = own.checked_sub(OWN_TEAM_BASE)?;
+        (step % OWN_TEAM_STRIDE == 0).then(|| ROSTER_BASE + step / OWN_TEAM_STRIDE)
+    }
 
     /// The hit code for the board's Team Battle entry, which is the
     /// next one. The board numbers its buttons down each column rather
@@ -1212,9 +1225,11 @@ pub mod priming {
                     // would have filled it. The board's tail has already
                     // written the battle kind by the time it asks, so
                     // both halves of a Team Battle are settled here:
-                    // the pair that comes along (see [`TEAM_PICKS`]),
-                    // and the answer that sends the route to the comm
-                    // screen the way Net Battle goes. The selection
+                    // the team the save is already carrying, renamed
+                    // into the space the picks are written in (see
+                    // [`roster_id`]), and the answer that sends the
+                    // route to the comm screen the way Net Battle
+                    // goes. The selection
                     // index arrives in r0 as "distance past the first
                     // team button"; anything above 1 is a selection
                     // that needs no team screen, which is the answer
@@ -1227,8 +1242,10 @@ pub mod priming {
                         if !team {
                             return;
                         }
-                        for (slot, &navi) in TEAM_PICKS.iter().enumerate() {
-                            nds.write32(ram.team + 8 + 4 * slot as u32, navi);
+                        for slot in 0..2 {
+                            if let Some(navi) = roster_id(nds.read32(ram.team + 4 * slot)) {
+                                nds.write32(ram.team + 8 + 4 * slot, navi);
+                            }
                         }
                         nds.set_reg(0, 2)
                     }),
