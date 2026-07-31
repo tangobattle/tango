@@ -115,6 +115,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
             }
         }
 
+        #[derive(Clone)]
         struct Poller {
             ewram: &'static EWRAMOffsets,
             player: usize,
@@ -174,12 +175,6 @@ impl tango_backend_mgba::GameSupport for Pvp {
                     }),
                     custom_self: core.raw_read_8(ewram.deck_confirm_wait, -1) != 0,
                 })
-            }
-            fn save(&self) -> tango_match::telemetry::Scratch {
-                tango_match::telemetry::Scratch::new(self.chips.clone())
-            }
-            fn restore(&mut self, scratch: &tango_match::telemetry::Scratch) {
-                self.chips = scratch.get().cloned().unwrap_or_default();
             }
         }
         Box::new(Poller {

@@ -323,6 +323,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
             }
         }
 
+        #[derive(Clone)]
         struct Poller {
             ewram: &'static EWRAMOffsets,
             player: usize,
@@ -365,17 +366,6 @@ impl tango_backend_mgba::GameSupport for Pvp {
                     }),
                     custom_self,
                 })
-            }
-            fn save(&self) -> tango_match::telemetry::Scratch {
-                tango_match::telemetry::Scratch::new((self.hand.clone(), self.queue.clone()))
-            }
-            fn restore(&mut self, scratch: &tango_match::telemetry::Scratch) {
-                let (hand, queue) = scratch
-                    .get::<(tango_gamesupport_common::telemetry::HandChipTracker, QueueSumTracker)>()
-                    .cloned()
-                    .unwrap_or_default();
-                self.hand = hand;
-                self.queue = queue;
             }
         }
         Box::new(Poller {

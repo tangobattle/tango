@@ -239,6 +239,7 @@ impl tango_backend_melonds::GameSupport for Pvp {
         /// round genuinely never got one. Both consoles hold mirrored
         /// copies and agree at every settled tick — KO-forge verified
         /// on both builds, both outcomes.
+        #[derive(Clone)]
         struct LifecycleWatch {
             substate: u32,
             result: u32,
@@ -291,6 +292,7 @@ impl tango_backend_melonds::GameSupport for Pvp {
             }
         }
 
+        #[derive(Clone)]
         struct Poller {
             unit: u32,
             /// This player's own custom flag address (see [`Pvp::custom`]).
@@ -359,22 +361,6 @@ impl tango_backend_melonds::GameSupport for Pvp {
                 self.chips
                     .tick(round, reading, custom_self, units[self.player].hp, self.player, events);
                 Some(CoreObs { units, custom_self })
-            }
-            fn save(&self) -> tango_match::telemetry::Scratch {
-                tango_match::telemetry::Scratch::new((
-                    self.chips.clone(),
-                    self.lifecycle.as_ref().map(|lc| (lc.prev_phase, lc.prev_verdict)),
-                ))
-            }
-            fn restore(&mut self, scratch: &tango_match::telemetry::Scratch) {
-                let (chips, watch) = scratch
-                    .get::<(HandChipTracker, Option<(u8, u8)>)>()
-                    .cloned()
-                    .unwrap_or_default();
-                self.chips = chips;
-                if let Some(lc) = &mut self.lifecycle {
-                    (lc.prev_phase, lc.prev_verdict) = watch.unwrap_or_default();
-                }
             }
         }
 

@@ -89,10 +89,11 @@ impl tango_backend_melonds::GameSupport for Pvp {
     /// coordinates are found. The custom screen, the verdict and the
     /// chip fires are unmapped for the same reason.
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<Nds>> {
-        use tango_match::telemetry::{CoreObs, EventSink, Scratch};
+        use tango_match::telemetry::{CoreObs, EventSink};
 
         /// Console 0's watch: the battle's presence, reported on its
         /// edges against last tick's reading.
+        #[derive(Clone)]
         struct Lifecycle {
             /// Whether the battle had the screen last tick. `None`
             /// before the first, so the tick priming hands over on is
@@ -110,14 +111,6 @@ impl tango_backend_melonds::GameSupport for Pvp {
                 }
                 self.was_live = Some(live);
                 None
-            }
-
-            fn save(&self) -> Scratch {
-                Scratch::new(self.was_live)
-            }
-
-            fn restore(&mut self, scratch: &Scratch) {
-                self.was_live = scratch.get::<Option<bool>>().copied().flatten();
             }
         }
 

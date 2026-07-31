@@ -22,7 +22,7 @@
 //! re-simulation exactly as they fired the first time (the pair is
 //! deterministic), and a poller's edge detection is a pure function of
 //! (previous state, this tick's RAM) whose previous state the store
-//! carries per tick (see [`CorePoller::save`]) — so samples AND
+//! carries per tick (see [`PollerState`]) — so samples AND
 //! events from speculative ticks are recorded eagerly and truncated
 //! again when a rollback rewinds past them, and everything at or below
 //! the session's confirmed boundary is final.
@@ -168,12 +168,11 @@ impl EventSink {
 /// so everything it does must be a pure function of (its cross-tick
 /// state, the core's state) — and that state must rewind when the
 /// engine does, or re-simulated ticks would re-detect edges from
-/// speculated history. [`save`](CorePoller::save)/[`restore`](CorePoller::restore)
-/// are that contract: the collector snapshots every tick and hands the
-/// right snapshot back after a rewind. What's inside is entirely the
-/// poller's — the collector never looks into a [`Scratch`]. A poller
-/// with cross-tick state MUST cover ALL of it in `save`; anything left
-/// out sails through rollbacks.
+/// speculated history. [`PollerState`] is that contract, and it is why
+/// a poller must be [`Clone`]: a poller's whole self IS its cross-tick
+/// state, so the collector snapshots one by cloning it and rewinds by
+/// cloning back, with nothing to write per game and no field a game can
+/// forget to cover.
 ///
 /// `round` is how many rounds the collector has seen start (its store's
 /// own count, itself rollback-consistent) — trackers use it to scope
@@ -181,48 +180,40 @@ impl EventSink {
 ///
 /// Returns `None` when this game has no live battle state to read
 /// (menus, the round intro before unit init).
-pub trait CorePoller<Core>: Send {
+pub trait CorePoller<Core>: PollerState {
     fn poll(&mut self, core: &mut Core, events: &EventSink, round: u32) -> Option<CoreObs>;
+}
 
-    /// Snapshot the poller's cross-tick state. Stateless pollers keep
-    /// the default.
-    fn save(&self) -> Scratch {
-        Scratch::none()
+/// Rollback for a poller, by cloning it. Blanket over every
+/// `Clone + Send` poller — a game writes `#[derive(Clone)]` and is
+/// done. The collector holds the clones type-erased, so a [`Store`]
+/// never learns what console (let alone what game) it belongs to.
+pub trait PollerState: Send {
+    fn capture(&self) -> PollerSnapshot;
+    fn restore(&mut self, snapshot: &PollerSnapshot);
+}
+
+impl<T: Clone + Send + 'static> PollerState for T {
+    fn capture(&self) -> PollerSnapshot {
+        PollerSnapshot(Box::new(self.clone()))
     }
 
-    /// Restore a snapshot from [`save`](CorePoller::save) —
-    /// [`Scratch::none`] means the fresh pre-first-tick state (a rewind
-    /// to before the first observation).
-    fn restore(&mut self, scratch: &Scratch) {
-        let _ = scratch;
+    fn restore(&mut self, snapshot: &PollerSnapshot) {
+        *self = snapshot
+            .0
+            .downcast_ref::<T>()
+            .expect("a poller is only ever restored from its own snapshots")
+            .clone();
     }
 }
 
-/// One poller's cross-tick state, opaque to the collector: it only ever
-/// records these and hands them back.
-pub struct Scratch(Option<Box<dyn std::any::Any + Send>>);
-
-impl Scratch {
-    pub fn new<T: std::any::Any + Send>(state: T) -> Self {
-        Scratch(Some(Box::new(state)))
-    }
-
-    /// The no-state snapshot — what stateless pollers save, and what a
-    /// rewind to before the first observation restores.
-    pub fn none() -> Self {
-        Scratch(None)
-    }
-
-    /// The snapshot back at its real type, `None` if this is
-    /// [`Scratch::none`] (restore the fresh state) or a foreign type.
-    pub fn get<T: std::any::Any>(&self) -> Option<&T> {
-        self.0.as_deref().and_then(|s| s.downcast_ref())
-    }
-}
+/// One poller's state at one tick, opaque to the collector: it only
+/// ever records these and hands them back to the poller they came from.
+pub struct PollerSnapshot(Box<dyn std::any::Any + Send>);
 
 /// Any stateless `FnMut` over a core is a poller — game support without
 /// edges to report hands back a plain closure reading its RAM offsets.
-impl<Core, F: FnMut(&mut Core) -> Option<CoreObs> + Send> CorePoller<Core> for F {
+impl<Core, F: FnMut(&mut Core) -> Option<CoreObs> + Clone + Send + 'static> CorePoller<Core> for F {
     fn poll(&mut self, core: &mut Core, _events: &EventSink, _round: u32) -> Option<CoreObs> {
         self(core)
     }
@@ -292,14 +283,14 @@ pub struct Store {
     /// them, so pruning would race the rollback horizon. A handful of
     /// entries per match.
     outcome_reports: Vec<(u32, Outcome)>,
-    /// The pollers' cross-tick state after each tick, opaque to this
-    /// store — the ring that makes stateful edge detection
+    /// The pollers as they stood after each tick, opaque to this store
+    /// — the ring that makes stateful edge detection
     /// rollback-transparent: a rewind to tick T hands the pollers back
     /// exactly the state they held after T, so the re-simulation
     /// re-detects exactly what the first pass did. Truncated with
     /// everything else on rewind; pruned below the confirmed boundary
     /// on drain (a rewind can never reach below it).
-    scratch: Vec<(u32, [Scratch; 2])>,
+    poller_states: Vec<(u32, [PollerSnapshot; 2])>,
 }
 
 impl Store {
@@ -329,11 +320,11 @@ impl Store {
             .max(self.events_drained);
         let events = self.events[self.events_drained..e].to_vec();
         self.events_drained = e;
-        // Scratch below the confirmed boundary can never be restored
-        // again (a rewind can't reach below it) — keep the boundary
-        // entry itself, a rewind can land exactly there.
-        let p = self.scratch.partition_point(|(t, _)| *t < tick);
-        self.scratch.drain(..p);
+        // Poller states below the confirmed boundary can never be
+        // restored again (a rewind can't reach below it) — keep the
+        // boundary entry itself, a rewind can land exactly there.
+        let p = self.poller_states.partition_point(|(t, _)| *t < tick);
+        self.poller_states.drain(..p);
         (self.samples.drain(..s).collect(), events)
     }
 
@@ -384,6 +375,10 @@ pub struct Telemetry<Core> {
     /// pollers so their trackers can scope per-round state. Recomputed
     /// from the event history on rewind, like everything else.
     rounds: u32,
+    /// The pollers as they were handed over, for a rewind to before the
+    /// first observation: the store's ring starts at tick 1, and this
+    /// is what sits under it.
+    fresh: [PollerSnapshot; 2],
 }
 
 impl<Core> Telemetry<Core> {
@@ -457,8 +452,9 @@ impl<Core> Telemetry<Core> {
                 store.samples.push((tick, obs));
             }
         }
-        let scratch = [self.pollers[0].save(), self.pollers[1].save()];
-        store.scratch.push((tick, scratch));
+        store
+            .poller_states
+            .push((tick, [self.pollers[0].capture(), self.pollers[1].capture()]));
     }
 
     /// Revoke everything an engine speculated past `tick`. Called when
@@ -504,11 +500,10 @@ impl<Core> Telemetry<Core> {
         // Hand the pollers back the edge-detection state they held
         // after the restored tick, so re-simulated ticks re-detect
         // exactly what the first pass did.
-        let p = store.scratch.partition_point(|(t, _)| *t <= tick);
-        store.scratch.truncate(p);
-        let fresh = [Scratch::none(), Scratch::none()];
-        let scratch = store.scratch.last().map(|(_, s)| s).unwrap_or(&fresh);
-        for (poller, s) in self.pollers.iter_mut().zip(scratch) {
+        let p = store.poller_states.partition_point(|(t, _)| *t <= tick);
+        store.poller_states.truncate(p);
+        let states = store.poller_states.last().map(|(_, s)| s).unwrap_or(&self.fresh);
+        for (poller, s) in self.pollers.iter_mut().zip(states) {
             poller.restore(s);
         }
     }
@@ -536,6 +531,7 @@ impl<Core> Telemetry<Core> {
         }
         (
             Telemetry {
+                fresh: [pollers[0].capture(), pollers[1].capture()],
                 pollers,
                 events,
                 store: store.clone(),
