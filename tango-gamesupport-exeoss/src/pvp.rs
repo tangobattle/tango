@@ -358,13 +358,25 @@ pub mod priming {
         /// The emulated flash is ready the moment it is asked, so that
         /// delay is the entire cost of the save: the write loop passes
         /// a timeout of **zero**, which means the function sleeps the
-        /// delay and never polls at all, and zeroing `r0` makes it
-        /// return immediately instead. The whole 40-page bank then
-        /// writes in 9 frames rather than 58, byte for byte the same
-        /// cartridge. Any other caller — one that does pass a timeout —
-        /// keeps its poll: with the delay zeroed the function still
-        /// falls into the polling path, which is the half that actually
-        /// decides.
+        /// delay and never polls at all. Shortening `r0` is what makes
+        /// the whole 40-page bank write in 9 frames rather than 58,
+        /// byte for byte the same cartridge. The pollers are untouched
+        /// by construction — theirs is a delay of 0 and a timeout of
+        /// 50, and a cap can only leave that alone.
+        ///
+        /// **Capped at one tick, not zeroed**, and the difference is
+        /// not cosmetic. Zeroing it — returning without ever sleeping —
+        /// costs a cartridge with no play on it 1283 frames of the comm
+        /// route afterwards: its screens crawl while the sound engine's
+        /// ready bit never settles, and it reaches its battle in 1531
+        /// frames against a played cart's 197. Leaving a single tick in
+        /// place costs 11 frames of the save and fixes it outright:
+        /// both cartridges then prime in about 125 frames of link half.
+        /// It is the firings during the save that do the damage, not
+        /// the trap standing afterwards — taking it off once the cart
+        /// is written changes nothing — and those are exactly the write
+        /// loop's, so there is no scoping around it. One tick is the
+        /// whole fix.
         ///
         /// Found by covering the ARM7 across the save and diffing
         /// against a window without one (`--cover7`), which is the same
@@ -858,8 +870,20 @@ pub mod priming {
     /// emulated flash never needs. See
     /// [`ARM7_FLASH_WAIT`](code::ARM7_FLASH_WAIT).
     fn traps7() -> Vec<(u32, Box<dyn FnMut(&mut Nds)>)> {
-        vec![(code::ARM7_FLASH_WAIT, Box::new(|nds: &mut Nds| nds.arm7_set_reg(0, 0)))]
+        vec![(
+            code::ARM7_FLASH_WAIT,
+            Box::new(|nds: &mut Nds| {
+                let delay = nds.arm7_reg(0);
+                nds.arm7_set_reg(0, delay.min(FLASH_DELAY_CAP))
+            }),
+        )]
     }
+
+    /// What the cartridge backup server's pre-poll delay is shortened
+    /// to, in whatever ticks it counts — one, and not zero. See
+    /// [`ARM7_FLASH_WAIT`](code::ARM7_FLASH_WAIT) for what the
+    /// difference between those two costs.
+    const FLASH_DELAY_CAP: u32 = 1;
 
     /// Install the walk on both consoles.
     ///

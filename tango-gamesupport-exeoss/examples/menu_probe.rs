@@ -653,10 +653,7 @@ fn main() {
         .unwrap_or_default();
 
     let walk: [Vec<Input>; 2] = if opt.contains_key("walk") {
-        [
-            expand(&[TO_HOST_PICK, HOST_TAIL]),
-            expand(&[TO_HOST_PICK, JOIN_TAIL]),
-        ]
+        [expand(&[TO_HOST_PICK, HOST_TAIL]), expand(&[TO_HOST_PICK, JOIN_TAIL])]
     } else {
         [Vec::new(), Vec::new()]
     };
@@ -688,7 +685,12 @@ fn main() {
         .unwrap_or_default();
     let ram_at: Vec<u32> = opt
         .get("ram-at")
-        .map(|v| v.iter().flat_map(|x| x.split(',')).map(|x| x.parse().unwrap()).collect())
+        .map(|v| {
+            v.iter()
+                .flat_map(|x| x.split(','))
+                .map(|x| x.parse().unwrap())
+                .collect()
+        })
         .unwrap_or_default();
     let status_every: u32 = one("status-every").map(|v| v.parse().unwrap()).unwrap_or(0);
     let watches: Vec<(u32, usize)> = opt

@@ -86,7 +86,13 @@ pub static EXEOSS: Game = Game {
 /// session and out of the recording. Peers have to agree about where a
 /// match stops, and a recording made against the old anchor is 157
 /// frames short of one made against this.
-const SIM_VERSION: u32 = 1;
+///
+/// 2: the cartridge backup server's pre-poll delay is capped at one
+/// tick rather than zeroed. Zeroing it left a cart with no play on it
+/// crawling through the comm screens — 1531 frames of link half against
+/// a played cart's 197 — and the one tick that fixes that costs the
+/// save 11 frames, so priming hands over that much later.
+const SIM_VERSION: u32 = 2;
 
 pub static EXEOSS_FAMILY: Family = Family {
     id: "exeoss",
