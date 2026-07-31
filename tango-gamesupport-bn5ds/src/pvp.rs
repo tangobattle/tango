@@ -951,10 +951,27 @@ pub mod priming {
     /// delay — 395 scanlines per 0x100-byte page, a real flash chip's
     /// program time — and r1 the poll timeout. The emulated flash is
     /// ready the moment it is asked, so the delay is the entire cost of
-    /// the save: zeroing r0 keeps the timeout-and-poll path, which
+    /// the save: shortening r0 keeps the timeout-and-poll path, which
     /// still decides, and the wait that was most of "Saving..." simply
     /// isn't waited.
+    ///
+    /// **Capped at a tick rather than zeroed** (see
+    /// [`FLASH_DELAY_CAP`]). On this engine's other cart, returning
+    /// from this wait without ever sleeping left the comm route
+    /// crawling afterwards — the sound engine's ready bit stopped
+    /// settling, and a cartridge with no play on it took 1531 frames of
+    /// link half against a played one's 197. One tick in place fixed it
+    /// there for eleven frames of save. This is the same backup server
+    /// on the same emulator, so it is capped here for the same reason;
+    /// the failure has not been *seen* on this cart, which needs a
+    /// fresh dump the save picker would accept, and a blank one can't
+    /// stand in — it has no NetBattle unlocked, so it never reaches the
+    /// board at all.
     const ARM7_FLASH_WAIT: u32 = 0x0380_33e4;
+
+    /// What the pre-poll delay is shortened to — one of whatever it
+    /// counts, and deliberately not zero. See [`ARM7_FLASH_WAIT`].
+    const FLASH_DELAY_CAP: u32 = 1;
     /// The wait's poll loop sleeps once before it will even look at the
     /// status register; jumping the sleep call to the poll asks first.
     const ARM7_FLASH_POLL_SLEEP: u32 = 0x0380_3468;
@@ -1362,7 +1379,13 @@ pub mod priming {
         /// flash delay, which the emulated flash never needs.
         fn traps7() -> Vec<(u32, Box<dyn FnMut(&mut Nds)>)> {
             vec![
-                (ARM7_FLASH_WAIT, Box::new(|nds: &mut Nds| nds.arm7_set_reg(0, 0))),
+                (
+                    ARM7_FLASH_WAIT,
+                    Box::new(|nds: &mut Nds| {
+                        let delay = nds.arm7_reg(0);
+                        nds.arm7_set_reg(0, delay.min(FLASH_DELAY_CAP))
+                    }),
+                ),
                 (
                     ARM7_FLASH_POLL_SLEEP,
                     Box::new(|nds: &mut Nds| nds.arm7_jump_here(ARM7_FLASH_POLL)),

@@ -139,7 +139,14 @@ pub static EXE5DS: Game = Game {
 /// *restore* no longer hands the game back arithmetic left over from
 /// the run it took back, so two peers only agree about a rolled-back
 /// tick if both carry the fix.
-const SIM_VERSION: u32 = 4;
+///
+/// 5: the cartridge backup server's pre-poll delay is capped at one
+/// tick rather than zeroed. Returning from that wait without ever
+/// sleeping is what left EXE OSS's comm screens crawling on a cart with
+/// no play on it, and this is the same backup server on the same
+/// emulator; the tick costs the save a handful of frames, so priming
+/// hands over that much later.
+const SIM_VERSION: u32 = 5;
 
 pub static BN5DS_FAMILY: Family = Family {
     id: "bn5ds",
