@@ -11,6 +11,8 @@
 //! behaves exactly as it does on hardware.
 
 pub use tango_gamesupport_exeoss_dataview as dataview;
+#[cfg(feature = "ui")]
+pub use tango_gamesupport_exeoss_ui as ui;
 
 pub mod pvp;
 
@@ -29,9 +31,11 @@ const BACKGROUND: BackgroundRef = BackgroundRef {
 /// registration hands Tango as its [`tango_match::Backend`].
 static ENGINE_PVP_B6XJ_00: tango_backend_melonds::DsBackend = tango_backend_melonds::DsBackend::new(&pvp::JP);
 
-/// The cart's save, identified so one can be picked before a match. The
-/// interior is unmapped — this recognizes the dump and round-trips its
-/// bytes, which is what putting it in the save picker needs.
+/// The cart's save, identified so one can be picked before a match and
+/// read as far as the dataview's mapping reaches — which is the chip
+/// folder. A dump holds one in-game file, so there is nothing to pick
+/// between: the parse opens on whichever of its two banks was written
+/// last.
 fn parse_save(data: &[u8]) -> Result<tango_gamesupport::BoxedSave, tango_gamesupport::Error> {
     let save = dataview::save::Save::new(data)?;
     Ok(tango_gamesupport_common::dataview::wrap_save(Box::new(save)))
@@ -47,9 +51,16 @@ pub static EXEOSS: Game = Game {
     region: Region::JP,
 
     parse_save_fn: |data| parse_save(data),
-    // No save or ROM model yet, so nothing to decode the cart's assets
-    // into.
-    load_rom_assets_fn: None,
+    // The DS cart has no wram-derived assets — everything comes off the
+    // cart image itself, and there is one charset, the cart being
+    // Japan-only.
+    load_rom_assets_fn: Some(|rom, _wram, charset| {
+        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+            &dataview::rom::B6XJ_00,
+            charset.unwrap_or(dataview::rom::JA_CHARSET),
+            rom.to_vec(),
+        )))
+    }),
 
     pvp: &ENGINE_PVP_B6XJ_00,
 
@@ -61,7 +72,7 @@ pub static EXEOSS: Game = Game {
     // the Legacy Collection.
     background: Some(BACKGROUND),
     #[cfg(feature = "ui")]
-    save_editor: &tango_gamesupport_common::editor::EMPTY_SAVE_EDITOR,
+    save_editor: &ui::SAVE_EDITOR,
 };
 
 /// This family's simulation version. See [`Family::sim_version`] for

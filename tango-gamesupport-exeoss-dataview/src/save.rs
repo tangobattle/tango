@@ -5,15 +5,14 @@
 //! alternating banks. So a dump parses to one [`Save`], and there is no
 //! session payload steering a file choice the way BN5DS's is.
 //!
-//! Recognition is settled and is all this reaches so far: the game
-//! stamps a format tag at the very head of the flash and a `BANK`
-//! header on each of its two banks, and finding both intact is what puts
-//! a dump in the save picker. The bank interior is the GBA BN1 save the
-//! remake carries forward, but nothing here maps it yet — the netplay
-//! path never needs to, since a match hands the console the dump's own
-//! bytes untouched.
+//! Recognition is settled: the game stamps a format tag at the very
+//! head of the flash and a `BANK` header on each of its two banks, and
+//! finding both intact is what puts a dump in the save picker. Past
+//! that the bank's interior is its own layout rather than BN1's — no
+//! GBA-era string or offset survives in it — and what this maps of it
+//! is the chip folder.
 
-use tango_gamesupport_common::dataview::save::Error;
+use tango_gamesupport_common::dataview::save::{self, Error};
 
 /// A DS cartridge dump is 256 KiB, the same flash BN5DS ships on.
 pub const SIZE: usize = 0x4_0000;
@@ -140,18 +139,29 @@ impl Save {
     pub fn generation(&self) -> u32 {
         self.live.generation
     }
+
+    /// The live bank's payload — what every offset below is relative to.
+    fn payload(&self) -> &[u8] {
+        self.live.payload(&self.buf)
+    }
 }
 
-impl tango_gamesupport_common::dataview::save::Save for Save {
+impl save::Save for Save {
+    /// The chip folder, read-only. There is no `view_chips_mut` to go
+    /// with it: writing the folder back would have to restamp the
+    /// bank's integrity words, and those are unmapped (see
+    /// [`_INTEGRITY_WORDS`]).
+    fn view_chips(&self) -> Option<Box<dyn save::ChipsView + '_>> {
+        Some(Box::new(ChipsView { save: self }))
+    }
+
     fn to_sram_dump(&self) -> Vec<u8> {
         self.buf.clone()
     }
 
-    /// The live bank's payload: the GBA-shaped save the remake carries
-    /// forward. Nothing maps its interior yet, so this is the whole of
-    /// what the dataview offers.
+    /// The live bank's payload: the save proper, behind its header.
     fn as_raw_wram(&self) -> std::borrow::Cow<'_, [u8]> {
-        std::borrow::Cow::Borrowed(self.live.payload(&self.buf))
+        std::borrow::Cow::Borrowed(self.payload())
     }
 
     /// A no-op, deliberately: the bank's integrity words are unmapped
@@ -160,6 +170,53 @@ impl tango_gamesupport_common::dataview::save::Save for Save {
     /// writable views, and netplay passes the dump through byte for
     /// byte.
     fn rebuild_checksum(&mut self) {}
+}
+
+/// Where the payload keeps the equipped folder: thirty `(id, code)`
+/// pairs, the shape BN1 uses — but at this save's own offset, not
+/// BN1's. Found by scanning a played cart for thirty consecutive pairs
+/// whose code is one the ROM's chip table actually lists for that chip;
+/// exactly one run in the payload qualifies, and it reads back as a
+/// coherent folder (three FightrSwrd B, five Paladin B, Recov120 `*`).
+const FOLDER_OFFSET: usize = 0x017c;
+
+/// The remake's wildcard code. The chip table numbers it 27, where the
+/// later GBA games put theirs at 26 — which is where Tango's
+/// [`save::ChipCode::Star`] sits, so the two disagree by one and this
+/// is where that is reconciled.
+const RAW_STAR_CODE: u8 = 27;
+
+pub struct ChipsView<'a> {
+    save: &'a Save,
+}
+
+impl save::ChipsView for ChipsView<'_> {
+    /// One, and it is the one the game battles with — this cart has no
+    /// folder switching.
+    fn num_folders(&self) -> usize {
+        1
+    }
+
+    fn equipped_folder_index(&self) -> usize {
+        0
+    }
+
+    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<save::Chip> {
+        if folder_index >= self.num_folders() || chip_index >= self.folder_size() {
+            return None;
+        }
+        let raw = self.save.payload().get(FOLDER_OFFSET + chip_index * 2..)?.get(..2)?;
+        let code = match raw[1] {
+            RAW_STAR_CODE => save::ChipCode::Star,
+            // An empty slot reads back as a code no chip has, which is
+            // what `from_u8` rejecting it turns into `None` here.
+            other => num_traits::FromPrimitive::from_u8(other)?,
+        };
+        Some(save::Chip {
+            id: raw[0] as usize,
+            code,
+        })
+    }
 }
 
 #[cfg(test)]

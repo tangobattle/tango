@@ -8028,6 +8028,7 @@ dependencies = [
  "tango-gamesupport",
  "tango-gamesupport-common",
  "tango-gamesupport-exeoss-dataview",
+ "tango-gamesupport-exeoss-ui",
  "tango-match",
 ]
 
@@ -8036,7 +8037,18 @@ name = "tango-gamesupport-exeoss-dataview"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "image",
+ "num-traits",
  "tango-gamesupport-common",
+]
+
+[[package]]
+name = "tango-gamesupport-exeoss-ui"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "tango-gamesupport-common",
+ "unic-langid",
 ]
 
 [[package]]

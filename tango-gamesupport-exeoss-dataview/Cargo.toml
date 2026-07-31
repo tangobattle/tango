@@ -10,7 +10,9 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 tango-gamesupport-common = { path = "../tango-gamesupport-common", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png"] }
 bytemuck = { version = "1", features = ["derive", "const_zeroed", "min_const_generics"] }
+num-traits = "0.2"
 
 [lints]
 workspace = true

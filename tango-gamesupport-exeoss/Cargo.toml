@@ -12,10 +12,9 @@ license = "GPL-3.0-or-later"
 # PC redirects, exactly as `tango-gamesupport-bn5ds` does it.
 
 [features]
-# Pairs with the app's UI build, switching the save editor on. This game
-# has no save model to render yet, so it points at the shared empty
-# editor — the shell with no section tabs.
-ui = ["tango-gamesupport/ui", "tango-gamesupport-common/ui"]
+# Pairs with the app's UI build, switching the save editor on: the
+# read-only folder viewer from `tango-gamesupport-exeoss-ui`.
+ui = ["tango-gamesupport/ui", "dep:tango-gamesupport-exeoss-ui"]
 
 [dependencies]
 tango-gamesupport = { path = "../tango-gamesupport" }
@@ -24,6 +23,8 @@ tango-gamesupport-common = { path = "../tango-gamesupport-common", default-featu
 tango-match = { path = "../tango-match" }
 tango-backend-melonds = { path = "../tango-backend-melonds" }
 log = "0.4"
+
+tango-gamesupport-exeoss-ui = { path = "../tango-gamesupport-exeoss-ui", optional = true }
 
 [dev-dependencies]
 # The probes' view of priming's own log lines.
