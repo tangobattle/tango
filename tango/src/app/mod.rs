@@ -1219,19 +1219,22 @@ impl App {
                 iced::exit()
             }
             Message::TabSelected(t) => {
-                let entered = self.tab != t;
                 self.tab = t;
                 // A tab switch unmounts the input settings pane's capture
                 // wrapper, so key/button releases stop arriving — drop the
                 // held set rather than show stale-lit binding chips on the
                 // way back.
                 self.settings.held = Default::default();
-                // Entering a scanner-backed tab re-runs the scan in the
+                // Clicking a scanner-backed tab re-runs the scan in the
                 // background — there are no Rescan buttons; this is how
                 // new files on disk get noticed. Cheap when nothing
                 // changed (stat-fingerprint gated, see Scanners::rescan).
+                // Deliberately not limited to *entering* the tab: pressing
+                // the tab you are already on is what a user reaches for
+                // when they have just dropped a file in, and it is the
+                // only gesture left that means "look again".
                 // Settings doesn't read the scanners, so skip it there.
-                if entered && t != Tab::Settings && !self.is_rescanning() {
+                if t != Tab::Settings && !self.is_rescanning() {
                     // Entering Replays also warms the stats cache, so
                     // newly-recorded replays get their stats line
                     // without a manual nudge.
