@@ -420,9 +420,40 @@ pub mod priming {
         continue_gate: u32,
         continue_confirm: u32,
         /// The overworld field dispatcher's START compare, and the
-        /// branch that opens the START menu.
+        /// branch that opens the START menu. This is the **real world's**
+        /// dispatcher; a save standing in the net runs the other one
+        /// below, and every save runs exactly one of the two.
         field_start_gate: u32,
         field_start_menu_open: u32,
+        /// The same pair for the dispatcher that runs while the save is
+        /// **jacked in**, which is a separate function reached from a
+        /// separate caller — six other functions sit between the two, and
+        /// their callers differ (the real world's is the scene
+        /// dispatcher's indirect call, this one's is Thumb code
+        /// elsewhere). They share only their shape: both load the pressed
+        /// halfword through the same pointer, both compare it against
+        /// START, and both hand the same context in `r4`. There is no
+        /// single site above or below that serves both — the one function
+        /// they both call from their taken branch is a per-frame
+        /// predicate that runs whether or not anything was pressed, so
+        /// trapping it could not open a menu.
+        ///
+        /// Without this pair a save left in the net primes no further
+        /// than the field: nothing else in the walk is reachable, so it
+        /// fails with zero confirms and an unwritten cartridge — which
+        /// reads exactly like a save that never unlocked NetBattle, and
+        /// was long mistaken for one. Such a save opens the Network
+        /// board perfectly well by hand.
+        ///
+        /// Found by covering the frame a scripted START press landed on
+        /// and diffing against the same boot without it: the compare
+        /// itself runs every frame either way and never shows up, but the
+        /// branch it takes does, and it opens the identical
+        /// predicate-and-call sequence the real world's does. JP verified
+        /// against the cart, and carries its own shift (0x2f8, where the
+        /// real world's function takes 0x2f4).
+        net_start_gate: u32,
+        net_start_menu_open: u32,
         /// The START menu's read of the pad, and the accepted path of
         /// its Network entry.
         start_menu_gate: u32,
@@ -661,6 +692,8 @@ pub mod priming {
             continue_confirm:         0x0203_9924,
             field_start_gate:         0x0208_7df4,
             field_start_menu_open:    0x0208_7e18,
+            net_start_gate:           0x0208_7528,
+            net_start_menu_open:      0x0208_754c,
             start_menu_gate:          0x0208_4d68,
             start_menu_network:       0x0208_5044,
             script_timer_gate:        0x0209_b362,
@@ -725,6 +758,8 @@ pub mod priming {
             continue_confirm:         0x0203_96fc,
             field_start_gate:         0x0208_7b00,
             field_start_menu_open:    0x0208_7b24,
+            net_start_gate:           0x0208_7230,
+            net_start_menu_open:      0x0208_7254,
             start_menu_gate:          0x0208_4a74,
             start_menu_network:       0x0208_4d50,
             script_timer_gate:        0x0209_b022,
@@ -952,6 +987,22 @@ pub mod priming {
             let code = &self.code;
             let ram = &self.ram;
 
+            // One field dispatcher's START answer. Two of these are
+            // installed because the game keeps one dispatcher per world
+            // and they are neither the same function nor called from the
+            // same place — see `CodeOffsets::net_start_gate`.
+            let start_menu = |gate: u32, open: u32| -> (u32, Box<dyn FnMut(&mut Nds)>) {
+                (
+                    gate,
+                    Box::new(move |nds: &mut Nds| {
+                        for (&addr, &seed) in ram.rngs.iter().zip(&rng_seeds) {
+                            nds.write32(addr, seed);
+                        }
+                        nds.jump_here(open)
+                    }),
+                )
+            };
+
             vec![
                 // ----- boot to the Network board -----
                 (
@@ -1000,24 +1051,18 @@ pub mod priming {
                     code.continue_gate,
                     Box::new(move |nds: &mut Nds| nds.jump_here(code.continue_confirm)),
                 ),
-                (
-                    // The overworld field dispatcher, which compares the
-                    // pressed word against START, into the branch that
-                    // opens the START menu. The rng seeds ride this
-                    // confirm (see [`RAMOffsets::rngs`]): the overworld
-                    // standing means the CONTINUE load's own reseeds are
-                    // done — seeded any earlier they'd be re-derived away
-                    // — and from here nothing but the accessors touches
-                    // the words, so what's written here is what the comm
-                    // screens' own settings generation draws from.
-                    code.field_start_gate,
-                    Box::new(move |nds: &mut Nds| {
-                        for (&addr, &seed) in ram.rngs.iter().zip(&rng_seeds) {
-                            nds.write32(addr, seed);
-                        }
-                        nds.jump_here(code.field_start_menu_open)
-                    }),
-                ),
+                // Both field dispatchers, each compared against START and
+                // sent into the branch that opens the START menu. The rng
+                // seeds ride this confirm (see [`RAMOffsets::rngs`]): the
+                // overworld standing means the CONTINUE load's own reseeds
+                // are done — seeded any earlier they'd be re-derived away —
+                // and from here nothing but the accessors touches the
+                // words, so what's written here is what the comm screens'
+                // own settings generation draws from. Whichever world the
+                // save is standing in answers; seeding is idempotent, so
+                // nothing rests on it being only one.
+                start_menu(code.field_start_gate, code.field_start_menu_open),
+                start_menu(code.net_start_gate, code.net_start_menu_open),
                 (
                     // The START menu's read of the pad, into the accepted
                     // path of its Network entry — past the cursor entirely,
