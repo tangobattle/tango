@@ -125,7 +125,13 @@ pub static EXE5DS: Game = Game {
 /// module's departure) instead of when the battle module arrives, a
 /// few frames earlier — recordings made against the old finish line
 /// carry inputs offset by that gap.
-const SIM_VERSION: u32 = 2;
+///
+/// 3: melonDS runs interpreted — the JIT is no longer built (see
+/// melonds-sys's build script). Compiled and interpreted execution
+/// don't cost the same cycles, so every tick of the emulated timeline
+/// lands differently: a match against a JIT build desyncs, and its
+/// recordings replay to a different match here.
+const SIM_VERSION: u32 = 3;
 
 pub static BN5DS_FAMILY: Family = Family {
     id: "bn5ds",

@@ -1370,9 +1370,10 @@ pub mod priming {
         /// Install the walk on both consoles, sharing one count of how
         /// many confirms the run has needed.
         ///
-        /// Traps run the console interpreted — both processors, since
-        /// either side having any holds the JIT off — so they come off
-        /// again the moment priming is done and the match runs compiled.
+        /// The walk is all they are for: a trap set is a dispatch check
+        /// the console pays for as long as it is installed, so both
+        /// processors' sets come off again the moment priming is done
+        /// and the match itself runs with none.
         fn install(
             &'static self,
             link: &mut Link,
@@ -1399,7 +1400,7 @@ pub mod priming {
             confirms
         }
 
-        /// Take the traps back off, handing both processors to the JIT.
+        /// Take the traps back off, on both processors.
         fn uninstall(&self, link: &mut Link) {
             for seat in 0..2 {
                 link.console(seat).set_traps(Vec::new());
