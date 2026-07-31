@@ -508,12 +508,24 @@ pub mod priming {
         /// recurrence `x' = (rol1(x) + 1) ^ 0x873ca9e5` (found by
         /// searching the ARM9 for that constant), and unlike the GBA
         /// games' free-running pair it is **reset to a baked
-        /// `0xa338244f` when a battle is set up** — so a pair that
-        /// boots bit-identically every match would otherwise deal the
-        /// identical battle every match. The reset runs exactly twice
-        /// per session, at power-on and at the battle's setup, and
-        /// never between rounds; writing the negotiated seed over it at
-        /// its own tail is what makes each match its own.
+        /// `0xa338244f` when a battle is set up**.
+        ///
+        /// **The seed the walk writes here does not reach the match**,
+        /// and this is a known hole rather than a working mechanism.
+        /// The reset runs twice: at power-on, which the walk's trap
+        /// catches, and at the battle's setup — which lands about
+        /// nineteen frames *into the session*, by which time the walk
+        /// has taken its traps off. So the second reset restores the
+        /// baked constant over the seed, and three different match
+        /// seeds leave main RAM byte-identical at a battle frame: the
+        /// same field, the same chips dealt, the same everything.
+        ///
+        /// Seeding at that second reset instead does **not** fix it.
+        /// Forcing a different value there (and watching it stick)
+        /// changes neither the field nor the draw, and the word does
+        /// not advance once at any point in a battle — nothing reads
+        /// it. Whatever picks the field is elsewhere, and is not the
+        /// frame counter two doors down from [`SCENE`] either.
         pub const RNG: u32 = 0x020b_99c4;
     }
 
@@ -768,10 +780,14 @@ pub mod priming {
             ),
             (
                 // The negotiated seed over the constant the game's own
-                // reset has just stored (see [`ram::RNG`]). Standing
-                // rather than one-shot: the reset runs at power-on and
-                // again as the battle is set up, and it is the second
-                // one that decides what the battle draws.
+                // reset has just stored. Standing rather than one-shot,
+                // but only the power-on reset is ever inside the walk:
+                // the battle's setup resets it again after the traps
+                // come off, so this currently reaches nothing (see
+                // [`ram::RNG`]). Kept because the site and the write
+                // are right; what is missing is a way to hold the trap
+                // past the finish line, and something that actually
+                // reads the word.
                 code::RNG_RESET_RET,
                 Box::new(move |nds: &mut Nds| nds.write32(ram::RNG, rng_seed)),
             ),
