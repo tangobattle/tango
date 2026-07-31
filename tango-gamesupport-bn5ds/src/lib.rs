@@ -131,7 +131,15 @@ pub static EXE5DS: Game = Game {
 /// don't cost the same cycles, so every tick of the emulated timeline
 /// lands differently: a match against a JIT build desyncs, and its
 /// recordings replay to a different match here.
-const SIM_VERSION: u32 = 3;
+///
+/// 4: a savestate carries the ARM9's divider and square-root registers
+/// (melonds-rs d4314a5), and a client's default MP reply no longer
+/// puts uninitialised stack on the air (a039993). Neither moves the
+/// timeline the way 3 did — a run from boot lands where it did — but a
+/// *restore* no longer hands the game back arithmetic left over from
+/// the run it took back, so two peers only agree about a rolled-back
+/// tick if both carry the fix.
+const SIM_VERSION: u32 = 4;
 
 pub static BN5DS_FAMILY: Family = Family {
     id: "bn5ds",
