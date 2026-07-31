@@ -25,6 +25,12 @@
 //!                        frames (repeatable) as ram-f<F>-s<seat>.bin
 //!   --poke F:SEAT:ADDR:HEXBYTES  write bytes at frame F (repeatable);
 //!                        seat 0/1/b
+//!   --splice F:SEAT:DUMP:A-B  at frame F, write main RAM A..B out of
+//!                        another run's --ram-at dump (repeatable) — a
+//!                        poke too big to spell out, for bisecting one
+//!                        run's state against another's. `@FILE` in
+//!                        place of the range reads whitespace-separated
+//!                        ranges from a file.
 //!   --shot-at F,F,...    dump both consoles' screens as PNGs
 //!   --shot-every N       dump PNGs every N frames
 //!   --dump-dir DIR       where dumps go (default .)
@@ -60,6 +66,10 @@
 //!                        can sample a screen that only exists later
 //!   --cover SEAT:A-B:FILE  record every ARM9 address that console
 //!                        executes in frames A..=B (repeatable)
+//!   --pcwatch SEAT:ADDR  trap every address in --range and print the
+//!                        first pc reached after that main-RAM byte
+//!                        changes — a write watch for a store whose
+//!                        base register no literal pool names
 //!   --range LO-HI        the cover recording range (default cart code)
 //!
 //! The same instruments on the **ARM7**, which is where the cartridge's
@@ -430,8 +440,42 @@ fn main() {
     let recordings: [std::sync::Arc<std::sync::atomic::AtomicBool>; 2] = Default::default();
     let hits: [std::sync::Arc<std::sync::Mutex<std::collections::HashSet<u32>>>; 2] = Default::default();
 
+    // (seat, addr): watch a main-RAM byte from *inside* the trap
+    // dispatch, so a change is reported against the code that made it.
+    // Every address in `--range` gets a trap that reads the byte and
+    // prints when it moves — the first instruction to run after the
+    // store is what names the store.
+    let mut pcwatches: [Vec<u32>; 2] = [Vec::new(), Vec::new()];
+    for w in opt.get("pcwatch").into_iter().flatten() {
+        let (s, addr) = w.split_once(':').unwrap();
+        for seat in seats_of(s) {
+            pcwatches[seat].push(parse_hex(addr));
+        }
+    }
+
     for seat in 0..2 {
         let mut traps: Vec<(u32, Box<dyn FnMut(&mut tango_backend_melonds::Nds)>)> = Vec::new();
+        for &addr in &pcwatches[seat] {
+            let last = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(u32::MAX));
+            let frame_now = frame_now.clone();
+            traps.extend((cover_range.0..cover_range.1).step_by(2).map(|site| {
+                let last = last.clone();
+                let frame_now = frame_now.clone();
+                let f: Box<dyn FnMut(&mut tango_backend_melonds::Nds)> = Box::new(move |nds| {
+                    let now = nds.read8(addr) as u32;
+                    let was = last.swap(now, std::sync::atomic::Ordering::Relaxed);
+                    if was != now && was != u32::MAX {
+                        println!(
+                            "pcwatch s{seat} {addr:08x}: {was:02x} -> {now:02x} \
+                             [f{}] first pc after: {:08x}",
+                            frame_now.load(std::sync::atomic::Ordering::Relaxed),
+                            nds.pc()
+                        );
+                    }
+                });
+                (site, f)
+            }));
+        }
         if !covers[seat].is_empty() {
             traps.extend((cover_range.0..cover_range.1).step_by(2).map(|addr| {
                 let recording = recordings[seat].clone();
@@ -728,6 +772,43 @@ fn main() {
         })
         .unwrap_or_default();
 
+    // (frame, seat, dump, ranges): pieces of another run's main-RAM
+    // dump, written over this one at that frame — a poke too big to
+    // spell out on a command line, which is what bisecting one run's
+    // state against another's takes.
+    let splices: Vec<(u32, usize, Vec<u8>, Vec<(u32, u32)>)> = opt
+        .get("splice")
+        .map(|v| {
+            v.iter()
+                .map(|w| {
+                    let mut it = w.split(':');
+                    let frame = it.next().unwrap().parse().unwrap();
+                    let seat = match it.next().unwrap() {
+                        "b" => 2,
+                        s => s.parse().unwrap(),
+                    };
+                    let dump = std::fs::read(it.next().unwrap()).unwrap();
+                    // One range, or `@file` naming a file of them — a
+                    // bisect over two hundred of them is more than a
+                    // command line holds.
+                    let spec = it.next().unwrap().to_string();
+                    let text = match spec.strip_prefix('@') {
+                        Some(path) => std::fs::read_to_string(path).unwrap(),
+                        None => spec,
+                    };
+                    let ranges = text
+                        .split_whitespace()
+                        .map(|r| {
+                            let (a, b) = r.split_once('-').unwrap();
+                            (parse_hex(a), parse_hex(b))
+                        })
+                        .collect();
+                    (frame, seat, dump, ranges)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     // (start, end, out): per-address change counters over a window.
     let diffs: Vec<(u32, u32, String)> = opt
         .get("diff")
@@ -812,6 +893,23 @@ fn main() {
                 let nds = link.console(s);
                 for (off, b) in bytes.iter().enumerate() {
                     nds.write8(addr + off as u32, *b);
+                }
+            }
+        }
+
+        for (sf, seat, dump, ranges) in &splices {
+            if *sf != f {
+                continue;
+            }
+            for s in 0..2 {
+                if *seat != 2 && *seat != s {
+                    continue;
+                }
+                let nds = link.console(s);
+                for &(addr, end) in ranges {
+                    for a in addr..end {
+                        nds.write8(a, dump[(a - 0x0200_0000) as usize]);
+                    }
                 }
             }
         }

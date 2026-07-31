@@ -33,6 +33,14 @@
 //! negotiated: **console 0 takes the game's parent seat and console 1
 //! joins it**. Both peers walk both consoles, so both agree without
 //! asking and nothing has to cross the wire.
+//!
+//! One thing the walk sets rather than answers, because a deterministic
+//! boot takes the variety out of something the game means to be varied:
+//! **the console's clock**. The game picks the battle's field off its
+//! own frame counter, so a pair that boots identically every match
+//! fights on the same field every match. Starting that counter at a
+//! tick the match seed picks gives it back — the game does the picking,
+//! as it always did. See `ram::CLOCK`.
 
 use tango_backend_melonds::{Link, Nds};
 
@@ -405,6 +413,40 @@ pub mod priming {
         /// of what has taken the screen over.
         pub const SCENE: u32 = 0x0202_4b39;
 
+        /// **The console's clock**: a sixteen-bit frame counter,
+        /// running from the first frame the game gets to and read by
+        /// whatever wants to know how long something has been up. It
+        /// wraps every eighteen minutes and the game is fine with that,
+        /// which is the same reason a walk may start it anywhere.
+        ///
+        /// It is also, once, the only randomness in a netbattle —
+        /// **the field the battle is fought on is this counter divided
+        /// by the number of fields**. The Network module builds the
+        /// battle's setup block on one tick, and where every other
+        /// thing in it is a rule looked up, the field is the remainder
+        /// of that divide (landing at `0x020b42c9`, thirteen bytes into
+        /// the block at `0x020b42bc`).
+        ///
+        /// So the field is **what time it was** when the two players
+        /// finished handshaking. Between real consoles that is the
+        /// players' own timing and lands somewhere new every match; a
+        /// primed pair reaches the same tick every match, which is why
+        /// every match was fought on the same field. (Two saves dealing
+        /// different fields was never the saves: they simply take
+        /// different numbers of frames to link. Driving one save
+        /// through the menus by hand deals a different field from
+        /// walking that same save through by redirect.)
+        ///
+        /// So the walk starts the clock at a tick the match seed picks
+        /// (see [`match_clock`](super::match_clock)) rather than at
+        /// zero, on the earliest gate it reaches and once. Nothing has
+        /// timed anything against it that early, both consoles get the
+        /// same start and count together from it, and the game is left
+        /// to do what it always did with it — including picking the
+        /// field, whose table, count and layouts are none of this
+        /// crate's business.
+        pub const CLOCK: u32 = 0x020b_43bc;
+
         /// The battle's phase, on **this console** — `0x04` while its
         /// own chip select is up, `0x08` once its player has committed
         /// and the field is theirs again. (`0x00` for the few frames
@@ -538,35 +580,18 @@ pub mod priming {
         /// not advance once at any point in a battle — nothing reads
         /// it.
         ///
-        /// **The field does vary between real netbattles**, so
-        /// something selects it — but nothing reachable from here.
-        /// It is four objects on tiles `(3,1) (3,2) (4,2) (4,3)`, in a
-        /// second object array at `0x020b4b54` (stride `0xbc`), built
-        /// on the same frame the reset runs, and it comes out
-        /// byte-identical under every input that has been tried:
-        ///
-        /// - the negotiated seed, three values;
-        /// - this word, forced to three values *every frame of the
-        ///   walk* off the per-frame pad accessor, not just at a reset;
-        /// - each of the twelve words in main RAM that count once per
-        ///   frame (nine leave it identical; the other three hang or
-        ///   fault the console, so their different-looking frame is a
-        ///   broken render and not a different battle);
-        /// - the emulated clock, which the match pins per session;
-        /// - the whole boot shifted 7, 31 and 90 frames later, which
-        ///   moves every counter and every timer at once.
-        ///
-        /// The four tiles are not a plain `(x, y)` table in any code
-        /// overlay either.
-        ///
-        /// **It is the save.** What every one of those runs held
-        /// constant was the file, both consoles being handed the same
-        /// one — which is the thing a real netbattle never does. A
-        /// second dump deals a different battle outright: another set
-        /// of objects on other tiles, and the navis at 100 HP rather
-        /// than 1000. So the field travels with the cartridge, the way
-        /// the folder does, and there is nothing here for a match seed
-        /// to pin.
+        /// **The field is not this word's doing**, and the hunt that
+        /// went looking for it here is what settled that. The battle's
+        /// four objects come out byte-identical under this word forced
+        /// to three values *every frame of the walk* (off the per-frame
+        /// pad accessor, not just at a reset), under each of the twelve
+        /// words in main RAM that count once per frame, under the
+        /// emulated clock the match pins, and under the whole boot
+        /// shifted 7, 31 and 90 frames later. What deals the field is
+        /// the console's own frame counter, divided — and the boot
+        /// shifts moved that counter's *start* along with everything
+        /// else, which is exactly why they changed nothing. See
+        /// [`CLOCK`].
         pub const RNG: u32 = 0x020b_99c4;
     }
 
@@ -728,6 +753,24 @@ pub mod priming {
     /// long a stuck one waits before saying so.
     const LINK_BUDGET: u32 = 4800;
 
+    /// What tick the match's clock starts at (see
+    /// [`CLOCK`](ram::CLOCK)), off the negotiated match seed.
+    ///
+    /// One value for the pair rather than one per console, since the
+    /// two have to reach the same field, and the same value on both
+    /// peers, since both walk both consoles and neither asks the other.
+    /// The whole seed folds in so a match is not at the mercy of one
+    /// lane of it, and it folds down to the sixteen bits the counter
+    /// itself is — about eighteen minutes of ticks, which is a console
+    /// that has been on a while rather than a nonsense one.
+    fn match_clock(rng_seed: &[u8; 16]) -> u16 {
+        let folded = rng_seed
+            .chunks_exact(4)
+            .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+            .fold(0, |a, b| a ^ b);
+        (folded ^ (folded >> 16)) as u16
+    }
+
     /// One console's seeds off the negotiated match seed — the mgba
     /// backend's `core_rng_seed` derivation carried over: identical on
     /// both peers (both walk both consoles), distinct between the
@@ -747,18 +790,26 @@ pub mod priming {
     /// link screens.
     ///
     /// `host` picks which seat this console takes, which is the only
-    /// thing that differs between them. These are host state rather
-    /// than console state, so none of it is simulation the peers could
+    /// thing that differs between them — `clock` is deliberately the
+    /// same on both, since two consoles counting from one tick is what
+    /// lands them on one field. These are host state rather than
+    /// console state, so none of it is simulation the peers could
     /// disagree about: both install the same set, and from identical
     /// saves both take the same branches.
-    fn traps(host: bool, rng_seed: u32) -> Vec<(u32, Box<dyn FnMut(&mut Nds)>)> {
+    fn traps(host: bool, rng_seed: u32, clock: u16) -> Vec<(u32, Box<dyn FnMut(&mut Nds)>)> {
         let mut traps: Vec<(u32, Box<dyn FnMut(&mut Nds)>)> = vec![
             (
                 // The opening movie's skip. It stands for as long as the
                 // movie does and answers it the first frame the check
-                // runs.
+                // runs — the skip is the last thing that check ever
+                // asks, so this fires exactly once, which is what makes
+                // it the place to start the match's clock (see
+                // [`ram::CLOCK`]).
                 code::MOVIE_SKIP_GATE,
-                Box::new(|nds: &mut Nds| nds.jump_here(code::MOVIE_SKIPPED)),
+                Box::new(move |nds: &mut Nds| {
+                    nds.write16(ram::CLOCK, clock);
+                    nds.jump_here(code::MOVIE_SKIPPED)
+                }),
             ),
             (
                 // The title card's PRESS START.
@@ -893,8 +944,8 @@ pub mod priming {
     /// itself runs with none.
     fn install(link: &mut Link, rng_seed: [u8; 16]) {
         for seat in 0..2 {
-            link.console(seat)
-                .set_traps(traps(seat == 0, console_rng_seed(&rng_seed, seat)));
+            let traps = traps(seat == 0, console_rng_seed(&rng_seed, seat), match_clock(&rng_seed));
+            link.console(seat).set_traps(traps);
             link.console(seat).set_traps7(traps7());
         }
     }
