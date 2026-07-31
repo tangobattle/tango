@@ -62,11 +62,12 @@ impl tango_backend_melonds::GameSupport for Pvp {
     /// the mgba families' trap anchors. Console 0 carries it, exactly
     /// as BN5DS's does.
     ///
-    /// What it watches is the Network module's own state word, the same
-    /// one priming's finish line reads: the game holds one value for
-    /// the whole link session and leaves it when the players are back
-    /// on the comm screens, so entering it is the battle starting and
-    /// leaving it is the match over.
+    /// What it watches is the game's own scene byte, the same one
+    /// priming's finish line reads: it holds the battle's id for as
+    /// long as the battle has the screen and goes back to the Network
+    /// module's when the players are returned to the comm screens, so
+    /// entering it is the battle starting and leaving it is the match
+    /// over.
     ///
     /// **No battle levels yet.** The observation is always `None`: the
     /// unit HP pair is mapped (two `0x84`-spaced records at
@@ -80,18 +81,18 @@ impl tango_backend_melonds::GameSupport for Pvp {
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<Nds>> {
         use tango_match::telemetry::{CoreObs, EventSink, Scratch};
 
-        /// Console 0's watch: the link session's presence, reported on
-        /// its edges against last tick's reading.
+        /// Console 0's watch: the battle's presence, reported on its
+        /// edges against last tick's reading.
         struct Lifecycle {
-            /// Whether the link session stood last tick. `None` before
-            /// the first, so the tick priming hands over on is the
-            /// battle starting rather than a level with no edge.
+            /// Whether the battle had the screen last tick. `None`
+            /// before the first, so the tick priming hands over on is
+            /// the battle starting rather than a level with no edge.
             was_live: Option<bool>,
         }
 
         impl tango_match::telemetry::CorePoller<Nds> for Lifecycle {
             fn poll(&mut self, nds: &mut Nds, events: &EventSink, _round: u32) -> Option<CoreObs> {
-                let live = nds.read32(priming::NET_STATE_WORD) == priming::HOST_IN_BATTLE;
+                let live = nds.read8(priming::SCENE_BYTE) == priming::SCENE_BATTLE;
                 match self.was_live {
                     None if live => events.round_started(),
                     Some(true) if !live => events.match_ended(),
@@ -224,6 +225,30 @@ pub mod priming {
         /// it has stored its baked constant. See
         /// [`RNG`](super::ram::RNG).
         pub const RNG_RESET_RET: u32 = 0x0205_fb12;
+
+        /// **On the ARM7**: the entry of the cartridge backup server's
+        /// wait-for-ready, which is where the save spends its time.
+        /// `r0` arrives holding a mandatory pre-poll delay — a real
+        /// flash chip's program time, scaled by the bytes just written
+        /// — and `r1` a poll timeout.
+        ///
+        /// The emulated flash is ready the moment it is asked, so that
+        /// delay is the entire cost of the save: the write loop passes
+        /// a timeout of **zero**, which means the function sleeps the
+        /// delay and never polls at all, and zeroing `r0` makes it
+        /// return immediately instead. The whole 40-page bank then
+        /// writes in 9 frames rather than 58, byte for byte the same
+        /// cartridge. Any other caller — one that does pass a timeout —
+        /// keeps its poll: with the delay zeroed the function still
+        /// falls into the polling path, which is the half that actually
+        /// decides.
+        ///
+        /// Found by covering the ARM7 across the save and diffing
+        /// against a window without one (`--cover7`), which is the same
+        /// recipe as the ARM9 sites. It is the same Nitro backup server
+        /// BN5DS has, relocated: that cart's is at `0x038033e4`, and
+        /// nothing at that address here is the wait.
+        pub const ARM7_FLASH_WAIT: u32 = 0x0380_272c;
     }
 
     /// The game's own variables in main RAM: what the walk reads to
@@ -233,7 +258,16 @@ pub mod priming {
         /// itself, `+1` which of its eight sub-screens is running, and
         /// `+2` that sub-screen's own step. Read as one word, which is
         /// what [`HOST_IN_BATTLE`](super::HOST_IN_BATTLE) compares.
+        /// Only the stall log reads it now — the finish line is
+        /// [`SCENE`] — but it is what says *where* on the comm route a
+        /// walk that never got there stopped.
         pub const NET_STATE: u32 = 0x020b_b6c0;
+
+        /// Which scene is running: `0xff` while one is loading, `0x02`
+        /// the movie and the field, `0x32` the title, `0x09` the
+        /// Network module, **`0x0f` a battle**. One byte, and it is the
+        /// game's own statement of what has taken the screen over.
+        pub const SCENE: u32 = 0x0202_4b39;
 
         /// The handle name the host advertises and the child's list
         /// shows: bytes in the game's own charset, terminated by
@@ -312,36 +346,48 @@ pub mod priming {
     /// the player's to do, in the game's own name entry.
     const PLACEHOLDER_NAME: [u8; 4] = [0x1a, 0x38, 0x3f, NAME_EMPTY];
 
-    /// What [`ram::NET_STATE`] reads once the connect exchange is done
-    /// and the game has committed to the battle, per seat: the module
-    /// (`0x14`), its sub-screen (parent `4`, child `5`) and that
-    /// screen's last step (`6`). The game holds this from there through
-    /// the whole link session, so reaching it on both consoles is the
-    /// walk's finish line — and leaving it is the match's end.
+    /// What [`ram::SCENE`] reads once the battle has taken the screen
+    /// over. Reaching it on both consoles is the walk's finish line,
+    /// and leaving it is the match's end.
     ///
-    /// Matched exactly, top byte included. The two seats differ only in
-    /// the sub-screen byte, and they differ because the parent and the
-    /// child genuinely run different screens; masking that away would
-    /// also mask the steps before it.
-    pub(super) const HOST_IN_BATTLE: u32 = 0x0006_0414;
-    pub(super) const JOINER_IN_BATTLE: u32 = 0x0006_0514;
+    /// **This is deliberately later than the connect exchange
+    /// finishing.** The comm screens hand off to the battle across a
+    /// fade to white that takes about 85 frames, and the scene only
+    /// flips at the top of it — so ending here means the first frame a
+    /// player sees is the white the battle fades in from, rather than
+    /// the Network menu they never chose to look at. The wireless is
+    /// long up by then; what those frames cost is emulation, not
+    /// waiting.
+    pub(super) const SCENE_BATTLE: u8 = 0x0f;
 
-    /// [`ram::NET_STATE`], for the telemetry watch above — how far the
-    /// link session has got is the walk's business to know and the
-    /// telemetry's business to watch.
-    pub(super) const NET_STATE_WORD: u32 = ram::NET_STATE;
+    /// [`ram::SCENE`], for the telemetry watch — what has the screen is
+    /// the walk's business to know and the telemetry's business to
+    /// watch.
+    pub(super) const SCENE_BYTE: u32 = ram::SCENE;
+
+    /// What [`ram::NET_STATE`] reads once the connect exchange is done,
+    /// per seat: the module (`0x14`), its sub-screen (parent `4`, child
+    /// `5`) and that screen's last step (`6`). The finish line used to
+    /// be this; it is kept because a walk that stalls stalls *here*,
+    /// and the two words say which side got how far.
+    const HOST_CONNECTED: u32 = 0x0006_0414;
+    const JOINER_CONNECTED: u32 = 0x0006_0514;
 
     /// How long the boot half is given — power-on to the cartridge
     /// write the Network menu insists on. Nothing is pressed and
     /// nothing branches on timing, so both consoles run the identical
     /// deterministic path every time: the save lands by about frame
-    /// 515, and this carries several times that margin.
+    /// 470, and this carries a fifth again on top.
     ///
-    /// What remains is what redirects cannot buy: the Capcom logo, the
-    /// cart reads behind the field's load, and the save itself.
-    const BOOT_BUDGET: u32 = 700;
+    /// What remains is what redirects cannot buy: the Capcom logo and
+    /// the movie's prebuffer to about frame 190, the cart reads behind
+    /// the save's load to about 390, and the save's own residual — nine
+    /// frames of it, once the ARM7's flash delay is out of the way (see
+    /// [`ARM7_FLASH_WAIT`](code::ARM7_FLASH_WAIT); it was fifty-eight
+    /// before).
+    const BOOT_BUDGET: u32 = 560;
 
-    /// How long the link half is given. It takes about 210 frames from
+    /// How long the link half is given. It takes about 200 frames from
     /// the save — roughly seventy of the parent standing itself up and
     /// the child scanning for it, and the screens around them. The
     /// budget carries several times that.
@@ -480,22 +526,35 @@ pub mod priming {
         traps
     }
 
+    /// The ARM7's traps, which are the one wait no ARM9 redirect can
+    /// reach: the backup server's per-page flash delay, which the
+    /// emulated flash never needs. See
+    /// [`ARM7_FLASH_WAIT`](code::ARM7_FLASH_WAIT).
+    fn traps7() -> Vec<(u32, Box<dyn FnMut(&mut Nds)>)> {
+        vec![(
+            code::ARM7_FLASH_WAIT,
+            Box::new(|nds: &mut Nds| nds.arm7_set_reg(0, 0)),
+        )]
+    }
+
     /// Install the walk on both consoles.
     ///
     /// The walk is all they are for: a trap set is a dispatch check the
-    /// console pays for as long as it is installed, so it comes off
-    /// again the moment priming is done and the match itself runs with
-    /// none.
+    /// console pays for as long as it is installed, so both processors'
+    /// sets come off again the moment priming is done and the match
+    /// itself runs with none.
     fn install(link: &mut Link, rng_seed: [u8; 16]) {
         for seat in 0..2 {
             link.console(seat)
                 .set_traps(traps(seat == 0, console_rng_seed(&rng_seed, seat)));
+            link.console(seat).set_traps7(traps7());
         }
     }
 
     fn uninstall(link: &mut Link) {
         for seat in 0..2 {
             link.console(seat).set_traps(Vec::new());
+            link.console(seat).set_traps7(Vec::new());
         }
     }
 
@@ -545,21 +604,21 @@ pub mod priming {
             return Err(tango_match::Error::PrimeTimeout(BOOT_BUDGET));
         }
 
-        // The link half, which is over when both consoles have reached
-        // the session state the game holds for the whole battle (see
-        // [`HOST_IN_BATTLE`]). The wireless has to still be up with it:
-        // the game's own comm-error exits tear the association down, so
-        // a torn-down link is a stall however far the state got.
+        // The link half, which is over when the battle has taken the
+        // screen over on both consoles (see [`SCENE_BATTLE`]). The
+        // wireless has to still be up with it: the game's own comm-error
+        // exits tear the association down, so a torn-down link is a
+        // stall however far the scene got.
         let mut frames = 0;
         let battled = loop {
             if cancelled(link) {
                 return Err(tango_match::Error::Cancelled);
             }
-            let states = [
-                link.console(0).read32(ram::NET_STATE),
-                link.console(1).read32(ram::NET_STATE),
+            let scenes = [
+                link.console(0).read8(ram::SCENE),
+                link.console(1).read8(ram::SCENE),
             ];
-            if states == [HOST_IN_BATTLE, JOINER_IN_BATTLE] && link.connected() {
+            if scenes == [SCENE_BATTLE; 2] && link.connected() {
                 break true;
             }
             if frames >= LINK_BUDGET {
@@ -572,12 +631,17 @@ pub mod priming {
 
         if !battled {
             // Enough state to place the stall without a debugger: the
-            // module word says which comm screen each console is parked
-            // on.
+            // scene says what each console has on screen, and the
+            // module word which comm screen it is parked on — the two
+            // together separate "never connected" from "connected but
+            // never reached the battle".
             log::warn!(
                 "exeoss priming: no battle {frames} frames past the save \
-                 (connected={}, states {:#010x}/{:#010x})",
+                 (connected={}, scenes {:#04x}/{:#04x}, states {:#010x}/{:#010x}, \
+                 wanted scene {SCENE_BATTLE:#04x} and states {HOST_CONNECTED:#010x}/{JOINER_CONNECTED:#010x})",
                 link.connected(),
+                link.console(0).read8(ram::SCENE),
+                link.console(1).read8(ram::SCENE),
                 link.console(0).read32(ram::NET_STATE),
                 link.console(1).read32(ram::NET_STATE),
             );

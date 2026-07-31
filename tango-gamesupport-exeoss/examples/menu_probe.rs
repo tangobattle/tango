@@ -61,6 +61,17 @@
 //!   --cover SEAT:A-B:FILE  record every ARM9 address that console
 //!                        executes in frames A..=B (repeatable)
 //!   --range LO-HI        the cover recording range (default cart code)
+//!
+//! The same instruments on the **ARM7**, which is where the cartridge's
+//! backup server runs — the save's own clock lives there, not in
+//! anything the ARM9 sites above can reach:
+//!   --redirect7 SEAT:S:T   ARM7 jump (repeatable)
+//!   --setreg7 SEAT:S:R:VAL set an ARM7 register when S is reached
+//!   --probe7 SEAT:ADDR     print frame, r0-r7 and lr at an ARM7 site
+//!   --cover7 SEAT:A-B:FILE record every ARM7 address executed in
+//!                        frames A..=B (repeatable)
+//!   --range7 LO-HI       the ARM7 cover range (default ARM7 WRAM)
+//!   --ram7-at F:ADDR:LEN dump ARM7-visible memory at frame F
 
 use std::collections::HashMap;
 
@@ -511,6 +522,136 @@ fn main() {
         }
     }
 
+    // The same three instruments on the ARM7. Kept separate rather than
+    // folded into the loop above because every call they make is a
+    // different one — the two processors have their own registers, their
+    // own PC and their own trap list.
+    let mut jumps7: [Vec<(u32, u32)>; 2] = [Vec::new(), Vec::new()];
+    for w in opt.get("redirect7").into_iter().flatten() {
+        let mut it = w.split(':');
+        let seats = seats_of(it.next().unwrap());
+        let site = parse_hex(it.next().unwrap());
+        let target = parse_hex(it.next().unwrap());
+        for seat in seats {
+            jumps7[seat].push((site, target));
+        }
+    }
+    let mut regs7: HashMap<(usize, u32), Vec<(u32, u32)>> = HashMap::new();
+    for w in opt.get("setreg7").into_iter().flatten() {
+        let mut it = w.split(':');
+        let seats = seats_of(it.next().unwrap());
+        let site = parse_hex(it.next().unwrap());
+        let reg: u32 = it.next().unwrap().parse().unwrap();
+        let val = parse_hex(it.next().unwrap());
+        for seat in seats {
+            regs7.entry((seat, site)).or_default().push((reg, val));
+        }
+    }
+    let mut probes7: [Vec<u32>; 2] = [Vec::new(), Vec::new()];
+    for w in opt.get("probe7").into_iter().flatten() {
+        let (s, addr) = w.split_once(':').unwrap();
+        for seat in seats_of(s) {
+            probes7[seat].push(parse_hex(addr));
+        }
+    }
+    let mut covers7: [Vec<(u32, u32, String)>; 2] = [Vec::new(), Vec::new()];
+    for w in opt.get("cover7").into_iter().flatten() {
+        let mut it = w.splitn(3, ':');
+        let seats = seats_of(it.next().unwrap());
+        let (a, b) = it.next().unwrap().split_once('-').unwrap();
+        let path = it.next().unwrap();
+        for seat in seats {
+            covers7[seat].push((a.parse().unwrap(), b.parse().unwrap(), path.to_string()));
+        }
+    }
+    // The ARM7's own WRAM, which is where the cartridge backup server
+    // is relocated to.
+    let cover7_range = one("range7")
+        .map(|r| {
+            let (a, b) = r.split_once('-').unwrap();
+            (parse_hex(a), parse_hex(b))
+        })
+        .unwrap_or((0x037f_8000, 0x0381_0000));
+    let recordings7: [std::sync::Arc<std::sync::atomic::AtomicBool>; 2] = Default::default();
+    let hits7: [std::sync::Arc<std::sync::Mutex<std::collections::HashSet<u32>>>; 2] = Default::default();
+
+    for seat in 0..2 {
+        let mut traps: Vec<(u32, Box<dyn FnMut(&mut tango_backend_melonds::Nds)>)> = Vec::new();
+        if !covers7[seat].is_empty() {
+            traps.extend((cover7_range.0..cover7_range.1).step_by(2).map(|addr| {
+                let recording = recordings7[seat].clone();
+                let hits = hits7[seat].clone();
+                let f: Box<dyn FnMut(&mut tango_backend_melonds::Nds)> = Box::new(move |nds| {
+                    if recording.load(std::sync::atomic::Ordering::Relaxed) {
+                        hits.lock().unwrap().insert(nds.arm7_pc());
+                    }
+                });
+                (addr, f)
+            }));
+        }
+        let mut sites: Vec<u32> = jumps7[seat].iter().map(|&(s, _)| s).collect();
+        sites.extend(regs7.keys().filter(|(s, _)| *s == seat).map(|&(_, site)| site));
+        sites.sort_unstable();
+        sites.dedup();
+        for site in sites {
+            traps.retain(|(addr, _)| *addr != site);
+            let regs = regs7.get(&(seat, site)).cloned().unwrap_or_default();
+            let target = jumps7[seat].iter().find(|&&(s, _)| s == site).map(|&(_, t)| t);
+            traps.push((
+                site,
+                Box::new(move |nds: &mut tango_backend_melonds::Nds| {
+                    for &(reg, val) in &regs {
+                        nds.arm7_set_reg(reg, val);
+                    }
+                    if let Some(target) = target {
+                        nds.arm7_jump_here(target);
+                    }
+                }),
+            ));
+        }
+        for &site in &probes7[seat] {
+            traps.retain(|(addr, _)| *addr != site);
+            let mut seen = 0usize;
+            let frame_now = frame_now.clone();
+            traps.push((
+                site,
+                Box::new(move |nds| {
+                    let frame = frame_now.load(std::sync::atomic::Ordering::Relaxed);
+                    if seen >= probe_limit || frame < probe_from {
+                        return;
+                    }
+                    seen += 1;
+                    let regs: Vec<String> = (0..8).map(|i| format!("r{i}={:08x}", nds.arm7_reg(i))).collect();
+                    println!(
+                        "probe7 s{seat} {site:08x} #{seen} [f{frame}]: {} lr={:08x}",
+                        regs.join(" "),
+                        nds.arm7_reg(14)
+                    );
+                }),
+            ));
+        }
+        if !traps.is_empty() {
+            link.console(seat).set_traps7(traps);
+        }
+    }
+
+    // (frame, addr, len, path): ARM7-visible memory, for disassembling
+    // code the ARM9's main-RAM dump can't reach.
+    let ram7_at: Vec<(u32, u32, usize)> = opt
+        .get("ram7-at")
+        .map(|v| {
+            v.iter()
+                .map(|w| {
+                    let mut it = w.split(':');
+                    let frame = it.next().unwrap().parse().unwrap();
+                    let addr = parse_hex(it.next().unwrap());
+                    let len = parse_hex(it.next().unwrap()) as usize;
+                    (frame, addr, len)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     let walk: [Vec<Input>; 2] = if opt.contains_key("walk") {
         [
             expand(&[TO_HOST_PICK, HOST_TAIL]),
@@ -640,6 +781,8 @@ fn main() {
         for seat in 0..2 {
             let active = covers[seat].iter().any(|&(a, b, _)| f >= a && f <= b);
             recordings[seat].store(active, std::sync::atomic::Ordering::Relaxed);
+            let active7 = covers7[seat].iter().any(|&(a, b, _)| f >= a && f <= b);
+            recordings7[seat].store(active7, std::sync::atomic::Ordering::Relaxed);
         }
         for seat in 0..2 {
             if let Some(input) = walk[seat].get(f as usize) {
@@ -715,6 +858,28 @@ fn main() {
             for seat in 0..2 {
                 let ram = link.console(seat).main_ram().to_vec();
                 std::fs::write(format!("{dump_dir}/ram-f{f:06}-s{seat}.bin"), ram).unwrap();
+            }
+        }
+        for &(at, addr, len) in &ram7_at {
+            if at != f {
+                continue;
+            }
+            for seat in 0..2 {
+                let nds = link.console(seat);
+                let buf: Vec<u8> = (0..len as u32).map(|i| nds.arm7_read8(addr + i)).collect();
+                std::fs::write(format!("{dump_dir}/arm7-f{f:06}-{addr:08x}-s{seat}.bin"), buf).unwrap();
+            }
+        }
+        for seat in 0..2 {
+            for &(a, b, ref path) in &covers7[seat] {
+                if f == b {
+                    let mut sorted: Vec<u32> = hits7[seat].lock().unwrap().iter().copied().collect();
+                    sorted.sort_unstable();
+                    let text: String = sorted.iter().map(|a| format!("{a:08x}\n")).collect();
+                    std::fs::write(path, text).unwrap();
+                    println!("[{f:5}] cover7 s{seat} {a}-{b}: {} addresses -> {path}", sorted.len());
+                    hits7[seat].lock().unwrap().clear();
+                }
             }
         }
         for (di, &(start, end, ref path)) in diffs.iter().enumerate() {
