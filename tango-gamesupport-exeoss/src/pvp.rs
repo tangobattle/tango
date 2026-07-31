@@ -526,17 +526,29 @@ pub mod priming {
         /// not advance once at any point in a battle — nothing reads
         /// it.
         ///
-        /// Nor is the field frame-derived, which was the other guess.
+        /// **The field does vary between real netbattles**, so
+        /// something selects it — but nothing reachable from here.
         /// It is four objects on tiles `(3,1) (3,2) (4,2) (4,3)`, in a
         /// second object array at `0x020b4b54` (stride `0xbc`), built
-        /// on the same frame the reset runs. Main RAM holds twelve
-        /// words that count once per frame; forcing each in turn
-        /// leaves the field byte-identical in the nine cases the
-        /// console survives, and the other three hang or fault rather
-        /// than deal a different battle. The four tiles are not a
-        /// plain `(x, y)` table in any of the code overlays either.
-        /// So nothing found so far selects it, and a netbattle field
-        /// that is simply constant fits every measurement.
+        /// on the same frame the reset runs, and it comes out
+        /// byte-identical under every input that has been tried:
+        ///
+        /// - the negotiated seed, three values;
+        /// - this word, forced to three values *every frame of the
+        ///   walk* off the per-frame pad accessor, not just at a reset;
+        /// - each of the twelve words in main RAM that count once per
+        ///   frame (nine leave it identical; the other three hang or
+        ///   fault the console, so their different-looking frame is a
+        ///   broken render and not a different battle);
+        /// - the emulated clock, which the match pins per session;
+        /// - the whole boot shifted 7, 31 and 90 frames later, which
+        ///   moves every counter and every timer at once.
+        ///
+        /// The four tiles are not a plain `(x, y)` table in any code
+        /// overlay either. What every one of those runs held constant
+        /// is the **save**: both consoles were handed the same file,
+        /// which is the one thing a real netbattle never does. That is
+        /// where to look next, and it wants a second cartridge dump.
         pub const RNG: u32 = 0x020b_99c4;
     }
 
