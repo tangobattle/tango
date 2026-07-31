@@ -116,6 +116,7 @@ tango-gamesupport-bn5 = { path = "../tango-gamesupport-bn5", optional = true }
 tango-gamesupport-bn5ds = { path = "../tango-gamesupport-bn5ds", optional = true }
 tango-gamesupport-bn6 = { path = "../tango-gamesupport-bn6", optional = true }
 tango-gamesupport-exe45 = { path = "../tango-gamesupport-exe45", optional = true }
+tango-gamesupport-exeoss = { path = "../tango-gamesupport-exeoss", optional = true }
 # Named directly only for `Container` and `Settings`, which the export
 # dialog builds; the rendering itself is tango-replay-renderer's.
 encoder-facade.workspace = true
@@ -163,6 +164,7 @@ gamesupport-bn5 = ["dep:tango-gamesupport-bn5", "tango-gamesupport-bn5/ui", "tan
 gamesupport-bn5ds = ["dep:tango-gamesupport-bn5ds", "tango-gamesupport-bn5ds/ui", "tango-library/gamesupport-bn5ds"]
 gamesupport-bn6 = ["dep:tango-gamesupport-bn6", "tango-gamesupport-bn6/ui", "tango-library/gamesupport-bn6"]
 gamesupport-exe45 = ["dep:tango-gamesupport-exe45", "tango-gamesupport-exe45/ui", "tango-library/gamesupport-exe45"]
+gamesupport-exeoss = ["dep:tango-gamesupport-exeoss", "tango-gamesupport-exeoss/ui", "tango-library/gamesupport-exeoss"]
 gamesupport-all = [
     "gamesupport-bcc",
     "gamesupport-bn1",
@@ -173,6 +175,7 @@ gamesupport-all = [
     "gamesupport-bn5ds",
     "gamesupport-bn6",
     "gamesupport-exe45",
+    "gamesupport-exeoss",
 ]
 
 [lints]

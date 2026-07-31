@@ -39,6 +39,7 @@ tango-gamesupport-bn5 = { path = "../tango-gamesupport-bn5", optional = true }
 tango-gamesupport-bn5ds = { path = "../tango-gamesupport-bn5ds", optional = true }
 tango-gamesupport-bn6 = { path = "../tango-gamesupport-bn6", optional = true }
 tango-gamesupport-exe45 = { path = "../tango-gamesupport-exe45", optional = true }
+tango-gamesupport-exeoss = { path = "../tango-gamesupport-exeoss", optional = true }
 
 # The `native` feature's std implementations only. Nothing outside
 # `storage::std_impl` / `http::reqwest_impl` / `bnlc` may reference these,
@@ -69,6 +70,7 @@ gamesupport-bn5 = ["dep:tango-gamesupport-bn5"]
 gamesupport-bn5ds = ["dep:tango-gamesupport-bn5ds"]
 gamesupport-bn6 = ["dep:tango-gamesupport-bn6"]
 gamesupport-exe45 = ["dep:tango-gamesupport-exe45"]
+gamesupport-exeoss = ["dep:tango-gamesupport-exeoss"]
 gamesupport-all = [
     "gamesupport-bcc",
     "gamesupport-bn1",

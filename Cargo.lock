@@ -7571,6 +7571,7 @@ dependencies = [
  "tango-gamesupport-bn5ds",
  "tango-gamesupport-bn6",
  "tango-gamesupport-exe45",
+ "tango-gamesupport-exeoss",
  "tango-library",
  "tango-lobby",
  "tango-match",
@@ -8017,6 +8018,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "tango-gamesupport-exeoss"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "image",
+ "log",
+ "tango-backend-melonds",
+ "tango-gamesupport",
+ "tango-gamesupport-common",
+ "tango-gamesupport-exeoss-dataview",
+ "tango-match",
+]
+
+[[package]]
+name = "tango-gamesupport-exeoss-dataview"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "tango-gamesupport-common",
+]
+
+[[package]]
 name = "tango-library"
 version = "0.1.0"
 dependencies = [
@@ -8041,6 +8064,7 @@ dependencies = [
  "tango-gamesupport-bn5ds",
  "tango-gamesupport-bn6",
  "tango-gamesupport-exe45",
+ "tango-gamesupport-exeoss",
  "tango-patch",
  "tango-replay",
  "thiserror 1.0.69",

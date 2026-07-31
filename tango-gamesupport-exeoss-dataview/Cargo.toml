@@ -1,0 +1,16 @@
+[package]
+name = "tango-gamesupport-exeoss-dataview"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+# The game's save/ROM dataview: the parsers and asset decoders behind
+# `tango-gamesupport-exeoss`'s Game registration. Headless-safe — no UI
+# toolkit anywhere below this crate.
+
+[dependencies]
+tango-gamesupport-common = { path = "../tango-gamesupport-common", default-features = false }
+bytemuck = { version = "1", features = ["derive", "const_zeroed", "min_const_generics"] }
+
+[lints]
+workspace = true

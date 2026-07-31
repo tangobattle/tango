@@ -1,0 +1,34 @@
+[package]
+name = "tango-gamesupport-exeoss"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+# Rockman.EXE Operate Shooting Star.
+#
+# The second DS cartridge Tango supports, and so the second game whose
+# engine is melonDS rather than mgba: netplay is a pair of emulated DSes
+# on emulated local wireless, primed into the game's own link battle by
+# PC redirects, exactly as `tango-gamesupport-bn5ds` does it.
+
+[features]
+# Pairs with the app's UI build, switching the save editor on. This game
+# has no save model to render yet, so it points at the shared empty
+# editor — the shell with no section tabs.
+ui = ["tango-gamesupport/ui", "tango-gamesupport-common/ui"]
+
+[dependencies]
+tango-gamesupport = { path = "../tango-gamesupport" }
+tango-gamesupport-exeoss-dataview = { path = "../tango-gamesupport-exeoss-dataview" }
+tango-gamesupport-common = { path = "../tango-gamesupport-common", default-features = false }
+tango-match = { path = "../tango-match" }
+tango-backend-melonds = { path = "../tango-backend-melonds" }
+log = "0.4"
+
+[dev-dependencies]
+# The probes' view of priming's own log lines.
+env_logger = "0.9"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[lints]
+workspace = true
