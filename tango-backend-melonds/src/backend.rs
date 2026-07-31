@@ -160,7 +160,7 @@ impl tango_match::Backend for DsBackend {
             config.match_type,
             config.session_payloads,
             config.rng_seed,
-            None,
+            config.cancel,
         )?;
         let handle = observe(&mut link, self.support);
 

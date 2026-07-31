@@ -166,6 +166,10 @@ impl TrainingSession {
             local_player: 0,
             present_delay: 0,
             disable_bgm: false,
+            // Training builds its session around an already-primed
+            // pair, so the walk runs before there is anything to
+            // cancel from.
+            cancel: None,
         })?;
 
         // A netplay match renders only the local side. Training shows

@@ -70,6 +70,12 @@ impl MetricSample {
 /// How many frames of telemetry the sparklines retain (~3 s at 60 fps).
 const METRIC_HISTORY_LEN: usize = 180;
 
+/// Session-redraw cadence while a priming walk holds the session up
+/// (~30 fps), so the notice's pulse and its clock keep moving with no
+/// frames coming off the pair. Purely cosmetic, and only ever alive for
+/// the length of a walk.
+const PRIME_WAIT_UI_TICK: std::time::Duration = std::time::Duration::from_millis(33);
+
 /// PvP-only presentation state riding alongside the session engine:
 /// both sides' fully-loaded selections (rom + parsed save + derived
 /// assets) for the in-match setup drawers, plus each drawer's
@@ -578,6 +584,15 @@ pub struct State {
     /// the exit overlay for the whole hold, and at [`ESC_QUIT_HOLD`]
     /// the [`update`](State::update) wrapper tears the session down.
     pub esc_hold: Option<std::time::Instant>,
+    /// The priming wait the session is in and when it started, `None`
+    /// whenever it isn't in one. Stamped by the frame handler (which
+    /// the wait's own redraw tick keeps firing, since a pair that isn't
+    /// running publishes no frames) so the notice can count the wait
+    /// up. Re-stamped when the wait *changes* — our own walk giving way
+    /// to the wait on the peer's is a new wait, and carrying the first
+    /// one's clock into it would overstate how long the opponent has
+    /// been holding things up.
+    pub prime_wait_since: Option<(PrimeWait, std::time::Instant)>,
     /// Show/hide transition for the floating controls bar. Synced
     /// after every update: shown while the mouse moved recently,
     /// the cursor rests on the bar, any overlay is open, a scrub
@@ -616,6 +631,7 @@ impl Default for State {
             controls_hovered: false,
             bar_menu_open: false,
             esc_hold: None,
+            prime_wait_since: None,
             controls_anim: anim::Transition::new(true),
         }
     }
@@ -635,6 +651,63 @@ impl State {
     /// when a different kind is running.
     pub fn active_as<T: Session>(&self) -> Option<&T> {
         self.active.as_deref().and_then(|s| s.downcast_ref())
+    }
+
+    /// Where the active session stands on its priming walk, or `None`
+    /// once it is simply running. The one place the cases are
+    /// recognized: the [`subscription`] reads it to keep redraws coming
+    /// while nothing is producing frames, the frame handler to stamp
+    /// [`prime_wait_since`](Self::prime_wait_since), and the views to
+    /// draw the notice over the session's own screen.
+    pub fn prime_wait(&self) -> Option<PrimeWait> {
+        if let Some(pvp) = self.active_as::<pvp::PvpSession>() {
+            if let Some(error) = pvp.prime_error() {
+                return Some(PrimeWait::Failed(error));
+            }
+            if pvp.is_booting() {
+                return Some(PrimeWait::Match);
+            }
+            return pvp.waiting_for_peer().then_some(PrimeWait::Peer);
+        }
+        if let Some(replay) = self.active_as::<replay::ReplaySession>() {
+            if let Some(error) = replay.prime_error() {
+                return Some(PrimeWait::Failed(error));
+            }
+            return replay.is_booting().then_some(PrimeWait::Playback);
+        }
+        None
+    }
+}
+
+/// Where a session is in its priming walk — the seconds of emulation
+/// that get a game from power-on to its link battle. Both kinds that
+/// walk come up before it runs and show nothing at all while it does,
+/// which on a DS-class game is long enough to read as a hang.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrimeWait {
+    /// A match's own pair is being booted and primed
+    /// ([`pvp::PvpSession::is_booting`]).
+    Match,
+    /// Ours is primed and the drive loop is idling at the ready gate
+    /// for the peer's to get there
+    /// ([`pvp::PvpSession::waiting_for_peer`]).
+    Peer,
+    /// A replay's pair is being booted and primed
+    /// ([`replay::ReplaySession::is_booting`]).
+    Playback,
+    /// The walk failed, carrying its reason. Terminal, and the only
+    /// state the user has to act on: the session stays up with nothing
+    /// to run until they dismiss it.
+    Failed(String),
+}
+
+impl PrimeWait {
+    /// Whether this is a wait that is still going somewhere — which is
+    /// also what decides whether the host keeps redrawing for it (see
+    /// [`subscription`]). A failure is over; it just hasn't been read
+    /// yet.
+    pub fn in_progress(&self) -> bool {
+        !matches!(self, PrimeWait::Failed(_))
     }
 }
 
@@ -1130,6 +1203,15 @@ impl State {
                     }
                     None => self.metric_history.clear(),
                 }
+                // Run the priming-wait clock off the same frame message:
+                // stamped when a wait begins, kept while it's the same
+                // wait, dropped the moment the pair starts producing
+                // frames again.
+                self.prime_wait_since = match (self.prime_wait(), self.prime_wait_since.take()) {
+                    (None, _) => None,
+                    (Some(wait), Some((started_on, at))) if started_on == wait => Some((wait, at)),
+                    (Some(wait), _) => Some((wait, std::time::Instant::now())),
+                };
             }
         }
         iced::Task::none()
@@ -1170,6 +1252,16 @@ pub fn subscription(state: &State) -> iced::Subscription<Message> {
         .is_some_and(|r| r.is_paused() && r.prefetch_progress() < r.total_ticks());
     if prefetching {
         subs.push(iced::time::every(std::time::Duration::from_millis(50)).map(|_| Message::UpdateFramebuffer));
+    }
+    // A session mid-priming publishes no frames at all — the pair is
+    // either not up yet or idling at the ready gate — so its wake never
+    // fires and the view would freeze on the frame that installed it.
+    // Tick ~30 Hz for the duration so the notice animates and its clock
+    // runs; it stops the moment the pair starts producing frames. A
+    // failed walk needs no tick: its notice is static, and the boot
+    // fired the wake that put it up.
+    if state.prime_wait().is_some_and(|w| w.in_progress()) {
+        subs.push(iced::time::every(PRIME_WAIT_UI_TICK).map(|_| Message::UpdateFramebuffer));
     }
     // While Esc is held, tick ~30 Hz so the exit overlay's progress
     // bar fills (and the quit fires) even when the emulator isn't
@@ -1540,7 +1632,7 @@ pub async fn spawn_pvp(
         ))
     };
 
-    let (session, boot) = pvp::PvpSession::new(pvp::PvpSessionArgs {
+    let (session, boot, audio) = pvp::PvpSession::new(pvp::PvpSessionArgs {
         local_game: local_game_impl,
         local_rom: std::sync::Arc::new(local_rom_bytes),
         remote_game: remote_game_impl,
@@ -1556,13 +1648,11 @@ pub async fn spawn_pvp(
         sample_rate: audio_binder.sample_rate(),
     })
     .await?;
-    // Booting primes the pair — seconds of emulation — so it runs on a
-    // blocking thread rather than on this async task, and the match then
-    // gets a drive thread of its own like every other session kind.
-    let (driver, audio) = tokio::task::spawn_blocking(move || boot.boot())
-        .await
-        .map_err(|e| anyhow::anyhow!("pvp boot thread died: {e}"))??;
-    let drive = spawn_drive_thread("tango-sio-drive", driver)?;
+    // The drive thread boots the pair on its first tick — priming is
+    // seconds of emulation on a DS-class game, and the session is
+    // installed and on screen (saying so) for all of it, rather than
+    // the user waiting it out on the lobby.
+    let drive = spawn_drive_thread("tango-sio-drive", boot)?;
     Ok((
         session,
         PvpPanes {

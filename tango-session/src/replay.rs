@@ -98,6 +98,17 @@ struct Engine {
     /// running them notices on their next tick (and a host with threads
     /// joins them afterwards).
     cancel: Arc<AtomicBool>,
+    /// Set once the display pair is up. The session exists from the
+    /// moment it is built, but its pair is booted and primed on the
+    /// drive loop's first tick — seconds of emulation on a DS-class
+    /// game — and there is nothing to show until then, which is what
+    /// [`is_booting`](ReplaySession::is_booting) lets the host say.
+    booted: Arc<AtomicBool>,
+    /// Why that boot failed, if it did: a recording whose games can't
+    /// be walked back into their battle plays nothing at all, and the
+    /// session stays up on a black frame with only this to show for it
+    /// ([`prime_error`](ReplaySession::prime_error)).
+    prime_error: Arc<Mutex<Option<tango_match::Error>>>,
 }
 
 type SharedPlayback = Arc<Mutex<Option<tango_match::Replay>>>;
@@ -113,44 +124,6 @@ impl Drop for Engine {
         // Release a gate-parked drive loop so the host's join is prompt.
         self.paused.set(false);
         self.seek.shutdown();
-    }
-}
-
-/// The session's audio before its pair exists.
-///
-/// A host binds its output stream when the session is built, but
-/// playback boots on the drive loop's first tick — a second or two of
-/// priming later. This stands in until then, reporting silence, and
-/// starts delegating the moment the engine hands over a real pull.
-#[derive(Clone, Default)]
-struct DeferredPull(Arc<Mutex<Option<Box<dyn tango_match::AudioDrain>>>>);
-
-impl DeferredPull {
-    fn set(&self, pull: Box<dyn tango_match::AudioDrain>) {
-        *self.0.lock().unwrap() = Some(pull);
-    }
-
-    fn with<R>(&self, fallback: R, f: impl FnOnce(&mut Box<dyn tango_match::AudioDrain>) -> R) -> R {
-        match self.0.lock().unwrap().as_mut() {
-            Some(pull) => f(pull),
-            None => fallback,
-        }
-    }
-}
-
-impl tango_match::AudioDrain for DeferredPull {
-    fn sample_rate(&self) -> f64 {
-        // The GBA's own rate, which is what every replayable game
-        // produces at and only stands in while the pair is booting.
-        self.with(32768.0, |p| p.sample_rate())
-    }
-
-    fn drain(&mut self, out: &mut [i16]) -> tango_match::Drained {
-        self.with(tango_match::Drained::default(), |p| p.drain(out))
-    }
-
-    fn framerate_ratio(&self, fps_target: f64) -> f64 {
-        self.with(1.0, |p| p.framerate_ratio(fps_target))
     }
 }
 
@@ -250,6 +223,8 @@ impl ReplaySession {
         let round_marks = Arc::new(Mutex::new(round_boundaries));
         let seek = Arc::new(SeekController::new());
         let cancel = Arc::new(AtomicBool::new(false));
+        let booted = Arc::new(AtomicBool::new(false));
+        let prime_error = Arc::new(Mutex::new(None));
         let show_pip = Arc::new(AtomicBool::new(show_pip));
         let swap_perspective = Arc::new(AtomicBool::new(false));
         // Which seat is on screen and in the speakers. Kept as a number
@@ -288,7 +263,7 @@ impl ReplaySession {
                 // The games' own audio is the point of watching one.
                 disable_bgm: false,
             })?);
-        let audio_pull = DeferredPull::default();
+        let audio_pull = crate::audio::DeferredDrain::default();
 
         let surfaces = Surfaces {
             shown_seat: shown_seat.clone(),
@@ -327,6 +302,8 @@ impl ReplaySession {
                     surfaces: surfaces.clone(),
                     audio: audio_pull.clone(),
                     seat: shown_seat.clone(),
+                    booted: booted.clone(),
+                    prime_error: prime_error.clone(),
                 },
                 fps_bits: fps_bits.clone(),
                 paused: paused.clone(),
@@ -375,6 +352,8 @@ impl ReplaySession {
                 prefetch_progress,
                 seek,
                 cancel,
+                booted,
+                prime_error,
             },
         };
         Ok((session, workers, audio))
@@ -438,6 +417,23 @@ impl ReplaySession {
 
     pub fn is_paused(&self) -> bool {
         self.engine.paused.paused()
+    }
+
+    /// `true` until the display pair is booted and primed — the window
+    /// between the session being built and its first frame, which is a
+    /// priming walk long (seconds, on a DS-class game) and shows black
+    /// and silent. Hosts put a notice over it; nothing else about the
+    /// session is meaningful yet.
+    pub fn is_booting(&self) -> bool {
+        !self.engine.booted.load(Ordering::Acquire)
+    }
+
+    /// Why the boot failed, ready to show, or `None` while it is still
+    /// running or has succeeded. A recording that can't be re-primed
+    /// plays nothing at all, and this is the only thing left to tell
+    /// the user about a session that will never show a frame.
+    pub fn prime_error(&self) -> Option<String> {
+        self.engine.prime_error.lock().unwrap().as_ref().map(|e| e.to_string())
     }
 
     /// Current factor (current fps / 60).
@@ -777,8 +773,13 @@ struct Playhead {
     surfaces: Surfaces,
     /// Filled in once the pair is up — until then the host's stream is
     /// pulling silence off it.
-    audio: DeferredPull,
+    audio: crate::audio::DeferredDrain,
     seat: Arc<AtomicUsize>,
+    /// Raised when the boot below is over — landed or failed — for the
+    /// host's priming notice (see [`Engine::booted`]).
+    booted: Arc<AtomicBool>,
+    /// Why the boot failed, if it did (see [`Engine::prime_error`]).
+    prime_error: Arc<Mutex<Option<tango_match::Error>>>,
 }
 
 impl Playhead {
@@ -789,10 +790,14 @@ impl Playhead {
         let mut pb = match self.set.playback() {
             Ok(pb) => pb,
             // Torn down mid-prime — the host is waiting on this thread's
-            // join, not on a session that will never come up.
+            // join, not on a session that will never come up. Nothing to
+            // report: the session it would report to is going away.
             Err(tango_match::Error::Cancelled) => return false,
             Err(e) => {
                 log::error!("replay: boot failed: {e:?}");
+                *self.prime_error.lock().unwrap() = Some(e);
+                // The view is watching a black frame for this.
+                self.surfaces.wake.notify_one();
                 return false;
             }
         };
@@ -856,7 +861,13 @@ impl DriveWorker {
             return true;
         }
         self.booted = true;
-        self.playhead.boot()
+        let ok = self.playhead.boot();
+        // Published either way, and after the boot has put its first
+        // frame up: the wait is over even when it ended badly, and a
+        // notice still saying "starting" would be claiming progress
+        // that isn't coming. What went wrong travels in `prime_error`.
+        self.playhead.booted.store(true, Ordering::Release);
+        ok
     }
 
     /// Whether the user has playback stopped. A host that can park

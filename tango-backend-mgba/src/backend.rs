@@ -136,7 +136,7 @@ impl tango_match::Backend for GbaBackend {
             },
             config.rtc,
             true,
-            None,
+            config.cancel,
         )?;
 
         // Audio bring-up, host-side only (sample buffers aren't in

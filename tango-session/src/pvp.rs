@@ -150,6 +150,25 @@ pub struct PvpSession {
     /// eventual drop closes the connection gracefully (DTLS close_notify → the
     /// peer's prompt EOF).
     link: Arc<crate::net::link::Link>,
+    /// The two halves of the ready gate, as the session's own readouts:
+    /// `local_primed` is set when our pair reaches its link battle
+    /// ([`is_booting`](Self::is_booting) until then), `peer_primed`
+    /// when the peer says the same
+    /// ([`waiting_for_peer`](Self::waiting_for_peer) in between). The
+    /// session is on screen for both waits, which is why it publishes
+    /// them at all.
+    local_primed: Arc<AtomicBool>,
+    peer_primed: Arc<AtomicBool>,
+    /// Why the boot failed, if it did — the priming walk timing out on
+    /// a game that never reached its link battle, or the engine
+    /// refusing to start at all. Filled in by the drive loop
+    /// ([`PvpBoot::tick`](crate::Drive::tick)); the session stays up
+    /// with nothing to run so the host can say what happened.
+    prime_error: Arc<Mutex<Option<crate::Error>>>,
+    /// Aborts a priming walk still in flight when the session closes,
+    /// so the host's drive-thread join doesn't wait out the seconds of
+    /// emulation the user just walked away from.
+    boot_cancel: Arc<AtomicBool>,
     /// Live UI readouts published by the drive thread.
     metrics: Arc<Metrics>,
     pub link_code: String,
@@ -319,13 +338,16 @@ impl PvpSession {
     ///
     /// Async because the lobby loop holds the data-channel `Receiver`
     /// until it observes its cancellation and exits (`Link::bring_up`
-    /// awaits its handback), and because the drive thread then boots and
-    /// primes the pair — a couple of seconds of emulation — before the
-    /// session is live. Also returns the session's audio stream (the
-    /// local core's samples at the args' `sample_rate`, rate control
-    /// following the drive loop's published fps target) for the host to
-    /// route to its output.
-    pub async fn new(args: PvpSessionArgs<'_>) -> Result<(Self, PvpBoot), crate::Error> {
+    /// awaits its handback). Everything slow happens after this
+    /// returns: the session is live as soon as the exchange is, and the
+    /// pair is booted and primed on the drive loop underneath it (see
+    /// [`PvpBoot`]).
+    ///
+    /// Hands back the session, the thing the host drives, and the
+    /// session's audio stream — the local core's samples at the args'
+    /// `sample_rate`, rate control following the drive loop's published
+    /// fps target, silent until the boot lands.
+    pub async fn new(args: PvpSessionArgs<'_>) -> Result<(Self, PvpBoot, crate::audio::CoreStream), crate::Error> {
         let PvpSessionArgs {
             local_game,
             local_rom,
@@ -433,6 +455,11 @@ impl PvpSession {
         let completed = Arc::new(AtomicBool::new(false));
         let frame_delay = Arc::new(AtomicU32::new(frame_delay));
         let metrics = Arc::new(Metrics::default());
+        // Seeded rather than left at zero: the host paces the boot
+        // itself off this, and the audio stream's rate control reads it
+        // from the moment the host binds the stream — both of which
+        // start before the drive loop first publishes a target.
+        metrics.fps_target.store(expected_fps.to_bits(), Ordering::Relaxed);
         let drive_paused = Arc::new(crate::PauseGate::new(false));
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
         let tps_counter = Arc::new(Mutex::new(TpsCounter::new(60)));
@@ -445,6 +472,7 @@ impl PvpSession {
         // running it takes, so each peer announces when its own pair
         // reaches the link battle and neither ticks until both have.
         let local_primed = Arc::new(AtomicBool::new(false));
+        let boot_cancel = Arc::new(AtomicBool::new(false));
         let peer_primed = link.peer_primed();
         let announce_primed = Arc::new(tokio::sync::Notify::new());
 
@@ -480,61 +508,80 @@ impl PvpSession {
         };
 
         // Everything the match needs to boot, handed back for the host
-        // to run: the pair is single-threaded by design and priming it
+        // to drive: the pair is single-threaded by design and priming it
         // is seconds of emulation, so *where* that happens is the host's
-        // call — a blocking thread on a desktop, the event loop in a
-        // browser.
-        let boot = PvpBoot {
-            pieces: BootPieces {
-                roms,
-                saves,
-                session_payloads,
-                pvp: supports,
-                peer_rom: tango_match::PeerRom {
-                    code: *remote_game.rom_code,
-                    revision: remote_game.revision,
-                },
-                match_type: pre_match.match_type,
-                rng_seed: pre_match.rng_seed,
-                rtc: rtc_time,
-                local_player: local_player_index as usize,
-                present_delay: frame_delay.load(Ordering::Relaxed),
-                disable_bgm,
+        // call — a drive thread on a desktop, the event loop in a
+        // browser. Either way the session is already on screen for it.
+        let pieces = BootPieces {
+            roms,
+            saves,
+            session_payloads,
+            pvp: supports,
+            peer_rom: tango_match::PeerRom {
+                code: *remote_game.rom_code,
+                revision: remote_game.revision,
             },
-            drive: DriveContext {
-                local_input: local_input.clone(),
-                frame_delay: frame_delay.clone(),
-                metrics: metrics.clone(),
-                drive_paused: drive_paused.clone(),
-                cancel: cancellation_token.clone(),
-                completed: completed.clone(),
-                end: end.clone(),
-                event_rx,
-                sender,
-                in_match: in_match.clone(),
-                replay_writer,
-                stats: stats.clone(),
-                // Keyed against the store's own directory, so a store
-                // that isn't one (a browser's) simply has no sidecar —
-                // which is also the only kind of host that has nowhere
-                // to write it.
-                #[cfg(not(target_arch = "wasm32"))]
-                stats_path: replay_path
-                    .as_ref()
-                    .zip(replays.and_then(|store| store.root()))
-                    .map(|(path, root)| crate::stats::stats_path(cache_path, root, path)),
-                tps_counter: tps_counter.clone(),
-                screen: screen.clone(),
-                wake: wake.clone(),
-                local_primed: local_primed.clone(),
-                peer_primed: peer_primed.clone(),
-                announce_primed: announce_primed.clone(),
-                local_player: local_player_index as usize,
-            },
-            expected_fps,
-            sample_rate,
+            match_type: pre_match.match_type,
+            rng_seed: pre_match.rng_seed,
+            rtc: rtc_time,
             local_player: local_player_index as usize,
+            present_delay: frame_delay.load(Ordering::Relaxed),
+            disable_bgm,
+        };
+        let drive = DriveContext {
+            local_input: local_input.clone(),
+            frame_delay: frame_delay.clone(),
             metrics: metrics.clone(),
+            drive_paused: drive_paused.clone(),
+            cancel: cancellation_token.clone(),
+            completed: completed.clone(),
+            end: end.clone(),
+            event_rx,
+            sender,
+            in_match: in_match.clone(),
+            replay_writer,
+            stats: stats.clone(),
+            // Keyed against the store's own directory, so a store
+            // that isn't one (a browser's) simply has no sidecar —
+            // which is also the only kind of host that has nowhere
+            // to write it.
+            #[cfg(not(target_arch = "wasm32"))]
+            stats_path: replay_path
+                .as_ref()
+                .zip(replays.and_then(|store| store.root()))
+                .map(|(path, root)| crate::stats::stats_path(cache_path, root, path)),
+            tps_counter: tps_counter.clone(),
+            screen: screen.clone(),
+            wake: wake.clone(),
+            local_primed: local_primed.clone(),
+            peer_primed: peer_primed.clone(),
+            announce_primed: announce_primed.clone(),
+            local_player: local_player_index as usize,
+            boot_cancel: boot_cancel.clone(),
+        };
+
+        // The session's audio stream, bound by the host before the pair
+        // that feeds it exists: it pulls silence off the deferred drain
+        // until the boot below hands over the real one.
+        let audio_drain = crate::audio::DeferredDrain::default();
+        let audio = crate::audio::CoreStream::new(
+            Box::new(audio_drain.clone()) as Box<dyn tango_match::AudioDrain>,
+            expected_fps,
+            {
+                let metrics = metrics.clone();
+                move || f32::from_bits(metrics.fps_target.load(Ordering::Relaxed))
+            },
+            sample_rate,
+        );
+        let prime_error = Arc::new(Mutex::new(None));
+        let boot = PvpBoot {
+            pending: Some((pieces, drive)),
+            driver: None,
+            audio: audio_drain,
+            prime_error: prime_error.clone(),
+            expected_fps,
+            metrics: metrics.clone(),
+            wake: wake.clone(),
         };
 
         // Announce our own prime as soon as the boot finishes. It rides
@@ -562,7 +609,7 @@ impl PvpSession {
             metrics: metrics.clone(),
             drive_paused: drive_paused.clone(),
             wake: wake.clone(),
-            local_primed,
+            local_primed: local_primed.clone(),
         });
 
         let session = Self {
@@ -574,6 +621,10 @@ impl PvpSession {
             tps_counter,
             cancellation_token,
             link,
+            local_primed,
+            peer_primed,
+            prime_error,
+            boot_cancel,
             metrics,
             link_code: pre_match.link_code,
             remote_nickname: pre_match.remote_settings.nickname,
@@ -585,7 +636,7 @@ impl PvpSession {
             wake,
             started_at: web_time::Instant::now(),
         };
-        Ok((session, boot))
+        Ok((session, boot, audio))
     }
 
     /// This side's player index (P1 = 0, P2 = 1) for the match. Stable across
@@ -608,6 +659,33 @@ impl PvpSession {
     pub fn set_frame_delay(&self, frame_delay: u32) {
         self.frame_delay
             .store(frame_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY), Ordering::Relaxed);
+    }
+
+    /// `true` while our own pair is still being booted and primed on
+    /// the drive loop — the session comes up the moment the lobby
+    /// exchange is done, and the walk into the games' link battle
+    /// happens under it. Seconds on a DS-class game, an instant on a
+    /// GBA one; no frame and no sound until it lands.
+    pub fn is_booting(&self) -> bool {
+        !self.local_primed.load(Ordering::Acquire)
+    }
+
+    /// `true` while the drive loop is idling at the ready gate for the
+    /// peer to finish priming their own pair (see [`PvpDriver::tick`]).
+    /// Our pair is already at its link battle; theirs isn't, so nothing
+    /// advances and no frame is published — the match's screen would
+    /// otherwise sit black with nothing said about why. A slower
+    /// machine on the other end can make this wait quite long.
+    pub fn waiting_for_peer(&self) -> bool {
+        !self.is_booting() && !self.peer_primed.load(Ordering::Acquire)
+    }
+
+    /// Why the boot failed, ready to show, or `None` while it is still
+    /// running or has succeeded. A failed boot leaves the session up
+    /// with nothing to run: there is no frame coming, and this is the
+    /// only thing left to tell the user.
+    pub fn prime_error(&self) -> Option<String> {
+        self.prime_error.lock().unwrap().as_ref().map(|e| e.to_string())
     }
 
     /// `true` while the link has dropped and the session is transparently
@@ -749,6 +827,10 @@ impl crate::Session for PvpSession {
         // peer (best-effort `Goodbye`) on its way out, so the peer ends
         // at once instead of trying to reconnect to us.
         self.cancellation_token.cancel();
+        // Its plain-flag twin, which is what a priming walk deep in a
+        // backend can read (see [`DriveContext::boot_cancel`]). A close
+        // during the walk is the one case the token can't reach.
+        self.boot_cancel.store(true, Ordering::Release);
     }
 
     /// True once it's safe to tear the session down. Requires
@@ -765,6 +847,14 @@ impl crate::Session for PvpSession {
     /// from under the other and the other side's replay ends up
     /// truncated.
     fn is_ended(&self) -> bool {
+        // A failed boot outranks every check below: the session has
+        // nothing left to run, but its reason is on screen and the host
+        // tears down on the user's dismissal, not from under it. (The
+        // peer dropping while it is up is exactly the case that would
+        // otherwise swallow the message.)
+        if self.prime_error.lock().unwrap().is_some() {
+            return false;
+        }
         // The dead-link checks come before the completion gate: a match
         // that ends by disconnect (the peer quit, the reconnect window
         // expired, our own netcode tore down) is over whether or not it
@@ -891,6 +981,11 @@ struct DriveContext {
     peer_primed: Arc<AtomicBool>,
     announce_primed: Arc<tokio::sync::Notify>,
     local_player: usize,
+    /// The close signal as the priming walk can read it — a plain flag
+    /// because backends know nothing of this crate's cancellation
+    /// token, raised beside it by
+    /// [`request_close`](crate::Session::request_close).
+    boot_cancel: Arc<AtomicBool>,
 }
 
 impl DriveContext {
@@ -915,6 +1010,10 @@ impl DriveContext {
             local_player: pieces.local_player,
             present_delay: pieces.present_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
             disable_bgm: pieces.disable_bgm,
+            // The session is on screen (and leavable) for the whole
+            // walk, so a close has to reach into it — otherwise the
+            // host's drive-thread join waits the walk out.
+            cancel: Some(&self.boot_cancel),
         })?;
         let audio = match_.audio();
 
@@ -1371,42 +1470,79 @@ fn build_replay_writer(
     Ok((writer, key))
 }
 
-/// A match waiting to be booted.
+/// The match as the thing a host drives: the first tick boots and
+/// primes the pair, every tick after that runs the match.
 ///
-/// Handed back by [`PvpSession::new`] instead of being run inside it:
-/// priming the pair is seconds of blocking emulation, and every other
-/// session kind here leaves that decision — a thread, a blocking pool,
-/// an event loop — to the host.
+/// The boot rides the drive loop rather than [`PvpSession::new`]
+/// because priming the pair is seconds of blocking emulation and the
+/// session is on screen for all of it — saying so ([`is_booting`](PvpSession::is_booting),
+/// [`prime_error`](PvpSession::prime_error)) instead of making the
+/// user wait at the lobby with nothing to read. Replay playback comes
+/// up the same way, and for the same reason.
 pub struct PvpBoot {
-    pieces: BootPieces,
-    drive: DriveContext,
+    /// What the first tick needs to bring the pair up, taken there.
+    /// `None` once the boot has run, whichever way it went.
+    pending: Option<(BootPieces, DriveContext)>,
+    /// The live match, once the boot has produced one.
+    driver: Option<PvpDriver>,
+    /// The stream the host bound at construction, wired through to the
+    /// pair's own drain when the boot lands. Silence until then.
+    audio: crate::audio::DeferredDrain,
+    /// Where a failed boot leaves its reason, for the session to
+    /// publish ([`PvpSession::prime_error`]).
+    prime_error: Arc<Mutex<Option<crate::Error>>>,
     expected_fps: f32,
-    sample_rate: u32,
-    local_player: usize,
     metrics: Arc<Metrics>,
+    /// Repaint wake, so the failure reaches a host whose session is
+    /// otherwise sitting on a frame that will never come.
+    wake: Arc<tokio::sync::Notify>,
 }
 
-impl PvpBoot {
-    /// Boot and prime the pair. Blocks for seconds; run it somewhere
-    /// that can afford to.
-    ///
-    /// Hands back the driver to tick and the session's audio stream —
-    /// the local core resampled to the rate asked for at construction,
-    /// following the loop's published fps target (see
-    /// [`crate::audio::CoreStream`]).
-    pub fn boot(self) -> Result<(PvpDriver, crate::audio::CoreStream), crate::Error> {
-        let local_player = self.local_player;
-        let metrics = self.metrics;
-        let sample_rate = self.sample_rate;
-        let _ = local_player;
-        let (driver, pull) = self.drive.boot(self.pieces, self.expected_fps)?;
-        let audio = crate::audio::CoreStream::new(
-            pull,
-            self.expected_fps,
-            move || f32::from_bits(metrics.fps_target.load(Ordering::Relaxed)),
-            sample_rate,
-        );
-        Ok((driver, audio))
+impl crate::Drive for PvpBoot {
+    fn tick(&mut self) -> bool {
+        if let Some((pieces, drive)) = self.pending.take() {
+            let booted = drive.boot(pieces, self.expected_fps);
+            // Either outcome changes what the session shows, and
+            // neither produces a frame — so wake the host itself.
+            match booted {
+                Ok((driver, drain)) => {
+                    // Ordered so the stream only starts pulling off a
+                    // pair that exists.
+                    self.audio.set(drain);
+                    self.driver = Some(driver);
+                    self.wake.notify_one();
+                }
+                // Cancelled is the session being torn down mid-walk,
+                // not a failure to report: there is nobody left to
+                // read it.
+                Err(tango_match::Error::Cancelled) => return false,
+                Err(e) => {
+                    log::error!("pvp: boot failed: {e}");
+                    *self.prime_error.lock().unwrap() = Some(e.into());
+                    self.wake.notify_one();
+                    return false;
+                }
+            }
+        }
+        match self.driver.as_mut() {
+            Some(driver) => driver.tick(),
+            // A boot that failed leaves the session up with its reason
+            // on screen; there is simply nothing left to drive.
+            None => false,
+        }
+    }
+
+    fn finish(self) {
+        // Only a match that ran has a replay tail to write.
+        if let Some(driver) = self.driver {
+            driver.finish();
+        }
+    }
+
+    /// The throttler's target once the match runs; before that, the
+    /// rate the pacer should idle the boot at.
+    fn fps_target(&self) -> f32 {
+        f32::from_bits(self.metrics.fps_target.load(Ordering::Relaxed))
     }
 }
 

@@ -102,6 +102,43 @@ pub fn Play(status: ReadSignal<Option<Status>>, onexit: EventHandler<()>) -> Ele
                     }
                 }
             }
+            // The priming walk, which the session is installed and
+            // painting black for. Last, so it reads over everything
+            // else — until it lands there is no session to speak of.
+            if let Some(priming) = status.as_ref().and_then(|s| s.priming.clone()) {
+                Priming { priming }
+            }
+        }
+    }
+}
+
+/// What the screen says while a priming walk runs under it — booting
+/// both games into their link battle, which takes seconds on a DS-class
+/// game and paints nothing at all while it does. A failed walk keeps
+/// the notice up with the reason instead: nothing is coming, and Quit
+/// is the way out.
+#[component]
+fn Priming(priming: crate::engine::Priming) -> Element {
+    use crate::engine::Priming as P;
+    let (title, detail) = match &priming {
+        P::Match => ("Starting the match…", "Booting both games into their battle.".to_string()),
+        P::Peer => (
+            "Waiting for your opponent…",
+            "Their game is still starting up.".to_string(),
+        ),
+        P::Playback => ("Starting the replay…", "Booting the games into their battle.".to_string()),
+        P::Failed(error) => ("The games didn't reach their battle.", error.clone()),
+    };
+    let failed = matches!(priming, P::Failed(_));
+    rsx! {
+        div { class: "overlay",
+            div { class: "box",
+                if !failed {
+                    div { class: "spinner" }
+                }
+                div { "{title}" }
+                div { class: "muted", "{detail}" }
+            }
         }
     }
 }

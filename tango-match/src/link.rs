@@ -431,4 +431,11 @@ pub struct StartConfig<'a> {
     pub present_delay: u32,
     /// Silence battle BGM. Purely local presentation.
     pub disable_bgm: bool,
+    /// Abandon the priming walk if this flips, failing the start with
+    /// [`Error::Cancelled`]. The walk is seconds of blocking emulation
+    /// on a DS-class game and a host runs it under a session the user
+    /// can already leave — without this, leaving waits out the whole
+    /// walk. `None` for a caller with nothing to cancel from (the
+    /// offline analysis passes, the probe harnesses).
+    pub cancel: Option<&'a std::sync::atomic::AtomicBool>,
 }

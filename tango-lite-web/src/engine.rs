@@ -44,7 +44,7 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
-use tango_session::pvp::{PvpDriver, PvpSession};
+use tango_session::pvp::{PvpBoot, PvpSession};
 use tango_session::replay::ReplaySession;
 use tango_session::singleplayer::SinglePlayerSession;
 use tango_session::Session;
@@ -192,7 +192,7 @@ fn set_ticking(running: bool) {
 enum Driver {
     SinglePlayer(tango_session::singleplayer::Driver),
     /// `None` once `finish` has consumed it.
-    Pvp(Option<PvpDriver>),
+    Pvp(Option<PvpBoot>),
     /// Playback's three loops — drive, seek chase, prefetch — folded
     /// into one, which is the shape `tango_session::replay` offers a
     /// host that has one thread of control rather than three.
@@ -203,7 +203,7 @@ impl Driver {
     fn tick(&mut self) -> bool {
         match self {
             Driver::SinglePlayer(d) => d.tick(),
-            Driver::Pvp(Some(d)) => d.tick(),
+            Driver::Pvp(Some(d)) => tango_session::Drive::tick(d),
             Driver::Pvp(None) => false,
             Driver::Replay(d) => tango_session::Drive::tick(d),
         }
@@ -237,7 +237,7 @@ impl Driver {
     fn finish(&mut self) {
         if let Driver::Pvp(slot) = self {
             if let Some(driver) = slot.take() {
-                driver.finish();
+                tango_session::Drive::finish(driver);
             }
         }
     }
@@ -249,6 +249,22 @@ pub enum Kind {
     SinglePlayer,
     Pvp,
     Replay,
+}
+
+/// Where a session is in its priming walk, for the notice the play
+/// screen puts over the canvas. The desktop app draws the same three
+/// states over its own frame.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Priming {
+    /// This machine's pair is booting into the link battle.
+    Match,
+    /// Ours is there; the opponent's machine is still walking theirs.
+    Peer,
+    /// A replay's pair is booting into the recorded battle.
+    Playback,
+    /// The walk failed, with the engine's own reason. Terminal: the
+    /// session has nothing left to run, and Quit is the way out.
+    Failed(String),
 }
 
 /// The cheap read-out the UI polls. Everything expensive stays behind
@@ -267,6 +283,12 @@ pub struct Status {
     /// would re-render the play screen on every poll.
     pub tps: u32,
     pub reconnecting: bool,
+    /// Where the session stands on its priming walk — the run from
+    /// power-on into the games' link battle — or `None` once it is
+    /// simply running. The session is installed and painting a black
+    /// canvas for the whole walk, which is seconds on a DS-class game
+    /// and one pumped tick with no thread to hide it on.
+    pub priming: Option<Priming>,
     pub local_player_index: u8,
     pub opponent: String,
     /// Replay only: `(playhead, total)` in ticks.
@@ -336,7 +358,7 @@ pub fn start_single_player(
 /// Install a booted, primed live match and start pumping.
 pub fn start_pvp(
     session: PvpSession,
-    driver: PvpDriver,
+    driver: PvpBoot,
     stream: tango_session::audio::CoreStream,
     sink: Option<Rc<RefCell<crate::audio::Sink>>>,
 ) {
@@ -441,10 +463,30 @@ pub fn status() -> Option<Status> {
             frame_delay: pvp.map(|p| p.frame_delay()).unwrap_or(0),
             tps: pvp.map(|p| p.tps().round() as u32).unwrap_or(0),
             reconnecting: pvp.map(|p| p.is_reconnecting()).unwrap_or(false),
+            priming: priming_of(pvp, replay),
             local_player_index: pvp.map(|p| p.local_player_index()).unwrap_or(0),
             opponent: pvp.map(|p| p.remote_nickname.clone()).unwrap_or_default(),
         })
     })
+}
+
+/// The priming state of whichever session kind is up — a failure
+/// first, since it outranks the wait it ended.
+fn priming_of(pvp: Option<&PvpSession>, replay: Option<&ReplaySession>) -> Option<Priming> {
+    if let Some(pvp) = pvp {
+        if let Some(error) = pvp.prime_error() {
+            return Some(Priming::Failed(error));
+        }
+        if pvp.is_booting() {
+            return Some(Priming::Match);
+        }
+        return pvp.waiting_for_peer().then_some(Priming::Peer);
+    }
+    let replay = replay?;
+    if let Some(error) = replay.prime_error() {
+        return Some(Priming::Failed(error));
+    }
+    replay.is_booting().then_some(Priming::Playback)
 }
 
 /// Install a replay and start playing it back.

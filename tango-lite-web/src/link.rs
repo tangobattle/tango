@@ -421,7 +421,7 @@ async fn build(pre_match: tango_lobby::PreMatchData) -> Result<(), String> {
     let remote_rom = crate::library::patched_rom(remote_game, remote_patch.as_ref())?;
 
     let sink = crate::audio::sink().await;
-    let (session, boot) = tango_session::pvp::PvpSession::new(tango_session::pvp::PvpSessionArgs {
+    let (session, driver, stream) = tango_session::pvp::PvpSession::new(tango_session::pvp::PvpSessionArgs {
         local_game,
         local_rom: std::sync::Arc::new(local_rom),
         remote_game,
@@ -439,13 +439,10 @@ async fn build(pre_match: tango_lobby::PreMatchData) -> Result<(), String> {
     .await
     .map_err(|e| e.to_string())?;
 
-    // Booting primes the pair to a live link battle — seconds of
-    // emulation, and there is no thread to put it on. Yield first so the
-    // "Starting match…" state actually reaches the screen before the
-    // main thread goes away.
-    tango_session::platform::sleep(std::time::Duration::from_millis(32)).await;
-    let (driver, stream) = boot.boot().map_err(|e| e.to_string())?;
-
+    // Priming the pair to a live link battle is seconds of emulation
+    // with no thread to put it on — it happens on the first pumped
+    // tick, under a session that is already up and reporting it
+    // (`PvpSession::is_booting`).
     crate::engine::start_pvp(session, driver, stream, sink);
     Ok(())
 }

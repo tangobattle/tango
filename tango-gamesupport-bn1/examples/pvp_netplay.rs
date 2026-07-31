@@ -45,6 +45,7 @@ fn build(
             local_player,
             present_delay: 2,
             disable_bgm: false,
+            cancel: None,
         })
         .expect("build match")
 }
