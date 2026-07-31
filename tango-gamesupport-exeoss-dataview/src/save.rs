@@ -14,8 +14,15 @@
 
 use tango_gamesupport_common::dataview::save::{self, Error};
 
-/// A DS cartridge dump is 256 KiB, the same flash BN5DS ships on.
+/// The flash the cart carries: 256 KiB, the same chip BN5DS ships on.
+/// That is what the emulator mounts and hands back, so it is the length
+/// a dump is canonicalized to — but not the length one has to arrive
+/// at, see [`Save::new`].
 pub const SIZE: usize = 0x4_0000;
+
+/// What a byte of flash reads as before anything is written to it, and
+/// so what a dump that stops short of [`SIZE`] is padded out with.
+const ERASED: u8 = 0xff;
 
 /// The format tag at the head of the flash. `exe1ds` is the remake
 /// naming itself after the game it remakes — the cart's own label for
@@ -112,26 +119,38 @@ impl Save {
     /// and at least one intact bank — a cart saved exactly once has its
     /// second bank still erased, and that is a real save, not a damaged
     /// one.
+    ///
+    /// A dump shorter than [`SIZE`] is one of those too. The game never
+    /// writes past the second bank's payload (0x5b80 of a 256 KiB
+    /// chip), so everything downstream of that is flash the cart has
+    /// only ever read as erased — and a dumper that sizes the chip by
+    /// what the game touched, or one that trims the erased tail, hands
+    /// over a short file with every byte that matters in it. Such a
+    /// dump is padded back out rather than rejected, which is also what
+    /// the emulator does with it: the cart's flash length comes from
+    /// its ROM entry, and a short image is copied into the front of an
+    /// erased chip. Padding here just means the save Tango reads, the
+    /// SRAM it hands the console and the image the replay records are
+    /// the same bytes whatever length the file arrived at.
     pub fn new(buf: &[u8]) -> Result<Self, Error> {
-        if buf.len() != SIZE {
+        if buf.len() > SIZE {
             return Err(Error::InvalidSize(buf.len()));
         }
+        let mut buf = buf.to_vec();
+        buf.resize(SIZE, ERASED);
         if &buf[..MAGIC.len()] != MAGIC {
             return Err(Error::InvalidGameName(buf[..MAGIC.len()].to_vec()));
         }
         let live = BANK_OFFSETS
             .iter()
             .enumerate()
-            .filter_map(|(index, &at)| Bank::parse(buf, at, index as u32))
+            .filter_map(|(index, &at)| Bank::parse(&buf, at, index as u32))
             // The game mounts the higher generation; ties can't happen
             // on a cart that has ever been saved, and picking either is
             // right if one ever did.
             .max_by_key(|bank| bank.generation)
             .ok_or_else(|| Error::InvalidGameName(BANK_MAGIC.to_vec()))?;
-        Ok(Save {
-            buf: buf.to_vec(),
-            live,
-        })
+        Ok(Save { buf, live })
     }
 
     /// The live bank's generation counter — how many times this cart has
@@ -257,6 +276,19 @@ mod tests {
         assert!(Save::new(&buf).is_ok());
     }
 
+    /// A dump that stops after the last byte the game ever writes is
+    /// the whole save, and reads back as one padded out to the chip.
+    #[test]
+    fn a_dump_short_of_the_flash_still_parses() {
+        use tango_gamesupport_common::dataview::save::Save as _;
+        let full = cart([1, 2]);
+        for len in [0x1_0000, 0x2_0000] {
+            let save = Save::new(&full[..len]).unwrap();
+            assert_eq!(save.generation(), 2, "{len:#x}");
+            assert_eq!(save.to_sram_dump(), full, "{len:#x}");
+        }
+    }
+
     #[test]
     fn other_games_saves_are_rejected() {
         // The tag is what identifies the cart; a dump of the right size
@@ -270,5 +302,10 @@ mod tests {
         let mut headless = vec![0xff; SIZE];
         headless[..MAGIC.len()].copy_from_slice(MAGIC);
         assert!(Save::new(&headless).is_err());
+        // A short dump is padded up to the chip; one longer than the
+        // chip is not a dump of it.
+        let mut oversize = cart([1, 2]);
+        oversize.resize(SIZE + 1, 0xff);
+        assert!(Save::new(&oversize).is_err());
     }
 }

@@ -20,8 +20,14 @@
 
 use tango_gamesupport_common::dataview::save::Error;
 
-/// A DS cartridge dump is 256 KiB.
+/// The flash the cart carries: 256 KiB. That is what the emulator
+/// mounts and hands back, so it is the length a dump is canonicalized
+/// to — but not the length one has to arrive at, see [`SaveSet::parse`].
 pub const SIZE: usize = 0x4_0000;
+
+/// What a byte of flash reads as before anything is written to it, and
+/// so what a dump that stops short of [`SIZE`] is padded out with.
+const ERASED: u8 = 0xff;
 
 /// The game divides the flash into blocks of this size and writes a
 /// save as a mirrored pair of them.
@@ -192,16 +198,32 @@ pub struct SaveSet {
 }
 
 impl SaveSet {
-    /// Accept `data` if it is a dump of this game's flash: the right
-    /// size, with the game's own format tag in at least one block.
+    /// Accept `data` if it is a dump of this game's flash: no longer
+    /// than the chip, with the game's own format tag in at least one
+    /// block.
     ///
     /// The game falls back to a generation's twin copy when one block
     /// is damaged, so a single intact tag is as much as it requires
     /// too.
+    ///
+    /// A dump shorter than [`SIZE`] is accepted and padded out with
+    /// erased flash. Dumpers trim the erased tail, or size the chip by
+    /// what the game touched, and either way the short file carries
+    /// every block the game wrote; the padding lands where flash the
+    /// cart never wrote would be, and reads back as unformatted blocks
+    /// — which is exactly what the game's own mount makes of them.
+    /// It is also what the emulator does with such a file: the cart's
+    /// flash length comes from its ROM entry, and a short image is
+    /// copied into the front of an erased chip. Padding here just means
+    /// the save Tango reads, the SRAM it hands the console and the
+    /// image the replay records are the same bytes whatever length the
+    /// file arrived at.
     pub fn parse(data: &[u8]) -> Result<Self, Error> {
-        if data.len() != SIZE {
+        if data.len() > SIZE {
             return Err(Error::InvalidSize(data.len()));
         }
+        let mut data = data.to_vec();
+        data.resize(SIZE, ERASED);
 
         // A file's live block is its intact block with the highest
         // generation counter; the game default-formats every block on
@@ -211,10 +233,10 @@ impl SaveSet {
         // are identical on an intact cart, so the tie between them is
         // broken toward the first block just to be deterministic.
         let mut files: Vec<(u8, usize)> = Vec::new();
-        for block in (0..SIZE / BLOCK_SIZE).filter(|&block| formatted(data, block)) {
+        for block in (0..SIZE / BLOCK_SIZE).filter(|&block| formatted(&data, block)) {
             let slot = data[block * BLOCK_SIZE + FILE_SLOT_OFFSET];
             match files.iter_mut().find(|(s, _)| *s == slot) {
-                Some(file) if generation(data, block) > generation(data, file.1) => file.1 = block,
+                Some(file) if generation(&data, block) > generation(&data, file.1) => file.1 = block,
                 Some(_) => {}
                 None => files.push((slot, block)),
             }
@@ -224,10 +246,7 @@ impl SaveSet {
         }
         files.sort_unstable();
 
-        Ok(SaveSet {
-            data: data.to_vec(),
-            files,
-        })
+        Ok(SaveSet { data, files })
     }
 
     /// The file-select slots this cart holds, in slot order. Both exist
@@ -534,11 +553,27 @@ mod tests {
         assert!(SaveSet::parse(&data).is_ok());
     }
 
+    /// A dump whose erased tail was trimmed off is padded back out, and
+    /// the blocks that fell in the trim read as the unformatted flash
+    /// they are.
     #[test]
-    fn rejects_the_wrong_size() {
+    fn accepts_a_dump_short_of_the_flash() {
+        use tango_gamesupport_common::dataview::save::Save as _;
+        let mut full = vec![ERASED; SIZE];
+        for block in 0..2 {
+            full[block * BLOCK_SIZE + MAGIC_OFFSET..][..MAGIC.len()].copy_from_slice(MAGIC);
+            full[block * BLOCK_SIZE + FILE_SLOT_OFFSET] = 0;
+        }
+        // Everything past the two written blocks is erased flash, so
+        // cutting it off loses nothing.
+        let set = SaveSet::parse(&full[..2 * BLOCK_SIZE]).unwrap();
+        assert_eq!(set.slots(), vec![0]);
+        assert_eq!(set.current().to_sram_dump(), full);
+    }
+
+    #[test]
+    fn rejects_a_dump_longer_than_the_flash() {
         let mut data = plausible();
-        data.truncate(SIZE / 2);
-        assert!(SaveSet::parse(&data).is_err());
         data.resize(SIZE * 2, 0);
         assert!(SaveSet::parse(&data).is_err());
     }
