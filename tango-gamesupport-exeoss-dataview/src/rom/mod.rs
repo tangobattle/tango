@@ -20,12 +20,13 @@
 //! reached through the id the stat entry carries. See [`cart`] for the
 //! decoding that makes an overlay readable at all.
 //!
-//! Element icons are **not** mapped: the cart redraws them, so unlike
-//! the chip icons (which are BN1's own tiles with the palette indices
-//! shuffled) there is nothing to find by searching for the GBA sheet,
-//! and a palette-blind shape search over every overlay finds nothing
-//! either. [`tango_gamesupport_common::dataview::rom::Assets::element_icon`]'s
-//! default stands, and the folder leaves that column empty.
+//! The element icons are the cart's own art rather than BN1's, so
+//! unlike the chip icons (which are BN1's tiles with the palette
+//! indices shuffled) no search of the GBA sheet finds them. They were
+//! found by driving the game to its own folder screen, lifting the
+//! 14x14 shape it drew off the screenshot, and hunting main RAM for a
+//! 2x2-tile cell holding it — which lands in overlay 10, the folder's
+//! own module, in BN1's order: null, elec, fire, aqua, wood.
 
 mod cart;
 mod msg;
@@ -47,6 +48,16 @@ pub struct Offsets {
     chip_icon_overlay: u16,
     /// The shared 16-colour icon palette, immediately before the bank.
     chip_icon_palette: u32,
+    /// The overlay holding the folder screen — where the element icons
+    /// live, sheet and palette both. It is not the icon overlay: the
+    /// two load at the same address and are never resident together.
+    element_icon_overlay: u16,
+    /// Five 16x16 icons back to back, in the element order the chip
+    /// table's field indexes, and the palette that colours them (one of
+    /// three byte-identical copies on the cart; this is the one in the
+    /// same overlay as the sheet).
+    element_icons: u32,
+    element_icon_palette: u32,
     /// What a stat entry's artwork id is above the overlay it names.
     /// The ids are resource numbers rather than overlay numbers; the
     /// gap between the two is constant across all 240 chips.
@@ -61,8 +72,15 @@ pub static B6XJ_00: Offsets = Offsets {
     chip_descriptions:     0x020ae644,
     chip_icon_overlay:     9,
     chip_icon_palette:     0x022ac214,
+    element_icon_overlay:  10,
+    element_icons:         0x021ae490,
+    element_icon_palette:  0x02232698,
     chip_art_overlay_bias: 6,
 };
+
+/// How many elements the chip table's field indexes, and how many icons
+/// the sheet holds: BN1's five — null, elec, fire, aqua, wood.
+const NUM_ELEMENTS: usize = 5;
 
 fn read_palette(data: &[u8]) -> Option<tango_gamesupport_common::dataview::rom::Palette> {
     data.get(..std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>())
@@ -77,7 +95,9 @@ pub struct Assets {
     cart: cart::Cart,
     data: Option<cart::Overlay>,
     icons: Option<cart::Overlay>,
+    elements: Option<cart::Overlay>,
     chip_icon_palette: tango_gamesupport_common::dataview::rom::Palette,
+    element_icon_palette: tango_gamesupport_common::dataview::rom::Palette,
 }
 
 impl Assets {
@@ -85,17 +105,24 @@ impl Assets {
         let cart = cart::Cart::new(rom);
         let data = cart.overlay(offsets.chip_data_overlay);
         let icons = cart.overlay(offsets.chip_icon_overlay);
-        let chip_icon_palette = icons
-            .as_ref()
-            .and_then(|icons| read_palette(icons.get(offsets.chip_icon_palette)))
-            .unwrap_or([Default::default(); 16]);
+        let elements = cart.overlay(offsets.element_icon_overlay);
+        let palette = |overlay: &Option<cart::Overlay>, addr| {
+            overlay
+                .as_ref()
+                .and_then(|o| read_palette(o.get(addr)))
+                .unwrap_or([Default::default(); 16])
+        };
+        let chip_icon_palette = palette(&icons, offsets.chip_icon_palette);
+        let element_icon_palette = palette(&elements, offsets.element_icon_palette);
         Self {
             offsets,
             msg_parser: msg::parser(charset),
             cart,
             data,
             icons,
+            elements,
             chip_icon_palette,
+            element_icon_palette,
         }
     }
 
@@ -334,6 +361,24 @@ impl tango_gamesupport_common::dataview::rom::Assets for Assets {
     fn chips_have_mb(&self) -> bool {
         false
     }
+
+    fn element_icon(&self, id: usize) -> Option<image::RgbaImage> {
+        if id >= NUM_ELEMENTS {
+            return None;
+        }
+        let sheet = self.elements.as_ref()?.get(self.offsets.element_icons);
+        let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(
+            sheet
+                .get(id * tango_gamesupport_common::dataview::rom::TILE_BYTES * 4..)?
+                .get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * 2 * 2)?,
+            2,
+        )
+        .ok()?;
+        Some(tango_gamesupport_common::dataview::rom::apply_palette(
+            paletted,
+            &self.element_icon_palette,
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -362,6 +407,14 @@ mod tests {
         // Blank rather than a panic, at the sizes the folder lays out.
         assert_eq!(chip.icon().dimensions(), (16, 16));
         assert_eq!(chip.image().dimensions(), (64, 56));
+        assert!(assets.element_icon(0).is_none());
+    }
+
+    #[test]
+    fn there_are_only_five_elements() {
+        use tango_gamesupport_common::dataview::rom::Assets as _;
+        let assets = Assets::new(&B6XJ_00, JA_CHARSET, vec![0; 0x1000]);
+        assert!(assets.element_icon(NUM_ELEMENTS).is_none());
     }
 }
 
