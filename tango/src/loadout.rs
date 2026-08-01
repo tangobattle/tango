@@ -244,7 +244,7 @@ impl Loadout {
                         }),
                         _ => None,
                     },
-                    sim_version: game.family.sim_version,
+                    sim_version: game.pvp.sim_version(),
                 }
             }),
             blind_setup: lobby.blind_setup,

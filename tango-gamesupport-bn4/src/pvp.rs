@@ -108,6 +108,10 @@ impl Pvp {
 }
 
 impl tango_backend_mgba::GameSupport for Pvp {
+    fn sim_version(&self) -> u16 {
+        0
+    }
+
     fn primer_traps(
         &self,
         config: &tango_backend_mgba::PrimeConfig,

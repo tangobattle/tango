@@ -98,9 +98,9 @@ pub enum ReplaySideError {
 ///
 /// A replay is re-simulated, not decoded, so playing one back on engine
 /// support that has changed since it was recorded produces a different
-/// match. [`Family::sim_version`] is the per-family lever for that:
-/// bumping it invalidates the family's existing recordings without
-/// touching any other family's. This is the one place the recorded and
+/// match. `tango_match::Backend::sim_version` is the lever for that:
+/// bumping it invalidates the games that changed and their existing
+/// recordings, and nobody else's. This is the one place the recorded and
 /// current versions are compared — every path that re-simulates a
 /// replay (playback, stats, export, the library scan's filter) resolves
 /// its sides through here.
@@ -113,11 +113,11 @@ pub fn find_for_replay_side(gi: &tango_replay::metadata::GameInfo) -> Result<Gam
         .ok()
         .and_then(|variant| find_by_family_and_variant(&gi.rom_family, variant))
         .ok_or_else(unknown)?;
-    if gi.sim_version != game.family.sim_version {
+    if gi.sim_version != game.pvp.sim_version() {
         return Err(ReplaySideError::SimVersionMismatch {
             family: gi.rom_family.clone(),
             recorded: gi.sim_version,
-            current: game.family.sim_version,
+            current: game.pvp.sim_version(),
         });
     }
     Ok(game)

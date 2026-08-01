@@ -68,6 +68,10 @@ impl Pvp {
 }
 
 impl tango_backend_mgba::GameSupport for Pvp {
+    fn sim_version(&self) -> u16 {
+        0
+    }
+
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<mgba::core::Core>> {
         /// One tick's reading of the chip on screen acting.
         #[derive(Clone, Copy, PartialEq, Eq)]
@@ -95,7 +99,13 @@ impl tango_backend_mgba::GameSupport for Pvp {
             prev: Option<Acting>,
         }
         impl ActingChipTracker {
-            fn tick(&mut self, round: u32, reading: Option<Acting>, player: usize, events: &tango_match::telemetry::EventSink) {
+            fn tick(
+                &mut self,
+                round: u32,
+                reading: Option<Acting>,
+                player: usize,
+                events: &tango_match::telemetry::EventSink,
+            ) {
                 if self.round != round {
                     *self = Self { round, prev: None };
                 }
@@ -160,12 +170,8 @@ impl tango_backend_mgba::GameSupport for Pvp {
                     }),
                     id => Some(Acting { id, shot: fires }),
                 };
-                self.chips.tick(
-                    round,
-                    acting_chip.filter(|_| actor == self.player),
-                    self.player,
-                    events,
-                );
+                self.chips
+                    .tick(round, acting_chip.filter(|_| actor == self.player), self.player, events);
                 Some(tango_match::telemetry::CoreObs {
                     // BCC's navis have no field to stand on: its battles
                     // are turn-based, not tiled.

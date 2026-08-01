@@ -15,6 +15,16 @@ use crate::link::Link;
 /// Per-game support for the melonDS engine, implemented in the game's
 /// own crate: walking a freshly booted pair into its link battle.
 pub trait GameSupport: Sync {
+    /// The game half of a registration's
+    /// [`sim_version`](tango_match::Backend::sim_version): bump it when
+    /// this game's own support starts producing a different match out of
+    /// the same inputs — where the walk hands off, what it writes on the
+    /// way, where a round or a match is read to begin and end. The
+    /// implementations carry a line per bump, because "which recordings
+    /// did this cost, and what for" is only answerable if it was written
+    /// down at the time.
+    fn sim_version(&self) -> u16;
+
     /// Walk a booted pair into the game's link battle. The walk must be
     /// a pure function of ROM/save/rtc/`match_type`/`rng_seed` — both
     /// peers run it on their own pairs and must reach identical state,
@@ -102,7 +112,28 @@ impl DsBackend {
     }
 }
 
+/// The engine half of every DS registration's
+/// [`sim_version`](tango_match::Backend::sim_version) — this crate and
+/// melonDS under it, which every cart here shares. Bump it when a match
+/// on this engine stops running the way it used to for reasons that
+/// have nothing to do with which cart it is: what a tick of emulated
+/// time is and how it gets filled, whether execution is compiled or
+/// interpreted, what a savestate carries, what the cartridge and
+/// wireless servers cost.
+///
+/// Every one of those has already happened, and each is written into
+/// *both* games' halves below because there was nowhere else to put it
+/// — the same emulator change spelled twice, once as EXE OSS 2 and once
+/// as BN5DS 5. The next one is spelled here instead, once, and costs
+/// exactly what it always did: every DS recording, and every DS peer on
+/// an older build.
+const BACKEND_SIM_VERSION: u16 = 1;
+
 impl tango_match::Backend for DsBackend {
+    fn sim_version(&self) -> u32 {
+        ((BACKEND_SIM_VERSION as u32) << 16) | self.support.sim_version() as u32
+    }
+
     fn screen_layout(&self, mode: tango_match::SessionMode) -> tango_match::ScreenLayout {
         match mode {
             // What `start`/`open_replay` set on the pair below.
@@ -197,13 +228,7 @@ struct Boot {
 impl tango_match::ReplayBoot for Boot {
     fn boot(&self, want_stats: bool, cancel: &AtomicBool) -> Result<tango_match::BootedReplay, tango_match::Error> {
         let mut link = self.pair()?;
-        prime_dark(
-            self.support,
-            &mut link,
-            self.match_type,
-            self.rng_seed,
-            Some(cancel),
-        )?;
+        prime_dark(self.support, &mut link, self.match_type, self.rng_seed, Some(cancel))?;
         // Session tick numbering starts after the walk, observed or
         // not (the walk drives the pair through the seam's tick, so it
         // counts otherwise). Captures then carry session ticks, which

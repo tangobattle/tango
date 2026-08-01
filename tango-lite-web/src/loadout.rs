@@ -54,7 +54,7 @@ impl Loadout {
                 name: name.clone(),
                 version: version.clone(),
             }),
-            sim_version: game.family.sim_version,
+            sim_version: game.pvp.sim_version(),
         })
     }
 

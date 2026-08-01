@@ -124,56 +124,7 @@ impl PrimeConfig {
     }
 }
 
-/// Per-ROM-variant support for the PvP engine, implemented in the
-/// gamesupport crates. Everything here is data-side: no packet munging,
-/// no handshake skips — the games run their real link protocol over the
-/// emulated cable (which is why priming must NOT jump the comm-menu
-/// dispatcher's states: the bring-up states are where the real handshake
-/// happens; skipping them yields the games' "communication failed" path).
-///
-/// Priming is entirely memory munging — the pair's joypads stay idle
-/// throughout and no input state of any kind is synthesized. The traps
-/// walk boot → comm menu → battle with control-state pokes at known
-/// menu-code anchors, letting the games' own link exchanges run for
-/// real over the emulated cable wherever the flow depends on them. The
-/// menus are poked into existence with no other input path, so every
-/// cursor is at its deterministic init position and no wrong option
-/// can ever be selected. Priming ends when the games' own battle-start
-/// code fires on both cores (`primed` — the trap engine's match-start
-/// hook), which is where the games begin accepting input.
-pub trait GameSupport: Sync {
-    /// PC-sited traps for one core running this game: the priming walk
-    /// (boot → the comm menu → the link battle; `player` is which pair
-    /// core this is, 0 = lockstep primary) plus, for core 0, the round
-    /// lifecycle anchors reporting into `events` — the game's
-    /// battle-start-complete site firing
-    /// [`round_started`](tango_match::telemetry::EventSink::round_started),
-    /// its result-deciding sites firing
-    /// [`round_outcome`](tango_match::telemetry::EventSink::round_outcome),
-    /// and its match-end site firing
-    /// [`match_ended`](tango_match::telemetry::EventSink::match_ended). The
-    /// priming pokes must be pure functions of emulation state and
-    /// `config`, so both peers' pairs prime bit-identically, and must go
-    /// inert once the battle is live (the traps stay installed for the
-    /// pair's life). Sink firings are host-side signals only — they
-    /// never touch core state, so they can't perturb the simulation.
-    fn primer_traps(
-        &self,
-        config: &PrimeConfig,
-        player: usize,
-        events: &tango_match::telemetry::EventSink,
-        primed: &PrimedLatch,
-    ) -> Vec<(u32, Box<dyn Fn(&mut mgba::core::Core)>)>;
-
-    /// The telemetry reader for one core running this game. `player` is
-    /// which pair core (and player) this poller answers for — it polls
-    /// the tick's levels and reports its own player's chip uses into
-    /// the sink as it catches them firing (see
-    /// [`CorePoller`](tango_match::telemetry::CorePoller)).
-    fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<mgba::core::Core>>;
-}
-
-pub use backend::{GbaBackend, Seat};
+pub use backend::{GameSupport, GbaBackend, Seat};
 
 /// Route mgba's own logging through the `log` crate.
 ///

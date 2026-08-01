@@ -75,40 +75,8 @@ pub static EXEOSS: Game = Game {
     save_editor: &ui::SAVE_EDITOR,
 };
 
-/// This family's simulation version. See [`Family::sim_version`] for
-/// what it gates and what warrants a bump.
-///
-/// 0: the first shipped walk.
-///
-/// 1: a match ends when the comm screen comes back, not when the battle
-/// scene goes. The DELETED banner, its jingle and the fade out all play
-/// in between — about 157 frames of match that used to be cut off the
-/// session and out of the recording. Peers have to agree about where a
-/// match stops, and a recording made against the old anchor is 157
-/// frames short of one made against this.
-///
-/// 2: the cartridge backup server's pre-poll delay is capped at one
-/// tick rather than zeroed. Zeroing it left a cart with no play on it
-/// crawling through the comm screens — 1531 frames of link half against
-/// a played cart's 197 — and the one tick that fixes that costs the
-/// save 11 frames, so priming hands over that much later.
-///
-/// 3: a tick became a span of emulated time rather than a video frame,
-/// so a console stretching its display can no longer outrun its peer's
-/// wifi clock. Every tick of the emulated timeline lands differently.
-///
-/// 4: that span is now filled in whole frames. A call used to be able
-/// to stop partway through one and resume next tick — and the resumed
-/// call, finishing a few scanlines and returning, handed back nearly a
-/// whole span that nothing could ever make up, leaving the console a
-/// frame behind its peer for the rest of the session. It now overruns
-/// the span instead and pays the debt out of the next one, which moves
-/// the timeline wherever a frame did not end exactly on a span.
-const SIM_VERSION: u32 = 4;
-
 pub static EXEOSS_FAMILY: Family = Family {
     id: "exeoss",
-    sim_version: SIM_VERSION,
     games: &[&EXEOSS],
     translations: &[("en-US", include_str!("../locales/en-US/exeoss.ftl"))],
 };

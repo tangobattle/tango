@@ -154,10 +154,12 @@ pub struct Game {
     /// `None` when this game has no save/ROM model.
     pub load_rom_assets_fn: Option<fn(rom: &[u8], wram: &[u8], charset: Option<&[&str]>) -> BoxedAssets>,
 
-    /// How this ROM plays netplay, and on which engine.
     /// How this game starts a match, plays on its own, and replays a
     /// recording — all on whatever emulator it runs, which nothing
-    /// outside the game's own crate ever learns.
+    /// outside the game's own crate ever learns. Also how this build
+    /// simulates it ([`sim_version`](tango_match::Backend::sim_version)),
+    /// which used to be a field on the family: the number describes the
+    /// engine support, so it belongs to the engine support.
     pub pvp: &'static (dyn tango_match::Backend + Send + Sync),
 
     /// Length-per-mode list. Entry `i` is how many subtypes mode `i` has —
@@ -196,7 +198,6 @@ impl Game {
     pub fn family_and_variant(&self) -> (&'static str, u8) {
         (self.family.id, self.variant)
     }
-
 
     pub fn rom_code_and_revision(&self) -> (&'static [u8; 4], u8) {
         (self.rom_code, self.revision)
@@ -261,27 +262,6 @@ pub struct Family {
     /// Family id, e.g. `"bn6"` / `"exe6"`. Equal to the `family` field of
     /// every game in [`games`](Self::games).
     pub id: &'static str,
-    /// How this build simulates the family, as one number: bumping it
-    /// says "a match here no longer runs the way it used to". Both
-    /// consumers of that fact use this same value.
-    ///
-    /// - Replays. Recorders stamp it into each side's metadata, and
-    ///   playback requires the recorded value to equal the current one
-    ///   — so a bump invalidates this family's existing recordings and
-    ///   nobody else's.
-    /// - Netplay. Peers announce it beside the game they've picked, and
-    ///   a pairing whose two values differ is refused before either
-    ///   side commits — the two builds would simulate the same inputs
-    ///   into different matches.
-    ///
-    /// Bump it when the family's engine support changes in a way that
-    /// makes the same inputs produce a different match (input mapping,
-    /// priming, trap layout, the emulated timeline underneath it).
-    /// Because it is per-family, that costs the games that changed and
-    /// no others — the wire's own `PROTOCOL_VERSION` is for changes to
-    /// the netplay protocol itself, and container-wide replay layout
-    /// changes still belong to `tango_replay::VERSION`.
-    pub sim_version: u32,
     /// The variants in this family (its `Game` registrations).
     pub games: &'static [GameRef],
     /// Per-locale Fluent fragments for this family, one `(lang, source)`

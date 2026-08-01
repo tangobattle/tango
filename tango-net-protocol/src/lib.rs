@@ -93,8 +93,8 @@ pub mod derive;
 // as the game's own communication errors. The wire format is untouched;
 // they simply must not pair.
 // 0x55: a peer's lobby settings announce how its build simulates the
-// game it has picked — `GameInfo` grew `sim_version`, the per-family
-// number its replays are already stamped with — and a pairing whose two
+// game it has picked — `GameInfo` grew `sim_version`, the same number
+// its replays are already stamped with — and a pairing whose two
 // values differ is refused. A 0x54 peer's Settings can't decode against
 // ours, hence the bump; what the field buys is that the *next* change of
 // this kind won't need one. 0x52 and 0x54 were both a single game's

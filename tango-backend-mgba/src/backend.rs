@@ -33,8 +33,70 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use mgba_rollback::{LinkOptions, Peripheral, SideOptions};
 
+use crate::PrimeConfig;
 use tango_match::telemetry::{EventSink, Telemetry};
-use crate::{GameSupport, PrimeConfig};
+
+/// Per-ROM-variant support for the PvP engine, implemented in the
+/// gamesupport crates. Everything here is data-side: no packet munging,
+/// no handshake skips — the games run their real link protocol over the
+/// emulated cable (which is why priming must NOT jump the comm-menu
+/// dispatcher's states: the bring-up states are where the real handshake
+/// happens; skipping them yields the games' "communication failed" path).
+///
+/// Priming is entirely memory munging — the pair's joypads stay idle
+/// throughout and no input state of any kind is synthesized. The traps
+/// walk boot → comm menu → battle with control-state pokes at known
+/// menu-code anchors, letting the games' own link exchanges run for
+/// real over the emulated cable wherever the flow depends on them. The
+/// menus are poked into existence with no other input path, so every
+/// cursor is at its deterministic init position and no wrong option
+/// can ever be selected. Priming ends when the games' own battle-start
+/// code fires on both cores (`primed` — the trap engine's match-start
+/// hook), which is where the games begin accepting input.
+pub trait GameSupport: Sync {
+    /// The game half of a registration's
+    /// [`sim_version`](tango_match::Backend::sim_version): bump it when
+    /// this game's own support starts producing a different match out of
+    /// the same inputs — priming, where the traps sit and what they poke,
+    /// where a round or a match is decided to begin and end.
+    ///
+    /// Every seat a family can pair across must return the same number.
+    /// Crossplay announces each peer's *own* cart's value and refuses a
+    /// pairing that disagrees, so a JP variant left behind a bumped US
+    /// one stops linking with it — the change is to the support the two
+    /// share, so it costs both seats or neither.
+    fn sim_version(&self) -> u16;
+
+    /// PC-sited traps for one core running this game: the priming walk
+    /// (boot → the comm menu → the link battle; `player` is which pair
+    /// core this is, 0 = lockstep primary) plus, for core 0, the round
+    /// lifecycle anchors reporting into `events` — the game's
+    /// battle-start-complete site firing
+    /// [`round_started`](tango_match::telemetry::EventSink::round_started),
+    /// its result-deciding sites firing
+    /// [`round_outcome`](tango_match::telemetry::EventSink::round_outcome),
+    /// and its match-end site firing
+    /// [`match_ended`](tango_match::telemetry::EventSink::match_ended). The
+    /// priming pokes must be pure functions of emulation state and
+    /// `config`, so both peers' pairs prime bit-identically, and must go
+    /// inert once the battle is live (the traps stay installed for the
+    /// pair's life). Sink firings are host-side signals only — they
+    /// never touch core state, so they can't perturb the simulation.
+    fn primer_traps(
+        &self,
+        config: &PrimeConfig,
+        player: usize,
+        events: &tango_match::telemetry::EventSink,
+        primed: &crate::PrimedLatch,
+    ) -> Vec<(u32, Box<dyn Fn(&mut mgba::core::Core)>)>;
+
+    /// The telemetry reader for one core running this game. `player` is
+    /// which pair core (and player) this poller answers for — it polls
+    /// the tick's levels and reports its own player's chip uses into
+    /// the sink as it catches them firing (see
+    /// [`CorePoller`](tango_match::telemetry::CorePoller)).
+    fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<mgba::core::Core>>;
+}
 
 /// One cartridge in a family, keyed as its ROM header names it.
 pub type Seat = (&'static [u8; 4], u8, &'static (dyn GameSupport + Send + Sync));
@@ -87,7 +149,28 @@ impl GbaBackend {
     }
 }
 
+/// The engine half of every GBA registration's
+/// [`sim_version`](tango_match::Backend::sim_version) — this crate and
+/// the emulator under it, which every game here shares. Bump it when a
+/// match on this engine stops running the way it used to for reasons
+/// that have nothing to do with which game it is: the rollback engine's
+/// stepping, what a tick of emulated time is, mgba's own timeline. That
+/// re-cuts every GBA game's recordings and turns away every GBA peer on
+/// an older build at once, which is the honest cost of an emulator
+/// change — the alternative is spelling it into every game's half and
+/// hoping none is missed.
+const BACKEND_SIM_VERSION: u16 = 0;
+
 impl tango_match::Backend for GbaBackend {
+    /// The pair's two carts can be different variants, but only the
+    /// local one's number is ours to announce: the peer reports theirs,
+    /// and the lobby compares the two (see
+    /// [`GameSupport::sim_version`], which is why crossplay siblings
+    /// must agree).
+    fn sim_version(&self) -> u32 {
+        ((BACKEND_SIM_VERSION as u32) << 16) | self.local.sim_version() as u32
+    }
+
     fn screen_layout(&self, _mode: tango_match::SessionMode) -> tango_match::ScreenLayout {
         // One screen, and no stylus to point at it — the GBA presents
         // the same display in every mode.
@@ -344,10 +427,8 @@ impl Boot {
     fn wrap(&self, pair: mgba_rollback::Link, events: Option<EventSink>) -> tango_match::BootedReplay {
         let (telemetry, handle) = match events {
             Some(events) => {
-                let (telemetry, handle) = Telemetry::new(
-                    [self.support[0].core_poller(0), self.support[1].core_poller(1)],
-                    events,
-                );
+                let (telemetry, handle) =
+                    Telemetry::new([self.support[0].core_poller(0), self.support[1].core_poller(1)], events);
                 (Some(telemetry), Some(handle))
             }
             None => (None, None),

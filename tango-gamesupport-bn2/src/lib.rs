@@ -24,10 +24,7 @@ macro_rules! bn2_save {
 /// A match needs both seats' engine support and a factory only
 /// holds its own, so this is where the peer's gets resolved — the
 /// one place that knows what this family's siblings are.
-pub static FAMILY: &[tango_backend_mgba::Seat] = &[
-    (b"AE2J", 0, &pvp::SIO_AE2J_00_AC),
-    (b"AE2E", 0, &pvp::PVP_AE2E_00),
-];
+pub static FAMILY: &[tango_backend_mgba::Seat] = &[(b"AE2J", 0, &pvp::SIO_AE2J_00_AC), (b"AE2E", 0, &pvp::PVP_AE2E_00)];
 
 static ENGINE_SIO_AE2J_00_AC: tango_backend_mgba::GbaBackend =
     tango_backend_mgba::GbaBackend::new(&pvp::SIO_AE2J_00_AC, FAMILY);
@@ -148,22 +145,14 @@ macro_rules! family_translations {
     };
 }
 
-/// This crate's families' simulation version — one engine serves
-/// them all, so a change that re-cuts one family's matches re-cuts
-/// its siblings' too. See [`Family::sim_version`] for what it gates
-/// and what warrants a bump.
-const SIM_VERSION: u32 = 0;
-
 pub static EXE2_FAMILY: Family = Family {
     id: "exe2",
-    sim_version: SIM_VERSION,
     games: &[&EXE2],
     translations: family_translations!("exe2"),
 };
 
 pub static BN2_FAMILY: Family = Family {
     id: "bn2",
-    sim_version: SIM_VERSION,
     games: &[&BN2],
     translations: family_translations!("bn2"),
 };

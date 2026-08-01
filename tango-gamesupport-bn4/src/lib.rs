@@ -291,22 +291,14 @@ macro_rules! family_translations {
     };
 }
 
-/// This crate's families' simulation version — one engine serves
-/// them all, so a change that re-cuts one family's matches re-cuts
-/// its siblings' too. See [`Family::sim_version`] for what it gates
-/// and what warrants a bump.
-const SIM_VERSION: u32 = 0;
-
 pub static EXE4_FAMILY: Family = Family {
     id: "exe4",
-    sim_version: SIM_VERSION,
     games: &[&EXE4RS, &EXE4BM],
     translations: family_translations!("exe4"),
 };
 
 pub static BN4_FAMILY: Family = Family {
     id: "bn4",
-    sim_version: SIM_VERSION,
     games: &[&BN4RS, &BN4BM],
     translations: family_translations!("bn4"),
 };

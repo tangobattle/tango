@@ -233,6 +233,38 @@ pub enum SessionMode {
 /// [`Match`](crate::Match) — the engine underneath it is erased at the
 /// [`Link`].
 pub trait Backend: Sync {
+    /// How this build simulates this game, as one number: bumping it
+    /// says "a match here no longer runs the way it used to". Both
+    /// consumers of that fact use this same value.
+    ///
+    /// - Replays. Recorders stamp it into each side's metadata, and
+    ///   playback requires the recorded value to equal the current one
+    ///   — so a bump invalidates this game's existing recordings and
+    ///   nobody else's.
+    /// - Netplay. Peers announce it beside the game they've picked, and
+    ///   a pairing whose two values differ is refused before either
+    ///   side commits — the two builds would simulate the same inputs
+    ///   into different matches.
+    ///
+    /// Bump it when anything under this backend changes in a way that
+    /// makes the same inputs produce a different match (input mapping,
+    /// priming, trap layout, the emulated timeline underneath it).
+    /// Because the number comes off the backend a registration holds,
+    /// that costs the games that changed and no others — the wire's own
+    /// `PROTOCOL_VERSION` is for changes to the netplay protocol
+    /// itself, and container-wide replay layout changes still belong to
+    /// `tango_replay::VERSION`.
+    ///
+    /// Two independent things can move a match, though, and one backend
+    /// serves every game on its emulator: so both engines pack their
+    /// own version into the high 16 bits and the game's into the low
+    /// 16. An emulator change bumps the engine half once and re-cuts
+    /// every game it runs; a game's own priming or traps bump only that
+    /// game's half. Nobody outside reads the halves apart — to its two
+    /// consumers this is one opaque number, compared for equality (and,
+    /// in the lobby, for which of the two peers is behind).
+    fn sim_version(&self) -> u32;
+
     /// How this game's console presents its display in `mode`, known
     /// before a session exists so a host can lay out its pane.
     ///

@@ -80,6 +80,10 @@ impl Pvp {
 }
 
 impl tango_backend_mgba::GameSupport for Pvp {
+    fn sim_version(&self) -> u16 {
+        0
+    }
+
     fn primer_traps(
         &self,
         config: &tango_backend_mgba::PrimeConfig,
@@ -349,14 +353,10 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 // screen's sub-modes, 0 during action.
                 let custom_self = core.raw_read_8(self.ewram.custom_flags + self.player as u32, -1) != 0;
                 match own_chip_reading(self.ewram, core, self.player) {
-                    ChipReading::Hand(token) => self.hand.tick(
-                        round,
-                        token,
-                        custom_self,
-                        units[self.player].hp,
-                        self.player,
-                        events,
-                    ),
+                    ChipReading::Hand(token) => {
+                        self.hand
+                            .tick(round, token, custom_self, units[self.player].hp, self.player, events)
+                    }
                     ChipReading::QueueSum(sum) => self.queue.tick(round, sum, self.player, events),
                 }
                 Some(tango_match::telemetry::CoreObs {

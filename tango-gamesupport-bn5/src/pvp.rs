@@ -94,6 +94,10 @@ impl Pvp {
 }
 
 impl tango_backend_mgba::GameSupport for Pvp {
+    fn sim_version(&self) -> u16 {
+        0
+    }
+
     fn primer_traps(
         &self,
         config: &tango_backend_mgba::PrimeConfig,
@@ -406,8 +410,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 // chip-select is open, 0 once they confirm (or outside
                 // the custom screen entirely). Verified against the
                 // golden replays -- identical episode pattern to bn6's.
-                let custom_self =
-                    core.raw_read_8(self.ewram.battle_state + 0x14 + self.player as u32, -1) == 4;
+                let custom_self = core.raw_read_8(self.ewram.battle_state + 0x14 + self.player as u32, -1) == 4;
                 // This core's own player's chip fires, off its hand
                 // block's fired counter (see `loaded_chips`).
                 self.chips.tick(

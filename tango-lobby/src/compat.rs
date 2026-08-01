@@ -56,12 +56,12 @@ pub enum Verdict {
     /// not allowed.
     DifferentVersions,
     /// The same game, but the peer's build simulates it the way an
-    /// older one of ours did — its engine support for this family
+    /// older one of ours did — its engine support for this game
     /// predates a change here. Not fixable from this end: they have to
-    /// update. See `tango_gamesupport::Family::sim_version`.
+    /// update. See `tango_match::Backend::sim_version`.
     SimVersionTooOld,
     /// The same game, simulated the way a build newer than ours does —
-    /// this family's engine support has changed since our release, so
+    /// this game's engine support has changed since our release, so
     /// we're the ones who have to update.
     SimVersionTooNew,
     /// Tags agree but the picked match types diverge.
@@ -102,7 +102,7 @@ pub fn check(
     }
 
     // Same game, different simulations of it: one build's engine
-    // support for this family has moved since the other's. The peer's
+    // support for this game has moved since the other's. The peer's
     // number is theirs to report — we can't derive it, because what it
     // describes is their build, not their game. Which side is behind is
     // worth saying: only one of the two can act on it.

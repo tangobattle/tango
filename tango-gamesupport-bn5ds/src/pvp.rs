@@ -173,6 +173,54 @@ const UNIT_STRIDE: u32 = 0xdc;
 const BATTLE_SESSION: u32 = 0x0003_0102;
 
 impl tango_backend_melonds::GameSupport for Pvp {
+    /// 1: priming hands off when the battle transition starts (the board
+    /// module's departure) instead of when the battle module arrives, a
+    /// few frames earlier — recordings made against the old finish line
+    /// carry inputs offset by that gap.
+    ///
+    /// 3: melonDS runs interpreted — the JIT is no longer built (see
+    /// melonds-sys's build script). Compiled and interpreted execution
+    /// don't cost the same cycles, so every tick of the emulated timeline
+    /// lands differently: a match against a JIT build desyncs, and its
+    /// recordings replay to a different match here.
+    ///
+    /// 4: a savestate carries the ARM9's divider and square-root registers
+    /// (melonds-rs d4314a5), and a client's default MP reply no longer
+    /// puts uninitialised stack on the air (a039993). Neither moves the
+    /// timeline the way 3 did — a run from boot lands where it did — but a
+    /// *restore* no longer hands the game back arithmetic left over from
+    /// the run it took back, so two peers only agree about a rolled-back
+    /// tick if both carry the fix.
+    ///
+    /// 5: the cartridge backup server's pre-poll delay is capped at one
+    /// tick rather than zeroed. Returning from that wait without ever
+    /// sleeping is what left EXE OSS's comm screens crawling on a cart with
+    /// no play on it, and this is the same backup server on the same
+    /// emulator; the tick costs the save a handful of frames, so priming
+    /// hands over that much later.
+    ///
+    /// 7: what a console plays now comes out of its own cartridge instead
+    /// of a session payload riding beside it. Priming walks the file the
+    /// game itself calls most recently saved (a recording made when the
+    /// payload named the *other* file re-primes into a different save), and
+    /// a save carrying a GBA-slot cross gets it written back at the file
+    /// select's own store, which the walk did not touch before.
+    ///
+    /// (Also 7, landing together: a tick's span of emulated time is filled
+    /// in whole frames. A call used to be able to stop partway through one,
+    /// and the resumed call — finishing a few scanlines and returning —
+    /// handed back nearly a whole span that nothing could ever make up. A
+    /// console that did that once ran a frame behind its peer forever,
+    /// which is every one of its wireless replies landing outside the
+    /// host's poll window: the pairings that would not associate.)
+    ///
+    /// 3, 4, 5 and the parenthetical half of 7 were the emulator moving,
+    /// not this cart — they belong to `BACKEND_SIM_VERSION` now, which is
+    /// where the next one goes.
+    fn sim_version(&self) -> u16 {
+        7
+    }
+
     fn prime(
         &self,
         link: &mut Link,

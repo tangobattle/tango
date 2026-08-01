@@ -17,9 +17,7 @@ const BACKGROUND: BackgroundRef = BackgroundRef {
 /// A match needs both seats' engine support and a factory only
 /// holds its own, so this is where the peer's gets resolved — the
 /// one place that knows what this family's siblings are.
-pub static FAMILY: &[tango_backend_mgba::Seat] = &[
-    (b"BR4J", 0, &pvp::PVP_BR4J_00),
-];
+pub static FAMILY: &[tango_backend_mgba::Seat] = &[(b"BR4J", 0, &pvp::PVP_BR4J_00)];
 
 static ENGINE_PVP_BR4J_00: tango_backend_mgba::GbaBackend =
     tango_backend_mgba::GbaBackend::new(&pvp::PVP_BR4J_00, FAMILY);
@@ -85,13 +83,8 @@ macro_rules! family_translations {
     };
 }
 
-/// The family's simulation version. See [`Family::sim_version`] for
-/// what it gates and what warrants a bump.
-const SIM_VERSION: u32 = 0;
-
 pub static EXE45_FAMILY: Family = Family {
     id: "exe45",
-    sim_version: SIM_VERSION,
     games: &[&EXE45],
     translations: family_translations!("exe45"),
 };

@@ -1368,7 +1368,7 @@ fn build_replay_writer(
         game_info: Some(tango_replay::metadata::GameInfo {
             rom_family: local_gi.family_and_variant.0.clone(),
             rom_variant: local_gi.family_and_variant.1 as u32,
-            sim_version: local_game.family.sim_version,
+            sim_version: local_game.pvp.sim_version(),
             patch: local_gi
                 .patch
                 .as_ref()
@@ -1387,7 +1387,7 @@ fn build_replay_writer(
         game_info: Some(tango_replay::metadata::GameInfo {
             rom_family: remote_gi.family_and_variant.0.clone(),
             rom_variant: remote_gi.family_and_variant.1 as u32,
-            sim_version: remote_game.family.sim_version,
+            sim_version: remote_game.pvp.sim_version(),
             patch: remote_gi
                 .patch
                 .as_ref()
@@ -1686,9 +1686,7 @@ impl PvpDriver {
         // match-end hook. The round lifecycle needs nothing from this
         // loop: rounds are the stats fold's business, and the recording
         // has no opinion about them.
-        let match_ended = events
-            .iter()
-            .any(|(_, e)| matches!(e, telemetry::Event::MatchEnded));
+        let match_ended = events.iter().any(|(_, e)| matches!(e, telemetry::Event::MatchEnded));
 
         // Confirmed inputs: replay sink + the buttons half of the
         // stats merge below.
