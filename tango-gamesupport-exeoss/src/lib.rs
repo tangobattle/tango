@@ -92,7 +92,7 @@ pub static EXEOSS: Game = Game {
 /// crawling through the comm screens — 1531 frames of link half against
 /// a played cart's 197 — and the one tick that fixes that costs the
 /// save 11 frames, so priming hands over that much later.
-const SIM_VERSION: u32 = 2;
+const SIM_VERSION: u32 = 3;
 
 pub static EXEOSS_FAMILY: Family = Family {
     id: "exeoss",

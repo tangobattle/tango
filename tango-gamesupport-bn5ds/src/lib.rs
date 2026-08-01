@@ -146,7 +146,7 @@ pub static EXE5DS: Game = Game {
 /// no play on it, and this is the same backup server on the same
 /// emulator; the tick costs the save a handful of frames, so priming
 /// hands over that much later.
-const SIM_VERSION: u32 = 5;
+const SIM_VERSION: u32 = 6;
 
 pub static BN5DS_FAMILY: Family = Family {
     id: "bn5ds",
