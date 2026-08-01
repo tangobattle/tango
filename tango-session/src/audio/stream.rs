@@ -100,7 +100,7 @@ const AUDIO_DISCARD_FACTOR: f64 = 3.0;
 /// count instead.
 const STARVED_FILLS_TO_REPRIME: u32 = 3;
 
-pub struct CoreStream {
+pub struct Stream {
     /// The console's audio, already resampled to the device rate by
     /// whichever backend produced it. This stream never learns which
     /// emulator that was. Shared with the [`Intake`] the drive loop
@@ -108,9 +108,13 @@ pub struct CoreStream {
     /// take's worth of memcpy), so neither side can stall the other
     /// past that.
     pull: Arc<std::sync::Mutex<super::Resampler>>,
+    /// The console's own frame rate
+    /// ([`FrameTiming::fps`](tango_match::FrameTiming::fps)) — the pace
+    /// its audio production is a function of, and so what the faux
+    /// clock below measures the host's target against.
     expected_fps: f32,
     /// The host drive loop's current pacing target, f32. Zero or less is
-    /// treated as unthrottled (60 fps).
+    /// treated as the console's own rate.
     fps_target: Box<dyn Fn() -> f32 + Send>,
     out_rate: u32,
     /// Serve silence until the queue reaches target once. Latched at
@@ -133,9 +137,9 @@ pub struct CoreStream {
     starved_fills: u32,
 }
 
-impl CoreStream {
+impl Stream {
     pub fn new(
-        pull: Box<dyn tango_match::AudioDrain>,
+        pull: Box<dyn super::Drain>,
         expected_fps: f32,
         fps_target: impl Fn() -> f32 + Send + 'static,
         out_rate: u32,
@@ -194,7 +198,7 @@ impl Intake {
     }
 }
 
-impl super::Stream for CoreStream {
+impl super::Source for Stream {
     fn fill(&mut self, buf: &mut [[i16; super::NUM_CHANNELS]]) -> usize {
         let frame_count = buf.len();
         // Shared only with the intake's bounded memcpy-sized holds, so
@@ -215,7 +219,22 @@ impl super::Stream for CoreStream {
         // The faux clock: production scales with the sim's pace, so a
         // throttled sim stretches playback by the same ratio instead of
         // starving it (and a fast-forwarded one compresses).
-        let mut faux_clock = pull.framerate_ratio(fps_target as f64);
+        //
+        // Native over target, *not* the other way round: at twice the
+        // console's framerate it emits twice the audio per wall-clock
+        // second, so what it produced in a second now has to play in
+        // half of one and the ratio falls. It scales the resampler's
+        // destination rate directly, so inverting it would make a
+        // fast-forward play *slower* rather than faster.
+        //
+        // Arithmetic on the console's own frame clock rather than a
+        // question for the console: production per frame is fixed, and
+        // both terms are already here. Asking meant a lock-guarded read
+        // per fill, with a cached answer for the fills that missed —
+        // and a fast-forwarded drive loop holds the console for most of
+        // wall time, so those were exactly the fills a speed change
+        // landed on.
+        let mut faux_clock = self.expected_fps as f64 / fps_target as f64;
         if !faux_clock.is_finite() || faux_clock <= 0.0 {
             faux_clock = 1.0;
         }
@@ -323,7 +342,7 @@ impl super::Stream for CoreStream {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use super::super::{Stream, NUM_CHANNELS};
+    use super::super::{Drain, Source, NUM_CHANNELS};
     use super::*;
 
     const RATE: f64 = 32768.0;
@@ -333,30 +352,18 @@ mod tests {
     /// A console ring the test produces into by hand.
     struct Ring(Arc<Mutex<f64>>);
 
-    impl tango_match::AudioDrain for Ring {
+    impl Drain for Ring {
         fn sample_rate(&self) -> f64 {
             RATE
         }
 
-        /// How long a second of this console's production lasts once the
-        /// host paces it at `fps_target` — mgba's convention.
-        fn framerate_ratio(&self, fps_target: f64) -> f64 {
-            if fps_target > 0.0 {
-                NATIVE_FPS / fps_target
-            } else {
-                1.0
-            }
-        }
-
-        fn drain(&mut self, out: &mut [i16]) -> tango_match::Drained {
+        fn drain(&mut self, out: &mut [i16]) -> Option<usize> {
             let mut level = self.0.lock().unwrap();
-            let written = (*level as usize).min(out.len() / 2);
+            let total = *level as usize;
+            let written = total.min(out.len() / 2);
             *level -= written as f64;
             out[..written * 2].fill(1);
-            tango_match::Drained {
-                written,
-                queued: *level as usize,
-            }
+            Some(total)
         }
     }
 
@@ -384,7 +391,12 @@ mod tests {
         let ring = Arc::new(Mutex::new(RATE * AUDIO_TARGET_QUEUED_SECS));
         let pull = Box::new(Ring(ring.clone()));
         let published = Arc::new(std::sync::atomic::AtomicU32::new((NATIVE_FPS as f32).to_bits()));
-        let mut stream = CoreStream::new(pull, 60.0, CoreStream::fps_from_bits(published.clone()), OUT_RATE);
+        let mut stream = Stream::new(
+            pull,
+            NATIVE_FPS as f32,
+            Stream::fps_from_bits(published.clone()),
+            OUT_RATE,
+        );
 
         let secs_per_fill = FILL as f64 / OUT_RATE as f64;
         let mut buf = vec![[0i16; NUM_CHANNELS]; FILL];
@@ -404,7 +416,7 @@ mod tests {
             // before this fill consumes — since after would read a
             // fill's worth low and make a settled queue look starved.
             run.queued.push(stream.pull.lock().unwrap().source_available() as f64);
-            let delivered = <CoreStream as Stream>::fill(&mut stream, &mut buf);
+            let delivered = stream.fill(&mut buf);
             if delivered < FILL {
                 run.short.push(i);
             }
@@ -565,18 +577,14 @@ mod tests {
         armed: Arc<std::sync::atomic::AtomicBool>,
     }
 
-    impl tango_match::AudioDrain for PumpOnly {
+    impl Drain for PumpOnly {
         fn sample_rate(&self) -> f64 {
             self.ring.sample_rate()
         }
 
-        fn framerate_ratio(&self, fps_target: f64) -> f64 {
-            self.ring.framerate_ratio(fps_target)
-        }
-
-        fn drain(&mut self, out: &mut [i16]) -> tango_match::Drained {
+        fn drain(&mut self, out: &mut [i16]) -> Option<usize> {
             if !self.armed.swap(false, Ordering::Relaxed) {
-                return tango_match::Drained { written: 0, queued: 0 };
+                return None;
             }
             self.ring.drain(out)
         }
@@ -595,7 +603,12 @@ mod tests {
             armed: armed.clone(),
         });
         let published = Arc::new(std::sync::atomic::AtomicU32::new((NATIVE_FPS as f32).to_bits()));
-        let mut stream = CoreStream::new(pull, 60.0, CoreStream::fps_from_bits(published.clone()), OUT_RATE);
+        let mut stream = Stream::new(
+            pull,
+            NATIVE_FPS as f32,
+            Stream::fps_from_bits(published.clone()),
+            OUT_RATE,
+        );
         let intake = stream.intake();
 
         let secs_per_fill = FILL as f64 / OUT_RATE as f64;
@@ -608,7 +621,7 @@ mod tests {
             armed.store(true, Ordering::Relaxed);
             intake.pump();
             // The fill's own reach finds the console held again.
-            if <CoreStream as Stream>::fill(&mut stream, &mut buf) < FILL {
+            if stream.fill(&mut buf) < FILL {
                 short.push(i);
             }
         }

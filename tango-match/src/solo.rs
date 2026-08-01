@@ -71,9 +71,34 @@ impl Solo {
         self.console.lock().unwrap().side().export_save()
     }
 
-    /// This console's audio, for the host's sound stream.
-    pub fn audio(&self) -> Box<dyn crate::AudioDrain> {
-        crate::audio::solo_audio(self.console.clone())
+    /// A handle onto this console, for a host reading it off the thread
+    /// that ticks it — its audio, mainly.
+    pub fn side_source(&self) -> Box<dyn crate::SideSource> {
+        Box::new(LoneConsole {
+            console: self.console.clone(),
+        })
+    }
+}
+
+/// A console booted alone, as [`Solo::side_source`] hands it out:
+/// behind the same lock the ride ticks it under.
+struct LoneConsole {
+    console: std::sync::Arc<std::sync::Mutex<dyn Console>>,
+}
+
+impl crate::SideSource for LoneConsole {
+    fn with_side(&self, f: &mut dyn FnMut(&mut dyn crate::Side)) {
+        f(&mut *self.console.lock().unwrap().side());
+    }
+
+    fn try_side(&self, f: &mut dyn FnMut(&mut dyn crate::Side)) -> bool {
+        match self.console.try_lock() {
+            Ok(mut console) => {
+                f(&mut *console.side());
+                true
+            }
+            Err(_) => false,
+        }
     }
 }
 

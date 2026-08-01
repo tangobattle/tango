@@ -305,7 +305,7 @@ struct Engine {
     driver: Driver,
     /// The session's audio, read by [`crate::audio::Sink::pump`]. Held
     /// here so it dies with the session it belongs to.
-    stream: Option<tango_session::audio::CoreStream>,
+    stream: Option<tango_session::audio::Stream>,
     sink: Option<Rc<RefCell<crate::audio::Sink>>>,
     kind: Kind,
     /// `performance.now()` at the last pump, and the fractional frame
@@ -341,7 +341,7 @@ const SAVE_INTERVAL_MS: f64 = 10_000.0;
 pub fn start_single_player(
     session: SinglePlayerSession,
     driver: tango_session::singleplayer::Driver,
-    stream: tango_session::audio::CoreStream,
+    stream: tango_session::audio::Stream,
     sink: Option<Rc<RefCell<crate::audio::Sink>>>,
     save_path: Option<std::path::PathBuf>,
 ) {
@@ -359,7 +359,7 @@ pub fn start_single_player(
 pub fn start_pvp(
     session: PvpSession,
     driver: PvpBoot,
-    stream: tango_session::audio::CoreStream,
+    stream: tango_session::audio::Stream,
     sink: Option<Rc<RefCell<crate::audio::Sink>>>,
 ) {
     install(
@@ -375,7 +375,7 @@ pub fn start_pvp(
 fn install(
     session: Box<dyn Session>,
     driver: Driver,
-    stream: tango_session::audio::CoreStream,
+    stream: tango_session::audio::Stream,
     sink: Option<Rc<RefCell<crate::audio::Sink>>>,
     kind: Kind,
     save_path: Option<std::path::PathBuf>,
@@ -493,7 +493,7 @@ fn priming_of(pvp: Option<&PvpSession>, replay: Option<&ReplaySession>) -> Optio
 pub fn start_replay(
     session: ReplaySession,
     driver: tango_session::replay::Driver,
-    stream: tango_session::audio::CoreStream,
+    stream: tango_session::audio::Stream,
     sink: Option<Rc<RefCell<crate::audio::Sink>>>,
 ) {
     install(

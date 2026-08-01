@@ -347,7 +347,7 @@ impl PvpSession {
     /// session's audio stream — the local core's samples at the args'
     /// `sample_rate`, rate control following the drive loop's published
     /// fps target, silent until the boot lands.
-    pub async fn new(args: PvpSessionArgs<'_>) -> Result<(Self, PvpBoot, crate::audio::CoreStream), crate::Error> {
+    pub async fn new(args: PvpSessionArgs<'_>) -> Result<(Self, PvpBoot, crate::audio::Stream), crate::Error> {
         let PvpSessionArgs {
             local_game,
             local_rom,
@@ -564,8 +564,8 @@ impl PvpSession {
         // that feeds it exists: it pulls silence off the deferred drain
         // until the boot below hands over the real one.
         let audio_drain = crate::audio::DeferredDrain::default();
-        let audio = crate::audio::CoreStream::new(
-            Box::new(audio_drain.clone()) as Box<dyn tango_match::AudioDrain>,
+        let audio = crate::audio::Stream::new(
+            Box::new(audio_drain.clone()) as Box<dyn crate::audio::Drain>,
             expected_fps,
             {
                 let metrics = metrics.clone();
@@ -995,7 +995,7 @@ impl DriveContext {
         self,
         pieces: BootPieces,
         expected_fps: f32,
-    ) -> Result<(PvpDriver, Box<dyn tango_match::AudioDrain>), tango_match::Error> {
+    ) -> Result<(PvpDriver, Box<dyn crate::audio::Drain>), tango_match::Error> {
         // The game's registration starts the match on whatever engine it
         // runs; this session never learns which.
         let local = pieces.pvp[pieces.local_player];
@@ -1015,7 +1015,8 @@ impl DriveContext {
             // host's drive-thread join waits the walk out.
             cancel: Some(&self.boot_cancel),
         })?;
-        let audio = match_.audio();
+        let local_seat = Arc::new(std::sync::atomic::AtomicUsize::new(match_.local_player()));
+        let audio = crate::audio::side_drain(match_.side_source(local_seat));
 
         // Our half of the ready gate: the pair is at its link battle.
         // Release the announcer so the peer learns it — priming ran at

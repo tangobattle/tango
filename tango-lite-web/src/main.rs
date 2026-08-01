@@ -11,7 +11,7 @@
 //! * [`engine`] — the pump. `requestAnimationFrame` instead of a drive
 //!   thread, and a 2D canvas instead of a wgpu pane.
 //! * [`audio`] — a `ScriptProcessorNode` pulling the same
-//!   [`CoreStream`](tango_session::audio::CoreStream) cpal pulls on the
+//!   [`Stream`](tango_session::audio::Stream) cpal pulls on the
 //!   desktop.
 //! * [`input`] — touch buttons and a keyboard map, resolved into one
 //!   GBA joyflag word.

@@ -7,7 +7,7 @@
 //! [`Match`](tango_match::Match) drive either.
 
 use tango_match::telemetry::Telemetry;
-use tango_match::{Drained, HostInput, Screen, ScreenLayout};
+use tango_match::{HostInput, Screen, ScreenLayout};
 
 /// The rate the SPU hands samples out at.
 ///
@@ -22,25 +22,6 @@ pub const SAMPLE_RATE: f64 = 48_000.0;
 /// The DS's video framerate, which is also the rate audio production
 /// scales against when a host paces the simulation faster or slower.
 pub const EXPECTED_FPS: f64 = 16756991.0 / 280095.0;
-
-/// How long a second of this console's production lasts once the host
-/// paces the simulation at `fps_target`.
-///
-/// Native over target, *not* the other way round: at twice the DS's
-/// framerate the SPU emits twice the audio per wall-clock second, so
-/// what it produced in a second now has to play in half of one and the
-/// ratio falls. Same shape as mgba's
-/// `clockRate / (desiredFrameRate * frameCycles)`, which is what the
-/// stream's faux clock is written against — it scales the resampler's
-/// destination rate by this directly, so inverting it makes a
-/// fast-forward play *slower* rather than faster.
-pub fn framerate_ratio(fps_target: f64) -> f64 {
-    if fps_target > 0.0 {
-        EXPECTED_FPS / fps_target
-    } else {
-        1.0
-    }
-}
 
 /// The DS's pad: the GBA's ten buttons plus X and Y, which is every
 /// bit [`keys`](tango_match::keys) names.
@@ -286,10 +267,6 @@ impl tango_match::Side for DsSide<'_> {
         SAMPLE_RATE
     }
 
-    fn audio_framerate_ratio(&mut self, fps_target: f64) -> f64 {
-        framerate_ratio(fps_target)
-    }
-
     /// Taken from the boot rather than straight off the SPU. The boot
     /// empties the console's SPU every tick into a buffer of its own,
     /// because the SPU's ring cannot serve as one: a savestate does not
@@ -298,9 +275,9 @@ impl tango_match::Side for DsSide<'_> {
     /// re-simulation appending a span twice — destroying its own oldest
     /// audio to make room. What leaves here is already revocable and
     /// already deduplicated.
-    fn drain_audio(&mut self, out: &mut [i16]) -> Drained {
+    fn drain_audio(&mut self, out: &mut [i16]) -> usize {
         let (written, queued) = self.0.take_audio(out);
-        Drained { written, queued }
+        written + queued
     }
 }
 
@@ -390,20 +367,6 @@ mod tests {
     fn the_shared_engine_accepts_this_link() {
         let _: fn(super::Link, usize, u32) -> Result<tango_match::Match, tango_match::Error> =
             tango_match::Match::new::<super::Link>;
-    }
-
-    /// The stream reads the framerate ratio as "how long a second of
-    /// production lasts" and scales its resampler's destination rate by
-    /// it, so a fast-forward has to push it *below* 1.0. An inverted
-    /// ratio still produces sound — just slowed-down sound where
-    /// sped-up was wanted — which is exactly why the direction is worth
-    /// pinning.
-    #[test]
-    fn the_ratio_matches_mgbas_convention() {
-        let ratio = super::framerate_ratio;
-        assert!(ratio(super::EXPECTED_FPS * 3.0) < 1.0, "fast-forward must compress");
-        assert!(ratio(super::EXPECTED_FPS / 2.0) > 1.0, "throttling must stretch");
-        assert!((ratio(super::EXPECTED_FPS) - 1.0).abs() < 1e-9, "native speed is 1.0");
     }
 
     /// A red top screen and a blue bottom one, as the core hands them

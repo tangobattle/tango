@@ -10,8 +10,8 @@
 //! it needs and no other.
 //!
 //! - [`link`]: [`Link`] — the linked pair — and [`Side`], one console
-//!   of any boot; plus [`Backend`], what a `Game` registration
-//!   holds.
+//!   of any boot (plus [`SideSource`], the handle a host reads one
+//!   through); plus [`Backend`], what a `Game` registration holds.
 //! - [`engine`]: [`Match`], the rollback loop over any [`Link`] and the
 //!   unified session surface a host drives.
 //! - [`solo`]: [`Solo`], the single-console ride over any [`Console`].
@@ -23,7 +23,6 @@
 //! - [`throttler`]: the clock-sync governor both engines pace with.
 //! - [`keys`]: the joypad bit vocabulary.
 
-pub mod audio;
 pub mod engine;
 pub mod link;
 pub mod analysis;
@@ -35,12 +34,11 @@ pub mod solo;
 pub mod telemetry;
 pub mod throttler;
 
-pub use audio::{AudioDrain, Drained, SideSource};
 pub use solo::{Console, Solo, SoloConfig};
 pub use engine::Match;
 pub use link::{
     parse_session_payloads, Backend, BoxedSessionPayload, FrameTiming, Link, PeerRom, Screen, ScreenLayout,
-    SessionMode, SessionPayload, Side, Snapshot, StartConfig,
+    SessionMode, SessionPayload, Side, SideSource, Snapshot, StartConfig,
 };
 pub use replay::{
     BootedReplay, Capture, LiveFrames, Playback, Replay, ReplayBoot, ReplayConfig, ReplaySet, SeekStep, StatsPass,

@@ -28,7 +28,7 @@ fn game_of(family: &str, variant: u32) -> &'static tango_gamesupport::Game {
 struct Opened {
     session: tango_session::replay::ReplaySession,
     driver: tango_session::replay::Driver,
-    _stream: tango_session::audio::CoreStream,
+    _stream: tango_session::audio::Stream,
 }
 
 fn open_session(arg: &str, tag: &str) -> Opened {

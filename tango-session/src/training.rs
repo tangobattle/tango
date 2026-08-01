@@ -140,7 +140,7 @@ impl TrainingSession {
         expected_fps: f32,
         sample_rate: u32,
         controller: Box<dyn TrainingController>,
-    ) -> Result<(Self, Driver, crate::audio::CoreStream), crate::Error> {
+    ) -> Result<(Self, Driver, crate::audio::Stream), crate::Error> {
         // The engine's local core is core 0; `advance` always feeds core
         // 0 and `add_remote_input` core 1. The player starts on core 0
         // (the dummy on core 1); a swap only re-routes which input source
@@ -198,10 +198,10 @@ impl TrainingSession {
         // path as PvP), rate control following the pacing target. The
         // `player` closure is re-read every fill, so a swap moves the
         // sound to the side the player is now driving.
-        let audio = crate::audio::CoreStream::new(
-            match_.seat_audio(controlled.clone()),
+        let audio = crate::audio::Stream::new(
+            crate::audio::side_drain(match_.side_source(controlled.clone())),
             expected_fps,
-            crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
+            crate::audio::Stream::fps_from_bits(fps_bits.clone()),
             sample_rate,
         );
 

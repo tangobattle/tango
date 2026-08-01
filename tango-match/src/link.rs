@@ -13,14 +13,16 @@
 //! So the seam is [`Link`], the linked pair itself, and [`Side`], one
 //! console of it. An engine hands a link over and the shared
 //! [`Match`](crate::Match) does the rest — the rollback loop, the
-//! confirmed-input record, the audio plumbing. Pair-level operations
-//! (ticking, snapshotting) live on the link; everything one console
-//! answers for itself (display, audio out, savedata) lives on its
-//! side, which is also how a console booted with no pair at all
-//! ([`Console`](crate::Console)) presents itself. The traits are
-//! object-safe on purpose: a `Game` registration cannot name an
-//! emulator, so the erasure happens here, at the link, where it costs
-//! a virtual call per tick instead of per instruction.
+//! confirmed-input record. Pair-level operations (ticking,
+//! snapshotting) live on the link; everything one console answers for
+//! itself (display, audio out, savedata) lives on its side, which is
+//! also how a console booted with no pair at all
+//! ([`Console`](crate::Console)) presents itself — and a host that
+//! wants a side without holding the simulation still reaches it
+//! through a [`SideSource`]. The traits are object-safe on purpose: a
+//! `Game` registration cannot name an emulator, so the erasure happens
+//! here, at the link, where it costs a virtual call per tick instead
+//! of per instruction.
 
 /// A whole-link capture — both consoles and anything in flight between
 /// them — as the seam carries it. Opaque: only the link that produced
@@ -102,8 +104,8 @@ pub trait Link: Send + 'static {
 ///
 /// [`Link::side`] hands one out per seat and
 /// [`Console::side`](crate::Console) for a machine booted alone, so
-/// everything above — the shared audio drain, the solo ride, a host's
-/// frame pump — reads any console through this one surface.
+/// everything above — a host's audio, the solo ride, a host's frame
+/// pump — reads any console through this one surface.
 ///
 /// Borrowed, not owned: a side is a view into wherever the engine
 /// keeps the console, alive for one call chain.
@@ -133,18 +135,46 @@ pub trait Side {
     /// The rate this console produces audio at, in Hz.
     fn audio_sample_rate(&mut self) -> f64;
 
-    /// How this console's audio production scales when the host paces
-    /// the simulation at `fps_target` (see
-    /// [`AudioDrain::framerate_ratio`](crate::AudioDrain::framerate_ratio)).
-    fn audio_framerate_ratio(&mut self, fps_target: f64) -> f64 {
-        let _ = fps_target;
-        1.0
-    }
-
     /// Take up to `out`'s worth of this console's produced audio, as
-    /// interleaved stereo, and report what is left behind. Taking it
-    /// consumes it; what stays queued stays revocable.
-    fn drain_audio(&mut self, out: &mut [i16]) -> crate::Drained;
+    /// interleaved stereo, and answer with how much it had in total —
+    /// frames, counting both what went into `out` and what would not
+    /// fit. Taking it consumes it; what stays behind stays revocable.
+    ///
+    /// One number, because the split is the caller's own arithmetic: a
+    /// drain always fills `out` as far as it goes, so the frames that
+    /// landed are `min(total, out.len() / 2)` and the rest is still in
+    /// the console. What a caller cannot derive is the total — audio
+    /// that exists and is coming, which a caller counting its backlog
+    /// has to count — so that is what comes back.
+    fn drain_audio(&mut self, out: &mut [i16]) -> usize;
+}
+
+/// A handle onto one console's [`Side`], for a host that reads it from
+/// somewhere other than the thread turning the simulation's crank.
+///
+/// A side is borrowed for one call chain, so it cannot be held; what a
+/// host holds instead is one of these, and it asks for a side whenever
+/// it wants one. The two ways of asking are the point: a host's sound
+/// callback must never wait on the lock the simulation ticks under —
+/// where a tick is a console (or two) emulating a whole frame, and a
+/// rollback puts a multi-megabyte restore in front of that — so it
+/// takes [`try_side`](SideSource::try_side) and goes without when the
+/// answer is no.
+///
+/// Every shape a session reads a console through hands one out:
+/// [`Match::side_source`](crate::Match::side_source) for a seat of a
+/// live pair, [`Replay::side_source`](crate::Replay::side_source) for a
+/// seat of a playback pair, and
+/// [`Solo::side_source`](crate::Solo::side_source) for a machine booted
+/// alone.
+pub trait SideSource: Send {
+    /// Run `f` on the side, waiting out the simulation if it holds the
+    /// console. Never off a sound callback.
+    fn with_side(&self, f: &mut dyn FnMut(&mut dyn Side));
+
+    /// Run `f` on the side only if the console is free right now;
+    /// `false` if the simulation holds it.
+    fn try_side(&self, f: &mut dyn FnMut(&mut dyn Side)) -> bool;
 }
 
 /// One screen a console presents.

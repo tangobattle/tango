@@ -83,7 +83,7 @@ struct OutputState<S> {
     output_channels: usize,
 }
 
-impl<S: audio::Stream> OutputState<S> {
+impl<S: audio::Source> OutputState<S> {
     fn new(source: S, output_sample_rate: u32, output_channels: usize) -> Self {
         Self {
             source,
@@ -408,7 +408,7 @@ mod tests {
         next: i16,
     }
 
-    impl audio::Stream for Ramp {
+    impl audio::Source for Ramp {
         fn fill(&mut self, buf: &mut [[i16; audio::NUM_CHANNELS]]) -> usize {
             for frame in buf.iter_mut() {
                 *frame = [self.next, -self.next];
@@ -441,7 +441,7 @@ mod tests {
     #[test]
     fn mono_output_downmixes_stereo() {
         struct Stereo;
-        impl audio::Stream for Stereo {
+        impl audio::Source for Stereo {
             fn fill(&mut self, buf: &mut [[i16; audio::NUM_CHANNELS]]) -> usize {
                 buf.fill([16_384, 0]);
                 buf.len()

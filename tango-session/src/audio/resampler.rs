@@ -1,15 +1,15 @@
 //! A console's audio on its way to a device.
 //!
-//! What a backend hands over ([`tango_match::AudioDrain`]) is raw: this
-//! console's own rate, whatever it has produced so far, and how much
-//! room its buffer has. Turning that into device-rate frames at a
-//! chosen speed is the host's job, and every console needs the same job
-//! done, so it is done once here rather than per emulator.
+//! What a console hands over ([`Drain`]) is raw: its own rate, whatever
+//! it has produced so far, and how much of that would not fit in one
+//! take. Turning that into device-rate frames at a chosen speed is the
+//! host's job, and every console needs the same job done, so it is done
+//! once here rather than per emulator.
 //!
 //! One decision lives in this file and nowhere else: how much to
 //! resample. Exactly what the caller is about to play, and no more — the
 //! backlog then sits on the unresampled side, which is the side
-//! [`CoreStream`](super::CoreStream) measures and steers. Converting
+//! [`Stream`](super::Stream) measures and steers. Converting
 //! everything queued instead would put it downstream of the only thing
 //! regulating it, where it grows until something has to shed it.
 //!
@@ -20,7 +20,7 @@
 //! below the target the servo is steering toward is a servo that never
 //! arrives.
 
-use tango_match::AudioDrain;
+use super::Drain;
 
 /// Ceiling on one drain, in frames — a bound on the scratch buffer and
 /// on how much a single call can move. Sized so one successful reach
@@ -45,7 +45,7 @@ const DRAIN_CHUNK: usize = 16384;
 /// advances by `claimed / destination` per output frame and the queue
 /// therefore drifts exactly the way a servo intends.
 pub struct Resampler {
-    drain: Box<dyn AudioDrain>,
+    drain: Box<dyn Drain>,
     /// Taken from the console, not yet resampled. This is a session's
     /// audio backlog: it is what [`source_available`](Self::source_available)
     /// reports, so it is the queue a host's rate control steers.
@@ -55,19 +55,27 @@ pub struct Resampler {
     /// Resampled, waiting for the device — a hand-off buffer, never
     /// more than the last [`process`](Resampler::process) was asked for.
     dest: Vec<i16>,
-    /// Reusable landing buffer for [`AudioDrain::drain`]. A sound
-    /// callback must not allocate.
+    /// Reusable landing buffer for [`Drain::drain`]. A sound callback
+    /// must not allocate.
     scratch: Vec<i16>,
+    /// What the last reach left behind in the console, and what an
+    /// unreachable one is answered with. A reach that finds the
+    /// console's lock held takes nothing and learns nothing, but the
+    /// backlog is still sitting there — reporting zero for it would
+    /// read as a stalled sim to the servo above, which answers a stall
+    /// with a whole target's worth of silence.
+    left: usize,
 }
 
 impl Resampler {
-    pub fn new(drain: Box<dyn AudioDrain>) -> Self {
+    pub fn new(drain: Box<dyn Drain>) -> Self {
         Resampler {
             drain,
             source: Vec::new(),
             cursor: 0.0,
             dest: Vec::new(),
             scratch: Vec::new(),
+            left: 0,
         }
     }
 
@@ -82,9 +90,15 @@ impl Resampler {
     /// simulation, so every reach is a chance to stall behind a tick.
     fn take(&mut self) -> usize {
         self.scratch.resize(DRAIN_CHUNK * 2, 0);
-        let drained = self.drain.drain(&mut self.scratch);
-        self.source.extend_from_slice(&self.scratch[..drained.written * 2]);
-        drained.queued
+        if let Some(total) = self.drain.drain(&mut self.scratch) {
+            // The drain fills the scratch as far as it goes, so what
+            // landed is the total or a chunk of it, and the rest is
+            // still sitting in the console.
+            let written = total.min(DRAIN_CHUNK);
+            self.source.extend_from_slice(&self.scratch[..written * 2]);
+            self.left = total - written;
+        }
+        self.left
     }
 
     /// The rate the console truly produces at, in Hz.
@@ -151,10 +165,6 @@ impl Resampler {
         self.dest.len() / 2
     }
 
-    pub fn framerate_ratio(&self, fps_target: f64) -> f64 {
-        self.drain.framerate_ratio(fps_target)
-    }
-
     pub fn discard_source(&mut self, frames: usize) {
         // Staged first, then through to the console — the backlog being
         // shed mostly sits there now.
@@ -165,8 +175,13 @@ impl Resampler {
         self.cursor = 0.0;
         let mut rest = frames - staged;
         while rest > 0 {
-            self.scratch.resize(rest.min(DRAIN_CHUNK) * 2, 0);
-            let got = self.drain.drain(&mut self.scratch).written;
+            let chunk = rest.min(DRAIN_CHUNK);
+            self.scratch.resize(chunk * 2, 0);
+            let Some(total) = self.drain.drain(&mut self.scratch) else {
+                break;
+            };
+            let got = total.min(chunk);
+            self.left = total - got;
             if got == 0 {
                 break;
             }
@@ -185,22 +200,18 @@ impl Resampler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tango_match::Drained;
 
     /// A console that always has audio ready, at a GBA-ish rate.
     struct Endless;
 
-    impl AudioDrain for Endless {
+    impl Drain for Endless {
         fn sample_rate(&self) -> f64 {
             32768.0
         }
 
-        fn drain(&mut self, out: &mut [i16]) -> Drained {
+        fn drain(&mut self, out: &mut [i16]) -> Option<usize> {
             out.fill(1);
-            Drained {
-                written: out.len() / 2,
-                queued: DRAIN_CHUNK,
-            }
+            Some(out.len() / 2 + DRAIN_CHUNK)
         }
     }
 
@@ -233,20 +244,18 @@ mod tests {
     /// can. The level is shared so a test can see what stayed behind.
     struct Reporting(std::sync::Arc<std::sync::Mutex<usize>>);
 
-    impl AudioDrain for Reporting {
+    impl Drain for Reporting {
         fn sample_rate(&self) -> f64 {
             32768.0
         }
 
-        fn drain(&mut self, out: &mut [i16]) -> Drained {
+        fn drain(&mut self, out: &mut [i16]) -> Option<usize> {
             let mut level = self.0.lock().unwrap();
-            let written = (*level).min(out.len() / 2);
+            let total = *level;
+            let written = total.min(out.len() / 2);
             *level -= written;
             out[..written * 2].fill(1);
-            Drained {
-                written,
-                queued: *level,
-            }
+            Some(total)
         }
     }
 
@@ -271,37 +280,32 @@ mod tests {
         assert_eq!(pull.source_available(), 20_000 - 512 * 32768 / 48_000);
     }
 
-    /// A console that only hands audio over on some calls — a stand-in
-    /// for one whose buffer sits behind the lock its simulation ticks
-    /// under, which is every console here.
+    /// A console reachable only on some calls — a stand-in for one
+    /// whose buffer sits behind the lock its simulation ticks under,
+    /// which is every console here.
     struct Intermittent {
         level: usize,
         call: usize,
     }
 
-    impl AudioDrain for Intermittent {
+    impl Drain for Intermittent {
         fn sample_rate(&self) -> f64 {
             32768.0
         }
 
-        fn drain(&mut self, out: &mut [i16]) -> Drained {
+        fn drain(&mut self, out: &mut [i16]) -> Option<usize> {
             self.call += 1;
-            // Produce a fill's worth per call, hand it over on one call
-            // in three.
+            // Produce a fill's worth per call, reachable on one call in
+            // three.
             self.level += 350;
             if self.call % 3 != 0 {
-                return Drained {
-                    written: 0,
-                    queued: self.level,
-                };
+                return None;
             }
-            let written = self.level.min(out.len() / 2);
+            let total = self.level;
+            let written = total.min(out.len() / 2);
             self.level -= written;
             out[..written * 2].fill(1);
-            Drained {
-                written,
-                queued: self.level,
-            }
+            Some(total)
         }
     }
 
@@ -334,23 +338,21 @@ mod tests {
         capacity: usize,
     }
 
-    impl AudioDrain for Cramped {
+    impl Drain for Cramped {
         fn sample_rate(&self) -> f64 {
             48_000.0
         }
 
-        fn drain(&mut self, out: &mut [i16]) -> Drained {
+        fn drain(&mut self, out: &mut [i16]) -> Option<usize> {
             self.level += 800;
             // What a small ring does when it overflows: keeps the newest
             // and drops the oldest, silently.
             self.level = self.level.min(self.capacity);
-            let written = self.level.min(out.len() / 2);
+            let total = self.level;
+            let written = total.min(out.len() / 2);
             self.level -= written;
             out[..written * 2].fill(1);
-            Drained {
-                written,
-                queued: self.level,
-            }
+            Some(total)
         }
     }
 
@@ -392,19 +394,17 @@ mod tests {
     /// doubled rate.
     struct Burst(usize);
 
-    impl AudioDrain for Burst {
+    impl Drain for Burst {
         fn sample_rate(&self) -> f64 {
             65536.0
         }
 
-        fn drain(&mut self, out: &mut [i16]) -> Drained {
-            let written = self.0.min(out.len() / 2);
+        fn drain(&mut self, out: &mut [i16]) -> Option<usize> {
+            let total = self.0;
+            let written = total.min(out.len() / 2);
             self.0 -= written;
             out[..written * 2].fill(1);
-            Drained {
-                written,
-                queued: self.0,
-            }
+            Some(total)
         }
     }
 

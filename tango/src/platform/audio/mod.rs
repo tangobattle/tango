@@ -1,11 +1,12 @@
-//! The app's audio routing: the `Stream` contract sessions produce
-//! against comes from [`tango_session::audio`] (re-exported here); this
-//! module owns the late-binding mux that lets the host output stream
-//! outlive any one session, and the CPAL backend that drives it.
+//! The app's audio routing: the [`Source`] contract a device pulls on,
+//! and the [`Stream`] a session hands over, both come from
+//! [`tango_session::audio`] (re-exported here); this module owns the
+//! late-binding mux that lets the host output stream outlive any one
+//! session, and the CPAL backend that drives it.
 
 pub mod cpal;
 
-pub use tango_session::audio::{Stream, NUM_CHANNELS, SAMPLES};
+pub use tango_session::audio::{Source, Stream, NUM_CHANNELS, SAMPLES};
 
 /// Stable session-facing mix rate. Device-native rate changes are
 /// handled in the CPAL boundary, so a hotplug never invalidates a
@@ -39,14 +40,14 @@ impl std::fmt::Debug for Binding {
     }
 }
 
-/// A `Stream` whose underlying source can be swapped at runtime. The
+/// A [`Source`] that delegates to another, swappable at runtime. The
 /// host audio backend binds to this once at startup; the app then binds
-/// each session's `CoreStream` into it on open and drops the Binding on
+/// each session's [`Stream`] into it on open and drops the Binding on
 /// close.
 #[derive(Clone)]
 pub struct LateBinder {
     sample_rate: u32,
-    stream: std::sync::Arc<std::sync::Mutex<Option<Box<dyn Stream + Send + 'static>>>>,
+    stream: std::sync::Arc<std::sync::Mutex<Option<Box<dyn Source + Send + 'static>>>>,
     /// User-facing master volume, stored as raw f32 bits in an atomic
     /// so the UI thread can mutate it while the audio thread reads it
     /// on each `fill`. Domain is [0.0, 1.0]; values outside clamp.
@@ -77,7 +78,7 @@ impl LateBinder {
         f32::from_bits(self.volume.load(std::sync::atomic::Ordering::Relaxed))
     }
 
-    pub fn bind(&self, stream: Option<Box<dyn Stream + Send + 'static>>) -> Result<Binding, BindingError> {
+    pub fn bind(&self, stream: Option<Box<dyn Source + Send + 'static>>) -> Result<Binding, BindingError> {
         let mut g = self.stream.lock().unwrap();
         if g.is_some() {
             return Err(BindingError::AlreadyBound);
@@ -87,7 +88,7 @@ impl LateBinder {
     }
 }
 
-impl Stream for LateBinder {
+impl Source for LateBinder {
     fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize {
         let mut s = self.stream.lock().unwrap();
 

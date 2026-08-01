@@ -1358,7 +1358,7 @@ fn thumbnail_handle(width: u32, height: u32, pixels: Vec<u8>) -> iced::widget::i
 /// depends on the audio device.
 fn bind_session_audio(
     audio_binder: &audio::LateBinder,
-    stream: tango_session::audio::CoreStream,
+    stream: audio::Stream,
 ) -> Option<audio::Binding> {
     match audio_binder.bind(Some(Box::new(stream))) {
         Ok(b) => Some(b),

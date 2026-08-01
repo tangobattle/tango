@@ -552,9 +552,13 @@ impl<W: Writer> Render<W> {
             let mut side = self.playback.side(seat);
             let rate = side.audio_sample_rate();
             loop {
-                let drained = side.drain_audio(&mut self.scratch);
-                self.resamplers[slot].feed(&self.scratch[..drained.written * AUDIO_CHANNELS]);
-                if drained.written == 0 {
+                // What landed is whatever fit: a drain fills as far as
+                // it goes and reports the console's whole total.
+                let written = side
+                    .drain_audio(&mut self.scratch)
+                    .min(self.scratch.len() / AUDIO_CHANNELS);
+                self.resamplers[slot].feed(&self.scratch[..written * AUDIO_CHANNELS]);
+                if written == 0 {
                     break;
                 }
             }

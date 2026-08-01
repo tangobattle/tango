@@ -17,7 +17,7 @@
 //! event loop. Neither the thread nor the pacing lives here. Audio
 //! follows as a
 //! pure consumer through the shared
-//! [`CoreStream`](crate::audio::CoreStream) rate control, so a
+//! [`Stream`](crate::audio::Stream) rate control, so a
 //! stalled or torn-down audio device costs sound, never the session.
 //!
 //! No priming happens: this is a vanilla ride for one player, where
@@ -65,13 +65,13 @@ impl SinglePlayerSession {
         rtc: Option<std::time::SystemTime>,
         expected_fps: f32,
         sample_rate: u32,
-    ) -> Result<(Self, Driver, crate::audio::CoreStream), crate::Error> {
+    ) -> Result<(Self, Driver, crate::audio::Stream), crate::Error> {
         let console = game.pvp.start_solo(tango_match::SoloConfig {
             rom: rom.as_ref(),
             save: save.as_deref(),
             rtc,
         })?;
-        let audio_pull = console.audio();
+        let audio_pull = crate::audio::side_drain(console.side_source());
 
         let layout = game.pvp.screen_layout(tango_match::SessionMode::Solo);
         let input = InputCell::new();
@@ -80,10 +80,10 @@ impl SinglePlayerSession {
         let screen = crate::Framebuffer::new(&layout);
         let wake = Arc::new(tokio::sync::Notify::new());
 
-        let audio = crate::audio::CoreStream::new(
+        let audio = crate::audio::Stream::new(
             audio_pull,
             expected_fps,
-            crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
+            crate::audio::Stream::fps_from_bits(fps_bits.clone()),
             sample_rate,
         );
         let driver = Driver {

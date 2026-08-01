@@ -257,16 +257,16 @@ impl Match {
         });
     }
 
-    /// This match's local console audio, for the host's sound stream.
-    pub fn audio(&self) -> Box<dyn crate::AudioDrain> {
-        self.seat_audio(Arc::new(std::sync::atomic::AtomicUsize::new(self.local_player)))
-    }
-
-    /// Audio for whichever seat `seat` currently names, for a host that
-    /// can move the sound between them (training's side swap). Read per
-    /// fill, so a swap takes effect without rebuilding the stream.
-    pub fn seat_audio(&self, seat: Arc<std::sync::atomic::AtomicUsize>) -> Box<dyn crate::AudioDrain> {
-        crate::audio::console_audio(self.link.clone(), seat)
+    /// A handle onto whichever seat `seat` currently names, for a host
+    /// reading a console off the simulation thread — its audio, mainly.
+    /// `seat` is read per call, so a host that moves the sound between
+    /// seats (training's side swap) does so without whatever it built
+    /// on this being rebuilt under it.
+    pub fn side_source(&self, seat: Arc<std::sync::atomic::AtomicUsize>) -> Box<dyn crate::SideSource> {
+        Box::new(LinkSeat {
+            link: self.link.clone(),
+            player: seat,
+        })
     }
 
     /// The telemetry this match publishes, if its engine reads any.
@@ -343,5 +343,30 @@ impl Match {
     /// How deep the last advance's rollback went, 0 if none.
     pub fn last_rollback_depth(&self) -> u32 {
         self.last_rollback_depth
+    }
+}
+
+/// One seat of the match's pair, as [`Match::side_source`] hands it
+/// out: the same shared link the session ticks, reached under the same
+/// lock.
+struct LinkSeat {
+    link: Arc<Mutex<dyn Link>>,
+    player: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl crate::SideSource for LinkSeat {
+    fn with_side(&self, f: &mut dyn FnMut(&mut dyn crate::Side)) {
+        let mut link = self.link.lock().unwrap();
+        f(&mut *link.side(self.player.load(Ordering::Relaxed)));
+    }
+
+    fn try_side(&self, f: &mut dyn FnMut(&mut dyn crate::Side)) -> bool {
+        match self.link.try_lock() {
+            Ok(mut link) => {
+                f(&mut *link.side(self.player.load(Ordering::Relaxed)));
+                true
+            }
+            Err(_) => false,
+        }
     }
 }

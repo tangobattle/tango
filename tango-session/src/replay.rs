@@ -151,7 +151,7 @@ impl ReplaySession {
         // the first frame instead of waiting out a pass that would only
         // rediscover them. Empty otherwise, and the pass fills them in.
         round_boundaries: Vec<u32>,
-    ) -> Result<(Self, Workers, crate::audio::CoreStream), crate::Error> {
+    ) -> Result<(Self, Workers, crate::audio::Stream), crate::Error> {
         let local_player = replay.local_player_index as usize;
         if local_player >= 2 {
             return Err(crate::Error::BadLocalPlayerIndex);
@@ -278,11 +278,11 @@ impl ReplaySession {
 
         // Audio: play the shown perspective's core straight off the
         // pair, following the drive loop's pacing (see
-        // [`crate::core_stream`]).
-        let audio = crate::audio::CoreStream::new(
-            Box::new(audio_pull.clone()) as Box<dyn tango_match::AudioDrain>,
+        // [`crate::audio::stream`]).
+        let audio = crate::audio::Stream::new(
+            Box::new(audio_pull.clone()) as Box<dyn crate::audio::Drain>,
             expected_fps,
-            crate::audio::CoreStream::fps_from_bits(fps_bits.clone()),
+            crate::audio::Stream::fps_from_bits(fps_bits.clone()),
             sample_rate,
         );
 
@@ -803,7 +803,8 @@ impl Playhead {
         };
         // Bind the host's stream to the real pair; it has been pulling
         // silence since the session was built.
-        self.audio.set(pb.audio(self.seat.clone()));
+        self.audio
+            .set(crate::audio::side_drain(pb.side_source(self.seat.clone())));
         // Show the primed first frame while paused-at-start or still
         // spinning up.
         self.surfaces.publish_frames(&pb.frames());

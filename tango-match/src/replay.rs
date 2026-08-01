@@ -316,7 +316,7 @@ impl Playback {
         let Playback { link, scratch, .. } = self;
         for player in 0..2 {
             let mut side = link.side(player);
-            while side.drain_audio(scratch).written > 0 {}
+            while side.drain_audio(scratch) > 0 {}
         }
     }
 }
@@ -608,11 +608,13 @@ impl Replay {
         self.playback.lock().unwrap().frames()
     }
 
-    /// Audio for whichever seat `seat` currently names — a viewer can
-    /// swap perspective mid-playback, so it's read per fill rather than
-    /// fixed when the stream is bound.
-    pub fn audio(&self, seat: Arc<AtomicUsize>) -> Box<dyn crate::AudioDrain> {
-        crate::audio::side_audio(PlaybackSeat {
+    /// A handle onto whichever seat `seat` currently names, for a host
+    /// reading a console off the thread that drives playback — its
+    /// audio, mainly. A viewer can swap perspective mid-playback, so
+    /// `seat` is read per call rather than fixed when the host binds
+    /// whatever it builds on this.
+    pub fn side_source(&self, seat: Arc<AtomicUsize>) -> Box<dyn crate::SideSource> {
+        Box::new(PlaybackSeat {
             playback: self.playback.clone(),
             player: seat,
         })
@@ -632,10 +634,10 @@ impl Replay {
 
 }
 
-/// One seat of the playback pair, as the source the shared audio drain
-/// reads. The pair lives behind the seek machinery's mutex, so the
-/// pull's no-wait discipline is what keeps a chase from stuttering the
-/// sound device.
+/// One seat of the playback pair, as [`Replay::side_source`] hands it
+/// out. The pair lives behind the seek machinery's mutex, so a reader's
+/// no-wait discipline is what keeps a chase from stuttering the sound
+/// device.
 struct PlaybackSeat {
     playback: Arc<Mutex<Playback>>,
     /// Read per call, so a perspective swap moves the sound without the
@@ -643,7 +645,7 @@ struct PlaybackSeat {
     player: Arc<AtomicUsize>,
 }
 
-impl crate::audio::SideSource for PlaybackSeat {
+impl crate::SideSource for PlaybackSeat {
     fn with_side(&self, f: &mut dyn FnMut(&mut dyn crate::Side)) {
         let mut pb = self.playback.lock().unwrap();
         f(&mut *pb.side(self.player.load(Ordering::Relaxed)));

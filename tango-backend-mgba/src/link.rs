@@ -21,7 +21,7 @@
 //!   engine above never learns what a game is.
 
 use tango_match::telemetry::Telemetry;
-use tango_match::{Drained, HostInput, Screen, ScreenLayout};
+use tango_match::{HostInput, Screen, ScreenLayout};
 
 /// Bit mask of a joyflags value: the GBA keypad is 10 bits (A, B, Select,
 /// Start, →, ←, ↑, ↓, R, L), occupying bits 0..=9. The top 6 bits are unused by
@@ -236,22 +236,15 @@ impl tango_match::Side for GbaSide<'_> {
         self.link.core(self.player).audio_sample_rate() as f64
     }
 
-    fn audio_framerate_ratio(&mut self, fps_target: f64) -> f64 {
-        self.link.core(self.player).calculate_framerate_ratio(fps_target)
-    }
-
-    fn drain_audio(&mut self, out: &mut [i16]) -> Drained {
+    fn drain_audio(&mut self, out: &mut [i16]) -> usize {
         let buf = self.link.core_mut(self.player).audio_buffer();
         // `out` holds interleaved samples, so it fits half as many
         // frames. Reading consumes, which is what stops a session
         // replaying audio it already played after a rollback; what
         // stays here stays revocable.
-        let frames = (out.len() / 2).min(buf.available());
-        let written = buf.read(out, frames);
-        Drained {
-            written,
-            queued: buf.available(),
-        }
+        let available = buf.available();
+        buf.read(out, (out.len() / 2).min(available));
+        available
     }
 }
 

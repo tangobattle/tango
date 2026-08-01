@@ -1,6 +1,6 @@
 //! Sound out: one `AudioWorkletNode` for the page, fed by a push pump.
 //!
-//! A session hands its host a [`CoreStream`] — the same dynamic-rate-control
+//! A session hands its host a [`Stream`] — the same dynamic-rate-control
 //! stream cpal plays on the desktop, which resamples a live core's queue
 //! to the device rate and servos the queue level against the pace the
 //! drive loop publishes. All this module does is get its samples to the
@@ -29,7 +29,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 
-use tango_session::audio::{CoreStream, Stream as _, NUM_CHANNELS};
+use tango_session::audio::{Source as _, Stream, NUM_CHANNELS};
 
 /// The processor. Registered from a blob URL rather than a file so the
 /// build stays "one wasm, one js, one html" with no path config — a
@@ -217,7 +217,7 @@ impl Sink {
     /// since it last reported still count as queued — because
     /// overestimating costs a slightly shallower ring and
     /// underestimating costs an overrun that drops samples.
-    pub fn pump(&mut self, stream: &mut CoreStream) {
+    pub fn pump(&mut self, stream: &mut Stream) {
         let estimate = self.reported.get() + self.sent_since_report.get();
         if estimate + MIN_CHUNK_FRAMES > TARGET_QUEUED_FRAMES {
             return;

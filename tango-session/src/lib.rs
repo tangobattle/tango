@@ -196,7 +196,7 @@ impl PauseGate {
 
 /// Fast-forward pacing target: `base_fps * factor`, clamped to
 /// `[1, 4×base_fps]`. Above ~4× one audio callback interval's production
-/// overshoots the [`CoreStream`](core_stream::CoreStream) discard cap and
+/// overshoots the [`Stream`](audio::Stream) discard cap and
 /// fast-forward turns into constant skips, so the clamp keeps it coherent.
 /// Shared by the single-player and training `set_speed`.
 pub fn clamp_speed(base_fps: f32, factor: f32) -> f32 {
