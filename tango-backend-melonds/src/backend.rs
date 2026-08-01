@@ -119,7 +119,7 @@ impl DsBackend {
 /// have nothing to do with which cart it is: what a tick of emulated
 /// time is and how it gets filled, whether execution is compiled or
 /// interpreted, what a savestate carries, what the cartridge and
-/// wireless servers cost.
+/// wireless servers cost, what the BIOS answers.
 ///
 /// Every one of those has already happened, and each is written into
 /// *both* games' halves below because there was nowhere else to put it
@@ -127,7 +127,14 @@ impl DsBackend {
 /// as BN5DS 5. The next one is spelled here instead, once, and costs
 /// exactly what it always did: every DS recording, and every DS peer on
 /// an older build.
-const BACKEND_SIM_VERSION: u16 = 1;
+///
+/// 2: the last of those. FreeBIOS's sqrt SWI takes an unsigned integer
+/// and compared it signed, so every argument with bit 31 set failed the
+/// very first comparison and the call came back 0. The blob the console
+/// actually boots is rebuilt from the fixed source, so a cart that ever
+/// takes the root of a large number gets a different answer here than
+/// it did on any build before this one.
+const BACKEND_SIM_VERSION: u16 = 2;
 
 impl tango_match::Backend for DsBackend {
     fn sim_version(&self) -> u32 {
