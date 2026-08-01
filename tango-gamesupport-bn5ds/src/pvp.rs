@@ -28,7 +28,9 @@
 //!
 //! **The team route** is the same walk, entered by a different button.
 //! Team Battle is its own entry on the Network board, so the subtype
-//! only picks which hit code the board's answer carries — and then one
+//! only picks which hit code the board's answer carries. It is subtype
+//! *zero* of each mode — these games are played as Team, and the lobby
+//! defaults to a mode's first subtype — and then one
 //! more answer, because that button routes through Navi Select (where
 //! a player builds the team they bring) on its way to the comm screen.
 //! The board's own tail is what decides that, having already written
@@ -175,7 +177,7 @@ impl tango_backend_melonds::GameSupport for Pvp {
 
     /// The touch screen rides along for Team Battle and not for the
     /// plain subtypes. Same reading of `match_type.1` the walk makes
-    /// (`!= 0` is the team route off the Network board), so the pane
+    /// (`== 0` is the team route off the Network board), so the pane
     /// and the priming route can't disagree about which mode this is.
     ///
     /// A plain battle leaves it dead once priming is past the comm
@@ -183,7 +185,7 @@ impl tango_backend_melonds::GameSupport for Pvp {
     /// walk fabricates hit codes — so carrying it there spends half
     /// the pane on nothing.
     fn pvp_screens(&self, match_type: (u8, u8)) -> tango_backend_melonds::Screens {
-        if match_type.1 != 0 {
+        if match_type.1 == 0 {
             tango_backend_melonds::Screens::BOTH
         } else {
             tango_backend_melonds::Screens::UPPER
@@ -1455,11 +1457,15 @@ pub mod priming {
             let before = link.console(0).save_memory();
             // The registration lists Single first and Triple second, so
             // the mode is only which of the chooser's two buttons the
-            // joiner takes — and the subtype, plain first and Team
+            // joiner takes — and the subtype, Team first and plain
             // second, only which board button opened the route. The
             // chooser is the same two buttons either way, which is what
             // makes the two independent.
-            let counter = self.install(link, match_type.0 != 0, match_type.1 != 0, session_payloads, rng_seed);
+            //
+            // Team leads because it is what this pairing is for: the
+            // lobby defaults to a mode's first subtype, and both of
+            // these games are played as Team.
+            let counter = self.install(link, match_type.0 != 0, match_type.1 == 0, session_payloads, rng_seed);
 
             // The boot half, which is over when the board stands: it
             // answers nothing that depends on the other console, so it
@@ -1562,7 +1568,7 @@ mod tests {
     use tango_backend_melonds::{GameSupport, Screens};
 
     /// The subtype decides the pane, not the mode. Both registrations
-    /// list Single first and Triple second with a plain and a Team
+    /// list Single first and Triple second with a Team and a plain
     /// subtype each, so Triple Team has to reach the touch screen for
     /// the same reason Single Team does — reading `match_type.0` here
     /// would give Triple Team a half-blind pane and leave the walk
@@ -1570,10 +1576,21 @@ mod tests {
     #[test]
     fn the_touch_screen_follows_the_team_subtype_in_either_mode() {
         for support in [&super::US, &super::JP] {
-            assert_eq!(support.pvp_screens((0, 0)), Screens::UPPER, "single");
-            assert_eq!(support.pvp_screens((1, 0)), Screens::UPPER, "triple");
-            assert_eq!(support.pvp_screens((0, 1)), Screens::BOTH, "single team");
-            assert_eq!(support.pvp_screens((1, 1)), Screens::BOTH, "triple team");
+            assert_eq!(support.pvp_screens((0, 0)), Screens::BOTH, "single team");
+            assert_eq!(support.pvp_screens((1, 0)), Screens::BOTH, "triple team");
+            assert_eq!(support.pvp_screens((0, 1)), Screens::UPPER, "single");
+            assert_eq!(support.pvp_screens((1, 1)), Screens::UPPER, "triple");
+        }
+    }
+
+    /// Team is subtype 0 in both modes, which is what makes it the one
+    /// the lobby offers first and defaults to.
+    #[test]
+    fn the_team_subtype_leads_each_mode() {
+        for support in [&super::US, &super::JP] {
+            for mode in 0..2u8 {
+                assert_eq!(support.pvp_screens((mode, 0)), Screens::BOTH, "mode {mode} subtype 0");
+            }
         }
     }
 
@@ -1584,11 +1601,11 @@ mod tests {
     /// stylus area by.
     #[test]
     fn the_plain_subtypes_present_one_screen_and_team_presents_two() {
-        let plain = super::US.pvp_screens((0, 0)).layout();
+        let plain = super::US.pvp_screens((0, 1)).layout();
         assert_eq!(plain.screens.len(), 1);
         assert_eq!(plain.touch, None);
 
-        let team = super::US.pvp_screens((0, 1)).layout();
+        let team = super::US.pvp_screens((0, 0)).layout();
         assert_eq!(team.screens.len(), 2);
         assert_eq!(team.touch, Some(1));
     }
