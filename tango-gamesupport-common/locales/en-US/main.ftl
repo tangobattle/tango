@@ -82,3 +82,7 @@ deck-slot-in = Slot-in { $max }MB
 bn5ds-cross-none = MegaMan
 bn5ds-cross-bass = BassCross MegaMan
 bn5ds-cross-sol = SolCross MegaMan
+
+# BN5DS: which of the cartridge's two teams a file plays.
+bn5ds-team-protoman = Team ProtoMan
+bn5ds-team-colonel = Team Colonel

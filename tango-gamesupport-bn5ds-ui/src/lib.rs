@@ -6,7 +6,11 @@
 //! The cross is what this save brings to a battle, so it reads as a name
 //! above the tab body on every view and turns into its own dropdown when
 //! the edit session opens; a save with none brings plain MegaMan, which
-//! is a name like any other. The file pick is only there while editing.
+//! is a name like any other. Under the name sits which of the
+//! cartridge's two teams the file plays — the cartridge's other half of
+//! who the player fields, and not a pick: the game asks for it once, at
+//! the file's first boot, and the save carries the answer from then on.
+//! The file pick is only there while editing.
 //!
 //! Chip editing is not plumbed here (the save hands out no writable
 //! chips view — see its `view_chips_mut`), so the tab body is the
@@ -23,6 +27,7 @@
 
 use std::sync::Arc;
 
+use sweeten::widget::column;
 use tango_gamesupport_bn5ds_dataview::save::{Cross, Save, SaveSet};
 use tango_gamesupport_common::dataview::save::Save as _;
 use tango_gamesupport_common::editor::loaded::OpenSave;
@@ -179,10 +184,11 @@ fn cross_choices<'a>(lang: &'a LanguageIdentifier, save: &'a Save) -> (Vec<Cross
     (options, selected)
 }
 
-/// How tall both halves of the card are: the picker's own height,
-/// derived the way the tab strip derives its own rather than measured —
-/// its text at iced's default 1.3 line height, plus [`CONTROL_PADDING`]
-/// top and bottom and the pick list's 1px border on each side.
+/// How tall the naming line is on both halves of the card: the picker's
+/// own height, derived the way the tab strip derives its own rather than
+/// measured — its text at iced's default 1.3 line height, plus
+/// [`CONTROL_PADDING`] top and bottom and the pick list's 1px border on
+/// each side.
 ///
 /// The reading half is pinned to it so opening the edit session doesn't
 /// change the strip's height and shove the whole tab body down. Its own
@@ -195,20 +201,50 @@ const CARD_HEIGHT: f32 = tango_gamesupport_common::style::TEXT_BODY * 1.3
     + tango_gamesupport_common::style::CONTROL_PADDING[0] * 2.0
     + 2.0;
 
-/// One half of the identity card, in the box both halves share — and
-/// carrying the strip's own left inset, which the strip expects a card
-/// to bring (see `render_identity_strip`).
-fn card_slot<'a>(inner: iced::Element<'a, Action>) -> iced::Element<'a, Action> {
-    iced::widget::container(inner)
-        .height(iced::Length::Fixed(CARD_HEIGHT))
-        .align_y(iced::Alignment::Center)
-        .padding([4.0, 6.0])
-        .into()
+/// Which of the cartridge's two teams this file plays — the fact the
+/// game itself asks for once and then never asks again, and the one that
+/// decides which of the two BassCross values a pick lands (see
+/// [`Cross::bass_for`]). Read out of the file's own bytes, so it names
+/// the file being looked at rather than the cartridge.
+fn team_label(lang: &LanguageIdentifier, save: &Save) -> String {
+    if save.team() == 0 {
+        tango_gamesupport_common::t!(lang, "bn5ds-team-protoman")
+    } else {
+        tango_gamesupport_common::t!(lang, "bn5ds-team-colonel")
+    }
+}
+
+/// One half of the identity card, in the box both halves share: the
+/// naming line — a name while reading, its dropdown while editing —
+/// over the file's team.
+///
+/// The team line is on both halves, and the naming line is pinned to
+/// [`CARD_HEIGHT`], so opening the edit session swaps one line for the
+/// other without moving anything below it.
+///
+/// Carries the strip's own left inset, which the strip expects a card to
+/// bring (see `render_identity_strip`).
+fn card_slot<'a>(inner: iced::Element<'a, Action>, team: String) -> iced::Element<'a, Action> {
+    iced::widget::container(
+        column![
+            iced::widget::container(inner)
+                .height(iced::Length::Fixed(CARD_HEIGHT))
+                .align_y(iced::Alignment::Center),
+            iced::widget::text(team)
+                .size(tango_gamesupport_common::style::TEXT_CAPTION)
+                .style(tango_gamesupport_common::widgets::muted_text_style)
+                .wrapping(iced::widget::text::Wrapping::None),
+        ]
+        .spacing(4),
+    )
+    .padding([4.0, 6.0])
+    .into()
 }
 
 /// The identity card: the name of what this save brings, in the slot
-/// BN5/BN6 name their navi in. Every save shows one — a save with no
-/// cross brings plain MegaMan, which is a name like any other.
+/// BN5/BN6 name their navi in, over the team the file plays. Every save
+/// shows one — a save with no cross brings plain MegaMan, which is a
+/// name like any other.
 fn cross_card<'a>(lang: &'a LanguageIdentifier, save: &'a Save) -> iced::Element<'a, Action> {
     let (options, selected) = cross_choices(lang, save);
     let name = selected.map(|c| c.label).unwrap_or_else(|| {
@@ -222,15 +258,21 @@ fn cross_card<'a>(lang: &'a LanguageIdentifier, save: &'a Save) -> iced::Element
             .size(tango_gamesupport_common::style::TEXT_TITLE)
             .wrapping(iced::widget::text::Wrapping::None)
             .into(),
+        team_label(lang, save),
     )
 }
 
-/// The same card while editing: the dropdown that changes it.
+/// The same card while editing: the dropdown that changes the name. The
+/// team below it stays a reading — it is the file's, and the file select
+/// is what moves between them.
 fn cross_picker<'a>(lang: &'a LanguageIdentifier, save: &'a Save) -> iced::Element<'a, Action> {
     let (options, selected) = cross_choices(lang, save);
-    card_slot(pick_list(options, selected, |c: CrossChoice| {
-        Action::Game(Arc::new(SetCross(c.cross)))
-    }))
+    card_slot(
+        pick_list(options, selected, |c: CrossChoice| {
+            Action::Game(Arc::new(SetCross(c.cross)))
+        }),
+        team_label(lang, save),
+    )
 }
 
 impl GameSaveEditor for Ui {
