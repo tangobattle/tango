@@ -11,8 +11,8 @@
 //!
 //! - [`link`]: [`Link`] — the linked pair — and [`Side`], one console
 //!   of any boot; plus [`Backend`], what a `Game` registration holds.
-//! - [`audio`]: the lock-free ring a simulation pushes its consoles'
-//!   sound into and a host's device callback plays out of.
+//! - [`audio`]: the ring a simulation pushes its consoles' sound into
+//!   and a host's device callback plays out of.
 //! - [`engine`]: [`Match`], the rollback loop over any [`Link`] and the
 //!   unified session surface a host drives.
 //! - [`solo`]: [`Solo`], the single-console ride over any [`Console`].

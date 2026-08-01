@@ -11,8 +11,8 @@
 //! emulator's business: a backend answers for one console's rate and
 //! its sample queue ([`Side`](tango_match::Side)) and nothing else, and
 //! the ring is what carries that across to the thread a device callback
-//! runs on — with no lock, so a loaded drive loop cannot starve the
-//! sound by holding its consoles.
+//! runs on — without the callback ever reaching for a console, so a
+//! loaded drive loop cannot starve the sound by holding them.
 
 mod resampler;
 pub mod stream;

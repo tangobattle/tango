@@ -152,7 +152,7 @@ impl TrainingSession {
         // latency to hide and no speculation to roll back.
         // The pair pushes the seat the player is driving into the ring
         // on its way out of every tick; the stream plays the other end
-        // with no lock at all.
+        // without ever reaching for a console.
         let (audio_in, audio_out) = crate::audio::ring();
         let mut match_ = game.pvp.start(tango_match::StartConfig {
             roms: [rom.as_ref(), rom.as_ref()],

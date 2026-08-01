@@ -99,8 +99,9 @@ const STARVED_FILLS_TO_REPRIME: u32 = 3;
 pub struct Stream {
     /// The console's audio on its way to the device rate. Owned
     /// outright: the ring underneath it is the only thing shared with
-    /// the simulation, and that sharing is lock-free. This stream never
-    /// learns which emulator produced what it plays.
+    /// the simulation, and reaching into it costs a copy rather than a
+    /// wait on whatever the sim is doing. This stream never learns which
+    /// emulator produced what it plays.
     pull: super::Resampler,
     /// The console's own frame rate
     /// ([`FrameTiming::fps`](tango_match::FrameTiming::fps)) — the pace

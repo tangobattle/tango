@@ -67,7 +67,8 @@ impl SinglePlayerSession {
         sample_rate: u32,
     ) -> Result<(Self, Driver, crate::audio::Stream), crate::Error> {
         // The console pushes into the ring on its way out of every
-        // tick; the stream plays the other end with no lock at all.
+        // tick; the stream plays the other end without ever reaching
+        // for the console.
         let (audio_in, audio_out) = crate::audio::ring();
         let console = game.pvp.start_solo(tango_match::SoloConfig {
             rom: rom.as_ref(),

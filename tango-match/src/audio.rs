@@ -14,10 +14,19 @@
 //!
 //! So the direction inverts. The simulation pushes what each tick
 //! produced into [`channel`]'s ring — it is already holding the console,
-//! so the push is free — and the callback reads the other end with no
-//! lock at all. What the callback can play is whatever has crossed,
-//! which is everything the sim produced up to the last tick, rather than
-//! whatever it managed to steal the lock for.
+//! so the push is free — and the callback reads the other end without
+//! reaching for a console at all. What the callback can play is whatever
+//! has crossed, which is everything the sim produced up to the last
+//! tick, rather than whatever it managed to steal a console for.
+//!
+//! Which leaves the one lock the callback does take: this ring's own.
+//! It is never held for longer than a copy of the audio actually
+//! crossing — microseconds, against the tens of milliseconds a console's
+//! lock is held for — so it cannot be the thing that starves anybody.
+//! *Which* lock the callback waits on was always the point, not whether
+//! there was one, so the ring is a mutex over a plain `Vec` drained off
+//! the front: being lock-free bought nothing a listener could hear, and
+//! cost a pile of hand-proved cursor arithmetic to have.
 //!
 //! # Taking audio back
 //!
@@ -27,9 +36,9 @@
 //! span the speculation already voiced is still sitting there and the
 //! re-simulation produces it a second time. The ring answers that by
 //! letting the producer *rewind*: everything past the mark that the
-//! callback has not read yet is un-published by moving the write cursor
-//! back, which is an integer store rather than a copy. What the callback
-//! already read cannot be unplayed, so it comes back as a debt
+//! callback has not read yet is un-published by truncating the queue,
+//! which is a length store rather than a copy. What the callback already
+//! read cannot be unplayed, so it comes back as a debt
 //! ([`AudioIn::revoke_to`]'s return) that the next pushes pay off by
 //! dropping the regeneration on the way in.
 //!
@@ -37,9 +46,8 @@
 //! the revocable window is the whole queue depth — much more than a
 //! console's own small ring could ever hold.
 
-use std::cell::UnsafeCell;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
 
 /// Interleaved stereo, everywhere audio crosses this seam.
 pub const CHANNELS: usize = 2;
@@ -51,95 +59,76 @@ pub const CHANNELS: usize = 2;
 const DRAIN_CHUNK: usize = 4096;
 
 /// A ring of interleaved stereo frames with one producer and one
-/// consumer.
+/// consumer, holding what has been published and not yet played.
 ///
-/// Both cursors count frames *ever* crossed rather than positions, so
-/// the occupancy is their difference and the slot for frame `n` is
-/// `n & mask`. The producer may move `write` backwards (see
-/// [`AudioIn::revoke_to`]); the consumer answers a cursor that has moved
-/// below its own by snapping back to it, which is why nothing here ever
-/// reads a negative occupancy.
+/// Both ends reach it under the same lock, so neither can see half of
+/// what the other did: a fill and a rewind cannot interleave, and what
+/// is queued is simply the length of the queue.
 struct Ring {
-    /// `(mask + 1) * CHANNELS` samples. Cells rather than a plain slice
-    /// because the two ends write and read it concurrently; the cursors
-    /// are what keep them off the same frames.
-    slots: Box<[UnsafeCell<i16>]>,
-    /// Capacity minus one, in frames. Capacity is a power of two so the
-    /// wrap is a mask.
-    mask: usize,
-    /// Frames ever published. Rewindable — a rollback moves it back over
-    /// audio nobody has heard yet.
-    write: AtomicU64,
-    /// Frames ever consumed, as the producer sees them: the floor a
-    /// rewind may not go below.
-    read: AtomicU64,
-    /// The console's production rate in Hz, as f64 bits, published by
-    /// whoever pushes. Read per fill because a cart can change it at
-    /// runtime — BN4+ flip from 32768 to 65536 after boot — and the
-    /// whole resample ratio is built on it.
-    rate: AtomicU64,
+    /// The queue itself, oldest frame first: published, unplayed, and
+    /// still revocable from the young end.
+    frames: Vec<i16>,
+    /// The coordinate the front of `frames` sits at — frames the
+    /// consumer has taken, and so the floor a rewind may not go below.
+    /// What makes [`AudioIn::produced`] something a snapshot can hold on
+    /// to rather than a position that shifts as the queue drains.
+    head: u64,
+    /// How many frames the queue may hold before a push starts dropping.
+    capacity: usize,
+    /// The console's production rate in Hz, published by whoever pushes.
+    /// Read per fill because a cart can change it at runtime — BN4+ flip
+    /// from 32768 to 65536 after boot — and the whole resample ratio is
+    /// built on it.
+    rate: f64,
 }
 
-// The cells are only ever touched through the cursors, which is what
-// keeps the two ends off the same frames.
-unsafe impl Send for Ring {}
-unsafe impl Sync for Ring {}
-
 impl Ring {
-    /// The sample slot frame `n` lives in.
-    fn slot(&self, n: u64) -> *mut i16 {
-        self.slots[(n as usize & self.mask) * CHANNELS].get()
+    /// Frames queued.
+    fn queued(&self) -> usize {
+        self.frames.len() / CHANNELS
     }
 
-    /// Copy `frames` frames between the ring and a linear buffer,
-    /// splitting at the wrap. `to_ring` picks the direction; `linear` is
-    /// interleaved and at least `frames * CHANNELS` long.
-    ///
-    /// One routine for both directions because the wrap arithmetic is
-    /// the only interesting part and it is identical either way.
-    fn copy(&self, at: u64, linear: *mut i16, frames: usize, to_ring: bool) {
-        let start = at as usize & self.mask;
-        let first = (self.mask + 1 - start).min(frames);
-        for (offset, count) in [(0, first), (first, frames - first)] {
-            if count == 0 {
-                continue;
-            }
-            let ring = self.slot(at + offset as u64);
-            let flat = unsafe { linear.add(offset * CHANNELS) };
-            let (src, dst) = if to_ring { (flat, ring) } else { (ring, flat) };
-            // Disjoint by construction: `ring` points into the cells and
-            // `flat` into the caller's own buffer.
-            unsafe { std::ptr::copy_nonoverlapping(src, dst, count * CHANNELS) };
-        }
+    /// Frames ever published: the coordinate the young end of the queue
+    /// sits at.
+    fn published(&self) -> u64 {
+        self.head + self.queued() as u64
+    }
+
+    /// Hand `frames` over off the old end; the head follows them.
+    fn take(&mut self, frames: usize) {
+        self.frames.drain(..frames * CHANNELS);
+        self.head += frames as u64;
     }
 }
 
 /// A ring sized to hold `capacity` frames, as the two ends that share
 /// it: [`AudioIn`] for whoever runs the simulation, [`AudioOut`] for
-/// whoever plays it. Capacity rounds up to a power of two.
+/// whoever plays it.
 ///
 /// Size it well past the queue a host means to hold: a producer that
 /// runs out of room drops what will not fit, and the point of the ring
 /// is that a burst — a seek chase, a device stall's catch-up — lands
 /// somewhere the consumer can shed it deliberately.
 pub fn channel(capacity: usize) -> (AudioIn, AudioOut) {
-    let capacity = capacity.next_power_of_two().max(2);
-    let ring = Arc::new(Ring {
-        slots: (0..capacity * CHANNELS).map(|_| UnsafeCell::new(0)).collect(),
-        mask: capacity - 1,
-        write: AtomicU64::new(0),
-        read: AtomicU64::new(0),
+    let capacity = capacity.max(1);
+    let ring = Arc::new(Mutex::new(Ring {
+        // The whole capacity up front, since a push may not grow it
+        // past that and a drain off the front never gives room back: the
+        // allocation happens here and never again on either end's path.
+        frames: Vec::with_capacity(capacity * CHANNELS),
+        head: 0,
+        capacity,
         // Stood in for until the first push, and only ever divided by:
         // the GBA's own rate is what every game a session runs produces
         // at, and a zero here would rebase the first fill's resampling.
-        rate: AtomicU64::new(32768.0f64.to_bits()),
-    });
-    (AudioIn { ring: ring.clone() }, AudioOut { ring, read: 0 })
+        rate: 32768.0,
+    }));
+    (AudioIn { ring: ring.clone() }, AudioOut { ring })
 }
 
 /// The producing end, held by whoever turns the simulation's crank.
 pub struct AudioIn {
-    ring: Arc<Ring>,
+    ring: Arc<Mutex<Ring>>,
 }
 
 impl AudioIn {
@@ -152,91 +141,87 @@ impl AudioIn {
     /// Racing it from this end would drop audio out of the middle of
     /// what is about to play.
     pub fn push(&mut self, frames: &[i16]) -> usize {
-        let capacity = self.ring.mask + 1;
-        let write = self.ring.write.load(Ordering::Relaxed);
-        let queued = write.saturating_sub(self.ring.read.load(Ordering::Acquire)) as usize;
-        let n = (frames.len() / CHANNELS).min(capacity - queued.min(capacity));
-        if n > 0 {
-            self.ring.copy(write, frames.as_ptr().cast_mut(), n, true);
-            // Release so the frames are visible before the cursor that
-            // hands them over.
-            self.ring.write.store(write + n as u64, Ordering::Release);
-        }
+        let mut ring = self.ring.lock().unwrap();
+        // Never underflows: this is the only thing that grows the queue,
+        // and it is what holds it to the capacity reserved up front — so
+        // the extend below is a copy and never an allocation.
+        let n = (frames.len() / CHANNELS).min(ring.capacity - ring.queued());
+        ring.frames.extend_from_slice(&frames[..n * CHANNELS]);
         n
     }
 
     /// Frames ever published — the coordinate a snapshot marks so a
     /// rollback knows what its speculation voiced.
     pub fn produced(&self) -> u64 {
-        self.ring.write.load(Ordering::Relaxed)
+        self.ring.lock().unwrap().published()
     }
 
     /// Take back everything published since `mark`, and answer with what
     /// could not be taken back.
     ///
-    /// What the consumer has not reached is un-published by moving the
-    /// write cursor — no copying, and the frames are simply overwritten
-    /// by the re-simulation. What it already read cannot be unplayed, so
-    /// it comes back as a frame count: the caller owes that many frames
-    /// of the regeneration, and dropping them on the way in is what
-    /// stops the listener hearing the span twice.
+    /// What the consumer has not reached is un-published by truncating
+    /// the queue — no copying, and the room is taken again by the
+    /// re-simulation. What it already read cannot be unplayed, so it
+    /// comes back as a frame count: the caller owes that many frames of
+    /// the regeneration, and dropping them on the way in is what stops
+    /// the listener hearing the span twice.
     pub fn revoke_to(&mut self, mark: u64) -> u64 {
-        let write = self.ring.write.load(Ordering::Relaxed);
-        if write <= mark {
+        let mut ring = self.ring.lock().unwrap();
+        if ring.published() <= mark {
             return 0;
         }
         // The floor: audio the consumer has taken is gone, whatever the
         // mark says.
-        let kept = self.ring.read.load(Ordering::Acquire).max(mark);
-        self.ring.write.store(kept, Ordering::Release);
+        let kept = ring.head.max(mark);
+        let keeping = (kept - ring.head) as usize * CHANNELS;
+        ring.frames.truncate(keeping);
         kept - mark
     }
 
     /// Drop everything queued — a seek chase's fast-forward burst, or
     /// the tail of a seat a host just swapped away from, neither of
     /// which anyone wants to hear.
+    ///
+    /// The head stays where it is, so what comes next is published at
+    /// the coordinates the discarded audio held: exactly what a rewind
+    /// all the way back to the consumer would have done.
     pub fn clear(&mut self) {
-        let read = self.ring.read.load(Ordering::Acquire);
-        self.ring.write.store(read, Ordering::Release);
+        self.ring.lock().unwrap().frames.clear();
     }
 
     /// Publish the rate the console is producing at.
     pub fn set_sample_rate(&mut self, hz: f64) {
         if hz > 0.0 {
-            self.ring.rate.store(hz.to_bits(), Ordering::Relaxed);
+            self.ring.lock().unwrap().rate = hz;
         }
     }
 }
 
 /// The consuming end, held by whoever plays the sound. Every call here
-/// is lock-free — that is the point of the whole file — so a device
-/// callback may use it directly.
+/// takes the ring's lock and nothing else — never a console's — so a
+/// device callback may use it directly.
 pub struct AudioOut {
-    ring: Arc<Ring>,
-    /// This end's own cursor. Mirrored into the ring for the producer to
-    /// read; kept here too so the common path is not an atomic load.
-    read: u64,
+    ring: Arc<Mutex<Ring>>,
 }
 
 impl AudioOut {
     /// Frames ready to play.
-    pub fn available(&mut self) -> usize {
-        (self.published() - self.read) as usize
+    pub fn available(&self) -> usize {
+        self.ring.lock().unwrap().queued()
     }
 
     /// The rate the console is producing at, in Hz.
     pub fn sample_rate(&self) -> f64 {
-        f64::from_bits(self.ring.rate.load(Ordering::Relaxed))
+        self.ring.lock().unwrap().rate
     }
 
     /// Take up to `out`'s worth, interleaved. Answers with the frames
     /// copied, which is short only when the ring is short.
     pub fn read(&mut self, out: &mut [i16]) -> usize {
-        let n = ((self.published() - self.read) as usize).min(out.len() / CHANNELS);
-        if n > 0 {
-            self.ring.copy(self.read, out.as_mut_ptr(), n, false);
-            self.advance(n);
-        }
+        let mut ring = self.ring.lock().unwrap();
+        let n = ring.queued().min(out.len() / CHANNELS);
+        out[..n * CHANNELS].copy_from_slice(&ring.frames[..n * CHANNELS]);
+        ring.take(n);
         n
     }
 
@@ -244,30 +229,10 @@ impl AudioOut {
     /// much went. The backlog shed when a burst has put the queue far
     /// past the level a host steers for.
     pub fn skip(&mut self, frames: usize) -> usize {
-        let n = ((self.published() - self.read) as usize).min(frames);
-        self.advance(n);
+        let mut ring = self.ring.lock().unwrap();
+        let n = ring.queued().min(frames);
+        ring.take(n);
         n
-    }
-
-    /// The producer's cursor, having first honoured a rewind that landed
-    /// below our own: a rollback took back audio while we were mid-read,
-    /// so the frames we thought we had are gone. Snapping back is what
-    /// keeps the occupancy from reading as an enormous number when the
-    /// cursors cross.
-    fn published(&mut self) -> u64 {
-        let write = self.ring.write.load(Ordering::Acquire);
-        if write < self.read {
-            self.read = write;
-            self.ring.read.store(write, Ordering::Release);
-        }
-        write
-    }
-
-    fn advance(&mut self, frames: usize) {
-        self.read += frames as u64;
-        // Release so the copy out is done before the producer is told
-        // the frames are free.
-        self.ring.read.store(self.read, Ordering::Release);
     }
 }
 
@@ -433,11 +398,11 @@ mod tests {
     }
 
     #[test]
-    fn frames_cross_in_order_and_wrap() {
+    fn frames_cross_in_order() {
         let (mut into, mut out) = channel(8);
         let mut buf = [0i16; 8 * CHANNELS];
-        // Several times the capacity, so every push wraps somewhere
-        // different.
+        // Several times the capacity over, so the queue empties and
+        // refills again and again.
         for round in 0..20i16 {
             assert_eq!(into.push(&ramp(round * 4, 4)), 4);
             assert_eq!(out.read(&mut buf[..4 * CHANNELS]), 4);
@@ -447,7 +412,7 @@ mod tests {
 
     #[test]
     fn a_full_ring_drops_what_will_not_fit() {
-        let (mut into, mut out) = channel(8);
+        let (mut into, out) = channel(8);
         assert_eq!(into.push(&ramp(0, 6)), 6);
         assert_eq!(into.push(&ramp(6, 6)), 2);
         assert_eq!(out.available(), 8);
@@ -492,17 +457,19 @@ mod tests {
         assert_eq!(out.available(), 0);
     }
 
-    /// A rewind that lands below the consumer's own cursor — a rollback
-    /// while a fill was mid-read — must read as an empty ring, not as an
-    /// enormous one.
+    /// A revoke reaching past everything the listener has left — the
+    /// deepest rollback there is — empties the ring rather than
+    /// confusing it, and what comes next is heard from where the
+    /// listener stopped.
     #[test]
-    fn a_cursor_crossing_reads_as_empty_rather_than_wrapping() {
+    fn a_revoke_past_the_whole_queue_empties_it() {
         let (mut into, mut out) = channel(64);
         into.push(&ramp(0, 10));
         let mut buf = [0i16; 10 * CHANNELS];
         out.read(&mut buf);
-        // Straight past the consumer, as only a racing revoke can.
-        into.ring.write.store(4, Ordering::Release);
+        let mark = into.produced();
+        into.push(&ramp(50, 4));
+        assert_eq!(into.revoke_to(mark - 6), 6);
         assert_eq!(out.available(), 0);
         into.push(&ramp(50, 3));
         assert_eq!(out.available(), 3);
@@ -538,7 +505,7 @@ mod tests {
     /// empty.
     #[test]
     fn the_pump_empties_a_console_bigger_than_one_chunk() {
-        let (into, mut out) = channel(1 << 16);
+        let (into, out) = channel(1 << 16);
         let mut pump = Pump::lone(into);
         let mut console = Console {
             queued: ramp(0, DRAIN_CHUNK * 2 + 7),
@@ -585,7 +552,7 @@ mod tests {
     #[test]
     fn a_seat_swap_drops_the_old_seats_tail() {
         let seat = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let (into, mut out) = channel(1 << 12);
+        let (into, out) = channel(1 << 12);
         let mut pump = Pump::new(into, seat.clone());
         let mut console = Console {
             queued: ramp(0, 10),
