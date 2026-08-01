@@ -77,12 +77,6 @@ deck-mb = { $used }/{ $capacity }MB
 deck-mb-uncapped = { $used }MB
 deck-slot-in = Slot-in { $max }MB
 
-# BN5DS: which MegaMan a save brings, normally decided by what sits in
-# the DS's GBA slot.
-bn5ds-cross-none = MegaMan
-bn5ds-cross-bass = BassCross MegaMan
-bn5ds-cross-sol = SolCross MegaMan
-
 # BN5DS: which of the cartridge's two teams a file plays.
 bn5ds-team-protoman = Team ProtoMan
 bn5ds-team-colonel = Team Colonel

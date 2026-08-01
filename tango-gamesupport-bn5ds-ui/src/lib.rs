@@ -28,6 +28,7 @@
 use std::sync::Arc;
 
 use sweeten::widget::column;
+use tango_gamesupport_bn5ds_dataview::rom;
 use tango_gamesupport_bn5ds_dataview::save::{Cross, Save, SaveSet};
 use tango_gamesupport_common::dataview::save::Save as _;
 use tango_gamesupport_common::editor::loaded::OpenSave;
@@ -45,6 +46,13 @@ pub static SAVE_EDITOR: SaveEditorShell<Ui> = SaveEditorShell(Ui);
 /// This save's file, when the loaded save is one of ours.
 fn file_of(loaded: &OpenSave) -> Option<&Save> {
     loaded.save.as_ref().as_any().downcast_ref::<Save>()
+}
+
+/// The cart's own assets, through any override layering — what names
+/// the crosses. `underlying_any`, not `as_any`: a patch's name
+/// overrides reach chips, not this cartridge's own MegaMen.
+fn cart_of(loaded: &OpenSave) -> Option<&rom::Assets> {
+    loaded.assets.underlying_any().downcast_ref::<rom::Assets>()
 }
 
 /// Play the cartridge's other in-game file: point the editor at it, and
@@ -164,18 +172,24 @@ fn file_picker<'a>(lang: &'a LanguageIdentifier, save: &'a Save) -> Option<iced:
 /// *other* team's BassCross (an editor pass from a cartridge whose team
 /// differs, or a real slot-2 boot) still reads as BassCross rather than
 /// as nothing.
-fn cross_choices<'a>(lang: &'a LanguageIdentifier, save: &'a Save) -> (Vec<CrossChoice>, Option<CrossChoice>) {
-    let options: Vec<CrossChoice> = [
-        (Cross::None, tango_gamesupport_common::t!(lang, "bn5ds-cross-none")),
-        (
-            Cross::bass_for(save.team()),
-            tango_gamesupport_common::t!(lang, "bn5ds-cross-bass"),
-        ),
-        (Cross::Sol, tango_gamesupport_common::t!(lang, "bn5ds-cross-sol")),
-    ]
-    .into_iter()
-    .map(|(cross, label)| CrossChoice { cross, label })
-    .collect();
+///
+/// The labels are the cart's own names for these three — `MegaMan`,
+/// `BCMegaMn`, `SCMegaMn` and their JP counterparts — so they read the
+/// way the game itself writes them rather than the way English prose
+/// would. A cart that won't give one up (a patch that moved the
+/// archives) falls back to naming the byte, which is unpickable
+/// otherwise.
+fn cross_choices<'a>(loaded: &'a OpenSave, save: &'a Save) -> (Vec<CrossChoice>, Option<CrossChoice>) {
+    let cart = cart_of(loaded);
+    let options: Vec<CrossChoice> = [Cross::None, Cross::bass_for(save.team()), Cross::Sol]
+        .into_iter()
+        .map(|cross| CrossChoice {
+            cross,
+            label: cart
+                .and_then(|cart| cart.cross_name(cross))
+                .unwrap_or_else(|| format!("Cross #{}", cross.raw())),
+        })
+        .collect();
     let current = save.cross();
     let selected = options
         .iter()
@@ -245,14 +259,16 @@ fn card_slot<'a>(inner: iced::Element<'a, Action>, team: String) -> iced::Elemen
 /// BN5/BN6 name their navi in, over the team the file plays. Every save
 /// shows one — a save with no cross brings plain MegaMan, which is a
 /// name like any other.
-fn cross_card<'a>(lang: &'a LanguageIdentifier, save: &'a Save) -> iced::Element<'a, Action> {
-    let (options, selected) = cross_choices(lang, save);
-    let name = selected.map(|c| c.label).unwrap_or_else(|| {
-        options
-            .first()
-            .map(|c| c.label.clone())
-            .unwrap_or_else(|| tango_gamesupport_common::t!(lang, "bn5ds-cross-none"))
-    });
+fn cross_card<'a>(
+    lang: &'a LanguageIdentifier,
+    loaded: &'a OpenSave,
+    save: &'a Save,
+) -> iced::Element<'a, Action> {
+    let (options, selected) = cross_choices(loaded, save);
+    let name = selected
+        .or_else(|| options.first().cloned())
+        .map(|c| c.label)
+        .unwrap_or_default();
     card_slot(
         iced::widget::text(name)
             .size(tango_gamesupport_common::style::TEXT_TITLE)
@@ -265,8 +281,12 @@ fn cross_card<'a>(lang: &'a LanguageIdentifier, save: &'a Save) -> iced::Element
 /// The same card while editing: the dropdown that changes the name. The
 /// team below it stays a reading — it is the file's, and the file select
 /// is what moves between them.
-fn cross_picker<'a>(lang: &'a LanguageIdentifier, save: &'a Save) -> iced::Element<'a, Action> {
-    let (options, selected) = cross_choices(lang, save);
+fn cross_picker<'a>(
+    lang: &'a LanguageIdentifier,
+    loaded: &'a OpenSave,
+    save: &'a Save,
+) -> iced::Element<'a, Action> {
+    let (options, selected) = cross_choices(loaded, save);
     card_slot(
         pick_list(options, selected, |c: CrossChoice| {
             Action::Game(Arc::new(SetCross(c.cross)))
@@ -314,9 +334,9 @@ impl GameSaveEditor for Ui {
             return sv::navi::render_navi_strip(lang, loaded, edit, actions);
         };
         let card = if editing {
-            cross_picker(lang, save)
+            cross_picker(lang, loaded, save)
         } else {
-            cross_card(lang, save)
+            cross_card(lang, loaded, save)
         };
         sv::navi::render_identity_strip(card, actions)
     }

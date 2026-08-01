@@ -28,6 +28,12 @@ pub struct Offsets {
     /// consecutive words, so the description array is this plus 8.
     chip_names_pointers: u32,
     chip_descriptions_pointers: u32,
+    /// Pointers (RAM) to the two archives that name whoever is standing
+    /// on the field: the navi roster, whose first entry is the player's
+    /// own MegaMan, and the enemy list, which runs the viruses and ends
+    /// on the two crosses. The game keeps them as consecutive words.
+    navi_names_pointer: u32,
+    enemy_names_pointer: u32,
     /// The shared 16-color icon palette (RAM), byte-identical to the
     /// GBA game's — which is how it was found, so it is addressed as
     /// data rather than through a pointer chain.
@@ -49,6 +55,8 @@ pub static A5TE_00: Offsets = Offsets {
     chip_data:                  0x0203e9e8,
     chip_names_pointers:        0x020cecf8,
     chip_descriptions_pointers: 0x020ced00,
+    navi_names_pointer:         0x020057b4,
+    enemy_names_pointer:        0x020057b0,
     chip_icon_palette:          0x020fbf88,
     element_icons:              0x0088_6200,
     element_icon_palette:       0x0088_6a00,
@@ -61,6 +69,8 @@ pub static A5TJ_00: Offsets = Offsets {
     chip_data:                  0x0203e7c0,
     chip_names_pointers:        0x020cd734,
     chip_descriptions_pointers: 0x020cd73c,
+    navi_names_pointer:         0x02005764,
+    enemy_names_pointer:        0x02005760,
     chip_icon_palette:          0x020fa8ac,
     element_icons:              0x0099_7a00,
     element_icon_palette:       0x0099_8200,
@@ -143,7 +153,58 @@ impl Assets {
             element_icon_palette,
         }
     }
+
+    /// Decode entry `index` of the text archive `pointer` points at,
+    /// keeping only its text. `None` when either address runs out of
+    /// mappable range, or the entry does not decode.
+    fn text(&self, pointer: u32, index: usize) -> Option<String> {
+        let archive = self.mapper.read_u32(pointer)?;
+        let entry = tango_gamesupport_common::dataview::msg::get_entry(self.mapper.get(archive), index)?;
+
+        Some(
+            self.msg_parser
+                .parse(entry)
+                .ok()?
+                .into_iter()
+                .flat_map(|part| {
+                    match part {
+                        tango_gamesupport_common::dataview::msg::Chunk::Text(s) => s,
+                        _ => "".to_string(),
+                    }
+                    .chars()
+                    .collect::<Vec<_>>()
+                })
+                .collect::<String>(),
+        )
+    }
+
+    /// What the cart calls the MegaMan a save with this cross brings —
+    /// `MegaMan`/`SCMegaMn`/`BCMegaMn`, `ロックマン`/`SCロックマン`/`FCロックマン`.
+    ///
+    /// Plain MegaMan is the navi roster's first entry, the name every
+    /// other game in the series shows for the player's own navi. The
+    /// crosses are not on that roster — the only place the cart writes
+    /// them down is where it names what stands on the field, so they
+    /// come off the end of the enemy list.
+    pub fn cross_name(&self, cross: crate::save::Cross) -> Option<String> {
+        let (pointer, index) = match cross {
+            crate::save::Cross::None => (self.offsets.navi_names_pointer, MEGAMAN_NAVI_INDEX),
+            crate::save::Cross::BassProto | crate::save::Cross::BassColonel => {
+                (self.offsets.enemy_names_pointer, BASS_CROSS_ENEMY_INDEX)
+            }
+            crate::save::Cross::Sol => (self.offsets.enemy_names_pointer, SOL_CROSS_ENEMY_INDEX),
+        };
+        self.text(pointer, index).filter(|name| !name.is_empty())
+    }
 }
+
+/// Where [`Assets::cross_name`] reads each name. The two crosses are the
+/// last two entries of the enemy list, after the viruses and the game's
+/// own modified MegaMan; both BassCross values share one name, as the
+/// pair is a difference of team rather than of who shows up.
+const MEGAMAN_NAVI_INDEX: usize = 0;
+const BASS_CROSS_ENEMY_INDEX: usize = 234;
+const SOL_CROSS_ENEMY_INDEX: usize = 235;
 
 struct Chip<'a> {
     id: usize,
@@ -200,29 +261,8 @@ impl<'a> Chip<'a> {
     /// Decode the msg entry for this chip out of the per-0x100-ids
     /// archive array at `pointers`, keeping only its text.
     fn text(&self, pointers: u32) -> Option<String> {
-        let archive = self
-            .assets
-            .mapper
-            .read_u32(pointers + ((self.id / 0x100) * 4) as u32)?;
-        let region = self.assets.mapper.get(archive);
-        let entry = tango_gamesupport_common::dataview::msg::get_entry(region, self.id % 0x100)?;
-
-        Some(
-            self.assets
-                .msg_parser
-                .parse(entry)
-                .ok()?
-                .into_iter()
-                .flat_map(|part| {
-                    match part {
-                        tango_gamesupport_common::dataview::msg::Chunk::Text(s) => s,
-                        _ => "".to_string(),
-                    }
-                    .chars()
-                    .collect::<Vec<_>>()
-                })
-                .collect::<String>(),
-        )
+        self.assets
+            .text(pointers + ((self.id / 0x100) * 4) as u32, self.id % 0x100)
     }
 
     /// This chip's artwork, from the art banks. `None` when an index
@@ -404,10 +444,18 @@ mod tests {
     }
 }
 
-// The DS build renders text with the GBA games's own encoding; these are
-// BN5's charsets verbatim (chip names on the cart decode with them).
+// The DS build renders text with the GBA games's own encoding; the US
+// charset is BN5's verbatim (chip names on the cart decode with it).
 #[rustfmt::skip]
 pub const EN_CHARSET: &[&str] = &[" ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "*", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "ウ", "ア", "イ", "オ", "エ", "ケ", "コ", "カ", "ク", "キ", "セ", "サ", "ソ", "シ", "ス", "テ", "ト", "ツ", "タ", "チ", "ネ", "ノ", "ヌ", "ナ", "ニ", "ヒ", "ヘ", "ホ", "ハ", "フ", "ミ", "マ", "メ", "ム", "モ", "ヤ", "ヨ", "ユ", "ロ", "ル", "リ", "レ", "ラ", "ン", "熱", "斗", "ワ", "ヲ", "ギ", "ガ", "ゲ", "ゴ", "グ", "ゾ", "ジ", "ゼ", "ズ", "ザ", "デ", "ド", "ヅ", "ダ", "ヂ", "ベ", "ビ", "ボ", "バ", "ブ", "ピ", "パ", "ペ", "プ", "ポ", "ゥ", "ァ", "ィ", "ォ", "ェ", "ュ", "ヴ", "ッ", "ョ", "ャ", "-", "×", "=", ":", "%", "?", "+", "█", "[bat]", "ー", "!", "SP", "DS", "&", ",", "。", ".", "・", ";", "'", "\"", "~", "/", "(", ")", "「", "」", "α", "β", "Ω", "■", "_", "[z]", "周", "え", "お", "う", "あ", "い", "け", "く", "き", "こ", "か", "せ", "そ", "す", "さ", "し", "つ", "と", "て", "た", "ち", "ね", "の", "な", "ぬ", "に", "へ", "ふ", "ほ", "は", "ひ", "め", "む", "み", "も", "ま", "ゆ", "よ", "や", "る", "ら", "り", "ろ", "れ", "究", "ん", "を", "わ", "研", "げ", "ぐ", "ご", "が", "ぎ", "ぜ", "ず", "じ", "ぞ", "ざ", "で", "ど", "づ", "だ", "ぢ", "べ", "ば", "び", "ぼ", "ぶ", "ぽ", "ぷ", "ぴ", "ぺ", "ぱ", "ぅ", "ぁ", "ぃ", "ぉ", "ぇ", "ゅ", "ょ", "っ", "ゃ", "Ω", "←", "↓", "木", "[MB]", "無", "現", "実", "[circle]", "[cross]", "#", "⋯", "不", "止", "彩", "\\[", "父", "集", "院", "一", "二", "三", "四", "五", "六", "七", "八", "陽", "十", "百", "千", "万", "脳", "上", "下", "左", "右", "手", "足", "日", "目", "月", "\\]", "<", "人", "入", "出", "山", "口", "光", "電", "気", "助", "科", "次", "名", "前", "学", "校", "省", "祐", "室", "世", "界", "燃", "朗", "枚", "島", "悪", "路", "闇", "大", "小", "中", "自", "分", "間", "系", "花", "問", ">", "$", "城", "王", "兄", "化", "行", "街", "屋", "水", "見", "終", "丁", "桜", "先", "生", "長", "今", "了", "点", "井", "子", "言", "太", "属", "風", "会", "性", "持", "時", "勝", "赤", "年", "火", "改", "計", "画", "体", "波", "回", "外", "地", "正", "造", "値", "合", "戦", "川", "秋", "原", "町", "所", "用", "金", "郎", "作", "数", "方", "社", "攻", "撃", "力", "同", "武", "何", "発", "少", "以", "白", "早", "暮", "面", "組", "後", "文", "字", "本", "階", "明", "才", "者", "立", "々", "ヶ", "連", "射", "綾", "切", "土", "炎", "伊"];
 
+// The JP cart's is BN5's with two nine-entry runs traded: A–I sit where
+// the GBA game keeps its small hiragana (0xe4, above the escape
+// threshold and so two bytes a character), and the small hiragana where
+// it keeps A–I (0x5e). JP text is full of ゃゅょっ and nearly free of
+// letters, so the trade shortens it — at the price of two bytes apiece
+// for the F, C and S that spell FC/SCロックマン. Derived by lining this
+// cart's chip text up against the GBA cart's, entry for entry: 10124
+// characters agree on the trade and none contradict it.
 #[rustfmt::skip]
-pub const JA_CHARSET: &[&str] = &[" ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "ウ", "ア", "イ", "オ", "エ", "ケ", "コ", "カ", "ク", "キ", "セ", "サ", "ソ", "シ", "ス", "テ", "ト", "ツ", "タ", "チ", "ネ", "ノ", "ヌ", "ナ", "ニ", "ヒ", "ヘ", "ホ", "ハ", "フ", "ミ", "マ", "メ", "ム", "モ", "ヤ", "ヨ", "ユ", "ロ", "ル", "リ", "レ", "ラ", "ン", "熱", "斗", "ワ", "ヲ", "ギ", "ガ", "ゲ", "ゴ", "グ", "ゾ", "ジ", "ゼ", "ズ", "ザ", "デ", "ド", "ヅ", "ダ", "ヂ", "ベ", "ビ", "ボ", "バ", "ブ", "ピ", "パ", "ペ", "プ", "ポ", "ゥ", "ァ", "ィ", "ォ", "ェ", "ュ", "ヴ", "ッ", "ョ", "ャ", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "*", "-", "×", "=", ":", "%", "?", "+", "■", "[bat]", "ー", "!", "SP", "DS", "&", "、", "゜", ".", "・", ";", "’", "\"", "~", "/", "(", ")", "「", "」", "V2", "V3", "V4", "V5", "_", "[z]", "周", "え", "お", "う", "あ", "い", "け", "く", "き", "こ", "か", "せ", "そ", "す", "さ", "し", "つ", "と", "て", "た", "ち", "ね", "の", "な", "ぬ", "に", "へ", "ふ", "ほ", "は", "ひ", "め", "む", "み", "も", "ま", "ゆ", "よ", "や", "る", "ら", "り", "ろ", "れ", "究", "ん", "を", "わ", "研", "げ", "ぐ", "ご", "が", "ぎ", "ぜ", "ず", "じ", "ぞ", "ざ", "で", "ど", "づ", "だ", "ぢ", "べ", "ば", "び", "ぼ", "ぶ", "ぽ", "ぷ", "ぴ", "ぺ", "ぱ", "ぅ", "ぁ", "ぃ", "ぉ", "ぇ", "ゅ", "ょ", "っ", "ゃ", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "容", "量", "全", "木", "[MB]", "無", "現", "実", "[circle]", "[cross]", "緑", "尺", "不", "止", "彩", "起", "父", "集", "院", "一", "二", "三", "四", "五", "六", "七", "八", "陽", "十", "百", "千", "万", "脳", "上", "下", "左", "右", "手", "足", "日", "目", "月", "玉", "各", "人", "入", "出", "山", "口", "光", "電", "気", "助", "科", "次", "名", "前", "学", "校", "省", "祐", "室", "世", "界", "燃", "朗", "枚", "島", "悪", "路", "闇", "大", "小", "中", "自", "分", "間", "系", "花", "問", "異", "門", "城", "王", "兄", "化", "行", "街", "屋", "水", "見", "終", "丁", "桜", "先", "生", "長", "今", "了", "点", "井", "子", "言", "太", "属", "風", "会", "性", "持", "時", "勝", "赤", "毎", "年", "火", "改", "計", "画", "休", "体", "波", "回", "外", "地", "病", "正", "造", "値", "合", "戦", "川", "秋", "原", "町", "所", "用", "金", "郎", "作", "数", "方", "社", "攻", "撃", "力", "同", "武", "何", "発", "少", "以", "白", "早", "暮", "面", "組", "後", "文", "字", "本", "階", "明", "才", "者", "立", "泉", "々", "ヶ", "連", "射", "国", "綾", "切", "土", "炎", "伊"];
+pub const JA_CHARSET: &[&str] = &[" ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "ウ", "ア", "イ", "オ", "エ", "ケ", "コ", "カ", "ク", "キ", "セ", "サ", "ソ", "シ", "ス", "テ", "ト", "ツ", "タ", "チ", "ネ", "ノ", "ヌ", "ナ", "ニ", "ヒ", "ヘ", "ホ", "ハ", "フ", "ミ", "マ", "メ", "ム", "モ", "ヤ", "ヨ", "ユ", "ロ", "ル", "リ", "レ", "ラ", "ン", "熱", "斗", "ワ", "ヲ", "ギ", "ガ", "ゲ", "ゴ", "グ", "ゾ", "ジ", "ゼ", "ズ", "ザ", "デ", "ド", "ヅ", "ダ", "ヂ", "ベ", "ビ", "ボ", "バ", "ブ", "ピ", "パ", "ペ", "プ", "ポ", "ゥ", "ァ", "ィ", "ォ", "ェ", "ュ", "ヴ", "ッ", "ョ", "ャ", "ぅ", "ぁ", "ぃ", "ぉ", "ぇ", "ゅ", "ょ", "っ", "ゃ", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "*", "-", "×", "=", ":", "%", "?", "+", "■", "[bat]", "ー", "!", "SP", "DS", "&", "、", "゜", ".", "・", ";", "’", "\"", "~", "/", "(", ")", "「", "」", "V2", "V3", "V4", "V5", "_", "[z]", "周", "え", "お", "う", "あ", "い", "け", "く", "き", "こ", "か", "せ", "そ", "す", "さ", "し", "つ", "と", "て", "た", "ち", "ね", "の", "な", "ぬ", "に", "へ", "ふ", "ほ", "は", "ひ", "め", "む", "み", "も", "ま", "ゆ", "よ", "や", "る", "ら", "り", "ろ", "れ", "究", "ん", "を", "わ", "研", "げ", "ぐ", "ご", "が", "ぎ", "ぜ", "ず", "じ", "ぞ", "ざ", "で", "ど", "づ", "だ", "ぢ", "べ", "ば", "び", "ぼ", "ぶ", "ぽ", "ぷ", "ぴ", "ぺ", "ぱ", "A", "B", "C", "D", "E", "F", "G", "H", "I", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "容", "量", "全", "木", "[MB]", "無", "現", "実", "[circle]", "[cross]", "緑", "尺", "不", "止", "彩", "起", "父", "集", "院", "一", "二", "三", "四", "五", "六", "七", "八", "陽", "十", "百", "千", "万", "脳", "上", "下", "左", "右", "手", "足", "日", "目", "月", "玉", "各", "人", "入", "出", "山", "口", "光", "電", "気", "助", "科", "次", "名", "前", "学", "校", "省", "祐", "室", "世", "界", "燃", "朗", "枚", "島", "悪", "路", "闇", "大", "小", "中", "自", "分", "間", "系", "花", "問", "異", "門", "城", "王", "兄", "化", "行", "街", "屋", "水", "見", "終", "丁", "桜", "先", "生", "長", "今", "了", "点", "井", "子", "言", "太", "属", "風", "会", "性", "持", "時", "勝", "赤", "毎", "年", "火", "改", "計", "画", "休", "体", "波", "回", "外", "地", "病", "正", "造", "値", "合", "戦", "川", "秋", "原", "町", "所", "用", "金", "郎", "作", "数", "方", "社", "攻", "撃", "力", "同", "武", "何", "発", "少", "以", "白", "早", "暮", "面", "組", "後", "文", "字", "本", "階", "明", "才", "者", "立", "泉", "々", "ヶ", "連", "射", "国", "綾", "切", "土", "炎", "伊"];
