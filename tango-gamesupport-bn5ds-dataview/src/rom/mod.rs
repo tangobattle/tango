@@ -196,13 +196,30 @@ impl Assets {
         };
         self.text(pointer, index).filter(|name| !name.is_empty())
     }
+
+    /// What the cart calls the navi leading `team`, the way its own file
+    /// select names a file: `ProtoMan`/`Colonel`, ブルース/カーネル. Off the
+    /// same roster as plain MegaMan — the two are the roster's first
+    /// entries after him, each team's leader.
+    pub fn leader_name(&self, team: u8) -> Option<String> {
+        let index = if team == 0 {
+            PROTOMAN_NAVI_INDEX
+        } else {
+            COLONEL_NAVI_INDEX
+        };
+        self.text(self.offsets.navi_names_pointer, index)
+            .filter(|name| !name.is_empty())
+    }
 }
 
-/// Where [`Assets::cross_name`] reads each name. The two crosses are the
-/// last two entries of the enemy list, after the viruses and the game's
-/// own modified MegaMan; both BassCross values share one name, as the
-/// pair is a difference of team rather than of who shows up.
+/// Where [`Assets::cross_name`] and [`Assets::leader_name`] read each
+/// name. The two crosses are the last two entries of the enemy list,
+/// after the viruses and the game's own modified MegaMan; both BassCross
+/// values share one name, as the pair is a difference of team rather
+/// than of who shows up.
 const MEGAMAN_NAVI_INDEX: usize = 0;
+const PROTOMAN_NAVI_INDEX: usize = 1;
+const COLONEL_NAVI_INDEX: usize = 37;
 const BASS_CROSS_ENEMY_INDEX: usize = 234;
 const SOL_CROSS_ENEMY_INDEX: usize = 235;
 

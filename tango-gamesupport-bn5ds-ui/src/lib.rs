@@ -220,12 +220,14 @@ const CARD_HEIGHT: f32 = tango_gamesupport_common::style::TEXT_BODY * 1.3
 /// decides which of the two BassCross values a pick lands (see
 /// [`Cross::bass_for`]). Read out of the file's own bytes, so it names
 /// the file being looked at rather than the cartridge.
-fn team_label(lang: &LanguageIdentifier, save: &Save) -> String {
-    if save.team() == 0 {
-        tango_gamesupport_common::t!(lang, "bn5ds-team-protoman")
-    } else {
-        tango_gamesupport_common::t!(lang, "bn5ds-team-colonel")
-    }
+///
+/// Named by its leader, as the cart's own file select names it: the
+/// navi is the cart's word, the line around it this app's.
+fn team_label(lang: &LanguageIdentifier, loaded: &OpenSave, save: &Save) -> String {
+    let leader = cart_of(loaded)
+        .and_then(|cart| cart.leader_name(save.team()))
+        .unwrap_or_else(|| format!("#{}", save.team()));
+    tango_gamesupport_common::t!(lang, "bn5ds-leader", navi = leader)
 }
 
 /// One half of the identity card, in the box both halves share: the
@@ -274,7 +276,7 @@ fn cross_card<'a>(
             .size(tango_gamesupport_common::style::TEXT_TITLE)
             .wrapping(iced::widget::text::Wrapping::None)
             .into(),
-        team_label(lang, save),
+        team_label(lang, loaded, save),
     )
 }
 
@@ -291,7 +293,7 @@ fn cross_picker<'a>(
         pick_list(options, selected, |c: CrossChoice| {
             Action::Game(Arc::new(SetCross(c.cross)))
         }),
-        team_label(lang, save),
+        team_label(lang, loaded, save),
     )
 }
 
