@@ -206,22 +206,32 @@ impl SaveSet {
     /// is damaged, so a single intact tag is as much as it requires
     /// too.
     ///
-    /// A dump shorter than [`SIZE`] is accepted and padded out with
-    /// erased flash. Dumpers trim the erased tail, or size the chip by
-    /// what the game touched, and either way the short file carries
-    /// every block the game wrote; the padding lands where flash the
-    /// cart never wrote would be, and reads back as unformatted blocks
-    /// — which is exactly what the game's own mount makes of them.
-    /// It is also what the emulator does with such a file: the cart's
-    /// flash length comes from its ROM entry, and a short image is
-    /// copied into the front of an erased chip. Padding here just means
-    /// the save Tango reads, the SRAM it hands the console and the
+    /// A dump of any length is accepted and canonicalized to [`SIZE`],
+    /// which is the length the emulator mounts and hands back.
+    ///
+    /// Short of the chip it is padded with erased flash. Dumpers trim
+    /// the erased tail, or size the chip by what the game touched, and
+    /// either way the short file carries every block the game wrote;
+    /// the padding lands where flash the cart never wrote would be, and
+    /// reads back as unformatted blocks — which is exactly what the
+    /// game's own mount makes of them.
+    ///
+    /// Past the chip it is cut off. A dump longer than 256 KiB is a
+    /// container, not a bigger cartridge: DS save managers routinely
+    /// write a fixed 512 KiB whatever the cart holds, and every byte of
+    /// such a file past the chip is flash that does not exist. Taking
+    /// the front of it is not a guess — it is what `CartRetail` does
+    /// with the same file, copying `min(file, chip)` into an erased
+    /// chip and dropping the rest, and what the GBA saves here have
+    /// always done by slicing the range they need out of a dump.
+    /// Length was never what identified a save anyway: that is the
+    /// format tag below, and a file that does not carry it is refused
+    /// at any size.
+    ///
+    /// So the save Tango reads, the SRAM it hands the console and the
     /// image the replay records are the same bytes whatever length the
     /// file arrived at.
     pub fn parse(data: &[u8]) -> Result<Self, Error> {
-        if data.len() > SIZE {
-            return Err(Error::InvalidSize(data.len()));
-        }
         let mut data = data.to_vec();
         data.resize(SIZE, ERASED);
 
@@ -571,11 +581,18 @@ mod tests {
         assert_eq!(set.current().to_sram_dump(), full);
     }
 
+    /// The shape a DS save manager writes: the cart's flash, then as
+    /// much erased padding again. The cart is in there; the rest is
+    /// address space the chip does not answer for.
     #[test]
-    fn rejects_a_dump_longer_than_the_flash() {
-        let mut data = plausible();
-        data.resize(SIZE * 2, 0);
-        assert!(SaveSet::parse(&data).is_err());
+    fn accepts_a_dump_longer_than_the_flash() {
+        use tango_gamesupport_common::dataview::save::Save as _;
+        let full = plausible();
+        let mut padded = full.clone();
+        padded.resize(SIZE * 2, ERASED);
+        let set = SaveSet::parse(&padded).unwrap();
+        assert_eq!(set.slots(), SaveSet::parse(&full).unwrap().slots());
+        assert_eq!(set.current().to_sram_dump(), full);
     }
 
     #[test]

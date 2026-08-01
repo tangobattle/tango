@@ -14,11 +14,16 @@
 
 use tango_gamesupport_common::dataview::save::{self, Error};
 
-/// The flash the cart carries: 256 KiB, the same chip BN5DS ships on.
-/// That is what the emulator mounts and hands back, so it is the length
-/// a dump is canonicalized to — but not the length one has to arrive
-/// at, see [`Save::new`].
-pub const SIZE: usize = 0x4_0000;
+/// The save memory the cart carries: 64 KiB of EEPROM. Smaller than
+/// BN5DS's 256 KiB flash, which this used to claim to match — the game
+/// writes nothing past 0x5b80 either way, so the difference never
+/// showed up in what was read, only in what got written back.
+///
+/// It is what the emulator mounts and hands back (`B6XJ` is save type 3
+/// in melonDS's ROM list, and a booted cart reports 0x10000), so it is
+/// the length a dump is canonicalized to — but not the length one has
+/// to arrive at, see [`Save::new`].
+pub const SIZE: usize = 0x1_0000;
 
 /// What a byte of flash reads as before anything is written to it, and
 /// so what a dump that stops short of [`SIZE`] is padded out with.
@@ -120,22 +125,26 @@ impl Save {
     /// second bank still erased, and that is a real save, not a damaged
     /// one.
     ///
-    /// A dump shorter than [`SIZE`] is one of those too. The game never
-    /// writes past the second bank's payload (0x5b80 of a 256 KiB
-    /// chip), so everything downstream of that is flash the cart has
-    /// only ever read as erased — and a dumper that sizes the chip by
-    /// what the game touched, or one that trims the erased tail, hands
-    /// over a short file with every byte that matters in it. Such a
-    /// dump is padded back out rather than rejected, which is also what
-    /// the emulator does with it: the cart's flash length comes from
-    /// its ROM entry, and a short image is copied into the front of an
-    /// erased chip. Padding here just means the save Tango reads, the
-    /// SRAM it hands the console and the image the replay records are
-    /// the same bytes whatever length the file arrived at.
+    /// A dump of any length is one of those too, canonicalized to
+    /// [`SIZE`] either way.
+    ///
+    /// Short of the chip it is padded. The game never writes past the
+    /// second bank's payload (0x5b80), so everything downstream of that
+    /// is flash the cart has only ever read as erased — and a dumper
+    /// that sizes the chip by what the game touched, or one that trims
+    /// the erased tail, hands over a short file with every byte that
+    /// matters in it.
+    ///
+    /// Past the chip it is cut off, for the reason BN5DS's
+    /// `SaveSet::parse` gives at length: a longer file is a container,
+    /// DS save managers write a fixed size whatever the cart holds, and
+    /// the emulator truncates the same file the same way. Length never
+    /// identified a save here — the format tag below does, at any size.
+    ///
+    /// So the save Tango reads, the SRAM it hands the console and the
+    /// image the replay records are the same bytes whatever length the
+    /// file arrived at.
     pub fn new(buf: &[u8]) -> Result<Self, Error> {
-        if buf.len() > SIZE {
-            return Err(Error::InvalidSize(buf.len()));
-        }
         let mut buf = buf.to_vec();
         buf.resize(SIZE, ERASED);
         if &buf[..MAGIC.len()] != MAGIC {
@@ -276,13 +285,29 @@ mod tests {
         assert!(Save::new(&buf).is_ok());
     }
 
+    /// The shape a DS save manager writes: the chip, then as much
+    /// padding again. The cart is in there; the rest is address space
+    /// no chip answers for.
+    #[test]
+    fn a_dump_longer_than_the_flash_still_parses() {
+        use tango_gamesupport_common::dataview::save::Save as _;
+        let full = cart([1, 2]);
+        let mut padded = full.clone();
+        padded.resize(SIZE * 2, ERASED);
+        let save = Save::new(&padded).unwrap();
+        assert_eq!(save.generation(), 2);
+        assert_eq!(save.to_sram_dump(), full);
+    }
+
     /// A dump that stops after the last byte the game ever writes is
     /// the whole save, and reads back as one padded out to the chip.
     #[test]
     fn a_dump_short_of_the_flash_still_parses() {
         use tango_gamesupport_common::dataview::save::Save as _;
         let full = cart([1, 2]);
-        for len in [0x1_0000, 0x2_0000] {
+        // 0x5b80 is the last byte the game ever writes; everything from
+        // there to the end of the chip is erased either way.
+        for len in [0x5b80, 0xc000] {
             let save = Save::new(&full[..len]).unwrap();
             assert_eq!(save.generation(), 2, "{len:#x}");
             assert_eq!(save.to_sram_dump(), full, "{len:#x}");
@@ -302,10 +327,8 @@ mod tests {
         let mut headless = vec![0xff; SIZE];
         headless[..MAGIC.len()].copy_from_slice(MAGIC);
         assert!(Save::new(&headless).is_err());
-        // A short dump is padded up to the chip; one longer than the
-        // chip is not a dump of it.
-        let mut oversize = cart([1, 2]);
-        oversize.resize(SIZE + 1, 0xff);
-        assert!(Save::new(&oversize).is_err());
+        // Nor does length identify anything: a foreign dump is refused
+        // whatever size it arrives at.
+        assert!(Save::new(&vec![0; SIZE * 2]).is_err());
     }
 }
