@@ -54,6 +54,15 @@
 //! joins it**. Both peers walk both consoles, so both agree without
 //! asking and nothing has to cross the wire.
 //!
+//! **What the cartridge brings** is read out of the cartridge rather
+//! than handed to the walk: which of the two in-game files is played
+//! (the one the game itself calls most recently saved) and which
+//! GBA-slot cross the save carries. The second needs a trap, because
+//! the file select clears the cross byte on every boot before it looks
+//! for a cartridge in the GBA slot (`CodeOffsets::cross_clear`). Slot 2
+//! itself is never emulated: the pick is the player's, made in the save
+//! editor, and the game does the rest.
+//!
 //! Both releases walk the identical route — one cart, two builds — but
 //! the addresses do not, so each registration closes over its build's
 //! [`priming::Layout`]. (The walker itself is that type's `traps`.)
@@ -168,11 +177,10 @@ impl tango_backend_melonds::GameSupport for Pvp {
         &self,
         link: &mut Link,
         match_type: (u8, u8),
-        session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
         rng_seed: [u8; 16],
         cancel: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<(), tango_match::Error> {
-        self.layout.walk(link, match_type, session_payloads, rng_seed, cancel)
+        self.layout.walk(link, match_type, rng_seed, cancel)
     }
 
     /// The touch screen rides along for Team Battle and not for the
@@ -189,16 +197,6 @@ impl tango_backend_melonds::GameSupport for Pvp {
             tango_backend_melonds::Screens::BOTH
         } else {
             tango_backend_melonds::Screens::UPPER
-        }
-    }
-
-    /// This game's payload type is
-    /// [`PlayedFile`](crate::dataview::save::PlayedFile): one byte,
-    /// the file-select slot the committing save view was on.
-    fn parse_session_payload(&self, bytes: &[u8]) -> Result<tango_match::BoxedSessionPayload, tango_match::Error> {
-        match *bytes {
-            [slot] => Ok(Box::new(crate::dataview::save::PlayedFile(slot))),
-            _ => Err(tango_match::Error::MalformedSessionPayload),
         }
     }
 
@@ -510,6 +508,28 @@ pub mod priming {
         /// a redirect cannot answer; writing the block it fills is the
         /// way past that, not a way around the screen's own job.
         board_team_screen_test: u32,
+        /// The file select's own store of the GBA-slot cross
+        /// (`strb r1,[r0,#0x4c]` — the byte at
+        /// [`CROSS_OFFSET`](crate::dataview::save::CROSS_OFFSET) of the
+        /// loaded save image), which every boot runs *after* the save
+        /// loads: the scene resets the cross before deciding what a
+        /// cartridge in the GBA slot buys, and with no cartridge — which
+        /// is every session here — nothing ever writes it back.
+        ///
+        /// That is the whole reason a trap is needed. The pick is the
+        /// player's and it lives in the save, where the game keeps it;
+        /// the game just refuses to carry it across a boot, exactly as
+        /// BN4 refuses to carry a link navi. So the walk answers the
+        /// store rather than jumping it: `r1` holds the 0 about to be
+        /// written, and putting the save's own byte there means the
+        /// game's own instruction writes the game's own value into the
+        /// game's own field. Everything downstream — the battle build,
+        /// the name the HUD prints, the exchange that tells the peer
+        /// what it is fighting — is the game's, unmodified.
+        ///
+        /// A save with no cross picked leaves this alone, so a plain
+        /// session's RAM is what it always was.
+        cross_clear: u32,
         /// The comparison that decides whether the Net Battle screens
         /// have to collect a name and comment first. The screens are
         /// selected by an index the module keeps, and the first thing it
@@ -659,30 +679,30 @@ pub mod priming {
     /// writing it *is* choosing a row — no touch to fabricate.
     const SAVE_ROW_FIELD: u32 = 6;
 
-    /// Which save-select row a console's cartridge should be walked
-    /// into. The screen keeps a fixed row per save file rather than
-    /// listing whatever exists, so a save is only reachable at its own
-    /// row — and the [`PlayedFile`](crate::dataview::save::PlayedFile)
-    /// session payload *is* that row: the file-select slot the
-    /// committing save view was on, carried through the netplay commit
-    /// and the replay metadata so both peers and every future playback
-    /// resolve the identical row.
+    /// What a console's cartridge says it is playing: the file the game
+    /// itself calls most recently saved, and what the walk reads out of
+    /// it.
     ///
-    /// A console without one — a recording from before payloads
-    /// existed (whose rewritten session cart holds only the played
-    /// file), a probe fed raw dumps — lands on the file the cartridge
-    /// itself calls current; a payload naming a file the cartridge
-    /// doesn't hold reads the same as none. Row 0, the row the game's
-    /// cursor starts on, for save memory the dataview cannot read.
-    fn save_row(payload: Option<&dyn tango_match::SessionPayload>, save: &[u8]) -> u8 {
+    /// Both halves come from the same file, so they are read together.
+    /// The **row** is the save select's, which keeps a fixed row per
+    /// save file rather than listing whatever exists — so a file is
+    /// only reachable at its own row. The **cross** is the byte the
+    /// game's file select clears on every boot (see
+    /// [`CodeOffsets::cross_clear`]).
+    ///
+    /// Nothing rides beside the cartridge to say which file this is:
+    /// the save editor stamps the picked file as the cartridge's newest
+    /// (`Save::make_current`), so the bytes a peer commits and a
+    /// recording stores already carry the answer, and both peers —
+    /// which each hold both cartridges — read the same one. Row 0, the
+    /// row the game's cursor starts on, for save memory the dataview
+    /// cannot read.
+    fn played_file(save: &[u8]) -> (u8, crate::dataview::save::Cross) {
         let Ok(set) = crate::dataview::save::SaveSet::parse(save) else {
-            return 0;
+            return (0, crate::dataview::save::Cross::None);
         };
-        payload
-            .and_then(|p| (p as &dyn std::any::Any).downcast_ref::<crate::dataview::save::PlayedFile>())
-            .map(|file| file.0)
-            .filter(|slot| set.slots().contains(slot))
-            .unwrap_or_else(|| set.current().slot())
+        let file = set.current();
+        (file.slot(), file.cross())
     }
 
     /// One console's three RNG seeds off the negotiated match seed —
@@ -728,6 +748,7 @@ pub mod priming {
             script_box_gate:          0x0209_ae68,
             script_box_dismissed:     0x0209_ae8a,
             pad_refresh_ret:          0x0200_0ce8,
+            cross_clear:              0x0203_8968,
             board_touch_gate:         0x021e_0c88,
             board_touch_taken:        0x021e_0c98,
             board_code_load:          0x021e_0ca4,
@@ -795,6 +816,7 @@ pub mod priming {
             script_box_gate:          0x0209_ab28,
             script_box_dismissed:     0x0209_ab4a,
             pad_refresh_ret:          0x0200_0ce8,
+            cross_clear:              0x0203_8760,
             board_touch_gate:         0x021d_98fc,
             board_touch_taken:        0x021d_990c,
             board_code_load:          0x021d_9918,
@@ -1031,10 +1053,11 @@ pub mod priming {
         /// drives, `second` whether its chooser takes the mode screen's
         /// second button, and `team` which board button opens the route
         /// — the one screen that differs between them stands between the
-        /// board and a comm screen both share. `confirms` counts the
-        /// save prompts the run answers, and is only handed to one
-        /// console — the two run the same route, so counting both would
-        /// just double it.
+        /// board and a comm screen both share. `save_row` and `cross`
+        /// are what this console's cartridge says it is playing (see
+        /// [`played_file`]). `confirms` counts the save prompts the run
+        /// answers, and is only handed to one console — the two run the
+        /// same route, so counting both would just double it.
         ///
         /// One set carries the whole route: nothing has to be swapped
         /// over part-way, because each answer's site is unreachable
@@ -1053,6 +1076,7 @@ pub mod priming {
             second: bool,
             team: bool,
             save_row: u8,
+            cross: crate::dataview::save::Cross,
             rng_seeds: [u32; 3],
             confirms: Option<std::sync::Arc<std::sync::atomic::AtomicU32>>,
         ) -> Vec<(u32, Box<dyn FnMut(&mut Nds)>)> {
@@ -1113,6 +1137,25 @@ pub mod priming {
                         let object = nds.reg(5);
                         nds.write8(object + SAVE_ROW_FIELD, save_row);
                         nds.jump_here(code.save_select_confirm)
+                    }),
+                ),
+                (
+                    // The cross the save is carrying, put back into the
+                    // register the file select is about to store from.
+                    // The scene clears the byte on every boot before it
+                    // asks what a GBA-slot cartridge buys — and with no
+                    // cartridge, nothing asks — so this is what carries
+                    // a picked cross across the load, the same shape as
+                    // the save-select row above: the game's own store,
+                    // answered rather than skipped. A save with no
+                    // cross leaves the store alone, and the boot is
+                    // byte-for-byte the one it always was.
+                    // See [`CodeOffsets::cross_clear`].
+                    code.cross_clear,
+                    Box::new(move |nds: &mut Nds| {
+                        if cross != crate::dataview::save::Cross::None {
+                            nds.set_reg(1, cross.raw() as u32);
+                        }
                     }),
                 ),
                 (
@@ -1407,19 +1450,19 @@ pub mod priming {
             link: &mut Link,
             second: bool,
             team: bool,
-            session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
             rng_seed: [u8; 16],
         ) -> std::sync::Arc<std::sync::atomic::AtomicU32> {
             let confirms = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
             for seat in 0..2 {
                 let host = seat == 0;
-                let save_row = save_row(session_payloads[seat], &link.console(seat).save_memory());
+                let (save_row, cross) = played_file(&link.console(seat).save_memory());
                 let rng_seeds = console_rng_seeds(&rng_seed, seat);
                 link.console(seat).set_traps(self.traps(
                     host,
                     second,
                     team,
                     save_row,
+                    cross,
                     rng_seeds,
                     host.then(|| confirms.clone()),
                 ));
@@ -1437,9 +1480,9 @@ pub mod priming {
         }
 
         /// Run both consoles from power-on into the agreed mode's link
-        /// battle. `session_payloads` are the consoles' session
-        /// payloads in seat order — each console's save-select row (see
-        /// [`save_row`]); `rng_seed` is the negotiated match seed the
+        /// battle. Which file each console plays, and what cross it
+        /// brings, come out of that console's own cartridge (see
+        /// [`played_file`]); `rng_seed` is the negotiated match seed the
         /// walk reseeds the game's rngs from (see [`console_rng_seeds`]).
         /// Flipping `cancel` fails the walk with
         /// [`Cancelled`](tango_match::Error::Cancelled) instead of
@@ -1449,7 +1492,6 @@ pub mod priming {
             &'static self,
             link: &mut Link,
             match_type: (u8, u8),
-            session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
             rng_seed: [u8; 16],
             cancel: Option<&std::sync::atomic::AtomicBool>,
         ) -> Result<(), tango_match::Error> {
@@ -1465,7 +1507,7 @@ pub mod priming {
             // Team leads because it is what this pairing is for: the
             // lobby defaults to a mode's first subtype, and both of
             // these games are played as Team.
-            let counter = self.install(link, match_type.0 != 0, match_type.1 == 0, session_payloads, rng_seed);
+            let counter = self.install(link, match_type.0 != 0, match_type.1 == 0, rng_seed);
 
             // The boot half, which is over when the board stands: it
             // answers nothing that depends on the other console, so it

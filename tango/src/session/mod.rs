@@ -1569,12 +1569,6 @@ pub async fn spawn_pvp(
         let remote_save = remote_game
             .parse_save(&pre_match.remote_save_data)
             .map_err(|e| anyhow::anyhow!("parse remote save: {e:?}"))?;
-        // The peer's committed session payload, so the pane shows what
-        // those bytes are actually playing (BN5DS: which file).
-        let remote_session_payload = (!pre_match.remote_session_payload.is_empty())
-            .then(|| remote_game.pvp.parse_session_payload(&pre_match.remote_session_payload))
-            .transpose()
-            .map_err(|e| anyhow::anyhow!("parse remote session payload: {e:?}"))?;
         // `remote_rom_bytes` is already the patched image we run in the
         // session, so resolve the matching `rom_overrides` + charset and
         // hand both straight to `from_patched_rom` — no second BPS apply.
@@ -1593,7 +1587,6 @@ pub async fn spawn_pvp(
             std::path::PathBuf::new(),
             remote_save,
             applied_patch,
-            remote_session_payload.as_deref(),
         ))
     } else {
         None
@@ -1606,10 +1599,6 @@ pub async fn spawn_pvp(
         let local_save = local_game
             .parse_save(&pre_match.local_save_data)
             .map_err(|e| anyhow::anyhow!("parse local save: {e:?}"))?;
-        let local_session_payload = (!pre_match.local_session_payload.is_empty())
-            .then(|| local_game.pvp.parse_session_payload(&pre_match.local_session_payload))
-            .transpose()
-            .map_err(|e| anyhow::anyhow!("parse local session payload: {e:?}"))?;
         // Same as the opponent side: `local_rom_bytes` is already
         // patched, so layer the overrides on via `from_patched_rom`
         // instead of re-applying the BPS patch.
@@ -1628,7 +1617,6 @@ pub async fn spawn_pvp(
             std::path::PathBuf::new(),
             local_save,
             applied_patch,
-            local_session_payload.as_deref(),
         ))
     };
 

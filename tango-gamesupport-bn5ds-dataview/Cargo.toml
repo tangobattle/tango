@@ -10,9 +10,6 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 tango-gamesupport-common = { path = "../tango-gamesupport-common", default-features = false }
-# For the session-payload type ([`save::PlayedFile`]) — the trait it
-# implements is the match seam's.
-tango-match = { path = "../tango-match" }
 image = { version = "0.25", default-features = false, features = ["png"] }
 bytemuck = { version = "1", features = ["derive", "const_zeroed", "min_const_generics"] }
 c2rust-bitfields = "0.22"

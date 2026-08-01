@@ -182,14 +182,6 @@ impl Replay {
         std::time::UNIX_EPOCH + std::time::Duration::from_millis(self.metadata.ts)
     }
 
-    /// Both sides' session payloads in absolute player order — what a
-    /// playback boot hands the game's priming, next to `srams`. Opaque
-    /// here: only the game's own pvp engine reads them. Empty for sides
-    /// without one (every recording from before the field existed).
-    pub fn session_payloads(&self) -> [Vec<u8>; 2] {
-        [0, 1].map(|i| self.metadata.side(i).map(|s| s.session_payload.clone()).unwrap_or_default())
-    }
-
     /// The recorder's side of the metadata.
     pub fn local_side(&self) -> Option<&metadata::Side> {
         self.metadata.side(self.local_player_index)

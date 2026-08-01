@@ -136,11 +136,7 @@ impl App {
                     return iced::Task::none();
                 };
                 let save_sram = loaded.editor.sram(loaded);
-                // The save view's session payload rides beside the
-                // sram — the peer's walk and the replay metadata both
-                // play the save the view is on.
-                let session_payload = loaded.editor.session_payload(loaded);
-                match self.netplay.commit(save_sram, session_payload.as_deref()) {
+                match self.netplay.commit(save_sram) {
                     Some(netplay::Event::MatchReady) => self.start_pvp_handoff(),
                     None => iced::Task::none(),
                 }
@@ -306,11 +302,7 @@ impl App {
                 // a hash of our pre-edit save.
                 let recommit =
                     if matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) && self.netplay.local_ready() {
-                        // The session payload re-sends with the sram:
-                        // the commit must describe the save it now
-                        // carries.
-                        let session_payload = self.loaded.as_ref().and_then(|l| l.editor.session_payload(l));
-                        match self.netplay.commit(sram, session_payload.as_deref()) {
+                        match self.netplay.commit(sram) {
                             Some(netplay::Event::MatchReady) => self.start_pvp_handoff(),
                             None => iced::Task::none(),
                         }
@@ -964,21 +956,9 @@ impl App {
                 // seat's own engine door — which engine that is stays
                 // the game's business.
                 let backend = games[local_player].pvp;
-                let session_payloads = match tango_match::parse_session_payloads(
-                    [games[0].pvp, games[1].pvp],
-                    &replay.session_payloads(),
-                ) {
-                    Ok(payloads) => payloads,
-                    Err(e) => {
-                        *done_arc_thread.lock().unwrap() = Some(Err(format!("{e}")));
-                        drop(progress_tx);
-                        return;
-                    }
-                };
                 let config = tango_match::ReplayConfig {
                     roms,
                     saves: replay.srams.clone(),
-                    session_payloads,
                     inputs: std::sync::Arc::new(inputs),
                     rng_seed: replay.rng_seed,
                     rtc: replay.rtc_time(),

@@ -985,7 +985,7 @@ impl App {
         // A disk load carries no session payload — the editor opens on
         // the game's own default and the file picker takes it from
         // there.
-        self.loaded = Some(selection::build(game, rom, save_path, save, &patches_path, patch_meta, None));
+        self.loaded = Some(selection::build(game, rom, save_path, save, &patches_path, patch_meta));
     }
 }
 

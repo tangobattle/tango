@@ -243,10 +243,6 @@ impl ReplaySession {
             Arc::new(games[local_player].pvp.open_replay(tango_match::ReplayConfig {
                 roms: [roms[0].to_vec(), roms[1].to_vec()],
                 saves: replay.srams.clone(),
-                session_payloads: tango_match::parse_session_payloads(
-                    [games[0].pvp, games[1].pvp],
-                    &replay.session_payloads(),
-                )?,
                 inputs: inputs.clone(),
                 rng_seed: replay.rng_seed,
                 rtc: replay.rtc_time(),

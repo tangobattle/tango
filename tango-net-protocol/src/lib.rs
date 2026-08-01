@@ -100,4 +100,12 @@ pub mod derive;
 // this kind won't need one. 0x52 and 0x54 were both a single game's
 // simulation moving under a wire format that never changed, and both
 // turned away every other game's players to say so.
-pub const PROTOCOL_VERSION: u32 = 0x55;
+// 0x56: the commit reveal drops the session payload 0x53 added
+// (`NegotiatedState` is back to nonce + clock + save bytes, so a 0x55
+// peer's reveal fails to decode against ours). Nothing needs it any
+// more: BN5DS's file choice was the only payload ever minted, and a
+// cartridge now says which of its files is being played in its own
+// bytes — the file the game itself calls most recently saved — so the
+// choice travels inside `save_data` and priming reads it there on both
+// peers.
+pub const PROTOCOL_VERSION: u32 = 0x56;

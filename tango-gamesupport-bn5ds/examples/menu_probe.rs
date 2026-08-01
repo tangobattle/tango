@@ -15,12 +15,15 @@
 //!                        Battle, 1 Triple Battle (default 0)
 //!   --match-subtype N    which route into it: 0 plain, 1 Team Battle
 //!                        (default 0)
-//!   --file N             both consoles' session payload: the
-//!                        file-select slot to walk into, as a live
-//!                        session carries one. Without it each cart
-//!                        walks whichever file it calls current, which
-//!                        on a two-file dump may be one with no
+//!   --file N             stamp this file-select slot as the loaded
+//!                        cartridges' most recently saved one, which is
+//!                        what the walk plays. Without it each cart
+//!                        walks whichever file it already calls current,
+//!                        which on a two-file dump may be one with no
 //!                        NetBattle unlocked.
+//!   --cross N            write the GBA-slot cross into the played file
+//!                        (1 BassCross/ProtoMan, 2 BassCross/Colonel,
+//!                        3 SolCross), as the save editor's pick does
 //!   --rng-seed HEX       first word of the match seed priming reseeds
 //!                        the game's rngs from (default 0)
 //!   --script FILE        input script: lines "<frame> <seat> <input>";
@@ -288,8 +291,36 @@ fn main() {
     let one = |k: &str| opt.get(k).map(|v| v[0].clone());
 
     let rom = std::fs::read(&rom_path).unwrap();
-    let save = std::fs::read(one("save").expect("--save is required")).unwrap();
-    let save2 = one("save2").map(|p| std::fs::read(p).unwrap());
+    // `--file` / `--cross` are edits to the cartridge, because that is
+    // what they are in the app: which file is played is the generation
+    // counters' to say and the cross is the game's own save byte, so a
+    // probe sets them by writing the dump it boots.
+    let played = one("file").map(|v| v.parse::<u8>().expect("file"));
+    let cross = one("cross").map(|v| match v.parse::<u8>().expect("cross") {
+        1 => tango_gamesupport_bn5ds::dataview::save::Cross::BassProto,
+        2 => tango_gamesupport_bn5ds::dataview::save::Cross::BassColonel,
+        3 => tango_gamesupport_bn5ds::dataview::save::Cross::Sol,
+        _ => tango_gamesupport_bn5ds::dataview::save::Cross::None,
+    });
+    let prepare = |data: Vec<u8>| -> Vec<u8> {
+        if played.is_none() && cross.is_none() {
+            return data;
+        }
+        use tango_gamesupport_common::dataview::save::Save as _;
+        let set = tango_gamesupport_bn5ds::dataview::save::SaveSet::parse(&data).expect("not this game's flash");
+        let mut save = match played {
+            Some(slot) => set.save(slot).expect("no such file"),
+            None => set.current(),
+        };
+        save.make_current();
+        if let Some(cross) = cross {
+            save.set_cross(cross);
+        }
+        save.rebuild_checksum();
+        save.to_sram_dump()
+    };
+    let save = prepare(std::fs::read(one("save").expect("--save is required")).unwrap());
+    let save2 = one("save2").map(|p| prepare(std::fs::read(p).unwrap()));
     // 2026-07-01T12:00:00Z, fixed so runs are comparable.
     let mut link = Link::new(
         &rom,
@@ -319,12 +350,8 @@ fn main() {
         if let Some(v) = one("rng-seed") {
             rng_seed[..4].copy_from_slice(&parse_hex(&v).to_le_bytes());
         }
-        // Without --file, a probe fed raw dumps walks each cart's own
-        // current file, exactly like a session without a payload.
-        let played = one("file").map(|v| tango_gamesupport_bn5ds::dataview::save::PlayedFile(v.parse().expect("file")));
-        let payloads = std::array::from_fn(|_| played.as_ref().map(|p| p as &dyn tango_match::SessionPayload));
         let started = std::time::Instant::now();
-        match layout.walk(&mut link, match_type, payloads, rng_seed, None) {
+        match layout.walk(&mut link, match_type, rng_seed, None) {
             Ok(()) => println!(
                 "primed in {:.1}s wall, connected={}",
                 started.elapsed().as_secs_f64(),

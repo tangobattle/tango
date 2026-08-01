@@ -44,9 +44,10 @@ static BN5DS_LOGO: LazyImage = LazyLock::new(|| image::load_from_memory(include_
 
 /// The cartridge's saves, identified so one can be picked before a
 /// match — and read as far as the dataview's mapping reaches. A dump
-/// holds both of the game's files, so this opens on whichever was saved
-/// most recently and the editor's file picker reaches the other. Saves
-/// cross regions: the two builds keep one format.
+/// holds both of the game's files, so this opens on whichever the game
+/// itself calls most recently saved, which is also the one a session
+/// plays; the editor's file picker moves that. Saves cross regions: the
+/// two builds keep one format.
 fn parse_save(data: &[u8]) -> Result<tango_gamesupport::BoxedSave, tango_gamesupport::Error> {
     let set = dataview::save::SaveSet::parse(data)?;
     Ok(tango_gamesupport_common::dataview::wrap_save(Box::new(set.current())))
@@ -146,7 +147,14 @@ pub static EXE5DS: Game = Game {
 /// no play on it, and this is the same backup server on the same
 /// emulator; the tick costs the save a handful of frames, so priming
 /// hands over that much later.
-const SIM_VERSION: u32 = 6;
+///
+/// 7: what a console plays now comes out of its own cartridge instead
+/// of a session payload riding beside it. Priming walks the file the
+/// game itself calls most recently saved (a recording made when the
+/// payload named the *other* file re-primes into a different save), and
+/// a save carrying a GBA-slot cross gets it written back at the file
+/// select's own store, which the walk did not touch before.
+const SIM_VERSION: u32 = 7;
 
 pub static BN5DS_FAMILY: Family = Family {
     id: "bn5ds",

@@ -217,15 +217,6 @@ pub struct PreMatchData {
     pub match_ts: u64,
     pub local_save_data: Vec<u8>,
     pub remote_save_data: Vec<u8>,
-    /// Each side's serialized session payload
-    /// ([`tango_match::SessionPayload`]), committed and revealed with
-    /// its save data. Kept in wire form like the saves themselves —
-    /// empty for a side that sent none — and parsed by each side's own
-    /// game where it's consumed: typed for the engine at boot, typed
-    /// for the setup panes' save views, bytes straight into the replay
-    /// metadata.
-    pub local_session_payload: Vec<u8>,
-    pub remote_session_payload: Vec<u8>,
     pub local_settings: tango_net_protocol::control::Settings,
     pub remote_settings: tango_net_protocol::control::Settings,
     pub link_code: String,
@@ -384,24 +375,6 @@ impl PvpSession {
                 source: e,
             })?;
 
-        // Each side's session payload, typed for the engine — its own
-        // game's backend is what knows the type. An empty payload is a
-        // side that committed none, which is not a parse.
-        let remote_session_payload = (!pre_match.remote_session_payload.is_empty())
-            .then(|| remote_game.pvp.parse_session_payload(&pre_match.remote_session_payload))
-            .transpose()
-            .map_err(|e| crate::Error::ParseSessionPayload {
-                side: "remote",
-                source: e,
-            })?;
-        let local_session_payload = (!pre_match.local_session_payload.is_empty())
-            .then(|| local_game.pvp.parse_session_payload(&pre_match.local_session_payload))
-            .transpose()
-            .map_err(|e| crate::Error::ParseSessionPayload {
-                side: "local",
-                source: e,
-            })?;
-
         // Player index off the shared RNG seed, same negotiation as ever:
         // both peers derive the same assignment, mirrored.
         use rand::SeedableRng;
@@ -491,18 +464,16 @@ impl PvpSession {
 
         // Pair-order arrays: core 0 always runs player 0's game, on both
         // peers, so priming and simulation are bit-identical across the pair.
-        let (roms, saves, session_payloads, supports) = if local_player_index == 0 {
+        let (roms, saves, supports) = if local_player_index == 0 {
             (
                 [local_rom.as_ref().clone(), remote_rom.as_ref().clone()],
                 [local_sram, remote_sram],
-                [local_session_payload, remote_session_payload],
                 [local_game.pvp, remote_game.pvp],
             )
         } else {
             (
                 [remote_rom.as_ref().clone(), local_rom.as_ref().clone()],
                 [remote_sram, local_sram],
-                [remote_session_payload, local_session_payload],
                 [remote_game.pvp, local_game.pvp],
             )
         };
@@ -515,7 +486,6 @@ impl PvpSession {
         let pieces = BootPieces {
             roms,
             saves,
-            session_payloads,
             pvp: supports,
             peer_rom: tango_match::PeerRom {
                 code: *remote_game.rom_code,
@@ -935,8 +905,6 @@ impl Drop for PvpSession {
 struct BootPieces {
     roms: [Vec<u8>; 2],
     saves: [Vec<u8>; 2],
-    /// The sides' typed session payloads in seat order, like `saves`.
-    session_payloads: [Option<tango_match::BoxedSessionPayload>; 2],
     /// Both sides' netplay support, in seat order. Starting the match
     /// goes through these rather than an engine, so a DS game boots the
     /// same way a GBA one does.
@@ -1004,7 +972,6 @@ impl DriveContext {
         let match_ = local.start(tango_match::StartConfig {
             roms: [&pieces.roms[0], &pieces.roms[1]],
             saves: [Some(&pieces.saves[0]), Some(&pieces.saves[1])],
-            session_payloads: pieces.session_payloads.each_ref().map(|p| p.as_deref()),
             rng_seed: pieces.rng_seed,
             rtc: pieces.rtc,
             match_type: pieces.match_type,
@@ -1414,9 +1381,6 @@ fn build_replay_writer(
         // blind-setup inversion and still stores the
         // positive "reveal" sense.
         reveal_setup: !local_settings.blind_setup,
-        // Already in wire form — the payload is typed only where it's
-        // read, and a recording stores exactly what was committed.
-        session_payload: pre_match.local_session_payload.clone(),
     });
     let remote_side = Some(tango_replay::metadata::Side {
         nickname: remote_settings.nickname.clone(),
@@ -1433,7 +1397,6 @@ fn build_replay_writer(
                 }),
         }),
         reveal_setup: !remote_settings.blind_setup,
-        session_payload: pre_match.remote_session_payload.clone(),
     });
     // The recorder is where perspective enters the format: everything in
     // the file is absolute player order, so seat the two sides (and the

@@ -333,7 +333,7 @@ pub fn set_ready(ready: bool) {
     };
     // No session payload: this frontend embeds no save view, so there
     // is nothing to have picked one.
-    let event = LINK.with(|l| l.borrow_mut().net.commit(save, None));
+    let event = LINK.with(|l| l.borrow_mut().net.commit(save));
     if let Some(Event::MatchReady) = event {
         wasm_bindgen_futures::spawn_local(start_match());
     }

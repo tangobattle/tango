@@ -29,15 +29,6 @@ pub trait GameSupport: Sync {
     /// caller's: the pair is symmetric, and both peers walk both
     /// consoles, so the walk simply assigns it.
     ///
-    /// `session_payloads` are the consoles' session payloads in seat
-    /// order ([`StartConfig::session_payloads`](tango_match::StartConfig::session_payloads))
-    /// — each the typed value this game's own
-    /// [`parse_session_payload`](GameSupport::parse_session_payload)
-    /// minted, downcast back by the walk (BN5DS steers the game's own
-    /// file select by it). Part of the pure-function contract: both
-    /// peers pass identical pairs, and a replay boot passes the
-    /// recorded ones.
-    ///
     /// `rng_seed` is the negotiated match seed
     /// ([`StartConfig::rng_seed`](tango_match::StartConfig::rng_seed);
     /// a replay boot passes the recording's). The pair boots
@@ -49,20 +40,9 @@ pub trait GameSupport: Sync {
         &self,
         link: &mut Link,
         match_type: (u8, u8),
-        session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
         rng_seed: [u8; 16],
         cancel: Option<&AtomicBool>,
     ) -> Result<(), tango_match::Error>;
-
-    /// The game's half of [`tango_match::Backend::parse_session_payload`],
-    /// so the payload's type and its bytes stay one crate's knowledge.
-    /// Same contract: only called when there are bytes; the default is
-    /// for a game that mints no payloads, whose bytes have no type to
-    /// parse into.
-    fn parse_session_payload(&self, bytes: &[u8]) -> Result<tango_match::BoxedSessionPayload, tango_match::Error> {
-        let _ = bytes;
-        Err(tango_match::Error::MalformedSessionPayload)
-    }
 
     /// The telemetry reader for one console running this game. `player`
     /// is which console (and player) this poller answers for. Pure
@@ -158,7 +138,6 @@ impl tango_match::Backend for DsBackend {
             self.support,
             &mut link,
             config.match_type,
-            config.session_payloads,
             config.rng_seed,
             config.cancel,
         )?;
@@ -185,16 +164,11 @@ impl tango_match::Backend for DsBackend {
             support: self.support,
             rom: config.roms[0].clone(),
             saves: config.saves.clone(),
-            session_payloads: config.session_payloads.each_ref().map(|p| p.as_ref().map(|p| p.clone_box())),
             rtc: config.rtc,
             match_type: config.match_type,
             rng_seed: config.rng_seed,
         };
         Ok(tango_match::ReplaySet::new(&config, boot))
-    }
-
-    fn parse_session_payload(&self, bytes: &[u8]) -> Result<tango_match::BoxedSessionPayload, tango_match::Error> {
-        self.support.parse_session_payload(bytes)
     }
 }
 
@@ -209,9 +183,6 @@ struct Boot {
     rom: Vec<u8>,
     /// Per-seat saves as they stood when the match started.
     saves: [Vec<u8>; 2],
-    /// Per-seat session payloads as recorded beside the saves, so the
-    /// re-primed walk makes the choices the live one did.
-    session_payloads: [Option<tango_match::BoxedSessionPayload>; 2],
     /// The negotiated match clock, so the re-sim lands where the
     /// original did.
     rtc: std::time::SystemTime,
@@ -230,7 +201,6 @@ impl tango_match::ReplayBoot for Boot {
             self.support,
             &mut link,
             self.match_type,
-            self.session_payloads.each_ref().map(|p| p.as_deref()),
             self.rng_seed,
             Some(cancel),
         )?;
@@ -306,14 +276,13 @@ fn prime_dark(
     support: &'static (dyn GameSupport + Send + Sync),
     link: &mut Link,
     match_type: (u8, u8),
-    session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
     rng_seed: [u8; 16],
     cancel: Option<&AtomicBool>,
 ) -> Result<(), tango_match::Error> {
     for player in 0..2 {
         link.console(player).set_render(false);
     }
-    let walked = support.prime(link, match_type, session_payloads, rng_seed, cancel);
+    let walked = support.prime(link, match_type, rng_seed, cancel);
     for player in 0..2 {
         link.console(player).set_render(true);
     }

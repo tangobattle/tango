@@ -117,6 +117,13 @@ fn navi_card_content<M: 'static>(
 /// Saves with no navi to identify (Battle Chip Challenge) get the same strip
 /// with an empty card slot: Play lives here and nowhere else, so the strip
 /// can't be conditional on having a navi.
+///
+/// This is what [`GameSaveEditor::identity_strip`] answers with by default. A
+/// game whose identity is not a navi off the shared roster overrides that and
+/// builds its own card, handing it to [`render_identity_strip`] — same strip,
+/// same chrome, its own card.
+///
+/// [`GameSaveEditor::identity_strip`]: crate::editor::GameSaveEditor::identity_strip
 pub fn render_navi_strip<'a>(
     lang: &'a LanguageIdentifier,
     loaded: &'a OpenSave,
@@ -143,6 +150,22 @@ pub fn render_navi_strip<'a>(
                 .into(),
         }
     };
+    render_identity_strip(card, actions)
+}
+
+/// The strip itself, around whatever card identifies the save: the shared navi
+/// one above, or a game's own from
+/// [`GameSaveEditor::identity_strip`](crate::editor::GameSaveEditor::identity_strip).
+/// Everything that isn't the card lives here, so an overriding game inherits
+/// the chrome instead of rebuilding it — and every save's strip is the same
+/// strip.
+///
+/// `card` carries its own `[4, 6]` inset (so its content sits at 12px
+/// horizontal / 10px vertical off the pane's edges) rather than being padded
+/// here — the navi card's edit mode is a press target, and that room has to be
+/// inside its hover highlight. It must not wrap, or the strip grows when it
+/// runs out of room.
+pub fn render_identity_strip<'a>(card: Element<'a, Action>, actions: Element<'a, Action>) -> Element<'a, Action> {
     // A little horizontal breathing room for the actions cluster (none
     // vertically — the row centers it).
     let actions = container(actions).padding([0.0, 4.0]);

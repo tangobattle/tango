@@ -60,15 +60,9 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
         save_path: std::path::PathBuf,
         save: tango_gamesupport::BoxedSave,
         patch: Option<tango_gamesupport::AppliedPatch>,
-        session_payload: Option<&dyn tango_match::SessionPayload>,
     ) -> LoadedSave {
         let save = crate::dataview::unwrap_save(save);
-        let mut model = crate::model::from_patched_rom(game, patched_rom, save_path.clone(), save, patch.clone());
-        // Before `from_model` bakes save-derived art, so the bundle is
-        // built for the save the session is actually playing.
-        if let Some(payload) = session_payload {
-            self.0.apply_session_payload(&mut model, payload);
-        }
+        let model = crate::model::from_patched_rom(game, patched_rom, save_path.clone(), save, patch.clone());
         let open = crate::editor::loaded::from_model(model, &self.0);
         LoadedSave {
             editor: self,
@@ -156,14 +150,10 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
 
     /// What a session started from here runs on — netplay's committed
     /// save and training's alike. The file's own bytes, whole: a file
-    /// holding several saves says which one is played through
-    /// [`session_payload`](tango_gamesupport::SaveEditor::session_payload),
-    /// never by rewriting the bytes.
+    /// holding several saves says which one is played in those bytes
+    /// (BN5DS stamps the picked file as the cartridge's most recently
+    /// saved one), never beside them.
     fn sram(&self, data: &LoadedSave) -> Vec<u8> {
         open_save(data).save.to_sram_dump()
-    }
-
-    fn session_payload(&self, data: &LoadedSave) -> Option<tango_match::BoxedSessionPayload> {
-        self.0.session_payload(open_save(data))
     }
 }

@@ -30,42 +30,63 @@ pub trait GameSaveEditor: Send + Sync {
     /// method's to probe; everything else should be declared statically.
     fn tabs(&self, loaded: &OpenSave) -> Vec<Tab>;
 
-    /// A control this game puts in the editor's top bar, left of Edit /
-    /// Play: something that selects which save the whole editor below
-    /// is showing, which is bigger than any one section. BN5DS's
-    /// cartridge holds two in-game files, so it offers a file switcher
-    /// there and everything under the bar is the ordinary viewer for
-    /// whichever file is picked.
+    /// A control this game puts in the editor's top bar, left of Save /
+    /// Cancel: a whole-save choice, bigger than any one section's body.
+    /// BN5DS's cartridge holds two in-game files, so it offers a file
+    /// switcher there — picking one both points the editor at that file
+    /// and stages the cartridge edit that makes it the played one.
     ///
-    /// The shell hides it while an edit session is open — changing what
-    /// is being edited midway would splice staged edits across saves —
-    /// and in read-only embeds (a pvp setup pane, the replay viewer),
-    /// where the view shows the save a session is playing, which is
-    /// nothing to switch: the session payload already picked it.
-    /// Called per frame; `None` (the default) leaves the bar as it was.
+    /// Rendered only **while an edit session is open**: what it changes
+    /// is an edit like any other, staged now and written on Save. A
+    /// read-only view (a pvp setup pane, the replay viewer, the folder
+    /// viewer before Edit) never shows it — there the save is what it
+    /// is. Called per frame; `None` (the default) leaves the bar as it
+    /// was.
     fn top_bar_control<'a>(&self, lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Option<Element<'a, Action>> {
         let _ = (lang, loaded);
         None
     }
 
-    /// The [`tango_match::SessionPayload`] describing what the editor
-    /// is showing right now — what a netplay commit sends beside the
-    /// save's bytes. BN5DS answers which of the cartridge's two files
-    /// the picker is on; the default is for the (usual) game whose
-    /// save view has nothing to say.
-    fn session_payload(&self, loaded: &OpenSave) -> Option<tango_match::BoxedSessionPayload> {
-        let _ = loaded;
-        None
+    /// The strip above the tab body: what identifies the save on the
+    /// left, the `actions` cluster (Edit / Play, or Save / Cancel while
+    /// editing) on the right.
+    ///
+    /// The default is the shared navi strip — the card BN5/BN6 name
+    /// their navi in, becoming the change-navi button when `edit` is
+    /// `Some`. A game whose identity is not a navi off that roster
+    /// overrides this and builds its own card instead, handing it to
+    /// [`view::navi::render_identity_strip`] so the strip stays one
+    /// strip: BN5DS names the GBA-slot cross there, and a save with no
+    /// cross is plain MegaMan, which is exactly what the slot is for.
+    ///
+    /// `editing` is whether the global edit session is open, so an
+    /// override can read as a name while the view is a viewer and become
+    /// the pick itself while it isn't.
+    ///
+    /// [`view::navi::render_identity_strip`]: crate::editor::view::navi::render_identity_strip
+    fn identity_strip<'a>(
+        &self,
+        lang: &'a LanguageIdentifier,
+        loaded: &'a OpenSave,
+        edit: Option<Action>,
+        editing: bool,
+        actions: Element<'a, Action>,
+    ) -> Element<'a, Action> {
+        let _ = editing;
+        crate::editor::view::navi::render_navi_strip(lang, loaded, edit, actions)
     }
 
-    /// Aim a freshly loaded model at what `payload` says a session is
-    /// playing, before any art is baked — the load-time inverse of
-    /// [`session_payload`](GameSaveEditor::session_payload) (BN5DS
-    /// swaps the model's save to the payload's file). The default
-    /// ignores it: a game that mints no payloads is never handed one
-    /// of its own.
-    fn apply_session_payload(&self, model: &mut crate::model::SaveModel, payload: &dyn tango_match::SessionPayload) {
-        let _ = (model, payload);
+    /// Whether this save has something to edit that the shared
+    /// [`crate::model::Editability`] sections don't cover — a game
+    /// whose only editable thing is its own [`top_bar_control`], say.
+    /// Ors into the probe that decides whether the Edit button appears
+    /// at all; the default is for a game with nothing outside the
+    /// shared sections.
+    ///
+    /// [`top_bar_control`]: GameSaveEditor::top_bar_control
+    fn extra_editable(&self, loaded: &OpenSave) -> bool {
+        let _ = loaded;
+        false
     }
 
     /// Read-only body for `tab`. May borrow from `loaded` (most

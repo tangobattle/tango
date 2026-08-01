@@ -58,7 +58,6 @@ impl tango_backend_melonds::GameSupport for Pvp {
         &self,
         link: &mut Link,
         match_type: (u8, u8),
-        _session_payloads: [Option<&dyn tango_match::SessionPayload>; 2],
         rng_seed: [u8; 16],
         cancel: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<(), tango_match::Error> {

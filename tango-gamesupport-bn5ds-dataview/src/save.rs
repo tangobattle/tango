@@ -8,15 +8,25 @@
 //! (that is what gets written back to the cartridge) but only ever
 //! reads and writes its own file's block.
 //!
+//! Which file the *cartridge* plays is the one the game itself calls
+//! most recently saved — [`SaveSet::current`], off the generation
+//! counters in the blocks' footers. Everything above reads it there:
+//! the editor opens on it, a session boots it, the priming walk steers
+//! the game's own file select to it, and a recording gets it for free
+//! by storing the same bytes. Picking the other file is therefore an
+//! edit to the cartridge rather than a note beside it — see
+//! [`Save::make_current`].
+//!
 //! Recognition is settled: the game stamps its own format tag into
 //! every block it formats, and finding that tag intact is what puts a
 //! dump in the save picker. The interior mapping reaches far enough to
 //! edit: the chip folders and pack (the GBA game's own shapes), the
-//! equipped-folder cluster, and — read out of the ARM9's own save code
-//! — the flash checksums, so an edited block can be made acceptable to
-//! the game again. Editing is nonetheless turned off for now: the
-//! write path is all here, but `Save::view_chips_mut` hands out
-//! nothing, so the editor is the plain viewer.
+//! equipped-folder cluster, the GBA-slot [`Cross`] byte, and — read out
+//! of the ARM9's own save code — the flash checksums, so an edited
+//! block can be made acceptable to the game again. Chip editing is
+//! nonetheless still turned off: that write path is all here, but
+//! `Save::view_chips_mut` hands out nothing, so the folder is a viewer
+//! and the editor's own writes are the file pick and the cross.
 
 use tango_gamesupport_common::dataview::save::Error;
 
@@ -130,6 +140,90 @@ pub const REGULAR_CHIP_OFFSET: usize = 0x2e9a;
 /// HP, current HP, effective max HP. Nothing reads it yet — it is the
 /// anchor [`EQUIPPED_FOLDER_OFFSET`] was found against.
 pub const NAVI_STATS_OFFSET: usize = 0x2eaa;
+
+/// The navi record array proper, as the game's own accessor walks it:
+/// record `i` at `NAVI_RECORD_OFFSET + i * 0x60`, record 0 being the
+/// player's. [`NAVI_STATS_OFFSET`] is the HP triple 0x3e into record 0
+/// — the same array reached from the other end.
+///
+/// Read out of the ARM9: the save object at US `0x021701d4` holds this
+/// block's address at `+0x74`, and the accessor at `0x02007784` indexes
+/// it (through an identity remap table) by `0x60`.
+const NAVI_RECORD_OFFSET: usize = 0x2e6c;
+
+/// Which GBA-slot cross the player brings, at record 0 `+0x4c` — the
+/// byte the game's own file select writes when it finds a cartridge in
+/// the DS's GBA slot and the player accepts it. See [`Cross`] for the
+/// values.
+pub const CROSS_OFFSET: usize = NAVI_RECORD_OFFSET + 0x4c;
+
+/// The MegaMan a save brings to a battle: plain, or one of the two
+/// crosses the game unlocks from a cartridge in the GBA slot.
+///
+/// This is the game's own byte, in the game's own encoding — writing it
+/// is what its file select does after asking. Slot 2 is never emulated
+/// here: what the cartridge would have bought is what the player picks,
+/// and PvP re-asserts it (see the crate's `pvp` module) because the
+/// file select clears the byte on every boot, cartridge or not.
+///
+/// BassCross is two values because the game keeps two, chosen by the
+/// save's own team ([`TEAM_OFFSET`]) rather than by the player: a Team
+/// ProtoMan save's is [`Cross::BassProto`] and a Team Colonel save's
+/// [`Cross::BassColonel`]. [`Cross::bass_for`] is that rule, so a pick
+/// lands the value the game would have written.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u8)]
+pub enum Cross {
+    /// No cross: plain MegaMan, which is every save that has not been
+    /// through the prompt.
+    None = 0,
+    /// BassCross MegaMan on a Team ProtoMan save.
+    BassProto = 1,
+    /// BassCross MegaMan on a Team Colonel save.
+    BassColonel = 2,
+    /// SolCross MegaMan, from the Boktai cartridge (Boktai 2 in the US
+    /// build, Boktai 3 in the JP one — one value either way).
+    Sol = 3,
+}
+
+/// Which of the cartridge's two teams a save plays, at this offset in
+/// the save image: 0 Team ProtoMan, 1 Team Colonel. The game reads it
+/// through the accessor at US `0x02001d74` to pick which BassCross
+/// value to write.
+pub const TEAM_OFFSET: usize = 0x0b;
+
+impl Cross {
+    /// The byte, as the save stores it.
+    pub fn raw(self) -> u8 {
+        self as u8
+    }
+
+    /// A stored byte read back, or [`Cross::None`] for anything the
+    /// game does not write.
+    pub fn from_raw(raw: u8) -> Self {
+        match raw {
+            1 => Cross::BassProto,
+            2 => Cross::BassColonel,
+            3 => Cross::Sol,
+            _ => Cross::None,
+        }
+    }
+
+    /// BassCross as it would be written on a save whose [`TEAM_OFFSET`]
+    /// byte is `team` — the game's own choice between the two values.
+    pub fn bass_for(team: u8) -> Self {
+        if team == 0 {
+            Cross::BassProto
+        } else {
+            Cross::BassColonel
+        }
+    }
+
+    /// Whether this is a BassCross, either team's.
+    pub fn is_bass(self) -> bool {
+        matches!(self, Cross::BassProto | Cross::BassColonel)
+    }
+}
 
 /// The game's own checksum (ARM9 0x02020c90): the sum of each u16
 /// XORed with the byte count still remaining at that point. The
@@ -276,8 +370,13 @@ impl SaveSet {
         })
     }
 
-    /// The file saved most recently — what the editor opens on, being
-    /// the one the player was last playing.
+    /// The file saved most recently — **the** save this cartridge
+    /// carries, as far as everything above is concerned: what the
+    /// editor opens on, what a session plays, and what the priming walk
+    /// steers the game's own file select to. Which file that is lives
+    /// in the cartridge's own bytes (the generation counters the game
+    /// stamps), so the choice needs nothing riding beside them — see
+    /// [`Save::make_current`], which is how the editor changes it.
     pub fn current(&self) -> Save {
         let &(slot, _) = self
             .files
@@ -285,25 +384,6 @@ impl SaveSet {
             .max_by_key(|&&(_, block)| generation(&self.data, block))
             .expect("a parsed SaveSet holds at least one file");
         self.save(slot).expect("the slot came from this set")
-    }
-}
-
-/// Which of the cartridge's files a session plays — this game's
-/// [`tango_match::SessionPayload`]. Minted by the save view's file
-/// picker, revealed with the netplay commit, recorded per replay side,
-/// and downcast back by the priming walk, which steers the game's own
-/// file select to this slot. One serialized byte: the file-select slot
-/// ([`Save::slot`]).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct PlayedFile(pub u8);
-
-impl tango_match::SessionPayload for PlayedFile {
-    fn serialize(&self) -> Vec<u8> {
-        vec![self.0]
-    }
-
-    fn clone_box(&self) -> tango_match::BoxedSessionPayload {
-        Box::new(*self)
     }
 }
 
@@ -338,6 +418,54 @@ impl Save {
 
     fn active_mut(&mut self) -> &mut [u8] {
         &mut self.data[self.block * BLOCK_SIZE..][..BLOCK_SIZE]
+    }
+
+    /// Which team this file plays (see [`TEAM_OFFSET`]).
+    pub fn team(&self) -> u8 {
+        self.active()[TEAM_OFFSET]
+    }
+
+    /// The GBA-slot cross this file brings (see [`Cross`]).
+    pub fn cross(&self) -> Cross {
+        Cross::from_raw(self.active()[CROSS_OFFSET])
+    }
+
+    /// Set the cross this file brings, writing the game's own byte.
+    /// Checksums are not rebuilt here — the editor commits through
+    /// [`rebuild_checksum`](tango_gamesupport_common::dataview::save::Save::rebuild_checksum)
+    /// like every other edit.
+    pub fn set_cross(&mut self, cross: Cross) {
+        self.active_mut()[CROSS_OFFSET] = cross.raw();
+    }
+
+    /// Make this file the cartridge's most recently saved one, so
+    /// [`SaveSet::current`] hands it out — which is how the pick
+    /// reaches a session, a recording and the game's own file select
+    /// without anything riding beside the bytes.
+    ///
+    /// The game alternates a file between two mirrored pairs of blocks
+    /// and calls the highest counter current, so being current is a
+    /// matter of degree rather than a flag: this stamps the file's live
+    /// pair one past every counter on the cartridge. Both blocks of the
+    /// pair, because the game reads whichever of them it reaches first
+    /// — the same reason `rebuild_checksum` mirrors.
+    ///
+    /// A no-op when this file already leads.
+    pub fn make_current(&mut self) {
+        let blocks = self.data.len() / BLOCK_SIZE;
+        let highest = (0..blocks)
+            .filter(|&b| formatted(&self.data, b))
+            .map(|b| generation(&self.data, b))
+            .max()
+            .unwrap_or(0);
+        if generation(&self.data, self.block) == highest {
+            return;
+        }
+        let next = highest.wrapping_add(1);
+        for block in [self.block, self.block ^ 1] {
+            let base = block * BLOCK_SIZE + GENERATION_OFFSET;
+            self.data[base..][..4].copy_from_slice(&next.to_le_bytes());
+        }
     }
 }
 
@@ -746,11 +874,65 @@ mod tests {
     fn a_session_boots_the_dump_untouched() {
         let data = two_files();
         let set = SaveSet::parse(&data).unwrap();
-        // Whichever file is being played, the cartridge a session gets
-        // is the dump as it stands — the choice travels beside the
-        // bytes (a [`PlayedFile`] session payload), never in them.
+        // Reading a file never touches the dump's bytes: which file a
+        // session plays is already in them (the generation counters),
+        // so handing one out has nothing to write.
         assert_eq!(set.save(0).unwrap().to_sram_dump(), data);
         assert_eq!(set.save(1).unwrap().to_sram_dump(), data);
+    }
+
+    /// Picking a file is an edit to the cartridge: the file becomes the
+    /// one the game itself calls most recently saved, which is what
+    /// [`SaveSet::current`] — and so every session, recording and
+    /// priming walk — reads.
+    #[test]
+    fn making_a_file_current_moves_what_the_set_hands_out() {
+        let data = two_files();
+        let set = SaveSet::parse(&data).unwrap();
+        assert_eq!(set.current().slot(), 0);
+
+        let mut file1 = set.save(1).unwrap();
+        file1.make_current();
+        file1.rebuild_checksum();
+        let dump = file1.to_sram_dump();
+        let set = SaveSet::parse(&dump).unwrap();
+        assert_eq!(set.current().slot(), 1);
+        // Both files are still there, each still reading its own block.
+        assert_eq!(set.slots(), vec![0, 1]);
+        assert_eq!(set.save(0).unwrap().view_chips().unwrap().chip(0, 0).unwrap().id, 1);
+        assert_eq!(set.save(1).unwrap().view_chips().unwrap().chip(0, 0).unwrap().id, 2);
+
+        // Already leading: nothing moves, and picking it again is a
+        // no-op rather than another bump.
+        let mut again = set.save(1).unwrap();
+        let before = again.to_sram_dump();
+        again.make_current();
+        assert_eq!(again.to_sram_dump(), before);
+    }
+
+    /// The cross is the game's own byte, per file, and survives the
+    /// round trip through a rebuilt block.
+    #[test]
+    fn the_cross_round_trips_per_file() {
+        let mut data = two_files();
+        // File 0 is Team ProtoMan, file 1 Team Colonel — which is what
+        // picks between the two BassCross values. (Their live blocks are
+        // 0 and 4; see `two_files`.)
+        data[0 * BLOCK_SIZE + TEAM_OFFSET] = 0;
+        data[4 * BLOCK_SIZE + TEAM_OFFSET] = 1;
+        let set = SaveSet::parse(&data).unwrap();
+        assert_eq!(set.save(0).unwrap().cross(), Cross::None);
+        assert_eq!(Cross::bass_for(set.save(0).unwrap().team()), Cross::BassProto);
+        assert_eq!(Cross::bass_for(set.save(1).unwrap().team()), Cross::BassColonel);
+
+        let mut file1 = set.save(1).unwrap();
+        file1.set_cross(Cross::Sol);
+        file1.rebuild_checksum();
+        let set = SaveSet::parse(&file1.to_sram_dump()).unwrap();
+        assert_eq!(set.save(1).unwrap().cross(), Cross::Sol);
+        // The other file is untouched — the byte lives in each file's
+        // own block.
+        assert_eq!(set.save(0).unwrap().cross(), Cross::None);
     }
 
     #[test]

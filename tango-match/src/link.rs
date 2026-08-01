@@ -224,44 +224,6 @@ pub enum SessionMode {
     Solo,
 }
 
-/// Opaque per-side session data riding beside a save: minted by the
-/// game's save view, carried through the netplay commit and the replay
-/// metadata, and read back — by downcast — only by the same game's
-/// engine support. BN5DS's says which of its cartridge's two files the
-/// session plays; most games have none. Everything in between treats
-/// it as a sealed value: the wire and the replay store
-/// [`serialize`](SessionPayload::serialize)'s bytes, and
-/// [`Backend::parse_session_payload`] is what turns them back into the
-/// typed payload.
-pub trait SessionPayload: std::any::Any + Send + Sync {
-    /// The bytes the wire and the replay metadata store. Never empty —
-    /// empty is how those places spell "no payload" — and the game's
-    /// [`Backend::parse_session_payload`] must round-trip them.
-    fn serialize(&self) -> Vec<u8>;
-    fn clone_box(&self) -> BoxedSessionPayload;
-}
-
-/// Boxed opaque session payload, as the owning seams hold it.
-pub type BoxedSessionPayload = Box<dyn SessionPayload>;
-
-/// Both sides' stored session payloads, typed: each seat's bytes parsed
-/// by its own game's backend ([`Backend::parse_session_payload`]),
-/// empty bytes staying `None`. The shape every replay opener needs
-/// between a recording's raw metadata and a
-/// [`ReplayConfig`](crate::ReplayConfig).
-pub fn parse_session_payloads(
-    backends: [&dyn Backend; 2],
-    bytes: &[Vec<u8>; 2],
-) -> Result<[Option<BoxedSessionPayload>; 2], crate::Error> {
-    let mut payloads = [None, None];
-    for seat in 0..2 {
-        if !bytes[seat].is_empty() {
-            payloads[seat] = Some(backends[seat].parse_session_payload(&bytes[seat])?);
-        }
-    }
-    Ok(payloads)
-}
-
 /// Starts matches for one game on whatever engine that game uses.
 ///
 /// This is the registration seam: a `Game` registration holds one of
@@ -271,19 +233,6 @@ pub fn parse_session_payloads(
 /// [`Match`](crate::Match) — the engine underneath it is erased at the
 /// [`Link`].
 pub trait Backend: Sync {
-    /// The typed [`SessionPayload`] behind a side's committed or
-    /// recorded bytes — [`StartConfig::session_payloads`]' currency,
-    /// and what a save view is initialized with to show the save a
-    /// session plays. Only called when there *are* bytes: a side
-    /// without a payload has nothing to parse, and its callers carry
-    /// the absence themselves. The default is for a game that mints no
-    /// payloads — bytes claiming to be one have no type to be, which
-    /// is exactly what malformed means.
-    fn parse_session_payload(&self, bytes: &[u8]) -> Result<BoxedSessionPayload, crate::Error> {
-        let _ = bytes;
-        Err(crate::Error::MalformedSessionPayload)
-    }
-
     /// How this game's console presents its display in `mode`, known
     /// before a session exists so a host can lay out its pane.
     ///
@@ -391,14 +340,6 @@ pub struct StartConfig<'a> {
     pub roms: [&'a [u8]; 2],
     /// Per-console save memory.
     pub saves: [Option<&'a [u8]>; 2],
-    /// Per-console [`SessionPayload`], as each side's save view
-    /// committed it beside its save — read, by downcast, only by the
-    /// game's own engine support. `None` for games that mint none;
-    /// BN5DS's names which of the cartridge's two files the session
-    /// plays, and its priming walks the game's own file select to it.
-    /// Determinism-critical like the saves themselves: both peers must
-    /// pass identical pairs.
-    pub session_payloads: [Option<&'a dyn SessionPayload>; 2],
     /// The negotiated match seed, for whatever reseeding the game's
     /// priming does.
     pub rng_seed: [u8; 16],

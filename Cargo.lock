@@ -7893,7 +7893,6 @@ dependencies = [
  "image",
  "num-traits",
  "tango-gamesupport-common",
- "tango-match",
 ]
 
 [[package]]

@@ -289,10 +289,6 @@ fn main() {
         _ => &tango_gamesupport_bn5ds::pvp::JP,
     };
     let saves = [Some(replay.srams[0].as_slice()), Some(replay.srams[1].as_slice())];
-    let session_payloads = replay
-        .session_payloads()
-        .map(|b| (!b.is_empty()).then(|| support.parse_session_payload(&b).expect("session payload")));
-    let payloads = session_payloads.each_ref().map(|p| p.as_deref());
     println!(
         "replay: {} ticks, comparing {total} (mispredict every {every} ticks, {depth} deep, local seat {peer})",
         inputs.len()
@@ -304,9 +300,9 @@ fn main() {
     // own determinism guarantees (`landing_probe twin`).
     let started = std::time::Instant::now();
     let mut a = tango_backend_melonds::Link::new(&rom, saves, replay.rtc_time()).expect("pair A boot");
-    support.prime(&mut a, match_type, payloads, replay.rng_seed, None).expect("pair A prime");
+    support.prime(&mut a, match_type, replay.rng_seed, None).expect("pair A prime");
     let mut b = tango_backend_melonds::Link::new(&rom, saves, replay.rtc_time()).expect("pair B boot");
-    support.prime(&mut b, match_type, payloads, replay.rng_seed, None).expect("pair B prime");
+    support.prime(&mut b, match_type, replay.rng_seed, None).expect("pair B prime");
     println!("both pairs primed in {:.1?}", started.elapsed());
 
     // The baseline. Anything differing before a single rollback has

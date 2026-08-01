@@ -10,20 +10,20 @@
 //! crate). Which saves meet is the pairing, so the wild "sometimes"
 //! flake was deterministic here, as a specific host×joiner cell. Each
 //! dump's file-select slots each become an identity exactly as a live
-//! session carries one: the dump untouched, plus a `PlayedFile`
-//! session payload — so this also regression-tests the
-//! payload-steered save select. Every cell must be OK; the walk's own
-//! log lines carry the diagnostics when a cell stalls.
+//! session carries one: the dump with that file stamped as the
+//! cartridge's most recently saved (`Save::make_current`), which is how
+//! a committed cartridge says what it plays — so this also
+//! regression-tests that steering. Every cell must be OK; the walk's
+//! own log lines carry the diagnostics when a cell stalls.
 //!
 //! Usage: priming_matrix <rom.nds> <flash.sav>... [--jp] [--type T]
 //!        [--subtype S]
 //!        [--rtc SECS[,SECS...]] [--emit DIR]
 //!
 //! `--emit DIR` writes each identity's sram to DIR/<label>.sav (for
-//! menu_probe) instead of running the matrix. Sessions no longer
-//! rewrite the cart, so a two-file dump emits the same bytes under
-//! both labels — the identities differ only in the row the matrix
-//! steers, which a bare .sav cannot carry.
+//! menu_probe) instead of running the matrix. The two labels of a
+//! two-file dump differ only in their generation counters — which is
+//! the whole of what says which file is played.
 //!
 //! The flags below run one walk instead, with the joiner's flash
 //! hand-built from the emitted identities — the geometry surgery the
@@ -37,7 +37,7 @@
 //!   --erase LO:HI                   fill joiner flash with 0xff
 
 use tango_gamesupport_bn5ds::dataview::save::{
-    PlayedFile, SaveSet, BLOCK_SIZE, CHECKSUM_OFFSET, GENERATION_OFFSET, INTERIOR_CHECKSUM_OFFSET, MAGIC,
+    SaveSet, BLOCK_SIZE, CHECKSUM_OFFSET, GENERATION_OFFSET, INTERIOR_CHECKSUM_OFFSET, MAGIC,
     MAGIC_OFFSET, SAVE_IMAGE_SIZE, SIZE,
 };
 use tango_gamesupport_common::dataview::save::Save as _;
@@ -102,10 +102,10 @@ fn save_shot(link: &mut tango_backend_melonds::Link, seat: usize, path: &str) {
 
 struct Identity {
     label: String,
+    /// The cartridge as a live commit of this file would send it: the
+    /// dump with this file stamped current, which is what the walk
+    /// reads the save-select row (and the cross) out of.
     sram: Vec<u8>,
-    /// The session payload a live commit of this file would send — the
-    /// file-select row the walk steers this console into.
-    played: PlayedFile,
 }
 
 fn main() {
@@ -243,7 +243,7 @@ fn main() {
         // No payloads: the emitted identity images and the geometry
         // surgery are hand-built carts whose current file is the one
         // under test.
-        match layout.walk(&mut link, (match_type, match_subtype), [None, None], [0; 16], None) {
+        match layout.walk(&mut link, (match_type, match_subtype), [0; 16], None) {
             Ok(()) => println!("RESULT: OK"),
             Err(e) => println!("RESULT: FAILED {e:?}"),
         }
@@ -262,10 +262,12 @@ fn main() {
             current + 1,
         );
         for slot in set.slots() {
+            let mut save = set.save(slot).unwrap();
+            save.make_current();
+            save.rebuild_checksum();
             identities.push(Identity {
                 label: format!("{}/file{}", (b'A' + d as u8) as char, slot + 1),
-                sram: set.save(slot).unwrap().to_sram_dump(),
-                played: PlayedFile(slot),
+                sram: save.to_sram_dump(),
             });
         }
     }
@@ -297,7 +299,6 @@ fn main() {
                 match layout.walk(
                     &mut link,
                     (match_type, match_subtype),
-                    [Some(&host.played), Some(&joiner.played)],
                     [0; 16],
                     None,
                 ) {

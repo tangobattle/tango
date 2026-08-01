@@ -76,3 +76,9 @@ save-tab-program-deck = Program Deck
 deck-mb = { $used }/{ $capacity }MB
 deck-mb-uncapped = { $used }MB
 deck-slot-in = Slot-in { $max }MB
+
+# BN5DS: which MegaMan a save brings, normally decided by what sits in
+# the DS's GBA slot.
+bn5ds-cross-none = MegaMan
+bn5ds-cross-bass = BassCross MegaMan
+bn5ds-cross-sol = SolCross MegaMan

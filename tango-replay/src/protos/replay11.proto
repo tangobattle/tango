@@ -32,14 +32,14 @@ message Metadata {
     // while it existed still have it on the wire, hence reserved rather than
     // reused.
     reserved 4;
-    // Opaque bytes recorded beside this side's SRAM frame: the session
-    // payload its save view committed, handed back to the game's pvp
-    // engine on playback so it makes the choices the live match made.
-    // Only the game's own code reads it — BN5DS stores which of its
-    // cartridge's two file-select slots the session plays. Empty for
-    // every other game, and for every recording that predates the
-    // field.
-    bytes session_payload = 5;
+    // Field 5 was an opaque session payload recorded beside this side's SRAM
+    // frame — the only one ever minted said which of BN5DS's two cartridge
+    // files the session played. A cartridge now carries that in its own bytes
+    // (the file the game calls most recently saved), so the recorded SRAM
+    // frame answers it and nothing rides alongside; reserved rather than
+    // reused, since recorders written while it existed still put it on the
+    // wire.
+    reserved 5;
   }
 
   uint64 ts = 1;

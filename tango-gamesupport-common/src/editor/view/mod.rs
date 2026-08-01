@@ -762,8 +762,10 @@ pub fn view<'a>(
     let editing_session = editable && state.editing.is_some();
     // The single Edit button covers the whole save: shown whenever *any* section
     // is editable, not per-tab. Once open, the user navigates tabs to edit each
-    // section (and clicks the navi header to swap navi).
-    let save_editable = editable && loaded.editability.any();
+    // section (and clicks the navi header to swap navi). A game whose editable
+    // thing lives outside the shared sections — BN5DS's file and cross picks,
+    // which are its own top-bar control — says so itself.
+    let save_editable = editable && (loaded.editability.any() || loaded.save_editor.extra_editable(loaded));
 
     // The save-level actions live at the navi header's right edge (not the tab
     // strip): Edit + Play in read mode, Save / Cancel while editing, swapping
@@ -808,15 +810,15 @@ pub fn view<'a>(
             crate::widgets::plate_color,
         );
     }
-    // The game's own bar control (BN5DS's two-file switcher) rides at
-    // the left of the cluster, so Edit / Play keep the right edge. It
+    // The game's own bar control (BN5DS's file + cross picks) rides at
+    // the left of the cluster, so Save / Cancel keep the right edge. It
     // sits outside the edit-mode swap above: what it selects isn't an
-    // action, and it must not fade with Edit turning into Save/Cancel.
-    // Hidden during an edit session, and in read-only embeds (a pvp
-    // setup pane, the replay viewer): there the view shows the save a
-    // session is playing — picked by its session payload — which is
-    // nothing to switch. See `GameSaveEditor`.
-    if editable && !editing_session {
+    // action, and it must not fade with Save/Cancel turning back into
+    // Edit. Shown only while an edit session is open — what it changes
+    // is a staged edit like any other — so a read-only embed (a pvp
+    // setup pane, the replay viewer) never carries it. See
+    // `GameSaveEditor`.
+    if editing_session {
         if let Some(control) = loaded.save_editor.top_bar_control(lang, loaded) {
             actions_tail = row![control, actions_tail]
                 .spacing(6)
@@ -834,7 +836,13 @@ pub fn view<'a>(
     // Always rendered, navi or not: the strip is where Play lives, and Play
     // is the only way to start the game.
     let navi_edit = (editing_session && loaded.editability.navi).then_some(Action::EnterEditNavi);
-    let navi_strip = navi::render_navi_strip(lang, loaded, navi_edit, actions_tail);
+    // The game's own, which by default *is* the navi strip — a game whose
+    // identity isn't a navi off the shared roster (BN5DS's cross) overrides it
+    // and gets told whether the session is open so it can name what the save
+    // brings while reading and offer the pick while editing.
+    let navi_strip = loaded
+        .save_editor
+        .identity_strip(lang, loaded, navi_edit, editing_session, actions_tail);
 
     if available.is_empty() {
         // No section tabs (an unsupported / empty save) — the strip still
