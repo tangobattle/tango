@@ -150,6 +150,10 @@ impl TrainingSession {
         //
         // Present delay 0: the match is local and lockstep, so there's no
         // latency to hide and no speculation to roll back.
+        // The pair pushes the seat the player is driving into the ring
+        // on its way out of every tick; the stream plays the other end
+        // with no lock at all.
+        let (audio_in, audio_out) = crate::audio::ring();
         let mut match_ = game.pvp.start(tango_match::StartConfig {
             roms: [rom.as_ref(), rom.as_ref()],
             saves: [Some(&save_sram), Some(&save_sram)],
@@ -166,6 +170,7 @@ impl TrainingSession {
             local_player: 0,
             present_delay: 0,
             disable_bgm: false,
+            audio: Some(audio_in),
             // Training builds its session around an already-primed
             // pair, so the walk runs before there is anything to
             // cancel from.
@@ -194,12 +199,12 @@ impl TrainingSession {
         let screen = crate::Framebuffer::new(&layout);
         let wake = Arc::new(tokio::sync::Notify::new());
 
-        // Audio pulls the controlled core straight off the pair (same
-        // path as PvP), rate control following the pacing target. The
-        // `player` closure is re-read every fill, so a swap moves the
-        // sound to the side the player is now driving.
+        // Audio comes off whichever core the player is driving (same
+        // path as PvP), rate control following the pacing target. A swap
+        // tells the match to listen to the other seat, so the sound
+        // follows the player without anything here being rebuilt.
         let audio = crate::audio::Stream::new(
-            crate::audio::side_drain(match_.side_source(controlled.clone())),
+            audio_out,
             expected_fps,
             crate::audio::Stream::fps_from_bits(fps_bits.clone()),
             sample_rate,
@@ -220,7 +225,6 @@ impl TrainingSession {
             screen: screen.clone(),
             wake: wake.clone(),
             frame: 0,
-            intake: audio.intake(),
         };
 
         Ok((
@@ -359,12 +363,6 @@ pub struct Driver {
     /// Ticks run, handed to the dummy controller so it can time its
     /// takes.
     frame: u64,
-    /// The session's audio stream intake, pumped once per tick — right
-    /// after the advance releases the pair's lock, the one moment it is
-    /// reliably free (see [`Intake`](crate::audio::Intake)). Safe here
-    /// where PvP must not: training is lockstep, so there is no
-    /// speculative audio for a rollback to want back.
-    intake: crate::audio::Intake,
 }
 
 impl crate::Drive for Driver {
@@ -392,6 +390,10 @@ impl Driver {
             // other. A swap flips this between ticks.
             let controlled = self.controlled.load(Ordering::Relaxed);
             let dummy_player = 1 - controlled;
+            // The sound follows the player across a swap; the pair drops
+            // whatever the seat being left had queued, so the old side's
+            // tail never plays under the new one.
+            self.match_.listen_to(controlled);
 
             // Poll the dummy controller for the tick about to advance. It
             // sees the pair parked at the newest simulated tick; its
@@ -453,7 +455,6 @@ impl Driver {
                 self.pip_fresh.store(false, Ordering::Relaxed);
             }
             self.frame = frame.wrapping_add(1);
-            self.intake.pump();
             self.wake.notify_one();
         }
         true

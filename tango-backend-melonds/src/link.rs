@@ -230,14 +230,6 @@ impl tango_match::Link for Link {
         Ok(())
     }
 
-    fn audio_mark(&mut self) -> [u64; 2] {
-        self.inner.audio_produced()
-    }
-
-    fn revoke_audio(&mut self, mark: [u64; 2]) {
-        self.inner.revoke_audio_to(mark)
-    }
-
     fn side(&mut self, player: usize) -> Box<dyn tango_match::Side + '_> {
         Box::new(DsSide(self.inner.side(player), self.screens))
     }
@@ -267,14 +259,12 @@ impl tango_match::Side for DsSide<'_> {
         SAMPLE_RATE
     }
 
-    /// Taken from the boot rather than straight off the SPU. The boot
-    /// empties the console's SPU every tick into a buffer of its own,
-    /// because the SPU's ring cannot serve as one: a savestate does not
-    /// cover it, so a rollback cannot take back what it speculated
-    /// there, and at ~43 ms it overflows within a couple of frames of a
-    /// re-simulation appending a span twice — destroying its own oldest
-    /// audio to make room. What leaves here is already revocable and
-    /// already deduplicated.
+    /// Taken from the boot rather than straight off the SPU, which at
+    /// ~43 ms overflows within a couple of frames of a re-simulation
+    /// appending a span twice — destroying its own oldest audio to make
+    /// room. The boot empties it every tick into a buffer of its own,
+    /// and a session empties that every tick in turn, so neither ever
+    /// has to hold more than the tick just finished.
     fn drain_audio(&mut self, out: &mut [i16]) -> usize {
         let (written, queued) = self.0.take_audio(out);
         written + queued
@@ -365,8 +355,12 @@ mod tests {
     /// loop.
     #[test]
     fn the_shared_engine_accepts_this_link() {
-        let _: fn(super::Link, usize, u32) -> Result<tango_match::Match, tango_match::Error> =
-            tango_match::Match::new::<super::Link>;
+        let _: fn(
+            super::Link,
+            usize,
+            u32,
+            Option<tango_match::AudioIn>,
+        ) -> Result<tango_match::Match, tango_match::Error> = tango_match::Match::new::<super::Link>;
     }
 
     /// A red top screen and a blue bottom one, as the core hands them

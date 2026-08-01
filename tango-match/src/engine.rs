@@ -25,10 +25,11 @@ use crate::HostInput;
 struct SnapshotAt {
     snapshot: Snapshot,
     tick: u32,
-    /// The link's audio mark at save time, so a load knows how much its
-    /// speculation produced past this point. Not part of the snapshot
-    /// itself: audio is playback state, and no savestate carries it.
-    audio_mark: [u64; 2],
+    /// What the session's audio ring had published at save time, so a
+    /// load knows how much its speculation voiced past this point. Not
+    /// part of the snapshot itself: audio is playback state, and no
+    /// savestate carries it.
+    audio_mark: u64,
 }
 
 /// The [`getgud::World`] over a linked pair.
@@ -54,6 +55,11 @@ struct World {
     /// out by [`Match::drain_confirmed`]. Shared because the engine
     /// owns its world outright.
     confirmed: Arc<Mutex<Vec<[HostInput; 2]>>>,
+    /// Where this pair's sound goes, once a host has asked for any
+    /// ([`Match::play_audio`]). Pumped at the end of every step, while
+    /// the link is still in hand — the one moment its lock is certainly
+    /// free, which is what a sound callback could never count on.
+    audio: Option<crate::audio::Pump>,
 }
 
 impl getgud::World for World {
@@ -72,6 +78,13 @@ impl getgud::World for World {
                 .set_render(render && self.visible[player].load(Ordering::Relaxed));
         }
         link.tick(inputs);
+        // Straight after the tick, with the link still in hand: this is
+        // the one moment its lock is certainly free, and audio that does
+        // not cross here waits behind it for as long as the drive loop
+        // stays busy.
+        if let Some(audio) = self.audio.as_mut() {
+            audio.pump(&mut *link);
+        }
         self.live_tick += 1;
         Ok(())
     }
@@ -79,7 +92,7 @@ impl getgud::World for World {
     fn save(&mut self) -> Result<SnapshotAt, crate::Error> {
         let mut link = self.link.lock().unwrap();
         Ok(SnapshotAt {
-            audio_mark: link.audio_mark(),
+            audio_mark: self.audio.as_ref().map_or(0, |a| a.produced()),
             snapshot: link.snapshot(self.pool.pop())?,
             tick: self.live_tick,
         })
@@ -94,10 +107,13 @@ impl getgud::World for World {
         }
         let mut link = self.link.lock().unwrap();
         link.restore(&state.snapshot)?;
-        // The restore does not reach the audio the speculation voiced,
-        // so that comes back by hand — otherwise the re-simulation
-        // queues the same span a second time.
-        link.revoke_audio(state.audio_mark);
+        // The restore does not reach the audio the speculation voiced —
+        // no savestate carries a frontend's buffer — so that comes back
+        // by hand, or the re-simulation queues the same span a second
+        // time.
+        if let Some(audio) = self.audio.as_mut() {
+            audio.revoke_to(state.audio_mark);
+        }
         self.live_tick = state.tick;
         Ok(())
     }
@@ -141,6 +157,11 @@ pub struct Match {
     /// because that is the only moment it is knowable and a host reads
     /// it on its own schedule.
     last_rollback_depth: u32,
+    /// Which seat the host is listening to, shared with the world's
+    /// pump. An atomic rather than a constructor argument because a host
+    /// can move the sound mid-session (training's side swap) and the
+    /// pump reads it every tick.
+    audio_seat: Arc<std::sync::atomic::AtomicUsize>,
     /// The telemetry this match publishes, when its engine reads any —
     /// installed by the backend that wired the link's pollers up.
     telemetry: Option<crate::telemetry::TelemetryHandle>,
@@ -148,12 +169,25 @@ pub struct Match {
 
 impl Match {
     /// Start a match over an already-booted, already-primed pair.
-    pub fn new<L: Link>(link: L, local_player: usize, present_delay: u32) -> Result<Self, crate::Error> {
+    ///
+    /// `audio` is where the pair's sound goes — the producing end of a
+    /// [`channel`](crate::audio::channel) whose other end the host plays.
+    /// `None` for a caller with nobody listening (the offline analysis
+    /// passes, the probe harnesses), which leaves each console holding
+    /// its own audio exactly as it did before.
+    pub fn new<L: Link>(
+        link: L,
+        local_player: usize,
+        present_delay: u32,
+        audio: Option<crate::AudioIn>,
+    ) -> Result<Self, crate::Error> {
         assert!(local_player < 2);
         let link: Arc<Mutex<dyn Link>> = Arc::new(Mutex::new(link));
         let visible = Arc::new([AtomicBool::new(local_player == 0), AtomicBool::new(local_player == 1)]);
         let render_from = Arc::new(AtomicU32::new(0));
         let confirmed = Arc::new(Mutex::new(Vec::new()));
+        let audio_seat = Arc::new(std::sync::atomic::AtomicUsize::new(local_player));
+        let audio = audio.map(|into| crate::audio::Pump::new(into, audio_seat.clone()));
         let mut world = World {
             link: link.clone(),
             live_tick: 0,
@@ -162,7 +196,15 @@ impl Match {
             visible: visible.clone(),
             render_from: render_from.clone(),
             confirmed: confirmed.clone(),
+            audio,
         };
+        // The priming walk ran on these consoles and left whatever it
+        // voiced sitting in their buffers. Nobody wants to hear a menu
+        // walk, so the session opens by throwing it away rather than
+        // publishing it as tick 1's production.
+        if let Some(audio) = world.audio.as_mut() {
+            audio.discard(&mut *link.lock().unwrap());
+        }
         let initial_state = {
             use getgud::World as _;
             world.save()?
@@ -181,6 +223,7 @@ impl Match {
             confirmed,
             drained: 0,
             last_rollback_depth: 0,
+            audio_seat,
             telemetry: None,
         })
     }
@@ -257,16 +300,12 @@ impl Match {
         });
     }
 
-    /// A handle onto whichever seat `seat` currently names, for a host
-    /// reading a console off the simulation thread — its audio, mainly.
-    /// `seat` is read per call, so a host that moves the sound between
-    /// seats (training's side swap) does so without whatever it built
-    /// on this being rebuilt under it.
-    pub fn side_source(&self, seat: Arc<std::sync::atomic::AtomicUsize>) -> Box<dyn crate::SideSource> {
-        Box::new(LinkSeat {
-            link: self.link.clone(),
-            player: seat,
-        })
+    /// Play this seat from now on — training's side swap, which moves
+    /// the sound to whichever console the player took over. Takes effect
+    /// on the next tick, and drops what the seat being left had queued:
+    /// that audio belongs to a perspective the listener has gone from.
+    pub fn listen_to(&self, seat: usize) {
+        self.audio_seat.store(seat & 1, Ordering::Relaxed);
     }
 
     /// The telemetry this match publishes, if its engine reads any.
@@ -346,27 +385,3 @@ impl Match {
     }
 }
 
-/// One seat of the match's pair, as [`Match::side_source`] hands it
-/// out: the same shared link the session ticks, reached under the same
-/// lock.
-struct LinkSeat {
-    link: Arc<Mutex<dyn Link>>,
-    player: Arc<std::sync::atomic::AtomicUsize>,
-}
-
-impl crate::SideSource for LinkSeat {
-    fn with_side(&self, f: &mut dyn FnMut(&mut dyn crate::Side)) {
-        let mut link = self.link.lock().unwrap();
-        f(&mut *link.side(self.player.load(Ordering::Relaxed)));
-    }
-
-    fn try_side(&self, f: &mut dyn FnMut(&mut dyn crate::Side)) -> bool {
-        match self.link.try_lock() {
-            Ok(mut link) => {
-                f(&mut *link.side(self.player.load(Ordering::Relaxed)));
-                true
-            }
-            Err(_) => false,
-        }
-    }
-}

@@ -162,6 +162,7 @@ impl tango_match::Backend for GbaBackend {
             crate::link::Link::new(pair, Some(telemetry)),
             config.local_player,
             config.present_delay,
+            config.audio,
         )?;
         match_.set_telemetry(handle);
         Ok(match_)
@@ -170,6 +171,7 @@ impl tango_match::Backend for GbaBackend {
     fn start_solo(&self, config: tango_match::SoloConfig) -> Result<tango_match::Solo, tango_match::Error> {
         Ok(tango_match::Solo::new(
             crate::solo::SoloConsole::new(config.rom, config.save, config.rtc).map_err(tango_match::Error::from)?,
+            config.audio,
         ))
     }
 

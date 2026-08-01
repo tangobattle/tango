@@ -10,8 +10,9 @@
 //! it needs and no other.
 //!
 //! - [`link`]: [`Link`] — the linked pair — and [`Side`], one console
-//!   of any boot (plus [`SideSource`], the handle a host reads one
-//!   through); plus [`Backend`], what a `Game` registration holds.
+//!   of any boot; plus [`Backend`], what a `Game` registration holds.
+//! - [`audio`]: the lock-free ring a simulation pushes its consoles'
+//!   sound into and a host's device callback plays out of.
 //! - [`engine`]: [`Match`], the rollback loop over any [`Link`] and the
 //!   unified session surface a host drives.
 //! - [`solo`]: [`Solo`], the single-console ride over any [`Console`].
@@ -26,6 +27,7 @@
 pub mod engine;
 pub mod link;
 pub mod analysis;
+pub mod audio;
 pub mod battle;
 pub mod input;
 pub mod replay;
@@ -36,9 +38,10 @@ pub mod throttler;
 
 pub use solo::{Console, Solo, SoloConfig};
 pub use engine::Match;
+pub use audio::{AudioIn, AudioOut};
 pub use link::{
     parse_session_payloads, Backend, BoxedSessionPayload, FrameTiming, Link, PeerRom, Screen, ScreenLayout,
-    SessionMode, SessionPayload, Side, SideSource, Snapshot, StartConfig,
+    SessionMode, SessionPayload, Side, Snapshot, StartConfig,
 };
 pub use replay::{
     BootedReplay, Capture, LiveFrames, Playback, Replay, ReplayBoot, ReplayConfig, ReplaySet, SeekStep, StatsPass,

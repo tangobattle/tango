@@ -263,7 +263,11 @@ impl ReplaySession {
                 // The games' own audio is the point of watching one.
                 disable_bgm: false,
             })?);
-        let audio_pull = crate::audio::DeferredDrain::default();
+        // The session's audio ring, made before the pair that feeds it
+        // exists: the host binds the stream at construction, and the
+        // ring simply reads empty — so the stream primes — through the
+        // priming walk the boot runs.
+        let (audio_in, audio_out) = crate::audio::ring();
 
         let surfaces = Surfaces {
             shown_seat: shown_seat.clone(),
@@ -276,11 +280,10 @@ impl ReplaySession {
             local_player,
         };
 
-        // Audio: play the shown perspective's core straight off the
-        // pair, following the drive loop's pacing (see
-        // [`crate::audio::stream`]).
+        // Audio: play the shown perspective's core, following the drive
+        // loop's pacing (see [`crate::audio::stream`]).
         let audio = crate::audio::Stream::new(
-            Box::new(audio_pull.clone()) as Box<dyn crate::audio::Drain>,
+            audio_out,
             expected_fps,
             crate::audio::Stream::fps_from_bits(fps_bits.clone()),
             sample_rate,
@@ -292,7 +295,6 @@ impl ReplaySession {
         // ([`Workers::into_driver`]).
         let workers = Workers {
             drive: DriveWorker {
-                intake: audio.intake(),
                 playhead: Playhead {
                     set: set.clone(),
                     playback: playback.clone(),
@@ -300,7 +302,7 @@ impl ReplaySession {
                     paused: paused.clone(),
                     cancel: cancel.clone(),
                     surfaces: surfaces.clone(),
-                    audio: audio_pull.clone(),
+                    audio: Mutex::new(Some(audio_in)),
                     seat: shown_seat.clone(),
                     booted: booted.clone(),
                     prime_error: prime_error.clone(),
@@ -771,9 +773,11 @@ struct Playhead {
     paused: Arc<crate::PauseGate>,
     cancel: Arc<AtomicBool>,
     surfaces: Surfaces,
-    /// Filled in once the pair is up — until then the host's stream is
-    /// pulling silence off it.
-    audio: crate::audio::DeferredDrain,
+    /// The producing end of the ring the host's stream is already bound
+    /// to, handed to the pair when the boot brings one up. `None` once
+    /// it has been; until then the ring reads empty and the stream
+    /// primes.
+    audio: Mutex<Option<tango_match::AudioIn>>,
     seat: Arc<AtomicUsize>,
     /// Raised when the boot below is over — landed or failed — for the
     /// host's priming notice (see [`Engine::booted`]).
@@ -801,10 +805,11 @@ impl Playhead {
                 return false;
             }
         };
-        // Bind the host's stream to the real pair; it has been pulling
-        // silence since the session was built.
-        self.audio
-            .set(crate::audio::side_drain(pb.side_source(self.seat.clone())));
+        // Point the pair at the host's ring; the stream has been priming
+        // on an empty one since the session was built.
+        if let Some(into) = self.audio.lock().unwrap().take() {
+            pb.play_audio(self.seat.clone(), into);
+        }
         // Show the primed first frame while paused-at-start or still
         // spinning up.
         self.surfaces.publish_frames(&pb.frames());
@@ -845,13 +850,6 @@ pub struct DriveWorker {
     paused: Arc<crate::PauseGate>,
     cancel: Arc<AtomicBool>,
     booted: bool,
-    /// The session's audio stream intake, pumped once per played tick —
-    /// right after the step releases the playback lock, the one moment
-    /// it is reliably free. A 4x drive loop on DS-class ticks holds
-    /// that lock essentially always, so the sound callback's own
-    /// reaches cannot be what carries the audio out (see
-    /// [`Intake`](crate::audio::Intake)).
-    intake: crate::audio::Intake,
 }
 
 impl DriveWorker {
@@ -895,9 +893,7 @@ impl crate::Drive for DriveWorker {
         if self.paused.paused() {
             return true;
         }
-        let alive = self.playhead.step();
-        self.intake.pump();
-        alive
+        self.playhead.step()
     }
 
     fn fps_target(&self) -> f32 {

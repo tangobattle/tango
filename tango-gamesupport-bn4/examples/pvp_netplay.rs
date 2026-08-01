@@ -47,6 +47,8 @@ fn build(
             local_player,
             present_delay: 2,
             disable_bgm: false,
+            // Nobody is listening: the harness drives the pair headless.
+            audio: None,
             cancel: None,
         })
         .expect("build match")

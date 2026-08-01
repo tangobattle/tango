@@ -166,7 +166,7 @@ impl tango_match::Backend for DsBackend {
 
         // The rollback loop is the seam's — this engine contributes the
         // boot, not another copy of it.
-        let mut match_ = tango_match::Match::new(link, config.local_player, config.present_delay)?;
+        let mut match_ = tango_match::Match::new(link, config.local_player, config.present_delay, config.audio)?;
         match_.set_telemetry(handle);
         Ok(match_)
     }
@@ -177,7 +177,7 @@ impl tango_match::Backend for DsBackend {
         let rtc = config.rtc.unwrap_or_else(std::time::SystemTime::now);
         let console = crate::solo::SoloConsole::new(config.rom, config.save, rtc)
             .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
-        Ok(tango_match::Solo::new(console))
+        Ok(tango_match::Solo::new(console, config.audio))
     }
 
     fn open_replay(&self, config: tango_match::ReplayConfig) -> Result<tango_match::ReplaySet, tango_match::Error> {

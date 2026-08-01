@@ -43,23 +43,19 @@
 //! resampling everything queued would put the backlog downstream of the
 //! only thing regulating it.
 //!
-//! The core access locks the same mutex the host's per-tick step takes,
-//! so readout interleaves between ticks. That interleaving is enough
-//! only while the lock is mostly free: a drive loop running at its
-//! wall-clock budget — 4x fast-forward, DS-class tick costs — holds it
-//! for essentially all of every period, and the fill's own try-lock
-//! then lands essentially never, starving the stream with whole
-//! seconds of production sitting unreachable behind the lock. The
-//! [`Intake`] handle closes that: the drive loop pumps it once per
-//! tick, right after its own step returns — the one moment the lock is
-//! known to be free — so the reach lands there no matter how saturated
-//! the loop is, and the fill only ever reads what is already staged.
-//! Sessions with rollback don't pump (revocation depends on
-//! speculative samples staying in the console's ring as long as
-//! possible); they run at 1x, where the fill's own reach suffices. A
-//! stalled sim (reconnect pause, replay pause, a parked drive loop)
-//! still drains the queue and goes silent — there's genuinely nothing
-//! to play.
+//! What a fill reads is the consuming end of the ring the simulation
+//! pushes into ([`audio`](tango_match::audio)), so a fill never reaches
+//! for a console and never takes a lock. That is what it costs to
+//! survive load: a fill used to try-lock the same mutex the drive loop
+//! ticks under, which lands only while that lock is mostly free — and a
+//! drive loop running at its wall-clock budget (4x fast-forward,
+//! DS-class tick costs) holds it for essentially all of every period.
+//! The reaches then failed exactly against the sessions producing the
+//! most audio, with whole seconds of production sitting unreachable
+//! behind the lock while the device got silence. A stalled sim
+//! (reconnect pause, replay pause, a parked drive loop) still drains the
+//! queue and goes quiet — there is genuinely nothing to play — but a
+//! busy one no longer does.
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -101,13 +97,11 @@ const AUDIO_DISCARD_FACTOR: f64 = 3.0;
 const STARVED_FILLS_TO_REPRIME: u32 = 3;
 
 pub struct Stream {
-    /// The console's audio, already resampled to the device rate by
-    /// whichever backend produced it. This stream never learns which
-    /// emulator that was. Shared with the [`Intake`] the drive loop
-    /// pumps; both holds are bounded (a fill's worth of resampling, a
-    /// take's worth of memcpy), so neither side can stall the other
-    /// past that.
-    pull: Arc<std::sync::Mutex<super::Resampler>>,
+    /// The console's audio on its way to the device rate. Owned
+    /// outright: the ring underneath it is the only thing shared with
+    /// the simulation, and that sharing is lock-free. This stream never
+    /// learns which emulator produced what it plays.
+    pull: super::Resampler,
     /// The console's own frame rate
     /// ([`FrameTiming::fps`](tango_match::FrameTiming::fps)) — the pace
     /// its audio production is a function of, and so what the faux
@@ -139,13 +133,13 @@ pub struct Stream {
 
 impl Stream {
     pub fn new(
-        pull: Box<dyn super::Drain>,
+        pull: tango_match::AudioOut,
         expected_fps: f32,
         fps_target: impl Fn() -> f32 + Send + 'static,
         out_rate: u32,
     ) -> Self {
         Self {
-            pull: Arc::new(std::sync::Mutex::new(super::Resampler::new(pull))),
+            pull: super::Resampler::new(pull),
             expected_fps,
             fps_target: Box::new(fps_target),
             out_rate: if out_rate == 0 { 48000 } else { out_rate },
@@ -160,51 +154,12 @@ impl Stream {
     pub fn fps_from_bits(bits: Arc<std::sync::atomic::AtomicU32>) -> impl Fn() -> f32 + Send + 'static {
         move || f32::from_bits(bits.load(Ordering::Relaxed))
     }
-
-    /// The stream's intake, for the thread that drives the simulation
-    /// (see [`Intake`]).
-    pub fn intake(&self) -> Intake {
-        Intake(self.pull.clone())
-    }
-}
-
-/// The stream's intake, held by whoever turns the simulation's crank.
-///
-/// The fill reaches into the console with a try-lock, which lands only
-/// while the console's lock is mostly free. A drive loop running at
-/// its wall-clock budget — 4x fast-forward, DS-class tick costs —
-/// holds that lock for essentially all of every period, so the fill's
-/// reach starves against exactly the sessions that produce the most
-/// audio. The drive loop itself has what no other thread has: a moment
-/// per tick, right after its own step returns, where the console's
-/// lock is known to be free. [`pump`](Intake::pump) called there moves
-/// the console's ring into the stream's staging through the same drain
-/// the fill uses, and never contends with anything for longer than a
-/// take's worth of memcpy.
-///
-/// Optional: a session whose drive loop never saturates (PvP's match
-/// clock at 1x) plays fine without pumping — and a rollback session
-/// must not pump, since revoking mispredicted audio depends on
-/// speculative samples staying in the console's own ring for as long
-/// as possible.
-#[derive(Clone)]
-pub struct Intake(Arc<std::sync::Mutex<super::Resampler>>);
-
-impl Intake {
-    /// Move what the console has produced into the stream's staging —
-    /// call once per tick, after stepping the simulation.
-    pub fn pump(&self) {
-        self.0.lock().unwrap().source_available();
-    }
 }
 
 impl super::Source for Stream {
     fn fill(&mut self, buf: &mut [[i16; super::NUM_CHANNELS]]) -> usize {
         let frame_count = buf.len();
-        // Shared only with the intake's bounded memcpy-sized holds, so
-        // this is not the unbounded simulation-lock wait the fill must
-        // never take.
-        let mut pull = self.pull.lock().unwrap();
+        let pull = &mut self.pull;
 
         let mut fps_target = (self.fps_target)();
         if fps_target <= 0.0 {
@@ -303,11 +258,9 @@ impl super::Source for Stream {
         // whole target's worth of silence, which is a fine trade
         // against a stalled sim and a terrible one against a fill that
         // came up a few frames light. And only with the queue empty
-        // too: a run of unreachable reaches under drive-thread lock
-        // contention also delivers nothing, but its backlog is sitting
-        // right there — the next successful reach refills in one go,
-        // so re-priming would stretch a one-fill blip into a whole
-        // target of silence.)
+        // too — a short fill with a backlog sitting behind it is a
+        // delivery blip, and answering that with a whole target of
+        // silence would make it far worse than it was.)
         if delivered == 0 && queued < target {
             self.priming = true;
         }
@@ -318,11 +271,9 @@ impl super::Source for Stream {
         // host splices a sliver of silence into every one, indefinitely.
         // A few of those in a row with the queue genuinely low is that
         // signature; concede and re-prime, trading continuous per-fill
-        // crackle for one clean gap per drain cycle. The queue guard is
-        // what keeps drive-thread lock contention out of this: a run of
-        // unreachable reaches also delivers short, but its backlog is
-        // sitting right there and the level (served stale across
-        // contention) still reads it.
+        // crackle for one clean gap per drain cycle. This is the one
+        // shortfall the ring cannot fix: the audio was never produced,
+        // so there is nothing anywhere to reach for.
         if delivered < frame_count && queued < target {
             self.starved_fills += 1;
             if self.starved_fills >= STARVED_FILLS_TO_REPRIME {
@@ -340,30 +291,43 @@ impl super::Source for Stream {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
-
-    use super::super::{Drain, Source, NUM_CHANNELS};
+    use super::super::{Source, NUM_CHANNELS};
     use super::*;
 
     const RATE: f64 = 32768.0;
     const OUT_RATE: u32 = 48000;
     const FILL: usize = 512;
 
-    /// A console ring the test produces into by hand.
-    struct Ring(Arc<Mutex<f64>>);
+    /// The producing end of a session's ring, driven by hand: the same
+    /// job the simulation's pump does, including the rollback debt.
+    struct Feed {
+        into: tango_match::AudioIn,
+        /// Production is fractional per fill; frames are not.
+        carry: f64,
+        /// Regeneration still owed after a revoke — what the listener
+        /// already heard and must not hear twice.
+        debt: u64,
+        mark: u64,
+    }
 
-    impl Drain for Ring {
-        fn sample_rate(&self) -> f64 {
-            RATE
+    impl Feed {
+        fn push(&mut self, frames: f64) {
+            self.carry += frames;
+            let n = self.carry as usize;
+            self.carry -= n as f64;
+            let paid = self.debt.min(n as u64) as usize;
+            self.debt -= paid as u64;
+            self.into.push(&vec![1i16; (n - paid) * NUM_CHANNELS]);
         }
 
-        fn drain(&mut self, out: &mut [i16]) -> Option<usize> {
-            let mut level = self.0.lock().unwrap();
-            let total = *level as usize;
-            let written = total.min(out.len() / 2);
-            *level -= written as f64;
-            out[..written * 2].fill(1);
-            Some(total)
+        /// Snapshot the ring, as the engine does before speculating.
+        fn mark(&mut self) {
+            self.mark = self.into.produced();
+        }
+
+        /// Roll back to the mark, as a mispredict does.
+        fn revoke(&mut self) {
+            self.debt += self.into.revoke_to(self.mark);
         }
     }
 
@@ -387,16 +351,18 @@ mod tests {
     /// on each fill (the console's production follows it, since the
     /// drive loop hits its target); `deliver` decides *when* that
     /// production reaches the ring.
-    fn run(fills: usize, fps: impl Fn(usize) -> f64, mut deliver: impl FnMut(usize, f64, &Mutex<f64>)) -> Run {
-        let ring = Arc::new(Mutex::new(RATE * AUDIO_TARGET_QUEUED_SECS));
-        let pull = Box::new(Ring(ring.clone()));
+    fn run(fills: usize, fps: impl Fn(usize) -> f64, mut deliver: impl FnMut(usize, f64, &mut Feed)) -> Run {
+        let (mut into, out) = super::super::ring();
+        into.set_sample_rate(RATE);
+        let mut feed = Feed {
+            into,
+            carry: 0.0,
+            debt: 0,
+            mark: 0,
+        };
+        feed.push(RATE * AUDIO_TARGET_QUEUED_SECS);
         let published = Arc::new(std::sync::atomic::AtomicU32::new((NATIVE_FPS as f32).to_bits()));
-        let mut stream = Stream::new(
-            pull,
-            NATIVE_FPS as f32,
-            Stream::fps_from_bits(published.clone()),
-            OUT_RATE,
-        );
+        let mut stream = Stream::new(out, NATIVE_FPS as f32, Stream::fps_from_bits(published.clone()), OUT_RATE);
 
         let secs_per_fill = FILL as f64 / OUT_RATE as f64;
         let mut buf = vec![[0i16; NUM_CHANNELS]; FILL];
@@ -410,12 +376,12 @@ mod tests {
             published.store((fps as f32).to_bits(), Ordering::Relaxed);
             // A sim paced at `fps` produces that fraction of a native
             // second's audio per second of wall clock.
-            deliver(i, RATE * secs_per_fill * fps / NATIVE_FPS, &ring);
+            deliver(i, RATE * secs_per_fill * fps / NATIVE_FPS, &mut feed);
             // The unresampled backlog: the audio latency, and the level
             // the servo steers. Sampled where the servo itself sees it —
             // before this fill consumes — since after would read a
             // fill's worth low and make a settled queue look starved.
-            run.queued.push(stream.pull.lock().unwrap().source_available() as f64);
+            run.queued.push(stream.pull.source_available() as f64);
             let delivered = stream.fill(&mut buf);
             if delivered < FILL {
                 run.short.push(i);
@@ -432,9 +398,9 @@ mod tests {
     }
 
     /// The plain case: everything the console produced lands in the ring
-    /// on the fill that produced it.
-    fn promptly(_: usize, produced: f64, ring: &Mutex<f64>) {
-        *ring.lock().unwrap() += produced;
+    /// on the tick that produced it.
+    fn promptly(_: usize, produced: f64, feed: &mut Feed) {
+        feed.push(produced);
     }
 
     /// The servo holds the queue at its target. Resampling the whole
@@ -469,26 +435,34 @@ mod tests {
         );
     }
 
-    /// A rollback delivers its audio lumpily: the speculative span is
-    /// pulled early, then the ring gets nothing while re-simulation
-    /// regenerates what already played and the engine swallows it. The
-    /// stream has to ride that out of its queue — no shortfall (which
-    /// latches re-priming, and that is a ~50 ms silence) and no
-    /// discard-cap skip.
+    /// A real rollback across the ring: the speculative span is pushed
+    /// early, then taken back and regenerated. What the stream has
+    /// already played cannot be unplayed, so the regeneration of it is
+    /// swallowed; what it has not reached is simply un-published. Either
+    /// way the stream has to ride the swing out of its queue — no
+    /// shortfall (which latches re-priming, and that is a ~50 ms
+    /// silence) and no discard-cap skip.
     #[test]
-    fn a_rollback_burst_does_not_break_the_stream() {
-        let run = run(6000, native, |i, produced, ring| {
-            let phase = i % 40;
-            // The next four fills' audio is already in the ring,
-            // speculated; while it is re-simulated and swallowed the
-            // ring gets nothing.
-            if (20..24).contains(&phase) {
-                return;
+    fn a_rollback_does_not_break_the_stream() {
+        let run = run(6000, native, |i, produced, feed| match i % 40 {
+            // This tick's settled audio, then a snapshot, then four
+            // fills' worth of speculation past it.
+            19 => {
+                feed.push(produced);
+                feed.mark();
+                feed.push(produced * 4.0);
             }
-            let speculated = if phase == 19 { 4.0 * produced } else { 0.0 };
-            *ring.lock().unwrap() += produced + speculated;
+            // Already spoken for by the speculation above.
+            20..=22 => {}
+            // The mispredict: take the speculation back and re-simulate
+            // the same four ticks.
+            23 => {
+                feed.revoke();
+                feed.push(produced * 4.0);
+            }
+            _ => feed.push(produced),
         });
-        assert!(run.short.is_empty(), "a rollback burst starved fills: {:?}", run.short);
+        assert!(run.short.is_empty(), "a rollback starved fills: {:?}", run.short);
         // Absorbed, not shed: the queue swings with the burst but never
         // reaches the cap, which would be an audible skip.
         assert_settled(&run, 0.4, AUDIO_DISCARD_FACTOR);
@@ -533,15 +507,16 @@ mod tests {
     /// every fill a little, never nothing, so the total-stall latch
     /// can't see it: before the starvation latch, this scenario spliced
     /// a sliver of silence into every single settled fill (5799 of
-    /// 5800), indefinitely. The deficit can't be conjured away; what
-    /// the latch buys is where it lands — whole clean gaps (re-prime
-    /// silences) between runs of full fills, with partial fills bounded
-    /// by the trigger window.
+    /// 5800), indefinitely. The deficit can't be conjured away — this is
+    /// the one shortfall the ring cannot carry, because the audio was
+    /// never produced — so what the latch buys is where it lands: whole
+    /// clean gaps (re-prime silences) between runs of full fills, with
+    /// partial fills bounded by the trigger window.
     #[test]
     fn sustained_overload_concedes_clean_gaps_not_per_fill_crackle() {
-        let run = run(6000, native, |_, produced, ring| {
+        let run = run(6000, native, |_, produced, feed| {
             // 8% short of the published pace, forever.
-            *ring.lock().unwrap() += produced * 0.92;
+            feed.push(produced * 0.92);
         });
         let settled: Vec<usize> = run.short.iter().copied().filter(|&i| i >= 200).collect();
         assert!(!settled.is_empty(), "an 8% deficit must still cost something");
@@ -567,79 +542,13 @@ mod tests {
         );
     }
 
-    /// A console reachable only at the drive loop's own moment — the
-    /// saturated-loop case, where the fill's try-lock never lands and
-    /// everything the stream plays has to have crossed through the
-    /// intake's pump. `armed` is the between-ticks window: the pump
-    /// consumes it; every other reach finds the console held.
-    struct PumpOnly {
-        ring: Ring,
-        armed: Arc<std::sync::atomic::AtomicBool>,
-    }
-
-    impl Drain for PumpOnly {
-        fn sample_rate(&self) -> f64 {
-            self.ring.sample_rate()
-        }
-
-        fn drain(&mut self, out: &mut [i16]) -> Option<usize> {
-            if !self.armed.swap(false, Ordering::Relaxed) {
-                return None;
-            }
-            self.ring.drain(out)
-        }
-    }
-
-    /// The saturated-drive-loop case (a DS pair at 4x holds its lock
-    /// ~100% of wall time): the fill's own reaches never land, so
-    /// without the intake this played wall-to-wall silence. Pumped once
-    /// per "tick" at the one reachable moment, every fill plays full.
-    #[test]
-    fn a_fill_lives_off_the_intake_when_its_own_reach_never_lands() {
-        let ring = Arc::new(Mutex::new(RATE * AUDIO_TARGET_QUEUED_SECS));
-        let armed = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let pull = Box::new(PumpOnly {
-            ring: Ring(ring.clone()),
-            armed: armed.clone(),
-        });
-        let published = Arc::new(std::sync::atomic::AtomicU32::new((NATIVE_FPS as f32).to_bits()));
-        let mut stream = Stream::new(
-            pull,
-            NATIVE_FPS as f32,
-            Stream::fps_from_bits(published.clone()),
-            OUT_RATE,
-        );
-        let intake = stream.intake();
-
-        let secs_per_fill = FILL as f64 / OUT_RATE as f64;
-        let mut buf = vec![[0i16; NUM_CHANNELS]; FILL];
-        let mut short = Vec::new();
-        for i in 0..600 {
-            // The drive loop's tick: produce, then pump at the moment
-            // the lock is free.
-            *ring.lock().unwrap() += RATE * secs_per_fill;
-            armed.store(true, Ordering::Relaxed);
-            intake.pump();
-            // The fill's own reach finds the console held again.
-            if stream.fill(&mut buf) < FILL {
-                short.push(i);
-            }
-        }
-        assert!(
-            short.iter().all(|&i| i < 100),
-            "fills starved despite a pumped intake: {:?}",
-            &short.iter().filter(|&&i| i >= 100).collect::<Vec<_>>()
-        );
-    }
-
     /// The regression that motivated the playback-seconds target: sized
     /// in source seconds, the queue at 4x held barely more than one
     /// fill's consumption, so production arriving even a couple of
     /// fills late — a drive thread losing the race with the callback,
-    /// an unreachable console under lock contention, both far likelier
-    /// at 4x — went short on every trough, and fast-forward audibly
-    /// dropped audio. With the depth in fills held constant, delivery
-    /// lag rides out of the queue.
+    /// far likelier at 4x — went short on every trough, and
+    /// fast-forward audibly dropped audio. With the depth in fills held
+    /// constant, delivery lag rides out of the queue.
     #[test]
     fn fast_forward_survives_lumpy_delivery() {
         // Steady 4x; three fills' production lands at once, at the END
@@ -647,9 +556,9 @@ mod tests {
         let run = run(
             4000,
             |_| NATIVE_FPS * 4.0,
-            |i, produced, ring| {
+            |i, produced, feed| {
                 if i % 3 == 2 {
-                    *ring.lock().unwrap() += 3.0 * produced;
+                    feed.push(3.0 * produced);
                 }
             },
         );

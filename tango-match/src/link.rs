@@ -17,12 +17,15 @@
 //! snapshotting) live on the link; everything one console answers for
 //! itself (display, audio out, savedata) lives on its side, which is
 //! also how a console booted with no pair at all
-//! ([`Console`](crate::Console)) presents itself — and a host that
-//! wants a side without holding the simulation still reaches it
-//! through a [`SideSource`]. The traits are object-safe on purpose: a
-//! `Game` registration cannot name an emulator, so the erasure happens
-//! here, at the link, where it costs a virtual call per tick instead
-//! of per instruction.
+//! ([`Console`](crate::Console)) presents itself. The traits are
+//! object-safe on purpose: a `Game` registration cannot name an
+//! emulator, so the erasure happens here, at the link, where it costs a
+//! virtual call per tick instead of per instruction.
+//!
+//! A side is borrowed for one call chain and reached only from the
+//! thread turning the simulation's crank — a host never holds one. What
+//! a host plays is [`audio`](crate::audio)'s ring, which that thread
+//! pushes each console's production into on its way past.
 
 /// A whole-link capture — both consoles and anything in flight between
 /// them — as the seam carries it. Opaque: only the link that produced
@@ -65,31 +68,6 @@ pub trait Link: Send + 'static {
     /// Resume from a capture. Simulation continues from the frame
     /// *after* the one that had completed when it was taken.
     fn restore(&mut self, snapshot: &Snapshot) -> Result<(), crate::Error>;
-
-    /// How much audio this link has produced and kept, per console.
-    ///
-    /// Audio is not machine state — no emulator's savestate carries
-    /// the buffer a frontend reads from — so a [`restore`](Link::restore)
-    /// leaves whatever the speculation voiced sitting there, and the
-    /// re-simulation that follows produces the same span a second
-    /// time. A link that can take that back reports a mark here and
-    /// honours [`revoke_audio`](Link::revoke_audio); the pair is what
-    /// a rollback needs to keep sound continuous across a mispredict.
-    ///
-    /// Defaulted to inert, for a link whose audio nobody plays.
-    fn audio_mark(&mut self) -> [u64; 2] {
-        [0; 2]
-    }
-
-    /// Take back all audio produced since a snapshot recorded `mark`.
-    ///
-    /// What is still queued is dropped; what a host already took
-    /// cannot be unplayed, so its regeneration is swallowed on the way
-    /// through instead of queuing as an echo. See
-    /// [`audio_mark`](Link::audio_mark).
-    fn revoke_audio(&mut self, mark: [u64; 2]) {
-        let _ = mark;
-    }
 
     /// One console's per-side surface: display, audio out, savedata.
     ///
@@ -138,43 +116,20 @@ pub trait Side {
     /// Take up to `out`'s worth of this console's produced audio, as
     /// interleaved stereo, and answer with how much it had in total —
     /// frames, counting both what went into `out` and what would not
-    /// fit. Taking it consumes it; what stays behind stays revocable.
+    /// fit. Taking it consumes it.
     ///
     /// One number, because the split is the caller's own arithmetic: a
     /// drain always fills `out` as far as it goes, so the frames that
     /// landed are `min(total, out.len() / 2)` and the rest is still in
-    /// the console. What a caller cannot derive is the total — audio
-    /// that exists and is coming, which a caller counting its backlog
-    /// has to count — so that is what comes back.
+    /// the console. What a caller cannot derive is the total — which is
+    /// how a caller knows to come back for the rest — so that is what
+    /// comes back.
+    ///
+    /// Called from the thread that ticks the console, right after the
+    /// tick: a session's [`Pump`](crate::audio) empties it into the ring
+    /// a host plays, so nothing a console keeps ever has to survive
+    /// until a sound callback comes asking.
     fn drain_audio(&mut self, out: &mut [i16]) -> usize;
-}
-
-/// A handle onto one console's [`Side`], for a host that reads it from
-/// somewhere other than the thread turning the simulation's crank.
-///
-/// A side is borrowed for one call chain, so it cannot be held; what a
-/// host holds instead is one of these, and it asks for a side whenever
-/// it wants one. The two ways of asking are the point: a host's sound
-/// callback must never wait on the lock the simulation ticks under —
-/// where a tick is a console (or two) emulating a whole frame, and a
-/// rollback puts a multi-megabyte restore in front of that — so it
-/// takes [`try_side`](SideSource::try_side) and goes without when the
-/// answer is no.
-///
-/// Every shape a session reads a console through hands one out:
-/// [`Match::side_source`](crate::Match::side_source) for a seat of a
-/// live pair, [`Replay::side_source`](crate::Replay::side_source) for a
-/// seat of a playback pair, and
-/// [`Solo::side_source`](crate::Solo::side_source) for a machine booted
-/// alone.
-pub trait SideSource: Send {
-    /// Run `f` on the side, waiting out the simulation if it holds the
-    /// console. Never off a sound callback.
-    fn with_side(&self, f: &mut dyn FnMut(&mut dyn Side));
-
-    /// Run `f` on the side only if the console is free right now;
-    /// `false` if the simulation holds it.
-    fn try_side(&self, f: &mut dyn FnMut(&mut dyn Side)) -> bool;
 }
 
 /// One screen a console presents.
@@ -461,6 +416,14 @@ pub struct StartConfig<'a> {
     pub present_delay: u32,
     /// Silence battle BGM. Purely local presentation.
     pub disable_bgm: bool,
+    /// Where the pair's sound goes — the producing end of a
+    /// [`channel`](crate::audio::channel) whose other end the host
+    /// plays. The simulation pushes into it every tick and takes back
+    /// what a rollback revokes, so a host's device callback never
+    /// reaches past the lock this pair ticks under. `None` for a caller
+    /// with nobody listening (the offline analysis passes, the probe
+    /// harnesses).
+    pub audio: Option<crate::AudioIn>,
     /// Abandon the priming walk if this flips, failing the start with
     /// [`Error::Cancelled`]. The walk is seconds of blocking emulation
     /// on a DS-class game and a host runs it under a session the user

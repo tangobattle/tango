@@ -66,12 +66,15 @@ impl SinglePlayerSession {
         expected_fps: f32,
         sample_rate: u32,
     ) -> Result<(Self, Driver, crate::audio::Stream), crate::Error> {
+        // The console pushes into the ring on its way out of every
+        // tick; the stream plays the other end with no lock at all.
+        let (audio_in, audio_out) = crate::audio::ring();
         let console = game.pvp.start_solo(tango_match::SoloConfig {
             rom: rom.as_ref(),
             save: save.as_deref(),
             rtc,
+            audio: Some(audio_in),
         })?;
-        let audio_pull = crate::audio::side_drain(console.side_source());
 
         let layout = game.pvp.screen_layout(tango_match::SessionMode::Solo);
         let input = InputCell::new();
@@ -81,7 +84,7 @@ impl SinglePlayerSession {
         let wake = Arc::new(tokio::sync::Notify::new());
 
         let audio = crate::audio::Stream::new(
-            audio_pull,
+            audio_out,
             expected_fps,
             crate::audio::Stream::fps_from_bits(fps_bits.clone()),
             sample_rate,
@@ -93,7 +96,6 @@ impl SinglePlayerSession {
             stop: stop.clone(),
             screen: screen.clone(),
             wake: wake.clone(),
-            intake: audio.intake(),
         };
 
         Ok((
@@ -170,13 +172,6 @@ pub struct Driver {
     stop: Arc<AtomicBool>,
     screen: Arc<crate::Framebuffer>,
     wake: Arc<tokio::sync::Notify>,
-    /// The session's audio stream intake, pumped once per tick — right
-    /// after the tick releases the console lock, the one moment it is
-    /// reliably free. A fast-forwarded drive loop holds that lock for
-    /// most of every period, so the sound callback's own reaches cannot
-    /// be what carries the audio out (see
-    /// [`Intake`](crate::audio::Intake)).
-    intake: crate::audio::Intake,
 }
 
 impl crate::Drive for Driver {
@@ -205,7 +200,6 @@ impl Driver {
         if let Some(frame) = self.console.frame() {
             self.screen.write(&frame);
         }
-        self.intake.pump();
         // Wake the host's frame subscription so the UI rebuilds the
         // texture for this frame. Notify coalesces — a slow UI doesn't
         // queue up wakes.

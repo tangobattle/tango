@@ -232,8 +232,12 @@ pub struct Playback {
     link: Box<dyn Link>,
     inputs: Arc<Vec<[crate::HostInput; 2]>>,
     cursor: u32,
-    /// Scratch for [`discard_audio`](Playback::discard_audio).
-    scratch: Vec<i16>,
+    /// Where the played seat's sound goes, once a host has asked for
+    /// any ([`Replay::play_audio`]). Pumped at the end of every step,
+    /// while the pair is still in hand — a seek chase holds this lock
+    /// for whole slices at a time, so a sound callback reaching for it
+    /// would find it busy exactly when there is the most to play.
+    audio: Option<crate::audio::Pump>,
 }
 
 impl Playback {
@@ -243,8 +247,21 @@ impl Playback {
             link,
             inputs,
             cursor: 0,
-            scratch: Vec::new(),
+            audio: None,
         }
+    }
+
+    /// Play `seat` into `into` from here on — the producing end of a
+    /// [`channel`](crate::audio::channel) whose other end the host
+    /// plays. `seat` is read every tick, so a viewer swapping
+    /// perspective moves the sound without anything downstream being
+    /// rebuilt.
+    pub fn play_audio(&mut self, seat: Arc<AtomicUsize>, into: crate::AudioIn) {
+        let mut pump = crate::audio::Pump::new(into, seat);
+        // The boot walked this pair into its battle; that walk's sound
+        // is not part of the recording.
+        pump.discard(&mut *self.link);
+        self.audio = Some(pump);
     }
 
     /// Input pairs consumed so far = the playhead tick.
@@ -266,6 +283,9 @@ impl Playback {
             return false;
         };
         self.link.tick(row);
+        if let Some(audio) = self.audio.as_mut() {
+            audio.pump(&mut *self.link);
+        }
         self.cursor += 1;
         true
     }
@@ -309,14 +329,14 @@ impl Playback {
 
     /// Throw away whatever audio the pair has queued — the fast-forward
     /// burst a seek catch-up piles up, which would play as a garbled
-    /// blast if the callback ever reached it. Draining is the one purge
-    /// every engine offers.
+    /// blast if it ever reached the device.
     pub fn discard_audio(&mut self) {
-        self.scratch.resize(4096, 0);
-        let Playback { link, scratch, .. } = self;
-        for player in 0..2 {
-            let mut side = link.side(player);
-            while side.drain_audio(scratch) > 0 {}
+        match self.audio.as_mut() {
+            Some(audio) => audio.discard(&mut *self.link),
+            // Nobody is listening, but the consoles still have to be
+            // emptied: their own buffers are small, and what a chase
+            // left in one opens the next span as a stale burst.
+            None => crate::audio::drop_link_audio(&mut *self.link),
         }
     }
 }
@@ -608,16 +628,12 @@ impl Replay {
         self.playback.lock().unwrap().frames()
     }
 
-    /// A handle onto whichever seat `seat` currently names, for a host
-    /// reading a console off the thread that drives playback — its
-    /// audio, mainly. A viewer can swap perspective mid-playback, so
-    /// `seat` is read per call rather than fixed when the host binds
-    /// whatever it builds on this.
-    pub fn side_source(&self, seat: Arc<AtomicUsize>) -> Box<dyn crate::SideSource> {
-        Box::new(PlaybackSeat {
-            playback: self.playback.clone(),
-            player: seat,
-        })
+    /// Play whichever seat `seat` currently names into `into` — the
+    /// producing end of a [`channel`](crate::audio::channel) whose other
+    /// end the host plays. A viewer can swap perspective mid-playback,
+    /// so `seat` is read every tick rather than fixed here.
+    pub fn play_audio(&self, seat: Arc<AtomicUsize>, into: crate::AudioIn) {
+        self.playback.lock().unwrap().play_audio(seat, into);
     }
 
     /// The latest capture at or before `tick`, if one was kept — what
@@ -634,33 +650,6 @@ impl Replay {
 
 }
 
-/// One seat of the playback pair, as [`Replay::side_source`] hands it
-/// out. The pair lives behind the seek machinery's mutex, so a reader's
-/// no-wait discipline is what keeps a chase from stuttering the sound
-/// device.
-struct PlaybackSeat {
-    playback: Arc<Mutex<Playback>>,
-    /// Read per call, so a perspective swap moves the sound without the
-    /// resampler above it being rebuilt.
-    player: Arc<AtomicUsize>,
-}
-
-impl crate::SideSource for PlaybackSeat {
-    fn with_side(&self, f: &mut dyn FnMut(&mut dyn crate::Side)) {
-        let mut pb = self.playback.lock().unwrap();
-        f(&mut *pb.side(self.player.load(Ordering::Relaxed)));
-    }
-
-    fn try_side(&self, f: &mut dyn FnMut(&mut dyn crate::Side)) -> bool {
-        match self.playback.try_lock() {
-            Ok(mut pb) => {
-                f(&mut *pb.side(self.player.load(Ordering::Relaxed)));
-                true
-            }
-            Err(_) => false,
-        }
-    }
-}
 
 /// The statistics pass: a second pair racing ahead of the viewer
 /// through the whole stream, laying a keyframe every

@@ -41,64 +41,59 @@ pub trait Console: Send + 'static {
 /// lock.
 #[derive(Clone)]
 pub struct Solo {
-    console: std::sync::Arc<std::sync::Mutex<dyn Console>>,
+    inner: std::sync::Arc<std::sync::Mutex<Ride>>,
+}
+
+/// The console and where its sound goes, behind one lock — one lock
+/// rather than two because the tick and the push that follows it are
+/// the same critical section.
+struct Ride {
+    console: Box<dyn Console>,
+    audio: Option<crate::audio::Pump>,
 }
 
 impl Solo {
     /// Take the ride over a booted console.
-    pub fn new(console: impl Console) -> Self {
+    ///
+    /// `audio` is where its sound goes — the producing end of a
+    /// [`channel`](crate::audio::channel) whose other end the host
+    /// plays. `None` leaves the console holding its own audio, for a
+    /// caller with nobody listening.
+    pub fn new(console: impl Console, audio: Option<crate::AudioIn>) -> Self {
         Solo {
-            console: std::sync::Arc::new(std::sync::Mutex::new(console)),
+            inner: std::sync::Arc::new(std::sync::Mutex::new(Ride {
+                console: Box::new(console),
+                audio: audio.map(crate::audio::Pump::lone),
+            })),
         }
     }
 
     /// Advance one video frame with the input held this tick. An error
     /// ends the ride.
     pub fn tick(&self, input: crate::HostInput) -> Result<(), crate::Error> {
-        self.console.lock().unwrap().tick(input)
+        let mut guard = self.inner.lock().unwrap();
+        let ride = &mut *guard;
+        ride.console.tick(input)?;
+        // With the console still in hand: what it just voiced crosses to
+        // the host's device here, so a sound callback never has to reach
+        // past this lock.
+        if let Some(audio) = ride.audio.as_mut() {
+            audio.pump_console(&mut *ride.console);
+        }
+        Ok(())
     }
 
     /// The console's display, RGBA8 in
     /// [`screen_layout`](crate::Backend::screen_layout) order.
     /// `None` before its first frame.
     pub fn frame(&self) -> Option<Vec<u8>> {
-        self.console.lock().unwrap().side().frame()
+        self.inner.lock().unwrap().console.side().frame()
     }
 
     /// The cartridge's savedata as it stands, or `None` for a game that
     /// has never written any. The host owns persisting it.
     pub fn export_save(&self) -> Option<Vec<u8>> {
-        self.console.lock().unwrap().side().export_save()
-    }
-
-    /// A handle onto this console, for a host reading it off the thread
-    /// that ticks it — its audio, mainly.
-    pub fn side_source(&self) -> Box<dyn crate::SideSource> {
-        Box::new(LoneConsole {
-            console: self.console.clone(),
-        })
-    }
-}
-
-/// A console booted alone, as [`Solo::side_source`] hands it out:
-/// behind the same lock the ride ticks it under.
-struct LoneConsole {
-    console: std::sync::Arc<std::sync::Mutex<dyn Console>>,
-}
-
-impl crate::SideSource for LoneConsole {
-    fn with_side(&self, f: &mut dyn FnMut(&mut dyn crate::Side)) {
-        f(&mut *self.console.lock().unwrap().side());
-    }
-
-    fn try_side(&self, f: &mut dyn FnMut(&mut dyn crate::Side)) -> bool {
-        match self.console.try_lock() {
-            Ok(mut console) => {
-                f(&mut *console.side());
-                true
-            }
-            Err(_) => false,
-        }
+        self.inner.lock().unwrap().console.side().export_save()
     }
 }
 
@@ -112,4 +107,8 @@ pub struct SoloConfig<'a> {
     /// what a desktop wants and what a browser — where there is no such
     /// clock to read — must fill in.
     pub rtc: Option<std::time::SystemTime>,
+    /// Where the console's sound goes — the producing end of a
+    /// [`channel`](crate::audio::channel) whose other end the host
+    /// plays. `None` for a caller with nobody listening.
+    pub audio: Option<crate::AudioIn>,
 }

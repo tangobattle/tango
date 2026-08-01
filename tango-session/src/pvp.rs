@@ -560,12 +560,13 @@ impl PvpSession {
             boot_cancel: boot_cancel.clone(),
         };
 
-        // The session's audio stream, bound by the host before the pair
-        // that feeds it exists: it pulls silence off the deferred drain
-        // until the boot below hands over the real one.
-        let audio_drain = crate::audio::DeferredDrain::default();
+        // The session's audio ring, made before the pair that feeds it
+        // exists: the host binds this stream at construction, and the
+        // ring simply reads empty — so the stream primes — through the
+        // seconds of priming walk the boot below runs.
+        let (audio_in, audio_out) = crate::audio::ring();
         let audio = crate::audio::Stream::new(
-            Box::new(audio_drain.clone()) as Box<dyn crate::audio::Drain>,
+            audio_out,
             expected_fps,
             {
                 let metrics = metrics.clone();
@@ -577,7 +578,7 @@ impl PvpSession {
         let boot = PvpBoot {
             pending: Some((pieces, drive)),
             driver: None,
-            audio: audio_drain,
+            audio: Some(audio_in),
             prime_error: prime_error.clone(),
             expected_fps,
             metrics: metrics.clone(),
@@ -995,7 +996,8 @@ impl DriveContext {
         self,
         pieces: BootPieces,
         expected_fps: f32,
-    ) -> Result<(PvpDriver, Box<dyn crate::audio::Drain>), tango_match::Error> {
+        audio: tango_match::AudioIn,
+    ) -> Result<PvpDriver, tango_match::Error> {
         // The game's registration starts the match on whatever engine it
         // runs; this session never learns which.
         let local = pieces.pvp[pieces.local_player];
@@ -1010,13 +1012,15 @@ impl DriveContext {
             local_player: pieces.local_player,
             present_delay: pieces.present_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
             disable_bgm: pieces.disable_bgm,
+            // The pair pushes the local seat's sound into the ring the
+            // host's stream is already bound to, on its way out of every
+            // tick.
+            audio: Some(audio),
             // The session is on screen (and leavable) for the whole
             // walk, so a close has to reach into it — otherwise the
             // host's drive-thread join waits the walk out.
             cancel: Some(&self.boot_cancel),
         })?;
-        let local_seat = Arc::new(std::sync::atomic::AtomicUsize::new(match_.local_player()));
-        let audio = crate::audio::side_drain(match_.side_source(local_seat));
 
         // Our half of the ready gate: the pair is at its link battle.
         // Release the announcer so the peer learns it — priming ran at
@@ -1025,16 +1029,13 @@ impl DriveContext {
         self.local_primed.store(true, Ordering::Release);
         self.announce_primed.notify_one();
 
-        Ok((
-            PvpDriver {
-                ctx: self,
-                expected_fps,
-                match_,
-                throttler: tango_match::Throttler::new(),
-                fired_end_of_match: false,
-            },
-            audio,
-        ))
+        Ok(PvpDriver {
+            ctx: self,
+            expected_fps,
+            match_,
+            throttler: tango_match::Throttler::new(),
+            fired_end_of_match: false,
+        })
     }
 
     /// Fold a batch of confirmed telemetry into the stats builder (the
@@ -1486,9 +1487,10 @@ pub struct PvpBoot {
     pending: Option<(BootPieces, DriveContext)>,
     /// The live match, once the boot has produced one.
     driver: Option<PvpDriver>,
-    /// The stream the host bound at construction, wired through to the
-    /// pair's own drain when the boot lands. Silence until then.
-    audio: crate::audio::DeferredDrain,
+    /// The producing end of the ring the host's stream is already bound
+    /// to, handed to the pair when the boot builds it. `None` once it
+    /// has been. Until then the ring reads empty and the stream primes.
+    audio: Option<tango_match::AudioIn>,
     /// Where a failed boot leaves its reason, for the session to
     /// publish ([`PvpSession::prime_error`]).
     prime_error: Arc<Mutex<Option<crate::Error>>>,
@@ -1502,14 +1504,12 @@ pub struct PvpBoot {
 impl crate::Drive for PvpBoot {
     fn tick(&mut self) -> bool {
         if let Some((pieces, drive)) = self.pending.take() {
-            let booted = drive.boot(pieces, self.expected_fps);
+            let audio = self.audio.take().expect("the boot runs once");
+            let booted = drive.boot(pieces, self.expected_fps, audio);
             // Either outcome changes what the session shows, and
             // neither produces a frame — so wake the host itself.
             match booted {
-                Ok((driver, drain)) => {
-                    // Ordered so the stream only starts pulling off a
-                    // pair that exists.
-                    self.audio.set(drain);
+                Ok(driver) => {
                     self.driver = Some(driver);
                     self.wake.notify_one();
                 }
