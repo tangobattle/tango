@@ -154,6 +154,14 @@ pub static EXE5DS: Game = Game {
 /// payload named the *other* file re-primes into a different save), and
 /// a save carrying a GBA-slot cross gets it written back at the file
 /// select's own store, which the walk did not touch before.
+///
+/// (Also 7, landing together: a tick's span of emulated time is filled
+/// in whole frames. A call used to be able to stop partway through one,
+/// and the resumed call — finishing a few scanlines and returning —
+/// handed back nearly a whole span that nothing could ever make up. A
+/// console that did that once ran a frame behind its peer forever,
+/// which is every one of its wireless replies landing outside the
+/// host's poll window: the pairings that would not associate.)
 const SIM_VERSION: u32 = 7;
 
 pub static BN5DS_FAMILY: Family = Family {

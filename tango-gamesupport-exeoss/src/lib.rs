@@ -92,7 +92,19 @@ pub static EXEOSS: Game = Game {
 /// crawling through the comm screens — 1531 frames of link half against
 /// a played cart's 197 — and the one tick that fixes that costs the
 /// save 11 frames, so priming hands over that much later.
-const SIM_VERSION: u32 = 3;
+///
+/// 3: a tick became a span of emulated time rather than a video frame,
+/// so a console stretching its display can no longer outrun its peer's
+/// wifi clock. Every tick of the emulated timeline lands differently.
+///
+/// 4: that span is now filled in whole frames. A call used to be able
+/// to stop partway through one and resume next tick — and the resumed
+/// call, finishing a few scanlines and returning, handed back nearly a
+/// whole span that nothing could ever make up, leaving the console a
+/// frame behind its peer for the rest of the session. It now overruns
+/// the span instead and pays the debt out of the next one, which moves
+/// the timeline wherever a frame did not end exactly on a span.
+const SIM_VERSION: u32 = 4;
 
 pub static EXEOSS_FAMILY: Family = Family {
     id: "exeoss",
