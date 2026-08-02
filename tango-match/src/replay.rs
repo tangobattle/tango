@@ -911,7 +911,28 @@ impl ReplaySet {
     /// seek machinery, no telemetry, and no capture per tick — for a
     /// host re-simulating front to back, which is what a video export
     /// is. Blocks for the priming walk.
-    pub fn linear(&self) -> Result<Playback, crate::Error> {
+    ///
+    /// With `land_on`, the pass starts from that capture and skips the
+    /// walk entirely ([`ReplayBoot::boot_unprimed`]) — a caller
+    /// jump-starting mid-recording never plays the prefix, and a
+    /// restore replaces every bit of state the walk would have reached,
+    /// so walking first is time spent on state that is about to be
+    /// overwritten. An engine that can't land the state reprimes
+    /// instead of failing, exactly as [`Self::stats_reusing_playback`]
+    /// does.
+    pub fn linear(&self, land_on: Option<&Capture>) -> Result<Playback, crate::Error> {
+        if let Some(capture) = land_on {
+            match self.boot.boot_unprimed(false) {
+                Ok(bare) => {
+                    let mut playback = Playback::new(bare.link, self.inputs.clone());
+                    match playback.load(capture) {
+                        Ok(()) => return Ok(playback),
+                        Err(e) => log::warn!("linear pass: primed-state landing failed, repriming: {e:?}"),
+                    }
+                }
+                Err(e) => log::warn!("linear pass: unprimed boot failed, repriming: {e:?}"),
+            }
+        }
         let booted = self.boot.boot(false, &self.cancel)?;
         Ok(Playback::new(booted.link, self.inputs.clone()))
     }

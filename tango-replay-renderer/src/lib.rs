@@ -154,8 +154,10 @@ pub struct Clip {
     pub end: u32,
     /// A whole-pair capture at a tick strictly before `start` (from
     /// the player's keyframe store) to jump-start the re-sim at
-    /// instead of simulating from boot. Without one the prefix
-    /// simulates unwritten, same as a deselected round.
+    /// instead of simulating from boot: the pair boots unprimed and
+    /// lands here, so a render carrying one pays for neither the
+    /// priming walk nor the prefix. Without one the pair primes and
+    /// the prefix simulates unwritten, same as a deselected round.
     ///
     /// A capture restore replaces the priming-time pokes, so callers
     /// wanting BGM muted must pass `None` and eat the full re-sim.
@@ -408,23 +410,21 @@ impl<W: Writer> Render<W> {
         )?;
         let output = encoder_facade::Output::new(open_output()?);
 
-        // Boot + prime. This is encoder-free but bounded (~a few hundred
+        // Jump-start a clip from its capture: the pair starts at the
+        // capture tick and only the (≤ one keyframe interval) gap to the
+        // span start simulates unwritten. A capture at or after the span
+        // start is no use — the clip's first frame has to come from a
+        // stepped tick.
+        let land_on = clip.snapshot.as_deref().filter(|c| c.tick() < clip.start);
+
+        // Boot. Priming is encoder-free but bounded (~a few hundred
         // ticks), and it's the one part of a render that can't be
         // sliced: the pair primes by running until its traps say it's
-        // there.
-        let mut playback = backend.open_replay(config)?.linear()?;
-        // Drop the audio priming piled up (nothing drained during boot).
+        // there. A jump-started clip skips the walk outright — the
+        // restore replaces everything it would have reached.
+        let mut playback = backend.open_replay(config)?.linear(land_on)?;
+        // Drop the audio the boot piled up (nothing drained during it).
         playback.discard_audio();
-
-        // Jump-start a clip from its capture: the pair skips straight to
-        // the capture tick and only the (≤ one keyframe interval) gap to
-        // the span start simulates unwritten.
-        if let Some(capture) = clip.snapshot.as_deref() {
-            if capture.tick() < clip.start {
-                playback.load(capture)?;
-                playback.discard_audio();
-            }
-        }
 
         let progress_base = playback.cursor() as usize;
         let progress_total = (clip.end as usize)
