@@ -98,6 +98,27 @@ impl tango_backend_melonds::GameSupport for Pvp {
         priming::walk(link, rng_seed, cancel)
     }
 
+    /// Silent battles: the netbattle theme's own volume, turned down
+    /// to nothing where the sound driver reads it (see
+    /// [`BATTLE_THEMES`](priming::BATTLE_THEMES)).
+    ///
+    /// The sequence still loads and still starts — which is the whole
+    /// point, because on this engine that load is a cartridge read
+    /// worth a frame of the game's own clock, and a local setting may
+    /// not spend a frame a peer doesn't (see
+    /// [`GameSupport::silence_bgm`](tango_backend_melonds::GameSupport::silence_bgm)).
+    /// Skipping the start instead was measured doing exactly that: the
+    /// game's frame counter stood one ahead for the rest of the match.
+    fn silence_bgm(&self, nds: &mut Nds) {
+        let Some(archive) = priming::sound_archive(nds) else {
+            log::warn!("exeoss: no sound archive loaded; not muting");
+            return;
+        };
+        if tango_backend_melonds::mute_sequences(nds, archive, priming::BATTLE_THEMES) == 0 {
+            log::warn!("exeoss: the archive holds no battle theme where it says; not muting");
+        }
+    }
+
     /// The upper screen alone, in the one mode this cart has. Its
     /// netbattle plays entirely above: once priming has walked past
     /// the Network menus, nothing the player does reaches the touch
@@ -287,6 +308,44 @@ impl tango_backend_melonds::GameSupport for Pvp {
 pub mod priming {
     use tango_backend_melonds::{Link, Nds};
     use tango_match::{HostInput, Link as _};
+
+    /// The music a link battle plays, as a sequence number in the
+    /// cart's first sound archive. One battle, one theme: this cart's
+    /// netbattle is a single battle with nothing after it, and a
+    /// primed pair was watched starting this and nothing else. The
+    /// comm screens' own music either side of it is left alone.
+    ///
+    /// Found by read-watching the archive's sequence records in main
+    /// RAM — the sound library has to consult one to start anything —
+    /// while a primed pair walked into its battle.
+    pub const BATTLE_THEMES: &[u16] = &[0x0f];
+
+    /// The loaded sound archive's INFO block, walked the way the sound
+    /// library walks it, or `None` before anything has loaded one.
+    ///
+    /// The library's own route, out of the literal pool of the
+    /// function that starts a sequence: a fixed word holds a block
+    /// whose `+8` is the sound context, `+0x14c0` of that is the
+    /// archive context, and `+0x8c` of *that* is the INFO block, whose
+    /// header says where its sequence table lives. Nothing is searched
+    /// for, so a wrong answer reads as no archive.
+    pub fn sound_archive(nds: &mut Nds) -> Option<u32> {
+        const SOUND_ROOT: u32 = 0x0219_33c8;
+        const ROOT_CONTEXT: u32 = 0x8;
+        const CONTEXT_ARCHIVES: u32 = 0x14c0;
+        const ARCHIVE_INFO: u32 = 0x8c;
+
+        let context = nds.read32(SOUND_ROOT + ROOT_CONTEXT);
+        if context == 0 {
+            return None;
+        }
+        let archive = nds.read32(context + CONTEXT_ARCHIVES);
+        if archive == 0 {
+            return None;
+        }
+        let info = nds.read32(archive + ARCHIVE_INFO);
+        (nds.read32(info) == u32::from_le_bytes(*b"INFO")).then_some(info)
+    }
 
     /// Sites in the ARM9's code: what the walk traps, and the branches
     /// it redirects into. Every one of these is **Thumb**, and every

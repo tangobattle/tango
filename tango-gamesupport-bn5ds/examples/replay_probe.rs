@@ -11,6 +11,10 @@
 //! is what catches that class of bug.
 //!
 //! Usage: replay_probe <rom.nds> <replay.tangoreplay> [ticks]
+//!   REPLAY_PROBE_DISABLE_BGM=1 re-simulates with the music muted. The
+//!   reference hash it prints must match the unmuted run's, on this
+//!   recording and any other: muting is a local setting, so it may not
+//!   change the match a recording replays into.
 
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -54,7 +58,11 @@ fn open_set(
                 revision: game.revision,
             },
             want_stats: true,
-            disable_bgm: false,
+            // REPLAY_PROBE_DISABLE_BGM: re-simulate muted. The
+            // checkpoint hash must come out the same either way —
+            // muting is local, so a recording played with it has to be
+            // the same match as one played without.
+            disable_bgm: std::env::var("REPLAY_PROBE_DISABLE_BGM").is_ok(),
         })
         .expect("open_replay")
 }
@@ -128,7 +136,7 @@ fn main() {
         }
         frame_hash(&frames)
     };
-    println!("reference pass done in {:.1?}", started.elapsed());
+    println!("reference pass done in {:.1?}; frame hash {reference:016x}", started.elapsed());
 
     // The app's shape: display pair and stats pass on one recording at
     // the same time, plus a backward seek through the chase.
