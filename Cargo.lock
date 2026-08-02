@@ -8036,6 +8036,7 @@ name = "tango-gamesupport-exeoss-dataview"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "crc32fast",
  "image",
  "num-traits",
  "tango-gamesupport-common",

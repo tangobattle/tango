@@ -4,9 +4,11 @@
 //! is to the OSS cart — as far as the format has been mapped. The cart
 //! is a remake of BN1 with a Star Force crossover bolted on, and its
 //! save calls itself `exe1ds` accordingly; recognition is settled, and
-//! the interior now reaches the chip folder. The cart's chip assets
-//! (stats, names, descriptions, icons, artwork) are mapped far enough
-//! to label it.
+//! the interior reaches the chip folder, the pack behind it and the HP
+//! MegaMan brings — enough to edit a folder and write the bank back
+//! with the stamps the console checks. The cart's chip assets (stats,
+//! names, descriptions, icons, artwork) are mapped far enough to label
+//! it.
 
 pub mod rom;
 pub mod save;

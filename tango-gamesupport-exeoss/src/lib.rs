@@ -32,10 +32,10 @@ const BACKGROUND: BackgroundRef = BackgroundRef {
 static ENGINE_PVP_B6XJ_00: tango_backend_melonds::DsBackend = tango_backend_melonds::DsBackend::new(&pvp::JP);
 
 /// The cart's save, identified so one can be picked before a match and
-/// read as far as the dataview's mapping reaches — which is the chip
-/// folder. A dump holds one in-game file, so there is nothing to pick
-/// between: the parse opens on whichever of its two banks was written
-/// last.
+/// read — and edited — as far as the dataview's mapping reaches, which
+/// is the chip folder. A dump holds one in-game file, so there is
+/// nothing to pick between: the parse opens on whichever of its two
+/// banks the console would, the newest one whose stamps check out.
 fn parse_save(data: &[u8]) -> Result<tango_gamesupport::BoxedSave, tango_gamesupport::Error> {
     let save = dataview::save::Save::new(data)?;
     Ok(tango_gamesupport_common::dataview::wrap_save(Box::new(save)))

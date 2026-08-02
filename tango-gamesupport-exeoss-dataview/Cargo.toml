@@ -13,6 +13,8 @@ tango-gamesupport-common = { path = "../tango-gamesupport-common", default-featu
 image = { version = "0.25", default-features = false, features = ["png"] }
 bytemuck = { version = "1", features = ["derive", "const_zeroed", "min_const_generics"] }
 num-traits = "0.2"
+# The bank headers' integrity stamps are stock CRC32s.
+crc32fast.workspace = true
 
 [lints]
 workspace = true
