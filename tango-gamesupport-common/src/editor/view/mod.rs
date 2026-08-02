@@ -700,8 +700,8 @@ fn tab_icon(tab: Tab) -> lucide_icons::Icon {
         Tab::Navicust => Icon::Puzzle,
         Tab::Folder => Icon::Files,
         Tab::PatchCards => Icon::CreditCard,
-        Tab::AutoBattleData => Icon::Swords,
-        Tab::ProgramDeck => Icon::CircuitBoard,
+        Tab::AutoBattleData => Icon::Bot,
+        Tab::ProgramDeck => Icon::Network,
     }
 }
 
@@ -820,10 +820,7 @@ pub fn view<'a>(
     // `GameSaveEditor`.
     if editing_session {
         if let Some(control) = loaded.save_editor.top_bar_control(lang, loaded) {
-            actions_tail = row![control, actions_tail]
-                .spacing(6)
-                .align_y(Alignment::Center)
-                .into();
+            actions_tail = row![control, actions_tail].spacing(6).align_y(Alignment::Center).into();
         }
     }
 
