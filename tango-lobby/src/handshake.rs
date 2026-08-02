@@ -66,9 +66,10 @@ impl LocalReady {
     }
 
     /// Undo the StartMatch rung when the peer's reveal it was
-    /// predicated on is voided (their Uncommit, or our blind-setup
-    /// flip dropping their commit). Our own commit + sent chunks stay
-    /// valid, so this only steps back to `ChunksSent`.
+    /// predicated on is voided (their Uncommit, their re-Commit, or our
+    /// blind-setup flip dropping their commit). Our own commit + sent
+    /// chunks stay valid, so this only steps back to `ChunksSent` —
+    /// where the replacement reveal completing re-verifies and re-sends.
     pub(super) fn revoke_start_match(&mut self) {
         if matches!(self, LocalReady::StartMatchSent(_)) {
             let LocalReady::StartMatchSent(commit) = std::mem::take(self) else {
@@ -100,7 +101,10 @@ pub(super) enum RemoteReady {
         /// re-commit on our side can re-verify the held reveal
         /// without the peer re-sending it.
         revealed: bool,
-        /// Peer sent StartMatch — they verified *our* reveal.
+        /// Peer sent StartMatch — they verified *our* reveal. Cleared
+        /// again if our own commitment changes under it, since that
+        /// makes them revoke it on their side
+        /// ([`RemoteReady::revoke_start_match`]).
         start_match: bool,
     },
 }
@@ -113,6 +117,25 @@ impl RemoteReady {
 
     pub(super) fn start_match(&self) -> bool {
         matches!(self, RemoteReady::Committed { start_match: true, .. })
+    }
+
+    /// Forget that the peer sent StartMatch, because our own commitment
+    /// just changed under it (Commit or Uncommit). Their StartMatch was
+    /// their half of a pairing our packet supersedes: the moment it
+    /// lands they revoke it too — [`LocalReady::revoke_start_match`] on
+    /// our Uncommit, the same on our Commit — and re-send once they've
+    /// verified our new reveal. Keeping the old one latched would let a
+    /// re-Ready mint an [`Event::MatchReady`](super::Event::MatchReady)
+    /// out of a StartMatch the peer no longer stands behind, and we'd
+    /// hand off into a match they aren't in.
+    ///
+    /// Their commitment and reveal are untouched — those they don't
+    /// re-send, and the latched reveal is what lets a re-commit verify
+    /// without another round trip.
+    pub(super) fn revoke_start_match(&mut self) {
+        if let RemoteReady::Committed { start_match, .. } = self {
+            *start_match = false;
+        }
     }
 }
 
@@ -170,6 +193,10 @@ impl State {
         let had_commit = self.handshake.local.is_ready();
         self.handshake.local = LocalReady::NotReady;
         if had_commit {
+            // Our Uncommit walks the peer back down their own ladder —
+            // mirror the half of that we can see (see
+            // [`RemoteReady::revoke_start_match`]).
+            self.handshake.remote.revoke_start_match();
             self.send(Command::Uncommit);
         }
     }
@@ -210,6 +237,11 @@ impl State {
         };
         let commitment = make_commitment(&compressed);
         self.handshake.local = LocalReady::Committed(LocalCommit { state, compressed });
+        // A fresh commitment supersedes whatever pairing the peer's
+        // StartMatch belonged to; they'll send another once they've
+        // verified the reveal that follows this Commit (see
+        // [`RemoteReady::revoke_start_match`]).
+        self.handshake.remote.revoke_start_match();
         self.send(Command::Commit(commitment));
         self.maybe_kick_reveal();
         self.maybe_finish_handshake()
@@ -282,5 +314,103 @@ impl State {
     /// up the live match. `None` until both halves are present.
     pub(super) fn match_ready_event(&self) -> Option<Event> {
         (self.handshake.local.match_ready() && self.handshake.remote.start_match()).then_some(Event::MatchReady)
+    }
+}
+
+/// Both tests drive the two ladders through a supersession — one side's
+/// commitment being replaced while the other's StartMatch is already in
+/// hand — because that's where the handoff can go asymmetric: mint a
+/// `MatchReady` from a StartMatch the peer has since revoked and we walk
+/// into a match they aren't in, leaving them in the lobby with no packet
+/// left that could get them out.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Inbound, Incoming, LinkIdent, Phase};
+
+    /// A State parked where the ready exchange happens. No connection
+    /// behind it: the outbound commands drop on the floor (see
+    /// [`State::send`]), which is exactly what a test wants — the ladders
+    /// are the subject.
+    fn lobby() -> State {
+        State {
+            phase: Phase::Lobby {
+                ident: LinkIdent::Matchmaking("test".to_string()),
+            },
+            ..State::new()
+        }
+    }
+
+    /// A peer's reveal and the commitment that goes with it, built the
+    /// same way [`State::commit`] builds ours.
+    fn peer_reveal(nonce: u8) -> ([u8; 16], Vec<u8>) {
+        let state = tango_net_protocol::control::NegotiatedState {
+            nonce: [nonce; 16],
+            ts: 1,
+            save_data: vec![0xab; 64],
+        };
+        let compressed = zstd::stream::encode_all(std::io::Cursor::new(state.serialize().unwrap()), 3).unwrap();
+        (make_commitment(&compressed), compressed)
+    }
+
+    /// Deliver a whole reveal in one chunk — the split is a sender-side
+    /// concern, and the accumulator only counts bytes.
+    fn reveal(state: &mut State, compressed: &[u8]) -> Option<Event> {
+        state.apply(Incoming(Inbound::RemoteChunkStart(compressed.len() as u64)));
+        state.apply(Incoming(Inbound::RemoteChunk(compressed.to_vec())))
+    }
+
+    /// Our Uncommit makes the peer revoke the StartMatch they'd already
+    /// sent, so a later re-Ready must wait for a fresh one rather than
+    /// starting on the stale flag.
+    #[test]
+    fn re_ready_waits_for_a_fresh_start_match() {
+        let (commitment, compressed) = peer_reveal(7);
+        let mut state = lobby();
+
+        assert!(state.apply(Incoming(Inbound::RemoteCommit(commitment))).is_none());
+        assert!(state.commit(vec![1, 2, 3]).is_none());
+        // Their StartMatch lands ahead of their reveal finishing.
+        assert!(state.apply(Incoming(Inbound::RemoteStartMatch)).is_none());
+
+        // We drop out of ready before verifying them; the rest of their
+        // reveal arrives anyway and sits latched.
+        state.uncommit();
+        assert!(reveal(&mut state, &compressed).is_none());
+
+        // Ready again: their latched reveal verifies without a re-send,
+        // so our StartMatch goes back out — but theirs was for the
+        // pairing we just replaced, and the match waits on the new one.
+        assert!(state.commit(vec![1, 2, 3]).is_none());
+        assert!(state.ready_view().match_ready);
+        assert!(matches!(
+            state.apply(Incoming(Inbound::RemoteStartMatch)),
+            Some(Event::MatchReady)
+        ));
+    }
+
+    /// The mirror: their re-Commit supersedes the reveal our StartMatch
+    /// was predicated on, so we re-verify the replacement before the
+    /// match can start — and never hand off on half-arrived chunks.
+    #[test]
+    fn peer_recommit_re_verifies_before_starting() {
+        let (first, first_reveal) = peer_reveal(7);
+        let mut state = lobby();
+
+        assert!(state.apply(Incoming(Inbound::RemoteCommit(first))).is_none());
+        assert!(state.commit(vec![1, 2, 3]).is_none());
+        assert!(reveal(&mut state, &first_reveal).is_none());
+        assert!(state.ready_view().match_ready);
+
+        // They re-commit (an edited save, say). Our StartMatch regresses
+        // with the reveal it was for.
+        let (second, second_reveal) = peer_reveal(9);
+        assert!(state.apply(Incoming(Inbound::RemoteCommit(second))).is_none());
+        assert!(!state.ready_view().match_ready);
+
+        // Their StartMatch for the new pairing alone doesn't start it:
+        // the replacement reveal has to land and verify first.
+        assert!(state.apply(Incoming(Inbound::RemoteStartMatch)).is_none());
+        assert!(matches!(reveal(&mut state, &second_reveal), Some(Event::MatchReady)));
     }
 }

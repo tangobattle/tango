@@ -493,6 +493,12 @@ impl State {
                     revealed: false,
                     start_match: false,
                 };
+                // Our StartMatch was predicated on the reveal this
+                // commitment replaces, and their re-commit dropped their
+                // record of it — so it regresses a rung and gets re-sent
+                // once we've verified the reveal that follows. Same
+                // regression an Uncommit causes, for the same reason.
+                self.handshake.local.revoke_start_match();
                 // The reveal goes out once both sides have committed.
                 // Until then we just sit ready.
                 self.maybe_kick_reveal();

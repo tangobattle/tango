@@ -56,7 +56,10 @@ pub(crate) async fn run_pump(
     loop {
         tokio::select! {
             biased;
-            _ = cancel.cancelled() => return receiver,
+            _ = cancel.cancelled() => {
+                flush_on_exit(&mut commands, &sender).await;
+                return receiver;
+            }
             _ = ping_timer.tick() => {
                 if let Err(e) = sender.lock().await.send_ping(now_short()).await {
                     progress.fail("ping", e);
@@ -113,6 +116,38 @@ pub(crate) async fn run_pump(
     }
 }
 
+/// Put whatever is still queued on the wire before letting go of the
+/// channel. The match handoff cancels the pump from inside the very same
+/// synchronous call that queues the `StartMatch` triggering it (`commit`
+/// / `apply` → `Event::MatchReady` → `State::take_pre_match`), so without
+/// this drain that packet races the cancel — and when it loses, the peer
+/// never learns we started and sits in the lobby forever while we're in
+/// the match.
+///
+/// A queued `Reveal` is deliberately skipped rather than streamed: one
+/// still pending at cancel time can't be a reveal the peer is waiting on
+/// (their StartMatch, the thing that got us here, means they already
+/// verified ours), and pushing a multi-megabyte save would stall the
+/// handoff behind it.
+///
+/// Best-effort by nature — this runs on the way out of a connection
+/// that's being torn down, so a failed send is logged, not reported.
+async fn flush_on_exit(
+    commands: &mut futures::channel::mpsc::UnboundedReceiver<Command>,
+    sender: &Arc<tokio::sync::Mutex<tango_session::net::Sender>>,
+) {
+    while let Ok(cmd) = commands.try_recv() {
+        if matches!(cmd, Command::Reveal(_)) {
+            log::debug!("lobby: dropping a queued reveal on exit");
+            continue;
+        }
+        if let Err(e) = send_one(cmd, sender).await {
+            log::warn!("lobby: flushing queued sends on exit: {e:?}");
+            return;
+        }
+    }
+}
+
 /// Put one queued command on the wire. The reveal is the only one that
 /// isn't a single packet: it announces its total length first, because
 /// the receiving side counts arriving bytes against that rather than
@@ -124,10 +159,6 @@ async fn perform(
     cancel: &CancellationToken,
 ) -> Result<(), Error> {
     match cmd {
-        Command::Settings(s) => wire("send_settings", sender.lock().await.send_settings(*s).await),
-        Command::Commit(c) => wire("send_commit", sender.lock().await.send_commit(c).await),
-        Command::Uncommit => wire("send_uncommit", sender.lock().await.send_uncommit().await),
-        Command::StartMatch => wire("send_start_match", sender.lock().await.send_start_match().await),
         Command::Reveal(compressed) => {
             // Streamed off the pump so a multi-megabyte save doesn't stall
             // ping/pong or inbound packet handling behind it. Failures come
@@ -160,6 +191,21 @@ async fn perform(
             });
             Ok(())
         }
+        one => send_one(one, sender).await,
+    }
+}
+
+/// The single-packet commands — everything but the reveal stream. Split
+/// out of [`perform`] so [`flush_on_exit`] can put them on the wire
+/// without going near the reveal's spawn (which would only bail on the
+/// cancellation that got us there).
+async fn send_one(cmd: Command, sender: &Arc<tokio::sync::Mutex<tango_session::net::Sender>>) -> Result<(), Error> {
+    match cmd {
+        Command::Settings(s) => wire("send_settings", sender.lock().await.send_settings(*s).await),
+        Command::Commit(c) => wire("send_commit", sender.lock().await.send_commit(c).await),
+        Command::Uncommit => wire("send_uncommit", sender.lock().await.send_uncommit().await),
+        Command::StartMatch => wire("send_start_match", sender.lock().await.send_start_match().await),
+        Command::Reveal(_) => unreachable!("reveal is streamed by perform"),
     }
 }
 
