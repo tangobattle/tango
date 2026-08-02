@@ -7891,6 +7891,7 @@ dependencies = [
  "bytemuck",
  "c2rust-bitfields",
  "image",
+ "ndarray",
  "num-traits",
  "tango-gamesupport-common",
 ]
@@ -7900,6 +7901,7 @@ name = "tango-gamesupport-bn5ds-ui"
 version = "0.1.0"
 dependencies = [
  "iced",
+ "image",
  "sweeten",
  "tango-gamesupport-bn5ds-dataview",
  "tango-gamesupport-common",

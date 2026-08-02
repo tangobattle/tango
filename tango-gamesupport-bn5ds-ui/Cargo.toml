@@ -15,6 +15,8 @@ tango-gamesupport-bn5ds-dataview = { path = "../tango-gamesupport-bn5ds-dataview
 # For the session-payload surface (`GameSaveEditor::session_payload`).
 tango-match = { path = "../tango-match" }
 iced = { workspace = true }
+# The NaviCust tab copies its grid out as an image.
+image = { version = "0.25", default-features = false, features = ["png"] }
 # The editor layer's dropdowns are sweeten's, which is what
 # `chunky_pick_list` is typed for.
 sweeten = { workspace = true }

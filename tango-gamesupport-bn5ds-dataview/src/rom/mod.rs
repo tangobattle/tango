@@ -1,5 +1,6 @@
-//! The DS cart's chip assets: stats, names, descriptions, icons and
-//! element icons — what the folder view draws from.
+//! The DS cart's assets: the chips' stats, names, descriptions, icons
+//! and element icons, and the NaviCust programs' table, names and
+//! descriptions — what the folder and NaviCust views draw from.
 //!
 //! The port keeps the GBA game's data shapes almost wholesale. The chip
 //! table's first 0x20 bytes are byte-identical to BN5's (found by
@@ -8,16 +9,22 @@
 //! with one RAM icon pointer plus a pair of indexes into the artwork
 //! banks — two cart files holding every chip's tiles and palettes
 //! back-to-back, in 0x10-byte units. Names and descriptions are GBA
-//! text archives, decoded by BN5's own charsets.
+//! text archives, decoded by BN5's own charsets. The NaviCust program
+//! table is the GBA game's outright, all 192 entries of it, with
+//! thirteen more appended for the port's own programs (the Navi Change
+//! pair, Spport, RUN!).
 //!
 //! Addresses come in two kinds, told apart by value: `0x02xxxxxx` is
 //! main-RAM inside the static ARM9 image (mapped through the cart
 //! header's load parameters), anything below is a plain file offset
 //! into the cart image — the element art lives in data files, found by
 //! searching for the GBA sheets' bytes, and nothing that useful points
-//! at them from the static binary.
+//! at them from the static binary. One of those files, the NaviCust
+//! descriptions, is LZ77-compressed; everything else is read where it
+//! lies.
 
 mod msg;
+pub mod navicust;
 
 pub struct Offsets {
     /// The chip stat table (RAM): [`NUM_CHIPS`](super::NUM_CHIPS)
@@ -48,6 +55,26 @@ pub struct Offsets {
     /// the GBA game's own art — which is how the banks were found.
     chip_art: u32,
     chip_art_palettes: u32,
+    /// The NaviCust program table (RAM):
+    /// [`NUM_NAVICUST_PARTS`](super::NUM_NAVICUST_PARTS) entries of
+    /// 0x10 bytes, the GBA game's own — every entry's first eight bytes
+    /// are byte-identical to BN5's, which is how it was found, and the
+    /// two bitmap pointers behind them are the same 5x5 masks at DS
+    /// addresses.
+    ncp_data: u32,
+    /// The NaviCust program names, as a text archive (RAM). Not reached
+    /// through a pointer — nothing in the static image names it — so it
+    /// is addressed as data, the way the element art is. Found by
+    /// matching the GBA archive's own encoded entries, which the cart
+    /// carries unchanged.
+    ncp_names: u32,
+    /// The NaviCust program descriptions — what the customizer's
+    /// INFORMATION panel reads — as a *cart file* offset. Unlike every
+    /// other archive here this one is LZ77-compressed, and it sits four
+    /// bytes into what it decompresses to (see [`text_archive`]); the
+    /// names archive is the plain file right behind it, which is how
+    /// this one was found.
+    ncp_descriptions: u32,
 }
 
 #[rustfmt::skip]
@@ -62,6 +89,9 @@ pub static A5TE_00: Offsets = Offsets {
     element_icon_palette:       0x0088_6a00,
     chip_art:                   0x00b7_f400,
     chip_art_palettes:          0x00b7_cc00,
+    ncp_data:                   0x020e_b3d0,
+    ncp_names:                  0x020d_8a50,
+    ncp_descriptions:           0x015f_5800,
 };
 
 #[rustfmt::skip]
@@ -76,6 +106,9 @@ pub static A5TJ_00: Offsets = Offsets {
     element_icon_palette:       0x0099_8200,
     chip_art:                   0x00ce_6200,
     chip_art_palettes:          0x00ce_3a00,
+    ncp_data:                   0x020e_9cf4,
+    ncp_names:                  0x020d_741c,
+    ncp_descriptions:           0x0064_1e00,
 };
 
 /// Resolves the two address kinds against the cart image: `0x02xxxxxx`
@@ -124,6 +157,11 @@ impl Mapper {
     }
 }
 
+/// Where a decompressed text file's archive starts: the game keeps four
+/// bytes of its own ahead of the offset table, exactly as the GBA
+/// game's compressed archives do.
+const TEXT_ARCHIVE_OFFSET: usize = 4;
+
 fn read_palette(mapper: &Mapper, addr: u32) -> tango_gamesupport_common::dataview::rom::Palette {
     mapper
         .get(addr)
@@ -138,6 +176,10 @@ pub struct Assets {
     mapper: Mapper,
     chip_icon_palette: tango_gamesupport_common::dataview::rom::Palette,
     element_icon_palette: tango_gamesupport_common::dataview::rom::Palette,
+    /// The one compressed archive the cart makes us decode: the
+    /// NaviCust program descriptions, unpacked once at load rather than
+    /// per lookup. Empty for a cart whose file isn't one.
+    ncp_descriptions: Vec<u8>,
 }
 
 impl Assets {
@@ -145,12 +187,17 @@ impl Assets {
         let mapper = Mapper::new(rom);
         let chip_icon_palette = read_palette(&mapper, offsets.chip_icon_palette);
         let element_icon_palette = read_palette(&mapper, offsets.element_icon_palette);
+        // The DS's LZ77 is the GBA's, so the shared decoder reads it.
+        let ncp_descriptions =
+            tango_gamesupport_common::dataview::rom::unlz77(&mut mapper.get(offsets.ncp_descriptions))
+                .unwrap_or_default();
         Self {
             offsets,
             msg_parser: msg::parser(charset),
             mapper,
             chip_icon_palette,
             element_icon_palette,
+            ncp_descriptions,
         }
     }
 
@@ -400,6 +447,151 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
     }
 }
 
+struct NavicustPart<'a> {
+    id: usize,
+    assets: &'a Assets,
+}
+
+/// A NaviCust program's table entry — the GBA game's own, with its two
+/// bitmap pointers pointing at DS addresses.
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
+#[allow(dead_code)]
+struct RawNavicustPart {
+    _unk_00: u8,
+    is_solid: u8,
+    _unk_02: u8,
+    color: u8,
+    _effect_group: u8,
+    _unk_05: [u8; 3],
+    uncompressed_bitmap_ptr: u32,
+    compressed_bitmap_ptr: u32,
+}
+const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x10);
+
+/// Decode a raw NaviCust colour byte — the GBA game's encoding, which
+/// the save's colour bar uses too.
+pub fn navicust_part_color(raw: u8) -> Option<tango_gamesupport_common::dataview::rom::NavicustPartColor> {
+    use tango_gamesupport_common::dataview::rom::NavicustPartColor as C;
+    Some(match raw {
+        1 => C::White,
+        2 => C::Yellow,
+        3 => C::Pink,
+        4 => C::Red,
+        5 => C::Blue,
+        6 => C::Green,
+        _ => return None,
+    })
+}
+
+/// How wide and tall a program's placement mask is.
+const NAVICUST_BITMAP_SIZE: usize = 5;
+
+impl NavicustPart<'_> {
+    fn raw(&self) -> Option<RawNavicustPart> {
+        Some(bytemuck::pod_read_unaligned(
+            self.assets
+                .mapper
+                .get(self.assets.offsets.ncp_data)
+                .get(self.id * std::mem::size_of::<RawNavicustPart>()..)?
+                .get(..std::mem::size_of::<RawNavicustPart>())?,
+        ))
+    }
+
+    /// The 5x5 mask at `ptr`, or an empty one for a pointer that runs
+    /// out of mappable range — a patched cart renders blank rather than
+    /// panicking.
+    fn bitmap(&self, ptr: u32) -> tango_gamesupport_common::dataview::rom::NavicustBitmap {
+        let cells = self
+            .assets
+            .mapper
+            .get(ptr)
+            .get(..NAVICUST_BITMAP_SIZE * NAVICUST_BITMAP_SIZE)
+            .map(|raw| raw.iter().map(|&v| v != 0).collect::<Vec<_>>())
+            .unwrap_or_else(|| vec![false; NAVICUST_BITMAP_SIZE * NAVICUST_BITMAP_SIZE]);
+        ndarray::Array2::from_shape_vec((NAVICUST_BITMAP_SIZE, NAVICUST_BITMAP_SIZE), cells).unwrap()
+    }
+}
+
+impl tango_gamesupport_common::dataview::rom::NavicustPart for NavicustPart<'_> {
+    /// The program's name. The archive names each of the 48 program
+    /// templates once — the four colour variants share an entry, as on
+    /// GBA.
+    fn name(&self) -> Option<String> {
+        let entry = tango_gamesupport_common::dataview::msg::get_entry(
+            self.assets.mapper.get(self.assets.offsets.ncp_names),
+            self.id / 4,
+        )?;
+        Some(
+            self.assets
+                .msg_parser
+                .parse(entry)
+                .ok()?
+                .into_iter()
+                .flat_map(|part| {
+                    match part {
+                        tango_gamesupport_common::dataview::msg::Chunk::Text(s) => s,
+                        _ => "".to_string(),
+                    }
+                    .chars()
+                    .collect::<Vec<_>>()
+                })
+                .collect::<String>(),
+        )
+    }
+
+    /// What the customizer's INFORMATION panel says about the program —
+    /// `Custom Screen +1 chip`, `Max HP +500!`. Same archive shape as
+    /// the names: one entry per program template, the four colour
+    /// variants sharing it.
+    fn description(&self) -> Option<String> {
+        let archive = self.assets.ncp_descriptions.get(TEXT_ARCHIVE_OFFSET..)?;
+        let entry = tango_gamesupport_common::dataview::msg::get_entry(archive, self.id / 4)?;
+        Some(
+            self.assets
+                .msg_parser
+                .parse(entry)
+                .ok()?
+                .into_iter()
+                .flat_map(|part| {
+                    match part {
+                        tango_gamesupport_common::dataview::msg::Chunk::Text(s) => s,
+                        _ => "".to_string(),
+                    }
+                    .chars()
+                    .collect::<Vec<_>>()
+                })
+                .collect::<String>(),
+        )
+    }
+
+    fn color(&self) -> Option<tango_gamesupport_common::dataview::rom::NavicustPartColor> {
+        navicust_part_color(self.raw()?.color)
+    }
+
+    fn is_solid(&self) -> bool {
+        // The GBA game's sense: the flag is set for the programs that
+        // may be placed off the command line.
+        self.raw().map(|raw| raw.is_solid == 0).unwrap_or(false)
+    }
+
+    fn uncompressed_bitmap(&self) -> tango_gamesupport_common::dataview::rom::NavicustBitmap {
+        let ptr = self.raw().map(|raw| raw.uncompressed_bitmap_ptr).unwrap_or(0);
+        self.bitmap(ptr)
+    }
+
+    fn compressed_bitmap(&self) -> Option<tango_gamesupport_common::dataview::rom::NavicustBitmap> {
+        Some(self.bitmap(self.raw()?.compressed_bitmap_ptr))
+    }
+}
+
+/// What the cart draws its NaviCust grid on. The GBA games each carry
+/// one colour per version; this cart holds both teams' files, and the
+/// backdrop is the one thing here that would have to know which of them
+/// is open — the layout is asked of the cart, not of a save — so both
+/// get Team ProtoMan's.
+const NAVICUST_BG: image::Rgba<u8> = image::Rgba([0x21, 0x8c, 0xa5, 0xff]);
+
 impl tango_gamesupport_common::dataview::rom::Assets for Assets {
     fn chip(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common::dataview::rom::Chip + '_>> {
         if id >= self.num_chips() {
@@ -410,6 +602,27 @@ impl tango_gamesupport_common::dataview::rom::Assets for Assets {
 
     fn num_chips(&self) -> usize {
         super::NUM_CHIPS
+    }
+
+    fn navicust_part(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common::dataview::rom::NavicustPart + '_>> {
+        if id >= self.num_navicust_parts() {
+            return None;
+        }
+        Some(Box::new(NavicustPart { id, assets: self }))
+    }
+
+    fn num_navicust_parts(&self) -> usize {
+        super::NUM_NAVICUST_PARTS
+    }
+
+    /// The GBA game's grid, which the cart keeps: five by five, the
+    /// command line third from the top, nothing placeable outside it.
+    fn navicust_layout(&self) -> Option<tango_gamesupport_common::dataview::rom::NavicustLayout> {
+        Some(tango_gamesupport_common::dataview::rom::NavicustLayout {
+            command_line: 2,
+            has_out_of_bounds: false,
+            background: NAVICUST_BG,
+        })
     }
 
     fn element_icon(&self, id: usize) -> Option<image::RgbaImage> {

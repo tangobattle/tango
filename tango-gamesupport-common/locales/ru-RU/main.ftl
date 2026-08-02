@@ -77,5 +77,5 @@ save-tab-program-deck = Колода программ
 deck-mb = { $used }/{ $capacity }MB
 deck-mb-uncapped = { $used }MB
 deck-slot-in = Слот-ин { $max }MB
-bn5ds-leader = Лидер: { $navi }
+bn5ds-leader = Лидер
 navi-edit-select = Нави

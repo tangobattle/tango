@@ -63,14 +63,14 @@ fn navi_card_content<M: 'static>(
         // label bottom-aligns with its value.
         let mut stats = row![].spacing(16).align_y(Alignment::End);
         if let Some(hp) = base_max_hp {
-            stats = stats.push(stat_inline::<M>(t!(lang, "navi-base-hp"), hp.to_string()));
+            stats = stats.push(super::stat::<M>(t!(lang, "navi-base-hp"), hp.to_string()));
         }
         if let Some(b) = buster {
             stats = stats.push(
                 row![
-                    stat_inline::<M>(t!(lang, "navi-buster-attack"), b.attack.to_string()),
-                    stat_inline::<M>(t!(lang, "navi-buster-rapid"), b.speed.to_string()),
-                    stat_inline::<M>(t!(lang, "navi-buster-charge"), b.charge.to_string()),
+                    super::stat::<M>(t!(lang, "navi-buster-attack"), b.attack.to_string()),
+                    super::stat::<M>(t!(lang, "navi-buster-rapid"), b.speed.to_string()),
+                    super::stat::<M>(t!(lang, "navi-buster-charge"), b.charge.to_string()),
                 ]
                 .spacing(12)
                 .align_y(Alignment::End),
@@ -100,7 +100,7 @@ fn navi_card_content<M: 'static>(
         // Roster-less games (BN1–4): just the base max HP, inline.
         let mut card = row![].spacing(14).align_y(Alignment::Center);
         if let Some(hp) = base_max_hp {
-            card = card.push(stat_inline::<M>(t!(lang, "navi-base-hp"), hp.to_string()));
+            card = card.push(super::stat::<M>(t!(lang, "navi-base-hp"), hp.to_string()));
         }
         card.into()
     }
@@ -182,21 +182,6 @@ pub fn render_identity_strip<'a>(card: Element<'a, Action>, actions: Element<'a,
     .padding(6.0)
     .width(Fill)
     .style(crate::widgets::pane)
-    .into()
-}
-
-/// One stat as a tight inline pair: a muted label with its value flush beside
-/// it (no stretched gap). Neither half wraps — see [`navi_card_content`].
-fn stat_inline<M: 'static>(label: String, value: String) -> Element<'static, M> {
-    row![
-        text(label)
-            .size(TEXT_CAPTION)
-            .style(muted_text_style)
-            .wrapping(text::Wrapping::None),
-        text(value).size(style::TEXT_HEADING).wrapping(text::Wrapping::None),
-    ]
-    .spacing(5)
-    .align_y(Alignment::End)
     .into()
 }
 

@@ -14,6 +14,8 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 bytemuck = { version = "1", features = ["derive", "const_zeroed", "min_const_generics"] }
 c2rust-bitfields = "0.22"
 num-traits = "0.2"
+# The NaviCust placement masks are 5x5 grids, as in the GBA crates.
+ndarray = "0.15"
 
 [lints]
 workspace = true

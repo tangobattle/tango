@@ -1355,6 +1355,27 @@ pub fn tooltip_style(_theme: &iced::Theme) -> container::Style {
     }
 }
 
+/// One stat as a tight inline pair: a muted caption label with its
+/// value flush beside it in plain body text (no stretched gap). Neither
+/// half wraps, so a row of these stays one line.
+///
+/// This is how every stat beside a name is drawn — the navi strip's HP
+/// and MegaBuster levels, a cartridge's own facts — so a game's editor
+/// that shows one of its own reaches for this rather than restyling the
+/// pair.
+pub fn stat<M: 'static>(label: String, value: String) -> Element<'static, M> {
+    row![
+        text(label)
+            .size(TEXT_CAPTION)
+            .style(muted_text_style)
+            .wrapping(text::Wrapping::None),
+        text(value).size(TEXT_BODY).wrapping(text::Wrapping::None),
+    ]
+    .spacing(5)
+    .align_y(Alignment::End)
+    .into()
+}
+
 pub fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {
     // Centered icon-over-message card rather than a bare line of
     // text in the pane corner — the empty state is a whole-pane

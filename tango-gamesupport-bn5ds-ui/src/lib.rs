@@ -1,7 +1,11 @@
-//! BN5DS's save-editor UI: the chip folder as a read-only viewer, the
-//! GBA-slot cross in the identity slot BN5/BN6 name their navi in, and —
-//! while editing — a switcher for which of the cartridge's two in-game
-//! files is the one being played.
+//! BN5DS's save-editor UI: the NaviCust, the chip folder, the
+//! auto-battle data, the GBA-slot cross in the identity slot BN5/BN6
+//! name their navi in, and — while editing — a switcher for which of
+//! the cartridge's two in-game files is the one being played.
+//!
+//! The tabs are BN5's minus the patch cards, which Double Team dropped;
+//! each is the shared editor, unadorned, since the save exposes the
+//! same views the GBA game's does.
 //!
 //! The cross is what this save brings to a battle, so it reads as a name
 //! above the tab body on every view and turns into its own dropdown when
@@ -12,11 +16,6 @@
 //! the file's first boot, and the save carries the answer from then on.
 //! The file pick is only there while editing.
 //!
-//! Chip editing is not plumbed here (the save hands out no writable
-//! chips view — see its `view_chips_mut`), so the tab body is the
-//! ordinary viewer whether or not an edit session is open. The two picks
-//! are the whole edit session: both write the cartridge's own bytes,
-//! both are staged like any other edit and land on Save.
 //!
 //! Why they are edits rather than view state: nothing rides beside a
 //! committed cartridge any more. A file becomes the played one by
@@ -27,7 +26,7 @@
 
 use std::sync::Arc;
 
-use sweeten::widget::column;
+use sweeten::widget::{column, row};
 use tango_gamesupport_bn5ds_dataview::rom;
 use tango_gamesupport_bn5ds_dataview::save::{Cross, Save, SaveSet};
 use tango_gamesupport_common::dataview::save::Save as _;
@@ -222,34 +221,50 @@ const CARD_HEIGHT: f32 = tango_gamesupport_common::style::TEXT_BODY * 1.3
 /// the file being looked at rather than the cartridge.
 ///
 /// Named by its leader, as the cart's own file select names it: the
-/// navi is the cart's word, the line around it this app's.
-fn team_label(lang: &LanguageIdentifier, loaded: &OpenSave, save: &Save) -> String {
+/// navi is the cart's word, the label beside it this app's.
+fn team_stat<'a>(lang: &LanguageIdentifier, loaded: &OpenSave, save: &Save) -> iced::Element<'a, Action> {
     let leader = cart_of(loaded)
         .and_then(|cart| cart.leader_name(save.team()))
         .unwrap_or_else(|| format!("#{}", save.team()));
-    tango_gamesupport_common::t!(lang, "bn5ds-leader", navi = leader)
+    sv::stat(tango_gamesupport_common::t!(lang, "bn5ds-leader"), leader)
+}
+
+/// The HP MegaMan brings. The figure is the save's own — HP Memories
+/// plus what the NaviCust adds — so it moves as the NaviCust tab is
+/// edited.
+fn hp_stat<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Option<iced::Element<'a, Action>> {
+    let hp = loaded.save.view_navi()?.max_hp(loaded.assets.as_ref());
+    Some(sv::stat(
+        tango_gamesupport_common::t!(lang, "navi-base-hp"),
+        hp.to_string(),
+    ))
 }
 
 /// One half of the identity card, in the box both halves share: the
 /// naming line — a name while reading, its dropdown while editing —
-/// over the file's team.
+/// over the file's team and the HP it brings.
 ///
-/// The team line is on both halves, and the naming line is pinned to
+/// The caption line is on both halves, and the naming line is pinned to
 /// [`CARD_HEIGHT`], so opening the edit session swaps one line for the
 /// other without moving anything below it.
 ///
 /// Carries the strip's own left inset, which the strip expects a card to
 /// bring (see `render_identity_strip`).
-fn card_slot<'a>(inner: iced::Element<'a, Action>, team: String) -> iced::Element<'a, Action> {
+fn card_slot<'a>(
+    inner: iced::Element<'a, Action>,
+    team: iced::Element<'a, Action>,
+    hp: Option<iced::Element<'a, Action>>,
+) -> iced::Element<'a, Action> {
+    let mut stats = row![team].spacing(16).align_y(iced::Alignment::End);
+    if let Some(hp) = hp {
+        stats = stats.push(hp);
+    }
     iced::widget::container(
         column![
             iced::widget::container(inner)
                 .height(iced::Length::Fixed(CARD_HEIGHT))
                 .align_y(iced::Alignment::Center),
-            iced::widget::text(team)
-                .size(tango_gamesupport_common::style::TEXT_CAPTION)
-                .style(tango_gamesupport_common::widgets::muted_text_style)
-                .wrapping(iced::widget::text::Wrapping::None),
+            stats,
         ]
         .spacing(4),
     )
@@ -276,7 +291,8 @@ fn cross_card<'a>(
             .size(tango_gamesupport_common::style::TEXT_TITLE)
             .wrapping(iced::widget::text::Wrapping::None)
             .into(),
-        team_label(lang, loaded, save),
+        team_stat(lang, loaded, save),
+        hp_stat(lang, loaded),
     )
 }
 
@@ -293,16 +309,26 @@ fn cross_picker<'a>(
         pick_list(options, selected, |c: CrossChoice| {
             Action::Game(Arc::new(SetCross(c.cross)))
         }),
-        team_label(lang, loaded, save),
+        team_stat(lang, loaded, save),
+        hp_stat(lang, loaded),
     )
 }
 
 impl GameSaveEditor for Ui {
+    /// BN5's tabs, minus the patch cards this cart has none of. The
+    /// NaviCust drops out for a file being played as a team navi, the
+    /// way the GBA game's does for a link navi.
     fn tabs(&self, loaded: &OpenSave) -> Vec<Tab> {
         let save = loaded.save.as_ref();
         let mut tabs = vec![];
+        if save.view_navicust().is_some() {
+            tabs.push(Tab::Navicust);
+        }
         if save.view_chips().is_some() {
             tabs.push(Tab::Folder);
+        }
+        if save.view_auto_battle_data().is_some() {
+            tabs.push(Tab::AutoBattleData);
         }
         tabs
     }
@@ -350,13 +376,6 @@ impl GameSaveEditor for Ui {
         file_of(loaded).is_some()
     }
 
-    /// The folder-full rule guards the chip editor, which isn't plumbed
-    /// here — the bar's picks are always committable, and a save whose
-    /// folder happens to have a gap must not be barred from saving one.
-    fn can_save(&self, _loaded: &OpenSave) -> bool {
-        true
-    }
-
     fn render<'a>(
         &self,
         lang: &'a LanguageIdentifier,
@@ -366,28 +385,40 @@ impl GameSaveEditor for Ui {
     ) -> iced::Element<'a, Action> {
         match tab {
             Tab::Cover => sv::cover::render_cover(lang, loaded),
+            Tab::Navicust => sv::navicust::render_navicust_tab(lang, loaded),
             Tab::Folder => sv::folder::render_folder(lang, loaded, opts.folder_grouped),
+            Tab::AutoBattleData => sv::abd::render_auto_battle_data(lang, loaded),
             _ => sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty")),
         }
     }
 
-    /// Never reached: no section of this save is editable (`tab_editable`
-    /// answers the shared capability probe, and the chips view hands out
-    /// no writable half), so an open edit session keeps showing the
-    /// read-only body while the bar carries the picks.
     fn render_edit<'a>(
         &self,
         lang: &'a LanguageIdentifier,
-        _tab: Tab,
-        _loaded: &'a OpenSave,
-        _state: &'a State,
+        tab: Tab,
+        loaded: &'a OpenSave,
+        state: &'a State,
     ) -> iced::Element<'a, Action> {
-        sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty"))
+        match tab {
+            Tab::Navicust => sv::navicust::render_navicust_edit(lang, loaded, state),
+            Tab::Folder => sv::folder::render_folder_edit(lang, loaded, state),
+            Tab::AutoBattleData => sv::abd::render_auto_battle_data_edit(lang, loaded, state),
+            _ => sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty")),
+        }
     }
 
     fn tab_as_text(&self, tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
         match tab {
+            Tab::Navicust => sv::navicust::navicust_as_text(loaded),
             Tab::Folder => sv::folder::as_text(loaded, opts),
+            Tab::AutoBattleData => sv::abd::as_text(loaded),
+            _ => None,
+        }
+    }
+
+    fn tab_as_image(&self, tab: Tab, loaded: &OpenSave) -> Option<image::RgbaImage> {
+        match tab {
+            Tab::Navicust => sv::navicust::as_image(loaded),
             _ => None,
         }
     }

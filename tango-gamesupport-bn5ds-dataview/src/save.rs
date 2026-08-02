@@ -19,14 +19,19 @@
 //!
 //! Recognition is settled: the game stamps its own format tag into
 //! every block it formats, and finding that tag intact is what puts a
-//! dump in the save picker. The interior mapping reaches far enough to
-//! edit: the chip folders and pack (the GBA game's own shapes), the
-//! equipped-folder cluster, the GBA-slot [`Cross`] byte, and — read out
-//! of the ARM9's own save code — the flash checksums, so an edited
-//! block can be made acceptable to the game again. Chip editing is
-//! nonetheless still turned off: that write path is all here, but
-//! `Save::view_chips_mut` hands out nothing, so the folder is a viewer
-//! and the editor's own writes are the file pick and the cross.
+//! dump in the save picker. The interior is mapped as far as the GBA
+//! game's editor reaches: the chip folders and pack, the
+//! equipped-folder cluster, the NaviCust (grid, parts and colour bar),
+//! the navi records the HP comes out of, the auto-battle data, the
+//! GBA-slot [`Cross`] byte, and — read out of the ARM9's own save code
+//! — the flash checksums, so an edited block can be made acceptable to
+//! the game again.
+//!
+//! What the GBA game has and this cart hasn't: patch cards, which
+//! Double Team dropped, so there is no view for them. The rest of the
+//! layout was found through the ARM9's own section table (the save
+//! object at US `0x021701d4`, filled at `0x020214bc`, whose fields are
+//! the sections' addresses) plus the GBA game's own shapes.
 
 use tango_gamesupport_common::dataview::save::Error;
 
@@ -137,8 +142,10 @@ pub const REGULAR_CHIP_OFFSET: usize = 0x2e9a;
 
 /// The navi stats array: 13 slots of 0x60 bytes (slot 0 the player,
 /// 1.. the team link navis, as on GBA), each starting u16 LE base max
-/// HP, current HP, effective max HP. Nothing reads it yet — it is the
-/// anchor [`EQUIPPED_FOLDER_OFFSET`] was found against.
+/// HP, current HP, effective max HP. It is the anchor
+/// [`EQUIPPED_FOLDER_OFFSET`] was found against, and what
+/// [`NaviView`](tango_gamesupport_common::dataview::save::NaviView)
+/// reports HP out of.
 pub const NAVI_STATS_OFFSET: usize = 0x2eaa;
 
 /// The navi record array proper, as the game's own accessor walks it:
@@ -151,11 +158,84 @@ pub const NAVI_STATS_OFFSET: usize = 0x2eaa;
 /// it (through an identity remap table) by `0x60`.
 const NAVI_RECORD_OFFSET: usize = 0x2e6c;
 
+/// How long a navi record is, and how far into one its HP triple sits —
+/// [`NAVI_STATS_OFFSET`] is record 0's.
+const NAVI_RECORD_SIZE: usize = 0x60;
+const NAVI_STATS_INTO_RECORD: usize = NAVI_STATS_OFFSET - NAVI_RECORD_OFFSET;
+
+/// How many navis the record array holds: MegaMan and both teams' six.
+pub const NUM_NAVIS: usize = 13;
+
 /// Which GBA-slot cross the player brings, at record 0 `+0x4c` — the
 /// byte the game's own file select writes when it finds a cartridge in
 /// the DS's GBA slot and the player accepts it. See [`Cross`] for the
 /// values.
 pub const CROSS_OFFSET: usize = NAVI_RECORD_OFFSET + 0x4c;
+
+/// The folder's Regular memory, in MB, at record 0 `+9`. The GBA game
+/// keeps this byte 0x24 before its equipped-folder byte and so does the
+/// cart: the whole cluster the GBA game reads from `0x52a8` is record
+/// 0 here, at the same distances into it.
+pub const REGULAR_MEMORY_OFFSET: usize = NAVI_RECORD_OFFSET + 0x09;
+
+/// Which navi the player is: 0 MegaMan, 1.. a team navi, in the roster
+/// order the navi records use. Read out of the ARM9 — the getter at US
+/// `0x0208d7a4` reads byte 1 of the save image's first section, and the
+/// setter at `+0x14` writes it — and it is the byte the GBA game keeps
+/// at its own `0x2941`.
+///
+/// It is not a battle loadout, though the GBA game's is: this cart
+/// hands you your team **in** a battle (the touch screen's NAVI CHANGE
+/// panel), and the byte is who the field is currently being played as,
+/// which the Liberation missions move. A save carrying a nonzero one
+/// boots into that navi's world, not into a net battle — verified by
+/// poking it and watching the priming walk land on the PET screen — so
+/// nothing here writes it, and a save that has one is treated the way
+/// BN5 treats a link navi: no NaviCust of MegaMan's to edit.
+pub const NAVI_OFFSET: usize = 0x0001;
+
+/// The materialized NaviCust grid: 5x5 cells, each holding a part
+/// slot + 1 (0 for an empty cell), then seven bytes the section pads
+/// with. The game's own section table gives the section as 0x20 bytes
+/// at this offset, immediately before the parts themselves.
+pub const NAVICUST_GRID_OFFSET: usize = 0x24dc;
+const NAVICUST_GRID_SECTION_SIZE: usize = 0x20;
+
+/// The NaviCust parts: 25 slots of 8 bytes — id, a byte the game keeps
+/// zero, column, row, rotation, compressed flag, and two more zeroes —
+/// the GBA game's own entry. The section table gives it as 0xc8 bytes,
+/// which is exactly the 25.
+pub const NAVICUST_PARTS_OFFSET: usize = 0x24fc;
+const NUM_NAVICUST_SLOTS: usize = 25;
+const NAVICUST_PART_SIZE: usize = 8;
+
+/// The NaviCust colour bar: six bytes holding the distinct part colours
+/// in placement order, zero-padded — the shape and encoding the GBA
+/// game uses. Found by computing what the bar for a played cart's grid
+/// must read and finding that run in the save image.
+pub const NAVICUST_COLOR_BAR_OFFSET: usize = 0x6910;
+const NAVICUST_COLOR_BAR_LEN: usize = 6;
+
+/// The auto-battle data: the 42-slot deck the game materializes, then
+/// the two use-count arrays it ranks chips by. Both arrays are u16 per
+/// chip id and
+/// [`NUM_AUTO_BATTLE_DATA_CHIPS`](crate::NUM_AUTO_BATTLE_DATA_CHIPS)
+/// long — found through the ARM9's own "count one use" helpers (US
+/// `0x0209952c` bumps the first, `0x02099518` the second), which is
+/// also what tells the two apart.
+pub const AUTO_BATTLE_DATA_OFFSET: usize = 0x334c;
+pub const CHIP_USE_COUNT_OFFSET: usize = 0x4944;
+pub const SECONDARY_CHIP_USE_COUNT_OFFSET: usize = 0x4c24;
+
+/// How many slots the materialized deck holds.
+const NUM_AUTO_BATTLE_DATA_SLOTS: usize = 42;
+
+/// Where the deck's eight combo slots sit in it. The GBA game leaves
+/// them empty and the shared materializer does too, but this cart
+/// writes real markers there (`0x8000 | n` on a played cart), so a
+/// rebuild leaves them alone rather than blanking something the game
+/// put there.
+const AUTO_BATTLE_DATA_COMBO_SLOTS: std::ops::Range<usize> = 33..41;
 
 /// The MegaMan a save brings to a battle: plain, or one of the two
 /// crosses the game unlocks from a cartridge in the GBA slot.
@@ -430,6 +510,23 @@ impl Save {
         Cross::from_raw(self.active()[CROSS_OFFSET])
     }
 
+    /// Which navi this file is being played as (see [`NAVI_OFFSET`]).
+    pub fn navi(&self) -> usize {
+        self.active()[NAVI_OFFSET] as usize
+    }
+
+    /// Navi `id`'s stats block: base max HP, current HP, effective max
+    /// HP, as three u16 LE. `None` past the roster.
+    fn navi_stats(&self, id: usize) -> Option<[u16; 3]> {
+        let raw = self
+            .active()
+            .get(NAVI_RECORD_OFFSET + id * NAVI_RECORD_SIZE + NAVI_STATS_INTO_RECORD..)?
+            .get(..3 * std::mem::size_of::<u16>())?;
+        Some(std::array::from_fn(|i| {
+            u16::from_le_bytes(raw[i * 2..][..2].try_into().unwrap())
+        }))
+    }
+
     /// Set the cross this file brings, writing the game's own byte.
     /// Checksums are not rebuilt here — the editor commits through
     /// [`rebuild_checksum`](tango_gamesupport_common::dataview::save::Save::rebuild_checksum)
@@ -474,13 +571,41 @@ impl tango_gamesupport_common::dataview::save::Save for Save {
         Some(Box::new(ChipsView { save: self }))
     }
 
-    /// Editing is off for this game for now: no writable view, so the
-    /// editor is the plain viewer (an unwritable section is the ordinary
-    /// answer here — see `Editability`). The write path below is intact
-    /// and covered by the tests, which build the view directly; turning
-    /// editing back on is handing out `Some` from this method again.
     fn view_chips_mut(&mut self) -> Option<Box<dyn tango_gamesupport_common::dataview::save::ChipsViewMut + '_>> {
-        None
+        Some(Box::new(ChipsView { save: self }))
+    }
+
+    fn view_navi(&self) -> Option<Box<dyn tango_gamesupport_common::dataview::save::NaviView + '_>> {
+        Some(Box::new(NaviView { save: self }))
+    }
+
+    /// The NaviCust, unless the file is being played as a team navi —
+    /// the customizer is MegaMan's, exactly as it is on GBA (see
+    /// [`NAVI_OFFSET`] for what a nonzero navi means on this cart).
+    fn view_navicust(&self) -> Option<Box<dyn tango_gamesupport_common::dataview::save::NavicustView + '_>> {
+        if self.navi() != 0 {
+            return None;
+        }
+        Some(Box::new(NavicustView { save: self }))
+    }
+
+    fn view_navicust_mut(&mut self) -> Option<Box<dyn tango_gamesupport_common::dataview::save::NavicustViewMut + '_>> {
+        if self.navi() != 0 {
+            return None;
+        }
+        Some(Box::new(NavicustView { save: self }))
+    }
+
+    fn view_auto_battle_data(
+        &self,
+    ) -> Option<Box<dyn tango_gamesupport_common::dataview::save::AutoBattleDataView + '_>> {
+        Some(Box::new(AutoBattleDataView { save: self }))
+    }
+
+    fn view_auto_battle_data_mut(
+        &mut self,
+    ) -> Option<Box<dyn tango_gamesupport_common::dataview::save::AutoBattleDataViewMut + '_>> {
+        Some(Box::new(AutoBattleDataView { save: self }))
     }
 
     fn to_sram_dump(&self) -> Vec<u8> {
@@ -655,20 +780,354 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::s
     fn rebuild_anticheat(&mut self) {}
 }
 
+pub struct NavicustView<S> {
+    save: S,
+}
+
+/// One NaviCust part slot, as the save stores it — the GBA game's entry
+/// unchanged.
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+struct RawNavicustPart {
+    id: u8,
+    _unk_01: u8,
+    col: u8,
+    row: u8,
+    rot: u8,
+    compressed: u8,
+    _unk_06: [u8; 2],
+}
+const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == NAVICUST_PART_SIZE);
+
+impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save::NavicustView for NavicustView<S> {
+    fn count(&self) -> usize {
+        NUM_NAVICUST_SLOTS
+    }
+
+    fn size(&self) -> [usize; 2] {
+        [NAVICUST_SIZE, NAVICUST_SIZE]
+    }
+
+    fn navicust_part(&self, i: usize) -> Option<tango_gamesupport_common::dataview::save::NavicustPart> {
+        if i >= self.count() {
+            return None;
+        }
+        let raw = bytemuck::pod_read_unaligned::<RawNavicustPart>(
+            &self.save.active()[NAVICUST_PARTS_OFFSET + i * NAVICUST_PART_SIZE..][..NAVICUST_PART_SIZE],
+        );
+        if raw.id == 0 {
+            return None;
+        }
+        Some(tango_gamesupport_common::dataview::save::NavicustPart {
+            id: raw.id as usize,
+            col: raw.col,
+            row: raw.row,
+            rot: raw.rot,
+            compressed: raw.compressed != 0,
+        })
+    }
+
+    fn materialized(&self) -> tango_gamesupport_common::dataview::navicust::MaterializedNavicust {
+        tango_gamesupport_common::dataview::navicust::materialized_from_wram(
+            &self.save.active()[NAVICUST_GRID_OFFSET..][..NAVICUST_SIZE * NAVICUST_SIZE],
+            [NAVICUST_SIZE, NAVICUST_SIZE],
+        )
+    }
+
+    fn navicust_color_bar(&self) -> Vec<Option<tango_gamesupport_common::dataview::rom::NavicustPartColor>> {
+        self.save.active()[NAVICUST_COLOR_BAR_OFFSET..][..NAVICUST_COLOR_BAR_LEN]
+            .iter()
+            .map(|&raw| crate::rom::navicust_part_color(raw))
+            .collect()
+    }
+}
+
+impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::save::NavicustViewMut
+    for NavicustView<S>
+{
+    fn set_navicust_part(
+        &mut self,
+        i: usize,
+        part: Option<tango_gamesupport_common::dataview::save::NavicustPart>,
+    ) -> bool {
+        if i >= NUM_NAVICUST_SLOTS {
+            return false;
+        }
+        let raw = match part {
+            Some(part) => {
+                if part.id >= crate::NUM_NAVICUST_PARTS {
+                    return false;
+                }
+                RawNavicustPart {
+                    id: part.id as u8,
+                    col: part.col,
+                    row: part.row,
+                    rot: part.rot,
+                    compressed: u8::from(part.compressed),
+                    ..Default::default()
+                }
+            }
+            // An all-zero part (id 0) reads back as an empty slot.
+            None => RawNavicustPart::default(),
+        };
+        self.save.active_mut()[NAVICUST_PARTS_OFFSET + i * NAVICUST_PART_SIZE..][..NAVICUST_PART_SIZE]
+            .copy_from_slice(bytemuck::bytes_of(&raw));
+        true
+    }
+
+    fn clear_materialized(&mut self) {
+        self.save.active_mut()[NAVICUST_GRID_OFFSET..][..NAVICUST_GRID_SECTION_SIZE].fill(0);
+        self.save.active_mut()[NAVICUST_COLOR_BAR_OFFSET..][..NAVICUST_COLOR_BAR_LEN].fill(0);
+    }
+
+    fn rebuild_materialized(&mut self, assets: &dyn tango_gamesupport_common::dataview::rom::Assets) {
+        let materialized = tango_gamesupport_common::dataview::navicust::materialize(
+            &*self,
+            [NAVICUST_SIZE, NAVICUST_SIZE],
+            assets,
+        );
+        let mut grid = [0u8; NAVICUST_GRID_SECTION_SIZE];
+        for (cell, slot) in grid.iter_mut().zip(materialized) {
+            // Cells hold the slot + 1, so 0 stays "empty".
+            *cell = slot.map(|slot| slot as u8 + 1).unwrap_or(0);
+        }
+        self.save.active_mut()[NAVICUST_GRID_OFFSET..][..NAVICUST_GRID_SECTION_SIZE].copy_from_slice(&grid);
+
+        // The colour bar: the distinct part colours in placement order.
+        let bar = tango_gamesupport_common::dataview::navicust::materialize_color_bar(&*self, assets);
+        let mut bytes = [0u8; NAVICUST_COLOR_BAR_LEN];
+        for (slot, color) in bar.iter().flatten().enumerate().take(NAVICUST_COLOR_BAR_LEN) {
+            bytes[slot] = tango_gamesupport_common::dataview::navicust::color_to_raw(
+                color,
+                crate::rom::navicust_part_color,
+            );
+        }
+        self.save.active_mut()[NAVICUST_COLOR_BAR_OFFSET..][..NAVICUST_COLOR_BAR_LEN].copy_from_slice(&bytes);
+    }
+}
+
+/// How wide and tall the grid is.
+const NAVICUST_SIZE: usize = 5;
+
+pub struct NaviView<S> {
+    save: S,
+}
+
+impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save::NaviView for NaviView<S> {
+    fn navi(&self) -> usize {
+        self.save.navi()
+    }
+
+    /// The HP the navi brings. MegaMan's own is what HP Memories bought
+    /// plus what his NaviCust adds — the same sum the GBA game makes,
+    /// minus the patch cards this cart has none of. A team navi reports
+    /// the effective figure its own record carries.
+    fn max_hp(&self, _assets: &dyn tango_gamesupport_common::dataview::rom::Assets) -> u16 {
+        let navi = self.navi();
+        let Some([base, _current, effective]) = self.save.navi_stats(navi) else {
+            return 0;
+        };
+        if navi != 0 {
+            return effective;
+        }
+
+        let mut max_hp = base;
+        if let Some(navicust) = tango_gamesupport_common::dataview::save::Save::view_navicust(&*self.save) {
+            for part in placed_parts(&*navicust) {
+                for effect in crate::rom::navicust::navicust_part_effects(part) {
+                    if let crate::rom::navicust::NavicustEffect::MaxHp(n) = effect {
+                        max_hp += *n;
+                    }
+                }
+            }
+        }
+        max_hp
+    }
+
+    /// What a folder may hold. The class caps come off the NaviCust's
+    /// command line the way the GBA game reads them, Regular memory off
+    /// the folder cluster, and the Dark cap and per-chip copy rule are
+    /// the game's own constants — with no patch cards on this cart to
+    /// move any of them.
+    fn folder_limits(
+        &self,
+        _assets: &dyn tango_gamesupport_common::dataview::rom::Assets,
+    ) -> tango_gamesupport_common::dataview::save::FolderLimits {
+        let mut mega: isize = BASE_MEGA_LIMIT;
+        let mut giga: usize = BASE_GIGA_LIMIT;
+
+        if let Some(navicust) = tango_gamesupport_common::dataview::save::Save::view_navicust(&*self.save) {
+            for part in command_line_parts(&*navicust) {
+                for effect in crate::rom::navicust::navicust_part_effects(part) {
+                    match effect {
+                        crate::rom::navicust::NavicustEffect::MegaLimit(n) => mega += *n as isize,
+                        crate::rom::navicust::NavicustEffect::GigaLimit(n) => giga += *n as usize,
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        tango_gamesupport_common::dataview::save::FolderLimits {
+            mega_limit: Some(mega.clamp(0, MAX_CLASS_LIMIT as isize) as usize),
+            giga_limit: Some(giga.clamp(0, MAX_CLASS_LIMIT)),
+            dark_limit: Some(DARK_LIMIT),
+            reg_memory: Some(self.save.active()[REGULAR_MEMORY_OFFSET]),
+            max_copies: |chip| {
+                if chip.dark() {
+                    return 1;
+                }
+                match chip.class() {
+                    tango_gamesupport_common::dataview::rom::ChipClass::Mega
+                    | tango_gamesupport_common::dataview::rom::ChipClass::Giga => 1,
+                    tango_gamesupport_common::dataview::rom::ChipClass::Standard => 4,
+                    _ => 0,
+                }
+            },
+            ..Default::default()
+        }
+    }
+}
+
+/// What a folder may hold before the NaviCust moves it, and the ceiling
+/// either class cap is clamped to — the GBA game's numbers, which the
+/// cart keeps.
+const BASE_MEGA_LIMIT: isize = 5;
+const BASE_GIGA_LIMIT: usize = 1;
+const MAX_CLASS_LIMIT: usize = 10;
+const DARK_LIMIT: usize = 3;
+
+/// The part ids actually on the grid, each counted once however many
+/// cells it covers.
+fn placed_parts(navicust: &dyn tango_gamesupport_common::dataview::save::NavicustView) -> Vec<usize> {
+    let mut seen = std::collections::HashSet::new();
+    navicust
+        .materialized()
+        .into_iter()
+        .flatten()
+        .filter(|slot| seen.insert(*slot))
+        .filter_map(|slot| navicust.navicust_part(slot).map(|part| part.id))
+        .collect()
+}
+
+/// The same, restricted to the command line — the row a program has to
+/// sit on for its folder effect to count.
+fn command_line_parts(navicust: &dyn tango_gamesupport_common::dataview::save::NavicustView) -> Vec<usize> {
+    let mut seen = std::collections::HashSet::new();
+    navicust
+        .materialized()
+        .row(NAVICUST_COMMAND_LINE)
+        .iter()
+        .flatten()
+        .copied()
+        .filter(|slot| seen.insert(*slot))
+        .filter_map(|slot| navicust.navicust_part(slot).map(|part| part.id))
+        .collect()
+}
+
+/// Which row of the grid is the command line. The cart's own layout
+/// (see [`crate::rom`]) says the same; this is the save layer's copy so
+/// the folder limits don't have to be handed the cart to read it.
+const NAVICUST_COMMAND_LINE: usize = 2;
+
+pub struct AutoBattleDataView<S> {
+    save: S,
+}
+
+impl<S: std::ops::Deref<Target = Save>> AutoBattleDataView<S> {
+    fn count_at(&self, base: usize, id: usize) -> Option<usize> {
+        if id >= crate::NUM_AUTO_BATTLE_DATA_CHIPS {
+            return None;
+        }
+        let raw = self.save.active().get(base + id * std::mem::size_of::<u16>()..)?;
+        Some(u16::from_le_bytes(raw.get(..2)?.try_into().unwrap()) as usize)
+    }
+}
+
+impl<S: std::ops::DerefMut<Target = Save>> AutoBattleDataView<S> {
+    fn set_count_at(&mut self, base: usize, id: usize, count: usize) -> bool {
+        if id >= crate::NUM_AUTO_BATTLE_DATA_CHIPS || count > u16::MAX as usize {
+            return false;
+        }
+        self.save.active_mut()[base + id * std::mem::size_of::<u16>()..][..2]
+            .copy_from_slice(&(count as u16).to_le_bytes());
+        true
+    }
+
+    /// Write the deck the shared materializer built, leaving the combo
+    /// slots as the game left them (see
+    /// [`AUTO_BATTLE_DATA_COMBO_SLOTS`]).
+    fn set_materialized(
+        &mut self,
+        materialized: &tango_gamesupport_common::dataview::auto_battle_data::MaterializedAutoBattleData,
+    ) {
+        for (slot, chip) in materialized.as_slice().iter().enumerate() {
+            if AUTO_BATTLE_DATA_COMBO_SLOTS.contains(&slot) {
+                continue;
+            }
+            let raw = chip.map(|chip| chip as u16).unwrap_or(0xffff);
+            self.save.active_mut()[AUTO_BATTLE_DATA_OFFSET + slot * std::mem::size_of::<u16>()..][..2]
+                .copy_from_slice(&raw.to_le_bytes());
+        }
+    }
+}
+
+impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save::AutoBattleDataView
+    for AutoBattleDataView<S>
+{
+    fn chip_use_count(&self, id: usize) -> Option<usize> {
+        self.count_at(CHIP_USE_COUNT_OFFSET, id)
+    }
+
+    fn secondary_chip_use_count(&self, id: usize) -> Option<usize> {
+        self.count_at(SECONDARY_CHIP_USE_COUNT_OFFSET, id)
+    }
+
+    fn materialized(&self) -> tango_gamesupport_common::dataview::auto_battle_data::MaterializedAutoBattleData {
+        tango_gamesupport_common::dataview::auto_battle_data::MaterializedAutoBattleData::from_wram(
+            &self.save.active()[AUTO_BATTLE_DATA_OFFSET..]
+                [..NUM_AUTO_BATTLE_DATA_SLOTS * std::mem::size_of::<u16>()],
+        )
+    }
+}
+
+impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::save::AutoBattleDataViewMut
+    for AutoBattleDataView<S>
+{
+    fn set_chip_use_count(&mut self, id: usize, count: usize) -> bool {
+        self.set_count_at(CHIP_USE_COUNT_OFFSET, id, count)
+    }
+
+    fn set_secondary_chip_use_count(&mut self, id: usize, count: usize) -> bool {
+        self.set_count_at(SECONDARY_CHIP_USE_COUNT_OFFSET, id, count)
+    }
+
+    fn clear_materialized(&mut self) {
+        self.set_materialized(
+            &tango_gamesupport_common::dataview::auto_battle_data::MaterializedAutoBattleData::empty(),
+        );
+    }
+
+    fn rebuild_materialized(&mut self, assets: &dyn tango_gamesupport_common::dataview::rom::Assets) {
+        let materialized =
+            tango_gamesupport_common::dataview::auto_battle_data::MaterializedAutoBattleData::materialize(
+                &*self, assets,
+            );
+        self.set_materialized(&materialized);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tango_gamesupport_common::dataview::save::{ChipCode, ChipsView as _, ChipsViewMut as _, Save as _};
+    use tango_gamesupport_common::dataview::save::{ChipCode, ChipsViewMut, NavicustPart, Save as _};
 
     fn chip_bytes(id: u16, code: u16) -> [u8; 2] {
         (id | (code << 9)).to_le_bytes()
     }
 
-    /// The writable chips view. [`Save::view_chips_mut`] hands out
-    /// `None` while editing is off, so the tests reach the write path
-    /// the way that method would once it is back on.
-    fn chips_mut(save: &mut Save) -> ChipsView<&mut Save> {
-        ChipsView { save }
+    fn chips_mut(save: &mut Save) -> Box<dyn ChipsViewMut + '_> {
+        save.view_chips_mut().expect("the folder is editable")
     }
 
     fn plausible() -> Vec<u8> {
@@ -821,6 +1280,136 @@ mod tests {
     fn checksum_matches_the_games_algorithm() {
         // By hand: (0x1234 ^ 4) + (0xabcd ^ 2).
         assert_eq!(checksum(&[0x34, 0x12, 0xcd, 0xab]), 0x1230u16.wrapping_add(0xabcf));
+    }
+
+    /// Put `part` in slot `slot` of the grid's `cells`, so the views
+    /// that read the materialized grid see it placed.
+    fn place(data: &mut [u8], slot: usize, id: u8, cells: &[usize]) {
+        data[NAVICUST_PARTS_OFFSET + slot * NAVICUST_PART_SIZE] = id;
+        for &cell in cells {
+            data[NAVICUST_GRID_OFFSET + cell] = slot as u8 + 1;
+        }
+    }
+
+    #[test]
+    fn reads_and_writes_navicust_parts() {
+        let save = SaveSet::parse(&plausible()).unwrap().current();
+        let mut save = save;
+        {
+            let mut navicust = save.view_navicust_mut().expect("the navicust is editable");
+            assert!(navicust.set_navicust_part(
+                3,
+                Some(NavicustPart {
+                    id: 188,
+                    col: 1,
+                    row: 4,
+                    rot: 2,
+                    compressed: true,
+                })
+            ));
+            // Past the cart's table, and past the slots.
+            assert!(!navicust.set_navicust_part(
+                3,
+                Some(NavicustPart {
+                    id: crate::NUM_NAVICUST_PARTS,
+                    col: 0,
+                    row: 0,
+                    rot: 0,
+                    compressed: false,
+                })
+            ));
+            assert!(!navicust.set_navicust_part(NUM_NAVICUST_SLOTS, None));
+        }
+        let navicust = save.view_navicust().unwrap();
+        assert_eq!(navicust.count(), NUM_NAVICUST_SLOTS);
+        assert_eq!(navicust.size(), [NAVICUST_SIZE, NAVICUST_SIZE]);
+        let part = navicust.navicust_part(3).unwrap();
+        assert_eq!((part.id, part.col, part.row, part.rot, part.compressed), (188, 1, 4, 2, true));
+        // An id of 0 is an empty slot, not part 0.
+        assert!(navicust.navicust_part(0).is_none());
+    }
+
+    /// MegaMan's HP is what the record says plus what the NaviCust
+    /// adds; a team navi reports its own record's effective figure.
+    #[test]
+    fn the_navi_reports_hp_the_navicust_moves() {
+        let mut data = plausible();
+        data[NAVI_STATS_OFFSET..][..2].copy_from_slice(&1000u16.to_le_bytes());
+        // HP+400 (template 46) on the grid, and HP+100 (43) in a slot
+        // the grid doesn't show — an unplaced part grants nothing.
+        place(&mut data, 0, 46 * 4, &[0, 1]);
+        place(&mut data, 1, 43 * 4, &[]);
+
+        let mut save = SaveSet::parse(&data).unwrap().current();
+        let assets = crate::rom::Assets::new(&crate::rom::A5TE_00, crate::rom::EN_CHARSET, vec![]);
+        assert_eq!(save.view_navi().unwrap().max_hp(&assets), 1400);
+
+        // A file being played as a team navi reports that navi's own
+        // effective HP, and hands out no navicust to edit.
+        save.active_mut()[NAVI_OFFSET] = 2;
+        let stats = NAVI_RECORD_OFFSET + 2 * NAVI_RECORD_SIZE + NAVI_STATS_INTO_RECORD;
+        save.active_mut()[stats + 4..][..2].copy_from_slice(&777u16.to_le_bytes());
+        assert_eq!(save.view_navi().unwrap().max_hp(&assets), 777);
+        assert!(save.view_navicust().is_none());
+        assert!(save.view_navicust_mut().is_none());
+    }
+
+    /// The folder's limits: the class caps move with the command line's
+    /// own programs, Regular memory comes off the folder cluster.
+    #[test]
+    fn folder_limits_follow_the_command_line() {
+        let mut data = plausible();
+        data[REGULAR_MEMORY_OFFSET] = 60;
+        // MegFldr2 (+2) on the command line, GigFldr1 (+1) off it.
+        place(&mut data, 0, 5 * 4, &[NAVICUST_COMMAND_LINE * NAVICUST_SIZE]);
+        place(&mut data, 1, 6 * 4, &[0]);
+
+        let save = SaveSet::parse(&data).unwrap().current();
+        let assets = crate::rom::Assets::new(&crate::rom::A5TE_00, crate::rom::EN_CHARSET, vec![]);
+        let limits = save.view_navi().unwrap().folder_limits(&assets);
+        assert_eq!(limits.mega_limit, Some(BASE_MEGA_LIMIT as usize + 2));
+        assert_eq!(limits.giga_limit, Some(BASE_GIGA_LIMIT));
+        assert_eq!(limits.dark_limit, Some(DARK_LIMIT));
+        assert_eq!(limits.reg_memory, Some(60));
+    }
+
+    #[test]
+    fn auto_battle_data_counts_round_trip() {
+        let mut save = SaveSet::parse(&plausible()).unwrap().current();
+        {
+            let mut abd = save.view_auto_battle_data_mut().unwrap();
+            assert!(abd.set_chip_use_count(5, 300));
+            assert!(abd.set_secondary_chip_use_count(5, 7));
+            // Past the arrays the cart keeps.
+            assert!(!abd.set_chip_use_count(crate::NUM_AUTO_BATTLE_DATA_CHIPS, 1));
+        }
+        let abd = save.view_auto_battle_data().unwrap();
+        assert_eq!(abd.chip_use_count(5), Some(300));
+        assert_eq!(abd.secondary_chip_use_count(5), Some(7));
+        assert_eq!(abd.chip_use_count(crate::NUM_AUTO_BATTLE_DATA_CHIPS), None);
+    }
+
+    /// Rebuilding the deck leaves the cart's own combo markers alone —
+    /// the shared materializer has nothing to say about those slots.
+    #[test]
+    fn rebuilding_the_deck_keeps_the_combo_slots() {
+        let mut data = plausible();
+        let combo = AUTO_BATTLE_DATA_OFFSET + AUTO_BATTLE_DATA_COMBO_SLOTS.start * 2;
+        data[combo..][..2].copy_from_slice(&0x8000u16.to_le_bytes());
+        data[AUTO_BATTLE_DATA_OFFSET..][..2].copy_from_slice(&123u16.to_le_bytes());
+
+        let mut save = SaveSet::parse(&data).unwrap().current();
+        {
+            let mut abd = save.view_auto_battle_data_mut().unwrap();
+            abd.clear_materialized();
+        }
+        let block = save.active();
+        assert_eq!(&block[combo..][..2], &0x8000u16.to_le_bytes(), "a combo slot was blanked");
+        assert_eq!(
+            &block[AUTO_BATTLE_DATA_OFFSET..][..2],
+            &0xffffu16.to_le_bytes(),
+            "an ordinary slot was not cleared"
+        );
     }
 
     /// A cart with both files: file 0 in blocks 0-3 (generation 9 the
