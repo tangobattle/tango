@@ -73,6 +73,7 @@ auto-battle-data-edit-count = { $count ->
 save-empty = This save has no data for this view.
 
 save-tab-program-deck = Program Deck
+save-tab-party = Party
 deck-mb = { $used }/{ $capacity }MB
 deck-mb-uncapped = { $used }MB
 deck-slot-in = Slot-in { $max }MB
@@ -81,5 +82,5 @@ deck-slot-in = Slot-in { $max }MB
 # leader the way the cart's own file select names it. The navi comes off
 # the cart, so only the line around it is translated.
 bn5ds-leader = Leader
-bn5ds-team = Team
 bn5ds-team-none = (none)
+bn5ds-party-roster = Navis

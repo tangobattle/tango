@@ -3,9 +3,10 @@
 //! name their navi in, and — while editing — a switcher for which of
 //! the cartridge's two in-game files is the one being played.
 //!
-//! The tabs are BN5's minus the patch cards, which Double Team dropped;
-//! each is the shared editor, unadorned, since the save exposes the
-//! same views the GBA game's does.
+//! The tabs are BN5's minus the patch cards, which Double Team dropped,
+//! plus the Party tab for the game's own battle-team pair; the shared
+//! sections are the shared editor, unadorned, since the save exposes
+//! the same views the GBA game's does.
 //!
 //! The cross is what this save brings to a battle, so it reads as a name
 //! above the tab body on every view and turns into its own dropdown when
@@ -14,9 +15,10 @@
 //! cartridge's two teams the file plays — the cartridge's other half of
 //! who the player fields, and not a pick: the game asks for it once, at
 //! the file's first boot, and the save carries the answer from then on —
-//! then the HP MegaMan brings, and under both the two navis the battle's
-//! own NAVI CHANGE panel offers, which *are* a pick. The file pick is
-//! only there while editing.
+//! then the HP MegaMan brings. The party — the two navis the battle's
+//! own NAVI CHANGE panel offers — has a tab of its own, with the
+//! customizer (slots beside the file's recruited roster) as its edit
+//! body. The file pick is only there while editing.
 //!
 //!
 //! Why they are edits rather than view state: nothing rides beside a
@@ -30,7 +32,7 @@ use std::sync::Arc;
 
 use sweeten::widget::{column, row};
 use tango_gamesupport_bn5ds_dataview::rom;
-use tango_gamesupport_bn5ds_dataview::save::{Cross, Save, SaveSet};
+use tango_gamesupport_bn5ds_dataview::save::{self, Cross, Save, SaveSet};
 use tango_gamesupport_common::dataview::save::Save as _;
 use tango_gamesupport_common::editor::loaded::OpenSave;
 use tango_gamesupport_common::editor::view as sv;
@@ -99,47 +101,54 @@ impl GameEdit for SetCross {
     }
 }
 
-/// Put a navi in one of the battle's two NAVI CHANGE slots, or empty
-/// it.
-///
-/// A navi can only be in one slot, so picking one that is already in
-/// the other slot trades places with it rather than cloning it — which
-/// is also the shortest way to reorder the pair.
+/// Add a navi to the party: the first empty NAVI CHANGE slot. The
+/// roster only offers navis not already in it, so no duplicate can be
+/// minted; the save layer re-syncs the mirror bits the load checks a
+/// team against on every write.
 #[derive(Debug)]
-struct SetTeamNavi {
-    slot: usize,
-    navi: Option<usize>,
-}
+struct AddPartyNavi(usize);
 
-impl GameEdit for SetTeamNavi {
+impl GameEdit for AddPartyNavi {
     fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
         if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
-            let held = save.team_navi(self.slot);
-            for other in 0..tango_gamesupport_bn5ds_dataview::save::NUM_TEAM_SLOTS {
-                if other != self.slot && self.navi.is_some() && save.team_navi(other) == self.navi {
-                    save.set_team_navi(other, held);
-                }
+            if let Some(slot) = (0..save::NUM_TEAM_SLOTS).find(|&slot| save.team_navi(slot).is_none()) {
+                save.set_team_navi(slot, Some(self.0));
+                save.pack_team();
             }
-            save.set_team_navi(self.slot, self.navi);
-            // The team is a packed list — a gap is a team the battle
-            // refuses. See `Save::pack_team`.
+        }
+        Invalidation::default()
+    }
+}
+
+/// Empty a party slot. The game keeps the team as a packed list and
+/// refuses a gap, so the pair is re-packed — removing the first navi
+/// moves the second up, exactly as the game's own machine compacts.
+/// (Which also makes remove-and-re-add the way to reorder the pair.)
+#[derive(Debug)]
+struct RemovePartyNavi(usize);
+
+impl GameEdit for RemovePartyNavi {
+    fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
+        if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
+            save.set_team_navi(self.0, None);
             save.pack_team();
         }
         Invalidation::default()
     }
 }
 
-/// One navi a team slot may hold — or the empty pick — labeled with the
-/// cart's own name for it.
-#[derive(Clone, PartialEq)]
-struct NaviChoice {
-    navi: Option<usize>,
-    label: String,
-}
+/// The party pane's clear-all: an empty pair, mirror and all.
+#[derive(Debug)]
+struct ClearParty;
 
-impl std::fmt::Display for NaviChoice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.label)
+impl GameEdit for ClearParty {
+    fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
+        if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
+            for slot in 0..save::NUM_TEAM_SLOTS {
+                save.set_team_navi(slot, None);
+            }
+        }
+        Invalidation::default()
     }
 }
 
@@ -275,79 +284,153 @@ fn team_stat<'a>(lang: &LanguageIdentifier, loaded: &OpenSave, save: &Save) -> i
     sv::stat(tango_gamesupport_common::t!(lang, "bn5ds-leader"), leader)
 }
 
-/// One navi as the dropdown shows it, named by the cart — a navi it
-/// won't name reads as its number, which is still pickable.
-fn navi_choice(lang: &LanguageIdentifier, loaded: &OpenSave, navi: Option<usize>) -> NaviChoice {
-    NaviChoice {
-        navi,
-        label: match navi {
-            None => tango_gamesupport_common::t!(lang, "bn5ds-team-none"),
-            Some(navi) => cart_of(loaded)
-                .and_then(|cart| cart.navi_name(navi))
-                .unwrap_or_else(|| format!("#{navi}")),
-        },
+/// The cart's name for navi `id`, or its number for a cart that won't
+/// give one up.
+fn navi_name(loaded: &OpenSave, navi: usize) -> String {
+    cart_of(loaded)
+        .and_then(|cart| cart.navi_name(navi))
+        .unwrap_or_else(|| format!("#{navi}"))
+}
+
+/// One navi as a party or roster row reads it: the name, then the HP
+/// and Attack its NAVI CHANGE card would show, off the save's own
+/// record.
+fn navi_line<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, save: &'a Save, navi: usize) -> iced::Element<'a, Action> {
+    row![
+        iced::widget::text(navi_name(loaded, navi))
+            .size(tango_gamesupport_common::style::TEXT_BODY)
+            .width(iced::Fill),
+        sv::stat(
+            tango_gamesupport_common::t!(lang, "navi-base-hp"),
+            save.navi_hp(navi).to_string(),
+        ),
+        sv::stat(
+            tango_gamesupport_common::t!(lang, "navi-buster-attack"),
+            save.navi_level(navi).to_string(),
+        ),
+    ]
+    .spacing(16)
+    .align_y(iced::Alignment::Center)
+    .into()
+}
+
+/// The Party tab's read-only body: the navis the battle's NAVI CHANGE
+/// panel offers, in the panel's own order.
+fn render_party<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> iced::Element<'a, Action> {
+    let Some(save) = file_of(loaded) else {
+        return sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty"));
+    };
+    let mut body = column![].spacing(1).padding(0);
+    let mut shown = 0usize;
+    for slot in 0..save::NUM_TEAM_SLOTS {
+        let Some(navi) = save.team_navi(slot) else { continue };
+        body = body.push(sv::edit_row_wrap(
+            iced::widget::container(navi_line(lang, loaded, save, navi))
+                .padding([3, 12])
+                .into(),
+            None,
+            shown,
+            None,
+        ));
+        shown += 1;
     }
+    if shown == 0 {
+        return sv::placeholder(tango_gamesupport_common::t!(lang, "bn5ds-team-none"));
+    }
+    iced::widget::container(body)
+        .width(iced::Fill)
+        .style(tango_gamesupport_common::widgets::pane)
+        .into()
 }
 
-/// What a team slot may hold: any of the twelve navis, or the empty
-/// pick. The save layer keeps the mirror bits the game's load checks a
-/// team against in step with every write (see `Save::set_team_navi`),
-/// which is what makes the full roster — either team's half — safe to
-/// offer.
-fn navi_choices(lang: &LanguageIdentifier, loaded: &OpenSave, save: &Save) -> Vec<NaviChoice> {
-    std::iter::once(None)
-        .chain(save.team_navi_choices().into_iter().map(Some))
-        .map(|navi| navi_choice(lang, loaded, navi))
-        .collect()
-}
+/// The party customizer: the two NAVI CHANGE slots on the left, the
+/// file's recruited navis on the right — the shape every other editor
+/// pane pair has. A roster row is a click-to-add button, disabled while
+/// the party is full or already fields that navi; a party row's ✕
+/// empties its slot and packs the pair. What the roster offers is the
+/// game's own recruit list (see `Save::team_navi_choices`), so the
+/// customizer can hand out exactly what the in-game machine would.
+fn render_party_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> iced::Element<'a, Action> {
+    let Some(save) = file_of(loaded) else {
+        return sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty"));
+    };
+    let held: Vec<usize> = (0..save::NUM_TEAM_SLOTS).filter_map(|slot| save.team_navi(slot)).collect();
 
-/// The team the save brings into a battle: the two navis its NAVI
-/// CHANGE panel offers, in the panel's own order — a reading while the
-/// card is, and a pair of dropdowns while the edit session is open.
-///
-/// The dropdowns offer the whole roster for each slot, plus the empty
-/// pick; a navi picked into both slots trades places instead of
-/// duplicating, and every edit re-packs the pair (the game keeps the
-/// team as a packed list and refuses a gap).
-fn team_line<'a>(
-    lang: &'a LanguageIdentifier,
-    loaded: &'a OpenSave,
-    save: &'a Save,
-    editing: bool,
-) -> Option<iced::Element<'a, Action>> {
-    let choices = navi_choices(lang, loaded, save);
-    let mut line = row![].spacing(8).align_y(iced::Alignment::End);
-    for slot in 0..tango_gamesupport_bn5ds_dataview::save::NUM_TEAM_SLOTS {
-        // Named from the slot itself rather than looked up among the
-        // choices, so a navi the picker wouldn't offer still reads as
-        // the navi it is.
-        let held = navi_choice(lang, loaded, save.team_navi(slot));
-        line = line.push(if editing {
-            pick_list(choices.clone(), Some(held), move |choice: NaviChoice| {
-                Action::Game(Arc::new(SetTeamNavi {
-                    slot,
-                    navi: choice.navi,
-                }))
-            })
-        } else {
-            // The label alone: the same words the dropdown would show.
-            iced::widget::text(held.label)
+    let mut party_rows = column![].spacing(1).padding(0);
+    for slot in 0..save::NUM_TEAM_SLOTS {
+        let inner: iced::Element<'a, Action> = match save.team_navi(slot) {
+            Some(navi) => row![
+                navi_line(lang, loaded, save, navi),
+                sv::remove_button(Action::Game(Arc::new(RemovePartyNavi(slot)))),
+            ]
+            .spacing(8)
+            .align_y(iced::Alignment::Center)
+            .into(),
+            None => iced::widget::text(tango_gamesupport_common::t!(lang, "bn5ds-team-none"))
                 .size(tango_gamesupport_common::style::TEXT_BODY)
-                .wrapping(iced::widget::text::Wrapping::None)
-                .into()
-        });
-    }
-    Some(
-        row![
-            iced::widget::text(tango_gamesupport_common::t!(lang, "bn5ds-team"))
-                .size(tango_gamesupport_common::style::TEXT_CAPTION)
                 .style(tango_gamesupport_common::widgets::muted_text_style)
-                .wrapping(iced::widget::text::Wrapping::None),
-            line,
-        ]
-        .spacing(5)
-        .align_y(iced::Alignment::Center)
-        .into(),
+                .width(iced::Fill)
+                .into(),
+        };
+        party_rows = party_rows.push(sv::edit_row_wrap(
+            iced::widget::container(inner).padding([3, 12]).into(),
+            None,
+            slot,
+            None,
+        ));
+    }
+    let party_pane = sv::editor_pane(
+        sv::editor_header(
+            lang,
+            tango_gamesupport_common::t!(lang, "save-tab-party"),
+            vec![],
+            Action::Game(Arc::new(ClearParty)),
+        ),
+        party_rows,
+    );
+
+    let full = held.len() >= save::NUM_TEAM_SLOTS;
+    let mut roster_rows = column![].spacing(1).padding(0);
+    for (idx, navi) in save.team_navi_choices().into_iter().enumerate() {
+        let addable = !full && !held.contains(&navi);
+        let row_button: iced::Element<'a, Action> = iced::widget::button(navi_line(lang, loaded, save, navi))
+            .padding([3, 12])
+            .width(iced::Fill)
+            .style(tango_gamesupport_common::widgets::neutral)
+            .on_press_maybe(addable.then(|| Action::Game(Arc::new(AddPartyNavi(navi)) as Arc<_>)))
+            .into();
+        roster_rows = roster_rows.push(sv::edit_row_wrap(row_button, None, idx, None));
+    }
+    let roster_pane = sv::editor_pane(
+        iced::widget::container(
+            iced::widget::text(tango_gamesupport_common::t!(lang, "bn5ds-party-roster"))
+                .size(tango_gamesupport_common::style::TEXT_BODY),
+        )
+        .width(iced::Fill)
+        .padding(tango_gamesupport_common::style::HEADER_PADDING),
+        roster_rows,
+    );
+
+    sv::editor_panes(party_pane, roster_pane)
+}
+
+/// The Party tab as clipboard text: one navi per line, with the card's
+/// numbers.
+fn party_as_text(loaded: &OpenSave) -> Option<String> {
+    let save = file_of(loaded)?;
+    Some(
+        (0..save::NUM_TEAM_SLOTS)
+            .filter_map(|slot| {
+                let navi = save.team_navi(slot)?;
+                Some(format!(
+                    "{}\t{}\t{}",
+                    navi_name(loaded, navi),
+                    save.navi_hp(navi),
+                    save.navi_level(navi)
+                ))
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
     )
 }
 
@@ -364,7 +447,8 @@ fn hp_stat<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Option<ice
 
 /// One half of the identity card, in the box both halves share: the
 /// naming line — a name while reading, its dropdown while editing —
-/// over the file's team and the HP it brings.
+/// over the file's team and the HP it brings. The party itself has its
+/// own tab.
 ///
 /// The caption line is on both halves, and the naming line is pinned to
 /// [`CARD_HEIGHT`], so opening the edit session swaps one line for the
@@ -376,23 +460,22 @@ fn card_slot<'a>(
     inner: iced::Element<'a, Action>,
     team: iced::Element<'a, Action>,
     hp: Option<iced::Element<'a, Action>>,
-    navis: Option<iced::Element<'a, Action>>,
 ) -> iced::Element<'a, Action> {
     let mut stats = row![team].spacing(16).align_y(iced::Alignment::End);
     if let Some(hp) = hp {
         stats = stats.push(hp);
     }
-    let mut card = column![
-        iced::widget::container(inner)
-            .height(iced::Length::Fixed(CARD_HEIGHT))
-            .align_y(iced::Alignment::Center),
-        stats,
-    ]
-    .spacing(4);
-    if let Some(navis) = navis {
-        card = card.push(navis);
-    }
-    iced::widget::container(card).padding([4.0, 6.0]).into()
+    iced::widget::container(
+        column![
+            iced::widget::container(inner)
+                .height(iced::Length::Fixed(CARD_HEIGHT))
+                .align_y(iced::Alignment::Center),
+            stats,
+        ]
+        .spacing(4),
+    )
+    .padding([4.0, 6.0])
+    .into()
 }
 
 /// The identity card: the name of what this save brings, in the slot
@@ -416,7 +499,6 @@ fn cross_card<'a>(
             .into(),
         team_stat(lang, loaded, save),
         hp_stat(lang, loaded),
-        team_line(lang, loaded, save, false),
     )
 }
 
@@ -435,7 +517,6 @@ fn cross_picker<'a>(
         }),
         team_stat(lang, loaded, save),
         hp_stat(lang, loaded),
-        team_line(lang, loaded, save, true),
     )
 }
 
@@ -452,10 +533,24 @@ impl GameSaveEditor for Ui {
         if save.view_chips().is_some() {
             tabs.push(Tab::Folder);
         }
+        if file_of(loaded).is_some() {
+            tabs.push(Tab::Party);
+        }
         if save.view_auto_battle_data().is_some() {
             tabs.push(Tab::AutoBattleData);
         }
         tabs
+    }
+
+    /// The Party section is this game's own model rather than the
+    /// shared one, so its editability is answered here: editable
+    /// whenever the save is ours. Every other tab keeps the shared
+    /// capability probe.
+    fn tab_editable(&self, tab: Tab, loaded: &OpenSave) -> bool {
+        match tab {
+            Tab::Party => file_of(loaded).is_some(),
+            tab => tab.editable_on(&loaded.editability),
+        }
     }
 
     /// Which of the cartridge's files is the played one. Cartridge-wide
@@ -512,6 +607,7 @@ impl GameSaveEditor for Ui {
             Tab::Cover => sv::cover::render_cover(lang, loaded),
             Tab::Navicust => sv::navicust::render_navicust_tab(lang, loaded),
             Tab::Folder => sv::folder::render_folder(lang, loaded, opts.folder_grouped),
+            Tab::Party => render_party(lang, loaded),
             Tab::AutoBattleData => sv::abd::render_auto_battle_data(lang, loaded),
             _ => sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty")),
         }
@@ -527,6 +623,7 @@ impl GameSaveEditor for Ui {
         match tab {
             Tab::Navicust => sv::navicust::render_navicust_edit(lang, loaded, state),
             Tab::Folder => sv::folder::render_folder_edit(lang, loaded, state),
+            Tab::Party => render_party_edit(lang, loaded),
             Tab::AutoBattleData => sv::abd::render_auto_battle_data_edit(lang, loaded, state),
             _ => sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty")),
         }
@@ -536,6 +633,7 @@ impl GameSaveEditor for Ui {
         match tab {
             Tab::Navicust => sv::navicust::navicust_as_text(loaded),
             Tab::Folder => sv::folder::as_text(loaded, opts),
+            Tab::Party => party_as_text(loaded),
             Tab::AutoBattleData => sv::abd::as_text(loaded),
             _ => None,
         }

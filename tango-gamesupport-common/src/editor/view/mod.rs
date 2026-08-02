@@ -31,6 +31,12 @@ pub enum Tab {
     /// Battle Chip Challenge's wired deck board — BCC's replacement for
     /// the flat Folder list.
     ProgramDeck,
+    /// The navis brought into battle beside the player's own — BN5DS's
+    /// NAVI CHANGE pair. The section is that game's alone, so its
+    /// editability is answered by its UI crate
+    /// ([`crate::editor::GameSaveEditor::tab_editable`]), not the
+    /// shared model.
+    Party,
 }
 
 impl Tab {
@@ -41,7 +47,7 @@ impl Tab {
     /// there.
     pub fn editable_on(self, e: &crate::model::Editability) -> bool {
         match self {
-            Tab::Cover => false,
+            Tab::Cover | Tab::Party => false,
             Tab::Navicust => e.navicust,
             Tab::Folder | Tab::ProgramDeck => e.folder,
             Tab::PatchCards => e.patch_cards,
@@ -702,6 +708,7 @@ fn tab_icon(tab: Tab) -> lucide_icons::Icon {
         Tab::PatchCards => Icon::CreditCard,
         Tab::AutoBattleData => Icon::Bot,
         Tab::ProgramDeck => Icon::Network,
+        Tab::Party => Icon::Users,
     }
 }
 
@@ -879,6 +886,7 @@ pub fn view<'a>(
             Tab::PatchCards => t!(lang, "save-tab-patch-cards"),
             Tab::AutoBattleData => t!(lang, "save-tab-auto-battle-data"),
             Tab::ProgramDeck => t!(lang, "save-tab-program-deck"),
+            Tab::Party => t!(lang, "save-tab-party"),
         };
         tabs_only = tabs_only.push(widgets::tab_button(
             tab_icon(*tab),
@@ -1092,7 +1100,7 @@ fn extra_kinds(tab: Tab) -> Vec<ExtraKind> {
         // The navi card copies as text only; the navicust grid also
         // copies as an image.
         Tab::Navicust => vec![ExtraKind::CopyImage, ExtraKind::Copy],
-        Tab::PatchCards | Tab::AutoBattleData | Tab::ProgramDeck => vec![ExtraKind::Copy],
+        Tab::PatchCards | Tab::AutoBattleData | Tab::ProgramDeck | Tab::Party => vec![ExtraKind::Copy],
         Tab::Cover => vec![],
     }
 }

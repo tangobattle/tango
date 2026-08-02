@@ -678,6 +678,12 @@ impl Save {
         }
     }
 
+    /// Navi `id`'s effective max HP, off its record — the number the
+    /// game's own Navi Change screens put on the navi's card.
+    pub fn navi_hp(&self, id: usize) -> u16 {
+        self.navi_stats(id).map(|[_, _, effective]| effective).unwrap_or(0)
+    }
+
     /// Navi `id`'s level — what the battle's card reads its ATTACK
     /// from, and 0 for a navi this file has never raised. Levelling is
     /// not what makes a navi fieldable: a file can bring one it never
