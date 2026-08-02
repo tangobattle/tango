@@ -1006,7 +1006,21 @@ fn input_pad<'a>(joyflags: u16, ds: bool) -> Element<'a, Message> {
     let right_col = column![cluster, start_select].spacing(10).align_x(Alignment::Center);
 
     let shoulder = |label: &'static str, bit: u32| key(text(label).size(9.0).into(), bit, 56.0, 15.0, 999.0.into());
-    let shoulders = row![shoulder("L", keys::L), horizontal_space(), shoulder("R", keys::R)];
+    // A DS recording carries the mic, so the chip shows when the
+    // recorder was blowing into it, on the hinge between the shoulders
+    // where the console's own hole is. It is drawn whether or not it
+    // was held, like every other key here.
+    let shoulders = if ds {
+        row![
+            shoulder("L", keys::L),
+            horizontal_space(),
+            key(text("BLOW").size(9.0).into(), keys::MIC, 44.0, 15.0, 999.0.into()),
+            horizontal_space(),
+            shoulder("R", keys::R),
+        ]
+    } else {
+        row![shoulder("L", keys::L), horizontal_space(), shoulder("R", keys::R)]
+    };
     let face = row![dpad, horizontal_space(), right_col].align_y(Alignment::Center);
     // The diamond needs more shell than the GBA diagonal.
     let pad_w = if ds { 176.0 } else { PAD_W };

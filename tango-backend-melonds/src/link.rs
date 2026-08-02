@@ -23,9 +23,14 @@ pub const SAMPLE_RATE: f64 = 48_000.0;
 /// scales against when a host paces the simulation faster or slower.
 pub const EXPECTED_FPS: f64 = 16756991.0 / 280095.0;
 
-/// The DS's pad: the GBA's ten buttons plus X and Y, which is every
-/// bit [`keys`](tango_match::keys) names.
+/// The DS's whole input word: the GBA's ten buttons, X and Y, and the
+/// mic — which is every bit [`keys`](tango_match::keys) names, all of
+/// them reaching this console.
 pub const KEYS_MASK: u32 = tango_match::keys::MASK;
+
+/// The pad half of [`KEYS_MASK`] — what melonDS's own key word takes.
+/// The mic rides above it and is handed to the console separately.
+const PAD_MASK: u32 = KEYS_MASK & !tango_match::keys::MIC;
 
 /// The DS presents two identically-sized screens. Listed in the order
 /// [`Link::frame`](tango_match::Link::frame) lays them out, which is
@@ -312,12 +317,15 @@ fn sanitize(input: HostInput) -> HostInput {
     }
 }
 
-/// The console's own input word for one sanitized host input.
+/// The console's own input for one sanitized host input. The mic is a
+/// bit of the seam's word and a field of the console's, so this is where
+/// the two part company.
 pub(crate) fn input_of(input: HostInput) -> crate::Input {
     let input = sanitize(input);
     crate::Input {
-        keys: input.keys,
+        keys: input.keys & PAD_MASK,
         touch: input.touch,
+        mic: input.keys & tango_match::keys::MIC != 0,
     }
 }
 
@@ -361,6 +369,23 @@ mod tests {
             u32,
             Option<tango_match::AudioIn>,
         ) -> Result<tango_match::Match, tango_match::Error> = tango_match::Match::new::<super::Link>;
+    }
+
+    /// The mic rides the seam's input word and the console takes it as
+    /// a field, so [`input_of`](super::input_of) is where the two part.
+    /// A pad bit left in the console's key word would be a key the DS
+    /// does not have; a mic bit dropped here would be a binding that
+    /// does nothing.
+    #[test]
+    fn the_mic_bit_reaches_the_console_without_reaching_its_pad() {
+        use tango_match::keys;
+        let held = super::input_of(tango_match::HostInput::keys(keys::MIC | keys::A));
+        assert!(held.mic);
+        assert_eq!(held.keys, keys::A);
+
+        let lifted = super::input_of(tango_match::HostInput::keys(keys::A));
+        assert!(!lifted.mic);
+        assert_eq!(lifted.keys, keys::A);
     }
 
     /// A red top screen and a blue bottom one, as the core hands them

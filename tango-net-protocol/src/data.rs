@@ -18,7 +18,7 @@
 //! **variable-length**, tagged by the top bit of their first byte:
 //!
 //! * an **input** is two bytes — first the tag-and-high byte (top bit clear;
-//!   bit 6 flags a stylus sample; bits 3..0 are joyflags bits 11..8), then the
+//!   bit 6 flags a stylus sample; bits 4..0 are joyflags bits 12..8), then the
 //!   joyflags low byte — plus, when the stylus flag is set, two more bytes for
 //!   the touch x and y;
 //! * a **marker** (round/match boundary) is a single byte with the top bit set
@@ -30,12 +30,12 @@
 
 use std::io;
 
-/// The 12-bit joypad mask inputs are packed under: the GBA's 10 bits
-/// plus the DS's X and Y. Kept as this crate's own constant so the pure
-/// codec crate doesn't drag in the emulator stack; `tango-session`
-/// const-asserts it equal to `tango_match::keys::MASK` (it sees both
-/// crates).
-pub const KEYS_MASK: u16 = 0x0fff;
+/// The 13-bit input mask inputs are packed under: the GBA's 10 bits,
+/// the DS's X and Y, and the DS's mic-static bit above them. Kept as
+/// this crate's own constant so the pure codec crate doesn't drag in the
+/// emulator stack; `tango-session` const-asserts it equal to
+/// `tango_match::keys::MASK` (it sees both crates).
+pub const KEYS_MASK: u16 = 0x1fff;
 
 /// The reconnect watchdog's trip depth: local inputs buffered with
 /// nothing from the peer to match them before the session pauses for a
@@ -57,12 +57,13 @@ const STALL_HEADROOM: usize = 90;
 pub const MAX_QUEUE_LENGTH: usize = RECONNECT_QUEUE_LENGTH + STALL_HEADROOM;
 
 /// Top bit of an element's first byte: set => a 1-byte marker, clear => an
-/// input's tag-and-high byte (always clear there — joyflags fit in 12 bits and
+/// input's tag-and-high byte (always clear there — joyflags fit in 13 bits and
 /// the flag bits stop at bit 6).
 const MARKER_FLAG: u8 = 0x80;
 
 /// Bit 6 of an input's first byte: a stylus sample (two coordinate bytes)
-/// follows the joyflags low byte. Bits 5..4 are reserved and written zero.
+/// follows the joyflags low byte. Bit 5 is reserved and written zero; bit 4 is
+/// the joyflags' own bit 12 (the mic), which used to be reserved beside it.
 const TOUCH_FLAG: u8 = 0x40;
 
 /// Marker kind, carried in the low bits of a marker byte.
@@ -132,8 +133,8 @@ impl rennet::Codec for Meta {
 pub enum Element {
     /// One tick's input.
     Input {
-        /// The 12-bit joypad word (the GBA layout, which the DS extends
-        /// with X and Y; higher bits must be 0).
+        /// The 13-bit input word (the GBA pad layout, which the DS
+        /// extends with X, Y and its mic bit; higher bits must be 0).
         joyflags: u16,
         /// The stylus, for the console that has one: its position on
         /// the touch screen in that screen's own pixels (the DS's fits
@@ -241,7 +242,7 @@ mod tests {
     #[test]
     fn touched_input_exact_bytes() {
         // A stylus sample sets bit 6 of the tag byte and appends (x, y); the
-        // 12-bit joyflags' high nibble shares the tag byte below it.
+        // joyflags' high bits share the tag byte below it.
         let f = data_frame(
             9,
             9,
@@ -261,7 +262,9 @@ mod tests {
             6,
             Meta { tick_advantage: -3 },
             vec![
-                keys(0xfff),
+                // Every input bit set, mic included: the tag byte carries
+                // the top of the word, so a full one has to survive it.
+                keys(0x1fff),
                 keys(0),
                 Element::Input {
                     joyflags: 0x3,

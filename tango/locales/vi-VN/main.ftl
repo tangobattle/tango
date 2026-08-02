@@ -329,6 +329,7 @@ input-key-l = L
 input-key-r = R
 input-key-start = Start
 input-key-select = Select
+input-key-mic = Thổi vào micrô
 input-key-speed-up = Tua nhanh
 input-gamepad-south = Nút A
 input-gamepad-east = Nút B

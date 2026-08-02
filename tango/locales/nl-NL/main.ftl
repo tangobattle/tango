@@ -335,6 +335,7 @@ input-key-l = L
 input-key-r = R
 input-key-start = Start
 input-key-select = Select
+input-key-mic = In de microfoon blazen
 input-key-speed-up = Versnellen
 input-gamepad-south = A-knop
 input-gamepad-east = B-knop

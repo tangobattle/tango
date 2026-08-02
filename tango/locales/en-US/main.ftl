@@ -319,6 +319,7 @@ input-key-l = L
 input-key-r = R
 input-key-start = Start
 input-key-select = Select
+input-key-mic = Blow into mic
 input-key-speed-up = Fast-forward
 input-gamepad-south = Button A
 input-gamepad-east = Button B

@@ -1098,23 +1098,26 @@ fn settings_input<'a>(
         })
         .style(gba_shell);
 
-    // Fast-forward isn't a console key; it sits under the shell as a
-    // pill sharing the key chrome, with Reset on the opposite edge.
-    let speed = button(
-        row![
-            Icon::FastForward.widget().size(TEXT_BODY),
-            text(t!(lang, "input-key-speed-up")).size(TEXT_BODY),
-        ]
-        .spacing(6)
-        .align_y(iced::Alignment::Center),
-    )
-    .padding([5.0, 12.0])
-    .style(gba_key(
-        state.selected_key == Some(input::MappedKey::SpeedUp),
-        lit(input::MappedKey::SpeedUp),
-        999.0.into(),
-    ))
-    .on_press(Message::BindingSlotSelected(input::MappedKey::SpeedUp));
+    // Neither fast-forward nor the DS's mic is a key on the shell: one
+    // is the host's own knob and the other is a hole in the hinge. Both
+    // sit under the shell as pills sharing the key chrome, with Reset on
+    // the opposite edge.
+    let wide_pill = |icon: Icon, label: String, k: input::MappedKey| {
+        button(
+            row![icon.widget().size(TEXT_BODY), text(label).size(TEXT_BODY)]
+                .spacing(6)
+                .align_y(iced::Alignment::Center),
+        )
+        .padding([5.0, 12.0])
+        .style(gba_key(state.selected_key == Some(k), lit(k), 999.0.into()))
+        .on_press(Message::BindingSlotSelected(k))
+    };
+    let speed = wide_pill(
+        Icon::FastForward,
+        t!(lang, "input-key-speed-up"),
+        input::MappedKey::SpeedUp,
+    );
+    let mic = wide_pill(Icon::Wind, t!(lang, "input-key-mic"), input::MappedKey::Mic);
     let reset = widgets::labeled_icon_button(
         Icon::RefreshCw,
         t!(lang, "settings-input-reset"),
@@ -1122,7 +1125,8 @@ fn settings_input<'a>(
         STANDARD_PADDING,
         widgets::neutral,
     );
-    let below = row![speed, horizontal_space(), reset]
+    let below = row![speed, mic, horizontal_space(), reset]
+        .spacing(8)
         .width(Length::Fixed(GBA_SHELL_WIDTH))
         .align_y(iced::Alignment::Center);
 
@@ -1149,6 +1153,7 @@ fn mapped_key_label(lang: &LanguageIdentifier, k: input::MappedKey) -> String {
         input::MappedKey::R => t!(lang, "input-key-r"),
         input::MappedKey::Start => t!(lang, "input-key-start"),
         input::MappedKey::Select => t!(lang, "input-key-select"),
+        input::MappedKey::Mic => t!(lang, "input-key-mic"),
         input::MappedKey::SpeedUp => t!(lang, "input-key-speed-up"),
     }
 }

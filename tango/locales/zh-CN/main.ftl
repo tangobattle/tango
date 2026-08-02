@@ -315,6 +315,7 @@ input-key-l = L
 input-key-r = R
 input-key-start = Start
 input-key-select = Select
+input-key-mic = 对着麦克风吹气
 input-key-speed-up = 快进
 input-gamepad-south = A 键
 input-gamepad-east = B 键

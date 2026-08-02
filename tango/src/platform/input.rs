@@ -386,6 +386,10 @@ pub struct Mapping {
     pub r: Vec<PhysicalInput>,
     pub start: Vec<PhysicalInput>,
     pub select: Vec<PhysicalInput>,
+    /// DS only — holds white noise on the console's microphone, which
+    /// is what a cart asking to be blown into hears. GBA engines mask
+    /// the bit off like they do X and Y.
+    pub mic: Vec<PhysicalInput>,
     pub speed_up: Vec<PhysicalInput>,
 }
 
@@ -429,6 +433,10 @@ impl Default for Mapping {
             r: vec![key(Code::KeyS), btn(GamepadButton::RightShoulder)],
             start: vec![key(Code::Enter), btn(GamepadButton::Start)],
             select: vec![key(Code::Space), btn(GamepadButton::Select)],
+            // No pad default: the DS's mic has no button to inherit, and
+            // a face button spent on it would be one a DS player can't
+            // spare.
+            mic: vec![key(Code::KeyE)],
             speed_up: vec![key(Code::ShiftLeft)],
         }
     }
@@ -451,6 +459,7 @@ impl Mapping {
             MappedKey::R => &self.r,
             MappedKey::Start => &self.start,
             MappedKey::Select => &self.select,
+            MappedKey::Mic => &self.mic,
             MappedKey::SpeedUp => &self.speed_up,
         }
     }
@@ -469,12 +478,16 @@ impl Mapping {
             MappedKey::R => &mut self.r,
             MappedKey::Start => &mut self.start,
             MappedKey::Select => &mut self.select,
+            MappedKey::Mic => &mut self.mic,
             MappedKey::SpeedUp => &mut self.speed_up,
         }
     }
 
-    /// Compute the GBA joyflag bitmask for the supplied held
-    /// state. Speed-up isn't a joypad bit; check it separately via
+    /// Compute the joyflag bitmask for the supplied held state — the
+    /// pad plus the DS's mic, which is a bit of the same word because
+    /// everything downstream carries that word and nothing else.
+    /// Speed-up is not in it: it is the host's own knob, not the
+    /// console's input, so check it separately via
     /// [`Self::speed_up_held`].
     pub fn to_joyflags(&self, state: &HeldState) -> u32 {
         use tango_session::keys;
@@ -497,6 +510,7 @@ impl Mapping {
             | bit_if(&self.r, keys::R)
             | bit_if(&self.start, keys::START)
             | bit_if(&self.select, keys::SELECT)
+            | bit_if(&self.mic, keys::MIC)
     }
 
     pub fn speed_up_held(&self, state: &HeldState) -> bool {
@@ -504,8 +518,9 @@ impl Mapping {
     }
 }
 
-/// The GBA keys the user can rebind. Drives the settings UI
-/// layout + the per-key add/remove flow.
+/// The console inputs the user can rebind, plus the host's own
+/// speed-up. Drives the settings UI layout + the per-key add/remove
+/// flow.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MappedKey {
     Up,
@@ -520,6 +535,8 @@ pub enum MappedKey {
     R,
     Start,
     Select,
+    /// DS only: white noise on the microphone.
+    Mic,
     SpeedUp,
 }
 

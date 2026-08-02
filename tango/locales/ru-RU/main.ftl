@@ -337,6 +337,7 @@ input-key-l = L
 input-key-r = R
 input-key-start = Start
 input-key-select = Select
+input-key-mic = Дуть в микрофон
 input-key-speed-up = Ускорение
 input-gamepad-south = Кнопка A
 input-gamepad-east = Кнопка B

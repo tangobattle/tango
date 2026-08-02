@@ -206,7 +206,13 @@ impl DsBackend {
 /// actually boots is rebuilt from the fixed source, so a cart that ever
 /// takes the root of a large number gets a different answer here than
 /// it did on any build before this one.
-const BACKEND_SIM_VERSION: u16 = 2;
+///
+/// 3: the console can be blown into. A tick's input carries a mic bit
+/// now ([`MIC`](tango_match::keys::MIC)), the noise it feeds is
+/// generated inside the core so a rewound console hears the same static
+/// twice, and the savestate carries that generator. An older build
+/// reading a recording of this drops the bit and hears silence.
+const BACKEND_SIM_VERSION: u16 = 3;
 
 impl tango_match::Backend for DsBackend {
     fn sim_version(&self) -> u32 {

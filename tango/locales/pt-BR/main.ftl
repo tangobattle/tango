@@ -335,6 +335,7 @@ input-key-l = L
 input-key-r = R
 input-key-start = Start
 input-key-select = Select
+input-key-mic = Soprar no microfone
 input-key-speed-up = Avanço rápido
 input-gamepad-south = Botão A
 input-gamepad-east = Botão B

@@ -77,7 +77,7 @@ pub enum Error {
     Unsupported(&'static str),
 }
 
-/// The joypad bits a match speaks, engine-neutral.
+/// The input bits a match speaks, engine-neutral.
 ///
 /// This is the GBA layout, which the DS extends with X and Y — so one
 /// vocabulary covers both consoles and hosts need no emulator
@@ -98,7 +98,18 @@ pub mod keys {
     /// DS only.
     pub const Y: u32 = 1 << 11;
 
-    /// Every named bit — the widest pad this vocabulary can express,
+    /// DS only, and the one bit here that is not a button: white noise
+    /// held on the console's microphone.
+    ///
+    /// It rides the pad word because everything that has to carry it
+    /// already carries that word and nothing else — the netplay wire,
+    /// the rollback engine's input queues and its prediction, the replay
+    /// stream. A mic channel of its own would be the same bit spelled
+    /// four more times, and every one of those places would have to be
+    /// taught that a console can be blown into.
+    pub const MIC: u32 = 1 << 12;
+
+    /// Every named bit — the widest input this vocabulary can express,
     /// which is also what the netplay wire's input element carries.
-    pub const MASK: u32 = 0xfff;
+    pub const MASK: u32 = 0x1fff;
 }

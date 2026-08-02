@@ -309,6 +309,7 @@ input-key-l = L
 input-key-r = R
 input-key-start = スタート
 input-key-select = セレクト
+input-key-mic = マイクに息をふきかける
 input-key-speed-up = 早送り
 input-gamepad-south = Aボタン
 input-gamepad-east = Bボタン

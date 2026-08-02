@@ -85,19 +85,19 @@
 
 use std::collections::HashMap;
 
-use tango_backend_melonds::{Input, Link};
+use tango_backend_melonds::Link;
 use tango_match::{HostInput, Link as _};
 
 /// One scripted step of the classic walk: hold `input` for `frames`.
 struct Step {
     frames: u32,
-    input: Input,
+    input: HostInput,
 }
 
 const fn hold(frames: u32, keys: u32) -> Step {
     Step {
         frames,
-        input: Input { keys, touch: None },
+        input: HostInput { keys, touch: None },
     }
 }
 
@@ -105,7 +105,7 @@ const fn hold(frames: u32, keys: u32) -> Step {
 const fn tap(frames: u32, x: u16, y: u16) -> Step {
     Step {
         frames,
-        input: Input {
+        input: HostInput {
             keys: 0,
             touch: Some((x, y)),
         },
@@ -212,7 +212,7 @@ const JOIN_TAIL: &[Step] = &[
 ];
 
 /// Expand a step list into one input per frame.
-fn expand(steps: &[&[Step]]) -> Vec<Input> {
+fn expand(steps: &[&[Step]]) -> Vec<HostInput> {
     let mut out = Vec::new();
     for list in steps {
         for step in *list {
@@ -222,13 +222,13 @@ fn expand(steps: &[&[Step]]) -> Vec<Input> {
     out
 }
 
-fn parse_input(s: &str) -> Input {
+fn parse_input(s: &str) -> HostInput {
     if s == "-" {
-        return Input::default();
+        return HostInput::default();
     }
     if let Some(xy) = s.strip_prefix("T:") {
         let (x, y) = xy.split_once(',').unwrap();
-        return Input {
+        return HostInput {
             keys: 0,
             touch: Some((x.parse().unwrap(), y.parse().unwrap())),
         };
@@ -248,10 +248,11 @@ fn parse_input(s: &str) -> Input {
             "LB" => 1 << 9,
             "X" => 1 << 10,
             "Y" => 1 << 11,
+            "MIC" => 1 << 12,
             k => panic!("unknown key {k:?}"),
         })
         .fold(0, |a, b| a | b);
-    Input { keys, touch: None }
+    HostInput { keys, touch: None }
 }
 
 fn parse_hex(s: &str) -> u32 {
@@ -696,14 +697,14 @@ fn main() {
         })
         .unwrap_or_default();
 
-    let walk: [Vec<Input>; 2] = if opt.contains_key("walk") {
+    let walk: [Vec<HostInput>; 2] = if opt.contains_key("walk") {
         [expand(&[TO_HOST_PICK, HOST_TAIL]), expand(&[TO_HOST_PICK, JOIN_TAIL])]
     } else {
         [Vec::new(), Vec::new()]
     };
 
     // (frame, seat, input), seat 2 = both.
-    let mut script: Vec<(u32, usize, Input)> = Vec::new();
+    let mut script: Vec<(u32, usize, HostInput)> = Vec::new();
     if let Some(path) = one("script") {
         for line in std::fs::read_to_string(path).unwrap().lines() {
             let line = line.split('#').next().unwrap().trim();
@@ -856,7 +857,7 @@ fn main() {
         .unwrap_or_default();
 
     let mut watch_prev: Vec<[Vec<u8>; 2]> = watches.iter().map(|&(_, l)| [vec![0; l], vec![0; l]]).collect();
-    let mut cur: [Input; 2] = [Input::default(); 2];
+    let mut cur: [HostInput; 2] = [HostInput::default(); 2];
     let mut si = 0usize;
 
     for f in 0..frames {
@@ -871,7 +872,7 @@ fn main() {
             if let Some(input) = walk[seat].get(f as usize) {
                 cur[seat] = *input;
             } else if opt.contains_key("walk") {
-                cur[seat] = Input::default();
+                cur[seat] = HostInput::default();
             }
         }
         while si < script.len() && script[si].0 <= f {
@@ -922,10 +923,7 @@ fn main() {
             }
         }
 
-        link.tick(cur.map(|i| HostInput {
-            keys: i.keys,
-            touch: i.touch,
-        }));
+        link.tick(cur);
 
         for seat in 0..2 {
             for &(a, b, ref path) in &covers[seat] {
