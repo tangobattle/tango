@@ -75,10 +75,30 @@ pub static EXEOSS: Game = Game {
     save_editor: &ui::SAVE_EDITOR,
 };
 
+/// Expands to this crate's per-locale Fluent fragments for `$fam` (bare
+/// keys; the family supplies the namespace).
+macro_rules! family_translations {
+    ($fam:literal) => {
+        &[
+            ("de-DE", include_str!(concat!("../locales/de-DE/", $fam, ".ftl"))),
+            ("en-US", include_str!(concat!("../locales/en-US/", $fam, ".ftl"))),
+            ("es-419", include_str!(concat!("../locales/es-419/", $fam, ".ftl"))),
+            ("fr-FR", include_str!(concat!("../locales/fr-FR/", $fam, ".ftl"))),
+            ("ja-JP", include_str!(concat!("../locales/ja-JP/", $fam, ".ftl"))),
+            ("nl-NL", include_str!(concat!("../locales/nl-NL/", $fam, ".ftl"))),
+            ("pt-BR", include_str!(concat!("../locales/pt-BR/", $fam, ".ftl"))),
+            ("ru-RU", include_str!(concat!("../locales/ru-RU/", $fam, ".ftl"))),
+            ("vi-VN", include_str!(concat!("../locales/vi-VN/", $fam, ".ftl"))),
+            ("zh-CN", include_str!(concat!("../locales/zh-CN/", $fam, ".ftl"))),
+            ("zh-TW", include_str!(concat!("../locales/zh-TW/", $fam, ".ftl"))),
+        ]
+    };
+}
+
 pub static EXEOSS_FAMILY: Family = Family {
     id: "exeoss",
     games: &[&EXEOSS],
-    translations: &[("en-US", include_str!("../locales/en-US/exeoss.ftl"))],
+    translations: family_translations!("exeoss"),
 };
 
 /// Every game family this crate provides.

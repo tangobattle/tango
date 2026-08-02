@@ -1,0 +1,5 @@
+name = ROCKMAN EXE OPERATE SHOOTING STAR
+short = EXEOSS
+variant-0 = ROCKMAN EXE OPERATE SHOOTING STAR
+variant-0-short = OPERATE SHOOTING STAR
+match-type-0-0 = 一局

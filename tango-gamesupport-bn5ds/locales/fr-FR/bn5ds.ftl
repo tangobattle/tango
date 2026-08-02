@@ -1,0 +1,8 @@
+name = Mega Man Battle Network 5: Double Team DS
+short = BN5DS
+variant-0 = Mega Man Battle Network 5: Double Team DS
+variant-0-short = Double Team
+match-type-0-0 = Une (équipe)
+match-type-0-1 = Une
+match-type-1-0 = Trois (équipe)
+match-type-1-1 = Trois

@@ -1,0 +1,8 @@
+name = Rockman EXE 5 DS: Twin Leaders
+short = EXE5DS
+variant-0 = Rockman EXE 5 DS: Twin Leaders
+variant-0-short = Twin Leaders
+match-type-0-0 = Enkelvoudig (team)
+match-type-0-1 = Enkelvoudig
+match-type-1-0 = Driedubbel (team)
+match-type-1-1 = Driedubbel
