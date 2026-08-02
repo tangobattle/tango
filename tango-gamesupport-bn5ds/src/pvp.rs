@@ -172,6 +172,24 @@ const UNIT_STRIDE: u32 = 0xdc;
 /// moment the scene word returns to the field.
 const BATTLE_SESSION: u32 = 0x0003_0102;
 
+/// The music a link battle plays, as sequence numbers in the cart's
+/// sound archive: `BGM_BATTLE` and `BGM_BOSS`, the archive's own names
+/// for them.
+///
+/// A round starts one of these and holds it to the end. A Triple
+/// Battle starts one per round, and **the deciding round is the boss
+/// theme** — watched in a recorded three-round set, which ran
+/// `BGM_BATTLE` for rounds one and two and `BGM_BOSS` for round three.
+///
+/// The jingles that cart plays between rounds are deliberately left
+/// alone: the same set played `BGM_LOSE` and `BGM_RESULT_2` at its
+/// round boundaries and `BGM_LOSE` again at the match end, and those
+/// are the wind-down a player watches, not the battle's music — the
+/// same line the mgba families draw when they skip only the
+/// battle-start call. The comm screens either side keep their music
+/// for the same reason.
+const BATTLE_THEMES: &[u16] = &[0x15, 0x16];
+
 impl tango_backend_melonds::GameSupport for Pvp {
     /// 1: priming hands off when the battle transition starts (the board
     /// module's departure) instead of when the battle module arrives, a
@@ -231,9 +249,9 @@ impl tango_backend_melonds::GameSupport for Pvp {
         self.layout.walk(link, match_type, rng_seed, cancel)
     }
 
-    /// Silent battles: the battle theme's own volume, turned down to
-    /// nothing where the sound driver reads it (see
-    /// [`priming::Layout::bgm_record`]).
+    /// Silent battles: the battle themes' own volumes, turned down to
+    /// nothing where the sound driver reads them (see
+    /// [`BATTLE_THEMES`] and [`priming::Layout::sound_archive`]).
     ///
     /// The sequence still loads and still starts — which is the whole
     /// point, because on this engine that load is a cartridge read
@@ -243,8 +261,17 @@ impl tango_backend_melonds::GameSupport for Pvp {
     /// Skipping the start instead was measured doing exactly that: the
     /// game's frame counter stood one ahead for the rest of the match.
     fn silence_bgm(&self, nds: &mut Nds) {
-        if !tango_backend_melonds::mute_sequence(nds, self.layout.bgm_record()) {
-            log::warn!("{}: no battle BGM record in main RAM; not muting", self.layout.tag());
+        let Some(archive) = self.layout.sound_archive(nds) else {
+            log::warn!("{}: no sound archive loaded; not muting", self.layout.tag());
+            return;
+        };
+        let muted = tango_backend_melonds::mute_sequences(nds, archive, BATTLE_THEMES);
+        if muted != BATTLE_THEMES.len() {
+            log::warn!(
+                "{}: muted {muted} of {} battle themes",
+                self.layout.tag(),
+                BATTLE_THEMES.len()
+            );
         }
     }
 
@@ -460,20 +487,19 @@ pub mod priming {
         tag: &'static str,
         code: CodeOffsets,
         ram: RAMOffsets,
-        /// `BGM_BATTLE`'s SDAT record, as this build's ROM carries
-        /// it: the sequence the mute turns down (see
-        /// [`mute_sequence`](tango_backend_melonds::mute_sequence)).
+        /// Where the sound library keeps its pointer to the loaded
+        /// sound archive — the one word the mute has to be told,
+        /// because everything past it the archive names itself.
         ///
-        /// The one and only piece of music a primed session ever asks
-        /// for. The battle starts it — sequence 0x15, on player 31
-        /// (`PLAYER_BGM`) — and nothing asks again for as long as the
-        /// battle runs; a Triple Battle's later rounds start the same
-        /// sequence, so one muted record covers the whole set. The
-        /// menus either side of the match keep their own music.
-        ///
-        /// Read out of the ROM's own INFO block. The two builds differ
-        /// by one byte, the bank the theme's instruments come from.
-        bgm_record: [u8; 12],
+        /// The library's own route: this word holds the archive
+        /// context, the context holds the INFO block at `+0x88`, and
+        /// the block's header says where its sequence table lives.
+        /// Taken from the literal pool of the library function that
+        /// starts a sequence, which loads exactly this chain before it
+        /// looks a sequence's record up. Nothing is searched for, so a
+        /// wrong answer here reads as no archive rather than as some
+        /// other bytes that happened to match.
+        sound_archive_ptr: u32,
     }
 
     /// Sites in the ARM9's code: what the walk traps, and the branches
@@ -807,7 +833,7 @@ pub mod priming {
     #[rustfmt::skip]
     pub static US: Layout = Layout {
         tag: "bn5ds",
-        bgm_record: [0x14, 0, 0, 0, 0x51, 0, 80, 0, 0, 31, 0, 0],
+        sound_archive_ptr: 0x0216_2d84,
         code: CodeOffsets {
             logo_hold:                0x0206_4dd0,
             logo_expired:             0x0206_4dda,
@@ -876,7 +902,7 @@ pub mod priming {
     #[rustfmt::skip]
     pub static JP: Layout = Layout {
         tag: "exe5ds",
-        bgm_record: [0x14, 0, 0, 0, 0x52, 0, 80, 0, 0, 31, 0, 0],
+        sound_archive_ptr: 0x0215_bb24,
         code: CodeOffsets {
             logo_hold:                0x0206_4b90,
             logo_expired:             0x0206_4b9a,
@@ -1127,10 +1153,19 @@ pub mod priming {
             self.ram.substate
         }
 
-        /// This build's battle-theme SDAT record, for the engine's
-        /// mute (see [`Layout::bgm_record`]).
-        pub(super) fn bgm_record(&self) -> [u8; 12] {
-            self.bgm_record
+        /// The loaded sound archive's INFO block, walked the way the
+        /// sound library walks it (see
+        /// [`Layout::sound_archive_ptr`]), or `None` before anything
+        /// has loaded one.
+        pub(super) fn sound_archive(&self, nds: &mut Nds) -> Option<u32> {
+            /// Where an archive context keeps its INFO block.
+            const CONTEXT_INFO: u32 = 0x88;
+            let context = nds.read32(self.sound_archive_ptr);
+            if context == 0 {
+                return None;
+            }
+            let info = nds.read32(context + CONTEXT_INFO);
+            (nds.read32(info) == u32::from_le_bytes(*b"INFO")).then_some(info)
         }
 
         /// Which build this is, for log lines.

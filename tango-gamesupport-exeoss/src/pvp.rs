@@ -100,7 +100,7 @@ impl tango_backend_melonds::GameSupport for Pvp {
 
     /// Silent battles: the netbattle theme's own volume, turned down
     /// to nothing where the sound driver reads it (see
-    /// [`BGM_RECORD`](priming::BGM_RECORD)).
+    /// [`BATTLE_THEMES`](priming::BATTLE_THEMES)).
     ///
     /// The sequence still loads and still starts — which is the whole
     /// point, because on this engine that load is a cartridge read
@@ -110,8 +110,12 @@ impl tango_backend_melonds::GameSupport for Pvp {
     /// Skipping the start instead was measured doing exactly that: the
     /// game's frame counter stood one ahead for the rest of the match.
     fn silence_bgm(&self, nds: &mut Nds) {
-        if !tango_backend_melonds::mute_sequence(nds, priming::BGM_RECORD) {
-            log::warn!("exeoss: no battle BGM record in main RAM; not muting");
+        let Some(archive) = priming::sound_archive(nds) else {
+            log::warn!("exeoss: no sound archive loaded; not muting");
+            return;
+        };
+        if tango_backend_melonds::mute_sequences(nds, archive, priming::BATTLE_THEMES) == 0 {
+            log::warn!("exeoss: the archive holds no battle theme where it says; not muting");
         }
     }
 
@@ -305,20 +309,43 @@ pub mod priming {
     use tango_backend_melonds::{Link, Nds};
     use tango_match::{HostInput, Link as _};
 
-    /// The netbattle theme's SDAT record, as the ROM carries
-    /// it: the sequence the mute turns down (see
-    /// [`mute_sequence`](tango_backend_melonds::mute_sequence)).
+    /// The music a link battle plays, as a sequence number in the
+    /// cart's first sound archive. One battle, one theme: this cart's
+    /// netbattle is a single battle with nothing after it, and a
+    /// primed pair was watched starting this and nothing else. The
+    /// comm screens' own music either side of it is left alone.
     ///
-    /// The one and only piece of music a primed session ever asks
-    /// for — sequence 0x0f of the cart's first archive, on player
-    /// 31 — started as the battle comes up and never asked for
-    /// again while it runs. The menus either side of the match
-    /// keep their own music.
+    /// Found by read-watching the archive's sequence records in main
+    /// RAM — the sound library has to consult one to start anything —
+    /// while a primed pair walked into its battle.
+    pub const BATTLE_THEMES: &[u16] = &[0x0f];
+
+    /// The loaded sound archive's INFO block, walked the way the sound
+    /// library walks it, or `None` before anything has loaded one.
     ///
-    /// Found by read-watching the archive's sequence records in
-    /// main RAM (the sound library has to consult one to start
-    /// anything), and read out of the ROM's own INFO block.
-    pub const BGM_RECORD: [u8; 12] = [0x0e, 0, 0, 0, 0x78, 0, 66, 0, 0, 31, 0, 0];
+    /// The library's own route, out of the literal pool of the
+    /// function that starts a sequence: a fixed word holds a block
+    /// whose `+8` is the sound context, `+0x14c0` of that is the
+    /// archive context, and `+0x8c` of *that* is the INFO block, whose
+    /// header says where its sequence table lives. Nothing is searched
+    /// for, so a wrong answer reads as no archive.
+    pub fn sound_archive(nds: &mut Nds) -> Option<u32> {
+        const SOUND_ROOT: u32 = 0x0219_33c8;
+        const ROOT_CONTEXT: u32 = 0x8;
+        const CONTEXT_ARCHIVES: u32 = 0x14c0;
+        const ARCHIVE_INFO: u32 = 0x8c;
+
+        let context = nds.read32(SOUND_ROOT + ROOT_CONTEXT);
+        if context == 0 {
+            return None;
+        }
+        let archive = nds.read32(context + CONTEXT_ARCHIVES);
+        if archive == 0 {
+            return None;
+        }
+        let info = nds.read32(archive + ARCHIVE_INFO);
+        (nds.read32(info) == u32::from_le_bytes(*b"INFO")).then_some(info)
+    }
 
     /// Sites in the ARM9's code: what the walk traps, and the branches
     /// it redirects into. Every one of these is **Thumb**, and every

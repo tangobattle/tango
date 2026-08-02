@@ -124,40 +124,50 @@ pub trait GameSupport: Sync {
     }
 }
 
-/// Turn one SDAT sequence's volume down to nothing, wherever the
-/// archive's INFO block happens to be living. Answers whether it
-/// landed.
+/// Turn named sequences of a loaded SDAT archive down to nothing, and
+/// answer how many were found. `info` is the archive's INFO block in
+/// main RAM — the game's own, resolved the way the game resolves it
+/// (see [`GameSupport::silence_bgm`]).
 ///
-/// A DS cart's music is sequences in an SDAT archive, and the
-/// archive's INFO block — one 12-byte record per sequence, its volume
-/// at +6 — is copied into main RAM at sound init and read from there
-/// each time a sequence starts. Zeroing that byte *before* the start
-/// is therefore a mute the sound driver applies for itself: the
-/// request, the file load and the start all still happen and still
-/// cost what they cost, and only the mixing comes out silent. Zeroing
-/// it after a sequence has started does nothing — the volume is read
-/// at the start, which is why this is a boot-time write and not a
-/// standing trap.
+/// A DS cart's music is sequences in an SDAT archive. The archive's
+/// INFO block is copied into main RAM at sound init, and the sound
+/// library reads a sequence's record out of it every time it starts
+/// one: the block's header names where its sequence table lives, the
+/// table holds one offset per sequence, and the 12-byte record at that
+/// offset carries the sequence's volume at +6. This walks that
+/// structure exactly as the library does — header, table, record —
+/// rather than looking for anything, so a sequence is either found
+/// where the archive says it is or reported missing.
 ///
-/// `record` is the record as the cart's own ROM carries it. The
-/// block's address is a heap allocation rather than a fixed one, so
-/// the record is found rather than named: it is matched on the fields
-/// that identify it — the file it plays, its bank, its player — with
-/// the volume byte itself skipped, so that a pair muted once is still
-/// matched if it is muted again.
-pub fn mute_sequence(nds: &mut crate::Nds, record: [u8; 12]) -> bool {
-    /// Everything in the record except the volume at +6 and the two
-    /// bytes of padding at +10, which say nothing about which sequence
-    /// this is.
-    const IDENTIFYING: [usize; 9] = [0, 1, 2, 3, 4, 5, 7, 8, 9];
-    let found = {
-        let ram = nds.main_ram();
-        ram.windows(record.len())
-            .position(|w| IDENTIFYING.iter().all(|&i| w[i] == record[i]))
-    };
-    let Some(offset) = found else { return false };
-    nds.write8(0x0200_0000 + offset as u32 + 6, 0);
-    true
+/// Zeroing the volume *before* a sequence starts is a mute the sound
+/// driver applies for itself: the request, the file load and the start
+/// all still happen and still cost what they cost, and only the mixing
+/// comes out silent. Zeroing it after a sequence has started does
+/// nothing — the volume is read once, at the start — which is why this
+/// is a boot-time write and not a standing trap.
+pub fn mute_sequences(nds: &mut crate::Nds, info: u32, sequences: &[u16]) -> usize {
+    /// The INFO header's own pointer to its sequence table, as a byte
+    /// offset from the block. The library loads exactly this word
+    /// before it looks a sequence up.
+    const SEQUENCE_TABLE: u32 = 8;
+    /// Where a sequence's record keeps its volume.
+    const RECORD_VOLUME: u32 = 6;
+
+    let table = info + nds.read32(info + SEQUENCE_TABLE);
+    let count = nds.read32(table);
+    let mut muted = 0;
+    for &sequence in sequences {
+        if u32::from(sequence) >= count {
+            continue;
+        }
+        let offset = nds.read32(table + 4 + 4 * u32::from(sequence));
+        if offset == 0 {
+            continue;
+        }
+        nds.write8(info + offset + RECORD_VOLUME, 0);
+        muted += 1;
+    }
+    muted
 }
 
 /// A DS cartridge's engine support, as the engine-neutral backend its
