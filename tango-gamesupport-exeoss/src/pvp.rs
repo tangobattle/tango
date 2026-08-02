@@ -98,6 +98,23 @@ impl tango_backend_melonds::GameSupport for Pvp {
         priming::walk(link, rng_seed, cancel)
     }
 
+    /// Silent battles: the netbattle theme's own volume, turned down
+    /// to nothing where the sound driver reads it (see
+    /// [`BGM_RECORD`](priming::BGM_RECORD)).
+    ///
+    /// The sequence still loads and still starts — which is the whole
+    /// point, because on this engine that load is a cartridge read
+    /// worth a frame of the game's own clock, and a local setting may
+    /// not spend a frame a peer doesn't (see
+    /// [`GameSupport::silence_bgm`](tango_backend_melonds::GameSupport::silence_bgm)).
+    /// Skipping the start instead was measured doing exactly that: the
+    /// game's frame counter stood one ahead for the rest of the match.
+    fn silence_bgm(&self, nds: &mut Nds) {
+        if !tango_backend_melonds::mute_sequence(nds, priming::BGM_RECORD) {
+            log::warn!("exeoss: no battle BGM record in main RAM; not muting");
+        }
+    }
+
     /// The upper screen alone, in the one mode this cart has. Its
     /// netbattle plays entirely above: once priming has walked past
     /// the Network menus, nothing the player does reaches the touch
@@ -287,6 +304,21 @@ impl tango_backend_melonds::GameSupport for Pvp {
 pub mod priming {
     use tango_backend_melonds::{Link, Nds};
     use tango_match::{HostInput, Link as _};
+
+    /// The netbattle theme's SDAT record, as the ROM carries
+    /// it: the sequence the mute turns down (see
+    /// [`mute_sequence`](tango_backend_melonds::mute_sequence)).
+    ///
+    /// The one and only piece of music a primed session ever asks
+    /// for — sequence 0x0f of the cart's first archive, on player
+    /// 31 — started as the battle comes up and never asked for
+    /// again while it runs. The menus either side of the match
+    /// keep their own music.
+    ///
+    /// Found by read-watching the archive's sequence records in
+    /// main RAM (the sound library has to consult one to start
+    /// anything), and read out of the ROM's own INFO block.
+    pub const BGM_RECORD: [u8; 12] = [0x0e, 0, 0, 0, 0x78, 0, 66, 0, 0, 31, 0, 0];
 
     /// Sites in the ARM9's code: what the walk traps, and the branches
     /// it redirects into. Every one of these is **Thumb**, and every

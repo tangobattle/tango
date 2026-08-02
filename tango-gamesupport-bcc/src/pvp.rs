@@ -202,6 +202,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
         let rom = &self.offsets.rom;
         let ewram = &self.offsets.ewram;
         let ctx = ewram.ctx;
+        let disable_bgm = config.disable_bgm;
         // Mode menu cursor: 0 = Normal, 1 = Random. Anything else the
         // host might send (there is no third netplay mode) walks Normal.
         let mode = if config.match_type.0 == 1 { 1u8 } else { 0u8 };
@@ -323,6 +324,23 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 },
             ),
             // ----- the handoff and the round lifecycle -----
+            (
+                // The setup state's own BGM call (a 4-byte `bl`, four
+                // instructions past the state's entry below): skipped
+                // when the host asked for silent battles. The track is
+                // rolled by the instructions before the call, so the
+                // game's RNG steps either way — but the mixing this
+                // saves is not free to the simulation; see
+                // [`ROMOffsets::battle_start_play_music_call`].
+                rom.battle_start_play_music_call,
+                Box::new(move |core: &mut mgba::core::Core| {
+                    if !disable_bgm {
+                        return;
+                    }
+                    let pc = core.gba().cpu().thumb_pc();
+                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                }),
+            ),
             (
                 // The battle's own setup state, which runs for exactly
                 // one frame at the head of each battle — the first thing
@@ -462,6 +480,39 @@ struct ROMOffsets {
     /// each battle, and the frame its warp-in cutscene begins on. The
     /// priming handoff and the round signal.
     battle_setup_state: u32,
+    /// The battle's own BGM call (a 4-byte `bl`), four instructions
+    /// past [`Self::battle_setup_state`]: the setup state stops
+    /// whatever the PET was playing, rolls a track — `rng() % 3 + 0xc`,
+    /// the three battle themes the single-player code picks from too —
+    /// and starts it. PC-skipped when the host asked for silent battles
+    /// (`PrimeConfig::disable_bgm`). The roll sits in the instructions
+    /// *before* the call, so the game's RNG steps whether or not the
+    /// music plays and the draw the battle runs on is the same either
+    /// way.
+    ///
+    /// Unlike the BN families, this cart does not keep the same *pace*
+    /// with the music off. A silent battle asks the sound driver for
+    /// less mixing per frame, and this game has little enough headroom
+    /// that a frame it used to drop it now keeps: a probe pair tapping
+    /// through one battle came out two frames ahead of the same pair
+    /// with the music on, and stayed exactly two ahead — the same
+    /// battle, same chips in the same order, just reached sooner.
+    /// Nothing about the setting is negotiated, so two players who
+    /// disagree about it run those two frames apart. The BN families
+    /// were measured for this and do not do it: bn6 plays a whole
+    /// triple-battle set through the live stack to byte-identical
+    /// events either way. The DS carts turn their music *down* rather
+    /// than skip it for exactly this reason; there is no equivalent
+    /// here, where the cost is per-frame mixing rather than a one-time
+    /// load, so this stays a skip.
+    ///
+    /// The two builds' battle module is not one shift apart — the
+    /// setup state and [`Self::battle_exit`] sit 0xce apart in US and
+    /// 0x140 apart in JP — so this was matched rather than offset:
+    /// state 0's handler disassembles instruction-for-instruction
+    /// identical in both, down to the `rng() % 3 + 0xc`, and both
+    /// builds' `bl` lands on the same three-line play-music routine.
+    battle_start_play_music_call: u32,
     /// Where the game adds a win to its own scoreboard — the branch the
     /// battle's result code takes when this console won.
     round_end_win: u32,
@@ -508,6 +559,7 @@ static A89E_00: Offsets = Offsets {
         pet_module_switch_test:     0x08035e76,
         mode_menu_key_dispatch:     0x080485a4,
         battle_setup_state:         0x08048cbc,
+        battle_start_play_music_call: 0x08048cd4,
         round_end_win:              0x08034638,
         round_end_loss:             0x0803466a,
         battle_exit:                0x08048d8a,
@@ -530,6 +582,7 @@ static A89J_00: Offsets = Offsets {
         pet_module_switch_test:     0x08035bc6,
         mode_menu_key_dispatch:     0x080482b2,
         battle_setup_state:         0x080489c0,
+        battle_start_play_music_call: 0x080489d8,
         round_end_win:              0x08034368,
         round_end_loss:             0x0803439a,
         battle_exit:                0x08048b00,

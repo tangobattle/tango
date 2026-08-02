@@ -231,6 +231,23 @@ impl tango_backend_melonds::GameSupport for Pvp {
         self.layout.walk(link, match_type, rng_seed, cancel)
     }
 
+    /// Silent battles: the battle theme's own volume, turned down to
+    /// nothing where the sound driver reads it (see
+    /// [`priming::Layout::bgm_record`]).
+    ///
+    /// The sequence still loads and still starts — which is the whole
+    /// point, because on this engine that load is a cartridge read
+    /// worth a frame of the game's own clock, and a local setting may
+    /// not spend a frame a peer doesn't (see
+    /// [`GameSupport::silence_bgm`](tango_backend_melonds::GameSupport::silence_bgm)).
+    /// Skipping the start instead was measured doing exactly that: the
+    /// game's frame counter stood one ahead for the rest of the match.
+    fn silence_bgm(&self, nds: &mut Nds) {
+        if !tango_backend_melonds::mute_sequence(nds, self.layout.bgm_record()) {
+            log::warn!("{}: no battle BGM record in main RAM; not muting", self.layout.tag());
+        }
+    }
+
     /// The touch screen rides along for Team Battle and not for the
     /// plain subtypes. Same reading of `match_type.1` the walk makes
     /// (`== 0` is the team route off the Network board), so the pane
@@ -443,6 +460,20 @@ pub mod priming {
         tag: &'static str,
         code: CodeOffsets,
         ram: RAMOffsets,
+        /// `BGM_BATTLE`'s SDAT record, as this build's ROM carries
+        /// it: the sequence the mute turns down (see
+        /// [`mute_sequence`](tango_backend_melonds::mute_sequence)).
+        ///
+        /// The one and only piece of music a primed session ever asks
+        /// for. The battle starts it — sequence 0x15, on player 31
+        /// (`PLAYER_BGM`) — and nothing asks again for as long as the
+        /// battle runs; a Triple Battle's later rounds start the same
+        /// sequence, so one muted record covers the whole set. The
+        /// menus either side of the match keep their own music.
+        ///
+        /// Read out of the ROM's own INFO block. The two builds differ
+        /// by one byte, the bank the theme's instruments come from.
+        bgm_record: [u8; 12],
     }
 
     /// Sites in the ARM9's code: what the walk traps, and the branches
@@ -776,6 +807,7 @@ pub mod priming {
     #[rustfmt::skip]
     pub static US: Layout = Layout {
         tag: "bn5ds",
+        bgm_record: [0x14, 0, 0, 0, 0x51, 0, 80, 0, 0, 31, 0, 0],
         code: CodeOffsets {
             logo_hold:                0x0206_4dd0,
             logo_expired:             0x0206_4dda,
@@ -844,6 +876,7 @@ pub mod priming {
     #[rustfmt::skip]
     pub static JP: Layout = Layout {
         tag: "exe5ds",
+        bgm_record: [0x14, 0, 0, 0, 0x52, 0, 80, 0, 0, 31, 0, 0],
         code: CodeOffsets {
             logo_hold:                0x0206_4b90,
             logo_expired:             0x0206_4b9a,
@@ -1092,6 +1125,17 @@ pub mod priming {
         /// know and the telemetry's business to watch.
         pub(super) fn substate_word(&self) -> u32 {
             self.ram.substate
+        }
+
+        /// This build's battle-theme SDAT record, for the engine's
+        /// mute (see [`Layout::bgm_record`]).
+        pub(super) fn bgm_record(&self) -> [u8; 12] {
+            self.bgm_record
+        }
+
+        /// Which build this is, for log lines.
+        pub(super) fn tag(&self) -> &'static str {
+            self.tag
         }
 
         /// One console's priming traps, in lifecycle order: boot, the

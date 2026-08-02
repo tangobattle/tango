@@ -76,7 +76,8 @@ fn main() {
     let config = tango_backend_mgba::PrimeConfig {
         match_type: (match_type, 0),
         rng_seed: *b"bcc-probe-seed!!",
-        disable_bgm: false,
+        // PVP_PROBE_DISABLE_BGM: exercise the primer's battle-BGM skip.
+        disable_bgm: std::env::var("PVP_PROBE_DISABLE_BGM").is_ok(),
     };
     let events_sink = tango_match::telemetry::EventSink::new();
     let primed = [tango_backend_mgba::PrimedLatch::new(), tango_backend_mgba::PrimedLatch::new()];

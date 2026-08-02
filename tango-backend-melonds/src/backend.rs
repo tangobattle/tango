@@ -77,6 +77,32 @@ pub trait GameSupport: Sync {
         Box::new(|_: &mut crate::Nds| None)
     }
 
+    /// Silence this console's battle BGM, for a host that asked for
+    /// silent battles ([`StartConfig::disable_bgm`], and a replay's own
+    /// [`ReplayConfig::disable_bgm`]). Called on both consoles of a
+    /// freshly primed pair, once, before anyone watches it.
+    ///
+    /// The setting is **local**: peers are not told, and neither are
+    /// recordings, so a muted console and an unmuted one have to stay
+    /// the same *game* from here on. That rules out the mgba families'
+    /// answer — skipping the battle-start music call — on this engine,
+    /// where starting a sequence loads it off the cartridge and costs
+    /// the game a frame it never gets back: a muted peer would run one
+    /// frame ahead of an unmuted one for the rest of the match
+    /// (measured, on both carts here — the game's own frame counter
+    /// stands exactly one apart). What a cart does instead is turn its
+    /// music down where the driver reads the volume, so the sequence
+    /// still loads, still starts, and still costs what it always did.
+    ///
+    /// The default does nothing, for a cart with no lever found yet:
+    /// the setting is then inert rather than unmeasured.
+    ///
+    /// [`StartConfig::disable_bgm`]: tango_match::StartConfig::disable_bgm
+    /// [`ReplayConfig::disable_bgm`]: tango_match::ReplayConfig::disable_bgm
+    fn silence_bgm(&self, nds: &mut crate::Nds) {
+        let _ = nds;
+    }
+
     /// Which of the console's screens this cart's *link battle* uses,
     /// in the mode the pair was primed into.
     ///
@@ -96,6 +122,42 @@ pub trait GameSupport: Sync {
         let _ = match_type;
         crate::link::Screens::BOTH
     }
+}
+
+/// Turn one SDAT sequence's volume down to nothing, wherever the
+/// archive's INFO block happens to be living. Answers whether it
+/// landed.
+///
+/// A DS cart's music is sequences in an SDAT archive, and the
+/// archive's INFO block — one 12-byte record per sequence, its volume
+/// at +6 — is copied into main RAM at sound init and read from there
+/// each time a sequence starts. Zeroing that byte *before* the start
+/// is therefore a mute the sound driver applies for itself: the
+/// request, the file load and the start all still happen and still
+/// cost what they cost, and only the mixing comes out silent. Zeroing
+/// it after a sequence has started does nothing — the volume is read
+/// at the start, which is why this is a boot-time write and not a
+/// standing trap.
+///
+/// `record` is the record as the cart's own ROM carries it. The
+/// block's address is a heap allocation rather than a fixed one, so
+/// the record is found rather than named: it is matched on the fields
+/// that identify it — the file it plays, its bank, its player — with
+/// the volume byte itself skipped, so that a pair muted once is still
+/// matched if it is muted again.
+pub fn mute_sequence(nds: &mut crate::Nds, record: [u8; 12]) -> bool {
+    /// Everything in the record except the volume at +6 and the two
+    /// bytes of padding at +10, which say nothing about which sequence
+    /// this is.
+    const IDENTIFYING: [usize; 9] = [0, 1, 2, 3, 4, 5, 7, 8, 9];
+    let found = {
+        let ram = nds.main_ram();
+        ram.windows(record.len())
+            .position(|w| IDENTIFYING.iter().all(|&i| w[i] == record[i]))
+    };
+    let Some(offset) = found else { return false };
+    nds.write8(0x0200_0000 + offset as u32 + 6, 0);
+    true
 }
 
 /// A DS cartridge's engine support, as the engine-neutral backend its
@@ -179,6 +241,7 @@ impl tango_match::Backend for DsBackend {
             config.rng_seed,
             config.cancel,
         )?;
+        silence(&mut link, self.support, config.disable_bgm);
         let handle = observe(&mut link, self.support);
 
         // The rollback loop is the seam's — this engine contributes the
@@ -205,6 +268,7 @@ impl tango_match::Backend for DsBackend {
             rtc: config.rtc,
             match_type: config.match_type,
             rng_seed: config.rng_seed,
+            disable_bgm: config.disable_bgm,
         };
         Ok(tango_match::ReplaySet::new(&config, boot))
     }
@@ -230,12 +294,18 @@ struct Boot {
     /// The recording's match seed, so the re-primed walk seeds the
     /// game's rngs exactly as the live one did.
     rng_seed: [u8; 16],
+    /// Whether this viewer asked for the music off. Applied to every
+    /// pair this boot makes — the playback pair AND the stats pair,
+    /// which lands on the playback pair's own captures and would
+    /// otherwise be re-simulating a differently-silenced console.
+    disable_bgm: bool,
 }
 
 impl tango_match::ReplayBoot for Boot {
     fn boot(&self, want_stats: bool, cancel: &AtomicBool) -> Result<tango_match::BootedReplay, tango_match::Error> {
         let mut link = self.pair()?;
         prime_dark(self.support, &mut link, self.match_type, self.rng_seed, Some(cancel))?;
+        silence(&mut link, self.support, self.disable_bgm);
         // Session tick numbering starts after the walk, observed or
         // not (the walk drives the pair through the seam's tick, so it
         // counts otherwise). Captures then carry session ticks, which
@@ -272,6 +342,7 @@ impl tango_match::ReplayBoot for Boot {
     /// `landing_probe` runs a recording (`fresh` mode).
     fn boot_unprimed(&self, want_stats: bool) -> Result<tango_match::BootedReplay, tango_match::Error> {
         let mut link = self.pair()?;
+        silence(&mut link, self.support, self.disable_bgm);
         let handle = want_stats.then(|| observe(&mut link, self.support));
         Ok(tango_match::BootedReplay {
             link: Box::new(link),
@@ -319,6 +390,21 @@ fn prime_dark(
         link.console(player).set_render(true);
     }
     walked
+}
+
+/// Turn both consoles' battle music down, for a host that asked for
+/// silent battles (see [`GameSupport::silence_bgm`]).
+///
+/// Both, not just the seat the host watches: the pair is one
+/// simulation, its two consoles are snapshotted and restored together,
+/// and a session mixes what both produce.
+fn silence(link: &mut Link, support: &'static (dyn GameSupport + Send + Sync), disable_bgm: bool) {
+    if !disable_bgm {
+        return;
+    }
+    for player in 0..2 {
+        support.silence_bgm(link.console(player));
+    }
 }
 
 /// Arm a primed pair's telemetry: the game's pollers, which carry both
