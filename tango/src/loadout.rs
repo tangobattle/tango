@@ -370,8 +370,15 @@ impl std::fmt::Display for SaveOption {
 /// Every supported family — not just the ones we have ROMs for, so
 /// users can see what tango knows about. sweeten's `.disabled()` greys
 /// out families that don't have every game's ROM owned; available
-/// families stable-sort to the top (then own-region first, then by
-/// family string) so the live ones lead.
+/// families stable-sort to the top (then own-region first) so the live
+/// ones lead.
+///
+/// What survives both of those is the order the library itself lists
+/// the games in, because the sort is stable and that is the order they
+/// were collected in. It is the series' own order, which is the one a
+/// player already knows them by — alphabetical on the family string
+/// sorted BN1..BN6 by accident and would have sorted the next family
+/// wherever its letters happened to fall.
 pub fn family_options(lang: &LanguageIdentifier, scanners: &Scanners) -> Vec<FamilyOption> {
     let roms = scanners.roms.read();
     let mut families: Vec<&'static str> = Vec::new();
@@ -390,14 +397,11 @@ pub fn family_options(lang: &LanguageIdentifier, scanners: &Scanners) -> Vec<Fam
         })
         .collect();
     family_options.sort_by(|a, b| {
-        (!a.available)
-            .cmp(&(!b.available))
-            .then_with(|| {
-                let ar = !game::family_matches_language(lang, a.family);
-                let br = !game::family_matches_language(lang, b.family);
-                ar.cmp(&br)
-            })
-            .then_with(|| a.family.cmp(b.family))
+        (!a.available).cmp(&(!b.available)).then_with(|| {
+            let ar = !game::family_matches_language(lang, a.family);
+            let br = !game::family_matches_language(lang, b.family);
+            ar.cmp(&br)
+        })
     });
     family_options
 }

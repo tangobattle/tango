@@ -5,6 +5,7 @@ save-tab-program-deck = 程式卡組
 deck-mb = { $used }/{ $capacity }MB
 deck-mb-uncapped = { $used }MB
 deck-slot-in = 插入 { $max }MB
+bn5ds-leader = 隊長：{ $navi }
 save-tab-folder = 卡組
 save-tab-patch-cards = 改造卡
 save-tab-auto-battle-data = 自動戰鬥資料

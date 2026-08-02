@@ -33,26 +33,26 @@ pub use tango_gamesupport::{Family, Game, Region};
 pub static FAMILIES: LazyLock<Vec<&'static Family>> = LazyLock::new(|| {
     #[allow(unused_mut)]
     let mut families: Vec<&'static Family> = Vec::new();
-    #[cfg(feature = "gamesupport-bcc")]
-    families.extend_from_slice(tango_gamesupport_bcc::FAMILIES);
     #[cfg(feature = "gamesupport-bn1")]
     families.extend_from_slice(tango_gamesupport_bn1::FAMILIES);
+    #[cfg(feature = "gamesupport-exeoss")]
+    families.extend_from_slice(tango_gamesupport_exeoss::FAMILIES);
     #[cfg(feature = "gamesupport-bn2")]
     families.extend_from_slice(tango_gamesupport_bn2::FAMILIES);
     #[cfg(feature = "gamesupport-bn3")]
     families.extend_from_slice(tango_gamesupport_bn3::FAMILIES);
     #[cfg(feature = "gamesupport-bn4")]
     families.extend_from_slice(tango_gamesupport_bn4::FAMILIES);
+    #[cfg(feature = "gamesupport-exe45")]
+    families.extend_from_slice(tango_gamesupport_exe45::FAMILIES);
     #[cfg(feature = "gamesupport-bn5")]
     families.extend_from_slice(tango_gamesupport_bn5::FAMILIES);
     #[cfg(feature = "gamesupport-bn5ds")]
     families.extend_from_slice(tango_gamesupport_bn5ds::FAMILIES);
     #[cfg(feature = "gamesupport-bn6")]
     families.extend_from_slice(tango_gamesupport_bn6::FAMILIES);
-    #[cfg(feature = "gamesupport-exe45")]
-    families.extend_from_slice(tango_gamesupport_exe45::FAMILIES);
-    #[cfg(feature = "gamesupport-exeoss")]
-    families.extend_from_slice(tango_gamesupport_exeoss::FAMILIES);
+    #[cfg(feature = "gamesupport-bcc")]
+    families.extend_from_slice(tango_gamesupport_bcc::FAMILIES);
     families
 });
 

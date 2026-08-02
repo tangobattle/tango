@@ -67,3 +67,4 @@ save-tab-program-deck = プログラムデッキ
 deck-mb = { $used }/{ $capacity }MB
 deck-mb-uncapped = { $used }MB
 deck-slot-in = スロットイン { $max }MB
+bn5ds-leader = リーダー: { $navi }

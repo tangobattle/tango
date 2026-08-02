@@ -74,4 +74,5 @@ save-tab-program-deck = Program Deck
 deck-mb = { $used }/{ $capacity }MB
 deck-mb-uncapped = { $used }MB
 deck-slot-in = Slot-in { $max }MB
+bn5ds-leader = Chef: { $navi }
 navi-edit-select = Navi
