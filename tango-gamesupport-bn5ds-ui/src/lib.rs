@@ -13,8 +13,10 @@
 //! is a name like any other. Under the name sits which of the
 //! cartridge's two teams the file plays — the cartridge's other half of
 //! who the player fields, and not a pick: the game asks for it once, at
-//! the file's first boot, and the save carries the answer from then on.
-//! The file pick is only there while editing.
+//! the file's first boot, and the save carries the answer from then on —
+//! then the HP MegaMan brings, and under both the two navis the battle's
+//! own NAVI CHANGE panel offers, which *are* a pick. The file pick is
+//! only there while editing.
 //!
 //!
 //! Why they are edits rather than view state: nothing rides beside a
@@ -94,6 +96,50 @@ impl GameEdit for SetCross {
             save.set_cross(self.0);
         }
         Invalidation::default()
+    }
+}
+
+/// Put a navi in one of the battle's two NAVI CHANGE slots, or empty
+/// it.
+///
+/// A navi can only be in one slot, so picking one that is already in
+/// the other slot trades places with it rather than cloning it — which
+/// is also the shortest way to reorder the pair.
+#[derive(Debug)]
+struct SetTeamNavi {
+    slot: usize,
+    navi: Option<usize>,
+}
+
+impl GameEdit for SetTeamNavi {
+    fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
+        if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
+            let held = save.team_navi(self.slot);
+            for other in 0..tango_gamesupport_bn5ds_dataview::save::NUM_TEAM_SLOTS {
+                if other != self.slot && self.navi.is_some() && save.team_navi(other) == self.navi {
+                    save.set_team_navi(other, held);
+                }
+            }
+            save.set_team_navi(self.slot, self.navi);
+            // The team is a packed list — a gap is a team the battle
+            // refuses. See `Save::pack_team`.
+            save.pack_team();
+        }
+        Invalidation::default()
+    }
+}
+
+/// One navi a team slot may hold — or the empty pick — labeled with the
+/// cart's own name for it.
+#[derive(Clone, PartialEq)]
+struct NaviChoice {
+    navi: Option<usize>,
+    label: String,
+}
+
+impl std::fmt::Display for NaviChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
     }
 }
 
@@ -229,6 +275,82 @@ fn team_stat<'a>(lang: &LanguageIdentifier, loaded: &OpenSave, save: &Save) -> i
     sv::stat(tango_gamesupport_common::t!(lang, "bn5ds-leader"), leader)
 }
 
+/// One navi as the dropdown shows it, named by the cart — a navi it
+/// won't name reads as its number, which is still pickable.
+fn navi_choice(lang: &LanguageIdentifier, loaded: &OpenSave, navi: Option<usize>) -> NaviChoice {
+    NaviChoice {
+        navi,
+        label: match navi {
+            None => tango_gamesupport_common::t!(lang, "bn5ds-team-none"),
+            Some(navi) => cart_of(loaded)
+                .and_then(|cart| cart.navi_name(navi))
+                .unwrap_or_else(|| format!("#{navi}")),
+        },
+    }
+}
+
+/// What a team slot may hold: any of the twelve navis, or the empty
+/// pick. The save layer keeps the mirror bits the game's load checks a
+/// team against in step with every write (see `Save::set_team_navi`),
+/// which is what makes the full roster — either team's half — safe to
+/// offer.
+fn navi_choices(lang: &LanguageIdentifier, loaded: &OpenSave, save: &Save) -> Vec<NaviChoice> {
+    std::iter::once(None)
+        .chain(save.team_navi_choices().into_iter().map(Some))
+        .map(|navi| navi_choice(lang, loaded, navi))
+        .collect()
+}
+
+/// The team the save brings into a battle: the two navis its NAVI
+/// CHANGE panel offers, in the panel's own order — a reading while the
+/// card is, and a pair of dropdowns while the edit session is open.
+///
+/// The dropdowns offer the whole roster for each slot, plus the empty
+/// pick; a navi picked into both slots trades places instead of
+/// duplicating, and every edit re-packs the pair (the game keeps the
+/// team as a packed list and refuses a gap).
+fn team_line<'a>(
+    lang: &'a LanguageIdentifier,
+    loaded: &'a OpenSave,
+    save: &'a Save,
+    editing: bool,
+) -> Option<iced::Element<'a, Action>> {
+    let choices = navi_choices(lang, loaded, save);
+    let mut line = row![].spacing(8).align_y(iced::Alignment::End);
+    for slot in 0..tango_gamesupport_bn5ds_dataview::save::NUM_TEAM_SLOTS {
+        // Named from the slot itself rather than looked up among the
+        // choices, so a navi the picker wouldn't offer still reads as
+        // the navi it is.
+        let held = navi_choice(lang, loaded, save.team_navi(slot));
+        line = line.push(if editing {
+            pick_list(choices.clone(), Some(held), move |choice: NaviChoice| {
+                Action::Game(Arc::new(SetTeamNavi {
+                    slot,
+                    navi: choice.navi,
+                }))
+            })
+        } else {
+            // The label alone: the same words the dropdown would show.
+            iced::widget::text(held.label)
+                .size(tango_gamesupport_common::style::TEXT_BODY)
+                .wrapping(iced::widget::text::Wrapping::None)
+                .into()
+        });
+    }
+    Some(
+        row![
+            iced::widget::text(tango_gamesupport_common::t!(lang, "bn5ds-team"))
+                .size(tango_gamesupport_common::style::TEXT_CAPTION)
+                .style(tango_gamesupport_common::widgets::muted_text_style)
+                .wrapping(iced::widget::text::Wrapping::None),
+            line,
+        ]
+        .spacing(5)
+        .align_y(iced::Alignment::Center)
+        .into(),
+    )
+}
+
 /// The HP MegaMan brings. The figure is the save's own — HP Memories
 /// plus what the NaviCust adds — so it moves as the NaviCust tab is
 /// edited.
@@ -254,22 +376,23 @@ fn card_slot<'a>(
     inner: iced::Element<'a, Action>,
     team: iced::Element<'a, Action>,
     hp: Option<iced::Element<'a, Action>>,
+    navis: Option<iced::Element<'a, Action>>,
 ) -> iced::Element<'a, Action> {
     let mut stats = row![team].spacing(16).align_y(iced::Alignment::End);
     if let Some(hp) = hp {
         stats = stats.push(hp);
     }
-    iced::widget::container(
-        column![
-            iced::widget::container(inner)
-                .height(iced::Length::Fixed(CARD_HEIGHT))
-                .align_y(iced::Alignment::Center),
-            stats,
-        ]
-        .spacing(4),
-    )
-    .padding([4.0, 6.0])
-    .into()
+    let mut card = column![
+        iced::widget::container(inner)
+            .height(iced::Length::Fixed(CARD_HEIGHT))
+            .align_y(iced::Alignment::Center),
+        stats,
+    ]
+    .spacing(4);
+    if let Some(navis) = navis {
+        card = card.push(navis);
+    }
+    iced::widget::container(card).padding([4.0, 6.0]).into()
 }
 
 /// The identity card: the name of what this save brings, in the slot
@@ -293,6 +416,7 @@ fn cross_card<'a>(
             .into(),
         team_stat(lang, loaded, save),
         hp_stat(lang, loaded),
+        team_line(lang, loaded, save, false),
     )
 }
 
@@ -311,6 +435,7 @@ fn cross_picker<'a>(
         }),
         team_stat(lang, loaded, save),
         hp_stat(lang, loaded),
+        team_line(lang, loaded, save, true),
     )
 }
 

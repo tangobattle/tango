@@ -97,10 +97,23 @@ fn main() {
             assert!(chips.set_chip(folder, 1, first));
         }
     }
+    // And the team: field KnightMan and NumberMan, whoever was there
+    // before — the edit the game's own machine can't be driven to from
+    // an arbitrary save, so the battle's panel showing both is the
+    // proof the mirror bits are being kept right.
+    let team_before: Vec<Option<usize>> = (0..save::NUM_TEAM_SLOTS).map(|slot| file.team_navi(slot)).collect();
+    assert!(file.set_team_navi(0, Some(11)));
+    assert!(file.set_team_navi(1, Some(9)));
+    file.pack_team();
     file.rebuild_checksum();
     let navi_hp_after = file.view_navi().unwrap().max_hp(&assets);
     println!("\nadded HP+500 to file {}: max HP {navi_hp_before} -> {navi_hp_after}", file.slot());
     println!("swapped the equipped folder's first two chips");
+    println!(
+        "team {:?} -> {:?}",
+        team_before,
+        (0..save::NUM_TEAM_SLOTS).map(|slot| file.team_navi(slot)).collect::<Vec<_>>()
+    );
 
     let dump = file.to_sram_dump();
     let reparsed = save::SaveSet::parse(&dump).expect("edited dump did not re-parse");
@@ -120,6 +133,20 @@ fn main() {
 }
 
 fn report(file: &save::Save, assets: &rom::Assets) {
+    let navi_name = |id: usize| assets.navi_name(id).unwrap_or_else(|| format!("#{id}"));
+    println!(
+        "team: {} | roster: {}",
+        (0..save::NUM_TEAM_SLOTS)
+            .map(|slot| file.team_navi(slot).map(navi_name).unwrap_or_else(|| "-".to_string()))
+            .collect::<Vec<_>>()
+            .join(", "),
+        file.team_navi_choices()
+            .into_iter()
+            .map(|navi| format!("{} (lv {})", navi_name(navi), file.navi_level(navi)))
+            .collect::<Vec<_>>()
+            .join(", "),
+    );
+
     let navi = file.view_navi().unwrap();
     let limits = navi.folder_limits(assets);
     println!(

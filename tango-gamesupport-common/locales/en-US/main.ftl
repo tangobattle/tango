@@ -81,3 +81,5 @@ deck-slot-in = Slot-in { $max }MB
 # leader the way the cart's own file select names it. The navi comes off
 # the cart, so only the line around it is translated.
 bn5ds-leader = Leader
+bn5ds-team = Team
+bn5ds-team-none = (none)

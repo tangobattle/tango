@@ -194,6 +194,78 @@ pub const REGULAR_MEMORY_OFFSET: usize = NAVI_RECORD_OFFSET + 0x09;
 /// BN5 treats a link navi: no NaviCust of MegaMan's to edit.
 pub const NAVI_OFFSET: usize = 0x0001;
 
+/// The team the player brings into a battle: the two navis the touch
+/// screen's NAVI CHANGE panel offers, in the order it shows them, one
+/// u32 each.
+///
+/// Read out of the ARM9: the battle's team loader (US `0x02097b84`)
+/// asks `0x02097dd4` for the pair, which reads each slot through the
+/// getter at `0x02094e4c` — `save_image + 0x8004`, indexed by slot at
+/// `+0xc` — and hands the id to the navi-record accessor. A slot holds
+/// the navi's id biased by [`TEAM_NAVI_BIAS`], and 0 for an empty one.
+///
+/// The ids are only half of it: the save load cross-checks each slot
+/// against the [`TEAM_MIRROR_OFFSET`] bits and quietly drops any navi
+/// whose bit is off, so an edit has to keep both in step — see there.
+pub const TEAM_NAVI_OFFSET: usize = 0x8010;
+pub const NUM_TEAM_SLOTS: usize = 2;
+const TEAM_NAVI_BIAS: u32 = 0x254;
+
+/// The team's mirror in the story-flag bitfield: one bit per navi,
+/// MSB-first from [`TEAM_MIRROR_OFFSET`]'s bit `4 + navi` — navi 1 at
+/// `0xea & 0x04` through navi 11 at `0xeb & 0x01`, navi 12 spilling
+/// into `0xec & 0x80`. The game's own Navi Change machine keeps these
+/// bits exactly equal to the set of navis in the two slots, and the
+/// save load *enforces* it: a slot whose navi's bit is off reads back
+/// as empty (the sanitize happens inside the load frame, which is why
+/// no slot poke without the bit ever survived to the battle).
+///
+/// Found by transplant bisection between a save whose team worked and
+/// one whose identical-looking team didn't: one byte, `image + 0xeb`,
+/// flipped the battle's NAVI CHANGE panel on, and the bit layout then
+/// decoded from five known team/value pairs. Verified by prediction —
+/// setting the computed bits for navis this cart never fielded (and
+/// even the *other team's* GyroMan) puts them on the panel, working.
+///
+/// The surrounding bits are other story flags (`0xea` carries real ones
+/// on played carts), so writes must mask exactly the twelve navi bits.
+pub const TEAM_MIRROR_OFFSET: usize = 0xea;
+
+/// Navi `id`'s mirror bit, as `(byte offset, mask)`.
+fn team_mirror_bit(navi: usize) -> (usize, u8) {
+    story_flag(TEAM_MIRROR_FLAG_BASE + navi)
+}
+
+/// The story-flag bitfield: flag `N` is bit `0x80 >> (N % 8)` of byte
+/// `0xa0 + N / 8` — read out of the game's own flag test (US
+/// `0x2063d24`: the save object's `+0x44` section pointer is
+/// `image + 0xa0`, then the byte/mask split above). The team system's
+/// flags live here as two twelve-flag runs:
+///
+/// - `0x254 + navi`: the [`TEAM_MIRROR_OFFSET`] bits — and the team
+///   slot words are these very flag numbers, which is what the `0x254`
+///   bias *is*.
+/// - `0x268 + navi`: the navi is recruited — what the game's own Navi
+///   Change machine offers. Found by searching the flag space for a
+///   twelve-flag run splitting exactly by team across both files of
+///   two carts, then verified live: clearing ShadowMan's (`0x270`) on
+///   a played cart makes the machine's picker skip him.
+pub const STORY_FLAGS_OFFSET: usize = 0xa0;
+const TEAM_MIRROR_FLAG_BASE: usize = 0x254;
+const TEAM_RECRUIT_FLAG_BASE: usize = 0x268;
+
+/// Story flag `N`, as `(byte offset, mask)`.
+fn story_flag(n: usize) -> (usize, u8) {
+    (STORY_FLAGS_OFFSET + n / 8, 0x80 >> (n % 8))
+}
+
+/// The navi's level, at record `+1` — 0 for a navi the file has never
+/// raised, which is every navi outside its own team's six. It is what
+/// the battle's cards read their ATTACK from (zero it and a card's
+/// ATTACK drops), and the one thing in the save that says which navis a
+/// file actually has.
+const NAVI_LEVEL_INTO_RECORD: usize = 0x01;
+
 /// The materialized NaviCust grid: 5x5 cells, each holding a part
 /// slot + 1 (0 for an empty cell), then seven bytes the section pads
 /// with. The game's own section table gives the section as 0x20 bytes
@@ -513,6 +585,109 @@ impl Save {
     /// Which navi this file is being played as (see [`NAVI_OFFSET`]).
     pub fn navi(&self) -> usize {
         self.active()[NAVI_OFFSET] as usize
+    }
+
+    /// The navi in team slot `slot`, or `None` for an empty slot (and
+    /// for a slot past the two the panel has).
+    pub fn team_navi(&self, slot: usize) -> Option<usize> {
+        if slot >= NUM_TEAM_SLOTS {
+            return None;
+        }
+        let raw = u32::from_le_bytes(
+            self.active()[TEAM_NAVI_OFFSET + slot * std::mem::size_of::<u32>()..][..4]
+                .try_into()
+                .unwrap(),
+        );
+        raw.checked_sub(TEAM_NAVI_BIAS).map(|navi| navi as usize)
+    }
+
+    /// Put `navi` in team slot `slot`, or empty it with `None`.
+    /// Refuses a slot the panel hasn't got and a navi outside the
+    /// record array (0, MegaMan, included — he is who the panel changes
+    /// *from*).
+    ///
+    /// Keeps the [`TEAM_MIRROR_OFFSET`] bits equal to the slots the way
+    /// the game's own machine does, so the load's cross-check passes.
+    /// Keeping the list packed is [`pack_team`](Save::pack_team)'s job.
+    pub fn set_team_navi(&mut self, slot: usize, navi: Option<usize>) -> bool {
+        if slot >= NUM_TEAM_SLOTS {
+            return false;
+        }
+        let raw = match navi {
+            Some(navi) if (1..NUM_NAVIS).contains(&navi) => navi as u32 + TEAM_NAVI_BIAS,
+            Some(_) => return false,
+            None => 0,
+        };
+        self.active_mut()[TEAM_NAVI_OFFSET + slot * std::mem::size_of::<u32>()..][..4]
+            .copy_from_slice(&raw.to_le_bytes());
+        self.sync_team_mirror();
+        true
+    }
+
+    /// Rewrite the twelve mirror bits to exactly the navis the slots
+    /// hold, leaving the story flags around them alone.
+    fn sync_team_mirror(&mut self) {
+        let held: Vec<usize> = (0..NUM_TEAM_SLOTS).filter_map(|slot| self.team_navi(slot)).collect();
+        for navi in 1..NUM_NAVIS {
+            let (at, mask) = team_mirror_bit(navi);
+            if held.contains(&navi) {
+                self.active_mut()[at] |= mask;
+            } else {
+                self.active_mut()[at] &= !mask;
+            }
+        }
+    }
+
+    /// The navis a team slot may be offered: the ones this file has
+    /// recruited, read from the same flags the game's own Navi Change
+    /// machine reads (`TEAM_RECRUIT_FLAG_BASE`; see
+    /// [`STORY_FLAGS_OFFSET`]). A file early in its story is offered
+    /// the teammates it has met, exactly as the machine would offer
+    /// them.
+    ///
+    /// The battle would take more: with the mirror bit set it fields
+    /// any of the twelve — verified live with GyroMan fighting for a
+    /// Team Colonel file — and
+    /// [`set_team_navi`](Save::set_team_navi) stays willing so a
+    /// damaged pair can always be repaired. But the recruit flags are
+    /// the game's own account of who this file may field, so they are
+    /// the editor's too.
+    pub fn team_navi_choices(&self) -> Vec<usize> {
+        (1..NUM_NAVIS)
+            .filter(|&navi| {
+                let (at, mask) = story_flag(TEAM_RECRUIT_FLAG_BASE + navi);
+                self.active()[at] & mask != 0
+            })
+            .collect()
+    }
+
+    /// Close any gap in the team, so the slots read as the game keeps
+    /// them: filled from the first, empties at the end.
+    ///
+    /// The team is a packed list, not two independent slots. Watching
+    /// the game's own Navi Change machine settles it: clearing the
+    /// first of two navis moves the second down into it, and a save
+    /// whose id sits in the second slot with the first empty is one the
+    /// battle refuses — it draws MegaMan and NO DATA instead of the
+    /// team. Packing that same save's ids is enough to make the battle
+    /// show the navi again, which is why every edit ends here.
+    pub fn pack_team(&mut self) {
+        let held: Vec<usize> = (0..NUM_TEAM_SLOTS).filter_map(|slot| self.team_navi(slot)).collect();
+        for slot in 0..NUM_TEAM_SLOTS {
+            self.set_team_navi(slot, held.get(slot).copied());
+        }
+    }
+
+    /// Navi `id`'s level — what the battle's card reads its ATTACK
+    /// from, and 0 for a navi this file has never raised. Levelling is
+    /// not what makes a navi fieldable: a file can bring one it never
+    /// raised (and does — a cart's team slots read fine with every
+    /// level at 0), and raising one it never met doesn't help.
+    pub fn navi_level(&self, id: usize) -> u8 {
+        self.active()
+            .get(NAVI_RECORD_OFFSET + id * NAVI_RECORD_SIZE + NAVI_LEVEL_INTO_RECORD)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Navi `id`'s stats block: base max HP, current HP, effective max
@@ -1371,6 +1546,84 @@ mod tests {
         assert_eq!(limits.giga_limit, Some(BASE_GIGA_LIMIT));
         assert_eq!(limits.dark_limit, Some(DARK_LIMIT));
         assert_eq!(limits.reg_memory, Some(60));
+    }
+
+    /// The battle's two NAVI CHANGE slots read and write as navi ids,
+    /// and an empty slot reads as nothing.
+    #[test]
+    fn the_team_slots_round_trip() {
+        let mut save = SaveSet::parse(&plausible()).unwrap().current();
+        assert_eq!(save.team_navi(0), None, "an unwritten slot is empty");
+
+        // Story flags share the mirror's bytes; they must survive edits.
+        save.active_mut()[TEAM_MIRROR_OFFSET] = 0x48;
+
+        assert!(save.set_team_navi(0, Some(7)));
+        assert!(save.set_team_navi(1, Some(10)));
+        assert_eq!(save.team_navi(0), Some(7));
+        assert_eq!(save.team_navi(1), Some(10));
+        // The game's own bias, so the console reads back what we wrote.
+        assert_eq!(
+            &save.active()[TEAM_NAVI_OFFSET..][..4],
+            &(7 + TEAM_NAVI_BIAS).to_le_bytes()
+        );
+        // The mirror holds exactly the fielded pair's bits (navi 7 =
+        // 0xeb & 0x10, navi 10 = 0xeb & 0x02), the load's cross-check.
+        assert_eq!(save.active()[TEAM_MIRROR_OFFSET + 1], 0x12);
+        // The story flags beside them are untouched.
+        assert_eq!(save.active()[TEAM_MIRROR_OFFSET], 0x48);
+
+        assert!(save.set_team_navi(1, None));
+        assert_eq!(save.team_navi(1), None);
+        // Emptying the slot takes its navi's mirror bit with it.
+        assert_eq!(save.active()[TEAM_MIRROR_OFFSET + 1], 0x10);
+
+        // A gap is a team the battle refuses; packing closes it.
+        assert!(save.set_team_navi(0, None));
+        assert!(save.set_team_navi(1, Some(12)));
+        save.pack_team();
+        assert_eq!(save.team_navi(0), Some(12));
+        assert_eq!(save.team_navi(1), None);
+
+        // Past the panel's slots, and past the record array.
+        assert!(!save.set_team_navi(NUM_TEAM_SLOTS, Some(1)));
+        assert!(!save.set_team_navi(0, Some(NUM_NAVIS)));
+        assert_eq!(save.team_navi(NUM_TEAM_SLOTS), None);
+    }
+
+    /// The picker offers the file's own team; the write layer takes
+    /// any of the twelve, and the mirror bits span all three bytes
+    /// without stepping on each other.
+    #[test]
+    fn any_navi_may_be_fielded() {
+        let mut data = plausible();
+        data[NAVI_RECORD_OFFSET + 9 * NAVI_RECORD_SIZE + NAVI_LEVEL_INTO_RECORD] = 3;
+
+        let mut save = SaveSet::parse(&data).unwrap().current();
+        // The offer list is the recruit flags (0x268 + navi): nothing
+        // recruited, nothing offered; set a few and exactly those come
+        // back — flag 0x269 is 0xed & 0x40, flag 0x274 is 0xee & 0x08.
+        assert_eq!(save.team_navi_choices(), Vec::<usize>::new());
+        save.active_mut()[0xed] |= 0x40;
+        save.active_mut()[0xee] |= 0x88;
+        assert_eq!(save.team_navi_choices(), vec![1, 8, 12]);
+        // MegaMan is who the panel changes *from*, never a slot's navi.
+        assert!(!save.set_team_navi(0, Some(0)));
+
+        // The mirror's first and last bits: navi 1 in 0xea, navi 12 in
+        // 0xec — the ends of the twelve-bit run.
+        assert!(save.set_team_navi(0, Some(1)));
+        assert!(save.set_team_navi(1, Some(12)));
+        assert_eq!(save.active()[TEAM_MIRROR_OFFSET] & 0x07, 0x04);
+        assert_eq!(save.active()[TEAM_MIRROR_OFFSET + 2] & 0x80, 0x80);
+        assert!(save.set_team_navi(0, None));
+        assert!(save.set_team_navi(1, None));
+        assert_eq!(save.active()[TEAM_MIRROR_OFFSET] & 0x07, 0);
+        assert_eq!(save.active()[TEAM_MIRROR_OFFSET + 2] & 0x80, 0);
+
+        // The level is the card's ATTACK, not a gate on being fielded.
+        assert_eq!(save.navi_level(9), 3);
+        assert_eq!(save.navi_level(8), 0);
     }
 
     #[test]

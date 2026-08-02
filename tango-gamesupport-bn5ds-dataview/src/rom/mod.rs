@@ -249,10 +249,21 @@ impl Assets {
     /// same roster as plain MegaMan — the two are the roster's first
     /// entries after him, each team's leader.
     pub fn leader_name(&self, team: u8) -> Option<String> {
-        let index = if team == 0 {
-            PROTOMAN_NAVI_INDEX
-        } else {
-            COLONEL_NAVI_INDEX
+        self.navi_name(if team == 0 { 1 } else { 7 })
+    }
+
+    /// What the cart calls navi `id` — the id the save's team slots and
+    /// navi records use, 0 MegaMan and 1.. the two teams' six apiece.
+    ///
+    /// The roster archive gives every navi a block of six entries (the
+    /// navi, its α, β and Y versions, its DS one, then a blank), so a
+    /// navi's own name is the first of its block; MegaMan sits ahead of
+    /// the blocks. That is how ProtoMan lands on entry 1 and Colonel on
+    /// 37, which is where the file select's own two names come from.
+    pub fn navi_name(&self, id: usize) -> Option<String> {
+        let index = match id {
+            0 => MEGAMAN_NAVI_INDEX,
+            id => (id - 1) * NAVI_NAME_BLOCK + PROTOMAN_NAVI_INDEX,
         };
         self.text(self.offsets.navi_names_pointer, index)
             .filter(|name| !name.is_empty())
@@ -266,7 +277,10 @@ impl Assets {
 /// than of who shows up.
 const MEGAMAN_NAVI_INDEX: usize = 0;
 const PROTOMAN_NAVI_INDEX: usize = 1;
-const COLONEL_NAVI_INDEX: usize = 37;
+
+/// How many entries the roster archive gives each navi: itself, its
+/// three version-up names, its DS one, and a blank.
+const NAVI_NAME_BLOCK: usize = 6;
 const BASS_CROSS_ENEMY_INDEX: usize = 234;
 const SOL_CROSS_ENEMY_INDEX: usize = 235;
 
