@@ -212,7 +212,18 @@ impl DsBackend {
 /// generated inside the core so a rewound console hears the same static
 /// twice, and the savestate carries that generator. An older build
 /// reading a recording of this drops the bit and hears silence.
-const BACKEND_SIM_VERSION: u16 = 3;
+///
+/// 4: a host takes a reply only if it was stamped at or after the
+/// command that asked for it (melonds-rollback). The lower edge of that
+/// window used to be a fixed video frame, which is wide enough to hold a
+/// whole MP round: a round the tick boundary made the peer miss came
+/// back as the *next* round's answer, and the pair read each other one
+/// round stale from then on — BN5DS's link battle stopped stepping
+/// outright, its WM read answering NO_DATASET every frame with the
+/// wireless still up. Which replies a pair hears is what a match is made
+/// of, so every DS recording predating this replays into a different
+/// one.
+const BACKEND_SIM_VERSION: u16 = 4;
 
 impl tango_match::Backend for DsBackend {
     fn sim_version(&self) -> u32 {
