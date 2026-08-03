@@ -168,18 +168,17 @@ impl GameEdit for RemovePartyProgram {
     }
 }
 
-/// A slot panel's clear-all: the member keeps its place and loses every
-/// program, which is the customizer's own take-it-all-off.
+/// A slot panel's clear-all: the slot empties, member and all. The save
+/// layer takes the departing navi's programs off with it and packs the
+/// pair, so clearing the first slot moves the second up into it the way
+/// the game's own machine compacts.
 #[derive(Debug)]
-struct ClearPartyPrograms(usize);
+struct ClearPartySlot(usize);
 
-impl GameEdit for ClearPartyPrograms {
+impl GameEdit for ClearPartySlot {
     fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
-        let Some(assets) = model.assets.underlying_any().downcast_ref::<rom::Assets>() else {
-            return Invalidation::default();
-        };
         if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
-            save.view_party_mut().clear_party_programs(self.0, assets);
+            save.view_party_mut().set_navi(self.0, None);
         }
         Invalidation::default()
     }
@@ -580,7 +579,7 @@ fn party_slot<'a>(
         .push(naming)
         .push(iced::widget::Space::new().width(iced::Fill))
         .push_maybe(editing.then(|| {
-            sv::clear_all_button(lang, Action::Game(Arc::new(ClearPartyPrograms(slot))))
+            sv::clear_all_button(lang, Action::Game(Arc::new(ClearPartySlot(slot))))
         }));
     // The gauge finishes the line the card's own numbers are on, at the
     // far right of it.
