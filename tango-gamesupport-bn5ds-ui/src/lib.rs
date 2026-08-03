@@ -641,8 +641,10 @@ fn party_slot<'a>(
         } else {
             tango_gamesupport_common::t!(lang, "bn5ds-team-none")
         };
-        // Sat where a program's name would be, on a row of the same
-        // height: past the stripe and the gap after it.
+        // Sat where a program's name would be, but on its own plate
+        // rather than a program row's: the header's own padding all
+        // round, so an empty list reads as a gap under the name rather
+        // than as a row that is missing something.
         body = body.push(
             iced::widget::container(
                 iced::widget::text(empty)
@@ -651,13 +653,7 @@ fn party_slot<'a>(
                     .width(iced::Fill),
             )
             .width(iced::Fill)
-            .height(iced::Length::Fixed(PROGRAM_ROW_HEIGHT))
-            .align_y(iced::Alignment::Center)
-            .padding(
-                iced::Padding::default()
-                    .left(STRIPE_WIDTH + PROGRAM_ROW_SPACING)
-                    .right(12.0),
-            ),
+            .padding(tango_gamesupport_common::style::HEADER_PADDING),
         );
     }
     if editing && navi.is_some() {

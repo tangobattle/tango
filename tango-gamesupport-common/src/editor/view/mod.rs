@@ -1523,20 +1523,31 @@ impl State {
     /// that surface edits / copies / launches call
     /// [`apply`](Self::apply), which also computes the host-side
     /// [`Outcome`].
-    pub fn fold(&mut self, action: &Action) -> iced::Task<Action> {
+    pub fn fold(&mut self, action: &Action, loaded: Option<&OpenSave>) -> iced::Task<Action> {
         match action {
             Action::SelectTab(t) => {
                 if self.active_tab != Some(*t) {
-                    // The strip lays tabs out in declaration order, so
-                    // the discriminants double as positions: moving
-                    // right enters from the right, moving left from the
-                    // left. With no tab picked yet — the first pick
+                    // Which way the body slides is which way along the
+                    // strip the pick moved: leftwards enters from the
+                    // left, rightwards from the right. That is the
+                    // *strip's* order — the game's own tab list, which
+                    // need not run in the enum's declaration order (a
+                    // game whose section was added late has a late
+                    // discriminant wherever the strip shows it, and
+                    // comparing those slid the wrong way).
+                    //
+                    // Cover is counted whether or not streamer mode is
+                    // showing it: it is always the strip's first when
+                    // present, so keeping it in only fixes the order.
+                    // With no strip to place a tab in — the first pick
                     // after a load, where the strip is showing its
                     // default — enter from the right, so the pick reads
                     // as a sideways tab move rather than replaying the
                     // load's vertical rise.
-                    let dx = match self.active_tab {
-                        Some(prev) if (*t as u8) < (prev as u8) => -24.0,
+                    let strip = loaded.map(|l| available_tabs(l, true)).unwrap_or_default();
+                    let at = |tab: Tab| strip.iter().position(|&other| other == tab);
+                    let dx = match (self.active_tab.and_then(at), at(*t)) {
+                        (Some(from), Some(to)) if to < from => -24.0,
                         _ => 24.0,
                     };
                     self.enter_from = iced::Vector::new(dx, 0.0);
@@ -1762,7 +1773,7 @@ impl State {
     /// arms that read the save (copy rendering, edit-session seeding,
     /// drop-target resolution).
     pub fn apply(&mut self, action: &Action, loaded: Option<&OpenSave>) -> (iced::Task<Action>, Option<Outcome>) {
-        let task = self.fold(action);
+        let task = self.fold(action, loaded);
         let outcome = self.outcome(action, loaded);
         (task, outcome)
     }
