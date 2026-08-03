@@ -110,7 +110,8 @@ fn cookie_ranges(bytes: &[u8]) -> Vec<Range<usize>> {
             }
         }
         // progress(8) + attached(1) + attached_at(8) + last_cmd_ts(8)
-        at += 25;
+        // + last_cmd_window(8)
+        at += 33;
     }
     out
 }
@@ -163,6 +164,7 @@ fn locate_link(bytes: &[u8], offset: usize) -> String {
             ("attached", 1),
             ("attached_at", 8),
             ("last_cmd_ts", 8),
+            ("last_cmd_window", 8),
         ] {
             if offset < at + width {
                 return format!("air{seat}.{field}");
