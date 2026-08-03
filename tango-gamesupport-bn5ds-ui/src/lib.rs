@@ -16,9 +16,11 @@
 //! who the player fields, and not a pick: the game asks for it once, at
 //! the file's first boot, and the save carries the answer from then on —
 //! then the HP MegaMan brings. The party — the two navis the battle's
-//! own NAVI CHANGE panel offers — has a tab of its own, with the
-//! customizer (slots beside the file's recruited roster) as its edit
-//! body. The file pick is only there while editing.
+//! own NAVI CHANGE panel offers — has a tab of its own, laid out the
+//! way the game's own PARTY STATUS card and its CUSTOM panel read
+//! together: a panel per slot, who it fields on top, the party programs
+//! they carry under that, and the gauge those fill below. The file pick
+//! is only there while editing.
 //!
 //!
 //! Why they are edits rather than view state: nothing rides beside a
@@ -101,52 +103,86 @@ impl GameEdit for SetCross {
     }
 }
 
-/// Add a navi to the party: the first empty NAVI CHANGE slot. The
-/// roster only offers navis not already in it, so no duplicate can be
-/// minted; the save layer re-syncs the mirror bits the load checks a
-/// team against on every write.
+/// Put a navi in a party slot, or empty it — the CHANGE the game's own
+/// PARTY STATUS card offers. The dropdown only lists navis this file
+/// recruited and not the other slot's, so no duplicate can be minted;
+/// the save layer re-syncs the mirror bits the load checks a team
+/// against, takes a departing member's programs back off, and packs the
+/// pair the way the game's own machine compacts it (so emptying the
+/// first slot moves the second up, loadout and all).
 #[derive(Debug)]
-struct AddPartyNavi(usize);
-
-impl GameEdit for AddPartyNavi {
-    fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
-        if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
-            if let Some(slot) = (0..save::NUM_TEAM_SLOTS).find(|&slot| save.team_navi(slot).is_none()) {
-                save.set_team_navi(slot, Some(self.0));
-                save.pack_team();
-            }
-        }
-        Invalidation::default()
-    }
+struct SetPartyNavi {
+    slot: usize,
+    navi: Option<usize>,
 }
 
-/// Empty a party slot. The game keeps the team as a packed list and
-/// refuses a gap, so the pair is re-packed — removing the first navi
-/// moves the second up, exactly as the game's own machine compacts.
-/// (Which also makes remove-and-re-add the way to reorder the pair.)
-#[derive(Debug)]
-struct RemovePartyNavi(usize);
-
-impl GameEdit for RemovePartyNavi {
+impl GameEdit for SetPartyNavi {
     fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
         if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
-            save.set_team_navi(self.0, None);
+            save.set_team_navi(self.slot, self.navi);
             save.pack_team();
         }
         Invalidation::default()
     }
 }
 
-/// The party pane's clear-all: an empty pair, mirror and all.
+/// Put one more of a party program on a slot's member, exactly as the
+/// PARTY CUSTOMIZER's own panel does: the member's record takes what
+/// everything it equips adds up to, and the slot's entry takes the
+/// programs. The offer is filtered by
+/// [`Partycust::can_add`](save::Partycust::can_add), so nothing here can
+/// outspend the member's gauge or the file's stock.
 #[derive(Debug)]
-struct ClearParty;
+struct AddPartyProgram {
+    slot: usize,
+    program: usize,
+}
 
-impl GameEdit for ClearParty {
+impl GameEdit for AddPartyProgram {
     fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
+        let Some(assets) = model.assets.underlying_any().downcast_ref::<rom::Assets>() else {
+            return Invalidation::default();
+        };
         if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
-            for slot in 0..save::NUM_TEAM_SLOTS {
-                save.set_team_navi(slot, None);
-            }
+            let equipped = save::Partycust::new(save, assets, self.slot).with(self.program);
+            save.set_party_programs(self.slot, equipped, assets);
+        }
+        Invalidation::default()
+    }
+}
+
+/// Take the program a member equips in position `at` back off.
+#[derive(Debug)]
+struct RemovePartyProgram {
+    slot: usize,
+    at: usize,
+}
+
+impl GameEdit for RemovePartyProgram {
+    fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
+        let Some(assets) = model.assets.underlying_any().downcast_ref::<rom::Assets>() else {
+            return Invalidation::default();
+        };
+        if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
+            let equipped = save::Partycust::new(save, assets, self.slot).without(self.at);
+            save.set_party_programs(self.slot, equipped, assets);
+        }
+        Invalidation::default()
+    }
+}
+
+/// A slot panel's clear-all: the member keeps its place and loses every
+/// program, which is the customizer's own take-it-all-off.
+#[derive(Debug)]
+struct ClearPartyPrograms(usize);
+
+impl GameEdit for ClearPartyPrograms {
+    fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
+        let Some(assets) = model.assets.underlying_any().downcast_ref::<rom::Assets>() else {
+            return Invalidation::default();
+        };
+        if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
+            save.set_party_programs(self.0, [], assets);
         }
         Invalidation::default()
     }
@@ -192,6 +228,49 @@ where
         .text_size(tango_gamesupport_common::style::TEXT_BODY)
         .style(tango_gamesupport_common::widgets::chunky_pick_list)
         .into()
+}
+
+/// The same, for a dropdown that is an action rather than a state: it
+/// never shows a selection, only what it would do.
+fn action_pick_list<'a, T, M>(options: Vec<T>, prompt: String, on_select: impl Fn(T) -> M + 'a) -> iced::Element<'a, M>
+where
+    T: ToString + PartialEq + Clone + 'a,
+    M: Clone + 'a,
+{
+    sweeten::widget::pick_list(options, Option::<T>::None, on_select)
+        .placeholder(prompt)
+        .padding(tango_gamesupport_common::style::CONTROL_PADDING)
+        .text_size(tango_gamesupport_common::style::TEXT_BODY)
+        .style(tango_gamesupport_common::widgets::chunky_pick_list)
+        .into()
+}
+
+/// One navi a party slot could field, or the empty slot itself.
+#[derive(Clone, PartialEq)]
+struct NaviChoice {
+    navi: Option<usize>,
+    label: String,
+}
+
+impl std::fmt::Display for NaviChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
+}
+
+/// One party program the file could still put on a member, labeled the
+/// way the customizer's own list labels it: the cart's name for it and
+/// what it costs the gauge.
+#[derive(Clone, PartialEq)]
+struct ProgramChoice {
+    index: usize,
+    label: String,
+}
+
+impl std::fmt::Display for ProgramChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
 }
 
 /// The file switcher: a dropdown over the cartridge's file-select slots,
@@ -284,11 +363,13 @@ fn team_stat<'a>(lang: &LanguageIdentifier, loaded: &OpenSave, save: &Save) -> i
     sv::stat(tango_gamesupport_common::t!(lang, "bn5ds-leader"), leader)
 }
 
-/// The cart's name for navi `id`, or its number for a cart that won't
-/// give one up.
+/// The cart's name for navi `id` through the shared roster, or its
+/// number for a cart that won't give one up.
 fn navi_name(loaded: &OpenSave, navi: usize) -> String {
-    cart_of(loaded)
-        .and_then(|cart| cart.navi_name(navi))
+    loaded
+        .assets
+        .navi(navi)
+        .and_then(|n| n.name())
         .unwrap_or_else(|| format!("#{navi}"))
 }
 
@@ -296,137 +377,309 @@ fn navi_name(loaded: &OpenSave, navi: usize) -> String {
 /// and Attack its NAVI CHANGE card would show, off the save's own
 /// record.
 fn navi_line<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, save: &'a Save, navi: usize) -> iced::Element<'a, Action> {
-    row![
+    let mut line = row![].spacing(16).align_y(iced::Alignment::Center);
+    // The emblem, at an integer multiple of its 15px crop so the
+    // nearest-neighbour upscale lands on even pixels — the navi
+    // strip's own sizing rule.
+    if let Some(handle) = loaded.navi_emblems.get(&navi) {
+        line = line.push(
+            iced::widget::Image::new(handle.clone())
+                .filter_method(iced::widget::image::FilterMethod::Nearest)
+                .width(iced::Length::Fixed(30.0))
+                .height(iced::Length::Fixed(30.0)),
+        );
+    }
+    line.push(
         iced::widget::text(navi_name(loaded, navi))
             .size(tango_gamesupport_common::style::TEXT_BODY)
             .width(iced::Fill),
-        sv::stat(
-            tango_gamesupport_common::t!(lang, "navi-base-hp"),
-            save.navi_hp(navi).to_string(),
-        ),
-        sv::stat(
-            tango_gamesupport_common::t!(lang, "navi-buster-attack"),
-            save.navi_level(navi).to_string(),
-        ),
-    ]
-    .spacing(16)
-    .align_y(iced::Alignment::Center)
+    )
+    .push(sv::stat(
+        tango_gamesupport_common::t!(lang, "navi-base-hp"),
+        save.navi_hp(navi).to_string(),
+    ))
+    .push(sv::stat(
+        tango_gamesupport_common::t!(lang, "navi-buster-attack"),
+        // The record keeps ATTACK 0-based; the game's cards show it
+        // 1-based, and so does this.
+        (save.partycust_bonus(navi).attack + 1).to_string(),
+    ))
     .into()
 }
 
-/// The Party tab's read-only body: the navis the battle's NAVI CHANGE
-/// panel offers, in the panel's own order.
-fn render_party<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> iced::Element<'a, Action> {
-    let Some(save) = file_of(loaded) else {
-        return sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty"));
-    };
-    let mut body = column![].spacing(1).padding(0);
-    let mut shown = 0usize;
-    for slot in 0..save::NUM_TEAM_SLOTS {
-        let Some(navi) = save.team_navi(slot) else { continue };
-        body = body.push(sv::edit_row_wrap(
-            iced::widget::container(navi_line(lang, loaded, save, navi))
-                .padding([3, 12])
-                .into(),
-            None,
-            shown,
-            None,
-        ));
-        shown += 1;
-    }
-    if shown == 0 {
-        return sv::placeholder(tango_gamesupport_common::t!(lang, "bn5ds-team-none"));
-    }
-    iced::widget::container(body)
-        .width(iced::Fill)
-        .style(tango_gamesupport_common::widgets::pane)
-        .into()
+/// What the cart calls party program `index`.
+fn program_name(loaded: &OpenSave, index: usize) -> String {
+    cart_of(loaded)
+        .and_then(|cart| cart.party_program(index))
+        .and_then(|program| program.name())
+        .unwrap_or_else(|| format!("#{index}"))
 }
 
-/// The party customizer: the two NAVI CHANGE slots on the left, the
-/// file's recruited navis on the right — the shape every other editor
-/// pane pair has. A roster row is a click-to-add button, disabled while
-/// the party is full or already fields that navi; a party row's ✕
-/// empties its slot and packs the pair. What the roster offers is the
-/// game's own recruit list (see `Save::team_navi_choices`), so the
-/// customizer can hand out exactly what the in-game machine would.
-fn render_party_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> iced::Element<'a, Action> {
-    let Some(save) = file_of(loaded) else {
-        return sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty"));
-    };
-    let held: Vec<usize> = (0..save::NUM_TEAM_SLOTS).filter_map(|slot| save.team_navi(slot)).collect();
+/// What the customizer's gauge paints a program's blocks: one colour
+/// per family, read off the cart's own kind byte. The four are the
+/// panel's, sampled from it — the cart keeps them in a UI palette
+/// nothing indexes by kind, so the mapping lives here rather than
+/// pretending to come out of the cartridge.
+fn program_color(kind: Option<rom::PartyProgramKind>) -> iced::Color {
+    match kind {
+        Some(rom::PartyProgramKind::MaxHp) => iced::Color::from_rgb8(0xfb, 0x30, 0x20),
+        Some(rom::PartyProgramKind::Attack) => iced::Color::from_rgb8(0xfb, 0xfb, 0x20),
+        Some(rom::PartyProgramKind::ChipAttack) => iced::Color::from_rgb8(0x49, 0xa2, 0xfb),
+        Some(rom::PartyProgramKind::Special) | None => iced::Color::from_rgb8(0xfb, 0xfb, 0xfb),
+    }
+}
 
-    let mut party_rows = column![].spacing(1).padding(0);
-    for slot in 0..save::NUM_TEAM_SLOTS {
-        let inner: iced::Element<'a, Action> = match save.team_navi(slot) {
-            Some(navi) => row![
-                navi_line(lang, loaded, save, navi),
-                sv::remove_button(Action::Game(Arc::new(RemovePartyNavi(slot)))),
+/// How tall and wide one block of the gauge is drawn.
+const GAUGE_BLOCK: f32 = 14.0;
+
+/// The member's gauge: one block per point of capacity, filled from the
+/// left in the colour of whichever program paid for it, exactly as the
+/// panel draws it.
+fn partycust_gauge<'a>(loaded: &'a OpenSave, customizer: &save::Partycust) -> iced::Element<'a, Action> {
+    let cart = cart_of(loaded);
+    let mut filled: Vec<iced::Color> = Vec::new();
+    for &index in customizer.equipped() {
+        let Some(program) = cart.and_then(|cart| cart.party_program(index)) else { continue };
+        let color = program_color(program.kind());
+        filled.extend(std::iter::repeat_n(color, program.cost() as usize));
+    }
+    let mut blocks = row![].spacing(2).align_y(iced::Alignment::Center);
+    for block in 0..customizer.capacity() as usize {
+        let color = filled.get(block).copied();
+        blocks = blocks.push(
+            iced::widget::container(iced::widget::Space::new())
+                .width(iced::Length::Fixed(GAUGE_BLOCK))
+                .height(iced::Length::Fixed(GAUGE_BLOCK))
+                .style(move |theme: &iced::Theme| iced::widget::container::Style {
+                    background: Some(
+                        color
+                            .unwrap_or_else(|| {
+                                let mut empty = theme.palette().text;
+                                empty.a = 0.12;
+                                empty
+                            })
+                            .into(),
+                    ),
+                    ..Default::default()
+                }),
+        );
+    }
+    blocks.into()
+}
+
+/// One party slot, as the game's own PARTY STATUS card and its CUSTOM
+/// panel read together: who the slot fields, the programs they carry,
+/// and the gauge those fill.
+///
+/// Reading, the navi is a name and the programs a caption. Editing, the
+/// navi is a dropdown over the file's recruited roster (the CHANGE
+/// button's own offer), each program a row with a ✕, and a dropdown of
+/// what the file could still put on sits under them — the gauge and the
+/// stock are already what that dropdown offers, so nothing it lists can
+/// overspend either.
+fn party_slot<'a>(
+    lang: &'a LanguageIdentifier,
+    loaded: &'a OpenSave,
+    save: &'a Save,
+    slot: usize,
+    editing: bool,
+) -> iced::Element<'a, Action> {
+    let navi = save.team_navi(slot);
+    let header: iced::Element<'a, Action> = if editing {
+        let held: Vec<usize> = (0..save::NUM_TEAM_SLOTS)
+            .filter(|&other| other != slot)
+            .filter_map(|other| save.team_navi(other))
+            .collect();
+        let mut options = vec![NaviChoice {
+            navi: None,
+            label: tango_gamesupport_common::t!(lang, "bn5ds-team-none"),
+        }];
+        options.extend(
+            save.team_navi_choices()
+                .into_iter()
+                .filter(|choice| !held.contains(choice))
+                .map(|choice| NaviChoice {
+                    navi: Some(choice),
+                    label: navi_name(loaded, choice),
+                }),
+        );
+        let selected = options.iter().find(|choice| choice.navi == navi).cloned();
+        iced::widget::container(
+            row![
+                pick_list(options, selected, move |choice: NaviChoice| {
+                    Action::Game(Arc::new(SetPartyNavi {
+                        slot,
+                        navi: choice.navi,
+                    }))
+                }),
+                iced::widget::Space::new().width(iced::Fill),
+                sv::clear_all_button(lang, Action::Game(Arc::new(ClearPartyPrograms(slot)))),
             ]
             .spacing(8)
-            .align_y(iced::Alignment::Center)
-            .into(),
+            .align_y(iced::Alignment::Center),
+        )
+        .width(iced::Fill)
+        .padding(tango_gamesupport_common::style::HEADER_PADDING)
+        .into()
+    } else {
+        iced::widget::container(match navi {
+            Some(navi) => navi_line(lang, loaded, save, navi),
             None => iced::widget::text(tango_gamesupport_common::t!(lang, "bn5ds-team-none"))
                 .size(tango_gamesupport_common::style::TEXT_BODY)
                 .style(tango_gamesupport_common::widgets::muted_text_style)
                 .width(iced::Fill)
                 .into(),
-        };
-        party_rows = party_rows.push(sv::edit_row_wrap(
-            iced::widget::container(inner).padding([3, 12]).into(),
+        })
+        .width(iced::Fill)
+        .padding(tango_gamesupport_common::style::HEADER_PADDING)
+        .into()
+    };
+
+    let Some(cart) = cart_of(loaded) else {
+        return sv::editor_pane(header, column![]);
+    };
+    let customizer = save::Partycust::new(save, cart, slot);
+
+    let mut body = column![].spacing(1).padding(0);
+    for (at, &index) in customizer.equipped().iter().enumerate() {
+        let mut line = row![
+            iced::widget::text(program_name(loaded, index))
+                .size(tango_gamesupport_common::style::TEXT_BODY)
+                .width(iced::Fill),
+            sv::limit_caption(
+                cart.party_program(index).map(|program| program.cost()).unwrap_or(0).to_string(),
+                false,
+            ),
+        ]
+        .spacing(8)
+        .align_y(iced::Alignment::Center);
+        if editing {
+            line = line.push(sv::remove_button(Action::Game(Arc::new(RemovePartyProgram { slot, at }))));
+        }
+        body = body.push(sv::edit_row_wrap(
+            iced::widget::container(line).padding([3, 12]).into(),
             None,
-            slot,
+            at,
             None,
         ));
     }
-    let party_pane = sv::editor_pane(
-        sv::editor_header(
-            lang,
-            tango_gamesupport_common::t!(lang, "save-tab-party"),
-            vec![],
-            Action::Game(Arc::new(ClearParty)),
-        ),
-        party_rows,
-    );
-
-    let full = held.len() >= save::NUM_TEAM_SLOTS;
-    let mut roster_rows = column![].spacing(1).padding(0);
-    for (idx, navi) in save.team_navi_choices().into_iter().enumerate() {
-        let addable = !full && !held.contains(&navi);
-        let row_button: iced::Element<'a, Action> = iced::widget::button(navi_line(lang, loaded, save, navi))
-            .padding([3, 12])
-            .width(iced::Fill)
-            .style(tango_gamesupport_common::widgets::neutral)
-            .on_press_maybe(addable.then(|| Action::Game(Arc::new(AddPartyNavi(navi)) as Arc<_>)))
-            .into();
-        roster_rows = roster_rows.push(sv::edit_row_wrap(row_button, None, idx, None));
+    if customizer.equipped().is_empty() {
+        let empty = if navi.is_some() {
+            tango_gamesupport_common::t!(lang, "bn5ds-partycust-empty")
+        } else {
+            tango_gamesupport_common::t!(lang, "bn5ds-team-none")
+        };
+        body = body.push(
+            iced::widget::container(
+                iced::widget::text(empty)
+                    .size(tango_gamesupport_common::style::TEXT_BODY)
+                .style(tango_gamesupport_common::widgets::muted_text_style)
+                .width(iced::Fill),
+            )
+            .padding([3, 12]),
+        );
     }
-    let roster_pane = sv::editor_pane(
+    if editing && navi.is_some() {
+        let choices: Vec<ProgramChoice> = (0..tango_gamesupport_bn5ds_dataview::NUM_PARTY_PROGRAMS)
+            .filter(|&index| customizer.can_add(index))
+            .map(|index| ProgramChoice {
+                index,
+                label: format!(
+                    "{} ({})",
+                    program_name(loaded, index),
+                    cart.party_program(index).map(|program| program.cost()).unwrap_or(0),
+                ),
+            })
+            .collect();
+        let add: iced::Element<'a, Action> = if choices.is_empty() {
+            iced::widget::text(tango_gamesupport_common::t!(lang, "bn5ds-partycust-full"))
+                .size(tango_gamesupport_common::style::TEXT_CAPTION)
+                .style(tango_gamesupport_common::widgets::muted_text_style)
+                .width(iced::Fill)
+                .into()
+        } else {
+            action_pick_list(
+                choices,
+                tango_gamesupport_common::t!(lang, "bn5ds-partycust-add"),
+                move |choice: ProgramChoice| {
+                    Action::Game(Arc::new(AddPartyProgram {
+                        slot,
+                        program: choice.index,
+                    }))
+                },
+            )
+        };
+        body = body.push(iced::widget::container(add).padding([6, 12]));
+    }
+    body = body.push(
         iced::widget::container(
-            iced::widget::text(tango_gamesupport_common::t!(lang, "bn5ds-party-roster"))
-                .size(tango_gamesupport_common::style::TEXT_BODY),
+            row![
+                partycust_gauge(loaded, &customizer),
+                iced::widget::Space::new().width(iced::Fill),
+                sv::stat(
+                    tango_gamesupport_common::t!(lang, "bn5ds-partycust-gauge"),
+                    format!("{} / {}", customizer.cost(), customizer.capacity()),
+                ),
+            ]
+            .spacing(12)
+            .align_y(iced::Alignment::Center),
         )
-        .width(iced::Fill)
-        .padding(tango_gamesupport_common::style::HEADER_PADDING),
-        roster_rows,
+        .padding([6, 12]),
     );
 
-    sv::editor_panes(party_pane, roster_pane)
+    sv::editor_pane(header, body)
+}
+
+/// The Party tab's read-only body: the two slots the battle's NAVI
+/// CHANGE panel offers, each over what the PARTY CUSTOMIZER gave it.
+fn render_party<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> iced::Element<'a, Action> {
+    let Some(save) = file_of(loaded) else {
+        return sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty"));
+    };
+    sv::editor_panes(
+        party_slot(lang, loaded, save, 0, false),
+        party_slot(lang, loaded, save, 1, false),
+    )
+}
+
+/// The party customizer: one panel per slot, laid out the way the
+/// game's own is — who the slot fields on top, the programs they carry
+/// under it, the gauge below that.
+fn render_party_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> iced::Element<'a, Action> {
+    let Some(save) = file_of(loaded) else {
+        return sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty"));
+    };
+    sv::editor_panes(
+        party_slot(lang, loaded, save, 0, true),
+        party_slot(lang, loaded, save, 1, true),
+    )
 }
 
 /// The Party tab as clipboard text: one navi per line, with the card's
-/// numbers.
+/// numbers and what the customizer has given it.
 fn party_as_text(loaded: &OpenSave) -> Option<String> {
     let save = file_of(loaded)?;
+    let cart = cart_of(loaded);
     Some(
         (0..save::NUM_TEAM_SLOTS)
             .filter_map(|slot| {
                 let navi = save.team_navi(slot)?;
+                let equipped = cart
+                    .map(|cart| save::Partycust::new(save, cart, slot))
+                    .map(|customizer| {
+                        customizer
+                            .equipped()
+                            .iter()
+                            .map(|&index| program_name(loaded, index))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .unwrap_or_default();
                 Some(format!(
-                    "{}\t{}\t{}",
+                    "{}\t{}\t{}\t{equipped}",
                     navi_name(loaded, navi),
                     save.navi_hp(navi),
-                    save.navi_level(navi)
+                    save.partycust_bonus(navi).attack + 1,
                 ))
             })
             .collect::<Vec<_>>()

@@ -259,12 +259,67 @@ fn story_flag(n: usize) -> (usize, u8) {
     (STORY_FLAGS_OFFSET + n / 8, 0x80 >> (n % 8))
 }
 
-/// The navi's level, at record `+1` — 0 for a navi the file has never
-/// raised, which is every navi outside its own team's six. It is what
-/// the battle's cards read their ATTACK from (zero it and a card's
-/// ATTACK drops), and the one thing in the save that says which navis a
-/// file actually has.
-const NAVI_LEVEL_INTO_RECORD: usize = 0x01;
+/// What the PARTY CUSTOMIZER has given a team navi, all four of it in
+/// that navi's own record: `+1` the ATTACK its card shows (0-based, so
+/// a card reading ATTACK 1 is a zero here), `+0x56` the chip attack it
+/// adds, `+0x59` whether the member gives support, `+0x5a` the max HP
+/// it adds. The HP lands in the record's *effective* max HP as well —
+/// [`NAVI_STATS_OFFSET`]'s third half-word, which is what the screens
+/// outside the customizer read a member's HP off.
+///
+/// Read out of the customizer itself: driving one headless and diffing
+/// the whole save image across a session turns up exactly these (plus
+/// the play clock, the checksums, and the loadout at
+/// [`PARTYCUST_LOADOUT_OFFSET`]), and the game's own apply and remove
+/// jump tables (US `0x021e0560` / `0x021e02d0`) write the same fields.
+const PARTYCUST_ATTACK_INTO_RECORD: usize = 0x01;
+const PARTYCUST_CHIP_ATTACK_INTO_RECORD: usize = 0x56;
+const PARTYCUST_SUPPORT_INTO_RECORD: usize = 0x59;
+const PARTYCUST_MAX_HP_INTO_RECORD: usize = 0x5a;
+const PARTYCUST_EFFECTIVE_HP_INTO_RECORD: usize = NAVI_STATS_INTO_RECORD + 2 * std::mem::size_of::<u16>();
+
+/// The customizer's committed loadouts, at the very end of the save
+/// image: one entry per party slot, [`PARTYCUST_LOADOUT_SIZE`] bytes
+/// apiece, so the pair runs out to the image's last byte.
+///
+/// ```text
+///   +0x00        the navi the entry was customized for, 0 for none
+///   +0x02..0x0c  the item ids of the programs equipped, 0-padded —
+///                ten, as many as the widest gauge can hold
+///   +0x0c        the ATTACK they add up to
+///   +0x0d        the chip attack they add up to
+/// ```
+///
+/// The record fields above are what a battle reads; this is what the
+/// customizer's own panel redraws its list and gauge from. A save
+/// carrying one without the other shows boosted stats over an empty
+/// gauge — which is what writing the record alone and booting the panel
+/// does — so both are written together.
+///
+/// Found by committing known programs in a driven session and diffing
+/// the image: `RUN!`, the last entry of the panel's list, is what
+/// writes it. The stride is the one the panel's own per-member array
+/// uses (US `0x021e0450` and friends index it by `member * 0xe`), and
+/// two entries of it reach the image's end exactly.
+pub const PARTYCUST_LOADOUT_OFFSET: usize = 0x8424;
+const PARTYCUST_LOADOUT_SIZE: usize = 0x0e;
+const PARTYCUST_LOADOUT_NAVI: usize = 0x00;
+const PARTYCUST_LOADOUT_PROGRAMS: usize = 0x02;
+const PARTYCUST_LOADOUT_ATTACK: usize = 0x0c;
+const PARTYCUST_LOADOUT_CHIP_ATTACK: usize = 0x0d;
+
+/// How many programs one entry can name — as many as the widest gauge
+/// in the cart's own table holds, since nothing costs less than a
+/// block.
+pub const MAX_PARTY_PROGRAMS_EQUIPPED: usize = PARTYCUST_LOADOUT_ATTACK - PARTYCUST_LOADOUT_PROGRAMS;
+
+/// The item counts: one byte per item id, the game's own section table
+/// giving it as 0x190 bytes here. The subchips the PET stocks start at
+/// id 0xa0 — a played cart's counts there match its Sub Chip menu
+/// exactly — and the party programs at 0xb0, where they match the
+/// customizer's own xN badges.
+pub const ITEM_COUNTS_OFFSET: usize = 0x144c;
+const NUM_ITEMS: usize = 0x190;
 
 /// The materialized NaviCust grid: 5x5 cells, each holding a part
 /// slot + 1 (0 for an empty cell), then seven bytes the section pads
@@ -308,6 +363,124 @@ const NUM_AUTO_BATTLE_DATA_SLOTS: usize = 42;
 /// rebuild leaves them alone rather than blanking something the game
 /// put there.
 const AUTO_BATTLE_DATA_COMBO_SLOTS: std::ops::Range<usize> = 33..41;
+
+/// What the PARTY CUSTOMIZER has given a team navi — the three numbers
+/// its card shows over the customizer's own gauge, and whether the
+/// member gives support. Where each lives is
+/// [`PARTYCUST_ATTACK_INTO_RECORD`] and friends.
+///
+/// The same shape says what a single program grants, since equipping one
+/// is exactly adding its bonus (see
+/// [`PartyProgram::bonus`](crate::rom::PartyProgram::bonus)).
+///
+/// `attack` is the game's own byte, which is 0-based: a card reading
+/// ATTACK 1 is a zero here.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
+pub struct PartycustBonus {
+    pub max_hp: u16,
+    pub attack: u8,
+    pub chip_attack: u16,
+    pub support: bool,
+}
+
+impl PartycustBonus {
+    /// This bonus with one more program's equipped over it, or `None` when
+    /// a field would run past what its record holds.
+    fn plus(self, other: Self) -> Option<Self> {
+        Some(Self {
+            max_hp: self.max_hp.checked_add(other.max_hp)?,
+            attack: self.attack.checked_add(other.attack)?,
+            chip_attack: self.chip_attack.checked_add(other.chip_attack)?,
+            support: self.support || other.support,
+        })
+    }
+}
+
+/// The PARTY CUSTOMIZER as it stands for one of the two party slots:
+/// how big that member's gauge is, which programs it has equipped, and
+/// which more the file could still put on.
+///
+/// The equipped set is the game's own list ([`PARTYCUST_LOADOUT_OFFSET`]),
+/// not a guess at one: the panel records the item id of everything it
+/// commits. An entry naming a navi the slot no longer fields is stale —
+/// the game rebuilds it whenever the member changes — and reads as
+/// nothing equipped.
+pub struct Partycust {
+    capacity: u8,
+    equipped: Vec<usize>,
+    /// Per program, how many the file stocks and what one costs — read
+    /// once so the editor's own questions don't go back to the cart.
+    stock: Vec<u8>,
+    costs: Vec<u8>,
+}
+
+impl Partycust {
+    /// Work out what party slot `slot` has equipped, and what else this
+    /// file's stock could put on it.
+    pub fn new(save: &Save, assets: &crate::rom::Assets, slot: usize) -> Self {
+        let navi = save.team_navi(slot);
+        Self {
+            capacity: navi.map(|navi| assets.partycust_capacity(navi)).unwrap_or(0),
+            equipped: save.party_programs(slot, assets),
+            stock: (0..crate::NUM_PARTY_PROGRAMS)
+                .map(|index| {
+                    assets
+                        .party_program(index)
+                        .map(|program| save.item_count(program.item_id()))
+                        .unwrap_or(0)
+                })
+                .collect(),
+            costs: (0..crate::NUM_PARTY_PROGRAMS)
+                .map(|index| assets.party_program(index).map(|program| program.cost()).unwrap_or(0))
+                .collect(),
+        }
+    }
+
+    /// How many blocks this member's gauge holds. Zero for an empty
+    /// slot, which is nothing to customize.
+    pub fn capacity(&self) -> u8 {
+        self.capacity
+    }
+
+    /// The programs the member has equipped, in the order the panel
+    /// put them on.
+    pub fn equipped(&self) -> &[usize] {
+        &self.equipped
+    }
+
+    /// How much of the gauge those fill.
+    pub fn cost(&self) -> u8 {
+        self.equipped.iter().map(|&index| self.costs[index]).sum()
+    }
+
+    /// Whether one more of `program` would go on: the file has to stock
+    /// another, and the gauge has to have room for it.
+    pub fn can_add(&self, program: usize) -> bool {
+        let (Some(&cost), Some(&stock)) = (self.costs.get(program), self.stock.get(program)) else {
+            return false;
+        };
+        let already = self.equipped.iter().filter(|&&index| index == program).count();
+        already < stock as usize && self.cost() + cost <= self.capacity
+    }
+
+    /// What the member would have equipped with one more of `program`
+    /// on the end, which is where the panel's own list puts one.
+    pub fn with(&self, program: usize) -> Vec<usize> {
+        let mut equipped = self.equipped.clone();
+        equipped.push(program);
+        equipped
+    }
+
+    /// What the member would have equipped with the program in position
+    /// `at` taken back off.
+    pub fn without(&self, at: usize) -> Vec<usize> {
+        let mut equipped = self.equipped.clone();
+        if at < equipped.len() {
+            equipped.remove(at);
+        }
+        equipped
+    }
+}
 
 /// The MegaMan a save brings to a battle: plain, or one of the two
 /// crosses the game unlocks from a cartridge in the GBA slot.
@@ -609,6 +782,10 @@ impl Save {
     /// Keeps the [`TEAM_MIRROR_OFFSET`] bits equal to the slots the way
     /// the game's own machine does, so the load's cross-check passes.
     /// Keeping the list packed is [`pack_team`](Save::pack_team)'s job.
+    ///
+    /// A slot that changes members loses its customizer loadout and the
+    /// navi that left is stripped back to no bonus, which is what the
+    /// game's own change does: the programs go back into stock.
     pub fn set_team_navi(&mut self, slot: usize, navi: Option<usize>) -> bool {
         if slot >= NUM_TEAM_SLOTS {
             return false;
@@ -618,9 +795,18 @@ impl Save {
             Some(_) => return false,
             None => 0,
         };
+        let left = self.team_navi(slot).filter(|&left| Some(left) != navi);
         self.active_mut()[TEAM_NAVI_OFFSET + slot * std::mem::size_of::<u32>()..][..4]
             .copy_from_slice(&raw.to_le_bytes());
         self.sync_team_mirror();
+        if let Some(left) = left {
+            self.clear_partycust_loadout(slot);
+            // Unless the navi only moved between the two slots, in
+            // which case its loadout moves with it (see `pack_team`).
+            if !(0..NUM_TEAM_SLOTS).any(|slot| self.team_navi(slot) == Some(left)) {
+                self.write_partycust_bonus(left, PartycustBonus::default());
+            }
+        }
         true
     }
 
@@ -671,10 +857,16 @@ impl Save {
     /// battle refuses — it draws MegaMan and NO DATA instead of the
     /// team. Packing that same save's ids is enough to make the battle
     /// show the navi again, which is why every edit ends here.
+    /// A navi's customizer loadout moves down with it, since it belongs
+    /// to the member rather than to the slot.
     pub fn pack_team(&mut self) {
-        let held: Vec<usize> = (0..NUM_TEAM_SLOTS).filter_map(|slot| self.team_navi(slot)).collect();
+        let held: Vec<(usize, [u8; PARTYCUST_LOADOUT_SIZE])> = (0..NUM_TEAM_SLOTS)
+            .filter_map(|slot| Some((self.team_navi(slot)?, self.partycust_loadout(slot))))
+            .collect();
         for slot in 0..NUM_TEAM_SLOTS {
-            self.set_team_navi(slot, held.get(slot).copied());
+            self.set_team_navi(slot, held.get(slot).map(|&(navi, _)| navi));
+            let entry = held.get(slot).map(|&(_, entry)| entry).unwrap_or_default();
+            self.partycust_loadout_mut(slot).copy_from_slice(&entry);
         }
     }
 
@@ -684,16 +876,136 @@ impl Save {
         self.navi_stats(id).map(|[_, _, effective]| effective).unwrap_or(0)
     }
 
-    /// Navi `id`'s level — what the battle's card reads its ATTACK
-    /// from, and 0 for a navi this file has never raised. Levelling is
-    /// not what makes a navi fieldable: a file can bring one it never
-    /// raised (and does — a cart's team slots read fine with every
-    /// level at 0), and raising one it never met doesn't help.
-    pub fn navi_level(&self, id: usize) -> u8 {
-        self.active()
-            .get(NAVI_RECORD_OFFSET + id * NAVI_RECORD_SIZE + NAVI_LEVEL_INTO_RECORD)
-            .copied()
-            .unwrap_or(0)
+    /// What the PARTY CUSTOMIZER has given navi `id`. All zeroes for a
+    /// navi nobody has customized, which is every navi on a fresh file.
+    pub fn partycust_bonus(&self, id: usize) -> PartycustBonus {
+        let byte = |into| {
+            self.active()
+                .get(NAVI_RECORD_OFFSET + id * NAVI_RECORD_SIZE + into)
+                .copied()
+                .unwrap_or(0)
+        };
+        let half = |into: usize| {
+            self.active()
+                .get(NAVI_RECORD_OFFSET + id * NAVI_RECORD_SIZE + into..)
+                .and_then(|raw| raw.get(..2))
+                .map(|raw| u16::from_le_bytes(raw.try_into().unwrap()))
+                .unwrap_or(0)
+        };
+        PartycustBonus {
+            max_hp: half(PARTYCUST_MAX_HP_INTO_RECORD),
+            attack: byte(PARTYCUST_ATTACK_INTO_RECORD),
+            chip_attack: half(PARTYCUST_CHIP_ATTACK_INTO_RECORD),
+            support: byte(PARTYCUST_SUPPORT_INTO_RECORD) != 0,
+        }
+    }
+
+    /// The programs party slot `slot` has equipped, as indexes into the
+    /// cart's own table. Empty for a slot with no member, and for one
+    /// whose loadout entry names a navi it no longer fields — the game
+    /// rebuilds the entry whenever the member changes, so a stale one is
+    /// nothing equipped.
+    pub fn party_programs(&self, slot: usize, assets: &crate::rom::Assets) -> Vec<usize> {
+        let Some(navi) = self.team_navi(slot) else { return Vec::new() };
+        let entry = self.partycust_loadout(slot);
+        if entry[PARTYCUST_LOADOUT_NAVI] as usize != navi {
+            return Vec::new();
+        }
+        entry[PARTYCUST_LOADOUT_PROGRAMS..PARTYCUST_LOADOUT_ATTACK]
+            .iter()
+            .take_while(|&&item| item != 0)
+            .filter_map(|&item| {
+                (0..crate::NUM_PARTY_PROGRAMS)
+                    .find(|&index| assets.party_program(index).map(|p| p.item_id()) == Some(item as usize))
+            })
+            .collect()
+    }
+
+    /// Dress party slot `slot` in `programs`, the way a session that
+    /// ended on the panel's `RUN!` leaves it: the member's record takes
+    /// the sum of what they grant, and the slot's own entry takes the
+    /// programs themselves. An empty set strips the member bare.
+    ///
+    /// Refuses a slot with no member, and a set longer than an entry
+    /// holds. Whether the file could actually pay for it — its stock,
+    /// and the member's gauge — is [`Partycust`]'s to say, and what the
+    /// editor asks before calling.
+    pub fn set_party_programs(
+        &mut self,
+        slot: usize,
+        programs: impl IntoIterator<Item = usize>,
+        assets: &crate::rom::Assets,
+    ) -> bool {
+        let Some(navi) = self.team_navi(slot) else { return false };
+        let mut bonus = PartycustBonus::default();
+        let mut items = [0u8; MAX_PARTY_PROGRAMS_EQUIPPED];
+        for (at, index) in programs.into_iter().enumerate() {
+            let Some(program) = assets.party_program(index) else { return false };
+            let Some(equipped) = bonus.plus(program.bonus()) else { return false };
+            let Some(item) = items.get_mut(at) else { return false };
+            *item = program.item_id() as u8;
+            bonus = equipped;
+        }
+
+        self.write_partycust_bonus(navi, bonus);
+        let entry = self.partycust_loadout_mut(slot);
+        entry.fill(0);
+        entry[PARTYCUST_LOADOUT_NAVI] = navi as u8;
+        entry[PARTYCUST_LOADOUT_PROGRAMS..PARTYCUST_LOADOUT_ATTACK].copy_from_slice(&items);
+        entry[PARTYCUST_LOADOUT_ATTACK] = bonus.attack;
+        entry[PARTYCUST_LOADOUT_CHIP_ATTACK] = bonus.chip_attack.min(u8::MAX as u16) as u8;
+        true
+    }
+
+    /// Write navi `id`'s four record fields, and fold the HP into the
+    /// effective max HP the rest of the game reads.
+    fn write_partycust_bonus(&mut self, id: usize, bonus: PartycustBonus) {
+        if id >= NUM_NAVIS {
+            return;
+        }
+        let base = self.navi_stats(id).map(|[base, _, _]| base).unwrap_or(0);
+        let record = NAVI_RECORD_OFFSET + id * NAVI_RECORD_SIZE;
+        self.active_mut()[record + PARTYCUST_ATTACK_INTO_RECORD] = bonus.attack;
+        self.active_mut()[record + PARTYCUST_SUPPORT_INTO_RECORD] = bonus.support as u8;
+        self.active_mut()[record + PARTYCUST_CHIP_ATTACK_INTO_RECORD..][..2]
+            .copy_from_slice(&bonus.chip_attack.to_le_bytes());
+        self.active_mut()[record + PARTYCUST_MAX_HP_INTO_RECORD..][..2]
+            .copy_from_slice(&bonus.max_hp.to_le_bytes());
+        self.active_mut()[record + PARTYCUST_EFFECTIVE_HP_INTO_RECORD..][..2]
+            .copy_from_slice(&base.saturating_add(bonus.max_hp).to_le_bytes());
+    }
+
+    /// Party slot `slot`'s customizer entry (see
+    /// [`PARTYCUST_LOADOUT_OFFSET`]), all zeroes past the two slots.
+    fn partycust_loadout(&self, slot: usize) -> [u8; PARTYCUST_LOADOUT_SIZE] {
+        if slot >= NUM_TEAM_SLOTS {
+            return [0; PARTYCUST_LOADOUT_SIZE];
+        }
+        self.active()[PARTYCUST_LOADOUT_OFFSET + slot * PARTYCUST_LOADOUT_SIZE..][..PARTYCUST_LOADOUT_SIZE]
+            .try_into()
+            .unwrap()
+    }
+
+    fn partycust_loadout_mut(&mut self, slot: usize) -> &mut [u8] {
+        let slot = slot.min(NUM_TEAM_SLOTS - 1);
+        &mut self.active_mut()[PARTYCUST_LOADOUT_OFFSET + slot * PARTYCUST_LOADOUT_SIZE..][..PARTYCUST_LOADOUT_SIZE]
+    }
+
+    /// Empty party slot `slot`'s customizer entry — what the game does
+    /// when the member changes.
+    fn clear_partycust_loadout(&mut self, slot: usize) {
+        if slot < NUM_TEAM_SLOTS {
+            self.partycust_loadout_mut(slot).fill(0);
+        }
+    }
+
+    /// How many of item `id` the file stocks — see
+    /// [`ITEM_COUNTS_OFFSET`].
+    pub fn item_count(&self, id: usize) -> u8 {
+        if id >= NUM_ITEMS {
+            return 0;
+        }
+        self.active().get(ITEM_COUNTS_OFFSET + id).copied().unwrap_or(0)
     }
 
     /// Navi `id`'s stats block: base max HP, current HP, effective max
@@ -1603,7 +1915,7 @@ mod tests {
     #[test]
     fn any_navi_may_be_fielded() {
         let mut data = plausible();
-        data[NAVI_RECORD_OFFSET + 9 * NAVI_RECORD_SIZE + NAVI_LEVEL_INTO_RECORD] = 3;
+        data[NAVI_RECORD_OFFSET + 9 * NAVI_RECORD_SIZE + PARTYCUST_ATTACK_INTO_RECORD] = 3;
 
         let mut save = SaveSet::parse(&data).unwrap().current();
         // The offer list is the recruit flags (0x268 + navi): nothing
@@ -1627,9 +1939,119 @@ mod tests {
         assert_eq!(save.active()[TEAM_MIRROR_OFFSET] & 0x07, 0);
         assert_eq!(save.active()[TEAM_MIRROR_OFFSET + 2] & 0x80, 0);
 
-        // The level is the card's ATTACK, not a gate on being fielded.
-        assert_eq!(save.navi_level(9), 3);
-        assert_eq!(save.navi_level(8), 0);
+        // The customizer's ATTACK is not a gate on being fielded.
+        assert_eq!(save.partycust_bonus(9).attack, 3);
+        assert_eq!(save.partycust_bonus(8).attack, 0);
+    }
+
+    /// A cart carrying just the party program tables, at the offsets
+    /// [`crate::rom::A5TE_00`] names — the reads a customizer write
+    /// makes, without a real cartridge on hand. The rows are the US
+    /// cart's own (see [`crate::rom::Offsets::party_programs`]).
+    fn party_program_cart() -> crate::rom::Assets {
+        let mut rom = vec![0u8; 0x21_9000];
+        // Enough header for the mapper to tell a file offset from a
+        // main-RAM address: where the ARM9 image loads, and how big.
+        rom[0x20..][..4].copy_from_slice(&0x4000u32.to_le_bytes());
+        rom[0x28..][..4].copy_from_slice(&0x0200_0000u32.to_le_bytes());
+        rom[0x2c..][..4].copy_from_slice(&0x0016_0d78u32.to_le_bytes());
+        rom[0x21_8f78..][..12].copy_from_slice(&[6, 8, 6, 8, 5, 10, 8, 6, 10, 6, 5, 8]);
+        rom[0x21_8f9c..][..13].copy_from_slice(&[
+            0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc,
+        ]);
+        rom[0x21_8fac..][..13].copy_from_slice(&[1, 2, 3, 5, 1, 2, 3, 3, 4, 5, 4, 7, 1]);
+        rom[0x21_8fbc..][..13].copy_from_slice(&[3, 3, 3, 3, 4, 4, 4, 2, 2, 2, 5, 5, 5]);
+        crate::rom::Assets::new(&crate::rom::A5TE_00, crate::rom::EN_CHARSET, rom)
+    }
+
+    /// What a member equips adds up into its record, the slot's own
+    /// entry names the programs, and stripping them puts both back.
+    ///
+    /// The costs and stock a real session needs come off the cart; the
+    /// bonuses and item ids a plain write needs are the program table's,
+    /// which a cartless `Assets` still answers for.
+    #[test]
+    fn equipped_party_programs_write_the_record_and_the_loadout() {
+        let assets = party_program_cart();
+        let mut save = SaveSet::parse(&plausible()).unwrap().current();
+        assert!(save.set_team_navi(0, Some(8)));
+        assert_eq!(save.partycust_bonus(8), PartycustBonus::default());
+        assert_eq!(save.party_programs(0, &assets), Vec::<usize>::new());
+
+        // P.HP+300, P.Atk+2, P.Chp+40 and P.Spport, equipped together.
+        assert!(save.set_party_programs(0, [3, 5, 8, 12], &assets));
+        assert_eq!(
+            save.partycust_bonus(8),
+            PartycustBonus {
+                max_hp: 300,
+                attack: 2,
+                chip_attack: 40,
+                support: true,
+            }
+        );
+        assert_eq!(save.party_programs(0, &assets), vec![3, 5, 8, 12]);
+        // The record is the game's own: HP and chip attack as u16 LE,
+        // ATTACK and support as bytes, and the HP folded into the
+        // effective max HP every other screen reads.
+        let record = NAVI_RECORD_OFFSET + 8 * NAVI_RECORD_SIZE;
+        assert_eq!(&save.active()[record + PARTYCUST_MAX_HP_INTO_RECORD..][..2], &[0x2c, 0x01]);
+        assert_eq!(save.active()[record + PARTYCUST_SUPPORT_INTO_RECORD], 1);
+        assert_eq!(save.navi_hp(8), 300);
+        // And the slot's entry is the game's: the member, then the item
+        // ids of what it equips.
+        let entry = save.partycust_loadout(0);
+        assert_eq!(entry[PARTYCUST_LOADOUT_NAVI], 8);
+        assert_eq!(&entry[PARTYCUST_LOADOUT_PROGRAMS..][..5], &[0xb3, 0xb5, 0xb8, 0xbc, 0]);
+        assert_eq!(entry[PARTYCUST_LOADOUT_ATTACK], 2);
+        assert_eq!(entry[PARTYCUST_LOADOUT_CHIP_ATTACK], 40);
+
+        // A battle pack is all three stats at once.
+        assert!(save.set_party_programs(0, [10], &assets));
+        assert_eq!(
+            save.partycust_bonus(8),
+            PartycustBonus {
+                max_hp: 50,
+                attack: 1,
+                chip_attack: 30,
+                support: false,
+            }
+        );
+
+        assert!(save.set_party_programs(0, [], &assets));
+        assert_eq!(save.partycust_bonus(8), PartycustBonus::default());
+        assert_eq!(save.party_programs(0, &assets), Vec::<usize>::new());
+
+        // No member is nothing to customize, and an entry longer than
+        // the widest gauge is not one the game could have written.
+        assert!(!save.set_party_programs(1, [0], &assets));
+        assert!(!save.set_party_programs(0, [crate::NUM_PARTY_PROGRAMS], &assets));
+        assert!(!save.set_party_programs(0, [0; MAX_PARTY_PROGRAMS_EQUIPPED + 1], &assets));
+    }
+
+    /// Changing a member takes its programs back off, and packing the
+    /// pair carries a member's loadout down with it.
+    #[test]
+    fn a_party_change_takes_the_members_programs_back_off() {
+        let assets = party_program_cart();
+        let mut save = SaveSet::parse(&plausible()).unwrap().current();
+        assert!(save.set_team_navi(0, Some(8)));
+        assert!(save.set_team_navi(1, Some(11)));
+        assert!(save.set_party_programs(1, [3], &assets));
+        assert_eq!(save.partycust_bonus(11).max_hp, 300);
+
+        // Emptying the first slot packs the second down into it, and
+        // its loadout comes along.
+        assert!(save.set_team_navi(0, None));
+        save.pack_team();
+        assert_eq!(save.team_navi(0), Some(11));
+        assert_eq!(save.party_programs(0, &assets), vec![3]);
+        assert_eq!(save.partycust_bonus(11).max_hp, 300);
+
+        // Swapping the member out is the game's own change: the
+        // programs go back to stock and the navi keeps nothing.
+        assert!(save.set_team_navi(0, Some(9)));
+        assert_eq!(save.partycust_bonus(11), PartycustBonus::default());
+        assert_eq!(save.party_programs(0, &assets), Vec::<usize>::new());
     }
 
     #[test]

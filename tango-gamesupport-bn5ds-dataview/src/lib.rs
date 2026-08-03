@@ -22,6 +22,12 @@ pub const NUM_CHIPS: usize = 424;
 /// The name archive's 52 entries (48 + 4 templates) agree.
 pub const NUM_NAVICUST_PARTS: usize = 205;
 
+/// Entries in the cart's party program table — the programs the PARTY
+/// CUSTOMIZER equips on a team navi. The cart's own four tables run
+/// thirteen entries apiece before their padding, and the item name
+/// archive names exactly thirteen (`P.HP+50` through `P.Spport`).
+pub const NUM_PARTY_PROGRAMS: usize = 13;
+
 /// How many chips the auto-battle data counts uses of. The cart keeps
 /// the GBA game's two 368-entry arrays rather than growing them to
 /// [`NUM_CHIPS`], so Double Team's own chips have no use count: the two

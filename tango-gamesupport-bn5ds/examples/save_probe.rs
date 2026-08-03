@@ -52,6 +52,26 @@ fn main() {
         }
     }
 
+    if args.iter().any(|arg| arg == "--programs") {
+        println!("party programs:");
+        for index in 0..tango_gamesupport_bn5ds::dataview::NUM_PARTY_PROGRAMS {
+            let Some(program) = assets.party_program(index) else { continue };
+            println!(
+                "  {index:2} item {:3} {:9} {} block(s)  {:?}",
+                program.item_id(),
+                program.name().unwrap_or_default(),
+                program.cost(),
+                program.bonus(),
+            );
+        }
+        println!(
+            "gauges: {:?}",
+            (1..save::NUM_NAVIS)
+                .map(|navi| assets.partycust_capacity(navi))
+                .collect::<Vec<_>>()
+        );
+    }
+
     let set = save::SaveSet::parse(&sram).expect("save did not parse");
     println!("cart holds files {:?}, current is {}", set.slots(), set.current().slot());
 
@@ -105,6 +125,25 @@ fn main() {
     assert!(file.set_team_navi(0, Some(11)));
     assert!(file.set_team_navi(1, Some(9)));
     file.pack_team();
+    // And the party customizer: put the dearest program the file can
+    // still afford on the first member, so the game's own PARTY
+    // CUSTOMIZER panel is the verdict on the four record fields.
+    {
+        let customizer = save::Partycust::new(&file, &assets, 0);
+        let dearest = (0..tango_gamesupport_bn5ds::dataview::NUM_PARTY_PROGRAMS)
+            .filter(|&index| customizer.can_add(index))
+            .max_by_key(|&index| assets.party_program(index).map(|p| p.cost()).unwrap_or(0));
+        if let Some(program) = dearest {
+            file.set_party_programs(0, customizer.with(program), &assets);
+            let navi = file.team_navi(0).unwrap_or_default();
+            println!(
+                "\nput {} on {}: {:?}",
+                assets.party_program(program).and_then(|p| p.name()).unwrap_or_default(),
+                assets.navi_name(navi).unwrap_or_default(),
+                file.partycust_bonus(navi),
+            );
+        }
+    }
     file.rebuild_checksum();
     let navi_hp_after = file.view_navi().unwrap().max_hp(&assets);
     println!("\nadded HP+500 to file {}: max HP {navi_hp_before} -> {navi_hp_after}", file.slot());
@@ -142,10 +181,33 @@ fn report(file: &save::Save, assets: &rom::Assets) {
             .join(", "),
         file.team_navi_choices()
             .into_iter()
-            .map(|navi| format!("{} (lv {})", navi_name(navi), file.navi_level(navi)))
+            .map(navi_name)
             .collect::<Vec<_>>()
             .join(", "),
     );
+
+    for slot in 0..save::NUM_TEAM_SLOTS {
+        let Some(navi) = file.team_navi(slot) else { continue };
+        let customizer = save::Partycust::new(file, assets, slot);
+        println!(
+            "  partycust {}: {:?} — {}/{} blocks [{}]",
+            navi_name(navi),
+            file.partycust_bonus(navi),
+            customizer.cost(),
+            customizer.capacity(),
+            customizer
+                .equipped()
+                .iter()
+                .map(|&index| {
+                    assets
+                        .party_program(index)
+                        .and_then(|program| program.name())
+                        .unwrap_or_else(|| format!("#{index}"))
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+    }
 
     let navi = file.view_navi().unwrap();
     let limits = navi.folder_limits(assets);

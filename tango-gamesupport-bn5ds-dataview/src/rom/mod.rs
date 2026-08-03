@@ -75,6 +75,65 @@ pub struct Offsets {
     /// names archive is the plain file right behind it, which is how
     /// this one was found.
     ncp_descriptions: u32,
+    /// The navi emblem sheet (file offset): thirteen 16x16 icons of
+    /// 2x2 tiles, one per navi in id order — the GBA pair's two sheets
+    /// merged, MegaMan and Team ProtoMan's six from the ProtoMan cart
+    /// followed by Team Colonel's six from the Colonel cart, byte for
+    /// byte (which is how it was found). The palettes are the eight
+    /// both GBA carts share; which one a navi takes is
+    /// [`Offsets::navi_emblem_palette_ids`].
+    navi_emblems: u32,
+    navi_emblem_palettes: u32,
+    /// Which of those palettes each navi's emblem takes (RAM): one byte
+    /// per navi in id order, the GBA pair's own table carried over
+    /// whole — which is how it was found, by searching the cart for its
+    /// thirteen bytes. Addressed as data; nothing in the static image
+    /// points at it.
+    navi_emblem_palette_ids: u32,
+    /// The party program tables (file offset, inside the overlay the
+    /// PARTY CUSTOMIZER runs out of): four rows of
+    /// [`NUM_PARTY_PROGRAMS`](super::NUM_PARTY_PROGRAMS) bytes,
+    /// [`PARTY_PROGRAM_ROW`] apart — the item id each program is
+    /// stocked as, what it costs the member's gauge, its category, and
+    /// one the panel's own artwork indexes by. Found by searching the
+    /// cart for a table whose entries matched the costs read off the
+    /// gauge in a driven customizer (`P.HP+50` one block, `P.HP+300`
+    /// five, `P.Atk+1` one).
+    party_programs: u32,
+    /// Every navi's gauge, in blocks: twelve bytes, navi 1's first —
+    /// MegaMan is not a party member and has no card. Confirmed
+    /// against the gauge two navis draw (ShadowMan six, Colonel eight).
+    partycust_capacities: u32,
+    /// The item name archive (RAM), indexed by item id: the subchips
+    /// from 0xa0, the party programs from 0xb0. Reached as data rather
+    /// than through a pointer, the way [`Offsets::ncp_names`] is.
+    item_names: u32,
+}
+
+/// How far apart the party program table's rows sit — the thirteen
+/// entries, padded out to a multiple of four.
+const PARTY_PROGRAM_ROW: u32 = 0x10;
+
+/// Which row of [`Offsets::party_programs`] holds what.
+const PARTY_PROGRAM_ITEM_IDS: u32 = 0;
+const PARTY_PROGRAM_COSTS: u32 = PARTY_PROGRAM_ROW;
+const PARTY_PROGRAM_KINDS: u32 = PARTY_PROGRAM_ROW * 2;
+
+/// What sort of program the cart files one as — its kind row's byte,
+/// which is what the customizer's gauge colours a block by. The four
+/// families the cart has are one code each; anything else is a cart
+/// this build does not know.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PartyProgramKind {
+    /// `P.Chp+N`, raising the member's chip attack.
+    ChipAttack,
+    /// `P.HP+N`, raising its max HP.
+    MaxHp,
+    /// `P.Atk+N`, raising the ATTACK its card shows.
+    Attack,
+    /// The battle packs and `P.Spport` — the ones that are not a single
+    /// stat.
+    Special,
 }
 
 #[rustfmt::skip]
@@ -92,6 +151,12 @@ pub static A5TE_00: Offsets = Offsets {
     ncp_data:                   0x020e_b3d0,
     ncp_names:                  0x020d_8a50,
     ncp_descriptions:           0x015f_5800,
+    navi_emblems:               0x0055_6800,
+    navi_emblem_palettes:       0x003b_2200,
+    navi_emblem_palette_ids:    0x020c_ed64,
+    party_programs:             0x0021_8f9c,
+    partycust_capacities:             0x0021_8f78,
+    item_names:                 0x020d_8f2c,
 };
 
 #[rustfmt::skip]
@@ -109,6 +174,12 @@ pub static A5TJ_00: Offsets = Offsets {
     ncp_data:                   0x020e_9cf4,
     ncp_names:                  0x020d_741c,
     ncp_descriptions:           0x0064_1e00,
+    navi_emblems:               0x005d_2600,
+    navi_emblem_palettes:       0x003c_9400,
+    navi_emblem_palette_ids:    0x020c_d7a0,
+    party_programs:             0x0021_1d84,
+    partycust_capacities:             0x0021_1d60,
+    item_names:                 0x020d_78d0,
 };
 
 /// Resolves the two address kinds against the cart image: `0x02xxxxxx`
@@ -205,7 +276,12 @@ impl Assets {
     /// keeping only its text. `None` when either address runs out of
     /// mappable range, or the entry does not decode.
     fn text(&self, pointer: u32, index: usize) -> Option<String> {
-        let archive = self.mapper.read_u32(pointer)?;
+        self.archive_text(self.mapper.read_u32(pointer)?, index)
+    }
+
+    /// The same, for an archive addressed outright rather than through
+    /// a pointer — the cart names some of its tables from nowhere.
+    fn archive_text(&self, archive: u32, index: usize) -> Option<String> {
         let entry = tango_gamesupport_common::dataview::msg::get_entry(self.mapper.get(archive), index)?;
 
         Some(
@@ -267,6 +343,25 @@ impl Assets {
         };
         self.text(self.offsets.navi_names_pointer, index)
             .filter(|name| !name.is_empty())
+    }
+
+    /// One of the PARTY CUSTOMIZER's programs, in the cart's own table
+    /// order — `P.HP+50` first, `P.Spport` last.
+    pub fn party_program(&self, index: usize) -> Option<PartyProgram<'_>> {
+        (index < super::NUM_PARTY_PROGRAMS).then_some(PartyProgram { index, assets: self })
+    }
+
+    /// How many blocks navi `id`'s customizer gauge holds. Zero for
+    /// MegaMan, who has no party card, and for anything off the roster.
+    pub fn partycust_capacity(&self, id: usize) -> u8 {
+        let Some(index) = id.checked_sub(1).filter(|&index| index < crate::save::NUM_NAVIS - 1) else {
+            return 0;
+        };
+        self.mapper
+            .get(self.offsets.partycust_capacities)
+            .get(index)
+            .copied()
+            .unwrap_or(0)
     }
 }
 
@@ -599,6 +694,161 @@ impl tango_gamesupport_common::dataview::rom::NavicustPart for NavicustPart<'_> 
     }
 }
 
+struct Navi<'a> {
+    id: usize,
+    assets: &'a Assets,
+}
+
+impl Navi<'_> {
+    /// The 16x16 emblem off the sheet, or `None` when the sheet runs
+    /// out of mappable range — a patched cart renders blank.
+    fn try_emblem(&self) -> Option<image::RgbaImage> {
+        const EMBLEM_TILES: usize = 2 * 2;
+        let tiles = self
+            .assets
+            .mapper
+            .get(self.assets.offsets.navi_emblems + (self.id * EMBLEM_TILES * tango_gamesupport_common::dataview::rom::TILE_BYTES) as u32);
+        let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(
+            tiles.get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * EMBLEM_TILES)?,
+            2,
+        )
+        .ok()?;
+        let which = *self
+            .assets
+            .mapper
+            .get(self.assets.offsets.navi_emblem_palette_ids)
+            .get(self.id)? as usize;
+        let palette = bytemuck::pod_read_unaligned::<tango_gamesupport_common::dataview::rom::Palette>(
+            self.assets
+                .mapper
+                .get(
+                    self.assets.offsets.navi_emblem_palettes
+                        + (which * std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>()) as u32,
+                )
+                .get(..std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>())?,
+        );
+        Some(tango_gamesupport_common::dataview::rom::apply_palette(paletted, &palette))
+    }
+}
+
+impl tango_gamesupport_common::dataview::rom::Navi for Navi<'_> {
+    fn name(&self) -> Option<String> {
+        self.assets.navi_name(self.id)
+    }
+
+    fn emblem(&self) -> image::RgbaImage {
+        self.try_emblem().unwrap_or_else(|| {
+            image::RgbaImage::new(
+                (2 * tango_gamesupport_common::dataview::rom::TILE_WIDTH) as u32,
+                (2 * tango_gamesupport_common::dataview::rom::TILE_HEIGHT) as u32,
+            )
+        })
+    }
+}
+
+/// One of the PARTY CUSTOMIZER's programs: what the cart calls it,
+/// what it costs the member's gauge, and what it gives them.
+pub struct PartyProgram<'a> {
+    index: usize,
+    assets: &'a Assets,
+}
+
+impl PartyProgram<'_> {
+    fn table(&self, row: u32) -> u8 {
+        self.assets
+            .mapper
+            .get(self.assets.offsets.party_programs + row)
+            .get(self.index)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// The item id the file stocks this program as — what indexes the
+    /// save's own item counts and the cart's name archive.
+    pub fn item_id(&self) -> usize {
+        self.table(PARTY_PROGRAM_ITEM_IDS) as usize
+    }
+
+    /// How many blocks of the member's gauge it fills.
+    pub fn cost(&self) -> u8 {
+        self.table(PARTY_PROGRAM_COSTS)
+    }
+
+    /// Which family the cart files it under — what the gauge colours
+    /// its blocks by. `None` for a code this build has no family for.
+    pub fn kind(&self) -> Option<PartyProgramKind> {
+        Some(match self.table(PARTY_PROGRAM_KINDS) {
+            2 => PartyProgramKind::ChipAttack,
+            3 => PartyProgramKind::MaxHp,
+            4 => PartyProgramKind::Attack,
+            5 => PartyProgramKind::Special,
+            _ => return None,
+        })
+    }
+
+    /// What the cart calls it — `P.HP+50`, `P.サポート`.
+    pub fn name(&self) -> Option<String> {
+        self.assets
+            .archive_text(self.assets.offsets.item_names, self.item_id())
+            .filter(|name| !name.is_empty())
+    }
+
+    /// What equipping it gives the member.
+    pub fn bonus(&self) -> crate::save::PartycustBonus {
+        PARTY_PROGRAM_BONUSES[self.index]
+    }
+}
+
+/// What each party program gives the member who wears it.
+///
+/// This is the one thing about a program the cart keeps only as code:
+/// the customizer applies one through a jump table (US `0x021e0560`)
+/// whose cases add immediates to the navi record's four fields, and
+/// takes it back off through the mirror-image table at `0x021e02d0`.
+/// There is no data table behind those immediates to read — the cart's
+/// own tables carry every program's item id, cost, category and panel
+/// art, and nothing else. So the thirteen triples are transcribed from
+/// those cases, in the table's own order, and everything else about a
+/// program is read out of the cart.
+///
+/// The last three are why this can't be a formula over the categories:
+/// the two battle packs bundle all three bonuses at once, and `P.Spport`
+/// grants none of them, only the record's support flag.
+const PARTY_PROGRAM_BONUSES: [crate::save::PartycustBonus; super::NUM_PARTY_PROGRAMS] = {
+    use crate::save::PartycustBonus as B;
+    const NONE: B = B {
+        max_hp: 0,
+        attack: 0,
+        chip_attack: 0,
+        support: false,
+    };
+    [
+        B { max_hp: 50, ..NONE },
+        B { max_hp: 100, ..NONE },
+        B { max_hp: 200, ..NONE },
+        B { max_hp: 300, ..NONE },
+        B { attack: 1, ..NONE },
+        B { attack: 2, ..NONE },
+        B { attack: 3, ..NONE },
+        B { chip_attack: 30, ..NONE },
+        B { chip_attack: 40, ..NONE },
+        B { chip_attack: 50, ..NONE },
+        B {
+            max_hp: 50,
+            attack: 1,
+            chip_attack: 30,
+            support: false,
+        },
+        B {
+            max_hp: 200,
+            attack: 2,
+            chip_attack: 40,
+            support: false,
+        },
+        B { support: true, ..NONE },
+    ]
+};
+
 /// What the cart draws its NaviCust grid on. The GBA games each carry
 /// one colour per version; this cart holds both teams' files, and the
 /// backdrop is the one thing here that would have to know which of them
@@ -627,6 +877,17 @@ impl tango_gamesupport_common::dataview::rom::Assets for Assets {
 
     fn num_navicust_parts(&self) -> usize {
         super::NUM_NAVICUST_PARTS
+    }
+
+    fn navi(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common::dataview::rom::Navi + '_>> {
+        if id >= self.num_navis() {
+            return None;
+        }
+        Some(Box::new(Navi { id, assets: self }))
+    }
+
+    fn num_navis(&self) -> usize {
+        crate::save::NUM_NAVIS
     }
 
     /// The GBA game's grid, which the cart keeps: five by five, the
