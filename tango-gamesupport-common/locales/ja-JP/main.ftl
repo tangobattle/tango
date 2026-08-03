@@ -64,7 +64,12 @@ save-tab-navicust = ナビカス
 navi-edit-select = ナビ
 
 save-tab-program-deck = プログラムデッキ
+save-tab-party = パーティ
 deck-mb = { $used }/{ $capacity }MB
 deck-mb-uncapped = { $used }MB
 deck-slot-in = スロットイン { $max }MB
 bn5ds-leader = リーダー
+bn5ds-team-none = (なし)
+bn5ds-chip-attack = チップ
+bn5ds-partycust-add = プログラムを追加
+bn5ds-partycust-empty = プログラムなし

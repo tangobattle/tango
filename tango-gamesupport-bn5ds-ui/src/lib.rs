@@ -458,8 +458,10 @@ const GAUGE_BLOCK: f32 = 14.0;
 const PROGRAM_ROW_HEIGHT: f32 = tango_gamesupport_common::style::TEXT_BODY * 1.3 + 6.0 + 6.0;
 
 /// How wide the accent stripe down a program row's left edge is — the
-/// width the shared editor rows give their class accent.
+/// width the shared editor rows give their class accent — and the gap
+/// between it and the name.
 const STRIPE_WIDTH: f32 = 6.0;
+const PROGRAM_ROW_SPACING: f32 = 8.0;
 
 /// The member's gauge: one block per point of capacity, filled from the
 /// left in the colour of whichever program paid for it, exactly as the
@@ -617,7 +619,7 @@ fn party_slot<'a>(
                 false,
             ),
         ]
-        .spacing(8)
+        .spacing(PROGRAM_ROW_SPACING)
         .align_y(iced::Alignment::Center);
         if editing {
             line = line.push(sv::remove_button(Action::Game(Arc::new(RemovePartyProgram { slot, at }))));
@@ -639,6 +641,8 @@ fn party_slot<'a>(
         } else {
             tango_gamesupport_common::t!(lang, "bn5ds-team-none")
         };
+        // Sat where a program's name would be, on a row of the same
+        // height: past the stripe and the gap after it.
         body = body.push(
             iced::widget::container(
                 iced::widget::text(empty)
@@ -646,7 +650,14 @@ fn party_slot<'a>(
                     .style(tango_gamesupport_common::widgets::muted_text_style)
                     .width(iced::Fill),
             )
-            .padding([3, 12]),
+            .width(iced::Fill)
+            .height(iced::Length::Fixed(PROGRAM_ROW_HEIGHT))
+            .align_y(iced::Alignment::Center)
+            .padding(
+                iced::Padding::default()
+                    .left(STRIPE_WIDTH + PROGRAM_ROW_SPACING)
+                    .right(12.0),
+            ),
         );
     }
     if editing && navi.is_some() {
