@@ -13,6 +13,7 @@ license = "GPL-3.0-or-later"
 tango-match = { path = "../tango-match" }
 melonds = { git = "https://github.com/tangobattle/melonds-rs" }
 melonds-rollback = { git = "https://github.com/tangobattle/melonds-rollback" }
+log.workspace = true
 
 [lints]
 workspace = true

@@ -37,3 +37,26 @@ pub use melonds_rollback::Input;
 /// One console of a pair. A game crate needs this to reach past the
 /// link when priming: execution traps are installed per console.
 pub use melonds::Nds;
+
+/// Route melonDS's own logging through the `log` crate.
+///
+/// Called wherever this backend brings a console up rather than once at
+/// startup: nothing outside this crate should have to know which
+/// emulator a game runs on, so there is no host-side hook left to call
+/// it from. The core's hook is install-once — repeat calls hand the
+/// logger back rejected, and dropping it there is what makes calling
+/// this repeatedly fine.
+///
+/// Without it the core's log lines are dropped.
+pub fn install_logger() {
+    let _ = melonds::install_logger(Box::new(|level, msg| {
+        // melonDS Platform::LogLevel: Debug=0, Info=1, Warn=2, Error=3.
+        let level = match level {
+            0 => log::Level::Debug,
+            1 => log::Level::Info,
+            2 => log::Level::Warn,
+            _ => log::Level::Error,
+        };
+        log::log!(target: "melonds", level, "{msg}");
+    }));
+}
