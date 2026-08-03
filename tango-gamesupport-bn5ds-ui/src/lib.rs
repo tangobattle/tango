@@ -555,14 +555,20 @@ fn party_slot<'a>(
         }
     };
 
-    let Some(cart) = cart_of(loaded) else {
-        return (
+    // A slot fielding nobody is its naming line and nothing else:
+    // there are no numbers to read, no gauge to fill, and nothing to
+    // put a program on.
+    let header_only = |naming: iced::Element<'a, Action>| {
+        (
             iced::widget::container(naming)
                 .width(iced::Fill)
                 .padding(tango_gamesupport_common::style::HEADER_PADDING)
                 .into(),
             iced::widget::Space::new().into(),
-        );
+        )
+    };
+    let (Some(cart), true) = (cart_of(loaded), navi.is_some()) else {
+        return header_only(naming);
     };
     let party = save.view_party();
     let equipped = party.programs(slot, cart);
@@ -645,11 +651,7 @@ fn party_slot<'a>(
         );
     }
     if equipped.is_empty() {
-        let empty = if navi.is_some() {
-            tango_gamesupport_common::t!(lang, "bn5ds-partycust-empty")
-        } else {
-            tango_gamesupport_common::t!(lang, "bn5ds-team-none")
-        };
+        let empty = tango_gamesupport_common::t!(lang, "bn5ds-partycust-empty");
         // A program row with nothing in it: the same height, and the
         // same gap where a stripe would be, so the text starts where a
         // program's name does.
@@ -670,7 +672,7 @@ fn party_slot<'a>(
             .align_y(iced::Alignment::Center),
         );
     }
-    if editing && navi.is_some() {
+    if editing {
         let choices: Vec<ProgramChoice> = (0..tango_gamesupport_bn5ds_dataview::NUM_PARTY_PROGRAMS)
             .filter(|&index| party.can_add_party_program(slot, cart, index))
             .map(|index| ProgramChoice {
