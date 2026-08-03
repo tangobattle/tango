@@ -49,7 +49,8 @@ static BN5DS_LOGO: LazyImage = LazyLock::new(|| image::load_from_memory(include_
 /// already reconstitutes a short dump by padding it back out, so the
 /// pairs are all that needs checking in. The template save itself is
 /// the cart's current file; the other rides along in the dump, where
-/// the editor's file picker reaches it.
+/// the editor's file picker reaches it. Both builds share it: saves
+/// cross regions (see [`parse_save`]), a US dump included.
 static BN5DS_SAVE: LazyLock<dataview::save::Save> =
     LazyLock::new(|| dataview::save::SaveSet::parse(include_bytes!("saves/us.raw")).unwrap().current());
 static BN5DS_T: SaveTemplates = LazyLock::new(|| {
@@ -127,7 +128,7 @@ pub static EXE5DS: Game = Game {
     pvp: &ENGINE_PVP_A5TJ_00,
     match_types: MATCH_TYPES,
     players_colored_by_seat: false,
-    save_templates: None,
+    save_templates: Some(&BN5DS_T),
     logo_image: None,
     background: Some(BACKGROUND),
     #[cfg(feature = "ui")]
