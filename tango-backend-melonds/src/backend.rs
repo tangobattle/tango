@@ -46,11 +46,25 @@ pub trait GameSupport: Sync {
     /// from power-on would deal the same draws match after match — the
     /// walk reseeds the game's own RNG state from values derived here,
     /// exactly as the mgba families' primers do.
+    ///
+    /// `events` is the pair's lifecycle sink, exactly what the mgba
+    /// primer traps close over: the walk installs the game's STANDING
+    /// battle-start trap (console 0's reports
+    /// [`round_started`](tango_match::telemetry::EventSink::round_started))
+    /// and runs until it fires — the game's own battle-start code
+    /// determines every round start, round 1's firing during priming
+    /// (drained by [`Telemetry::new`] into the tick-0 baseline: the
+    /// recording and its first round begin together) and the later
+    /// rounds' firing live. The trap outlives the walk; the pollers
+    /// never report a round start.
+    ///
+    /// [`Telemetry::new`]: tango_match::telemetry::Telemetry::new
     fn prime(
         &self,
         link: &mut Link,
         match_type: (u8, u8),
         rng_seed: [u8; 16],
+        events: &tango_match::telemetry::EventSink,
         cancel: Option<&AtomicBool>,
     ) -> Result<(), tango_match::Error>;
 
@@ -272,17 +286,23 @@ impl tango_match::Backend for DsBackend {
             .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
         link.set_screens(self.support.pvp_screens(config.match_type));
 
+        // The sink is alive across the walk, exactly as the mgba primer
+        // traps' is: the walk leaves round 1's report in it at its
+        // finish, and `observe`'s `Telemetry::new` drains that into the
+        // tick-0 baseline.
+        let events = tango_match::telemetry::EventSink::new();
         prime_dark(
             self.support,
             &mut link,
             config.match_type,
             config.rng_seed,
+            &events,
             config.cancel,
         )?;
         if config.disable_bgm {
             silence(&mut link, self.support);
         }
-        let handle = observe(&mut link, self.support);
+        let handle = observe(&mut link, self.support, events);
 
         // The rollback loop is the seam's — this engine contributes the
         // boot, not another copy of it.
@@ -344,7 +364,15 @@ struct Boot {
 impl tango_match::ReplayBoot for Boot {
     fn boot(&self, want_stats: bool, cancel: &AtomicBool) -> Result<tango_match::BootedReplay, tango_match::Error> {
         let mut link = self.pair()?;
-        prime_dark(self.support, &mut link, self.match_type, self.rng_seed, Some(cancel))?;
+        let events = tango_match::telemetry::EventSink::new();
+        prime_dark(
+            self.support,
+            &mut link,
+            self.match_type,
+            self.rng_seed,
+            &events,
+            Some(cancel),
+        )?;
         if self.disable_bgm {
             silence(&mut link, self.support);
         }
@@ -355,8 +383,10 @@ impl tango_match::ReplayBoot for Boot {
         // pair's first one.
         link.zero_clock();
         // The stats pass wants the game observed, exactly as a live
-        // match is; the display pair pays for no pollers.
-        let handle = want_stats.then(|| observe(&mut link, self.support));
+        // match is; the display pair pays for no pollers (its sink,
+        // walk report and all, is dropped — a write-only stub, same as
+        // the mgba display boots').
+        let handle = want_stats.then(|| observe(&mut link, self.support, events));
         Ok(tango_match::BootedReplay {
             link: Box::new(link),
             telemetry: handle,
@@ -387,7 +417,14 @@ impl tango_match::ReplayBoot for Boot {
         if self.disable_bgm {
             silence(&mut link, self.support);
         }
-        let handle = want_stats.then(|| observe(&mut link, self.support));
+        // The capture this pair is about to land on is a walk's handoff
+        // — round 1 already opening, its report left in the sink by the
+        // walk that took the capture. Reproduce the latch, since no
+        // walk runs here to leave it — exactly as the mgba engine's
+        // `boot_unprimed` does.
+        let events = tango_match::telemetry::EventSink::new();
+        events.round_started();
+        let handle = want_stats.then(|| observe(&mut link, self.support, events));
         Ok(tango_match::BootedReplay {
             link: Box::new(link),
             telemetry: handle,
@@ -424,12 +461,13 @@ fn prime_dark(
     link: &mut Link,
     match_type: (u8, u8),
     rng_seed: [u8; 16],
+    events: &tango_match::telemetry::EventSink,
     cancel: Option<&AtomicBool>,
 ) -> Result<(), tango_match::Error> {
     for player in 0..2 {
         link.console(player).set_render(false);
     }
-    let walked = support.prime(link, match_type, rng_seed, cancel);
+    let walked = support.prime(link, match_type, rng_seed, events, cancel);
     for player in 0..2 {
         link.console(player).set_render(true);
     }
@@ -448,16 +486,19 @@ fn silence(link: &mut Link, support: &'static (dyn GameSupport + Send + Sync)) {
     }
 }
 
-/// Arm a primed pair's telemetry: the game's pollers, which carry both
-/// the battle levels and — on console 0 — the poll-derived round and
-/// match lifecycle (see [`GameSupport::core_poller`]). Armed only after
-/// priming, so the boot's screens predate the watch. Returns the handle
-/// the backend installs on the match for the host to read.
+/// Arm a primed pair's telemetry: the game's pollers, which carry the
+/// battle levels and — on console 0 — the poll-derived verdict and
+/// match-end lifecycle (see [`GameSupport::core_poller`]). Armed only
+/// after priming, so the boot's screens predate the watch; `events` is
+/// the sink the walk reported into ([`GameSupport::prime`]), whose
+/// round-1 report `Telemetry::new` drains into the tick-0 baseline.
+/// Returns the handle the backend installs on the match for the host
+/// to read.
 fn observe(
     link: &mut Link,
     support: &'static (dyn GameSupport + Send + Sync),
+    events: tango_match::telemetry::EventSink,
 ) -> tango_match::telemetry::TelemetryHandle {
-    let events = tango_match::telemetry::EventSink::new();
     let (telemetry, handle) =
         tango_match::telemetry::Telemetry::new([support.core_poller(0), support.core_poller(1)], events);
     link.set_telemetry(telemetry);

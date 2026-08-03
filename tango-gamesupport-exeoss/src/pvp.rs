@@ -92,10 +92,18 @@ impl tango_backend_melonds::GameSupport for Pvp {
         link: &mut Link,
         match_type: (u8, u8),
         rng_seed: [u8; 16],
+        events: &tango_match::telemetry::EventSink,
         cancel: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<(), tango_match::Error> {
         let _ = match_type;
-        priming::walk(link, rng_seed, cancel)
+        priming::walk(link, rng_seed, cancel)?;
+        // The walk's finish line is the battle scene up on both
+        // consoles — the handoff IS round 1 starting, and this report
+        // is the tick-0 baseline the engine contract asks the walk to
+        // leave (see `GameSupport::prime`). The lifecycle poller
+        // reports no round start of its own.
+        events.round_started();
+        Ok(())
     }
 
     /// Silent battles: the netbattle theme's own volume, turned down
@@ -169,8 +177,10 @@ impl tango_backend_melonds::GameSupport for Pvp {
         #[derive(Clone)]
         struct Lifecycle {
             /// Last tick's scene byte. `None` before the first, so the
-            /// tick priming hands over on is the battle starting rather
-            /// than a level with no edge.
+            /// first tick is a level with no edge — round 1 is the
+            /// walk's own report (see `prime`), and this game's
+            /// netbattle is one round, so the scene never starts
+            /// another. What the watch reports is the match END.
             was: Option<u8>,
             /// Last tick's result byte, for the same reason — and here
             /// the edge is load-bearing rather than tidy, since the
@@ -182,7 +192,6 @@ impl tango_backend_melonds::GameSupport for Pvp {
         impl Lifecycle {
             fn tick(&mut self, nds: &mut Nds, scene: u8, events: &EventSink) {
                 match self.was {
-                    None if scene == priming::SCENE_BATTLE => events.round_started(),
                     // The comm screen coming back, with everything the
                     // battle had left to play already played.
                     Some(was) if was != priming::SCENE_NETWORK && scene == priming::SCENE_NETWORK => {

@@ -209,12 +209,18 @@ impl tango_match::Link for Link {
 
     fn tick(&mut self, inputs: [HostInput; 2]) {
         self.inner.tick(inputs.map(input_of));
-        self.live_tick += 1;
+        // Observations are stamped with the just-simulated tick's own
+        // index — the first session tick is tick 0, the mgba engine's
+        // numbering and the input stream's. (They were stamped with the
+        // post-increment count once, which shifted every DS recording's
+        // telemetry one tick late — invisible until a first-round start
+        // at tick 1 began reading as a setup section.)
         if let Some(telemetry) = self.telemetry.as_mut() {
             let obs0 = telemetry.poll(0, self.inner.console(0));
             let obs1 = telemetry.poll(1, self.inner.console(1));
             telemetry.observe(obs0, obs1, self.live_tick);
         }
+        self.live_tick += 1;
     }
 
     fn snapshot(
@@ -241,9 +247,14 @@ impl tango_match::Link for Link {
             .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
         self.live_tick = snapshot.tick;
         if let Some(telemetry) = self.telemetry.as_mut() {
-            // Everything observed past the restored tick is revoked;
-            // the re-simulation re-reports it.
-            telemetry.on_rewind(snapshot.tick);
+            // A snapshot's tick is a COUNT — the state after ticks
+            // 0..tick — so those are the observations that survive it:
+            // revoke tick and up, the re-simulation re-reports them.
+            // (`on_rewind` keeps ≤ its argument.) The saturated case —
+            // restoring the pre-first-tick capture — over-keeps tick
+            // 0's observation; the re-simulated tick 0 re-observes it
+            // identically and the fold's same-tick dedup absorbs it.
+            telemetry.on_rewind(snapshot.tick.saturating_sub(1));
         }
         Ok(())
     }

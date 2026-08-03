@@ -307,9 +307,9 @@ fn main() {
     // own determinism guarantees (`landing_probe twin`).
     let started = std::time::Instant::now();
     let mut a = tango_backend_melonds::Link::new(&rom, saves, replay.rtc_time()).expect("pair A boot");
-    support.prime(&mut a, match_type, replay.rng_seed, None).expect("pair A prime");
+    support.prime(&mut a, match_type, replay.rng_seed, &tango_match::telemetry::EventSink::new(), None).expect("pair A prime");
     let mut b = tango_backend_melonds::Link::new(&rom, saves, replay.rtc_time()).expect("pair B boot");
-    support.prime(&mut b, match_type, replay.rng_seed, None).expect("pair B prime");
+    support.prime(&mut b, match_type, replay.rng_seed, &tango_match::telemetry::EventSink::new(), None).expect("pair B prime");
     println!("both pairs primed in {:.1?}", started.elapsed());
 
     // The baseline. Anything differing before a single rollback has

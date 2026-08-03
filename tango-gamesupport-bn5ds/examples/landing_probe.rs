@@ -195,7 +195,7 @@ fn main() {
     // Pair A: the display pair's boot — walked through the real prime.
     let started = std::time::Instant::now();
     let mut a = tango_backend_melonds::Link::new(&rom, saves, replay.rtc_time()).expect("pair A boot");
-    support.prime(&mut a, match_type, replay.rng_seed, None).expect("pair A prime");
+    support.prime(&mut a, match_type, replay.rng_seed, &tango_match::telemetry::EventSink::new(), None).expect("pair A prime");
     println!("pair A primed in {:.1?}", started.elapsed());
 
     // Pair B: landed on A's capture — fresh (the old boot_unprimed
@@ -207,14 +207,14 @@ fn main() {
     match mode.as_str() {
         "fresh" => b.restore(&snap).expect("pair B landing"),
         "walked" => {
-            support.prime(&mut b, match_type, replay.rng_seed, None).expect("pair B prime");
+            support.prime(&mut b, match_type, replay.rng_seed, &tango_match::telemetry::EventSink::new(), None).expect("pair B prime");
             b.restore(&snap).expect("pair B landing");
         }
         // No landing at all: B walks its own prime and the lockstep
         // compares two independent walks — the harness's own
         // determinism, which everything above assumes.
         "twin" => support
-            .prime(&mut b, match_type, replay.rng_seed, None)
+            .prime(&mut b, match_type, replay.rng_seed, &tango_match::telemetry::EventSink::new(), None)
             .expect("pair B prime"),
         warm if warm.starts_with("warm:") => {
             let ticks: u32 = warm[5..].parse().expect("warm tick count");

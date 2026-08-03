@@ -232,11 +232,18 @@ impl tango_backend_melonds::GameSupport for Pvp {
     /// which is every one of its wireless replies landing outside the
     /// host's poll window: the pairings that would not associate.)
     ///
+    /// 8: priming runs through the comm session's battle transition to
+    /// the game's own battle-start routine — the new standing round
+    /// anchor (`Layout::round_start`) — so a session, its recording and
+    /// its round 1 all begin on the same tick. A recording made against
+    /// the earlier handoff carries the transition tail at its head and
+    /// its inputs land that far out of place.
+    ///
     /// 3, 4, 5 and the parenthetical half of 7 were the emulator moving,
     /// not this cart — they belong to `BACKEND_SIM_VERSION` now, which is
     /// where the next one goes.
     fn sim_version(&self) -> u16 {
-        7
+        8
     }
 
     fn prime(
@@ -244,9 +251,68 @@ impl tango_backend_melonds::GameSupport for Pvp {
         link: &mut Link,
         match_type: (u8, u8),
         rng_seed: [u8; 16],
+        events: &tango_match::telemetry::EventSink,
         cancel: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<(), tango_match::Error> {
-        self.layout.walk(link, match_type, rng_seed, cancel)
+        use tango_match::Link as _;
+
+        self.layout.walk(link, match_type, rng_seed, cancel)?;
+
+        // The game's own battle-start code determines every round
+        // start: a STANDING trap at its completion
+        // (`Layout::round_start` — the mgba families' `round_start_ret`
+        // on this cart), console 0's firing the report, both consoles'
+        // ending the walk. It fires once per round, so round 1 lands in
+        // the sink here — during priming, becoming the tick-0 baseline
+        // — and rounds 2/3 of a triple set fire live, exactly the mgba
+        // shape. The trap outlives the walk; melonDS traps are host
+        // state, so savestates and rollback never disturb it, and its
+        // firings re-fire on re-simulation like any other.
+        let fired = [
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        ];
+        for seat in 0..2 {
+            let flag = fired[seat].clone();
+            let sink = (seat == 0).then(|| events.clone());
+            link.console(seat).set_traps(vec![(
+                self.layout.round_start,
+                Box::new(move |_nds: &mut Nds| {
+                    if let Some(sink) = &sink {
+                        sink.round_started();
+                    }
+                    flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                }) as Box<dyn FnMut(&mut Nds)>,
+            )]);
+        }
+
+        // The walk's own finish line is the comm session standing; the
+        // battle-start routine runs a transition tail later. Prime
+        // through to its firing on both consoles, so the session opens
+        // exactly where round 1 does.
+        const TAIL_BUDGET: u32 = 3600;
+        let mut frames = 0;
+        while !(fired[0].load(std::sync::atomic::Ordering::Relaxed)
+            && fired[1].load(std::sync::atomic::Ordering::Relaxed))
+        {
+            if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+                return Err(tango_match::Error::Cancelled);
+            }
+            if frames >= TAIL_BUDGET {
+                log::warn!(
+                    "{} priming: battle start never fired {frames} frames past the comm session",
+                    self.layout.tag()
+                );
+                return Err(tango_match::Error::PrimeTimeout(frames));
+            }
+            link.tick([tango_match::HostInput::default(); 2]);
+            frames += 1;
+        }
+        log::info!(
+            "{} priming: battle start {frames} frames past the comm session",
+            self.layout.tag()
+        );
+        Ok(())
     }
 
     /// Silent battles: the battle themes' own volumes, turned down to
@@ -320,7 +386,9 @@ impl tango_backend_melonds::GameSupport for Pvp {
         use tango_match::telemetry::{CoreObs, EventSink, Outcome, UnitObs};
 
         /// Console 0's lifecycle watch: the phase and verdict LEVELS,
-        /// reported as edges against last tick's readings. The verdict
+        /// reported as edges against last tick's readings — the round
+        /// VERDICT and the match END; round starts are the standing
+        /// battle-start trap's (see `Pvp::prime`). The verdict
         /// comes from the comm-result globals the battle loop's own KO
         /// and judge paths report into (see [`Pvp::result`]): no
         /// verdict until the end sub-state at `+0` stands, then `+1`
@@ -366,9 +434,10 @@ impl tango_backend_melonds::GameSupport for Pvp {
                     }
                 };
                 if phase == 1 {
-                    if self.prev_phase != 1 {
-                        events.round_started();
-                    }
+                    // Round STARTS are not this watch's to report: the
+                    // standing battle-start trap fires them (see
+                    // `Pvp::prime`), round 1's during priming. The
+                    // phase feeds the verdict gate and the match end.
                     if verdict != 0 && verdict != self.prev_verdict {
                         events.round_outcome(match verdict {
                             1 => Outcome::P0Win,
@@ -500,6 +569,21 @@ pub mod priming {
         /// wrong answer here reads as no archive rather than as some
         /// other bytes that happened to match.
         sound_archive_ptr: u32,
+
+        /// The battle-start routine's completion — the mgba families'
+        /// `round_start_ret`, on this cart: the per-round init path of
+        /// the battle module's state handler (state byte [r5+3] == 0
+        /// runs the whole init call chain exactly once per round, on
+        /// the round's first frame, on both consoles) at the branch
+        /// after its own `state = 4` store. A standing trap here IS the
+        /// round lifecycle: the walk runs to its first firing (round 1,
+        /// reported during priming into the tick-0 baseline) and rounds
+        /// 2/3 fire live. Hunted by differential cover over a KO-forged
+        /// triple set — first executed at round 1's init frame, again
+        /// at round 2's, never during chip select, battle, or the
+        /// interlude — and matched into the JP build by the same
+        /// masked byte-match as every site above.
+        pub(crate) round_start: u32,
     }
 
     /// Sites in the ARM9's code: what the walk traps, and the branches
@@ -834,6 +918,7 @@ pub mod priming {
     pub static US: Layout = Layout {
         tag: "bn5ds",
         sound_archive_ptr: 0x0216_2d84,
+        round_start: 0x0208_e290,
         code: CodeOffsets {
             logo_hold:                0x0206_4dd0,
             logo_expired:             0x0206_4dda,
@@ -903,6 +988,7 @@ pub mod priming {
     pub static JP: Layout = Layout {
         tag: "exe5ds",
         sound_archive_ptr: 0x0215_bb24,
+        round_start: 0x0208_df98,
         code: CodeOffsets {
             logo_hold:                0x0206_4b90,
             logo_expired:             0x0206_4b9a,
