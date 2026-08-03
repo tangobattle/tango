@@ -153,6 +153,19 @@ impl Link {
     /// difference.
     pub fn set_screens(&mut self, screens: Screens) {
         self.screens = screens;
+        // A screen this selection leaves out is never composed, so
+        // nothing will ever look at the engine that draws it: say so
+        // once here rather than waiting for a host to ask. That is what
+        // gets replay playback, and any other boot, the saving without
+        // having to know about screens at all.
+        //
+        // A host may narrow this further per tick
+        // ([`tango_match::Side::set_displayed_screens`]); it can never
+        // widen it, since that mask is indexed by this same selection.
+        let mask = screens.0.iter().fold(0u8, |m, &s| m | 1 << s as u8);
+        for player in 0..2 {
+            self.inner.console(player).set_displayed_screens(mask);
+        }
     }
 
     /// Arm the telemetry collector and zero the tick clock. Called
