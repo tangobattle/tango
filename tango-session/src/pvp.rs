@@ -1776,15 +1776,30 @@ impl PvpDriver {
                 if let Err(e) = w.finish() {
                     log::error!("finish replay failed: {e}");
                 }
-                // Cache the finished match's stats — each round already
-                // folded as it ended, so the Replays tab never has to
-                // re-simulate this one.
-                #[cfg(not(target_arch = "wasm32"))]
-                if let Some(stats_path) = self.ctx.stats_path.as_ref() {
-                    let snapshot = self.ctx.stats.lock().unwrap().snapshot();
-                    if let Err(e) = crate::stats::write_match_stats(stats_path, &snapshot) {
-                        log::warn!("failed to write replay stats cache entry: {e}");
-                    }
+            }
+            // The telemetry tail behind that flush: the stall-guard path
+            // ingests remote inputs without draining, so a match that
+            // died stalled — the disconnect case — can confirm final
+            // ticks no tick() ever folded. Same frontier as the input
+            // drain above, which keeps the fold covering exactly what
+            // the recording holds.
+            let confirmed = self.match_.confirmed();
+            if let Some(handle) = self.match_.telemetry() {
+                let (samples, events) = handle.lock().unwrap().drain_confirmed(confirmed);
+                if !samples.is_empty() || !events.is_empty() {
+                    self.ctx.fold_confirmed_telemetry(samples, events);
+                }
+            }
+            // Cache the match's stats, completed or not: the fold keeps
+            // a round the match never decided (only its verdict is
+            // absent), and writing the sidecar here is what spares the
+            // Replays tab a full re-simulation of an aborted match — the
+            // telemetry it would recover was already collected live.
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(stats_path) = self.ctx.stats_path.as_ref() {
+                let snapshot = self.ctx.stats.lock().unwrap().snapshot();
+                if let Err(e) = crate::stats::write_match_stats(stats_path, &snapshot) {
+                    log::warn!("failed to write replay stats cache entry: {e}");
                 }
             }
         }
