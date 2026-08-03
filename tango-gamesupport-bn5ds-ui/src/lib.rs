@@ -438,8 +438,11 @@ fn program_color(kind: Option<rom::PartyProgramKind>) -> iced::Color {
     }
 }
 
-/// How big an emblem is drawn: twice its 15px crop, so the
-/// nearest-neighbour upscale lands on even pixels.
+/// How big an emblem is drawn: an integer multiple of its 15px crop, so
+/// the nearest-neighbour upscale lands on even pixels. The identity
+/// card wears one at the size BN5 and BN6's own navi cards do; a party
+/// slot's is the smaller one its rows line up on.
+const CARD_EMBLEM_SIZE: f32 = 45.0;
 const EMBLEM_SIZE: f32 = 30.0;
 
 /// How tall and wide one block of the gauge is drawn.
@@ -502,7 +505,7 @@ fn party_slot<'a>(
     editing: bool,
 ) -> (iced::Element<'a, Action>, iced::Element<'a, Action>) {
     let navi = save.team_navi(slot);
-    let header: iced::Element<'a, Action> = if editing {
+    let naming: iced::Element<'a, Action> = if editing {
         let held: Vec<usize> = (0..save::NUM_TEAM_SLOTS)
             .filter(|&other| other != slot)
             .filter_map(|other| save.team_navi(other))
@@ -521,46 +524,63 @@ fn party_slot<'a>(
                 }),
         );
         let selected = options.iter().find(|choice| choice.navi == navi).cloned();
-        let mut naming = row![].spacing(12).align_y(iced::Alignment::Center);
-        if let Some(emblem) = navi.and_then(|navi| navi_emblem(loaded, navi, EMBLEM_SIZE)) {
-            naming = naming.push(emblem);
-        }
-        iced::widget::container(
-            naming.push(row![
-                pick_list(options, selected, move |choice: NaviChoice| {
-                    Action::Game(Arc::new(SetPartyNavi {
-                        slot,
-                        navi: choice.navi,
-                    }))
-                }),
-                iced::widget::Space::new().width(iced::Fill),
-                sv::clear_all_button(lang, Action::Game(Arc::new(ClearPartyPrograms(slot)))),
-            ]
-            .spacing(8)
-            .width(iced::Fill)
-            .align_y(iced::Alignment::Center)),
-        )
-        .width(iced::Fill)
-        .padding(tango_gamesupport_common::style::HEADER_PADDING)
+        row![
+            pick_list(options, selected, move |choice: NaviChoice| {
+                Action::Game(Arc::new(SetPartyNavi {
+                    slot,
+                    navi: choice.navi,
+                }))
+            }),
+            iced::widget::Space::new().width(iced::Fill),
+            sv::clear_all_button(lang, Action::Game(Arc::new(ClearPartyPrograms(slot)))),
+        ]
+        .spacing(8)
+        .align_y(iced::Alignment::Center)
         .into()
     } else {
-        iced::widget::container(match navi {
+        match navi {
             Some(navi) => navi_line(lang, loaded, save, navi),
             None => iced::widget::text(tango_gamesupport_common::t!(lang, "bn5ds-team-none"))
                 .size(tango_gamesupport_common::style::TEXT_BODY)
                 .style(tango_gamesupport_common::widgets::muted_text_style)
                 .width(iced::Fill)
                 .into(),
-        })
-        .width(iced::Fill)
-        .padding(tango_gamesupport_common::style::HEADER_PADDING)
-        .into()
+        }
     };
 
     let Some(cart) = cart_of(loaded) else {
-        return (header, column![].into());
+        return (
+            iced::widget::container(naming)
+                .width(iced::Fill)
+                .padding(tango_gamesupport_common::style::HEADER_PADDING)
+                .into(),
+            iced::widget::Space::new().into(),
+        );
     };
     let customizer = save::Partycust::new(save, cart, slot);
+
+    // The gauge sits right under the name, where the panel's own card
+    // keeps it — not at the far end of the program list.
+    let gauge = row![
+        partycust_gauge(loaded, &customizer),
+        iced::widget::Space::new().width(iced::Fill),
+        sv::stat(
+            tango_gamesupport_common::t!(lang, "bn5ds-partycust-gauge"),
+            format!("{} / {}", customizer.cost(), customizer.capacity()),
+        ),
+    ]
+    .spacing(12)
+    .align_y(iced::Alignment::Center);
+    let mut head = row![].spacing(12).align_y(iced::Alignment::Center);
+    if editing {
+        if let Some(emblem) = navi.and_then(|navi| navi_emblem(loaded, navi, EMBLEM_SIZE)) {
+            head = head.push(emblem);
+        }
+    }
+    let header = iced::widget::container(head.push(column![naming, gauge].spacing(6).width(iced::Fill)))
+        .width(iced::Fill)
+        .padding(tango_gamesupport_common::style::HEADER_PADDING)
+        .into();
 
     let mut body = column![].spacing(1).padding(0);
     for (at, &index) in customizer.equipped().iter().enumerate() {
@@ -595,8 +615,8 @@ fn party_slot<'a>(
             iced::widget::container(
                 iced::widget::text(empty)
                     .size(tango_gamesupport_common::style::TEXT_BODY)
-                .style(tango_gamesupport_common::widgets::muted_text_style)
-                .width(iced::Fill),
+                    .style(tango_gamesupport_common::widgets::muted_text_style)
+                    .width(iced::Fill),
             )
             .padding([3, 12]),
         );
@@ -633,21 +653,6 @@ fn party_slot<'a>(
         };
         body = body.push(iced::widget::container(add).padding([6, 12]));
     }
-    body = body.push(
-        iced::widget::container(
-            row![
-                partycust_gauge(loaded, &customizer),
-                iced::widget::Space::new().width(iced::Fill),
-                sv::stat(
-                    tango_gamesupport_common::t!(lang, "bn5ds-partycust-gauge"),
-                    format!("{} / {}", customizer.cost(), customizer.capacity()),
-                ),
-            ]
-            .spacing(12)
-            .align_y(iced::Alignment::Center),
-        )
-        .padding([6, 12]),
-    );
 
     (header, body.into())
 }
@@ -665,8 +670,9 @@ fn party_slot_pane<'a>(
 }
 
 /// One slot as the reading side hangs it: a plate that hugs what is on
-/// it. The read-only bodies go inside a shrink-height scrollable, where
-/// a full-height pane would have nothing to fill and collapse.
+/// it, which is what every read-only tab body is made of — they go
+/// inside a shrink-height scrollable, where a full-height pane has
+/// nothing to fill and collapses.
 fn party_slot_card<'a>(
     lang: &'a LanguageIdentifier,
     loaded: &'a OpenSave,
@@ -674,7 +680,7 @@ fn party_slot_card<'a>(
     slot: usize,
 ) -> iced::Element<'a, Action> {
     let (header, body) = party_slot(lang, loaded, save, slot, false);
-    iced::widget::container(column![header, body])
+    iced::widget::container(column![header, body].width(iced::Fill))
         .width(iced::Fill)
         .style(tango_gamesupport_common::widgets::pane)
         .into()
@@ -686,13 +692,13 @@ fn render_party<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> iced:
     let Some(save) = file_of(loaded) else {
         return sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty"));
     };
-    row![
-        party_slot_card(lang, loaded, save, 0),
-        party_slot_card(lang, loaded, save, 1),
-    ]
-    .spacing(tango_gamesupport_common::style::PANE_GAP)
-    .width(iced::Fill)
-    .into()
+    let mut col = column![]
+        .spacing(tango_gamesupport_common::style::PANE_GAP)
+        .width(iced::Fill);
+    for slot in 0..save::NUM_TEAM_SLOTS {
+        col = col.push(party_slot_card(lang, loaded, save, slot));
+    }
+    col.into()
 }
 
 /// The party customizer: one panel per slot, laid out the way the
@@ -777,7 +783,7 @@ fn card_slot<'a>(
         .align_y(iced::Alignment::Center);
     // MegaMan's own emblem, beside whichever of his names the file
     // brings — the party's members wear theirs the same way.
-    let card: iced::Element<'a, Action> = match navi_emblem(loaded, MEGAMAN_NAVI, EMBLEM_SIZE) {
+    let card: iced::Element<'a, Action> = match navi_emblem(loaded, MEGAMAN_NAVI, CARD_EMBLEM_SIZE) {
         Some(emblem) => row![emblem, column![naming, stats].spacing(4)]
             .spacing(12)
             .align_y(iced::Alignment::Center)
