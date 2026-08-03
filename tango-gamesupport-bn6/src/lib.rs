@@ -7,7 +7,10 @@ pub mod pvp;
 use std::sync::LazyLock;
 use tango_gamesupport::{BackgroundRef, Error, Family, Game, LazyImage, Region, SaveTemplates, Volume};
 
-const MATCH_TYPES: &[usize] = &[1, 1];
+// Single, Triple, Random. Random battle's rank select is played
+// in-game (priming drops the players off at it), so it has no
+// subtypes here.
+const MATCH_TYPES: &[usize] = &[1, 1, 1];
 const BACKGROUND: BackgroundRef = BackgroundRef {
     volume: Volume::Vol2,
     tga: "19.tga",

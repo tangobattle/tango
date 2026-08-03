@@ -6,3 +6,4 @@ variant-0-short = Glaga
 variant-1-short = Falzer
 match-type-0-0 = Single
 match-type-1-0 = Triple
+match-type-2-0 = Zufall

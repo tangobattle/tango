@@ -45,9 +45,28 @@
 //!     slot 0's settings (the SIO multi id 0 core's, +2) into +0x2a on
 //!     BOTH cores (0x812aa98 in BR6E) and walks to battle init itself.
 //!     The master's generation wins over the wire; the slave's local
-//!     draw is discarded. Priming is done at [1] = 0x18 (0x1c for
-//!     match type 2) — a confirm past here would land in the opening
-//!     chip select.
+//!     draw is discarded. For match types 0/1 priming is done at
+//!     [1] = 0x18, the battle state — a confirm past here would land
+//!     in the opening chip select.
+//!   - Match type 2 (random battle) gets its own battle state,
+//!     [1] = 0x1c, with an interactive setup in front, and priming
+//!     ends EARLY, at its first prompt: the rank select ([2] = 0x04,
+//!     `comm_menu_rank_entry` — the match-type-2 priming handoff).
+//!     The setup is the players' to play, live: the rank select is
+//!     the ready prompt's exchange shape (status +0x26 → tx+8;
+//!     selection 0x8000 | the rank byte, recomputed per tick →
+//!     tx+0xa) whose completion needs both statuses 4 AND both
+//!     transmitted selections equal — the game itself bounces rank
+//!     disagreements — and walks [2] on through the folder
+//!     generation/adoption states to the folder review ([2] = 0x18,
+//!     same exchange shape, +0x2a carrying a 0xfedb state beacon),
+//!     whose completion hands the dispatcher to [1] = 0x18, the same
+//!     battle state the other match types run (a cancel walks [2] to
+//!     0x28 instead, the back-to-rank-select loop). From there battle
+//!     init, the set flow and the match-end hand-back are the common
+//!     path. Both cores dispatch the rank prompt on the same tick of
+//!     the lockstep pair, so the early handoff primes both seats
+//!     together.
 //!
 //! (The walker itself lives in [`Pvp::primer_traps`].)
 
@@ -344,6 +363,22 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 }),
             ),
             (
+                // The rank prompt ([1] = 0x1c, [2] = 0x04): match type
+                // 2's priming handoff, never dispatched under the other
+                // types. Random battle's setup — rank select (the game
+                // itself bounces rank disagreements), folder
+                // generation, folder review — is the players' to play,
+                // so the walk ends here, with the session going live at
+                // this prompt instead of at battle start. Core state is
+                // untouched; `round_start_ret` below stays the handoff
+                // for the other match types (the latch is idempotent).
+                rom.comm_menu_rank_entry,
+                {
+                    let primed = primed.clone();
+                    Box::new(move |_core: &mut mgba::core::Core| primed.set())
+                },
+            ),
+            (
                 // The battle-start routine's BGM call (a 4-byte `bl`):
                 // skipped when the host asked for silent battles. Purely
                 // local presentation — the sound driver's state never
@@ -358,10 +393,11 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 }),
             ),
             (
-                // The game's own battle start: the priming handoff (the
-                // trap engine's match-start hook — priming ends when this
-                // fires on both cores) and, for core 0, the round
-                // lifecycle signal.
+                // The game's own battle start: the priming handoff for
+                // match types 0/1 (the trap engine's match-start hook —
+                // priming ends when this fires on both cores; type 2
+                // primed back at the rank prompt) and, for core 0, the
+                // round lifecycle signal.
                 rom.round_start_ret,
                 {
                     let sink = sink.clone();
@@ -383,8 +419,11 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 // comm_menu_end_battle_entry, restored — the battle mode's
                 // hand-back to the comm applet. A real tango match is the
                 // game's OWN battle set (mode 1, triple: best-of-three
-                // chained by the game itself; mode 0: one single battle),
-                // and this function runs exactly when that set is over —
+                // chained by the game itself; modes 0 and 2: one single
+                // battle — random battle's setup state hands off to the
+                // same battle dispatcher state, so the same hand-back
+                // fires), and this function runs exactly when that set is
+                // over —
                 // mid-set the game chains straight into the next battle
                 // (`round_start_ret` re-fires) without coming back here.
                 // Trapped on BOTH cores: whichever core's game leaves its
@@ -654,6 +693,16 @@ struct ROMOffsets {
     /// "confirmed" so the prompt's real exchange completes.
     comm_menu_ready_entry: u32,
 
+    /// Entry of the random-battle rank prompt's handler — dispatcher
+    /// state [1] = 0x1c with [2] = 0x04 (located per version via the
+    /// dispatcher jump table entry 7's sub-handler table, byte-indexed
+    /// word at +4), the first stop of random battle's interactive
+    /// setup. Never dispatched under match types 0/1. Match type 2's
+    /// priming handoff: the walker's trap here ends priming, leaving
+    /// the setup — this prompt on — to the players (see the module
+    /// doc).
+    comm_menu_rank_entry: u32,
+
     /// This hooks the point after the battle start routine is complete —
     /// the game's own round start, reported to the telemetry lifecycle
     /// sink.
@@ -685,9 +734,11 @@ struct ROMOffsets {
     /// game's own set: mode 1 (triple battle) chains its battles
     /// inside battle mode — `round_start_ret` re-fires mid-set without
     /// this function running — and only the set-deciding battle exits
-    /// through here; mode 0 (single battle) exits after its one
-    /// battle, which IS that mode's match. Fires once per set on each
-    /// core, never during priming; KO-probe verified under both modes.
+    /// through here; modes 0 (single battle) and 2 (random battle,
+    /// whose setup hands off to the same battle dispatcher state) exit
+    /// after their one battle, which IS those modes' match. Fires once
+    /// per set on each core, never during priming; KO-probe verified
+    /// under all three modes.
     comm_menu_end_battle_entry: u32,
 }
 
@@ -725,6 +776,7 @@ static MEGAMAN6_FXXBR6E_00: Offsets = Offsets {
         comm_menu_bring_up_entry:                   0x081295d8,
         comm_menu_start_battle:                     0x0812b414,
         comm_menu_ready_entry:                      0x0812a8ec,
+        comm_menu_rank_entry:                       0x08130a04,
         round_start_ret:                            0x08007304,
         round_end_set_win:                          0x0800811e,
         round_end_set_loss:                         0x08008132,
@@ -751,6 +803,7 @@ static MEGAMAN6_GXXBR5E_00: Offsets = Offsets {
         comm_menu_bring_up_entry:                   0x0812b3b4,
         comm_menu_start_battle:                     0x0812d1f0,
         comm_menu_ready_entry:                      0x0812c6c8,
+        comm_menu_rank_entry:                       0x081327e0,
         round_start_ret:                            0x08007304,
         round_end_set_win:                          0x0800811e,
         round_end_set_loss:                         0x08008132,
@@ -777,6 +830,7 @@ static ROCKEXE6_RXXBR6J_00: Offsets = Offsets {
         comm_menu_bring_up_entry:                   0x08131fec,
         comm_menu_start_battle:                     0x08133e14,
         comm_menu_ready_entry:                      0x08133300,
+        comm_menu_rank_entry:                       0x081393d8,
         round_start_ret:                            0x080072f8,
         round_end_set_win:                          0x0800814e,
         round_end_set_loss:                         0x08008162,
@@ -803,6 +857,7 @@ static ROCKEXE6_GXXBR5J_00: Offsets = Offsets {
         comm_menu_bring_up_entry:                   0x08133db4,
         comm_menu_start_battle:                     0x08135bdc,
         comm_menu_ready_entry:                      0x081350c8,
+        comm_menu_rank_entry:                       0x0813b1a0,
         round_start_ret:                            0x080072f8,
         round_end_set_win:                          0x0800814e,
         round_end_set_loss:                         0x08008162,

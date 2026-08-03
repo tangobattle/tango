@@ -6,3 +6,4 @@ variant-0-short = グレイガ
 variant-1-short = ファルザー
 match-type-0-0 = シングル
 match-type-1-0 = トリプル
+match-type-2-0 = ランダム

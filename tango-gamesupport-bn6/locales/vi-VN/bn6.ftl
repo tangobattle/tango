@@ -6,3 +6,4 @@ variant-0-short = Gregar
 variant-1-short = Falzar
 match-type-0-0 = BO1
 match-type-1-0 = BO3
+match-type-2-0 = Ngẫu nhiên

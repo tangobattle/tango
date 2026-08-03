@@ -25,8 +25,15 @@
 //!
 //! Env:
 //! - PVP_KO_MATCH_TYPE=<mode,subtype>: tango match-type selection;
-//!   (0,0) = single battle, (1,0) = triple battle. Default "1,0" —
-//!   the set mode is what live matches run.
+//!   (0,0) = single battle, (1,0) = triple battle, (2,0) = random
+//!   battle. Default "1,0" — the set mode is what live matches run.
+//!   Random battle primes EARLY, at the rank select (the setup is
+//!   interactive by design), so the probe plays the setup itself:
+//!   identical keys on both cores per PVP_KO_MENU (default "A" —
+//!   confirm rank 1, confirm the generated folder) until the battle
+//!   starts.
+//! - PVP_KO_MENU=<keys>: the random-battle setup input policy (same
+//!   key-string format as PVP_KO_ADVANCE), fed to BOTH cores.
 //! - PVP_KO_VICTIMS=<pattern>: which player's HP to poke per battle,
 //!   e.g. "1" (player 1 every battle, a 2-0 set), "10" (alternating —
 //!   a full 2-1 tri set). Default "1".
@@ -100,6 +107,10 @@ fn dump_screens(pair: &mut mgba_rollback::Link, tag: &str) {
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Phase {
     Priming,
+    /// Random battle only: priming ends at the rank select, so play
+    /// the setup (rank confirm, folder review) with identical keys on
+    /// both cores until the store shows the battle started.
+    MenuWalk,
     /// Wiggle until both cores report freshly initialized units (both
     /// players above 1 HP) for 60 straight ticks, then poke the KO.
     AwaitLive {
@@ -145,6 +156,7 @@ fn main() {
     };
     let max_ticks: u32 = args.last().and_then(|s| s.parse().ok()).unwrap_or(80000);
     let advance_policy = std::env::var("PVP_KO_ADVANCE").unwrap_or_else(|_| "A".to_string());
+    let menu_policy = std::env::var("PVP_KO_MENU").unwrap_or_else(|_| "A".to_string());
     // Per-battle victim pattern: battle N's victim is pattern[(N-1) % len].
     let victims: Vec<u8> = std::env::var("PVP_KO_VICTIMS")
         .unwrap_or_else(|_| "1".to_string())
@@ -230,6 +242,7 @@ fn main() {
 
         let keys = match phase {
             Phase::Priming | Phase::Epilogue { .. } => [0, 0],
+            Phase::MenuWalk => [keys_for(&menu_policy, t); 2],
             Phase::AwaitLive { .. } | Phase::Fighting { .. } => {
                 // The deterministic battle wiggle (distinct per core).
                 let mut keys = [0u32; 2];
@@ -291,9 +304,27 @@ fn main() {
                 if primed[0].is_set() && primed[1].is_set() {
                     println!("[{t:5}] PRIMED (both cores)");
                     dump_screens(&mut pair, "primed");
-                    Phase::AwaitLive { round: 1, streak: 0 }
+                    if config.match_type.0 == 2 {
+                        println!("[{t:5}] random battle: playing the setup (policy {menu_policy:?})");
+                        Phase::MenuWalk
+                    } else {
+                        Phase::AwaitLive { round: 1, streak: 0 }
+                    }
                 } else {
                     Phase::Priming
+                }
+            }
+            Phase::MenuWalk => {
+                let started = {
+                    let s = store.lock().unwrap();
+                    s.events().iter().any(|(_, e)| matches!(e, Event::RoundStarted))
+                };
+                if started {
+                    println!("[{t:5}] setup played through; battle started");
+                    dump_screens(&mut pair, "setup_done");
+                    Phase::AwaitLive { round: 1, streak: 0 }
+                } else {
+                    Phase::MenuWalk
                 }
             }
             Phase::AwaitLive { round, streak } => {
