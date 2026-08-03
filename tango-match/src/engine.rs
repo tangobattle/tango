@@ -14,7 +14,7 @@
 //! one back, and the host drives it without ever learning which
 //! emulator is underneath.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::link::{Link, Snapshot};
@@ -47,6 +47,11 @@ struct World {
     /// like training turns the remote back on. Shared with the
     /// [`Match`] so that can happen mid-session.
     visible: Arc<[AtomicBool; 2]>,
+    /// Which screens the host actually puts in front of someone, as a
+    /// mask over the composition order. All of them until a host says
+    /// otherwise; shared with the [`Match`] because an arrangement
+    /// setting can change mid-session.
+    displayed_screens: Arc<AtomicU8>,
     /// First tick of the current advance whose frame could reach the
     /// screen. Ticks below it are rollback re-simulation: nobody ever
     /// sees their frames, so nobody draws them.
@@ -73,9 +78,11 @@ impl getgud::World for World {
         inputs[self.local_player] = *local;
         let mut link = self.link.lock().unwrap();
         let render = self.live_tick + 1 >= self.render_from.load(Ordering::Relaxed);
+        let screens = self.displayed_screens.load(Ordering::Relaxed);
         for player in 0..2 {
-            link.side(player)
-                .set_render(render && self.visible[player].load(Ordering::Relaxed));
+            let mut side = link.side(player);
+            side.set_render(render && self.visible[player].load(Ordering::Relaxed));
+            side.set_displayed_screens(screens);
         }
         link.tick(inputs);
         // Straight after the tick, with the link still in hand: this is
@@ -147,6 +154,9 @@ pub struct Match {
     link: Arc<Mutex<dyn Link>>,
     local_player: usize,
     visible: Arc<[AtomicBool; 2]>,
+    /// See the world's copy: which screens are actually presented,
+    /// live so an arrangement setting takes effect mid-session.
+    displayed_screens: Arc<AtomicU8>,
     render_from: Arc<AtomicU32>,
     /// Confirmed rows the world's `log` callback has recorded, shared
     /// with it (the engine owns its world outright).
@@ -185,6 +195,7 @@ impl Match {
         let link: Arc<Mutex<dyn Link>> = Arc::new(Mutex::new(link));
         let visible = Arc::new([AtomicBool::new(local_player == 0), AtomicBool::new(local_player == 1)]);
         let render_from = Arc::new(AtomicU32::new(0));
+        let displayed_screens = Arc::new(AtomicU8::new(u8::MAX));
         let confirmed = Arc::new(Mutex::new(Vec::new()));
         let audio_seat = Arc::new(std::sync::atomic::AtomicUsize::new(local_player));
         let audio = audio.map(|into| crate::audio::Pump::new(into, audio_seat.clone()));
@@ -194,6 +205,7 @@ impl Match {
             local_player,
             pool: Vec::new(),
             visible: visible.clone(),
+            displayed_screens: displayed_screens.clone(),
             render_from: render_from.clone(),
             confirmed: confirmed.clone(),
             audio,
@@ -219,6 +231,7 @@ impl Match {
             link,
             local_player,
             visible,
+            displayed_screens,
             render_from,
             confirmed,
             drained: 0,
@@ -286,6 +299,24 @@ impl Match {
     /// asked for that seat to be drawn.
     pub fn seat_frame(&mut self, player: usize) -> Option<Vec<u8>> {
         self.with_link(|link| link.side(player).frame())
+    }
+
+    /// Present only these screens from here on, as a mask over the
+    /// composition order: what the host has actually arranged to show,
+    /// which is the cart's own screen selection narrowed by whatever the
+    /// user picked. A console composes nothing for a screen left out.
+    ///
+    /// Live, so an arrangement setting changed mid-session takes effect on
+    /// the next tick, and it changes nothing about the match itself (see
+    /// [`Side::set_displayed_screens`]).
+    pub fn set_displayed_screens(&self, screens: u8) {
+        self.displayed_screens.store(screens, Ordering::Relaxed);
+    }
+
+    /// The same knob as a handle, for a host that keeps one after the
+    /// match itself has moved onto the drive thread.
+    pub fn displayed_screens_handle(&self) -> Arc<AtomicU8> {
+        self.displayed_screens.clone()
     }
 
     /// Draw every seat, not just the local one.

@@ -4450,7 +4450,7 @@ checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 [[package]]
 name = "melonds"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rs#c3f0aec840ef5a2fd15447e52d5e983bdc475636"
+source = "git+https://github.com/tangobattle/melonds-rs#71512066fd4666895d6160c5091ea342e25a5257"
 dependencies = [
  "log",
  "melonds-sys",
@@ -4470,7 +4470,7 @@ dependencies = [
 [[package]]
 name = "melonds-sys"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rs#c3f0aec840ef5a2fd15447e52d5e983bdc475636"
+source = "git+https://github.com/tangobattle/melonds-rs#71512066fd4666895d6160c5091ea342e25a5257"
 dependencies = [
  "bindgen",
  "cc",

@@ -126,6 +126,9 @@ pub struct PvpSession {
     /// Flipped once the games' own match-end path is confirmed — the
     /// direct successor of the trap engine's per-game completion hook.
     completed: Arc<AtomicBool>,
+    /// Which of the console's screens the host is actually showing,
+    /// shared with the drive loop so the setting can move mid-match.
+    displayed_screens: Arc<std::sync::atomic::AtomicU8>,
     /// Latching end-of-match signals (remote-ended / remote-disconnected /
     /// local-ended). Grouped in [`EndState`]; `is_ended` reads them
     /// alongside `completed` and `cancellation_token`.
@@ -424,6 +427,8 @@ impl PvpSession {
         let end = EndState::default();
         let local_input = crate::InputCell::new();
         let completed = Arc::new(AtomicBool::new(false));
+        // All screens until the host says which it is arranging to show.
+        let displayed_screens = Arc::new(std::sync::atomic::AtomicU8::new(u8::MAX));
         let frame_delay = Arc::new(AtomicU32::new(frame_delay));
         let metrics = Arc::new(Metrics::default());
         // Seeded rather than left at zero: the host paces the boot
@@ -503,6 +508,7 @@ impl PvpSession {
             drive_paused: drive_paused.clone(),
             cancel: cancellation_token.clone(),
             completed: completed.clone(),
+            displayed_screens: displayed_screens.clone(),
             end: end.clone(),
             event_rx,
             sender,
@@ -586,6 +592,7 @@ impl PvpSession {
             local_player_index,
             local_input,
             completed,
+            displayed_screens: displayed_screens.clone(),
             end,
             tps_counter,
             cancellation_token,
@@ -769,6 +776,10 @@ impl PvpSession {
 }
 
 impl crate::Session for PvpSession {
+    fn set_displayed_screens(&self, screens: u8) {
+        self.displayed_screens.store(screens, Ordering::Relaxed);
+    }
+
     fn local_game(&self) -> &'static tango_gamesupport::Game {
         self.local_game
     }
@@ -926,6 +937,8 @@ struct DriveContext {
     drive_paused: Arc<crate::PauseGate>,
     cancel: tokio_util::sync::CancellationToken,
     completed: Arc<AtomicBool>,
+    /// See the session's copy.
+    displayed_screens: Arc<std::sync::atomic::AtomicU8>,
     end: EndState,
     event_rx: std::sync::mpsc::Receiver<crate::net::data::Input>,
     sender: crate::net::PvpSender,
@@ -1746,6 +1759,12 @@ impl PvpDriver {
         }
         self.ctx.tps_counter.lock().unwrap().mark();
         self.ctx.wake.notify_one();
+
+        // Whatever the host is arranging to show, handed over each tick:
+        // a console composes nothing for a screen nobody is looking at,
+        // and the setting behind this can move mid-match.
+        self.match_
+            .set_displayed_screens(self.ctx.displayed_screens.load(Ordering::Relaxed));
 
         // Clock sync: only the leading peer shaves tick rate, and only
         // once the presented frame actually speculates past the present

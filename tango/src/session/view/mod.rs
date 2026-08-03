@@ -297,6 +297,14 @@ fn framebuffer_view<'a>(
         _ => base_frame,
     };
 
+    // The arrangement is settled here, so this is where the session
+    // learns which screens are worth composing. Cheap enough to repeat
+    // every repaint (one atomic store), which is also what makes a
+    // setting flipped mid-session take effect straight away.
+    if let (Some(layout), Some(active)) = (&layout, state.active.as_ref()) {
+        active.set_displayed_screens(presented_mask(layout, ctx.ds_screen_stacking, touch_first));
+    }
+
     // The recorded touch as a fraction of the pane: through the same
     // origin as the stylus mapping above, so the spot lands on the
     // touch screen wherever the arrangement puts it.
@@ -413,6 +421,25 @@ fn framebuffer_view<'a>(
 /// the front when it leads. Shared by the placement below and the
 /// re-pack in [`rearrange_screens`] so the two can't disagree about
 /// where a screen ended up.
+/// Which of `layout`'s screens this arrangement actually puts in front
+/// of the player, as a bitmask over the layout's own order.
+///
+/// Handed to the session so the console can stop composing a screen
+/// nobody is shown - on the DS that is a whole 2D engine, and
+/// primary-only is exactly the arrangement that drops one.
+fn presented_mask(
+    layout: &tango_match::ScreenLayout,
+    stacking: crate::config::DsScreenStacking,
+    touch_first: bool,
+) -> u8 {
+    let order = presented_order(layout, touch_first);
+    let shown = match stacking {
+        crate::config::DsScreenStacking::PrimaryOnly => &order[..1.min(order.len())],
+        _ => &order[..],
+    };
+    shown.iter().fold(0u8, |m, &i| m | 1 << i)
+}
+
 fn presented_order(layout: &tango_match::ScreenLayout, touch_first: bool) -> Vec<usize> {
     let mut order: Vec<usize> = (0..layout.screens.len()).collect();
     if touch_first {

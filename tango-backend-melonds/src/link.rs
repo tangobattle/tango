@@ -256,6 +256,24 @@ impl tango_match::Side for DsSide<'_> {
         self.0.console().set_render(on);
     }
 
+    /// The mask arrives over the composition's order, which is this
+    /// boot's [`Screens`] selection - so a touch-only mode's bit 0 is the
+    /// console's *bottom* screen. Translate to the console's own order
+    /// before handing it over.
+    ///
+    /// A screen the composition leaves out is therefore never displayed
+    /// whatever the host asks for, which is what gets a cart that spends
+    /// its netbattle on one screen the saving without anyone opting in.
+    fn set_displayed_screens(&mut self, screens: u8) {
+        let mut mask = 0u8;
+        for (i, &screen) in self.1 .0.iter().enumerate() {
+            if screens & (1 << i) != 0 {
+                mask |= 1 << screen as u8;
+            }
+        }
+        self.0.console().set_displayed_screens(mask);
+    }
+
     fn export_save(&mut self) -> Option<Vec<u8>> {
         Some(self.0.console().save_memory())
     }

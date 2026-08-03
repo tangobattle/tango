@@ -104,6 +104,23 @@ pub trait Side {
         let _ = on;
     }
 
+    /// Which of this console's screens the host will actually put in
+    /// front of someone, as a bitmask over the order
+    /// [`Backend::screen_layout`] declares.
+    ///
+    /// A console may compose a screen nobody is shown: a cart can spend a
+    /// whole mode on one of them, and a host can be arranged to present
+    /// one of the two. Whatever draws the screen that is dropped is doing
+    /// work for nobody, and on the DS that is a whole 2D engine.
+    ///
+    /// Like [`Side::set_render`] this is presentation, not simulation:
+    /// what the skipped engine would have drawn is read by nothing the
+    /// match depends on, so it is rollback-safe and two peers arranged
+    /// differently still play the same match.
+    fn set_displayed_screens(&mut self, screens: u8) {
+        let _ = screens;
+    }
+
     /// The cartridge's savedata as it stands, or `None` for a game
     /// that has never written any.
     fn export_save(&mut self) -> Option<Vec<u8>> {

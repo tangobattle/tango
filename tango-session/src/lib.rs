@@ -313,6 +313,21 @@ pub trait Session: std::any::Any {
     /// engine doesn't produce renders every row misaligned.
     fn screen_layout(&self) -> tango_match::ScreenLayout;
 
+    /// Present only these of [`screen_layout`](Self::screen_layout)'s
+    /// screens, as a bitmask over its order.
+    ///
+    /// A host that shows one screen of a two-screen console - the DS
+    /// arrangement settings' primary-only - is composing the other for
+    /// nobody, and on the DS that is a whole 2D engine. Live, so changing
+    /// the setting mid-session takes effect on the next tick, and it
+    /// changes nothing about the session but which pixels get drawn.
+    ///
+    /// The default does nothing, for a session whose engine composes one
+    /// screen anyway.
+    fn set_displayed_screens(&self, screens: u8) {
+        let _ = screens;
+    }
+
     /// This session's current display frame, as RGBA8 (4 bytes per
     /// pixel) — the host uploads it to a GPU texture every repaint, so
     /// it hands back a copy rather than the live surface the emu
