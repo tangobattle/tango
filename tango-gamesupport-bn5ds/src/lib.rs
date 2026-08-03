@@ -17,7 +17,7 @@ pub use tango_gamesupport_bn5ds_ui as ui;
 pub mod pvp;
 
 use std::sync::LazyLock;
-use tango_gamesupport::{BackgroundRef, Family, Game, LazyImage, Region, Volume};
+use tango_gamesupport::{BackgroundRef, Family, Game, LazyImage, Region, SaveTemplates, Volume};
 
 /// Single Battle and Triple Battle, each in a plain and a Team subtype.
 /// The two kinds are separate routes off the Network board rather than
@@ -41,6 +41,23 @@ static ENGINE_PVP_A5TE_00: tango_backend_melonds::DsBackend = tango_backend_melo
 static ENGINE_PVP_A5TJ_00: tango_backend_melonds::DsBackend = tango_backend_melonds::DsBackend::new(&pvp::JP);
 
 static BN5DS_LOGO: LazyImage = LazyLock::new(|| image::load_from_memory(include_bytes!("logos/bn5ds-0.png")).unwrap());
+
+/// The bundled template: a finished US cartridge, stripped to its two
+/// files' live block pairs — one file per team, both stories cleared.
+/// A dump's other blocks are only history (a stale generation of one
+/// file) and erased flash, and [`dataview::save::SaveSet::parse`]
+/// already reconstitutes a short dump by padding it back out, so the
+/// pairs are all that needs checking in. The template save itself is
+/// the cart's current file; the other rides along in the dump, where
+/// the editor's file picker reaches it.
+static BN5DS_SAVE: LazyLock<dataview::save::Save> =
+    LazyLock::new(|| dataview::save::SaveSet::parse(include_bytes!("saves/us.raw")).unwrap().current());
+static BN5DS_T: SaveTemplates = LazyLock::new(|| {
+    vec![(
+        "",
+        tango_gamesupport_common::dataview::wrap_save(Box::new(BN5DS_SAVE.clone())),
+    )]
+});
 
 /// The cartridge's saves, identified so one can be picked before a
 /// match — and read as far as the dataview's mapping reaches. A dump
@@ -79,7 +96,7 @@ pub static BN5DS: Game = Game {
 
     match_types: MATCH_TYPES,
     players_colored_by_seat: false,
-    save_templates: None,
+    save_templates: Some(&BN5DS_T),
     logo_image: Some(&BN5DS_LOGO),
     background: Some(BACKGROUND),
     #[cfg(feature = "ui")]
