@@ -585,6 +585,7 @@ impl PvpSession {
             drive_paused: drive_paused.clone(),
             wake: wake.clone(),
             local_primed: local_primed.clone(),
+            stats: stats.clone(),
         });
 
         let session = Self {
@@ -1088,6 +1089,9 @@ struct SupervisorContext {
     /// Whether our own pair is primed, so a reconnect can re-announce it
     /// (the rebuild drops anything the old transport hadn't delivered).
     local_primed: Arc<AtomicBool>,
+    /// The live stats fold, read for the reconnect policy's "was a
+    /// battle ever entered" check (see the policy below).
+    stats: Arc<Mutex<tango_match::analysis::StatsBuilder>>,
 }
 
 /// Pump one receiver until error/EOF, forwarding events to the drive
@@ -1133,6 +1137,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
         drive_paused,
         wake,
         local_primed,
+        stats,
     } = ctx;
 
     let make_receiver = {
@@ -1231,13 +1236,24 @@ fn spawn_supervisor(ctx: SupervisorContext) {
 
             // Reconnect on any mid-match link loss — a stalled input queue
             // *or* a bare channel close — as long as the transport can
-            // rebuild and the match isn't ending (our completion or the
-            // peer's EndOfMatch). A close uses the short give-up window, so
-            // a real drop reconnects fast while a lost-goodbye quit still
-            // ends quickly. An announced quit (`PeerQuit`) never reconnects
-            // — the peer told us it isn't coming back.
+            // rebuild, a battle was ever entered, and the match isn't
+            // ending (our completion or the peer's EndOfMatch). A close
+            // uses the short give-up window, so a real drop reconnects
+            // fast while a lost-goodbye quit still ends quickly. An
+            // announced quit (`PeerQuit`) never reconnects — the peer told
+            // us it isn't coming back.
+            //
+            // Before the first round there is nothing worth preserving —
+            // random battle's live setup (rank select, folder review, the
+            // cancel loops out of them) is the wide window, the other
+            // modes' boot/ready waits the narrow one — so a link drop
+            // there ends the match at once, uncleanly (`capture_results`
+            // likewise skips the results card for it), instead of
+            // freezing the setup under a reconnect bar. Re-matching from
+            // the lobby costs nothing at that point.
             let reconnectable = matches!(trip, Trip::Stalled | Trip::Closed)
                 && link.can_reconnect()
+                && stats.lock().unwrap().round_started()
                 && !completed.load(Ordering::Acquire)
                 && !end.remote_ended.load(Ordering::Acquire);
             if !reconnectable {

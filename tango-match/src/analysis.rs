@@ -205,6 +205,14 @@ impl StatsBuilder {
         Self::default()
     }
 
+    /// Whether any round has been opened — i.e. whether a battle was
+    /// ever entered. A cheap probe for teardown policy (where
+    /// [`snapshot`](Self::snapshot)'s full clone would be waste): a
+    /// match that never reached a battle isn't worth preserving.
+    pub fn round_started(&self) -> bool {
+        !self.stats.rounds.is_empty()
+    }
+
     /// Open a round at `tick`, recording the boundary.
     ///
     /// This also arms the stale-intro trim. The unit slots re-initialize
