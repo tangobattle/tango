@@ -468,22 +468,26 @@ fn partycust_gauge<'a>(loaded: &'a OpenSave, customizer: &save::Partycust) -> ic
 }
 
 /// One party slot, as the game's own PARTY STATUS card and its CUSTOM
-/// panel read together: who the slot fields, the programs they carry,
-/// and the gauge those fill.
+/// panel read together: the naming line, then the programs the member
+/// carries over the gauge they fill.
 ///
-/// Reading, the navi is a name and the programs a caption. Editing, the
-/// navi is a dropdown over the file's recruited roster (the CHANGE
-/// button's own offer), each program a row with a ✕, and a dropdown of
-/// what the file could still put on sits under them — the gauge and the
-/// stock are already what that dropdown offers, so nothing it lists can
-/// overspend either.
+/// Reading, the navi is a name and the programs are a plain list.
+/// Editing, the navi is a dropdown over the file's recruited roster
+/// (the CHANGE button's own offer), each program grows a ✕, and a
+/// dropdown of what the file could still put on sits under them — the
+/// gauge and the stock are already what that dropdown offers, so
+/// nothing it lists can overspend either.
+///
+/// Returned as its two halves so each caller can hang them in the
+/// container its side of the editor wants: see [`party_slot_pane`] and
+/// [`party_slot_card`].
 fn party_slot<'a>(
     lang: &'a LanguageIdentifier,
     loaded: &'a OpenSave,
     save: &'a Save,
     slot: usize,
     editing: bool,
-) -> iced::Element<'a, Action> {
+) -> (iced::Element<'a, Action>, iced::Element<'a, Action>) {
     let navi = save.team_navi(slot);
     let header: iced::Element<'a, Action> = if editing {
         let held: Vec<usize> = (0..save::NUM_TEAM_SLOTS)
@@ -536,7 +540,7 @@ fn party_slot<'a>(
     };
 
     let Some(cart) = cart_of(loaded) else {
-        return sv::editor_pane(header, column![]);
+        return (header, column![].into());
     };
     let customizer = save::Partycust::new(save, cart, slot);
 
@@ -627,7 +631,35 @@ fn party_slot<'a>(
         .padding([6, 12]),
     );
 
+    (header, body.into())
+}
+
+/// One slot as the edit session hangs it: a full-height pane with its
+/// own scrollbar, which is the shape the editors' two-pane row wants.
+fn party_slot_pane<'a>(
+    lang: &'a LanguageIdentifier,
+    loaded: &'a OpenSave,
+    save: &'a Save,
+    slot: usize,
+) -> iced::Element<'a, Action> {
+    let (header, body) = party_slot(lang, loaded, save, slot, true);
     sv::editor_pane(header, body)
+}
+
+/// One slot as the reading side hangs it: a plate that hugs what is on
+/// it. The read-only bodies go inside a shrink-height scrollable, where
+/// a full-height pane would have nothing to fill and collapse.
+fn party_slot_card<'a>(
+    lang: &'a LanguageIdentifier,
+    loaded: &'a OpenSave,
+    save: &'a Save,
+    slot: usize,
+) -> iced::Element<'a, Action> {
+    let (header, body) = party_slot(lang, loaded, save, slot, false);
+    iced::widget::container(column![header, body])
+        .width(iced::Fill)
+        .style(tango_gamesupport_common::widgets::pane)
+        .into()
 }
 
 /// The Party tab's read-only body: the two slots the battle's NAVI
@@ -636,10 +668,13 @@ fn render_party<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> iced:
     let Some(save) = file_of(loaded) else {
         return sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty"));
     };
-    sv::editor_panes(
-        party_slot(lang, loaded, save, 0, false),
-        party_slot(lang, loaded, save, 1, false),
-    )
+    row![
+        party_slot_card(lang, loaded, save, 0),
+        party_slot_card(lang, loaded, save, 1),
+    ]
+    .spacing(tango_gamesupport_common::style::PANE_GAP)
+    .width(iced::Fill)
+    .into()
 }
 
 /// The party customizer: one panel per slot, laid out the way the
@@ -650,8 +685,8 @@ fn render_party_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> 
         return sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty"));
     };
     sv::editor_panes(
-        party_slot(lang, loaded, save, 0, true),
-        party_slot(lang, loaded, save, 1, true),
+        party_slot_pane(lang, loaded, save, 0),
+        party_slot_pane(lang, loaded, save, 1),
     )
 }
 
