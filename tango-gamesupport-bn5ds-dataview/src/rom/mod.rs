@@ -91,14 +91,10 @@ pub struct Offsets {
     /// points at it.
     navi_emblem_palette_ids: u32,
     /// The party program tables (file offset, inside the overlay the
-    /// PARTY CUSTOMIZER runs out of): four rows of
-    /// [`NUM_PARTY_PROGRAMS`](super::NUM_PARTY_PROGRAMS) bytes,
-    /// [`PARTY_PROGRAM_ROW`] apart — the item id each program is
-    /// stocked as, what it costs the member's gauge, its category, and
-    /// one the panel's own artwork indexes by. Found by searching the
-    /// cart for a table whose entries matched the costs read off the
-    /// gauge in a driven customizer (`P.HP+50` one block, `P.HP+300`
-    /// five, `P.Atk+1` one).
+    /// PARTY CUSTOMIZER runs out of) — see [`RawPartyPrograms`]. Found
+    /// by searching the cart for a table whose entries matched the
+    /// costs read off the gauge in a driven customizer (`P.HP+50` one
+    /// block, `P.HP+300` five, `P.Atk+1` one).
     party_programs: u32,
     /// Every navi's gauge, in blocks: twelve bytes, navi 1's first —
     /// MegaMan is not a party member and has no card. Confirmed
@@ -118,14 +114,29 @@ pub struct Offsets {
     navi_chip_attack: u32,
 }
 
-/// How far apart the party program table's rows sit — the thirteen
-/// entries, padded out to a multiple of four.
-const PARTY_PROGRAM_ROW: u32 = 0x10;
-
-/// Which row of [`Offsets::party_programs`] holds what.
-const PARTY_PROGRAM_ITEM_IDS: u32 = 0;
-const PARTY_PROGRAM_COSTS: u32 = PARTY_PROGRAM_ROW;
-const PARTY_PROGRAM_KINDS: u32 = PARTY_PROGRAM_ROW * 2;
+/// The party program tables as the cart lays them out: four rows of
+/// [`NUM_PARTY_PROGRAMS`](super::NUM_PARTY_PROGRAMS) bytes, each padded
+/// out to a multiple of four. A row per field rather than an entry per
+/// program, so the block is read once and indexed by program.
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
+#[allow(dead_code)]
+struct RawPartyPrograms {
+    /// The item id each program is bought and stocked as.
+    item_ids: [u8; super::NUM_PARTY_PROGRAMS],
+    _item_ids_pad: [u8; PARTY_PROGRAM_ROW_PAD],
+    /// What one costs the member's gauge, in blocks.
+    costs: [u8; super::NUM_PARTY_PROGRAMS],
+    _costs_pad: [u8; PARTY_PROGRAM_ROW_PAD],
+    /// Which family it is in — see [`PartyProgramKind`].
+    kinds: [u8; super::NUM_PARTY_PROGRAMS],
+    _kinds_pad: [u8; PARTY_PROGRAM_ROW_PAD],
+    /// One the panel's own artwork indexes by, unread here.
+    _art: [u8; super::NUM_PARTY_PROGRAMS],
+    _art_pad: [u8; PARTY_PROGRAM_ROW_PAD],
+}
+const PARTY_PROGRAM_ROW_PAD: usize = 3;
+const _: () = assert!(std::mem::size_of::<RawPartyPrograms>() == 0x40);
 
 /// What sort of program the cart files one as — its kind row's byte,
 /// which is what the customizer's gauge colours a block by. The four
@@ -780,30 +791,30 @@ pub struct PartyProgram<'a> {
 }
 
 impl PartyProgram<'_> {
-    fn table(&self, row: u32) -> u8 {
-        self.assets
-            .mapper
-            .get(self.assets.offsets.party_programs + row)
-            .get(self.index)
-            .copied()
-            .unwrap_or(0)
+    fn raw(&self) -> Option<RawPartyPrograms> {
+        Some(bytemuck::pod_read_unaligned(
+            self.assets
+                .mapper
+                .get(self.assets.offsets.party_programs)
+                .get(..std::mem::size_of::<RawPartyPrograms>())?,
+        ))
     }
 
     /// The item id the file stocks this program as — what indexes the
     /// save's own item counts and the cart's name archive.
     pub fn item_id(&self) -> usize {
-        self.table(PARTY_PROGRAM_ITEM_IDS) as usize
+        self.raw().map(|raw| raw.item_ids[self.index]).unwrap_or(0) as usize
     }
 
     /// How many blocks of the member's gauge it fills.
     pub fn cost(&self) -> u8 {
-        self.table(PARTY_PROGRAM_COSTS)
+        self.raw().map(|raw| raw.costs[self.index]).unwrap_or(0)
     }
 
     /// Which family the cart files it under — what the gauge colours
     /// its blocks by. `None` for a code this build has no family for.
     pub fn kind(&self) -> Option<PartyProgramKind> {
-        Some(match self.table(PARTY_PROGRAM_KINDS) {
+        Some(match self.raw()?.kinds[self.index] {
             2 => PartyProgramKind::ChipAttack,
             3 => PartyProgramKind::MaxHp,
             4 => PartyProgramKind::Attack,
