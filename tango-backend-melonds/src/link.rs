@@ -137,7 +137,6 @@ impl Link {
     /// negotiated match clock, pinned into both consoles so both peers
     /// reach the same state from the same inputs.
     pub fn new(rom: &[u8], saves: [Option<&[u8]>; 2], rtc: std::time::SystemTime) -> Result<Self, melonds::Error> {
-        crate::install_logger();
         Ok(Link {
             inner: melonds_rollback::Link::new(rom, saves, rtc_parts(rtc))?,
             live_tick: 0,

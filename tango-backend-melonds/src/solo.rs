@@ -17,7 +17,6 @@ impl SoloConsole {
     /// Boot one console. `rtc` pins the cart clock, exactly as a
     /// match's negotiated clock does.
     pub fn new(rom: &[u8], save: Option<&[u8]>, rtc: std::time::SystemTime) -> Result<Self, melonds::Error> {
-        crate::install_logger();
         Ok(SoloConsole {
             inner: melonds_rollback::Solo::new(rom, save, rtc_parts(rtc))?,
             screens: Screens::BOTH,
