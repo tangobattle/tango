@@ -1253,48 +1253,23 @@ pub fn card_wrap<M: 'static>(
     inner: Element<'static, M>,
     accent: Option<iced::Color>,
     row_idx: usize,
-    is_first: bool,
-    is_last: bool,
 ) -> Element<'static, M> {
-    // Match the pane's `radius: 4.0` on edge rows so the strip's solid
-    // accent and the zebra wash don't paint into the pane's rounded
-    // corners. The strip only ever touches the left edge, so just the
-    // top-left / bottom-left corners need rounding there.
-    let r = 4.0_f32;
-    let mut strip_radius = iced::border::Radius::new(0.0);
-    if is_first {
-        strip_radius = strip_radius.top_left(r);
-    }
-    if is_last {
-        strip_radius = strip_radius.bottom_left(r);
-    }
-    let mut outer_radius = iced::border::Radius::new(0.0);
-    if is_first {
-        outer_radius = outer_radius.top(r);
-    }
-    if is_last {
-        outer_radius = outer_radius.bottom(r);
-    }
+    // Square corners on every row, like `edit_row_wrap` and the library
+    // rows: rows sit flush against the pane edges and `zebra_row` is flat
+    // by design, so rounding the first/last row only where a list happens
+    // to start or end a pane reads as an accidental indent.
     let strip: Element<'static, M> = container(iced::widget::Space::new())
         .width(Length::Fixed(6.0))
         .height(Length::Fill)
         .style(move |_theme: &iced::Theme| container::Style {
             background: accent.map(iced::Background::Color),
-            border: iced::Border {
-                radius: strip_radius,
-                ..Default::default()
-            },
             ..Default::default()
         })
         .into();
     let body: Element<'static, M> = container(inner).width(Fill).into();
     container(row![strip, body].height(Length::Shrink))
         .width(Fill)
-        .style(move |theme: &iced::Theme| {
-            let mut s = crate::widgets::zebra_row(row_idx)(theme);
-            s.border.radius = outer_radius;
-            s
-        })
+        .style(crate::widgets::zebra_row(row_idx))
         .into()
 }
 

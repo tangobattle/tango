@@ -70,11 +70,6 @@ pub fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave, g
     // stripe; extra column spacing here adds dead gaps that read
     // as "spreadsheet" rather than "chip list".
     let mut body = column![].spacing(1).padding(0);
-    let total_visible = if grouped {
-        items.len()
-    } else {
-        items.iter().filter(|(c, _)| c.is_some()).count()
-    };
     let mut visible_idx = 0usize;
     for (chip, g) in &items {
         if !grouped && chip.is_none() {
@@ -82,19 +77,7 @@ pub fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave, g
         }
         let chip_id = chip.as_ref().map(|c| c.id);
         let code = chip.as_ref().map(|c| c.code.to_string());
-        let is_first = visible_idx == 0;
-        let is_last = visible_idx + 1 == total_visible;
-        body = body.push(chip_row(
-            loaded,
-            chip_id,
-            code,
-            g,
-            grouped,
-            chips_have_mb,
-            visible_idx,
-            is_first,
-            is_last,
-        ));
+        body = body.push(chip_row(loaded, chip_id, code, g, grouped, chips_have_mb, visible_idx));
         visible_idx += 1;
     }
 
@@ -604,8 +587,6 @@ pub fn chip_row<M: 'static>(
     show_count_cell: bool,
     chips_have_mb: bool,
     row_idx: usize,
-    is_first: bool,
-    is_last: bool,
 ) -> Element<'static, M> {
     let info = chip_id.and_then(|id| loaded.assets.chip(id));
     let chip_class = info.as_ref().map(|i| i.class());
@@ -732,7 +713,7 @@ pub fn chip_row<M: 'static>(
     }
     r = r.push(power_text).push(mb_text);
 
-    let card = card_wrap(r.padding([3, 12]).into(), accent, row_idx, is_first, is_last);
+    let card = card_wrap(r.padding([3, 12]).into(), accent, row_idx);
     // Hover tooltip with chip image preview + description.
     // Always rendered when the chip has either; the folder list
     // and Auto Battle Data both want this affordance, so it

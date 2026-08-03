@@ -48,23 +48,12 @@ fn abd_grouped_section_rows<M: 'static>(
 ) -> Element<'static, M> {
     let title_el = container(text(title).size(TEXT_BODY)).padding(style::HEADER_PADDING);
     let mut col = column![title_el, Space::new().height(4)].spacing(1);
-    let last_idx = runs.len().saturating_sub(1);
     for (idx, (id, count)) in runs.iter().enumerate() {
         let g = GroupedChip {
             count: *count,
             ..GroupedChip::default()
         };
-        col = col.push(chip_row(
-            loaded,
-            *id,
-            None,
-            &g,
-            true,
-            chips_have_mb,
-            idx,
-            false,
-            idx == last_idx,
-        ));
+        col = col.push(chip_row(loaded, *id, None, &g, true, chips_have_mb, idx));
     }
     col.into()
 }
