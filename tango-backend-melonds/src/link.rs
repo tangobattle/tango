@@ -286,15 +286,25 @@ impl tango_match::Side for DsSide<'_> {
 /// wastes most of the width of any display it is drawn into.
 fn compose_frame(top: &[u32], bottom: &[u32], screens: Screens) -> Vec<u8> {
     let sources = [top, bottom];
-    let mut rgba = Vec::with_capacity(screens.layout().buffer_len());
     let (width, height) = (SCREENS[0].width as usize, SCREENS[0].height as usize);
+    let mut rgba = vec![0u8; screens.layout().buffer_len()];
+    // A row of the composite is a row of each selected screen in turn,
+    // so walk the destination in those spans and pair each with its
+    // source row. Handing the inner loop a slice of known length and a
+    // 4-byte destination is what keeps a bounds check off every pixel —
+    // this runs on a whole frame every tick a session presents one.
+    let span = width * 4;
+    let mut at = 0usize;
     for row in 0..height {
         for &screen in screens.0 {
-            for &pixel in &sources[screen as usize][row * width..(row + 1) * width] {
+            let src = &sources[screen as usize][row * width..(row + 1) * width];
+            let dst = &mut rgba[at..at + span];
+            for (pixel, out) in src.iter().zip(dst.chunks_exact_mut(4)) {
                 // The core hands out BGRA words; hosts want RGBA bytes.
                 let [b, g, r, _] = pixel.to_le_bytes();
-                rgba.extend_from_slice(&[r, g, b, 0xff]);
+                out.copy_from_slice(&[r, g, b, 0xff]);
             }
+            at += span;
         }
     }
     rgba
@@ -386,6 +396,22 @@ mod tests {
         let lifted = super::input_of(tango_match::HostInput::keys(keys::A));
         assert!(!lifted.mic);
         assert_eq!(lifted.keys, keys::A);
+    }
+
+    /// The core hands out BGRA words and a host wants RGBA bytes, with
+    /// the alpha the console has no opinion about forced opaque. The
+    /// composite is written a row at a time for speed, so pin the pixel
+    /// conversion itself rather than trusting the loop around it.
+    #[test]
+    fn a_bgra_word_composes_to_opaque_rgba() {
+        let px = (super::SCREENS[0].width * super::SCREENS[0].height) as usize;
+        // BGRA little-endian: b=0x11, g=0x22, r=0x33, and an alpha byte
+        // that must not survive.
+        let top = vec![0x44_33_22_11u32; px];
+        let bottom = vec![0u32; px];
+        let out = super::compose_frame(&top, &bottom, super::Screens::UPPER);
+        assert_eq!(&out[..8], &[0x33, 0x22, 0x11, 0xff, 0x33, 0x22, 0x11, 0xff]);
+        assert_eq!(&out[out.len() - 4..], &[0x33, 0x22, 0x11, 0xff]);
     }
 
     /// A red top screen and a blue bottom one, as the core hands them
