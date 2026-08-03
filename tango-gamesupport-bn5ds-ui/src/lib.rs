@@ -537,45 +537,23 @@ fn party_slot<'a>(
                 }),
         );
         let selected = options.iter().find(|choice| choice.navi == navi).cloned();
-        row![]
-            .spacing(8)
-            .align_y(iced::Alignment::Center)
-            .push(pick_list(options, selected, move |choice: NaviChoice| {
-                Action::Game(Arc::new(SetPartyNavi {
-                    slot,
-                    navi: choice.navi,
-                }))
+        pick_list(options, selected, move |choice: NaviChoice| {
+            Action::Game(Arc::new(SetPartyNavi {
+                slot,
+                navi: choice.navi,
             }))
-            .push(iced::widget::Space::new().width(iced::Fill))
-            .push(sv::clear_all_button(
-                lang,
-                Action::Game(Arc::new(ClearPartyPrograms(slot))),
-            ))
-            .into()
+        })
     } else {
         match navi {
             Some(navi) => iced::widget::text(navi_name(loaded, navi))
                 .size(tango_gamesupport_common::style::TEXT_BODY)
-                .width(iced::Fill)
                 .into(),
             None => iced::widget::text(tango_gamesupport_common::t!(lang, "bn5ds-team-none"))
                 .size(tango_gamesupport_common::style::TEXT_BODY)
                 .style(tango_gamesupport_common::widgets::muted_text_style)
-                .width(iced::Fill)
                 .into(),
         }
     };
-    let naming = row![]
-        .spacing(12)
-        .align_y(iced::Alignment::Center)
-        .push_maybe(navi.and_then(|navi| navi_emblem(loaded, navi, EMBLEM_SIZE)))
-        .push(
-            column![]
-                .spacing(4)
-                .width(iced::Fill)
-                .push(naming)
-                .push_maybe(navi.map(|navi| navi_stats(lang, loaded, save, navi))),
-        );
 
     let Some(cart) = cart_of(loaded) else {
         return (
@@ -588,20 +566,38 @@ fn party_slot<'a>(
     };
     let customizer = save::Partycust::new(save, cart, slot);
 
-    // The gauge sits right under the name, where the panel's own card
-    // keeps it — not at the far end of the program list.
-    let gauge = row![
-        partycust_gauge(loaded, &customizer),
-        iced::widget::text(format!("{} / {}", customizer.cost(), customizer.capacity()))
-            .size(tango_gamesupport_common::style::TEXT_CAPTION)
-            .style(tango_gamesupport_common::widgets::muted_text_style),
-    ]
-    .spacing(8)
-    .align_y(iced::Alignment::Center);
-    let header = iced::widget::container(column![naming, gauge].spacing(6).width(iced::Fill))
-        .width(iced::Fill)
-        .padding(tango_gamesupport_common::style::HEADER_PADDING)
-        .into();
+    // The gauge rides on the naming line, at the far end of it — not on
+    // a row of its own, and not trailing the program list.
+    let naming = row![]
+        .spacing(8)
+        .align_y(iced::Alignment::Center)
+        .push(naming)
+        .push(iced::widget::Space::new().width(iced::Fill))
+        .push(partycust_gauge(loaded, &customizer))
+        .push(
+            iced::widget::text(format!("{} / {}", customizer.cost(), customizer.capacity()))
+                .size(tango_gamesupport_common::style::TEXT_CAPTION)
+                .style(tango_gamesupport_common::widgets::muted_text_style),
+        )
+        .push_maybe(editing.then(|| {
+            sv::clear_all_button(lang, Action::Game(Arc::new(ClearPartyPrograms(slot))))
+        }));
+    let header = iced::widget::container(
+        row![]
+            .spacing(12)
+            .align_y(iced::Alignment::Center)
+            .push_maybe(navi.and_then(|navi| navi_emblem(loaded, navi, EMBLEM_SIZE)))
+            .push(
+                column![]
+                    .spacing(4)
+                    .width(iced::Fill)
+                    .push(naming)
+                    .push_maybe(navi.map(|navi| navi_stats(lang, loaded, save, navi))),
+            ),
+    )
+    .width(iced::Fill)
+    .padding(tango_gamesupport_common::style::HEADER_PADDING)
+    .into();
 
     let mut body = column![].spacing(1).padding(0);
     for (at, &index) in customizer.equipped().iter().enumerate() {
