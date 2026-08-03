@@ -390,15 +390,15 @@ fn navi_emblem<'a>(loaded: &'a OpenSave, navi: usize, size: f32) -> Option<iced:
 /// first, whoever the file dresses him as.
 const MEGAMAN_NAVI: usize = 0;
 
-/// One navi's name over the three numbers its PARTY STATUS card shows:
-/// the HP it brings, the ATTACK its card reads, and its chip attack.
+/// The three numbers a navi's PARTY STATUS card shows: the HP it
+/// brings, the ATTACK its card reads, and its chip attack.
 ///
 /// All three are the card's own figures. The record keeps ATTACK
 /// 0-based, so the card's is one more; the chip attack is what the navi
 /// brings at this file's story rank plus whatever `P.Chp` programs it
 /// carries.
-fn navi_line<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, save: &'a Save, navi: usize) -> iced::Element<'a, Action> {
-    let mut stats = row![
+fn navi_stats<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, save: &'a Save, navi: usize) -> iced::Element<'a, Action> {
+    row![
         sv::stat(
             tango_gamesupport_common::t!(lang, "navi-base-hp"),
             save.navi_hp(navi).to_string(),
@@ -409,26 +409,14 @@ fn navi_line<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, save: &'a S
         ),
     ]
     .spacing(16)
-    .align_y(iced::Alignment::End);
-    if let Some(cart) = cart_of(loaded) {
-        stats = stats.push(sv::stat(
+    .align_y(iced::Alignment::End)
+    .push_maybe(cart_of(loaded).map(|cart| {
+        sv::stat(
             tango_gamesupport_common::t!(lang, "bn5ds-chip-attack"),
             save.navi_chip_attack(navi, cart).to_string(),
-        ));
-    }
-    row![]
-        .spacing(12)
-        .align_y(iced::Alignment::Center)
-        .push_maybe(navi_emblem(loaded, navi, EMBLEM_SIZE))
-        .push(
-            column![
-                iced::widget::text(navi_name(loaded, navi)).size(tango_gamesupport_common::style::TEXT_BODY),
-                stats,
-            ]
-            .spacing(4)
-            .width(iced::Fill),
         )
-        .into()
+    }))
+    .into()
 }
 
 /// What the cart calls party program `index`.
@@ -468,6 +456,10 @@ const GAUGE_BLOCK: f32 = 14.0;
 /// iced's default 1.3 line height, plus the button's own padding, plus
 /// the row's.
 const PROGRAM_ROW_HEIGHT: f32 = tango_gamesupport_common::style::TEXT_BODY * 1.3 + 6.0 + 6.0;
+
+/// How wide the accent stripe down a program row's left edge is — the
+/// width the shared editor rows give their class accent.
+const STRIPE_WIDTH: f32 = 6.0;
 
 /// The member's gauge: one block per point of capacity, filled from the
 /// left in the colour of whichever program paid for it, exactly as the
@@ -546,9 +538,8 @@ fn party_slot<'a>(
         );
         let selected = options.iter().find(|choice| choice.navi == navi).cloned();
         row![]
-            .spacing(12)
+            .spacing(8)
             .align_y(iced::Alignment::Center)
-            .push_maybe(navi.and_then(|navi| navi_emblem(loaded, navi, EMBLEM_SIZE)))
             .push(pick_list(options, selected, move |choice: NaviChoice| {
                 Action::Game(Arc::new(SetPartyNavi {
                     slot,
@@ -563,7 +554,10 @@ fn party_slot<'a>(
             .into()
     } else {
         match navi {
-            Some(navi) => navi_line(lang, loaded, save, navi),
+            Some(navi) => iced::widget::text(navi_name(loaded, navi))
+                .size(tango_gamesupport_common::style::TEXT_BODY)
+                .width(iced::Fill)
+                .into(),
             None => iced::widget::text(tango_gamesupport_common::t!(lang, "bn5ds-team-none"))
                 .size(tango_gamesupport_common::style::TEXT_BODY)
                 .style(tango_gamesupport_common::widgets::muted_text_style)
@@ -571,6 +565,17 @@ fn party_slot<'a>(
                 .into(),
         }
     };
+    let naming = row![]
+        .spacing(12)
+        .align_y(iced::Alignment::Center)
+        .push_maybe(navi.and_then(|navi| navi_emblem(loaded, navi, EMBLEM_SIZE)))
+        .push(
+            column![]
+                .spacing(4)
+                .width(iced::Fill)
+                .push(naming)
+                .push_maybe(navi.map(|navi| navi_stats(lang, loaded, save, navi))),
+        );
 
     let Some(cart) = cart_of(loaded) else {
         return (
@@ -602,6 +607,13 @@ fn party_slot<'a>(
     for (at, &index) in customizer.equipped().iter().enumerate() {
         let color = program_color(cart.party_program(index).and_then(|program| program.kind()));
         let mut line = row![
+            iced::widget::container(iced::widget::Space::new())
+                .width(iced::Length::Fixed(STRIPE_WIDTH))
+                .height(iced::Length::Fixed(PROGRAM_ROW_HEIGHT))
+                .style(move |_: &iced::Theme| iced::widget::container::Style {
+                    background: Some(color.into()),
+                    ..Default::default()
+                }),
             iced::widget::text(program_name(loaded, index))
                 .size(tango_gamesupport_common::style::TEXT_BODY)
                 .width(iced::Fill),
@@ -609,15 +621,6 @@ fn party_slot<'a>(
                 cart.party_program(index).map(|program| program.cost()).unwrap_or(0).to_string(),
                 false,
             ),
-            // The kind's colour, in the cell a chip row keeps its
-            // element in.
-            iced::widget::container(iced::widget::Space::new())
-                .width(iced::Length::Fixed(GAUGE_BLOCK))
-                .height(iced::Length::Fixed(GAUGE_BLOCK))
-                .style(move |_: &iced::Theme| iced::widget::container::Style {
-                    background: Some(color.into()),
-                    ..Default::default()
-                }),
         ]
         .spacing(8)
         .align_y(iced::Alignment::Center);
@@ -631,7 +634,7 @@ fn party_slot<'a>(
                 // is carrying the edit session's ✕.
                 .height(iced::Length::Fixed(PROGRAM_ROW_HEIGHT))
                 .align_y(iced::Alignment::Center)
-                .padding([0, 12])
+                .padding(iced::Padding::default().right(12.0))
                 .style(tango_gamesupport_common::widgets::zebra_row(at)),
         );
     }
