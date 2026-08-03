@@ -155,7 +155,7 @@ pub static A5TE_00: Offsets = Offsets {
     navi_emblem_palettes:       0x003b_2200,
     navi_emblem_palette_ids:    0x020c_ed64,
     party_programs:             0x0021_8f9c,
-    partycust_capacities:             0x0021_8f78,
+    partycust_capacities:       0x0021_8f78,
     item_names:                 0x020d_8f2c,
 };
 
@@ -178,7 +178,7 @@ pub static A5TJ_00: Offsets = Offsets {
     navi_emblem_palettes:       0x003c_9400,
     navi_emblem_palette_ids:    0x020c_d7a0,
     party_programs:             0x0021_1d84,
-    partycust_capacities:             0x0021_1d60,
+    partycust_capacities:       0x0021_1d60,
     item_names:                 0x020d_78d0,
 };
 
