@@ -33,7 +33,12 @@
 //!   confirm rank 1, confirm the generated folder) until the battle
 //!   starts.
 //! - PVP_KO_MENU=<keys>: the random-battle setup input policy (same
-//!   key-string format as PVP_KO_ADVANCE), fed to BOTH cores.
+//!   key-string format as PVP_KO_ADVANCE), fed to BOTH cores — or
+//!   "<keys0>/<keys1>" for distinct per-player policies. "B/." replays
+//!   one player backing out of the rank select while the other idles:
+//!   the expected outcome is the telemetry store's abort latch (the
+//!   session-end signal for an abandoned setup), on which the probe
+//!   exits 0 immediately.
 //! - PVP_KO_VICTIMS=<pattern>: which player's HP to poke per battle,
 //!   e.g. "1" (player 1 every battle, a 2-0 set), "10" (alternating —
 //!   a full 2-1 tri set). Default "1".
@@ -157,6 +162,10 @@ fn main() {
     let max_ticks: u32 = args.last().and_then(|s| s.parse().ok()).unwrap_or(80000);
     let advance_policy = std::env::var("PVP_KO_ADVANCE").unwrap_or_else(|_| "A".to_string());
     let menu_policy = std::env::var("PVP_KO_MENU").unwrap_or_else(|_| "A".to_string());
+    let menu_policies: [String; 2] = match menu_policy.split_once('/') {
+        Some((p0, p1)) => [p0.to_string(), p1.to_string()],
+        None => [menu_policy.clone(), menu_policy.clone()],
+    };
     // Per-battle victim pattern: battle N's victim is pattern[(N-1) % len].
     let victims: Vec<u8> = std::env::var("PVP_KO_VICTIMS")
         .unwrap_or_else(|_| "1".to_string())
@@ -242,7 +251,7 @@ fn main() {
 
         let keys = match phase {
             Phase::Priming | Phase::Epilogue { .. } => [0, 0],
-            Phase::MenuWalk => [keys_for(&menu_policy, t); 2],
+            Phase::MenuWalk => [keys_for(&menu_policies[0], t), keys_for(&menu_policies[1], t)],
             Phase::AwaitLive { .. } | Phase::Fighting { .. } => {
                 // The deterministic battle wiggle (distinct per core).
                 let mut keys = [0u32; 2];
@@ -315,6 +324,14 @@ fn main() {
                 }
             }
             Phase::MenuWalk => {
+                // A cancel policy's expected end: the abort latch (a
+                // player backed out of the rank select — the session-end
+                // signal). Verified here and the probe is done.
+                if store.lock().unwrap().aborted() {
+                    println!("[{t:5}] MATCH ABORTED (rank select cancelled); done");
+                    dump_screens(&mut pair, "aborted");
+                    std::process::exit(0);
+                }
                 let started = {
                     let s = store.lock().unwrap();
                     s.events().iter().any(|(_, e)| matches!(e, Event::RoundStarted))

@@ -99,6 +99,14 @@ struct EndState {
     /// reads the stamp as the fallback grace deadline so a silent peer
     /// can't pin us forever.
     local_ended_at: Arc<Mutex<Option<web_time::Instant>>>,
+    /// The players abandoned the match in-game before any battle (the
+    /// telemetry store's abort latch — bn6 random battle's rank-select
+    /// cancel), raised by the drive thread. The match ends uncleanly:
+    /// no results card, no reconnect, no disconnect dress. Both peers
+    /// simulate the same exit on the same tick, so each raises this for
+    /// itself — the supervisor reads it to keep the peer's near-
+    /// simultaneous teardown from being mistaken for a disconnect.
+    aborted: Arc<AtomicBool>,
 }
 
 /// Live per-frame readouts the drive thread publishes for the UI —
@@ -585,7 +593,6 @@ impl PvpSession {
             drive_paused: drive_paused.clone(),
             wake: wake.clone(),
             local_primed: local_primed.clone(),
-            stats: stats.clone(),
         });
 
         let session = Self {
@@ -848,6 +855,13 @@ impl crate::Session for PvpSession {
         if self.end.remote_disconnected.load(Ordering::Acquire) {
             return true;
         }
+        // The players abandoned the match in-game before any battle:
+        // over, uncleanly — nothing to hand the results screen and no
+        // EndOfMatch handshake to wait for (the peer's simulation ends
+        // its session the same way, on the same pair tick).
+        if self.end.aborted.load(Ordering::Acquire) {
+            return true;
+        }
         // We tore our own netcode down. Same rationale, from our side.
         if self.cancellation_token.is_cancelled() {
             return true;
@@ -1089,9 +1103,6 @@ struct SupervisorContext {
     /// Whether our own pair is primed, so a reconnect can re-announce it
     /// (the rebuild drops anything the old transport hadn't delivered).
     local_primed: Arc<AtomicBool>,
-    /// The live stats fold, read for the reconnect policy's "was a
-    /// battle ever entered" check (see the policy below).
-    stats: Arc<Mutex<tango_match::analysis::StatsBuilder>>,
 }
 
 /// Pump one receiver until error/EOF, forwarding events to the drive
@@ -1137,7 +1148,6 @@ fn spawn_supervisor(ctx: SupervisorContext) {
         drive_paused,
         wake,
         local_primed,
-        stats,
     } = ctx;
 
     let make_receiver = {
@@ -1236,28 +1246,26 @@ fn spawn_supervisor(ctx: SupervisorContext) {
 
             // Reconnect on any mid-match link loss — a stalled input queue
             // *or* a bare channel close — as long as the transport can
-            // rebuild, a battle was ever entered, and the match isn't
-            // ending (our completion or the peer's EndOfMatch). A close
-            // uses the short give-up window, so a real drop reconnects
-            // fast while a lost-goodbye quit still ends quickly. An
-            // announced quit (`PeerQuit`) never reconnects — the peer told
-            // us it isn't coming back.
-            //
-            // Before the first round there is nothing worth preserving —
-            // random battle's live setup (rank select, folder review, the
-            // cancel loops out of them) is the wide window, the other
-            // modes' boot/ready waits the narrow one — so a link drop
-            // there ends the match at once, uncleanly (`capture_results`
-            // likewise skips the results card for it), instead of
-            // freezing the setup under a reconnect bar. Re-matching from
-            // the lobby costs nothing at that point.
+            // rebuild and the match isn't ending (our completion, the
+            // peer's EndOfMatch, or an in-game abort). A close uses the
+            // short give-up window, so a real drop reconnects fast while a
+            // lost-goodbye quit still ends quickly. An announced quit
+            // (`PeerQuit`) never reconnects — the peer told us it isn't
+            // coming back.
             let reconnectable = matches!(trip, Trip::Stalled | Trip::Closed)
                 && link.can_reconnect()
-                && stats.lock().unwrap().round_started()
                 && !completed.load(Ordering::Acquire)
-                && !end.remote_ended.load(Ordering::Acquire);
+                && !end.remote_ended.load(Ordering::Acquire)
+                && !end.aborted.load(Ordering::Acquire);
             if !reconnectable {
-                end.remote_disconnected.store(true, Ordering::Release);
+                // An in-game abort ends BOTH sessions from their own
+                // simulations at (nearly) the same instant — the peer's
+                // teardown racing ours to the wire (its goodbye, its
+                // channel's EOF) is expected, not a disconnect, so don't
+                // dress the end as one.
+                if !end.aborted.load(Ordering::Acquire) {
+                    end.remote_disconnected.store(true, Ordering::Release);
+                }
                 cancel.cancel();
                 break;
             }
@@ -1694,6 +1702,24 @@ impl PvpDriver {
         if self.ctx.sender.send(&wire_input_of(outgoing, tick_advantage)).is_err() {
             log::warn!("pvp: send pump terminated; ending match");
             self.ctx.end.remote_disconnected.store(true, Ordering::Release);
+            self.ctx.cancel.cancel();
+            return false;
+        }
+
+        // The players abandoned the match in-game before any battle
+        // (the store's abort latch — see it for why this needs no
+        // confirmation wait): end uncleanly, right now. The peer's
+        // simulation raises the same latch on the same pair tick, so
+        // both sessions end together — neither side's teardown reads
+        // as a disconnect to the other (the supervisor checks this
+        // flag on every trip).
+        if self
+            .match_
+            .telemetry()
+            .is_some_and(|handle| handle.lock().unwrap().aborted())
+        {
+            log::info!("pvp: match aborted in-game before any battle; ending uncleanly");
+            self.ctx.end.aborted.store(true, Ordering::Release);
             self.ctx.cancel.cancel();
             return false;
         }

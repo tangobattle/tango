@@ -66,7 +66,12 @@
 //!     init, the set flow and the match-end hand-back are the common
 //!     path. Both cores dispatch the rank prompt on the same tick of
 //!     the lockstep pair, so the early handoff primes both seats
-//!     together.
+//!     together. Backing OUT of the rank select is the one exit from
+//!     the setup: both games walk to the cancel state ([2] = 0x24,
+//!     `comm_menu_rank_cancel_entry`) on the same tick, and from there
+//!     the games diverge into menus with no battle to reach — the
+//!     walker reports it as a match abort
+//!     (`EventSink::match_aborted`) and the session ends uncleanly.
 //!
 //! (The walker itself lives in [`Pvp::primer_traps`].)
 
@@ -376,6 +381,26 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 {
                     let primed = primed.clone();
                     Box::new(move |_core: &mut mgba::core::Core| primed.set())
+                },
+            ),
+            (
+                // The rank-select cancel ([1] = 0x1c, [2] = 0x24): a
+                // player backed out of random battle's setup. Both
+                // games enter this state on the same tick (the cancel
+                // rides the prompt's own exchange), and there is no
+                // battle to return to — report the abort; the session
+                // ends uncleanly on both peers at once. Trapped on both
+                // cores (the latch dedups). First battle only, same
+                // paranoia as the walk traps above.
+                rom.comm_menu_rank_cancel_entry,
+                {
+                    let sink = events.clone();
+                    Box::new(move |core: &mut mgba::core::Core| {
+                        if core.raw_read_32(battle_tick, -1) != 0 {
+                            return;
+                        }
+                        sink.match_aborted();
+                    })
                 },
             ),
             (
@@ -703,6 +728,21 @@ struct ROMOffsets {
     /// doc).
     comm_menu_rank_entry: u32,
 
+    /// Entry of the rank-select cancel state's handler — dispatcher
+    /// state [1] = 0x1c with [2] = 0x24 (entry 7's sub-handler table,
+    /// word at +0x24; its +0x1c/+0x20 neighbors are `push {lr}; pop
+    /// {pc}` stubs, so this entry is the cancel state's alone). Both
+    /// games enter it on the SAME tick when a player backs out of the
+    /// rank select — the cancel rides the prompt's own exchange — and
+    /// the successful setup never visits it (its [2] walk is 04 → 08 →
+    /// 10 → 14 → 18, probe-traced). In-game the canceller then winds
+    /// back to the comm menu while the other game waits at a
+    /// "cancelled" prompt, and no in-session recovery exists (the
+    /// pre-battle walk traps would re-steer the canceller into a
+    /// session the peer's game already left); the walker's trap here
+    /// reports the abort instead and the session ends uncleanly.
+    comm_menu_rank_cancel_entry: u32,
+
     /// This hooks the point after the battle start routine is complete —
     /// the game's own round start, reported to the telemetry lifecycle
     /// sink.
@@ -777,6 +817,7 @@ static MEGAMAN6_FXXBR6E_00: Offsets = Offsets {
         comm_menu_start_battle:                     0x0812b414,
         comm_menu_ready_entry:                      0x0812a8ec,
         comm_menu_rank_entry:                       0x08130a04,
+        comm_menu_rank_cancel_entry:                0x08130edc,
         round_start_ret:                            0x08007304,
         round_end_set_win:                          0x0800811e,
         round_end_set_loss:                         0x08008132,
@@ -804,6 +845,7 @@ static MEGAMAN6_GXXBR5E_00: Offsets = Offsets {
         comm_menu_start_battle:                     0x0812d1f0,
         comm_menu_ready_entry:                      0x0812c6c8,
         comm_menu_rank_entry:                       0x081327e0,
+        comm_menu_rank_cancel_entry:                0x08132cb8,
         round_start_ret:                            0x08007304,
         round_end_set_win:                          0x0800811e,
         round_end_set_loss:                         0x08008132,
@@ -831,6 +873,7 @@ static ROCKEXE6_RXXBR6J_00: Offsets = Offsets {
         comm_menu_start_battle:                     0x08133e14,
         comm_menu_ready_entry:                      0x08133300,
         comm_menu_rank_entry:                       0x081393d8,
+        comm_menu_rank_cancel_entry:                0x081398b0,
         round_start_ret:                            0x080072f8,
         round_end_set_win:                          0x0800814e,
         round_end_set_loss:                         0x08008162,
@@ -858,6 +901,7 @@ static ROCKEXE6_GXXBR5J_00: Offsets = Offsets {
         comm_menu_start_battle:                     0x08135bdc,
         comm_menu_ready_entry:                      0x081350c8,
         comm_menu_rank_entry:                       0x0813b1a0,
+        comm_menu_rank_cancel_entry:                0x0813b678,
         round_start_ret:                            0x080072f8,
         round_end_set_win:                          0x0800814e,
         round_end_set_loss:                         0x08008162,

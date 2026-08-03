@@ -385,19 +385,11 @@ impl MatchResults {
 /// it stood. Our own quit paths (Esc hold, disconnect confirm) set
 /// neither flag and go straight back to the menu: the player chose to
 /// leave.
-///
-/// A remote drop before any round ever started is the exception: that
-/// match ends uncleanly — straight back to the menu, like a quit — not
-/// as a "connection lost" card over an empty chart. Random battle is
-/// the window where this actually happens: its session is live through
-/// the game's own setup (rank select, folder review), so a peer can
-/// leave mid-setup without a battle ever existing. (The other modes
-/// only pass through here in the seconds-wide boot/ready windows.)
 fn capture_results(session: &dyn Session, panes: Option<&PvpPanes>) -> Option<MatchResults> {
     let pvp = session.downcast_ref::<pvp::PvpSession>()?;
     if pvp.is_completed() {
         Some(MatchResults::capture(pvp, panes, MatchEnd::Completed))
-    } else if pvp.remote_disconnected() && !pvp.stats_snapshot().rounds.is_empty() {
+    } else if pvp.remote_disconnected() {
         Some(MatchResults::capture(pvp, panes, MatchEnd::Disconnected))
     } else {
         None

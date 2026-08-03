@@ -98,6 +98,7 @@ enum Report {
     RoundStarted,
     RoundOutcome(Outcome),
     MatchEnded,
+    MatchAborted,
     ChipUsed { player: usize, chip: u16 },
 }
 
@@ -144,6 +145,16 @@ impl EventSink {
     /// loop for good.
     pub fn match_ended(&self) {
         self.queue.lock().unwrap().push(Report::MatchEnded);
+    }
+
+    /// The players abandoned the match before any battle: the game's
+    /// own pre-battle exit path ran (bn6 random battle's rank-select
+    /// cancel is the one reporter). Lands as the store's
+    /// [`aborted`](Store::aborted) latch, not a tick-stamped event —
+    /// there is no round record for it to annotate, and the host reads
+    /// it as a session-end signal, not telemetry.
+    pub fn match_aborted(&self) {
+        self.queue.lock().unwrap().push(Report::MatchAborted);
     }
 
     /// `player` used chip `chip` this tick. Report only for the
@@ -291,6 +302,15 @@ pub struct Store {
     /// everything else on rewind; pruned below the confirmed boundary
     /// on drain (a rewind can never reach below it).
     poller_states: Vec<(u32, [PollerSnapshot; 2])>,
+    /// The players abandoned the match before any battle
+    /// ([`EventSink::match_aborted`]). A set-once host-side latch, not
+    /// a tick-stamped event, and deliberately NOT truncated by
+    /// [`on_rewind`](Telemetry::on_rewind): the exit is caused by a
+    /// button press EDGE, and the input predictor (repeat-last) can
+    /// only extend held state — a press edge is always a received,
+    /// confirmed input — so a simulated exit can never be rolled back
+    /// away; re-simulation re-fires the same report.
+    aborted: bool,
 }
 
 impl Store {
@@ -304,6 +324,13 @@ impl Store {
     /// [`samples`](Store::samples).
     pub fn events(&self) -> &[(u32, Event)] {
         &self.events
+    }
+
+    /// Whether the players abandoned the match before any battle — see
+    /// the field. Readable the moment the exit is simulated (no
+    /// confirmation wait); the host ends the session on it.
+    pub fn aborted(&self) -> bool {
+        self.aborted
     }
 
     /// Hand out every sample and event at or below `tick` (a confirmed
@@ -446,6 +473,9 @@ impl<Core> Telemetry<Core> {
                 store.close_round(tick);
                 store.events.push((tick, Event::MatchEnded));
             }
+        }
+        if reports.iter().any(|r| matches!(r, Report::MatchAborted)) {
+            store.aborted = true;
         }
         if store.round_open && !store.decided(tick) {
             if let Some(obs) = obs {
