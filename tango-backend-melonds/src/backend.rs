@@ -223,7 +223,18 @@ impl DsBackend {
 /// wireless still up. Which replies a pair hears is what a match is made
 /// of, so every DS recording predating this replays into a different
 /// one.
-const BACKEND_SIM_VERSION: u16 = 4;
+///
+/// 5: a savestate carries both 2D engines' pending sprite line. Sprites
+/// are pre-rendered a line ahead of the line that reads them, so a tick
+/// that ends inside the visible area — which is most of them — took a
+/// state holding one the console had not composited yet, and nothing
+/// carried it. A restore redrew line 0's sprites instead, which is the
+/// pending line only across a frame boundary, and the rolled-back
+/// console came back with them on whatever line it drew next. Those
+/// pixels reach the display capture unit, and what it captures is
+/// written into VRAM, so this is a match's state and not just its
+/// picture.
+const BACKEND_SIM_VERSION: u16 = 5;
 
 impl tango_match::Backend for DsBackend {
     fn sim_version(&self) -> u32 {
