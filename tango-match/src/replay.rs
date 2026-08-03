@@ -290,6 +290,24 @@ impl Playback {
         true
     }
 
+    /// [`Self::step`] with the tick's sound thrown away instead of
+    /// published — the seek chase's catch-up ticks. A chase runs far off
+    /// the recording's own pace, and anything it publishes reaches the
+    /// device callback *while the walk is still going* — on a paused
+    /// viewer, whose seek is then the only thing producing, that played
+    /// out as a burst of fast-forward music. Discarding per tick is what
+    /// keeps a seek silent; purging only at the landing catches just
+    /// whatever happened to still be queued when it got there.
+    pub fn step_muted(&mut self) -> bool {
+        let Some(&row) = self.inputs.get(self.cursor as usize) else {
+            return false;
+        };
+        self.link.tick(row);
+        self.discard_audio();
+        self.cursor += 1;
+        true
+    }
+
     /// Capture the pair (with both frames) at the current cursor.
     pub fn capture(&mut self) -> Result<Arc<Capture>, crate::Error> {
         let snap = self.link.snapshot(None)?;
@@ -435,7 +453,7 @@ impl SeekChase {
                 drop(guard);
                 return SeekStep::Working;
             }
-            if !pb.step() {
+            if !pb.step_muted() {
                 break;
             }
             on_progress(pb.cursor());
@@ -454,8 +472,9 @@ impl SeekChase {
             drop(guard);
             return SeekStep::Working;
         }
-        // The catch-up run pushed fast-forward audio into the pair;
-        // purge it so the callback doesn't play a garbled burst.
+        // The walk discarded its sound per tick; this catches what a
+        // walk never stepped over — the pre-seek tail a zero-length
+        // chase leaves queued, which belongs to the position being left.
         pb.discard_audio();
         drop(guard);
         if let Some(snap) = self.landing.take() {
