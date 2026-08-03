@@ -373,21 +373,30 @@ fn navi_name(loaded: &OpenSave, navi: usize) -> String {
         .unwrap_or_else(|| format!("#{navi}"))
 }
 
+/// A navi's emblem, at an integer multiple of its 15px crop so the
+/// nearest-neighbour upscale lands on even pixels — the navi strip's own
+/// sizing rule. `None` for a cart whose sheet would not read.
+fn navi_emblem<'a>(loaded: &'a OpenSave, navi: usize, size: f32) -> Option<iced::Element<'a, Action>> {
+    Some(
+        iced::widget::Image::new(loaded.navi_emblems.get(&navi)?.clone())
+            .filter_method(iced::widget::image::FilterMethod::Nearest)
+            .width(iced::Length::Fixed(size))
+            .height(iced::Length::Fixed(size))
+            .into(),
+    )
+}
+
+/// The navi whose emblem the identity card wears: MegaMan, the roster's
+/// first, whoever the file dresses him as.
+const MEGAMAN_NAVI: usize = 0;
+
 /// One navi as a party or roster row reads it: the name, then the HP
 /// and Attack its NAVI CHANGE card would show, off the save's own
 /// record.
 fn navi_line<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, save: &'a Save, navi: usize) -> iced::Element<'a, Action> {
     let mut line = row![].spacing(16).align_y(iced::Alignment::Center);
-    // The emblem, at an integer multiple of its 15px crop so the
-    // nearest-neighbour upscale lands on even pixels — the navi
-    // strip's own sizing rule.
-    if let Some(handle) = loaded.navi_emblems.get(&navi) {
-        line = line.push(
-            iced::widget::Image::new(handle.clone())
-                .filter_method(iced::widget::image::FilterMethod::Nearest)
-                .width(iced::Length::Fixed(30.0))
-                .height(iced::Length::Fixed(30.0)),
-        );
+    if let Some(emblem) = navi_emblem(loaded, navi, EMBLEM_SIZE) {
+        line = line.push(emblem);
     }
     line.push(
         iced::widget::text(navi_name(loaded, navi))
@@ -428,6 +437,10 @@ fn program_color(kind: Option<rom::PartyProgramKind>) -> iced::Color {
         Some(rom::PartyProgramKind::Special) | None => iced::Color::from_rgb8(0xfb, 0xfb, 0xfb),
     }
 }
+
+/// How big an emblem is drawn: twice its 15px crop, so the
+/// nearest-neighbour upscale lands on even pixels.
+const EMBLEM_SIZE: f32 = 30.0;
 
 /// How tall and wide one block of the gauge is drawn.
 const GAUGE_BLOCK: f32 = 14.0;
@@ -508,8 +521,12 @@ fn party_slot<'a>(
                 }),
         );
         let selected = options.iter().find(|choice| choice.navi == navi).cloned();
+        let mut naming = row![].spacing(12).align_y(iced::Alignment::Center);
+        if let Some(emblem) = navi.and_then(|navi| navi_emblem(loaded, navi, EMBLEM_SIZE)) {
+            naming = naming.push(emblem);
+        }
         iced::widget::container(
-            row![
+            naming.push(row![
                 pick_list(options, selected, move |choice: NaviChoice| {
                     Action::Game(Arc::new(SetPartyNavi {
                         slot,
@@ -520,7 +537,8 @@ fn party_slot<'a>(
                 sv::clear_all_button(lang, Action::Game(Arc::new(ClearPartyPrograms(slot)))),
             ]
             .spacing(8)
-            .align_y(iced::Alignment::Center),
+            .width(iced::Fill)
+            .align_y(iced::Alignment::Center)),
         )
         .width(iced::Fill)
         .padding(tango_gamesupport_common::style::HEADER_PADDING)
@@ -745,6 +763,7 @@ fn hp_stat<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Option<ice
 /// Carries the strip's own left inset, which the strip expects a card to
 /// bring (see `render_identity_strip`).
 fn card_slot<'a>(
+    loaded: &'a OpenSave,
     inner: iced::Element<'a, Action>,
     team: iced::Element<'a, Action>,
     hp: Option<iced::Element<'a, Action>>,
@@ -753,17 +772,19 @@ fn card_slot<'a>(
     if let Some(hp) = hp {
         stats = stats.push(hp);
     }
-    iced::widget::container(
-        column![
-            iced::widget::container(inner)
-                .height(iced::Length::Fixed(CARD_HEIGHT))
-                .align_y(iced::Alignment::Center),
-            stats,
-        ]
-        .spacing(4),
-    )
-    .padding([4.0, 6.0])
-    .into()
+    let naming = iced::widget::container(inner)
+        .height(iced::Length::Fixed(CARD_HEIGHT))
+        .align_y(iced::Alignment::Center);
+    // MegaMan's own emblem, beside whichever of his names the file
+    // brings — the party's members wear theirs the same way.
+    let card: iced::Element<'a, Action> = match navi_emblem(loaded, MEGAMAN_NAVI, EMBLEM_SIZE) {
+        Some(emblem) => row![emblem, column![naming, stats].spacing(4)]
+            .spacing(12)
+            .align_y(iced::Alignment::Center)
+            .into(),
+        None => column![naming, stats].spacing(4).into(),
+    };
+    iced::widget::container(card).padding([4.0, 6.0]).into()
 }
 
 /// The identity card: the name of what this save brings, in the slot
@@ -781,6 +802,7 @@ fn cross_card<'a>(
         .map(|c| c.label)
         .unwrap_or_default();
     card_slot(
+        loaded,
         iced::widget::text(name)
             .size(tango_gamesupport_common::style::TEXT_TITLE)
             .wrapping(iced::widget::text::Wrapping::None)
@@ -800,6 +822,7 @@ fn cross_picker<'a>(
 ) -> iced::Element<'a, Action> {
     let (options, selected) = cross_choices(loaded, save);
     card_slot(
+        loaded,
         pick_list(options, selected, |c: CrossChoice| {
             Action::Game(Arc::new(SetCross(c.cross)))
         }),
