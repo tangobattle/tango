@@ -121,21 +121,21 @@ fn main() {
     // before — the edit the game's own machine can't be driven to from
     // an arbitrary save, so the battle's panel showing both is the
     // proof the mirror bits are being kept right.
-    let team_before: Vec<Option<usize>> = (0..save::NUM_TEAM_SLOTS).map(|slot| file.team_navi(slot)).collect();
-    assert!(file.set_team_navi(0, Some(11)));
-    assert!(file.set_team_navi(1, Some(9)));
-    file.pack_team();
+    let team_before: Vec<Option<usize>> = (0..save::NUM_TEAM_SLOTS)
+        .map(|slot| file.view_party().navi(slot))
+        .collect();
+    assert!(file.view_party_mut().set_navi(0, Some(11)));
+    assert!(file.view_party_mut().set_navi(1, Some(9)));
     // And the party customizer: put the dearest program the file can
     // still afford on the first member, so the game's own PARTY
     // CUSTOMIZER panel is the verdict on the four record fields.
     {
-        let customizer = save::Partycust::new(&file, &assets, 0);
         let dearest = (0..tango_gamesupport_bn5ds::dataview::NUM_PARTY_PROGRAMS)
-            .filter(|&index| customizer.can_add(index))
+            .filter(|&index| file.view_party().can_add_party_program(0, &assets, index))
             .max_by_key(|&index| assets.party_program(index).map(|p| p.cost()).unwrap_or(0));
         if let Some(program) = dearest {
-            file.set_party_programs(0, customizer.with(program), &assets);
-            let navi = file.team_navi(0).unwrap_or_default();
+            file.view_party_mut().add_party_program(0, &assets, program);
+            let navi = file.view_party().navi(0).unwrap_or_default();
             println!(
                 "\nput {} on {}: {:?}",
                 assets.party_program(program).and_then(|p| p.name()).unwrap_or_default(),
@@ -151,7 +151,9 @@ fn main() {
     println!(
         "team {:?} -> {:?}",
         team_before,
-        (0..save::NUM_TEAM_SLOTS).map(|slot| file.team_navi(slot)).collect::<Vec<_>>()
+        (0..save::NUM_TEAM_SLOTS)
+            .map(|slot| file.view_party().navi(slot))
+            .collect::<Vec<_>>()
     );
 
     let dump = file.to_sram_dump();
@@ -176,10 +178,11 @@ fn report(file: &save::Save, assets: &rom::Assets) {
     println!(
         "team: {} | roster: {}",
         (0..save::NUM_TEAM_SLOTS)
-            .map(|slot| file.team_navi(slot).map(navi_name).unwrap_or_else(|| "-".to_string()))
+            .map(|slot| file.view_party().navi(slot).map(navi_name).unwrap_or_else(|| "-".to_string()))
             .collect::<Vec<_>>()
             .join(", "),
-        file.team_navi_choices()
+        file.view_party()
+            .choices()
             .into_iter()
             .map(navi_name)
             .collect::<Vec<_>>()
@@ -187,18 +190,18 @@ fn report(file: &save::Save, assets: &rom::Assets) {
     );
 
     for slot in 0..save::NUM_TEAM_SLOTS {
-        let Some(navi) = file.team_navi(slot) else { continue };
-        let customizer = save::Partycust::new(file, assets, slot);
+        let Some(navi) = file.view_party().navi(slot) else { continue };
+        let party = file.view_party();
         println!(
             "  partycust {}: {:?} — {}/{} blocks [{}]",
             navi_name(navi),
             file.partycust_bonus(navi),
-            customizer.cost(),
-            customizer.capacity(),
-            customizer
-                .equipped()
-                .iter()
-                .map(|&index| {
+            party.cost(slot, assets),
+            party.capacity(slot, assets),
+            party
+                .programs(slot, assets)
+                .into_iter()
+                .map(|index| {
                     assets
                         .party_program(index)
                         .and_then(|program| program.name())

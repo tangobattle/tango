@@ -119,8 +119,7 @@ struct SetPartyNavi {
 impl GameEdit for SetPartyNavi {
     fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
         if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
-            save.set_team_navi(self.slot, self.navi);
-            save.pack_team();
+            save.view_party_mut().set_navi(self.slot, self.navi);
         }
         Invalidation::default()
     }
@@ -144,8 +143,7 @@ impl GameEdit for AddPartyProgram {
             return Invalidation::default();
         };
         if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
-            let equipped = save::Partycust::new(save, assets, self.slot).with(self.program);
-            save.set_party_programs(self.slot, equipped, assets);
+            save.view_party_mut().add_party_program(self.slot, assets, self.program);
         }
         Invalidation::default()
     }
@@ -164,8 +162,7 @@ impl GameEdit for RemovePartyProgram {
             return Invalidation::default();
         };
         if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
-            let equipped = save::Partycust::new(save, assets, self.slot).without(self.at);
-            save.set_party_programs(self.slot, equipped, assets);
+            save.view_party_mut().remove_party_program(self.slot, assets, self.at);
         }
         Invalidation::default()
     }
@@ -182,7 +179,7 @@ impl GameEdit for ClearPartyPrograms {
             return Invalidation::default();
         };
         if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
-            save.set_party_programs(self.0, [], assets);
+            save.view_party_mut().clear_party_programs(self.0, assets);
         }
         Invalidation::default()
     }
@@ -466,16 +463,16 @@ const PROGRAM_ROW_SPACING: f32 = 8.0;
 /// The member's gauge: one block per point of capacity, filled from the
 /// left in the colour of whichever program paid for it, exactly as the
 /// panel draws it.
-fn partycust_gauge<'a>(loaded: &'a OpenSave, customizer: &save::Partycust) -> iced::Element<'a, Action> {
+fn partycust_gauge<'a>(loaded: &'a OpenSave, capacity: u8, equipped: &[usize]) -> iced::Element<'a, Action> {
     let cart = cart_of(loaded);
     let mut filled: Vec<iced::Color> = Vec::new();
-    for &index in customizer.equipped() {
+    for &index in equipped {
         let Some(program) = cart.and_then(|cart| cart.party_program(index)) else { continue };
         let color = program_color(program.kind());
         filled.extend(std::iter::repeat_n(color, program.cost() as usize));
     }
     let mut blocks = row![].spacing(2).align_y(iced::Alignment::Center);
-    for block in 0..customizer.capacity() as usize {
+    for block in 0..capacity as usize {
         let color = filled.get(block).copied();
         blocks = blocks.push(
             iced::widget::container(iced::widget::Space::new())
@@ -519,18 +516,19 @@ fn party_slot<'a>(
     slot: usize,
     editing: bool,
 ) -> (iced::Element<'a, Action>, iced::Element<'a, Action>) {
-    let navi = save.team_navi(slot);
+    let navi = save.view_party().navi(slot);
     let naming: iced::Element<'a, Action> = if editing {
         let held: Vec<usize> = (0..save::NUM_TEAM_SLOTS)
             .filter(|&other| other != slot)
-            .filter_map(|other| save.team_navi(other))
+            .filter_map(|other| save.view_party().navi(other))
             .collect();
         let mut options = vec![NaviChoice {
             navi: None,
             label: tango_gamesupport_common::t!(lang, "bn5ds-team-none"),
         }];
         options.extend(
-            save.team_navi_choices()
+            save.view_party()
+                .choices()
                 .into_iter()
                 .filter(|choice| !held.contains(choice))
                 .map(|choice| NaviChoice {
@@ -566,7 +564,9 @@ fn party_slot<'a>(
             iced::widget::Space::new().into(),
         );
     };
-    let customizer = save::Partycust::new(save, cart, slot);
+    let party = save.view_party();
+    let equipped = party.programs(slot, cart);
+    let (cost, capacity) = (party.cost(slot, cart), party.capacity(slot, cart));
 
     let naming = row![]
         .spacing(8)
@@ -583,9 +583,9 @@ fn party_slot<'a>(
         .align_y(iced::Alignment::Center)
         .push_maybe(navi.map(|navi| navi_stats(lang, loaded, save, navi)))
         .push(iced::widget::Space::new().width(iced::Fill))
-        .push(partycust_gauge(loaded, &customizer))
+        .push(partycust_gauge(loaded, capacity, &equipped))
         .push(
-            iced::widget::text(format!("{} / {}", customizer.cost(), customizer.capacity()))
+            iced::widget::text(format!("{cost} / {capacity}"))
                 .size(tango_gamesupport_common::style::TEXT_CAPTION)
                 .style(tango_gamesupport_common::widgets::muted_text_style),
         );
@@ -601,7 +601,7 @@ fn party_slot<'a>(
     .into();
 
     let mut body = column![].spacing(1).padding(0);
-    for (at, &index) in customizer.equipped().iter().enumerate() {
+    for (at, &index) in equipped.iter().enumerate() {
         let color = program_color(cart.party_program(index).and_then(|program| program.kind()));
         let mut line = row![
             iced::widget::container(iced::widget::Space::new())
@@ -635,7 +635,7 @@ fn party_slot<'a>(
                 .style(tango_gamesupport_common::widgets::zebra_row(at)),
         );
     }
-    if customizer.equipped().is_empty() {
+    if equipped.is_empty() {
         let empty = if navi.is_some() {
             tango_gamesupport_common::t!(lang, "bn5ds-partycust-empty")
         } else {
@@ -663,7 +663,7 @@ fn party_slot<'a>(
     }
     if editing && navi.is_some() {
         let choices: Vec<ProgramChoice> = (0..tango_gamesupport_bn5ds_dataview::NUM_PARTY_PROGRAMS)
-            .filter(|&index| customizer.can_add(index))
+            .filter(|&index| party.can_add_party_program(slot, cart, index))
             .map(|index| ProgramChoice {
                 index,
                 label: format!(
@@ -757,14 +757,13 @@ fn party_as_text(loaded: &OpenSave) -> Option<String> {
     Some(
         (0..save::NUM_TEAM_SLOTS)
             .filter_map(|slot| {
-                let navi = save.team_navi(slot)?;
+                let navi = save.view_party().navi(slot)?;
                 let equipped = cart
-                    .map(|cart| save::Partycust::new(save, cart, slot))
-                    .map(|customizer| {
-                        customizer
-                            .equipped()
-                            .iter()
-                            .map(|&index| program_name(loaded, index))
+                    .map(|cart| {
+                        save.view_party()
+                            .programs(slot, cart)
+                            .into_iter()
+                            .map(|index| program_name(loaded, index))
                             .collect::<Vec<_>>()
                             .join(", ")
                     })
