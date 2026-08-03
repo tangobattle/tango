@@ -563,13 +563,11 @@ fn party_slot<'a>(
     // keeps it — not at the far end of the program list.
     let gauge = row![
         partycust_gauge(loaded, &customizer),
-        iced::widget::Space::new().width(iced::Fill),
-        sv::stat(
-            tango_gamesupport_common::t!(lang, "bn5ds-partycust-gauge"),
-            format!("{} / {}", customizer.cost(), customizer.capacity()),
-        ),
+        iced::widget::text(format!("{} / {}", customizer.cost(), customizer.capacity()))
+            .size(tango_gamesupport_common::style::TEXT_CAPTION)
+            .style(tango_gamesupport_common::widgets::muted_text_style),
     ]
-    .spacing(12)
+    .spacing(8)
     .align_y(iced::Alignment::Center);
     let mut head = row![].spacing(12).align_y(iced::Alignment::Center);
     if editing {
@@ -598,12 +596,12 @@ fn party_slot<'a>(
         if editing {
             line = line.push(sv::remove_button(Action::Game(Arc::new(RemovePartyProgram { slot, at }))));
         }
-        body = body.push(sv::edit_row_wrap(
-            iced::widget::container(line).padding([3, 12]).into(),
-            None,
-            at,
-            None,
-        ));
+        body = body.push(
+            iced::widget::container(line)
+                .width(iced::Fill)
+                .padding([3, 12])
+                .style(tango_gamesupport_common::widgets::zebra_row(at)),
+        );
     }
     if customizer.equipped().is_empty() {
         let empty = if navi.is_some() {
@@ -633,14 +631,8 @@ fn party_slot<'a>(
                 ),
             })
             .collect();
-        let add: iced::Element<'a, Action> = if choices.is_empty() {
-            iced::widget::text(tango_gamesupport_common::t!(lang, "bn5ds-partycust-full"))
-                .size(tango_gamesupport_common::style::TEXT_CAPTION)
-                .style(tango_gamesupport_common::widgets::muted_text_style)
-                .width(iced::Fill)
-                .into()
-        } else {
-            action_pick_list(
+        if !choices.is_empty() {
+            let add = action_pick_list(
                 choices,
                 tango_gamesupport_common::t!(lang, "bn5ds-partycust-add"),
                 move |choice: ProgramChoice| {
@@ -649,9 +641,9 @@ fn party_slot<'a>(
                         program: choice.index,
                     }))
                 },
-            )
-        };
-        body = body.push(iced::widget::container(add).padding([6, 12]));
+            );
+            body = body.push(iced::widget::container(add).padding([6, 12]));
+        }
     }
 
     (header, body.into())
@@ -692,13 +684,14 @@ fn render_party<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> iced:
     let Some(save) = file_of(loaded) else {
         return sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty"));
     };
-    let mut col = column![]
+    let mut slots = row![]
         .spacing(tango_gamesupport_common::style::PANE_GAP)
-        .width(iced::Fill);
+        .width(iced::Fill)
+        .align_y(iced::Alignment::Start);
     for slot in 0..save::NUM_TEAM_SLOTS {
-        col = col.push(party_slot_card(lang, loaded, save, slot));
+        slots = slots.push(party_slot_card(lang, loaded, save, slot));
     }
-    col.into()
+    slots.into()
 }
 
 /// The party customizer: one panel per slot, laid out the way the
