@@ -1404,6 +1404,24 @@ pub fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {
 }
 
 impl State {
+    /// Take where `other` was looking: the open tab and the sort
+    /// preferences a reader chose, which outlive the save they were
+    /// chosen over.
+    ///
+    /// Everything else stays this state's own — the scroll ids are
+    /// per-instance identities, the animations belong to the body
+    /// coming in, and an edit session never crosses over (the rebuild
+    /// this exists for is what ends one).
+    pub fn carry_position_from(&mut self, other: &Self) {
+        self.active_tab = other.active_tab;
+        self.prev_tab = other.prev_tab;
+        self.folder_grouped = other.folder_grouped;
+        self.library_sort = other.library_sort;
+        self.navicust_sort = other.navicust_sort;
+        self.patch_card56_sort = other.patch_card56_sort;
+        self.auto_battle_data_sort = other.auto_battle_data_sort;
+    }
+
     /// Enter the global save edit mode. It's a single toggle for the whole
     /// save: every editable tab (Folder, Navi, Patch Cards) shows its
     /// editor while set, and one Save / Cancel commits / discards them all.

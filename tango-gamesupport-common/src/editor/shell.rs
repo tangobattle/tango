@@ -148,6 +148,15 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
         (task.map(wrap), outcome)
     }
 
+    fn carry_view_position(
+        &self,
+        from: &dyn tango_gamesupport::SaveEditorState,
+        into: &mut dyn tango_gamesupport::SaveEditorState,
+    ) {
+        let from = view_state(from);
+        view_state_mut(into).carry_position_from(from);
+    }
+
     /// What a session started from here runs on — netplay's committed
     /// save and training's alike. The file's own bytes, whole: a file
     /// holding several saves says which one is played in those bytes

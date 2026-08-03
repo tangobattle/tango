@@ -41,7 +41,9 @@ pub trait SaveEditorMessage: std::any::Any + std::fmt::Debug + Send + Sync {}
 /// animation bookkeeping), held as [`LoadedSave::state`]. Minted by
 /// [`SaveEditor::load`] and dropped with the save it belongs to, so a
 /// save switch or a closed view takes its view state with it and a
-/// rebuilt save can never inherit a stale one.
+/// rebuilt save can never inherit a stale one — except for where the
+/// reader was looking, which [`SaveEditor::carry_view_position`] hands
+/// across a rebuild of the *same* save on purpose.
 pub trait SaveEditorState: std::any::Any + Send + Sync {}
 
 /// The private UI layer's loaded bundle (model + baked art), as held
@@ -144,4 +146,15 @@ pub trait SaveEditor: Send + Sync {
     /// Serialize the current in-memory save (staged edits included) —
     /// what a netplay commitment or session launch runs on.
     fn sram(&self, data: &LoadedSave) -> Vec<u8>;
+
+    /// Carry where the view was looking — the open tab, the sort
+    /// preferences — from a state built for this same save onto a
+    /// freshly built one.
+    ///
+    /// Cancelling an edit session reverts by rebuilding the whole
+    /// loaded save from disk, which mints a new state with it; without
+    /// this, cancelling would also throw the reader back to the first
+    /// tab, which committing does not. Editors with no view position to
+    /// speak of need not implement it.
+    fn carry_view_position(&self, _from: &dyn SaveEditorState, _into: &mut dyn SaveEditorState) {}
 }

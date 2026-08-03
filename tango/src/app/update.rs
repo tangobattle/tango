@@ -318,9 +318,16 @@ impl App {
             E::SaveEditCancel => {
                 // Staged edits live only in the in-memory loaded save;
                 // the on-disk file and the scanner cache still hold the
-                // original. Drop and rebuild loaded to revert every tab.
-                self.loaded = None;
+                // original. Drop and rebuild loaded to revert every tab
+                // — then put the view back where it was, since a commit
+                // leaves it there and a cancel should read the same.
+                let previous = self.loaded.take();
                 self.refresh_loaded();
+                if let (Some(previous), Some(loaded)) = (previous, self.loaded.as_mut()) {
+                    loaded
+                        .editor
+                        .carry_view_position(previous.state.as_ref(), loaded.state.as_mut());
+                }
                 iced::Task::none()
             }
             E::SaveEditorTask(t) => t.map(Message::Play),
