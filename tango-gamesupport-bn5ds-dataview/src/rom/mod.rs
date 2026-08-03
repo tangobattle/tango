@@ -104,6 +104,14 @@ pub struct Offsets {
     /// from 0xa0, the party programs from 0xb0. Reached as data rather
     /// than through a pointer, the way [`Offsets::ncp_names`] is.
     item_names: u32,
+    /// What the PET and the PARTY CUSTOMIZER's INFORMATION panel say an
+    /// item does, as a *cart file* offset — indexed by item id like the
+    /// names, and LZ77-compressed four bytes into what it decompresses
+    /// to, like [`Offsets::ncp_descriptions`]. Found by decompressing
+    /// every file and looking for one carrying all of the party
+    /// programs' own numbers (`+50` through `+300`, `+30`, `+40`),
+    /// which reads the same either side of the localization.
+    item_descriptions: u32,
     /// Every team navi's chip attack before the customizer adds to it
     /// (RAM): ten bytes per navi, navi 1's first, indexed by how far
     /// the file is through the story
@@ -176,6 +184,7 @@ pub static A5TE_00: Offsets = Offsets {
     party_programs:             0x0021_8f9c,
     partycust_capacities:       0x0021_8f78,
     item_names:                 0x020d_8f2c,
+    item_descriptions:          0x015c_c400,
     navi_chip_attack:           0x0203_e0d7,
 };
 
@@ -200,6 +209,7 @@ pub static A5TJ_00: Offsets = Offsets {
     party_programs:             0x0021_1d84,
     partycust_capacities:       0x0021_1d60,
     item_names:                 0x020d_78d0,
+    item_descriptions:          0x004f_bc00,
     navi_chip_attack:           0x0203_deaf,
 };
 
@@ -272,6 +282,7 @@ pub struct Assets {
     /// NaviCust program descriptions, unpacked once at load rather than
     /// per lookup. Empty for a cart whose file isn't one.
     ncp_descriptions: Vec<u8>,
+    item_descriptions: Vec<u8>,
 }
 
 impl Assets {
@@ -283,6 +294,9 @@ impl Assets {
         let ncp_descriptions =
             tango_gamesupport_common::dataview::rom::unlz77(&mut mapper.get(offsets.ncp_descriptions))
                 .unwrap_or_default();
+        let item_descriptions =
+            tango_gamesupport_common::dataview::rom::unlz77(&mut mapper.get(offsets.item_descriptions))
+                .unwrap_or_default();
         Self {
             offsets,
             msg_parser: msg::parser(charset),
@@ -290,6 +304,7 @@ impl Assets {
             chip_icon_palette,
             element_icon_palette,
             ncp_descriptions,
+            item_descriptions,
         }
     }
 
@@ -303,7 +318,12 @@ impl Assets {
     /// The same, for an archive addressed outright rather than through
     /// a pointer — the cart names some of its tables from nowhere.
     fn archive_text(&self, archive: u32, index: usize) -> Option<String> {
-        let entry = tango_gamesupport_common::dataview::msg::get_entry(self.mapper.get(archive), index)?;
+        self.blob_text(self.mapper.get(archive), index)
+    }
+
+    /// And the same again, for one already decompressed into memory.
+    fn blob_text(&self, archive: &[u8], index: usize) -> Option<String> {
+        let entry = tango_gamesupport_common::dataview::msg::get_entry(archive, index)?;
 
         Some(
             self.msg_parser
@@ -691,24 +711,8 @@ impl tango_gamesupport_common::dataview::rom::NavicustPart for NavicustPart<'_> 
     /// the names: one entry per program template, the four colour
     /// variants sharing it.
     fn description(&self) -> Option<String> {
-        let archive = self.assets.ncp_descriptions.get(TEXT_ARCHIVE_OFFSET..)?;
-        let entry = tango_gamesupport_common::dataview::msg::get_entry(archive, self.id / 4)?;
-        Some(
-            self.assets
-                .msg_parser
-                .parse(entry)
-                .ok()?
-                .into_iter()
-                .flat_map(|part| {
-                    match part {
-                        tango_gamesupport_common::dataview::msg::Chunk::Text(s) => s,
-                        _ => "".to_string(),
-                    }
-                    .chars()
-                    .collect::<Vec<_>>()
-                })
-                .collect::<String>(),
-        )
+        self.assets
+            .blob_text(self.assets.ncp_descriptions.get(TEXT_ARCHIVE_OFFSET..)?, self.id / 4)
     }
 
     fn color(&self) -> Option<tango_gamesupport_common::dataview::rom::NavicustPartColor> {
@@ -828,6 +832,16 @@ impl PartyProgram<'_> {
         self.assets
             .archive_text(self.assets.offsets.item_names, self.item_id())
             .filter(|name| !name.is_empty())
+    }
+
+    /// What the customizer's INFORMATION panel says it does.
+    pub fn description(&self) -> Option<String> {
+        self.assets
+            .blob_text(
+                self.assets.item_descriptions.get(TEXT_ARCHIVE_OFFSET..)?,
+                self.item_id(),
+            )
+            .filter(|description| !description.is_empty())
     }
 
     /// What equipping it gives the member.

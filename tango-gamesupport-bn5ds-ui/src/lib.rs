@@ -625,14 +625,23 @@ fn party_slot<'a>(
             line = line.push(sv::remove_button(Action::Game(Arc::new(RemovePartyProgram { slot, at }))));
         }
         body = body.push(
-            iced::widget::container(line)
-                .width(iced::Fill)
-                // Pinned so a row is the same height whether or not it
-                // is carrying the edit session's ✕.
-                .height(iced::Length::Fixed(PROGRAM_ROW_HEIGHT))
-                .align_y(iced::Alignment::Center)
-                .padding(iced::Padding::default().right(12.0))
-                .style(tango_gamesupport_common::widgets::zebra_row(at)),
+            // Hovering a row gives what the panel's own INFORMATION box
+            // says the program does, in the popover a chip's own
+            // description gets.
+            sv::folder::chip_popover(
+                iced::widget::container(line)
+                    .width(iced::Fill)
+                    // Pinned so a row is the same height whether or not
+                    // it is carrying the edit session's ✕.
+                    .height(iced::Length::Fixed(PROGRAM_ROW_HEIGHT))
+                    .align_y(iced::Alignment::Center)
+                    .padding(iced::Padding::default().right(12.0))
+                    .style(tango_gamesupport_common::widgets::zebra_row(at))
+                    .into(),
+                None,
+                cart.party_program(index).and_then(|program| program.description()),
+                None,
+            ),
         );
     }
     if equipped.is_empty() {

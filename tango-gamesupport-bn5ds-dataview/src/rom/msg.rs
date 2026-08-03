@@ -21,6 +21,15 @@ pub fn parser(charset: &[&str]) -> Parser {
         .add_skip_rule(b"\xe8\x05", 2)
         .add_skip_rule(b"\xe8\x06", 2)
         .add_skip_rule(b"\xee\x00", 2)
+        // The item descriptions open with three of these before their
+        // text — the window, its colours, the icon — and the second
+        // one's operands can be 0xe6, which is the stop code, so
+        // without them a description reads as the operand bytes it
+        // walked over and then ends. Both carts carry exactly these
+        // three, once each per entry.
+        .add_skip_rule(b"\xf7\x02", 3)
+        .add_skip_rule(b"\xf7\x04", 2)
+        .add_skip_rule(b"\xf7\x05", 2)
         .add_skip_rule(b"\xf1\x00", 1)
         .add_skip_rule(b"\xfa\x03", 2)
         .build()

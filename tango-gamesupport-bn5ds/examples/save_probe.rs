@@ -57,11 +57,12 @@ fn main() {
         for index in 0..tango_gamesupport_bn5ds::dataview::NUM_PARTY_PROGRAMS {
             let Some(program) = assets.party_program(index) else { continue };
             println!(
-                "  {index:2} item {:3} {:9} {} block(s)  {:?}",
+                "  {index:2} item {:3} {:9} {} block(s)  {:?}  {}",
                 program.item_id(),
                 program.name().unwrap_or_default(),
                 program.cost(),
                 program.bonus(),
+                program.description().unwrap_or_default().replace('\n', " / "),
             );
         }
         println!(
