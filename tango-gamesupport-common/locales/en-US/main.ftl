@@ -83,5 +83,6 @@ deck-slot-in = Slot-in { $max }MB
 # the cart, so only the line around it is translated.
 bn5ds-leader = Leader
 bn5ds-team-none = (none)
+bn5ds-chip-attack = Chip
 bn5ds-partycust-add = Add program
 bn5ds-partycust-empty = No programs

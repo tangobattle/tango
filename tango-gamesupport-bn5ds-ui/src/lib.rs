@@ -390,30 +390,45 @@ fn navi_emblem<'a>(loaded: &'a OpenSave, navi: usize, size: f32) -> Option<iced:
 /// first, whoever the file dresses him as.
 const MEGAMAN_NAVI: usize = 0;
 
-/// One navi as a party or roster row reads it: the name, then the HP
-/// and Attack its NAVI CHANGE card would show, off the save's own
-/// record.
+/// One navi's name over the three numbers its PARTY STATUS card shows:
+/// the HP it brings, the ATTACK its card reads, and its chip attack.
+///
+/// All three are the card's own figures. The record keeps ATTACK
+/// 0-based, so the card's is one more; the chip attack is what the navi
+/// brings at this file's story rank plus whatever `P.Chp` programs it
+/// carries.
 fn navi_line<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, save: &'a Save, navi: usize) -> iced::Element<'a, Action> {
-    let mut line = row![].spacing(16).align_y(iced::Alignment::Center);
-    if let Some(emblem) = navi_emblem(loaded, navi, EMBLEM_SIZE) {
-        line = line.push(emblem);
+    let mut stats = row![
+        sv::stat(
+            tango_gamesupport_common::t!(lang, "navi-base-hp"),
+            save.navi_hp(navi).to_string(),
+        ),
+        sv::stat(
+            tango_gamesupport_common::t!(lang, "navi-buster-attack"),
+            (save.partycust_bonus(navi).attack + 1).to_string(),
+        ),
+    ]
+    .spacing(16)
+    .align_y(iced::Alignment::End);
+    if let Some(cart) = cart_of(loaded) {
+        stats = stats.push(sv::stat(
+            tango_gamesupport_common::t!(lang, "bn5ds-chip-attack"),
+            save.navi_chip_attack(navi, cart).to_string(),
+        ));
     }
-    line.push(
-        iced::widget::text(navi_name(loaded, navi))
-            .size(tango_gamesupport_common::style::TEXT_BODY)
+    row![]
+        .spacing(12)
+        .align_y(iced::Alignment::Center)
+        .push_maybe(navi_emblem(loaded, navi, EMBLEM_SIZE))
+        .push(
+            column![
+                iced::widget::text(navi_name(loaded, navi)).size(tango_gamesupport_common::style::TEXT_BODY),
+                stats,
+            ]
+            .spacing(4)
             .width(iced::Fill),
-    )
-    .push(sv::stat(
-        tango_gamesupport_common::t!(lang, "navi-base-hp"),
-        save.navi_hp(navi).to_string(),
-    ))
-    .push(sv::stat(
-        tango_gamesupport_common::t!(lang, "navi-buster-attack"),
-        // The record keeps ATTACK 0-based; the game's cards show it
-        // 1-based, and so does this.
-        (save.partycust_bonus(navi).attack + 1).to_string(),
-    ))
-    .into()
+        )
+        .into()
 }
 
 /// What the cart calls party program `index`.
@@ -447,6 +462,12 @@ const EMBLEM_SIZE: f32 = 30.0;
 
 /// How tall and wide one block of the gauge is drawn.
 const GAUGE_BLOCK: f32 = 14.0;
+
+/// How tall a program row is: the ✕ the edit session hangs on one, so
+/// the rows do not change height when the session opens. Its icon at
+/// iced's default 1.3 line height, plus the button's own padding, plus
+/// the row's.
+const PROGRAM_ROW_HEIGHT: f32 = tango_gamesupport_common::style::TEXT_BODY * 1.3 + 6.0 + 6.0;
 
 /// The member's gauge: one block per point of capacity, filled from the
 /// left in the colour of whichever program paid for it, exactly as the
@@ -524,19 +545,22 @@ fn party_slot<'a>(
                 }),
         );
         let selected = options.iter().find(|choice| choice.navi == navi).cloned();
-        row![
-            pick_list(options, selected, move |choice: NaviChoice| {
+        row![]
+            .spacing(12)
+            .align_y(iced::Alignment::Center)
+            .push_maybe(navi.and_then(|navi| navi_emblem(loaded, navi, EMBLEM_SIZE)))
+            .push(pick_list(options, selected, move |choice: NaviChoice| {
                 Action::Game(Arc::new(SetPartyNavi {
                     slot,
                     navi: choice.navi,
                 }))
-            }),
-            iced::widget::Space::new().width(iced::Fill),
-            sv::clear_all_button(lang, Action::Game(Arc::new(ClearPartyPrograms(slot)))),
-        ]
-        .spacing(8)
-        .align_y(iced::Alignment::Center)
-        .into()
+            }))
+            .push(iced::widget::Space::new().width(iced::Fill))
+            .push(sv::clear_all_button(
+                lang,
+                Action::Game(Arc::new(ClearPartyPrograms(slot))),
+            ))
+            .into()
     } else {
         match navi {
             Some(navi) => navi_line(lang, loaded, save, navi),
@@ -569,19 +593,14 @@ fn party_slot<'a>(
     ]
     .spacing(8)
     .align_y(iced::Alignment::Center);
-    let mut head = row![].spacing(12).align_y(iced::Alignment::Center);
-    if editing {
-        if let Some(emblem) = navi.and_then(|navi| navi_emblem(loaded, navi, EMBLEM_SIZE)) {
-            head = head.push(emblem);
-        }
-    }
-    let header = iced::widget::container(head.push(column![naming, gauge].spacing(6).width(iced::Fill)))
+    let header = iced::widget::container(column![naming, gauge].spacing(6).width(iced::Fill))
         .width(iced::Fill)
         .padding(tango_gamesupport_common::style::HEADER_PADDING)
         .into();
 
     let mut body = column![].spacing(1).padding(0);
     for (at, &index) in customizer.equipped().iter().enumerate() {
+        let color = program_color(cart.party_program(index).and_then(|program| program.kind()));
         let mut line = row![
             iced::widget::text(program_name(loaded, index))
                 .size(tango_gamesupport_common::style::TEXT_BODY)
@@ -590,6 +609,15 @@ fn party_slot<'a>(
                 cart.party_program(index).map(|program| program.cost()).unwrap_or(0).to_string(),
                 false,
             ),
+            // The kind's colour, in the cell a chip row keeps its
+            // element in.
+            iced::widget::container(iced::widget::Space::new())
+                .width(iced::Length::Fixed(GAUGE_BLOCK))
+                .height(iced::Length::Fixed(GAUGE_BLOCK))
+                .style(move |_: &iced::Theme| iced::widget::container::Style {
+                    background: Some(color.into()),
+                    ..Default::default()
+                }),
         ]
         .spacing(8)
         .align_y(iced::Alignment::Center);
@@ -599,7 +627,11 @@ fn party_slot<'a>(
         body = body.push(
             iced::widget::container(line)
                 .width(iced::Fill)
-                .padding([3, 12])
+                // Pinned so a row is the same height whether or not it
+                // is carrying the edit session's ✕.
+                .height(iced::Length::Fixed(PROGRAM_ROW_HEIGHT))
+                .align_y(iced::Alignment::Center)
+                .padding([0, 12])
                 .style(tango_gamesupport_common::widgets::zebra_row(at)),
         );
     }

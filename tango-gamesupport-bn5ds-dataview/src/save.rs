@@ -254,6 +254,16 @@ pub const STORY_FLAGS_OFFSET: usize = 0xa0;
 const TEAM_MIRROR_FLAG_BASE: usize = 0x254;
 const TEAM_RECRUIT_FLAG_BASE: usize = 0x268;
 
+/// Where the story-rank run starts. The game counts how many of the
+/// nine flags from here are set, stopping at the first clear, and uses
+/// the count to index everything that grows as the story does — the
+/// team navis' chip attack among them. Read out of the counter at US
+/// `0x0203c10c`, which tests `(group 3, index 0..8)` through the flag
+/// getter at `0x02063d20`; that getter is `N = (group << 8) | index`
+/// over this same bitfield, which is what fixes the run at 0x300.
+const STORY_RANK_FLAG_BASE: usize = 0x300;
+const STORY_RANKS: usize = 9;
+
 /// Story flag `N`, as `(byte offset, mask)`.
 fn story_flag(n: usize) -> (usize, u8) {
     (STORY_FLAGS_OFFSET + n / 8, 0x80 >> (n % 8))
@@ -997,6 +1007,26 @@ impl Save {
         if slot < NUM_TEAM_SLOTS {
             self.partycust_loadout_mut(slot).fill(0);
         }
+    }
+
+    /// How far through the story this file is, 0..=9 — see
+    /// [`STORY_RANK_FLAG_BASE`].
+    pub fn story_rank(&self) -> u8 {
+        (0..STORY_RANKS)
+            .take_while(|&n| {
+                let (at, mask) = story_flag(STORY_RANK_FLAG_BASE + n);
+                self.active().get(at).is_some_and(|byte| byte & mask != 0)
+            })
+            .count() as u8
+    }
+
+    /// Navi `id`'s chip attack, the way its PARTY STATUS card reads it:
+    /// what the navi brings at this file's [`story_rank`](Save::story_rank),
+    /// plus whatever `P.Chp` programs the customizer has added.
+    pub fn navi_chip_attack(&self, id: usize, assets: &crate::rom::Assets) -> u16 {
+        assets
+            .navi_chip_attack(id, self.story_rank())
+            .saturating_add(self.partycust_bonus(id).chip_attack)
     }
 
     /// How many of item `id` the file stocks — see

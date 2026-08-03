@@ -108,6 +108,14 @@ pub struct Offsets {
     /// from 0xa0, the party programs from 0xb0. Reached as data rather
     /// than through a pointer, the way [`Offsets::ncp_names`] is.
     item_names: u32,
+    /// Every team navi's chip attack before the customizer adds to it
+    /// (RAM): ten bytes per navi, navi 1's first, indexed by how far
+    /// the file is through the story
+    /// ([`Save::story_rank`](crate::save::Save::story_rank)). Read out
+    /// of the getter at US `0x02004e28`, which is `table[(navi - 1) *
+    /// 10 + rank]`, and confirmed against the three navis a driven
+    /// PARTY STATUS card was made to name.
+    navi_chip_attack: u32,
 }
 
 /// How far apart the party program table's rows sit — the thirteen
@@ -157,6 +165,7 @@ pub static A5TE_00: Offsets = Offsets {
     party_programs:             0x0021_8f9c,
     partycust_capacities:       0x0021_8f78,
     item_names:                 0x020d_8f2c,
+    navi_chip_attack:           0x0203_e0d7,
 };
 
 #[rustfmt::skip]
@@ -180,6 +189,7 @@ pub static A5TJ_00: Offsets = Offsets {
     party_programs:             0x0021_1d84,
     partycust_capacities:       0x0021_1d60,
     item_names:                 0x020d_78d0,
+    navi_chip_attack:           0x0203_deaf,
 };
 
 /// Resolves the two address kinds against the cart image: `0x02xxxxxx`
@@ -349,6 +359,22 @@ impl Assets {
     /// order — `P.HP+50` first, `P.Spport` last.
     pub fn party_program(&self, index: usize) -> Option<PartyProgram<'_>> {
         (index < super::NUM_PARTY_PROGRAMS).then_some(PartyProgram { index, assets: self })
+    }
+
+    /// Navi `id`'s chip attack before the customizer adds to it, for a
+    /// file `rank` far through the story — the figure the game's own
+    /// PARTY STATUS card adds its `P.Chp` programs to. Zero for
+    /// MegaMan, who has no party card.
+    pub fn navi_chip_attack(&self, id: usize, rank: u8) -> u16 {
+        const RANKS: usize = 10;
+        let Some(index) = id.checked_sub(1).filter(|&index| index < crate::save::NUM_NAVIS - 1) else {
+            return 0;
+        };
+        self.mapper
+            .get(self.offsets.navi_chip_attack)
+            .get(index * RANKS + (rank as usize).min(RANKS - 1))
+            .copied()
+            .unwrap_or(0) as u16
     }
 
     /// How many blocks navi `id`'s customizer gauge holds. Zero for
