@@ -566,34 +566,33 @@ fn party_slot<'a>(
     };
     let customizer = save::Partycust::new(save, cart, slot);
 
-    // The gauge rides on the naming line, at the far end of it — not on
-    // a row of its own, and not trailing the program list.
     let naming = row![]
         .spacing(8)
         .align_y(iced::Alignment::Center)
         .push(naming)
+        .push(iced::widget::Space::new().width(iced::Fill))
+        .push_maybe(editing.then(|| {
+            sv::clear_all_button(lang, Action::Game(Arc::new(ClearPartyPrograms(slot))))
+        }));
+    // The gauge finishes the line the card's own numbers are on, at the
+    // far right of it.
+    let stats = row![]
+        .spacing(16)
+        .align_y(iced::Alignment::Center)
+        .push_maybe(navi.map(|navi| navi_stats(lang, loaded, save, navi)))
         .push(iced::widget::Space::new().width(iced::Fill))
         .push(partycust_gauge(loaded, &customizer))
         .push(
             iced::widget::text(format!("{} / {}", customizer.cost(), customizer.capacity()))
                 .size(tango_gamesupport_common::style::TEXT_CAPTION)
                 .style(tango_gamesupport_common::widgets::muted_text_style),
-        )
-        .push_maybe(editing.then(|| {
-            sv::clear_all_button(lang, Action::Game(Arc::new(ClearPartyPrograms(slot))))
-        }));
+        );
     let header = iced::widget::container(
         row![]
             .spacing(12)
             .align_y(iced::Alignment::Center)
             .push_maybe(navi.and_then(|navi| navi_emblem(loaded, navi, EMBLEM_SIZE)))
-            .push(
-                column![]
-                    .spacing(4)
-                    .width(iced::Fill)
-                    .push(naming)
-                    .push_maybe(navi.map(|navi| navi_stats(lang, loaded, save, navi))),
-            ),
+            .push(column![naming, stats].spacing(4).width(iced::Fill)),
     )
     .width(iced::Fill)
     .padding(tango_gamesupport_common::style::HEADER_PADDING)
