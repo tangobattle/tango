@@ -318,6 +318,15 @@ const PARTYCUST_LOADOUT_PROGRAMS: usize = 0x02;
 const PARTYCUST_LOADOUT_ATTACK: usize = 0x0c;
 const PARTYCUST_LOADOUT_CHIP_ATTACK: usize = 0x0d;
 
+/// How many copies of one party program a member may equip.
+///
+/// The cart has no such rule of its own — a member's gauge is its only
+/// limit, and a session never spends what the file stocks — so this is
+/// the editor's, the same cap it puts on copies of one NaviCust part
+/// (`MAX_COPIES_PER_PART`, which lives behind the editor model this
+/// crate does not depend on).
+pub const MAX_COPIES_PER_PARTY_PROGRAM: usize = 9;
+
 /// How many programs one entry can name — as many as the widest gauge
 /// in the cart's own table holds, since nothing costs less than a
 /// block.
@@ -421,6 +430,9 @@ impl PartycustBonus {
 /// writing half the ones that need [`DerefMut`](std::ops::DerefMut).
 /// Whatever a slot's programs cost comes off the cart, so the methods
 /// that price them take the cart rather than the view holding one.
+///
+/// The gauge is the only thing that limits a loadout — see
+/// [`can_add_party_program`](PartyView::can_add_party_program).
 pub struct PartyView<S> {
     save: S,
 }
@@ -494,21 +506,26 @@ impl<S: std::ops::Deref<Target = Save>> PartyView<S> {
             .sum()
     }
 
-    /// Whether one more of `program` would go on slot `slot`: the file
-    /// has to stock another, and the gauge has to have room for it.
+    /// Whether one more of `program` would go on slot `slot`: the gauge
+    /// has to have room for it, and the member may not already be
+    /// carrying [`MAX_COPIES_PER_PARTY_PROGRAM`] of it.
+    ///
+    /// What the file stocks does not come into it. The counts at
+    /// [`ITEM_COUNTS_OFFSET`] are what the player owns, and a
+    /// customizer session never spends them — equipping a program
+    /// leaves them untouched, so there is nothing here for a stock
+    /// check to conserve.
     pub fn can_add_party_program(&self, slot: usize, assets: &crate::rom::Assets, program: usize) -> bool {
-        let Some(stock) = assets
-            .party_program(program)
-            .map(|program| self.save.item_count(program.item_id()))
-        else {
+        if program >= crate::NUM_PARTY_PROGRAMS {
             return false;
-        };
+        }
         let already = self
             .programs(slot, assets)
             .into_iter()
             .filter(|&index| index == program)
             .count();
-        already < stock as usize && self.cost(slot, assets) + cost_of(program, assets) <= self.capacity(slot, assets)
+        already < MAX_COPIES_PER_PARTY_PROGRAM
+            && self.cost(slot, assets) + cost_of(program, assets) <= self.capacity(slot, assets)
     }
 }
 
@@ -521,8 +538,7 @@ impl<S: std::ops::DerefMut<Target = Save>> PartyView<S> {
     /// the game's own machine does, so the load's cross-check passes,
     /// and leaves the pair packed the way the machine compacts it: a
     /// slot that changes members loses its customizer loadout, and the
-    /// navi that left is stripped back to no bonus, its programs going
-    /// back into stock.
+    /// navi that left is stripped back to no bonus.
     pub fn set_navi(&mut self, slot: usize, navi: Option<usize>) -> bool {
         if !self.save.set_team_navi(slot, navi) {
             return false;
@@ -880,7 +896,7 @@ impl Save {
     ///
     /// A slot that changes members loses its customizer loadout and the
     /// navi that left is stripped back to no bonus, which is what the
-    /// game's own change does: the programs go back into stock.
+    /// game's own change does: the programs come off.
     fn set_team_navi(&mut self, slot: usize, navi: Option<usize>) -> bool {
         if slot >= NUM_TEAM_SLOTS {
             return false;
@@ -978,8 +994,8 @@ impl Save {
     /// programs themselves. An empty set strips the member bare.
     ///
     /// Refuses a slot with no member, and a set longer than an entry
-    /// holds. Whether the file could actually pay for it — its stock,
-    /// and the member's gauge — is [`Partycust`]'s to say, and what the
+    /// holds. Whether it fits the member's gauge is
+    /// [`PartyView::can_add_party_program`]'s to say, and what the
     /// editor asks before calling.
     fn set_party_programs(
         &mut self,
@@ -2051,9 +2067,9 @@ mod tests {
     /// What a member equips adds up into its record, the slot's own
     /// entry names the programs, and stripping them puts both back.
     ///
-    /// The costs and stock a real session needs come off the cart; the
-    /// bonuses and item ids a plain write needs are the program table's,
-    /// which a cartless `Assets` still answers for.
+    /// The costs a real session needs come off the cart, as do the
+    /// bonuses and item ids a plain write needs — all of them the
+    /// program table's.
     #[test]
     fn equipped_party_programs_write_the_record_and_the_loadout() {
         let assets = party_program_cart();
@@ -2132,7 +2148,7 @@ mod tests {
         assert_eq!(save.partycust_bonus(11).max_hp, 300);
 
         // Swapping the member out is the game's own change: the
-        // programs go back to stock and the navi keeps nothing.
+        // programs come off and the navi keeps nothing.
         assert!(save.view_party_mut().set_navi(0, Some(9)));
         assert_eq!(save.partycust_bonus(11), PartycustBonus::default());
         assert_eq!(save.view_party().programs(0, &assets), Vec::<usize>::new());
