@@ -427,8 +427,20 @@ impl<W: Writer> Render<W> {
         playback.discard_audio();
 
         let progress_base = playback.cursor() as usize;
+        // The re-sim stops at the last selected section's end (see
+        // `render_slice`), so that end is the bar's 100% — an export of
+        // only early sections (say, a random-battle recording's setup)
+        // would otherwise finish with the bar barely started. The last
+        // section has no closing mark; its selection means the re-sim
+        // runs the clip out.
+        let progress_stop = rounds_mask
+            .iter()
+            .rposition(|&s| s)
+            .and_then(|last| clip.round_marks.get(last))
+            .map_or(usize::MAX, |&t| t as usize);
         let progress_total = (clip.end as usize)
             .min(playback.total() as usize)
+            .min(progress_stop)
             .saturating_sub(progress_base);
         Ok(Self {
             session,

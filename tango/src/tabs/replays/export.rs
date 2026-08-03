@@ -98,6 +98,7 @@ impl ReplaysState {
                 // chapter covering the match — the same answer the mask
                 // below gives.
                 let round_marks = self.hp_charts.get(&replay).map(|c| c.marks.clone()).unwrap_or_default();
+                let has_setup = self.hp_charts.get(&replay).is_some_and(|c| c.has_setup);
                 let entry = self.per.entry(replay.clone()).or_default();
                 let mut rounds = entry.rounds.clone();
                 if rounds.is_empty() {
@@ -118,6 +119,7 @@ impl ReplaysState {
                     settings,
                     rounds,
                     round_marks,
+                    has_setup,
                     clip: None,
                 })
             }
@@ -130,6 +132,10 @@ impl ReplaysState {
                 // (the span is the gate), so the form's checkboxes
                 // are left untouched.
                 let settings = self.export_settings;
+                // The clip's marks were captured from the live session,
+                // which can't say whether the first interval is a setup
+                // section — the chart's analysis can.
+                let has_setup = self.hp_charts.get(&replay).is_some_and(|c| c.has_setup);
                 let entry = self.per.entry(replay.clone()).or_default();
                 entry.job = Some(ExportJob::new(output.clone()));
                 entry.panel_open = true;
@@ -141,6 +147,7 @@ impl ReplaysState {
                     // The clip carries its own marks, captured from the
                     // live session when the scissors chip was pressed.
                     round_marks: vec![],
+                    has_setup,
                     clip: Some(clip),
                 })
             }
@@ -380,6 +387,9 @@ pub(super) fn export_panel<'a>(
     open: bool,
     settings: &'a ExportSettings,
     selected_rounds: &'a [bool],
+    // The recording opens on a setup section, so `selected_rounds[0]`
+    // is it (labeled as such) and the round numbering starts at slot 1.
+    has_setup: bool,
     // This replay's match analysis is still running, so how many rounds
     // it has is not known yet — see `ReplaysState::adopt_stats`.
     rounds_pending: bool,
@@ -585,8 +595,13 @@ pub(super) fn export_panel<'a>(
             .style(widgets::muted_text_style);
         let mut rounds_row = row![label].spacing(6).align_y(Alignment::Center);
         for (i, picked) in selected_rounds.iter().enumerate() {
+            let section_label = if has_setup && i == 0 {
+                t!(lang, "replays-export-setup")
+            } else {
+                format!("{}", i + 1 - has_setup as usize)
+            };
             let cb = iced::widget::checkbox(*picked)
-                .label(format!("{}", i + 1))
+                .label(section_label)
                 .style(widgets::chunky_checkbox);
             let cb: Element<'a, Message> = if in_flight {
                 cb.into()

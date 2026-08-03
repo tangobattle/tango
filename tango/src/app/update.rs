@@ -682,9 +682,10 @@ impl App {
                 settings,
                 rounds,
                 round_marks,
+                has_setup,
                 clip,
             } => self
-                .spawn_replay_render(replay, output, settings, rounds, round_marks, clip)
+                .spawn_replay_render(replay, output, settings, rounds, round_marks, has_setup, clip)
                 .map(Message::Replays),
             E::AnalyzeReplay(path) => {
                 // Full re-simulation of the replay — seconds of CPU on a
@@ -823,6 +824,10 @@ impl App {
         // replay's finished telemetry analysis. Empty when there isn't
         // one yet, and the render is a single chapter.
         round_marks: Vec<u32>,
+        // The recording opens on a setup section (bn6 random battle),
+        // so the first chapter is it — titled as such — and the round
+        // numbering starts at the second.
+        has_setup: bool,
         clip: Option<crate::replay_render::Clip>,
     ) -> iced::Task<tabs::replays::Message> {
         // Decode just enough of the replay to get both sides' game
@@ -889,15 +894,24 @@ impl App {
             return iced::Task::none();
         }
 
-        // Chapter titles for the output container, one per round in
+        // Chapter titles for the output container, one per section in
         // mask order — resolved here because the export thread has no
-        // access to the locale bundle.
+        // access to the locale bundle. A recording that opens on a
+        // setup section titles its first chapter as that, and the
+        // round numbering starts after it.
         let title_count = clip
             .as_ref()
             .map(|c| c.round_marks.len() + 1)
             .unwrap_or(rounds_mask.len());
         let round_titles: Vec<String> = (0..title_count)
-            .map(|i| crate::t!(&self.config.language, "session-results-round", number = (i + 1) as i64))
+            .map(|i| {
+                if has_setup && i == 0 {
+                    crate::t!(&self.config.language, "replays-export-setup")
+                } else {
+                    let number = (i + 1 - has_setup as usize) as i64;
+                    crate::t!(&self.config.language, "session-results-round", number = number)
+                }
+            })
             .collect();
 
         let (progress_tx, progress_rx) = futures::channel::mpsc::unbounded::<(usize, usize)>();

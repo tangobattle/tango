@@ -204,6 +204,12 @@ pub struct HpChart {
     /// Whether the analysis behind this chart finished. Distinct from
     /// `marks` being empty, which a finished single-round match also is.
     pub complete: bool,
+    /// Whether the recording opens on a setup section (bn6 random
+    /// battle's pre-round rank/folder phase): its first `marks` entry is
+    /// then the setup → round 1 boundary, not an inter-round one, and
+    /// the export's sections label/number accordingly. Gated on
+    /// `complete` like `marks`.
+    pub has_setup: bool,
 }
 
 impl HpChart {
@@ -223,6 +229,7 @@ impl HpChart {
             max_hp,
             marks: if complete { stats.round_marks() } else { vec![] },
             complete,
+            has_setup: complete && stats.has_setup(),
         }
     }
 }
@@ -269,6 +276,10 @@ pub enum Effect {
         settings: ExportSettings,
         rounds: Vec<bool>,
         round_marks: Vec<u32>,
+        /// Whether the first mark interval is the recording's setup
+        /// section rather than round 1 — shifts the chapter titles
+        /// (see [`HpChart::has_setup`]).
+        has_setup: bool,
         clip: Option<crate::replay_render::Clip>,
     },
     /// Task returned from the save view's `ui.update`. Generic Task
@@ -473,8 +484,10 @@ impl ReplaysState {
     /// missing round is a missing segment — so it draws throughout.
     fn adopt_stats(&mut self, path: std::path::PathBuf, stats: &tango_match::analysis::MatchStats, complete: bool) {
         if complete {
-            let rounds = stats.rounds.len().max(1);
-            self.per.entry(path.clone()).or_default().rounds = vec![true; rounds];
+            // One mask slot per export section: the rounds, plus the
+            // setup section when the recording opens on one.
+            let sections = (stats.rounds.len() + stats.has_setup() as usize).max(1);
+            self.per.entry(path.clone()).or_default().rounds = vec![true; sections];
             // The lazy stats worker ran before this analysis existed, so
             // its row has no round count. Fill it in now rather than
             // leaving the caption short until the next rescan.
@@ -1349,6 +1362,7 @@ fn replay_detail<'a>(
                 state.is_panel_open(&r.path),
                 &state.export_settings,
                 state.rounds_for(&r.path),
+                state.hp_charts.get(&r.path).is_some_and(|c| c.has_setup),
                 state.hp_pending.contains(&r.path),
                 state.job(&r.path),
                 &r.path,

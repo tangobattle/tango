@@ -44,7 +44,14 @@ pub enum BattleOutcome {
 // carrying its own slice of everything — when replays stopped recording
 // round marks of their own and the telemetry became the only thing that
 // knows where a round begins.
-pub const FORMAT_VERSION: u32 = 16;
+// v17: a first round starting past tick 0 now MEANS the recording
+// opens on a setup section (bn6 random battle — see
+// [`MatchStats::has_setup`]). The poll-derived lifecycles (bn5ds,
+// exeoss) used to report round 1 wherever their pollers first noticed
+// the battle; they now anchor it at the priming handoff like the
+// trap-anchored families, and v16 sidecars carrying the old late
+// starts would read as phantom setups.
+pub const FORMAT_VERSION: u32 = 17;
 
 /// Sidecar file magic.
 const MAGIC: &[u8; 4] = b"TGST";
@@ -114,11 +121,27 @@ pub struct HpPoint {
 }
 
 impl MatchStats {
-    /// The inter-round boundaries: every round start but the first,
-    /// which is where the match begins rather than a transition. This is
-    /// what a scrub bar draws and what a per-round export splits on.
+    /// The recording's section boundaries: every inter-round transition,
+    /// plus — when the recording opens on a setup section
+    /// ([`has_setup`](Self::has_setup)) — the setup → round 1 boundary.
+    /// This is what a scrub bar draws and what a sectioned export splits
+    /// on. One rule covers both: a round start at tick 0 is where the
+    /// match begins rather than a transition, and every later round
+    /// start is a boundary of the section before it — round or setup.
     pub fn round_marks(&self) -> Vec<u32> {
-        self.rounds.iter().skip(1).map(|r| r.start).collect()
+        self.rounds.iter().map(|r| r.start).filter(|&s| s > 0).collect()
+    }
+
+    /// Whether the recording opens on a setup section: ticks before the
+    /// first round, holding gameplay that is not a round — bn6 random
+    /// battle's interactive setup (rank select, folder review) is the
+    /// one producer, every other recording's round 1 starting at tick 0
+    /// (its priming walk runs to the battle). The setup spans
+    /// `[0, rounds[0].start)`; it carries no telemetry, but it is real
+    /// recorded play, so sectioned consumers (scrubber, export) give it
+    /// a section of its own.
+    pub fn has_setup(&self) -> bool {
+        self.rounds.first().is_some_and(|r| r.start > 0)
     }
 
     /// Round `i`'s `[start, end)` tick span. Every round but the last
@@ -642,6 +665,29 @@ mod tests {
         assert_eq!(stats.custom, vec![(5, 7)]);
         assert_eq!(stats.chip_uses[0], vec![(6, 42)]);
         assert!(stats.chip_uses[1].is_empty());
+    }
+
+    /// A recording that opens on a setup section (bn6 random battle: the
+    /// interactive rank/folder phase before round 1) marks the setup →
+    /// round 1 boundary too, so sectioned consumers split there; a
+    /// recording whose round 1 starts at tick 0 reports no setup and its
+    /// marks stay the inter-round transitions alone.
+    #[test]
+    fn a_late_first_round_is_a_setup_section() {
+        let no_setup = two_round_match();
+        assert!(!no_setup.has_setup());
+        assert_eq!(no_setup.round_marks(), vec![10]);
+
+        let mut b = StatsBuilder::new();
+        fold_confirmed(
+            &mut b,
+            0,
+            vec![(300, obs(100, 100, false)), (301, obs(100, 90, false))],
+            vec![(275, Event::RoundStarted)],
+        );
+        let stats = b.finish();
+        assert!(stats.has_setup());
+        assert_eq!(stats.round_marks(), vec![275]);
     }
 
     /// Rounds are markers, so a span is settled by its neighbours plus

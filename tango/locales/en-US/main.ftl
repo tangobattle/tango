@@ -200,6 +200,7 @@ replays-export-scale-lossless = lossless
 replays-export-disable-bgm = Mute music
 replays-export-twosided = Two-sided
 replays-export-rounds = Rounds:
+replays-export-setup = Setup
 replays-export-rounds-analyzing = Rounds: analyzing the match…
 replays-export-save-as = Save as…
 playback-close = Close

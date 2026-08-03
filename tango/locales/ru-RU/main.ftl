@@ -265,6 +265,7 @@ replays-export-reset = Сбросить
 replays-export-scale = Масштаб
 replays-export-scale-lossless = без потерь
 replays-export-rounds = Раунды:
+replays-export-setup = Подготовка
 replays-export-rounds-analyzing = Раунды: анализ матча…
 replays-export-save-as = Сохранить как…
 playback-close = Закрыть

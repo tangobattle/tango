@@ -264,6 +264,7 @@ replays-export-reset = Restablecer
 replays-export-scale = Escala
 replays-export-scale-lossless = sin pérdida
 replays-export-rounds = Rondas:
+replays-export-setup = Preparación
 replays-export-rounds-analyzing = Rondas: analizando la partida…
 replays-export-save-as = Guardar como…
 playback-close = Cerrar

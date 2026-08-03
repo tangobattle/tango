@@ -261,6 +261,7 @@ replays-export-reset = Đặt lại
 replays-export-scale = Tỷ lệ
 replays-export-scale-lossless = lossless
 replays-export-rounds = Vòng:
+replays-export-setup = Chuẩn bị
 replays-export-rounds-analyzing = Vòng: đang phân tích trận đấu…
 replays-export-save-as = Lưu thành…
 playback-close = Đóng

@@ -202,6 +202,7 @@ replays-export-scale-lossless = ロスレス
 replays-export-disable-bgm = 音楽を消す
 replays-export-twosided = 両面表示
 replays-export-rounds = ラウンド:
+replays-export-setup = 準備
 replays-export-rounds-analyzing = ラウンド: 対戦を解析中…
 replays-export-save-as = 名前を付けて保存…
 playback-close = 閉じる

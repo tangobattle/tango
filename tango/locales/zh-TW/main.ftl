@@ -196,6 +196,7 @@ replays-export-scale-lossless = 無損
 replays-export-disable-bgm = 靜音
 replays-export-twosided = 雙方視角
 replays-export-rounds = 回合：
+replays-export-setup = 準備
 replays-export-rounds-analyzing = 回合：正在分析對戰…
 replays-export-save-as = 另存新檔…
 playback-close = 關閉
