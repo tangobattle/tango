@@ -1,16 +1,14 @@
-//! Live PvP emulator session on the SIO-lockstep engine — peer-paired
-//! netplay sibling of
+//! Live PvP emulator session — peer-paired netplay sibling of
 //! [`crate::singleplayer::SinglePlayerSession`].
 //!
-//! Both games run locally as an [`mgba_rollback::Link`] pair linked through
-//! mgba's lockstep SIO driver: the games speak
-//! their *real* link protocol over the emulated cable, and the pair is
-//! the rollback unit. There is no mgba thread, no traps, and no shadow —
-//! a dedicated drive thread paces the [`Match`] at the GBA frame
-//! rate, feeding the local joypad in and shipping each tick's input to
-//! the peer. HP/custom/chip telemetry is RAM-polled out of the
-//! simulation by the engine's per-tick observer; round starts and the
-//! match end are trap-driven off the games' own code paths.
+//! Both consoles run locally as one [`tango_match::Match`] — whatever
+//! linked pair the game's registration booted, on whatever engine — and
+//! the games speak their *real* link protocol over the emulated link,
+//! with the pair as the rollback unit. A dedicated drive thread paces
+//! the match at the console's own frame rate, feeding the local joypad
+//! in and shipping each tick's input to the peer. HP/custom/chip
+//! telemetry and the round/match edges arrive on the engine's own
+//! confirmed [`telemetry`] stream; nothing here reads emulated memory.
 //!
 //! Construction is async because it has to wait for the lobby
 //! background loop to release the data-channel `Receiver` (it holds it

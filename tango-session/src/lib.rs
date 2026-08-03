@@ -26,6 +26,10 @@
 
 // The session kinds. Each hands a host a [`Drive`] and publishes what
 // the host shows; nothing here spawns or sleeps.
+/// One machine, no netplay: the game as a single player rides it.
+pub mod singleplayer;
+/// Watching a recorded match.
+pub mod replay;
 /// Live netplay, on the transport below.
 ///
 /// Builds for wasm32: the transport rides a facade that is the
@@ -33,14 +37,9 @@
 /// the waiting goes through [`platform`] rather than a tokio runtime a
 /// browser host doesn't have. A browser has played a real match over
 /// it; the reconnect path is the one part still unexercised there.
-/// One machine, no netplay: the game as a single player rides it.
-pub mod singleplayer;
-/// Watching a recorded match.
-pub mod replay;
 pub mod pvp;
 /// A real link battle fought locally against a dummy on the other seat.
 pub mod training;
-pub mod match_session;
 
 // What they're built out of.
 pub mod audio;
