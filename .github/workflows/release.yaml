@@ -223,4 +223,8 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: ./dist/tango-x86_64-linux.AppImage
+          # The .debug sidecar is the split-out DWARF, published for
+          # offline crash symbolication like the Windows .pdb.
+          files: |
+            ./dist/tango-x86_64-linux.AppImage
+            ./dist/tango-x86_64-linux.debug
