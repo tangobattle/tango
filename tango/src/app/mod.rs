@@ -735,15 +735,15 @@ impl App {
     /// Snapshot of the inputs that determine `loaded`, used to skip
     /// rebuilds when nothing relevant changed.
     /// Default match-type policy:
-    ///   - Game JUST changed (or first selection in this lobby):
-    ///     the mode this game's family was last picked in
+    ///   - Family JUST changed (or first selection in this lobby):
+    ///     the mode this family was last picked in
     ///     ([`Config::last_match_type_per_family`]), or, failing that,
     ///     Triple (mode=1) if the game supports it, else Single.
-    ///     Keyed off `default_mt_for_game` so it only fires once per
-    ///     (lobby, game) pair.
-    ///   - Same game, current value invalid for it: same fallback
-    ///     (paranoia).
-    ///   - Same game, valid value: leave alone — sticky user pick.
+    ///     Keyed off `default_mt_for_family` so it only fires once per
+    ///     (lobby, family) pair.
+    ///   - Same family, current value invalid for this game: same
+    ///     fallback (paranoia — the versions of a family can differ).
+    ///   - Same family, valid value: leave alone — sticky user pick.
     ///
     /// Called any time the current game or lobby state could have
     /// changed in a way that affects the right default: on Connect
@@ -752,15 +752,12 @@ impl App {
     fn apply_default_match_type(&mut self) {
         let Some(game) = self.loadout.game else { return };
         let mt_table = game::from_gamedb_entry(game).map(|g| g.match_types).unwrap_or(&[]);
-        let game_key = {
-            let (fam, var) = game.family_and_variant();
-            (fam.to_string(), var)
-        };
-        let game_changed = self.netplay.lobby.default_mt_for_game.as_ref() != Some(&game_key);
+        let family = game.family_and_variant().0;
+        let family_changed = self.netplay.lobby.default_mt_for_family.as_deref() != Some(family);
         let (mode, sub) = self.netplay.lobby.match_type;
         let current_valid =
             (mode as usize) < mt_table.len() && (sub as usize) < *mt_table.get(mode as usize).unwrap_or(&0);
-        if game_changed || !current_valid {
+        if family_changed || !current_valid {
             // What this family was last played in, if the game still
             // offers it — a remembered pick outranks the built-in
             // default, and a stale one (the table shrank under a patch)
@@ -768,7 +765,7 @@ impl App {
             let remembered = self
                 .config
                 .last_match_type_per_family
-                .get(game.family_and_variant().0)
+                .get(family)
                 .copied()
                 .filter(|&(mode, sub)| {
                     (mode as usize) < mt_table.len() && (sub as usize) < *mt_table.get(mode as usize).unwrap_or(&0)
@@ -781,7 +778,7 @@ impl App {
                 }
             });
             self.netplay.lobby.match_type = new_mt;
-            self.netplay.lobby.default_mt_for_game = Some(game_key);
+            self.netplay.lobby.default_mt_for_family = Some(family.to_string());
         }
     }
 

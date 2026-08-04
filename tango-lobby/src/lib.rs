@@ -286,11 +286,13 @@ pub struct LobbyState {
     /// default — unless the peer flips this on, the match start
     /// renders their save view alongside ours in the session pane.
     pub blind_setup: bool,
-    /// Last `(family, variant)` the App's resend pass applied a
-    /// "default match type" for. Used so that switching games
-    /// triggers a re-default to Triple (when supported), while
-    /// user-explicit picks for the SAME game stick.
-    pub default_mt_for_game: Option<(String, u8)>,
+    /// Last family the App's resend pass applied a "default match
+    /// type" for. Used so that switching families triggers a
+    /// re-default, while user-explicit picks within the SAME family
+    /// stick — the family is what the picker offers, and the two
+    /// versions of one are the same game to a player choosing between
+    /// Single and Triple.
+    pub default_mt_for_family: Option<String>,
     /// How the transport actually flows, resolved once the wire
     /// handshake completes: direct (peer-to-peer, incl. the raw
     /// TCP path) or relayed through a TURN server. `None` when it
@@ -315,7 +317,7 @@ impl Default for LobbyState {
             latency_counter: tango_session::net::LatencyCounter::new(5),
             match_type: (0, 0),
             blind_setup: false,
-            default_mt_for_game: None,
+            default_mt_for_family: None,
             connection_kind: None,
         }
     }

@@ -103,20 +103,18 @@ impl App {
                 // would otherwise be clobbered the first time
                 // `resend_settings_if_lobby` runs in Lobby —
                 // that helper's "default to Triple" policy
-                // fires whenever `default_mt_for_game` doesn't
+                // fires whenever `default_mt_for_family` doesn't
                 // match the current game, which is the case
                 // when the user picked their match type before
                 // any default was applied. Stamp the slot here
                 // so the policy treats the pick as already
                 // having defaulted for this game.
                 if let Some(g) = self.loadout.game {
-                    let (fam, var) = g.family_and_variant();
-                    self.netplay.lobby.default_mt_for_game = Some((fam.to_string(), var));
+                    let fam = g.family_and_variant().0;
+                    self.netplay.lobby.default_mt_for_family = Some(fam.to_string());
                     // And remember it for the next time this family
                     // comes up, here or in a future launch.
-                    self.config
-                        .last_match_type_per_family
-                        .insert(fam.to_string(), mt);
+                    self.config.last_match_type_per_family.insert(fam.to_string(), mt);
                     self.persist_config();
                 }
                 self.resend_settings_if_lobby()

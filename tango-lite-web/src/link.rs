@@ -269,26 +269,25 @@ pub fn set_match_type(match_type: (u8, u8)) {
 /// either can ready up, so defaulting to the less-used mode costs every
 /// pair a negotiation.
 ///
-/// Re-defaults when the game changes but leaves an explicit pick for the
-/// *same* game alone, which is what `default_mt_for_game` remembers. Also
-/// repairs a pick the current game doesn't have — match-type tables
-/// differ per family, so a pick carried over from another game can be out
-/// of range.
+/// Re-defaults when the family changes but leaves an explicit pick
+/// within the *same* family alone, which is what `default_mt_for_family`
+/// remembers. Also repairs a pick the current game doesn't have —
+/// match-type tables differ per family, so a pick carried over from
+/// another one can be out of range.
 fn apply_default_match_type() {
     LINK.with(|l| {
         let mut link = l.borrow_mut();
         let Some(game) = link.loadout.game else { return };
         // Entry `i` is how many subtypes mode `i` has; mode 1 is Triple.
         let table = game.match_types;
-        let (family, variant) = game.family_and_variant();
-        let key = (family.to_string(), variant);
+        let family = game.family_and_variant().0;
 
-        let game_changed = link.net.lobby.default_mt_for_game.as_ref() != Some(&key);
+        let family_changed = link.net.lobby.default_mt_for_family.as_deref() != Some(family);
         let (mode, subtype) = link.net.lobby.match_type;
         let in_range = table
             .get(mode as usize)
             .is_some_and(|subtypes| (subtype as usize) < *subtypes);
-        if !game_changed && in_range {
+        if !family_changed && in_range {
             return;
         }
         link.net.lobby.match_type = if table.get(1).copied().unwrap_or(0) > 0 {
@@ -296,7 +295,7 @@ fn apply_default_match_type() {
         } else {
             (0, 0)
         };
-        link.net.lobby.default_mt_for_game = Some(key);
+        link.net.lobby.default_mt_for_family = Some(family.to_string());
     });
 }
 
