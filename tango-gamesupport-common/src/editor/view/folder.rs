@@ -933,7 +933,12 @@ pub fn as_text(loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
             if g.is_regular {
                 suffix.push("[REG]");
             }
-            suffix.extend(std::iter::repeat_n("[TAG]", g.has_tag1 as usize + g.has_tag2 as usize));
+            if g.has_tag1 {
+                suffix.push("[TAG1]");
+            }
+            if g.has_tag2 {
+                suffix.push("[TAG2]");
+            }
             if !suffix.is_empty() {
                 out.push('\t');
                 out.push_str(&suffix.join(""));
@@ -956,8 +961,11 @@ pub fn as_text(loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
                 suffix.push("[REG]");
             }
             if let Some(ti) = tag_idxs {
-                if ti.contains(&i) {
-                    suffix.push("[TAG]");
+                if ti[0] == i {
+                    suffix.push("[TAG1]");
+                }
+                if ti[1] == i {
+                    suffix.push("[TAG2]");
                 }
             }
             if !suffix.is_empty() {
