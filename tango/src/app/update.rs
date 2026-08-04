@@ -112,9 +112,11 @@ impl App {
                 if let Some(g) = self.loadout.game {
                     let (fam, var) = g.family_and_variant();
                     self.netplay.lobby.default_mt_for_game = Some((fam.to_string(), var));
-                    // And remember it for the next time this game comes
-                    // up, here or in a future launch.
-                    self.config.last_match_type_per_game.insert(config::game_key(g), mt);
+                    // And remember it for the next time this family
+                    // comes up, here or in a future launch.
+                    self.config
+                        .last_match_type_per_family
+                        .insert(fam.to_string(), mt);
                     self.persist_config();
                 }
                 self.resend_settings_if_lobby()

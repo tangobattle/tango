@@ -616,8 +616,8 @@ fn remembered_save_for_game(
     let saves_map = scanners.saves.read();
     let saves_for_game = saves_map.get(&game);
     let remembered = config
-        .last_save_per_game
-        .get(&config::game_key(game))
+        .last_save_per_family
+        .get(game.family_and_variant().0)
         .map(|rel| config.data_relative_to_absolute(rel))
         .filter(|p| saves_for_game.map(|v| v.iter().any(|s| s.path == *p)).unwrap_or(false));
     remembered.or_else(|| saves_for_game.and_then(|v| v.first().map(|s| s.path.clone())))
@@ -632,18 +632,19 @@ fn resolve_family_save(
     scanners: &Scanners,
     family: &str,
 ) -> Option<(rom::GameRef, std::path::PathBuf)> {
-    {
+    // One remembered save for the family, and it names the version:
+    // whichever of the family's owned games actually has that save is
+    // the game to land on.
+    if let Some(rel) = config.last_save_per_family.get(family) {
         let roms = scanners.roms.read();
         let saves = scanners.saves.read();
+        let abs = config.data_relative_to_absolute(rel);
         for g in game::games_in_family(family) {
             if !roms.contains_key(&g) {
                 continue;
             }
-            if let Some(rel) = config.last_save_per_game.get(&config::game_key(g)) {
-                let abs = config.data_relative_to_absolute(rel);
-                if saves.get(&g).map(|v| v.iter().any(|s| s.path == abs)).unwrap_or(false) {
-                    return Some((g, abs));
-                }
+            if saves.get(&g).map(|v| v.iter().any(|s| s.path == abs)).unwrap_or(false) {
+                return Some((g, abs));
             }
         }
     }

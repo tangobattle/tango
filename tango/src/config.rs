@@ -176,12 +176,6 @@ impl Drop for Writer {
     }
 }
 
-/// Build the lookup key used by `Config::last_save_per_game`.
-pub fn game_key(game: crate::library::rom::GameRef) -> String {
-    let (family, variant) = game.family_and_variant();
-    format!("{family}/{variant}")
-}
-
 /// The platform config directory Tango stores `config.json` under.
 /// `None` only when the OS user-dirs lookup fails, the same degraded
 /// case [`Config::load_or_create`] already tolerates.

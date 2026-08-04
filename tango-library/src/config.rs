@@ -228,16 +228,23 @@ pub struct Config {
     /// `last_game` so a family selected with no owned ROM still restores.
     #[serde(default)]
     pub last_family: Option<String>,
-    /// Per-game memory of the save each game was last used with. Key:
-    /// [`game_key`] (`family/variant`); value: the save's data-relative
-    /// path. Written on every save pick, read to restore the selection at
-    /// startup and when the user switches back to a game.
+    /// Per-family memory of the save each family was last used with.
+    /// Key: the gamedb family string, as
+    /// [`last_family`](Self::last_family) holds; value: the save's
+    /// data-relative path. Written on every save pick, read to restore
+    /// the selection at startup and when the user switches back to a
+    /// family.
+    ///
+    /// Keyed by family, not by game, because the family is what the
+    /// picker offers — the concrete game is re-derived from whichever
+    /// save is chosen, so remembering one save per family is
+    /// remembering the version too.
     #[serde(default)]
-    pub last_save_per_game: std::collections::BTreeMap<String, String>,
+    pub last_save_per_family: std::collections::BTreeMap<String, String>,
     /// Per-save memory of the patch each save was last used with — the
     /// patch is an *overlay* on a loadout (game + save), dynamically
     /// selectable and remembered per save. Key: the save's data-relative
-    /// path (same convention as `last_save_per_game` values). Value:
+    /// path (same convention as `last_save_per_family` values). Value:
     /// `Some((patch_name, version))`, or `None` for "this save was last
     /// used unpatched" — distinct from a missing entry (save never
     /// selected), which lets the current patch carry over to brand-new
@@ -246,15 +253,20 @@ pub struct Config {
     /// exists.
     #[serde(default)]
     pub last_patch_per_save: std::collections::BTreeMap<String, Option<(String, semver::Version)>>,
-    /// Per-game memory of the link-battle mode last picked for each
-    /// game. Key: [`game_key`]; value: `(mode, subtype)` in the same
-    /// encoding as the game's own `match_types` table. Written whenever
-    /// the user picks one, read when the lobby's game changes — so
-    /// coming back to a game offers the mode it was last played in
-    /// rather than the built-in default. An entry the game no longer
-    /// admits (a patch shrank its table) is ignored, not repaired.
+    /// Per-family memory of the link-battle mode last picked. Key: the
+    /// gamedb family string (`"bn6"`), the same thing
+    /// [`last_family`](Self::last_family) holds; value: `(mode,
+    /// subtype)` in the encoding of the game's own `match_types` table.
+    /// Written whenever the user picks one, read when the lobby's game
+    /// changes — so coming back to a family offers the mode it was last
+    /// played in rather than the built-in default.
+    ///
+    /// Keyed by family rather than by game, because the two versions of
+    /// a family (Gregar and Falzar, say) are the same game to a player
+    /// choosing between Single and Triple. An entry the game no longer
+    /// admits — a patch shrank its table — is ignored, not repaired.
     #[serde(default)]
-    pub last_match_type_per_game: std::collections::BTreeMap<String, (u8, u8)>,
+    pub last_match_type_per_family: std::collections::BTreeMap<String, (u8, u8)>,
     /// Names of patches the user has favorited — they sort to the top
     /// of pickers and get a star glyph next to their label.
     #[serde(default)]
@@ -360,9 +372,9 @@ impl Default for Config {
             allow_prerelease_upgrades: false,
             last_game: None,
             last_family: None,
-            last_save_per_game: std::collections::BTreeMap::new(),
+            last_save_per_family: std::collections::BTreeMap::new(),
             last_patch_per_save: std::collections::BTreeMap::new(),
-            last_match_type_per_game: std::collections::BTreeMap::new(),
+            last_match_type_per_family: std::collections::BTreeMap::new(),
             favorite_patches: std::collections::BTreeSet::new(),
             last_window_size: None,
             last_window_maximized: false,
@@ -415,7 +427,8 @@ impl Config {
 
     /// Convert an absolute path under `data_path` to the
     /// forward-slash-separated relative string used as a value in
-    /// `last_save_per_game_per_patch`. Returns `None` if the path is
+    /// `last_save_per_family` and keyed by in `last_patch_per_save`.
+    /// Returns `None` if the path is
     /// outside `data_path` (shouldn't normally happen since saves
     /// live under `saves_path()`).
     pub fn data_relative_string(&self, path: &std::path::Path) -> Option<String> {
@@ -499,12 +512,6 @@ impl Config {
             serde_json::to_string_pretty(self).map_err(|e| std::io::Error::other(format!("serialize failed: {e}")))?;
         storage::write_atomic(storage, path, s.as_bytes())
     }
-}
-
-/// Build the lookup key used by `Config::last_save_per_game`.
-pub fn game_key(game: crate::rom::GameRef) -> String {
-    let (family, variant) = game.family_and_variant();
-    format!("{family}/{variant}")
 }
 
 /// File name of the config within whatever directory the frontend

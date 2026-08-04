@@ -618,7 +618,7 @@ impl App {
         }
         self.loadout.game = Some(game);
         self.loadout.family = Some(game.family_and_variant().0);
-        let Some(rel) = self.config.last_save_per_game.get(&config::game_key(game)) else {
+        let Some(rel) = self.config.last_save_per_family.get(game.family_and_variant().0) else {
             return;
         };
         let abs = self.config.data_relative_to_absolute(rel);
@@ -708,7 +708,7 @@ impl App {
 
     /// Record the current selection back to config; called after any
     /// selection change so the next launch restores it. The save is
-    /// remembered per game, and the patch overlay per save — so every
+    /// remembered per family, and the patch overlay per save — so every
     /// save carries the patch it was last used with, including the
     /// patch a template-created save was born under.
     fn persist_selection(&mut self) {
@@ -719,7 +719,9 @@ impl App {
             .map(|g| (g.family_and_variant().0.to_string(), g.family_and_variant().1));
         if let (Some(g), Some(p)) = (self.loadout.game, self.loadout.save.as_ref()) {
             if let Some(rel) = self.config.data_relative_string(p) {
-                self.config.last_save_per_game.insert(config::game_key(g), rel.clone());
+                self.config
+                    .last_save_per_family
+                    .insert(g.family_and_variant().0.to_string(), rel.clone());
                 let overlay = match (&self.loadout.patch, &self.loadout.patch_version) {
                     (Some(n), Some(v)) => Some((n.clone(), v.clone())),
                     _ => None,
@@ -734,8 +736,8 @@ impl App {
     /// rebuilds when nothing relevant changed.
     /// Default match-type policy:
     ///   - Game JUST changed (or first selection in this lobby):
-    ///     the mode this game was last picked in
-    ///     ([`Config::last_match_type_per_game`]), or, failing that,
+    ///     the mode this game's family was last picked in
+    ///     ([`Config::last_match_type_per_family`]), or, failing that,
     ///     Triple (mode=1) if the game supports it, else Single.
     ///     Keyed off `default_mt_for_game` so it only fires once per
     ///     (lobby, game) pair.
@@ -759,14 +761,14 @@ impl App {
         let current_valid =
             (mode as usize) < mt_table.len() && (sub as usize) < *mt_table.get(mode as usize).unwrap_or(&0);
         if game_changed || !current_valid {
-            // What this game was last played in, if it still offers it —
-            // a remembered pick outranks the built-in default, and a
-            // stale one (the game's table shrank under a patch) falls
-            // through to it.
+            // What this family was last played in, if the game still
+            // offers it — a remembered pick outranks the built-in
+            // default, and a stale one (the table shrank under a patch)
+            // falls through to it.
             let remembered = self
                 .config
-                .last_match_type_per_game
-                .get(&config::game_key(game))
+                .last_match_type_per_family
+                .get(game.family_and_variant().0)
                 .copied()
                 .filter(|&(mode, sub)| {
                     (mode as usize) < mt_table.len() && (sub as usize) < *mt_table.get(mode as usize).unwrap_or(&0)
