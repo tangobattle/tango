@@ -346,15 +346,19 @@ fn load_window_icon() -> Option<iced::window::Icon> {
 /// The largest surface we can present, in physical pixels a side, and
 /// so the largest the window is allowed to get.
 ///
-/// It's `wgpu::Limits::default()`'s `max_texture_dimension_2d`, which
-/// `iced_wgpu` hardcodes when it requests the device
-/// (`window/compositor.rs`) — not a hardware ceiling: the same adapters
-/// report 16384 (DX12) or 32768 (Vulkan) if you ask for their limits.
-/// Raising it here alone would do nothing; it takes an `iced_wgpu` that
-/// requests `adapter.limits()`, and then this should come from the
-/// adapter rather than being a constant. Until then a bigger surface is
-/// simply refused — and refused with a *panic* out of
-/// `Surface::configure`, which is why the window gets capped instead.
+/// A surface is validated against the limits the *device* was created
+/// with, not against what the GPU can do — so this is read off the same
+/// `wgpu::Limits` that `iced_wgpu` asks for when it requests the device
+/// (`window/compositor.rs`), which is why it can be a constant at all.
+/// It is not a hardware ceiling: the adapters underneath report 16384
+/// (DX12) or 32768 (Vulkan) if anyone asks them, and none of that is
+/// reachable while iced requests the defaults.
+///
+/// The one case this is wrong about is iced's fallback: an adapter that
+/// can't meet the default limits gets `Limits::downlevel_defaults()`
+/// instead, where the ceiling is 2048 — which we can't see from out
+/// here, since the device is iced's. A machine that lands there panics
+/// on any window past 2048 px, cap or no cap.
 ///
 /// The app applies the cap once it knows the window's scale (see
 /// `App`'s `WindowScaleQueried`); here, before the window exists, we
@@ -362,7 +366,7 @@ fn load_window_icon() -> Option<iced::window::Icon> {
 /// surface is the window size times the monitor's DPI scale times
 /// `ui_scale`. The scale-dependent half of the problem is what
 /// [`restore_window_size`]'s breadcrumb is for.
-pub const MAX_SURFACE_SIZE: f32 = 8192.0;
+pub const MAX_SURFACE_SIZE: f32 = wgpu::Limits::defaults().max_texture_dimension_2d as f32;
 
 /// The size to open the window at, plus the bookkeeping that keeps a
 /// bad one from being fatal twice.
