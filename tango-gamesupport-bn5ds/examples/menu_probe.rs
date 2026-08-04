@@ -352,7 +352,7 @@ fn main() {
             rng_seed[..4].copy_from_slice(&parse_hex(&v).to_le_bytes());
         }
         let started = std::time::Instant::now();
-        match layout.walk(&mut link, match_type, rng_seed, None) {
+        match layout.walk(&mut link, match_type, rng_seed, &tango_match::telemetry::EventSink::new(), None) {
             Ok(()) => println!(
                 "primed in {:.1}s wall, connected={}",
                 started.elapsed().as_secs_f64(),

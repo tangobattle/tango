@@ -96,12 +96,16 @@ impl tango_backend_melonds::GameSupport for Pvp {
         cancel: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<(), tango_match::Error> {
         let _ = match_type;
-        priming::walk(link, rng_seed, cancel)?;
-        // The walk's finish line is the battle scene up on both
-        // consoles — the handoff IS round 1 starting, and this report
-        // is the tick-0 baseline the engine contract asks the walk to
-        // leave (see `GameSupport::prime`). The lifecycle poller
-        // reports no round start of its own.
+        // The walk installs everything — its own traps AND the
+        // standing lifecycle set (the verdict stores and the scene
+        // setter's match end), one table per CPU, never taken off; see
+        // `priming::install`. Its finish line is the battle scene up
+        // on both consoles — the handoff IS round 1 starting, and the
+        // report below is the tick-0 baseline the engine contract asks
+        // the walk to leave (the scene write itself happens inside the
+        // walk, before this returns, which is why round 1 is the
+        // walk's report rather than a standing trap's).
+        priming::walk(link, rng_seed, events, cancel)?;
         events.round_started();
         Ok(())
     }
@@ -137,17 +141,9 @@ impl tango_backend_melonds::GameSupport for Pvp {
         tango_backend_melonds::Screens::UPPER
     }
 
-    /// The match lifecycle, as RAM facts — this engine's stand-in for
-    /// the mgba families' trap anchors. Console 0 carries it, exactly
-    /// as BN5DS's does.
-    ///
-    /// What it watches is the game's own scene byte, the same one
-    /// priming's finish line reads: entering the battle's id is the
-    /// battle starting, and coming back to the Network module's is the
-    /// match over. Deliberately not *leaving* the battle's — see
-    /// [`SCENE_NETWORK`](priming::SCENE_NETWORK): the DELETED banner,
-    /// its jingle and the fade out all play after the battle scene has
-    /// gone, and they are the end of the match a player watches.
+    /// The poller is LEVELS and chip fires only — the round, verdict
+    /// and match-end lifecycle is the standing traps' (see
+    /// [`Pvp::prime`]), exactly the mgba split.
     ///
     /// The LEVELS are both players' HP and where they stand, off the
     /// battle's own unit records ([`UNITS`](priming::UNITS)).
@@ -164,69 +160,13 @@ impl tango_backend_melonds::GameSupport for Pvp {
     /// Chip fires come off the record the battle keeps of the use in
     /// flight (see [`CHIP_USE`](priming::CHIP_USE)), and each console
     /// reports only its own player's, so a use lands exactly once.
-    ///
-    /// The verdict is console 0's too, off the byte the game writes
-    /// when it decides (see [`RESULT`](priming::RESULT)) — read through
-    /// console 0's own player being player 0, the game's host seat.
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<Nds>> {
         use tango_match::telemetry::{CoreObs, EventSink, UnitObs};
-
-        /// Console 0's watch: which scene has the screen and how the
-        /// battle came out, both reported on their edges against last
-        /// tick's readings.
-        #[derive(Clone)]
-        struct Lifecycle {
-            /// Last tick's scene byte. `None` before the first, so the
-            /// first tick is a level with no edge — round 1 is the
-            /// walk's own report (see `prime`), and this game's
-            /// netbattle is one round, so the scene never starts
-            /// another. What the watch reports is the match END.
-            was: Option<u8>,
-            /// Last tick's result byte, for the same reason — and here
-            /// the edge is load-bearing rather than tidy, since the
-            /// byte stops meaning the verdict a hundred frames later
-            /// (see [`RESULT`](priming::RESULT)).
-            result: Option<u8>,
-        }
-
-        impl Lifecycle {
-            fn tick(&mut self, nds: &mut Nds, scene: u8, events: &EventSink) {
-                match self.was {
-                    // The comm screen coming back, with everything the
-                    // battle had left to play already played.
-                    Some(was) if was != priming::SCENE_NETWORK && scene == priming::SCENE_NETWORK => {
-                        events.match_ended()
-                    }
-                    _ => {}
-                }
-                self.was = Some(scene);
-
-                // The verdict, as console 0 reads it — and console 0's
-                // own player is player 0, the game's host seat, which
-                // is what turns "I won" into an absolute outcome. Only
-                // out of `0`, and only the two values there are: this
-                // game's netbattle has no draw, so `Outcome::Draw` is
-                // never reported and anything but a win or a loss is a
-                // round that announced no verdict — which stays none
-                // rather than being guessed at from HP.
-                let result = nds.read8(priming::RESULT);
-                if self.result == Some(0) {
-                    match result {
-                        1 => events.round_outcome(tango_match::telemetry::Outcome::P0Win),
-                        2 => events.round_outcome(tango_match::telemetry::Outcome::P1Win),
-                        _ => {}
-                    }
-                }
-                self.result = Some(result);
-            }
-        }
 
         #[derive(Clone)]
         struct Poller {
             /// Which player this console's own navi is.
             player: usize,
-            /// Console 0's alone (see [`Lifecycle`]).
-            lifecycle: Option<Lifecycle>,
             /// The chip use standing last tick, as `(id, is this
             /// console's own player's)` — the edge against it is one
             /// chip fired.
@@ -236,11 +176,6 @@ impl tango_backend_melonds::GameSupport for Pvp {
         impl tango_match::telemetry::CorePoller<Nds> for Poller {
             fn poll(&mut self, nds: &mut Nds, events: &EventSink, _round: u32) -> Option<CoreObs> {
                 let scene = nds.read8(priming::SCENE_BYTE);
-                // Every tick, live or not: the lifecycle's whole job is
-                // the scenes the read below bails out of.
-                if let Some(lifecycle) = &mut self.lifecycle {
-                    lifecycle.tick(nds, scene, events);
-                }
                 if scene != priming::SCENE_BATTLE {
                     return None;
                 }
@@ -305,10 +240,6 @@ impl tango_backend_melonds::GameSupport for Pvp {
 
         Box::new(Poller {
             player,
-            lifecycle: (player == 0).then(|| Lifecycle {
-                was: None,
-                result: None,
-            }),
             chip: None,
         })
     }
@@ -567,23 +498,6 @@ pub mod priming {
         /// on both consoles, *and* move at the staggered commits.
         pub const BATTLE_PHASE: u32 = 0x020b_42bd;
 
-        /// How the battle came out, **from this console's point of
-        /// view**: `1` its own player won, `2` its own player lost, `0`
-        /// undecided. Those are all the values there are — a netbattle
-        /// here cannot be drawn. Set the frame the game decides, which
-        /// is the same frame the winner's [`SCENE`] flips to its
-        /// banner.
-        ///
-        /// **It does not stay the verdict.** About a hundred frames on,
-        /// as the field fades, the game reuses the byte for the next
-        /// screen's business — the winner's drops to `0` and the
-        /// loser's to `1`. So it is read on its edge out of `0` and
-        /// nowhere else; a report is standing until the round closes,
-        /// which is exactly what the telemetry wants of it.
-        ///
-        /// Found by forcing a KO each way round and keeping the bytes
-        /// whose two consoles' readings *swap* between the two runs.
-        pub const RESULT: u32 = 0x0202_4b30;
 
         /// The chip a navi is using right now — one record, shared by
         /// both of them, holding the most recent use for as long as it
@@ -800,10 +714,39 @@ pub mod priming {
     /// watch.
     pub(super) const SCENE_BYTE: u32 = ram::SCENE;
 
+    /// The round verdict's own store sites, in the battle module's
+    /// decide handler (a `[r5+3]`-dispatched state function): the two
+    /// paths check which navi is gone, advance the state to 4, and
+    /// store the verdict into [`RESULT`] — `2` (this console's navi
+    /// deleted, the round lost) at [`ROUND_END_SET_LOSS`], `1` (the
+    /// peer's deleted, won — this path also starts the DELETED banner
+    /// scene) at [`ROUND_END_SET_WIN`]. The mgba families'
+    /// `round_end_set_win`/`_loss` anchors, on this cart; there is no
+    /// draw path, matching a netbattle that has none. The stored byte
+    /// (`0x02024b30`, this console's point of view, mirrored to the
+    /// peer) does not STAY the verdict — the game reuses it for the
+    /// next screen's business about a hundred frames on, which is why
+    /// the old poll read it on its edge and why the store sites are
+    /// the better anchor. Found by a watching cover (every executed
+    /// instruction comparing the byte to its last value) over forced
+    /// KOs in both directions: the two stores are its only writers at
+    /// the verdict tick.
+    pub(super) const ROUND_END_SET_LOSS: u32 = 0x0206_cc6e;
+    pub(super) const ROUND_END_SET_WIN: u32 = 0x0206_cca0;
+
+    /// The scene setter's store: `strb r0, [screen+0x19]`, reached only
+    /// when the value actually changes (the setter compares first). A
+    /// trap here gated on r0 = [`SCENE_NETWORK`] is the match end — the
+    /// game's own statement that the Network module has the screen
+    /// back, with the DELETED banner, its jingle and the fade already
+    /// played — on the same tick the old scene poll fired. Found with
+    /// the same watching cover, off the scene byte.
+    pub(super) const SCENE_STORE: u32 = 0x0205_e618;
+
     /// The battle's unit records, its phase and its chip uses, for the
     /// same reason: the walk found where they are, the telemetry is
     /// what reads them.
-    pub(super) use ram::{chip_use, unit, BATTLE_PHASE, CHIP_USE, RESULT, UNITS};
+    pub(super) use ram::{chip_use, unit, BATTLE_PHASE, CHIP_USE, UNITS};
 
     /// What [`ram::BATTLE_PHASE`] reads while this console's own chip
     /// select is up.
@@ -990,12 +933,11 @@ pub mod priming {
                 // The negotiated seed over the constant the game's own
                 // reset has just stored. Standing rather than one-shot,
                 // but only the power-on reset is ever inside the walk:
-                // the battle's setup resets it again after the traps
-                // come off, so this currently reaches nothing (see
-                // [`ram::RNG`]). Kept because the site and the write
-                // are right; what is missing is a way to hold the trap
-                // past the finish line, and something that actually
-                // reads the word.
+                // the battle's setup resets it again after the walk's
+                // answers retire, so this currently reaches nothing
+                // (see [`ram::RNG`], which also records that nothing
+                // reads the word). Kept because the site and the write
+                // are right, against the day something does.
                 code::RNG_RESET_RET,
                 Box::new(move |nds: &mut Nds| nds.write32(ram::RNG, rng_seed)),
             ),
@@ -1014,6 +956,60 @@ pub mod priming {
             ));
         }
         traps
+    }
+
+    /// The standing lifecycle set: the game's own verdict stores and
+    /// its scene setter's hand-back to the Network module, in lifecycle
+    /// order. Unlike the walk's answers above, these live for the
+    /// pair's life — they sit in the battle's own code, which is what
+    /// they are about.
+    ///
+    /// Verdicts are console 0's reports (its local player is player 0,
+    /// the game's host seat); the match end is reported from both
+    /// consoles and the store dedups the second firing.
+    fn lifecycle_traps(
+        host: bool,
+        events: &tango_match::telemetry::EventSink,
+    ) -> Vec<(u32, Box<dyn FnMut(&mut Nds)>)> {
+        let win_sink = host.then(|| events.clone());
+        let loss_sink = win_sink.clone();
+        let end_sink = events.clone();
+        vec![
+            (
+                // The game's own round-lost store: the decider's
+                // `RESULT = 2` path (this console's navi deleted).
+                // See [`ROUND_END_SET_LOSS`].
+                ROUND_END_SET_LOSS,
+                Box::new(move |_nds: &mut Nds| {
+                    if let Some(sink) = &loss_sink {
+                        sink.round_outcome(tango_match::telemetry::Outcome::P1Win);
+                    }
+                }) as Box<dyn FnMut(&mut Nds)>,
+            ),
+            (
+                // The round-won store: `RESULT = 1` (the peer's navi
+                // deleted). See [`ROUND_END_SET_WIN`].
+                ROUND_END_SET_WIN,
+                Box::new(move |_nds: &mut Nds| {
+                    if let Some(sink) = &win_sink {
+                        sink.round_outcome(tango_match::telemetry::Outcome::P0Win);
+                    }
+                }),
+            ),
+            (
+                // The game's own match end: the scene setter's store,
+                // gated on the value it is writing — the Network
+                // module coming back, with the DELETED banner, its
+                // jingle and the fade already played. See
+                // [`SCENE_STORE`].
+                SCENE_STORE,
+                Box::new(move |nds: &mut Nds| {
+                    if nds.reg(0) as u8 == SCENE_NETWORK {
+                        end_sink.match_ended();
+                    }
+                }),
+            ),
+        ]
     }
 
     /// The ARM7's traps, which are the one wait no ARM9 redirect can
@@ -1038,21 +1034,36 @@ pub mod priming {
 
     /// Install the walk on both consoles.
     ///
-    /// The walk is all they are for: a trap set is a dispatch check the
-    /// console pays for as long as it is installed, so both processors'
-    /// sets come off again the moment priming is done and the match
-    /// itself runs with none.
-    fn install(link: &mut Link, rng_seed: [u8; 16]) {
+    /// ONE table per CPU, installed once and never taken off — the
+    /// mgba shape. The walk's own traps sit on menu code whose screens
+    /// are not up once the battle has the session, so they go inert on
+    /// their own; the standing lifecycle set rides in the same table
+    /// (see the entries below).
+    fn install(link: &mut Link, rng_seed: [u8; 16], events: &tango_match::telemetry::EventSink) {
         for seat in 0..2 {
-            let traps = traps(seat == 0, console_rng_seed(&rng_seed, seat), match_clock(&rng_seed));
+            let host = seat == 0;
+            let mut traps = traps(host, console_rng_seed(&rng_seed, seat), match_clock(&rng_seed));
+            traps.extend(lifecycle_traps(host, events));
             link.console(seat).set_traps(traps);
             link.console(seat).set_traps7(traps7());
         }
     }
 
-    fn uninstall(link: &mut Link) {
+    /// Retire the walk's answers at its finish line, leaving the
+    /// standing lifecycle set — and nothing on the ARM7, whose only
+    /// trap is the save's.
+    ///
+    /// This is not tidiness, and it is the one place this engine cannot
+    /// copy the mgba families, whose primer traps simply stay: a GBA
+    /// cart's menu address is menu code forever, where a DS cart's comm
+    /// screens live in an **overlay the battle replaces**. Once the
+    /// battle loads, the title menu's gate address (and the board's,
+    /// and the dialog's) is battle code — answering it there jumps the
+    /// battle into a menu confirm and it never starts. Measured: left
+    /// installed, the battle wedges at its intro every time.
+    fn retire_walk(link: &mut Link, events: &tango_match::telemetry::EventSink) {
         for seat in 0..2 {
-            link.console(seat).set_traps(Vec::new());
+            link.console(seat).set_traps(lifecycle_traps(seat == 0, events));
             link.console(seat).set_traps7(Vec::new());
         }
     }
@@ -1066,19 +1077,14 @@ pub mod priming {
     pub fn walk(
         link: &mut Link,
         rng_seed: [u8; 16],
+        events: &tango_match::telemetry::EventSink,
         cancel: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<(), tango_match::Error> {
         let started = std::time::Instant::now();
         let before = link.console(0).save_memory();
-        install(link, rng_seed);
+        install(link, rng_seed, events);
 
-        let cancelled = |link: &mut Link| {
-            if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
-                uninstall(link);
-                return true;
-            }
-            false
-        };
+        let cancelled = || cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed));
 
         // The boot half, which is over when the cartridge has been
         // written: the Network menu insists on a save before it will do
@@ -1087,7 +1093,7 @@ pub mod priming {
         // console, so it runs to a frame count and is checked
         // afterwards.
         for _ in 0..BOOT_BUDGET {
-            if cancelled(link) {
+            if cancelled() {
                 return Err(tango_match::Error::Cancelled);
             }
             link.tick([HostInput::default(); 2]);
@@ -1099,7 +1105,6 @@ pub mod priming {
         );
         if !saved {
             log::warn!("exeoss priming never saw the cartridge written; the Network menu was not reached");
-            uninstall(link);
             return Err(tango_match::Error::PrimeTimeout(BOOT_BUDGET));
         }
 
@@ -1110,7 +1115,7 @@ pub mod priming {
         // stall however far the scene got.
         let mut frames = 0;
         let battled = loop {
-            if cancelled(link) {
+            if cancelled() {
                 return Err(tango_match::Error::Cancelled);
             }
             let scenes = [link.console(0).read8(ram::SCENE), link.console(1).read8(ram::SCENE)];
@@ -1123,7 +1128,7 @@ pub mod priming {
             link.tick([HostInput::default(); 2]);
             frames += 1;
         };
-        uninstall(link);
+        retire_walk(link, events);
 
         if !battled {
             // Enough state to place the stall without a debugger: the

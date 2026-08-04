@@ -97,22 +97,6 @@ pub struct Pvp {
     /// two players commit ~90 ticks apart — on both builds, across
     /// every custom episode in the July 2026 recordings.
     custom: u32,
-    /// The game's comm-result globals: a small struct the battle loop's
-    /// own result-deciding code reports into through a suite of tiny
-    /// accessors (US `0x2097ca4..=0x2097d54`, found by elimination scan
-    /// over forced KOs and confirmed in the disassembly — the setter's
-    /// one caller also mirrors the value into a battle object).
-    ///
-    /// Byte `+0` is the battle loop's end sub-state: 0 until the round's
-    /// result is decided, nonzero from the KO through the round's
-    /// teardown, cleared by the next round's setup — the value varies
-    /// with mode (0x0a/0x0b Single, 0x05 Triple), so only its liveness
-    /// speaks. Byte `+1` is the verdict, in the console's OWN
-    /// perspective (each console mirrors the other's): 1 = this side
-    /// won, 2 = lost, 3 = the judge's draw, 4/5/7 = the comm-abnormal
-    /// exits. It is NOT cleared between the rounds of a Triple match,
-    /// which is why the `+0` gate is the read's precondition.
-    result: u32,
     /// Player 0's selected-chip block; player 1's is 0x50 beyond. The
     /// GBA family's hand block, carried over by the port at the same
     /// shape as bn4/bn5/bn6's: +0 u16 chips fired since the last
@@ -131,7 +115,6 @@ pub static US: Pvp = Pvp {
     layout: &priming::US,
     unit: 0x022d_6498,
     custom: 0x0216_0992,
-    result: 0x0216_f738,
     chips: 0x021b_8af8,
 };
 
@@ -141,7 +124,6 @@ pub static JP: Pvp = Pvp {
     layout: &priming::JP,
     unit: 0x022c_ee18,
     custom: 0x0215_9732,
-    result: 0x0216_84d8,
     chips: 0x021b_1848,
 };
 
@@ -239,11 +221,16 @@ impl tango_backend_melonds::GameSupport for Pvp {
     /// the earlier handoff carries the transition tail at its head and
     /// its inputs land that far out of place.
     ///
+    /// 9: the match end is the battle flow's own hand-back
+    /// (`Layout::match_end`), ~3 ticks before the comm substate the old
+    /// poll watched leaves the session — a session and its recording
+    /// now end there.
+    ///
     /// 3, 4, 5 and the parenthetical half of 7 were the emulator moving,
     /// not this cart — they belong to `BACKEND_SIM_VERSION` now, which is
     /// where the next one goes.
     fn sim_version(&self) -> u16 {
-        8
+        9
     }
 
     fn prime(
@@ -254,65 +241,15 @@ impl tango_backend_melonds::GameSupport for Pvp {
         events: &tango_match::telemetry::EventSink,
         cancel: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<(), tango_match::Error> {
-        use tango_match::Link as _;
-
-        self.layout.walk(link, match_type, rng_seed, cancel)?;
-
-        // The game's own battle-start code determines every round
-        // start: a STANDING trap at its completion
-        // (`Layout::round_start` — the mgba families' `round_start_ret`
-        // on this cart), console 0's firing the report, both consoles'
-        // ending the walk. It fires once per round, so round 1 lands in
-        // the sink here — during priming, becoming the tick-0 baseline
-        // — and rounds 2/3 of a triple set fire live, exactly the mgba
-        // shape. The trap outlives the walk; melonDS traps are host
-        // state, so savestates and rollback never disturb it, and its
-        // firings re-fire on re-simulation like any other.
-        let fired = [
-            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        ];
-        for seat in 0..2 {
-            let flag = fired[seat].clone();
-            let sink = (seat == 0).then(|| events.clone());
-            link.console(seat).set_traps(vec![(
-                self.layout.round_start,
-                Box::new(move |_nds: &mut Nds| {
-                    if let Some(sink) = &sink {
-                        sink.round_started();
-                    }
-                    flag.store(true, std::sync::atomic::Ordering::Relaxed);
-                }) as Box<dyn FnMut(&mut Nds)>,
-            )]);
-        }
-
-        // The walk's own finish line is the comm session standing; the
-        // battle-start routine runs a transition tail later. Prime
-        // through to its firing on both consoles, so the session opens
-        // exactly where round 1 does.
-        const TAIL_BUDGET: u32 = 3600;
-        let mut frames = 0;
-        while !(fired[0].load(std::sync::atomic::Ordering::Relaxed)
-            && fired[1].load(std::sync::atomic::Ordering::Relaxed))
-        {
-            if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
-                return Err(tango_match::Error::Cancelled);
-            }
-            if frames >= TAIL_BUDGET {
-                log::warn!(
-                    "{} priming: battle start never fired {frames} frames past the comm session",
-                    self.layout.tag()
-                );
-                return Err(tango_match::Error::PrimeTimeout(frames));
-            }
-            link.tick([tango_match::HostInput::default(); 2]);
-            frames += 1;
-        }
-        log::info!(
-            "{} priming: battle start {frames} frames past the comm session",
-            self.layout.tag()
-        );
-        Ok(())
+        // The walk installs everything — its own traps AND the
+        // standing lifecycle set, one table per CPU, never taken off —
+        // and runs to the battle-start trap's firing on both consoles
+        // (see `Layout::install`). Round 1's report lands in the sink
+        // during the walk and becomes the tick-0 baseline; rounds 2/3,
+        // the verdicts and the match end fire live. melonDS traps are
+        // host state, so savestates and rollback never disturb them,
+        // and their firings re-fire on re-simulation like any other.
+        self.layout.walk(link, match_type, rng_seed, events, cancel)
     }
 
     /// Silent battles: the battle themes' own volumes, turned down to
@@ -366,92 +303,14 @@ impl tango_backend_melonds::GameSupport for Pvp {
     /// custom flag answers [`custom_self`] and whose fires this console
     /// reports. `None` until the slots hold two live player units.
     ///
-    /// Console 0's poller additionally carries the game's lifecycle as
-    /// RAM facts (this engine's stand-in for the mgba families' trap
-    /// anchors): a battle is live while the unit block holds two owned
-    /// units — chip cut-ins, effect sub-modules and the pause screen
-    /// all keep it — and the match is over once the block is dead and
-    /// the comm substate has left [`BATTLE_SESSION`]. Everything else
-    /// is the space between rounds, which the substate cannot tell
-    /// apart on its own: it holds one value from the pre-battle
-    /// exchange through every round and interlude, so the block is what
-    /// marks the rounds. Verified against a recorded match played
-    /// to its natural end: the game reaches its menus ~80 ticks before
-    /// it powers the wireless down, so the match-end report lands right
-    /// as the battle screens leave.
+    /// The poller is LEVELS and chip fires only — the round/verdict/
+    /// match lifecycle is the standing traps' (see [`Pvp::prime`]),
+    /// exactly the mgba split.
     ///
     /// [`custom_self`]: tango_match::telemetry::CoreObs::custom_self
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<Nds>> {
         use tango_gamesupport_common::telemetry::{HandChipTracker, LoadedChip};
-        use tango_match::telemetry::{CoreObs, EventSink, Outcome, UnitObs};
-
-        /// Console 0's lifecycle watch: the phase and verdict LEVELS,
-        /// reported as edges against last tick's readings — the round
-        /// VERDICT and the match END; round starts are the standing
-        /// battle-start trap's (see `Pvp::prime`). The verdict
-        /// comes from the comm-result globals the battle loop's own KO
-        /// and judge paths report into (see [`Pvp::result`]): no
-        /// verdict until the end sub-state at `+0` stands, then `+1`
-        /// read through console 0's perspective — its local player is
-        /// player 0, the game's host seat, exactly the mgba families'
-        /// core-0 convention. The comm-abnormal values (a peer
-        /// vanishing mid-round) deliberately read as no verdict: the
-        /// round genuinely never got one. Both consoles hold mirrored
-        /// copies and agree at every settled tick — KO-forge verified
-        /// on both builds, both outcomes.
-        #[derive(Clone)]
-        struct LifecycleWatch {
-            substate: u32,
-            result: u32,
-            /// Last tick's phase: 0 = nothing seen yet, 1 = a round is
-            /// live, 2 = between rounds, 3 = the post-link menus.
-            prev_phase: u8,
-            /// Last tick's standing verdict (0 = none): reporting on
-            /// its edges is what stamps one outcome per round unless
-            /// the level drops and stands again.
-            prev_verdict: u8,
-        }
-        impl LifecycleWatch {
-            /// `round_live` is the sample read below: the unit block
-            /// holding both players is the game's own statement that a
-            /// round is running, and it is the only thing that says so
-            /// — the substate holds one value from the pre-battle
-            /// exchange through every round and interlude alike.
-            fn tick(&mut self, nds: &mut Nds, round_live: bool, events: &EventSink) {
-                let phase: u8 = if round_live {
-                    1
-                } else if nds.read32(self.substate) != BATTLE_SESSION {
-                    3
-                } else {
-                    2
-                };
-                let verdict = if nds.read8(self.result) == 0 {
-                    0
-                } else {
-                    match nds.read8(self.result + 1) {
-                        v @ 1..=3 => v,
-                        _ => 0,
-                    }
-                };
-                if phase == 1 {
-                    // Round STARTS are not this watch's to report: the
-                    // standing battle-start trap fires them (see
-                    // `Pvp::prime`), round 1's during priming. The
-                    // phase feeds the verdict gate and the match end.
-                    if verdict != 0 && verdict != self.prev_verdict {
-                        events.round_outcome(match verdict {
-                            1 => Outcome::P0Win,
-                            2 => Outcome::P1Win,
-                            _ => Outcome::Draw,
-                        });
-                    }
-                } else if phase == 3 && self.prev_phase != 3 {
-                    events.match_ended();
-                }
-                self.prev_phase = phase;
-                self.prev_verdict = verdict;
-            }
-        }
+        use tango_match::telemetry::{CoreObs, EventSink, UnitObs};
 
         #[derive(Clone)]
         struct Poller {
@@ -462,18 +321,13 @@ impl tango_backend_melonds::GameSupport for Pvp {
             chip_block: u32,
             player: usize,
             chips: HandChipTracker,
-            /// Console 0 only, like the mgba families' round anchors.
-            lifecycle: Option<LifecycleWatch>,
         }
         impl tango_match::telemetry::CorePoller<Nds> for Poller {
             fn poll(&mut self, nds: &mut Nds, events: &EventSink, round: u32) -> Option<CoreObs> {
                 // The unit block, read once: both slots owned by
-                // distinct players is the sample this poller reports
-                // AND the game's own statement that a round is running,
-                // so the lifecycle below takes its liveness from this
-                // rather than reading the block a second time. The game
-                // zeroes the block outside a live battle — round
-                // intros, the interlude, the post-match screens.
+                // distinct players is the sample this poller reports.
+                // The game zeroes the block outside a live battle —
+                // round intros, the interlude, the post-match screens.
                 let mut slots = [None, None];
                 {
                     let ram = nds.main_ram();
@@ -495,12 +349,6 @@ impl tango_backend_melonds::GameSupport for Pvp {
                     [Some(p0), Some(p1)] => Some([p0, p1]),
                     _ => None,
                 };
-                // Every tick, live or not: the phases it watches are
-                // exactly the ones where the block is dead and the
-                // battle read below bails out.
-                if let Some(lc) = &mut self.lifecycle {
-                    lc.tick(nds, live.is_some(), events);
-                }
                 let units = live?;
 
                 let ram = nds.main_ram();
@@ -531,12 +379,6 @@ impl tango_backend_melonds::GameSupport for Pvp {
             chip_block: self.chips + 0x50 * player as u32,
             player,
             chips: Default::default(),
-            lifecycle: (player == 0).then(|| LifecycleWatch {
-                substate: self.layout.substate_word(),
-                result: self.result,
-                prev_phase: 0,
-                prev_verdict: 0,
-            }),
         })
     }
 }
@@ -584,6 +426,34 @@ pub mod priming {
         /// interlude — and matched into the JP build by the same
         /// masked byte-match as every site above.
         pub(crate) round_start: u32,
+
+        /// The comm-result verdict setter: `strb r0, [result+1]`, the
+        /// one function the battle loop's own KO and judge paths call
+        /// to report how the round came out, with the verdict in r0 —
+        /// in the console's OWN perspective (each console mirrors the
+        /// other's): 1 = this side won, 2 = lost, 3 = the judge's
+        /// draw, 4/5/7 = the comm-abnormal exits, deliberately read as
+        /// no verdict. The setter belongs to the comm-result globals'
+        /// accessor suite (US result block 0x0216_f738, accessors
+        /// 0x2097ca4..=0x2097d54; JP block 0x0216_84d8), found by
+        /// elimination scan over forced KOs in the July telemetry
+        /// work. The standing trap here IS the verdict lifecycle — the
+        /// mgba families' round_end_set_* anchors in one site, the
+        /// value riding the register instead of picking the site.
+        /// Hunted like `round_start` (fires exactly once per decided
+        /// round, at the poll-era verdict tick); JP by byte-match with
+        /// the JP result literal.
+        pub(crate) round_verdict: u32,
+
+        /// The battle flow's hand-back: a tiny wrapper (`movs r0, #5;
+        /// bl <set-flow-mode>`) in a cluster of mode setters, called
+        /// exactly once — when the game's own battle set is decided and
+        /// the comm session starts coming down — and never on the
+        /// per-round teardowns. The mgba families'
+        /// `comm_menu_end_battle_entry`, on this cart; it runs ~3 ticks
+        /// before the substate word the old poll watched actually
+        /// leaves BATTLE_SESSION. JP by the wrapper-cluster byte-match.
+        pub(crate) match_end: u32,
     }
 
     /// Sites in the ARM9's code: what the walk traps, and the branches
@@ -919,6 +789,8 @@ pub mod priming {
         tag: "bn5ds",
         sound_archive_ptr: 0x0216_2d84,
         round_start: 0x0208_e290,
+        round_verdict: 0x0209_7cc4,
+        match_end: 0x0208_b814,
         code: CodeOffsets {
             logo_hold:                0x0206_4dd0,
             logo_expired:             0x0206_4dda,
@@ -989,6 +861,8 @@ pub mod priming {
         tag: "exe5ds",
         sound_archive_ptr: 0x0215_bb24,
         round_start: 0x0208_df98,
+        round_verdict: 0x0209_7978,
+        match_end: 0x0208_b51c,
         code: CodeOffsets {
             logo_hold:                0x0206_4b90,
             logo_expired:             0x0206_4b9a,
@@ -1232,13 +1106,6 @@ pub mod priming {
     const BATTLE_BUDGET: u32 = 2400;
 
     impl Layout {
-        /// The game's comm substate word, for the phase read above —
-        /// how far the link session has got is the walk's business to
-        /// know and the telemetry's business to watch.
-        pub(super) fn substate_word(&self) -> u32 {
-            self.ram.substate
-        }
-
         /// The loaded sound archive's INFO block, walked the way the
         /// sound library walks it (see
         /// [`Layout::sound_archive_ptr`]), or `None` before anything
@@ -1631,6 +1498,67 @@ pub mod priming {
             ]
         }
 
+        /// The standing lifecycle set: the game's own battle start,
+        /// verdict setter and battle-flow hand-back, in lifecycle
+        /// order. Unlike the walk's answers above, these live for the
+        /// pair's life — they sit in the battle's own code, which is
+        /// what they are about.
+        ///
+        /// Starts and verdicts are console 0's reports (its local
+        /// player is player 0, the game's host seat); the match end is
+        /// reported from both consoles and the store dedups the second
+        /// firing. `fired` is this console's handoff latch, which the
+        /// walk runs until — the mgba primed latch, on this cart.
+        fn lifecycle_traps(
+            &'static self,
+            host: bool,
+            events: &tango_match::telemetry::EventSink,
+            fired: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        ) -> Vec<(u32, Box<dyn FnMut(&mut Nds)>)> {
+            let start_sink = host.then(|| events.clone());
+            let verdict_sink = host.then(|| events.clone());
+            let end_sink = events.clone();
+            vec![
+                (
+                    // The game's own battle start: the priming handoff
+                    // and, for console 0, the round lifecycle signal —
+                    // round 1's firing lands during the walk and
+                    // becomes the tick-0 baseline, and the later
+                    // rounds' fire live.
+                    self.round_start,
+                    Box::new(move |_nds: &mut Nds| {
+                        if let Some(sink) = &start_sink {
+                            sink.round_started();
+                        }
+                        fired.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }) as Box<dyn FnMut(&mut Nds)>,
+                ),
+                (
+                    // The verdict, from the game's own reporting call —
+                    // the setter runs with it in r0; anything outside
+                    // 1..=3 is the comm-abnormal path and deliberately
+                    // reads as no verdict.
+                    self.round_verdict,
+                    Box::new(move |nds: &mut Nds| {
+                        use tango_match::telemetry::Outcome;
+                        let Some(sink) = &verdict_sink else { return };
+                        match nds.reg(0) {
+                            1 => sink.round_outcome(Outcome::P0Win),
+                            2 => sink.round_outcome(Outcome::P1Win),
+                            3 => sink.round_outcome(Outcome::Draw),
+                            _ => {}
+                        }
+                    }),
+                ),
+                (
+                    // The game's own match end: the battle flow's
+                    // hand-back, run once when the set is decided.
+                    self.match_end,
+                    Box::new(move |_nds: &mut Nds| end_sink.match_ended()),
+                ),
+            ]
+        }
+
         /// The ARM7's traps, which are the same on both builds. These
         /// are the only ones on that processor, and they answer the one
         /// wait no ARM9 redirect can reach: the backup server's per-page
@@ -1651,26 +1579,24 @@ pub mod priming {
             ]
         }
 
-        /// Install the walk on both consoles, sharing one count of how
-        /// many confirms the run has needed.
-        ///
-        /// The walk is all they are for: a trap set is a dispatch check
-        /// the console pays for as long as it is installed, so both
-        /// processors' sets come off again the moment priming is done
-        /// and the match itself runs with none.
+        /// Install the walk and the standing lifecycle set on both
+        /// consoles, one table per CPU, sharing one count of how many
+        /// confirms the run has needed.
         fn install(
             &'static self,
             link: &mut Link,
             second: bool,
             team: bool,
             rng_seed: [u8; 16],
+            events: &tango_match::telemetry::EventSink,
+            fired: &[std::sync::Arc<std::sync::atomic::AtomicBool>; 2],
         ) -> std::sync::Arc<std::sync::atomic::AtomicU32> {
             let confirms = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
             for seat in 0..2 {
                 let host = seat == 0;
                 let (save_row, cross) = played_file(&link.console(seat).save_memory());
                 let rng_seeds = console_rng_seeds(&rng_seed, seat);
-                link.console(seat).set_traps(self.traps(
+                let mut traps = self.traps(
                     host,
                     second,
                     team,
@@ -1678,16 +1604,34 @@ pub mod priming {
                     cross,
                     rng_seeds,
                     host.then(|| confirms.clone()),
-                ));
+                );
+                traps.extend(self.lifecycle_traps(host, events, fired[seat].clone()));
+                link.console(seat).set_traps(traps);
                 link.console(seat).set_traps7(Self::traps7());
             }
             confirms
         }
 
-        /// Take the traps back off, on both processors.
-        fn uninstall(&self, link: &mut Link) {
+        /// Retire the walk's answers at its finish line, leaving the
+        /// standing lifecycle set — and nothing on the ARM7, whose
+        /// traps are the save's alone.
+        ///
+        /// This is the one place this engine cannot copy the mgba
+        /// families, whose primer traps simply stay: a GBA cart's menu
+        /// address is menu code forever, where a DS cart's comm screens
+        /// live in an **overlay the battle replaces**. Once the battle
+        /// loads, a board gate's address is battle code, and answering
+        /// it there would wreck the battle — measured doing exactly
+        /// that on the sibling cart.
+        fn retire_walk(
+            &'static self,
+            link: &mut Link,
+            events: &tango_match::telemetry::EventSink,
+            fired: &[std::sync::Arc<std::sync::atomic::AtomicBool>; 2],
+        ) {
             for seat in 0..2 {
-                link.console(seat).set_traps(Vec::new());
+                link.console(seat)
+                    .set_traps(self.lifecycle_traps(seat == 0, events, fired[seat].clone()));
                 link.console(seat).set_traps7(Vec::new());
             }
         }
@@ -1706,10 +1650,18 @@ pub mod priming {
             link: &mut Link,
             match_type: (u8, u8),
             rng_seed: [u8; 16],
+            events: &tango_match::telemetry::EventSink,
             cancel: Option<&std::sync::atomic::AtomicBool>,
         ) -> Result<(), tango_match::Error> {
             let started = std::time::Instant::now();
             let before = link.console(0).save_memory();
+            // The handoff latches: set by the standing battle-start
+            // trap on each console — what the walk runs until, exactly
+            // the mgba primed latch.
+            let fired = [
+                std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            ];
             // The registration lists Single first and Triple second, so
             // the mode is only which of the chooser's two buttons the
             // joiner takes — and the subtype, Team first and plain
@@ -1720,14 +1672,13 @@ pub mod priming {
             // Team leads because it is what this pairing is for: the
             // lobby defaults to a mode's first subtype, and both of
             // these games are played as Team.
-            let counter = self.install(link, match_type.0 != 0, match_type.1 == 0, rng_seed);
+            let counter = self.install(link, match_type.0 != 0, match_type.1 == 0, rng_seed, events, &fired);
 
             // The boot half, which is over when the board stands: it
             // answers nothing that depends on the other console, so it
             // runs to a frame count and is checked afterwards.
             for _ in 0..BUDGET {
                 if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
-                    self.uninstall(link);
                     return Err(tango_match::Error::Cancelled);
                 }
                 link.tick([HostInput::default(); 2]);
@@ -1744,7 +1695,6 @@ pub mod priming {
                     "{} priming never saw the cartridge written; the board will not be open",
                     self.tag
                 );
-                self.uninstall(link);
                 return Err(tango_match::Error::PrimeTimeout(BUDGET));
             }
             if confirms < CONFIRMS_EXPECTED {
@@ -1753,7 +1703,6 @@ pub mod priming {
                      does this save have NetBattle unlocked?",
                     self.tag
                 );
-                self.uninstall(link);
                 return Err(tango_match::Error::PrimeTimeout(BUDGET));
             }
 
@@ -1770,7 +1719,6 @@ pub mod priming {
             let mut frames = 0;
             let battled = loop {
                 if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
-                    self.uninstall(link);
                     return Err(tango_match::Error::Cancelled);
                 }
                 let substates = [
@@ -1786,7 +1734,6 @@ pub mod priming {
                 link.tick([HostInput::default(); 2]);
                 frames += 1;
             };
-            self.uninstall(link);
 
             if !battled {
                 // Enough state to place the stall without a debugger:
@@ -1808,8 +1755,30 @@ pub mod priming {
                 );
                 return Err(tango_match::Error::PrimeTimeout(BUDGET + frames));
             }
+            // The comm session stands; the battle-start routine runs a
+            // transition tail later. Prime through to its firing on
+            // both consoles, so the session opens exactly where round 1
+            // does.
+            let mut tail = 0;
+            while !(fired[0].load(std::sync::atomic::Ordering::Relaxed)
+                && fired[1].load(std::sync::atomic::Ordering::Relaxed))
+            {
+                if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+                    return Err(tango_match::Error::Cancelled);
+                }
+                if tail >= BATTLE_BUDGET {
+                    log::warn!(
+                        "{} priming: battle start never fired {tail} frames past the comm session",
+                        self.tag
+                    );
+                    return Err(tango_match::Error::PrimeTimeout(BUDGET + frames + tail));
+                }
+                link.tick([HostInput::default(); 2]);
+                tail += 1;
+            }
+            self.retire_walk(link, events, &fired);
             log::info!(
-                "{} priming: match type {match_type:?}, battle transition {frames} frames past the board, {:.1?} total",
+                "{} priming: match type {match_type:?}, battle transition {frames}+{tail} frames past the board, {:.1?} total",
                 self.tag,
                 started.elapsed()
             );

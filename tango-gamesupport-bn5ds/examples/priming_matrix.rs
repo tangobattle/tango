@@ -243,7 +243,7 @@ fn main() {
         // No payloads: the emitted identity images and the geometry
         // surgery are hand-built carts whose current file is the one
         // under test.
-        match layout.walk(&mut link, (match_type, match_subtype), [0; 16], None) {
+        match layout.walk(&mut link, (match_type, match_subtype), [0; 16], &tango_match::telemetry::EventSink::new(), None) {
             Ok(()) => println!("RESULT: OK"),
             Err(e) => println!("RESULT: FAILED {e:?}"),
         }
@@ -300,6 +300,7 @@ fn main() {
                     &mut link,
                     (match_type, match_subtype),
                     [0; 16],
+                    &tango_match::telemetry::EventSink::new(),
                     None,
                 ) {
                     Ok(()) => {
