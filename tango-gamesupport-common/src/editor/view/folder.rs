@@ -653,8 +653,11 @@ pub fn chip_row<M: 'static>(
     // Tag chips come in pairs (tag1 + tag2). For the chip list
     // it's the chip-IS-a-tag-chip status the user cares about,
     // not which slot — collapse both flags into a single "TAG".
-    for _ in 0..(g.has_tag1 as usize + g.has_tag2 as usize) {
-        indicator_row = indicator_row.push(badge("TAG", iced::Color::from_rgb8(0x29, 0xa1, 0x21)));
+    if g.has_tag1 {
+        indicator_row = indicator_row.push(badge("TAG1", iced::Color::from_rgb8(0x29, 0xa1, 0x21)));
+    }
+    if g.has_tag2 {
+        indicator_row = indicator_row.push(badge("TAG2", iced::Color::from_rgb8(0x29, 0xa1, 0x21)));
     }
 
     // Right-side stats: fixed-width right-aligned columns so the
