@@ -20,15 +20,15 @@ pub fn render_patch_cards56<M: 'static>(lang: &LanguageIdentifier, loaded: &Open
             .and_then(|c| c.name())
             .unwrap_or_else(|| format!("#{}", card.id));
         let mb = info.as_ref().map(|c| c.mb()).unwrap_or(0);
-        let [name_cell, ability_cell, bug_cell] = patch_card56_cells::<M>(loaded, &name, mb, card.enabled, card.id);
+        let [name_cell, param_cell, ability_cell] = patch_card56_cells::<M>(loaded, &name, mb, card.enabled, card.id);
 
         let row = row![
             text(format!("{:>2}", i + 1))
                 .size(TEXT_CAPTION)
                 .width(Length::Fixed(24.0)),
             name_cell,
+            param_cell,
             ability_cell,
-            bug_cell,
         ]
         .spacing(8)
         .align_y(Alignment::Start);
@@ -75,12 +75,14 @@ pub fn patch_card_name<'a, M: 'a>(name: String, enabled: bool) -> Element<'a, M>
     el.into()
 }
 
-/// The viewer-style cells for a patch card: `[name+MB, abilities, bugs]`,
-/// matching [`render_patch_cards56`]'s column layout exactly (name with MB
-/// stacked beneath, then a fixed-width ability column and bug column, each
-/// a vertical stack of [`effect_badge`]s). Greyed when `enabled` is false.
-/// Callers wrap these with a leading cell (index / add button) and, for the
-/// registered list, trailing edit controls.
+/// The viewer-style cells for a patch card: `[name+MB, parameters,
+/// abilities]`, matching [`render_patch_cards56`]'s column layout exactly
+/// (name with MB stacked beneath, then a fixed-width parameter column and
+/// ability column, each a vertical stack of [`effect_badge`]s). The game's
+/// own mod-card screen orders them パラメータ then アビリティ, so we do
+/// too. Greyed when `enabled` is false. Callers wrap these with a leading
+/// cell (index / add button) and, for the registered list, trailing edit
+/// controls.
 fn patch_card56_cells<'a, M: 'static>(
     loaded: &OpenSave,
     name: &str,
@@ -91,24 +93,24 @@ fn patch_card56_cells<'a, M: 'static>(
     let effects = loaded.assets.patch_card56(id).map(|c| c.effects()).unwrap_or_default();
     let name_text = patch_card_name(name.to_string(), enabled);
     let name_col = column![name_text, text(format!("{mb}MB")).size(10).style(muted_text_style)].spacing(2);
+    let mut param_col = column![].spacing(2);
+    for e in effects.iter().filter(|e| !e.is_ability) {
+        param_col = param_col.push(effect_badge::<M>(e, enabled));
+    }
     let mut ability_col = column![].spacing(2);
     for e in effects.iter().filter(|e| e.is_ability) {
         ability_col = ability_col.push(effect_badge::<M>(e, enabled));
     }
-    let mut bug_col = column![].spacing(2);
-    for e in effects.iter().filter(|e| !e.is_ability) {
-        bug_col = bug_col.push(effect_badge::<M>(e, enabled));
-    }
     [
         container(name_col).width(Length::Fill).into(),
-        // Fixed-width ability / bug columns, matching the read-only viewer.
+        // Fixed-width parameter / ability columns, matching the read-only viewer.
+        container(param_col).width(Length::Fixed(180.0)).into(),
         container(ability_col).width(Length::Fixed(180.0)).into(),
-        container(bug_col).width(Length::Fixed(180.0)).into(),
     ]
 }
 
 /// One registered patch card, laid out like a [`render_patch_cards56`] row
-/// (index · name+MB · abilities · bugs) with an ✕ remove button appended.
+/// (index · name+MB · parameters · abilities) with an ✕ remove button appended.
 /// Every registered card is active — there's no enable/disable toggle — so the
 /// list is simply the set of equipped cards, MB-budgeted via the library.
 fn patch_card56_list_row<'a>(
@@ -122,7 +124,7 @@ fn patch_card56_list_row<'a>(
         .and_then(|c| c.name())
         .unwrap_or_else(|| format!("#{}", card.id));
     let mb = info.as_ref().map(|c| c.mb()).unwrap_or(0);
-    let [name_cell, ability_cell, bug_cell] = patch_card56_cells(loaded, &name, mb, card.enabled, card.id);
+    let [name_cell, param_cell, ability_cell] = patch_card56_cells(loaded, &name, mb, card.enabled, card.id);
 
     // Just the ✕ that backs the card out to the library.
     let remove = remove_button(Action::RemovePatchCard56 { slot });
@@ -133,8 +135,8 @@ fn patch_card56_list_row<'a>(
             .size(TEXT_CAPTION)
             .width(Length::Fixed(24.0)),
         name_cell,
+        param_cell,
         ability_cell,
-        bug_cell,
         remove,
     ]
     .spacing(8)
@@ -153,7 +155,7 @@ fn patch_card56_list_row<'a>(
 }
 
 /// One library card, laid out like a [`render_patch_cards56`] row (index ·
-/// name+MB · abilities · bugs). The whole row is a click-to-add button (the
+/// name+MB · parameters · abilities). The whole row is a click-to-add button (the
 /// palette affordance) that registers the card. When it can't be added — the
 /// list is full, or adding it would blow the MB budget — the row renders greyed
 /// and unclickable (`selectable` is false), so the MB limit is enforced by
@@ -166,9 +168,9 @@ fn patch_card56_library_row<'a>(
     row_idx: usize,
     selectable: bool,
 ) -> Element<'a, Action> {
-    let [name_cell, ability_cell, bug_cell] = patch_card56_cells(loaded, &name, mb, selectable, id);
+    let [name_cell, param_cell, ability_cell] = patch_card56_cells(loaded, &name, mb, selectable, id);
 
-    let row = row![name_cell, ability_cell, bug_cell]
+    let row = row![name_cell, param_cell, ability_cell]
         .spacing(8)
         .align_y(Alignment::Start);
     // The entire row is the add control: clicking anywhere registers the

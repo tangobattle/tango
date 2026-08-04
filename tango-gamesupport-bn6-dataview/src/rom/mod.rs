@@ -633,8 +633,8 @@ impl<'a> tango_gamesupport_common::dataview::rom::PatchCard56 for PatchCard56<'a
         let effects = self.raw_effects();
         effects
             .into_iter()
-            .filter_map(|effect| {
-                Some(tango_gamesupport_common::dataview::rom::PatchCard56Effect {
+            .map(|effect| {
+                tango_gamesupport_common::dataview::rom::PatchCard56Effect {
                     id: effect.id as usize,
                     kind: match effect.id {
                         0x00 => tango_gamesupport_common::dataview::rom::PatchCard56EffectKind::MaxHpPlus,
@@ -667,8 +667,14 @@ impl<'a> tango_gamesupport_common::dataview::rom::PatchCard56 for PatchCard56<'a
                         0x20 => tango_gamesupport_common::dataview::rom::PatchCard56EffectKind::TripleBuster,
                         0x1b..=0x1f | 0x21 | 0x22 => tango_gamesupport_common::dataview::rom::PatchCard56EffectKind::BButtonChip,
                         0x23..=0x29 => tango_gamesupport_common::dataview::rom::PatchCard56EffectKind::BusterModifier,
-                        0x2a..=0x7f => tango_gamesupport_common::dataview::rom::PatchCard56EffectKind::BChargeChip,
-                        _ => return None,
+                        0x2a..=0x56 => tango_gamesupport_common::dataview::rom::PatchCard56EffectKind::BChargeChip,
+                        // 0x57 up is the long tail the detail-name table
+                        // spells out for itself, through 0xb7: charge-shot
+                        // side effects, auras, B+Left chips, gauge speeds,
+                        // Rush/Beat/Tango, and the bugs. Cards do use them —
+                        // Momoguran's second ability, ラッシュサポート, is
+                        // 0x80 — so they must not be dropped.
+                        _ => tango_gamesupport_common::dataview::rom::PatchCard56EffectKind::Other,
                     },
                     name: {
                         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
@@ -725,7 +731,7 @@ impl<'a> tango_gamesupport_common::dataview::rom::PatchCard56 for PatchCard56<'a
                     parameter: effect.parameter,
                     is_debuff: effect.is_debuff == 1,
                     is_ability: effect.id > 0x15,
-                })
+                }
             })
             .collect::<Vec<_>>()
     }

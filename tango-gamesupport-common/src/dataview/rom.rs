@@ -110,6 +110,12 @@ pub enum PatchCard56EffectKind {
     /// The charged B-button shot is overridden to a fixed chip. The specific
     /// chip is given by the effect's ROM name.
     BChargeChip,
+    /// Anything the enum above doesn't name: the charge-shot side effects,
+    /// the auras, the B+Left chips, the gauge speeds, the Rush/Beat/Tango
+    /// supports, and the whole NaviCust bug family. They're all fully
+    /// described by the effect's ROM name, so an effect landing here still
+    /// displays correctly — it just isn't modelled any finer.
+    Other,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, std::hash::Hash)]
