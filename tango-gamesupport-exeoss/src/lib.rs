@@ -16,7 +16,8 @@ pub use tango_gamesupport_exeoss_ui as ui;
 
 pub mod pvp;
 
-use tango_gamesupport::{BackgroundRef, Family, Game, Region, Volume};
+use std::sync::LazyLock;
+use tango_gamesupport::{BackgroundRef, Family, Game, Region, SaveTemplates, Volume};
 
 /// One mode with one subtype, until the cart's own comm screens say
 /// otherwise. BN1 had a single battle mode and this is its remake; what
@@ -30,6 +31,36 @@ const BACKGROUND: BackgroundRef = BackgroundRef {
 /// The melonDS engine over the cart's priming walk — what the
 /// registration hands Tango as its [`tango_match::Backend`].
 static ENGINE_PVP_B6XJ_00: tango_backend_melonds::DsBackend = tango_backend_melonds::DsBackend::new(&pvp::JP);
+
+/// The bundled template: the exe1 template, ported. The remake kept
+/// BN1's chip ids and code bytes, so the GBA template's folder carries
+/// over pair-for-pair (every one checked against this cart's own chip
+/// table), and the rest of what that template defines has a mapped
+/// twin here: 99 of every chip in every code (payload+0x158, with the
+/// acquisition stamps the data library derives from laid down as the
+/// same consecutive run ending at 0xfffe that the exe1 template
+/// carries — the library reads 181/181 in-game), 999999 zenny
+/// (+0x78), and maxed HP/buster (1000, 4/4/4), which the donor chassis
+/// — a finished cart, supplying the story flags and comm state nothing
+/// maps — already sits at. Verified on the console the whole way: the
+/// template boots to CONTINUE, and the folder, library, status and
+/// zenny screens all read back the exe1 template's values.
+///
+/// The normalization is BN5DS's, shaped to this cart's geometry: both
+/// banks carry the template payload, generations renumbered to 1 and
+/// 2, header fill zeroed, all four CRC32s restamped, and the file cut
+/// at 0x5be0, the last byte the game ever writes. Both banks are
+/// load-bearing: the console refuses a dump with one valid bank —
+/// whatever its slot or generation — with its data-corruption dialog,
+/// even though [`dataview::save::Save::new`] reads it fine.
+static EXEOSS_SAVE: LazyLock<dataview::save::Save> =
+    LazyLock::new(|| dataview::save::Save::new(include_bytes!("saves/jp.raw")).unwrap());
+static EXEOSS_T: SaveTemplates = LazyLock::new(|| {
+    vec![(
+        "",
+        tango_gamesupport_common::dataview::wrap_save(Box::new(EXEOSS_SAVE.clone())),
+    )]
+});
 
 /// The cart's save, identified so one can be picked before a match and
 /// read — and edited — as far as the dataview's mapping reaches, which
@@ -63,7 +94,7 @@ pub static EXEOSS: Game = Game {
     }),
 
     pvp: &ENGINE_PVP_B6XJ_00,
-    save_templates: None,
+    save_templates: Some(&EXEOSS_T),
     logo_image: None,
     // No BNLC release to borrow art from — the remake never shipped in
     // the Legacy Collection.
