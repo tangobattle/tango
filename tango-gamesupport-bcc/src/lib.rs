@@ -73,13 +73,9 @@ pub static BCC: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_A89E_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: true,
     save_templates: Some(&TEMPLATES),
     logo_image: Some(&BCC_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 // ---------------- EXEBCGP JP (A89J_00) ----------------
@@ -103,13 +99,9 @@ pub static EXEBCGP: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_A89J_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: true,
     save_templates: Some(&TEMPLATES),
     logo_image: Some(&EXEBCGP_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 macro_rules! family_translations {
@@ -133,12 +125,20 @@ macro_rules! family_translations {
 pub static BCC_FAMILY: Family = Family {
     id: "bcc",
     games: &[&BCC],
+    match_types: MATCH_TYPES,
+    players_colored_by_seat: true,
+    #[cfg(feature = "ui")]
+    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("bcc"),
 };
 
 pub static EXEBCGP_FAMILY: Family = Family {
     id: "exebcgp",
     games: &[&EXEBCGP],
+    match_types: MATCH_TYPES,
+    players_colored_by_seat: true,
+    #[cfg(feature = "ui")]
+    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("exebcgp"),
 };
 

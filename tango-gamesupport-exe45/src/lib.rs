@@ -54,13 +54,9 @@ pub static EXE45: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_BR4J_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&EXE45_T),
     logo_image: Some(&LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 /// Expands to this crate's per-locale Fluent fragments for `$fam` (bare
@@ -86,6 +82,10 @@ macro_rules! family_translations {
 pub static EXE45_FAMILY: Family = Family {
     id: "exe45",
     games: &[&EXE45],
+    match_types: MATCH_TYPES,
+    players_colored_by_seat: false,
+    #[cfg(feature = "ui")]
+    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("exe45"),
 };
 

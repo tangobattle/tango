@@ -86,13 +86,9 @@ pub static EXE2: Game = Game {
         )))
     }),
     pvp: &ENGINE_SIO_AE2J_00_AC,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&TEMPLATES),
     logo_image: Some(&EXE2_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 pub static BN2: Game = Game {
@@ -116,13 +112,9 @@ pub static BN2: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_AE2E_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&TEMPLATES),
     logo_image: Some(&BN2_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 /// Expands to this crate's per-locale Fluent fragments for `$fam` (bare
@@ -148,12 +140,20 @@ macro_rules! family_translations {
 pub static EXE2_FAMILY: Family = Family {
     id: "exe2",
     games: &[&EXE2],
+    match_types: MATCH_TYPES,
+    players_colored_by_seat: false,
+    #[cfg(feature = "ui")]
+    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("exe2"),
 };
 
 pub static BN2_FAMILY: Family = Family {
     id: "bn2",
     games: &[&BN2],
+    match_types: MATCH_TYPES,
+    players_colored_by_seat: false,
+    #[cfg(feature = "ui")]
+    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("bn2"),
 };
 

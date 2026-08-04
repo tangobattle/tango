@@ -98,14 +98,9 @@ pub static BN5DS: Game = Game {
     }),
 
     pvp: &ENGINE_PVP_A5TE_00,
-
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&BN5DS_T),
     logo_image: Some(&BN5DS_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 /// The JP release, Rockman EXE 5 DS: Twin Leaders. Its own family, as
@@ -130,13 +125,9 @@ pub static EXE5DS: Game = Game {
     }),
 
     pvp: &ENGINE_PVP_A5TJ_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&BN5DS_T),
     logo_image: None,
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 /// Expands to this crate's per-locale Fluent fragments for `$fam` (bare
@@ -162,12 +153,20 @@ macro_rules! family_translations {
 pub static BN5DS_FAMILY: Family = Family {
     id: "bn5ds",
     games: &[&BN5DS],
+    match_types: MATCH_TYPES,
+    players_colored_by_seat: false,
+    #[cfg(feature = "ui")]
+    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("bn5ds"),
 };
 
 pub static EXE5DS_FAMILY: Family = Family {
     id: "exe5ds",
     games: &[&EXE5DS],
+    match_types: MATCH_TYPES,
+    players_colored_by_seat: false,
+    #[cfg(feature = "ui")]
+    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("exe5ds"),
 };
 

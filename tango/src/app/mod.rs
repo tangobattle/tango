@@ -751,7 +751,7 @@ impl App {
     /// and defensively inside `resend_settings_if_lobby`.
     fn apply_default_match_type(&mut self) {
         let Some(game) = self.loadout.game else { return };
-        let mt_table = game::from_gamedb_entry(game).map(|g| g.match_types).unwrap_or(&[]);
+        let mt_table = game::from_gamedb_entry(game).map(|g| g.family.match_types).unwrap_or(&[]);
         let family = game.family_and_variant().0;
         let family_changed = self.netplay.lobby.default_mt_for_family.as_deref() != Some(family);
         let (mode, sub) = self.netplay.lobby.match_type;

@@ -7,8 +7,15 @@
 //!   `region`) — formerly the `tango-gamedb` crate.
 //! - The save/ROM parsers (`parse_save_fn` / `load_rom_assets_fn`).
 //! - The PvP engine support ([`tango_backend_mgba::GameSupport`]).
-//! - The app-facing presentation bits (`match_types`, `save_templates`,
-//!   `logo_image`, `background`).
+//! - The app-facing presentation bits (`save_templates`, `logo_image`,
+//!   `background`).
+//!
+//! What the two versions of a family share sits on the [`Family`]
+//! instead — its `match_types`, `players_colored_by_seat` and
+//! `save_editor`. The family is what the app's pickers offer and what
+//! its per-family memories are keyed by, so a property that cannot
+//! differ between Gregar and Falzar is stated once, where it is asked
+//! for.
 //!
 //! Each `tango-gamesupport-<game>` crate builds the `&'static Game`
 //! registrations for its ROM revisions out of its own `dataview` and
@@ -162,15 +169,6 @@ pub struct Game {
     /// engine support, so it belongs to the engine support.
     pub pvp: &'static (dyn tango_match::Backend + Send + Sync),
 
-    /// Length-per-mode list. Entry `i` is how many subtypes mode `i` has —
-    /// e.g. BN6 is `[1, 1]`. Drives the match-type pick_list in the lobby.
-    pub match_types: &'static [usize],
-    /// Whether this game colors its players by *seat* rather than by
-    /// field half. The BN games put your own navi on the red half
-    /// whichever seat you take, so their panels lead with your side;
-    /// Battle Chip Challenge instead paints P1 red and P2 blue for both
-    /// players, and its panels follow that fixed order.
-    pub players_colored_by_seat: bool,
     /// Bundled save templates, lazily parsed on first access. `None`
     /// when this game has no save model to template.
     pub save_templates: Option<&'static SaveTemplates>,
@@ -179,19 +177,6 @@ pub struct Game {
     /// Pointer to the BNLC-hosted background TGA — `None` for a game
     /// with no BNLC release to borrow art from.
     pub background: Option<BackgroundRef>,
-
-    /// The game's save editor — a real, renderable [`save_editor::SaveEditor`]
-    /// (load / render / update; every shape behind it is opaque). Exists
-    /// only when this crate's `ui` feature is on — headless builds (the
-    /// pvp probes, engine hosts) have no field. A game crate built
-    /// alongside a `ui` consumer must have its own `ui` feature on to
-    /// initialize it (tango's `gamesupport-*` features pair the two);
-    /// mixing them is a missing-field error here, on purpose.
-    /// Every game has one — a netplay-only game points at the shared
-    /// empty editor, which renders the shell with no section tabs — so
-    /// embedders never need an editor-less path.
-    #[cfg(feature = "ui")]
-    pub save_editor: &'static dyn save_editor::SaveEditor,
 }
 
 impl Game {
@@ -264,6 +249,35 @@ pub struct Family {
     pub id: &'static str,
     /// The variants in this family (its `Game` registrations).
     pub games: &'static [GameRef],
+    /// Length-per-mode list. Entry `i` is how many subtypes mode `i` has —
+    /// e.g. BN6 is `[1, 1]`. Drives the match-type pick_list in the lobby.
+    ///
+    /// A family property, not a per-version one: the two versions of a
+    /// family offer the same modes, and the lobby's picker is offered
+    /// against the family.
+    pub match_types: &'static [usize],
+    /// Whether these games color their players by *seat* rather than by
+    /// field half. The BN games put your own navi on the red half
+    /// whichever seat you take, so their panels lead with your side;
+    /// Battle Chip Challenge instead paints P1 red and P2 blue for both
+    /// players, and its panels follow that fixed order.
+    pub players_colored_by_seat: bool,
+    /// The family's save editor — a real, renderable
+    /// [`save_editor::SaveEditor`] (load / render / update; every shape
+    /// behind it is opaque). Exists only when this crate's `ui` feature
+    /// is on — headless builds (the pvp probes, engine hosts) have no
+    /// field. A game crate built alongside a `ui` consumer must have its
+    /// own `ui` feature on to initialize it (tango's `gamesupport-*`
+    /// features pair the two); mixing them is a missing-field error
+    /// here, on purpose.
+    ///
+    /// Every family has one — a netplay-only family points at the shared
+    /// empty editor, which renders the shell with no section tabs — so
+    /// embedders never need an editor-less path. The editor reads the
+    /// save's own game info for anything version-specific, so one per
+    /// family is one per version too.
+    #[cfg(feature = "ui")]
+    pub save_editor: &'static dyn save_editor::SaveEditor,
     /// Per-locale Fluent fragments for this family, one `(lang, source)`
     /// entry per locale. Keys are *bare* (`name`, `short`,
     /// `variant-<n>`, `variant-<n>-short`, `match-type-<m>-<s>`,

@@ -63,16 +63,11 @@ pub static EXEOSS: Game = Game {
     }),
 
     pvp: &ENGINE_PVP_B6XJ_00,
-
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: None,
     logo_image: None,
     // No BNLC release to borrow art from — the remake never shipped in
     // the Legacy Collection.
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 /// Expands to this crate's per-locale Fluent fragments for `$fam` (bare
@@ -98,6 +93,10 @@ macro_rules! family_translations {
 pub static EXEOSS_FAMILY: Family = Family {
     id: "exeoss",
     games: &[&EXEOSS],
+    match_types: MATCH_TYPES,
+    players_colored_by_seat: false,
+    #[cfg(feature = "ui")]
+    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("exeoss"),
 };
 

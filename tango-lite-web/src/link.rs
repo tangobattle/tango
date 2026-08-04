@@ -279,7 +279,7 @@ fn apply_default_match_type() {
         let mut link = l.borrow_mut();
         let Some(game) = link.loadout.game else { return };
         // Entry `i` is how many subtypes mode `i` has; mode 1 is Triple.
-        let table = game.match_types;
+        let table = game.family.match_types;
         let family = game.family_and_variant().0;
 
         let family_changed = link.net.lobby.default_mt_for_family.as_deref() != Some(family);

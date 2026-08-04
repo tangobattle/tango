@@ -329,13 +329,9 @@ pub static EXE3W: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_A6BJ_01,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&WHITE_T),
     logo_image: Some(&EXE3W_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 pub static EXE3B: Game = Game {
@@ -355,13 +351,9 @@ pub static EXE3B: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_A3XJ_01,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&BLUE_T),
     logo_image: Some(&EXE3B_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 pub static BN3W: Game = Game {
@@ -381,13 +373,9 @@ pub static BN3W: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_A6BE_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&WHITE_T),
     logo_image: Some(&BN3W_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 pub static BN3B: Game = Game {
@@ -407,13 +395,9 @@ pub static BN3B: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_A3XE_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&BLUE_T),
     logo_image: Some(&BN3B_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 /// Expands to this crate's per-locale Fluent fragments for `$fam` (bare
@@ -439,12 +423,20 @@ macro_rules! family_translations {
 pub static EXE3_FAMILY: Family = Family {
     id: "exe3",
     games: &[&EXE3W, &EXE3B],
+    match_types: MATCH_TYPES,
+    players_colored_by_seat: false,
+    #[cfg(feature = "ui")]
+    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("exe3"),
 };
 
 pub static BN3_FAMILY: Family = Family {
     id: "bn3",
     games: &[&BN3W, &BN3B],
+    match_types: MATCH_TYPES,
+    players_colored_by_seat: false,
+    #[cfg(feature = "ui")]
+    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("bn3"),
 };
 

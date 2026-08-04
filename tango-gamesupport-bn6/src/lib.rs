@@ -94,13 +94,9 @@ pub static EXE6G: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_BR5J_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&EXE6G_T),
     logo_image: Some(&EXE6G_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 // ---------------- EXE6 Falzar JP (BR6J_00) ----------------
@@ -129,13 +125,9 @@ pub static EXE6F: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_BR6J_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&EXE6F_T),
     logo_image: Some(&EXE6F_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 // ---------------- BN6 Gregar US (BR5E_00) ----------------
@@ -164,13 +156,9 @@ pub static BN6G: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_BR5E_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&BN6G_T),
     logo_image: Some(&BN6G_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 // ---------------- BN6 Falzar US (BR6E_00) ----------------
@@ -199,13 +187,9 @@ pub static BN6F: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_BR6E_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&BN6F_T),
     logo_image: Some(&BN6F_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 /// Expands to this crate's per-locale Fluent fragments for `$fam` (bare
@@ -231,12 +215,20 @@ macro_rules! family_translations {
 pub static EXE6_FAMILY: Family = Family {
     id: "exe6",
     games: &[&EXE6G, &EXE6F],
+    match_types: MATCH_TYPES,
+    players_colored_by_seat: false,
+    #[cfg(feature = "ui")]
+    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("exe6"),
 };
 
 pub static BN6_FAMILY: Family = Family {
     id: "bn6",
     games: &[&BN6G, &BN6F],
+    match_types: MATCH_TYPES,
+    players_colored_by_seat: false,
+    #[cfg(feature = "ui")]
+    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("bn6"),
 };
 

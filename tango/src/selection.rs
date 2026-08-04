@@ -63,7 +63,7 @@ pub fn from_patched_rom(
     save: tango_gamesupport::BoxedSave,
     applied_patch: Option<AppliedPatch>,
 ) -> LoadedSave {
-    game.save_editor.load(game, rom, save_path, save, applied_patch)
+    game.family.save_editor.load(game, rom, save_path, save, applied_patch)
 }
 
 /// Build a [`LoadedSave`] for the local side of a replay — used by the

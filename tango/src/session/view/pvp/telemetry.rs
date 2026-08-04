@@ -605,7 +605,7 @@ pub(super) fn telemetry_overlay<'a>(
         use widgets::{FIELD_BLUE, FIELD_RED};
         let local_is_p1 = pvp.local_player_index() == 0;
         let (you, opponent) = (t!(lang, "play-you"), t!(lang, "play-opponent"));
-        let players = if pvp.local_game().players_colored_by_seat {
+        let players = if pvp.local_game().family.players_colored_by_seat {
             let (p1, p2) = if local_is_p1 {
                 (you, opponent)
             } else {

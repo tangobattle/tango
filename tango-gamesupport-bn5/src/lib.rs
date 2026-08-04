@@ -98,13 +98,9 @@ pub static EXE5B: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_BRBJ_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&EXE5B_T),
     logo_image: Some(&EXE5B_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 // ---------------- EXE5 Colonel JP ----------------
@@ -140,13 +136,9 @@ pub static EXE5C: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_BRKJ_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&EXE5C_T),
     logo_image: Some(&EXE5C_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 // ---------------- BN5 Protoman US ----------------
@@ -182,13 +174,9 @@ pub static BN5P: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_BRBE_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&BN5P_T),
     logo_image: Some(&BN5P_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 // ---------------- BN5 Colonel US ----------------
@@ -224,13 +212,9 @@ pub static BN5C: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_BRKE_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&BN5C_T),
     logo_image: Some(&BN5C_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 /// Expands to this crate's per-locale Fluent fragments for `$fam` (bare
@@ -256,12 +240,20 @@ macro_rules! family_translations {
 pub static EXE5_FAMILY: Family = Family {
     id: "exe5",
     games: &[&EXE5B, &EXE5C],
+    match_types: MATCH_TYPES,
+    players_colored_by_seat: false,
+    #[cfg(feature = "ui")]
+    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("exe5"),
 };
 
 pub static BN5_FAMILY: Family = Family {
     id: "bn5",
     games: &[&BN5P, &BN5C],
+    match_types: MATCH_TYPES,
+    players_colored_by_seat: false,
+    #[cfg(feature = "ui")]
+    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("bn5"),
 };
 

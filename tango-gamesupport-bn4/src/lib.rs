@@ -112,13 +112,9 @@ pub static EXE4RS: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_B4WJ_01,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&EXE4RS_T),
     logo_image: Some(&EXE4RS_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 // ---------------- EXE4 Blue Moon (JP) ----------------
@@ -162,13 +158,9 @@ pub static EXE4BM: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_B4BJ_01,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&EXE4BM_T),
     logo_image: Some(&EXE4BM_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 // ---------------- BN4 Red Sun (US) ----------------
@@ -212,13 +204,9 @@ pub static BN4RS: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_B4WE_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&BN4RS_T),
     logo_image: Some(&BN4RS_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 // ---------------- BN4 Blue Moon (US) ----------------
@@ -262,13 +250,9 @@ pub static BN4BM: Game = Game {
         )))
     }),
     pvp: &ENGINE_PVP_B4BE_00,
-    match_types: MATCH_TYPES,
-    players_colored_by_seat: false,
     save_templates: Some(&BN4BM_T),
     logo_image: Some(&BN4BM_LOGO),
     background: Some(BACKGROUND),
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
 };
 
 /// Expands to this crate's per-locale Fluent fragments for `$fam` (bare
@@ -294,12 +278,20 @@ macro_rules! family_translations {
 pub static EXE4_FAMILY: Family = Family {
     id: "exe4",
     games: &[&EXE4RS, &EXE4BM],
+    match_types: MATCH_TYPES,
+    players_colored_by_seat: false,
+    #[cfg(feature = "ui")]
+    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("exe4"),
 };
 
 pub static BN4_FAMILY: Family = Family {
     id: "bn4",
     games: &[&BN4RS, &BN4BM],
+    match_types: MATCH_TYPES,
+    players_colored_by_seat: false,
+    #[cfg(feature = "ui")]
+    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("bn4"),
 };
 

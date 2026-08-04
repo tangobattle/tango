@@ -265,6 +265,7 @@ fn MatchTypes(loadout: ReadSignal<Loadout>, selected: (u8, u8)) -> Element {
     };
     // Entry `i` is how many subtypes mode `i` has — e.g. BN6 is `[1, 1]`.
     let options: Vec<(u8, u8)> = game
+        .family
         .match_types
         .iter()
         .enumerate()

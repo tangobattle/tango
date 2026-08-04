@@ -572,7 +572,7 @@ impl<'a> Lobby<'a> {
             .into();
         };
         let game_impl = game::from_gamedb_entry(g);
-        let mt_table = game_impl.map(|gi| gi.match_types).unwrap_or(&[]);
+        let mt_table = game_impl.map(|gi| gi.family.match_types).unwrap_or(&[]);
         let mut options = Vec::new();
         for (mode, subtype_count) in mt_table.iter().enumerate() {
             for sub in 0..*subtype_count {
