@@ -47,10 +47,14 @@ static BN5DS_LOGO: LazyImage = LazyLock::new(|| image::load_from_memory(include_
 /// A dump's other blocks are only history (a stale generation of one
 /// file) and erased flash, and [`dataview::save::SaveSet::parse`]
 /// already reconstitutes a short dump by padding it back out, so the
-/// pairs are all that needs checking in. The template save itself is
-/// the cart's current file; the other rides along in the dump, where
-/// the editor's file picker reaches it. Both builds share it: saves
-/// cross regions (see [`parse_save`]), a US dump included.
+/// pairs are all that needs checking in. What the cart wore rather than
+/// wrote is normalized away with them: the generation counters are
+/// renumbered down to 1 and 2 (only their order decides which file is
+/// current), and the fill outside the image and the footer — flash the
+/// game neither reads nor checksums — is zeroed. The template save
+/// itself is the cart's current file; the other rides along in the
+/// dump, where the editor's file picker reaches it. Both builds share
+/// it: saves cross regions (see [`parse_save`]), a US dump included.
 static BN5DS_SAVE: LazyLock<dataview::save::Save> =
     LazyLock::new(|| dataview::save::SaveSet::parse(include_bytes!("saves/us.raw")).unwrap().current());
 static BN5DS_T: SaveTemplates = LazyLock::new(|| {
