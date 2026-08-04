@@ -283,6 +283,20 @@ pub struct Config {
     /// `iced::window::Settings::maximized` at startup.
     #[serde(default)]
     pub last_window_maximized: bool,
+    /// Safe mode for the geometry above: written just before the window
+    /// is built with it, cleared as soon as the window opens. Finding it
+    /// still set at startup means the previous launch died on the way to
+    /// its first frame — which a restored size can cause. The saved size
+    /// is *logical*, so the surface it asks for is that size times the
+    /// DPI scale of whatever monitor the window lands on: a window sized
+    /// on a 4K screen at 100% asks for an 8700×6672 surface when it
+    /// reopens on a 300%-scaled panel, past the 8192 px maximum texture
+    /// dimension, and `Surface::configure` answers that with a panic
+    /// rather than an error. Which monitor that will be is unknowable
+    /// before the window exists, so instead we notice the crash after
+    /// the fact and drop the geometry instead of looping on it.
+    #[serde(default)]
+    pub window_geometry_unverified: bool,
     /// Last *fullscreen* window position (logical pixels) — the
     /// monitor origin the window parks at while fullscreen. Updated on
     /// Moved events only while fullscreen, and restored as the startup
@@ -378,6 +392,7 @@ impl Default for Config {
             favorite_patches: std::collections::BTreeSet::new(),
             last_window_size: None,
             last_window_maximized: false,
+            window_geometry_unverified: false,
             last_window_position: None,
             fullscreen: false,
             ui_scale: default_ui_scale(),

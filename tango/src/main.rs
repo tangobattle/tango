@@ -343,6 +343,74 @@ fn load_window_icon() -> Option<iced::window::Icon> {
     iced::window::icon::from_rgba(img.into_raw(), w, h).ok()
 }
 
+/// The largest surface we can present, in physical pixels a side, and
+/// so the largest the window is allowed to get.
+///
+/// It's `wgpu::Limits::default()`'s `max_texture_dimension_2d`, which
+/// `iced_wgpu` hardcodes when it requests the device
+/// (`window/compositor.rs`) — not a hardware ceiling: the same adapters
+/// report 16384 (DX12) or 32768 (Vulkan) if you ask for their limits.
+/// Raising it here alone would do nothing; it takes an `iced_wgpu` that
+/// requests `adapter.limits()`, and then this should come from the
+/// adapter rather than being a constant. Until then a bigger surface is
+/// simply refused — and refused with a *panic* out of
+/// `Surface::configure`, which is why the window gets capped instead.
+///
+/// The app applies the cap once it knows the window's scale (see
+/// `App`'s `WindowScaleQueried`); here, before the window exists, we
+/// can only rule out sizes too big to work at *any* scale, since a
+/// surface is the window size times the monitor's DPI scale times
+/// `ui_scale`. The scale-dependent half of the problem is what
+/// [`restore_window_size`]'s breadcrumb is for.
+pub const MAX_SURFACE_SIZE: f32 = 8192.0;
+
+/// The size to open the window at, plus the bookkeeping that keeps a
+/// bad one from being fatal twice.
+///
+/// `last_window_size` is logical, so the surface it implies is that
+/// size times the DPI scale of whatever monitor the window opens on.
+/// A size that was perfectly good where it was saved — a 4K monitor at
+/// 100%, say — can therefore ask for a surface no GPU will configure
+/// when it's restored somewhere else: the same window on a 300%-scaled
+/// panel wants 8700×6672, past wgpu's 8192 px limit, and
+/// `Surface::configure` doesn't fail softly there, it panics before
+/// the app ever gets a frame. That leaves the size on disk and the app
+/// unlaunchable.
+///
+/// The monitor we'll land on can't be asked about from here (iced owns
+/// the event loop, and winit hands out monitors only through one), so
+/// we leave a breadcrumb instead: mark the geometry unverified on disk
+/// *before* handing it to the window, and let the app clear it once
+/// the window is actually up ([`app::App`]'s `Opened` handler). Still
+/// set on the next launch means the last one never got there, so the
+/// saved size is dropped rather than tried again.
+fn restore_window_size(config: &mut config::Config) -> (f32, f32) {
+    let (min_w, min_h) = MINIMUM_RESOLUTION;
+    let saved = if config.window_geometry_unverified {
+        log::warn!(
+            "the previous launch never opened its window at {:?} — falling back to the minimum size",
+            config.last_window_size
+        );
+        config.last_window_size = None;
+        None
+    } else {
+        config.last_window_size
+    };
+    config.window_geometry_unverified = true;
+    if let Err(e) = config.save() {
+        // Non-fatal: the launch proceeds, it just goes unguarded.
+        log::warn!("could not record the window geometry as unverified: {e}");
+    }
+    let (w, h) = saved.unwrap_or((min_w as f32, min_h as f32));
+    if !w.is_finite() || !h.is_finite() {
+        return (min_w as f32, min_h as f32);
+    }
+    (
+        w.clamp(min_w as f32, MAX_SURFACE_SIZE),
+        h.clamp(min_h as f32, MAX_SURFACE_SIZE),
+    )
+}
+
 fn run_app() -> iced::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
@@ -452,9 +520,9 @@ fn run_app() -> iced::Result {
     // reloads it for the rest of its state (cheap — JSON parse).
     // This double-load keeps the window-size restore self-contained
     // in main without threading a Config handle into App::new.
-    let geom_cfg = config::Config::load_or_create();
+    let mut geom_cfg = config::Config::load_or_create();
     let (min_w, min_h) = MINIMUM_RESOLUTION;
-    let (start_w, start_h) = geom_cfg.last_window_size.unwrap_or((min_w as f32, min_h as f32));
+    let (start_w, start_h) = restore_window_size(&mut geom_cfg);
     // Only restore the position for a fullscreen relaunch, where the
     // saved value is the last fullscreen monitor's origin — this keeps
     // a fullscreen Tango on its monitor across launches. Windowed

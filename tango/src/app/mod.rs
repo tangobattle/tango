@@ -1062,8 +1062,8 @@ pub enum Message {
     /// Discord-initiated join secret into the play link-code
     /// field.
     DiscordTick,
-    /// Raw window event (resize, move, etc.). Filtered in the
-    /// handler — only Resized currently triggers anything.
+    /// Raw window event (open, resize, move, etc.). Filtered in the
+    /// handler — only Opened / Resized / Moved trigger anything.
     Window(iced::window::Id, iced::window::Event),
     /// Result of an `iced::window::get_maximized` task spawned
     /// after a Resized event. Carries the resize-time size so the
@@ -1073,6 +1073,10 @@ pub enum Message {
         size: iced::Size,
         maximized: bool,
     },
+    /// Result of the `iced::window::scale_factor` query spawned when
+    /// the window opens — the monitor's DPI scale, which the handler
+    /// turns into the window's max size.
+    WindowScaleQueried { id: iced::window::Id, scale: f32 },
     /// Exit the application. Fired by the top bar's close button,
     /// which only renders in fullscreen — there's no OS title-bar X
     /// to reach for there (iced's fullscreen is borderless).
@@ -1280,6 +1284,27 @@ impl App {
             }
             Message::Window(id, ev) => {
                 match ev {
+                    iced::window::Event::Opened { .. } => {
+                        // The window came up, so the geometry we
+                        // launched with is presentable — disarm the
+                        // safe mode `main::restore_window_size` armed
+                        // on disk before the window was built.
+                        if self.config.window_geometry_unverified {
+                            self.config.window_geometry_unverified = false;
+                            self.persist_config();
+                        }
+                        // What this window's DPI scale is decides how
+                        // large it may get before its surface outgrows
+                        // the GPU — see `WindowScaleQueried`. Nothing
+                        // else about the opened size is second-guessed:
+                        // a window bigger than the monitor it landed on
+                        // is a legitimate thing to want (spanning two
+                        // displays, say), and the only size we're in a
+                        // position to refuse is one that can't be drawn
+                        // at all.
+                        return iced::window::scale_factor(id)
+                            .map(move |scale| Message::WindowScaleQueried { id, scale });
+                    }
                     iced::window::Event::Resized(size) => {
                         // The Resized size could be either a user-driven
                         // resize or the result of maximize/unmaximize.
@@ -1308,6 +1333,23 @@ impl App {
                     _ => {}
                 }
                 iced::Task::none()
+            }
+            Message::WindowScaleQueried { id, scale } => {
+                // Cap how big the window can get dragged. A surface is
+                // the window size in *physical* pixels, so on a wide
+                // enough desktop a drag-resize can walk it past what
+                // the GPU will configure — and that isn't an error the
+                // app gets to handle, it's a panic from inside wgpu.
+                // iced converts this cap back to physical with the
+                // same `scale × ui_scale` it reports sizes with, so
+                // what winit ends up enforcing is exactly
+                // `MAX_SURFACE_SIZE` physical pixels — which stays the
+                // right cap even if either scale changes later.
+                let (min_w, min_h) = crate::tabs::settings::MINIMUM_RESOLUTION;
+                let scale = (scale * self.config.ui_scale).max(0.01);
+                let cap = crate::MAX_SURFACE_SIZE / scale;
+                let max = iced::Size::new(cap.max(min_w as f32), cap.max(min_h as f32));
+                iced::window::set_max_size(id, Some(max))
             }
             Message::WindowMaximizedQueried { size, maximized } => {
                 if !maximized {
