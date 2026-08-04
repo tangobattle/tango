@@ -19,7 +19,11 @@ use crate::config;
 use futures::StreamExt;
 use tokio::io::AsyncWriteExt;
 
-const GITHUB_RELEASES_URL: &str = "https://api.github.com/repos/tangobattle/tango/releases";
+// `per_page` trims the cache-miss response; 10 is plenty, since we
+// only ever act on the newest release we can run (the page would have
+// to be all-prereleases-newer-than-latest-stable to hide anything
+// from a stable-channel user, and then only until the next stable).
+const GITHUB_RELEASES_URL: &str = "https://api.github.com/repos/tangobattle/tango/releases?per_page=10";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Release {
@@ -189,21 +193,44 @@ impl Updater {
         let allow_prerelease = self.allow_prerelease_upgrades;
 
         tokio::task::spawn(async move {
+            // ETag of the last poll we fully processed. GitHub honors
+            // If-None-Match with a 304 (which doesn't count against
+            // the rate limit either), so the steady-state check costs
+            // a header exchange instead of the whole release list.
+            // In-memory only: a fresh launch does one full fetch to
+            // repopulate status, which is what we want anyway.
+            let mut etag: Option<String> = None;
             'l: loop {
                 let res = async {
                     let client = reqwest::Client::new();
-                    let releases = tokio::time::timeout(std::time::Duration::from_secs(30), async {
-                        Ok::<_, anyhow::Error>(
-                            client
-                                .get(GITHUB_RELEASES_URL)
-                                .header("User-Agent", "tango")
-                                .send()
-                                .await?
-                                .json::<Vec<GithubReleaseInfo>>()
-                                .await?,
-                        )
+                    let resp = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+                        let mut req = client.get(GITHUB_RELEASES_URL).header("User-Agent", "tango");
+                        if let Some(etag) = etag.as_deref() {
+                            req = req.header("If-None-Match", etag);
+                        }
+                        Ok::<_, anyhow::Error>(req.send().await?)
                     })
                     .await??;
+
+                    // Nothing has changed since the last pass we fully
+                    // completed — including asset uploads, which are
+                    // part of the response body the ETag validates.
+                    if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
+                        return Ok(());
+                    }
+                    let resp = resp.error_for_status()?;
+
+                    let new_etag = resp
+                        .headers()
+                        .get(reqwest::header::ETAG)
+                        .and_then(|v| v.to_str().ok())
+                        .map(|s| s.to_owned());
+                    let releases = tokio::time::timeout(
+                        std::time::Duration::from_secs(30),
+                        resp.json::<Vec<GithubReleaseInfo>>(),
+                    )
+                    .await??;
+                    etag = new_etag;
 
                     // Pick the highest semver among non-prerelease
                     // (or all, if the user opted in).
@@ -300,6 +327,9 @@ impl Updater {
                 .await;
                 if let Err(e) = res {
                     log::warn!("updater failed: {e:?}");
+                    // A pass that died partway (e.g. mid-download)
+                    // must not be skipped by a 304 next cycle.
+                    etag = None;
                 }
 
                 tokio::select! {
