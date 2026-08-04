@@ -1306,6 +1306,17 @@ pub struct ChipsView<S> {
     save: S,
 }
 
+/// One folder chip slot, as the save stores it — the GBA game's packed
+/// id/code halfword unchanged.
+#[repr(transparent)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
+struct RawChip {
+    #[bitfield(name = "id", ty = "u16", bits = "0..=8")]
+    #[bitfield(name = "code", ty = "u16", bits = "9..=15")]
+    id_and_code: [u8; 2],
+}
+const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2);
+
 impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save::ChipsView for ChipsView<S> {
     fn num_folders(&self) -> usize {
         NUM_FOLDERS
@@ -1332,15 +1343,15 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
             return None;
         }
 
-        let raw = u16::from_le_bytes(
-            self.save.active()[FOLDER_OFFSET + (folder_index * self.folder_size() + chip_index) * 2..][..2]
-                .try_into()
-                .unwrap(),
+        let raw = bytemuck::pod_read_unaligned::<RawChip>(
+            &self.save.active()[FOLDER_OFFSET
+                + (folder_index * self.folder_size() + chip_index) * std::mem::size_of::<RawChip>()..]
+                [..std::mem::size_of::<RawChip>()],
         );
 
         Some(tango_gamesupport_common::dataview::save::Chip {
-            id: (raw & 0x1ff) as usize,
-            code: num_traits::FromPrimitive::from_u16(raw >> 9)?,
+            id: raw.id() as usize,
+            code: num_traits::FromPrimitive::from_u16(raw.code())?,
         })
     }
 
@@ -1388,9 +1399,15 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::s
         if folder_index >= NUM_FOLDERS || chip_index >= 30 || chip.id > 0x1ff {
             return false;
         }
-        let raw = chip.id as u16 | ((chip.code as u16) << 9);
-        self.save.active_mut()[FOLDER_OFFSET + (folder_index * 30 + chip_index) * 2..][..2]
-            .copy_from_slice(&raw.to_le_bytes());
+        self.save.active_mut()
+            [FOLDER_OFFSET + (folder_index * 30 + chip_index) * std::mem::size_of::<RawChip>()..]
+            [..std::mem::size_of::<RawChip>()]
+            .copy_from_slice(bytemuck::bytes_of(&{
+                let mut raw = RawChip::default();
+                raw.set_id(chip.id as u16);
+                raw.set_code(chip.code as u16);
+                raw
+            }));
         true
     }
 
@@ -1400,7 +1417,10 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::s
         }
         // 0xffff reads back as an invalid code, so `chip()` returns
         // None — i.e. an empty slot.
-        self.save.active_mut()[FOLDER_OFFSET + (folder_index * 30 + chip_index) * 2..][..2].fill(0xff);
+        self.save.active_mut()
+            [FOLDER_OFFSET + (folder_index * 30 + chip_index) * std::mem::size_of::<RawChip>()..]
+            [..std::mem::size_of::<RawChip>()]
+            .fill(0xff);
         true
     }
 
