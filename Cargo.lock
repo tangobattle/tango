@@ -4460,7 +4460,7 @@ dependencies = [
 [[package]]
 name = "melonds-rollback"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rollback#517ace9e559061d827b7c02c817c3f0935a2c5fa"
+source = "git+https://github.com/tangobattle/melonds-rollback#f6c6eeab7ae67db305b5726dd136452ff51d955f"
 dependencies = [
  "getgud",
  "melonds",
