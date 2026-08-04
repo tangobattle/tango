@@ -644,17 +644,17 @@ impl<'a> Lobby<'a> {
         // pre-failure state looked.
         let msg = if self.failed() { None } else { msg };
         // The width is pinned by a transparent ghost of the current
-        // locale's widest label (char count is a fair width proxy
-        // within a single script), so toggling Ready → Unready →
+        // locale's widest label, so toggling Ready → Unready →
         // Starting… never shifts the bar — and the button is never
-        // wider than its longest state actually needs.
+        // wider than its longest state actually needs. Widest is
+        // measured rather than counted (see [`label_width`]).
         let widest = [
             t!(lang, "lobby-ready"),
             t!(lang, "lobby-unready"),
             t!(lang, "lobby-match-starting"),
         ]
         .into_iter()
-        .max_by_key(|s| s.chars().count())
+        .max_by(|a, b| label_width(a, READY_TEXT).total_cmp(&label_width(b, READY_TEXT)))
         .unwrap_or_default();
         let ghost_style = |_: &iced::Theme| iced::widget::text::Style {
             color: Some(iced::Color::TRANSPARENT),
@@ -685,6 +685,35 @@ impl<'a> Lobby<'a> {
         }
         btn.into()
     }
+}
+
+/// How wide `content` renders at `size`, shaped the way the `text`
+/// widget will shape it: same font (the app's default), same shaping
+/// strategy, no wrapping.
+///
+/// Character count is not this width once a locale leaves Latin, which
+/// is what the Ready button's ghost used to size itself by: Japanese
+/// spells its three labels 準備完了 / 取消 / 開始中…, and a count reads
+/// the first and the last as four apiece — but an ellipsis is about
+/// half a kanji wide, so the ghost came out on 開始中… three pixels
+/// narrower than 準備完了, and the Ready label wrapped inside its own
+/// button. Chinese lands the same way (取消准备 against 开始中…).
+fn label_width(content: &str, size: f32) -> f32 {
+    use iced::advanced::text::Paragraph as _;
+
+    iced_graphics::text::Paragraph::with_text(iced::advanced::Text {
+        content,
+        bounds: iced::Size::INFINITE,
+        size: size.into(),
+        line_height: iced::advanced::text::LineHeight::default(),
+        font: style::DEFAULT_FONT,
+        align_x: iced::advanced::text::Alignment::Default,
+        align_y: iced::alignment::Vertical::Top,
+        shaping: iced::advanced::text::Shaping::default(),
+        wrapping: iced::advanced::text::Wrapping::None,
+    })
+    .min_bounds()
+    .width
 }
 
 /// Where the lobby is in its lifecycle — derived once per frame by
@@ -904,5 +933,35 @@ struct MatchTypeOption {
 impl std::fmt::Display for MatchTypeOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.label)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The app's own fonts, in the shaper the measurement reads —
+    /// otherwise a headless box measures whatever it happens to have
+    /// for kanji, or nothing at all.
+    fn load_fonts() {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| {
+            let mut fonts = iced_graphics::text::font_system().write().unwrap();
+            fonts.load_font(std::borrow::Cow::Borrowed(crate::FONT_NOTO_SANS));
+            fonts.load_font(std::borrow::Cow::Borrowed(crate::FONT_NOTO_SANS_JP));
+        });
+    }
+
+    #[test]
+    fn the_widest_label_is_not_the_longest_one() {
+        load_fonts();
+        // The Japanese Ready and Starting… labels: four characters
+        // each, and the first is the wider of the two. Sizing the
+        // Ready button's ghost by character count picked the other
+        // one and wrapped Ready inside its own button.
+        let ready = "準備完了";
+        let starting = "開始中…";
+        assert_eq!(ready.chars().count(), starting.chars().count());
+        assert!(label_width(ready, 16.0) > label_width(starting, 16.0));
     }
 }
