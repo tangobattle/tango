@@ -134,6 +134,36 @@ impl Save {
             &self.buf[self.navi_stats_offset(id)..][..std::mem::size_of::<RawNaviStats>()],
         )
     }
+
+    /// MegaMan's karma: 0 fully dark, [`KARMA_MAX`] fully light. The
+    /// bundled dark templates carry 0 and the light ones 1000, which is
+    /// the whole of what separates them beyond the HP the counter at
+    /// [`DARK_HP_LOSSES_OFFSET`] has docked.
+    pub fn karma(&self) -> u16 {
+        self.navi_stats(0).karma
+    }
+
+    /// Set MegaMan's karma, clamped the way the game keeps it, and
+    /// bring the anti-tamper mirror along — see [`KARMA_MIRROR_OFFSET`].
+    pub fn set_karma(&mut self, karma: u16) {
+        let karma = karma.min(KARMA_MAX);
+        let key = bytemuck::pod_read_unaligned::<u32>(&self.buf[KARMA_KEY_OFFSET..][..4]);
+        let at = self.navi_stats_offset(0) + std::mem::offset_of!(RawNaviStats, karma);
+        self.buf[at..][..2].copy_from_slice(&karma.to_le_bytes());
+        self.buf[KARMA_MIRROR_OFFSET..][..4].copy_from_slice(&(karma as u32 ^ key).to_le_bytes());
+    }
+
+    /// How much max HP Dark Chip use has cost this save — see
+    /// [`DARK_HP_LOSSES_OFFSET`]. The HP itself is the stats blocks'
+    /// business; this is only the counter the game stops docking at.
+    pub fn dark_hp_losses(&self) -> u16 {
+        bytemuck::pod_read_unaligned::<u16>(&self.buf[DARK_HP_LOSSES_OFFSET..][..2])
+    }
+
+    /// Set the Dark Chip HP-loss counter.
+    pub fn set_dark_hp_losses(&mut self, losses: u16) {
+        self.buf[DARK_HP_LOSSES_OFFSET..][..2].copy_from_slice(&losses.to_le_bytes());
+    }
 }
 
 #[repr(C)]
@@ -145,13 +175,38 @@ struct RawNaviStats {
     /// Current HP.
     current_hp: u16,
     effective_max_hp: u16,
-    /// 0x06..0x60, unmapped.
-    _rest: [u8; 0x5a],
+    /// MegaMan's karma in slot 0 (0 fully dark, 1000 fully light — see
+    /// [`Save::karma`]); link navis leave it alone.
+    karma: u16,
+    /// 0x08..0x60, unmapped.
+    _rest: [u8; 0x58],
 }
 const _: () = assert!(std::mem::size_of::<RawNaviStats>() == 0x60);
 const _: () = assert!(std::mem::offset_of!(RawNaviStats, base_max_hp) == 0x00);
 const _: () = assert!(std::mem::offset_of!(RawNaviStats, current_hp) == 0x02);
 const _: () = assert!(std::mem::offset_of!(RawNaviStats, effective_max_hp) == 0x04);
+const _: () = assert!(std::mem::offset_of!(RawNaviStats, karma) == 0x06);
+
+/// Where the karma clamp stops: fully light.
+pub const KARMA_MAX: u16 = 1000;
+
+/// Karma's anti-tamper mirror: a u32 the game keeps equal to
+/// `karma ^ key`, with the key the u32 at [`KARMA_KEY_OFFSET`]. The
+/// game's own writer/verifier pair (US Protoman `0x080064d8` /
+/// `0x080064f2`, reached through the record getter at `0x08010dc8`)
+/// reads karma out of navi record 0 at `+0x44`, XORs the key over it
+/// and keeps the result here, at the head of the save's last section —
+/// so a karma write has to land in both places or the save reads as
+/// tampered.
+const KARMA_MIRROR_OFFSET: usize = 0x61e0;
+const KARMA_KEY_OFFSET: usize = 0x2338;
+
+/// How many times using Dark Chips has cost the save a point of max
+/// HP: a u16 at `+0x16` of the section at 0x29ac. The game bumps it
+/// after a dark battle until it reaches 499 and docks base max HP by
+/// one alongside, which is why a dark save's MegaMan reads 1000 minus
+/// this.
+const DARK_HP_LOSSES_OFFSET: usize = 0x29c2;
 
 impl tango_gamesupport_common::dataview::save::Save for Save {
     fn view_chips(&self) -> Option<Box<dyn tango_gamesupport_common::dataview::save::ChipsView + '_>> {
@@ -799,5 +854,38 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::s
     fn set_navi(&mut self, navi: usize) -> bool {
         self.save.buf[0x2941] = navi as u8;
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Karma reads off navi record 0, and a write keeps the anti-tamper
+    /// mirror equal to `karma ^ key` — the relation the game verifies.
+    #[test]
+    fn karma_round_trips_with_its_mirror() {
+        let mut buf = vec![0u8; SAVE_SIZE];
+        buf[KARMA_KEY_OFFSET..][..4].copy_from_slice(&0x0800_0000u32.to_le_bytes());
+        let mut save = Save::from_wram(
+            &buf,
+            GameInfo {
+                region: Region::US,
+                variant: Variant::Protoman,
+            },
+        )
+        .unwrap();
+
+        save.set_karma(1000);
+        assert_eq!(save.karma(), 1000);
+        let mirror = bytemuck::pod_read_unaligned::<u32>(&save.buf[KARMA_MIRROR_OFFSET..][..4]);
+        assert_eq!(mirror, 0x0800_0000 ^ 1000);
+
+        // The clamp is the game's own.
+        save.set_karma(u16::MAX);
+        assert_eq!(save.karma(), KARMA_MAX);
+
+        save.set_dark_hp_losses(3);
+        assert_eq!(save.dark_hp_losses(), 3);
     }
 }

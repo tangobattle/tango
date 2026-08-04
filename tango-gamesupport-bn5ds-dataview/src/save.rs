@@ -166,6 +166,38 @@ const NAVI_STATS_INTO_RECORD: usize = NAVI_STATS_OFFSET - NAVI_RECORD_OFFSET;
 /// How many navis the record array holds: MegaMan and both teams' six.
 pub const NUM_NAVIS: usize = 13;
 
+/// MegaMan's karma, a u16 at record 0 `+0x44` — two bytes past the HP
+/// triple. 0 is fully dark, [`KARMA_MAX`] fully light.
+///
+/// Read out of the ARM9: the alignment-tier getter at US `0x020081c4`
+/// reads this halfword through the record accessor and banks it against
+/// 1000/500/470 (light at the cap, darker tiers below), and the game's
+/// own adjustments clamp it to 0..=1000 (US `0x02008104`). The GBA game
+/// keeps the same field at the same distance into its own record 0,
+/// which is where its bundled dark/light template saves differ.
+const KARMA_INTO_RECORD: usize = 0x44;
+
+/// Where the karma clamp stops: fully light.
+pub const KARMA_MAX: u16 = 1000;
+
+/// Karma's anti-tamper mirror: a u32 the game keeps equal to
+/// `karma ^ key`, with the key another u32 the save carries. The GBA
+/// game writes and verifies the same pair (US Protoman `0x080064d8` /
+/// `0x080064f2`: read record 0 `+0x44`, XOR the key, store into its
+/// last save section), and this cart's played files hold exactly that
+/// relation at these offsets — so a karma write has to land in both
+/// places or the file reads as tampered.
+const KARMA_MIRROR_OFFSET: usize = 0x5a3c;
+const KARMA_KEY_OFFSET: usize = 0x3ac4;
+
+/// How many times using Dark Chips has cost the file a point of max HP:
+/// a u16 at `+0x16` of the image's second section, the same distance
+/// into it the GBA game keeps its own counter. The ARM9's penalty
+/// routine (US `0x02008124`) bumps it after a dark battle while it is
+/// under 499 and docks base max HP by one alongside — which is why a
+/// fully-played dark file's MegaMan reads 1000 minus this.
+pub const DARK_HP_LOSSES_OFFSET: usize = 0x7e;
+
 /// Which GBA-slot cross the player brings, at record 0 `+0x4c` — the
 /// byte the game's own file select writes when it finds a cartridge in
 /// the DS's GBA slot and the player accepts it. See [`Cross`] for the
@@ -962,6 +994,52 @@ impl Save {
     /// game's own Navi Change screens put on the navi's card.
     pub fn navi_hp(&self, id: usize) -> u16 {
         self.navi_stats(id).map(|[_, _, effective]| effective).unwrap_or(0)
+    }
+
+    /// Set navi `id`'s HP: base and current take `hp`, and the
+    /// effective figure re-folds whatever the PARTY CUSTOMIZER adds,
+    /// the way [`write_partycust_bonus`](Save::write_partycust_bonus)
+    /// keeps it. Refuses an id past the roster.
+    pub fn set_navi_hp(&mut self, id: usize, hp: u16) -> bool {
+        if id >= NUM_NAVIS {
+            return false;
+        }
+        let effective = hp.saturating_add(self.partycust_bonus(id).max_hp);
+        let stats = NAVI_RECORD_OFFSET + id * NAVI_RECORD_SIZE + NAVI_STATS_INTO_RECORD;
+        for (at, value) in [(0, hp), (2, hp), (4, effective)] {
+            self.active_mut()[stats + at..][..2].copy_from_slice(&value.to_le_bytes());
+        }
+        true
+    }
+
+    /// MegaMan's karma — see [`KARMA_INTO_RECORD`].
+    pub fn karma(&self) -> u16 {
+        u16::from_le_bytes(
+            self.active()[NAVI_RECORD_OFFSET + KARMA_INTO_RECORD..][..2]
+                .try_into()
+                .unwrap(),
+        )
+    }
+
+    /// Set MegaMan's karma, clamped the way the game keeps it, and
+    /// bring the anti-tamper mirror along — see [`KARMA_MIRROR_OFFSET`].
+    pub fn set_karma(&mut self, karma: u16) {
+        let karma = karma.min(KARMA_MAX);
+        let key = u32::from_le_bytes(self.active()[KARMA_KEY_OFFSET..][..4].try_into().unwrap());
+        self.active_mut()[NAVI_RECORD_OFFSET + KARMA_INTO_RECORD..][..2].copy_from_slice(&karma.to_le_bytes());
+        self.active_mut()[KARMA_MIRROR_OFFSET..][..4].copy_from_slice(&(karma as u32 ^ key).to_le_bytes());
+    }
+
+    /// How much max HP Dark Chip use has cost this file — see
+    /// [`DARK_HP_LOSSES_OFFSET`]. The HP itself is the records'
+    /// business; this is only the counter the game stops docking at.
+    pub fn dark_hp_losses(&self) -> u16 {
+        u16::from_le_bytes(self.active()[DARK_HP_LOSSES_OFFSET..][..2].try_into().unwrap())
+    }
+
+    /// Set the Dark Chip HP-loss counter.
+    pub fn set_dark_hp_losses(&mut self, losses: u16) {
+        self.active_mut()[DARK_HP_LOSSES_OFFSET..][..2].copy_from_slice(&losses.to_le_bytes());
     }
 
     /// What the PARTY CUSTOMIZER has given navi `id`. All zeroes for a
@@ -1943,6 +2021,57 @@ mod tests {
         assert_eq!(save.view_navi().unwrap().max_hp(&assets), 777);
         assert!(save.view_navicust().is_none());
         assert!(save.view_navicust_mut().is_none());
+    }
+
+    /// Karma reads off record 0, and a write keeps the anti-tamper
+    /// mirror equal to `karma ^ key` — the relation the game verifies.
+    #[test]
+    fn karma_round_trips_with_its_mirror() {
+        let mut data = plausible();
+        data[KARMA_KEY_OFFSET..][..4].copy_from_slice(&0x080e_ea40u32.to_le_bytes());
+        data[NAVI_RECORD_OFFSET + KARMA_INTO_RECORD..][..2].copy_from_slice(&1000u16.to_le_bytes());
+        data[KARMA_MIRROR_OFFSET..][..4].copy_from_slice(&(0x080e_ea40u32 ^ 1000).to_le_bytes());
+
+        let mut save = SaveSet::parse(&data).unwrap().current();
+        assert_eq!(save.karma(), 1000);
+
+        save.set_karma(0);
+        assert_eq!(save.karma(), 0);
+        let mirror = u32::from_le_bytes(save.active()[KARMA_MIRROR_OFFSET..][..4].try_into().unwrap());
+        assert_eq!(mirror, 0x080e_ea40);
+
+        // The clamp is the game's own.
+        save.set_karma(u16::MAX);
+        assert_eq!(save.karma(), KARMA_MAX);
+        let mirror = u32::from_le_bytes(save.active()[KARMA_MIRROR_OFFSET..][..4].try_into().unwrap());
+        assert_eq!(mirror, 0x080e_ea40 ^ KARMA_MAX as u32);
+    }
+
+    #[test]
+    fn dark_hp_losses_round_trip() {
+        let mut save = SaveSet::parse(&plausible()).unwrap().current();
+        assert_eq!(save.dark_hp_losses(), 0);
+        save.set_dark_hp_losses(3);
+        assert_eq!(save.dark_hp_losses(), 3);
+    }
+
+    /// Setting a navi's HP lands in all three record fields, with the
+    /// customizer's grant folded back into the effective figure.
+    #[test]
+    fn set_navi_hp_refolds_the_partycust_grant() {
+        let mut save = SaveSet::parse(&plausible()).unwrap().current();
+        assert!(save.set_navi_hp(0, 997));
+        let stats = NAVI_RECORD_OFFSET + NAVI_STATS_INTO_RECORD;
+        for at in [0, 2, 4] {
+            let read = u16::from_le_bytes(save.active()[stats + at..][..2].try_into().unwrap());
+            assert_eq!(read, 997);
+        }
+
+        let record = NAVI_RECORD_OFFSET + 2 * NAVI_RECORD_SIZE;
+        save.active_mut()[record + PARTYCUST_MAX_HP_INTO_RECORD..][..2].copy_from_slice(&100u16.to_le_bytes());
+        assert!(save.set_navi_hp(2, 500));
+        assert_eq!(save.navi_hp(2), 600);
+        assert!(!save.set_navi_hp(NUM_NAVIS, 500));
     }
 
     /// The folder's limits: the class caps move with the command line's

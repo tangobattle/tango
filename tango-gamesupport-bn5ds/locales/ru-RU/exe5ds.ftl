@@ -6,3 +6,5 @@ match-type-0-0 = Одиночная (командная)
 match-type-0-1 = Одиночная
 match-type-1-0 = Тройная (командная)
 match-type-1-1 = Тройная
+save-dark = Dark
+save-light = Light

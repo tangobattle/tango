@@ -6,3 +6,5 @@ match-type-0-0 = シングル（チーム）
 match-type-0-1 = シングル
 match-type-1-0 = トリプル（チーム）
 match-type-1-1 = トリプル
+save-dark = 完全な悪
+save-light = 善

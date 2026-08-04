@@ -6,3 +6,5 @@ match-type-0-0 = 一局（組隊）
 match-type-0-1 = 一局
 match-type-1-0 = 三局（組隊）
 match-type-1-1 = 三局
+save-dark = 完全惡
+save-light = 善

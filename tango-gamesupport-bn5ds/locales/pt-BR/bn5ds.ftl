@@ -6,3 +6,5 @@ match-type-0-0 = Única (em equipe)
 match-type-0-1 = Única
 match-type-1-0 = Tripla (em equipe)
 match-type-1-1 = Tripla
+save-dark = DarkMega
+save-light = LightMega

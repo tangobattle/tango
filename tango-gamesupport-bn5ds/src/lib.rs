@@ -42,7 +42,7 @@ static ENGINE_PVP_A5TJ_00: tango_backend_melonds::DsBackend = tango_backend_melo
 
 static BN5DS_LOGO: LazyImage = LazyLock::new(|| image::load_from_memory(include_bytes!("logos/bn5ds-0.png")).unwrap());
 
-/// The bundled template: a finished US cartridge, stripped to its two
+/// The bundled cartridge: a finished US cart, stripped to its two
 /// files' live block pairs — one file per team, both stories cleared.
 /// A dump's other blocks are only history (a stale generation of one
 /// file) and erased flash, and [`dataview::save::SaveSet::parse`]
@@ -51,17 +51,42 @@ static BN5DS_LOGO: LazyImage = LazyLock::new(|| image::load_from_memory(include_
 /// wrote is normalized away with them: the generation counters are
 /// renumbered down to 1 and 2 (only their order decides which file is
 /// current), and the fill outside the image and the footer — flash the
-/// game neither reads nor checksums — is zeroed. The template save
+/// game neither reads nor checksums — is zeroed. A template save
 /// itself is the cart's current file; the other rides along in the
 /// dump, where the editor's file picker reaches it. Both builds share
-/// it: saves cross regions (see [`parse_save`]), a US dump included.
-static BN5DS_SAVE: LazyLock<dataview::save::Save> =
+/// them: saves cross regions (see [`parse_save`]), a US dump included.
+///
+/// The templates come in the GBA games' own pair: this cart never
+/// darkened, so it is the "light" template as it stands (karma at the
+/// cap, no HP docked), and "dark" is the same cart with every file
+/// turned the way the GBA dark templates read — karma 0, and the three
+/// HP-loss battles their MegaMan carries.
+static BN5DS_LIGHT: LazyLock<dataview::save::Save> =
     LazyLock::new(|| dataview::save::SaveSet::parse(include_bytes!("saves/us.raw")).unwrap().current());
+static BN5DS_DARK: LazyLock<dataview::save::Save> = LazyLock::new(|| {
+    use tango_gamesupport_common::dataview::save::Save as _;
+    let mut data = include_bytes!("saves/us.raw").to_vec();
+    for slot in dataview::save::SaveSet::parse(&data).unwrap().slots() {
+        let mut save = dataview::save::SaveSet::parse(&data).unwrap().save(slot).unwrap();
+        save.set_karma(0);
+        save.set_dark_hp_losses(3);
+        save.set_navi_hp(0, 1000 - 3);
+        save.rebuild_checksum();
+        data = save.to_sram_dump();
+    }
+    dataview::save::SaveSet::parse(&data).unwrap().current()
+});
 static BN5DS_T: SaveTemplates = LazyLock::new(|| {
-    vec![(
-        "",
-        tango_gamesupport_common::dataview::wrap_save(Box::new(BN5DS_SAVE.clone())),
-    )]
+    vec![
+        (
+            "dark",
+            tango_gamesupport_common::dataview::wrap_save(Box::new(BN5DS_DARK.clone())),
+        ),
+        (
+            "light",
+            tango_gamesupport_common::dataview::wrap_save(Box::new(BN5DS_LIGHT.clone())),
+        ),
+    ]
 });
 
 /// The cartridge's saves, identified so one can be picked before a
@@ -172,3 +197,31 @@ pub static EXE5DS_FAMILY: Family = Family {
 
 /// Every game family this crate provides.
 pub static FAMILIES: &[&Family] = &[&EXE5DS_FAMILY, &BN5DS_FAMILY];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The dark template is the bundled cart with every file turned the
+    /// way the GBA dark templates read; the light one is the cart as it
+    /// stands. See [`BN5DS_LIGHT`].
+    #[test]
+    fn templates_split_on_karma() {
+        use tango_gamesupport_common::dataview::save::Save as _;
+        for save in [&*BN5DS_LIGHT, &*BN5DS_DARK] {
+            let dump = save.to_sram_dump();
+            let set = dataview::save::SaveSet::parse(&dump).unwrap();
+            for slot in set.slots() {
+                let file = set.save(slot).unwrap();
+                if std::ptr::eq(save, &*BN5DS_DARK) {
+                    assert_eq!((file.karma(), file.dark_hp_losses(), file.navi_hp(0)), (0, 3, 997));
+                } else {
+                    assert_eq!(
+                        (file.karma(), file.dark_hp_losses(), file.navi_hp(0)),
+                        (dataview::save::KARMA_MAX, 0, 1000)
+                    );
+                }
+            }
+        }
+    }
+}

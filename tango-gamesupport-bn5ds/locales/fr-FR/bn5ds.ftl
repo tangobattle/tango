@@ -6,3 +6,5 @@ match-type-0-0 = Une (équipe)
 match-type-0-1 = Une
 match-type-1-0 = Trois (équipe)
 match-type-1-1 = Trois
+save-dark = Dark
+save-light = Light

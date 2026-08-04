@@ -6,3 +6,5 @@ match-type-0-0 = Enkelvoudig (team)
 match-type-0-1 = Enkelvoudig
 match-type-1-0 = Driedubbel (team)
 match-type-1-1 = Driedubbel
+save-dark = Dark
+save-light = Light

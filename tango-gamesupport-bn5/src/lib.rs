@@ -260,3 +260,24 @@ pub static BN5_FAMILY: Family = Family {
 /// Every game family this crate provides. The app aggregates the
 /// `FAMILIES` of the enabled crates into its registry + localizer.
 pub static FAMILIES: &[&Family] = &[&EXE5_FAMILY, &BN5_FAMILY];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What separates a bundled dark template from its light twin is
+    /// the karma system's state: karma bottomed out vs. at the cap,
+    /// with the three HP-loss battles the dark saves carry.
+    #[test]
+    fn templates_split_on_karma() {
+        for (dark, light) in [
+            (&EXE5B_DARK, &EXE5B_LIGHT),
+            (&EXE5C_DARK, &EXE5C_LIGHT),
+            (&BN5P_DARK, &BN5P_LIGHT),
+            (&BN5C_DARK, &BN5C_LIGHT),
+        ] {
+            assert_eq!((dark.karma(), dark.dark_hp_losses()), (0, 3));
+            assert_eq!((light.karma(), light.dark_hp_losses()), (dataview::save::KARMA_MAX, 0));
+        }
+    }
+}
