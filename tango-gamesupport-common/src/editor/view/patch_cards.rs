@@ -103,9 +103,11 @@ fn patch_card56_cells<'a, M: 'static>(
     }
     [
         container(name_col).width(Length::Fill).into(),
-        // Fixed-width parameter / ability columns, matching the read-only viewer.
-        container(param_col).width(Length::Fixed(180.0)).into(),
-        container(ability_col).width(Length::Fixed(180.0)).into(),
+        // Fixed-width parameter / ability columns, matching the read-only
+        // viewer. The badges inside fill them, so their edges line up down
+        // the list instead of going ragged with the effect names.
+        container(param_col).width(Length::Fixed(BADGE_COLUMN_WIDTH)).into(),
+        container(ability_col).width(Length::Fixed(BADGE_COLUMN_WIDTH)).into(),
     ]
 }
 

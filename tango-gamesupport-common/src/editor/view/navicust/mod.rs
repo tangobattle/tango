@@ -343,8 +343,12 @@ fn navicust_installed_parts<M: 'static>(
     v: &dyn crate::dataview::save::NavicustView,
 ) -> Option<Element<'static, M>> {
     let assets = loaded.assets.as_ref();
-    let mut solid_col = column![].spacing(4);
-    let mut plus_col = column![].spacing(4);
+    // Same fixed column width the patch-card effect columns use, so the
+    // badges — which fill their column — span a definite width rather
+    // than collapsing to nothing (a column of only fluid children has no
+    // sibling to size against).
+    let mut solid_col = column![].spacing(4).width(Length::Fixed(BADGE_COLUMN_WIDTH));
+    let mut plus_col = column![].spacing(4).width(Length::Fixed(BADGE_COLUMN_WIDTH));
     let mut any = false;
     for i in 0..v.count() {
         let Some(part) = v.navicust_part(i) else { continue };
@@ -359,7 +363,7 @@ fn navicust_installed_parts<M: 'static>(
             iced::Color::from_rgb8(0x88, 0x88, 0x88),
         ));
         let bg = if is_solid { solid_color } else { plus_color };
-        let badge_el = colored_badge_sized(part_name, bg, iced::Color::BLACK, TEXT_BODY, [3.0, 8.0]);
+        let badge_el = colored_badge_sized(part_name, bg, iced::Color::BLACK, TEXT_BODY, [3.0, 8.0], Fill);
         let badge_el: Element<'static, M> = if let Some(desc) = description {
             tooltip(
                 badge_el,
@@ -379,97 +383,6 @@ fn navicust_installed_parts<M: 'static>(
         }
     }
     any.then(|| row![solid_col, plus_col].spacing(12).into())
-}
-
-/// The viewer's installed-parts panel, shown beside the grid: one row
-/// per part with its shape thumbnail (bounding-box crop, native pixel
-/// scale), its name badge, and its description inline. Solid parts
-/// first, then plus parts, keeping slot order within each group — the
-/// same ordering the badge strip used. `None` when nothing is
-/// installed.
-fn navicust_parts_panel<M: 'static>(
-    loaded: &OpenSave,
-    v: &dyn crate::dataview::save::NavicustView,
-) -> Option<Element<'static, M>> {
-    let assets = loaded.assets.as_ref();
-    let mut solid_rows: Vec<Element<'static, M>> = vec![];
-    let mut plus_rows: Vec<Element<'static, M>> = vec![];
-    for i in 0..v.count() {
-        let Some(part) = v.navicust_part(i) else { continue };
-        let Some(info) = assets.navicust_part(part.id) else {
-            continue;
-        };
-        let part_name = info.name().unwrap_or_else(|| format!("#{}", part.id));
-        let is_solid = info.is_solid();
-        let (solid_color, plus_color) = info.color().map(ncp_colors).unwrap_or((
-            iced::Color::from_rgb8(0xbd, 0xbd, 0xbd),
-            iced::Color::from_rgb8(0x88, 0x88, 0x88),
-        ));
-        let bg = if is_solid { solid_color } else { plus_color };
-
-        // Shape thumb at its native baked scale (8 px per cell), centered
-        // in a fixed box so the name column lines up across rows. The
-        // largest shapes (5+ cells on a side) scale down to fit. Baked per
-        // installed slot at the part's actual rotation + compression, so the
-        // thumb matches how the part sits in the grid.
-        const THUMB_BOX: f32 = 40.0;
-        let thumb: Element<'static, M> = loaded
-            .navicust_installed_part_thumbs
-            .get(i)
-            .and_then(|o| o.clone())
-            .map(|(w, h, handle)| {
-                Image::new(handle)
-                    .width(Length::Fixed((w as f32).min(THUMB_BOX)))
-                    .height(Length::Fixed((h as f32).min(THUMB_BOX)))
-                    .filter_method(iced_image::FilterMethod::Nearest)
-                    .content_fit(ContentFit::Contain)
-                    .into()
-            })
-            .unwrap_or_else(|| Space::new().into());
-        let thumb_box: Element<'static, M> = container(thumb)
-            .width(Length::Fixed(THUMB_BOX))
-            .height(Length::Fixed(THUMB_BOX))
-            .align_x(Alignment::Center)
-            .align_y(Alignment::Center)
-            .into();
-
-        let mut name_col = column![colored_badge_sized::<M>(
-            part_name,
-            bg,
-            iced::Color::BLACK,
-            TEXT_BODY,
-            [3.0, 8.0]
-        )]
-        .spacing(3)
-        .align_x(Alignment::Start);
-        if let Some(desc) = info.description() {
-            // ROM descriptions keep the game's own textbox line breaks —
-            // they're authored to wrap there, so the text shrink-wraps to
-            // its natural width.
-            name_col = name_col.push(text(desc).size(TEXT_CAPTION).style(muted_text_style));
-        }
-
-        let row_el: Element<'static, M> = row![thumb_box, name_col].spacing(10).align_y(Alignment::Center).into();
-        if is_solid {
-            solid_rows.push(row_el);
-        } else {
-            plus_rows.push(row_el);
-        }
-    }
-    if solid_rows.is_empty() && plus_rows.is_empty() {
-        return None;
-    }
-    // Two top-aligned columns, like the badge strip this replaces:
-    // solid parts on the left, plus parts on the right.
-    let mut solid_col = column![].spacing(6);
-    for r in solid_rows {
-        solid_col = solid_col.push(r);
-    }
-    let mut plus_col = column![].spacing(6);
-    for r in plus_rows {
-        plus_col = plus_col.push(r);
-    }
-    Some(row![solid_col, plus_col].spacing(20).into())
 }
 
 fn render_navicust<M: 'static>(
@@ -577,14 +490,13 @@ fn render_navicust<M: 'static>(
 
     // Single pane sized to its contents — no "(none installed)"
     // fallback; an empty navicust shows just the rounded image with
-    // pane padding around it. The installed-parts panel sits beside
-    // the grid (the tab is much wider than the grid), top-aligned
-    // with the grid body (the small padding eats the gap the image's
-    // baked-in margin leaves above the color bar). No Fill anywhere:
-    // that would stretch the pane across the tab.
-    let mut content = row![grid_el].spacing(20).align_y(Alignment::Start);
-    if let Some(parts) = navicust_parts_panel::<M>(loaded, v) {
-        content = content.push(container(parts).padding([14.0, 0.0]));
+    // pane padding around it. The installed parts sit under the grid as
+    // the same two-column badge strip the editor's grid pane shows, so
+    // the two read as one layout. No Fill anywhere: that would stretch
+    // the pane across the tab.
+    let mut content = column![grid_el].spacing(8).align_x(Alignment::Center);
+    if let Some(parts) = navicust_installed_parts::<M>(loaded, v) {
+        content = content.push(parts);
     }
 
     let _ = (cols, rows_n);

@@ -36,15 +36,6 @@ pub struct OpenSave {
     /// handle)`. Indexed by part id; `None` = no shape / no color. Baked
     /// once here so the per-frame palette just clones handles.
     pub navicust_part_icons: Vec<Option<(u32, u32, iced_image::Handle)>>,
-    /// Cropped shape thumbnails, one per *installed navicust slot*, baked at
-    /// that slot's actual rotation + compression, so the read-only Navi
-    /// tab's inline parts list shows each part as it sits in the grid rather
-    /// than its default footprint. Trimmed to the shape's bounding box (the
-    /// grid-sized transparent margin the palette wants would just push the
-    /// name text away). Indexed by navicust slot; `None` for an empty slot
-    /// or a part with no color / shape. Empty for saves without a navicust.
-    /// Rebuilt by [`OpenSave::rebuild_navicust_render`].
-    pub navicust_installed_part_thumbs: Vec<Option<(u32, u32, iced_image::Handle)>>,
     /// Logos for the Cover tab, as `(width, height, handle)` — one per
     /// variant in the loaded game's family, in the family's own order
     /// (so families with two logos — Gregar/Falzar etc. — fan both out,
@@ -149,9 +140,7 @@ pub fn from_model(
     let navicust_render = build_navicust_render(model.save.as_ref(), assets, model.game);
 
     // Bake the grid-sized shape thumbnail per navicust part for the
-    // editor palette (aligned blocks). The read-only viewer's inline
-    // parts list instead uses per-slot crops baked at each part's actual
-    // orientation (see `navicust_installed_part_thumbs` below).
+    // editor palette (aligned blocks).
     let mut navicust_part_icons: Vec<Option<(u32, u32, iced_image::Handle)>> =
         Vec::with_capacity(assets.num_navicust_parts());
     for id in 0..assets.num_navicust_parts() {
@@ -169,8 +158,6 @@ pub fn from_model(
             (w, h, iced_image::Handle::from_rgba(w, h, img.into_raw()))
         }));
     }
-    let navicust_installed_part_thumbs = build_navicust_part_thumbs(model.save.as_ref(), assets);
-
     // Logos for the Cover tab: every variant in this game's family, in
     // the family's own order. The per-game `LazyImage` caches the PNG
     // decode; `to_rgba8` + `from_rgba` run once here so the per-frame
@@ -198,19 +185,17 @@ pub fn from_model(
         navi_accents,
         navicust_render,
         navicust_part_icons,
-        navicust_installed_part_thumbs,
         logos,
     }
 }
 
-/// Recompute the baked NaviCust grid image — and the per-slot parts-list
-/// thumbnails — from the current in-memory save. The navicust editor
-/// commits edits into the save (and rebuilds the materialized WRAM
-/// cache) without triggering a full `OpenSave` rebuild, so these cached
-/// images would otherwise stay stale until the next reselection.
+/// Recompute the baked NaviCust grid image from the current in-memory
+/// save. The navicust editor commits edits into the save (and rebuilds
+/// the materialized WRAM cache) without triggering a full `OpenSave`
+/// rebuild, so this cached image would otherwise stay stale until the
+/// next reselection.
 pub fn rebuild_navicust_render(loaded: &mut OpenSave) {
     loaded.navicust_render = build_navicust_render(loaded.save.as_ref(), loaded.assets.as_ref(), loaded.game);
-    loaded.navicust_installed_part_thumbs = build_navicust_part_thumbs(loaded.save.as_ref(), loaded.assets.as_ref());
 }
 
 fn build_navicust_render(
@@ -305,38 +290,6 @@ fn mask_rounded_corners(img: &mut image::RgbaImage, radius: u32) {
 fn cropped_handle(src: &image::RgbaImage, x: u32, y: u32, w: u32, h: u32) -> iced_image::Handle {
     let sub = image::imageops::crop_imm(src, x, y, w, h).to_image();
     iced_image::Handle::from_rgba(w, h, sub.into_raw())
-}
-
-/// Bake one cropped shape thumbnail per *installed* navicust slot, at the
-/// slot's actual rotation + compression, for the read-only Navi tab's parts
-/// list. Mirrors the per-id grid-sized icon bake above (same `render_part_thumb`)
-/// but renders straight to the shape's bounding box (`crop = true`) and picks
-/// the bitmap (compressed vs uncompressed) and rotation from the placed part
-/// instead of the part's default footprint. Indexed by navicust slot; `None`
-/// for an empty slot or a part with no color / shape. Empty for saves without
-/// a navicust.
-fn build_navicust_part_thumbs(
-    save: &(dyn crate::dataview::save::Save + Send + Sync),
-    assets: &(dyn crate::dataview::rom::Assets + Send + Sync),
-) -> Vec<Option<(u32, u32, iced_image::Handle)>> {
-    let Some(v) = save.view_navicust() else {
-        return Vec::new();
-    };
-    (0..v.count())
-        .map(|i| {
-            let part = v.navicust_part(i)?;
-            let info = assets.navicust_part(part.id)?;
-            let color = info.color()?;
-            let bitmap = info
-                .compressed_bitmap()
-                .filter(|_| part.compressed)
-                .unwrap_or_else(|| info.uncompressed_bitmap());
-            let rotated = crate::editor::view::navicust::grid::rotate_bitmap(&bitmap, part.rot);
-            let img = crate::editor::view::navicust::grid::render_part_thumb(&rotated, color, info.is_solid(), true)?;
-            let (w, h) = (img.width(), img.height());
-            Some((w, h, iced_image::Handle::from_rgba(w, h, img.into_raw())))
-        })
-        .collect()
 }
 
 /// The ROM region's display language, for region-sensitive baking (the

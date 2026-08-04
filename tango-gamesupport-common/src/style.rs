@@ -13,3 +13,8 @@ pub const HEADER_PADDING: [f32; 2] = [8.0, 12.0];
 /// that sit inside pane headers. Tighter than a standard button's
 /// padding so they don't blow up the header height.
 pub const CONTROL_PADDING: [f32; 2] = [5.0, 10.0];
+
+/// A column of stacked badges — patch-card parameters, patch-card
+/// abilities, installed NCP parts. The badges fill it, so the column
+/// carries the width and their edges line up down the list.
+pub const BADGE_COLUMN_WIDTH: f32 = 180.0;

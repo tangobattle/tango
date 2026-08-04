@@ -7,7 +7,7 @@
 use crate::dataview::rom::NavicustPartColor;
 use crate::editor::loaded::OpenSave;
 use crate::i18n::t;
-use crate::style::{self, TEXT_BODY, TEXT_CAPTION};
+use crate::style::{self, BADGE_COLUMN_WIDTH, TEXT_BODY, TEXT_CAPTION};
 use crate::widgets::{muted_color, muted_text_style};
 use iced::widget::{button, container, image as iced_image, scrollable, stack, text, tooltip, Image, Space};
 use iced::{Alignment, ContentFit, Element, Fill, Length};
@@ -1292,20 +1292,27 @@ pub fn colored_badge<M: 'static>(label: String, bg: iced::Color, text_color: ice
     // patch-card effect chips and the NCP parts read as
     // family — chunkier than a chrome chip but smaller than a
     // CTA button.
-    colored_badge_sized(label, bg, text_color, TEXT_BODY, [3.0, 8.0])
+    colored_badge_sized(label, bg, text_color, TEXT_BODY, [3.0, 8.0], Fill)
 }
 
 /// Variant that lets callers (NCP parts list) pick a larger text size
-/// when the badge is being used as primary content rather than chrome.
+/// when the badge is being used as primary content rather than chrome,
+/// and a width. Badges stacked in a column pass `Fill` so they all span
+/// it and their edges line up instead of going ragged with the label —
+/// which only works if that column has a width of its own to fill, since
+/// iced sizes a fluid child against its non-fluid siblings and a column
+/// of nothing but fluid badges would collapse to zero.
 pub fn colored_badge_sized<M: 'static>(
     label: String,
     bg: iced::Color,
     text_color: iced::Color,
     size: f32,
     padding: [f32; 2],
+    width: Length,
 ) -> Element<'static, M> {
     container(text(label).size(size).color(text_color))
         .padding(padding)
+        .width(width)
         .style(move |_theme: &iced::Theme| container::Style {
             background: Some(iced::Background::Color(bg)),
             border: iced::Border {
