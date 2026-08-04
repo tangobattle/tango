@@ -216,15 +216,16 @@ impl tango_backend_melonds::GameSupport for Pvp {
     ///
     /// 8: priming runs through the comm session's battle transition to
     /// the game's own battle-start routine — the new standing round
-    /// anchor (`Layout::round_start`) — so a session, its recording and
-    /// its round 1 all begin on the same tick. A recording made against
-    /// the earlier handoff carries the transition tail at its head and
-    /// its inputs land that far out of place.
+    /// anchor (`CodeOffsets::round_start`) — so a session, its
+    /// recording and its round 1 all begin on the same tick. A
+    /// recording made against the earlier handoff carries the
+    /// transition tail at its head and its inputs land that far out of
+    /// place.
     ///
     /// 9: the match end is the battle flow's own hand-back
-    /// (`Layout::match_end`), ~3 ticks before the comm substate the old
-    /// poll watched leaves the session — a session and its recording
-    /// now end there.
+    /// (`CodeOffsets::match_end`), ~3 ticks before the comm substate
+    /// the old poll watched leaves the session — a session and its
+    /// recording now end there.
     ///
     /// 3, 4, 5 and the parenthetical half of 7 were the emulator moving,
     /// not this cart — they belong to `BACKEND_SIM_VERSION` now, which is
@@ -398,66 +399,10 @@ pub mod priming {
         tag: &'static str,
         code: CodeOffsets,
         ram: RAMOffsets,
-        /// Where the sound library keeps its pointer to the loaded
-        /// sound archive — the one word the mute has to be told,
-        /// because everything past it the archive names itself.
-        ///
-        /// The library's own route: this word holds the archive
-        /// context, the context holds the INFO block at `+0x88`, and
-        /// the block's header says where its sequence table lives.
-        /// Taken from the literal pool of the library function that
-        /// starts a sequence, which loads exactly this chain before it
-        /// looks a sequence's record up. Nothing is searched for, so a
-        /// wrong answer here reads as no archive rather than as some
-        /// other bytes that happened to match.
-        sound_archive_ptr: u32,
-
-        /// The battle-start routine's completion — the mgba families'
-        /// `round_start_ret`, on this cart: the per-round init path of
-        /// the battle module's state handler (state byte [r5+3] == 0
-        /// runs the whole init call chain exactly once per round, on
-        /// the round's first frame, on both consoles) at the branch
-        /// after its own `state = 4` store. A standing trap here IS the
-        /// round lifecycle: the walk runs to its first firing (round 1,
-        /// reported during priming into the tick-0 baseline) and rounds
-        /// 2/3 fire live. Hunted by differential cover over a KO-forged
-        /// triple set — first executed at round 1's init frame, again
-        /// at round 2's, never during chip select, battle, or the
-        /// interlude — and matched into the JP build by the same
-        /// masked byte-match as every site above.
-        pub(crate) round_start: u32,
-
-        /// The comm-result verdict setter: `strb r0, [result+1]`, the
-        /// one function the battle loop's own KO and judge paths call
-        /// to report how the round came out, with the verdict in r0 —
-        /// in the console's OWN perspective (each console mirrors the
-        /// other's): 1 = this side won, 2 = lost, 3 = the judge's
-        /// draw, 4/5/7 = the comm-abnormal exits, deliberately read as
-        /// no verdict. The setter belongs to the comm-result globals'
-        /// accessor suite (US result block 0x0216_f738, accessors
-        /// 0x2097ca4..=0x2097d54; JP block 0x0216_84d8), found by
-        /// elimination scan over forced KOs in the July telemetry
-        /// work. The standing trap here IS the verdict lifecycle — the
-        /// mgba families' round_end_set_* anchors in one site, the
-        /// value riding the register instead of picking the site.
-        /// Hunted like `round_start` (fires exactly once per decided
-        /// round, at the poll-era verdict tick); JP by byte-match with
-        /// the JP result literal.
-        pub(crate) round_verdict: u32,
-
-        /// The battle flow's hand-back: a tiny wrapper (`movs r0, #5;
-        /// bl <set-flow-mode>`) in a cluster of mode setters, called
-        /// exactly once — when the game's own battle set is decided and
-        /// the comm session starts coming down — and never on the
-        /// per-round teardowns. The mgba families'
-        /// `comm_menu_end_battle_entry`, on this cart; it runs ~3 ticks
-        /// before the substate word the old poll watched actually
-        /// leaves BATTLE_SESSION. JP by the wrapper-cluster byte-match.
-        pub(crate) match_end: u32,
     }
 
-    /// Sites in the ARM9's code: what the walk traps, and the branches
-    /// it redirects into.
+    /// Sites in the ARM9's code: what the walk traps and the branches
+    /// it redirects into, then the battle's own lifecycle anchors.
     ///
     /// Each `*_gate` is where the game reads input and decides, and the
     /// address under it is the branch the press or touch it was looking
@@ -466,6 +411,10 @@ pub mod priming {
     /// already loaded is still loaded — the redirect only answers the
     /// question the check was about to ask. ARM code except where
     /// noted; a jump keeps whatever instruction set it lands in.
+    ///
+    /// The three at the end are not the walk's: they are read rather
+    /// than answered, and their traps stand for the pair's life (see
+    /// [`Layout::lifecycle_traps`]).
     struct CodeOffsets {
         /// The Capcom logo's dwell, and where a spent counter lands.
         logo_hold: u32,
@@ -626,10 +575,54 @@ pub mod priming {
         chooser_touch_gate: u32,
         chooser_first: u32,
         chooser_second: u32,
+
+        /// The battle-start routine's completion — the mgba families'
+        /// `round_start_ret`, on this cart: the per-round init path of
+        /// the battle module's state handler (state byte [r5+3] == 0
+        /// runs the whole init call chain exactly once per round, on
+        /// the round's first frame, on both consoles) at the branch
+        /// after its own `state = 4` store. A standing trap here IS the
+        /// round lifecycle: the walk runs to its first firing (round 1,
+        /// reported during priming into the tick-0 baseline) and rounds
+        /// 2/3 fire live. Hunted by differential cover over a KO-forged
+        /// triple set — first executed at round 1's init frame, again
+        /// at round 2's, never during chip select, battle, or the
+        /// interlude — and matched into the JP build by the same
+        /// masked byte-match as every site above.
+        round_start: u32,
+
+        /// The comm-result verdict setter: `strb r0, [result+1]`, the
+        /// one function the battle loop's own KO and judge paths call
+        /// to report how the round came out, with the verdict in r0 —
+        /// in the console's OWN perspective (each console mirrors the
+        /// other's): 1 = this side won, 2 = lost, 3 = the judge's
+        /// draw, 4/5/7 = the comm-abnormal exits, deliberately read as
+        /// no verdict. The setter belongs to the comm-result globals'
+        /// accessor suite (US result block 0x0216_f738, accessors
+        /// 0x2097ca4..=0x2097d54; JP block 0x0216_84d8), found by
+        /// elimination scan over forced KOs in the July telemetry
+        /// work. The standing trap here IS the verdict lifecycle — the
+        /// mgba families' round_end_set_* anchors in one site, the
+        /// value riding the register instead of picking the site.
+        /// Hunted like `round_start` (fires exactly once per decided
+        /// round, at the poll-era verdict tick); JP by byte-match with
+        /// the JP result literal.
+        round_verdict: u32,
+
+        /// The battle flow's hand-back: a tiny wrapper (`movs r0, #5;
+        /// bl <set-flow-mode>`) in a cluster of mode setters, called
+        /// exactly once — when the game's own battle set is decided and
+        /// the comm session starts coming down — and never on the
+        /// per-round teardowns. The mgba families'
+        /// `comm_menu_end_battle_entry`, on this cart; it runs ~3 ticks
+        /// before the substate word the old poll watched actually
+        /// leaves BATTLE_SESSION. JP by the wrapper-cluster byte-match.
+        match_end: u32,
     }
 
     /// The game's own variables, in main RAM: what the walk reads to
-    /// know where it is, and the few bytes it writes.
+    /// know where it is, the few bytes it writes, and — last, and not
+    /// the walk's — the one word the mute reads.
     struct RAMOffsets {
         /// Which scene is running. Zero is the attract movie, which
         /// ignores everything except a request to stop — and none of
@@ -730,6 +723,20 @@ pub mod priming {
         /// bring-up's own settings generation draws from them, which
         /// the wireless exchange then agrees on for real.
         rngs: [u32; 3],
+
+        /// Where the sound library keeps its pointer to the loaded
+        /// sound archive — the one word the mute has to be told,
+        /// because everything past it the archive names itself.
+        ///
+        /// The library's own route: this word holds the archive
+        /// context, the context holds the INFO block at `+0x88`, and
+        /// the block's header says where its sequence table lives.
+        /// Taken from the literal pool of the library function that
+        /// starts a sequence, which loads exactly this chain before it
+        /// looks a sequence's record up. Nothing is searched for, so a
+        /// wrong answer here reads as no archive rather than as some
+        /// other bytes that happened to match.
+        sound_archive_ptr: u32,
     }
 
     /// The save-select screen object's chosen row, as a byte offset into
@@ -787,10 +794,6 @@ pub mod priming {
     #[rustfmt::skip]
     pub static US: Layout = Layout {
         tag: "bn5ds",
-        sound_archive_ptr: 0x0216_2d84,
-        round_start: 0x0208_e290,
-        round_verdict: 0x0209_7cc4,
-        match_end: 0x0208_b814,
         code: CodeOffsets {
             logo_hold:                0x0206_4dd0,
             logo_expired:             0x0206_4dda,
@@ -824,6 +827,9 @@ pub mod priming {
             chooser_touch_gate:       0x021d_de14,
             chooser_first:            0x021d_de40,
             chooser_second:           0x021d_de30,
+            round_start:              0x0208_e290,
+            round_verdict:            0x0209_7cc4,
+            match_end:                0x0208_b814,
         },
         ram: RAMOffsets {
             scene:                    0x0216_f71c,
@@ -837,6 +843,7 @@ pub mod priming {
             list_object:              0x021c_6260,
             list_count:               0x021c_688c,
             rngs:                    [0x0216_bb1c, 0x0216_f230, 0x0216_bb20],
+            sound_archive_ptr:        0x0216_2d84,
         },
     };
 
@@ -859,10 +866,6 @@ pub mod priming {
     #[rustfmt::skip]
     pub static JP: Layout = Layout {
         tag: "exe5ds",
-        sound_archive_ptr: 0x0215_bb24,
-        round_start: 0x0208_df98,
-        round_verdict: 0x0209_7978,
-        match_end: 0x0208_b51c,
         code: CodeOffsets {
             logo_hold:                0x0206_4b90,
             logo_expired:             0x0206_4b9a,
@@ -896,6 +899,9 @@ pub mod priming {
             chooser_touch_gate:       0x021d_6b54,
             chooser_first:            0x021d_6b80,
             chooser_second:           0x021d_6b70,
+            round_start:              0x0208_df98,
+            round_verdict:            0x0209_7978,
+            match_end:                0x0208_b51c,
         },
         ram: RAMOffsets {
             scene:                    0x0216_84bc,
@@ -909,6 +915,7 @@ pub mod priming {
             list_object:              0x021b_efa0,
             list_count:               0x021b_f5cc,
             rngs:                    [0x0216_48bc, 0x0216_7fd0, 0x0216_48c0],
+            sound_archive_ptr:        0x0215_bb24,
         },
     };
 
@@ -1108,12 +1115,12 @@ pub mod priming {
     impl Layout {
         /// The loaded sound archive's INFO block, walked the way the
         /// sound library walks it (see
-        /// [`Layout::sound_archive_ptr`]), or `None` before anything
+        /// [`RAMOffsets::sound_archive_ptr`]), or `None` before anything
         /// has loaded one.
         pub(super) fn sound_archive(&self, nds: &mut Nds) -> Option<u32> {
             /// Where an archive context keeps its INFO block.
             const CONTEXT_INFO: u32 = 0x88;
-            let context = nds.read32(self.sound_archive_ptr);
+            let context = nds.read32(self.ram.sound_archive_ptr);
             if context == 0 {
                 return None;
             }
@@ -1525,7 +1532,7 @@ pub mod priming {
                     // round 1's firing lands during the walk and
                     // becomes the tick-0 baseline, and the later
                     // rounds' fire live.
-                    self.round_start,
+                    self.code.round_start,
                     Box::new(move |_nds: &mut Nds| {
                         if let Some(sink) = &start_sink {
                             sink.round_started();
@@ -1538,7 +1545,7 @@ pub mod priming {
                     // the setter runs with it in r0; anything outside
                     // 1..=3 is the comm-abnormal path and deliberately
                     // reads as no verdict.
-                    self.round_verdict,
+                    self.code.round_verdict,
                     Box::new(move |nds: &mut Nds| {
                         use tango_match::telemetry::Outcome;
                         let Some(sink) = &verdict_sink else { return };
@@ -1553,7 +1560,7 @@ pub mod priming {
                 (
                     // The game's own match end: the battle flow's
                     // hand-back, run once when the set is decided.
-                    self.match_end,
+                    self.code.match_end,
                     Box::new(move |_nds: &mut Nds| end_sink.match_ended()),
                 ),
             ]
