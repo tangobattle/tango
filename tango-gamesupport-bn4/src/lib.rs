@@ -7,7 +7,7 @@ pub mod pvp;
 use std::sync::LazyLock;
 use tango_gamesupport::{BackgroundRef, Error, Family, Game, LazyImage, Region, SaveTemplates, Volume};
 
-const MATCH_TYPES: &[usize] = &[2, 2];
+const MATCH_TYPES: &[usize] = &[1, 1];
 const BACKGROUND: BackgroundRef = BackgroundRef {
     volume: Volume::Vol2,
     tga: "13.tga",
