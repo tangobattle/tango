@@ -17,8 +17,9 @@
 //! the icon bank at the tail of overlay 9, and **one overlay per chip**
 //! for the artwork, 186 of them sharing a single load slot. So the
 //! offsets below name an overlay as well as an address, and artwork is
-//! reached through the id the stat entry carries. See [`cart`] for the
-//! decoding that makes an overlay readable at all.
+//! reached through the id the stat entry carries. See
+//! [`nds`](tango_gamesupport_common::dataview::nds) for the decoding
+//! that makes an overlay readable at all.
 //!
 //! The element icons are the cart's own art rather than BN1's, so
 //! unlike the chip icons (which are BN1's tiles with the palette
@@ -28,8 +29,9 @@
 //! 2x2-tile cell holding it — which lands in overlay 10, the folder's
 //! own module, in BN1's order: null, elec, fire, aqua, wood.
 
-mod cart;
 mod msg;
+
+use tango_gamesupport_common::dataview::nds;
 
 pub struct Offsets {
     /// The overlay holding the chip table and the text archives — the
@@ -92,21 +94,21 @@ pub struct Assets {
     msg_parser: msg::Parser,
     /// The cart itself, kept so a chip's artwork overlay can be decoded
     /// when it is asked for rather than all 186 up front.
-    cart: cart::Cart,
-    data: Option<cart::Overlay>,
-    icons: Option<cart::Overlay>,
-    elements: Option<cart::Overlay>,
+    cart: nds::Cart,
+    data: Option<nds::Overlay>,
+    icons: Option<nds::Overlay>,
+    elements: Option<nds::Overlay>,
     chip_icon_palette: tango_gamesupport_common::dataview::rom::Palette,
     element_icon_palette: tango_gamesupport_common::dataview::rom::Palette,
 }
 
 impl Assets {
     pub fn new(offsets: &'static Offsets, charset: &[&str], rom: Vec<u8>) -> Self {
-        let cart = cart::Cart::new(rom);
+        let cart = nds::Cart::new(rom);
         let data = cart.overlay(offsets.chip_data_overlay);
         let icons = cart.overlay(offsets.chip_icon_overlay);
         let elements = cart.overlay(offsets.element_icon_overlay);
-        let palette = |overlay: &Option<cart::Overlay>, addr| {
+        let palette = |overlay: &Option<nds::Overlay>, addr| {
             overlay
                 .as_ref()
                 .and_then(|o| read_palette(o.get(addr)))

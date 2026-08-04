@@ -14,6 +14,7 @@
 pub mod auto_battle_data;
 pub mod msg;
 pub mod navicust;
+pub mod nds;
 pub mod rom;
 pub mod save;
 

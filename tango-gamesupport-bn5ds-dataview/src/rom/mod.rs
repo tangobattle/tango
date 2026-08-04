@@ -14,17 +14,30 @@
 //! thirteen more appended for the port's own programs (the Navi Change
 //! pair, Spport, RUN!).
 //!
-//! Addresses come in two kinds, told apart by value: `0x02xxxxxx` is
-//! main-RAM inside the static ARM9 image (mapped through the cart
-//! header's load parameters), anything below is a plain file offset
-//! into the cart image — the element art lives in data files, found by
-//! searching for the GBA sheets' bytes, and nothing that useful points
-//! at them from the static binary. One of those files, the NaviCust
-//! descriptions, is LZ77-compressed; everything else is read where it
-//! lies.
+//! Addresses come in three kinds. `0x02xxxxxx` is main-RAM, mapped
+//! through the cart header's load parameters into the ARM9 static
+//! image — or, for the party program tables, through the overlay table
+//! into the overlay named alongside them. Everything else is a cart
+//! *file*, named by the path the file name table spells and read
+//! through the allocation table — the element art lives in data files,
+//! found by searching for the GBA sheets' bytes, and nothing that
+//! useful points at them from the static binary. One of those files,
+//! the NaviCust descriptions, is LZ77-compressed; everything else is
+//! read where it lies.
+//!
+//! Nothing is addressed by its position in the image. The data files
+//! used to be — they were found there, after all — until the undub
+//! patch showed why that can't hold: it rebuilds the whole image to
+//! swap the sound archive, and every other file comes out
+//! byte-identical but somewhere else. A rebuild rewrites the tables
+//! the game itself reads through, so resolving the way the game does
+//! (see [`nds`]) survives any repack; a raw offset reads whatever
+//! happens to live there now.
 
 mod msg;
 pub mod navicust;
+
+use tango_gamesupport_common::dataview::nds;
 
 pub struct Offsets {
     /// The chip stat table (RAM): [`NUM_CHIPS`](super::NUM_CHIPS)
@@ -45,16 +58,16 @@ pub struct Offsets {
     /// GBA game's — which is how it was found, so it is addressed as
     /// data rather than through a pointer chain.
     chip_icon_palette: u32,
-    /// The element icon sheet and its palette (file offsets): 4bpp
+    /// The element icon sheet and its palette (cart files): 4bpp
     /// tiles, one 16x16 icon per element, same bytes as the GBA sheet.
-    element_icons: u32,
-    element_icon_palette: u32,
-    /// The chip artwork banks (file offsets): every chip's 56x48 art
+    element_icons: &'static str,
+    element_icon_palette: &'static str,
+    /// The chip artwork banks (cart files): every chip's 56x48 art
     /// tiles in one cart file and their palettes in another, each
     /// indexed by [`RawChip`]'s pair in 0x10-byte units. The bytes are
     /// the GBA game's own art — which is how the banks were found.
-    chip_art: u32,
-    chip_art_palettes: u32,
+    chip_art: &'static str,
+    chip_art_palettes: &'static str,
     /// The NaviCust program table (RAM):
     /// [`NUM_NAVICUST_PARTS`](super::NUM_NAVICUST_PARTS) entries of
     /// 0x10 bytes, the GBA game's own — every entry's first eight bytes
@@ -69,32 +82,36 @@ pub struct Offsets {
     /// carries unchanged.
     ncp_names: u32,
     /// The NaviCust program descriptions — what the customizer's
-    /// INFORMATION panel reads — as a *cart file* offset. Unlike every
-    /// other archive here this one is LZ77-compressed, and it sits four
-    /// bytes into what it decompresses to (see [`text_archive`]); the
-    /// names archive is the plain file right behind it, which is how
-    /// this one was found.
-    ncp_descriptions: u32,
-    /// The navi emblem sheet (file offset): thirteen 16x16 icons of
+    /// INFORMATION panel reads — as a *cart file*. Unlike every other
+    /// archive here this one is LZ77-compressed (its own name on the
+    /// cart says so), and it sits four bytes into what it decompresses
+    /// to (see [`TEXT_ARCHIVE_OFFSET`]). Found, back when these were
+    /// raw offsets, by the names archive being the plain file right
+    /// behind it in the image.
+    ncp_descriptions: &'static str,
+    /// The navi emblem sheet (cart file): thirteen 16x16 icons of
     /// 2x2 tiles, one per navi in id order — the GBA pair's two sheets
     /// merged, MegaMan and Team ProtoMan's six from the ProtoMan cart
     /// followed by Team Colonel's six from the Colonel cart, byte for
     /// byte (which is how it was found). The palettes are the eight
     /// both GBA carts share; which one a navi takes is
     /// [`Offsets::navi_emblem_palette_ids`].
-    navi_emblems: u32,
-    navi_emblem_palettes: u32,
+    navi_emblems: &'static str,
+    navi_emblem_palettes: &'static str,
     /// Which of those palettes each navi's emblem takes (RAM): one byte
     /// per navi in id order, the GBA pair's own table carried over
     /// whole — which is how it was found, by searching the cart for its
     /// thirteen bytes. Addressed as data; nothing in the static image
     /// points at it.
     navi_emblem_palette_ids: u32,
-    /// The party program tables (file offset, inside the overlay the
-    /// PARTY CUSTOMIZER runs out of) — see [`RawPartyPrograms`]. Found
-    /// by searching the cart for a table whose entries matched the
-    /// costs read off the gauge in a driven customizer (`P.HP+50` one
-    /// block, `P.HP+300` five, `P.Atk+1` one).
+    /// The overlay the PARTY CUSTOMIZER runs out of, which hosts the
+    /// two tables below at the RAM addresses they give.
+    partycust_overlay: u16,
+    /// The party program tables (RAM, inside that overlay) — see
+    /// [`RawPartyPrograms`]. Found by searching the cart for a table
+    /// whose entries matched the costs read off the gauge in a driven
+    /// customizer (`P.HP+50` one block, `P.HP+300` five, `P.Atk+1`
+    /// one).
     party_programs: u32,
     /// Every navi's gauge, in blocks: twelve bytes, navi 1's first —
     /// MegaMan is not a party member and has no card. Confirmed
@@ -105,13 +122,13 @@ pub struct Offsets {
     /// than through a pointer, the way [`Offsets::ncp_names`] is.
     item_names: u32,
     /// What the PET and the PARTY CUSTOMIZER's INFORMATION panel say an
-    /// item does, as a *cart file* offset — indexed by item id like the
+    /// item does, as a *cart file* — indexed by item id like the
     /// names, and LZ77-compressed four bytes into what it decompresses
     /// to, like [`Offsets::ncp_descriptions`]. Found by decompressing
     /// every file and looking for one carrying all of the party
     /// programs' own numbers (`+50` through `+300`, `+30`, `+40`),
     /// which reads the same either side of the localization.
-    item_descriptions: u32,
+    item_descriptions: &'static str,
     /// Every team navi's chip attack before the customizer adds to it
     /// (RAM): ten bytes per navi, navi 1's first, indexed by how far
     /// the file is through the story
@@ -171,20 +188,21 @@ pub static A5TE_00: Offsets = Offsets {
     navi_names_pointer:         0x020057b4,
     enemy_names_pointer:        0x020057b0,
     chip_icon_palette:          0x020fbf88,
-    element_icons:              0x0088_6200,
-    element_icon_palette:       0x0088_6a00,
-    chip_art:                   0x00b7_f400,
-    chip_art_palettes:          0x00b7_cc00,
+    element_icons:              "/data/rom/a/sub_cdi_pix.bin",
+    element_icon_palette:       "/data/rom/a/sub_kind_icon.clt",
+    chip_art:                   "/data/rom/c/card_pix.bin",
+    chip_art_palettes:          "/data/rom/c/card_clt.bin",
     ncp_data:                   0x020e_b3d0,
     ncp_names:                  0x020d_8a50,
-    ncp_descriptions:           0x015f_5800,
-    navi_emblems:               0x0055_6800,
-    navi_emblem_palettes:       0x003b_2200,
+    ncp_descriptions:           "/data/rom_usa/a/prgminf_LZ.bin",
+    navi_emblems:               "/data/rom/a/navi_mark.bin",
+    navi_emblem_palettes:       "/data/rom/a/custom_cur.clt",
     navi_emblem_palette_ids:    0x020c_ed64,
-    party_programs:             0x0021_8f9c,
-    partycust_capacities:       0x0021_8f78,
+    partycust_overlay:          413,
+    party_programs:             0x021e_c97c,
+    partycust_capacities:       0x021e_c958,
     item_names:                 0x020d_8f2c,
-    item_descriptions:          0x015c_c400,
+    item_descriptions:          "/data/rom_usa/a/iteminf_LZ.bin",
     navi_chip_attack:           0x0203_e0d7,
 };
 
@@ -196,30 +214,33 @@ pub static A5TJ_00: Offsets = Offsets {
     navi_names_pointer:         0x02005764,
     enemy_names_pointer:        0x02005760,
     chip_icon_palette:          0x020fa8ac,
-    element_icons:              0x0099_7a00,
-    element_icon_palette:       0x0099_8200,
-    chip_art:                   0x00ce_6200,
-    chip_art_palettes:          0x00ce_3a00,
+    element_icons:              "/data/rom/a/sub_cdi_pix.bin",
+    element_icon_palette:       "/data/rom/a/sub_kind_icon.clt",
+    chip_art:                   "/data/rom/c/card_pix.bin",
+    chip_art_palettes:          "/data/rom/c/card_clt.bin",
     ncp_data:                   0x020e_9cf4,
     ncp_names:                  0x020d_741c,
-    ncp_descriptions:           0x0064_1e00,
-    navi_emblems:               0x005d_2600,
-    navi_emblem_palettes:       0x003c_9400,
+    ncp_descriptions:           "/data/rom/a/prgminf_LZ.bin",
+    navi_emblems:               "/data/rom/a/navi_mark.bin",
+    navi_emblem_palettes:       "/data/rom/a/custom_cur.clt",
     navi_emblem_palette_ids:    0x020c_d7a0,
-    party_programs:             0x0021_1d84,
-    partycust_capacities:       0x0021_1d60,
+    partycust_overlay:          413,
+    party_programs:             0x021e_56a4,
+    partycust_capacities:       0x021e_5680,
     item_names:                 0x020d_78d0,
-    item_descriptions:          0x004f_bc00,
+    item_descriptions:          "/data/rom/a/iteminf_LZ.bin",
     navi_chip_attack:           0x0203_deaf,
 };
 
-/// Resolves the two address kinds against the cart image: `0x02xxxxxx`
-/// through the ARM9 static image the header describes, lower values as
-/// file offsets. Anything unmappable (a pointer into heap, a truncated
-/// image) yields an empty slice, and the readers treat short data as
-/// missing rather than panicking.
+/// Resolves the address kinds against the cart: `0x02xxxxxx` through
+/// the ARM9 static image the header describes, cart files by the name
+/// the filesystem tables spell — where a repack put the file is the
+/// tables' business, not ours. Anything unmappable (a pointer into
+/// heap, a truncated image, a file the cart doesn't carry) yields an
+/// empty slice, and the readers treat short data as missing rather
+/// than panicking.
 struct Mapper {
-    rom: Vec<u8>,
+    cart: nds::Cart,
     arm9_rom_offset: usize,
     arm9_ram_addr: u32,
     arm9_len: usize,
@@ -236,22 +257,31 @@ impl Mapper {
         let arm9_ram_addr = word(0x28);
         let arm9_len = word(0x2c) as usize;
         Self {
-            rom,
+            cart: nds::Cart::new(rom),
             arm9_rom_offset,
             arm9_ram_addr,
             arm9_len,
         }
     }
 
+    /// Main RAM `start` through the ARM9 static image — where every
+    /// runtime pointer the readers chase lands. What it doesn't cover
+    /// is heap (or an overlay, which has its own lookup), and yields
+    /// an empty slice.
     fn get(&self, start: u32) -> &[u8] {
-        let range = if start >= self.arm9_ram_addr && start < self.arm9_ram_addr + self.arm9_len as u32 {
-            self.arm9_rom_offset + (start - self.arm9_ram_addr) as usize..self.arm9_rom_offset + self.arm9_len
-        } else if (start as usize) < self.rom.len() && start < self.arm9_ram_addr {
-            start as usize..self.rom.len()
+        if start >= self.arm9_ram_addr && start < self.arm9_ram_addr + self.arm9_len as u32 {
+            self.cart
+                .rom()
+                .get(self.arm9_rom_offset + (start - self.arm9_ram_addr) as usize..self.arm9_rom_offset + self.arm9_len)
+                .unwrap_or(&[])
         } else {
-            return &[];
-        };
-        self.rom.get(range).unwrap_or(&[])
+            &[]
+        }
+    }
+
+    /// The named cart file's bytes, through the filesystem tables.
+    fn file(&self, path: &str) -> &[u8] {
+        self.cart.file(path)
     }
 
     fn read_u32(&self, addr: u32) -> Option<u32> {
@@ -264,10 +294,8 @@ impl Mapper {
 /// game's compressed archives do.
 const TEXT_ARCHIVE_OFFSET: usize = 4;
 
-fn read_palette(mapper: &Mapper, addr: u32) -> tango_gamesupport_common::dataview::rom::Palette {
-    mapper
-        .get(addr)
-        .get(..std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>())
+fn read_palette(data: &[u8]) -> tango_gamesupport_common::dataview::rom::Palette {
+    data.get(..std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>())
         .map(bytemuck::pod_read_unaligned)
         .unwrap_or([Default::default(); 16])
 }
@@ -276,6 +304,11 @@ pub struct Assets {
     offsets: &'static Offsets,
     msg_parser: msg::Parser,
     mapper: Mapper,
+    /// The overlay hosting the party program tables, decoded once at
+    /// load. `None` for a cart whose overlay table doesn't reach it —
+    /// the party readers answer zeroes and `None` off that, the way
+    /// every reader treats missing data.
+    partycust: Option<nds::Overlay>,
     chip_icon_palette: tango_gamesupport_common::dataview::rom::Palette,
     element_icon_palette: tango_gamesupport_common::dataview::rom::Palette,
     /// The one compressed archive the cart makes us decode: the
@@ -288,19 +321,21 @@ pub struct Assets {
 impl Assets {
     pub fn new(offsets: &'static Offsets, charset: &[&str], rom: Vec<u8>) -> Self {
         let mapper = Mapper::new(rom);
-        let chip_icon_palette = read_palette(&mapper, offsets.chip_icon_palette);
-        let element_icon_palette = read_palette(&mapper, offsets.element_icon_palette);
+        let partycust = mapper.cart.overlay(offsets.partycust_overlay);
+        let chip_icon_palette = read_palette(mapper.get(offsets.chip_icon_palette));
+        let element_icon_palette = read_palette(mapper.file(offsets.element_icon_palette));
         // The DS's LZ77 is the GBA's, so the shared decoder reads it.
         let ncp_descriptions =
-            tango_gamesupport_common::dataview::rom::unlz77(&mut mapper.get(offsets.ncp_descriptions))
+            tango_gamesupport_common::dataview::rom::unlz77(&mut mapper.file(offsets.ncp_descriptions))
                 .unwrap_or_default();
         let item_descriptions =
-            tango_gamesupport_common::dataview::rom::unlz77(&mut mapper.get(offsets.item_descriptions))
+            tango_gamesupport_common::dataview::rom::unlz77(&mut mapper.file(offsets.item_descriptions))
                 .unwrap_or_default();
         Self {
             offsets,
             msg_parser: msg::parser(charset),
             mapper,
+            partycust,
             chip_icon_palette,
             element_icon_palette,
             ncp_descriptions,
@@ -414,9 +449,9 @@ impl Assets {
         let Some(index) = id.checked_sub(1).filter(|&index| index < crate::save::NUM_NAVIS - 1) else {
             return 0;
         };
-        self.mapper
-            .get(self.offsets.partycust_capacities)
-            .get(index)
+        self.partycust
+            .as_ref()
+            .and_then(|overlay| overlay.get(self.offsets.partycust_capacities).get(index))
             .copied()
             .unwrap_or(0)
     }
@@ -500,7 +535,11 @@ impl<'a> Chip<'a> {
     /// blank instead of panicking.
     fn try_image(&self) -> Option<image::RgbaImage> {
         let raw = self.raw();
-        let tiles = self.assets.mapper.get(self.assets.offsets.chip_art + raw.art_tiles as u32 * 0x10);
+        let tiles = self
+            .assets
+            .mapper
+            .file(self.assets.offsets.chip_art)
+            .get(raw.art_tiles as usize * 0x10..)?;
         let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(
             tiles.get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * 7 * 6)?,
             7,
@@ -509,7 +548,8 @@ impl<'a> Chip<'a> {
         let palette = self
             .assets
             .mapper
-            .get(self.assets.offsets.chip_art_palettes + raw.art_palette as u32 * 0x10)
+            .file(self.assets.offsets.chip_art_palettes)
+            .get(raw.art_palette as usize * 0x10..)?
             .get(..std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>())
             .map(bytemuck::pod_read_unaligned::<tango_gamesupport_common::dataview::rom::Palette>)?;
         Some(tango_gamesupport_common::dataview::rom::apply_palette(
@@ -748,7 +788,8 @@ impl Navi<'_> {
         let tiles = self
             .assets
             .mapper
-            .get(self.assets.offsets.navi_emblems + (self.id * EMBLEM_TILES * tango_gamesupport_common::dataview::rom::TILE_BYTES) as u32);
+            .file(self.assets.offsets.navi_emblems)
+            .get(self.id * EMBLEM_TILES * tango_gamesupport_common::dataview::rom::TILE_BYTES..)?;
         let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(
             tiles.get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * EMBLEM_TILES)?,
             2,
@@ -762,10 +803,8 @@ impl Navi<'_> {
         let palette = bytemuck::pod_read_unaligned::<tango_gamesupport_common::dataview::rom::Palette>(
             self.assets
                 .mapper
-                .get(
-                    self.assets.offsets.navi_emblem_palettes
-                        + (which * std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>()) as u32,
-                )
+                .file(self.assets.offsets.navi_emblem_palettes)
+                .get(which * std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>()..)?
                 .get(..std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>())?,
         );
         Some(tango_gamesupport_common::dataview::rom::apply_palette(paletted, &palette))
@@ -798,7 +837,8 @@ impl PartyProgram<'_> {
     fn raw(&self) -> Option<RawPartyPrograms> {
         Some(bytemuck::pod_read_unaligned(
             self.assets
-                .mapper
+                .partycust
+                .as_ref()?
                 .get(self.assets.offsets.party_programs)
                 .get(..std::mem::size_of::<RawPartyPrograms>())?,
         ))
@@ -956,7 +996,7 @@ impl tango_gamesupport_common::dataview::rom::Assets for Assets {
             return None;
         }
 
-        let buf = self.mapper.get(self.offsets.element_icons);
+        let buf = self.mapper.file(self.offsets.element_icons);
         let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(
             buf.get(id * tango_gamesupport_common::dataview::rom::TILE_BYTES * 4..)?
                 .get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * 2 * 2)?,
@@ -993,9 +1033,13 @@ mod tests {
     }
 
     #[test]
-    fn maps_low_addresses_as_file_offsets() {
+    fn maps_nothing_below_the_arm9_image() {
+        // A low value used to read the image where it lay — until the
+        // undub repack moved every file out from under those reads.
+        // Files go through [`Mapper::file`] by name now, and a raw
+        // offset maps to nothing at all.
         let mapper = Mapper::new(cart(&[9, 8, 7]));
-        assert_eq!(mapper.get(0x4001), &[8, 7]);
+        assert_eq!(mapper.get(0x4001), &[] as &[u8]);
         assert_eq!(mapper.get(0x0900_0000), &[] as &[u8]);
     }
 }

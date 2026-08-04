@@ -2044,23 +2044,40 @@ mod tests {
         assert_eq!(save.partycust_bonus(8).attack, 0);
     }
 
-    /// A cart carrying just the party program tables, at the offsets
-    /// [`crate::rom::A5TE_00`] names — the reads a customizer write
-    /// makes, without a real cartridge on hand. The rows are the US
-    /// cart's own (see [`crate::rom::Offsets::party_programs`]).
+    /// A cart carrying just the party program tables, in the overlay
+    /// [`crate::rom::A5TE_00`] names at the addresses it gives — the
+    /// reads a customizer write makes, without a real cartridge on
+    /// hand. The rows are the US cart's own (see
+    /// [`crate::rom::Offsets::party_programs`]).
     fn party_program_cart() -> crate::rom::Assets {
-        let mut rom = vec![0u8; 0x21_9000];
-        // Enough header for the mapper to tell a file offset from a
-        // main-RAM address: where the ARM9 image loads, and how big.
+        let mut rom = vec![0u8; 0x1_5000];
+        // Enough header for the mapper: where the ARM9 image loads —
+        // and, because the tables resolve through the filesystem the
+        // way everything does now, where the overlay table and the FAT
+        // are.
         rom[0x20..][..4].copy_from_slice(&0x4000u32.to_le_bytes());
         rom[0x28..][..4].copy_from_slice(&0x0200_0000u32.to_le_bytes());
         rom[0x2c..][..4].copy_from_slice(&0x0016_0d78u32.to_le_bytes());
-        rom[0x21_8f78..][..12].copy_from_slice(&[6, 8, 6, 8, 5, 10, 8, 6, 10, 6, 5, 8]);
-        rom[0x21_8f9c..][..13].copy_from_slice(&[
+        rom[0x48..][..4].copy_from_slice(&0x4400u32.to_le_bytes());
+        rom[0x4c..][..4].copy_from_slice(&(414u32 * 8).to_le_bytes());
+        rom[0x50..][..4].copy_from_slice(&0x1000u32.to_le_bytes());
+        rom[0x54..][..4].copy_from_slice(&(414u32 * 0x20).to_le_bytes());
+        // Overlay 413, the US cart's own shape: loads at 0x021ddbe0,
+        // stored plain as file 413, whose FAT range holds the tables at
+        // the same spots into the overlay as the real cart's.
+        let entry = 0x1000 + 413 * 0x20;
+        rom[entry..][..4].copy_from_slice(&413u32.to_le_bytes());
+        rom[entry + 0x04..][..4].copy_from_slice(&0x021d_dbe0u32.to_le_bytes());
+        rom[entry + 0x08..][..4].copy_from_slice(&0xfcc0u32.to_le_bytes());
+        rom[entry + 0x18..][..4].copy_from_slice(&413u32.to_le_bytes());
+        rom[0x4400 + 413 * 8..][..4].copy_from_slice(&0x6000u32.to_le_bytes());
+        rom[0x4400 + 413 * 8 + 4..][..4].copy_from_slice(&(0x6000u32 + 0xeddc).to_le_bytes());
+        rom[0x6000 + 0xed78..][..12].copy_from_slice(&[6, 8, 6, 8, 5, 10, 8, 6, 10, 6, 5, 8]);
+        rom[0x6000 + 0xed9c..][..13].copy_from_slice(&[
             0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc,
         ]);
-        rom[0x21_8fac..][..13].copy_from_slice(&[1, 2, 3, 5, 1, 2, 3, 3, 4, 5, 4, 7, 1]);
-        rom[0x21_8fbc..][..13].copy_from_slice(&[3, 3, 3, 3, 4, 4, 4, 2, 2, 2, 5, 5, 5]);
+        rom[0x6000 + 0xedac..][..13].copy_from_slice(&[1, 2, 3, 5, 1, 2, 3, 3, 4, 5, 4, 7, 1]);
+        rom[0x6000 + 0xedbc..][..13].copy_from_slice(&[3, 3, 3, 3, 4, 4, 4, 2, 2, 2, 5, 5, 5]);
         crate::rom::Assets::new(&crate::rom::A5TE_00, crate::rom::EN_CHARSET, rom)
     }
 
