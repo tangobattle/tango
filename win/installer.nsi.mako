@@ -27,7 +27,7 @@ VIAddVersionKey "FileVersion" "${version.major}.${version.minor}.${version.patch
 VIAddVersionKey "FileDescription" "Tango Installer"
 VIAddVersionKey "LegalCopyright" "© Copyright The Tango Developers"
 
-SetCompressor /solid /final zlib
+SetCompressor /solid /final lzma
 Unicode true
 RequestExecutionLevel user
 ; No installer UI at all. First-install and auto-update (updater.rs
