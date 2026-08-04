@@ -246,6 +246,15 @@ pub struct Config {
     /// exists.
     #[serde(default)]
     pub last_patch_per_save: std::collections::BTreeMap<String, Option<(String, semver::Version)>>,
+    /// Per-game memory of the link-battle mode last picked for each
+    /// game. Key: [`game_key`]; value: `(mode, subtype)` in the same
+    /// encoding as the game's own `match_types` table. Written whenever
+    /// the user picks one, read when the lobby's game changes — so
+    /// coming back to a game offers the mode it was last played in
+    /// rather than the built-in default. An entry the game no longer
+    /// admits (a patch shrank its table) is ignored, not repaired.
+    #[serde(default)]
+    pub last_match_type_per_game: std::collections::BTreeMap<String, (u8, u8)>,
     /// Names of patches the user has favorited — they sort to the top
     /// of pickers and get a star glyph next to their label.
     #[serde(default)]
@@ -353,6 +362,7 @@ impl Default for Config {
             last_family: None,
             last_save_per_game: std::collections::BTreeMap::new(),
             last_patch_per_save: std::collections::BTreeMap::new(),
+            last_match_type_per_game: std::collections::BTreeMap::new(),
             favorite_patches: std::collections::BTreeSet::new(),
             last_window_size: None,
             last_window_maximized: false,
