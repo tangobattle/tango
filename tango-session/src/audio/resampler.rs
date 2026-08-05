@@ -23,6 +23,61 @@ use tango_match::AudioOut;
 
 use super::NUM_CHANNELS;
 
+/// Source frames on each side of the cursor the kernel reads: `RADIUS`
+/// ahead of the frame the cursor stands on and `RADIUS - 1` behind it.
+const RADIUS: usize = 4;
+
+/// The kernel's width in taps.
+const TAPS: usize = 2 * RADIUS;
+
+/// Tabulated fractional positions per source frame. The kernel for a
+/// cursor between two of them is lerped from both rows, which is what
+/// lets the table stay this small.
+const PHASES: usize = 256;
+
+/// The normalized sinc, sin(πx)/(πx): the ideal interpolation kernel,
+/// which is infinitely wide.
+fn sinc(x: f64) -> f64 {
+    if x == 0.0 {
+        return 1.0;
+    }
+    let px = std::f64::consts::PI * x;
+    px.sin() / px
+}
+
+/// The Blackman window, which tapers the ideal kernel's infinite tails
+/// down to the `TAPS` frames actually summed, reaching zero at ±`RADIUS`.
+fn blackman(x: f64) -> f64 {
+    let t = std::f64::consts::PI * x / RADIUS as f64;
+    0.42 + 0.5 * t.cos() + 0.08 * (2.0 * t).cos()
+}
+
+/// Windowed-sinc coefficients for every tabulated phase: `PHASES + 1`
+/// rows of `TAPS`, the extra row being phase 1.0 so the last real phase
+/// still has a next row to lerp toward.
+fn kernel_table() -> Vec<f64> {
+    let mut table = Vec::with_capacity((PHASES + 1) * TAPS);
+    for phase in 0..=PHASES {
+        let frac = phase as f64 / PHASES as f64;
+        let row_at = table.len();
+        let mut sum = 0.0;
+        for tap in 0..TAPS {
+            let x = (tap as isize - (RADIUS as isize - 1)) as f64 - frac;
+            let coeff = sinc(x) * blackman(x);
+            sum += coeff;
+            table.push(coeff);
+        }
+        // Truncating the ideal kernel's tails leaves each row summing
+        // slightly off 1, by an amount that varies with the phase;
+        // dividing it back out pins the gain at exactly 1 so a
+        // sustained tone doesn't tremolo at the beat between the rates.
+        for coeff in &mut table[row_at..] {
+            *coeff /= sum;
+        }
+    }
+    table
+}
+
 /// A console's audio on its way to a device: staged, resampled, and
 /// accounted for.
 ///
@@ -31,19 +86,25 @@ use super::NUM_CHANNELS;
 /// so this is the one implementation rather than something each backend
 /// re-answers.
 ///
-/// Linear interpolation over a fractional cursor: deliberately the
-/// simplest thing that honours a claimed rate, since the cursor
-/// advances by `claimed / destination` per output frame and the queue
-/// therefore drifts exactly the way a servo intends.
+/// Windowed-sinc interpolation over a fractional cursor. The cursor
+/// still advances by `claimed / destination` per output frame — so the
+/// queue drifts exactly the way a servo intends — but each output
+/// sample is a `TAPS`-wide kernel over the source rather than a lerp of
+/// two frames, which keeps the passband flat and pushes imaging noise
+/// down where linear interpolation rolled off highs and let images
+/// through.
 pub struct Resampler {
     out: AudioOut,
     /// Pulled out of the ring for this fill's conversion, not yet
     /// resampled. Only ever the frames a fill is about to need plus the
-    /// one the cursor still interpolates from — the backlog stays in the
-    /// ring.
+    /// history the kernel still reads behind the cursor — the backlog
+    /// stays in the ring.
     source: Vec<i16>,
     /// Fractional position into `source`, in frames.
     cursor: f64,
+    /// The tabulated kernel, built once at construction so a fill —
+    /// which runs in the sound callback — never touches trigonometry.
+    kernel: Vec<f64>,
     /// Resampled, waiting for the device — a hand-off buffer, never
     /// more than the last [`process`](Resampler::process) was asked for.
     dest: Vec<i16>,
@@ -55,6 +116,7 @@ impl Resampler {
             out,
             source: Vec::new(),
             cursor: 0.0,
+            kernel: kernel_table(),
             dest: Vec::new(),
         }
     }
@@ -100,35 +162,59 @@ impl Resampler {
         }
         let want = frames.saturating_sub(self.dest.len() / NUM_CHANNELS);
         // What converting `want` output frames can reach: the cursor
-        // ends up at most `cursor + step * want` in, and the
-        // interpolation reads one frame past wherever it stands. Asking
-        // for exactly that is what leaves the rest of the backlog in the
+        // ends up at most `cursor + step * want` in, and the kernel
+        // reads `RADIUS` frames past wherever it stands. Asking for
+        // exactly that is what leaves the rest of the backlog in the
         // ring, where the servo can see it and a rollback can still take
         // it back.
-        let reach = (self.cursor + step * want as f64).ceil() as usize + 2;
+        let reach = (self.cursor + step * want as f64).ceil() as usize + RADIUS + 1;
         self.stage(reach);
         let available = self.source.len() / NUM_CHANNELS;
         for _ in 0..want {
             let i = self.cursor as usize;
-            if i + 1 >= available {
+            if i + RADIUS >= available {
                 break;
             }
-            let frac = self.cursor - i as f64;
+            // The kernel for this exact fraction sits between two
+            // tabulated rows; lerp them tap by tap, once for both
+            // channels.
+            let phase = (self.cursor - i as f64) * PHASES as f64;
+            let row = phase as usize;
+            let between = phase - row as f64;
+            let mut taps = [0.0f64; TAPS];
+            for (tap, coeff) in taps.iter_mut().enumerate() {
+                let a = self.kernel[row * TAPS + tap];
+                let b = self.kernel[(row + 1) * TAPS + tap];
+                *coeff = a + (b - a) * between;
+            }
+            // Taps run from `RADIUS - 1` frames behind the frame the
+            // cursor stands on to `RADIUS` ahead; until any history
+            // exists — at stream start and after a discard — the
+            // leading ones clamp onto the head, repeating the edge
+            // frame.
+            let first = i as isize - (RADIUS as isize - 1);
             for channel in 0..NUM_CHANNELS {
-                let a = self.source[i * NUM_CHANNELS + channel] as f64;
-                let b = self.source[(i + 1) * NUM_CHANNELS + channel] as f64;
-                self.dest.push((a + (b - a) * frac) as i16);
+                let mut acc = 0.0;
+                for (tap, coeff) in taps.iter().enumerate() {
+                    let frame = (first + tap as isize).max(0) as usize;
+                    acc += self.source[frame * NUM_CHANNELS + channel] as f64 * coeff;
+                }
+                // The saturating cast absorbs the kernel's ringing on
+                // hard edges, which can carry a near-full-scale step
+                // past i16's range.
+                self.dest.push(acc as i16);
             }
             self.cursor += step;
         }
-        // Drop what the cursor has passed, keeping the frame it still
-        // interpolates from. The loop's last step can carry the cursor
-        // past the end of what was staged (any step over 1 gets there —
-        // the fast-forward fold divides the destination rate, so a
-        // 65536 Hz cart at 4x steps ~5.5 frames at a time); the drain
-        // must not follow it out of bounds. The overshoot stays in the
-        // cursor as a debt the next batch of source pays off.
-        let consumed = (self.cursor as usize).min(available);
+        // Drop what the cursor has passed, keeping the `RADIUS - 1`
+        // frames of history the kernel still reads behind it. The
+        // loop's last step can carry the cursor past the end of what was
+        // staged (any step over 1 gets there — the fast-forward fold
+        // divides the destination rate, so a 65536 Hz cart at 4x steps
+        // ~5.5 frames at a time); the drain must not follow it out of
+        // bounds. The overshoot stays in the cursor as a debt the next
+        // batch of source pays off.
+        let consumed = (self.cursor as usize).saturating_sub(RADIUS - 1).min(available);
         if consumed > 0 {
             self.source.drain(..consumed * NUM_CHANNELS);
             self.cursor -= consumed as f64;
@@ -142,8 +228,13 @@ impl Resampler {
     pub fn discard_source(&mut self, frames: usize) {
         // What was staged for this fill first, then through to the ring
         // — which is where the backlog being shed almost entirely sits.
-        let staged = frames.min(self.source.len() / NUM_CHANNELS);
-        self.source.drain(..staged * NUM_CHANNELS);
+        // The frames behind the cursor were already played and were kept
+        // only as kernel history, so they don't count against `frames`;
+        // a discard is a discontinuity, so there is nothing left worth
+        // interpolating with and they go too.
+        let staged = frames.min(self.staged());
+        let played = self.source.len() / NUM_CHANNELS - self.staged();
+        self.source.drain(..(played + staged) * NUM_CHANNELS);
         // The cursor indexed into what was just dropped; the point of
         // discarding is to jump forward, so it restarts at the head.
         self.cursor = 0.0;
@@ -258,7 +349,26 @@ mod tests {
         // The speed folds into the destination rate:
         // 48000 × (59.7275 / 240).
         pull.process(65536.0, 11945.5, 512);
-        assert_eq!(pull.available(), 2);
+        // Only the first cursor position has the RADIUS frames of
+        // lookahead the kernel reads; the second stands at ~5.5 of 8.
+        assert_eq!(pull.available(), 1);
+    }
+
+    /// The kernel rows are normalized: a constant signal comes out at
+    /// the same level for every cursor fraction, rather than rippling
+    /// at the beat between the two rates.
+    #[test]
+    fn a_constant_signal_passes_through_at_unity_gain() {
+        let (mut into, mut pull) = ring(RATE, 0);
+        into.push(&vec![1000i16; 4096 * NUM_CHANNELS]);
+        pull.source_available();
+        pull.process(RATE, 48_000.0, 2048);
+        let mut out = vec![0i16; 2048 * NUM_CHANNELS];
+        let got = pull.read(&mut out, 2048);
+        assert_eq!(got, 2048);
+        for &sample in &out[..got * NUM_CHANNELS] {
+            assert!((sample - 1000).abs() <= 1, "constant 1000 came out as {sample}");
+        }
     }
 
     /// A zero or negative step can never advance the cursor, so the
