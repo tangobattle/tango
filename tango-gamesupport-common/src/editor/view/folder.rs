@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use super::*;
 use sweeten::widget::{column, row};
 
@@ -490,7 +492,6 @@ fn sorted_library_entries(
         id: usize,
         name: String,
         code: ChipCode,
-        code_rank: u8,
         atk: u32,
         elem: usize,
         mb: u8,
@@ -520,7 +521,6 @@ fn sorted_library_entries(
                 id,
                 name: name.clone(),
                 code,
-                code_rank: code as u8,
                 atk,
                 elem,
                 mb,
@@ -528,35 +528,17 @@ fn sorted_library_entries(
         }
     }
     // All ties fall back to (id, code) so the order stays stable.
-    match sort {
+    let cmp: fn(&E, &E) -> Ordering = match sort {
         // The BN folders have no chip HP to sort on; only BCC offers
         // the option, and it sorts its own library.
-        LibrarySort::Id | LibrarySort::Hp => {}
-        LibrarySort::Name => rows.sort_by(|a, b| {
-            a.name
-                .cmp(&b.name)
-                .then(a.id.cmp(&b.id))
-                .then(a.code_rank.cmp(&b.code_rank))
-        }),
-        LibrarySort::Code => rows.sort_by(|a, b| a.code_rank.cmp(&b.code_rank).then(a.id.cmp(&b.id))),
-        LibrarySort::Attack => rows.sort_by(|a, b| {
-            a.atk
-                .cmp(&b.atk)
-                .then(a.id.cmp(&b.id))
-                .then(a.code_rank.cmp(&b.code_rank))
-        }),
-        LibrarySort::Element => rows.sort_by(|a, b| {
-            a.elem
-                .cmp(&b.elem)
-                .then(a.id.cmp(&b.id))
-                .then(a.code_rank.cmp(&b.code_rank))
-        }),
-        LibrarySort::Mb => rows.sort_by(|a, b| {
-            a.mb.cmp(&b.mb)
-                .then(a.id.cmp(&b.id))
-                .then(a.code_rank.cmp(&b.code_rank))
-        }),
-    }
+        LibrarySort::Id | LibrarySort::Hp => |_a, _b| Ordering::Equal,
+        LibrarySort::Name => |a, b| a.name.cmp(&b.name),
+        LibrarySort::Code => |a, b| a.code.cmp(&b.code),
+        LibrarySort::Attack => |a, b| a.atk.cmp(&b.atk),
+        LibrarySort::Element => |a, b| a.elem.cmp(&b.elem),
+        LibrarySort::Mb => |a, b| a.mb.cmp(&b.mb),
+    };
+    rows.sort_by(|a, b| cmp(&a, &b).then(a.id.cmp(&b.id)).then(a.code.cmp(&b.code)));
     rows.into_iter().map(|e| (e.id, e.name, e.code)).collect()
 }
 

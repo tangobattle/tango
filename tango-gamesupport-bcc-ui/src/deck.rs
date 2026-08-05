@@ -30,6 +30,8 @@
 //! Save-side, `ChipsView` slot index `i` is deck-array position `i + 1`;
 //! the columns below hold slot indexes.
 
+use std::cmp::Ordering;
+
 use iced::widget::canvas::{self, Canvas};
 use iced::widget::{button, column, container, row, text, Space};
 use iced::{mouse, Alignment, Element, Fill, Length, Point, Rectangle, Renderer, Size, Theme};
@@ -407,86 +409,84 @@ fn board<'a>(
     let natural = Geometry::new(1.0);
     let height = natural.size.height;
 
-    let board = iced::widget::responsive(move |size: Size| {
-        let geo = Geometry::new((size.width / natural.size.width).clamp(MIN_FIT_SCALE, 1.0));
-        let card_w = geo.slots[0].width;
-        let card = |i: usize, chip: &Option<ChipEntry>| -> Element<'a, Action> {
-            let on_press = interactive.then(|| {
-                // Reselecting the picked card clears the selection.
-                Action::SelectDeckSlot(if selected == Some(i) { None } else { Some(i) })
-            });
-            slot_card(loaded, card_w, chip, on_press, selected == Some(i))
-        };
+    let board =
+        iced::widget::responsive(move |size: Size| {
+            let geo = Geometry::new((size.width / natural.size.width).clamp(MIN_FIT_SCALE, 1.0));
+            let card_w = geo.slots[0].width;
+            let card = |i: usize, chip: &Option<ChipEntry>| -> Element<'a, Action> {
+                let on_press = interactive.then(|| {
+                    // Reselecting the picked card clears the selection.
+                    Action::SelectDeckSlot(if selected == Some(i) { None } else { Some(i) })
+                });
+                slot_card(loaded, card_w, chip, on_press, selected == Some(i))
+            };
 
-        // The traces underneath, every card on top.
-        let mut layers: Vec<Element<'a, Action>> = vec![Canvas::new(Wires { lines: geo.wires() })
-            .width(Length::Fixed(geo.size.width))
-            .height(Length::Fixed(geo.size.height))
-            .into()];
-        for i in 0..DECK_SLOTS {
-            layers.push(at(geo.slots[i], card(i, &chips[i])));
-        }
-        layers.push(at(geo.navi, card(NAVI_SLOT, &navi)));
+            // The traces underneath, every card on top.
+            let mut layers: Vec<Element<'a, Action>> = vec![Canvas::new(Wires { lines: geo.wires() })
+                .width(Length::Fixed(geo.size.width))
+                .height(Length::Fixed(geo.size.height))
+                .into()];
+            for i in 0..DECK_SLOTS {
+                layers.push(at(geo.slots[i], card(i, &chips[i])));
+            }
+            layers.push(at(geo.navi, card(NAVI_SLOT, &navi)));
 
-        // R and L ride *outside* their cards, in the margin the board
-        // reserves for them, so every card on the board is the same
-        // shape — the trigger letter is a label on the slot, not part
-        // of its contents.
-        for (slot, letter) in [(R_SLOT, "R"), (L_SLOT, "L")] {
-            let r = geo.slots[slot];
-            layers.push(at(
-                Rectangle::new(
-                    Point::new(r.x - TRIGGER_LABEL_W, r.y + (r.height - TEXT_BODY) / 2.0 - 2.0),
-                    Size::new(TRIGGER_LABEL_W - TRIGGER_LABEL_GAP, TEXT_BODY),
-                ),
-                container(
-                    text(letter)
-                        .size(TEXT_CAPTION)
-                        .font(style::MONOSPACE_FONT)
-                        .style(|theme: &iced::Theme| iced::widget::text::Style {
-                            color: Some(theme.palette().primary),
-                        }),
-                )
-                .width(Length::Fixed(TRIGGER_LABEL_W))
-                .align_x(iced::alignment::Horizontal::Center)
-                .into(),
-            ));
-        }
-
-        // The inline remove X, in the zone every card reserves for it.
-        if interactive {
-            for (i, r) in geo.slots.iter().enumerate() {
-                if chips[i].is_none() {
-                    continue;
-                }
-                let zone = Rectangle::new(
-                    Point::new(r.x + r.width - REMOVE_SIZE - 4.0, r.y + (r.height - REMOVE_SIZE) / 2.0),
-                    Size::new(REMOVE_SIZE, REMOVE_SIZE),
-                );
+            // R and L ride *outside* their cards, in the margin the board
+            // reserves for them, so every card on the board is the same
+            // shape — the trigger letter is a label on the slot, not part
+            // of its contents.
+            for (slot, letter) in [(R_SLOT, "R"), (L_SLOT, "L")] {
+                let r = geo.slots[slot];
                 layers.push(at(
-                    zone,
-                    button(lucide_icons::Icon::X.widget().size(12.0))
-                        .padding(3)
-                        .style(|theme: &iced::Theme, status| iced::widget::button::Style {
-                            background: None,
-                            text_color: if matches!(status, iced::widget::button::Status::Hovered) {
-                                theme.palette().danger
-                            } else {
-                                muted_color(theme)
-                            },
-                            ..Default::default()
-                        })
-                        .on_press(Action::ClearDeckChip { slot: i })
-                        .into(),
+                    Rectangle::new(
+                        Point::new(r.x - TRIGGER_LABEL_W, r.y + (r.height - TEXT_BODY) / 2.0 - 2.0),
+                        Size::new(TRIGGER_LABEL_W - TRIGGER_LABEL_GAP, TEXT_BODY),
+                    ),
+                    container(text(letter).size(TEXT_CAPTION).font(style::MONOSPACE_FONT).style(
+                        |theme: &iced::Theme| iced::widget::text::Style {
+                            color: Some(theme.palette().primary),
+                        },
+                    ))
+                    .width(Length::Fixed(TRIGGER_LABEL_W))
+                    .align_x(iced::alignment::Horizontal::Center)
+                    .into(),
                 ));
             }
-        }
 
-        iced::widget::stack(layers)
-            .width(Length::Fixed(geo.size.width))
-            .height(Length::Fixed(geo.size.height))
-            .into()
-    });
+            // The inline remove X, in the zone every card reserves for it.
+            if interactive {
+                for (i, r) in geo.slots.iter().enumerate() {
+                    if chips[i].is_none() {
+                        continue;
+                    }
+                    let zone = Rectangle::new(
+                        Point::new(r.x + r.width - REMOVE_SIZE - 4.0, r.y + (r.height - REMOVE_SIZE) / 2.0),
+                        Size::new(REMOVE_SIZE, REMOVE_SIZE),
+                    );
+                    layers.push(at(
+                        zone,
+                        button(lucide_icons::Icon::X.widget().size(12.0))
+                            .padding(3)
+                            .style(|theme: &iced::Theme, status| iced::widget::button::Style {
+                                background: None,
+                                text_color: if matches!(status, iced::widget::button::Status::Hovered) {
+                                    theme.palette().danger
+                                } else {
+                                    muted_color(theme)
+                                },
+                                ..Default::default()
+                            })
+                            .on_press(Action::ClearDeckChip { slot: i })
+                            .into(),
+                    ));
+                }
+            }
+
+            iced::widget::stack(layers)
+                .width(Length::Fixed(geo.size.width))
+                .height(Length::Fixed(geo.size.height))
+                .into()
+        });
 
     container(board)
         .padding(style::PANE_PADDING)
@@ -508,7 +508,11 @@ fn header_captions<'a>(
         text(label)
             .size(TEXT_CAPTION)
             .style(move |theme: &iced::Theme| iced::widget::text::Style {
-                color: Some(if over { theme.palette().danger } else { muted_color(theme) }),
+                color: Some(if over {
+                    theme.palette().danger
+                } else {
+                    muted_color(theme)
+                }),
             })
             .into()
     };
@@ -630,16 +634,16 @@ pub fn render_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, state
         })
         .collect();
     use tango_gamesupport_common::editor::view::LibrarySort;
-    match state.library_sort {
-        LibrarySort::Id | LibrarySort::Code => {}
-        // Ascending like every other sort here and in the BN folder
-        // library — one direction convention across the editors.
-        LibrarySort::Hp => rows.sort_by(|a, b| a.hp.cmp(&b.hp).then(a.id.cmp(&b.id))),
-        LibrarySort::Element => rows.sort_by(|a, b| a.element.cmp(&b.element).then(a.id.cmp(&b.id))),
-        LibrarySort::Name => rows.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id))),
-        LibrarySort::Attack => rows.sort_by(|a, b| a.ap.cmp(&b.ap).then(a.id.cmp(&b.id))),
-        LibrarySort::Mb => rows.sort_by(|a, b| a.mb.cmp(&b.mb).then(a.id.cmp(&b.id))),
-    }
+    let cmp: fn(&E, &E) -> Ordering = match state.library_sort {
+        LibrarySort::Id | LibrarySort::Code => |_a, _b| Ordering::Equal,
+        LibrarySort::Hp => |a, b| a.hp.cmp(&b.hp),
+        LibrarySort::Element => |a, b| a.element.cmp(&b.element),
+        LibrarySort::Name => |a, b| a.name.cmp(&b.name),
+        LibrarySort::Attack => |a, b| a.ap.cmp(&b.ap),
+        LibrarySort::Mb => |a, b| a.mb.cmp(&b.mb),
+    };
+
+    rows.sort_by(|a, b| cmp(&a, &b).then(a.id.cmp(&b.id)));
 
     let mut lib = column![].spacing(3).padding(0);
     let mut shown = 0usize;

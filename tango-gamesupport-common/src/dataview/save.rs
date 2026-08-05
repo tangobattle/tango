@@ -141,7 +141,9 @@ pub fn compute_raw_checksum(buf: &[u8], checksum_offset: usize) -> u32 {
             .sum::<u32>()
 }
 
-#[derive(num_derive::FromPrimitive, Clone, Copy, Debug, std::hash::Hash, Eq, PartialEq)]
+// Discriminant order is A..Z then Star — the order the games list codes
+// in, so the derived Ord is the sort order.
+#[derive(num_derive::FromPrimitive, Clone, Copy, Debug, std::hash::Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub enum ChipCode {
     A = 0,
     B = 1,
