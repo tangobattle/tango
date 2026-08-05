@@ -120,8 +120,9 @@ pub trait GameSaveEditor: Send + Sync {
     }
 
     /// The tab as TSV-ish clipboard text, or `None` for tabs without a
-    /// text form.
-    fn tab_as_text(&self, tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String>;
+    /// text form. Section headers localize through `lang`, the same
+    /// keys the rendered view uses.
+    fn tab_as_text(&self, lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String>;
 
     /// The tab as a raster image for the clipboard, or `None` for tabs
     /// without an image form.
@@ -181,7 +182,7 @@ impl GameSaveEditor for EmptyEditor {
         crate::editor::view::placeholder(crate::t!(lang, "save-empty"))
     }
 
-    fn tab_as_text(&self, _tab: Tab, _loaded: &OpenSave, _opts: RenderOpts) -> Option<String> {
+    fn tab_as_text(&self, _lang: &LanguageIdentifier, _tab: Tab, _loaded: &OpenSave, _opts: RenderOpts) -> Option<String> {
         None
     }
 }

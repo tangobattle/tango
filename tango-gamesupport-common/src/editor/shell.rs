@@ -98,6 +98,7 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
 
     fn update(
         &self,
+        lang: &LanguageIdentifier,
         data: &mut LoadedSave,
         msg: &dyn tango_gamesupport::SaveEditorMessage,
     ) -> (
@@ -114,7 +115,7 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
         let state = view_state_mut(&mut *data.state);
         let open = open_save_mut(&mut *data.payload);
 
-        let (task, outcome) = state.apply(action, Some(&*open));
+        let (task, outcome) = state.apply(lang, action, Some(&*open));
         let outcome = match outcome {
             // Staged edits land in the loaded bundle right here — the
             // app never sees them, it just keeps rendering.

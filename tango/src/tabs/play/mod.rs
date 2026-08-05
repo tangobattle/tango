@@ -347,7 +347,7 @@ impl State {
                 // launches, the committed SRAM. Everything else flows
                 // through as a generic save-view-internal task.
                 let data = loaded?;
-                let (sv_task, outcome) = data.editor.update(data, &*msg);
+                let (sv_task, outcome) = data.editor.update(&config.language, data, &*msg);
                 match outcome {
                     Some(tango_gamesupport::SaveEditorEvent::CopyText(s)) => Some(Effect::CopyText(s)),
                     Some(tango_gamesupport::SaveEditorEvent::CopyImage(img)) => Some(Effect::CopyImage(img)),

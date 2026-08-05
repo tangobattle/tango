@@ -56,7 +56,7 @@ pub enum Message {
 
 /// Apply a PvP-view message. Takes the whole session [`State`]: the
 /// panel/popover overlays live there, beside the session slot.
-pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
+pub(crate) fn update(state: &mut State, msg: Message, lang: &unic_langid::LanguageIdentifier) -> iced::Task<Message> {
     match msg {
         Message::SetFrameDelay(d) => {
             // Purely local frame delay — apply straight to the running
@@ -89,7 +89,7 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
             // mint an edit to stage into this side's loaded save.
             if let Some(panes) = state.pvp_panes.as_mut() {
                 if let Some(data) = panes.opponent_loaded.as_mut() {
-                    let (task, _) = data.editor.update(data, &*msg);
+                    let (task, _) = data.editor.update(lang, data, &*msg);
                     return task.map(Message::OpponentSaveView);
                 }
             }
@@ -97,7 +97,7 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
         Message::SelfSaveView(msg) => {
             if let Some(panes) = state.pvp_panes.as_mut() {
                 if let Some(data) = panes.local_loaded.as_mut() {
-                    let (task, _) = data.editor.update(data, &*msg);
+                    let (task, _) = data.editor.update(lang, data, &*msg);
                     return task.map(Message::SelfSaveView);
                 }
             }

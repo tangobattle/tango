@@ -1507,7 +1507,10 @@ impl App {
                 // We trigger the replay rescan whenever a PvP
                 // session was active before and isn't after.
                 let was_pvp = self.session.active_as::<session::pvp::PvpSession>().is_some();
-                let task = self.session.update(m, &self.config.input_mapping).map(Message::Session);
+                let task = self
+                    .session
+                    .update(m, &self.config.input_mapping, &self.config.language)
+                    .map(Message::Session);
                 // A replay that just played out hands off to the queue. Done
                 // here rather than through `Session::is_ended` on purpose:
                 // that would tear a finished replay down even with an empty

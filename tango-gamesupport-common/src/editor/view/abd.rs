@@ -336,32 +336,29 @@ const ABD_COUNT_COL_W: f32 = 104.0;
 /// clamp entries to this ceiling.
 const MAX_ABD_USE_COUNT: usize = u16::MAX as usize;
 
-/// The auto-battle-data tab as text.
-pub fn as_text(loaded: &OpenSave) -> Option<String> {
+/// The auto-battle-data tab as TSV text for clipboard "copy as text":
+/// the same grouped sections the rendered view shows — one "count,
+/// chip" run per row rather than a line per deck slot, under the view's
+/// own localized section titles — in the folder text's `count\tname`
+/// shape (empty runs as `---`, the way the grouped folder spells them).
+pub fn as_text(lang: &LanguageIdentifier, loaded: &OpenSave) -> Option<String> {
     let assets = loaded.assets.as_ref();
     let view = loaded.save.view_auto_battle_data()?;
-    let mat = view.materialized();
-    let chip_name = |id: Option<usize>| match id {
-        Some(id) => assets
-            .chip(id)
-            .and_then(|c| c.name())
-            .unwrap_or_else(|| format!("#{id}")),
-        None => "—".to_string(),
-    };
+    let grouped = crate::dataview::auto_battle_data::GroupedAutoBattleData::materialize(view.as_ref(), assets);
     let mut out = String::new();
-    let mut section = |title: &str, ids: &[Option<usize>]| {
+    for (title, runs) in abd_grouped_sections(lang, &grouped) {
         out.push_str(&format!("[{title}]\n"));
-        for id in ids {
-            out.push_str(&chip_name(*id));
-            out.push('\n');
+        for (id, count) in runs {
+            let name = match id {
+                Some(id) => assets
+                    .chip(id)
+                    .and_then(|c| c.name())
+                    .unwrap_or_else(|| format!("#{id}")),
+                None => "---".to_string(),
+            };
+            out.push_str(&format!("{count}\t{name}\n"));
         }
         out.push('\n');
-    };
-    section("Secondary standard", mat.secondary_standard_chips());
-    section("Standard", mat.standard_chips());
-    section("Mega", mat.mega_chips());
-    section("Giga", &[mat.giga_chip()]);
-    section("Combos", mat.combos());
-    section("Program advance", &[mat.program_advance()]);
+    }
     Some(out)
 }

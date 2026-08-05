@@ -410,7 +410,7 @@ impl ReplaysState {
                 // on a tab change). Edit/Play outcomes can't fire here:
                 // the replay save view renders read-only.
                 let data = self.loaded.as_mut()?;
-                let (sv_task, outcome) = data.editor.update(data, &*msg);
+                let (sv_task, outcome) = data.editor.update(&config.language, data, &*msg);
                 match outcome {
                     Some(tango_gamesupport::SaveEditorEvent::CopyText(s)) => Some(Effect::CopyText(s)),
                     Some(tango_gamesupport::SaveEditorEvent::CopyImage(img)) => Some(Effect::CopyImage(img)),

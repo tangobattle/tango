@@ -813,8 +813,13 @@ impl State {
     /// Apply a session message to the state. Returns the iced Task
     /// that should be scheduled (always Task::none today — kept for
     /// API parity with the other tabs).
-    pub fn update(&mut self, msg: Message, mapping: &crate::platform::input::Mapping) -> iced::Task<Message> {
-        let task = self.update_inner(msg, mapping);
+    pub fn update(
+        &mut self,
+        msg: Message,
+        mapping: &crate::platform::input::Mapping,
+        lang: &LanguageIdentifier,
+    ) -> iced::Task<Message> {
+        let task = self.update_inner(msg, mapping, lang);
         // Hold-to-quit: Esc held to the threshold tears the session
         // down, same as the Close button. Checked here on every
         // message (the 60 Hz frame wakes, plus the dedicated
@@ -1008,7 +1013,12 @@ impl State {
         }
     }
 
-    fn update_inner(&mut self, msg: Message, mapping: &crate::platform::input::Mapping) -> iced::Task<Message> {
+    fn update_inner(
+        &mut self,
+        msg: Message,
+        mapping: &crate::platform::input::Mapping,
+        lang: &LanguageIdentifier,
+    ) -> iced::Task<Message> {
         match msg {
             Message::Close => {
                 self.close_session();
@@ -1084,7 +1094,7 @@ impl State {
             // Kind-specific view messages — defined + handled beside
             // the views that emit them.
             Message::Replay(m) => return view::replay::update(self, m).map(Message::Replay),
-            Message::Pvp(m) => return view::pvp::update(self, m).map(Message::Pvp),
+            Message::Pvp(m) => return view::pvp::update(self, m, lang).map(Message::Pvp),
             Message::Training(m) => return view::training::update(self, m).map(Message::Training),
             Message::Results(m) => match m {
                 view::results::Message::Dismiss => self.results = None,

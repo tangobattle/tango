@@ -1753,10 +1753,15 @@ impl State {
     /// Apply an `Action`: fold it into view-local state, then translate
     /// it into the [`Outcome`] the host must act on. `loaded` feeds the
     /// arms that read the save (copy rendering, edit-session seeding,
-    /// drop-target resolution).
-    pub fn apply(&mut self, action: &Action, loaded: Option<&OpenSave>) -> (iced::Task<Action>, Option<Outcome>) {
+    /// drop-target resolution); `lang` the ones that render text.
+    pub fn apply(
+        &mut self,
+        lang: &LanguageIdentifier,
+        action: &Action,
+        loaded: Option<&OpenSave>,
+    ) -> (iced::Task<Action>, Option<Outcome>) {
         let task = self.fold(action, loaded);
-        let outcome = self.outcome(action, loaded);
+        let outcome = self.outcome(lang, action, loaded);
         (task, outcome)
     }
 
@@ -1765,7 +1770,7 @@ impl State {
     /// (staged tags, held part) that must stay aligned with the edit.
     /// `None` means the action was fully folded into view state; hosts
     /// forward [`fold`](Self::fold)'s task instead.
-    fn outcome(&mut self, action: &Action, loaded: Option<&OpenSave>) -> Option<Outcome> {
+    fn outcome(&mut self, lang: &LanguageIdentifier, action: &Action, loaded: Option<&OpenSave>) -> Option<Outcome> {
         use crate::model::{AutoBattleDataEdit, ChipEdit, Edit, NaviEdit, NavicustEdit, PatchCard56Edit};
         match action {
             Action::CopyTab(tab) => {
@@ -1774,7 +1779,7 @@ impl State {
                 };
                 // Only a copy that actually produced text earns the
                 // "Copied!" flash.
-                let text = loaded.and_then(|l| tab_as_text(*tab, l, opts))?;
+                let text = loaded.and_then(|l| tab_as_text(lang, *tab, l, opts))?;
                 crate::copy_feedback::flash(&copy_flash_key(*tab, false));
                 Some(Outcome::CopyText(text))
             }
@@ -2013,8 +2018,8 @@ pub fn copy_flash_key(tab: Tab, image: bool) -> String {
 /// A save-view tab as TSV text for clipboard "copy as text", or `None` for
 /// tabs without a text form — the game's own [`crate::editor::GameSaveEditor`]
 /// decides.
-pub fn tab_as_text(tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
-    loaded.save_editor.tab_as_text(tab, loaded, opts)
+pub fn tab_as_text(lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
+    loaded.save_editor.tab_as_text(lang, tab, loaded, opts)
 }
 
 /// Render a save-view tab to an RGBA image for clipboard "copy as image",

@@ -45,7 +45,7 @@ impl GameSaveEditor for Ui {
         }
     }
 
-    fn tab_as_text(&self, tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
+    fn tab_as_text(&self, _lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
         let _ = opts;
         match tab {
             Tab::Folder => sv::folder::as_text(loaded, opts),

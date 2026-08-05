@@ -133,9 +133,11 @@ pub trait SaveEditor: Send + Sync {
     /// save itself when the message is a staged edit (applied in place,
     /// including derived art — an `editable: false` embed can't mint
     /// one). Returns a follow-up task plus whatever the app must act
-    /// on.
+    /// on. `lang` feeds the arms that render text (clipboard copies
+    /// localize their section headers the same way the view does).
     fn update(
         &self,
+        lang: &LanguageIdentifier,
         data: &mut LoadedSave,
         msg: &dyn SaveEditorMessage,
     ) -> (
