@@ -12,8 +12,8 @@
 //! the game's answer to whether the mapping is right.
 
 use tango_gamesupport_bn5ds::dataview::{rom, save};
-use tango_gamesupport_common::dataview::rom::Assets as _;
-use tango_gamesupport_common::dataview::save::Save as _;
+use tango_gamesupport_common_dataview::rom::Assets as _;
+use tango_gamesupport_common_dataview::save::Save as _;
 
 /// The HP+500 program, in its first colour: template 47 of the cart's
 /// own table, four colour variants apiece.
@@ -94,7 +94,7 @@ fn main() {
             .expect("navicust is full");
         assert!(navicust.set_navicust_part(
             slot,
-            Some(tango_gamesupport_common::dataview::save::NavicustPart {
+            Some(tango_gamesupport_common_dataview::save::NavicustPart {
                 id: HP_PLUS_500,
                 col: 0,
                 row: 0,
@@ -229,7 +229,7 @@ fn report(file: &save::Save, assets: &rom::Assets) {
         let name = |id: usize| {
             assets
                 .navicust_part(id)
-                .and_then(|part| tango_gamesupport_common::dataview::rom::NavicustPart::name(&*part))
+                .and_then(|part| tango_gamesupport_common_dataview::rom::NavicustPart::name(&*part))
                 .unwrap_or_else(|| "???".to_string())
         };
         println!("navicust:");
@@ -278,7 +278,7 @@ fn report(file: &save::Save, assets: &rom::Assets) {
         chip.map(|id| {
             assets
                 .chip(id)
-                .and_then(|c| tango_gamesupport_common::dataview::rom::Chip::name(&*c))
+                .and_then(|c| tango_gamesupport_common_dataview::rom::Chip::name(&*c))
                 .unwrap_or_else(|| format!("#{id}"))
         })
         .unwrap_or_else(|| "-".to_string())

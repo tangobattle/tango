@@ -7647,7 +7647,7 @@ dependencies = [
  "tango-gamesupport",
  "tango-gamesupport-bcc-dataview",
  "tango-gamesupport-bcc-ui",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
  "tango-match",
  "tango-replay",
  "unic-langid",
@@ -7659,7 +7659,7 @@ version = "0.1.0"
 dependencies = [
  "byteorder",
  "image",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
 ]
 
 [[package]]
@@ -7669,7 +7669,8 @@ dependencies = [
  "iced",
  "lucide-icons",
  "tango-gamesupport-bcc-dataview",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
+ "tango-gamesupport-common-ui",
  "unic-langid",
 ]
 
@@ -7687,6 +7688,7 @@ dependencies = [
  "tango-gamesupport-bn1-dataview",
  "tango-gamesupport-bn1-ui",
  "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
  "tango-match",
 ]
 
@@ -7697,7 +7699,7 @@ dependencies = [
  "bytemuck",
  "image",
  "num-traits",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
 ]
 
 [[package]]
@@ -7705,7 +7707,7 @@ name = "tango-gamesupport-bn1-ui"
 version = "0.1.0"
 dependencies = [
  "iced",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-ui",
  "unic-langid",
 ]
 
@@ -7724,6 +7726,7 @@ dependencies = [
  "tango-gamesupport-bn2-dataview",
  "tango-gamesupport-bn2-ui",
  "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
  "tango-match",
 ]
 
@@ -7735,7 +7738,7 @@ dependencies = [
  "c2rust-bitfields",
  "image",
  "num-traits",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
 ]
 
 [[package]]
@@ -7743,7 +7746,7 @@ name = "tango-gamesupport-bn2-ui"
 version = "0.1.0"
 dependencies = [
  "iced",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-ui",
  "unic-langid",
 ]
 
@@ -7762,6 +7765,7 @@ dependencies = [
  "tango-gamesupport-bn3-dataview",
  "tango-gamesupport-bn3-ui",
  "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
  "tango-match",
 ]
 
@@ -7775,7 +7779,7 @@ dependencies = [
  "image",
  "ndarray",
  "num-traits",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
 ]
 
 [[package]]
@@ -7784,7 +7788,7 @@ version = "0.1.0"
 dependencies = [
  "iced",
  "image",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-ui",
  "unic-langid",
 ]
 
@@ -7802,6 +7806,7 @@ dependencies = [
  "tango-gamesupport-bn4-dataview",
  "tango-gamesupport-bn4-ui",
  "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
  "tango-match",
  "unic-langid",
 ]
@@ -7815,7 +7820,7 @@ dependencies = [
  "image",
  "ndarray",
  "num-traits",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
 ]
 
 [[package]]
@@ -7826,7 +7831,8 @@ dependencies = [
  "image",
  "sweeten",
  "tango-gamesupport-bn4-dataview",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
+ "tango-gamesupport-common-ui",
  "unic-langid",
 ]
 
@@ -7844,6 +7850,7 @@ dependencies = [
  "tango-gamesupport-bn5-dataview",
  "tango-gamesupport-bn5-ui",
  "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
  "tango-match",
 ]
 
@@ -7856,7 +7863,7 @@ dependencies = [
  "image",
  "ndarray",
  "num-traits",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
 ]
 
 [[package]]
@@ -7865,7 +7872,7 @@ version = "0.1.0"
 dependencies = [
  "iced",
  "image",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-ui",
  "unic-langid",
 ]
 
@@ -7881,6 +7888,7 @@ dependencies = [
  "tango-gamesupport-bn5ds-dataview",
  "tango-gamesupport-bn5ds-ui",
  "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
  "tango-match",
  "tango-replay",
 ]
@@ -7894,7 +7902,7 @@ dependencies = [
  "image",
  "ndarray",
  "num-traits",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
 ]
 
 [[package]]
@@ -7905,7 +7913,8 @@ dependencies = [
  "image",
  "sweeten",
  "tango-gamesupport-bn5ds-dataview",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
+ "tango-gamesupport-common-ui",
  "tango-match",
  "unic-langid",
 ]
@@ -7924,6 +7933,7 @@ dependencies = [
  "tango-gamesupport-bn6-dataview",
  "tango-gamesupport-bn6-ui",
  "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
  "tango-match",
  "tango-replay",
 ]
@@ -7937,7 +7947,7 @@ dependencies = [
  "image",
  "ndarray",
  "num-traits",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
 ]
 
 [[package]]
@@ -7946,7 +7956,7 @@ version = "0.1.0"
 dependencies = [
  "iced",
  "image",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-ui",
  "unic-langid",
 ]
 
@@ -7954,30 +7964,43 @@ dependencies = [
 name = "tango-gamesupport-common"
 version = "0.1.0"
 dependencies = [
- "bitvec",
+ "tango-match",
+]
+
+[[package]]
+name = "tango-gamesupport-common-dataview"
+version = "0.1.0"
+dependencies = [
  "bytemuck",
  "byteorder",
  "c2rust-bitfields",
+ "image",
+ "itertools 0.13.0",
+ "ndarray",
+ "num-derive",
+ "num-traits",
+ "patricia_tree",
+ "tango-gamesupport",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tango-gamesupport-common-ui"
+version = "0.1.0"
+dependencies = [
  "fluent-templates",
  "iced",
  "iced_graphics",
  "iced_tiny_skia",
  "image",
  "indexmap",
- "itertools 0.13.0",
- "log",
  "lucide-icons",
  "ndarray",
- "num-derive",
- "num-traits",
- "patricia_tree",
- "semver",
  "sweeten",
  "tango-gamesupport",
- "tango-match",
+ "tango-gamesupport-common-dataview",
  "tango-patch",
  "tango-ui",
- "thiserror 1.0.69",
  "tiny-skia",
  "unic-langid",
 ]
@@ -7994,6 +8017,7 @@ dependencies = [
  "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
  "tango-gamesupport-exe45-dataview",
  "tango-gamesupport-exe45-ui",
  "tango-match",
@@ -8007,7 +8031,7 @@ dependencies = [
  "c2rust-bitfields",
  "image",
  "num-traits",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
 ]
 
 [[package]]
@@ -8015,7 +8039,7 @@ name = "tango-gamesupport-exe45-ui"
 version = "0.1.0"
 dependencies = [
  "iced",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-ui",
  "unic-langid",
 ]
 
@@ -8028,7 +8052,7 @@ dependencies = [
  "log",
  "tango-backend-melonds",
  "tango-gamesupport",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
  "tango-gamesupport-exeoss-dataview",
  "tango-gamesupport-exeoss-ui",
  "tango-match",
@@ -8042,7 +8066,7 @@ dependencies = [
  "crc32fast",
  "image",
  "num-traits",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
 ]
 
 [[package]]
@@ -8050,7 +8074,8 @@ name = "tango-gamesupport-exeoss-ui"
 version = "0.1.0"
 dependencies = [
  "iced",
- "tango-gamesupport-common",
+ "tango-gamesupport-common-dataview",
+ "tango-gamesupport-common-ui",
  "unic-langid",
 ]
 

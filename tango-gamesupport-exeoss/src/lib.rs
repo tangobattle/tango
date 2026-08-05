@@ -58,7 +58,7 @@ static EXEOSS_SAVE: LazyLock<dataview::save::Save> =
 static EXEOSS_T: SaveTemplates = LazyLock::new(|| {
     vec![(
         "",
-        tango_gamesupport_common::dataview::wrap_save(Box::new(EXEOSS_SAVE.clone())),
+        tango_gamesupport_common_dataview::wrap_save(Box::new(EXEOSS_SAVE.clone())),
     )]
 });
 
@@ -69,7 +69,7 @@ static EXEOSS_T: SaveTemplates = LazyLock::new(|| {
 /// banks the console would, the newest one whose stamps check out.
 fn parse_save(data: &[u8]) -> Result<tango_gamesupport::BoxedSave, tango_gamesupport::Error> {
     let save = dataview::save::Save::new(data)?;
-    Ok(tango_gamesupport_common::dataview::wrap_save(Box::new(save)))
+    Ok(tango_gamesupport_common_dataview::wrap_save(Box::new(save)))
 }
 
 /// The only release: Japan, one revision.
@@ -86,7 +86,7 @@ pub static EXEOSS: Game = Game {
     // cart image itself, and there is one charset, the cart being
     // Japan-only.
     load_rom_assets_fn: Some(|rom, _wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::B6XJ_00,
             charset.unwrap_or(dataview::rom::JA_CHARSET),
             rom.to_vec(),

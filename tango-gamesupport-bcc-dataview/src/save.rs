@@ -79,7 +79,7 @@
 //! BCC save is accepted by either game.
 
 use byteorder::ByteOrder as _;
-use tango_gamesupport_common::dataview::save as dv_save;
+use tango_gamesupport_common_dataview::save as dv_save;
 
 /// One save file's payload, as the game keeps it in EWRAM.
 pub const SAVE_SIZE: usize = 0x1734;
@@ -296,7 +296,7 @@ impl dv_save::NaviView for NaviView<'_> {
         self.navi_chip().unwrap_or_default()
     }
 
-    fn max_hp(&self, assets: &dyn tango_gamesupport_common::dataview::rom::Assets) -> u16 {
+    fn max_hp(&self, assets: &dyn tango_gamesupport_common_dataview::rom::Assets) -> u16 {
         // The navi chip's own HP stat — BCC's chip model, so this goes
         // through the game's concrete assets rather than the shared
         // chip trait (which has no HP).
@@ -311,7 +311,7 @@ impl dv_save::NaviView for NaviView<'_> {
 
     fn folder_limits(
         &self,
-        _assets: &dyn tango_gamesupport_common::dataview::rom::Assets,
+        _assets: &dyn tango_gamesupport_common_dataview::rom::Assets,
     ) -> dv_save::FolderLimits {
         // BCC budgets a deck in MB, not in chip classes; the deck board
         // enforces that itself.

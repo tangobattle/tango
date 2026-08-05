@@ -307,7 +307,7 @@ fn main() {
         if played.is_none() && cross.is_none() {
             return data;
         }
-        use tango_gamesupport_common::dataview::save::Save as _;
+        use tango_gamesupport_common_dataview::save::Save as _;
         let set = tango_gamesupport_bn5ds::dataview::save::SaveSet::parse(&data).expect("not this game's flash");
         let mut save = match played {
             Some(slot) => set.save(slot).expect("no such file"),

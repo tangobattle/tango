@@ -14,7 +14,8 @@ license = "GPL-3.0-or-later"
 [dependencies]
 tango-gamesupport = { path = "../tango-gamesupport" }
 tango-gamesupport-bn3-dataview = { path = "../tango-gamesupport-bn3-dataview" }
-tango-gamesupport-common = { path = "../tango-gamesupport-common", default-features = false }
+tango-gamesupport-common = { path = "../tango-gamesupport-common" }
+tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
 tango-match = { path = "../tango-match" }
 tango-backend-mgba = { path = "../tango-backend-mgba" }
 mgba.workspace = true

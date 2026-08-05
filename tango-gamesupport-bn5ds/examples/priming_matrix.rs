@@ -40,7 +40,7 @@ use tango_gamesupport_bn5ds::dataview::save::{
     SaveSet, BLOCK_SIZE, CHECKSUM_OFFSET, GENERATION_OFFSET, INTERIOR_CHECKSUM_OFFSET, MAGIC,
     MAGIC_OFFSET, SAVE_IMAGE_SIZE, SIZE,
 };
-use tango_gamesupport_common::dataview::save::Save as _;
+use tango_gamesupport_common_dataview::save::Save as _;
 
 /// The game's own checksum (see dataview save.rs).
 fn checksum(buf: &[u8]) -> u16 {

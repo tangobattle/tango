@@ -60,11 +60,11 @@ static EXE5B_T: SaveTemplates = LazyLock::new(|| {
     vec![
         (
             "dark",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(EXE5B_DARK.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(EXE5B_DARK.clone())),
         ),
         (
             "light",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(EXE5B_LIGHT.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(EXE5B_LIGHT.clone())),
         ),
     ]
 });
@@ -78,7 +78,7 @@ fn parse_save(
     if save.game_info() != &(dataview::save::GameInfo { region, variant }) {
         return Err(Error::IncompatibleSave);
     }
-    Ok(tango_gamesupport_common::dataview::wrap_save(Box::new(save)))
+    Ok(tango_gamesupport_common_dataview::wrap_save(Box::new(save)))
 }
 
 pub static EXE5B: Game = Game {
@@ -90,7 +90,7 @@ pub static EXE5B: Game = Game {
     region: Region::JP,
     parse_save_fn: |data| parse_save(data, dataview::save::Region::JP, dataview::save::Variant::Protoman),
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::BRBJ_00,
             charset.unwrap_or(dataview::rom::JA_CHARSET),
             rom.to_vec(),
@@ -110,11 +110,11 @@ static EXE5C_T: SaveTemplates = LazyLock::new(|| {
     vec![
         (
             "dark",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(EXE5C_DARK.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(EXE5C_DARK.clone())),
         ),
         (
             "light",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(EXE5C_LIGHT.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(EXE5C_LIGHT.clone())),
         ),
     ]
 });
@@ -128,7 +128,7 @@ pub static EXE5C: Game = Game {
     region: Region::JP,
     parse_save_fn: |data| parse_save(data, dataview::save::Region::JP, dataview::save::Variant::Colonel),
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::BRKJ_00,
             charset.unwrap_or(dataview::rom::JA_CHARSET),
             rom.to_vec(),
@@ -148,11 +148,11 @@ static BN5P_T: SaveTemplates = LazyLock::new(|| {
     vec![
         (
             "dark",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(BN5P_DARK.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(BN5P_DARK.clone())),
         ),
         (
             "light",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(BN5P_LIGHT.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(BN5P_LIGHT.clone())),
         ),
     ]
 });
@@ -166,7 +166,7 @@ pub static BN5P: Game = Game {
     region: Region::US,
     parse_save_fn: |data| parse_save(data, dataview::save::Region::US, dataview::save::Variant::Protoman),
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::BRBE_00,
             charset.unwrap_or(dataview::rom::EN_CHARSET),
             rom.to_vec(),
@@ -186,11 +186,11 @@ static BN5C_T: SaveTemplates = LazyLock::new(|| {
     vec![
         (
             "dark",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(BN5C_DARK.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(BN5C_DARK.clone())),
         ),
         (
             "light",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(BN5C_LIGHT.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(BN5C_LIGHT.clone())),
         ),
     ]
 });
@@ -204,7 +204,7 @@ pub static BN5C: Game = Game {
     region: Region::US,
     parse_save_fn: |data| parse_save(data, dataview::save::Region::US, dataview::save::Variant::Colonel),
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::BRKE_00,
             charset.unwrap_or(dataview::rom::EN_CHARSET),
             rom.to_vec(),

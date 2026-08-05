@@ -173,7 +173,7 @@ pub struct NavicustLayout {
 /// implementation only speaks for what its game actually models — a
 /// game without chips (or without anything at all) doesn't stub out
 /// tables that were never its vocabulary.
-pub trait Assets: crate::dataview::save::AsAny {
+pub trait Assets: crate::save::AsAny {
     fn chip(&self, id: usize) -> Option<Box<dyn Chip + '_>> {
         let _ = id;
         None

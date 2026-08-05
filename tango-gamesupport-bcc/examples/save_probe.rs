@@ -9,8 +9,8 @@
 //! `BCC_ART_DIR=<dir>` additionally dumps every chip's artwork and icon
 //! as PNGs, for eyeballing the ROM graphics decode.
 
-use tango_gamesupport_common::dataview::rom::Assets as _;
-use tango_gamesupport_common::dataview::save::Save as _;
+use tango_gamesupport_common_dataview::rom::Assets as _;
+use tango_gamesupport_common_dataview::save::Save as _;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -34,13 +34,13 @@ fn main() {
         std::fs::create_dir_all(&dir).unwrap();
         for id in 1..tango_gamesupport_bcc::dataview::NUM_CHIPS {
             let Some(chip) = assets.chip(id) else { continue };
-            let nm = tango_gamesupport_common::dataview::rom::Chip::name(&*chip)
+            let nm = tango_gamesupport_common_dataview::rom::Chip::name(&*chip)
                 .unwrap_or_default()
                 .replace(['/', ' '], "_");
-            tango_gamesupport_common::dataview::rom::Chip::image(&*chip)
+            tango_gamesupport_common_dataview::rom::Chip::image(&*chip)
                 .save(format!("{dir}/{id:03}_{nm}.png"))
                 .unwrap();
-            tango_gamesupport_common::dataview::rom::Chip::icon(&*chip)
+            tango_gamesupport_common_dataview::rom::Chip::icon(&*chip)
                 .save(format!("{dir}/{id:03}_{nm}_icon.png"))
                 .unwrap();
         }
@@ -97,9 +97,9 @@ fn main() {
             view.set_chip(
                 0,
                 empty_slot,
-                tango_gamesupport_common::dataview::save::Chip {
+                tango_gamesupport_common_dataview::save::Chip {
                     id: owned_id,
-                    code: tango_gamesupport_common::dataview::save::ChipCode::Star,
+                    code: tango_gamesupport_common_dataview::save::ChipCode::Star,
                 },
             ),
             "set_chip refused"
@@ -145,9 +145,9 @@ fn main() {
                         view.set_chip(
                             0,
                             slot,
-                            tango_gamesupport_common::dataview::save::Chip {
+                            tango_gamesupport_common_dataview::save::Chip {
                                 id: *id,
-                                code: tango_gamesupport_common::dataview::save::ChipCode::Star,
+                                code: tango_gamesupport_common_dataview::save::ChipCode::Star,
                             },
                         );
                     }
@@ -193,9 +193,9 @@ fn main() {
                     view.set_chip(
                         0,
                         slot,
-                        tango_gamesupport_common::dataview::save::Chip {
+                        tango_gamesupport_common_dataview::save::Chip {
                             id,
-                            code: tango_gamesupport_common::dataview::save::ChipCode::Star,
+                            code: tango_gamesupport_common_dataview::save::ChipCode::Star,
                         },
                     );
                     slot += 1;

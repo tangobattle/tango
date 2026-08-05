@@ -44,7 +44,7 @@ static EXE1_SAVE: LazyLock<dataview::save::Save> = LazyLock::new(|| {
 static EXE1_T: SaveTemplates = LazyLock::new(|| {
     vec![(
         "",
-        tango_gamesupport_common::dataview::wrap_save(Box::new(EXE1_SAVE.clone())),
+        tango_gamesupport_common_dataview::wrap_save(Box::new(EXE1_SAVE.clone())),
     )]
 });
 static EXE1_LOGO: LazyImage = LazyLock::new(|| image::load_from_memory(include_bytes!("logos/exe1-0.png")).unwrap());
@@ -65,10 +65,10 @@ pub static EXE1: Game = Game {
         {
             return Err(Error::IncompatibleSave);
         }
-        Ok(tango_gamesupport_common::dataview::wrap_save(Box::new(save)))
+        Ok(tango_gamesupport_common_dataview::wrap_save(Box::new(save)))
     },
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::AREJ_00,
             charset.unwrap_or(dataview::rom::JA_CHARSET),
             rom.to_vec(),
@@ -94,7 +94,7 @@ static BN1_SAVE: LazyLock<dataview::save::Save> = LazyLock::new(|| {
 static BN1_T: SaveTemplates = LazyLock::new(|| {
     vec![(
         "",
-        tango_gamesupport_common::dataview::wrap_save(Box::new(BN1_SAVE.clone())),
+        tango_gamesupport_common_dataview::wrap_save(Box::new(BN1_SAVE.clone())),
     )]
 });
 static BN1_LOGO: LazyImage = LazyLock::new(|| image::load_from_memory(include_bytes!("logos/bn1-0.png")).unwrap());
@@ -115,10 +115,10 @@ pub static BN1: Game = Game {
         {
             return Err(Error::IncompatibleSave);
         }
-        Ok(tango_gamesupport_common::dataview::wrap_save(Box::new(save)))
+        Ok(tango_gamesupport_common_dataview::wrap_save(Box::new(save)))
     },
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::AREE_00,
             charset.unwrap_or(dataview::rom::EN_CHARSET),
             rom.to_vec(),

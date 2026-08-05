@@ -2,8 +2,9 @@
 //! `tango-dataview` crate. The traits every game crate's `dataview`
 //! module implements (`save::Save`, `rom::Assets`) plus the shared
 //! derived views (navicust composition, auto-battle data, msg
-//! decoding). Always compiled — no UI dependencies — so headless game
-//! builds get save parsing without this crate's `ui` feature.
+//! decoding). No UI dependencies anywhere below this crate, so headless
+//! game builds (pvp probes, engine hosts) get save parsing with no UI
+//! toolkit linked.
 //!
 //! The public boundary crosses here through the opaque handles below:
 //! `Game::parse_save` / `Game::load_rom_assets` hand the app

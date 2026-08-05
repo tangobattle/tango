@@ -37,7 +37,7 @@
 mod msg;
 pub mod navicust;
 
-use tango_gamesupport_common::dataview::nds;
+use tango_gamesupport_common_dataview::nds;
 
 pub struct Offsets {
     /// The chip stat table (RAM): [`NUM_CHIPS`](super::NUM_CHIPS)
@@ -294,8 +294,8 @@ impl Mapper {
 /// game's compressed archives do.
 const TEXT_ARCHIVE_OFFSET: usize = 4;
 
-fn read_palette(data: &[u8]) -> tango_gamesupport_common::dataview::rom::Palette {
-    data.get(..std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>())
+fn read_palette(data: &[u8]) -> tango_gamesupport_common_dataview::rom::Palette {
+    data.get(..std::mem::size_of::<tango_gamesupport_common_dataview::rom::Palette>())
         .map(bytemuck::pod_read_unaligned)
         .unwrap_or([Default::default(); 16])
 }
@@ -309,8 +309,8 @@ pub struct Assets {
     /// the party readers answer zeroes and `None` off that, the way
     /// every reader treats missing data.
     partycust: Option<nds::Overlay>,
-    chip_icon_palette: tango_gamesupport_common::dataview::rom::Palette,
-    element_icon_palette: tango_gamesupport_common::dataview::rom::Palette,
+    chip_icon_palette: tango_gamesupport_common_dataview::rom::Palette,
+    element_icon_palette: tango_gamesupport_common_dataview::rom::Palette,
     /// The one compressed archive the cart makes us decode: the
     /// NaviCust program descriptions, unpacked once at load rather than
     /// per lookup. Empty for a cart whose file isn't one.
@@ -326,10 +326,10 @@ impl Assets {
         let element_icon_palette = read_palette(mapper.file(offsets.element_icon_palette));
         // The DS's LZ77 is the GBA's, so the shared decoder reads it.
         let ncp_descriptions =
-            tango_gamesupport_common::dataview::rom::unlz77(&mut mapper.file(offsets.ncp_descriptions))
+            tango_gamesupport_common_dataview::rom::unlz77(&mut mapper.file(offsets.ncp_descriptions))
                 .unwrap_or_default();
         let item_descriptions =
-            tango_gamesupport_common::dataview::rom::unlz77(&mut mapper.file(offsets.item_descriptions))
+            tango_gamesupport_common_dataview::rom::unlz77(&mut mapper.file(offsets.item_descriptions))
                 .unwrap_or_default();
         Self {
             offsets,
@@ -358,7 +358,7 @@ impl Assets {
 
     /// And the same again, for one already decompressed into memory.
     fn blob_text(&self, archive: &[u8], index: usize) -> Option<String> {
-        let entry = tango_gamesupport_common::dataview::msg::get_entry(archive, index)?;
+        let entry = tango_gamesupport_common_dataview::msg::get_entry(archive, index)?;
 
         Some(
             self.msg_parser
@@ -367,7 +367,7 @@ impl Assets {
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        tango_gamesupport_common::dataview::msg::Chunk::Text(s) => s,
+                        tango_gamesupport_common_dataview::msg::Chunk::Text(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()
@@ -540,8 +540,8 @@ impl<'a> Chip<'a> {
             .mapper
             .file(self.assets.offsets.chip_art)
             .get(raw.art_tiles as usize * 0x10..)?;
-        let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(
-            tiles.get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * 7 * 6)?,
+        let paletted = tango_gamesupport_common_dataview::rom::read_merged_tiles(
+            tiles.get(..tango_gamesupport_common_dataview::rom::TILE_BYTES * 7 * 6)?,
             7,
         )
         .ok()?;
@@ -550,9 +550,9 @@ impl<'a> Chip<'a> {
             .mapper
             .file(self.assets.offsets.chip_art_palettes)
             .get(raw.art_palette as usize * 0x10..)?
-            .get(..std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>())
-            .map(bytemuck::pod_read_unaligned::<tango_gamesupport_common::dataview::rom::Palette>)?;
-        Some(tango_gamesupport_common::dataview::rom::apply_palette(
+            .get(..std::mem::size_of::<tango_gamesupport_common_dataview::rom::Palette>())
+            .map(bytemuck::pod_read_unaligned::<tango_gamesupport_common_dataview::rom::Palette>)?;
+        Some(tango_gamesupport_common_dataview::rom::apply_palette(
             paletted, &palette,
         ))
     }
@@ -563,19 +563,19 @@ impl<'a> Chip<'a> {
     fn try_icon(&self) -> Option<image::RgbaImage> {
         let raw = self.raw();
         let tiles = self.assets.mapper.get(raw.icon_ptr);
-        let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(
-            tiles.get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * 2 * 2)?,
+        let paletted = tango_gamesupport_common_dataview::rom::read_merged_tiles(
+            tiles.get(..tango_gamesupport_common_dataview::rom::TILE_BYTES * 2 * 2)?,
             2,
         )
         .ok()?;
-        Some(tango_gamesupport_common::dataview::rom::apply_palette(
+        Some(tango_gamesupport_common_dataview::rom::apply_palette(
             paletted,
             &self.assets.chip_icon_palette,
         ))
     }
 }
 
-impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
+impl<'a> tango_gamesupport_common_dataview::rom::Chip for Chip<'a> {
     fn name(&self) -> Option<String> {
         self.text(self.assets.offsets.chip_names_pointers)
     }
@@ -587,8 +587,8 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
     fn icon(&self) -> image::RgbaImage {
         self.try_icon().unwrap_or_else(|| {
             image::RgbaImage::new(
-                (2 * tango_gamesupport_common::dataview::rom::TILE_WIDTH) as u32,
-                (2 * tango_gamesupport_common::dataview::rom::TILE_HEIGHT) as u32,
+                (2 * tango_gamesupport_common_dataview::rom::TILE_WIDTH) as u32,
+                (2 * tango_gamesupport_common_dataview::rom::TILE_HEIGHT) as u32,
             )
         })
     }
@@ -596,8 +596,8 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
     fn image(&self) -> image::RgbaImage {
         self.try_image().unwrap_or_else(|| {
             image::RgbaImage::new(
-                (7 * tango_gamesupport_common::dataview::rom::TILE_WIDTH) as u32,
-                (6 * tango_gamesupport_common::dataview::rom::TILE_HEIGHT) as u32,
+                (7 * tango_gamesupport_common_dataview::rom::TILE_WIDTH) as u32,
+                (6 * tango_gamesupport_common_dataview::rom::TILE_HEIGHT) as u32,
             )
         })
     }
@@ -617,14 +617,14 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
         raw.element as usize
     }
 
-    fn class(&self) -> tango_gamesupport_common::dataview::rom::ChipClass {
+    fn class(&self) -> tango_gamesupport_common_dataview::rom::ChipClass {
         let raw = self.raw();
         match raw.class {
-            0 => tango_gamesupport_common::dataview::rom::ChipClass::Standard,
-            1 => tango_gamesupport_common::dataview::rom::ChipClass::Mega,
-            2 => tango_gamesupport_common::dataview::rom::ChipClass::Giga,
-            4 => tango_gamesupport_common::dataview::rom::ChipClass::ProgramAdvance,
-            _ => tango_gamesupport_common::dataview::rom::ChipClass::None,
+            0 => tango_gamesupport_common_dataview::rom::ChipClass::Standard,
+            1 => tango_gamesupport_common_dataview::rom::ChipClass::Mega,
+            2 => tango_gamesupport_common_dataview::rom::ChipClass::Giga,
+            4 => tango_gamesupport_common_dataview::rom::ChipClass::ProgramAdvance,
+            _ => tango_gamesupport_common_dataview::rom::ChipClass::None,
         }
     }
 
@@ -677,8 +677,8 @@ const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x10);
 
 /// Decode a raw NaviCust colour byte — the GBA game's encoding, which
 /// the save's colour bar uses too.
-pub fn navicust_part_color(raw: u8) -> Option<tango_gamesupport_common::dataview::rom::NavicustPartColor> {
-    use tango_gamesupport_common::dataview::rom::NavicustPartColor as C;
+pub fn navicust_part_color(raw: u8) -> Option<tango_gamesupport_common_dataview::rom::NavicustPartColor> {
+    use tango_gamesupport_common_dataview::rom::NavicustPartColor as C;
     Some(match raw {
         1 => C::White,
         2 => C::Yellow,
@@ -707,7 +707,7 @@ impl NavicustPart<'_> {
     /// The 5x5 mask at `ptr`, or an empty one for a pointer that runs
     /// out of mappable range — a patched cart renders blank rather than
     /// panicking.
-    fn bitmap(&self, ptr: u32) -> tango_gamesupport_common::dataview::rom::NavicustBitmap {
+    fn bitmap(&self, ptr: u32) -> tango_gamesupport_common_dataview::rom::NavicustBitmap {
         let cells = self
             .assets
             .mapper
@@ -719,12 +719,12 @@ impl NavicustPart<'_> {
     }
 }
 
-impl tango_gamesupport_common::dataview::rom::NavicustPart for NavicustPart<'_> {
+impl tango_gamesupport_common_dataview::rom::NavicustPart for NavicustPart<'_> {
     /// The program's name. The archive names each of the 48 program
     /// templates once — the four colour variants share an entry, as on
     /// GBA.
     fn name(&self) -> Option<String> {
-        let entry = tango_gamesupport_common::dataview::msg::get_entry(
+        let entry = tango_gamesupport_common_dataview::msg::get_entry(
             self.assets.mapper.get(self.assets.offsets.ncp_names),
             self.id / 4,
         )?;
@@ -736,7 +736,7 @@ impl tango_gamesupport_common::dataview::rom::NavicustPart for NavicustPart<'_> 
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        tango_gamesupport_common::dataview::msg::Chunk::Text(s) => s,
+                        tango_gamesupport_common_dataview::msg::Chunk::Text(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()
@@ -755,7 +755,7 @@ impl tango_gamesupport_common::dataview::rom::NavicustPart for NavicustPart<'_> 
             .blob_text(self.assets.ncp_descriptions.get(TEXT_ARCHIVE_OFFSET..)?, self.id / 4)
     }
 
-    fn color(&self) -> Option<tango_gamesupport_common::dataview::rom::NavicustPartColor> {
+    fn color(&self) -> Option<tango_gamesupport_common_dataview::rom::NavicustPartColor> {
         navicust_part_color(self.raw()?.color)
     }
 
@@ -765,12 +765,12 @@ impl tango_gamesupport_common::dataview::rom::NavicustPart for NavicustPart<'_> 
         self.raw().map(|raw| raw.is_solid == 0).unwrap_or(false)
     }
 
-    fn uncompressed_bitmap(&self) -> tango_gamesupport_common::dataview::rom::NavicustBitmap {
+    fn uncompressed_bitmap(&self) -> tango_gamesupport_common_dataview::rom::NavicustBitmap {
         let ptr = self.raw().map(|raw| raw.uncompressed_bitmap_ptr).unwrap_or(0);
         self.bitmap(ptr)
     }
 
-    fn compressed_bitmap(&self) -> Option<tango_gamesupport_common::dataview::rom::NavicustBitmap> {
+    fn compressed_bitmap(&self) -> Option<tango_gamesupport_common_dataview::rom::NavicustBitmap> {
         Some(self.bitmap(self.raw()?.compressed_bitmap_ptr))
     }
 }
@@ -789,9 +789,9 @@ impl Navi<'_> {
             .assets
             .mapper
             .file(self.assets.offsets.navi_emblems)
-            .get(self.id * EMBLEM_TILES * tango_gamesupport_common::dataview::rom::TILE_BYTES..)?;
-        let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(
-            tiles.get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * EMBLEM_TILES)?,
+            .get(self.id * EMBLEM_TILES * tango_gamesupport_common_dataview::rom::TILE_BYTES..)?;
+        let paletted = tango_gamesupport_common_dataview::rom::read_merged_tiles(
+            tiles.get(..tango_gamesupport_common_dataview::rom::TILE_BYTES * EMBLEM_TILES)?,
             2,
         )
         .ok()?;
@@ -800,18 +800,18 @@ impl Navi<'_> {
             .mapper
             .get(self.assets.offsets.navi_emblem_palette_ids)
             .get(self.id)? as usize;
-        let palette = bytemuck::pod_read_unaligned::<tango_gamesupport_common::dataview::rom::Palette>(
+        let palette = bytemuck::pod_read_unaligned::<tango_gamesupport_common_dataview::rom::Palette>(
             self.assets
                 .mapper
                 .file(self.assets.offsets.navi_emblem_palettes)
-                .get(which * std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>()..)?
-                .get(..std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>())?,
+                .get(which * std::mem::size_of::<tango_gamesupport_common_dataview::rom::Palette>()..)?
+                .get(..std::mem::size_of::<tango_gamesupport_common_dataview::rom::Palette>())?,
         );
-        Some(tango_gamesupport_common::dataview::rom::apply_palette(paletted, &palette))
+        Some(tango_gamesupport_common_dataview::rom::apply_palette(paletted, &palette))
     }
 }
 
-impl tango_gamesupport_common::dataview::rom::Navi for Navi<'_> {
+impl tango_gamesupport_common_dataview::rom::Navi for Navi<'_> {
     fn name(&self) -> Option<String> {
         self.assets.navi_name(self.id)
     }
@@ -819,8 +819,8 @@ impl tango_gamesupport_common::dataview::rom::Navi for Navi<'_> {
     fn emblem(&self) -> image::RgbaImage {
         self.try_emblem().unwrap_or_else(|| {
             image::RgbaImage::new(
-                (2 * tango_gamesupport_common::dataview::rom::TILE_WIDTH) as u32,
-                (2 * tango_gamesupport_common::dataview::rom::TILE_HEIGHT) as u32,
+                (2 * tango_gamesupport_common_dataview::rom::TILE_WIDTH) as u32,
+                (2 * tango_gamesupport_common_dataview::rom::TILE_HEIGHT) as u32,
             )
         })
     }
@@ -947,8 +947,8 @@ const PARTY_PROGRAM_BONUSES: [crate::save::PartycustBonus; super::NUM_PARTY_PROG
 /// get Team ProtoMan's.
 const NAVICUST_BG: image::Rgba<u8> = image::Rgba([0x21, 0x8c, 0xa5, 0xff]);
 
-impl tango_gamesupport_common::dataview::rom::Assets for Assets {
-    fn chip(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common::dataview::rom::Chip + '_>> {
+impl tango_gamesupport_common_dataview::rom::Assets for Assets {
+    fn chip(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common_dataview::rom::Chip + '_>> {
         if id >= self.num_chips() {
             return None;
         }
@@ -959,7 +959,7 @@ impl tango_gamesupport_common::dataview::rom::Assets for Assets {
         super::NUM_CHIPS
     }
 
-    fn navicust_part(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common::dataview::rom::NavicustPart + '_>> {
+    fn navicust_part(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common_dataview::rom::NavicustPart + '_>> {
         if id >= self.num_navicust_parts() {
             return None;
         }
@@ -970,7 +970,7 @@ impl tango_gamesupport_common::dataview::rom::Assets for Assets {
         super::NUM_NAVICUST_PARTS
     }
 
-    fn navi(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common::dataview::rom::Navi + '_>> {
+    fn navi(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common_dataview::rom::Navi + '_>> {
         if id >= self.num_navis() {
             return None;
         }
@@ -983,8 +983,8 @@ impl tango_gamesupport_common::dataview::rom::Assets for Assets {
 
     /// The GBA game's grid, which the cart keeps: five by five, the
     /// command line third from the top, nothing placeable outside it.
-    fn navicust_layout(&self) -> Option<tango_gamesupport_common::dataview::rom::NavicustLayout> {
-        Some(tango_gamesupport_common::dataview::rom::NavicustLayout {
+    fn navicust_layout(&self) -> Option<tango_gamesupport_common_dataview::rom::NavicustLayout> {
+        Some(tango_gamesupport_common_dataview::rom::NavicustLayout {
             command_line: 2,
             has_out_of_bounds: false,
             background: NAVICUST_BG,
@@ -997,13 +997,13 @@ impl tango_gamesupport_common::dataview::rom::Assets for Assets {
         }
 
         let buf = self.mapper.file(self.offsets.element_icons);
-        let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(
-            buf.get(id * tango_gamesupport_common::dataview::rom::TILE_BYTES * 4..)?
-                .get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * 2 * 2)?,
+        let paletted = tango_gamesupport_common_dataview::rom::read_merged_tiles(
+            buf.get(id * tango_gamesupport_common_dataview::rom::TILE_BYTES * 4..)?
+                .get(..tango_gamesupport_common_dataview::rom::TILE_BYTES * 2 * 2)?,
             2,
         )
         .ok()?;
-        Some(tango_gamesupport_common::dataview::rom::apply_palette(
+        Some(tango_gamesupport_common_dataview::rom::apply_palette(
             paletted,
             &self.element_icon_palette,
         ))

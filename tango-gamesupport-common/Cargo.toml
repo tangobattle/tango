@@ -4,63 +4,13 @@ version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 
-# The private gamesupport layer. The `dataview` module (save/ROM
-# parsing substrate, formerly the public tango-dataview crate) is
-# always on so headless game builds parse saves without a UI toolkit;
-# the `ui` feature adds everything that draws: the save-view shell +
-# shared components the per-game `ui` modules compose, the OpenSave
-# baking, the match-analysis widgets, and the save-editor fluent
-# bundle.
+# The private gamesupport layer's shared telemetry trackers (the
+# chip-use edge detector the game pollers embed). The save/ROM parsing
+# substrate lives in tango-gamesupport-common-dataview, the save-editor
+# UI in tango-gamesupport-common-ui.
 
 [dependencies]
-tango-gamesupport = { path = "../tango-gamesupport" }
 tango-match = { path = "../tango-match" }
-
-# The dataview substrate (always on; headless-safe).
-bitvec = "1"
-bytemuck = { version = "1", features = ["derive", "const_zeroed"] }
-byteorder = "1"
-c2rust-bitfields = "0.22"
-image.workspace = true
-itertools = "0.13"
-ndarray = "0.15"
-num-derive = "0.4.2"
-num-traits = "0.2"
-patricia_tree = "0.5"
-thiserror = "1"
-
-# The UI layer (behind `ui`).
-tango-ui = { path = "../tango-ui", optional = true }
-tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"], optional = true }
-iced = { workspace = true, optional = true }
-iced_graphics = { workspace = true, optional = true }
-iced_tiny_skia = { workspace = true, optional = true }
-tiny-skia = { version = "0.11", optional = true }
-sweeten = { workspace = true, optional = true }
-lucide-icons = { workspace = true, optional = true }
-fluent-templates = { workspace = true, optional = true }
-unic-langid = { workspace = true, optional = true }
-semver = { version = "1", optional = true }
-indexmap = { version = "2", optional = true }
-log = { version = "0.4", optional = true }
-
-[features]
-ui = [
-    "tango-gamesupport/ui",
-    "dep:tango-ui",
-    "dep:tango-patch",
-    "dep:iced",
-    "dep:iced_graphics",
-    "dep:iced_tiny_skia",
-    "dep:tiny-skia",
-    "dep:sweeten",
-    "dep:lucide-icons",
-    "dep:fluent-templates",
-    "dep:unic-langid",
-    "dep:semver",
-    "dep:indexmap",
-    "dep:log",
-]
 
 [lints]
 workspace = true

@@ -35,9 +35,9 @@ pub static AE2J_00_AC: Offsets = Offsets {
 pub struct Assets {
     offsets: &'static Offsets,
     msg_parser: msg::Parser,
-    mapper: tango_gamesupport_common::dataview::rom::MemoryMapper,
-    chip_icon_palette: tango_gamesupport_common::dataview::rom::Palette,
-    element_icon_palette: tango_gamesupport_common::dataview::rom::Palette,
+    mapper: tango_gamesupport_common_dataview::rom::MemoryMapper,
+    chip_icon_palette: tango_gamesupport_common_dataview::rom::Palette,
+    element_icon_palette: tango_gamesupport_common_dataview::rom::Palette,
 }
 
 struct Chip<'a> {
@@ -79,12 +79,12 @@ impl Chip<'_> {
     fn try_icon(&self) -> Option<image::RgbaImage> {
         let raw = self.raw();
         let tiles = self.assets.mapper.get(raw.icon_ptr);
-        let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(
-            tiles.get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * 2 * 2)?,
+        let paletted = tango_gamesupport_common_dataview::rom::read_merged_tiles(
+            tiles.get(..tango_gamesupport_common_dataview::rom::TILE_BYTES * 2 * 2)?,
             2,
         )
         .ok()?;
-        Some(tango_gamesupport_common::dataview::rom::apply_palette(
+        Some(tango_gamesupport_common_dataview::rom::apply_palette(
             paletted,
             &self.assets.chip_icon_palette,
         ))
@@ -95,22 +95,22 @@ impl Chip<'_> {
     fn try_image(&self) -> Option<image::RgbaImage> {
         let raw = self.raw();
         let tiles = self.assets.mapper.get(raw.image_ptr);
-        let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(
-            tiles.get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * 8 * 7)?,
+        let paletted = tango_gamesupport_common_dataview::rom::read_merged_tiles(
+            tiles.get(..tango_gamesupport_common_dataview::rom::TILE_BYTES * 8 * 7)?,
             8,
         )
         .ok()?;
         let palette_raw = self.assets.mapper.get(raw.palette_ptr);
-        let palette = bytemuck::pod_read_unaligned::<tango_gamesupport_common::dataview::rom::Palette>(
-            palette_raw.get(..std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>())?,
+        let palette = bytemuck::pod_read_unaligned::<tango_gamesupport_common_dataview::rom::Palette>(
+            palette_raw.get(..std::mem::size_of::<tango_gamesupport_common_dataview::rom::Palette>())?,
         );
-        Some(tango_gamesupport_common::dataview::rom::apply_palette(
+        Some(tango_gamesupport_common_dataview::rom::apply_palette(
             paletted, &palette,
         ))
     }
 }
 
-impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
+impl<'a> tango_gamesupport_common_dataview::rom::Chip for Chip<'a> {
     fn name(&self) -> Option<String> {
         let pointer = self.assets.offsets.chip_names_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
@@ -118,7 +118,7 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = tango_gamesupport_common::dataview::msg::get_entry(&region, id)?;
+        let entry = tango_gamesupport_common_dataview::msg::get_entry(&region, id)?;
 
         Some(
             self.assets
@@ -128,7 +128,7 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        tango_gamesupport_common::dataview::msg::Chunk::Text(s) => s,
+                        tango_gamesupport_common_dataview::msg::Chunk::Text(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()
@@ -145,7 +145,7 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = tango_gamesupport_common::dataview::msg::get_entry(&region, id)?;
+        let entry = tango_gamesupport_common_dataview::msg::get_entry(&region, id)?;
 
         Some(
             self.assets
@@ -155,7 +155,7 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        tango_gamesupport_common::dataview::msg::Chunk::Text(s) => s,
+                        tango_gamesupport_common_dataview::msg::Chunk::Text(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()
@@ -170,8 +170,8 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
         // renders blank instead of panicking.
         self.try_icon().unwrap_or_else(|| {
             image::RgbaImage::new(
-                (2 * tango_gamesupport_common::dataview::rom::TILE_WIDTH) as u32,
-                (2 * tango_gamesupport_common::dataview::rom::TILE_HEIGHT) as u32,
+                (2 * tango_gamesupport_common_dataview::rom::TILE_WIDTH) as u32,
+                (2 * tango_gamesupport_common_dataview::rom::TILE_HEIGHT) as u32,
             )
         })
     }
@@ -179,8 +179,8 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
     fn image(&self) -> image::RgbaImage {
         self.try_image().unwrap_or_else(|| {
             image::RgbaImage::new(
-                (8 * tango_gamesupport_common::dataview::rom::TILE_WIDTH) as u32,
-                (7 * tango_gamesupport_common::dataview::rom::TILE_HEIGHT) as u32,
+                (8 * tango_gamesupport_common_dataview::rom::TILE_WIDTH) as u32,
+                (7 * tango_gamesupport_common_dataview::rom::TILE_HEIGHT) as u32,
             )
         })
     }
@@ -200,21 +200,21 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
         raw.element as usize
     }
 
-    fn class(&self) -> tango_gamesupport_common::dataview::rom::ChipClass {
+    fn class(&self) -> tango_gamesupport_common_dataview::rom::ChipClass {
         let raw = self.raw();
         if raw.family == 0x60 && raw.rarity != 0 {
             // Family 0x60 is the Navi-chip family; its rarity-0 members are
             // program advances (Gater, Darkness, …), not Navi chips.
-            tango_gamesupport_common::dataview::rom::ChipClass::Navi
+            tango_gamesupport_common_dataview::rom::ChipClass::Navi
         } else if raw.codes.iter().all(|&c| c == 0xff)
             && raw.element != 0xff
             && self.name().is_some_and(|n| !n.is_empty())
         {
             // Program-advance result chips (Z-Canon … Darkness) have no
             // selectable codes at all.
-            tango_gamesupport_common::dataview::rom::ChipClass::ProgramAdvance
+            tango_gamesupport_common_dataview::rom::ChipClass::ProgramAdvance
         } else {
-            tango_gamesupport_common::dataview::rom::ChipClass::Standard
+            tango_gamesupport_common_dataview::rom::ChipClass::Standard
         }
     }
 
@@ -239,16 +239,16 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
 
 impl Assets {
     pub fn new(offsets: &'static Offsets, charset: &[&str], rom: Vec<u8>, wram: Vec<u8>) -> Self {
-        let mapper = tango_gamesupport_common::dataview::rom::MemoryMapper::new(rom, wram);
-        let chip_icon_palette = bytemuck::pod_read_unaligned::<tango_gamesupport_common::dataview::rom::Palette>(
+        let mapper = tango_gamesupport_common_dataview::rom::MemoryMapper::new(rom, wram);
+        let chip_icon_palette = bytemuck::pod_read_unaligned::<tango_gamesupport_common_dataview::rom::Palette>(
             &mapper.get(bytemuck::pod_read_unaligned::<u32>(
                 &mapper.get(offsets.chip_icon_palette_pointer)[..std::mem::size_of::<u32>()],
-            ))[..std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>()],
+            ))[..std::mem::size_of::<tango_gamesupport_common_dataview::rom::Palette>()],
         );
-        let element_icon_palette = bytemuck::pod_read_unaligned::<tango_gamesupport_common::dataview::rom::Palette>(
+        let element_icon_palette = bytemuck::pod_read_unaligned::<tango_gamesupport_common_dataview::rom::Palette>(
             &mapper.get(bytemuck::pod_read_unaligned::<u32>(
                 &mapper.get(offsets.element_icon_palette_pointer)[..std::mem::size_of::<u32>()],
-            ))[..std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>()],
+            ))[..std::mem::size_of::<tango_gamesupport_common_dataview::rom::Palette>()],
         );
 
         Self {
@@ -296,8 +296,8 @@ pub(crate) fn style_type(id: u8) -> StyleType {
     }
 }
 
-impl tango_gamesupport_common::dataview::rom::Assets for Assets {
-    fn chip(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common::dataview::rom::Chip + '_>> {
+impl tango_gamesupport_common_dataview::rom::Assets for Assets {
+    fn chip(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common_dataview::rom::Chip + '_>> {
         if id >= self.num_chips() {
             return None;
         }
@@ -317,7 +317,7 @@ impl tango_gamesupport_common::dataview::rom::Assets for Assets {
         let region = &self.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.mapper.get(self.offsets.key_items_names_pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = tango_gamesupport_common::dataview::msg::get_entry(
+        let entry = tango_gamesupport_common_dataview::msg::get_entry(
             region,
             128 + raw.typ() as usize * 5 + raw.element() as usize,
         )?;
@@ -329,7 +329,7 @@ impl tango_gamesupport_common::dataview::rom::Assets for Assets {
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        tango_gamesupport_common::dataview::msg::Chunk::Text(s) => s,
+                        tango_gamesupport_common_dataview::msg::Chunk::Text(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()
@@ -349,13 +349,13 @@ impl tango_gamesupport_common::dataview::rom::Assets for Assets {
                 .get(self.offsets.element_icons_pointer)
                 .get(..std::mem::size_of::<u32>())?,
         ));
-        let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(
-            buf.get(id * tango_gamesupport_common::dataview::rom::TILE_BYTES * 4..)?
-                .get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * 2 * 2)?,
+        let paletted = tango_gamesupport_common_dataview::rom::read_merged_tiles(
+            buf.get(id * tango_gamesupport_common_dataview::rom::TILE_BYTES * 4..)?
+                .get(..tango_gamesupport_common_dataview::rom::TILE_BYTES * 2 * 2)?,
             2,
         )
         .ok()?;
-        Some(tango_gamesupport_common::dataview::rom::apply_palette(
+        Some(tango_gamesupport_common_dataview::rom::apply_palette(
             paletted,
             &self.element_icon_palette,
         ))

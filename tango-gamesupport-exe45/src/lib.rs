@@ -29,7 +29,7 @@ static EXE45_SAVE: LazyLock<crate::dataview::save::Save> =
 static EXE45_T: SaveTemplates = LazyLock::new(|| {
     vec![(
         "",
-        tango_gamesupport_common::dataview::wrap_save(Box::new(EXE45_SAVE.clone())),
+        tango_gamesupport_common_dataview::wrap_save(Box::new(EXE45_SAVE.clone())),
     )]
 });
 
@@ -41,12 +41,12 @@ pub static EXE45: Game = Game {
     crc32: 0xa646601b,
     region: Region::JP,
     parse_save_fn: |data| {
-        Ok(tango_gamesupport_common::dataview::wrap_save(Box::new(
+        Ok(tango_gamesupport_common_dataview::wrap_save(Box::new(
             dataview::save::Save::new(data)?,
         )))
     },
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::BR4J_00,
             charset.unwrap_or(dataview::rom::CHARSET),
             rom.to_vec(),

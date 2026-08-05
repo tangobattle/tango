@@ -1,4 +1,4 @@
-use tango_gamesupport_common::dataview::save::NaviView as _;
+use tango_gamesupport_common_dataview::save::NaviView as _;
 
 pub const SAVE_SIZE: usize = 0xc7a8;
 pub const MASK_OFFSET: usize = 0x3c84;
@@ -11,16 +11,16 @@ pub struct Save {
 }
 
 impl Save {
-    pub fn new(buf: &[u8]) -> Result<Self, tango_gamesupport_common::dataview::save::Error> {
+    pub fn new(buf: &[u8]) -> Result<Self, tango_gamesupport_common_dataview::save::Error> {
         let mut buf: [u8; SAVE_SIZE] = buf
             .get(..SAVE_SIZE)
             .and_then(|buf| buf.try_into().ok())
-            .ok_or(tango_gamesupport_common::dataview::save::Error::InvalidSize(buf.len()))?;
-        tango_gamesupport_common::dataview::save::mask(&mut buf[..], MASK_OFFSET);
+            .ok_or(tango_gamesupport_common_dataview::save::Error::InvalidSize(buf.len()))?;
+        tango_gamesupport_common_dataview::save::mask(&mut buf[..], MASK_OFFSET);
 
         let n = &buf[GAME_NAME_OFFSET..][..20];
         if n != b"ROCKMANEXE4RO 040607" && n != b"ROCKMANEXE4RO 041217" {
-            return Err(tango_gamesupport_common::dataview::save::Error::InvalidGameName(
+            return Err(tango_gamesupport_common_dataview::save::Error::InvalidGameName(
                 n.to_vec(),
             ));
         }
@@ -28,7 +28,7 @@ impl Save {
         let save = Self { buf };
         let computed_checksum = save.compute_checksum();
         if save.checksum() != computed_checksum {
-            return Err(tango_gamesupport_common::dataview::save::Error::ChecksumMismatch {
+            return Err(tango_gamesupport_common_dataview::save::Error::ChecksumMismatch {
                 actual: save.checksum(),
                 expected: vec![computed_checksum],
                 shift: 0,
@@ -43,15 +43,15 @@ impl Save {
     }
 
     pub fn compute_checksum(&self) -> u32 {
-        tango_gamesupport_common::dataview::save::compute_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x38
+        tango_gamesupport_common_dataview::save::compute_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x38
     }
 
-    pub fn from_wram(buf: &[u8]) -> Result<Self, tango_gamesupport_common::dataview::save::Error> {
+    pub fn from_wram(buf: &[u8]) -> Result<Self, tango_gamesupport_common_dataview::save::Error> {
         Ok(Self {
             buf: buf
                 .get(..SAVE_SIZE)
                 .and_then(|buf| buf.try_into().ok())
-                .ok_or(tango_gamesupport_common::dataview::save::Error::InvalidSize(buf.len()))?,
+                .ok_or(tango_gamesupport_common_dataview::save::Error::InvalidSize(buf.len()))?,
         })
     }
 
@@ -95,20 +95,20 @@ const _: () = assert!(std::mem::offset_of!(RawNaviStats, base_max_hp) == 0x1e);
 const _: () = assert!(std::mem::offset_of!(RawNaviStats, current_hp) == 0x20);
 const _: () = assert!(std::mem::offset_of!(RawNaviStats, effective_max_hp) == 0x22);
 
-impl tango_gamesupport_common::dataview::save::Save for Save {
-    fn view_chips(&self) -> Option<Box<dyn tango_gamesupport_common::dataview::save::ChipsView + '_>> {
+impl tango_gamesupport_common_dataview::save::Save for Save {
+    fn view_chips(&self) -> Option<Box<dyn tango_gamesupport_common_dataview::save::ChipsView + '_>> {
         Some(Box::new(ChipsView { save: self }))
     }
 
-    fn view_chips_mut(&mut self) -> Option<Box<dyn tango_gamesupport_common::dataview::save::ChipsViewMut + '_>> {
+    fn view_chips_mut(&mut self) -> Option<Box<dyn tango_gamesupport_common_dataview::save::ChipsViewMut + '_>> {
         Some(Box::new(ChipsView { save: self }))
     }
 
-    fn view_navi(&self) -> Option<Box<dyn tango_gamesupport_common::dataview::save::NaviView + '_>> {
+    fn view_navi(&self) -> Option<Box<dyn tango_gamesupport_common_dataview::save::NaviView + '_>> {
         Some(Box::new(NaviView { save: self }))
     }
 
-    fn view_navi_mut(&mut self) -> Option<Box<dyn tango_gamesupport_common::dataview::save::NaviViewMut + '_>> {
+    fn view_navi_mut(&mut self) -> Option<Box<dyn tango_gamesupport_common_dataview::save::NaviViewMut + '_>> {
         Some(Box::new(NaviView { save: self }))
     }
 
@@ -119,7 +119,7 @@ impl tango_gamesupport_common::dataview::save::Save for Save {
     fn to_sram_dump(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[..SAVE_SIZE].copy_from_slice(&self.buf);
-        tango_gamesupport_common::dataview::save::mask(&mut buf[..SAVE_SIZE], MASK_OFFSET);
+        tango_gamesupport_common_dataview::save::mask(&mut buf[..SAVE_SIZE], MASK_OFFSET);
         buf
     }
 
@@ -142,7 +142,7 @@ struct RawChip {
 }
 const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2);
 
-impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save::ChipsView for ChipsView<S> {
+impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save::ChipsView for ChipsView<S> {
     fn num_folders(&self) -> usize {
         1
     }
@@ -151,7 +151,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
         0
     }
 
-    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<tango_gamesupport_common::dataview::save::Chip> {
+    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<tango_gamesupport_common_dataview::save::Chip> {
         if folder_index >= 1 || chip_index >= 30 {
             return None;
         }
@@ -162,7 +162,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
                 + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()],
         );
 
-        Some(tango_gamesupport_common::dataview::save::Chip {
+        Some(tango_gamesupport_common_dataview::save::Chip {
             id: raw.id() as usize,
             code: num_traits::FromPrimitive::from_u16(raw.code())?,
         })
@@ -198,12 +198,12 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
     }
 }
 
-impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::save::ChipsViewMut for ChipsView<S> {
+impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::save::ChipsViewMut for ChipsView<S> {
     fn set_chip(
         &mut self,
         folder_index: usize,
         chip_index: usize,
-        chip: tango_gamesupport_common::dataview::save::Chip,
+        chip: tango_gamesupport_common_dataview::save::Chip,
     ) -> bool {
         if folder_index >= 1 || chip_index >= 30 {
             return false;
@@ -276,12 +276,12 @@ pub struct NaviView<S> {
     save: S,
 }
 
-impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save::NaviView for NaviView<S> {
+impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save::NaviView for NaviView<S> {
     fn navi(&self) -> usize {
         self.save.buf[0x4ad1] as usize
     }
 
-    fn max_hp(&self, assets: &dyn tango_gamesupport_common::dataview::rom::Assets) -> u16 {
+    fn max_hp(&self, assets: &dyn tango_gamesupport_common_dataview::rom::Assets) -> u16 {
         assets
             .navi(self.navi())
             .and_then(|navi| navi.base_max_hp())
@@ -290,8 +290,8 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
 
     fn folder_limits(
         &self,
-        _assets: &dyn tango_gamesupport_common::dataview::rom::Assets,
-    ) -> tango_gamesupport_common::dataview::save::FolderLimits {
+        _assets: &dyn tango_gamesupport_common_dataview::rom::Assets,
+    ) -> tango_gamesupport_common_dataview::save::FolderLimits {
         // Mega/Giga limits are PER NAVI and live in the save's navi stats
         // block — the game maintains them there, so reading the save is
         // correct for vanilla (5/1 across the board) and for the
@@ -299,17 +299,17 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
         // alike, whatever patch version produced the save. Clamped in
         // case of a corrupted block (0xff padding on empty slots).
         let stats = self.save.navi_stats(self.navi());
-        tango_gamesupport_common::dataview::save::FolderLimits {
+        tango_gamesupport_common_dataview::save::FolderLimits {
             mega_limit: Some((stats.mega_folder as usize).min(30)),
             giga_limit: Some((stats.giga_folder as usize).min(30)),
             reg_memory: Some(50),
             max_copies: |chip| match chip.class() {
-                tango_gamesupport_common::dataview::rom::ChipClass::Mega
-                | tango_gamesupport_common::dataview::rom::ChipClass::Giga => 1,
+                tango_gamesupport_common_dataview::rom::ChipClass::Mega
+                | tango_gamesupport_common_dataview::rom::ChipClass::Giga => 1,
                 // Like the rest of the bn4 engine. The 3 this used to say
                 // rejected legal folders: saves built by the in-game
                 // editor carry standard chips x4.
-                tango_gamesupport_common::dataview::rom::ChipClass::Standard => 4,
+                tango_gamesupport_common_dataview::rom::ChipClass::Standard => 4,
                 _ => 0,
             },
             ..Default::default()
@@ -317,7 +317,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
     }
 }
 
-impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::save::NaviViewMut for NaviView<S> {
+impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::save::NaviViewMut for NaviView<S> {
     fn set_navi(&mut self, navi: usize) -> bool {
         self.save.buf[0x4ad1] = navi as u8;
         // Operating a navi in-game also loads its HP into the working

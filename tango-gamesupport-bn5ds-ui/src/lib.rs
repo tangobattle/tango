@@ -35,12 +35,12 @@ use std::sync::Arc;
 use sweeten::widget::{column, row};
 use tango_gamesupport_bn5ds_dataview::rom;
 use tango_gamesupport_bn5ds_dataview::save::{self, Cross, Save, SaveSet};
-use tango_gamesupport_common::dataview::save::Save as _;
-use tango_gamesupport_common::editor::loaded::OpenSave;
-use tango_gamesupport_common::editor::view as sv;
-use tango_gamesupport_common::editor::view::{Action, RenderOpts, State, Tab};
-use tango_gamesupport_common::editor::{GameSaveEditor, SaveEditorShell};
-use tango_gamesupport_common::model::edit::{GameEdit, Invalidation};
+use tango_gamesupport_common_dataview::save::Save as _;
+use tango_gamesupport_common_ui::editor::loaded::OpenSave;
+use tango_gamesupport_common_ui::editor::view as sv;
+use tango_gamesupport_common_ui::editor::view::{Action, RenderOpts, State, Tab};
+use tango_gamesupport_common_ui::editor::{GameSaveEditor, SaveEditorShell};
+use tango_gamesupport_common_ui::model::edit::{GameEdit, Invalidation};
 use unic_langid::LanguageIdentifier;
 
 pub struct Ui;
@@ -71,7 +71,7 @@ fn cart_of(loaded: &OpenSave) -> Option<&rom::Assets> {
 struct PlayFile(u8);
 
 impl GameEdit for PlayFile {
-    fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
+    fn apply(&self, model: &mut tango_gamesupport_common_ui::model::SaveModel) -> Invalidation {
         let Some(mut next) = model
             .save
             .as_any()
@@ -85,7 +85,7 @@ impl GameEdit for PlayFile {
         model.save = Box::new(next);
         // A different file can differ in what it offers to edit, so the
         // cached capability flags are re-probed against the new save.
-        tango_gamesupport_common::model::refresh_editability(model);
+        tango_gamesupport_common_ui::model::refresh_editability(model);
         Invalidation::default()
     }
 }
@@ -95,7 +95,7 @@ impl GameEdit for PlayFile {
 struct SetCross(Cross);
 
 impl GameEdit for SetCross {
-    fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
+    fn apply(&self, model: &mut tango_gamesupport_common_ui::model::SaveModel) -> Invalidation {
         if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
             save.set_cross(self.0);
         }
@@ -117,7 +117,7 @@ struct SetPartyNavi {
 }
 
 impl GameEdit for SetPartyNavi {
-    fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
+    fn apply(&self, model: &mut tango_gamesupport_common_ui::model::SaveModel) -> Invalidation {
         if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
             save.view_party_mut().set_navi(self.slot, self.navi);
         }
@@ -138,7 +138,7 @@ struct AddPartyProgram {
 }
 
 impl GameEdit for AddPartyProgram {
-    fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
+    fn apply(&self, model: &mut tango_gamesupport_common_ui::model::SaveModel) -> Invalidation {
         let Some(assets) = model.assets.underlying_any().downcast_ref::<rom::Assets>() else {
             return Invalidation::default();
         };
@@ -157,7 +157,7 @@ struct RemovePartyProgram {
 }
 
 impl GameEdit for RemovePartyProgram {
-    fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
+    fn apply(&self, model: &mut tango_gamesupport_common_ui::model::SaveModel) -> Invalidation {
         let Some(assets) = model.assets.underlying_any().downcast_ref::<rom::Assets>() else {
             return Invalidation::default();
         };
@@ -176,7 +176,7 @@ impl GameEdit for RemovePartyProgram {
 struct ClearPartySlot(usize);
 
 impl GameEdit for ClearPartySlot {
-    fn apply(&self, model: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
+    fn apply(&self, model: &mut tango_gamesupport_common_ui::model::SaveModel) -> Invalidation {
         if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
             save.view_party_mut().set_navi(self.0, None);
         }
@@ -220,9 +220,9 @@ where
     M: Clone + 'a,
 {
     sweeten::widget::pick_list(options, selected, on_select)
-        .padding(tango_gamesupport_common::style::CONTROL_PADDING)
-        .text_size(tango_gamesupport_common::style::TEXT_BODY)
-        .style(tango_gamesupport_common::widgets::chunky_pick_list)
+        .padding(tango_gamesupport_common_ui::style::CONTROL_PADDING)
+        .text_size(tango_gamesupport_common_ui::style::TEXT_BODY)
+        .style(tango_gamesupport_common_ui::widgets::chunky_pick_list)
         .into()
 }
 
@@ -235,9 +235,9 @@ where
 {
     sweeten::widget::pick_list(options, Option::<T>::None, on_select)
         .placeholder(prompt)
-        .padding(tango_gamesupport_common::style::CONTROL_PADDING)
-        .text_size(tango_gamesupport_common::style::TEXT_BODY)
-        .style(tango_gamesupport_common::widgets::chunky_pick_list)
+        .padding(tango_gamesupport_common_ui::style::CONTROL_PADDING)
+        .text_size(tango_gamesupport_common_ui::style::TEXT_BODY)
+        .style(tango_gamesupport_common_ui::widgets::chunky_pick_list)
         .into()
 }
 
@@ -282,7 +282,7 @@ fn file_picker<'a>(lang: &'a LanguageIdentifier, save: &'a Save) -> Option<iced:
         .iter()
         .map(|&slot| FileChoice {
             slot,
-            label: tango_gamesupport_common::t!(lang, "save-file", num = slot as usize + 1),
+            label: tango_gamesupport_common_ui::t!(lang, "save-file", num = slot as usize + 1),
         })
         .collect();
     let selected = options.iter().find(|c| c.slot == save.slot()).cloned();
@@ -338,10 +338,10 @@ fn cross_choices<'a>(loaded: &'a OpenSave, save: &'a Save) -> (Vec<CrossChoice>,
 /// name sits at [`TEXT_TITLE`], which is shorter, so without this the
 /// swap would move everything below by a few pixels.
 ///
-/// [`CONTROL_PADDING`]: tango_gamesupport_common::style::CONTROL_PADDING
-/// [`TEXT_TITLE`]: tango_gamesupport_common::style::TEXT_TITLE
-const CARD_HEIGHT: f32 = tango_gamesupport_common::style::TEXT_BODY * 1.3
-    + tango_gamesupport_common::style::CONTROL_PADDING[0] * 2.0
+/// [`CONTROL_PADDING`]: tango_gamesupport_common_ui::style::CONTROL_PADDING
+/// [`TEXT_TITLE`]: tango_gamesupport_common_ui::style::TEXT_TITLE
+const CARD_HEIGHT: f32 = tango_gamesupport_common_ui::style::TEXT_BODY * 1.3
+    + tango_gamesupport_common_ui::style::CONTROL_PADDING[0] * 2.0
     + 2.0;
 
 /// Which of the cartridge's two teams this file plays — the fact the
@@ -356,7 +356,7 @@ fn team_stat<'a>(lang: &LanguageIdentifier, loaded: &OpenSave, save: &Save) -> i
     let leader = cart_of(loaded)
         .and_then(|cart| cart.leader_name(save.team()))
         .unwrap_or_else(|| format!("#{}", save.team()));
-    sv::stat(tango_gamesupport_common::t!(lang, "bn5ds-leader"), leader)
+    sv::stat(tango_gamesupport_common_ui::t!(lang, "bn5ds-leader"), leader)
 }
 
 /// The cart's name for navi `id` through the shared roster, or its
@@ -396,11 +396,11 @@ const MEGAMAN_NAVI: usize = 0;
 fn navi_stats<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, save: &'a Save, navi: usize) -> iced::Element<'a, Action> {
     row![
         sv::stat(
-            tango_gamesupport_common::t!(lang, "navi-base-hp"),
+            tango_gamesupport_common_ui::t!(lang, "navi-base-hp"),
             save.navi_hp(navi).to_string(),
         ),
         sv::stat(
-            tango_gamesupport_common::t!(lang, "navi-buster-attack"),
+            tango_gamesupport_common_ui::t!(lang, "navi-buster-attack"),
             (save.partycust_bonus(navi).attack + 1).to_string(),
         ),
     ]
@@ -408,7 +408,7 @@ fn navi_stats<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, save: &'a 
     .align_y(iced::Alignment::End)
     .push_maybe(cart_of(loaded).map(|cart| {
         sv::stat(
-            tango_gamesupport_common::t!(lang, "bn5ds-chip-attack"),
+            tango_gamesupport_common_ui::t!(lang, "bn5ds-chip-attack"),
             save.navi_chip_attack(navi, cart).to_string(),
         )
     }))
@@ -451,7 +451,7 @@ const GAUGE_BLOCK: f32 = 14.0;
 /// the rows do not change height when the session opens. Its icon at
 /// iced's default 1.3 line height, plus the button's own padding, plus
 /// the row's.
-const PROGRAM_ROW_HEIGHT: f32 = tango_gamesupport_common::style::TEXT_BODY * 1.3 + 6.0 + 6.0;
+const PROGRAM_ROW_HEIGHT: f32 = tango_gamesupport_common_ui::style::TEXT_BODY * 1.3 + 6.0 + 6.0;
 
 /// How wide the accent stripe down a program row's left edge is — the
 /// width the shared editor rows give their class accent — and the gap
@@ -523,7 +523,7 @@ fn party_slot<'a>(
             .collect();
         let mut options = vec![NaviChoice {
             navi: None,
-            label: tango_gamesupport_common::t!(lang, "bn5ds-team-none"),
+            label: tango_gamesupport_common_ui::t!(lang, "bn5ds-team-none"),
         }];
         options.extend(
             save.view_party()
@@ -545,11 +545,11 @@ fn party_slot<'a>(
     } else {
         match navi {
             Some(navi) => iced::widget::text(navi_name(loaded, navi))
-                .size(tango_gamesupport_common::style::TEXT_BODY)
+                .size(tango_gamesupport_common_ui::style::TEXT_BODY)
                 .into(),
-            None => iced::widget::text(tango_gamesupport_common::t!(lang, "bn5ds-team-none"))
-                .size(tango_gamesupport_common::style::TEXT_BODY)
-                .style(tango_gamesupport_common::widgets::muted_text_style)
+            None => iced::widget::text(tango_gamesupport_common_ui::t!(lang, "bn5ds-team-none"))
+                .size(tango_gamesupport_common_ui::style::TEXT_BODY)
+                .style(tango_gamesupport_common_ui::widgets::muted_text_style)
                 .into(),
         }
     };
@@ -561,7 +561,7 @@ fn party_slot<'a>(
         (
             iced::widget::container(naming)
                 .width(iced::Fill)
-                .padding(tango_gamesupport_common::style::HEADER_PADDING)
+                .padding(tango_gamesupport_common_ui::style::HEADER_PADDING)
                 .into(),
             iced::widget::Space::new().into(),
         )
@@ -591,8 +591,8 @@ fn party_slot<'a>(
         .push(partycust_gauge(loaded, capacity, &equipped))
         .push(
             iced::widget::text(format!("{cost} / {capacity}"))
-                .size(tango_gamesupport_common::style::TEXT_CAPTION)
-                .style(tango_gamesupport_common::widgets::muted_text_style),
+                .size(tango_gamesupport_common_ui::style::TEXT_CAPTION)
+                .style(tango_gamesupport_common_ui::widgets::muted_text_style),
         );
     let header = iced::widget::container(
         row![]
@@ -602,7 +602,7 @@ fn party_slot<'a>(
             .push(column![naming, stats].spacing(4).width(iced::Fill)),
     )
     .width(iced::Fill)
-    .padding(tango_gamesupport_common::style::HEADER_PADDING)
+    .padding(tango_gamesupport_common_ui::style::HEADER_PADDING)
     .into();
 
     let mut body = column![].spacing(1).padding(0);
@@ -617,7 +617,7 @@ fn party_slot<'a>(
                     ..Default::default()
                 }),
             iced::widget::text(program_name(loaded, index))
-                .size(tango_gamesupport_common::style::TEXT_BODY)
+                .size(tango_gamesupport_common_ui::style::TEXT_BODY)
                 .width(iced::Fill),
             sv::limit_caption(
                 cart.party_program(index).map(|program| program.cost()).unwrap_or(0).to_string(),
@@ -641,7 +641,7 @@ fn party_slot<'a>(
                     .height(iced::Length::Fixed(PROGRAM_ROW_HEIGHT))
                     .align_y(iced::Alignment::Center)
                     .padding(iced::Padding::default().right(12.0))
-                    .style(tango_gamesupport_common::widgets::zebra_row(at))
+                    .style(tango_gamesupport_common_ui::widgets::zebra_row(at))
                     .into(),
                 None,
                 cart.party_program(index).and_then(|program| program.description()),
@@ -650,7 +650,7 @@ fn party_slot<'a>(
         );
     }
     if equipped.is_empty() {
-        let empty = tango_gamesupport_common::t!(lang, "bn5ds-partycust-empty");
+        let empty = tango_gamesupport_common_ui::t!(lang, "bn5ds-partycust-empty");
         // A program row with nothing in it: the same height, and the
         // same gap where a stripe would be, so the text starts where a
         // program's name does.
@@ -659,8 +659,8 @@ fn party_slot<'a>(
                 row![
                     iced::widget::Space::new().width(iced::Length::Fixed(STRIPE_WIDTH)),
                     iced::widget::text(empty)
-                        .size(tango_gamesupport_common::style::TEXT_BODY)
-                        .style(tango_gamesupport_common::widgets::muted_text_style)
+                        .size(tango_gamesupport_common_ui::style::TEXT_BODY)
+                        .style(tango_gamesupport_common_ui::widgets::muted_text_style)
                         .width(iced::Fill),
                 ]
                 .spacing(PROGRAM_ROW_SPACING)
@@ -686,7 +686,7 @@ fn party_slot<'a>(
         if !choices.is_empty() {
             let add = action_pick_list(
                 choices,
-                tango_gamesupport_common::t!(lang, "bn5ds-partycust-add"),
+                tango_gamesupport_common_ui::t!(lang, "bn5ds-partycust-add"),
                 move |choice: ProgramChoice| {
                     Action::Game(Arc::new(AddPartyProgram {
                         slot,
@@ -726,7 +726,7 @@ fn party_slot_card<'a>(
     let (header, body) = party_slot(lang, loaded, save, slot, false);
     iced::widget::container(column![header, body].width(iced::Fill))
         .width(iced::Fill)
-        .style(tango_gamesupport_common::widgets::pane)
+        .style(tango_gamesupport_common_ui::widgets::pane)
         .into()
 }
 
@@ -734,10 +734,10 @@ fn party_slot_card<'a>(
 /// CHANGE panel offers, each over what the PARTY CUSTOMIZER gave it.
 fn render_party<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> iced::Element<'a, Action> {
     let Some(save) = file_of(loaded) else {
-        return sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty"));
+        return sv::placeholder(tango_gamesupport_common_ui::t!(lang, "save-empty"));
     };
     let mut slots = row![]
-        .spacing(tango_gamesupport_common::style::PANE_GAP)
+        .spacing(tango_gamesupport_common_ui::style::PANE_GAP)
         .width(iced::Fill)
         .align_y(iced::Alignment::Start);
     for slot in 0..save::NUM_TEAM_SLOTS {
@@ -751,7 +751,7 @@ fn render_party<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> iced:
 /// under it, the gauge below that.
 fn render_party_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> iced::Element<'a, Action> {
     let Some(save) = file_of(loaded) else {
-        return sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty"));
+        return sv::placeholder(tango_gamesupport_common_ui::t!(lang, "save-empty"));
     };
     sv::editor_panes(
         party_slot_pane(lang, loaded, save, 0),
@@ -796,7 +796,7 @@ fn party_as_text(loaded: &OpenSave) -> Option<String> {
 fn hp_stat<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Option<iced::Element<'a, Action>> {
     let hp = loaded.save.view_navi()?.max_hp(loaded.assets.as_ref());
     Some(sv::stat(
-        tango_gamesupport_common::t!(lang, "navi-base-hp"),
+        tango_gamesupport_common_ui::t!(lang, "navi-base-hp"),
         hp.to_string(),
     ))
 }
@@ -854,7 +854,7 @@ fn cross_card<'a>(
     card_slot(
         loaded,
         iced::widget::text(name)
-            .size(tango_gamesupport_common::style::TEXT_TITLE)
+            .size(tango_gamesupport_common_ui::style::TEXT_TITLE)
             .wrapping(iced::widget::text::Wrapping::None)
             .into(),
         team_stat(lang, loaded, save),
@@ -970,7 +970,7 @@ impl GameSaveEditor for Ui {
             Tab::Folder => sv::folder::render_folder(lang, loaded, opts.folder_grouped),
             Tab::Party => render_party(lang, loaded),
             Tab::AutoBattleData => sv::abd::render_auto_battle_data(lang, loaded),
-            _ => sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty")),
+            _ => sv::placeholder(tango_gamesupport_common_ui::t!(lang, "save-empty")),
         }
     }
 
@@ -986,7 +986,7 @@ impl GameSaveEditor for Ui {
             Tab::Folder => sv::folder::render_folder_edit(lang, loaded, state),
             Tab::Party => render_party_edit(lang, loaded),
             Tab::AutoBattleData => sv::abd::render_auto_battle_data_edit(lang, loaded, state),
-            _ => sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty")),
+            _ => sv::placeholder(tango_gamesupport_common_ui::t!(lang, "save-empty")),
         }
     }
 

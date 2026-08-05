@@ -19,7 +19,7 @@ ui = ["tango-gamesupport/ui", "dep:tango-gamesupport-exeoss-ui"]
 [dependencies]
 tango-gamesupport = { path = "../tango-gamesupport" }
 tango-gamesupport-exeoss-dataview = { path = "../tango-gamesupport-exeoss-dataview" }
-tango-gamesupport-common = { path = "../tango-gamesupport-common", default-features = false }
+tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
 tango-match = { path = "../tango-match" }
 tango-backend-melonds = { path = "../tango-backend-melonds" }
 log = "0.4"

@@ -12,7 +12,7 @@ thiserror.workspace = true
 
 # The save-editor embedding API (the `ui` feature): the SaveUi trait,
 # its opaque envelopes, and the `Game::save_ui` slot. Shape-oblivious —
-# the actual UI lives in the private tango-gamesupport-common. Off for
+# the actual UI lives in the private tango-gamesupport-common-ui. Off for
 # headless consumers (the pvp probes, engine hosts), which then link no
 # UI toolkit.
 iced = { workspace = true, optional = true }

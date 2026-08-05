@@ -36,13 +36,13 @@ use iced::widget::canvas::{self, Canvas};
 use iced::widget::{button, column, container, row, text, Space};
 use iced::{mouse, Alignment, Element, Fill, Length, Point, Rectangle, Renderer, Size, Theme};
 use tango_gamesupport_bcc_dataview::save::{DECK_SLOTS, NAVI_CHIP_IDS, NAVI_SLOT, PROGRAM_CHIP_IDS};
-use tango_gamesupport_common::editor::loaded::OpenSave;
-use tango_gamesupport_common::editor::view::{
+use tango_gamesupport_common_ui::editor::loaded::OpenSave;
+use tango_gamesupport_common_ui::editor::view::{
     editor_header, editor_pane, editor_panes, folder, library_header, placeholder, Action, LibrarySort, State,
 };
-use tango_gamesupport_common::style::{self, TEXT_BODY, TEXT_CAPTION};
-use tango_gamesupport_common::t;
-use tango_gamesupport_common::widgets::{self, muted_color, muted_text_style};
+use tango_gamesupport_common_ui::style::{self, TEXT_BODY, TEXT_CAPTION};
+use tango_gamesupport_common_ui::t;
+use tango_gamesupport_common_ui::widgets::{self, muted_color, muted_text_style};
 use unic_langid::LanguageIdentifier;
 
 /// The board's chip columns, entry to exit, as slot indexes top-to-bottom.
@@ -615,7 +615,7 @@ pub fn render_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, state
         let on_add = target.filter(|_| fits).map(|slot| Action::SetDeckChip {
             slot,
             chip_id: id,
-            code: tango_gamesupport_common::dataview::save::ChipCode::Star,
+            code: tango_gamesupport_common_dataview::save::ChipCode::Star,
         });
         lib_list = lib_list.push(library_row(loaded, id, name, shown, on_add));
         shown += 1;

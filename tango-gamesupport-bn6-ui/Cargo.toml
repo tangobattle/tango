@@ -10,7 +10,7 @@ license = "GPL-3.0-or-later"
 # aggregator — nothing in here is cfg'd.
 
 [dependencies]
-tango-gamesupport-common = { path = "../tango-gamesupport-common", features = ["ui"] }
+tango-gamesupport-common-ui = { path = "../tango-gamesupport-common-ui" }
 image = { version = "0.25", default-features = false, features = ["png"] }
 iced = { workspace = true}
 unic-langid = { workspace = true}

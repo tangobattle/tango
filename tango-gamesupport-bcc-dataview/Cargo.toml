@@ -9,7 +9,7 @@ license = "GPL-3.0-or-later"
 # toolkit anywhere below this crate.
 
 [dependencies]
-tango-gamesupport-common = { path = "../tango-gamesupport-common", default-features = false }
+tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
 image = { version = "0.25", default-features = false, features = ["png"] }
 byteorder = "1"
 

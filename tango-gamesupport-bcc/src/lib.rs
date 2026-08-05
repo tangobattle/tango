@@ -43,12 +43,12 @@ static SAVE: LazyLock<dataview::save::Save> =
 static TEMPLATES: SaveTemplates = LazyLock::new(|| {
     vec![(
         "",
-        tango_gamesupport_common::dataview::wrap_save(Box::new(SAVE.clone())),
+        tango_gamesupport_common_dataview::wrap_save(Box::new(SAVE.clone())),
     )]
 });
 
 fn parse_save(data: &[u8]) -> Result<tango_gamesupport::BoxedSave, Error> {
-    Ok(tango_gamesupport_common::dataview::wrap_save(Box::new(
+    Ok(tango_gamesupport_common_dataview::wrap_save(Box::new(
         dataview::save::Save::new(data)?,
     )))
 }
@@ -65,7 +65,7 @@ pub static BCC: Game = Game {
     region: Region::US,
     parse_save_fn: parse_save,
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::A89E_00,
             charset.unwrap_or(dataview::rom::EN_CHARSET),
             rom.to_vec(),
@@ -91,7 +91,7 @@ pub static EXEBCGP: Game = Game {
     region: Region::JP,
     parse_save_fn: parse_save,
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::A89J_00,
             charset.unwrap_or(dataview::rom::JA_CHARSET),
             rom.to_vec(),

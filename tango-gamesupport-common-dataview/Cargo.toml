@@ -1,0 +1,26 @@
+[package]
+name = "tango-gamesupport-common-dataview"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+# The save/ROM parsing substrate (formerly the public tango-dataview
+# crate): the traits every game's dataview crate implements against,
+# plus the shared derived views. Headless-safe — no UI toolkit anywhere
+# below this crate.
+
+[dependencies]
+tango-gamesupport = { path = "../tango-gamesupport" }
+bytemuck = { version = "1", features = ["derive", "const_zeroed"] }
+byteorder = "1"
+c2rust-bitfields = "0.22"
+image.workspace = true
+itertools = "0.13"
+ndarray = "0.15"
+num-derive = "0.4.2"
+num-traits = "0.2"
+patricia_tree = "0.5"
+thiserror = "1"
+
+[lints]
+workspace = true

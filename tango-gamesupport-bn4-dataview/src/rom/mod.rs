@@ -90,9 +90,9 @@ pub static B4BE_00: Offsets = Offsets {
 pub struct Assets {
     offsets: &'static Offsets,
     msg_parser: msg::Parser,
-    mapper: tango_gamesupport_common::dataview::rom::MemoryMapper,
-    chip_icon_palette: tango_gamesupport_common::dataview::rom::Palette,
-    element_icon_palette: tango_gamesupport_common::dataview::rom::Palette,
+    mapper: tango_gamesupport_common_dataview::rom::MemoryMapper,
+    chip_icon_palette: tango_gamesupport_common_dataview::rom::Palette,
+    element_icon_palette: tango_gamesupport_common_dataview::rom::Palette,
 }
 
 struct Chip<'a> {
@@ -150,12 +150,12 @@ impl Chip<'_> {
     fn try_icon(&self) -> Option<image::RgbaImage> {
         let raw = self.raw();
         let tiles = self.assets.mapper.get(raw.icon_ptr);
-        let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(
-            tiles.get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * 2 * 2)?,
+        let paletted = tango_gamesupport_common_dataview::rom::read_merged_tiles(
+            tiles.get(..tango_gamesupport_common_dataview::rom::TILE_BYTES * 2 * 2)?,
             2,
         )
         .ok()?;
-        Some(tango_gamesupport_common::dataview::rom::apply_palette(
+        Some(tango_gamesupport_common_dataview::rom::apply_palette(
             paletted,
             &self.assets.chip_icon_palette,
         ))
@@ -166,22 +166,22 @@ impl Chip<'_> {
     fn try_image(&self) -> Option<image::RgbaImage> {
         let raw = self.raw();
         let tiles = self.assets.mapper.get(raw.image_ptr);
-        let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(
-            tiles.get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * 7 * 6)?,
+        let paletted = tango_gamesupport_common_dataview::rom::read_merged_tiles(
+            tiles.get(..tango_gamesupport_common_dataview::rom::TILE_BYTES * 7 * 6)?,
             7,
         )
         .ok()?;
         let palette_raw = self.assets.mapper.get(raw.palette_ptr);
-        let palette = bytemuck::pod_read_unaligned::<tango_gamesupport_common::dataview::rom::Palette>(
-            palette_raw.get(..std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>())?,
+        let palette = bytemuck::pod_read_unaligned::<tango_gamesupport_common_dataview::rom::Palette>(
+            palette_raw.get(..std::mem::size_of::<tango_gamesupport_common_dataview::rom::Palette>())?,
         );
-        Some(tango_gamesupport_common::dataview::rom::apply_palette(
+        Some(tango_gamesupport_common_dataview::rom::apply_palette(
             paletted, &palette,
         ))
     }
 }
 
-impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
+impl<'a> tango_gamesupport_common_dataview::rom::Chip for Chip<'a> {
     fn name(&self) -> Option<String> {
         let pointer = self.assets.offsets.chip_names_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
@@ -189,7 +189,7 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = tango_gamesupport_common::dataview::msg::get_entry(&region, id)?;
+        let entry = tango_gamesupport_common_dataview::msg::get_entry(&region, id)?;
 
         self.assets
             .msg_parser
@@ -198,8 +198,8 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
             .into_iter()
             .map(|part| {
                 Some(match part {
-                    tango_gamesupport_common::dataview::msg::Chunk::Text(s) => s,
-                    tango_gamesupport_common::dataview::msg::Chunk::Command(command) => match command {
+                    tango_gamesupport_common_dataview::msg::Chunk::Text(s) => s,
+                    tango_gamesupport_common_dataview::msg::Chunk::Command(command) => match command {
                         msg::Command::EreaderNameCommand(cmd) => {
                             if let Ok(parts) = self.assets.msg_parser.parse(&self.assets.mapper.get(
                                 (super::save::EREADER_NAME_OFFSET + cmd.index as usize * super::save::EREADER_NAME_SIZE)
@@ -210,7 +210,7 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
                                     .into_iter()
                                     .flat_map(|part| {
                                         match part {
-                                            tango_gamesupport_common::dataview::msg::Chunk::Text(s) => s,
+                                            tango_gamesupport_common_dataview::msg::Chunk::Text(s) => s,
                                             _ => "".to_string(),
                                         }
                                         .chars()
@@ -235,7 +235,7 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = tango_gamesupport_common::dataview::msg::get_entry(&region, id)?;
+        let entry = tango_gamesupport_common_dataview::msg::get_entry(&region, id)?;
 
         self.assets
             .msg_parser
@@ -244,8 +244,8 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
             .into_iter()
             .map(|part| {
                 Some(match part {
-                    tango_gamesupport_common::dataview::msg::Chunk::Text(s) => s,
-                    tango_gamesupport_common::dataview::msg::Chunk::Command(command) => match command {
+                    tango_gamesupport_common_dataview::msg::Chunk::Text(s) => s,
+                    tango_gamesupport_common_dataview::msg::Chunk::Command(command) => match command {
                         msg::Command::EreaderDescriptionCommand(cmd) => {
                             if let Ok(parts) = self.assets.msg_parser.parse(&self.assets.mapper.get(
                                 (super::save::EREADER_DESCRIPTION_OFFSET
@@ -257,7 +257,7 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
                                     .into_iter()
                                     .flat_map(|part| {
                                         match part {
-                                            tango_gamesupport_common::dataview::msg::Chunk::Text(s) => s,
+                                            tango_gamesupport_common_dataview::msg::Chunk::Text(s) => s,
                                             _ => "".to_string(),
                                         }
                                         .chars()
@@ -280,8 +280,8 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
         // renders blank instead of panicking.
         self.try_icon().unwrap_or_else(|| {
             image::RgbaImage::new(
-                (2 * tango_gamesupport_common::dataview::rom::TILE_WIDTH) as u32,
-                (2 * tango_gamesupport_common::dataview::rom::TILE_HEIGHT) as u32,
+                (2 * tango_gamesupport_common_dataview::rom::TILE_WIDTH) as u32,
+                (2 * tango_gamesupport_common_dataview::rom::TILE_HEIGHT) as u32,
             )
         })
     }
@@ -289,8 +289,8 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
     fn image(&self) -> image::RgbaImage {
         self.try_image().unwrap_or_else(|| {
             image::RgbaImage::new(
-                (7 * tango_gamesupport_common::dataview::rom::TILE_WIDTH) as u32,
-                (6 * tango_gamesupport_common::dataview::rom::TILE_HEIGHT) as u32,
+                (7 * tango_gamesupport_common_dataview::rom::TILE_WIDTH) as u32,
+                (6 * tango_gamesupport_common_dataview::rom::TILE_HEIGHT) as u32,
             )
         })
     }
@@ -310,14 +310,14 @@ impl<'a> tango_gamesupport_common::dataview::rom::Chip for Chip<'a> {
         raw.element as usize
     }
 
-    fn class(&self) -> tango_gamesupport_common::dataview::rom::ChipClass {
+    fn class(&self) -> tango_gamesupport_common_dataview::rom::ChipClass {
         let raw = self.raw();
         match raw.class {
-            0 => tango_gamesupport_common::dataview::rom::ChipClass::Standard,
-            1 => tango_gamesupport_common::dataview::rom::ChipClass::Mega,
-            2 => tango_gamesupport_common::dataview::rom::ChipClass::Giga,
-            4 => tango_gamesupport_common::dataview::rom::ChipClass::ProgramAdvance,
-            _ => tango_gamesupport_common::dataview::rom::ChipClass::None,
+            0 => tango_gamesupport_common_dataview::rom::ChipClass::Standard,
+            1 => tango_gamesupport_common_dataview::rom::ChipClass::Mega,
+            2 => tango_gamesupport_common_dataview::rom::ChipClass::Giga,
+            4 => tango_gamesupport_common_dataview::rom::ChipClass::ProgramAdvance,
+            _ => tango_gamesupport_common_dataview::rom::ChipClass::None,
         }
     }
 
@@ -368,8 +368,8 @@ const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x10);
 /// Decode a raw navicust-part color byte. Shared with the save layer
 /// (the color bar uses the same encoding). Note bn4's pink/yellow order
 /// differs from bn5/bn6.
-pub fn navicust_part_color(raw: u8) -> Option<tango_gamesupport_common::dataview::rom::NavicustPartColor> {
-    use tango_gamesupport_common::dataview::rom::NavicustPartColor as C;
+pub fn navicust_part_color(raw: u8) -> Option<tango_gamesupport_common_dataview::rom::NavicustPartColor> {
+    use tango_gamesupport_common_dataview::rom::NavicustPartColor as C;
     Some(match raw {
         1 => C::White,
         2 => C::Pink,
@@ -390,12 +390,12 @@ impl<'a> NavicustPart<'a> {
     }
 }
 
-impl<'a> tango_gamesupport_common::dataview::rom::NavicustPart for NavicustPart<'a> {
+impl<'a> tango_gamesupport_common_dataview::rom::NavicustPart for NavicustPart<'a> {
     fn name(&self) -> Option<String> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = tango_gamesupport_common::dataview::msg::get_entry(&region, self.id / 4)?;
+        let entry = tango_gamesupport_common_dataview::msg::get_entry(&region, self.id / 4)?;
 
         Some(
             self.assets
@@ -405,7 +405,7 @@ impl<'a> tango_gamesupport_common::dataview::rom::NavicustPart for NavicustPart<
                 .into_iter()
                 .flat_map(|part| {
                     match &part {
-                        tango_gamesupport_common::dataview::msg::Chunk::Text(s) => s,
+                        tango_gamesupport_common_dataview::msg::Chunk::Text(s) => s,
                         _ => "",
                     }
                     .chars()
@@ -419,7 +419,7 @@ impl<'a> tango_gamesupport_common::dataview::rom::NavicustPart for NavicustPart<
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = tango_gamesupport_common::dataview::msg::get_entry(&region, self.id / 4)?;
+        let entry = tango_gamesupport_common_dataview::msg::get_entry(&region, self.id / 4)?;
 
         Some(
             self.assets
@@ -429,7 +429,7 @@ impl<'a> tango_gamesupport_common::dataview::rom::NavicustPart for NavicustPart<
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        tango_gamesupport_common::dataview::msg::Chunk::Text(s) => s,
+                        tango_gamesupport_common_dataview::msg::Chunk::Text(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()
@@ -439,7 +439,7 @@ impl<'a> tango_gamesupport_common::dataview::rom::NavicustPart for NavicustPart<
         )
     }
 
-    fn color(&self) -> Option<tango_gamesupport_common::dataview::rom::NavicustPartColor> {
+    fn color(&self) -> Option<tango_gamesupport_common_dataview::rom::NavicustPartColor> {
         navicust_part_color(self.raw().color)
     }
 
@@ -448,7 +448,7 @@ impl<'a> tango_gamesupport_common::dataview::rom::NavicustPart for NavicustPart<
         raw.is_solid == 0
     }
 
-    fn uncompressed_bitmap(&self) -> tango_gamesupport_common::dataview::rom::NavicustBitmap {
+    fn uncompressed_bitmap(&self) -> tango_gamesupport_common_dataview::rom::NavicustBitmap {
         let raw = self.raw();
         ndarray::Array2::from_shape_vec(
             (5, 5),
@@ -460,7 +460,7 @@ impl<'a> tango_gamesupport_common::dataview::rom::NavicustPart for NavicustPart<
         .unwrap()
     }
 
-    fn compressed_bitmap(&self) -> Option<tango_gamesupport_common::dataview::rom::NavicustBitmap> {
+    fn compressed_bitmap(&self) -> Option<tango_gamesupport_common_dataview::rom::NavicustBitmap> {
         // BN4 has compressed bitmaps but doens't use them. In fact, the one for UnderSht is just wrong.
         None
     }
@@ -506,18 +506,18 @@ impl Assets {
 
 impl Assets {
     pub fn new(offsets: &'static Offsets, charset: &[&str], rom: Vec<u8>, wram: Vec<u8>) -> Self {
-        let mapper = tango_gamesupport_common::dataview::rom::MemoryMapper::new(rom, wram);
+        let mapper = tango_gamesupport_common_dataview::rom::MemoryMapper::new(rom, wram);
 
-        let chip_icon_palette = bytemuck::pod_read_unaligned::<tango_gamesupport_common::dataview::rom::Palette>(
+        let chip_icon_palette = bytemuck::pod_read_unaligned::<tango_gamesupport_common_dataview::rom::Palette>(
             &mapper.get(bytemuck::pod_read_unaligned::<u32>(
                 &mapper.get(offsets.chip_icon_palette_pointer)[..std::mem::size_of::<u32>()],
-            ))[..std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>()],
+            ))[..std::mem::size_of::<tango_gamesupport_common_dataview::rom::Palette>()],
         );
 
-        let element_icon_palette = bytemuck::pod_read_unaligned::<tango_gamesupport_common::dataview::rom::Palette>(
+        let element_icon_palette = bytemuck::pod_read_unaligned::<tango_gamesupport_common_dataview::rom::Palette>(
             &mapper.get(bytemuck::pod_read_unaligned::<u32>(
                 &mapper.get(offsets.element_icon_palette_pointer)[..std::mem::size_of::<u32>()],
-            ))[..std::mem::size_of::<tango_gamesupport_common::dataview::rom::Palette>()],
+            ))[..std::mem::size_of::<tango_gamesupport_common_dataview::rom::Palette>()],
         );
 
         Self {
@@ -530,8 +530,8 @@ impl Assets {
     }
 }
 
-impl tango_gamesupport_common::dataview::rom::Assets for Assets {
-    fn chip(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common::dataview::rom::Chip + '_>> {
+impl tango_gamesupport_common_dataview::rom::Assets for Assets {
+    fn chip(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common_dataview::rom::Chip + '_>> {
         if id >= self.num_chips() {
             return None;
         }
@@ -552,19 +552,19 @@ impl tango_gamesupport_common::dataview::rom::Assets for Assets {
                 .get(self.offsets.element_icons_pointer)
                 .get(..std::mem::size_of::<u32>())?,
         ));
-        let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(
-            buf.get(id * tango_gamesupport_common::dataview::rom::TILE_BYTES * 4..)?
-                .get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * 2 * 2)?,
+        let paletted = tango_gamesupport_common_dataview::rom::read_merged_tiles(
+            buf.get(id * tango_gamesupport_common_dataview::rom::TILE_BYTES * 4..)?
+                .get(..tango_gamesupport_common_dataview::rom::TILE_BYTES * 2 * 2)?,
             2,
         )
         .ok()?;
-        Some(tango_gamesupport_common::dataview::rom::apply_palette(
+        Some(tango_gamesupport_common_dataview::rom::apply_palette(
             paletted,
             &self.element_icon_palette,
         ))
     }
 
-    fn navicust_part(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common::dataview::rom::NavicustPart + '_>> {
+    fn navicust_part(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common_dataview::rom::NavicustPart + '_>> {
         if id >= self.num_navicust_parts() {
             return None;
         }
@@ -575,8 +575,8 @@ impl tango_gamesupport_common::dataview::rom::Assets for Assets {
         super::NUM_NAVICUST_PARTS
     }
 
-    fn navicust_layout(&self) -> Option<tango_gamesupport_common::dataview::rom::NavicustLayout> {
-        Some(tango_gamesupport_common::dataview::rom::NavicustLayout {
+    fn navicust_layout(&self) -> Option<tango_gamesupport_common_dataview::rom::NavicustLayout> {
+        Some(tango_gamesupport_common_dataview::rom::NavicustLayout {
             command_line: 2,
             has_out_of_bounds: false,
             background: self.offsets.navicust_bg,

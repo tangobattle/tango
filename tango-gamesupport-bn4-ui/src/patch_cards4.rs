@@ -12,14 +12,14 @@ use iced::{Alignment, Element, Fill, Length};
 use sweeten::widget::{column, pick_list, row};
 use tango_gamesupport_bn4_dataview::rom::{self as bn4_rom, PatchCard4Effect};
 use tango_gamesupport_bn4_dataview::save as bn4_save;
-use tango_gamesupport_common::editor::loaded::OpenSave;
-use tango_gamesupport_common::editor::view::{
+use tango_gamesupport_common_ui::editor::loaded::OpenSave;
+use tango_gamesupport_common_ui::editor::view::{
     edit_toggle_maybe, editor_header, patch_cards, placeholder, Action, State,
 };
-use tango_gamesupport_common::model::edit::{GameEdit, Invalidation};
-use tango_gamesupport_common::style::{self, TEXT_BODY, TEXT_CAPTION};
-use tango_gamesupport_common::t;
-use tango_gamesupport_common::widgets::{self, muted_text_style};
+use tango_gamesupport_common_ui::model::edit::{GameEdit, Invalidation};
+use tango_gamesupport_common_ui::style::{self, TEXT_BODY, TEXT_CAPTION};
+use tango_gamesupport_common_ui::t;
+use tango_gamesupport_common_ui::widgets::{self, muted_text_style};
 use unic_langid::LanguageIdentifier;
 
 /// BN4 catalog-slot labels (the "0A"–"0F" the game shows). A BN4 patch
@@ -125,7 +125,7 @@ pub fn render<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave) -> Eleme
 fn slot_row<'a>(
     assets: &bn4_rom::Assets,
     slot: usize,
-    installed: Option<tango_gamesupport_common::dataview::save::PatchCard>,
+    installed: Option<tango_gamesupport_common_dataview::save::PatchCard>,
     choices: Vec<PatchCard4Choice>,
 ) -> Element<'a, Action> {
     let badge = container(
@@ -285,8 +285,8 @@ pub enum PatchCard4Edit {
 }
 
 impl GameEdit for PatchCard4Edit {
-    fn apply(&self, save: &mut tango_gamesupport_common::model::SaveModel) -> Invalidation {
-        use tango_gamesupport_common::dataview::save::PatchCard;
+    fn apply(&self, save: &mut tango_gamesupport_common_ui::model::SaveModel) -> Invalidation {
+        use tango_gamesupport_common_dataview::save::PatchCard;
 
         // The card's home slot resolves through the ROM catalog; read it
         // before the save is borrowed mutably.

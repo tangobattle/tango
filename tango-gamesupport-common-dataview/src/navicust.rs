@@ -21,10 +21,10 @@ where
 }
 
 fn ncp_bitmap(
-    info: &dyn crate::dataview::rom::NavicustPart,
+    info: &dyn crate::rom::NavicustPart,
     compressed: bool,
     rot: u8,
-) -> crate::dataview::rom::NavicustBitmap {
+) -> crate::rom::NavicustBitmap {
     rotate(
         &info
             .compressed_bitmap()
@@ -48,10 +48,10 @@ pub fn materialized_from_wram(buf: &[u8], size: [usize; 2]) -> MaterializedNavic
 /// `Vec<Option<_>>` to mirror the stored slots (a read of an arbitrary
 /// save can have `None` gaps).
 pub fn materialize_color_bar(
-    navicust_view: &dyn crate::dataview::save::NavicustView,
-    assets: &dyn crate::dataview::rom::Assets,
-) -> Vec<Option<crate::dataview::rom::NavicustPartColor>> {
-    let mut colors: Vec<crate::dataview::rom::NavicustPartColor> = Vec::new();
+    navicust_view: &dyn crate::save::NavicustView,
+    assets: &dyn crate::rom::Assets,
+) -> Vec<Option<crate::rom::NavicustPartColor>> {
+    let mut colors: Vec<crate::rom::NavicustPartColor> = Vec::new();
     for i in 0..navicust_view.count() {
         let Some(ncp) = navicust_view.navicust_part(i) else {
             continue;
@@ -72,16 +72,16 @@ pub fn materialize_color_bar(
 /// reuse the ROM's color decoding for writing the color bar instead of
 /// duplicating the mapping.
 pub fn color_to_raw(
-    color: &crate::dataview::rom::NavicustPartColor,
-    from_raw: impl Fn(u8) -> Option<crate::dataview::rom::NavicustPartColor>,
+    color: &crate::rom::NavicustPartColor,
+    from_raw: impl Fn(u8) -> Option<crate::rom::NavicustPartColor>,
 ) -> u8 {
     (1u8..=0xff).find(|&b| from_raw(b).as_ref() == Some(color)).unwrap_or(0)
 }
 
 pub fn materialize(
-    navicust_view: &dyn crate::dataview::save::NavicustView,
+    navicust_view: &dyn crate::save::NavicustView,
     max_size: [usize; 2],
-    assets: &dyn crate::dataview::rom::Assets,
+    assets: &dyn crate::rom::Assets,
 ) -> MaterializedNavicust {
     let mut materialized = ndarray::Array2::from_elem(max_size, None);
     for i in 0..navicust_view.count() {

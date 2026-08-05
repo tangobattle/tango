@@ -33,7 +33,7 @@
 //! object at US `0x021701d4`, filled at `0x020214bc`, whose fields are
 //! the sections' addresses) plus the GBA game's own shapes.
 
-use tango_gamesupport_common::dataview::save::Error;
+use tango_gamesupport_common_dataview::save::Error;
 
 /// The flash the cart carries: 256 KiB. That is what the emulator
 /// mounts and hands back, so it is the length a dump is canonicalized
@@ -144,7 +144,7 @@ pub const REGULAR_CHIP_OFFSET: usize = 0x2e9a;
 /// 1.. the team link navis, as on GBA), each starting u16 LE base max
 /// HP, current HP, effective max HP. It is the anchor
 /// [`EQUIPPED_FOLDER_OFFSET`] was found against, and what
-/// [`NaviView`](tango_gamesupport_common::dataview::save::NaviView)
+/// [`NaviView`](tango_gamesupport_common_dataview::save::NaviView)
 /// reports HP out of.
 pub const NAVI_STATS_OFFSET: usize = 0x2eaa;
 
@@ -1198,7 +1198,7 @@ impl Save {
 
     /// Set the cross this file brings, writing the game's own byte.
     /// Checksums are not rebuilt here — the editor commits through
-    /// [`rebuild_checksum`](tango_gamesupport_common::dataview::save::Save::rebuild_checksum)
+    /// [`rebuild_checksum`](tango_gamesupport_common_dataview::save::Save::rebuild_checksum)
     /// like every other edit.
     pub fn set_cross(&mut self, cross: Cross) {
         self.active_mut()[CROSS_OFFSET] = cross.raw();
@@ -1235,30 +1235,30 @@ impl Save {
     }
 }
 
-impl tango_gamesupport_common::dataview::save::Save for Save {
-    fn view_chips(&self) -> Option<Box<dyn tango_gamesupport_common::dataview::save::ChipsView + '_>> {
+impl tango_gamesupport_common_dataview::save::Save for Save {
+    fn view_chips(&self) -> Option<Box<dyn tango_gamesupport_common_dataview::save::ChipsView + '_>> {
         Some(Box::new(ChipsView { save: self }))
     }
 
-    fn view_chips_mut(&mut self) -> Option<Box<dyn tango_gamesupport_common::dataview::save::ChipsViewMut + '_>> {
+    fn view_chips_mut(&mut self) -> Option<Box<dyn tango_gamesupport_common_dataview::save::ChipsViewMut + '_>> {
         Some(Box::new(ChipsView { save: self }))
     }
 
-    fn view_navi(&self) -> Option<Box<dyn tango_gamesupport_common::dataview::save::NaviView + '_>> {
+    fn view_navi(&self) -> Option<Box<dyn tango_gamesupport_common_dataview::save::NaviView + '_>> {
         Some(Box::new(NaviView { save: self }))
     }
 
     /// The NaviCust, unless the file is being played as a team navi —
     /// the customizer is MegaMan's, exactly as it is on GBA (see
     /// [`NAVI_OFFSET`] for what a nonzero navi means on this cart).
-    fn view_navicust(&self) -> Option<Box<dyn tango_gamesupport_common::dataview::save::NavicustView + '_>> {
+    fn view_navicust(&self) -> Option<Box<dyn tango_gamesupport_common_dataview::save::NavicustView + '_>> {
         if self.navi() != 0 {
             return None;
         }
         Some(Box::new(NavicustView { save: self }))
     }
 
-    fn view_navicust_mut(&mut self) -> Option<Box<dyn tango_gamesupport_common::dataview::save::NavicustViewMut + '_>> {
+    fn view_navicust_mut(&mut self) -> Option<Box<dyn tango_gamesupport_common_dataview::save::NavicustViewMut + '_>> {
         if self.navi() != 0 {
             return None;
         }
@@ -1267,13 +1267,13 @@ impl tango_gamesupport_common::dataview::save::Save for Save {
 
     fn view_auto_battle_data(
         &self,
-    ) -> Option<Box<dyn tango_gamesupport_common::dataview::save::AutoBattleDataView + '_>> {
+    ) -> Option<Box<dyn tango_gamesupport_common_dataview::save::AutoBattleDataView + '_>> {
         Some(Box::new(AutoBattleDataView { save: self }))
     }
 
     fn view_auto_battle_data_mut(
         &mut self,
-    ) -> Option<Box<dyn tango_gamesupport_common::dataview::save::AutoBattleDataViewMut + '_>> {
+    ) -> Option<Box<dyn tango_gamesupport_common_dataview::save::AutoBattleDataViewMut + '_>> {
         Some(Box::new(AutoBattleDataView { save: self }))
     }
 
@@ -1317,7 +1317,7 @@ struct RawChip {
 }
 const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2);
 
-impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save::ChipsView for ChipsView<S> {
+impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save::ChipsView for ChipsView<S> {
     fn num_folders(&self) -> usize {
         NUM_FOLDERS
     }
@@ -1338,7 +1338,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
         Some(if index >= 30 { None } else { Some(index as usize) })
     }
 
-    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<tango_gamesupport_common::dataview::save::Chip> {
+    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<tango_gamesupport_common_dataview::save::Chip> {
         if folder_index >= self.num_folders() || chip_index >= self.folder_size() {
             return None;
         }
@@ -1349,7 +1349,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
                 [..std::mem::size_of::<RawChip>()],
         );
 
-        Some(tango_gamesupport_common::dataview::save::Chip {
+        Some(tango_gamesupport_common_dataview::save::Chip {
             id: raw.id() as usize,
             code: num_traits::FromPrimitive::from_u16(raw.code())?,
         })
@@ -1381,7 +1381,7 @@ impl<S: std::ops::Deref<Target = Save>> ChipsView<S> {
     }
 }
 
-impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::save::ChipsViewMut for ChipsView<S> {
+impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::save::ChipsViewMut for ChipsView<S> {
     fn set_equipped_folder(&mut self, folder_index: usize) -> bool {
         if folder_index >= NUM_FOLDERS {
             return false;
@@ -1394,7 +1394,7 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::s
         &mut self,
         folder_index: usize,
         chip_index: usize,
-        chip: tango_gamesupport_common::dataview::save::Chip,
+        chip: tango_gamesupport_common_dataview::save::Chip,
     ) -> bool {
         if folder_index >= NUM_FOLDERS || chip_index >= 30 || chip.id > 0x1ff {
             return false;
@@ -1488,7 +1488,7 @@ struct RawNavicustPart {
 }
 const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == NAVICUST_PART_SIZE);
 
-impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save::NavicustView for NavicustView<S> {
+impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save::NavicustView for NavicustView<S> {
     fn count(&self) -> usize {
         NUM_NAVICUST_SLOTS
     }
@@ -1497,7 +1497,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
         [NAVICUST_SIZE, NAVICUST_SIZE]
     }
 
-    fn navicust_part(&self, i: usize) -> Option<tango_gamesupport_common::dataview::save::NavicustPart> {
+    fn navicust_part(&self, i: usize) -> Option<tango_gamesupport_common_dataview::save::NavicustPart> {
         if i >= self.count() {
             return None;
         }
@@ -1507,7 +1507,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
         if raw.id == 0 {
             return None;
         }
-        Some(tango_gamesupport_common::dataview::save::NavicustPart {
+        Some(tango_gamesupport_common_dataview::save::NavicustPart {
             id: raw.id as usize,
             col: raw.col,
             row: raw.row,
@@ -1516,14 +1516,14 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
         })
     }
 
-    fn materialized(&self) -> tango_gamesupport_common::dataview::navicust::MaterializedNavicust {
-        tango_gamesupport_common::dataview::navicust::materialized_from_wram(
+    fn materialized(&self) -> tango_gamesupport_common_dataview::navicust::MaterializedNavicust {
+        tango_gamesupport_common_dataview::navicust::materialized_from_wram(
             &self.save.active()[NAVICUST_GRID_OFFSET..][..NAVICUST_SIZE * NAVICUST_SIZE],
             [NAVICUST_SIZE, NAVICUST_SIZE],
         )
     }
 
-    fn navicust_color_bar(&self) -> Vec<Option<tango_gamesupport_common::dataview::rom::NavicustPartColor>> {
+    fn navicust_color_bar(&self) -> Vec<Option<tango_gamesupport_common_dataview::rom::NavicustPartColor>> {
         self.save.active()[NAVICUST_COLOR_BAR_OFFSET..][..NAVICUST_COLOR_BAR_LEN]
             .iter()
             .map(|&raw| crate::rom::navicust_part_color(raw))
@@ -1531,13 +1531,13 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
     }
 }
 
-impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::save::NavicustViewMut
+impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::save::NavicustViewMut
     for NavicustView<S>
 {
     fn set_navicust_part(
         &mut self,
         i: usize,
-        part: Option<tango_gamesupport_common::dataview::save::NavicustPart>,
+        part: Option<tango_gamesupport_common_dataview::save::NavicustPart>,
     ) -> bool {
         if i >= NUM_NAVICUST_SLOTS {
             return false;
@@ -1569,8 +1569,8 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::s
         self.save.active_mut()[NAVICUST_COLOR_BAR_OFFSET..][..NAVICUST_COLOR_BAR_LEN].fill(0);
     }
 
-    fn rebuild_materialized(&mut self, assets: &dyn tango_gamesupport_common::dataview::rom::Assets) {
-        let materialized = tango_gamesupport_common::dataview::navicust::materialize(
+    fn rebuild_materialized(&mut self, assets: &dyn tango_gamesupport_common_dataview::rom::Assets) {
+        let materialized = tango_gamesupport_common_dataview::navicust::materialize(
             &*self,
             [NAVICUST_SIZE, NAVICUST_SIZE],
             assets,
@@ -1583,10 +1583,10 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::s
         self.save.active_mut()[NAVICUST_GRID_OFFSET..][..NAVICUST_GRID_SECTION_SIZE].copy_from_slice(&grid);
 
         // The colour bar: the distinct part colours in placement order.
-        let bar = tango_gamesupport_common::dataview::navicust::materialize_color_bar(&*self, assets);
+        let bar = tango_gamesupport_common_dataview::navicust::materialize_color_bar(&*self, assets);
         let mut bytes = [0u8; NAVICUST_COLOR_BAR_LEN];
         for (slot, color) in bar.iter().flatten().enumerate().take(NAVICUST_COLOR_BAR_LEN) {
-            bytes[slot] = tango_gamesupport_common::dataview::navicust::color_to_raw(
+            bytes[slot] = tango_gamesupport_common_dataview::navicust::color_to_raw(
                 color,
                 crate::rom::navicust_part_color,
             );
@@ -1602,7 +1602,7 @@ pub struct NaviView<S> {
     save: S,
 }
 
-impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save::NaviView for NaviView<S> {
+impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save::NaviView for NaviView<S> {
     fn navi(&self) -> usize {
         self.save.navi()
     }
@@ -1611,7 +1611,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
     /// plus what his NaviCust adds — the same sum the GBA game makes,
     /// minus the patch cards this cart has none of. A team navi reports
     /// the effective figure its own record carries.
-    fn max_hp(&self, _assets: &dyn tango_gamesupport_common::dataview::rom::Assets) -> u16 {
+    fn max_hp(&self, _assets: &dyn tango_gamesupport_common_dataview::rom::Assets) -> u16 {
         let navi = self.navi();
         let Some([base, _current, effective]) = self.save.navi_stats(navi) else {
             return 0;
@@ -1621,7 +1621,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
         }
 
         let mut max_hp = base;
-        if let Some(navicust) = tango_gamesupport_common::dataview::save::Save::view_navicust(&*self.save) {
+        if let Some(navicust) = tango_gamesupport_common_dataview::save::Save::view_navicust(&*self.save) {
             for part in placed_parts(&*navicust) {
                 for effect in crate::rom::navicust::navicust_part_effects(part) {
                     if let crate::rom::navicust::NavicustEffect::MaxHp(n) = effect {
@@ -1640,12 +1640,12 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
     /// move any of them.
     fn folder_limits(
         &self,
-        _assets: &dyn tango_gamesupport_common::dataview::rom::Assets,
-    ) -> tango_gamesupport_common::dataview::save::FolderLimits {
+        _assets: &dyn tango_gamesupport_common_dataview::rom::Assets,
+    ) -> tango_gamesupport_common_dataview::save::FolderLimits {
         let mut mega: isize = BASE_MEGA_LIMIT;
         let mut giga: usize = BASE_GIGA_LIMIT;
 
-        if let Some(navicust) = tango_gamesupport_common::dataview::save::Save::view_navicust(&*self.save) {
+        if let Some(navicust) = tango_gamesupport_common_dataview::save::Save::view_navicust(&*self.save) {
             for part in command_line_parts(&*navicust) {
                 for effect in crate::rom::navicust::navicust_part_effects(part) {
                     match effect {
@@ -1657,7 +1657,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
             }
         }
 
-        tango_gamesupport_common::dataview::save::FolderLimits {
+        tango_gamesupport_common_dataview::save::FolderLimits {
             mega_limit: Some(mega.clamp(0, MAX_CLASS_LIMIT as isize) as usize),
             giga_limit: Some(giga.clamp(0, MAX_CLASS_LIMIT)),
             dark_limit: Some(DARK_LIMIT),
@@ -1667,9 +1667,9 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
                     return 1;
                 }
                 match chip.class() {
-                    tango_gamesupport_common::dataview::rom::ChipClass::Mega
-                    | tango_gamesupport_common::dataview::rom::ChipClass::Giga => 1,
-                    tango_gamesupport_common::dataview::rom::ChipClass::Standard => 4,
+                    tango_gamesupport_common_dataview::rom::ChipClass::Mega
+                    | tango_gamesupport_common_dataview::rom::ChipClass::Giga => 1,
+                    tango_gamesupport_common_dataview::rom::ChipClass::Standard => 4,
                     _ => 0,
                 }
             },
@@ -1688,7 +1688,7 @@ const DARK_LIMIT: usize = 3;
 
 /// The part ids actually on the grid, each counted once however many
 /// cells it covers.
-fn placed_parts(navicust: &dyn tango_gamesupport_common::dataview::save::NavicustView) -> Vec<usize> {
+fn placed_parts(navicust: &dyn tango_gamesupport_common_dataview::save::NavicustView) -> Vec<usize> {
     let mut seen = std::collections::HashSet::new();
     navicust
         .materialized()
@@ -1701,7 +1701,7 @@ fn placed_parts(navicust: &dyn tango_gamesupport_common::dataview::save::Navicus
 
 /// The same, restricted to the command line — the row a program has to
 /// sit on for its folder effect to count.
-fn command_line_parts(navicust: &dyn tango_gamesupport_common::dataview::save::NavicustView) -> Vec<usize> {
+fn command_line_parts(navicust: &dyn tango_gamesupport_common_dataview::save::NavicustView) -> Vec<usize> {
     let mut seen = std::collections::HashSet::new();
     navicust
         .materialized()
@@ -1748,7 +1748,7 @@ impl<S: std::ops::DerefMut<Target = Save>> AutoBattleDataView<S> {
     /// [`AUTO_BATTLE_DATA_COMBO_SLOTS`]).
     fn set_materialized(
         &mut self,
-        materialized: &tango_gamesupport_common::dataview::auto_battle_data::MaterializedAutoBattleData,
+        materialized: &tango_gamesupport_common_dataview::auto_battle_data::MaterializedAutoBattleData,
     ) {
         for (slot, chip) in materialized.as_slice().iter().enumerate() {
             if AUTO_BATTLE_DATA_COMBO_SLOTS.contains(&slot) {
@@ -1761,7 +1761,7 @@ impl<S: std::ops::DerefMut<Target = Save>> AutoBattleDataView<S> {
     }
 }
 
-impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save::AutoBattleDataView
+impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save::AutoBattleDataView
     for AutoBattleDataView<S>
 {
     fn chip_use_count(&self, id: usize) -> Option<usize> {
@@ -1772,15 +1772,15 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save
         self.count_at(SECONDARY_CHIP_USE_COUNT_OFFSET, id)
     }
 
-    fn materialized(&self) -> tango_gamesupport_common::dataview::auto_battle_data::MaterializedAutoBattleData {
-        tango_gamesupport_common::dataview::auto_battle_data::MaterializedAutoBattleData::from_wram(
+    fn materialized(&self) -> tango_gamesupport_common_dataview::auto_battle_data::MaterializedAutoBattleData {
+        tango_gamesupport_common_dataview::auto_battle_data::MaterializedAutoBattleData::from_wram(
             &self.save.active()[AUTO_BATTLE_DATA_OFFSET..]
                 [..NUM_AUTO_BATTLE_DATA_SLOTS * std::mem::size_of::<u16>()],
         )
     }
 }
 
-impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::save::AutoBattleDataViewMut
+impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::save::AutoBattleDataViewMut
     for AutoBattleDataView<S>
 {
     fn set_chip_use_count(&mut self, id: usize, count: usize) -> bool {
@@ -1793,13 +1793,13 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::s
 
     fn clear_materialized(&mut self) {
         self.set_materialized(
-            &tango_gamesupport_common::dataview::auto_battle_data::MaterializedAutoBattleData::empty(),
+            &tango_gamesupport_common_dataview::auto_battle_data::MaterializedAutoBattleData::empty(),
         );
     }
 
-    fn rebuild_materialized(&mut self, assets: &dyn tango_gamesupport_common::dataview::rom::Assets) {
+    fn rebuild_materialized(&mut self, assets: &dyn tango_gamesupport_common_dataview::rom::Assets) {
         let materialized =
-            tango_gamesupport_common::dataview::auto_battle_data::MaterializedAutoBattleData::materialize(
+            tango_gamesupport_common_dataview::auto_battle_data::MaterializedAutoBattleData::materialize(
                 &*self, assets,
             );
         self.set_materialized(&materialized);
@@ -1809,7 +1809,7 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common::dataview::s
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tango_gamesupport_common::dataview::save::{ChipCode, ChipsViewMut, NavicustPart, Save as _};
+    use tango_gamesupport_common_dataview::save::{ChipCode, ChipsViewMut, NavicustPart, Save as _};
 
     fn chip_bytes(id: u16, code: u16) -> [u8; 2] {
         (id | (code << 9)).to_le_bytes()
@@ -1844,7 +1844,7 @@ mod tests {
     /// they are.
     #[test]
     fn accepts_a_dump_short_of_the_flash() {
-        use tango_gamesupport_common::dataview::save::Save as _;
+        use tango_gamesupport_common_dataview::save::Save as _;
         let mut full = vec![ERASED; SIZE];
         for block in 0..2 {
             full[block * BLOCK_SIZE + MAGIC_OFFSET..][..MAGIC.len()].copy_from_slice(MAGIC);
@@ -1862,7 +1862,7 @@ mod tests {
     /// address space the chip does not answer for.
     #[test]
     fn accepts_a_dump_longer_than_the_flash() {
-        use tango_gamesupport_common::dataview::save::Save as _;
+        use tango_gamesupport_common_dataview::save::Save as _;
         let full = plausible();
         let mut padded = full.clone();
         padded.resize(SIZE * 2, ERASED);
@@ -1894,14 +1894,14 @@ mod tests {
         let chips = save.view_chips().unwrap();
         assert_eq!(
             chips.chip(0, 0),
-            Some(tango_gamesupport_common::dataview::save::Chip {
+            Some(tango_gamesupport_common_dataview::save::Chip {
                 id: 193,
                 code: ChipCode::M,
             })
         );
         assert_eq!(
             chips.chip(2, 29),
-            Some(tango_gamesupport_common::dataview::save::Chip {
+            Some(tango_gamesupport_common_dataview::save::Chip {
                 id: 207,
                 code: ChipCode::Star,
             })
@@ -2482,7 +2482,7 @@ mod tests {
             assert!(chips.set_chip(
                 0,
                 0,
-                tango_gamesupport_common::dataview::save::Chip {
+                tango_gamesupport_common_dataview::save::Chip {
                     id: 55,
                     code: ChipCode::B,
                 },
@@ -2512,7 +2512,7 @@ mod tests {
             assert!(chips.set_chip(
                 0,
                 0,
-                tango_gamesupport_common::dataview::save::Chip {
+                tango_gamesupport_common_dataview::save::Chip {
                     id: 42,
                     code: ChipCode::C,
                 },

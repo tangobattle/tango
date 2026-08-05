@@ -81,99 +81,99 @@ static WHITE_T: SaveTemplates = LazyLock::new(|| {
     vec![
         (
             "heat-guts",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(HEAT_GUTS_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(HEAT_GUTS_W.clone())),
         ),
         (
             "aqua-guts",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(AQUA_GUTS_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(AQUA_GUTS_W.clone())),
         ),
         (
             "elec-guts",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(ELEC_GUTS_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(ELEC_GUTS_W.clone())),
         ),
         (
             "wood-guts",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(WOOD_GUTS_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(WOOD_GUTS_W.clone())),
         ),
         (
             "heat-custom",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(HEAT_CUSTOM_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(HEAT_CUSTOM_W.clone())),
         ),
         (
             "aqua-custom",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(AQUA_CUSTOM_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(AQUA_CUSTOM_W.clone())),
         ),
         (
             "elec-custom",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(ELEC_CUSTOM_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(ELEC_CUSTOM_W.clone())),
         ),
         (
             "wood-custom",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(WOOD_CUSTOM_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(WOOD_CUSTOM_W.clone())),
         ),
         (
             "heat-shield",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(HEAT_SHIELD_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(HEAT_SHIELD_W.clone())),
         ),
         (
             "aqua-shield",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(AQUA_SHIELD_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(AQUA_SHIELD_W.clone())),
         ),
         (
             "elec-shield",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(ELEC_SHIELD_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(ELEC_SHIELD_W.clone())),
         ),
         (
             "wood-shield",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(WOOD_SHIELD_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(WOOD_SHIELD_W.clone())),
         ),
         (
             "heat-team",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(HEAT_TEAM_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(HEAT_TEAM_W.clone())),
         ),
         (
             "aqua-team",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(AQUA_TEAM_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(AQUA_TEAM_W.clone())),
         ),
         (
             "elec-team",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(ELEC_TEAM_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(ELEC_TEAM_W.clone())),
         ),
         (
             "wood-team",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(WOOD_TEAM_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(WOOD_TEAM_W.clone())),
         ),
         (
             "heat-ground",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(HEAT_GROUND_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(HEAT_GROUND_W.clone())),
         ),
         (
             "aqua-ground",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(AQUA_GROUND_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(AQUA_GROUND_W.clone())),
         ),
         (
             "elec-ground",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(ELEC_GROUND_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(ELEC_GROUND_W.clone())),
         ),
         (
             "wood-ground",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(WOOD_GROUND_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(WOOD_GROUND_W.clone())),
         ),
         (
             "heat-bug",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(HEAT_BUG_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(HEAT_BUG_W.clone())),
         ),
         (
             "aqua-bug",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(AQUA_BUG_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(AQUA_BUG_W.clone())),
         ),
         (
             "elec-bug",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(ELEC_BUG_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(ELEC_BUG_W.clone())),
         ),
         (
             "wood-bug",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(WOOD_BUG_W.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(WOOD_BUG_W.clone())),
         ),
     ]
 });
@@ -207,99 +207,99 @@ static BLUE_T: SaveTemplates = LazyLock::new(|| {
     vec![
         (
             "heat-guts",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(HEAT_GUTS_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(HEAT_GUTS_B.clone())),
         ),
         (
             "aqua-guts",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(AQUA_GUTS_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(AQUA_GUTS_B.clone())),
         ),
         (
             "elec-guts",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(ELEC_GUTS_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(ELEC_GUTS_B.clone())),
         ),
         (
             "wood-guts",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(WOOD_GUTS_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(WOOD_GUTS_B.clone())),
         ),
         (
             "heat-custom",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(HEAT_CUSTOM_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(HEAT_CUSTOM_B.clone())),
         ),
         (
             "aqua-custom",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(AQUA_CUSTOM_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(AQUA_CUSTOM_B.clone())),
         ),
         (
             "elec-custom",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(ELEC_CUSTOM_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(ELEC_CUSTOM_B.clone())),
         ),
         (
             "wood-custom",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(WOOD_CUSTOM_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(WOOD_CUSTOM_B.clone())),
         ),
         (
             "heat-shield",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(HEAT_SHIELD_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(HEAT_SHIELD_B.clone())),
         ),
         (
             "aqua-shield",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(AQUA_SHIELD_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(AQUA_SHIELD_B.clone())),
         ),
         (
             "elec-shield",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(ELEC_SHIELD_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(ELEC_SHIELD_B.clone())),
         ),
         (
             "wood-shield",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(WOOD_SHIELD_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(WOOD_SHIELD_B.clone())),
         ),
         (
             "heat-team",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(HEAT_TEAM_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(HEAT_TEAM_B.clone())),
         ),
         (
             "aqua-team",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(AQUA_TEAM_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(AQUA_TEAM_B.clone())),
         ),
         (
             "elec-team",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(ELEC_TEAM_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(ELEC_TEAM_B.clone())),
         ),
         (
             "wood-team",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(WOOD_TEAM_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(WOOD_TEAM_B.clone())),
         ),
         (
             "heat-shadow",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(HEAT_SHADOW_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(HEAT_SHADOW_B.clone())),
         ),
         (
             "aqua-shadow",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(AQUA_SHADOW_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(AQUA_SHADOW_B.clone())),
         ),
         (
             "elec-shadow",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(ELEC_SHADOW_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(ELEC_SHADOW_B.clone())),
         ),
         (
             "wood-shadow",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(WOOD_SHADOW_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(WOOD_SHADOW_B.clone())),
         ),
         (
             "heat-bug",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(HEAT_BUG_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(HEAT_BUG_B.clone())),
         ),
         (
             "aqua-bug",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(AQUA_BUG_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(AQUA_BUG_B.clone())),
         ),
         (
             "elec-bug",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(ELEC_BUG_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(ELEC_BUG_B.clone())),
         ),
         (
             "wood-bug",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(WOOD_BUG_B.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(WOOD_BUG_B.clone())),
         ),
     ]
 });
@@ -309,7 +309,7 @@ fn parse_save(data: &[u8], variant: dataview::save::Variant) -> Result<tango_gam
     if save.game_info() != &(dataview::save::GameInfo { variant }) {
         return Err(Error::IncompatibleSave);
     }
-    Ok(tango_gamesupport_common::dataview::wrap_save(Box::new(save)))
+    Ok(tango_gamesupport_common_dataview::wrap_save(Box::new(save)))
 }
 
 pub static EXE3W: Game = Game {
@@ -321,7 +321,7 @@ pub static EXE3W: Game = Game {
     region: Region::JP,
     parse_save_fn: |data| parse_save(data, dataview::save::Variant::White),
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::A6BJ_01,
             charset.unwrap_or(dataview::rom::JA_CHARSET),
             rom.to_vec(),
@@ -343,7 +343,7 @@ pub static EXE3B: Game = Game {
     region: Region::JP,
     parse_save_fn: |data| parse_save(data, dataview::save::Variant::Blue),
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::A3XJ_01,
             charset.unwrap_or(dataview::rom::JA_CHARSET),
             rom.to_vec(),
@@ -365,7 +365,7 @@ pub static BN3W: Game = Game {
     region: Region::US,
     parse_save_fn: |data| parse_save(data, dataview::save::Variant::White),
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::A6BE_00,
             charset.unwrap_or(dataview::rom::EN_CHARSET),
             rom.to_vec(),
@@ -387,7 +387,7 @@ pub static BN3B: Game = Game {
     region: Region::US,
     parse_save_fn: |data| parse_save(data, dataview::save::Variant::Blue),
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::A3XE_00,
             charset.unwrap_or(dataview::rom::EN_CHARSET),
             rom.to_vec(),

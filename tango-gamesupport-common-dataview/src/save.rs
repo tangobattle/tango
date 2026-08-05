@@ -12,7 +12,7 @@ where
 }
 
 /// `Any`-upcast, blanket-implemented for every concrete type so trait
-/// objects ([`Save`], [`crate::dataview::rom::Assets`]) can be downcast to their
+/// objects ([`Save`], [`crate::rom::Assets`]) can be downcast to their
 /// game's concrete type. This is how game-specific model surface (BN4's
 /// patch cards, BN3's styles) stays out of the shared traits: the
 /// game's own UI crate downcasts and uses the concrete API.
@@ -46,7 +46,7 @@ pub struct FolderLimits {
     /// Combined-MB budget for the Tag pair, or `None` if no Tag chips.
     pub tag_memory: Option<u32>,
     /// Max copies of one chip given its MB.
-    pub max_copies: fn(&dyn crate::dataview::rom::Chip) -> usize,
+    pub max_copies: fn(&dyn crate::rom::Chip) -> usize,
 }
 
 impl Default for FolderLimits {
@@ -210,7 +210,7 @@ impl std::fmt::Display for ChipCode {
 
 impl ChipCode {
     /// Maps a code letter (`'A'..='Z'` or `'*'`) — as returned by
-    /// [`crate::dataview::rom::Chip::codes`] — to its [`ChipCode`]. The letter's
+    /// [`crate::rom::Chip::codes`] — to its [`ChipCode`]. The letter's
     /// position in `A..Z*` is exactly the enum discriminant, so this is
     /// a lookup + `FromPrimitive`. Returns `None` for any other char.
     pub fn from_char(c: char) -> Option<ChipCode> {
@@ -314,11 +314,11 @@ pub trait NaviView {
     /// The navi's base max HP — from HP Memories / leveling only, excluding
     /// NaviCust and Mod-Code HP bonuses. For the games without a link-navi
     /// roster (BN1–4) this is the player navi's HP.
-    fn max_hp(&self, assets: &dyn crate::dataview::rom::Assets) -> u16;
+    fn max_hp(&self, assets: &dyn crate::rom::Assets) -> u16;
 
     /// The navi's live MegaBuster levels and B-button power attack, or `None`
     /// for games that don't expose them. See [`NaviBusterStats`].
-    fn buster_stats(&self, _assets: &dyn crate::dataview::rom::Assets) -> Option<NaviBusterStats> {
+    fn buster_stats(&self, _assets: &dyn crate::rom::Assets) -> Option<NaviBusterStats> {
         None
     }
 
@@ -326,7 +326,7 @@ pub trait NaviView {
     /// mega/giga/dark), the per-chip copy cap, and the Regular/Tag memory
     /// budgets. These depend on the equipped navi (its style, NaviCust, and
     /// Patch Cards all feed in), which is why they live on the navi view.
-    fn folder_limits(&self, assets: &dyn crate::dataview::rom::Assets) -> crate::dataview::save::FolderLimits;
+    fn folder_limits(&self, assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits;
 }
 
 /// A navi's MegaBuster loadout, as the game's MegaBuster status screen shows it.
@@ -368,15 +368,15 @@ pub trait NavicustView {
     }
     /// The equipped style's id, for games whose navicust carries one
     /// (BN3). The id resolves to a display name via
-    /// [`crate::dataview::rom::Assets::style_name`]; everything else about the
+    /// [`crate::rom::Assets::style_name`]; everything else about the
     /// style system is the game's own model.
     fn style(&self) -> Option<usize> {
         None
     }
     fn size(&self) -> [usize; 2];
     fn navicust_part(&self, i: usize) -> Option<NavicustPart>;
-    fn materialized(&self) -> crate::dataview::navicust::MaterializedNavicust;
-    fn navicust_color_bar(&self) -> Vec<Option<crate::dataview::rom::NavicustPartColor>>;
+    fn materialized(&self) -> crate::navicust::MaterializedNavicust;
+    fn navicust_color_bar(&self) -> Vec<Option<crate::rom::NavicustPartColor>>;
 }
 
 pub trait NavicustViewMut: NavicustView {
@@ -384,20 +384,20 @@ pub trait NavicustViewMut: NavicustView {
     /// write) if `i` is out of range or the part id is invalid.
     fn set_navicust_part(&mut self, i: usize, part: Option<NavicustPart>) -> bool;
     fn clear_materialized(&mut self);
-    fn rebuild_materialized(&mut self, assets: &dyn crate::dataview::rom::Assets);
+    fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets);
 }
 
 pub trait AutoBattleDataView {
     fn chip_use_count(&self, id: usize) -> Option<usize>;
     fn secondary_chip_use_count(&self, id: usize) -> Option<usize>;
-    fn materialized(&self) -> crate::dataview::auto_battle_data::MaterializedAutoBattleData;
+    fn materialized(&self) -> crate::auto_battle_data::MaterializedAutoBattleData;
 }
 
 pub trait AutoBattleDataViewMut: AutoBattleDataView {
     fn set_chip_use_count(&mut self, id: usize, count: usize) -> bool;
     fn set_secondary_chip_use_count(&mut self, id: usize, count: usize) -> bool;
     fn clear_materialized(&mut self);
-    fn rebuild_materialized(&mut self, assets: &dyn crate::dataview::rom::Assets);
+    fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets);
 }
 
 #[derive(thiserror::Error, Debug)]

@@ -41,23 +41,23 @@ static TEMPLATES: SaveTemplates = LazyLock::new(|| {
     vec![
         (
             "hub",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(HUB_ANY.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(HUB_ANY.clone())),
         ),
         (
             "guts",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(GUTS_ANY.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(GUTS_ANY.clone())),
         ),
         (
             "custom",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(CUSTOM_ANY.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(CUSTOM_ANY.clone())),
         ),
         (
             "team",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(TEAM_ANY.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(TEAM_ANY.clone())),
         ),
         (
             "shield",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(SHIELD_ANY.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(SHIELD_ANY.clone())),
         ),
     ]
 });
@@ -73,12 +73,12 @@ pub static EXE2: Game = Game {
     crc32: 0x046eed8d,
     region: Region::JP,
     parse_save_fn: |data| {
-        Ok(tango_gamesupport_common::dataview::wrap_save(Box::new(
+        Ok(tango_gamesupport_common_dataview::wrap_save(Box::new(
             dataview::save::Save::new(data)?,
         )))
     },
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::AE2J_00_AC,
             charset.unwrap_or(dataview::rom::JA_CHARSET),
             rom.to_vec(),
@@ -99,12 +99,12 @@ pub static BN2: Game = Game {
     crc32: 0x6d961f82,
     region: Region::US,
     parse_save_fn: |data| {
-        Ok(tango_gamesupport_common::dataview::wrap_save(Box::new(
+        Ok(tango_gamesupport_common_dataview::wrap_save(Box::new(
             dataview::save::Save::new(data)?,
         )))
     },
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::AE2E_00,
             charset.unwrap_or(dataview::rom::EN_CHARSET),
             rom.to_vec(),

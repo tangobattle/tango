@@ -10,7 +10,8 @@ license = "GPL-3.0-or-later"
 # the aggregator — nothing in here is cfg'd.
 
 [dependencies]
-tango-gamesupport-common = { path = "../tango-gamesupport-common", features = ["ui"] }
+tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
+tango-gamesupport-common-ui = { path = "../tango-gamesupport-common-ui" }
 tango-gamesupport-bn5ds-dataview = { path = "../tango-gamesupport-bn5ds-dataview" }
 # For the session-payload surface (`GameSaveEditor::session_payload`).
 tango-match = { path = "../tango-match" }

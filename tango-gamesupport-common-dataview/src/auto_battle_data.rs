@@ -18,10 +18,10 @@ const PROGRAM_ADVANCE_SLOTS: &[usize] = &[1];
 /// Chips are ranked by use count (ties broken by id) and the section's slot
 /// allocation is handed out top-down.
 fn group_section(
-    assets: &dyn crate::dataview::rom::Assets,
+    assets: &dyn crate::rom::Assets,
     use_counts: &[usize],
     chip_counts: &[usize],
-    class: crate::dataview::rom::ChipClass,
+    class: crate::rom::ChipClass,
 ) -> Vec<(Option<usize>, usize)> {
     let mut ranked = use_counts
         .iter()
@@ -41,10 +41,10 @@ fn group_section(
 /// The materialized (expanded) form of [`group_section`]: each `(chip, slots)`
 /// run flattened into `slots` repeated slots.
 fn materialize_section(
-    assets: &dyn crate::dataview::rom::Assets,
+    assets: &dyn crate::rom::Assets,
     use_counts: &[usize],
     chip_counts: &[usize],
-    class: crate::dataview::rom::ChipClass,
+    class: crate::rom::ChipClass,
 ) -> impl Iterator<Item = Option<usize>> {
     group_section(assets, use_counts, chip_counts, class)
         .into_iter()
@@ -75,8 +75,8 @@ impl MaterializedAutoBattleData {
     }
 
     pub fn materialize(
-        auto_battle_data_view: &(dyn crate::dataview::save::AutoBattleDataView + '_),
-        assets: &dyn crate::dataview::rom::Assets,
+        auto_battle_data_view: &(dyn crate::save::AutoBattleDataView + '_),
+        assets: &dyn crate::rom::Assets,
     ) -> Self {
         let use_counts = (0..assets.num_chips())
             .map(|id| auto_battle_data_view.chip_use_count(id).unwrap_or(0))
@@ -86,7 +86,7 @@ impl MaterializedAutoBattleData {
             .map(|id| auto_battle_data_view.secondary_chip_use_count(id).unwrap_or(0))
             .collect::<Vec<_>>();
 
-        use crate::dataview::rom::ChipClass;
+        use crate::rom::ChipClass;
         Self(
             std::iter::empty()
                 .chain(materialize_section(
@@ -165,8 +165,8 @@ impl GroupedAutoBattleData {
     /// ranking and slot allocation [`MaterializedAutoBattleData::materialize`]
     /// uses, kept grouped instead of expanded.
     pub fn materialize(
-        auto_battle_data_view: &(dyn crate::dataview::save::AutoBattleDataView + '_),
-        assets: &dyn crate::dataview::rom::Assets,
+        auto_battle_data_view: &(dyn crate::save::AutoBattleDataView + '_),
+        assets: &dyn crate::rom::Assets,
     ) -> Self {
         let use_counts = (0..assets.num_chips())
             .map(|id| auto_battle_data_view.chip_use_count(id).unwrap_or(0))
@@ -175,7 +175,7 @@ impl GroupedAutoBattleData {
             .map(|id| auto_battle_data_view.secondary_chip_use_count(id).unwrap_or(0))
             .collect::<Vec<_>>();
 
-        use crate::dataview::rom::ChipClass;
+        use crate::rom::ChipClass;
         Self {
             secondary_standard_chips: group_section(
                 assets,

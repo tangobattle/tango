@@ -9,7 +9,7 @@ pub struct EreaderNameCommand {
     pub index: u8,
 }
 const _: () = assert!(std::mem::size_of::<EreaderNameCommand>() == 0x1);
-impl tango_gamesupport_common::dataview::msg::CommandBody<Command> for EreaderNameCommand {
+impl tango_gamesupport_common_dataview::msg::CommandBody<Command> for EreaderNameCommand {
     fn into_wrapped(self) -> Command {
         Command::EreaderNameCommand(self)
     }
@@ -21,16 +21,16 @@ pub struct EreaderDescriptionCommand {
     pub index: u8,
 }
 const _: () = assert!(std::mem::size_of::<EreaderDescriptionCommand>() == 0x1);
-impl tango_gamesupport_common::dataview::msg::CommandBody<Command> for EreaderDescriptionCommand {
+impl tango_gamesupport_common_dataview::msg::CommandBody<Command> for EreaderDescriptionCommand {
     fn into_wrapped(self) -> Command {
         Command::EreaderDescriptionCommand(self)
     }
 }
 
-pub type Parser = tango_gamesupport_common::dataview::msg::Parser<Command>;
+pub type Parser = tango_gamesupport_common_dataview::msg::Parser<Command>;
 
 pub fn parser(charset: &[&str]) -> Parser {
-    tango_gamesupport_common::dataview::msg::Parser::builder()
+    tango_gamesupport_common_dataview::msg::Parser::builder()
         .add_stop_rule(b"\xe5")
         .add_charset_rules(charset, 0xe4)
         .add_command_rule::<EreaderNameCommand>(b"\xff\x00")

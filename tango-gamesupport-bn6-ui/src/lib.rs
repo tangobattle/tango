@@ -1,9 +1,9 @@
 //! BN6's save-editor UI: navicust, folder and patch cards (56-style). A link navi drops the navicust/patch-card tabs at runtime.
 
-use tango_gamesupport_common::editor::loaded::OpenSave;
-use tango_gamesupport_common::editor::view as sv;
-use tango_gamesupport_common::editor::view::{Action, RenderOpts, State, Tab};
-use tango_gamesupport_common::editor::{GameSaveEditor, SaveEditorShell};
+use tango_gamesupport_common_ui::editor::loaded::OpenSave;
+use tango_gamesupport_common_ui::editor::view as sv;
+use tango_gamesupport_common_ui::editor::view::{Action, RenderOpts, State, Tab};
+use tango_gamesupport_common_ui::editor::{GameSaveEditor, SaveEditorShell};
 use unic_langid::LanguageIdentifier;
 
 pub struct Ui;
@@ -41,7 +41,7 @@ impl GameSaveEditor for Ui {
             Tab::Navicust => sv::navicust::render_navicust_tab(lang, loaded),
             Tab::Folder => sv::folder::render_folder(lang, loaded, opts.folder_grouped),
             Tab::PatchCards => sv::patch_cards::render_patch_cards56(lang, loaded),
-            _ => sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty")),
+            _ => sv::placeholder(tango_gamesupport_common_ui::t!(lang, "save-empty")),
         }
     }
 
@@ -56,7 +56,7 @@ impl GameSaveEditor for Ui {
             Tab::Navicust => sv::navicust::render_navicust_edit(lang, loaded, state),
             Tab::Folder => sv::folder::render_folder_edit(lang, loaded, state),
             Tab::PatchCards => sv::patch_cards::render_patch_cards56_edit(lang, loaded, state),
-            _ => sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty")),
+            _ => sv::placeholder(tango_gamesupport_common_ui::t!(lang, "save-empty")),
         }
     }
 

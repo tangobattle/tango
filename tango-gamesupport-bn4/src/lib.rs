@@ -64,15 +64,15 @@ static EXE4RS_T: SaveTemplates = LazyLock::new(|| {
     vec![
         (
             "dark-hp-997",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(EXE4RS_DARK997.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(EXE4RS_DARK997.clone())),
         ),
         (
             "light-hp-999",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(EXE4RS_LIGHT999.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(EXE4RS_LIGHT999.clone())),
         ),
         (
             "light-hp-1000",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(EXE4RS_LIGHT1000.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(EXE4RS_LIGHT1000.clone())),
         ),
     ]
 });
@@ -92,7 +92,7 @@ fn parse_save(
     if game_info.variant != variant || !region_ok {
         return Err(Error::IncompatibleSave);
     }
-    Ok(tango_gamesupport_common::dataview::wrap_save(Box::new(save)))
+    Ok(tango_gamesupport_common_dataview::wrap_save(Box::new(save)))
 }
 
 pub static EXE4RS: Game = Game {
@@ -104,7 +104,7 @@ pub static EXE4RS: Game = Game {
     region: Region::JP,
     parse_save_fn: |data| parse_save(data, true, dataview::save::Variant::RedSun),
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::B4WJ_01,
             charset.unwrap_or(dataview::rom::JA_CHARSET),
             rom.to_vec(),
@@ -128,15 +128,15 @@ static EXE4BM_T: SaveTemplates = LazyLock::new(|| {
     vec![
         (
             "dark-hp-997",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(EXE4BM_DARK997.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(EXE4BM_DARK997.clone())),
         ),
         (
             "light-hp-999",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(EXE4BM_LIGHT999.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(EXE4BM_LIGHT999.clone())),
         ),
         (
             "light-hp-1000",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(EXE4BM_LIGHT1000.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(EXE4BM_LIGHT1000.clone())),
         ),
     ]
 });
@@ -150,7 +150,7 @@ pub static EXE4BM: Game = Game {
     region: Region::JP,
     parse_save_fn: |data| parse_save(data, true, dataview::save::Variant::BlueMoon),
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::B4BJ_01,
             charset.unwrap_or(dataview::rom::JA_CHARSET),
             rom.to_vec(),
@@ -174,15 +174,15 @@ static BN4RS_T: SaveTemplates = LazyLock::new(|| {
     vec![
         (
             "dark-hp-997",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(BN4RS_DARK997.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(BN4RS_DARK997.clone())),
         ),
         (
             "light-hp-999",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(BN4RS_LIGHT999.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(BN4RS_LIGHT999.clone())),
         ),
         (
             "light-hp-1000",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(BN4RS_LIGHT1000.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(BN4RS_LIGHT1000.clone())),
         ),
     ]
 });
@@ -196,7 +196,7 @@ pub static BN4RS: Game = Game {
     region: Region::US,
     parse_save_fn: |data| parse_save(data, false, dataview::save::Variant::RedSun),
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::B4WE_00,
             charset.unwrap_or(dataview::rom::EN_CHARSET),
             rom.to_vec(),
@@ -220,15 +220,15 @@ static BN4BM_T: SaveTemplates = LazyLock::new(|| {
     vec![
         (
             "dark-hp-997",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(BN4BM_DARK997.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(BN4BM_DARK997.clone())),
         ),
         (
             "light-hp-999",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(BN4BM_LIGHT999.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(BN4BM_LIGHT999.clone())),
         ),
         (
             "light-hp-1000",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(BN4BM_LIGHT1000.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(BN4BM_LIGHT1000.clone())),
         ),
     ]
 });
@@ -242,7 +242,7 @@ pub static BN4BM: Game = Game {
     region: Region::US,
     parse_save_fn: |data| parse_save(data, false, dataview::save::Variant::BlueMoon),
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::B4BE_00,
             charset.unwrap_or(dataview::rom::EN_CHARSET),
             rom.to_vec(),

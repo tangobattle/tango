@@ -1,4 +1,4 @@
-use tango_gamesupport_common::dataview::save;
+use tango_gamesupport_common_dataview::save;
 
 pub const SAVE_SIZE: usize = 0x2308;
 pub const GAME_NAME_OFFSET: usize = 0x03fc;
@@ -87,7 +87,7 @@ impl save::Save for Save {
         Some(Box::new(ChipsView { save: self }))
     }
 
-    fn view_navi(&self) -> Option<Box<dyn tango_gamesupport_common::dataview::save::NaviView + '_>> {
+    fn view_navi(&self) -> Option<Box<dyn tango_gamesupport_common_dataview::save::NaviView + '_>> {
         Some(Box::new(NaviView { save: self }))
     }
 
@@ -205,22 +205,22 @@ pub struct NaviView<S> {
     save: S,
 }
 
-impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common::dataview::save::NaviView for NaviView<S> {
+impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save::NaviView for NaviView<S> {
     // BN1 has no link-navi roster; the player navi is implicit, so the id is a
     // placeholder the Navi card ignores (the ROM has no navi entry for it).
     fn navi(&self) -> usize {
         0
     }
 
-    fn max_hp(&self, _assets: &dyn tango_gamesupport_common::dataview::rom::Assets) -> u16 {
+    fn max_hp(&self, _assets: &dyn tango_gamesupport_common_dataview::rom::Assets) -> u16 {
         bytemuck::pod_read_unaligned::<u16>(&self.save.buf[0x022e..][..std::mem::size_of::<u16>()])
     }
 
     fn folder_limits(
         &self,
-        _assets: &dyn tango_gamesupport_common::dataview::rom::Assets,
-    ) -> tango_gamesupport_common::dataview::save::FolderLimits {
-        tango_gamesupport_common::dataview::save::FolderLimits {
+        _assets: &dyn tango_gamesupport_common_dataview::rom::Assets,
+    ) -> tango_gamesupport_common_dataview::save::FolderLimits {
+        tango_gamesupport_common_dataview::save::FolderLimits {
             navi_limit: Some(5),
             max_copies: |_| 10,
             ..Default::default()

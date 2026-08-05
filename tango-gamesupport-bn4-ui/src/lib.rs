@@ -1,10 +1,10 @@
 //! BN4's save-editor UI: navicust, folder, the six-slot Mod Card (patch
 //! card 4) form — BN4's own, not the BN5/BN6 list — and auto battle data.
 
-use tango_gamesupport_common::editor::loaded::OpenSave;
-use tango_gamesupport_common::editor::view as sv;
-use tango_gamesupport_common::editor::view::{Action, RenderOpts, State, Tab};
-use tango_gamesupport_common::editor::{GameSaveEditor, SaveEditorShell};
+use tango_gamesupport_common_ui::editor::loaded::OpenSave;
+use tango_gamesupport_common_ui::editor::view as sv;
+use tango_gamesupport_common_ui::editor::view::{Action, RenderOpts, State, Tab};
+use tango_gamesupport_common_ui::editor::{GameSaveEditor, SaveEditorShell};
 use unic_langid::LanguageIdentifier;
 
 mod patch_cards4;
@@ -55,7 +55,7 @@ impl GameSaveEditor for Ui {
             Tab::Folder => sv::folder::render_folder(lang, loaded, opts.folder_grouped),
             Tab::PatchCards => patch_cards4::render(lang, loaded),
             Tab::AutoBattleData => sv::abd::render_auto_battle_data(lang, loaded),
-            _ => sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty")),
+            _ => sv::placeholder(tango_gamesupport_common_ui::t!(lang, "save-empty")),
         }
     }
 
@@ -71,7 +71,7 @@ impl GameSaveEditor for Ui {
             Tab::Folder => sv::folder::render_folder_edit(lang, loaded, state),
             Tab::PatchCards => patch_cards4::render_edit(lang, loaded, state),
             Tab::AutoBattleData => sv::abd::render_auto_battle_data_edit(lang, loaded, state),
-            _ => sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty")),
+            _ => sv::placeholder(tango_gamesupport_common_ui::t!(lang, "save-empty")),
         }
     }
 

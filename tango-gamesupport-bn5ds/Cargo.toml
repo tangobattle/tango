@@ -22,7 +22,8 @@ ui = ["tango-gamesupport/ui", "dep:tango-gamesupport-bn5ds-ui"]
 [dependencies]
 tango-gamesupport = { path = "../tango-gamesupport" }
 tango-gamesupport-bn5ds-dataview = { path = "../tango-gamesupport-bn5ds-dataview" }
-tango-gamesupport-common = { path = "../tango-gamesupport-common", default-features = false }
+tango-gamesupport-common = { path = "../tango-gamesupport-common" }
+tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
 tango-match = { path = "../tango-match" }
 tango-backend-melonds = { path = "../tango-backend-melonds" }
 log = "0.4"

@@ -1,9 +1,9 @@
 //! BN5's save-editor UI: navicust, folder (with Dark chips), patch cards (56-style) and auto battle data. Link navis drop the navicust/patch-card tabs at runtime.
 
-use tango_gamesupport_common::editor::loaded::OpenSave;
-use tango_gamesupport_common::editor::view as sv;
-use tango_gamesupport_common::editor::view::{Action, RenderOpts, State, Tab};
-use tango_gamesupport_common::editor::{GameSaveEditor, SaveEditorShell};
+use tango_gamesupport_common_ui::editor::loaded::OpenSave;
+use tango_gamesupport_common_ui::editor::view as sv;
+use tango_gamesupport_common_ui::editor::view::{Action, RenderOpts, State, Tab};
+use tango_gamesupport_common_ui::editor::{GameSaveEditor, SaveEditorShell};
 use unic_langid::LanguageIdentifier;
 
 pub struct Ui;
@@ -45,7 +45,7 @@ impl GameSaveEditor for Ui {
             Tab::Folder => sv::folder::render_folder(lang, loaded, opts.folder_grouped),
             Tab::PatchCards => sv::patch_cards::render_patch_cards56(lang, loaded),
             Tab::AutoBattleData => sv::abd::render_auto_battle_data(lang, loaded),
-            _ => sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty")),
+            _ => sv::placeholder(tango_gamesupport_common_ui::t!(lang, "save-empty")),
         }
     }
 
@@ -61,7 +61,7 @@ impl GameSaveEditor for Ui {
             Tab::Folder => sv::folder::render_folder_edit(lang, loaded, state),
             Tab::PatchCards => sv::patch_cards::render_patch_cards56_edit(lang, loaded, state),
             Tab::AutoBattleData => sv::abd::render_auto_battle_data_edit(lang, loaded, state),
-            _ => sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty")),
+            _ => sv::placeholder(tango_gamesupport_common_ui::t!(lang, "save-empty")),
         }
     }
 

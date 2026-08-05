@@ -1,9 +1,9 @@
 //! BN3's save-editor UI: the style-bearing navicust (read-only) and the chip folder.
 
-use tango_gamesupport_common::editor::loaded::OpenSave;
-use tango_gamesupport_common::editor::view as sv;
-use tango_gamesupport_common::editor::view::{Action, RenderOpts, State, Tab};
-use tango_gamesupport_common::editor::{GameSaveEditor, SaveEditorShell};
+use tango_gamesupport_common_ui::editor::loaded::OpenSave;
+use tango_gamesupport_common_ui::editor::view as sv;
+use tango_gamesupport_common_ui::editor::view::{Action, RenderOpts, State, Tab};
+use tango_gamesupport_common_ui::editor::{GameSaveEditor, SaveEditorShell};
 use unic_langid::LanguageIdentifier;
 
 pub struct Ui;
@@ -36,7 +36,7 @@ impl GameSaveEditor for Ui {
             Tab::Cover => sv::cover::render_cover(lang, loaded),
             Tab::Navicust => sv::navicust::render_navicust_tab(lang, loaded),
             Tab::Folder => sv::folder::render_folder(lang, loaded, opts.folder_grouped),
-            _ => sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty")),
+            _ => sv::placeholder(tango_gamesupport_common_ui::t!(lang, "save-empty")),
         }
     }
 
@@ -49,7 +49,7 @@ impl GameSaveEditor for Ui {
     ) -> iced::Element<'a, Action> {
         match tab {
             Tab::Folder => sv::folder::render_folder_edit(lang, loaded, state),
-            _ => sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty")),
+            _ => sv::placeholder(tango_gamesupport_common_ui::t!(lang, "save-empty")),
         }
     }
 

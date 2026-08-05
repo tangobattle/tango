@@ -20,7 +20,7 @@
 //! both — a bank failing either is one it refuses and falls back past,
 //! exactly as [`Save::new`] does.
 
-use tango_gamesupport_common::dataview::save::{self, Error};
+use tango_gamesupport_common_dataview::save::{self, Error};
 
 /// The save memory the cart carries: 64 KiB of EEPROM. Smaller than
 /// BN5DS's 256 KiB flash, which this used to claim to match — the game
@@ -458,7 +458,7 @@ impl<S: std::ops::Deref<Target = Save>> save::NaviView for NaviView<S> {
         0
     }
 
-    fn max_hp(&self, _assets: &dyn tango_gamesupport_common::dataview::rom::Assets) -> u16 {
+    fn max_hp(&self, _assets: &dyn tango_gamesupport_common_dataview::rom::Assets) -> u16 {
         self.save
             .payload()
             .get(MAX_HP_OFFSET..MAX_HP_OFFSET + std::mem::size_of::<u16>())
@@ -472,7 +472,7 @@ impl<S: std::ops::Deref<Target = Save>> save::NaviView for NaviView<S> {
     /// with, which is why nothing about the save is read to answer this.
     fn folder_limits(
         &self,
-        _assets: &dyn tango_gamesupport_common::dataview::rom::Assets,
+        _assets: &dyn tango_gamesupport_common_dataview::rom::Assets,
     ) -> save::FolderLimits {
         save::FolderLimits {
             navi_limit: Some(NAVI_LIMIT),
@@ -485,7 +485,7 @@ impl<S: std::ops::Deref<Target = Save>> save::NaviView for NaviView<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tango_gamesupport_common::dataview::save::Save as _;
+    use tango_gamesupport_common_dataview::save::Save as _;
 
     /// A dump the game has written: the flash tag, then both banks,
     /// checksums and all.
@@ -653,7 +653,7 @@ mod tests {
     /// his folder is built under.
     #[test]
     fn the_navi_brings_hp_and_folder_rules() {
-        use tango_gamesupport_common::dataview::rom::Assets as _;
+        use tango_gamesupport_common_dataview::rom::Assets as _;
 
         let mut save = Save::new(&cart([2, 1])).unwrap();
         let at = save.live.at + BANK_HEADER_SIZE + MAX_HP_OFFSET;

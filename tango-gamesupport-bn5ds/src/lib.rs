@@ -64,7 +64,7 @@ static BN5DS_LOGO: LazyImage = LazyLock::new(|| image::load_from_memory(include_
 static BN5DS_LIGHT: LazyLock<dataview::save::Save> =
     LazyLock::new(|| dataview::save::SaveSet::parse(include_bytes!("saves/us.raw")).unwrap().current());
 static BN5DS_DARK: LazyLock<dataview::save::Save> = LazyLock::new(|| {
-    use tango_gamesupport_common::dataview::save::Save as _;
+    use tango_gamesupport_common_dataview::save::Save as _;
     let mut data = include_bytes!("saves/us.raw").to_vec();
     for slot in dataview::save::SaveSet::parse(&data).unwrap().slots() {
         let mut save = dataview::save::SaveSet::parse(&data).unwrap().save(slot).unwrap();
@@ -80,11 +80,11 @@ static BN5DS_T: SaveTemplates = LazyLock::new(|| {
     vec![
         (
             "dark",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(BN5DS_DARK.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(BN5DS_DARK.clone())),
         ),
         (
             "light",
-            tango_gamesupport_common::dataview::wrap_save(Box::new(BN5DS_LIGHT.clone())),
+            tango_gamesupport_common_dataview::wrap_save(Box::new(BN5DS_LIGHT.clone())),
         ),
     ]
 });
@@ -97,7 +97,7 @@ static BN5DS_T: SaveTemplates = LazyLock::new(|| {
 /// two builds keep one format.
 fn parse_save(data: &[u8]) -> Result<tango_gamesupport::BoxedSave, tango_gamesupport::Error> {
     let set = dataview::save::SaveSet::parse(data)?;
-    Ok(tango_gamesupport_common::dataview::wrap_save(Box::new(set.current())))
+    Ok(tango_gamesupport_common_dataview::wrap_save(Box::new(set.current())))
 }
 
 /// The US release. One ROM rather than the paired versions the GBA
@@ -115,7 +115,7 @@ pub static BN5DS: Game = Game {
     // The DS cart has no wram-derived assets — everything comes off
     // the cart image itself.
     load_rom_assets_fn: Some(|rom, _wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::A5TE_00,
             charset.unwrap_or(dataview::rom::EN_CHARSET),
             rom.to_vec(),
@@ -142,7 +142,7 @@ pub static EXE5DS: Game = Game {
 
     parse_save_fn: |data| parse_save(data),
     load_rom_assets_fn: Some(|rom, _wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::A5TJ_00,
             charset.unwrap_or(dataview::rom::JA_CHARSET),
             rom.to_vec(),
@@ -207,7 +207,7 @@ mod tests {
     /// stands. See [`BN5DS_LIGHT`].
     #[test]
     fn templates_split_on_karma() {
-        use tango_gamesupport_common::dataview::save::Save as _;
+        use tango_gamesupport_common_dataview::save::Save as _;
         for save in [&*BN5DS_LIGHT, &*BN5DS_DARK] {
             let dump = save.to_sram_dump();
             let set = dataview::save::SaveSet::parse(&dump).unwrap();

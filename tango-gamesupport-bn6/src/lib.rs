@@ -61,7 +61,7 @@ static EXE6G_MEGA: LazyLock<crate::dataview::save::Save> = bn6_save!("saves/g_jp
 static EXE6G_T: SaveTemplates = LazyLock::new(|| {
     vec![(
         "",
-        tango_gamesupport_common::dataview::wrap_save(Box::new(EXE6G_MEGA.clone())),
+        tango_gamesupport_common_dataview::wrap_save(Box::new(EXE6G_MEGA.clone())),
     )]
 });
 
@@ -74,7 +74,7 @@ fn parse_save(
     if save.game_info() != &(dataview::save::GameInfo { region, variant }) {
         return Err(Error::IncompatibleSave);
     }
-    Ok(tango_gamesupport_common::dataview::wrap_save(Box::new(save)))
+    Ok(tango_gamesupport_common_dataview::wrap_save(Box::new(save)))
 }
 
 pub static EXE6G: Game = Game {
@@ -86,7 +86,7 @@ pub static EXE6G: Game = Game {
     region: Region::JP,
     parse_save_fn: |data| parse_save(data, dataview::save::Region::JP, dataview::save::Variant::Gregar),
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::BR5J_00,
             charset.unwrap_or(dataview::rom::JA_CHARSET),
             rom.to_vec(),
@@ -104,7 +104,7 @@ static EXE6F_MEGA: LazyLock<crate::dataview::save::Save> = bn6_save!("saves/f_jp
 static EXE6F_T: SaveTemplates = LazyLock::new(|| {
     vec![(
         "",
-        tango_gamesupport_common::dataview::wrap_save(Box::new(EXE6F_MEGA.clone())),
+        tango_gamesupport_common_dataview::wrap_save(Box::new(EXE6F_MEGA.clone())),
     )]
 });
 
@@ -117,7 +117,7 @@ pub static EXE6F: Game = Game {
     region: Region::JP,
     parse_save_fn: |data| parse_save(data, dataview::save::Region::JP, dataview::save::Variant::Falzar),
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::BR6J_00,
             charset.unwrap_or(dataview::rom::JA_CHARSET),
             rom.to_vec(),
@@ -135,7 +135,7 @@ static BN6G_MEGA: LazyLock<crate::dataview::save::Save> = bn6_save!("saves/g_us.
 static BN6G_T: SaveTemplates = LazyLock::new(|| {
     vec![(
         "",
-        tango_gamesupport_common::dataview::wrap_save(Box::new(BN6G_MEGA.clone())),
+        tango_gamesupport_common_dataview::wrap_save(Box::new(BN6G_MEGA.clone())),
     )]
 });
 
@@ -148,7 +148,7 @@ pub static BN6G: Game = Game {
     region: Region::US,
     parse_save_fn: |data| parse_save(data, dataview::save::Region::US, dataview::save::Variant::Gregar),
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::BR5E_00,
             charset.unwrap_or(dataview::rom::EN_CHARSET),
             rom.to_vec(),
@@ -166,7 +166,7 @@ static BN6F_MEGA: LazyLock<crate::dataview::save::Save> = bn6_save!("saves/f_us.
 static BN6F_T: SaveTemplates = LazyLock::new(|| {
     vec![(
         "",
-        tango_gamesupport_common::dataview::wrap_save(Box::new(BN6F_MEGA.clone())),
+        tango_gamesupport_common_dataview::wrap_save(Box::new(BN6F_MEGA.clone())),
     )]
 });
 
@@ -179,7 +179,7 @@ pub static BN6F: Game = Game {
     region: Region::US,
     parse_save_fn: |data| parse_save(data, dataview::save::Region::US, dataview::save::Variant::Falzar),
     load_rom_assets_fn: Some(|rom, wram, charset| {
-        tango_gamesupport_common::dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
+        tango_gamesupport_common_dataview::wrap_assets(Box::new(dataview::rom::Assets::new(
             &dataview::rom::BR6E_00,
             charset.unwrap_or(dataview::rom::EN_CHARSET),
             rom.to_vec(),

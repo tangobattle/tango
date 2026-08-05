@@ -21,7 +21,10 @@ Game support lives in the `tango-gamesupport-*` crates, one family per
 game, each holding the ROM and save knowledge that family needs — a
 `-dataview` crate for reading its saves and ROM assets, and a `-ui`
 crate for its save editor. `tango-gamesupport` is the interface they all
-implement and `tango-gamesupport-common` the machinery they share. They
+implement, and the machinery they share splits the same way:
+`tango-gamesupport-common-dataview` (the parsing substrate),
+`tango-gamesupport-common-ui` (the editor shell), and
+`tango-gamesupport-common` (the shared telemetry trackers). They
 join the workspace as path dependencies rather than as members, so a
 plain `cargo build` at the root skips their probe examples.
 

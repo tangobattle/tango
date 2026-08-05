@@ -1,0 +1,32 @@
+[package]
+name = "tango-gamesupport-common-ui"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+# The save editor and its supporting cast: the shell implementing the
+# public `tango_gamesupport::SaveEditor` embedding API, the view
+# components the per-game `ui` crates compose, the save model + staged
+# edits, the OpenSave baking, and the editor's fluent bundle. A crate of
+# its own so the feature flagging lives at the per-game aggregators —
+# nothing in here is cfg'd.
+
+[dependencies]
+tango-gamesupport = { path = "../tango-gamesupport", features = ["ui"] }
+tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
+tango-ui = { path = "../tango-ui" }
+tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"] }
+iced.workspace = true
+iced_graphics.workspace = true
+iced_tiny_skia.workspace = true
+tiny-skia = "0.11"
+sweeten.workspace = true
+lucide-icons.workspace = true
+fluent-templates.workspace = true
+unic-langid.workspace = true
+image.workspace = true
+indexmap = "2"
+ndarray = "0.15"
+
+[lints]
+workspace = true

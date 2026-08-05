@@ -6,10 +6,10 @@
 //! the R and L buttons. The [`deck`] module draws it that way, laid out
 //! like the game's own PRG DECK screen instead of a flat chip list.
 
-use tango_gamesupport_common::editor::loaded::OpenSave;
-use tango_gamesupport_common::editor::view as sv;
-use tango_gamesupport_common::editor::view::{Action, RenderOpts, State, Tab};
-use tango_gamesupport_common::editor::{GameSaveEditor, SaveEditorShell};
+use tango_gamesupport_common_ui::editor::loaded::OpenSave;
+use tango_gamesupport_common_ui::editor::view as sv;
+use tango_gamesupport_common_ui::editor::view::{Action, RenderOpts, State, Tab};
+use tango_gamesupport_common_ui::editor::{GameSaveEditor, SaveEditorShell};
 use unic_langid::LanguageIdentifier;
 
 pub mod deck;
@@ -34,7 +34,7 @@ impl GameSaveEditor for Ui {
         match tab {
             Tab::Cover => sv::cover::render_cover(lang, loaded),
             Tab::ProgramDeck => deck::render(lang, loaded),
-            _ => sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty")),
+            _ => sv::placeholder(tango_gamesupport_common_ui::t!(lang, "save-empty")),
         }
     }
 
@@ -47,7 +47,7 @@ impl GameSaveEditor for Ui {
     ) -> iced::Element<'a, Action> {
         match tab {
             Tab::ProgramDeck => deck::render_edit(lang, loaded, state),
-            _ => sv::placeholder(tango_gamesupport_common::t!(lang, "save-empty")),
+            _ => sv::placeholder(tango_gamesupport_common_ui::t!(lang, "save-empty")),
         }
     }
 

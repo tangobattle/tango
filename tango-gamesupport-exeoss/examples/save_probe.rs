@@ -13,8 +13,8 @@
 //! codes the ROM lists for it — the cross-check that pins the pack
 //! row's shape.
 
-use tango_gamesupport_common::dataview::rom::Assets as _;
-use tango_gamesupport_common::dataview::save::Save as _;
+use tango_gamesupport_common_dataview::rom::Assets as _;
+use tango_gamesupport_common_dataview::save::Save as _;
 use tango_gamesupport_exeoss::dataview::{rom, save};
 
 fn main() {
@@ -31,13 +31,13 @@ fn main() {
     let name = |id: usize| {
         assets
             .chip(id)
-            .and_then(|chip| tango_gamesupport_common::dataview::rom::Chip::name(&*chip))
+            .and_then(|chip| tango_gamesupport_common_dataview::rom::Chip::name(&*chip))
             .unwrap_or_else(|| "???".to_string())
     };
     let codes = |id: usize| {
         assets
             .chip(id)
-            .map(|chip| tango_gamesupport_common::dataview::rom::Chip::codes(&*chip))
+            .map(|chip| tango_gamesupport_common_dataview::rom::Chip::codes(&*chip))
             .unwrap_or_default()
     };
 
@@ -95,9 +95,9 @@ fn main() {
     // the editor's to enforce, and the view writes what it is told, so
     // a wall of one chip is both a fair test of the write path and the
     // easiest thing to recognize on a screenshot.
-    let chip = tango_gamesupport_common::dataview::save::Chip {
+    let chip = tango_gamesupport_common_dataview::save::Chip {
         id: 1,
-        code: tango_gamesupport_common::dataview::save::ChipCode::A,
+        code: tango_gamesupport_common_dataview::save::ChipCode::A,
     };
     {
         let mut view = save.view_chips_mut().expect("folder is not editable");

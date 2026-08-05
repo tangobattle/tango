@@ -64,7 +64,7 @@ const CHIP_GFX_SIZE: usize = 0x14;
 /// A chip's artwork: 56 tiles, laid out eight across.
 const ART_TILES: usize = 56;
 const ART_COLS: usize = 8;
-/// Where a [`Palette`](tango_gamesupport_common::dataview::rom::Palette) sits inside an
+/// Where a [`Palette`](tango_gamesupport_common_dataview::rom::Palette) sits inside an
 /// artwork record, and how big one is.
 const GFX_PALETTE_FIELD: usize = 0x0c;
 const PALETTE_BYTES: usize = 0x20;
@@ -158,7 +158,7 @@ pub static A89J_00: Offsets = Offsets {
 pub struct Assets {
     offsets: &'static Offsets,
     charset: Vec<String>,
-    mapper: tango_gamesupport_common::dataview::rom::MemoryMapper,
+    mapper: tango_gamesupport_common_dataview::rom::MemoryMapper,
 }
 
 impl Assets {
@@ -166,7 +166,7 @@ impl Assets {
         Self {
             offsets,
             charset: charset.iter().map(|s| s.to_string()).collect(),
-            mapper: tango_gamesupport_common::dataview::rom::MemoryMapper::new(rom, wram),
+            mapper: tango_gamesupport_common_dataview::rom::MemoryMapper::new(rom, wram),
         }
     }
 
@@ -178,10 +178,10 @@ impl Assets {
     }
 
     /// The sixteen-color palette at `addr`.
-    fn palette(&self, addr: u32) -> tango_gamesupport_common::dataview::rom::Palette {
+    fn palette(&self, addr: u32) -> tango_gamesupport_common_dataview::rom::Palette {
         let raw = self.mapper.get(addr);
         std::array::from_fn(|i| {
-            tango_gamesupport_common::dataview::rom::Bgr555::new(
+            tango_gamesupport_common_dataview::rom::Bgr555::new(
                 raw.get(i * 2..i * 2 + 2)
                     .and_then(|b| b.try_into().ok())
                     .unwrap_or_default(),
@@ -224,8 +224,8 @@ impl Assets {
 }
 
 
-impl tango_gamesupport_common::dataview::rom::Assets for Assets {
-    fn chip(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common::dataview::rom::Chip + '_>> {
+impl tango_gamesupport_common_dataview::rom::Assets for Assets {
+    fn chip(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common_dataview::rom::Chip + '_>> {
         Some(Box::new(self.chip_info(id)?))
     }
 
@@ -239,10 +239,10 @@ impl tango_gamesupport_common::dataview::rom::Assets for Assets {
         }
         let icons = self.mapper.get(self.deref(self.offsets.element_icons_pointer));
         let tiles = icons
-            .get(id * tango_gamesupport_common::dataview::rom::TILE_BYTES * ICON_TILES..)?
-            .get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * ICON_TILES)?;
-        let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(tiles, ICON_COLS).ok()?;
-        Some(tango_gamesupport_common::dataview::rom::apply_palette(
+            .get(id * tango_gamesupport_common_dataview::rom::TILE_BYTES * ICON_TILES..)?
+            .get(..tango_gamesupport_common_dataview::rom::TILE_BYTES * ICON_TILES)?;
+        let paletted = tango_gamesupport_common_dataview::rom::read_merged_tiles(tiles, ICON_COLS).ok()?;
+        Some(tango_gamesupport_common_dataview::rom::apply_palette(
             paletted,
             &self.palette(self.deref(self.offsets.element_icon_palette_pointer)),
         ))
@@ -286,14 +286,14 @@ impl Chip<'_> {
             .get(self.assets.deref(self.assets.offsets.chip_icon_tilemap_pointer) + (self.id * ICON_TILES * 2) as u32);
         let sheet_at = self.assets.deref(self.assets.offsets.chip_icons_pointer);
         let sheet = self.assets.mapper.get(sheet_at);
-        let mut tiles = Vec::with_capacity(tango_gamesupport_common::dataview::rom::TILE_BYTES * ICON_TILES);
+        let mut tiles = Vec::with_capacity(tango_gamesupport_common_dataview::rom::TILE_BYTES * ICON_TILES);
         for entry in entries.get(..ICON_TILES * 2)?.chunks_exact(2) {
             let at = (byteorder::LittleEndian::read_u16(entry) & TILE_INDEX_MASK) as usize
-                * tango_gamesupport_common::dataview::rom::TILE_BYTES;
-            tiles.extend_from_slice(sheet.get(at..at + tango_gamesupport_common::dataview::rom::TILE_BYTES)?);
+                * tango_gamesupport_common_dataview::rom::TILE_BYTES;
+            tiles.extend_from_slice(sheet.get(at..at + tango_gamesupport_common_dataview::rom::TILE_BYTES)?);
         }
-        let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(&tiles, ICON_COLS).ok()?;
-        Some(tango_gamesupport_common::dataview::rom::apply_palette(
+        let paletted = tango_gamesupport_common_dataview::rom::read_merged_tiles(&tiles, ICON_COLS).ok()?;
+        Some(tango_gamesupport_common_dataview::rom::apply_palette(
             paletted,
             &self.assets.palette(sheet_at - ICON_PALETTES_BEFORE_SHEET),
         ))
@@ -319,12 +319,12 @@ impl Chip<'_> {
 
         let palette = self.assets.palette(palette_at);
         let tiles = self.assets.mapper.get(tiles_at);
-        let paletted = tango_gamesupport_common::dataview::rom::read_merged_tiles(
-            tiles.get(..tango_gamesupport_common::dataview::rom::TILE_BYTES * ART_TILES)?,
+        let paletted = tango_gamesupport_common_dataview::rom::read_merged_tiles(
+            tiles.get(..tango_gamesupport_common_dataview::rom::TILE_BYTES * ART_TILES)?,
             ART_COLS,
         )
         .ok()?;
-        Some(tango_gamesupport_common::dataview::rom::apply_palette(
+        Some(tango_gamesupport_common_dataview::rom::apply_palette(
             paletted, &palette,
         ))
     }
@@ -398,7 +398,7 @@ impl Chip<'_> {
     }
 }
 
-impl tango_gamesupport_common::dataview::rom::Chip for Chip<'_> {
+impl tango_gamesupport_common_dataview::rom::Chip for Chip<'_> {
     fn name(&self) -> Option<String> {
         Chip::name(self)
     }
@@ -415,8 +415,8 @@ impl tango_gamesupport_common::dataview::rom::Chip for Chip<'_> {
     fn image(&self) -> image::RgbaImage {
         self.try_image().unwrap_or_else(|| {
             image::RgbaImage::new(
-                (ART_COLS * tango_gamesupport_common::dataview::rom::TILE_WIDTH) as u32,
-                (ART_TILES / ART_COLS * tango_gamesupport_common::dataview::rom::TILE_HEIGHT) as u32,
+                (ART_COLS * tango_gamesupport_common_dataview::rom::TILE_WIDTH) as u32,
+                (ART_TILES / ART_COLS * tango_gamesupport_common_dataview::rom::TILE_HEIGHT) as u32,
             )
         })
     }
@@ -430,8 +430,8 @@ impl tango_gamesupport_common::dataview::rom::Chip for Chip<'_> {
         Chip::element(self)
     }
 
-    fn class(&self) -> tango_gamesupport_common::dataview::rom::ChipClass {
-        tango_gamesupport_common::dataview::rom::ChipClass::Standard
+    fn class(&self) -> tango_gamesupport_common_dataview::rom::ChipClass {
+        tango_gamesupport_common_dataview::rom::ChipClass::Standard
     }
 
     fn dark(&self) -> bool {
