@@ -27,6 +27,7 @@ folder-sort-id = ID
 folder-sort-name = ABCDE
 folder-sort-code = Code
 folder-sort-attack = Attack
+folder-sort-ap = AP
 folder-sort-element = Element
 folder-sort-mb = MB
 folder-sort-hp = HP

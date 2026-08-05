@@ -44,6 +44,7 @@ folder-sort-id = ID
 folder-sort-name = Название
 folder-sort-code = Код
 folder-sort-attack = Атака
+folder-sort-ap = AP
 folder-sort-element = Элемент
 folder-sort-mb = MB
 folder-sort-hp = HP

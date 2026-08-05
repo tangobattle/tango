@@ -43,6 +43,7 @@ folder-sort-id = ID
 folder-sort-name = Nom
 folder-sort-code = Code
 folder-sort-attack = Attaque
+folder-sort-ap = AP
 folder-sort-element = Élément
 folder-sort-mb = MB
 folder-sort-hp = HP

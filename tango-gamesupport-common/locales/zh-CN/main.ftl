@@ -37,6 +37,7 @@ folder-sort-id = ID
 folder-sort-name = 名称
 folder-sort-code = 代码
 folder-sort-attack = 攻击力
+folder-sort-ap = AP
 folder-sort-element = 属性
 folder-sort-mb = MB
 folder-sort-hp = HP

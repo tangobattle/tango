@@ -40,6 +40,7 @@ folder-sort-id = ID
 folder-sort-name = Tên
 folder-sort-code = Mã
 folder-sort-attack = Tấn công
+folder-sort-ap = AP
 folder-sort-element = Hệ
 folder-sort-mb = MB
 folder-sort-hp = HP

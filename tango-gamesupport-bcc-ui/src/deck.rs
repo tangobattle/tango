@@ -605,27 +605,53 @@ pub fn render_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, state
     // chip, and the row prints their cost as an explicit `0MB`.
     let filter = edit.library_filter.to_lowercase();
     let range = if navi_targeted { NAVI_CHIP_IDS } else { PROGRAM_CHIP_IDS };
-    let mut rows: Vec<(usize, String, usize, u16, u16, u16)> = range
+    // The chip record computes each stat on demand, so the row is a
+    // snapshot the comparators can read without re-decoding — the same
+    // `E` the folder and ABD libraries sort.
+    struct E {
+        id: usize,
+        name: String,
+        element: usize,
+        hp: u16,
+        ap: u16,
+        mb: u16,
+    }
+    let mut rows: Vec<E> = range
         .filter_map(|id| {
             let info = bcc_assets(loaded)?.chip_info(id)?;
-            let name = info.name()?;
-            Some((id, name, info.element(), info.hp(), info.attack_power(), info.mb()))
+            Some(E {
+                id,
+                name: info.name()?,
+                element: info.element(),
+                hp: info.hp(),
+                ap: info.attack_power(),
+                mb: info.mb(),
+            })
         })
         .collect();
     use tango_gamesupport_common::editor::view::LibrarySort;
     match state.library_sort {
         LibrarySort::Id | LibrarySort::Code => {}
-        // HP and attack read high-first: the interesting end is the top.
-        LibrarySort::Hp => rows.sort_by(|a, b| b.3.cmp(&a.3).then(a.0.cmp(&b.0))),
-        LibrarySort::Element => rows.sort_by(|a, b| a.2.cmp(&b.2).then(a.0.cmp(&b.0))),
-        LibrarySort::Name => rows.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0))),
-        LibrarySort::Attack => rows.sort_by(|a, b| b.4.cmp(&a.4).then(a.0.cmp(&b.0))),
-        LibrarySort::Mb => rows.sort_by(|a, b| a.5.cmp(&b.5).then(a.0.cmp(&b.0))),
+        // Ascending like every other sort here and in the BN folder
+        // library — one direction convention across the editors.
+        LibrarySort::Hp => rows.sort_by(|a, b| a.hp.cmp(&b.hp).then(a.id.cmp(&b.id))),
+        LibrarySort::Element => rows.sort_by(|a, b| a.element.cmp(&b.element).then(a.id.cmp(&b.id))),
+        LibrarySort::Name => rows.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id))),
+        LibrarySort::Attack => rows.sort_by(|a, b| a.ap.cmp(&b.ap).then(a.id.cmp(&b.id))),
+        LibrarySort::Mb => rows.sort_by(|a, b| a.mb.cmp(&b.mb).then(a.id.cmp(&b.id))),
     }
 
     let mut lib = column![].spacing(3).padding(0);
     let mut shown = 0usize;
-    for (id, name, element, hp, ap, mb) in rows {
+    for E {
+        id,
+        name,
+        element,
+        hp,
+        ap,
+        mb,
+    } in rows
+    {
         if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
             continue;
         }
@@ -656,10 +682,20 @@ pub fn render_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, state
             LibrarySort::Mb,
         ],
         state.library_sort,
-        folder::library_sort_label,
+        library_sort_label,
         Action::LibrarySortChanged,
     );
     editor_panes(left, editor_pane(lib_header, lib))
+}
+
+/// BCC's sort-picker labels: the attack stat is this game's AP — the
+/// card screen's own word for it — with everything else spelled the way
+/// the shared folder picker spells it.
+fn library_sort_label(sort: tango_gamesupport_common::editor::view::LibrarySort, lang: &LanguageIdentifier) -> String {
+    match sort {
+        tango_gamesupport_common::editor::view::LibrarySort::Attack => t!(lang, "folder-sort-ap"),
+        other => folder::library_sort_label(other, lang),
+    }
 }
 
 /// One library row, built on the concrete chip record: BCC's columns
