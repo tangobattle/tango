@@ -244,6 +244,13 @@ impl tango_backend_mgba::GameSupport for Pvp {
                     if core.raw_read_32(ewram.battle_state + 0x60, -1) != 0 {
                         return;
                     }
+                    // Raise the gate-present flag (plus its keepalive
+                    // countdown) BEFORE the comm applet inits, so its
+                    // root menu builds with the チームバトル row and the
+                    // team confirm/label tables — bn5 plays its Team
+                    // Battle modes.
+                    core.raw_write_8(ewram.gate_flag, -1, 1);
+                    core.raw_write_16(ewram.gate_flag + 2, -1, 0xf0);
                     core.raw_write_8(ewram.menu_control + 0x4, -1, 0x06);
                     let target = rom.start_menu_confirm_branch;
                     core.gba_mut().cpu_mut().set_thumb_pc(target);
@@ -323,10 +330,38 @@ impl tango_backend_mgba::GameSupport for Pvp {
                         return;
                     }
                     core.raw_write_8(ewram.submenu_control + 0x14, -1, 2);
+                    // Every match rides the root's チームバトル row (row 1
+                    // with the gate tables up); the match type is the
+                    // single/triple cursor under it. The confirm's
+                    // per-row switchboard turns these into the mode byte
+                    // [3] itself (4..7 = the team modes). The gate flag
+                    // is re-fed here so its countdown spans the settings
+                    // entry, which latches it for battle init.
+                    core.raw_write_16(ewram.submenu_control + 0x2a, -1, 1);
                     core.raw_write_16(ewram.submenu_control + 0x34, -1, match_type as u16);
+                    core.raw_write_8(ewram.gate_flag, -1, 1);
+                    core.raw_write_16(ewram.gate_flag + 2, -1, 0xf0);
                     core.raw_write_16(ewram.submenu_control + 0x3e, -1, 0);
+                    // Enable Patch Cards.
                     core.raw_write_8(ewram.submenu_control + 0x1c, -1, 0x01);
                     let target = rom.comm_menu_nav_confirm_branch;
+                    core.gba_mut().cpu_mut().set_thumb_pc(target);
+                }),
+            ),
+            (
+                // The team settings state's device census, entered only
+                // under the team modes ([3] >= 4): on hardware it walks
+                // the four multi slots demanding console+gate+gate+
+                // console, which an emulated two-console cable can never
+                // seat. PC-redirect the loop head into the census's own
+                // success epilogue (`team_census_passed` — the pop
+                // balances the loop head's push); the settings exchange
+                // around it (mode-word hello, packet-ready checks, the
+                // child adopting the parent's settings) is untouched and
+                // runs the real protocol.
+                rom.team_census_site,
+                Box::new(move |core: &mut mgba::core::Core| {
+                    let target = rom.team_census_passed;
                     core.gba_mut().cpu_mut().set_thumb_pc(target);
                 }),
             ),
@@ -535,6 +570,13 @@ struct EWRAMOffsets {
     /// Location of the battle state struct in memory.
     battle_state: u32,
 
+    /// The Battle Chip Gate presence block: +0 the present flag the
+    /// comm menu's table swaps test, +2 a u16 keepalive countdown the
+    /// gate's greetings would feed on hardware. The primer raises
+    /// it, so the comm root grows the チームバトル row every bn5
+    /// match rides.
+    gate_flag: u32,
+
     /// Start screen jump table control.
     start_screen_control: u32,
 
@@ -650,6 +692,19 @@ struct ROMOffsets {
     /// `comm_menu_nav_ret`'s trap redirects here.
     comm_menu_nav_confirm_branch: u32,
 
+    /// The team settings state's SIO device census: the loop head (one
+    /// past its `push {r0}`) that polls every multi slot's device type
+    /// and demands the hardware quartet — console, gate, gate, console.
+    /// The emulated cable only ever seats two consoles, so this is
+    /// PC-redirected to `team_census_passed`.
+    team_census_site: u32,
+
+    /// The census's own success epilogue: `pop {r4}`, status 1 — the
+    /// pop consumes the word the loop head pushed, so entering here
+    /// from `team_census_site` keeps the caller's frame balanced and
+    /// hands back the packet pointer the settings copy reads.
+    team_census_passed: u32,
+
     /// This hooks the point after the battle start routine is complete —
     /// the game's own round start, reported to the telemetry lifecycle
     /// sink.
@@ -690,6 +745,7 @@ struct ROMOffsets {
 #[rustfmt::skip]
 static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     battle_state:           0x02034a90,
+    gate_flag:              0x0200b974,
     start_screen_control:   0x02013000,
     title_menu_control:     0x0200b980,
     menu_control:           0x0200e950,
@@ -723,6 +779,8 @@ static BRBE_00: Offsets = Offsets {
         comm_menu_prompt_press_branch:          0x08134cde,
         comm_menu_nav_ret:                      0x08134e04,
         comm_menu_nav_confirm_branch:           0x08134d2e,
+        team_census_site:                       0x08141ac4,
+        team_census_passed:                     0x08141b0c,
         round_start_ret:                            0x0800673e,
         round_end_set_win:                      0x08007474,
         round_end_set_loss:                     0x08007488,
@@ -751,6 +809,8 @@ static BRKE_00: Offsets = Offsets {
         comm_menu_prompt_press_branch:          0x08134dc6,
         comm_menu_nav_ret:                      0x08134eec,
         comm_menu_nav_confirm_branch:           0x08134e16,
+        team_census_site:                       0x08141bac,
+        team_census_passed:                     0x08141bf4,
         round_start_ret:                            0x0800673e,
         round_end_set_win:                      0x08007474,
         round_end_set_loss:                     0x08007488,
@@ -779,6 +839,8 @@ static BRBJ_00: Offsets = Offsets {
         comm_menu_prompt_press_branch:          0x08134896,
         comm_menu_nav_ret:                      0x081349bc,
         comm_menu_nav_confirm_branch:           0x081348e6,
+        team_census_site:                       0x08141644,
+        team_census_passed:                     0x0814168c,
         round_start_ret:                            0x0800673e,
         round_end_set_win:                      0x08007474,
         round_end_set_loss:                     0x08007488,
@@ -807,6 +869,8 @@ static BRKJ_00: Offsets = Offsets {
         comm_menu_prompt_press_branch:          0x0813497e,
         comm_menu_nav_ret:                      0x08134aa4,
         comm_menu_nav_confirm_branch:           0x081349ce,
+        team_census_site:                       0x0814172c,
+        team_census_passed:                     0x08141774,
         round_start_ret:                            0x0800673e,
         round_end_set_win:                      0x08007474,
         round_end_set_loss:                     0x08007488,
