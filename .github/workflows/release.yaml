@@ -226,11 +226,17 @@ jobs:
                 "wasm-bindgen-${ver}-x86_64-unknown-linux-musl/wasm-bindgen"
 
       # Optional to build.sh, not to a release: without wasm-opt the
-      # module ships at ~14MB.
+      # module ships at ~14MB. A binaryen release rather than apt:
+      # ubuntu's binaryen (117 on noble) predates the standardized
+      # feature-set default and can't parse the reference-types
+      # instructions rustc emits by default since 1.82 — see the note
+      # in build.sh.
       - name: Install wasm-opt
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y binaryen
+          curl -fsSL -o /tmp/binaryen.tar.gz \
+            "https://github.com/WebAssembly/binaryen/releases/download/version_131/binaryen-version_131-x86_64-linux.tar.gz"
+          sudo tar -C /opt -xzf /tmp/binaryen.tar.gz
+          echo "/opt/binaryen-version_131/bin" >> "$GITHUB_PATH"
 
       - name: Build
         run: ./tango-lite-web/build.sh

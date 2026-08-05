@@ -32,9 +32,14 @@ wasm-bindgen \
     "$here/../target/wasm32-unknown-unknown/$profile_dir/tango-lite-web.wasm"
 
 # Optional, but it makes a real difference to what a phone downloads —
-# the unoptimised module is ~14MB, mostly mgba.
+# the unoptimised module is ~14MB, mostly mgba. Needs binaryen 118+:
+# rustc emits reference-types instructions by default since 1.82, and
+# only binaryen 118's standardized-features default covers them —
+# older wasm-opt defaults to MVP and dies parsing the module
+# ("invalid code after misc prefix"), which is also why apt's
+# binaryen 117 won't do.
 if command -v wasm-opt >/dev/null 2>&1; then
-    wasm-opt -Oz --enable-bulk-memory \
+    wasm-opt -Oz \
         -o "$out/tango-lite-web_bg.wasm" "$out/tango-lite-web_bg.wasm"
 else
     echo "note: wasm-opt not found; shipping the unoptimised module" >&2
