@@ -38,7 +38,7 @@ use iced::{mouse, Alignment, Element, Fill, Length, Point, Rectangle, Renderer, 
 use tango_gamesupport_bcc_dataview::save::{DECK_SLOTS, NAVI_CHIP_IDS, NAVI_SLOT, PROGRAM_CHIP_IDS};
 use tango_gamesupport_common::editor::loaded::OpenSave;
 use tango_gamesupport_common::editor::view::{
-    editor_header, editor_pane, editor_panes, folder, library_header, placeholder, Action, State,
+    editor_header, editor_pane, editor_panes, folder, library_header, placeholder, Action, LibrarySort, State,
 };
 use tango_gamesupport_common::style::{self, TEXT_BODY, TEXT_CAPTION};
 use tango_gamesupport_common::t;
@@ -600,62 +600,10 @@ pub fn render_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, state
     );
 
     // ----- Right pane: the chip library -----
-    // With the navi targeted, the library is the navi roster; otherwise
-    // it's the equippable program chips — the placeholder ids (NO DATA,
-    // DataChp1 and up) sit outside the range and are never listed.
-    //
-    // Zero MB is a real price, not a marker for "not a program": Recov10,
-    // Recov30 and PanlGrab are free to wire in. They list like any other
-    // chip, and the row prints their cost as an explicit `0MB`.
     let filter = edit.library_filter.to_lowercase();
-    let range = if navi_targeted { NAVI_CHIP_IDS } else { PROGRAM_CHIP_IDS };
-    // The chip record computes each stat on demand, so the row is a
-    // snapshot the comparators can read without re-decoding — the same
-    // `E` the folder and ABD libraries sort.
-    struct E {
-        id: usize,
-        name: String,
-        element: usize,
-        hp: u16,
-        ap: u16,
-        mb: u16,
-    }
-    let mut rows: Vec<E> = range
-        .filter_map(|id| {
-            let info = bcc_assets(loaded)?.chip_info(id)?;
-            Some(E {
-                id,
-                name: info.name()?,
-                element: info.element(),
-                hp: info.hp(),
-                ap: info.attack_power(),
-                mb: info.mb(),
-            })
-        })
-        .collect();
-    use tango_gamesupport_common::editor::view::LibrarySort;
-    let cmp: fn(&E, &E) -> Ordering = match state.library_sort {
-        LibrarySort::Id | LibrarySort::Code => |_a, _b| Ordering::Equal,
-        LibrarySort::Hp => |a, b| a.hp.cmp(&b.hp),
-        LibrarySort::Element => |a, b| a.element.cmp(&b.element),
-        LibrarySort::Name => |a, b| a.name.cmp(&b.name),
-        LibrarySort::Attack => |a, b| a.ap.cmp(&b.ap),
-        LibrarySort::Mb => |a, b| a.mb.cmp(&b.mb),
-    };
-
-    rows.sort_by(|a, b| cmp(&a, &b).then(a.id.cmp(&b.id)));
-
-    let mut lib = column![].spacing(3).padding(0);
+    let mut lib_list = column![].spacing(3).padding(0);
     let mut shown = 0usize;
-    for E {
-        id,
-        name,
-        element,
-        hp,
-        ap,
-        mb,
-    } in rows
-    {
+    for (id, name, mb) in sorted_library_entries(loaded, navi_targeted, state.library_sort) {
         if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
             continue;
         }
@@ -669,7 +617,7 @@ pub fn render_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, state
             chip_id: id,
             code: tango_gamesupport_common::dataview::save::ChipCode::Star,
         });
-        lib = lib.push(library_row(loaded, id, name, element, hp, ap, mb, shown, on_add));
+        lib_list = lib_list.push(library_row(loaded, id, name, shown, on_add));
         shown += 1;
     }
     let lib_header = library_header(
@@ -689,17 +637,66 @@ pub fn render_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, state
         library_sort_label,
         Action::LibrarySortChanged,
     );
-    editor_panes(left, editor_pane(lib_header, lib))
+    editor_panes(left, editor_pane(lib_header, lib_list))
 }
 
 /// BCC's sort-picker labels: the attack stat is this game's AP — the
 /// card screen's own word for it — with everything else spelled the way
 /// the shared folder picker spells it.
-fn library_sort_label(sort: tango_gamesupport_common::editor::view::LibrarySort, lang: &LanguageIdentifier) -> String {
+fn library_sort_label(sort: LibrarySort, lang: &LanguageIdentifier) -> String {
     match sort {
-        tango_gamesupport_common::editor::view::LibrarySort::Attack => t!(lang, "folder-sort-ap"),
+        LibrarySort::Attack => t!(lang, "folder-sort-ap"),
         other => folder::library_sort_label(other, lang),
     }
+}
+
+/// Every chip the deck editor's library offers, as `(id, name, mb)`, in
+/// `sort` order: the navi roster while the navi card is targeted,
+/// otherwise the equippable program chips — the placeholder ids (NO
+/// DATA, DataChp1 and up) sit outside both ranges and are never listed.
+///
+/// Zero MB is a real price, not a marker for "not a program": Recov10,
+/// Recov30 and PanlGrab are free to wire in. They list like any other
+/// chip, and the row prints their cost as an explicit `0MB`.
+fn sorted_library_entries(loaded: &OpenSave, navi_targeted: bool, sort: LibrarySort) -> Vec<(usize, String, u16)> {
+    // The chip record computes each stat on demand, so the row is a
+    // snapshot the comparators can read without re-decoding — the same
+    // `E` the folder and ABD libraries sort.
+    struct E {
+        id: usize,
+        name: String,
+        elem: usize,
+        hp: u16,
+        ap: u16,
+        mb: u16,
+    }
+    let range = if navi_targeted { NAVI_CHIP_IDS } else { PROGRAM_CHIP_IDS };
+    let mut rows: Vec<E> = range
+        .filter_map(|id| {
+            let info = bcc_assets(loaded)?.chip_info(id)?;
+            Some(E {
+                id,
+                name: info.name()?,
+                elem: info.element(),
+                hp: info.hp(),
+                ap: info.attack_power(),
+                mb: info.mb(),
+            })
+        })
+        .collect();
+    // All ties fall back to id so the order stays stable. BCC chips
+    // carry no code letters, so Code never sorts; the folder library's
+    // codeless sorts are Id and Hp instead.
+    let cmp: fn(&E, &E) -> Ordering = match sort {
+        LibrarySort::Id | LibrarySort::Code => |_a, _b| Ordering::Equal,
+        LibrarySort::Name => |a, b| a.name.cmp(&b.name),
+        LibrarySort::Attack => |a, b| a.ap.cmp(&b.ap),
+        LibrarySort::Element => |a, b| a.elem.cmp(&b.elem),
+        LibrarySort::Mb => |a, b| a.mb.cmp(&b.mb),
+        LibrarySort::Hp => |a, b| a.hp.cmp(&b.hp),
+    };
+    rows.sort_by(|a, b| cmp(a, b).then(a.id.cmp(&b.id)));
+    rows.into_iter().map(|e| (e.id, e.name, e.mb)).collect()
 }
 
 /// One library row, built on the concrete chip record: BCC's columns
@@ -708,21 +705,20 @@ fn library_sort_label(sort: tango_gamesupport_common::editor::view::LibrarySort,
 /// shared folder library row — flush stripe gutter over `list_item`'s
 /// zebra base, translucent wash when not installable — so the two
 /// editors read identically.
-#[allow(clippy::too_many_arguments)]
 fn library_row<'a>(
     loaded: &'a OpenSave,
     id: usize,
     name: String,
-    element: usize,
-    hp: u16,
-    ap: u16,
-    mb: u16,
     row_idx: usize,
     on_add: Option<Action>,
 ) -> Element<'a, Action> {
+    let info = bcc_assets(loaded).and_then(|a| a.chip_info(id));
+    let (elem, hp, ap, mb) = info
+        .map(|i| (i.element(), i.hp(), i.attack_power(), i.mb()))
+        .unwrap_or_default();
     let element_icon: Element<'a, Action> = loaded
         .element_icons
-        .get(&element)
+        .get(&elem)
         .cloned()
         .map(|h| {
             iced::widget::image(h)

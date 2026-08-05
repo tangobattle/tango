@@ -538,7 +538,7 @@ fn sorted_library_entries(
         LibrarySort::Element => |a, b| a.elem.cmp(&b.elem),
         LibrarySort::Mb => |a, b| a.mb.cmp(&b.mb),
     };
-    rows.sort_by(|a, b| cmp(&a, &b).then(a.id.cmp(&b.id)).then(a.code.cmp(&b.code)));
+    rows.sort_by(|a, b| cmp(a, b).then(a.id.cmp(&b.id)).then(a.code.cmp(&b.code)));
     rows.into_iter().map(|e| (e.id, e.name, e.code)).collect()
 }
 
