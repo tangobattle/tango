@@ -103,6 +103,53 @@ jobs:
           cargo check --bin tango --features gamesupport-all --profile release-dist --target aarch64-apple-darwin
           cargo check --bin tango --features gamesupport-all --profile release-dist --target x86_64-apple-darwin
 
+  # Fills release-web's cache. Its own shared-key rather than
+  # release-dist: a shared-key names ONE cache entry per image, so this
+  # job and check-linux-x86_64 — both Linux — would otherwise race to
+  # save it, and whichever lost would leave its release job restoring
+  # the other target's dependencies.
+  check-web:
+    # ubuntu-latest to match release.yaml's release-web: a cache carries
+    # host-built build-script binaries, so the images must be the same.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # See the note in release.yaml's release-web.
+      - name: Install wasi-sdk
+        run: |
+          curl -fsSL -o /tmp/wasi-sdk.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sdk-25.0-x86_64-linux.tar.gz"
+          sudo tar -C /opt -xzf /tmp/wasi-sdk.tar.gz
+          sudo mv /opt/wasi-sdk-25.0-x86_64-linux /opt/wasi-sdk
+          {
+            echo "WASI_SDK_PATH=/opt/wasi-sdk"
+            echo "CC_wasm32_unknown_unknown=/opt/wasi-sdk/bin/clang"
+            echo "AR_wasm32_unknown_unknown=/opt/wasi-sdk/bin/llvm-ar"
+          } >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-web
+          cache-on-failure: true
+
+      # Triple, profile and features match tango-lite-web/build.sh —
+      # note `release`, not `release-dist`; the web build keeps the
+      # stock profile.
+      - name: Check
+        run: cargo check --package tango-lite-web --features gamesupport-all --profile release --target wasm32-unknown-unknown
+
   check-linux-x86_64:
     runs-on: ubuntu-22.04
     env:

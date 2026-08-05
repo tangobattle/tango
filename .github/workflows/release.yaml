@@ -173,6 +173,81 @@ jobs:
           files: |
             ./dist/tango-macos.dmg
 
+  release-web:
+    # ubuntu-latest rather than the 22.04 pin: nothing here links glibc.
+    # It only has to be the same image as ci.yaml's check-web, whose
+    # cache this restores.
+    runs-on: ubuntu-latest
+    needs: create-release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # mgba's C, cross-compiled for wasm32: mgba-sys's build script,
+      # bindgen, and the cc crate read these.
+      - name: Install wasi-sdk
+        run: |
+          curl -fsSL -o /tmp/wasi-sdk.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sdk-25.0-x86_64-linux.tar.gz"
+          sudo tar -C /opt -xzf /tmp/wasi-sdk.tar.gz
+          sudo mv /opt/wasi-sdk-25.0-x86_64-linux /opt/wasi-sdk
+          {
+            echo "WASI_SDK_PATH=/opt/wasi-sdk"
+            echo "CC_wasm32_unknown_unknown=/opt/wasi-sdk/bin/clang"
+            echo "AR_wasm32_unknown_unknown=/opt/wasi-sdk/bin/llvm-ar"
+          } >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      # See the note in release-win32-x64 — restore-only, filled by
+      # ci.yaml's check-web.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-web
+          save-if: false
+
+      # build.sh shells out to wasm-bindgen, and the CLI refuses to
+      # process a module linked against any other version of the
+      # wasm-bindgen crate — so the version comes out of the lockfile
+      # rather than being pinned here to drift.
+      - name: Install wasm-bindgen
+        run: |
+          ver=$(sed -n '/^name = "wasm-bindgen"$/{n;s/^version = "\(.*\)"$/\1/p;}' Cargo.lock)
+          curl -fsSL "https://github.com/rustwasm/wasm-bindgen/releases/download/${ver}/wasm-bindgen-${ver}-x86_64-unknown-linux-musl.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin --strip-components=1 \
+                "wasm-bindgen-${ver}-x86_64-unknown-linux-musl/wasm-bindgen"
+
+      # Optional to build.sh, not to a release: without wasm-opt the
+      # module ships at ~14MB.
+      - name: Install wasm-opt
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y binaryen
+
+      - name: Build
+        run: ./tango-lite-web/build.sh
+
+      # dist/ is the whole site — flat static files, pushed to the
+      # existing direct-upload Pages project (lite.tango.n1gp.net).
+      # `--branch=main` because a tag checkout is a detached HEAD:
+      # wrangler can't read a branch name off it, and the deploy has to
+      # name the project's production branch to be a production deploy
+      # rather than a preview.
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy tango-lite-web/dist --project-name=tango-lite-web --branch=main
+
   release-linux-x86_64:
     # Pin to Ubuntu 22.04 so the produced binary links against an older glibc
     # and stays runnable on the broadest spread of user distributions.
