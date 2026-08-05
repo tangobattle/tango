@@ -5,12 +5,16 @@
 //! (the START-press and A-confirm branches — the cursor's organic
 //! default with a save present IS the CONTINUE row), overworld →
 //! START menu (the field tick's own menu-open tail, with the Comm row
-//! poked as the selection), then the comm menu's three A-press
-//! confirm branches walk NetBattle → match type → stage set into the
-//! settings state. Every dispatcher/menu-control byte is written by
-//! ROM code; the primer only writes selection values the organic
-//! confirms read (menu row, match-type cursor, the rule toggle) and
-//! the rng seeds. bn5's settings aren't negotiated over the wire —
+//! poked as the selection), then the comm menu's A-press confirm is
+//! entered ONCE, at the rules level with every menu selection poked —
+//! the same shape as bn6's bring-up skip: the confirm's own
+//! switchboard commits the mode and walks the dispatcher into the
+//! settings state itself, so the intermediate menu levels (and the
+//! per-level comm-task teardown cycles they'd re-run) never happen.
+//! Every dispatcher/menu-control byte is written by ROM code; the
+//! primer only writes selection values the organic confirm reads
+//! (menu row, the depth/cursor cells, the rule toggle) and the rng
+//! seeds. bn5's settings aren't negotiated over the wire —
 //! each side's ROM generator derives them from the rngs, so seeding
 //! both rngs identically on both cores (from the negotiated match
 //! seed) makes the two vanilla games agree without any exchange; rng1
@@ -94,8 +98,11 @@ impl Pvp {
 }
 
 impl tango_backend_mgba::GameSupport for Pvp {
+    /// 1: the comm menu's intermediate levels are skipped (one confirm
+    /// at the rules level, bn6-style), so primed boots reach battle
+    /// earlier and older replays re-prime differently.
     fn sim_version(&self) -> u16 {
-        0
+        1
     }
 
     fn primer_traps(
@@ -164,39 +171,23 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 }),
             ),
             (
-                // The title screen's PRESS START wait (title state 8, sub
-                // 8) at its handler entry — r5 = title_menu_control, loaded
-                // by the title dispatcher. Redirect past the handler's own
-                // START-press check into the transition branch of the
-                // game's START handler ([1]=0xc → the NEW GAME/CONTINUE
-                // menu, sfx 0x67, title-anim teardown). The branch ends in
-                // `pop {pc}`: since we entered before the handler's push,
-                // that pop consumes the state-8 dispatcher's saved lr and
-                // returns straight to the outer title dispatcher —
-                // balanced; only that tick's OAM flush is skipped.
-                rom.title_start_wait_entry,
+                // The title screen's init handler (title state 0), at its
+                // terminal `pop {pc}` — the save-present check has run,
+                // the menu row count is set and the cursor default is
+                // computed into [8]: 1 (CONTINUE) whenever a save exists.
+                // Instead of popping into the title walk (intro anim,
+                // PRESS START wait, menu, fades), PC-redirect into the
+                // title's state-0xc body — the menu confirm-exit handler,
+                // one past its `push {lr}`: it switches the main mode to
+                // in-game itself, tears the title down (bgm stop, sfx) and
+                // dispatches the cursor — CONTINUE — through the game's
+                // own load path (comm-engine + adapter init included).
+                // The init handler's saved lr feeds the body's terminating
+                // `pop {pc}`, so control returns to the title dispatcher
+                // cleanly. Same shape as bn6's SRAM-unmask skip.
+                rom.title_init_ret,
                 Box::new(move |core: &mut mgba::core::Core| {
-                    let target = rom.title_start_press_branch;
-                    core.gba_mut().cpu_mut().set_thumb_pc(target);
-                }),
-            ),
-            (
-                // The NEW GAME/CONTINUE menu's per-tick handler (title
-                // state 8, sub 0xc) at its terminal `pop {pc}`. Instead of
-                // popping, redirect into the A|START confirm branch inside
-                // the menu's input handler, one past its `push {lr}`:
-                // fade-gated, then the game's own confirm (sfx 0x9d,
-                // [1]=0x10, fade out) — sub 0x10 then walks to the title
-                // confirm dispatch, which loads the save because the cursor
-                // sits on CONTINUE, the game's own default whenever a save
-                // exists (title init picks [8]=1). The branch ends in the
-                // input handler's `pop {pc}`, fed by this handler's saved
-                // lr — control returns to the sub dispatcher. While the
-                // fade isn't ready it writes nothing and this pop trap
-                // re-fires next tick.
-                rom.title_menu_wait_ret,
-                Box::new(move |core: &mut mgba::core::Core| {
-                    let target = rom.title_menu_continue_branch;
+                    let target = rom.title_confirm_body;
                     core.gba_mut().cpu_mut().set_thumb_pc(target);
                 }),
             ),
@@ -303,21 +294,26 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 // [0x2a]), match type (single/triple, cursor [0x34]), stage
                 // set (normal/extended, cursor [0x3e]) — and one A-press
                 // confirm serves all of them: [0x15]=0, sfx 0x81, then the
-                // cursor switchboard. At depth 0/1 it descends ([2]=0xc →
-                // 0x10 → 8, zeroing the new level's cursor pair — the
-                // organic source of the [0x3e]=0 the old poke wrote); at
-                // depth 2 it writes [3] = map[[0x34]][[0x3e]] (the map rows
-                // are {0,1}/{2,3}, so row 0 under cursor match_type IS the
-                // old poke's [3]=match_type*2) plus the terminal marker,
-                // and the handler advances to the settings state ([2]=0x14).
-                // The redirect target is one past the handler's own push on
-                // a path that rejoins this same pop — balanced, and the [2]
-                // gate ends each loop. Root cursor 0 (NetBattle) is the
-                // memset default; the only selections a human would still
-                // have made are the match-type cursor and the depth-2 rule
-                // toggle [0x1c] (left/right, 0..1; read at battle init —
-                // the trap engine always chose 1), poked right before the
-                // depth-2 confirm that reads them.
+                // cursor switchboard. At depth 0/1 it would descend
+                // ([2]=0xc → 0x10 → 8, re-running the per-level comm-task
+                // teardown each time); at depth 2 it writes [3] =
+                // map[[0x34]][[0x3e]] (the map rows are {0,1}/{2,3}, so
+                // row 0 under cursor match_type IS the old poke's
+                // [3]=match_type*2) plus the terminal marker [0x11]=0xff,
+                // whose check walks the handler straight into the settings
+                // state ([2]=0x14). So the whole walk is ONE confirm,
+                // bn6's bring-up-skip shape: poke the depth and every
+                // selection the switchboard reads — depth [0x14]=2 (the
+                // rules level), the match-type cursor, the rules cursor 0
+                // (what descend-zeroing produced when the walk was real)
+                // and the rule toggle [0x1c] (left/right, 0..1; read at
+                // battle init — the trap engine always chose 1) — and
+                // redirect into the confirm branch; its own switchboard
+                // commits the mode and advances the dispatcher, and the
+                // settings state's REAL teardown + negotiation runs from
+                // there. The redirect target is one past the handler's own
+                // push on a path that rejoins this same pop — balanced,
+                // and the [2] gate ends the loop after the one entry.
                 rom.comm_menu_nav_ret,
                 Box::new(move |core: &mut mgba::core::Core| {
                     if core.raw_read_32(ewram.battle_state + 0x60, -1) != 0 {
@@ -326,10 +322,10 @@ impl tango_backend_mgba::GameSupport for Pvp {
                     if core.raw_read_8(ewram.submenu_control + 0x2, -1) != 8 {
                         return;
                     }
-                    if core.raw_read_8(ewram.submenu_control + 0x14, -1) == 2 {
-                        core.raw_write_16(ewram.submenu_control + 0x34, -1, match_type as u16);
-                        core.raw_write_8(ewram.submenu_control + 0x1c, -1, 0x01);
-                    }
+                    core.raw_write_8(ewram.submenu_control + 0x14, -1, 2);
+                    core.raw_write_16(ewram.submenu_control + 0x34, -1, match_type as u16);
+                    core.raw_write_16(ewram.submenu_control + 0x3e, -1, 0);
+                    core.raw_write_8(ewram.submenu_control + 0x1c, -1, 0x01);
                     let target = rom.comm_menu_nav_confirm_branch;
                     core.gba_mut().cpu_mut().set_thumb_pc(target);
                 }),
@@ -589,30 +585,19 @@ struct ROMOffsets {
     /// `start_screen_logo_entry`'s trap redirects here.
     start_screen_title_transition: u32,
 
-    /// Entry of the title screen's PRESS START wait handler (title
-    /// state 8, sub 8), from the state-8 sub jump table (r5 =
-    /// title_menu_control). Trapped to redirect into
-    /// `title_start_press_branch`.
-    title_start_wait_entry: u32,
+    /// Terminal `pop {pc}` of the title screen's init handler (title
+    /// state 0, r5 = title_menu_control): the save-present check has
+    /// run and the menu defaults are computed — [8] = 1 (CONTINUE)
+    /// whenever a save exists. Trapped to redirect into
+    /// `title_confirm_body`.
+    title_init_ret: u32,
 
-    /// The transition branch of the title screen's START handler, past
-    /// its newly-pressed-START check: [1]=0xc (the NEW GAME/CONTINUE
-    /// menu), sfx 0x67, title-anim teardown, `pop {pc}`.
-    /// `title_start_wait_entry`'s trap redirects here.
-    title_start_press_branch: u32,
-
-    /// Terminal `pop {pc}` of the NEW GAME/CONTINUE menu's per-tick
-    /// handler (title state 8, sub 0xc). Trapped to redirect into
-    /// `title_menu_continue_branch`.
-    title_menu_wait_ret: u32,
-
-    /// The A|START confirm branch inside the title menu's input
-    /// handler, one past its `push {lr}`: fade-gated, sfx 0x9d,
-    /// [1]=0x10 (post-confirm fade-out), `pop {pc}`. With a save
-    /// present the cursor's organic default is the CONTINUE row, so
-    /// the title confirm dispatch loads the save.
-    /// `title_menu_wait_ret`'s trap redirects here.
-    title_menu_continue_branch: u32,
+    /// The title's state-0xc body — the menu confirm-exit handler —
+    /// one past its `push {lr}`: switches the main mode to in-game,
+    /// tears the title down and dispatches cursor [8] (CONTINUE)
+    /// through the game's own load path, ending in `pop {pc}`.
+    /// `title_init_ret`'s trap redirects here.
+    title_confirm_body: u32,
 
     /// This is immediately after game initialization is complete: that is, the internal state is set correctly.
     ///
@@ -727,10 +712,8 @@ static BRBE_00: Offsets = Offsets {
     rom: ROMOffsets {
         start_screen_logo_entry:                0x0803c4c0,
         start_screen_title_transition:          0x0803c5f8,
-        title_start_wait_entry:                 0x08030136,
-        title_start_press_branch:               0x080302b2,
-        title_menu_wait_ret:                    0x080301aa,
-        title_menu_continue_branch:             0x080302e6,
+        title_init_ret:                         0x0803008a,
+        title_confirm_body:                     0x080301f4,
         game_load_ret:                          0x08004a74,
         field_menu_gate:                        0x080054b6,
         field_menu_open_branch:                 0x080054d6,
@@ -757,10 +740,8 @@ static BRKE_00: Offsets = Offsets {
     rom: ROMOffsets {
         start_screen_logo_entry:                0x0803c4c4,
         start_screen_title_transition:          0x0803c5fc,
-        title_start_wait_entry:                 0x0803013a,
-        title_start_press_branch:               0x080302b6,
-        title_menu_wait_ret:                    0x080301ae,
-        title_menu_continue_branch:             0x080302ea,
+        title_init_ret:                         0x0803008e,
+        title_confirm_body:                     0x080301f8,
         game_load_ret:                          0x08004a74,
         field_menu_gate:                        0x080054b6,
         field_menu_open_branch:                 0x080054d6,
@@ -787,10 +768,8 @@ static BRBJ_00: Offsets = Offsets {
     rom: ROMOffsets {
         start_screen_logo_entry:                0x0803c424,
         start_screen_title_transition:          0x0803c50c,
-        title_start_wait_entry:                 0x080300d2,
-        title_start_press_branch:               0x0803024e,
-        title_menu_wait_ret:                    0x08030146,
-        title_menu_continue_branch:             0x08030282,
+        title_init_ret:                         0x08030026,
+        title_confirm_body:                     0x08030190,
         game_load_ret:                          0x08004a74,
         field_menu_gate:                        0x080054b6,
         field_menu_open_branch:                 0x080054d6,
@@ -817,10 +796,8 @@ static BRKJ_00: Offsets = Offsets {
     rom: ROMOffsets {
         start_screen_logo_entry:                0x0803c428,
         start_screen_title_transition:          0x0803c510,
-        title_start_wait_entry:                 0x080300d6,
-        title_start_press_branch:               0x08030252,
-        title_menu_wait_ret:                    0x0803014a,
-        title_menu_continue_branch:             0x08030286,
+        title_init_ret:                         0x0803002a,
+        title_confirm_body:                     0x08030194,
         game_load_ret:                          0x08004a74,
         field_menu_gate:                        0x080054b6,
         field_menu_open_branch:                 0x080054d6,
