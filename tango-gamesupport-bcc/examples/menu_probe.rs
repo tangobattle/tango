@@ -62,7 +62,6 @@ fn save_png(core: &mgba::core::OwnedCore, path: &str) {
 }
 
 fn main() {
-    mgba::log::install_default_logger();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let rom_path = args[0].clone();
     let mut opt: HashMap<String, Vec<String>> = HashMap::new();

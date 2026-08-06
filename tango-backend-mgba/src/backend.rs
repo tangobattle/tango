@@ -325,7 +325,6 @@ fn assemble_pair(
     rtc: std::time::SystemTime,
     render: bool,
 ) -> Result<(mgba_rollback::Link, EventSink, [crate::PrimedLatch; 2]), crate::Error> {
-    crate::install_logger();
     let [rom0, rom1] = roms;
     let [save0, save1] = saves;
     let mut pair = mgba_rollback::Link::with_options(LinkOptions {

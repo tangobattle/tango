@@ -16,7 +16,6 @@ fn pvp_for(rom: &[u8]) -> &'static tango_gamesupport_bcc::pvp::Pvp {
 }
 
 fn main() {
-    mgba::log::install_default_logger();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let rom0 = std::fs::read(&args[0]).expect("rom unreadable");
     let rom1 = args.get(2).map(|p| std::fs::read(p).expect("rom2 unreadable")).unwrap_or_else(|| rom0.clone());

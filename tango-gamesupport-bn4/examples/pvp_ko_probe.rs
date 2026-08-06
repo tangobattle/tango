@@ -128,7 +128,6 @@ const POST_BATTLE_BUDGET: u32 = 6000;
 
 fn main() {
     env_logger::init();
-    mgba::log::install_default_logger();
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (rom0, save0) = (

@@ -14,7 +14,6 @@ impl SoloConsole {
     /// Boot one console. `rtc` pins the cart clock exactly as a match's
     /// negotiated clock does; `None` leaves it on the real one.
     pub fn new(rom: &[u8], save: Option<&[u8]>, rtc: Option<std::time::SystemTime>) -> Result<Self, crate::Error> {
-        crate::install_logger();
         let mut link = mgba_rollback::Link::with_options(mgba_rollback::LinkOptions {
             sides: vec![mgba_rollback::SideOptions {
                 rom: rom.to_vec(),

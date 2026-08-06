@@ -357,7 +357,6 @@ fn random_row(seed: u64, tick: u32) -> [u32; 2] {
 
 fn main() {
     env_logger::init();
-    mgba::log::install_default_logger();
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     let rom = std::fs::read(&args[0]).expect("rom unreadable");

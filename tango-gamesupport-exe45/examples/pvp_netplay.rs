@@ -52,7 +52,6 @@ fn build(
 
 fn main() {
     env_logger::init();
-    mgba::log::install_default_logger();
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (rom0, save0) = (
