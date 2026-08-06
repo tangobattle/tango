@@ -1668,7 +1668,7 @@ checksum = "2a2330da5de22e8a3cb63252ce2abb30116bf5265e89c0e01bc17015ce30a476"
 [[package]]
 name = "datachannel-facade"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/datachannel-facade#a4e1761c1bd326bcefd351eaadda4a99d876dbbf"
+source = "git+https://github.com/tangobattle/datachannel-facade#66d09f80d9d8b00f66881993bc80382c87f6578f"
 dependencies = [
  "libdatachannel",
  "log",
@@ -4148,7 +4148,7 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 [[package]]
 name = "libdatachannel"
 version = "0.2.0+0.24.3"
-source = "git+https://github.com/tangobattle/datachannel-facade#a4e1761c1bd326bcefd351eaadda4a99d876dbbf"
+source = "git+https://github.com/tangobattle/datachannel-facade#66d09f80d9d8b00f66881993bc80382c87f6578f"
 dependencies = [
  "libdatachannel-sys",
  "log",
@@ -4160,7 +4160,7 @@ dependencies = [
 [[package]]
 name = "libdatachannel-sys"
 version = "0.24.3"
-source = "git+https://github.com/tangobattle/datachannel-facade#a4e1761c1bd326bcefd351eaadda4a99d876dbbf"
+source = "git+https://github.com/tangobattle/datachannel-facade#66d09f80d9d8b00f66881993bc80382c87f6578f"
 dependencies = [
  "bindgen",
  "cmake",
@@ -4450,7 +4450,7 @@ checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 [[package]]
 name = "melonds"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rs#7d7849d6709cccdd89b014a04c5fa6552fc662d2"
+source = "git+https://github.com/tangobattle/melonds-rs#599d4c84a8367878214ca651ff5f6a4084d514af"
 dependencies = [
  "log",
  "melonds-sys",
@@ -4460,17 +4460,19 @@ dependencies = [
 [[package]]
 name = "melonds-rollback"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rollback#f6c6eeab7ae67db305b5726dd136452ff51d955f"
+source = "git+https://github.com/tangobattle/melonds-rollback#2369305b17e3c5caedbb6d5085470a310159b29b"
 dependencies = [
  "getgud",
+ "js-sys",
  "melonds",
  "thiserror 1.0.69",
+ "wasm_thread",
 ]
 
 [[package]]
 name = "melonds-sys"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rs#7d7849d6709cccdd89b014a04c5fa6552fc662d2"
+source = "git+https://github.com/tangobattle/melonds-rs#599d4c84a8367878214ca651ff5f6a4084d514af"
 dependencies = [
  "bindgen",
  "cc",
@@ -4528,7 +4530,7 @@ dependencies = [
 [[package]]
 name = "mgba"
 version = "4.0.32"
-source = "git+https://github.com/tangobattle/mgba-rs#0f2460adc9ee1f2ffe74e28f433518335f2e6f65"
+source = "git+https://github.com/tangobattle/mgba-rs#90d96a9b6f014abf3910e8512e470662122ecda5"
 dependencies = [
  "log",
  "mgba-sys",
@@ -4551,7 +4553,7 @@ dependencies = [
 [[package]]
 name = "mgba-sys"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/mgba-rs#0f2460adc9ee1f2ffe74e28f433518335f2e6f65"
+source = "git+https://github.com/tangobattle/mgba-rs#90d96a9b6f014abf3910e8512e470662122ecda5"
 dependencies = [
  "bindgen",
  "cc",
@@ -9188,6 +9190,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasm_thread"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7516db7f32decdadb1c3b8deb1b7d78b9df7606c5cc2f6241737c2ab3a0258e"
+dependencies = [
+ "futures",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "wasmtimer"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9313,7 +9327,7 @@ dependencies = [
 [[package]]
 name = "web-datachannel"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/datachannel-facade#a4e1761c1bd326bcefd351eaadda4a99d876dbbf"
+source = "git+https://github.com/tangobattle/datachannel-facade#66d09f80d9d8b00f66881993bc80382c87f6578f"
 dependencies = [
  "js-sys",
  "log",

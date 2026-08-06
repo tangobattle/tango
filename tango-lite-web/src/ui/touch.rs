@@ -29,7 +29,12 @@ const DPAD_SIZE: f64 = 132.0;
 const DPAD_DEAD: f64 = 18.0;
 
 #[component]
-pub fn TouchControls() -> Element {
+pub fn TouchControls(
+    /// The session console's joypad bits (see
+    /// [`Backend::keys_mask`](tango_match::Backend::keys_mask)) — what
+    /// decides whether the DS's X/Y pair is offered.
+    keys_mask: u32,
+) -> Element {
     // Mirrors the touch word purely so held buttons can be styled; the
     // engine reads `input::joyflags` directly.
     let mut held = use_signal(|| 0u32);
@@ -65,7 +70,7 @@ pub fn TouchControls() -> Element {
         bits
     };
 
-    let buttons: [(&str, &str, u32); 6] = [
+    let mut buttons: Vec<(&str, &str, u32)> = vec![
         ("tc-btn tc-a", "A", keys::A),
         ("tc-btn tc-b", "B", keys::B),
         ("tc-btn tc-l", "L", keys::L),
@@ -73,6 +78,14 @@ pub fn TouchControls() -> Element {
         ("tc-btn tc-pill tc-start", "start", keys::START),
         ("tc-btn tc-pill tc-select", "select", keys::SELECT),
     ];
+    // The DS's extra pair completes the face diamond; a GBA session's
+    // mask leaves them out and the layout is exactly what it was.
+    if keys_mask & keys::X != 0 {
+        buttons.push(("tc-btn tc-x", "X", keys::X));
+    }
+    if keys_mask & keys::Y != 0 {
+        buttons.push(("tc-btn tc-y", "Y", keys::Y));
+    }
 
     rsx! {
         div { class: "touch-controls",

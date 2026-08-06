@@ -1,0 +1,8 @@
+# Cross-origin isolation, which is what lets the page construct the
+# *shared* WebAssembly.Memory the emulator module imports (the DS
+# engine's C++ comes out of the threads sysroot — see build.sh).
+# Cloudflare Pages reads this file; the local dev server (serve.py)
+# sends the same two headers.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp

@@ -15,6 +15,7 @@
 //! ~10Hz, which is as often as any of them are worth reading.
 
 use dioxus::prelude::*;
+use wasm_bindgen::JsCast;
 
 use crate::engine::{Kind, Status};
 use crate::ui::touch::TouchControls;
@@ -34,10 +35,36 @@ pub fn Play(status: ReadSignal<Option<Status>>, onexit: EventHandler<()>) -> Ele
     let in_match = pvp.is_some();
     let mut confirming = use_signal(|| false);
 
+    // The canvas takes the session's shape: the GBA's single landscape
+    // screen, or a DS's two screens stacked into a portrait one. A tall
+    // canvas opts the session out of the phone's rotate-to-landscape
+    // treatment (see `.session.tall` in the stylesheet) — it already
+    // fits an upright phone.
+    let (sw, sh) = crate::engine::canvas_size().unwrap_or((240, 160));
+    let session_class = if sh > sw { "session tall" } else { "session" };
+
     rsx! {
-        div { class: "session",
+        div { class: "{session_class}", style: "--sw: {sw}; --sh: {sh}",
             div { class: "stage",
-                canvas { class: "screen", id: "tango-screen" }
+                canvas {
+                    class: "screen",
+                    id: "tango-screen",
+                    // The stylus, for a console with a touch screen: a
+                    // press anywhere on the touch screen's slice of the
+                    // canvas is the stylus down, a drag steers it, and
+                    // lifting (or leaving) lifts it. On a console
+                    // without one `stylus_from` is `None` and these
+                    // write nothing.
+                    onpointerdown: move |event| crate::input::stylus_set(stylus_from(&event)),
+                    onpointermove: move |event| {
+                        if !event.data().held_buttons().is_empty() {
+                            crate::input::stylus_set(stylus_from(&event));
+                        }
+                    },
+                    onpointerup: move |_| crate::input::stylus_set(None),
+                    onpointercancel: move |_| crate::input::stylus_set(None),
+                    onpointerleave: move |_| crate::input::stylus_set(None),
+                }
             }
             div { class: "session-hud",
                 button {
@@ -67,7 +94,9 @@ pub fn Play(status: ReadSignal<Option<Status>>, onexit: EventHandler<()>) -> Ele
             } else {
                 // A replay takes no input, so it gets the transport
                 // instead of the pad rather than both.
-                TouchControls {}
+                TouchControls {
+                    keys_mask: status.as_ref().map(|s| s.keys_mask).unwrap_or(0),
+                }
             }
             if confirming() {
                 div { class: "overlay",
@@ -204,12 +233,41 @@ fn Transport(playhead: u32, total: u32, prefetched: u32, paused: bool) -> Elemen
     }
 }
 
-/// Ticks as mm:ss. A tick is one GBA frame, and the pair runs at the
-/// hardware's real rate, not a round 60.
+/// Map a pointer event on the canvas to the stylus position on the
+/// console's touch screen, or `None` off it (or for a console without
+/// one). The event's element coordinates are in the canvas's CSS box —
+/// they come through the inverse of any transform on it, which is what
+/// keeps this correct under the phone's rotation — so one scale factor
+/// (CSS box → canvas pixels) and the touch screen's row offset in the
+/// stacked arrangement are the whole mapping.
+fn stylus_from(event: &Event<PointerData>) -> Option<(u16, u16)> {
+    let (y0, tw, th) = crate::engine::touch_rect()?;
+    let (cw, _) = crate::engine::canvas_size()?;
+    let canvas = web_sys::window()?
+        .document()?
+        .get_element_by_id("tango-screen")?
+        .dyn_into::<web_sys::HtmlElement>()
+        .ok()?;
+    let css_w = canvas.client_width() as f64;
+    if css_w <= 0.0 {
+        return None;
+    }
+    let scale = cw as f64 / css_w;
+    let at = event.data().element_coordinates();
+    let x = at.x * scale;
+    let y = at.y * scale - y0 as f64;
+    (x >= 0.0 && x < tw as f64 && y >= 0.0 && y < th as f64).then(|| (x as u16, y as u16))
+}
+
+/// Ticks as mm:ss, on the running console's own frame clock — the GBA
+/// and DS both run close to 60, but neither is a round 60 nor each
+/// other's.
 fn seconds(ticks: u32) -> String {
-    /// The GBA's real frame rate — the only console this frontend plays.
-    const GBA_FPS: f32 = 16777216.0 / 280896.0;
-    let total = (ticks as f32 / GBA_FPS) as u32;
+    let fps = crate::engine::status()
+        .map(|s| s.fps)
+        .filter(|fps| *fps > 1.0)
+        .unwrap_or(16777216.0 / 280896.0);
+    let total = (ticks as f32 / fps) as u32;
     format!("{}:{:02}", total / 60, total % 60)
 }
 

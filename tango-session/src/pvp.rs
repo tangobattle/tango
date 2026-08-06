@@ -364,6 +364,12 @@ impl PvpSession {
         } = args;
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
+        // The engine gets a head start on the pair the boot will run —
+        // the awaits below (handoff, transport bring-up) are where a
+        // browser's worker threads get the event-loop turns their
+        // startup needs.
+        local_game.pvp.prepare(2);
+
         // Parse both sides' committed SRAM dumps. PvP runs entirely off
         // these in-memory images — writes don't persist back to anyone's
         // .sav file.
@@ -565,6 +571,7 @@ impl PvpSession {
             expected_fps,
             metrics: metrics.clone(),
             wake: wake.clone(),
+            backend: local_game.pvp,
         };
 
         // Announce our own prime as soon as the boot finishes. It rides
@@ -1497,10 +1504,20 @@ pub struct PvpBoot {
     /// Repaint wake, so the failure reaches a host whose session is
     /// otherwise sitting on a frame that will never come.
     wake: Arc<tokio::sync::Notify>,
+    /// The engine the boot will run on, for its readiness gate.
+    backend: &'static (dyn tango_match::Backend + Send + Sync),
 }
 
 impl crate::Drive for PvpBoot {
     fn tick(&mut self) -> bool {
+        // What `prepare` started may still be coming up — a browser
+        // engine's worker threads finish starting only between ticks,
+        // while the host's loop yields. Booting before then would spin
+        // on threads that can never arrive, so the boot waits out the
+        // gate; the priming notice is already up either way.
+        if self.pending.is_some() && !self.backend.ready(2) {
+            return true;
+        }
         if let Some((pieces, drive)) = self.pending.take() {
             let audio = self.audio.take().expect("the boot runs once");
             let booted = drive.boot(pieces, self.expected_fps, audio);

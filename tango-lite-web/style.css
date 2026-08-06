@@ -465,11 +465,21 @@ select {
 
 canvas.screen {
     display: block;
-    /* Integer scaling: the GBA is 240x160, and a fractional factor makes
-     * some pixel rows a row taller than their neighbours. Round down to
-     * a whole multiple of 240 and letterbox the remainder. */
-    width: max(240px, round(down, min(var(--app-vw, 100dvw), var(--app-vh, 100dvh) * 1.5), 240px));
-    aspect-ratio: 240 / 160;
+    /* Integer scaling: a fractional factor makes some pixel rows a row
+     * taller than their neighbours. Round down to a whole multiple of
+     * the native width and letterbox the remainder. The play screen
+     * sets --sw/--sh to the session's shape — the GBA's 240x160, or a
+     * DS's two screens stacked into 256x384. */
+    --native-w: calc(var(--sw, 240) * 1px);
+    width: max(
+        var(--native-w),
+        round(
+            down,
+            min(var(--app-vw, 100dvw), var(--app-vh, 100dvh) * var(--sw, 240) / var(--sh, 160)),
+            var(--native-w)
+        )
+    );
+    aspect-ratio: var(--sw, 240) / var(--sh, 160);
     /* Anything but nearest-neighbour turns pixel art into soup. */
     image-rendering: pixelated;
     background: #000;
@@ -710,6 +720,23 @@ button.chip {
         height: 58px;
     }
 
+    /* The DS's other pair completes the diamond: X above the A/B
+     * diagonal, Y to its left. Only rendered for a console that reads
+     * them. */
+    .tc-x {
+        right: calc(82px + var(--safe-right));
+        bottom: calc(134px + var(--safe-bottom));
+        width: 58px;
+        height: 58px;
+    }
+
+    .tc-y {
+        right: calc(148px + var(--safe-right));
+        bottom: calc(78px + var(--safe-bottom));
+        width: 58px;
+        height: 58px;
+    }
+
     /* Shoulders hug the top corners, like the real thing. */
     .tc-l,
     .tc-r {
@@ -756,9 +783,13 @@ button.chip {
  * renders landscape and is rotated onto the tall screen, so turning the
  * phone gives an upright picture and the pad's corners land where
  * fingers rest. The touch maths survives the rotation because
- * offsetX/offsetY map through the inverse transform. */
+ * offsetX/offsetY map through the inverse transform.
+ *
+ * Except a session whose canvas is already tall (`.tall` — a DS's two
+ * screens stacked): that one fits an upright phone as it is, and
+ * rotating it would be exactly backwards. */
 @media (pointer: coarse) and (orientation: portrait) {
-    .session {
+    .session:not(.tall) {
         /* inset:0 still pins top/left; the explicit size takes over
          * from right/bottom. */
         width: var(--app-vh, 100dvh);
@@ -784,8 +815,15 @@ button.chip {
 
     /* The rotated session's axes are swapped relative to the viewport,
      * so the viewport-unit sizing above swaps with them. */
-    canvas.screen {
-        width: max(240px, round(down, min(var(--app-vh, 100dvh), var(--app-vw, 100dvw) * 1.5), 240px));
+    .session:not(.tall) canvas.screen {
+        width: max(
+            var(--native-w),
+            round(
+                down,
+                min(var(--app-vh, 100dvh), var(--app-vw, 100dvw) * var(--sw, 240) / var(--sh, 160)),
+                var(--native-w)
+            )
+        );
     }
 }
 

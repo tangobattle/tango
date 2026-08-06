@@ -25,6 +25,8 @@
 //! - [`keys`]: the joypad bit vocabulary.
 
 pub mod engine;
+#[cfg(target_arch = "wasm32")]
+pub mod hosting;
 pub mod link;
 pub mod analysis;
 pub mod audio;

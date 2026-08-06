@@ -1080,7 +1080,6 @@ pub mod priming {
         events: &tango_match::telemetry::EventSink,
         cancel: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<(), tango_match::Error> {
-        let started = std::time::Instant::now();
         let before = link.console(0).save_memory();
         install(link, rng_seed, events);
 
@@ -1099,10 +1098,7 @@ pub mod priming {
             link.tick([HostInput::default(); 2]);
         }
         let saved = link.console(0).save_memory() != before;
-        log::info!(
-            "exeoss priming: boot half at {BOOT_BUDGET} frames in {:.1?}, saved={saved}",
-            started.elapsed()
-        );
+        log::info!("exeoss priming: boot half at {BOOT_BUDGET} frames, saved={saved}");
         if !saved {
             log::warn!("exeoss priming never saw the cartridge written; the Network menu was not reached");
             return Err(tango_match::Error::PrimeTimeout(BOOT_BUDGET));
@@ -1148,10 +1144,7 @@ pub mod priming {
             );
             return Err(tango_match::Error::PrimeTimeout(BOOT_BUDGET + frames));
         }
-        log::info!(
-            "exeoss priming: battle transition {frames} frames past the save, {:.1?} total",
-            started.elapsed()
-        );
+        log::info!("exeoss priming: battle transition {frames} frames past the save");
         Ok(())
     }
 }

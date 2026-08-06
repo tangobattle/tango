@@ -315,6 +315,31 @@ pub trait Backend: Sync {
     /// above an engine may hardcode one.
     fn frame_timing(&self) -> FrameTiming;
 
+    /// A session that will run `consoles` of this game's console is
+    /// being put together; get whatever per-console machinery ready
+    /// that benefits from a head start. Fired from the session's
+    /// construction — which is async and yields — where the boot
+    /// itself is synchronous and doesn't.
+    ///
+    /// The default does nothing, which is right for every native
+    /// engine. The DS engine's browser build spawns its per-console
+    /// worker threads here: a Web Worker only finishes starting once
+    /// the browser's main thread has had event-loop turns, and by boot
+    /// time there are none to give.
+    fn prepare(&self, consoles: u32) {
+        let _ = consoles;
+    }
+
+    /// Whether what [`prepare`](Self::prepare) started is done — a
+    /// host's boot loop holds off (and keeps yielding) until it is.
+    /// Meaningful only where prepare does something: the DS engine's
+    /// browser build answers for its worker threads; everywhere else
+    /// the default `true` boots on the first ask.
+    fn ready(&self, consoles: u32) -> bool {
+        let _ = consoles;
+        true
+    }
+
     /// Boot a pair, prime it into a link battle, and start the rollback
     /// session over it.
     fn start(&self, config: StartConfig) -> Result<crate::Match, crate::Error>;

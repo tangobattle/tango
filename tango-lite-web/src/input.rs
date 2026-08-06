@@ -24,6 +24,11 @@ thread_local! {
     /// direction that is still held. Keyed by device so unplugging one
     /// can't leave another's buttons stuck down.
     static PADS: RefCell<HashMap<gamepad_facade::Id, Pad>> = RefCell::new(HashMap::new());
+    /// The stylus, for a console with a touch screen: where it is
+    /// pressed on that screen, in the screen's own pixels, or `None`
+    /// lifted. Written by the play screen's pointer handlers, read by
+    /// the pump alongside [`joyflags`].
+    static STYLUS: Cell<Option<(u16, u16)>> = const { Cell::new(None) };
 }
 
 /// One controller's contribution, split by what produced it.
@@ -58,6 +63,17 @@ pub fn touch_set(mask: u32, bits: u32) {
 /// goes away mid-press, which otherwise leaves a key stuck down.
 pub fn touch_clear() {
     TOUCH.with(|t| t.set(0));
+    STYLUS.with(|s| s.set(None));
+}
+
+/// Where the stylus is pressed, or `None` lifted.
+pub fn stylus() -> Option<(u16, u16)> {
+    STYLUS.with(|s| s.get())
+}
+
+/// Press, drag, or lift the stylus.
+pub fn stylus_set(at: Option<(u16, u16)>) {
+    STYLUS.with(|s| s.set(at));
 }
 
 /// Every direction bit, as one field for [`touch_set`].
@@ -155,7 +171,8 @@ pub fn gamepads_clear() {
 /// The desktop app's default bindings, key for key: arrows to move,
 /// Z/X for A/B, A/S for L/R, Enter/Space for Start/Select. Deliberately
 /// not configurable: a lite build that needs a remapping screen isn't
-/// lite.
+/// lite. Q/W carry the DS's extra X/Y pair — dead bits on a GBA
+/// session, which masks its input word anyway.
 fn key_mask(code: &str) -> Option<u32> {
     Some(match code {
         "ArrowUp" => keys::UP,
@@ -164,6 +181,8 @@ fn key_mask(code: &str) -> Option<u32> {
         "ArrowRight" => keys::RIGHT,
         "KeyZ" => keys::A,
         "KeyX" => keys::B,
+        "KeyQ" => keys::X,
+        "KeyW" => keys::Y,
         "KeyA" => keys::L,
         "KeyS" => keys::R,
         "Enter" => keys::START,

@@ -269,6 +269,24 @@ impl tango_match::Backend for DsBackend {
         crate::link::KEYS_MASK
     }
 
+    #[cfg(target_arch = "wasm32")]
+    fn prepare(&self, consoles: u32) {
+        // The workers' bootstrap needs the app's glue URL, and the
+        // host's word for it beats melonds-rollback's stack-trace
+        // guesswork whenever the host has given one.
+        if let Some(url) = tango_match::hosting::wasm_glue_url() {
+            melonds_rollback::set_worker_shim_url(url);
+        }
+        // Spawn the link workers while the session build is still
+        // yielding — see the trait doc and melonds_rollback's own.
+        melonds_rollback::warm_workers(consoles as usize);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn ready(&self, consoles: u32) -> bool {
+        melonds_rollback::workers_ready(consoles as usize)
+    }
+
     fn frame_timing(&self) -> tango_match::FrameTiming {
         // The DS frame clock: 280095 scanline-pair cycles against its
         // 16.756991 MHz half-rate tick — the exact rational behind

@@ -49,12 +49,52 @@ use tango_session::replay::ReplaySession;
 use tango_session::singleplayer::SinglePlayerSession;
 use tango_session::Session;
 
-const SCREEN_W: usize = tango_session::replay::SCREEN_WIDTH as usize;
-const SCREEN_H: usize = tango_session::replay::SCREEN_HEIGHT as usize;
-
 /// The canvas the frame goes to. Looked up by id rather than through a
 /// mounted-node handle, because the pump outlives any one render.
 const CANVAS_ID: &str = "tango-screen";
+
+/// How a session's screens land on the canvas. The session's own
+/// composition is canonical — screens side by side, the shape replays
+/// and the wire see — but this is a portrait-phone app, so a
+/// multi-screen console (the DS) is *presented* stacked: same rows,
+/// re-sliced under one another, top screen above touch screen. A
+/// single-screen console passes through untouched.
+struct Presentation {
+    layout: tango_match::ScreenLayout,
+    /// Canvas size: the canonical composite for one screen, the
+    /// stacked arrangement for more.
+    width: u32,
+    height: u32,
+}
+
+impl Presentation {
+    fn of(session: &dyn Session) -> Self {
+        let layout = session.screen_layout();
+        let (width, height) = if layout.screens.len() > 1 {
+            (
+                layout.screens.iter().map(|s| s.width).max().unwrap_or(0),
+                layout.screens.iter().map(|s| s.height).sum(),
+            )
+        } else {
+            tango_session::composite_size(&layout)
+        };
+        Presentation { layout, width, height }
+    }
+
+    fn stacked(&self) -> bool {
+        self.layout.screens.len() > 1
+    }
+
+    /// Where the touch screen sits on the canvas, as
+    /// `(y offset, width, height)` — the stacked arrangement puts each
+    /// screen at x 0. `None` for a session without one.
+    pub fn touch_rect(&self) -> Option<(u32, u32, u32)> {
+        let touch = self.layout.touch?;
+        let y0 = self.layout.screens[..touch].iter().map(|s| s.height).sum();
+        let screen = &self.layout.screens[touch];
+        Some((y0, screen.width, screen.height))
+    }
+}
 
 /// Longest stretch of wall clock one pump call will try to make up. A
 /// tab that was hidden for a minute must not come back and run a
@@ -291,6 +331,13 @@ pub struct Status {
     pub priming: Option<Priming>,
     pub local_player_index: u8,
     pub opponent: String,
+    /// The joypad bits this session's console reads — what decides
+    /// whether the touch pad offers X/Y (the DS's extra pair).
+    pub keys_mask: u32,
+    /// The console's native frame rate, for turning tick counts into
+    /// seconds. Not [`fps_target`](tango_session::Drive::fps_target),
+    /// which moves with fast-forward and the match throttler.
+    pub fps: f32,
     /// Replay only: `(playhead, total)` in ticks.
     pub playhead: Option<(u32, u32)>,
     /// Replay only: how far the keyframe pass has got, in ticks. What
@@ -302,6 +349,9 @@ pub struct Status {
 
 struct Engine {
     session: Box<dyn Session>,
+    /// How this session's screens land on the canvas, fixed at boot —
+    /// a session's layout is a property of its mode.
+    presented: Presentation,
     driver: Driver,
     /// The session's audio, read by [`crate::audio::Sink::pump`]. Held
     /// here so it dies with the session it belongs to.
@@ -381,6 +431,9 @@ fn install(
     save_path: Option<std::path::PathBuf>,
 ) {
     stop();
+    // Whatever the last session left held — a button, the stylus —
+    // must not arrive as the new one's first input.
+    crate::input::touch_clear();
     if let Some(sink) = &sink {
         let mut sink = sink.borrow_mut();
         sink.resume_if_suspended();
@@ -395,6 +448,7 @@ fn install(
     let now = now_ms();
     ENGINE.with(|e| {
         *e.borrow_mut() = Some(Engine {
+            presented: Presentation::of(session.as_ref()),
             session,
             driver,
             stream: Some(stream),
@@ -454,6 +508,8 @@ pub fn status() -> Option<Status> {
         let pvp = engine.session.downcast_ref::<PvpSession>();
         let replay = engine.session.downcast_ref::<ReplaySession>();
         Some(Status {
+            keys_mask: engine.session.local_game().pvp.keys_mask(),
+            fps: engine.session.local_game().pvp.frame_timing().fps() as f32,
             playhead: replay.map(|r| (r.current_tick(), r.total_ticks())),
             prefetched: replay.map(|r| r.prefetch_progress()).unwrap_or(0),
             paused: replay.is_some_and(|r| r.is_paused()),
@@ -623,9 +679,10 @@ impl Engine {
         // you diff — so a controller is read here, on the same beat the
         // joyflags are handed over, rather than from a listener.
         crate::input::poll_gamepads();
-        // GBA-only frontend: the joypad word is the whole input.
-        self.session
-            .set_input(tango_session::HostInput::keys(crate::input::joyflags()));
+        self.session.set_input(tango_session::HostInput {
+            keys: crate::input::joyflags(),
+            touch: crate::input::stylus(),
+        });
 
         let mut budget = MAX_TICKS_PER_PUMP;
         while self.debt >= 1.0 && budget > 0 {
@@ -687,14 +744,18 @@ impl Engine {
     }
 
     fn paint(&mut self) {
+        let (w, h) = (self.presented.width as usize, self.presented.height as usize);
         if self.ctx.is_none() {
-            self.ctx = canvas_context();
+            self.ctx = canvas_context(self.presented.width, self.presented.height);
             self.surface = None;
         }
         let Some(ctx) = self.ctx.as_ref() else { return };
-        let frame = self.session.frame();
-        if frame.len() != SCREEN_W * SCREEN_H * 4 {
+        let mut frame = self.session.frame();
+        if frame.len() != w * h * 4 {
             return;
+        }
+        if self.presented.stacked() {
+            frame = stack_screens(&frame, &self.presented.layout);
         }
 
         // One JS-side buffer for the session's life, with an ImageData
@@ -704,10 +765,8 @@ impl Engine {
         // per-frame allocation of a 150KB typed array (and the garbage
         // that came with it) into a plain copy.
         if self.surface.is_none() {
-            let array = js_sys::Uint8ClampedArray::new_with_length((SCREEN_W * SCREEN_H * 4) as u32);
-            let Ok(image) =
-                web_sys::ImageData::new_with_js_u8_clamped_array_and_sh(&array, SCREEN_W as u32, SCREEN_H as u32)
-            else {
+            let array = js_sys::Uint8ClampedArray::new_with_length((w * h * 4) as u32);
+            let Ok(image) = web_sys::ImageData::new_with_js_u8_clamped_array_and_sh(&array, w as u32, h as u32) else {
                 return;
             };
             self.surface = Some((array, image));
@@ -745,14 +804,35 @@ fn flush_save(engine: &mut Engine) {
     crate::library::write_save(&path, &bytes);
 }
 
-fn canvas_context() -> Option<web_sys::CanvasRenderingContext2d> {
+/// Re-slice the session's canonical side-by-side composition into the
+/// stacked arrangement the canvas shows: each screen's rows gathered
+/// out of the wide raster and laid under the previous screen's. The
+/// same re-pack the desktop's vertical stacking does, minus its
+/// configurability.
+fn stack_screens(frame: &[u8], layout: &tango_match::ScreenLayout) -> Vec<u8> {
+    const BPP: usize = 4;
+    let src_stride: usize = layout.screens.iter().map(|s| s.width as usize).sum::<usize>() * BPP;
+    let mut out = Vec::with_capacity(frame.len());
+    let mut x0 = 0usize;
+    for screen in &layout.screens {
+        let (w, h) = (screen.width as usize, screen.height as usize);
+        for row in 0..h {
+            let at = row * src_stride + x0 * BPP;
+            out.extend_from_slice(&frame[at..at + w * BPP]);
+        }
+        x0 += w;
+    }
+    out
+}
+
+fn canvas_context(width: u32, height: u32) -> Option<web_sys::CanvasRenderingContext2d> {
     let canvas: web_sys::HtmlCanvasElement = web_sys::window()?
         .document()?
         .get_element_by_id(CANVAS_ID)?
         .dyn_into()
         .ok()?;
-    canvas.set_width(SCREEN_W as u32);
-    canvas.set_height(SCREEN_H as u32);
+    canvas.set_width(width);
+    canvas.set_height(height);
     // A GBA frame is fully opaque, and saying so lets the compositor
     // skip blending the canvas against what is behind it — which it
     // does on every one of these, upscaled.
@@ -763,6 +843,24 @@ fn canvas_context() -> Option<web_sys::CanvasRenderingContext2d> {
         .ok()??
         .dyn_into()
         .ok()
+}
+
+/// The touch screen's rectangle on the running session's canvas, as
+/// `(y offset, width, height)` in canvas pixels — the play screen's
+/// stylus handler maps pointer positions through this. `None` when
+/// nothing is running or the console has no touch screen.
+pub fn touch_rect() -> Option<(u32, u32, u32)> {
+    ENGINE.with(|e| e.borrow().as_ref().and_then(|engine| engine.presented.touch_rect()))
+}
+
+/// The running session's canvas size, for mapping pointer positions
+/// out of CSS space.
+pub fn canvas_size() -> Option<(u32, u32)> {
+    ENGINE.with(|e| {
+        e.borrow()
+            .as_ref()
+            .map(|engine| (engine.presented.width, engine.presented.height))
+    })
 }
 
 /// Drop the cached canvas handle. Called when the screen the canvas

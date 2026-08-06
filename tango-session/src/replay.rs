@@ -156,6 +156,12 @@ impl ReplaySession {
         if local_player >= 2 {
             return Err(crate::Error::BadLocalPlayerIndex);
         }
+
+        // The engine gets a head start on the two pairs playback runs
+        // (display + the keyframe pass's). The pairs boot lazily from
+        // the host's tick loop, so by then the event loop has turned —
+        // which is what a browser engine's worker startup needs.
+        games[local_player].pvp.prepare(4);
         // The replay's input stream is already absolute pair order
         // (core 0 runs player 0's game) — just widen into the seam's
         // vocabulary.
@@ -307,6 +313,7 @@ impl ReplaySession {
                 paused: paused.clone(),
                 cancel: cancel.clone(),
                 booted: false,
+                backend: games[local_player].pvp,
             },
             seek: SeekWorker {
                 seek: seek.clone(),
@@ -846,6 +853,9 @@ pub struct DriveWorker {
     paused: Arc<crate::PauseGate>,
     cancel: Arc<AtomicBool>,
     booted: bool,
+    /// The engine playback runs on, for its readiness gate — same
+    /// story as the PvP boot's.
+    backend: &'static (dyn tango_match::Backend + Send + Sync),
 }
 
 impl DriveWorker {
@@ -882,6 +892,14 @@ impl crate::Drive for DriveWorker {
     fn tick(&mut self) -> bool {
         if self.cancel.load(Ordering::Relaxed) {
             return false;
+        }
+        // What `prepare` started may still be coming up (a browser
+        // engine's worker threads finish starting between ticks) — the
+        // boot would spin on threads that can never arrive, so it
+        // waits the gate out. Playback shows its booting notice
+        // meanwhile.
+        if !self.booted && !self.backend.ready(4) {
+            return true;
         }
         if !self.boot_if_needed() {
             return false;

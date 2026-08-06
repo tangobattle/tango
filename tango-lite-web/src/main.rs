@@ -71,6 +71,15 @@ fn main() {
         // debuggable browser build and an opaque one.
         console_error_panic_hook::set_once();
         let _ = console_log::init_with_level(log::Level::Info);
+        // Where this app's wasm-bindgen glue is served from — build.sh
+        // fixes the name, and it sits beside index.html. An engine that
+        // spawns Web Workers (the DS games') bootstraps them from this;
+        // it cannot reliably discover it from inside the module.
+        if let Some(window) = web_sys::window() {
+            if let Ok(url) = web_sys::Url::new_with_base("tango-lite-web.js", &window.location().href().unwrap_or_default()) {
+                tango_match::hosting::set_wasm_glue_url(url.href());
+            }
+        }
         input::install_keyboard();
         input::install_gamepads();
         dioxus::launch(app::App);

@@ -1660,7 +1660,6 @@ pub mod priming {
             events: &tango_match::telemetry::EventSink,
             cancel: Option<&std::sync::atomic::AtomicBool>,
         ) -> Result<(), tango_match::Error> {
-            let started = std::time::Instant::now();
             let before = link.console(0).save_memory();
             // The handoff latches: set by the standing battle-start
             // trap on each console — what the walk runs until, exactly
@@ -1693,9 +1692,8 @@ pub mod priming {
             let saved = link.console(0).save_memory() != before;
             let confirms = counter.load(std::sync::atomic::Ordering::Relaxed);
             log::info!(
-                "{} priming: board at {BUDGET} frames in {:.1?}, {confirms} confirms, saved={saved}",
-                self.tag,
-                started.elapsed()
+                "{} priming: board at {BUDGET} frames, {confirms} confirms, saved={saved}",
+                self.tag
             );
             if !saved {
                 log::warn!(
@@ -1785,9 +1783,8 @@ pub mod priming {
             }
             self.retire_walk(link, events, &fired);
             log::info!(
-                "{} priming: match type {match_type:?}, battle transition {frames}+{tail} frames past the board, {:.1?} total",
-                self.tag,
-                started.elapsed()
+                "{} priming: match type {match_type:?}, battle transition {frames}+{tail} frames past the board",
+                self.tag
             );
             Ok(())
         }

@@ -126,6 +126,18 @@ pub fn owned_games() -> Vec<GameRef> {
     .unwrap_or_default()
 }
 
+/// The stored ROM file's extension. Cosmetic — detection is by content
+/// — but a DS dump filed as `.gba` would be a lie. The console is read
+/// off the input word: only a DS reads X/Y.
+fn rom_extension(game: GameRef) -> &'static str {
+    use tango_session::keys;
+    if game.pvp.keys_mask() & (keys::X | keys::Y) != 0 {
+        "nds"
+    } else {
+        "gba"
+    }
+}
+
 /// File an imported ROM under the game it turns out to be.
 ///
 /// Returns what it was, or `None` if this build has no support for it —
@@ -134,7 +146,8 @@ pub fn owned_games() -> Vec<GameRef> {
 pub async fn import_rom(file_name: &str, bytes: &[u8]) -> Option<GameRef> {
     let game = game::detect(bytes)?;
     let (family, variant) = game.family_and_variant();
-    let path = with(|library| library.config.roms_path().join(format!("{family}-{variant}.gba")))?;
+    let ext = rom_extension(game);
+    let path = with(|library| library.config.roms_path().join(format!("{family}-{variant}.{ext}")))?;
     log::info!("importing {file_name} as {family} v{variant}");
     with(|library| library.files.write(&path, bytes))?.ok()?;
     rescan().await;
@@ -261,8 +274,9 @@ pub async fn delete_file(path: PathBuf) {
 /// and also where an accidental tap is easiest.
 pub async fn delete_game(game: GameRef) {
     let (family, variant) = game.family_and_variant();
+    let ext = rom_extension(game);
     let paths = with(|library| {
-        let mut paths = vec![library.config.roms_path().join(format!("{family}-{variant}.gba"))];
+        let mut paths = vec![library.config.roms_path().join(format!("{family}-{variant}.{ext}"))];
         if let Some(saves) = library.saves.read().get(&game) {
             paths.extend(saves.iter().map(|s| s.path.clone()));
         }

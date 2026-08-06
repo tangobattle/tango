@@ -188,24 +188,29 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # mgba's C, cross-compiled for wasm32: mgba-sys's build script,
-      # bindgen, and the cc crate read these.
+      # The emulator cores' C and C++, cross-compiled for wasm32: the
+      # mgba-sys/melonds-sys build scripts, bindgen, and the cc crate
+      # read these. ninja-build is for melonds-sys's cmake generator.
       - name: Install wasi-sdk
         run: |
           curl -fsSL -o /tmp/wasi-sdk.tar.gz \
             "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sdk-25.0-x86_64-linux.tar.gz"
           sudo tar -C /opt -xzf /tmp/wasi-sdk.tar.gz
           sudo mv /opt/wasi-sdk-25.0-x86_64-linux /opt/wasi-sdk
+          sudo apt-get update -y && sudo apt-get install -y ninja-build
           {
             echo "WASI_SDK_PATH=/opt/wasi-sdk"
             echo "CC_wasm32_unknown_unknown=/opt/wasi-sdk/bin/clang"
             echo "AR_wasm32_unknown_unknown=/opt/wasi-sdk/bin/llvm-ar"
           } >> "$GITHUB_ENV"
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Nightly with rust-src: build.sh builds a shared-memory module
+      # (the DS engine's C++ needs atomics) over a -Zbuild-std std.
+      - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: stable
+          toolchain: nightly
           targets: wasm32-unknown-unknown
+          components: rust-src
 
       # See the note in release-win32-x64 — restore-only, filled by
       # ci.yaml's check-web.

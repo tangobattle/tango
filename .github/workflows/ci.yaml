@@ -121,34 +121,52 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # See the note in release.yaml's release-web.
+      # See the note in release.yaml's release-web. ninja-build is for
+      # melonds-sys, whose build script drives the melonDS cmake build
+      # with the Ninja generator.
       - name: Install wasi-sdk
         run: |
           curl -fsSL -o /tmp/wasi-sdk.tar.gz \
             "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sdk-25.0-x86_64-linux.tar.gz"
           sudo tar -C /opt -xzf /tmp/wasi-sdk.tar.gz
           sudo mv /opt/wasi-sdk-25.0-x86_64-linux /opt/wasi-sdk
+          sudo apt-get update -y && sudo apt-get install -y ninja-build
           {
             echo "WASI_SDK_PATH=/opt/wasi-sdk"
             echo "CC_wasm32_unknown_unknown=/opt/wasi-sdk/bin/clang"
             echo "AR_wasm32_unknown_unknown=/opt/wasi-sdk/bin/llvm-ar"
           } >> "$GITHUB_ENV"
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Nightly with rust-src: the web build is a shared-memory module
+      # (the DS engine's C++ needs atomics), and std for a non-default
+      # target-feature set only exists via -Zbuild-std.
+      - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: stable
+          toolchain: nightly
           targets: wasm32-unknown-unknown
+          components: rust-src
 
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-web
           cache-on-failure: true
 
-      # Triple, profile and features match tango-lite-web/build.sh —
-      # note `release`, not `release-dist`; the web build keeps the
+      # Triple, profile, features AND flags match tango-lite-web/build.sh
+      # — note `release`, not `release-dist`; the web build keeps the
       # stock profile.
       - name: Check
-        run: cargo check --package tango-lite-web --features gamesupport-all --profile release --target wasm32-unknown-unknown
+        env:
+          RUSTFLAGS: >-
+            -Ctarget-feature=+atomics,+bulk-memory,+mutable-globals
+            -Clink-arg=--shared-memory
+            -Clink-arg=--import-memory
+            -Clink-arg=--max-memory=2147483648
+            -Clink-arg=-zstack-size=8388608
+            -Clink-arg=--export=__wasm_init_tls
+            -Clink-arg=--export=__tls_size
+            -Clink-arg=--export=__tls_align
+            -Clink-arg=--export=__tls_base
+        run: cargo check --package tango-lite-web --features gamesupport-all --profile release --target wasm32-unknown-unknown -Zbuild-std=std,panic_abort
 
   check-linux-x86_64:
     runs-on: ubuntu-22.04
