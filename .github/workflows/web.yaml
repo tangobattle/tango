@@ -1,0 +1,97 @@
+name: web
+
+# The browser app's build + deploy, separate from the platform release
+# so it can also be run by hand (workflow_dispatch) — the site deploys
+# to Cloudflare Pages, not to a GitHub release, so it has nothing to
+# wait for and nothing tag-specific about it.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  deploy-web:
+    # ubuntu-latest rather than the 22.04 pin: nothing here links glibc.
+    # It only has to be the same image as ci.yaml's check-web, whose
+    # cache this restores.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The emulator cores' C and C++, cross-compiled for wasm32: the
+      # mgba-sys/melonds-sys build scripts, bindgen, and the cc crate
+      # read these. ninja-build is for melonds-sys's cmake generator.
+      - name: Install wasi-sdk
+        run: |
+          curl -fsSL -o /tmp/wasi-sdk.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sdk-25.0-x86_64-linux.tar.gz"
+          sudo tar -C /opt -xzf /tmp/wasi-sdk.tar.gz
+          sudo mv /opt/wasi-sdk-25.0-x86_64-linux /opt/wasi-sdk
+          sudo apt-get update -y && sudo apt-get install -y ninja-build
+          {
+            echo "WASI_SDK_PATH=/opt/wasi-sdk"
+            echo "CC_wasm32_unknown_unknown=/opt/wasi-sdk/bin/clang"
+            echo "AR_wasm32_unknown_unknown=/opt/wasi-sdk/bin/llvm-ar"
+          } >> "$GITHUB_ENV"
+
+      # Nightly with rust-src: build.sh builds a shared-memory module
+      # (the DS engine's C++ needs atomics) over a -Zbuild-std std.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          targets: wasm32-unknown-unknown
+          components: rust-src
+
+      # See the note in release.yaml's release-win32-x64 — restore-only,
+      # filled by ci.yaml's check-web.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-web
+          save-if: false
+
+      # build.sh shells out to wasm-bindgen, and the CLI refuses to
+      # process a module linked against any other version of the
+      # wasm-bindgen crate — so the version comes out of the lockfile
+      # rather than being pinned here to drift.
+      - name: Install wasm-bindgen
+        run: |
+          ver=$(sed -n '/^name = "wasm-bindgen"$/{n;s/^version = "\(.*\)"$/\1/p;}' Cargo.lock)
+          curl -fsSL "https://github.com/rustwasm/wasm-bindgen/releases/download/${ver}/wasm-bindgen-${ver}-x86_64-unknown-linux-musl.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin --strip-components=1 \
+                "wasm-bindgen-${ver}-x86_64-unknown-linux-musl/wasm-bindgen"
+
+      # Optional to build.sh, not to a deploy: without wasm-opt the
+      # module ships at ~14MB. A binaryen release rather than apt:
+      # ubuntu's binaryen (117 on noble) predates the standardized
+      # feature-set default and can't parse the reference-types
+      # instructions rustc emits by default since 1.82 — see the note
+      # in build.sh.
+      - name: Install wasm-opt
+        run: |
+          curl -fsSL -o /tmp/binaryen.tar.gz \
+            "https://github.com/WebAssembly/binaryen/releases/download/version_131/binaryen-version_131-x86_64-linux.tar.gz"
+          sudo tar -C /opt -xzf /tmp/binaryen.tar.gz
+          echo "/opt/binaryen-version_131/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: ./tango-lite-web/build.sh
+
+      # dist/ is the whole site — flat static files, pushed to the
+      # existing direct-upload Pages project (lite.tango.n1gp.net).
+      # `--branch=main` because a tag checkout is a detached HEAD:
+      # wrangler can't read a branch name off it, and the deploy has to
+      # name the project's production branch to be a production deploy
+      # rather than a preview.
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy tango-lite-web/dist --project-name=tango-lite-web --branch=main
