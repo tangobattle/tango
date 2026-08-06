@@ -21,7 +21,9 @@ out="$here/dist"
 # flags and the std rebuild (-Zbuild-std, hence nightly) are for.
 # --import-memory because wasm-bindgen's threads transform insists the
 # memory arrive from JS; the TLS exports are what that transform calls
-# to set a spawned thread's TLS block up. A page instantiating this
+# to set a spawned thread's TLS block up, and __heap_base/__data_end
+# are where it injects the thread-id slot — older rustc exported those
+# two by default, newer nightlies don't. A page instantiating this
 # must be served cross-origin-isolated (COOP/COEP — see serve.py and
 # the _headers file), which is what makes a *shared* WebAssembly.Memory
 # constructible at all.
@@ -34,7 +36,9 @@ export RUSTFLAGS="${RUSTFLAGS:-} \
     -Clink-arg=--export=__wasm_init_tls \
     -Clink-arg=--export=__tls_size \
     -Clink-arg=--export=__tls_align \
-    -Clink-arg=--export=__tls_base"
+    -Clink-arg=--export=__tls_base \
+    -Clink-arg=--export=__heap_base \
+    -Clink-arg=--export=__data_end"
 
 # The one cc-built C dependency outside the emulator sys crates (zstd,
 # via tango-patch) has to carry the atomics feature too, or wasm-ld

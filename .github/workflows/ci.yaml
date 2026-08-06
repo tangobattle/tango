@@ -166,6 +166,8 @@ jobs:
             -Clink-arg=--export=__tls_size
             -Clink-arg=--export=__tls_align
             -Clink-arg=--export=__tls_base
+            -Clink-arg=--export=__heap_base
+            -Clink-arg=--export=__data_end
         run: cargo check --package tango-lite-web --features gamesupport-all --profile release --target wasm32-unknown-unknown -Zbuild-std=std,panic_abort
 
   check-linux-x86_64:

@@ -666,9 +666,7 @@ impl Replay {
             .flatten()
             .max_by_key(|s| s.tick())
     }
-
 }
-
 
 /// The statistics pass: a second pair racing ahead of the viewer
 /// through the whole stream, laying a keyframe every
@@ -1163,11 +1161,11 @@ mod tests {
         assert!(store.snapshot_needed(KEYFRAME_INTERVAL + 2));
         store.push(KEYFRAME_INTERVAL + 2, cap(KEYFRAME_INTERVAL + 2));
         assert_eq!(store.best_at_or_before(KEYFRAME_INTERVAL).map(|s| s.tick()), Some(1));
-        assert_eq!(store.best_in_range(1, 500).map(|s| s.tick()), Some(KEYFRAME_INTERVAL + 2));
         assert_eq!(
-            store.best_in_range(KEYFRAME_INTERVAL + 2, 500).map(|s| s.tick()),
-            None
+            store.best_in_range(1, 500).map(|s| s.tick()),
+            Some(KEYFRAME_INTERVAL + 2)
         );
+        assert_eq!(store.best_in_range(KEYFRAME_INTERVAL + 2, 500).map(|s| s.tick()), None);
     }
 
     /// The ring keeps a bounded window behind its anchor: entries
@@ -1179,10 +1177,7 @@ mod tests {
         for tick in 0..=horizon * 2 {
             ring.insert(tick, cap(tick));
         }
-        assert_eq!(
-            ring.best_at_or_before(horizon * 2).map(|s| s.tick()),
-            Some(horizon * 2)
-        );
+        assert_eq!(ring.best_at_or_before(horizon * 2).map(|s| s.tick()), Some(horizon * 2));
         // The oldest entries fell out as the anchor (dragged by the
         // inserts) moved past them.
         assert_eq!(ring.best_at_or_before(horizon - 1).map(|s| s.tick()), None);
