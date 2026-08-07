@@ -766,11 +766,18 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save:
             mega_limit: Some(mega.clamp(0, 10)),
             giga_limit: Some(giga.clamp(0, 10)),
             reg_memory: Some(self.save.buf[0x2148] + 4),
-            max_copies: |chip| match chip.class() {
-                tango_gamesupport_common_dataview::rom::ChipClass::Mega
-                | tango_gamesupport_common_dataview::rom::ChipClass::Giga => 1,
-                tango_gamesupport_common_dataview::rom::ChipClass::Standard => 4,
-                _ => 0,
+            max_copies: |chip| {
+                // Dark chips can never enter a folder in BN4 — the game
+                // only offers them in battle — so no copies are legal.
+                if chip.dark() {
+                    return 0;
+                }
+                match chip.class() {
+                    tango_gamesupport_common_dataview::rom::ChipClass::Mega
+                    | tango_gamesupport_common_dataview::rom::ChipClass::Giga => 1,
+                    tango_gamesupport_common_dataview::rom::ChipClass::Standard => 4,
+                    _ => 0,
+                }
             },
             ..Default::default()
         }

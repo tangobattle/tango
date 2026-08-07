@@ -83,11 +83,12 @@ pub fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &O
 }
 
 /// The chips offered by the auto-battle-data editor's library, as chip
-/// ids: program advances (always available to the deck) plus every other
-/// chip the player actually holds in their pack. Filtered by `filter`
-/// (case-insensitive name match) and in `sort` order. Ties fall back to
-/// id for a stable order. Stable sorts (Id / Name) keep a row in place
-/// while its count fields are edited; Used reorders as counts change.
+/// ids: program advances and dark chips (always available to the deck)
+/// plus every other chip the player actually holds in their pack.
+/// Filtered by `filter` (case-insensitive name match) and in `sort`
+/// order. Ties fall back to id for a stable order. Stable sorts (Id /
+/// Name) keep a row in place while its count fields are edited; Used
+/// reorders as counts change.
 fn sorted_auto_battle_data_chips(loaded: &OpenSave, sort: AutoBattleDataSort, filter: &str) -> Vec<usize> {
     use crate::dataview::rom::ChipClass as CC;
     let assets = loaded.assets.as_ref();
@@ -111,10 +112,13 @@ fn sorted_auto_battle_data_chips(loaded: &OpenSave, sort: AutoBattleDataSort, fi
         if name.trim().is_empty() {
             continue;
         }
-        // Program advances are always offered; every other chip must be
+        // Program advances are always offered, and so are dark chips:
+        // the games track their use counts even where the pack can never
+        // hold one (BN4 only ever offers dark chips in battle, but the
+        // dark soul plays back what you used). Every other chip must be
         // in the player's pack (some code variant owned), matching the
         // library editor's notion of "owned".
-        if !is_pa {
+        if !is_pa && !info.dark() {
             let in_pack = (0..info.codes().len()).any(|variant| {
                 chips_view
                     .as_ref()
