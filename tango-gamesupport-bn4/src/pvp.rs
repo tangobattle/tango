@@ -105,6 +105,28 @@ impl Pvp {
         }
         false
     }
+
+    /// Probe/trainer tooling: overwrite `player`'s committed hand —
+    /// fired count zeroed, `ids` (up to 5, fire order) into the chip
+    /// block as a complete pick record, the rest emptied. Returns
+    /// false (writing nothing) while the slots aren't two live player
+    /// units. Call on BOTH cores in the same tick to keep the pair's
+    /// simulations agreeing.
+    pub fn debug_set_hand(&self, core: &mut mgba::core::Core, player: u8, ids: &[u16]) -> bool {
+        if battle_units(&self.offsets.ewram, core).is_none() {
+            return false;
+        }
+        let base = self.offsets.ewram.chip_blocks + (player as u32 & 1) * 0x50;
+        core.raw_write_16(base, -1, 0);
+        write_hand(self.offsets, core, player as u32 & 1, ids, 0);
+        true
+    }
+
+    /// Both players' loaded-chip readings (the poller's own read), for
+    /// headless probe assertions.
+    pub fn debug_loaded_chips(&self, core: &mut mgba::core::Core) -> [Option<LoadedChip>; 2] {
+        loaded_chips(&self.offsets.ewram, core)
+    }
 }
 
 impl tango_backend_mgba::GameSupport for Pvp {
@@ -425,6 +447,145 @@ impl tango_backend_mgba::GameSupport for Pvp {
             chips: Default::default(),
         })
     }
+
+    fn trainer(&self) -> Option<Box<dyn tango_match::trainer::Trainer<mgba::core::Core>>> {
+        /// Ticks after a custom close during which a frozen battle
+        /// clock still means "resume transition", not "a new screen
+        /// opening".
+        const POST_CLOSE: u8 = 90;
+
+        struct Trainer {
+            offsets: &'static Offsets,
+            /// Previous custom-flag byte per core per player (4 =
+            /// picking) — the close-edge detector's memory.
+            prev: [[u8; 2]; 2],
+            /// The game's battle clock last seen per core — a stall
+            /// outside the post-close window is a custom screen
+            /// OPENING (or a hit-stop frame, which the same handling
+            /// tolerates).
+            last_bt: [u32; 2],
+            /// Post-close countdown per core (see `POST_CLOSE`).
+            post_close: [u8; 2],
+            /// Whether a forced hand was being held last tick, per
+            /// core per player — a clear must WRITE the hand empty
+            /// once, not just stop writing: the stranded phantoms
+            /// would fire as duds and wedge the next custom open.
+            was_forced: [[bool; 2]; 2],
+        }
+        impl tango_match::trainer::Trainer<mgba::core::Core> for Trainer {
+            fn tick(
+                &mut self,
+                core: &mut mgba::core::Core,
+                core_index: usize,
+                control: &tango_match::trainer::TrainerControl,
+            ) {
+                // A forced hand is PERMANENT: every battle tick
+                // outside that player's own open custom screen, the
+                // fired cursor is rewound to 0 and the whole block
+                // re-asserted (see `write_hand`) — a fire's increment
+                // lives only inside its own frame, so the hand never
+                // depletes, the in-game display always mirrors the
+                // forced list, and the loaded chip is always its
+                // lead, with no per-turn fire limit.
+                //
+                // The one moment the hand must instead read EMPTY is
+                // a custom screen OPENING: the game walks each
+                // unfired pick back toward its deck record, and a
+                // phantom the record doesn't back wedges that walk —
+                // the screens half-open (battle clock frozen, flags
+                // never 4) and the battle locks up for good. The
+                // battle clock stalling outside the pick and the
+                // post-close resume is that opening (hit-stop frames
+                // trip it too, harmlessly — the next tick refills),
+                // and the hand empties for those frames so the walk
+                // sees nothing. Clearing the forced hand mid-turn
+                // leaves the committed chips to the game; from the
+                // next close on, the pick is fully organic. Both
+                // cores run the same lockstep simulation, so each
+                // sees the same state on its own tick call and both
+                // copies of the block stay in step — the same
+                // both-cores contract `debug_set_hp` documents.
+                let mut any_closed = false;
+                let mut flags = [0u8; 2];
+                for player in 0..2usize {
+                    let flag = core.raw_read_8(self.offsets.ewram.custom_flags + player as u32, -1);
+                    any_closed |= self.prev[core_index][player] == 4 && flag != 4;
+                    flags[player] = flag;
+                }
+                if any_closed {
+                    self.post_close[core_index] = POST_CLOSE;
+                } else if self.post_close[core_index] > 0 {
+                    self.post_close[core_index] -= 1;
+                }
+                let opening = false;
+                for player in 0..2usize {
+                    let flag = flags[player];
+                    let closed = self.prev[core_index][player] == 4 && flag != 4;
+                    self.prev[core_index][player] = flag;
+                    if flag == 4 {
+                        // Screen open: the game is writing the real
+                        // picks — leave it alone until the close edge.
+                        continue;
+                    }
+                    let forced = control.forced_hand(player);
+                    let held = forced.is_some();
+                    let cleared = self.was_forced[core_index][player] && !held;
+                    self.was_forced[core_index][player] = held;
+                    // battle_state is stale-live outside battle, so
+                    // the flag alone isn't proof of a live hand — two
+                    // live player units are.
+                    if battle_units(&self.offsets.ewram, core).is_none() {
+                        continue;
+                    }
+                    let base = self.offsets.ewram.chip_blocks + player as u32 * 0x50;
+                    if cleared {
+                        // Clearing hands the pick back to the game:
+                        // empty the hand once (rather than stranding
+                        // forced phantoms it never picked) and stop —
+                        // the next custom screen deals organically. A
+                        // clear surfacing exactly at a close edge is
+                        // the one exception: the game just committed a
+                        // real pick, which stands.
+                        if !closed {
+                            core.raw_write_16(base, -1, 0);
+                            for slot in 0..6u32 {
+                                core.raw_write_16(base + 2 + slot * 2, -1, 0xffff);
+                                core.raw_write_16(base + 0x0e + slot * 2, -1, 0);
+                                core.raw_write_16(base + 0x32 + slot * 2, -1, 0xffff);
+                            }
+                        }
+                        continue;
+                    }
+                    let Some(ids) = forced else {
+                        continue;
+                    };
+                    if opening && !closed {
+                        // The whole hand reads empty for the opening
+                        // frames — with fired pinned at 0 the entire
+                        // list is "unfired", and every slot would be a
+                        // phantom for the pick-return walk.
+                        for slot in 0..6u32 {
+                            core.raw_write_16(base + 2 + slot * 2, -1, 0xffff);
+                            core.raw_write_16(base + 0x32 + slot * 2, -1, 0xffff);
+                        }
+                    } else {
+                        // The pin: a fire's increment is rewound the
+                        // same tick, so the hand never depletes and the
+                        // lead is always loaded.
+                        core.raw_write_16(base, -1, 0);
+                        write_hand(self.offsets, core, player as u32, &ids, 0);
+                    }
+                }
+            }
+        }
+        Some(Box::new(Trainer {
+            offsets: self.offsets,
+            prev: [[0; 2]; 2],
+            last_bt: [0; 2],
+            post_close: [0; 2],
+            was_forced: [[false; 2]; 2],
+        }))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -511,6 +672,56 @@ fn loaded_chips(ewram: &EWRAMOffsets, core: &mut mgba::core::Core) -> [Option<Lo
         }
     }
     chips
+}
+
+/// Overwrite `player`'s chip block with the forced hand from cursor
+/// position `fired` (the trainer pins the cursor to 0, so in practice
+/// this writes the whole list): ids at +0x02, the save-format picks at
+/// +0x32 (`id | code << 9`, each chip's first ROM code — organic
+/// entries AirShot* = 0x3404, CannonB = 0x0201 pinned the format), and
+/// the matching damage array at +0x0e (u16 per slot, indexed like the
+/// ids — the custom screen computes it at pick time, the fire path
+/// deals `damage[fired]`, and a slot left 0 is a fire that hits for
+/// nothing), all off the ROM's own chip table
+/// (`ROMOffsets::chip_data`). Slot 5 stays empty: the array is 6 wide,
+/// and `ids[6]` would read the damage array as a chip id.
+///
+/// The per-tick re-assert is load-bearing: the block is derived state
+/// the game refreshes against its true (heap-side, unmapped) pick
+/// record — a slot that record doesn't back morphs into the nameless
+/// dud pseudo-chip 0x185 ~25 ticks after it loads, and outrunning that
+/// between ticks is what keeps a forced chip real.
+fn write_hand(offsets: &Offsets, core: &mut mgba::core::Core, player: u32, ids: &[u16], fired: usize) {
+    let base = offsets.ewram.chip_blocks + player * 0x50;
+    let valid: Vec<u16> = ids
+        .iter()
+        .copied()
+        .filter(|&id| id != 0 && id <= 0x0fff)
+        .take(5)
+        .collect();
+    for slot in 0..6usize {
+        let id = if slot >= 5 {
+            None
+        } else {
+            valid.get(slot.saturating_sub(fired)).copied()
+        };
+        core.raw_write_16(base + 2 + slot as u32 * 2, -1, id.unwrap_or(0xffff));
+        // The annotated pick carries the chip's FIRST code off its own
+        // ROM record — a real code the game's folder-side walks can
+        // match, where the wildcard * (26) matches nothing.
+        let annotated = id.map(|id| {
+            let code = core.raw_read_8(offsets.rom.chip_data + id as u32 * 0x2c, -1).min(26) as u16;
+            id | code << 9
+        });
+        core.raw_write_16(base + 0x32 + slot as u32 * 2, -1, annotated.unwrap_or(0xffff));
+        // The matching damage cell, straight off the ROM chip table —
+        // the fire path deals `damage[fired]`, and a fire's mid-frame
+        // load of the next slot stashes from here too.
+        let attack = id
+            .map(|id| core.raw_read_16(offsets.rom.chip_data + id as u32 * 0x2c + 0x1a, -1))
+            .unwrap_or(0);
+        core.raw_write_16(base + 0x0e + slot as u32 * 2, -1, attack);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -616,6 +827,9 @@ struct ROMOffsets {
     /// (`PrimeConfig::disable_bgm`).
     battle_start_play_music_call: u32,
 
+    /// The ROM's chip data table (0x2c-byte records by chip id).
+    chip_data: u32,
+
     /// Where the battle loop stores the round result: the local player
     /// (= player 0 on core 0, whose traps report) won/lost by KO. The
     /// round verdict, reported to the telemetry lifecycle sink.
@@ -720,6 +934,7 @@ static B4BE_00: Offsets = Offsets {
         vs_prompt_poll:                         0x0803a32e,
         match_end_ret:                          0x08004f68,
         battle_start_play_music_call:               0x080074bc,
+        chip_data:                              0x080197ec,
     },
 };
 
@@ -745,6 +960,7 @@ static B4WE_00: Offsets = Offsets {
         vs_prompt_poll:                         0x0803a326,
         match_end_ret:                          0x08004f68,
         battle_start_play_music_call:               0x080074bc,
+        chip_data:                              0x080197ec,
     },
 };
 
@@ -770,6 +986,7 @@ static B4BJ_01: Offsets = Offsets {
         vs_prompt_poll:                         0x0803a242,
         match_end_ret:                          0x08004f48,
         battle_start_play_music_call:               0x08007494,
+        chip_data:                              0x0801972c,
     },
 };
 
@@ -795,5 +1012,6 @@ static B4WJ_01: Offsets = Offsets {
         vs_prompt_poll:                         0x0803a23a,
         match_end_ret:                          0x08004f48,
         battle_start_play_music_call:               0x08007494,
+        chip_data:                              0x0801972c,
     },
 };
