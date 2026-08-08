@@ -574,11 +574,15 @@ struct EWRAMOffsets {
     /// pinned rather than guessed from a mid-struct anchor.
     unit: u32,
     /// Player 0's selected-chip block; player 1's is 0x24 beyond. Layout:
-    /// +0 u16 ids[6] (0xFFFF = empty), +0xc u16 codes[6]. Written when
-    /// the owner's console commits its selection (so cross-core write
-    /// ticks differ inside the shared pause), cleared at custom open.
-    /// Indexed by absolute player, NOT by unit slot. Derived empirically
-    /// from the golden replays.
+    /// +0 u16 ids[6] (0xFFFF = empty), +0xc u16 DAMAGE[6] — the power
+    /// the game computed for each pick, not chip codes: an organic
+    /// selection reads 100/20/9999/50 there (9999 being the game's own
+    /// big-number sentinel), which no code encoding produces. Written
+    /// when the owner's console commits its selection (so cross-core
+    /// write ticks differ inside the shared pause), cleared at custom
+    /// open. Indexed by absolute player, NOT by unit slot. Derived
+    /// empirically from the golden replays; the damage reading came
+    /// later, from a training-mode forcing probe.
     chip_blocks: u32,
 
     /// Battle-mode state entry that pins the custom screen: the u16 here
