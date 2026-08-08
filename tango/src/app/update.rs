@@ -185,6 +185,15 @@ impl App {
                 match session::spawn_training(&self.scanners, &self.config, &self.audio_binder, loaded) {
                     Ok((s, audio, drive)) => {
                         self.session.active = Some(Box::new(s));
+                        self.session.training_panes = Some(session::TrainingPanes {
+                            chips: loaded.chips.clone(),
+                            picker_open: false,
+                            // Editing the dummy's hand is the common
+                            // first reach, and the player starts on
+                            // seat 0 — open on the other side.
+                            picker_side: 1,
+                            query: String::new(),
+                        });
                         self.session.audio_binding = audio;
                         self.session.attach_drive_threads([drive]);
                         self.session.session_installed();

@@ -122,6 +122,21 @@ impl std::fmt::Debug for PvpPanes {
     }
 }
 
+/// Training-only presentation state riding alongside the session: the
+/// ROM's baked chip table (id-indexed names + Arc-backed icon handles,
+/// cloned from the launching [`selection::LoadedSave`]) for the
+/// forced-hand picker, plus the picker's own view state. Set alongside
+/// `active` when a training session installs, cleared on close.
+pub struct TrainingPanes {
+    pub chips: Vec<tango_gamesupport::ChipDisplay>,
+    /// Whether the forced-hand picker panel stands open over the bar.
+    pub picker_open: bool,
+    /// Which absolute player's hand the picker is editing (0 or 1).
+    pub picker_side: usize,
+    /// The picker's chip-name filter text.
+    pub query: String,
+}
+
 /// What the framebuffer widget's mouse area reports for a console with
 /// a touch screen. Positions arrive already mapped into the touch
 /// screen's own pixels (clamped to its edges), plus whether the raw
@@ -488,6 +503,10 @@ pub struct State {
     /// session engine deliberately doesn't carry. Set alongside
     /// `active` when a PvP session installs, cleared on close.
     pub pvp_panes: Option<PvpPanes>,
+    /// Training-only: the chip table + picker state for the forced-hand
+    /// panel. Set alongside `active` when a training session installs,
+    /// cleared on close.
+    pub training_panes: Option<TrainingPanes>,
     /// Path of the replay the active playback session is watching —
     /// what the transport bar's clip export addresses (the export job
     /// itself lives in the Replays tab, keyed by path). Set alongside
@@ -611,6 +630,7 @@ impl Default for State {
             session_seq: 0,
             audio_binding: None,
             pvp_panes: None,
+            training_panes: None,
             replay_path: None,
             results: None,
             opponent_panel: anim::Overlay::new(false),
@@ -918,6 +938,7 @@ impl State {
             let _ = drive.join();
         }
         self.pvp_panes = None;
+        self.training_panes = None;
         self.replay_path = None;
         self.current_frame = None;
         self.pip_frame = None;
