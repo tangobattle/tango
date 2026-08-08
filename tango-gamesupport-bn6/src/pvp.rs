@@ -144,6 +144,26 @@ impl Pvp {
         }
         false
     }
+
+    /// Probe/trainer tooling: overwrite `player`'s committed hand —
+    /// fired count zeroed, `ids` (up to 6, fire order) into the chip
+    /// block, the rest emptied. Returns false (writing nothing) while
+    /// the slots aren't two live player units. Call on BOTH cores in
+    /// the same tick to keep the pair's simulations agreeing.
+    pub fn debug_set_hand(&self, core: &mut mgba::core::Core, player: u8, ids: &[u16]) -> bool {
+        let ewram = &self.offsets.ewram;
+        if battle_units(ewram, core).is_none() {
+            return false;
+        }
+        write_hand(ewram, core, player as u32 & 1, ids);
+        true
+    }
+
+    /// Both players' loaded-chip readings (the poller's own read), for
+    /// headless probe assertions.
+    pub fn debug_loaded_chips(&self, core: &mut mgba::core::Core) -> [Option<LoadedChip>; 2] {
+        loaded_chips(&self.offsets.ewram, core)
+    }
 }
 
 impl tango_backend_mgba::GameSupport for Pvp {
@@ -513,6 +533,56 @@ impl tango_backend_mgba::GameSupport for Pvp {
             chips: Default::default(),
         })
     }
+
+    fn trainer(&self) -> Option<Box<dyn tango_match::trainer::Trainer<mgba::core::Core>>> {
+        struct Trainer {
+            ewram: &'static EWRAMOffsets,
+            /// Previous custom-flag byte per core per player (4 =
+            /// picking) — the edge detector's memory.
+            prev: [[u8; 2]; 2],
+        }
+        impl tango_match::trainer::Trainer<mgba::core::Core> for Trainer {
+            fn tick(
+                &mut self,
+                core: &mut mgba::core::Core,
+                core_index: usize,
+                control: &tango_match::trainer::TrainerControl,
+            ) {
+                // A forced hand lands on the 4 -> 0 edge of that
+                // player's custom flag: the moment they confirm. The
+                // game's own pick writes land while the flag is still 4
+                // (the ids commit mid-pick — see
+                // `EWRAMOffsets::chip_blocks`), so writing on the edge
+                // lands after them; the fire path reads ids[fired]
+                // lazily, long after. Both cores run the same lockstep
+                // simulation, so each sees the same edge on its own
+                // tick call and both copies of the block are rewritten
+                // together — the same both-cores contract
+                // `debug_set_hp` documents.
+                for player in 0..2usize {
+                    let flag = core.raw_read_8(self.ewram.battle_state + 0x14 + player as u32, -1);
+                    let closed = self.prev[core_index][player] == 4 && flag != 4;
+                    self.prev[core_index][player] = flag;
+                    if !closed {
+                        continue;
+                    }
+                    let Some(ids) = control.forced_hand(player) else {
+                        continue;
+                    };
+                    // battle_state is stale-live outside battle, so a
+                    // flag transition alone isn't proof of a real
+                    // custom close — two live player units are.
+                    if battle_units(self.ewram, core).is_some() {
+                        write_hand(self.ewram, core, player as u32, &ids);
+                    }
+                }
+            }
+        }
+        Some(Box::new(Trainer {
+            ewram: &self.offsets.ewram,
+            prev: [[0; 2]; 2],
+        }))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -578,6 +648,20 @@ fn battle_units(ewram: &EWRAMOffsets, core: &mut mgba::core::Core) -> Option<[Ra
     }
     Some([units[0]?, units[1]?])
 }
+/// Overwrite `player`'s chip block: fired count zeroed, `ids` (up to 6,
+/// fire order, invalid ids dropped) into the slots, every remaining
+/// slot emptied (0xFFFF) — a game-picked tail left behind the forced
+/// list would fire after it was spent. The inverse of `loaded_chips`'s
+/// read; see `EWRAMOffsets::chip_blocks` for the layout.
+fn write_hand(ewram: &EWRAMOffsets, core: &mut mgba::core::Core, player: u32, ids: &[u16]) {
+    let base = ewram.chip_blocks + player * 0x50;
+    core.raw_write_16(base, -1, 0);
+    let mut valid = ids.iter().copied().filter(|&id| id != 0 && id <= 0x0fff);
+    for slot in 0..6u32 {
+        core.raw_write_16(base + 2 + slot * 2, -1, valid.next().unwrap_or(0xffff));
+    }
+}
+
 /// Both players' loaded-chip readings (`None` when the hand is spent),
 /// indexed by absolute player -- the id the player will use next, with
 /// the block's fired counter: the hand-cursor contract
