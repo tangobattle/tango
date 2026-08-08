@@ -155,7 +155,7 @@ impl Pvp {
         if battle_units(ewram, core).is_none() {
             return false;
         }
-        write_hand(ewram, core, player as u32 & 1, ids);
+        write_hand(ewram, core, player as u32 & 1, ids, true);
         true
     }
 
@@ -548,32 +548,33 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 core_index: usize,
                 control: &tango_match::trainer::TrainerControl,
             ) {
-                // A forced hand lands on the 4 -> 0 edge of that
-                // player's custom flag: the moment they confirm. The
-                // game's own pick writes land while the flag is still 4
-                // (the ids commit mid-pick — see
-                // `EWRAMOffsets::chip_blocks`), so writing on the edge
-                // lands after them; the fire path reads ids[fired]
-                // lazily, long after. Both cores run the same lockstep
-                // simulation, so each sees the same edge on its own
-                // tick call and both copies of the block are rewritten
-                // together — the same both-cores contract
+                // A forced hand lands in full on the 4 -> 0 edge of
+                // that player's custom flag — the moment they confirm,
+                // after the game's own pick writes (which land while
+                // the flag is still 4) — and is then re-asserted every
+                // battle tick to beat the game's own post-load refresh
+                // of the ids (see `write_hand`). Both cores run the
+                // same lockstep simulation, so each sees the same
+                // edges on its own tick call and both copies of the
+                // block stay in step — the same both-cores contract
                 // `debug_set_hp` documents.
                 for player in 0..2usize {
                     let flag = core.raw_read_8(self.ewram.battle_state + 0x14 + player as u32, -1);
                     let closed = self.prev[core_index][player] == 4 && flag != 4;
                     self.prev[core_index][player] = flag;
-                    if !closed {
+                    if flag == 4 {
+                        // Screen open: the game is writing the real
+                        // picks — leave it alone until the close edge.
                         continue;
                     }
                     let Some(ids) = control.forced_hand(player) else {
                         continue;
                     };
-                    // battle_state is stale-live outside battle, so a
-                    // flag transition alone isn't proof of a real
-                    // custom close — two live player units are.
+                    // battle_state is stale-live outside battle, so
+                    // the flag alone isn't proof of a live hand — two
+                    // live player units are.
                     if battle_units(self.ewram, core).is_some() {
-                        write_hand(self.ewram, core, player as u32, &ids);
+                        write_hand(self.ewram, core, player as u32, &ids, closed);
                     }
                 }
             }
@@ -653,12 +654,33 @@ fn battle_units(ewram: &EWRAMOffsets, core: &mut mgba::core::Core) -> Option<[Ra
 /// slot emptied (0xFFFF) — a game-picked tail left behind the forced
 /// list would fire after it was spent. The inverse of `loaded_chips`'s
 /// read; see `EWRAMOffsets::chip_blocks` for the layout.
-fn write_hand(ewram: &EWRAMOffsets, core: &mut mgba::core::Core, player: u32, ids: &[u16]) {
+///
+/// The plain ids are not left alone once written: some pick record
+/// beyond this block still says what was really selected, and ~25
+/// ticks after a slot's chip loads the game refreshes `ids[slot]` from
+/// it — a slot it doesn't recognize as picked comes back as the
+/// nameless dud pseudo-chip 0x185 (probe-derived: every forced chip
+/// that sat loaded that long morphed into the dud; chips fired quickly
+/// escaped). The refresh is one-shot per load, so the trainer wins by
+/// re-asserting the ids every battle tick (`reset_fired` false) on top
+/// of the full write at custom close (`reset_fired` true) — the fire
+/// path reads `ids[fired]` at the press, the name announce reads it at
+/// load, both before any refresh can land between two ticks.
+///
+/// The block's annotated copy of the picks at +0x32 (save format,
+/// `id | code << 9`; organic entries AirShot* = 0x3404, CannonB =
+/// 0x0201 pinned it) is kept in step too; the forced entries carry the
+/// * code (bits 9-15 = 26), which every chip accepts.
+fn write_hand(ewram: &EWRAMOffsets, core: &mut mgba::core::Core, player: u32, ids: &[u16], reset_fired: bool) {
     let base = ewram.chip_blocks + player * 0x50;
-    core.raw_write_16(base, -1, 0);
-    let mut valid = ids.iter().copied().filter(|&id| id != 0 && id <= 0x0fff);
+    if reset_fired {
+        core.raw_write_16(base, -1, 0);
+    }
+    let valid: Vec<u16> = ids.iter().copied().filter(|&id| id != 0 && id <= 0x0fff).collect();
     for slot in 0..6u32 {
-        core.raw_write_16(base + 2 + slot * 2, -1, valid.next().unwrap_or(0xffff));
+        let id = valid.get(slot as usize).copied();
+        core.raw_write_16(base + 2 + slot * 2, -1, id.unwrap_or(0xffff));
+        core.raw_write_16(base + 0x32 + slot * 2, -1, id.map(|id| id | 26 << 9).unwrap_or(0xffff));
     }
 }
 
