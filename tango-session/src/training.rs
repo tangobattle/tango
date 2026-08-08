@@ -11,12 +11,14 @@
 //!
 //! Out of the box that controller does nothing: the stock
 //! [`NoopController`] presses no buttons, so the opponent just stands
-//! there. The point of the mode is the seam, not any behaviour — it
-//! exists so future work has one obvious place to hook in: implement
-//! [`TrainingController`], read either core's state off the live pair in
-//! [`TrainingController::poll`], and decide what the dummy should press.
-//! A controller can be swapped in at any time with
-//! [`TrainingSession::set_controller`].
+//! there. The driver layers the session's [`DummyPolicy`] on top —
+//! by default it closes the dummy's custom screen automatically (a
+//! link battle only resumes once BOTH players confirm, so a dummy that
+//! never confirms soft-locks the match on its first chip select), or
+//! it can hand the player over to the dummy for the pick instead. A
+//! richer controller can be swapped in at any time with
+//! [`TrainingSession::set_controller`]; it gets the battle facts the
+//! driver already tracks through [`ControllerContext`].
 //!
 //! The battle runs entirely off in-memory SRAM, so nothing a training
 //! session does is written back to the player's `.sav` on disk. There is
@@ -24,7 +26,7 @@
 //! each tick is supplied locally before that tick advances, so the pair
 //! runs in perfect lockstep.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tango_match::telemetry::Event;
@@ -34,11 +36,10 @@ use tango_match::telemetry::Event;
 /// makes best-of-N pointless.
 const TRAINING_MATCH_TYPE: (u8, u8) = (0, 0);
 
-/// What the drive loop hands a [`TrainingController`] each tick: the live
-/// linked pair (read either core's RAM/video to decide what to do) and
-/// which core is which. This is the whole integration surface — a
-/// controller inspects the pair, then returns the joyflags the dummy
-/// should hold for the tick about to advance.
+/// What the drive loop hands a [`TrainingController`] each tick: which
+/// core is which, plus the battle facts the driver tracks off the
+/// pair's confirmed telemetry. A controller reads these and returns
+/// the joyflags the dummy should hold for the tick about to advance.
 pub struct ControllerContext {
     /// The core the dummy drives (the non-human core).
     pub dummy_player: usize,
@@ -46,6 +47,49 @@ pub struct ControllerContext {
     pub human_player: usize,
     /// Ticks elapsed since the battle started (0 on the first poll).
     pub frame: u64,
+    /// Whether each player's custom (chip-select) screen stands open,
+    /// by absolute player — a tick or two behind the frontier (it
+    /// comes off the confirmed telemetry), which no multi-frame
+    /// reaction cares about.
+    pub custom_open: [bool; 2],
+}
+
+/// How the dummy's custom screen gets handled — the one part of a
+/// battle a do-nothing dummy cannot be allowed to do nothing about: a
+/// link battle only resumes once BOTH players confirm their picks.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum DummyPolicy {
+    /// The driver confirms for the dummy: once its screen has stood
+    /// open a moment, a scripted START→A closes it with the game's
+    /// own picks (which a forced hand then overwrites). The default.
+    #[default]
+    AutoConfirm,
+    /// Control switches to the dummy while its screen is open — the
+    /// player makes the dummy's picks — and hands back on confirm.
+    AutoPossess,
+    /// Nothing: the player deals with the dummy's screen by swapping
+    /// manually (today's behaviour, and what a custom controller that
+    /// handles the screen itself wants).
+    Manual,
+}
+
+impl DummyPolicy {
+    fn from_u8(v: u8) -> Self {
+        match v {
+            1 => DummyPolicy::AutoPossess,
+            2 => DummyPolicy::Manual,
+            _ => DummyPolicy::AutoConfirm,
+        }
+    }
+
+    /// The next policy in the cycle a single toggle button walks.
+    pub fn next(self) -> Self {
+        match self {
+            DummyPolicy::AutoConfirm => DummyPolicy::AutoPossess,
+            DummyPolicy::AutoPossess => DummyPolicy::Manual,
+            DummyPolicy::Manual => DummyPolicy::AutoConfirm,
+        }
+    }
 }
 
 /// A pluggable per-tick input source for the training dummy — the one
@@ -115,6 +159,13 @@ pub struct TrainingSession {
     /// forced hands land here and the engine's per-game trainer applies
     /// them. Wired iff this game's support offers a trainer.
     control: Arc<tango_match::trainer::TrainerControl>,
+    /// The standing [`DummyPolicy`], as its discriminant.
+    policy: Arc<AtomicU8>,
+    /// Bumped on every manual swap. The driver's auto-possession
+    /// records it going in and drops its restore if it moved — a
+    /// player who swapped mid-possession chose a side, and the
+    /// hand-back must not fight them.
+    swap_generation: Arc<AtomicU32>,
     /// Latched once the battle's own match-end path fires — flips
     /// [`is_ended`](crate::Session::is_ended) so the host tears the
     /// session down.
@@ -191,6 +242,8 @@ impl TrainingSession {
         let controlled = Arc::new(AtomicUsize::new(0));
         let joyflags = Arc::new(AtomicU32::new(0));
         let controller: SharedController = Arc::new(Mutex::new(controller));
+        let policy = Arc::new(AtomicU8::new(DummyPolicy::default() as u8));
+        let swap_generation = Arc::new(AtomicU32::new(0));
         let fps_bits = Arc::new(AtomicU32::new(expected_fps.to_bits()));
         let dummy_joyflags = Arc::new(AtomicU32::new(0));
         let show_pip = Arc::new(AtomicBool::new(false));
@@ -232,6 +285,11 @@ impl TrainingSession {
             screen: screen.clone(),
             wake: wake.clone(),
             frame: 0,
+            policy: policy.clone(),
+            swap_generation: swap_generation.clone(),
+            custom_open: [false; 2],
+            dummy_custom_ticks: 0,
+            possession: None,
         };
 
         Ok((
@@ -247,6 +305,8 @@ impl TrainingSession {
                 pip,
                 pip_fresh,
                 control,
+                policy,
+                swap_generation,
                 ended,
                 stop,
                 layout,
@@ -288,7 +348,23 @@ impl TrainingSession {
     /// cores. Takes effect on the next tick the drive loop routes input,
     /// and the audio + main screen follow the newly-controlled core.
     pub fn toggle_swap(&self) {
+        self.swap_generation.fetch_add(1, Ordering::Relaxed);
         self.controlled.fetch_xor(1, Ordering::Relaxed);
+    }
+
+    /// How the dummy's custom screen is handled (see [`DummyPolicy`]).
+    pub fn policy(&self) -> DummyPolicy {
+        DummyPolicy::from_u8(self.policy.load(Ordering::Relaxed))
+    }
+
+    /// Set the dummy-screen policy. Takes effect on the next tick.
+    pub fn set_policy(&self, policy: DummyPolicy) {
+        self.policy.store(policy as u8, Ordering::Relaxed);
+    }
+
+    /// Step to the next policy in the cycle (the bar's toggle).
+    pub fn cycle_policy(&self) {
+        self.set_policy(self.policy().next());
     }
 
     /// Whether chip forcing works in this session — the game's engine
@@ -390,6 +466,20 @@ pub struct Driver {
     /// Ticks run, handed to the dummy controller so it can time its
     /// takes.
     frame: u64,
+    policy: Arc<AtomicU8>,
+    swap_generation: Arc<AtomicU32>,
+    /// Whether each player's custom screen stands open, by absolute
+    /// player, off the confirmed telemetry samples (a tick or two
+    /// behind the frontier — the policies all react over multiple
+    /// frames anyway).
+    custom_open: [bool; 2],
+    /// Consecutive ticks the DUMMY seat's screen has stood open — the
+    /// auto-confirm debounce-then-script clock.
+    dummy_custom_ticks: u32,
+    /// A live auto-possession: the seat to hand back to and the swap
+    /// generation it began under (a manual swap moves the generation
+    /// and the hand-back is dropped — the player's choice wins).
+    possession: Option<(usize, u32)>,
 }
 
 impl crate::Drive for Driver {
@@ -403,16 +493,46 @@ impl crate::Drive for Driver {
 }
 
 impl Driver {
-    /// Advance the battle one tick: poll the dummy, route both inputs,
-    /// step the pair, publish the screens. `false` once the session has
-    /// ended — the battle's own match-end path, a failed advance, or the
-    /// session being dropped.
+    /// How long the dummy's custom screen must stand open before the
+    /// auto-confirm script engages — long enough for the screen to
+    /// settle and for a quick manual swap to pre-empt it.
+    const CONFIRM_DEBOUNCE: u32 = 20;
+
+    /// Advance the battle one tick: resolve the dummy policy, poll the
+    /// dummy, route both inputs, step the pair, publish the screens.
+    /// `false` once the session has ended — the battle's own match-end
+    /// path, a failed advance, or the session being dropped.
     pub fn tick(&mut self) -> bool {
         let frame = self.frame;
         if self.stop.load(Ordering::Relaxed) {
             return false;
         }
         {
+            let policy = DummyPolicy::from_u8(self.policy.load(Ordering::Relaxed));
+
+            // A live auto-possession hands back the moment the
+            // possessed seat's screen closes — unless a manual swap
+            // moved the generation in between, in which case the
+            // player's choice stands and the record just drops.
+            if let Some((return_seat, generation)) = self.possession {
+                if !self.custom_open[self.controlled.load(Ordering::Relaxed)] {
+                    if self.swap_generation.load(Ordering::Relaxed) == generation {
+                        self.controlled.store(return_seat, Ordering::Relaxed);
+                    }
+                    self.possession = None;
+                }
+            } else if policy == DummyPolicy::AutoPossess {
+                let controlled = self.controlled.load(Ordering::Relaxed);
+                if self.custom_open[1 - controlled] {
+                    // The dummy's screen is open: take its seat for the
+                    // pick. Screen, audio and input routing all follow
+                    // `controlled`, so this one store is the whole
+                    // perspective flip.
+                    self.possession = Some((controlled, self.swap_generation.load(Ordering::Relaxed)));
+                    self.controlled.store(1 - controlled, Ordering::Relaxed);
+                }
+            }
+
             // Which core the player drives this tick; the dummy takes the
             // other. A swap flips this between ticks.
             let controlled = self.controlled.load(Ordering::Relaxed);
@@ -423,15 +543,36 @@ impl Driver {
             self.match_.listen_to(controlled);
 
             // Poll the dummy controller for the tick about to advance. It
-            // sees the pair parked at the newest simulated tick; its
+            // sees the battle facts as of the newest confirmed tick; its
             // output becomes the dummy core's input for this tick. The
             // stock NoopController returns 0.
             let controller = self.controller.clone();
-            let dummy = controller.lock().unwrap().poll(&mut ControllerContext {
+            let mut dummy = controller.lock().unwrap().poll(&mut ControllerContext {
                 dummy_player,
                 human_player: controlled,
                 frame,
+                custom_open: self.custom_open,
             });
+
+            // Auto-confirm: whoever holds the dummy seat right now is by
+            // definition not the human (a human swapping onto a seat
+            // makes it the controlled one), so the injection can never
+            // fight the pad — the corollary being that swapping away
+            // from your own open custom screen abandons it to the
+            // script. START jumps the cursor to OK, A confirms; held 3
+            // ticks each with gaps so the game sees clean edges.
+            if self.custom_open[dummy_player] {
+                self.dummy_custom_ticks += 1;
+            } else {
+                self.dummy_custom_ticks = 0;
+            }
+            if policy == DummyPolicy::AutoConfirm && self.dummy_custom_ticks > Self::CONFIRM_DEBOUNCE {
+                dummy = match (self.dummy_custom_ticks - Self::CONFIRM_DEBOUNCE) % 12 {
+                    0..=2 => tango_match::keys::START,
+                    6..=8 => tango_match::keys::A,
+                    _ => 0,
+                };
+            }
             self.dummy_joyflags.store(dummy, Ordering::Relaxed);
 
             // Route each input to its core, then feed the engine: core 0
@@ -454,14 +595,28 @@ impl Driver {
                 }
             };
 
-            // Watch the confirmed telemetry for the games' own match-end
-            // path so the session can tear down cleanly (with a
-            // do-nothing dummy the player wins and the battle ends). We
-            // don't fold stats — training records nothing.
-            let (_samples, events) = match self.match_.telemetry() {
+            // Drain the confirmed telemetry: the custom flags feed the
+            // dummy policies, and the games' own match-end path tears
+            // the session down cleanly. We don't fold stats — training
+            // records nothing. (Under lockstep the confirmed boundary
+            // tracks the frontier, so the flags run at most a couple of
+            // ticks behind what's on screen.)
+            let (samples, events) = match self.match_.telemetry() {
                 Some(store) => store.lock().unwrap().drain_confirmed(self.match_.confirmed()),
                 None => (Vec::new(), Vec::new()),
             };
+            if let Some((_, obs)) = samples.last() {
+                self.custom_open = obs.custom;
+            }
+            if events
+                .iter()
+                .any(|(_, e)| matches!(e, Event::RoundEnded { .. } | Event::MatchEnded))
+            {
+                // Samples stop at a round's verdict while the battle
+                // structs linger stale-live — don't let a stale open
+                // flag drive the script into the result screens.
+                self.custom_open = [false; 2];
+            }
             if events.iter().any(|(_, e)| matches!(e, Event::MatchEnded)) {
                 self.ended.store(true, Ordering::Release);
                 self.wake.notify_one();
