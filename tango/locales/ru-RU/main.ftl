@@ -347,6 +347,7 @@ input-key-start = Start
 input-key-select = Select
 input-key-mic = Дуть в микрофон
 input-key-speed-up = Ускорение
+input-key-training-swap = Тренировка: поменять стороны
 input-gamepad-south = Кнопка A
 input-gamepad-east = Кнопка B
 input-gamepad-west = Кнопка X

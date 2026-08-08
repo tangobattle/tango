@@ -345,6 +345,7 @@ input-key-start = Start
 input-key-select = Select
 input-key-mic = Souffler dans le micro
 input-key-speed-up = Avance rapide
+input-key-training-swap = Entraînement : changer de côté
 input-gamepad-south = Bouton A
 input-gamepad-east = Bouton B
 input-gamepad-west = Bouton X

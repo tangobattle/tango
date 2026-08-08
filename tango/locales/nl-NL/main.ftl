@@ -345,6 +345,7 @@ input-key-start = Start
 input-key-select = Select
 input-key-mic = In de microfoon blazen
 input-key-speed-up = Versnellen
+input-key-training-swap = Training: van kant wisselen
 input-gamepad-south = A-knop
 input-gamepad-east = B-knop
 input-gamepad-west = X-knop

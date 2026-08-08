@@ -319,6 +319,7 @@ input-key-start = スタート
 input-key-select = セレクト
 input-key-mic = マイクに息をふきかける
 input-key-speed-up = 早送り
+input-key-training-swap = トレーニング: 左右を入れ替える
 input-gamepad-south = Aボタン
 input-gamepad-east = Bボタン
 input-gamepad-west = Xボタン

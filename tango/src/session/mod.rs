@@ -1080,6 +1080,33 @@ impl State {
                         }
                     }
                 }
+                // Training swap hotkey: rebindable, inert in every
+                // other session kind. Keys reuse the fresh-press edge
+                // filter above (OS key repeat would flap the sides);
+                // pad buttons are inherently edges.
+                let swap_pressed = match &ev {
+                    InputEvent::Key {
+                        physical,
+                        pressed: true,
+                    } => {
+                        !self.input_held.is_key_held(physical)
+                            && mapping.training_swap.iter().any(|p| {
+                                matches!(p, crate::platform::input::PhysicalInput::Key(k) if k.0 == *physical)
+                            })
+                    }
+                    InputEvent::Button {
+                        button, pressed: true, ..
+                    } => mapping
+                        .training_swap
+                        .iter()
+                        .any(|p| matches!(p, crate::platform::input::PhysicalInput::Button(b) if b == button)),
+                    _ => false,
+                };
+                if swap_pressed {
+                    if let Some(s) = self.active_as::<training::TrainingSession>() {
+                        s.toggle_swap();
+                    }
+                }
                 self.input_held.apply(&ev);
                 self.push_input(mapping);
                 // Speed-up: only fire set_speed on the rising or

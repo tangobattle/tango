@@ -1118,6 +1118,11 @@ fn settings_input<'a>(
         input::MappedKey::SpeedUp,
     );
     let mic = wide_pill(Icon::Wind, t!(lang, "input-key-mic"), input::MappedKey::Mic);
+    let training_swap = wide_pill(
+        Icon::ArrowLeftRight,
+        t!(lang, "input-key-training-swap"),
+        input::MappedKey::TrainingSwap,
+    );
     let reset = widgets::labeled_icon_button(
         Icon::RefreshCw,
         t!(lang, "settings-input-reset"),
@@ -1125,7 +1130,7 @@ fn settings_input<'a>(
         STANDARD_PADDING,
         widgets::neutral,
     );
-    let below = row![speed, mic, horizontal_space(), reset]
+    let below = row![speed, mic, training_swap, horizontal_space(), reset]
         .spacing(8)
         .width(Length::Fixed(GBA_SHELL_WIDTH))
         .align_y(iced::Alignment::Center);
@@ -1155,6 +1160,7 @@ fn mapped_key_label(lang: &LanguageIdentifier, k: input::MappedKey) -> String {
         input::MappedKey::Select => t!(lang, "input-key-select"),
         input::MappedKey::Mic => t!(lang, "input-key-mic"),
         input::MappedKey::SpeedUp => t!(lang, "input-key-speed-up"),
+        input::MappedKey::TrainingSwap => t!(lang, "input-key-training-swap"),
     }
 }
 

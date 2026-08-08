@@ -391,6 +391,9 @@ pub struct Mapping {
     /// the bit off like they do X and Y.
     pub mic: Vec<PhysicalInput>,
     pub speed_up: Vec<PhysicalInput>,
+    /// Training only: swap which side the player controls. Inert in
+    /// every other session kind, so the F-row is safe to claim.
+    pub training_swap: Vec<PhysicalInput>,
 }
 
 impl Default for Mapping {
@@ -438,6 +441,7 @@ impl Default for Mapping {
             // spare.
             mic: vec![key(Code::KeyE)],
             speed_up: vec![key(Code::ShiftLeft)],
+            training_swap: vec![key(Code::F1)],
         }
     }
 }
@@ -461,6 +465,7 @@ impl Mapping {
             MappedKey::Select => &self.select,
             MappedKey::Mic => &self.mic,
             MappedKey::SpeedUp => &self.speed_up,
+            MappedKey::TrainingSwap => &self.training_swap,
         }
     }
 
@@ -480,6 +485,7 @@ impl Mapping {
             MappedKey::Select => &mut self.select,
             MappedKey::Mic => &mut self.mic,
             MappedKey::SpeedUp => &mut self.speed_up,
+            MappedKey::TrainingSwap => &mut self.training_swap,
         }
     }
 
@@ -538,6 +544,8 @@ pub enum MappedKey {
     /// DS only: white noise on the microphone.
     Mic,
     SpeedUp,
+    /// Training only: swap which side the player controls.
+    TrainingSwap,
 }
 
 /// Atomic input event fed to the held-state tracker. Carries the raw

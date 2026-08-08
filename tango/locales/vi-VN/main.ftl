@@ -339,6 +339,7 @@ input-key-start = Start
 input-key-select = Select
 input-key-mic = Thổi vào micrô
 input-key-speed-up = Tua nhanh
+input-key-training-swap = Tập luyện: đổi bên
 input-gamepad-south = Nút A
 input-gamepad-east = Nút B
 input-gamepad-west = Nút X

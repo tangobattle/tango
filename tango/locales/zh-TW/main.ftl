@@ -325,6 +325,7 @@ input-key-start = Start
 input-key-select = Select
 input-key-mic = 對著麥克風吹氣
 input-key-speed-up = 快轉
+input-key-training-swap = 訓練：交換位置
 input-gamepad-south = A 鍵
 input-gamepad-east = B 鍵
 input-gamepad-west = X 鍵

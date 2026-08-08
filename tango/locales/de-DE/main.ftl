@@ -345,6 +345,7 @@ input-key-start = Start
 input-key-select = Select
 input-key-mic = Ins Mikrofon pusten
 input-key-speed-up = Schnellvorlauf
+input-key-training-swap = Training: Seiten wechseln
 input-gamepad-south = A-Taste
 input-gamepad-east = B-Taste
 input-gamepad-west = X-Taste
