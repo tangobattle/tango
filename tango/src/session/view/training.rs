@@ -36,6 +36,11 @@ pub enum Message {
     /// Clear the edited side's forced hand — the game's own picks
     /// stand again.
     ClearHand,
+    /// Open/close the dummy-save menu.
+    ToggleSaves,
+    /// Give the dummy this save (`None` = mirror the player's own).
+    /// Relaunches the session: a save is baked into its core at boot.
+    PickDummySave(Option<std::path::PathBuf>),
 }
 
 /// The edited side's forced hand, for the picker widgets.
@@ -77,6 +82,13 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
                 s.toggle_playback();
             }
         }
+        Message::ToggleSaves => {
+            if let Some(p) = state.training_panes.as_mut() {
+                p.saves_open = !p.saves_open;
+            }
+        }
+        // Handled by the App (it owns the scanners and the respawn).
+        Message::PickDummySave(_) => {}
         Message::ToggleChips => {
             if let Some(p) = state.training_panes.as_mut() {
                 p.picker_open = !p.picker_open;
@@ -206,6 +218,61 @@ fn chip_name(chips: &[tango_gamesupport::ChipDisplay], id: u16) -> String {
         .get(id as usize)
         .and_then(|c| c.name.clone())
         .unwrap_or_else(|| "???".to_string())
+}
+
+/// The dummy-save menu: the player's own save (the default mirror
+/// match) plus every other scanned save for this game. Picking one
+/// relaunches the session — a save is baked into its core at boot.
+fn saves_panel<'a>(
+    lang: &'a unic_langid::LanguageIdentifier,
+    panes: &'a crate::session::TrainingPanes,
+) -> Element<'a, Message> {
+    let row_button = |label: String, selected: bool, msg: Message| {
+        let style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
+            let mut st = telemetry_plate_button(theme, status);
+            if selected {
+                let primary = theme.palette().primary;
+                st.text_color = primary;
+                st.border.color = iced::Color { a: 0.35, ..primary };
+            }
+            st
+        };
+        button(text(label).size(13))
+            .padding([3, 8])
+            .width(Fill)
+            .style(style)
+            .on_press(msg)
+    };
+
+    let mut list = iced::widget::column![row_button(
+        t!(lang, "training-dummy-save-mirror"),
+        panes.dummy_save.is_none(),
+        Message::PickDummySave(None),
+    )]
+    .spacing(2);
+    for path in &panes.saves {
+        let name = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.display().to_string());
+        list = list.push(row_button(
+            name,
+            panes.dummy_save.as_deref() == Some(path.as_path()),
+            Message::PickDummySave(Some(path.clone())),
+        ));
+    }
+
+    container(
+        iced::widget::column![
+            text(t!(lang, "training-dummy-save")).size(12),
+            iced::widget::scrollable(list).height(Length::Fixed(180.0)).width(Fill),
+        ]
+        .spacing(6),
+    )
+    .padding(10)
+    .width(Length::Fixed(300.0))
+    .style(hud_chip_plate)
+    .into()
 }
 
 /// The forced-hand picker panel: side selector + the up-to-6 forced
@@ -346,6 +413,7 @@ fn bottom_bar<'a>(
     let chips_available = s.chip_forcing_available();
     let picker_open = state.training_panes.as_ref().is_some_and(|p| p.picker_open);
     let drill = s.drill_mode();
+    let panes_saves_open = state.training_panes.as_ref().is_some_and(|p| p.saves_open);
     let bar = row![
         toggle_button(
             Icon::PictureInPicture2,
@@ -382,6 +450,12 @@ fn bottom_bar<'a>(
             (s.has_drill() || drill == DrillMode::Playing).then_some(Message::TogglePlayback),
         ),
         toggle_button(
+            Icon::CircleUserRound,
+            panes_saves_open,
+            t!(lang, "training-dummy-save"),
+            Some(Message::ToggleSaves),
+        ),
+        toggle_button(
             Icon::Swords,
             picker_open,
             if chips_available {
@@ -396,8 +470,11 @@ fn bottom_bar<'a>(
     .align_y(Alignment::Center);
     let plate = container(bar).padding([8, 12]).style(hud_chip_plate);
     let mut cluster = iced::widget::column![].spacing(8).align_x(Alignment::Center);
-    if picker_open && chips_available {
-        if let Some(panes) = state.training_panes.as_ref() {
+    if let Some(panes) = state.training_panes.as_ref() {
+        if panes.saves_open {
+            cluster = cluster.push(saves_panel(lang, panes));
+        }
+        if picker_open && chips_available {
             cluster = cluster.push(picker_panel(lang, s, panes));
         }
     }

@@ -182,7 +182,7 @@ impl App {
                 let Some(loaded) = self.loaded.as_ref() else {
                     return iced::Task::none();
                 };
-                match session::spawn_training(&self.scanners, &self.config, &self.audio_binder, loaded) {
+                match session::spawn_training(&self.scanners, &self.config, &self.audio_binder, loaded, None) {
                     Ok((s, audio, drive)) => {
                         self.session.active = Some(Box::new(s));
                         self.session.training_panes = Some(session::TrainingPanes {
@@ -190,6 +190,9 @@ impl App {
                             picker_open: false,
                             picker_side: 0,
                             query: String::new(),
+                            dummy_save: None,
+                            saves_open: false,
+                            saves: session::training_saves(&self.scanners, loaded),
                         });
                         self.session.audio_binding = audio;
                         self.session.attach_drive_threads([drive]);

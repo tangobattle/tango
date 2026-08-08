@@ -1363,6 +1363,12 @@ impl App {
             Message::Settings(m) => self.update_settings(m).map(Message::Settings),
             Message::Welcome(m) => self.update_welcome(m),
             Message::Session(m) => {
+                // The dummy's save is baked into its core at boot, so
+                // switching it relaunches the training session — the
+                // App owns both the scanners and the respawn.
+                if let session::Message::Training(session::view::training::Message::PickDummySave(pick)) = &m {
+                    return self.relaunch_training(pick.clone());
+                }
                 // In-match frame-delay slider: persist the new value to config so
                 // the choice sticks for the next match (session.update applies it
                 // to the live session). Mirrors the lobby slider's persistence.
@@ -1764,6 +1770,50 @@ impl App {
             subs.push(iced::window::frames().map(|_| Message::AnimTick));
         }
         iced::Subscription::batch(subs)
+    }
+
+
+    /// Rebuild the running training session with `dummy_save` on the
+    /// dummy seat (`None` mirrors the player's own). The pair's saves
+    /// are read at boot, so there is nothing to hot-swap: tear the
+    /// session down and spawn a fresh one, carrying the panes' view
+    /// state (chip table, picker) across.
+    fn relaunch_training(&mut self, dummy_save: Option<std::path::PathBuf>) -> iced::Task<Message> {
+        let Some(loaded) = self.loaded.as_ref() else {
+            return iced::Task::none();
+        };
+        let dummy_sram = match dummy_save.as_deref() {
+            Some(p) => match session::dummy_sram(&self.scanners, loaded.game, p) {
+                Some(sram) => Some(sram),
+                None => {
+                    log::error!("training: dummy save {} is not a parsed save for this game", p.display());
+                    return iced::Task::none();
+                }
+            },
+            None => None,
+        };
+        // Drop the old session first: its emulator threads join and
+        // release the audio device before the new one claims it.
+        self.session.close_session();
+        match session::spawn_training(&self.scanners, &self.config, &self.audio_binder, loaded, dummy_sram) {
+            Ok((s, audio, drive)) => {
+                self.session.active = Some(Box::new(s));
+                self.session.training_panes = Some(session::TrainingPanes {
+                    chips: loaded.chips.clone(),
+                    picker_open: false,
+                    picker_side: 0,
+                    query: String::new(),
+                    dummy_save,
+                    saves_open: true,
+                    saves: session::training_saves(&self.scanners, loaded),
+                });
+                self.session.audio_binding = audio;
+                self.session.attach_drive_threads([drive]);
+                self.session.session_installed();
+            }
+            Err(e) => log::error!("training relaunch failed: {e:#}"),
+        }
+        iced::Task::none()
     }
 
     /// Refresh Discord rich-presence + drain any Discord-initiated

@@ -129,6 +129,14 @@ impl std::fmt::Debug for PvpPanes {
 /// `active` when a training session installs, cleared on close.
 pub struct TrainingPanes {
     pub chips: Vec<tango_gamesupport::ChipDisplay>,
+    /// The dummy seat's save file, `None` while it mirrors the
+    /// player's own. Picking one relaunches the session (a save is
+    /// baked into its core at boot).
+    pub dummy_save: Option<std::path::PathBuf>,
+    /// Whether the dummy-save menu stands open.
+    pub saves_open: bool,
+    /// Every other scanned save for this game, for that menu.
+    pub saves: Vec<std::path::PathBuf>,
     /// Whether the forced-hand picker panel stands open over the bar.
     pub picker_open: bool,
     /// Which absolute player's hand the picker is editing (0 or 1).
@@ -1887,6 +1895,38 @@ pub fn spawn_singleplayer(
     Ok((session, bind_session_audio(audio_binder, audio), save, drive))
 }
 
+
+/// Every scanned save for this selection's game other than the one
+/// being played — what the training dummy can be handed instead of a
+/// mirror of the player's own.
+pub fn training_saves(scanners: &Scanners, loaded: &selection::LoadedSave) -> Vec<std::path::PathBuf> {
+    scanners
+        .saves
+        .read()
+        .get(&loaded.game)
+        .map(|saves| {
+            saves
+                .iter()
+                .map(|s| s.path.clone())
+                .filter(|p| *p != loaded.save_path)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The SRAM image the dummy seat boots from for the scanned save at
+/// `path` — taken off the scanner's already-parsed copy, so a save the
+/// library couldn't parse is simply not offered.
+pub fn dummy_sram(scanners: &Scanners, game: crate::library::rom::GameRef, path: &std::path::Path) -> Option<Vec<u8>> {
+    scanners
+        .saves
+        .read()
+        .get(&game)?
+        .iter()
+        .find(|s| s.path == path)
+        .map(|s| s.save.to_sram_dump())
+}
+
 /// Boot the supplied selection in training mode — a local link battle
 /// (both cores run this selection) against a do-nothing dummy controller
 /// ([`training::NoopController`]) wired in as the integration seam. Same
@@ -1897,6 +1937,7 @@ pub fn spawn_training(
     config: &config::Config,
     audio_binder: &audio::LateBinder,
     loaded: &selection::LoadedSave,
+    dummy_sram: Option<Vec<u8>>,
 ) -> anyhow::Result<(
     training::TrainingSession,
     Option<audio::Binding>,
@@ -1934,6 +1975,7 @@ pub fn spawn_training(
         game,
         std::sync::Arc::new(rom_bytes),
         loaded.editor.sram(loaded),
+        dummy_sram,
         std::time::SystemTime::now(),
         rand::random(),
         game.pvp.frame_timing().fps() as f32,

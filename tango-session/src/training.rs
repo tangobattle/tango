@@ -232,6 +232,7 @@ impl TrainingSession {
         game: &'static tango_gamesupport::Game,
         rom: Arc<Vec<u8>>,
         save_sram: Vec<u8>,
+        dummy_sram: Option<Vec<u8>>,
         rtc: std::time::SystemTime,
         rng_seed: [u8; 16],
         expected_fps: f32,
@@ -290,6 +291,7 @@ impl TrainingSession {
                 game,
                 rom,
                 save_sram,
+                dummy_sram,
                 rtc,
                 rng_seed,
                 control: control.clone(),
@@ -554,6 +556,7 @@ struct BootPieces {
     game: &'static tango_gamesupport::Game,
     rom: Arc<Vec<u8>>,
     save_sram: Vec<u8>,
+    dummy_sram: Option<Vec<u8>>,
     rtc: std::time::SystemTime,
     rng_seed: [u8; 16],
     control: Arc<tango_match::trainer::TrainerControl>,
@@ -595,7 +598,10 @@ impl BootPieces {
         // latency to hide and no speculation to roll back.
         let mut match_ = self.game.pvp.start(tango_match::StartConfig {
             roms: [self.rom.as_ref(), self.rom.as_ref()],
-            saves: [Some(&self.save_sram), Some(&self.save_sram)],
+            saves: [
+                Some(&self.save_sram),
+                Some(self.dummy_sram.as_deref().unwrap_or(&self.save_sram)),
+            ],
             match_type: TRAINING_MATCH_TYPE,
             rng_seed: self.rng_seed,
             rtc: self.rtc,
