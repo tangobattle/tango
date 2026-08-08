@@ -124,6 +124,13 @@ pub struct Link {
     /// polls on this engine: console 0's poller reads where the match
     /// stands and reports the transitions into the collector's sink.
     telemetry: Option<Telemetry<crate::Nds>>,
+    /// Training's write-side hook, when this pair runs one (see
+    /// [`tango_match::trainer`]). Driven each tick BEFORE the telemetry
+    /// poll, so the pollers read post-write state. Deliberately
+    /// untouched by [`restore`](tango_match::Link::restore): a trainer
+    /// is lockstep-only by contract, so a pair carrying one never
+    /// rewinds.
+    trainer: Option<tango_match::trainer::Hook<crate::Nds>>,
     /// The screens this pair's frames carry. Both until the backend
     /// says otherwise ([`set_screens`](Link::set_screens)), which is
     /// what a probe harness booting a pair of its own wants.
@@ -141,8 +148,16 @@ impl Link {
             inner: melonds_rollback::Link::new(rom, saves, rtc_parts(rtc))?,
             live_tick: 0,
             telemetry: None,
+            trainer: None,
             screens: Screens::BOTH,
         })
+    }
+
+    /// Install training's write-side hook (see
+    /// [`tango_match::trainer`]). Set by the backend before the session
+    /// starts, for a training pair only.
+    pub fn set_trainer(&mut self, trainer: tango_match::trainer::Hook<crate::Nds>) {
+        self.trainer = Some(trainer);
     }
 
     /// Compose only these screens from here on. The backend sets it
@@ -215,6 +230,10 @@ impl tango_match::Link for Link {
         // post-increment count once, which shifted every DS recording's
         // telemetry one tick late — invisible until a first-round start
         // at tick 1 began reading as a setup section.)
+        if let Some(trainer) = self.trainer.as_mut() {
+            trainer.tick(self.inner.console(0), 0);
+            trainer.tick(self.inner.console(1), 1);
+        }
         if let Some(telemetry) = self.telemetry.as_mut() {
             let obs0 = telemetry.poll(0, self.inner.console(0));
             let obs1 = telemetry.poll(1, self.inner.console(1));

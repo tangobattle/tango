@@ -97,3 +97,31 @@ impl TrainerControl {
 pub trait Trainer<Core>: Send {
     fn tick(&mut self, core: &mut Core, core_index: usize, control: &TrainerControl);
 }
+
+/// A game's [`Trainer`] bound to the [`TrainerControl`] it honors —
+/// what an engine's link holds and drives, the write-side twin of
+/// [`Telemetry`](crate::telemetry::Telemetry).
+///
+/// Engines keep one of these per pair and call [`tick`](Self::tick) for
+/// each console right after the pair advances and BEFORE the telemetry
+/// poll, so the pollers read post-write state. Owning the pairing here
+/// rather than in each backend is what keeps the seam engine-neutral:
+/// a backend supplies its own console type and nothing else.
+pub struct Hook<Core> {
+    trainer: Box<dyn Trainer<Core>>,
+    control: Arc<TrainerControl>,
+}
+
+impl<Core> Hook<Core> {
+    /// Bind `trainer` to `control`, marking the control wired (a host
+    /// reads that as "chip forcing exists for this game").
+    pub fn new(trainer: Box<dyn Trainer<Core>>, control: Arc<TrainerControl>) -> Self {
+        control.set_wired();
+        Hook { trainer, control }
+    }
+
+    /// Let the game's trainer touch one console for this tick.
+    pub fn tick(&mut self, core: &mut Core, core_index: usize) {
+        self.trainer.tick(core, core_index, &self.control);
+    }
+}

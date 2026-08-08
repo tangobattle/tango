@@ -249,11 +249,10 @@ impl tango_match::Backend for GbaBackend {
         // one (see [`StartConfig::trainer`]) AND the game's support
         // offers one. Training is a mirror match — both cores run the
         // local cart — so seat 0's support answers for the pair.
-        let trainer = config.trainer.as_ref().and_then(|control| {
-            let trainer = support[0].trainer()?;
-            control.set_wired();
-            Some((trainer, control.clone()))
-        });
+        let trainer = config
+            .trainer
+            .as_ref()
+            .and_then(|control| Some(tango_match::trainer::Hook::new(support[0].trainer()?, control.clone())));
         let mut match_ = tango_match::Match::new(
             crate::link::Link::new(pair, Some(telemetry), trainer),
             config.local_player,

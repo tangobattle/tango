@@ -91,6 +91,16 @@ pub trait GameSupport: Sync {
         Box::new(|_: &mut crate::Nds| None)
     }
 
+    /// The write-side twin of [`core_poller`](Self::core_poller),
+    /// training only: a per-game hook that may poke this game's battle
+    /// RAM each tick (see [`tango_match::trainer`]). One instance
+    /// serves both consoles — a trainer's writes must land identically
+    /// on the pair anyway, so it sees every console every tick.
+    /// Default none: chip forcing simply isn't available for the game.
+    fn trainer(&self) -> Option<Box<dyn tango_match::trainer::Trainer<crate::Nds>>> {
+        None
+    }
+
     /// Silence this console's battle BGM, for a host that asked for
     /// silent battles ([`StartConfig::disable_bgm`], and a replay's own
     /// [`ReplayConfig::disable_bgm`]). Called on both consoles of a
@@ -321,6 +331,15 @@ impl tango_match::Backend for DsBackend {
             silence(&mut link, self.support);
         }
         let handle = observe(&mut link, self.support, events);
+        // Training's write-side hook, only when the caller asked for
+        // one (see [`StartConfig::trainer`]) AND the game offers one.
+        if let Some(hook) = config
+            .trainer
+            .as_ref()
+            .and_then(|control| Some(tango_match::trainer::Hook::new(self.support.trainer()?, control.clone())))
+        {
+            link.set_trainer(hook);
+        }
 
         // The rollback loop is the seam's — this engine contributes the
         // boot, not another copy of it.
